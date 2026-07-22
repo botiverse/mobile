@@ -15,6 +15,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.yield
@@ -936,6 +939,323 @@ class SharedSettingsStoreTest {
         assertEquals(listOf("setPushPreviewMode:private"), repository.calls)
         assertEquals(MOBILE_ACTION_PUSH_PREVIEW_MODE, store.state.value.actionState?.action)
         assertFalse(store.state.value.actionState?.inProgress == true)
+        scope.cancel()
+    }
+
+    @Test
+    fun serverNotificationModeOptimisticallySelectsOnceWhilePatchIsPending() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val initial =
+            mobileSnapshot().copy(
+                serverNotificationMode = ServerPushMode.All.toSettingsMobileSelectionSnapshot()
+            )
+        val block = BlockingCall()
+        val repository =
+            FakeSettingsRepository(mobileResult = DataResult.Content(initial)).also {
+                it.setServerNotificationModeBlock = block
+                it.setServerNotificationModeResult =
+                    DataResult.Content(
+                        initial.copy(
+                            serverNotificationMode =
+                                ServerPushMode.Mentions.toSettingsMobileSelectionSnapshot().copy(
+                                    selectedLabel = "Canonical mentions",
+                                    statusLabel = "Canonical mentions"
+                                )
+                        )
+                    )
+            }
+        val store = settingsStore(repository, scope = scope)
+        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Notifications))
+        repository.calls.clear()
+
+        store.accept(SharedSettingsIntent.SetServerNotificationMode(ServerPushMode.All.wireName))
+        assertEquals(emptyList(), repository.calls)
+
+        val mutation = launch {
+            store.accept(SharedSettingsIntent.SetServerNotificationMode(ServerPushMode.Mentions.wireName))
+        }
+        block.awaitStarted()
+
+        var mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
+        assertEquals(ServerPushMode.Mentions.wireName, mobile.serverNotificationMode.selectedKey)
+        assertEquals(true, mobile.serverNotificationMode.available)
+        assertEquals(true, store.state.value.actionState?.inProgress)
+        assertEquals(ServerPushMode.Mentions.wireName, store.state.value.actionState?.itemId)
+        assertEquals(listOf("setServerNotificationMode:mentions"), repository.calls)
+
+        store.accept(
+            SharedSettingsIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event =
+                    ServerNotificationPreferencesChanged(
+                        serverId = ServerId("server-1"),
+                        serverPushMode = ServerPushMode.All.wireName,
+                        prefsVersion = 2
+                    )
+            )
+        )
+        mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
+        assertEquals(ServerPushMode.Mentions.wireName, mobile.serverNotificationMode.selectedKey)
+        assertEquals(listOf("setServerNotificationMode:mentions", "mobile"), repository.calls)
+
+        store.accept(SharedSettingsIntent.SetForegroundMessageBanners(true))
+        mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
+        assertEquals(false, mobile.foregroundMessageBanners.enabled)
+        assertEquals(MOBILE_ACTION_SERVER_MUTE, store.state.value.actionState?.action)
+
+        store.accept(SharedSettingsIntent.SetServerNotificationMode(ServerPushMode.Mentions.wireName))
+        store.accept(SharedSettingsIntent.SetServerNotificationMode(ServerPushMode.None.wireName))
+        assertEquals(listOf("setServerNotificationMode:mentions", "mobile"), repository.calls)
+
+        block.release()
+        mutation.join()
+
+        mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
+        assertEquals(ServerPushMode.Mentions.wireName, mobile.serverNotificationMode.selectedKey)
+        assertEquals("Canonical mentions", mobile.serverNotificationMode.statusLabel)
+        assertEquals(false, store.state.value.actionState?.inProgress)
+        scope.cancel()
+    }
+
+    @Test
+    fun serverNotificationModeFailureRollsBackAndAllowsFreshRetry() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val initial =
+            mobileSnapshot().copy(
+                serverNotificationMode = ServerPushMode.All.toSettingsMobileSelectionSnapshot()
+            )
+        val block = BlockingCall()
+        val repository =
+            FakeSettingsRepository(mobileResult = DataResult.Content(initial)).also {
+                it.setServerNotificationModeBlock = block
+                it.setServerNotificationModeFailure = IllegalStateException("network down")
+            }
+        val store = settingsStore(repository, scope = scope)
+        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Notifications))
+        repository.calls.clear()
+
+        val mutation = launch {
+            store.accept(SharedSettingsIntent.SetServerNotificationMode(ServerPushMode.Mentions.wireName))
+        }
+        block.awaitStarted()
+        assertEquals(
+            ServerPushMode.Mentions.wireName,
+            assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data.serverNotificationMode.selectedKey
+        )
+        block.release()
+        mutation.join()
+
+        var mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
+        assertEquals(ServerPushMode.All.wireName, mobile.serverNotificationMode.selectedKey)
+        assertEquals(true, mobile.serverNotificationMode.available)
+        assertEquals(false, store.state.value.actionState?.inProgress)
+        assertEquals("settings_server_notification_mode_failed", store.state.value.actionState?.errorCode)
+
+        repository.setServerNotificationModeBlock = null
+        repository.setServerNotificationModeFailure = null
+        store.accept(SharedSettingsIntent.SetServerNotificationMode(ServerPushMode.Mentions.wireName))
+
+        mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
+        assertEquals(ServerPushMode.Mentions.wireName, mobile.serverNotificationMode.selectedKey)
+        assertEquals(false, store.state.value.actionState?.inProgress)
+        assertEquals(
+            listOf("setServerNotificationMode:mentions", "setServerNotificationMode:mentions"),
+            repository.calls
+        )
+        scope.cancel()
+    }
+
+    @Test
+    fun serverNotificationModeLateResultCannotCrossOwnerIdentity() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val initial =
+            mobileSnapshot().copy(
+                serverNotificationMode = ServerPushMode.All.toSettingsMobileSelectionSnapshot()
+            )
+        val block = BlockingCall()
+        val processSessionStore = EventingSessionStore(sampleSession())
+        val sessionStore =
+            SlockShellAuthSessionStore(
+                delegate = processSessionStore,
+                selectedServerStore =
+                    SelectedServerStore(
+                        SlockShellStoreScope.create(
+                            shellInstanceId = "settings-owner-test",
+                            initialServerId = "server-1"
+                        )
+                    ),
+                eventScope = scope
+            )
+        val repository =
+            FakeSettingsRepository(mobileResult = DataResult.Content(initial)).also {
+                it.setServerNotificationModeBlock = block
+                it.setServerNotificationModeResult =
+                    DataResult.Content(
+                        initial.copy(
+                            serverNotificationMode = ServerPushMode.None.toSettingsMobileSelectionSnapshot()
+                        )
+                    )
+            }
+        val store = settingsStore(repository, sessionStore = sessionStore, scope = scope)
+        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Notifications))
+
+        val mutation = launch {
+            store.accept(SharedSettingsIntent.SetServerNotificationMode(ServerPushMode.Mentions.wireName))
+        }
+        block.awaitStarted()
+        processSessionStore.updateTokens("access-2", "refresh-2")
+        yield()
+
+        var mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
+        assertEquals(ServerPushMode.Mentions.wireName, mobile.serverNotificationMode.selectedKey)
+        assertEquals(true, mobile.serverNotificationMode.available)
+        assertEquals(true, store.state.value.actionState?.inProgress)
+
+        sessionStore.updateSelectedServer("server-2", "server-2")
+        yield()
+
+        mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
+        assertEquals(ServerPushMode.All.wireName, mobile.serverNotificationMode.selectedKey)
+        assertEquals(false, mobile.serverNotificationMode.available)
+        assertEquals(false, mobile.muteServer.available)
+        assertNull(store.state.value.actionState)
+        val retiredState = store.state.value
+
+        block.release()
+        mutation.join()
+
+        assertTrue(retiredState === store.state.value)
+        assertEquals(listOf("mobile", "setServerNotificationMode:mentions"), repository.calls)
+
+        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Mobile))
+        repository.mobileResult = DataResult.Content(initial)
+        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Notifications))
+        mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
+        assertEquals(ServerPushMode.All.wireName, mobile.serverNotificationMode.selectedKey)
+        assertEquals(true, mobile.serverNotificationMode.available)
+        scope.cancel()
+    }
+
+    @Test
+    fun serverNotificationModeOwnerReadCannotPublishAfterRouteDeparture() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val initial =
+            mobileSnapshot().copy(
+                serverNotificationMode = ServerPushMode.All.toSettingsMobileSelectionSnapshot()
+            )
+        val mutationBlock = BlockingCall()
+        val ownerReadBlock = BlockingCall()
+        val sessionStore = BlockingSessionStore(InMemorySlockAuthSessionStore(sampleSession()))
+        val repository =
+            FakeSettingsRepository(mobileResult = DataResult.Content(initial)).also {
+                it.setServerNotificationModeBlock = mutationBlock
+                it.setServerNotificationModeResult =
+                    DataResult.Content(
+                        initial.copy(
+                            serverNotificationMode = ServerPushMode.None.toSettingsMobileSelectionSnapshot()
+                        )
+                    )
+            }
+        val store = settingsStore(repository, sessionStore = sessionStore, scope = scope)
+        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Notifications))
+        repository.calls.clear()
+
+        val mutation = launch {
+            store.accept(SharedSettingsIntent.SetServerNotificationMode(ServerPushMode.Mentions.wireName))
+        }
+        mutationBlock.awaitStarted()
+        sessionStore.readBlock = ownerReadBlock
+        mutationBlock.release()
+        ownerReadBlock.awaitStarted()
+
+        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Mobile))
+        ownerReadBlock.release()
+        mutation.join()
+
+        val mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
+        assertEquals(SharedSettingsDestination.Mobile, store.state.value.route.destination)
+        assertEquals(ServerPushMode.All.wireName, mobile.serverNotificationMode.selectedKey)
+        assertEquals(false, mobile.serverNotificationMode.available)
+        assertNull(store.state.value.actionState)
+        assertEquals(listOf("setServerNotificationMode:mentions"), repository.calls)
+        scope.cancel()
+    }
+
+    @Test
+    fun serverNotificationModeLateResultCannotCrossDestination() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val initial =
+            mobileSnapshot().copy(
+                serverNotificationMode = ServerPushMode.All.toSettingsMobileSelectionSnapshot()
+            )
+        val block = BlockingCall()
+        val repository =
+            FakeSettingsRepository(mobileResult = DataResult.Content(initial)).also {
+                it.setServerNotificationModeBlock = block
+                it.setServerNotificationModeResult =
+                    DataResult.Content(
+                        initial.copy(
+                            serverNotificationMode = ServerPushMode.None.toSettingsMobileSelectionSnapshot()
+                        )
+                    )
+            }
+        val store = settingsStore(repository, scope = scope)
+        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Notifications))
+
+        val mutation = launch {
+            store.accept(SharedSettingsIntent.SetServerNotificationMode(ServerPushMode.Mentions.wireName))
+        }
+        block.awaitStarted()
+        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Mobile))
+        block.release()
+        mutation.join()
+
+        val mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
+        assertEquals(ServerPushMode.All.wireName, mobile.serverNotificationMode.selectedKey)
+        assertEquals(false, mobile.serverNotificationMode.available)
+        assertNull(store.state.value.actionState)
+        scope.cancel()
+    }
+
+    @Test
+    fun foregroundBannerMutationPreservesCanonicalServerNotificationMode() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val mentionsSnapshot =
+            mobileSnapshot().copy(
+                serverNotificationMode = ServerPushMode.Mentions.toSettingsMobileSelectionSnapshot()
+            )
+        val repository = FakeSettingsRepository(mobileResult = DataResult.Content(mentionsSnapshot))
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        settingsRepository = repository,
+                        notificationPreferenceRepository = FakeNotificationPreferenceRepository(),
+                        localeRepository = FakeLocaleRepository(),
+                        chatLayoutPreferenceRepository = FakeChatLayoutPreferenceRepository()
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Notifications))
+        store.accept(SharedSettingsIntent.SetForegroundMessageBanners(true))
+
+        var mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
+        assertEquals(ServerPushMode.Mentions.wireName, mobile.serverNotificationMode.selectedKey)
+        assertEquals(true, mobile.serverNotificationMode.available)
+        assertEquals(true, mobile.foregroundMessageBanners.enabled)
+        assertEquals(false, store.state.value.actionState?.inProgress)
+
+        store.accept(SharedSettingsIntent.SetServerNotificationMode(ServerPushMode.All.wireName))
+
+        mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
+        assertEquals(ServerPushMode.All.wireName, mobile.serverNotificationMode.selectedKey)
+        assertEquals(false, store.state.value.actionState?.inProgress)
+        assertEquals(
+            listOf("mobile", "mobile", "setServerNotificationMode:all"),
+            repository.calls
+        )
         scope.cancel()
     }
 
@@ -2510,6 +2830,9 @@ class SharedSettingsStoreTest {
         var registerConnectedAppBlock: BlockingCall? = null
         var createServerInviteBlock: BlockingCall? = null
         var deleteServerBlock: BlockingCall? = null
+        var setServerNotificationModeBlock: BlockingCall? = null
+        var setServerNotificationModeResult: DataResult<SettingsMobileSnapshot>? = null
+        var setServerNotificationModeFailure: Throwable? = null
         var deleteServerResult: DataResult<SettingsServerActionResult> = DataResult.Content(SettingsServerActionResult(success = true))
 
         private fun SettingsLanguageRegionPreferenceUpdateRequest.callLabel(): String =
@@ -3137,6 +3460,9 @@ class SharedSettingsStoreTest {
 
         override suspend fun setServerNotificationMode(mode: ServerPushMode): DataResult<SettingsMobileSnapshot> {
             calls += "setServerNotificationMode:${mode.wireName}"
+            setServerNotificationModeBlock?.consume()
+            setServerNotificationModeFailure?.let { throw it }
+            setServerNotificationModeResult?.let { return it }
             val current = (mobileResult as? DataResult.Content)?.data ?: return DataResult.Empty(EmptyReason.NoSettingsAvailable)
             mobileResult =
                 DataResult.Content(
@@ -3971,6 +4297,77 @@ class SharedSettingsStoreTest {
             released.complete(Unit)
         }
     }
+
+    private class BlockingSessionStore(
+        private val delegate: SlockAuthSessionStore
+    ) : SlockAuthSessionStore {
+        var readBlock: BlockingCall? = null
+
+        override suspend fun readSession(): StoredAuthSession? {
+            readBlock?.consume()
+            return delegate.readSession()
+        }
+
+        override suspend fun saveSession(session: StoredAuthSession) = delegate.saveSession(session)
+
+        override suspend fun updateTokens(accessToken: String, refreshToken: String) =
+            delegate.updateTokens(accessToken, refreshToken)
+
+        override suspend fun updateSelectedServer(serverId: String?, serverSlug: String?) =
+            delegate.updateSelectedServer(serverId, serverSlug)
+
+        override suspend fun clearSession(reason: String, source: String) =
+            delegate.clearSession(reason, source)
+    }
+
+    private class EventingSessionStore(
+        initialSession: StoredAuthSession
+    ) : SlockAuthSessionStore, SlockAuthSessionEventSource {
+        private val delegate = InMemorySlockAuthSessionStore(initialSession)
+        private val events = MutableSharedFlow<AuthSessionEvent>(extraBufferCapacity = 8)
+        private var generation = 0L
+
+        override val authSessionEvents: SharedFlow<AuthSessionEvent> = events.asSharedFlow()
+
+        override suspend fun readSession(): StoredAuthSession? = delegate.readSession()
+
+        override suspend fun saveSession(session: StoredAuthSession) {
+            delegate.saveSession(session)
+            events.emit(AuthSessionEvent.Authenticated(++generation))
+        }
+
+        override suspend fun updateTokens(accessToken: String, refreshToken: String) {
+            delegate.updateTokens(accessToken, refreshToken)
+            events.emit(AuthSessionEvent.TokensRotated(++generation))
+        }
+
+        override suspend fun updateSelectedServer(serverId: String?, serverSlug: String?) {
+            delegate.updateSelectedServer(serverId, serverSlug)
+            events.emit(AuthSessionEvent.BindingMetadataChanged(++generation))
+        }
+
+        override suspend fun clearSession(reason: String, source: String) {
+            delegate.clearSession(reason, source)
+            events.emit(AuthSessionEvent.Cleared(++generation, AuthSessionClearReason.Logout))
+        }
+    }
+
+    private fun settingsStore(
+        repository: FakeSettingsRepository,
+        sessionStore: SlockAuthSessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+        scope: CoroutineScope
+    ): SharedSettingsStore =
+        SharedSettingsStore(
+            dataSource =
+                SharedSettingsDataSource(
+                    sessionStore = sessionStore,
+                    settingsRepository = repository,
+                    notificationPreferenceRepository = FakeNotificationPreferenceRepository(),
+                    localeRepository = FakeLocaleRepository(),
+                    chatLayoutPreferenceRepository = FakeChatLayoutPreferenceRepository()
+                ),
+            scope = scope
+        )
 
     private fun mobileSnapshot(): SettingsMobileSnapshot =
         SettingsMobileSnapshot(

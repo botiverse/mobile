@@ -6111,9 +6111,18 @@ private fun SettingsAppShellContent(
                     actionState = settingsState.actionState,
                     bottomContentPadding = bottomContentPadding,
                     notificationPreferenceSnapshot = notificationPreferenceSnapshot,
-                    preferenceBusy = settingsState.actionState?.action == MOBILE_ACTION_NOTIFICATION_PREFERENCE && settingsState.actionState.inProgress,
-                    foregroundKeepAliveBusy = settingsState.actionState?.action == MOBILE_ACTION_FOREGROUND_KEEP_ALIVE && settingsState.actionState.inProgress,
-                    foregroundMessageBannersBusy = settingsState.actionState?.action == MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS && settingsState.actionState.inProgress,
+                    preferenceBusy =
+                        settingsState.actionState?.inProgress == true &&
+                            settingsState.actionState.action in
+                            setOf(MOBILE_ACTION_NOTIFICATION_PREFERENCE, MOBILE_ACTION_SERVER_MUTE),
+                    foregroundKeepAliveBusy =
+                        settingsState.actionState?.inProgress == true &&
+                            settingsState.actionState.action in
+                            setOf(MOBILE_ACTION_FOREGROUND_KEEP_ALIVE, MOBILE_ACTION_SERVER_MUTE),
+                    foregroundMessageBannersBusy =
+                        settingsState.actionState?.inProgress == true &&
+                            settingsState.actionState.action in
+                            setOf(MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS, MOBILE_ACTION_SERVER_MUTE),
                     onNotificationPreferenceChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetNotificationPreference(enabled))
                         if (enabled) {
@@ -11163,7 +11172,7 @@ private fun SharedQuiverFeedbackContent(
     Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         LazyColumn(
             state = listState,
-            modifier = Modifier.weight(1f).fillMaxWidth(),
+            modifier = Modifier.weight(1f).fillMaxWidth().dismissInputFocusOnScrollableChrome(),
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
@@ -11223,6 +11232,7 @@ private fun SharedQuiverFeedbackContent(
                         pendingAttachments = attachments.toFeedbackComposerAttachmentItems(copy)
                     ),
                 composerSendKeyEnabled = composerSendKeyEnabled,
+                dismissKeyboardOnBlur = true,
                 onEvent = { action, value, _, attachmentId ->
                     when (action) {
                         "change" -> {

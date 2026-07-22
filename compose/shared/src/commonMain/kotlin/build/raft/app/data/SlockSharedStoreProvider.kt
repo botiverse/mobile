@@ -615,6 +615,7 @@ internal class SlockSharedStoreProvider private constructor(
             SlockShellAuthSessionStore(
                 delegate = authStore,
                 selectedServerStore = selectedServerStore(scope),
+                eventScope = threadSendScope,
                 onProcessSessionCleared = ::clearActiveShellServerSelections
             )
         }
