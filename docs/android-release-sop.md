@@ -260,7 +260,10 @@ that the owner has given the release go; it is not a replacement for that go.
 After the public verification passes, create the annotated `vX.Y.Z` tag only
 if the release owner wants a git audit tag. The tag must point at the verified
 source commit and must never be used to re-trigger the Android release
-workflow.
+workflow. iOS uses a separate platform- and build-qualified audit tag because
+its marketing version can stay fixed across TestFlight builds; follow
+[iOS Hands Release Practices](ios-hands-release-practices-2026-07-09.md#post-delivery-git-audit-tag)
+instead of reusing an Android `vX.Y.Z` tag.
 
 ## 7. Merge The Released Branch Back Into Main
 
