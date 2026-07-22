@@ -42,14 +42,7 @@ class MainActivity : ComponentActivity() {
                 "clearTask=${intent.shouldClearTaskForSharedShell()} " +
                 "data=${intent.safeDataString()}"
         )
-        if (
-            !handleMobileOAuthCallback(intent) &&
-            !handleSocialAuthCallback(intent) &&
-            !handleEmailVerificationLink(intent) &&
-            !handleUnsupportedSlockWebLink(intent)
-        ) {
-            openSharedShell(intent)
-        }
+        handleLaunchIntent(intent)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -62,6 +55,10 @@ class MainActivity : ComponentActivity() {
                 "clearTask=${intent.shouldClearTaskForSharedShell()} " +
                 "data=${intent.safeDataString()}"
         )
+        handleLaunchIntent(intent)
+    }
+
+    private fun handleLaunchIntent(intent: Intent?) {
         if (
             !handleMobileOAuthCallback(intent) &&
             !handleSocialAuthCallback(intent) &&
@@ -475,13 +472,20 @@ internal fun slockLaunchSource(
     }
 
 internal fun Intent?.shouldOpenUnsupportedSlockWebLinkExternally(): Boolean =
-    shouldOpenUnsupportedSlockWebLinkExternally(
-        action = this?.action,
-        dataScheme = this?.data?.scheme,
-        dataHost = this?.data?.host,
-        dataPath = this?.data?.path,
-        verifyToken = this?.data?.getQueryParameter("verify")
-    )
+    this?.data?.let { uri ->
+        admittedUriQuery(
+            isHierarchical = uri.isHierarchical,
+            routeAccepted = action == Intent.ACTION_VIEW && uri.isSlockAppWebLink(),
+        ) {
+            shouldOpenUnsupportedSlockWebLinkExternally(
+                action = action,
+                dataScheme = uri.scheme,
+                dataHost = uri.host,
+                dataPath = uri.path,
+                verifyToken = uri.getQueryParameter("verify"),
+            )
+        }
+    } ?: false
 
 internal fun shouldOpenUnsupportedSlockWebLinkExternally(
     action: String?,
@@ -495,13 +499,20 @@ internal fun shouldOpenUnsupportedSlockWebLinkExternally(
         emailVerificationToken(action, dataScheme, dataHost, dataPath, verifyToken) == null
 
 internal fun Intent?.emailVerificationToken(): String? =
-    emailVerificationToken(
-        action = this?.action,
-        dataScheme = this?.data?.scheme,
-        dataHost = this?.data?.host,
-        dataPath = this?.data?.path,
-        verifyToken = this?.data?.getQueryParameter("verify")
-    )
+    this?.data?.let { uri ->
+        admittedUriQuery(
+            isHierarchical = uri.isHierarchical,
+            routeAccepted = action == Intent.ACTION_VIEW && uri.isSlockAppWebLink() && isRootWebPath(uri.path),
+        ) {
+            emailVerificationToken(
+                action = action,
+                dataScheme = uri.scheme,
+                dataHost = uri.host,
+                dataPath = uri.path,
+                verifyToken = uri.getQueryParameter("verify"),
+            )
+        }
+    }
 
 internal fun emailVerificationToken(
     action: String?,
@@ -572,18 +583,33 @@ private fun Uri.safeWebLinkTarget(): String =
     buildUpon().clearQuery().fragment(null).build().toString()
 
 private fun Uri.isSlockSocialAuthCallback(): Boolean =
-    scheme == "https" &&
-        host in setOf("app.slock.ai", "app.raft.build") &&
+    admittedUriQuery(
+        isHierarchical = isHierarchical,
+        routeAccepted = scheme == "https" && host in setOf("app.slock.ai", "app.raft.build"),
+    ) {
         getQueryParameter("auth_callback") == "social"
+    } ?: false
 
 internal fun Uri.isSlockMobileOAuthCallback(): Boolean =
-    AndroidMobileOAuth.isCallbackUri(
+    admittedUriQuery(
+        isHierarchical = isHierarchical,
+        routeAccepted = AndroidMobileOAuth.isCallbackRoute(scheme = scheme, host = host, path = path),
+    ) {
+        AndroidMobileOAuth.isCallbackUri(
             scheme = scheme,
             host = host,
             path = path,
             code = getQueryParameter("code"),
             error = getQueryParameter("error") ?: getQueryParameter("error_description")
         )
+    } ?: false
+
+internal fun <T> admittedUriQuery(
+    isHierarchical: Boolean,
+    routeAccepted: Boolean,
+    readQuery: () -> T,
+): T? =
+    if (isHierarchical && routeAccepted) readQuery() else null
 
 private fun String.socialProviderDisplayName(): String =
     when (lowercase(Locale.US)) {

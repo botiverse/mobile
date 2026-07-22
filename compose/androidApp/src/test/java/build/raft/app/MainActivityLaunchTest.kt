@@ -1,7 +1,9 @@
 package build.raft.app
 
+import build.raft.app.core.data.auth.AndroidMobileOAuth
 import build.raft.app.shared.resolveAndroidShellLaunchTarget
 import build.raft.app.shared.taskLaunchPlan
+import java.io.File
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -9,6 +11,97 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MainActivityLaunchTest {
+    @Test
+    fun opaqueAndUnknownUrisNeverReadTypedCallbackQueries() {
+        var queryReads = 0
+        val queryReader = {
+            queryReads += 1
+            true
+        }
+
+        assertEquals(
+            null,
+            admittedUriQuery(
+                isHierarchical = false,
+                routeAccepted = true,
+                readQuery = queryReader,
+            )
+        )
+        assertEquals(
+            null,
+            admittedUriQuery(
+                isHierarchical = true,
+                routeAccepted = false,
+                readQuery = queryReader,
+            )
+        )
+        assertEquals(0, queryReads)
+        assertEquals(
+            true,
+            admittedUriQuery(
+                isHierarchical = true,
+                routeAccepted = true,
+                readQuery = queryReader,
+            )
+        )
+        assertEquals(1, queryReads)
+    }
+
+    @Test
+    fun mobileOAuthAdmissionRequiresTheExactHierarchicalCallbackRoute() {
+        assertTrue(AndroidMobileOAuth.isCallbackRoute("raft-dev", "oauth", "/callback"))
+        assertTrue(
+            AndroidMobileOAuth.isCallbackUri(
+                scheme = "raft-dev",
+                host = "oauth",
+                path = "/callback",
+                code = "handoff-code",
+                error = null,
+            )
+        )
+        assertFalse(
+            AndroidMobileOAuth.isCallbackUri(
+                scheme = "slockNotificationThreadId",
+                host = null,
+                path = null,
+                code = null,
+                error = null,
+            )
+        )
+        assertFalse(
+            AndroidMobileOAuth.isCallbackUri(
+                scheme = "raft-dev",
+                host = "oauth",
+                path = "/wrong",
+                code = "handoff-code",
+                error = null,
+            )
+        )
+        assertFalse(
+            AndroidMobileOAuth.isCallbackUri(
+                scheme = "raft-dev",
+                host = "oauth",
+                path = "/callback",
+                code = null,
+                error = null,
+            )
+        )
+    }
+
+    @Test
+    fun coldAndWarmLaunchesUseTheSameTypedCallbackAdmissionChain() {
+        val source = mainActivitySource()
+
+        assertEquals(2, Regex("\\bhandleLaunchIntent\\(intent\\)").findAll(source).count())
+        assertEquals(1, Regex("private fun handleLaunchIntent\\(intent: Intent\\?\\)").findAll(source).count())
+        val handler =
+            source.substringAfter("private fun handleLaunchIntent(intent: Intent?)")
+                .substringBefore("private fun handleUnsupportedSlockWebLink")
+        assertTrue(handler.indexOf("handleMobileOAuthCallback") < handler.indexOf("handleSocialAuthCallback"))
+        assertTrue(handler.indexOf("handleSocialAuthCallback") < handler.indexOf("handleEmailVerificationLink"))
+        assertTrue(handler.indexOf("handleEmailVerificationLink") < handler.indexOf("openSharedShell"))
+    }
+
     @Test
     fun unsupportedRaftWebLinkFallsBackToExternalBrowserAfterTypedHandlersDeclineIt() {
         assertTrue(
@@ -286,5 +379,15 @@ class MainActivityLaunchTest {
 
         assertEquals("account_conflict", pageData.getString("slockAuthMessage"))
         assertEquals("google,github", pageData.getString("slockSocialAuthProviders"))
+    }
+
+    private fun mainActivitySource(): String {
+        var current = File(requireNotNull(System.getProperty("user.dir"))).absoluteFile
+        repeat(8) {
+            val candidate = File(current, "src/main/java/build/raft/app/MainActivity.kt")
+            if (candidate.isFile) return candidate.readText()
+            current = current.parentFile ?: return@repeat
+        }
+        error("Unable to locate MainActivity.kt from ${System.getProperty("user.dir")}")
     }
 }
