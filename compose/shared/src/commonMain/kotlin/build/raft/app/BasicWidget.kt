@@ -639,16 +639,21 @@ internal fun shouldDismissInputFocusOnScrollableChrome(type: TouchType): Boolean
     type == TouchType.Down
 
 /**
- * Shared non-consuming outside-focus observer for scrollable chrome that is a sibling of the
- * active input. Attaching directly to the scroll node is required on Kuikly/iOS because the native
- * scroll host does not relay its consumed pointer stream to an ancestor Compose pointerInput.
+ * Shared non-consuming outside-focus observer for native-backed scrollable chrome. Attaching
+ * directly to the scroll node is required on Kuikly/iOS because the native scroll host does not
+ * relay its consumed pointer stream to an ancestor Compose pointerInput. The local down is resolved
+ * into root coordinates before checking every active input bound, so inputs nested inside the same
+ * scroll node preserve cursor and selection behavior.
  */
 @Composable
 internal fun Modifier.dismissInputFocusOnScrollableChrome(): Modifier {
     val focusOwnerRegistry = LocalSlockInputFocusOwnerRegistry.current
     val currentFocusManager by rememberUpdatedState(LocalFocusManager.current)
-    return touchListener { type, _ ->
-        if (shouldDismissInputFocusOnScrollableChrome(type) && focusOwnerRegistry?.hasActiveOwner == true) {
+    val scrollAnchor = remember { SlockLiveRootAnchorRef() }
+    return onGloballyPositioned(scrollAnchor::update).touchListener { type, position ->
+        if (!shouldDismissInputFocusOnScrollableChrome(type)) return@touchListener
+        val rootPosition = scrollAnchor.resolve(position)
+        if (rootPosition != null && focusOwnerRegistry?.shouldClearFocus(rootPosition) == true) {
             currentFocusManager.clearFocus(force = true)
         }
     }
