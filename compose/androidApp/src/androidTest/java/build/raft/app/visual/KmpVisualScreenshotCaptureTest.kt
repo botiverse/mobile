@@ -1619,6 +1619,15 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureThreadDmAgentActivityHeader() {
+        captureKmpComponentCase(
+            caseId = "components.thread.dm-agent-header.activity",
+            pageName = "compose_thread_dm_agent_activity_header_visual",
+            crop = THREAD_HEADER_COMPONENT_CROP
+        )
+    }
+
+    @Test
     fun captureThreadActivityMuteStates() {
         captureKmpComponentCase(
             caseId = "components.thread.activity-mute.states",
