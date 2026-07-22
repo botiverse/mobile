@@ -201,6 +201,31 @@ class LoginContractTest {
     }
 
     @Test
+    fun identityHandleValidationKeepsUnicodeLettersWithoutPlatformRegexClasses() {
+        assertEquals(null, identityHandleValidationError("西施用户一"))
+        assertEquals(null, identityHandleValidationError("Artin_用户1"))
+        assertEquals(null, identityHandleValidationError("Artin²"))
+        assertEquals(null, identityHandleValidationError("ArtinⅫ"))
+        assertEquals(null, identityHandleValidationError("𐐀user"))
+        assertEquals(null, identityHandleValidationError("𑎀user"))
+        assertEquals(null, identityHandleValidationError("Ᲊuser"))
+        assertEquals(null, identityHandleValidationError("𑯀user"))
+        assertEquals(null, identityHandleValidationError("Artin𐵀"))
+        assertEquals(
+            "Username must start with a letter and can only contain letters, numbers, hyphens, and underscores",
+            identityHandleValidationError("Artin🙂")
+        )
+        assertEquals(
+            "Username must start with a letter and can only contain letters, numbers, hyphens, and underscores",
+            identityHandleValidationError("²Artin")
+        )
+        assertEquals(
+            "Username must start with a letter and can only contain letters, numbers, hyphens, and underscores",
+            identityHandleValidationError("\uD800user")
+        )
+    }
+
+    @Test
     fun identitySetupUsesServerDisplayNameMaximum() {
         val update =
             IdentitySetupFormReducer().reduce(
