@@ -561,7 +561,11 @@ jobs:
           if-no-files-found: warn
 
       - name: Report verdict
-        if: always()
+        # Infrastructure/setup failures are owned exclusively by the final
+        # failure handler below so it can cleanup + terminal before closing the
+        # claimed attempt as harness/error. Product/harness executor outcomes
+        # keep this normal path because the runner step itself completed.
+        if: ${{ always() && !failure() }}
         env:
           STAMP_RUN_CASE_ID: ${{ inputs.stamp_run_case_id }}
           STAMP_URL: ${{ secrets.STAMP_URL }}

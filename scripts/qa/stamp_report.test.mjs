@@ -288,6 +288,7 @@ test("workflow-error closes claimed failures and treats an already-terminal atte
   const payload = path.join(root, "payload.json");
   const mode = path.join(root, "mode");
   fs.writeFileSync(mode, "running");
+  const calls = path.join(root, "calls");
   fs.writeFileSync(path.join(bin, "curl"), `#!/usr/bin/env bash
 out=""; data=""; format=""; url=""
 while [ "$#" -gt 0 ]; do
@@ -300,7 +301,10 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 cp "\${data#@}" "${payload}"
-if [ "$(cat "${mode}")" = running ]; then printf '{}' > "$out"; printf '200'; else printf '{"code":"RUN_CASE_NOT_RUNNING"}' > "$out"; printf '409'; fi
+case "$url" in
+  */terminal) printf '%s\n' terminal >> "${calls}"; printf '%s' terminal > "${mode}"; [ -n "$out" ] && printf '{}' > "$out"; printf '200';;
+  */verdict) printf '%s\n' verdict >> "${calls}"; if [ "$(cat "${mode}")" = running ]; then printf '{}' > "$out"; printf '200'; else printf '{"code":"RUN_CASE_NOT_RUNNING"}' > "$out"; printf '409'; fi;;
+esac
 `, { mode: 0o755 });
   const env = {
     ...process.env,
@@ -323,7 +327,20 @@ if [ "$(cat "${mode}")" = running ]; then printf '{}' > "$out"; printf '200'; el
   const output = execFileSync("bash", [reporter, "workflow-error"], { cwd: root, env, encoding: "utf8" });
   assert.match(output, /already terminal; no-op/);
 
+  fs.writeFileSync(path.join(runnerTemp, "stamp-bootstrap-spec-rc-error.json"), JSON.stringify({ required: true, terminal_endpoint: "/terminal" }), { mode: 0o600 });
+  fs.writeFileSync(path.join(runnerTemp, "stamp-bootstrap-login-rc-error.json"), JSON.stringify({
+    request_id: "request", envelope_digest: "sha256:digest", envelope: { refresh_token: "refresh" },
+  }), { mode: 0o600 });
+  const cleanup = path.join(root, "cleanup.json");
+  fs.writeFileSync(cleanup, JSON.stringify({ force_stopped: true, package_data_cleared: true }));
+  fs.writeFileSync(mode, "issued");
+  fs.writeFileSync(calls, "");
+  execFileSync("bash", [reporter, "bootstrap-terminal", "aborted", cleanup], { cwd: root, env });
+  execFileSync("bash", [reporter, "workflow-error"], { cwd: root, env });
+  assert.deepEqual(fs.readFileSync(calls, "utf8").trim().split("\n"), ["terminal", "verdict"]);
+
   const workflow = fs.readFileSync(path.resolve(".github/workflows/qa-acceptance.yml"), "utf8");
+  assert.match(workflow, /- name: Report verdict\n[\s\S]*?if: \$\{\{ always\(\) && !failure\(\) \}\}/);
   assert.match(workflow, /claim=.*stamp-claim-[\s\S]*login=.*stamp-bootstrap-login-[\s\S]*outcome=aborted/);
   assert.match(workflow, /if \[ -s "\$ready_response" \] && \[ -s "\$ready_payload" \]; then outcome=completed/);
   assert.match(workflow, /bash scripts\/qa\/stamp_report\.sh workflow-error/);
