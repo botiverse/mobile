@@ -4490,6 +4490,21 @@ internal fun SharedThreadRouteContent(
     var performanceSnapshotLoggedThreadId by remember { mutableStateOf<String?>(null) }
     val currentAttachmentUploadJobs by rememberUpdatedState(attachmentUploadJobs)
 
+    // Diagnostics only (task #20 t4): marks the START of the first content
+    // composition for this thread instance, splitting the previously unmarked
+    // span between the store's thread_refresh_result emit and the first
+    // per-row thread_markdown_body_recompose marker. remember{} runs during
+    // composition, unlike the LaunchedEffect below which fires after it.
+    remember(threadInstanceKey, payload.isReadyForThreadPerformanceGate()) {
+        if (payload.isReadyForThreadPerformanceGate()) {
+            bridge.log(
+                "thread_content_compose_start threadId=${(threadTimelineKey ?: threadInstanceKey).orEmpty()} " +
+                    "status=${timelineSlice.status} messages=${timelineSlice.messages.size}"
+            )
+        }
+        true
+    }
+
     DisposableEffect(threadInstanceKey) {
         onDispose {
             currentAttachmentUploadJobs.values.forEach { job -> job.cancel() }
