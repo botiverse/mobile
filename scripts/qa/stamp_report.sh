@@ -87,12 +87,16 @@ fi
 
 seq=0
 upload() { # file kind
-  local f="$1" kind="$2" sha mt
+  local f="$1" kind="$2" sha mt base step_query=""
   sha=$(sha256sum "$f" | cut -d' ' -f1)
   # capture time = file mtime (ms); GNU stat on Linux, BSD stat on macOS.
   mt=$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null || echo "")
+  base=$(basename "$f")
+  if [[ "$base" =~ ^step-([0-9]+)(\.annotated)?\.png$ ]]; then
+    step_query="&step=$((10#${BASH_REMATCH[1]}))"
+  fi
   seq=$((seq+1))
-  curl -sf -X POST "$BASE/evidence?kind=$kind&seq=$seq&sha256=$sha${mt:+&captured_at=${mt}000}" -H "$AUTH" -H "$JOB_HEADER" -H "$CLAIM_HEADER" \
+  curl -sf -X POST "$BASE/evidence?kind=$kind&seq=$seq&sha256=$sha${step_query}${mt:+&captured_at=${mt}000}" -H "$AUTH" -H "$JOB_HEADER" -H "$CLAIM_HEADER" \
     --data-binary @"$f" >/dev/null && echo "stamp: uploaded $(basename "$f")" \
     || echo "stamp: upload failed $(basename "$f") (continuing)"
 }

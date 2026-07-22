@@ -40,7 +40,7 @@ export function validateReviewerDiagnosis(value, { evidenceIndex, executorDiagno
     }
     const cited = first.evidence_ids.map((id) => evidenceIndex.get(id));
     if (!cited.some((item) => item?.kind === "steps_log") ||
-        !cited.some((item) => ["screenshot", "screenshot_annotated", "ui_dump"].includes(item?.kind) && Number(item?.step_index) >= first.action_step)) {
+        !cited.some((item) => ["screenshot", "screenshot_annotated", "ui_dump"].includes(item?.kind) && Number.isInteger(item?.step_index) && item.step_index >= first.action_step)) {
       throw new Error("product failure requires steps_log plus fresh post-action visual evidence");
     }
   } else if (value.first_product_failure != null) {
