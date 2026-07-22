@@ -149,6 +149,15 @@ class MarkdownContentIntegrityTest {
         }
     }
 
+    @Test
+    fun cjkAdjacentBareUrlIsClickableWithoutChangingVisibleText() {
+        val url = "https://www.figma.com/design/TiPWa8K3dfNyNxvTrz1SN0/Raft-brand---Exploration?node-id=372-1396&t=I3oSfVqdbsEJjUIP-1"
+        val source = "@huxijin 情绪板已经准备完成，有空可以看下$url"
+        val rendered = renderTopParagraphsWithLinks(source).single()
+        assertEquals(source, rendered.text)
+        assertEquals(listOf(url), rendered.urls)
+    }
+
     private fun renderTopParagraphs(content: String): List<String> {
         // Uses the PRODUCTION annotator (slockMarkdownAnnotator) so app-side
         // annotate hooks are part of the integrity contract too.

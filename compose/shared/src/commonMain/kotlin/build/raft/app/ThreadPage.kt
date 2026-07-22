@@ -8677,6 +8677,7 @@ internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_SLICE1 = "md_wrap_slice
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_CLARIFY = "md_wrap_clarify"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_TASK607 = "md_wrap_task607"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_ADJACENT = "md_wrap_adjacent"
+internal const val THREAD_MESSAGE_VISUAL_FIXTURE_CJK_ADJACENT_URL = "cjk_adjacent_url"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_STATUS606 = "md_wrap_status606"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_BLOCKQUOTE = "md_blockquote"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_CODE_EMAIL = "md_code_email"
@@ -9700,6 +9701,47 @@ internal fun threadVisualFixture(
                             messageType = "Chat",
                             body =
                                 "对照：#31 / #521 两块同行。\n\n紧凑：#31/#521。\n\n尾宽对照：task #607 与 #对话流专修。"
+                        )
+                    ),
+                members = emptyList(),
+                showComposer = false,
+                joined = true,
+                composer =
+                    KuiklyThreadComposerPayload(
+                        instanceId = resolvedInstanceId,
+                        enabled = false
+                    )
+            )
+        THREAD_MESSAGE_VISUAL_FIXTURE_CJK_ADJACENT_URL ->
+            KuiklyThreadScreenPayload(
+                instanceId = resolvedInstanceId,
+                title = "#markdown",
+                subtitle = "CJK-adjacent bare URL fixture",
+                status = "content",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                streamChannelId = "channel-markdown",
+                sourceThreadId = "channel-markdown",
+                selectedTab = "chat",
+                showModeTabs = false,
+                showReplyActions = false,
+                alignOwnMessagesRight = false,
+                showMessageSaveAction = false,
+                showTaskOpenActions = false,
+                showTaskStatusActions = false,
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "msg_cjk_adjacent_url_visual",
+                            authorId = "agent-cindy",
+                            authorName = "Cindy",
+                            authorDescription = "Keeps markdown link targets aligned.",
+                            authorKind = "agent",
+                            avatarLabel = "CI",
+                            timestampLabel = "07/22 06:00",
+                            messageType = "Chat",
+                            body =
+                                "@huxijin 情绪板已经准备完成，有空可以看下" +
+                                    "https://www.figma.com/design/TiPWa8K3dfNyNxvTrz1SN0/Raft-brand---Exploration?node-id=372-1396&t=I3oSfVqdbsEJjUIP-1"
                         )
                     ),
                 members = emptyList(),
