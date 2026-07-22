@@ -8,7 +8,6 @@ import androidx.activity.ComponentActivity
 import androidx.lifecycle.lifecycleScope
 import build.raft.app.BuildConfig
 import build.raft.app.data.KeyValueAuthSessionStore
-import build.raft.app.data.QaBootstrapConsumeRequest
 import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.SharedAuthResult
 import build.raft.app.postLoginAppShellPageData
@@ -27,32 +26,34 @@ class QaSessionBootstrapActivity : ComponentActivity() {
             return
         }
         val requestId = intent.getStringExtra(EXTRA_REQUEST_ID)
-        val expectedDigest = intent.getStringExtra(EXTRA_TICKET_DIGEST)
+        val expectedEnvelopeDigest = intent.getStringExtra(EXTRA_ENVELOPE_DIGEST)
         setIntent(Intent(this, QaSessionBootstrapActivity::class.java))
         lifecycleScope.launch {
-            if (!requestId.isNullOrBlank() && !expectedDigest.isNullOrBlank()) {
-                consumeNewTicket(requestId, expectedDigest)
+            if (!requestId.isNullOrBlank() && !expectedEnvelopeDigest.isNullOrBlank()) {
+                consumeLoginEnvelope(requestId, expectedEnvelopeDigest)
             } else {
                 recoverExistingSession()
             }
         }
     }
 
-    private suspend fun consumeNewTicket(requestId: String, expectedDigest: String) {
+    private suspend fun consumeLoginEnvelope(requestId: String, expectedDigest: String) {
         val rawBytes = withContext(Dispatchers.IO) {
-            QaSessionBootstrapInbox.consume(applicationContext, requestId, "ticket")
+            QaSessionBootstrapInbox.consume(applicationContext, requestId, "session")
         } ?: return finish()
         try {
-            val ticket = rawBytes.decodeToString()
             if ("sha256:${sha256(rawBytes)}" != expectedDigest) return finish()
-            val request =
-                QaBootstrapConsumeRequest(
-                    ticket = ticket,
-                    applicationId = packageName,
-                    signingCertSha256 = signingCertDigest(),
-                    deviceBootGeneration = bootGeneration()
-                )
-            when (val result = withContext(Dispatchers.IO) { authDataSource().consumeQaBootstrap(request) }) {
+            when (
+                withContext(Dispatchers.IO) {
+                    authDataSource().consumeQaLoginBootstrap(
+                        envelopeJson = rawBytes.decodeToString(),
+                        envelopeDigest = expectedDigest,
+                        applicationId = packageName,
+                        signingCertSha256 = signingCertDigest(),
+                        deviceBootGeneration = bootGeneration(),
+                    )
+                }
+            ) {
                 is SharedAuthResult.Success -> openShell()
                 else -> finish()
             }
@@ -114,7 +115,7 @@ class QaSessionBootstrapActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_REQUEST_ID = "qaBootstrapRequestId"
-        const val EXTRA_TICKET_DIGEST = "qaBootstrapTicketDigest"
+        const val EXTRA_ENVELOPE_DIGEST = "qaBootstrapEnvelopeDigest"
     }
 }
 

@@ -13,7 +13,7 @@ internal object QaSessionBootstrapInbox {
 
     fun consume(context: Context, requestId: String, suffix: String): ByteArray? {
         if (!requestIdPattern.matches(requestId)) return null
-        if (suffix != "ticket" && suffix != "capture") return null
+        if (suffix != "ticket" && suffix != "session" && suffix != "capture") return null
         val directory = File(context.filesDir, "qa-bootstrap/inbox")
         val file = File(directory, "$requestId.$suffix")
         val canonicalDirectory = runCatching { directory.canonicalFile }.getOrNull() ?: return null

@@ -260,6 +260,7 @@ data class StoredQaBootstrapMetadata(
     val applicationId: String,
     val signingCertSha256: String,
     val deviceBootGeneration: String,
+    val protocol: String = "server_ticket_v1",
     val state: String = "pending",
     val readyReceipt: StoredQaBootstrapReadyReceipt? = null,
     val runtimeEnvelope: StoredQaBootstrapRuntimeEnvelope? = null
@@ -276,7 +277,8 @@ internal fun StoredQaBootstrapMetadata.hasSameImmutableBinding(other: StoredQaBo
         targetRoute == other.targetRoute &&
         applicationId == other.applicationId &&
         signingCertSha256 == other.signingCertSha256 &&
-        deviceBootGeneration == other.deviceBootGeneration
+        deviceBootGeneration == other.deviceBootGeneration &&
+        protocol == other.protocol
 
 @Serializable
 data class StoredQaBootstrapReadyReceipt(

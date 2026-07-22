@@ -95,6 +95,63 @@ class AuthDataSourceTest {
     }
 
     @Test
+    fun qaLoginBootstrapImportsExactBoundSessionWithoutServerBootstrapRoute() = runBlocking {
+        val store = InMemorySlockAuthSessionStore(storedSession())
+        val api = FakeAuthApi()
+        val source = SharedAuthDataSource(transport = api, sessionStore = store)
+        val digest = "sha256:${"a".repeat(64)}"
+        val envelope =
+            """{"version":"qa-bootstrap-login/v1","run_case_id":"00000000-0000-4000-8000-000000000001","attempt":2,"ci_job_ref":"https://github.com/botiverse/mobile/actions/runs/1","principal_id":"user-1","server_id":"server-1","target_route":"compose_slock_app_shell","application_id":"build.raft.app.alpha","signing_cert_sha256":"sha256:cert","boot_generation":"sha256:boot","user":{"id":"user-1","email":"","displayName":"Artin"},"access_token":"login-access","refresh_token":"login-refresh"}"""
+
+        val result =
+            source.consumeQaLoginBootstrap(
+                envelopeJson = envelope,
+                envelopeDigest = digest,
+                applicationId = "build.raft.app.alpha",
+                signingCertSha256 = "sha256:cert",
+                deviceBootGeneration = "sha256:boot",
+            )
+
+        assertTrue(result is SharedAuthResult.Success)
+        val session = requireNotNull(store.readSession())
+        assertEquals("login-access", session.accessToken)
+        assertEquals("login-refresh", session.refreshToken)
+        assertEquals("", session.user.email)
+        assertEquals("server-1", session.selectedServerId)
+        assertEquals(QA_BOOTSTRAP_LOGIN_PROTOCOL, session.qaBootstrap?.protocol)
+        assertEquals(digest, session.qaBootstrap?.ticketDigest)
+        assertEquals(digest, session.qaBootstrap?.sessionGeneration)
+        assertNull(api.qaConsumeBody)
+
+        val ready = source.readyQaBootstrap()
+        assertTrue(ready is SharedAuthResult.Success)
+        val readySuccess = ready as SharedAuthResult.Success
+        assertEquals("qa-bootstrap-login-ready/v1", readySuccess.data.receipt.version)
+        assertEquals(0, readySuccess.data.receipt.serverReadyVersion)
+        assertNull(api.qaReadyBody)
+        assertEquals("ready", store.readSession()?.qaBootstrap?.state)
+    }
+
+    @Test
+    fun qaLoginBootstrapBindingMismatchClearsPreviousSessionAndFailsClosed() = runBlocking {
+        val store = InMemorySlockAuthSessionStore(storedSession())
+        val envelope =
+            """{"version":"qa-bootstrap-login/v1","run_case_id":"case-1","attempt":1,"ci_job_ref":"gha:job:1","principal_id":"user-1","server_id":"server-1","target_route":"compose_slock_app_shell","application_id":"build.raft.app.wrong","signing_cert_sha256":"sha256:cert","boot_generation":"sha256:boot","user":{"id":"user-1","email":"user@slock.ai"},"access_token":"login-access","refresh_token":"login-refresh"}"""
+
+        val result =
+            SharedAuthDataSource(transport = FakeAuthApi(), sessionStore = store).consumeQaLoginBootstrap(
+                envelopeJson = envelope,
+                envelopeDigest = "sha256:${"b".repeat(64)}",
+                applicationId = "build.raft.app.alpha",
+                signingCertSha256 = "sha256:cert",
+                deviceBootGeneration = "sha256:boot",
+            )
+
+        assertTrue(result is SharedAuthResult.Failure)
+        assertNull(store.readSession())
+    }
+
+    @Test
     fun qaBootstrapConsumeFailsClosedWhenFrozenServerIsMissing() = runBlocking {
         val store = InMemorySlockAuthSessionStore(storedSession())
         val api = FakeAuthApi(

@@ -398,6 +398,38 @@ jobs:
             'const fs=require("fs"),e=process.env;fs.writeFileSync("apks/observed-identity.json",JSON.stringify({sha256:e.APK_SHA,packageId:e.APK_PKG,version:e.APK_VERSION,versionCode:e.APK_CODE}))'
           node scripts/qa/verify_pinned_android_identity.mjs "$manifest" apks/observed-identity.json
 
+      - name: Claim Stamp run case and resolve auth mode
+        id: stamp-claim
+        if: ${{ inputs.stamp_run_case_id != '' }}
+        env:
+          STAMP_RUN_CASE_ID: ${{ inputs.stamp_run_case_id }}
+          STAMP_URL: ${{ secrets.STAMP_URL }}
+          STAMP_TOKEN: ${{ secrets.STAMP_TOKEN }}
+        run: |
+          bash scripts/qa/stamp_report.sh claim
+          spec="$RUNNER_TEMP/stamp-bootstrap-spec-${STAMP_RUN_CASE_ID}.json"
+          required=$(node -e 'const fs=require("fs"),v=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));process.stdout.write(v.required===true?"true":"false")' "$spec")
+          echo "bootstrap_required=$required" >> "$GITHUB_OUTPUT"
+          echo "STAMP_BOOTSTRAP_REQUIRED=$required" >> "$GITHUB_ENV"
+
+      # Password-login cases still exercise the UI normally. Auth-bootstrap
+      # cases never execute this step, so QA credentials are absent from the
+      # emulator-runner process, its argv/env, logs and evidence.
+      - name: Expose legacy UI-login credentials
+        if: ${{ inputs.stamp_run_case_id == '' || steps.stamp-claim.outputs.bootstrap_required != 'true' }}
+        env:
+          QA_TEST_EMAIL_SECRET: ${{ secrets.QA_TEST_EMAIL }}
+          QA_TEST_PASSWORD_SECRET: ${{ secrets.QA_TEST_PASSWORD }}
+        run: |
+          python3 - <<'PY'
+          import os, uuid
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as out:
+              for name in ("QA_TEST_EMAIL", "QA_TEST_PASSWORD"):
+                  value = os.environ[f"{name}_SECRET"]
+                  delimiter = f"SLOCK_{uuid.uuid4().hex}"
+                  out.write(f"{name}<<{delimiter}\n{value}\n{delimiter}\n")
+          PY
+
       - name: Mark pre-claim preparation complete
         if: ${{ inputs.stamp_run_case_id != '' }}
         run: printf '%s' ready_to_claim > "$RUNNER_TEMP/stamp-preclaim-phase"
@@ -433,8 +465,8 @@ jobs:
           QA_MODEL_RELEASE_ATTEMPTS: ${{ vars.QA_MODEL_RELEASE_ATTEMPTS || '3' }}
           QA_MODEL_QUEUE_TIMEOUT_MS: ${{ vars.QA_MODEL_QUEUE_TIMEOUT_MS || '900000' }}
           SLOCK_PI_AI_MODULE: ${{ runner.temp }}/m3/node_modules/@earendil-works/pi-ai/dist/providers/all.js
-          QA_TEST_EMAIL: ${{ secrets.QA_TEST_EMAIL }}
-          QA_TEST_PASSWORD: ${{ secrets.QA_TEST_PASSWORD }}
+          QA_TEST_EMAIL: ${{ env.QA_TEST_EMAIL }}
+          QA_TEST_PASSWORD: ${{ env.QA_TEST_PASSWORD }}
           QA_GOAL: ${{ inputs.goal || '' }}
           QA_MAX_TURNS: ${{ inputs.max_turns || '30' }}
           QA_MAX_MINUTES: ${{ inputs.max_minutes || '20' }}
@@ -471,11 +503,11 @@ jobs:
             # non-empty; persist the package to a FILE for the node line below.
             # (Pinned alpha is build.raft.app.alpha, not build.raft.app — a fixed
             # am start launched nothing and the agent saw the launcher home.)
-            APK="$(find apks -name '*.apk' | head -1)"; test -s "$APK" || { echo "no APK found under apks/"; exit 2; }; echo "installing $APK"; adb install -r "$APK"; BT="$(ls -d $ANDROID_HOME/build-tools/* | sort -V | tail -1)"; PKG="$("$BT/aapt" dump badging "$APK" | sed -n "s/package: name='\([^']*\)'.*/\1/p" | head -1)"; ACT="$("$BT/aapt" dump badging "$APK" | sed -n "s/launchable-activity: name='\([^']*\)'.*/\1/p" | head -1)"; echo "launching $PKG / ${ACT:-.MainActivity}"; echo "$PKG" > qa-app-package.txt; adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 || adb shell am start -n "$PKG/${ACT:-.MainActivity}"
-            sleep 8
+            APK="$(find apks -name '*.apk' | head -1)"; test -s "$APK" || { echo "no APK found under apks/"; exit 2; }; echo "installing $APK"; adb install -r "$APK"; BT="$(ls -d $ANDROID_HOME/build-tools/* | sort -V | tail -1)"; PKG="$("$BT/aapt" dump badging "$APK" | sed -n "s/package: name='\([^']*\)'.*/\1/p" | head -1)"; ACT="$("$BT/aapt" dump badging "$APK" | sed -n "s/launchable-activity: name='\([^']*\)'.*/\1/p" | head -1)"; echo "$PKG" > qa-app-package.txt; if [ "${STAMP_BOOTSTRAP_REQUIRED:-false}" != "true" ]; then echo "launching $PKG / ${ACT:-.MainActivity}"; adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 || adb shell am start -n "$PKG/${ACT:-.MainActivity}"; fi
+            if [ "${STAMP_BOOTSTRAP_REQUIRED:-false}" = "true" ]; then APK="$(find apks -name '*.apk' | head -1)"; node scripts/qa/mobile_login_bootstrap.mjs binding --apk "$APK" --output "$RUNNER_TEMP/stamp-bootstrap-device-binding.json"; bash scripts/qa/stamp_report.sh bootstrap-login "$RUNNER_TEMP/stamp-bootstrap-device-binding.json"; prep_rc=0; node scripts/qa/mobile_login_bootstrap.mjs prepare --response "$RUNNER_TEMP/stamp-bootstrap-login-${STAMP_RUN_CASE_ID}.json" --binding "$RUNNER_TEMP/stamp-bootstrap-device-binding.json" --run-case-id "$STAMP_RUN_CASE_ID" --ci-job-ref "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --ready-output "$RUNNER_TEMP/stamp-bootstrap-ready.json" || prep_rc=$?; if [ "$prep_rc" = "0" ]; then bash scripts/qa/stamp_report.sh bootstrap-ready "$RUNNER_TEMP/stamp-bootstrap-ready.json" || prep_rc=$?; fi; if [ "$prep_rc" != "0" ]; then bash scripts/qa/stamp_report.sh bootstrap-failure-terminal "$RUNNER_TEMP/stamp-bootstrap-device-binding.json" "$RUNNER_TEMP/stamp-bootstrap-ready.json" || true; exit "$prep_rc"; fi; else sleep 8; fi
             mkdir -p qa-evidence
             cp "$(find apks -name build-info.json | head -1)" qa-evidence/build-info.json 2>/dev/null || true
-            bash scripts/qa/stamp_report.sh claim
+            if [ "${STAMP_BOOTSTRAP_REQUIRED:-false}" = "true" ]; then cp "$RUNNER_TEMP/stamp-bootstrap-ready.json" qa-evidence/bootstrap-ready.json; fi
             adb logcat -c
             # task #14 perf v1: reset gfxinfo counters and stamp the capture
             # window start before the agent drives the app (record-only,
@@ -483,16 +515,17 @@ jobs:
             adb shell dumpsys gfxinfo "$(cat qa-app-package.txt 2>/dev/null || echo build.raft.app)" reset || true
             date +%s%3N > qa-evidence/perf-started.txt
             adb shell "nohup sh -c 'i=1; while [ \$i -le 8 ]; do screenrecord --size 540x1200 --bit-rate 1000000 --time-limit 180 /sdcard/qa-rec-\$(printf %02d \$i).mp4; i=\$((i+1)); done' >/dev/null 2>&1 &"
-            export MINIMAX_API_KEY="$PI_API_KEY"; node scripts/qa/acceptance_agent.mjs --goal "${QA_GOAL:-$DEFAULT_GOAL}" --max-turns "$QA_MAX_TURNS" --max-minutes "$QA_MAX_MINUTES" --no-progress-turns "$QA_NO_PROGRESS_TURNS" --package "$(cat qa-app-package.txt 2>/dev/null || echo build.raft.app)" --out qa-evidence; echo "$?" > qa-evidence/agent-rc.txt; echo "agent exit code $(cat qa-evidence/agent-rc.txt)"
+            if [ "${STAMP_BOOTSTRAP_REQUIRED:-false}" = "true" ]; then . "$RUNNER_TEMP/stamp-bootstrap-capture-env-${STAMP_RUN_CASE_ID}.sh"; fi; export MINIMAX_API_KEY="$PI_API_KEY"; node scripts/qa/acceptance_agent.mjs --goal "${QA_GOAL:-$DEFAULT_GOAL}" --max-turns "$QA_MAX_TURNS" --max-minutes "$QA_MAX_MINUTES" --no-progress-turns "$QA_NO_PROGRESS_TURNS" --package "$(cat qa-app-package.txt 2>/dev/null || echo build.raft.app)" --out qa-evidence; echo "$?" > qa-evidence/agent-rc.txt; echo "agent exit code $(cat qa-evidence/agent-rc.txt)"
             adb logcat -d -v threadtime > qa-evidence/logcat-full.txt 2>&1 || true
-            PKG="$(cat qa-app-package.txt 2>/dev/null || echo build.raft.app)"; adb shell pidof "$PKG" >> qa-evidence/app-pids.txt 2>/dev/null || true; node scripts/qa/scope_logcat.mjs --input qa-evidence/logcat-full.txt --output qa-evidence/logcat.txt --verdict qa-evidence/verdict.json --pids qa-evidence/app-pids.txt --package "$PKG" --generation "${GITHUB_RUN_ID}:${GITHUB_RUN_ATTEMPT}" || true
+            if [ "${STAMP_BOOTSTRAP_REQUIRED:-false}" = "true" ]; then . "$RUNNER_TEMP/stamp-bootstrap-capture-env-${STAMP_RUN_CASE_ID}.sh"; fi; PKG="$(cat qa-app-package.txt 2>/dev/null || echo build.raft.app)"; adb shell pidof "$PKG" >> qa-evidence/app-pids.txt 2>/dev/null || true; node scripts/qa/scope_logcat.mjs --input qa-evidence/logcat-full.txt --output qa-evidence/logcat.txt --verdict qa-evidence/verdict.json --pids qa-evidence/app-pids.txt --package "$PKG" --generation "${QA_CAPTURE_SCOPE_GENERATION:-${GITHUB_RUN_ID}:${GITHUB_RUN_ATTEMPT}}" || true
             adb shell dumpsys activity top > qa-evidence/activity-top.txt 2>&1 || true
             adb shell dumpsys gfxinfo "$(cat qa-app-package.txt 2>/dev/null || echo build.raft.app)" > qa-evidence/gfxinfo.txt 2>&1 || true
             node scripts/qa/collect_perf.mjs --gfx qa-evidence/gfxinfo.txt --log qa-evidence/logcat.txt --steps qa-evidence/steps.jsonl --pkg "$(cat qa-app-package.txt 2>/dev/null || echo build.raft.app)" --environment "${{ inputs.environment }}" --device-json "{\"model\":\"$(adb shell getprop ro.product.model | tr -d '\r')\",\"sdk\":\"$(adb shell getprop ro.build.version.sdk | tr -d '\r')\",\"abi\":\"$(adb shell getprop ro.product.cpu.abi | tr -d '\r')\"}" --started "$(cat qa-evidence/perf-started.txt 2>/dev/null || echo 0)" --out qa-evidence/perf.json || true
             adb shell pkill -INT screenrecord 2>/dev/null || true
             sleep 3
             adb shell ls /sdcard/qa-rec-*.mp4 2>/dev/null | tr -d '\r' | while read f; do adb pull "$f" qa-evidence/ || true; done
-            bash scripts/qa/stamp_report.sh report qa-evidence
+            evidence_rc=0; bash scripts/qa/stamp_report.sh report-evidence qa-evidence || evidence_rc=$?; echo "$evidence_rc" > qa-evidence/stamp-evidence.rc
+            if [ "${STAMP_BOOTSTRAP_REQUIRED:-false}" = "true" ]; then cleanup_rc=0; node scripts/qa/mobile_login_bootstrap.mjs cleanup --response "$RUNNER_TEMP/stamp-bootstrap-login-${STAMP_RUN_CASE_ID}.json" --binding "$RUNNER_TEMP/stamp-bootstrap-device-binding.json" --ready "$RUNNER_TEMP/stamp-bootstrap-ready.json" --outcome completed --output "$RUNNER_TEMP/stamp-bootstrap-cleanup.json" --run-case-id "$STAMP_RUN_CASE_ID" --ci-job-ref "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" || cleanup_rc=$?; rc="$cleanup_rc"; if [ "$cleanup_rc" = "0" ]; then cp "$RUNNER_TEMP/stamp-bootstrap-cleanup.json" qa-evidence/bootstrap-cleanup.json; bash scripts/qa/stamp_report.sh bootstrap-terminal completed "$RUNNER_TEMP/stamp-bootstrap-cleanup.json" || rc=$?; else PKG="$(cat qa-app-package.txt)"; adb shell am force-stop "$PKG" || true; adb shell pm clear "$PKG" || true; rm -f "$RUNNER_TEMP/stamp-bootstrap-login-${STAMP_RUN_CASE_ID}.json" "$RUNNER_TEMP/stamp-bootstrap-ready-${STAMP_RUN_CASE_ID}.json"; fi; echo "$rc" > qa-evidence/bootstrap-terminal.rc; fi
 
       # Required-marker gate: when the case declares production markers that
       # must appear in logcat, a violation overrides the agent verdict to
@@ -528,10 +561,19 @@ jobs:
           if-no-files-found: warn
 
       - name: Report verdict
-        if: always()
+        # Infrastructure/setup failures are owned exclusively by the final
+        # failure handler below so it can cleanup + terminal before closing the
+        # claimed attempt as harness/error. Product/harness executor outcomes
+        # keep this normal path because the runner step itself completed.
+        if: ${{ always() && !failure() }}
+        env:
+          STAMP_RUN_CASE_ID: ${{ inputs.stamp_run_case_id }}
+          STAMP_URL: ${{ secrets.STAMP_URL }}
+          STAMP_TOKEN: ${{ secrets.STAMP_TOKEN }}
         run: |
           set -o pipefail
           rc="$(cat qa-evidence/agent-rc.txt 2>/dev/null || echo 2)"
+          lifecycle_rc=0
           echo "## QA Acceptance verdict" >> "$GITHUB_STEP_SUMMARY"
           if [ -f qa-evidence/verdict.json ]; then
             echo '```json' >> "$GITHUB_STEP_SUMMARY"
@@ -547,6 +589,23 @@ jobs:
           if [ -n "$mrc" ] && [ "$mrc" != "0" ]; then
             echo "Required-marker gate overrides agent verdict: rc=$mrc (3=coverage-invalid/no-verdict, NOT a product FAIL)." >> "$GITHUB_STEP_SUMMARY"
             rc="$mrc"
+            lifecycle_rc=1
+          fi
+          erc="$(cat qa-evidence/stamp-evidence.rc 2>/dev/null || echo '0')"
+          if [ "$erc" != "0" ]; then
+            echo "Stamp scope/evidence upload failed before teardown: rc=$erc (harness/incomplete, not product FAIL)." >> "$GITHUB_STEP_SUMMARY"
+            rc=3
+            lifecycle_rc=1
+          fi
+          trc="$(cat qa-evidence/bootstrap-terminal.rc 2>/dev/null || echo '')"
+          if [ -n "$trc" ] && [ "$trc" != "0" ]; then
+            echo "QA login bootstrap terminal/logout failed: rc=$trc (harness/incomplete, not product FAIL)." >> "$GITHUB_STEP_SUMMARY"
+            rc=3
+            lifecycle_rc=1
+          fi
+          if ! bash scripts/qa/stamp_report.sh report-verdict qa-evidence "$lifecycle_rc"; then
+            echo "Stamp verdict report failed after teardown (harness/incomplete)." >> "$GITHUB_STEP_SUMMARY"
+            rc=3
           fi
           exit "$rc"
 
@@ -557,4 +616,12 @@ jobs:
           STAMP_URL: ${{ secrets.STAMP_URL }}
           STAMP_TOKEN: ${{ secrets.STAMP_TOKEN }}
           STAMP_PRECLAIM_ERROR_REASON: workflow failed before Stamp claim; inspect linked GitHub Actions run
-        run: bash scripts/qa/stamp_report.sh dispatch-error
+          STAMP_POSTCLAIM_ERROR_REASON: workflow failed after Stamp claim; product requirements were not evaluated
+          STAMP_POSTCLAIM_ERROR_PHASE: workflow_failure
+        run: |
+          claim="$RUNNER_TEMP/stamp-claim-${STAMP_RUN_CASE_ID}"
+          binding="$RUNNER_TEMP/stamp-bootstrap-device-binding.json"
+          if [ -s "$claim" ]; then
+            bash scripts/qa/stamp_report.sh bootstrap-failure-terminal "$binding" "$RUNNER_TEMP/stamp-bootstrap-ready.json" || true
+          fi
+          bash scripts/qa/stamp_report.sh workflow-error

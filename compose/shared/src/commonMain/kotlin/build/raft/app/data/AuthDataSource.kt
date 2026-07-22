@@ -4,6 +4,7 @@ import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -1003,9 +1004,111 @@ class SharedAuthDataSource(
         }
     }
 
+    suspend fun consumeQaLoginBootstrap(
+        envelopeJson: String,
+        envelopeDigest: String,
+        applicationId: String,
+        signingCertSha256: String,
+        deviceBootGeneration: String,
+    ): SharedAuthResult<StoredAuthSession> {
+        runCatchingPreservingCancellation {
+            sessionStore.clearSession(reason = "qa_login_bootstrap_replace", source = "qa_login_bootstrap")
+        }.getOrElse {
+            return SharedAuthResult.Failure(SharedAuthErrorCode.Unknown, "Could not clear the previous QA session.")
+        }
+        val envelope =
+            runCatching { authJson.decodeFromString<QaBootstrapLoginEnvelope>(envelopeJson) }
+                .getOrElse {
+                    return SharedAuthResult.Failure(SharedAuthErrorCode.Unknown, "The QA login envelope is invalid.")
+                }
+        if (
+            envelope.version != QA_BOOTSTRAP_LOGIN_PROTOCOL ||
+            envelope.runCaseId.isBlank() ||
+            envelope.attempt < 1 ||
+            envelope.ciJobRef.isBlank() ||
+            envelope.principalId != envelope.user.id ||
+            envelope.serverId.isBlank() ||
+            envelope.targetRoute != "compose_slock_app_shell" ||
+            envelope.applicationId != applicationId ||
+            envelope.signingCertSha256 != signingCertSha256 ||
+            envelope.bootGeneration != deviceBootGeneration ||
+            envelope.accessToken.isBlank() ||
+            envelope.refreshToken.isBlank() ||
+            !envelopeDigest.matches(Regex("sha256:[a-f0-9]{64}"))
+        ) {
+            return SharedAuthResult.Failure(SharedAuthErrorCode.Unknown, "The QA login envelope binding is invalid.")
+        }
+        val servers =
+            when (val response = api.servers("Bearer ${envelope.accessToken}")) {
+                is AuthApiResult.Success -> response.data
+                is AuthApiResult.Failure -> return response.toSharedAuthFailure()
+            }
+        val orderedServers =
+            servers.orderedByServerOrder(
+                loadServerOrderOrNull("Bearer ${envelope.accessToken}", source = "qa_login_bootstrap")
+            )
+        val selected = orderedServers.firstOrNull { it.id == envelope.serverId }
+            ?: return SharedAuthResult.Failure(SharedAuthErrorCode.Unknown, "The QA login server is unavailable.")
+        val session =
+            StoredAuthSession(
+                user = envelope.user,
+                accessToken = envelope.accessToken,
+                refreshToken = envelope.refreshToken,
+                selectedServerId = selected.id,
+                selectedServerSlug = selected.slug,
+                servers = orderedServers,
+                qaBootstrap =
+                    StoredQaBootstrapMetadata(
+                        ticketDigest = envelopeDigest,
+                        runCaseId = envelope.runCaseId,
+                        attempt = envelope.attempt,
+                        ciJobRef = envelope.ciJobRef,
+                        principalId = envelope.principalId,
+                        serverId = envelope.serverId,
+                        sessionGeneration = envelopeDigest,
+                        targetRoute = envelope.targetRoute,
+                        applicationId = envelope.applicationId,
+                        signingCertSha256 = envelope.signingCertSha256,
+                        deviceBootGeneration = envelope.bootGeneration,
+                        protocol = QA_BOOTSTRAP_LOGIN_PROTOCOL,
+                    ),
+                qaBootstrapLaunchAuthorized = true,
+                allowImplicitServerFallback = false,
+            )
+        return runCatchingPreservingCancellation {
+            sessionStore.replaceAuthenticatedSession(session)
+            SharedAuthResult.Success(session)
+        }.getOrElse {
+            SharedAuthResult.Failure(SharedAuthErrorCode.Unknown, "Could not save the QA login session.")
+        }
+    }
+
     suspend fun readyQaBootstrap(): SharedAuthResult<QaBootstrapReadyResponse> {
         val session = sessionStore.readSession() ?: return SharedAuthResult.Unauthenticated
         val metadata = session.qaBootstrap ?: return SharedAuthResult.Unauthenticated
+        if (metadata.protocol == QA_BOOTSTRAP_LOGIN_PROTOCOL) {
+            val response = metadata.localQaLoginReadyResponse()
+            val persisted = sessionStore.updateQaBootstrapIfBindingMatches(metadata) { latest ->
+                latest.copy(
+                    qaBootstrap =
+                        requireNotNull(latest.qaBootstrap).copy(
+                            state = "ready",
+                            readyReceipt =
+                                StoredQaBootstrapReadyReceipt(
+                                    receiptId = response.receiptId,
+                                    receiptDigest = response.receiptDigest,
+                                    version = response.receipt.version,
+                                    readyAtServer = response.receipt.readyAtServer,
+                                ),
+                        )
+                )
+            }
+            return if (persisted != null) {
+                SharedAuthResult.Success(response)
+            } else {
+                SharedAuthResult.Failure(SharedAuthErrorCode.Unknown, "The QA login session changed before READY.")
+            }
+        }
         return when (
             val response =
                 api.readyQaBootstrap(
@@ -1052,6 +1155,17 @@ class SharedAuthDataSource(
     suspend fun statusQaBootstrap(): SharedAuthResult<QaBootstrapStatusResponse> {
         val session = sessionStore.readSession() ?: return SharedAuthResult.Unauthenticated
         val metadata = session.qaBootstrap ?: return SharedAuthResult.Unauthenticated
+        if (metadata.protocol == QA_BOOTSTRAP_LOGIN_PROTOCOL) {
+            val ready = metadata.localQaLoginReadyResponse()
+            return SharedAuthResult.Success(
+                QaBootstrapStatusResponse(
+                    status = metadata.state,
+                    receiptId = ready.receiptId,
+                    receiptDigest = ready.receiptDigest,
+                    receipt = ready.receipt,
+                )
+            )
+        }
         return when (val response = api.statusQaBootstrap(metadata.ticketDigest, session.bearer())) {
             is AuthApiResult.Success -> {
                 if (response.data.status == "ready" && response.data.readyResponseOrNull()?.matchesFrozenBinding(metadata) != true) {
@@ -1594,6 +1708,25 @@ data class AuthLoginResponse(
     val refreshToken: String
 )
 
+internal const val QA_BOOTSTRAP_LOGIN_PROTOCOL = "qa-bootstrap-login/v1"
+
+@Serializable
+data class QaBootstrapLoginEnvelope(
+    val version: String,
+    @kotlinx.serialization.SerialName("run_case_id") val runCaseId: String,
+    val attempt: Int,
+    @kotlinx.serialization.SerialName("ci_job_ref") val ciJobRef: String,
+    @kotlinx.serialization.SerialName("principal_id") val principalId: String,
+    @kotlinx.serialization.SerialName("server_id") val serverId: String,
+    @kotlinx.serialization.SerialName("target_route") val targetRoute: String,
+    @kotlinx.serialization.SerialName("application_id") val applicationId: String,
+    @kotlinx.serialization.SerialName("signing_cert_sha256") val signingCertSha256: String,
+    @kotlinx.serialization.SerialName("boot_generation") val bootGeneration: String,
+    val user: StoredAuthUser,
+    @kotlinx.serialization.SerialName("access_token") val accessToken: String,
+    @kotlinx.serialization.SerialName("refresh_token") val refreshToken: String,
+)
+
 @Serializable
 data class QaBootstrapConsumeRequest(
     val ticket: String,
@@ -1669,8 +1802,11 @@ private fun QaBootstrapStatusResponse.readyResponseOrNull(): QaBootstrapReadyRes
 private fun QaBootstrapReadyResponse.matchesFrozenBinding(metadata: StoredQaBootstrapMetadata): Boolean =
     receiptId.isNotBlank() &&
         receiptDigest.isNotBlank() &&
-        receipt.version == "qa-bootstrap-ready/v1" &&
-        receipt.serverReadyVersion == 1 &&
+        (if (metadata.protocol == QA_BOOTSTRAP_LOGIN_PROTOCOL) {
+             receipt.version == "qa-bootstrap-login-ready/v1" && receipt.serverReadyVersion == 0
+         } else {
+             receipt.version == "qa-bootstrap-ready/v1" && receipt.serverReadyVersion == 1
+         }) &&
         receipt.readyAtServer.isNotBlank() &&
         receipt.ticketDigest == metadata.ticketDigest &&
         receipt.runCaseId == metadata.runCaseId &&
@@ -1683,6 +1819,29 @@ private fun QaBootstrapReadyResponse.matchesFrozenBinding(metadata: StoredQaBoot
         receipt.applicationId == metadata.applicationId &&
         receipt.signingCertSha256 == metadata.signingCertSha256 &&
         receipt.deviceBootGeneration == metadata.deviceBootGeneration
+
+private fun StoredQaBootstrapMetadata.localQaLoginReadyResponse(): QaBootstrapReadyResponse =
+    QaBootstrapReadyResponse(
+        receiptId = ticketDigest,
+        receiptDigest = ticketDigest,
+        receipt =
+            QaBootstrapStableReceipt(
+                version = "qa-bootstrap-login-ready/v1",
+                ticketDigest = ticketDigest,
+                runCaseId = runCaseId,
+                attempt = attempt,
+                ciJobRef = ciJobRef,
+                principalId = principalId,
+                serverId = serverId,
+                sessionGeneration = sessionGeneration,
+                targetRoute = targetRoute,
+                applicationId = applicationId,
+                signingCertSha256 = signingCertSha256,
+                deviceBootGeneration = deviceBootGeneration,
+                serverReadyVersion = 0,
+                readyAtServer = "not-applicable",
+            ),
+    )
 
 data class AuthSocialCompleteResponse(
     val accessToken: String,
