@@ -55,7 +55,10 @@ class SlockChildPageVisibilityConnectedTest {
             // threshold would accept transition frames (e.g. red 49% + blue 2%)
             // and re-create the race. A blue-dominant frame is ready too — the
             // overdraw assertion afterwards reports that as the real failure.
-            val deadline = SystemClock.uptimeMillis() + 15_000
+            // 30s: a fresh SlockKuiklyActivity + Kuikly init on a loaded 2-core CI
+            // runner can exceed 15s before first paint (observed 9-19s locally and
+            // one 15s CI timeout on an otherwise-green class).
+            val deadline = SystemClock.uptimeMillis() + 30_000
             while (true) {
                 val candidate = captureScreenshot()
                 val redRatio = candidate.matchingPixelRatio { red, green, blue ->
@@ -72,7 +75,7 @@ class SlockChildPageVisibilityConnectedTest {
                 if (SystemClock.uptimeMillis() >= deadline) {
                     error(
                         "Child page visibility probe never reached a dominant probe color " +
-                            "within 15s (redRatio=$redRatio blueRatio=$blueRatio)"
+                            "within 30s (redRatio=$redRatio blueRatio=$blueRatio)"
                     )
                 }
                 SystemClock.sleep(250)
