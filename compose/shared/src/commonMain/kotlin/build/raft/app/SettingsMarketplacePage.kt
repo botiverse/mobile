@@ -1,32 +1,13 @@
 package build.raft.app
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import build.raft.app.base.Utils
-import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.data.SharedSettingsDestination
-import build.raft.app.data.SharedSettingsIntent
-import build.raft.app.data.SharedSettingsViewModel
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.resources.MR
-import com.tencent.kuikly.compose.foundation.background
-import com.tencent.kuikly.compose.foundation.layout.Box
-import com.tencent.kuikly.compose.foundation.layout.Column
-import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
-import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.setContent
-import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
-import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.pager.Pager
-import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import com.tencent.tmm.kmmresource.compose.stringResource
 
 const val SETTINGS_MARKETPLACE_PAGE = "compose_settings_marketplace"
@@ -55,127 +36,28 @@ internal fun Pager.openSettingsMarketplacePage(storeScope: build.raft.app.data.S
 @Composable
 private fun SettingsMarketplaceScreen() {
     val pager = LocalActivity.current.getPager() as Pager
-    var bodyReady by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { bodyReady = true }
-    Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-        SlockTopPageHeader(
-            title = stringResource(MR.strings.settings_connected_apps_title),
-            iconName = SlockLucideIconName.Link2,
-            backgroundColor = SlockColor.SurfaceWhite,
-            leadingContent = {
-                SlockBrutalIconButton(
-                    iconName = SlockLucideIconName.ArrowLeft,
-                    onClick = {
-                        pager.acquireModule<com.tencent.kuikly.core.module.RouterModule>(
-                            com.tencent.kuikly.core.module.RouterModule.MODULE_NAME
-                        ).closePage()
-                    },
-                    size = 30.dp,
-                    shadowOffset = 2.dp
-                )
-            }
-        )
-        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-            if (bodyReady) {
-                SettingsMarketplaceScreenBody(pager)
-            } else {
-                SlockCenteredLoading(stringResource(MR.strings.common_loading))
-            }
-        }
-    }
-}
-
-@Composable
-private fun SettingsMarketplaceScreenBody(pager: Pager) {
-    val bridge = Utils.bridgeModule(pager.pagerId)
-    val sharedStores = remember(bridge) { build.raft.app.data.SlockSharedStoreRegistry.get(bridge) }
-    val environment = rememberStandaloneSettingsEnvironment(pager, bridge)
-    val authStore = remember(sharedStores, environment.storeScope) {
-        sharedStores.authStore(environment.storeScope)
-    }
-    val authSnapshot = rememberSettingsWebViewAuthSnapshot(authStore, sharedStores.authStore)
-    val webViewController = rememberSlockWebViewController()
-    val settingsViewModel: SharedSettingsViewModel =
-        viewModel(key = "standalone-settings-marketplace") {
-            SharedSettingsViewModel(environment.dataSource)
-        }
-    val settingsState by settingsViewModel.state.collectAsState()
-    LaunchedEffect(Unit) {
-        bridge.log("settings_marketplace_open")
-        settingsViewModel.dispatch(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Developer))
-    }
-    StandaloneSettingsEffectHandler(pager, environment, settingsState, settingsViewModel::dispatch)
-    SettingsMarketplaceWebViewContent(
-        session = authSnapshot.session,
-        authSnapshot = authSnapshot,
-        webBaseUrl = environment.webBaseUrl,
-        controller = webViewController,
-        accessTokenSyncLogger = bridge::log,
-        onUrlChange = { url -> bridge.log("settings_marketplace_webview_url_changed url=$url") },
-        onLoadFailure = { reason -> bridge.log("settings_marketplace_webview_load_failure reason=$reason") }
+    StandaloneSettingsWebViewPage(
+        pager = pager,
+        title = stringResource(MR.strings.settings_connected_apps_title),
+        iconName = SlockLucideIconName.Link2,
+        spec = settingsMarketplaceWebViewSpec,
+        loadingContent = { SlockCenteredLoading(stringResource(MR.strings.common_loading)) },
     )
 }
 
-@Composable
-internal fun SettingsMarketplaceWebViewContent(
-    session: StoredAuthSession?,
-    webBaseUrl: String?,
-    modifier: Modifier = Modifier,
-    onUrlChange: (String) -> Unit = {},
-    onLoadFailure: (String) -> Unit = {},
-    controller: SlockWebViewController = rememberSlockWebViewController(),
-    authSnapshot: SettingsWebViewAuthSnapshot =
-        SettingsWebViewAuthSnapshot(session = session, sessionGeneration = if (session == null) 0L else 1L),
-    accessTokenSyncLogger: (String) -> Unit = {},
-) {
-    val webUrl = remember(session, webBaseUrl) {
-        settingsMarketplaceWebViewUrl(webBaseUrl, session)
-    }
-    val hostAuthBinding = rememberSettingsWebViewHostAuthBinding(authSnapshot, controller)
-    val injectedJavaScript = remember(session, hostAuthBinding) {
-        settingsMarketplaceWebViewInjectedJavaScript(session, hostAuthBinding)
-    }
-    var pageLoaded by remember(webUrl) { mutableStateOf(false) }
-    var navigationState by remember(webUrl) { mutableStateOf(SlockWebViewNavigationState()) }
-    val documentReady = pageLoaded && !navigationState.isLoading && navigationState.progress >= 100
-    if (session == null) {
-        SlockCenteredLoading(stringResource(MR.strings.common_loading))
-        return
-    }
-    key(hostAuthBinding?.webViewGeneration) {
-        SlockWebView(
-            url = webUrl,
-            modifier = modifier.fillMaxSize().background(SlockColor.SurfaceWhite),
-            allowNavigation = true,
-            domStorageEnabled = true,
-            cacheEnabled = true,
-            ephemeral = false,
-            injectedJavaScript = injectedJavaScript,
-            controller = controller,
-            onLoadSuccess = { pageLoaded = true },
-            onUrlChange = onUrlChange,
-            onLoadFailure = onLoadFailure,
-            onNavigationStateChange = { navigationState = it },
-        )
-    }
-    SettingsWebViewAccessTokenSyncEffect(
-        snapshot = authSnapshot,
-        documentReady = documentReady,
-        controller = controller,
-        binding = hostAuthBinding,
+private val settingsMarketplaceWebViewSpec =
+    StandaloneSettingsWebViewSpec(
         surface = SettingsWebViewSurface.Marketplace,
-        logger = accessTokenSyncLogger,
+        destination = SharedSettingsDestination.Developer,
+        backgroundColor = SlockColor.SurfaceWhite,
+        buildWebUrl = { webBaseUrl, session, _ -> settingsMarketplaceWebViewUrl(webBaseUrl, session) },
     )
-}
 
 internal fun settingsMarketplaceWebViewUrl(
     webBaseUrl: String?,
     session: StoredAuthSession?
 ): String {
-    val serverSlug =
-        session?.selectedServerSlug
-            ?: session?.servers?.firstOrNull { it.id == session.currentServerId }?.slug
-            ?: session?.servers?.firstOrNull()?.slug
+    val serverSlug = standaloneSettingsServerSlug(session)
     val path =
         serverSlug
             ?.takeIf { it.isNotBlank() }
@@ -188,14 +70,5 @@ internal fun settingsMarketplaceWebViewInjectedJavaScript(
     session: StoredAuthSession?,
     hostBinding: SettingsWebViewHostAuthBinding? = null,
 ): String {
-    val writes = settingsWebViewAuthStorageJavaScript(session, hostBinding)
-    return """
-        (function() {
-          try {
-            $writes;
-          } catch (error) {
-            console.error("slock_mobile_marketplace_injected_js_error", error && (error.stack || error.message || error));
-          }
-        })();
-    """.trimIndent()
+    return standaloneSettingsWebViewInjectedJavaScript(session, hostBinding, SettingsWebViewSurface.Marketplace)
 }

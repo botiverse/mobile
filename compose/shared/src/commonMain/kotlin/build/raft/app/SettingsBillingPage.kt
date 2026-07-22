@@ -1,27 +1,14 @@
 package build.raft.app
 
-import build.raft.app.base.Utils
 import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalCard
-import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.data.SharedSettingsActionState
-import build.raft.app.data.SharedSettingsIntent
-import build.raft.app.data.SharedSettingsViewModel
 import build.raft.app.data.SettingsBillingActionSnapshot
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.AppLocale
-import build.raft.app.data.KeyValueLocalePreferenceStore
-import build.raft.app.data.slockSharedPreferenceStore
 import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
@@ -238,88 +225,23 @@ internal val settingsBillingSmokePayload =
 @Composable
 private fun SettingsBillingScreen() {
     val pager = LocalActivity.current.getPager() as Pager
-    // Render the header on the first frame. The billing body's first composition
-    // is heavy (rememberStandaloneSettingsEnvironment builds the settings stores +
-    // the WebView native view attaches), which otherwise delays the header a frame
-    // and shows the native white page first (task #227 follow-up). Defer the body
-    // to a child composable committed after the first frame so the header is always
-    // painted first.
-    var bodyReady by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { bodyReady = true }
-    Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-        SlockTopPageHeader(
-            title = stringResource(MR.strings.settings_billing_title),
-            iconName = SlockLucideIconName.CreditCard,
-            backgroundColor = SlockColor.SurfaceWhite,
-            leadingContent = {
-                SlockBrutalIconButton(
-                    iconName = SlockLucideIconName.ArrowLeft,
-                    onClick = {
-                        pager.acquireModule<com.tencent.kuikly.core.module.RouterModule>(
-                            com.tencent.kuikly.core.module.RouterModule.MODULE_NAME
-                        ).closePage()
-                    },
-                    size = 30.dp,
-                    shadowOffset = 2.dp
-                )
-            }
-        )
-        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-            if (bodyReady) {
-                SettingsBillingScreenBody(pager)
-            } else {
-                SettingsBillingLoadingContent()
-            }
-        }
-    }
-}
-
-@Composable
-private fun SettingsBillingScreenBody(pager: Pager) {
-    val bridge = Utils.bridgeModule(pager.pagerId)
-    val sharedStores = remember(bridge) { build.raft.app.data.SlockSharedStoreRegistry.get(bridge) }
-    val launchPayload =
-        rememberBillingPayload(
-            pager.pageData.params.optString("payload"),
-            pager.pageData.params.toString(),
-            pager.pageData.params.optString("instanceId")
-        )
-    val environment = rememberStandaloneSettingsEnvironment(pager, bridge)
-    val billingAuthStore = remember(sharedStores, environment.storeScope) {
-        sharedStores.authStore(environment.storeScope)
-    }
-    val authSnapshot = rememberSettingsWebViewAuthSnapshot(billingAuthStore, sharedStores.authStore)
-    val webViewController = rememberSlockWebViewController()
-    val settingsViewModel: SharedSettingsViewModel =
-        viewModel(key = "standalone-settings-billing") {
-            SharedSettingsViewModel(environment.dataSource)
-        }
-    val settingsState by settingsViewModel.state.collectAsState()
-    LaunchedEffect(Unit) {
-        bridge.log("settings_billing_open instanceId=${launchPayload.instanceId}")
-        settingsViewModel.dispatch(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Billing))
-    }
-    StandaloneSettingsEffectHandler(pager, environment, settingsState, settingsViewModel::dispatch)
-    SettingsBillingWebViewContent(
-        session = authSnapshot.session,
-        authSnapshot = authSnapshot,
-        webBaseUrl = environment.webBaseUrl,
-        controller = webViewController,
-        accessTokenSyncLogger = bridge::log,
-        onUrlChange = { url -> bridge.log("settings_billing_webview_url_changed url=$url") },
-        onLoadFailure = { reason -> bridge.log("settings_billing_webview_load_failure reason=$reason") }
+    StandaloneSettingsWebViewPage(
+        pager = pager,
+        title = stringResource(MR.strings.settings_billing_title),
+        iconName = SlockLucideIconName.CreditCard,
+        spec = settingsBillingWebViewSpec,
+        loadingContent = { SettingsBillingLoadingContent() },
     )
 }
 
-@Composable
-private fun rememberBillingPayload(
-    payload: String,
-    fallbackPageData: String,
-    instanceId: String
-): KuiklySettingsBillingPayload =
-    remember(payload, fallbackPageData, instanceId) {
-        parseSettingsBillingPayload(payload, fallbackPageData, instanceId)
-    }
+private val settingsBillingWebViewSpec =
+    StandaloneSettingsWebViewSpec(
+        surface = SettingsWebViewSurface.Billing,
+        destination = SharedSettingsDestination.Billing,
+        backgroundColor = SlockColor.SurfaceWhite,
+        includeLocaleQuery = true,
+        buildWebUrl = ::settingsBillingWebViewUrl,
+    )
 
 @Composable
 internal fun SettingsBillingContent(
@@ -375,75 +297,12 @@ internal fun SettingsBillingContent(
     }
 }
 
-@Composable
-internal fun SettingsBillingWebViewContent(
-    session: StoredAuthSession?,
-    webBaseUrl: String?,
-    modifier: Modifier = Modifier,
-    bottomContentPadding: Dp = 0.dp,
-    onUrlChange: (String) -> Unit = {},
-    onLoadFailure: (String) -> Unit = {},
-    controller: SlockWebViewController = rememberSlockWebViewController(),
-    authSnapshot: SettingsWebViewAuthSnapshot =
-        SettingsWebViewAuthSnapshot(session = session, sessionGeneration = if (session == null) 0L else 1L),
-    accessTokenSyncLogger: (String) -> Unit = {},
-) {
-    val localeTag =
-        remember {
-            try {
-                KeyValueLocalePreferenceStore(slockSharedPreferenceStore()).readLocaleSync().languageTag
-            } catch (cancellation: kotlinx.coroutines.CancellationException) {
-                throw cancellation
-            } catch (_: Throwable) {
-                AppLocale.Default.languageTag
-            }
-        }
-    val webUrl = remember(session, webBaseUrl, localeTag) { settingsBillingWebViewUrl(webBaseUrl, session, localeTag) }
-    val hostAuthBinding = rememberSettingsWebViewHostAuthBinding(authSnapshot, controller)
-    val injectedJavaScript = remember(session, hostAuthBinding) {
-        settingsBillingWebViewInjectedJavaScript(session, hostAuthBinding)
-    }
-    var pageLoaded by remember(webUrl) { mutableStateOf(false) }
-    var navigationState by remember(webUrl) { mutableStateOf(SlockWebViewNavigationState()) }
-    val documentReady = pageLoaded && !navigationState.isLoading && navigationState.progress >= 100
-    if (session == null) {
-        SettingsBillingLoadingContent()
-        return
-    }
-    key(hostAuthBinding?.webViewGeneration) {
-        SlockWebView(
-            url = webUrl,
-            modifier = modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(bottom = bottomContentPadding),
-            allowNavigation = true,
-            domStorageEnabled = true,
-            cacheEnabled = true,
-            ephemeral = false,
-            injectedJavaScript = injectedJavaScript,
-            controller = controller,
-            onLoadSuccess = { pageLoaded = true },
-            onUrlChange = onUrlChange,
-            onLoadFailure = onLoadFailure,
-            onNavigationStateChange = { navigationState = it },
-        )
-    }
-    SettingsWebViewAccessTokenSyncEffect(
-        snapshot = authSnapshot,
-        documentReady = documentReady,
-        controller = controller,
-        binding = hostAuthBinding,
-        surface = SettingsWebViewSurface.Billing,
-        logger = accessTokenSyncLogger,
-    )
-}
-
 internal fun settingsBillingWebViewUrl(
     webBaseUrl: String?,
     session: StoredAuthSession?,
     localeTag: String = AppLocale.Default.languageTag
 ): String {
-    val serverSlug = session?.selectedServerSlug
-        ?: session?.servers?.firstOrNull { it.id == session.currentServerId }?.slug
-        ?: session?.servers?.firstOrNull()?.slug
+    val serverSlug = standaloneSettingsServerSlug(session)
     val path = serverSlug
         ?.takeIf { it.isNotBlank() }
         ?.let { "s/$it/settings/billing" }
@@ -459,16 +318,7 @@ internal fun settingsBillingWebViewInjectedJavaScript(
     session: StoredAuthSession?,
     hostBinding: SettingsWebViewHostAuthBinding? = null,
 ): String {
-    val writes = settingsWebViewAuthStorageJavaScript(session, hostBinding)
-    return """
-        (function() {
-          try {
-            $writes;
-          } catch (error) {
-            console.error("slock_mobile_billing_injected_js_error", error && (error.stack || error.message || error));
-          }
-        })();
-    """.trimIndent()
+    return standaloneSettingsWebViewInjectedJavaScript(session, hostBinding, SettingsWebViewSurface.Billing)
 }
 
 @Composable

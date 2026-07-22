@@ -1,23 +1,10 @@
 package build.raft.app
 
-import build.raft.app.base.Utils
-import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.data.AppLocale
-import build.raft.app.data.KeyValueLocalePreferenceStore
 import build.raft.app.data.SharedSettingsDestination
-import build.raft.app.data.SharedSettingsIntent
-import build.raft.app.data.SharedSettingsViewModel
 import build.raft.app.data.StoredAuthSession
-import build.raft.app.data.slockSharedPreferenceStore
 import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
@@ -33,7 +20,6 @@ import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.pager.Pager
 import com.tencent.tmm.kmmresource.compose.stringResource
-import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 
 const val SETTINGS_ADMINISTRATION_PAGE = "compose_settings_administration"
 
@@ -68,129 +54,23 @@ internal fun Pager.openSettingsAdministrationPage(storeScope: build.raft.app.dat
 @Composable
 private fun SettingsAdministrationScreen() {
     val pager = LocalActivity.current.getPager() as Pager
-    // Header on the first frame, WebView body deferred one frame — same
-    // attach-order reasoning as Billing (task #227): the standalone settings
-    // environment + native WebView attach otherwise paint before the header.
-    var bodyReady by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { bodyReady = true }
-    Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-        SlockTopPageHeader(
-            title = stringResource(MR.strings.settings_server_administration_title),
-            iconName = SlockLucideIconName.Shield,
-            backgroundColor = SlockColor.SurfaceWhite,
-            leadingContent = {
-                SlockBrutalIconButton(
-                    iconName = SlockLucideIconName.ArrowLeft,
-                    onClick = {
-                        pager.acquireModule<com.tencent.kuikly.core.module.RouterModule>(
-                            com.tencent.kuikly.core.module.RouterModule.MODULE_NAME
-                        ).closePage()
-                    },
-                    size = 30.dp,
-                    shadowOffset = 2.dp
-                )
-            }
-        )
-        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-            if (bodyReady) {
-                SettingsAdministrationScreenBody(pager)
-            } else {
-                SettingsAdministrationLoadingContent()
-            }
-        }
-    }
-}
-
-@Composable
-private fun SettingsAdministrationScreenBody(pager: Pager) {
-    val bridge = Utils.bridgeModule(pager.pagerId)
-    val sharedStores = remember(bridge) { build.raft.app.data.SlockSharedStoreRegistry.get(bridge) }
-    val environment = rememberStandaloneSettingsEnvironment(pager, bridge)
-    val authStore = remember(sharedStores, environment.storeScope) {
-        sharedStores.authStore(environment.storeScope)
-    }
-    val authSnapshot = rememberSettingsWebViewAuthSnapshot(authStore, sharedStores.authStore)
-    val webViewController = rememberSlockWebViewController()
-    val settingsViewModel: SharedSettingsViewModel =
-        viewModel(key = "standalone-settings-administration") {
-            SharedSettingsViewModel(environment.dataSource)
-        }
-    val settingsState by settingsViewModel.state.collectAsState()
-    LaunchedEffect(Unit) {
-        bridge.log("settings_administration_open")
-        settingsViewModel.dispatch(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Administration))
-    }
-    StandaloneSettingsEffectHandler(pager, environment, settingsState, settingsViewModel::dispatch)
-    SettingsAdministrationWebViewContent(
-        session = authSnapshot.session,
-        authSnapshot = authSnapshot,
-        webBaseUrl = environment.webBaseUrl,
-        controller = webViewController,
-        accessTokenSyncLogger = bridge::log,
-        onUrlChange = { url -> bridge.log("settings_administration_webview_url_changed url=$url") },
-        onLoadFailure = { reason -> bridge.log("settings_administration_webview_load_failure reason=$reason") }
+    StandaloneSettingsWebViewPage(
+        pager = pager,
+        title = stringResource(MR.strings.settings_server_administration_title),
+        iconName = SlockLucideIconName.Shield,
+        spec = settingsAdministrationWebViewSpec,
+        loadingContent = { SettingsAdministrationLoadingContent() },
     )
 }
 
-@Composable
-internal fun SettingsAdministrationWebViewContent(
-    session: StoredAuthSession?,
-    webBaseUrl: String?,
-    modifier: Modifier = Modifier,
-    onUrlChange: (String) -> Unit = {},
-    onLoadFailure: (String) -> Unit = {},
-    controller: SlockWebViewController = rememberSlockWebViewController(),
-    authSnapshot: SettingsWebViewAuthSnapshot =
-        SettingsWebViewAuthSnapshot(session = session, sessionGeneration = if (session == null) 0L else 1L),
-    accessTokenSyncLogger: (String) -> Unit = {},
-) {
-    val localeTag =
-        remember {
-            try {
-                KeyValueLocalePreferenceStore(slockSharedPreferenceStore()).readLocaleSync().languageTag
-            } catch (cancellation: kotlinx.coroutines.CancellationException) {
-                throw cancellation
-            } catch (_: Throwable) {
-                AppLocale.Default.languageTag
-            }
-        }
-    val webUrl = remember(session, webBaseUrl, localeTag) { settingsAdministrationWebViewUrl(webBaseUrl, session, localeTag) }
-    val hostAuthBinding = rememberSettingsWebViewHostAuthBinding(authSnapshot, controller)
-    val injectedJavaScript = remember(session, hostAuthBinding) {
-        settingsAdministrationWebViewInjectedJavaScript(session, hostAuthBinding)
-    }
-    var pageLoaded by remember(webUrl) { mutableStateOf(false) }
-    var navigationState by remember(webUrl) { mutableStateOf(SlockWebViewNavigationState()) }
-    val documentReady = pageLoaded && !navigationState.isLoading && navigationState.progress >= 100
-    if (session == null) {
-        SettingsAdministrationLoadingContent()
-        return
-    }
-    key(hostAuthBinding?.webViewGeneration) {
-        SlockWebView(
-            url = webUrl,
-            modifier = modifier.fillMaxSize().background(SlockColor.SurfaceWhite),
-            allowNavigation = true,
-            domStorageEnabled = true,
-            cacheEnabled = true,
-            ephemeral = false,
-            injectedJavaScript = injectedJavaScript,
-            controller = controller,
-            onLoadSuccess = { pageLoaded = true },
-            onUrlChange = onUrlChange,
-            onLoadFailure = onLoadFailure,
-            onNavigationStateChange = { navigationState = it },
-        )
-    }
-    SettingsWebViewAccessTokenSyncEffect(
-        snapshot = authSnapshot,
-        documentReady = documentReady,
-        controller = controller,
-        binding = hostAuthBinding,
+private val settingsAdministrationWebViewSpec =
+    StandaloneSettingsWebViewSpec(
         surface = SettingsWebViewSurface.Administration,
-        logger = accessTokenSyncLogger,
+        destination = SharedSettingsDestination.Administration,
+        backgroundColor = SlockColor.SurfaceWhite,
+        includeLocaleQuery = true,
+        buildWebUrl = ::settingsAdministrationWebViewUrl,
     )
-}
 
 @Composable
 private fun SettingsAdministrationLoadingContent() {
@@ -215,9 +95,7 @@ internal fun settingsAdministrationWebViewUrl(
     session: StoredAuthSession?,
     localeTag: String = AppLocale.Default.languageTag
 ): String {
-    val serverSlug = session?.selectedServerSlug
-        ?: session?.servers?.firstOrNull { it.id == session.currentServerId }?.slug
-        ?: session?.servers?.firstOrNull()?.slug
+    val serverSlug = standaloneSettingsServerSlug(session)
     val path = serverSlug
         ?.takeIf { it.isNotBlank() }
         ?.let { "s/$it/settings/administration" }
@@ -233,14 +111,5 @@ internal fun settingsAdministrationWebViewInjectedJavaScript(
     session: StoredAuthSession?,
     hostBinding: SettingsWebViewHostAuthBinding? = null,
 ): String {
-    val writes = settingsWebViewAuthStorageJavaScript(session, hostBinding)
-    return """
-        (function() {
-          try {
-            $writes;
-          } catch (error) {
-            console.error("slock_mobile_administration_injected_js_error", error && (error.stack || error.message || error));
-          }
-        })();
-    """.trimIndent()
+    return standaloneSettingsWebViewInjectedJavaScript(session, hostBinding, SettingsWebViewSurface.Administration)
 }
