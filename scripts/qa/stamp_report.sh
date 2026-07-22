@@ -153,6 +153,72 @@ if [ "$PHASE" = "bootstrap-ready" ]; then
   exit 1
 fi
 
+if [ "$PHASE" = "bootstrap-status" ]; then
+  STATUS_FILE="${2:-${RUNNER_TEMP:-qa-evidence}/stamp-bootstrap-status-$STAMP_RUN_CASE_ID.json}"
+  [ -s "$BOOTSTRAP_SPEC_FILE" ] || { echo "stamp: bootstrap spec missing" >&2; exit 1; }
+  ENDPOINT=$(node -e 'const v=require(process.argv[1]);if(v.required!==true||typeof v.status_endpoint!=="string")process.exit(2);process.stdout.write(v.status_endpoint)' "$BOOTSTRAP_SPEC_FILE") \
+    || { echo "stamp: bootstrap status contract unavailable" >&2; exit 1; }
+  install -m 600 /dev/null "$STATUS_FILE"
+  if curl -sfS --retry 2 --retry-all-errors -X GET "${STAMP_URL%/}$ENDPOINT" \
+    -H "$AUTH" -H "$JOB_HEADER" -H "$CLAIM_HEADER" -o "$STATUS_FILE"; then
+    chmod 600 "$STATUS_FILE"
+    node -e 'const v=require(process.argv[1]);if(v.contract_version!=="qa-bootstrap-login/v1"||v.required!==true||!["issued","ready","torn_down","aborted","error"].includes(v.status))process.exit(2)' "$STATUS_FILE" \
+      || { rm -f "$STATUS_FILE"; echo "stamp: bootstrap status response invalid" >&2; exit 1; }
+    echo "stamp: bootstrap status read"
+    exit 0
+  fi
+  rm -f "$STATUS_FILE"
+  echo "stamp: bootstrap status unavailable" >&2
+  exit 1
+fi
+
+if [ "$PHASE" = "bootstrap-failure-terminal" ]; then
+  BINDING_FILE="${2:-${RUNNER_TEMP:-qa-evidence}/stamp-bootstrap-device-binding.json}"
+  READY_FILE="${3:-${RUNNER_TEMP:-qa-evidence}/stamp-bootstrap-ready.json}"
+  STATUS_FILE="${RUNNER_TEMP:-qa-evidence}/stamp-bootstrap-failure-status-$STAMP_RUN_CASE_ID.json"
+  CLEANUP_FILE="${RUNNER_TEMP:-qa-evidence}/stamp-bootstrap-failure-cleanup-$STAMP_RUN_CASE_ID.json"
+  [ -s "$BOOTSTRAP_LOGIN_RESPONSE_FILE" ] && [ -s "$BINDING_FILE" ] || { echo "stamp: no bootstrap login material to terminalize"; exit 0; }
+  if ! "$0" bootstrap-status "$STATUS_FILE"; then
+    PKG=$(cat qa-app-package.txt 2>/dev/null || true)
+    [ -z "$PKG" ] || { adb shell am force-stop "$PKG" || true; adb shell pm clear "$PKG" || true; }
+    rm -f "$BOOTSTRAP_LOGIN_RESPONSE_FILE" "$BOOTSTRAP_READY_RESPONSE_FILE" "$BOOTSTRAP_CAPTURE_CONTEXT_FILE" "$BOOTSTRAP_CAPTURE_ENV_FILE"
+    echo "stamp: bootstrap state unknown; device cleared, terminal outcome not guessed" >&2
+    exit 1
+  fi
+  state=$(node -e 'const v=require(process.argv[1]);process.stdout.write(v.status)' "$STATUS_FILE")
+  rm -f "$STATUS_FILE"
+  case "$state" in
+    ready)
+      [ -s "$READY_FILE" ] || { echo "stamp: READY state lacks local process binding" >&2; exit 1; }
+      outcome=completed
+      ready_args=(--ready "$READY_FILE")
+      ;;
+    issued)
+      outcome=aborted
+      ready_args=()
+      ;;
+    torn_down|aborted|error)
+      rm -f "$BOOTSTRAP_LOGIN_RESPONSE_FILE" "$BOOTSTRAP_READY_RESPONSE_FILE" "$BOOTSTRAP_CAPTURE_CONTEXT_FILE" "$BOOTSTRAP_CAPTURE_ENV_FILE"
+      echo "stamp: bootstrap already terminal state=$state"
+      exit 0
+      ;;
+    *) echo "stamp: unsupported bootstrap failure state=$state" >&2; exit 1;;
+  esac
+  cleanup_rc=0
+  node "$(dirname "$0")/mobile_login_bootstrap.mjs" cleanup --response "$BOOTSTRAP_LOGIN_RESPONSE_FILE" --binding "$BINDING_FILE" "${ready_args[@]}" --outcome "$outcome" --output "$CLEANUP_FILE" --run-case-id "$STAMP_RUN_CASE_ID" --ci-job-ref "$JOB_REF" || cleanup_rc=$?
+  if [ "$cleanup_rc" != "0" ]; then
+    PKG=$(cat qa-app-package.txt 2>/dev/null || true)
+    [ -z "$PKG" ] || { adb shell am force-stop "$PKG" || true; adb shell pm clear "$PKG" || true; }
+    rm -f "$BOOTSTRAP_LOGIN_RESPONSE_FILE" "$BOOTSTRAP_READY_RESPONSE_FILE" "$BOOTSTRAP_CAPTURE_CONTEXT_FILE" "$BOOTSTRAP_CAPTURE_ENV_FILE" "$CLEANUP_FILE"
+    echo "stamp: bootstrap failure cleanup failed" >&2
+    exit "$cleanup_rc"
+  fi
+  "$0" bootstrap-terminal "$outcome" "$CLEANUP_FILE"
+  rc=$?
+  rm -f "$CLEANUP_FILE"
+  exit "$rc"
+fi
+
 if [ "$PHASE" = "bootstrap-terminal" ]; then
   OUTCOME="${2:-aborted}"
   CLEANUP_FILE="${3:-${RUNNER_TEMP:-qa-evidence}/stamp-bootstrap-cleanup.json}"

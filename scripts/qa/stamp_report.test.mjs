@@ -341,9 +341,57 @@ esac
 
   const workflow = fs.readFileSync(path.resolve(".github/workflows/qa-acceptance.yml"), "utf8");
   assert.match(workflow, /- name: Report verdict\n[\s\S]*?if: \$\{\{ always\(\) && !failure\(\) \}\}/);
-  assert.match(workflow, /claim=.*stamp-claim-[\s\S]*login=.*stamp-bootstrap-login-[\s\S]*outcome=aborted/);
-  assert.match(workflow, /if \[ -s "\$ready_response" \] && \[ -s "\$ready_payload" \]; then outcome=completed/);
+  assert.match(workflow, /bootstrap-failure-terminal "\$RUNNER_TEMP\/stamp-bootstrap-device-binding\.json" "\$RUNNER_TEMP\/stamp-bootstrap-ready\.json"/);
   assert.match(workflow, /bash scripts\/qa\/stamp_report\.sh workflow-error/);
+});
+
+test("READY response loss resolves server authority before choosing completed versus aborted cleanup", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "stamp-ready-loss-"));
+  const runnerTemp = path.join(root, "runner-temp");
+  const bin = path.join(root, "bin");
+  fs.mkdirSync(runnerTemp); fs.mkdirSync(bin);
+  const reporter = path.join(root, "stamp_report.sh");
+  fs.copyFileSync(new URL("./stamp_report.sh", import.meta.url), reporter);
+  fs.chmodSync(reporter, 0o755);
+  const calls = path.join(root, "calls");
+  const serverState = path.join(root, "server-state");
+  fs.writeFileSync(serverState, "ready");
+  fs.writeFileSync(path.join(root, "mobile_login_bootstrap.mjs"), `
+import fs from "node:fs";
+const args=process.argv.slice(2); const value=(n)=>args[args.indexOf(n)+1];
+fs.appendFileSync("${calls}", "cleanup:"+value("--outcome")+"\\n");
+fs.writeFileSync(value("--output"), JSON.stringify({force_stopped:true,package_data_cleared:true}));
+`);
+  fs.writeFileSync(path.join(bin, "curl"), `#!/usr/bin/env bash
+url=""; out=""
+while [ "$#" -gt 0 ]; do case "$1" in -o) out="$2"; shift 2;; http*) url="$1"; shift;; *) shift;; esac; done
+case "$url" in
+  */status) state=$(cat "${serverState}"); printf '{"contract_version":"qa-bootstrap-login/v1","required":true,"status":"%s"}' "$state" > "$out"; printf '%s\n' status >> "${calls}";;
+  */terminal) printf '%s\n' terminal >> "${calls}";;
+  *) exit 23;;
+esac
+`, { mode: 0o755 });
+  const spec = path.join(runnerTemp, "stamp-bootstrap-spec-rc-loss.json");
+  const login = path.join(runnerTemp, "stamp-bootstrap-login-rc-loss.json");
+  const binding = path.join(root, "binding.json");
+  const ready = path.join(root, "ready.json");
+  fs.writeFileSync(spec, JSON.stringify({ required: true, status_endpoint: "/status", terminal_endpoint: "/terminal" }), { mode: 0o600 });
+  const writeLogin = () => fs.writeFileSync(login, JSON.stringify({ request_id: "request", envelope_digest: "sha256:digest", envelope: { refresh_token: "refresh" } }), { mode: 0o600 });
+  writeLogin(); fs.writeFileSync(binding, "{}"); fs.writeFileSync(ready, "{}");
+  const env = {
+    ...process.env, PATH: `${bin}:${path.dirname(process.execPath)}:${process.env.PATH}`,
+    RUNNER_TEMP: runnerTemp, STAMP_RUN_CASE_ID: "rc-loss", STAMP_URL: "https://stamp.test", STAMP_TOKEN: "token",
+    GITHUB_RUN_ID: "901", GITHUB_REPOSITORY: "botiverse/mobile",
+  };
+
+  // No local READY response exists: the server's authoritative ready state
+  // still selects completed cleanup and logs out the session.
+  execFileSync(reporter, ["bootstrap-failure-terminal", binding, ready], { cwd: root, env });
+  assert.deepEqual(fs.readFileSync(calls, "utf8").trim().split("\n"), ["status", "cleanup:completed", "terminal"]);
+
+  fs.writeFileSync(calls, ""); writeLogin(); fs.writeFileSync(serverState, "issued");
+  execFileSync(reporter, ["bootstrap-failure-terminal", binding, ready], { cwd: root, env });
+  assert.deepEqual(fs.readFileSync(calls, "utf8").trim().split("\n"), ["status", "cleanup:aborted", "terminal"]);
 });
 
 test("capture-proof reporting rejects missing scope, stale generation, proof SHA mismatch, and generation replay with new bytes", () => {

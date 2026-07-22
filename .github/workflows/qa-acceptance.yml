@@ -504,7 +504,7 @@ jobs:
             # (Pinned alpha is build.raft.app.alpha, not build.raft.app — a fixed
             # am start launched nothing and the agent saw the launcher home.)
             APK="$(find apks -name '*.apk' | head -1)"; test -s "$APK" || { echo "no APK found under apks/"; exit 2; }; echo "installing $APK"; adb install -r "$APK"; BT="$(ls -d $ANDROID_HOME/build-tools/* | sort -V | tail -1)"; PKG="$("$BT/aapt" dump badging "$APK" | sed -n "s/package: name='\([^']*\)'.*/\1/p" | head -1)"; ACT="$("$BT/aapt" dump badging "$APK" | sed -n "s/launchable-activity: name='\([^']*\)'.*/\1/p" | head -1)"; echo "$PKG" > qa-app-package.txt; if [ "${STAMP_BOOTSTRAP_REQUIRED:-false}" != "true" ]; then echo "launching $PKG / ${ACT:-.MainActivity}"; adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 || adb shell am start -n "$PKG/${ACT:-.MainActivity}"; fi
-            if [ "${STAMP_BOOTSTRAP_REQUIRED:-false}" = "true" ]; then APK="$(find apks -name '*.apk' | head -1)"; node scripts/qa/mobile_login_bootstrap.mjs binding --apk "$APK" --output "$RUNNER_TEMP/stamp-bootstrap-device-binding.json"; bash scripts/qa/stamp_report.sh bootstrap-login "$RUNNER_TEMP/stamp-bootstrap-device-binding.json"; prep_rc=0; node scripts/qa/mobile_login_bootstrap.mjs prepare --response "$RUNNER_TEMP/stamp-bootstrap-login-${STAMP_RUN_CASE_ID}.json" --binding "$RUNNER_TEMP/stamp-bootstrap-device-binding.json" --run-case-id "$STAMP_RUN_CASE_ID" --ci-job-ref "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --ready-output "$RUNNER_TEMP/stamp-bootstrap-ready.json" || prep_rc=$?; if [ "$prep_rc" = "0" ]; then bash scripts/qa/stamp_report.sh bootstrap-ready "$RUNNER_TEMP/stamp-bootstrap-ready.json" || prep_rc=$?; fi; if [ "$prep_rc" != "0" ]; then cleanup_rc=0; node scripts/qa/mobile_login_bootstrap.mjs cleanup --response "$RUNNER_TEMP/stamp-bootstrap-login-${STAMP_RUN_CASE_ID}.json" --binding "$RUNNER_TEMP/stamp-bootstrap-device-binding.json" --outcome aborted --output "$RUNNER_TEMP/stamp-bootstrap-cleanup.json" --run-case-id "$STAMP_RUN_CASE_ID" --ci-job-ref "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" || cleanup_rc=$?; if [ "$cleanup_rc" = "0" ]; then bash scripts/qa/stamp_report.sh bootstrap-terminal aborted "$RUNNER_TEMP/stamp-bootstrap-cleanup.json" || true; else PKG="$(cat qa-app-package.txt)"; adb shell am force-stop "$PKG" || true; adb shell pm clear "$PKG" || true; rm -f "$RUNNER_TEMP/stamp-bootstrap-login-${STAMP_RUN_CASE_ID}.json"; fi; exit "$prep_rc"; fi; else sleep 8; fi
+            if [ "${STAMP_BOOTSTRAP_REQUIRED:-false}" = "true" ]; then APK="$(find apks -name '*.apk' | head -1)"; node scripts/qa/mobile_login_bootstrap.mjs binding --apk "$APK" --output "$RUNNER_TEMP/stamp-bootstrap-device-binding.json"; bash scripts/qa/stamp_report.sh bootstrap-login "$RUNNER_TEMP/stamp-bootstrap-device-binding.json"; prep_rc=0; node scripts/qa/mobile_login_bootstrap.mjs prepare --response "$RUNNER_TEMP/stamp-bootstrap-login-${STAMP_RUN_CASE_ID}.json" --binding "$RUNNER_TEMP/stamp-bootstrap-device-binding.json" --run-case-id "$STAMP_RUN_CASE_ID" --ci-job-ref "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --ready-output "$RUNNER_TEMP/stamp-bootstrap-ready.json" || prep_rc=$?; if [ "$prep_rc" = "0" ]; then bash scripts/qa/stamp_report.sh bootstrap-ready "$RUNNER_TEMP/stamp-bootstrap-ready.json" || prep_rc=$?; fi; if [ "$prep_rc" != "0" ]; then bash scripts/qa/stamp_report.sh bootstrap-failure-terminal "$RUNNER_TEMP/stamp-bootstrap-device-binding.json" "$RUNNER_TEMP/stamp-bootstrap-ready.json" || true; exit "$prep_rc"; fi; else sleep 8; fi
             mkdir -p qa-evidence
             cp "$(find apks -name build-info.json | head -1)" qa-evidence/build-info.json 2>/dev/null || true
             if [ "${STAMP_BOOTSTRAP_REQUIRED:-false}" = "true" ]; then cp "$RUNNER_TEMP/stamp-bootstrap-ready.json" qa-evidence/bootstrap-ready.json; fi
@@ -620,17 +620,8 @@ jobs:
           STAMP_POSTCLAIM_ERROR_PHASE: workflow_failure
         run: |
           claim="$RUNNER_TEMP/stamp-claim-${STAMP_RUN_CASE_ID}"
-          login="$RUNNER_TEMP/stamp-bootstrap-login-${STAMP_RUN_CASE_ID}.json"
-          ready_response="$RUNNER_TEMP/stamp-bootstrap-ready-${STAMP_RUN_CASE_ID}.json"
-          ready_payload="$RUNNER_TEMP/stamp-bootstrap-ready.json"
           binding="$RUNNER_TEMP/stamp-bootstrap-device-binding.json"
-          if [ -s "$claim" ] && [ -s "$login" ] && [ -s "$binding" ]; then
-            cleanup="$RUNNER_TEMP/stamp-bootstrap-failure-cleanup.json"
-            outcome=aborted
-            ready_args=()
-            if [ -s "$ready_response" ] && [ -s "$ready_payload" ]; then outcome=completed; ready_args=(--ready "$ready_payload"); fi
-            if node scripts/qa/mobile_login_bootstrap.mjs cleanup --response "$login" --binding "$binding" "${ready_args[@]}" --outcome "$outcome" --output "$cleanup" --run-case-id "$STAMP_RUN_CASE_ID" --ci-job-ref "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"; then
-              bash scripts/qa/stamp_report.sh bootstrap-terminal "$outcome" "$cleanup" || true
-            fi
+          if [ -s "$claim" ]; then
+            bash scripts/qa/stamp_report.sh bootstrap-failure-terminal "$binding" "$RUNNER_TEMP/stamp-bootstrap-ready.json" || true
           fi
           bash scripts/qa/stamp_report.sh workflow-error
