@@ -3,9 +3,10 @@ package build.raft.app
 import build.raft.app.base.BridgeModule
 import build.raft.app.components.SegmentedControl
 import build.raft.app.components.SegmentedControlOption
-import build.raft.app.components.SlockAnchoredMetaChip
 import build.raft.app.components.SlockBrutalActionButton
+import build.raft.app.components.SlockBrutalBadge
 import build.raft.app.components.SlockBrutalIconButton
+import build.raft.app.components.SlockBrutalTone
 import build.raft.app.data.ActivityReplyThreadPrewarmKey
 import build.raft.app.data.ActivityReplyThreadPrewarmMarker
 import build.raft.app.data.ActivityUnreadSummaryProjection
@@ -47,6 +48,7 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MessageId
 import build.raft.app.model.ServerId
 import build.raft.app.model.SlockTimeContext
+import build.raft.app.model.TaskStatus
 import build.raft.app.model.ThreadConversation
 import build.raft.app.model.threadIdentity
 import build.raft.app.model.topLevelThreadId
@@ -65,7 +67,6 @@ import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
-import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
@@ -1463,46 +1464,44 @@ private fun SharedActivityFooter(
 ) {
     FlowRow(
         modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         item.activityFooterSlots(activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled).forEach { slot ->
             when (slot) {
                 SharedActivityFooterSlot.Replies ->
-                    Text(
-                        text = stringResource(
+                    SharedActivityFooterBadge(
+                        label = stringResource(
                             if (item.replyCount == 1) MR.strings.activity_replies_one else MR.strings.activity_replies_many,
                             item.replyCount
                         ),
-                        style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp),
-                        color = SlockColor.TextBlack.copy(alpha = 0.42f),
-                        maxLines = 1,
+                        slot = slot,
                         modifier = Modifier.align(Alignment.CenterVertically)
                     )
-                SharedActivityFooterSlot.Task -> SharedActivityTaskBadge(
-                    item,
-                    modifier = Modifier.align(Alignment.CenterVertically)
-                )
+                SharedActivityFooterSlot.Task ->
+                    SharedActivityFooterBadge(
+                        label = item.activityTaskBadgeText(),
+                        slot = slot,
+                        taskStatus = item.taskStatus,
+                        modifier = Modifier.widthIn(max = 260.dp).align(Alignment.CenterVertically)
+                    )
                 SharedActivityFooterSlot.Mention ->
-                    SharedActivityCountPill(
-                        stringResource(MR.strings.activity_mention_you),
-                        iconName = SlockLucideIconName.AtSign,
-                        backgroundColor = SlockColor.BrandYellow,
-                        textColor = SlockColor.TextBlack,
+                    SharedActivityFooterBadge(
+                        label = stringResource(MR.strings.activity_mention_you),
+                        slot = slot,
                         modifier = Modifier.align(Alignment.CenterVertically)
                     )
                 SharedActivityFooterSlot.New ->
-                    SharedActivityCountPill(
-                        stringResource(MR.strings.activity_new_count, item.unreadCount),
-                        backgroundColor = SlockColor.AccentPink,
-                        textColor = SlockColor.SurfaceWhite,
+                    SharedActivityFooterBadge(
+                        label = stringResource(MR.strings.activity_new_count, item.unreadCount),
+                        slot = slot,
                         modifier = Modifier.align(Alignment.CenterVertically)
                     )
                 SharedActivityFooterSlot.Draft ->
-                    SlockLucideIcon(
-                        SlockLucideIconName.Pencil,
-                        modifier = Modifier.size(12.dp).align(Alignment.CenterVertically),
-                        color = SlockColor.TextMutedGrayArgb
+                    SharedActivityFooterBadge(
+                        label = "",
+                        slot = slot,
+                        modifier = Modifier.align(Alignment.CenterVertically)
                     )
             }
         }
@@ -1510,18 +1509,19 @@ private fun SharedActivityFooter(
 }
 
 @Composable
-private fun SharedActivityTaskBadge(
-    item: InboxItem,
+private fun SharedActivityFooterBadge(
+    label: String,
+    slot: SharedActivityFooterSlot,
+    taskStatus: TaskStatus? = null,
     modifier: Modifier = Modifier
 ) {
-    val statusMeta = item.taskStatus?.sharedTaskStatusChipMeta() ?: return
-    SlockAnchoredMetaChip(
-        label = item.activityTaskBadgeText(),
-        iconName = statusMeta.icon,
-        iconSize = statusMeta.iconSize,
-        color = statusMeta.color,
-        modifier = modifier.widthIn(max = 260.dp),
-        onClick = null
+    val visual = slot.badgeVisual(taskStatus)
+    SlockBrutalBadge(
+        label = label,
+        modifier = modifier,
+        tone = visual.tone,
+        uppercase = false,
+        leadingIcon = visual.leadingIcon
     )
 }
 
@@ -1530,42 +1530,6 @@ internal fun InboxItem.activityTaskBadgeText(): String =
         ?.takeIf { it.isNotBlank() }
         ?.let { " @$it" }
         .orEmpty()
-
-@Composable
-private fun SharedActivityCountPill(
-    text: String,
-    iconName: SlockLucideIconName? = null,
-    backgroundColor: com.tencent.kuikly.compose.ui.graphics.Color = SlockColor.AccentPink,
-    textColor: com.tencent.kuikly.compose.ui.graphics.Color = SlockColor.TextBlack,
-    modifier: Modifier = Modifier
-) {
-    val pillShape = RoundedCornerShape(SlockRadius.Sm)
-    Box(
-        modifier =
-            modifier
-                .widthIn(min = 22.dp)
-                .background(backgroundColor, pillShape)
-                .border(SlockStroke.Thin, SlockColor.BorderBlack, pillShape)
-                .padding(horizontal = 6.dp, vertical = 1.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(if (iconName != null) 4.dp else 0.dp)
-        ) {
-            iconName?.let { name ->
-                SlockLucideIcon(name, modifier = Modifier.size(10.dp), color = "#FF000000")
-            }
-            Text(
-                text = text,
-                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp),
-                color = textColor,
-                maxLines = if (text.contains('\n')) 4 else 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-    }
-}
 
 @Composable
 private fun SharedActivitySmallIconButton(
@@ -1858,22 +1822,48 @@ internal fun InboxItem.secondaryActivityPreviewText(
         }
 
 internal enum class SharedActivityFooterSlot {
-    Replies,
     Task,
+    Replies,
     Mention,
     New,
     Draft
 }
 
+internal data class SharedActivityFooterBadgeVisual(
+    val tone: SlockBrutalTone,
+    val leadingIcon: SlockLucideIconName? = null
+)
+
+internal fun SharedActivityFooterSlot.badgeVisual(taskStatus: TaskStatus? = null): SharedActivityFooterBadgeVisual =
+    when (this) {
+        SharedActivityFooterSlot.Task -> {
+            val status = taskStatus ?: TaskStatus.Todo
+            val statusMeta = status.sharedTaskStatusChipMeta()
+            val tone =
+                when (status) {
+                    TaskStatus.Todo -> SlockBrutalTone.Orange
+                    TaskStatus.InProgress -> SlockBrutalTone.Cyan
+                    TaskStatus.InReview -> SlockBrutalTone.Lavender
+                    TaskStatus.Done -> SlockBrutalTone.Lime
+                    TaskStatus.Closed -> SlockBrutalTone.Stone
+                }
+            SharedActivityFooterBadgeVisual(tone, statusMeta.icon)
+        }
+        SharedActivityFooterSlot.Replies -> SharedActivityFooterBadgeVisual(SlockBrutalTone.White)
+        SharedActivityFooterSlot.Mention -> SharedActivityFooterBadgeVisual(SlockBrutalTone.Yellow, SlockLucideIconName.AtSign)
+        SharedActivityFooterSlot.New -> SharedActivityFooterBadgeVisual(SlockBrutalTone.Pink)
+        SharedActivityFooterSlot.Draft -> SharedActivityFooterBadgeVisual(SlockBrutalTone.White, SlockLucideIconName.Pencil)
+    }
+
 internal fun InboxItem.activityFooterSlots(
     activityTaskStatusBadgesEnabled: Boolean = true
 ): List<SharedActivityFooterSlot> {
     val slots = mutableListOf<SharedActivityFooterSlot>()
-    if (kind == InboxItemKind.Thread) {
-        slots += SharedActivityFooterSlot.Replies
-    }
     if (activityTaskStatusBadgesEnabled && taskNumber != null && taskStatus != null) {
         slots += SharedActivityFooterSlot.Task
+    }
+    if (kind == InboxItemKind.Thread) {
+        slots += SharedActivityFooterSlot.Replies
     }
     if (hasMention && unreadCount > 0) {
         slots += SharedActivityFooterSlot.Mention

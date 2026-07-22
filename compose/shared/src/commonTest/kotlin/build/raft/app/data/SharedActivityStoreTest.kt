@@ -3110,7 +3110,7 @@ class SharedActivityStoreTest {
         assertEquals("Claude Assistant", item.taskClaimedByName)
         assertEquals("#177 @Claude Assistant", item.activityTaskBadgeText())
         assertEquals(
-            listOf(SharedActivityFooterSlot.Replies, SharedActivityFooterSlot.Task),
+            listOf(SharedActivityFooterSlot.Task, SharedActivityFooterSlot.Replies),
             item.activityFooterSlots()
         )
         scope.cancel()
