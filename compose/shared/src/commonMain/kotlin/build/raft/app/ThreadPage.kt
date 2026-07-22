@@ -11561,6 +11561,7 @@ private fun ThreadPageHeader(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false)
                     )
+                    dmAgentActivity?.let { ThreadDmAgentActivity(state = it) }
                 }
                 headerDisplay.subtitle?.takeIf { it.isNotBlank() }?.let {
                     Text(
@@ -11575,7 +11576,6 @@ private fun ThreadPageHeader(
             if (
                 showActions &&
                     (
-                        dmAgentActivity != null ||
                         payload.threadHeaderSearchAction() != null ||
                             (activityMuteState != null && onToggleActivityMute != null) ||
                             payload.showSettingsAction ||
@@ -11587,7 +11587,6 @@ private fun ThreadPageHeader(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(ThreadHeaderActionGroupSpacing)
                 ) {
-                    dmAgentActivity?.let { ThreadDmAgentActivity(state = it) }
                     if (payload.threadHeaderSearchAction() != null) {
                         ThreadHeaderIconButton(icon = SlockLucideIconName.Search, onClick = onOpenSearch)
                     }
