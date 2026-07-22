@@ -13591,9 +13591,12 @@ private fun ThreadMessagesList(
                 // arrives after rememberLazyListState was created, snapping that item
                 // to the viewport start is only a measurement preposition; returning
                 // here strands the viewport on empty padding until the first gesture.
-                // Continue into the existing bottom-alignment owner in the same effect.
+                // Continue into the existing bottom-alignment owner in the same effect,
+                // but first let Kuikly's deferred Compose -> native ScrollView offset
+                // synchronization commit. Reissuing a snap before that window closes
+                // cancels the framework job and leaves native pixels on the old viewport.
                 listState.scrollToItem(latestItemIndex)
-                delay(ThreadLayoutStabilityFrameDelayMs)
+                delay(ThreadProgrammaticScrollNativeSyncDelayMs)
             }
             ThreadInitialBottomAnchorStage.Anchor,
             ThreadInitialBottomAnchorStage.Settled -> Unit
@@ -13615,7 +13618,8 @@ private fun ThreadMessagesList(
                 diagnosticsLogger(
                     "thread_initial_bottom_anchor result=retry latestItemIndex=$latestItemIndex " +
                         "totalItems=${listState.layoutInfo.totalItemsCount} " +
-                        "visibleItems=${listState.layoutInfo.visibleItemsInfo.size}"
+                        "visibleItems=${listState.layoutInfo.visibleItemsInfo.size} " +
+                        listState.threadViewportGeometryDiagnostics(latestItemIndex)
                 )
                 delay(ThreadInitialBottomAnchorRetryDelayMs)
             }
@@ -15268,11 +15272,11 @@ private suspend fun LazyListState.anchorInitialThreadBottomToLatest(
 
         if (!isThreadItemVisible(latestItemIndex)) {
             scrollToItem(latestItemIndex)
-            delay(ThreadLayoutStabilityFrameDelayMs)
+            delay(ThreadProgrammaticScrollNativeSyncDelayMs)
         }
         awaitThreadMessagesLayoutStability(latestItemIndex)
         scrollLatestItemToRenderedBottom(latestItemIndex)
-        delay(ThreadLayoutStabilityFrameDelayMs)
+        delay(ThreadProgrammaticScrollNativeSyncDelayMs)
 
         val anchorState =
             ThreadInitialBottomAnchorState(
@@ -15288,9 +15292,10 @@ private suspend fun LazyListState.anchorInitialThreadBottomToLatest(
         return false
     }
     scrollToItem(latestItemIndex)
+    delay(ThreadProgrammaticScrollNativeSyncDelayMs)
     awaitThreadMessagesLayoutStability(latestItemIndex)
     scrollLatestItemToRenderedBottom(latestItemIndex)
-    delay(ThreadLayoutStabilityFrameDelayMs)
+    delay(ThreadProgrammaticScrollNativeSyncDelayMs)
     return isLatestItemAtRenderedBottom(latestItemIndex)
 }
 
@@ -15324,7 +15329,7 @@ private suspend fun LazyListState.scrollThreadItemToFocusedViewport(itemIndex: I
         val item = layoutInfo.visibleItemsInfo.firstOrNull { it.index == itemIndex }
         if (item == null) {
             scrollToItem(itemIndex)
-            delay(ThreadLayoutStabilityFrameDelayMs)
+            delay(ThreadProgrammaticScrollNativeSyncDelayMs)
             return@repeat
         }
         val viewportHeight = layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset
@@ -15335,9 +15340,21 @@ private suspend fun LazyListState.scrollThreadItemToFocusedViewport(itemIndex: I
             )
         scrollToItem(itemIndex, offset)
         didScroll = true
-        delay(ThreadLayoutStabilityFrameDelayMs)
+        delay(ThreadProgrammaticScrollNativeSyncDelayMs)
     }
     return didScroll
+}
+
+private fun LazyListState.threadViewportGeometryDiagnostics(targetIndex: Int): String {
+    val info = layoutInfo
+    val visibleItems = info.visibleItemsInfo
+    val first = visibleItems.firstOrNull()
+    val last = visibleItems.lastOrNull()
+    val target = visibleItems.firstOrNull { item -> item.index == targetIndex }
+    return "viewport=${info.viewportStartOffset}..${info.viewportEndOffset} " +
+        "first=${first?.index ?: -1}:${first?.offset ?: 0}+${first?.size ?: 0} " +
+        "last=${last?.index ?: -1}:${last?.offset ?: 0}+${last?.size ?: 0} " +
+        "target=${target?.index ?: -1}:${target?.offset ?: 0}+${target?.size ?: 0}"
 }
 
 private suspend fun LazyListState.awaitThreadMessagesLayoutStability(
@@ -15479,6 +15496,11 @@ private const val ThreadBottomAnchorMinimumAttempts = 2
 private const val ThreadInitialBottomAnchorAttempts = 12
 private const val ThreadInitialBottomAnchorRetryDelayMs = 80L
 private const val ThreadLayoutStabilityFrameDelayMs = 16L
+// Kuikly's tryExpandStartSizeNoScroll() defers native ScrollView offset
+// alignment by 150 ms and cancels the previous job whenever scrollToItem()
+// runs again. Leave explicit headroom so initial/focused programmatic anchors
+// cannot starve that Compose -> native commit with 16 ms snap loops.
+internal const val ThreadProgrammaticScrollNativeSyncDelayMs = 200L
 private const val ThreadMarkdownTagActiveFeedbackMs = 900L
 private const val ThreadFirstContentTaskJoinDelayMs = 96L
 private const val ThreadLayoutStabilityMaxFrames = 30

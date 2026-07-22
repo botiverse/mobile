@@ -933,6 +933,10 @@ class ThreadBottomAnchorSignatureTest {
                 latestItemVisible = true
             )
         )
+        assertTrue(
+            ThreadProgrammaticScrollNativeSyncDelayMs > 150L,
+            "programmatic anchor retries must not cancel Kuikly's 150ms native offset sync"
+        )
     }
 
     @Test
