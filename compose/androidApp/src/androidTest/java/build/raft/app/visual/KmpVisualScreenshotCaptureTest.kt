@@ -735,7 +735,8 @@ class KmpVisualScreenshotCaptureTest {
             caseId = "components.thread.files.list",
             pageName = "compose_thread_files_visual",
             crop = THREAD_FILES_LIST_CROP,
-            settleMs = 1_500
+            settleMs = 1_500,
+            beforeScreenshot = { dismissCompatibilityDialog() }
         )
     }
 

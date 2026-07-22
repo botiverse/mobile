@@ -20200,7 +20200,11 @@ private fun ThreadFilesTab(
             onAuthRequired(payload.errorCode)
         }
     }
-    ThreadFilesContent(payload = payload, attachmentOpenStates = attachmentOpenStates) { action, attachmentId ->
+    ThreadFilesContent(
+        payload = payload,
+        attachmentOpenStates = attachmentOpenStates,
+        autoLoadRouteListKey = threadInstanceKey
+    ) { action, attachmentId ->
         when (action) {
             "open" -> {
                 val cleanAttachmentId = attachmentId?.takeIf { it.isNotBlank() } ?: return@ThreadFilesContent
