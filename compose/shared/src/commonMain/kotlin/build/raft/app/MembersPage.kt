@@ -71,6 +71,8 @@ import build.raft.app.data.parseSharedThreadPickedPlatformFiles
 import build.raft.app.data.RealChannelRepository
 import build.raft.app.data.RealMemberRepository
 import build.raft.app.data.ScreenError
+import build.raft.app.data.SettingsServerActionResult
+import build.raft.app.data.SettingsServerMemberRoleUpdateRequest
 import build.raft.app.data.SlockAgentsApiClient
 import build.raft.app.data.SlockAgentsNetworkApi
 import build.raft.app.data.SlockComputersApiClient
@@ -273,6 +275,88 @@ internal enum class MembersAgentServerRole(
     Admin("admin", "Admin", SlockColor.AccentPink),
     Member("member", "Member", SlockColor.AccentLavender)
 }
+
+internal enum class MembersHumanServerRole(
+    val wireValue: String,
+    val backgroundColor: Color
+) {
+    Owner("owner", SlockColor.AccentOrange),
+    Admin("admin", SlockColor.AccentPink),
+    Member("member", SlockColor.AccentLavender)
+}
+
+@Composable
+private fun MembersHumanServerRole.localizedLabel(): String =
+    when (this) {
+        MembersHumanServerRole.Owner -> stringResource(MR.strings.member_role_owner)
+        MembersHumanServerRole.Admin -> stringResource(MR.strings.member_role_admin)
+        MembersHumanServerRole.Member -> stringResource(MR.strings.member_role_member)
+    }
+
+internal fun String?.toMembersHumanServerRoleOrNull(): MembersHumanServerRole? =
+    when (this?.trim()?.lowercase()) {
+        MembersHumanServerRole.Owner.wireValue -> MembersHumanServerRole.Owner
+        MembersHumanServerRole.Admin.wireValue -> MembersHumanServerRole.Admin
+        MembersHumanServerRole.Member.wireValue -> MembersHumanServerRole.Member
+        else -> null
+    }
+
+internal fun membersEditableHumanServerRoles(
+    actorRole: String?,
+    targetRole: String?,
+    targetMembershipStatus: String?,
+    accessMode: MemberDetailAccessMode,
+    targetMemberId: String,
+    currentUserId: String?,
+    targetServerId: String?,
+    currentServerId: String?,
+    ownerCount: Int? = null
+): List<MembersHumanServerRole> {
+    if (targetMembershipStatus != "active") return emptyList()
+    if (accessMode != MemberDetailAccessMode.LocalFull) return emptyList()
+    val normalizedTargetId = targetMemberId.trim()
+    if (normalizedTargetId.isBlank() || currentUserId?.trim() == normalizedTargetId) return emptyList()
+    val normalizedCurrentServerId = currentServerId?.trim().orEmpty()
+    val normalizedTargetServerId = targetServerId?.trim().orEmpty()
+    if (
+        normalizedTargetServerId.isBlank() ||
+        normalizedCurrentServerId.isBlank() ||
+        normalizedTargetServerId != normalizedCurrentServerId
+    ) {
+        return emptyList()
+    }
+    val currentRole = targetRole.toMembersHumanServerRoleOrNull() ?: return emptyList()
+    return when (actorRole.normalizedMembersServerRole()) {
+        "owner" -> MembersHumanServerRole.entries.filter { candidate ->
+            candidate != currentRole &&
+                !(currentRole == MembersHumanServerRole.Owner && (ownerCount == null || ownerCount <= 1))
+        }
+        "admin" ->
+            if (currentRole == MembersHumanServerRole.Member) listOf(MembersHumanServerRole.Admin)
+            else emptyList()
+        else -> emptyList()
+    }
+}
+
+internal enum class MembersHumanRoleSaveOutcome { Success, NoPermission, Error }
+
+internal fun membersHumanRoleUpdateServerMatches(
+    expectedServerId: String?,
+    selectedServerId: String?
+): Boolean {
+    val expected = expectedServerId?.trim()?.takeIf { it.isNotBlank() } ?: return false
+    val selected = selectedServerId?.trim()?.takeIf { it.isNotBlank() } ?: return false
+    return expected == selected
+}
+
+internal fun DataResult<SettingsServerActionResult>.membersHumanRoleSaveOutcome(): MembersHumanRoleSaveOutcome =
+    when (this) {
+        is DataResult.Content ->
+            if (data.success) MembersHumanRoleSaveOutcome.Success else MembersHumanRoleSaveOutcome.Error
+        is DataResult.Empty -> MembersHumanRoleSaveOutcome.Error
+        is DataResult.NoPermission -> MembersHumanRoleSaveOutcome.NoPermission
+        is DataResult.Error -> MembersHumanRoleSaveOutcome.Error
+    }
 
 @Composable
 private fun MembersAgentServerRole.localizedLabel(): String =
@@ -809,8 +893,10 @@ private val membersHumanDetailVisualMember = MemberProfile(
     displayName = "artin",
     handle = "@artin",
     kind = MemberKind.Human,
-    description = "Owner",
-    roleDescription = "Owner",
+    description = "Product design and server administration.",
+    roleDescription = "Member",
+    serverRole = "member",
+    serverId = ServerId("visual-server"),
     email = "artin@slock.ai",
     avatarLabel = "A",
     presence = Presence.Active,
@@ -1520,7 +1606,8 @@ internal sealed interface MemberDetailRouteState {
     data class Human(
         val server: ServerSummary,
         val currentUserId: String?,
-        val member: MemberProfile
+        val member: MemberProfile,
+        val accessMode: MemberDetailAccessMode = MemberDetailAccessMode.LocalFull
     ) : MemberDetailRouteState
 }
 
@@ -1655,7 +1742,8 @@ internal fun memberDetailInitialRouteState(
             MemberDetailRouteState.Human(
                 server = server,
                 currentUserId = null,
-                member = member
+                member = member.copy(serverId = identity.sourceServerId ?: member.serverId),
+                accessMode = identity.memberDetailAccessMode(activeServer)
             )
         MemberKind.System -> null
     }
@@ -1689,6 +1777,19 @@ private class MemberDetailRouteProvider(
     val storeScope: SlockShellStoreScope,
     val agentsApiClient: build.raft.app.data.SlockAgentsApiClient? = null
 ) {
+    suspend fun updateHumanRole(
+        expectedServerId: String,
+        memberId: String,
+        role: MembersHumanServerRole
+    ): DataResult<SettingsServerActionResult> {
+        if (!membersHumanRoleUpdateServerMatches(expectedServerId, selectedServerStore.selectedServerId.value)) {
+            return DataResult.Error(ScreenError("member_role_server_changed", retryable = false))
+        }
+        return settingsRepository.updateServerMemberRole(
+            SettingsServerMemberRoleUpdateRequest(memberId = memberId, role = role.wireValue)
+        )
+    }
+
     suspend fun cachedContext(
         identity: MemberDetailIdentity
     ): MemberDetailRouteState.Agent? {
@@ -1726,12 +1827,13 @@ private class MemberDetailRouteProvider(
         }
         return identity.dispatchMemberDetailLookup(
             currentServerId = serverId,
-            loadHuman = { selectedId, sourceServerId, _ ->
+            loadHuman = { selectedId, sourceServerId, accessMode ->
                 loadHumanMember(
                     selectedId = selectedId,
                     profileServerId = sourceServerId ?: ServerId(serverId),
                     server = server,
-                    currentUserId = session.user.id
+                    currentUserId = session.user.id,
+                    accessMode = accessMode
                 )
             },
             loadAgent = { selectedId, accessMode ->
@@ -1920,13 +2022,15 @@ private class MemberDetailRouteProvider(
         selectedId: MemberId,
         profileServerId: ServerId,
         server: ServerSummary,
-        currentUserId: String?
+        currentUserId: String?,
+        accessMode: MemberDetailAccessMode
     ): MemberDetailRouteState {
         agentDetailStore.dispatch(SharedAgentDetailIntent.DeselectMember)
         return when (val memberResult = memberRepository.getMemberProfile(DataRequestPriority.Visible, selectedId, profileServerId)) {
             is DataResult.Content -> {
-                serverMembersStore.seedProfiles(profileServerId, listOf(memberResult.data))
-                MemberDetailRouteState.Human(server, currentUserId, memberResult.data)
+                val member = memberResult.data.copy(serverId = profileServerId)
+                serverMembersStore.seedProfiles(profileServerId, listOf(member))
+                MemberDetailRouteState.Human(server, currentUserId, member, accessMode)
             }
             is DataResult.Empty ->
                 MemberDetailRouteState.Error("member_not_found")
@@ -2774,6 +2878,12 @@ private fun MemberDetailPageContent() {
                 onRemoveMember = if (canRemoveHumanMember) ({
                     provider.bridge.toast(removeFromSettings)
                 }) else null,
+                humanActorRole = current.server.role,
+                humanOwnerCount = ownerCount.takeIf { it > 0 },
+                humanAccessMode = current.accessMode,
+                onUpdateHumanRole = { memberId, role ->
+                    provider.updateHumanRole(current.server.id.value, memberId, role)
+                },
                 onOpenUrl = { linkNavigator.open(it) },
                 onOpenReminderMessage = { permalink ->
                     pager.openMembersReminderMessage(
@@ -2838,12 +2948,17 @@ private fun MemberDetailVisualSeedContent(
     }
     MembersDetailContent(
         member = seed.member,
+        currentUserId = "visual-owner",
+        currentServerId = "visual-server",
         agentDetailState = seed.agentDetailState,
         canViewPrivateAgentSurfaces = { member, _ -> member.kind == MemberKind.Agent },
         canManageAgent = { member, _ -> member.kind == MemberKind.Agent },
         onBack = {},
         onOpenDirectMessage = {},
         onCopyMemberId = {},
+        humanActorRole = "owner",
+        humanOwnerCount = 2,
+        onUpdateHumanRole = { _, _ -> DataResult.Content(SettingsServerActionResult(success = true)) },
         onOpenUrl = {},
         onUpdateAgentProfile = { DataResult.Content(seed.member) },
         onUploadAgentAvatar = null,
@@ -3680,6 +3795,10 @@ private fun MembersDetailContent(
     onOpenDirectMessage: () -> Unit,
     onCopyMemberId: () -> Unit,
     onRemoveMember: (() -> Unit)? = null,
+    humanActorRole: String? = null,
+    humanOwnerCount: Int? = null,
+    humanAccessMode: MemberDetailAccessMode = MemberDetailAccessMode.LocalFull,
+    onUpdateHumanRole: (suspend (String, MembersHumanServerRole) -> DataResult<SettingsServerActionResult>)? = null,
     onOpenUrl: (String) -> Unit,
     onOpenReminderMessage: (String) -> Unit = {},
     agentDetailActions: SharedAgentDetailActions? = null,
@@ -4273,6 +4392,12 @@ private fun MembersDetailContent(
                                 member = member,
                                 timeContext = timeContext,
                                 memberAvatarResolver = memberAvatarResolver,
+                                actorRole = humanActorRole,
+                                accessMode = humanAccessMode,
+                                currentUserId = currentUserId,
+                                currentServerId = currentServerId,
+                                ownerCount = humanOwnerCount,
+                                onUpdateRole = onUpdateHumanRole,
                                 onRemoveMember = onRemoveMember?.takeIf {
                                     member.membershipStatus != "removed"
                                 },
@@ -5630,6 +5755,12 @@ private fun MembersHumanDetailSections(
     member: MemberProfile,
     timeContext: SlockTimeContext,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    actorRole: String? = null,
+    accessMode: MemberDetailAccessMode = MemberDetailAccessMode.LocalFull,
+    currentUserId: String? = null,
+    currentServerId: String? = null,
+    ownerCount: Int? = null,
+    onUpdateRole: (suspend (String, MembersHumanServerRole) -> DataResult<SettingsServerActionResult>)? = null,
     onRemoveMember: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -5639,7 +5770,16 @@ private fun MembersHumanDetailSections(
     ) {
         MembersHumanProfileSummary(member, memberAvatarResolver)
         MembersHumanDescriptionSection(member)
-        MembersHumanInfoSection(member, timeContext)
+        MembersHumanInfoSection(
+            member = member,
+            timeContext = timeContext,
+            actorRole = actorRole,
+            accessMode = accessMode,
+            currentUserId = currentUserId,
+            currentServerId = currentServerId,
+            ownerCount = ownerCount,
+            onUpdateRole = onUpdateRole
+        )
         MembersHumanCreatedAgentsSection(member, memberAvatarResolver)
         if (onRemoveMember != null) {
             MembersHumanActionsSection(onRemoveMember)
@@ -5725,9 +5865,39 @@ private fun MembersHumanDescriptionSection(member: MemberProfile) {
 @Composable
 private fun MembersHumanInfoSection(
     member: MemberProfile,
-    timeContext: SlockTimeContext
+    timeContext: SlockTimeContext,
+    actorRole: String?,
+    accessMode: MemberDetailAccessMode,
+    currentUserId: String?,
+    currentServerId: String?,
+    ownerCount: Int?,
+    onUpdateRole: (suspend (String, MembersHumanServerRole) -> DataResult<SettingsServerActionResult>)?
 ) {
     val joined = member.joinedAt?.takeIf { it.isNotBlank() }?.membersAgentCreatedDate(timeContext)
+    val initialRole = member.serverRole.toMembersHumanServerRoleOrNull()
+        ?: member.roleDescription.toMembersHumanServerRoleOrNull()
+    var displayedRole by remember(member.id.value, initialRole?.wireValue) { mutableStateOf(initialRole) }
+    var draftRole by remember(member.id.value, initialRole?.wireValue) {
+        mutableStateOf(initialRole ?: MembersHumanServerRole.Member)
+    }
+    var editingRole by remember(member.id.value) { mutableStateOf(false) }
+    var roleMenuExpanded by remember(member.id.value) { mutableStateOf(false) }
+    var savingRole by remember(member.id.value) { mutableStateOf(false) }
+    var roleError by remember(member.id.value) { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    val permissionErrorTemplate = stringResource(MR.strings.member_error_permission)
+    val saveErrorTemplate = stringResource(MR.strings.member_error_save)
+    val editableRoles = membersEditableHumanServerRoles(
+        actorRole = actorRole,
+        accessMode = accessMode,
+        targetRole = displayedRole?.wireValue,
+        targetMembershipStatus = member.membershipStatus,
+        targetMemberId = member.id.value,
+        currentUserId = currentUserId,
+        targetServerId = member.serverId?.value,
+        currentServerId = currentServerId,
+        ownerCount = ownerCount
+    )
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
@@ -5735,10 +5905,94 @@ private fun MembersHumanInfoSection(
         MembersDetailSectionDivider()
         MembersDetailSectionTitle(stringResource(MR.strings.member_section_info).uppercase())
         MembersHumanInfoItem(label = stringResource(MR.strings.member_label_role)) {
-            MembersHumanRoleChip(
-                label = member.roleDescription?.takeIf { it.isNotBlank() } ?: stringResource(MR.strings.member_role_member),
-                backgroundColor = member.membersHumanRoleChipColor()
-            )
+            if (editingRole) {
+                Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
+                    MembersServerRoleEditor(
+                        displayValue = draftRole.localizedLabel(),
+                        badgeBackgroundColor = draftRole.backgroundColor,
+                        expanded = roleMenuExpanded,
+                        enabled = !savingRole,
+                        saving = savingRole,
+                        saveEnabled = draftRole != displayedRole,
+                        options = editableRoles.map { role ->
+                            SlockRaftUiSelectionOption(
+                                id = role.wireValue,
+                                label = role.localizedLabel(),
+                                selected = role == draftRole
+                            )
+                        },
+                        selectedId = draftRole.wireValue,
+                        error = roleError,
+                        onToggle = { roleMenuExpanded = !roleMenuExpanded },
+                        onSelect = { roleId ->
+                            roleId.toMembersHumanServerRoleOrNull()?.let {
+                                draftRole = it
+                                roleMenuExpanded = false
+                                roleError = null
+                            }
+                        },
+                        onSave = {
+                                onUpdateRole?.let { update -> scope.launch {
+                                    savingRole = true
+                                    roleError = null
+                                    val result = try {
+                                        update(member.id.value, draftRole)
+                                    } catch (cancellation: CancellationException) {
+                                        throw cancellation
+                                    } catch (_: Throwable) {
+                                        DataResult.Error(ScreenError("member_role_save_failed"))
+                                    }
+                                    when (result.membersHumanRoleSaveOutcome()) {
+                                        MembersHumanRoleSaveOutcome.Success -> {
+                                            displayedRole = draftRole
+                                            editingRole = false
+                                            roleMenuExpanded = false
+                                        }
+                                        MembersHumanRoleSaveOutcome.NoPermission -> {
+                                            val blocker = (result as DataResult.NoPermission).blocker.code
+                                            roleError = permissionErrorTemplate.membersFormat(blocker)
+                                        }
+                                        MembersHumanRoleSaveOutcome.Error -> {
+                                            val code = (result as? DataResult.Error)?.error?.code
+                                                ?: (result as? DataResult.Content)?.data?.message
+                                                ?: "member_role_save_failed"
+                                            roleError = saveErrorTemplate.membersFormat(code)
+                                        }
+                                    }
+                                    savingRole = false
+                                } }
+                        },
+                        onCancel = {
+                            draftRole = displayedRole ?: MembersHumanServerRole.Member
+                            roleError = null
+                            roleMenuExpanded = false
+                            editingRole = false
+                        }
+                    )
+                }
+            } else {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    MembersHumanRoleChip(
+                        label = displayedRole?.localizedLabel()
+                            ?: member.roleDescription?.takeIf { it.isNotBlank() }
+                            ?: stringResource(MR.strings.member_role_member),
+                        backgroundColor = displayedRole?.backgroundColor ?: member.membersHumanRoleChipColor()
+                    )
+                    if (onUpdateRole != null && editableRoles.isNotEmpty()) {
+                        MembersProfilePencilButton(
+                            onClick = {
+                                draftRole = editableRoles.first()
+                                roleError = null
+                                roleMenuExpanded = true
+                                editingRole = true
+                            }
+                        )
+                    }
+                }
+            }
         }
         member.email?.takeIf { it.isNotBlank() }?.let { email ->
             MembersHumanInfoItem(label = stringResource(MR.strings.member_label_email)) {
@@ -5807,6 +6061,85 @@ private fun MembersHumanRoleChip(
 }
 
 @Composable
+private fun MembersServerRoleEditor(
+    displayValue: String,
+    badgeBackgroundColor: Color,
+    expanded: Boolean,
+    enabled: Boolean,
+    saving: Boolean,
+    saveEnabled: Boolean,
+    options: List<SlockRaftUiSelectionOption>,
+    selectedId: String,
+    error: String?,
+    onToggle: () -> Unit,
+    onSelect: (String) -> Unit,
+    onSave: () -> Unit,
+    onCancel: () -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+    ) {
+        Row(
+            modifier = Modifier
+                .widthIn(min = 160.dp)
+                .height(33.dp)
+                .background(badgeBackgroundColor)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .clickable(enabled = enabled, onClick = onToggle)
+                .padding(horizontal = SlockSpacing.Sm, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = displayValue,
+                style = SlockType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 18.sp),
+                color = SlockColor.TextBlack,
+                modifier = Modifier.weight(1f)
+            )
+            SlockLucideIcon(
+                SlockLucideIconName.ChevronDown,
+                modifier = Modifier.size(14.dp),
+                color = SlockColor.TextBlackArgb,
+                rotationDegrees = if (expanded) 180f else 0f
+            )
+        }
+        if (expanded && enabled) {
+            SlockRaftUiSelectionPopover(
+                title = stringResource(MR.strings.member_label_role),
+                options = options,
+                selectedId = selectedId,
+                modifier = Modifier.widthIn(min = 160.dp),
+                showHeader = false,
+                onSelect = { option -> onSelect(option.id) }
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
+            SlockBrutalActionButton(
+                label = if (saving) stringResource(MR.strings.member_action_saving) else stringResource(MR.strings.common_save),
+                onClick = onSave,
+                enabled = enabled && saveEnabled,
+                backgroundColor = SlockColor.BrandYellow
+            )
+            SlockBrutalActionButton(
+                label = stringResource(MR.strings.common_cancel),
+                onClick = onCancel,
+                enabled = enabled,
+                backgroundColor = SlockColor.SurfaceWhite
+            )
+        }
+        error?.let {
+            Text(
+                text = it,
+                style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp)
+                    .withSlockFontWeight(FontWeight.Bold),
+                color = SlockColor.AccentRed
+            )
+        }
+    }
+}
+
+@Composable
 private fun MembersAgentServerRoleChip(role: MembersAgentServerRole?) {
     val label = role?.localizedLabel() ?: stringResource(MR.strings.member_role_none)
     val backgroundColor = role?.backgroundColor ?: SlockColor.EmptyStateGray
@@ -5823,53 +6156,6 @@ private fun MembersAgentServerRoleChip(role: MembersAgentServerRole?) {
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
-    }
-}
-
-@Composable
-private fun MembersAgentServerRoleEditor(
-    role: MembersAgentServerRole,
-    expanded: Boolean,
-    enabled: Boolean,
-    onToggle: () -> Unit
-) {
-    val shadowOffset = if (enabled) SlockShadow.BrutalSmall else 0.dp
-    Box(
-        modifier = Modifier.padding(end = shadowOffset, bottom = shadowOffset),
-        propagateMinConstraints = true
-    ) {
-        if (enabled) {
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .offset(x = shadowOffset, y = shadowOffset)
-                    .background(SlockColor.ShadowBlack)
-            )
-        }
-        Row(
-            modifier = Modifier
-                .widthIn(min = 160.dp)
-                .height(33.dp)
-                .background(role.backgroundColor)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .clickable(enabled = enabled, onClick = onToggle)
-                .padding(horizontal = SlockSpacing.Sm, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = role.localizedLabel(),
-                style = SlockType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 18.sp),
-                color = SlockColor.TextBlack,
-                maxLines = 1
-            )
-            SlockLucideIcon(
-                SlockLucideIconName.ChevronDown,
-                modifier = Modifier.size(14.dp),
-                color = SlockColor.TextBlackArgb,
-                rotationDegrees = if (expanded) 180f else 0f
-            )
-        }
     }
 }
 
@@ -7008,58 +7294,32 @@ private fun MembersAgentProfileTab(
                         modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
                     ) {
-                        MembersAgentServerRoleEditor(
-                            role = draftServerRole,
+                        MembersServerRoleEditor(
+                            displayValue = draftServerRole.localizedLabel(),
+                            badgeBackgroundColor = draftServerRole.backgroundColor,
                             expanded = serverRoleMenuExpanded,
                             enabled = !savingServerRole,
-                            onToggle = { serverRoleMenuExpanded = !serverRoleMenuExpanded }
-                        )
-                        if (serverRoleMenuExpanded && !savingServerRole) {
-                            SlockRaftUiSelectionPopover(
-                                title = stringResource(MR.strings.member_label_role),
-                                options = membersAgentServerRoleOptions(draftServerRole),
-                                selectedId = draftServerRole.wireValue,
-                                modifier = Modifier.widthIn(min = 160.dp),
-                                showHeader = false,
-                                onSelect = { option ->
-                                    val nextRole = option.id.toMembersAgentServerRoleOrNull()
-                                        ?: return@SlockRaftUiSelectionPopover
+                            saving = savingServerRole,
+                            saveEnabled = draftServerRole != currentServerRole,
+                            options = membersAgentServerRoleOptions(draftServerRole),
+                            selectedId = draftServerRole.wireValue,
+                            error = serverRoleError,
+                            onToggle = { serverRoleMenuExpanded = !serverRoleMenuExpanded },
+                            onSelect = { roleId ->
+                                roleId.toMembersAgentServerRoleOrNull()?.let { nextRole ->
                                     draftServerRole = nextRole
                                     serverRoleMenuExpanded = false
                                     serverRoleError = null
                                 }
-                            )
-                        }
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            SlockBrutalActionButton(
-                                label = if (savingServerRole) "Saving\u2026" else "Save",
-                                onClick = { saveServerRole() },
-                                enabled = !savingServerRole,
-                                backgroundColor = SlockColor.BrandYellow
-                            )
-                            SlockBrutalActionButton(
-                                label = stringResource(MR.strings.common_cancel),
-                                onClick = {
-                                    draftServerRole = currentServerRole ?: MembersAgentServerRole.Member
-                                    serverRoleError = null
-                                    serverRoleMenuExpanded = false
-                                    editingServerRole = false
-                                },
-                                enabled = !savingServerRole,
-                                backgroundColor = SlockColor.SurfaceWhite
-                            )
-                        }
-                        if (serverRoleError != null) {
-                            Text(
-                                text = serverRoleError.orEmpty(),
-                                style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp)
-                                    .withSlockFontWeight(FontWeight.Bold),
-                                color = SlockColor.AccentRed
-                            )
-                        }
+                            },
+                            onSave = { saveServerRole() },
+                            onCancel = {
+                                draftServerRole = currentServerRole ?: MembersAgentServerRole.Member
+                                serverRoleError = null
+                                serverRoleMenuExpanded = false
+                                editingServerRole = false
+                            }
+                        )
                     }
                 } else {
                     Row(

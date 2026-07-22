@@ -21263,7 +21263,11 @@ private val homeActivityVisualSnapshot = InboxSnapshot(
                 latestActivitySenderName = "artin",
                 latestActivitySenderId = "visual-user",
                 latestActivitySenderKind = MemberKind.Human,
-                replyCount = 5
+                replyCount = 5,
+                taskNumber = 607,
+                taskStatus = TaskStatus.InProgress,
+                taskClaimedByName = "Mahua",
+                hasDraft = true
             ),
             InboxItem(
                 key = "activity-channel-artifacts",
@@ -21296,6 +21300,15 @@ private val homeActivityVisualSnapshot = InboxSnapshot(
     totalUnreadCount = 3,
     hasMore = false
 )
+
+private val homeActivityVisualDraftProjection =
+    setOf(
+        SharedThreadComposerDraftRecord(
+            key = "reply:msg-agent-reply",
+            sendChannelId = "thread-msg-agent-reply",
+            parentMessageId = "msg-agent-reply"
+        )
+    ).toSharedThreadComposerDraftProjection()
 
 @Composable
 internal fun HomeSearchVisualContent(initialOpenFilterId: String? = null) {
@@ -21383,6 +21396,8 @@ internal fun HomeActivityVisualContent() {
             snapshot = homeActivityVisualSnapshot,
             onOpenItem = {},
             onClose = {},
+            activityTaskStatusBadgesEnabled = true,
+            draftProjection = homeActivityVisualDraftProjection,
             modifier = Modifier.fillMaxSize()
         )
     }
