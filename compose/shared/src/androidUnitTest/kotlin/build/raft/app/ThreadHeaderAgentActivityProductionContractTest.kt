@@ -18,6 +18,11 @@ class ThreadHeaderAgentActivityProductionContractTest {
         assertContains(header, "headerDisplay.dmAgentActivityMemberId()")
         assertContains(header, "rememberSlockAgentStatusIndicatorState(")
         assertContains(header, "dmAgentActivity?.let { ThreadDmAgentActivity(state = it) }")
+        assertTrue(
+            header.indexOf("dmAgentActivity?.let { ThreadDmAgentActivity(state = it) }") <
+                header.indexOf("showActions &&"),
+            "Agent activity must stay beside the DM title, before the independent right-side action group"
+        )
         assertContains(header, "text = state.label")
         assertContains(header, "pulsing = state.pulsing")
         assertFalse("Offline" in header, "Missing live state must not invent an offline activity label")
