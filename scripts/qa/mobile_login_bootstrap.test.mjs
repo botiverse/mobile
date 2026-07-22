@@ -70,4 +70,3 @@ test("READY parser rejects another attempt and emits token-free Stamp payload", 
   assert.equal(JSON.stringify(payload).includes("access-secret"), false);
   assert.equal(parseReadyLine(line.replace("attempt=2", "attempt=3"), { ...expected, envelopeDigest: login.envelopeDigest, attempt: 2 }), null);
 });
-

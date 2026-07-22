@@ -101,4 +101,3 @@ export function readyPayload(login, ready) {
     },
   };
 }
-
