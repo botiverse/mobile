@@ -916,7 +916,25 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
-    fun initialBottomAnchor_invisiblePaddingPrepositionsThenContinuesAnchoring() {
+    fun initialBottomAnchor_targetsDrawableLatestMessageBeforeSyntheticPadding() {
+        assertEquals(
+            30,
+            threadInitialBottomAnchorTargetItemIndex(
+                latestMessageItemIndex = 30,
+                bottomPaddingItemIndex = 31
+            )
+        )
+        assertEquals(
+            0,
+            threadInitialBottomAnchorTargetItemIndex(
+                latestMessageItemIndex = -1,
+                bottomPaddingItemIndex = 0
+            )
+        )
+    }
+
+    @Test
+    fun initialBottomAnchor_invisibleTargetPrepositionsThenContinuesAnchoring() {
         assertEquals(
             ThreadInitialBottomAnchorStage.PrepositionThenAnchor,
             threadInitialBottomAnchorStage(

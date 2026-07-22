@@ -12517,6 +12517,20 @@ private fun ThreadMessagesList(
     ) {
         renderPayload.bottomScrollPaddingListItemIndex(lazyItemCount)
     }
+    val latestMessageListItemIndex = renderPayload.latestMessageListItemIndex()
+    val initialBottomAnchorTargetItemIndex =
+        threadInitialBottomAnchorTargetItemIndex(
+            latestMessageItemIndex = latestMessageListItemIndex,
+            bottomPaddingItemIndex = latestItemIndex
+        )
+    val initialBottomAnchorTrailingPaddingPx =
+        if (latestMessageListItemIndex >= 0) {
+            with(LocalDensity.current) {
+                ThreadBottomScrollPaddingHeight.roundToPx()
+            }
+        } else {
+            0
+        }
     val listState = rememberLazyListState(
         // Kuikly's native ScrollView always starts with contentOffset=0. If
         // Compose starts at the synthetic latest/padding item, layoutInfo can
@@ -12926,7 +12940,6 @@ private fun ThreadMessagesList(
     var nextNewerPageCycleId by remember(threadInstanceKey) { mutableStateOf(0L) }
     var newerPageCycle by remember(threadInstanceKey) { mutableStateOf<ThreadNewerPageCycle?>(null) }
     val newerPageCycleActive = newerPageCycle != null
-    val latestMessageListItemIndex = renderPayload.latestMessageListItemIndex()
     suspend fun settleNewerPageCycle(cycleId: Long) {
         val cycle = newerPageCycle?.takeIf { active -> active.id == cycleId } ?: return
         if (!shouldSettleThreadNewerPageCycle(
@@ -13529,6 +13542,8 @@ private fun ThreadMessagesList(
         focusedMessageTargetSignature,
         latestMessageLayoutKey,
         latestItemIndex,
+        initialBottomAnchorTargetItemIndex,
+        initialBottomAnchorTrailingPaddingPx,
         shareSelectionCaptureActive,
         newerPageCycleActive
     ) {
@@ -13582,7 +13597,7 @@ private fun ThreadMessagesList(
             threadInitialBottomAnchorStage(
                 initialBottomAnchorReady = initialBottomAnchorReady,
                 userScrollInProgress = listState.isScrollInProgress,
-                latestItemVisible = listState.isThreadItemVisible(latestItemIndex)
+                latestItemVisible = listState.isThreadItemVisible(initialBottomAnchorTargetItemIndex)
             )
         ) {
             ThreadInitialBottomAnchorStage.UserOwned -> {
@@ -13593,12 +13608,10 @@ private fun ThreadMessagesList(
                 return@LaunchedEffect
             }
             ThreadInitialBottomAnchorStage.PrepositionThenAnchor -> {
-                // latestItemIndex is the synthetic bottom-padding item. When content
-                // arrives after rememberLazyListState was created, snapping that item
-                // to the viewport start is only a measurement preposition; returning
-                // here strands the viewport on empty padding until the first gesture.
-                // Continue into the existing bottom-alignment owner in the same effect.
-                listState.scrollToItem(latestItemIndex)
+                // The synthetic bottom-padding item is not drawable content and cannot
+                // establish the native viewport. Preposition the last real message;
+                // the anchor below includes the trailing padding in its final offset.
+                listState.scrollToItem(initialBottomAnchorTargetItemIndex)
                 delay(ThreadLayoutStabilityFrameDelayMs)
             }
             ThreadInitialBottomAnchorStage.Anchor,
@@ -13612,17 +13625,26 @@ private fun ThreadMessagesList(
                 }
                 val anchored =
                     listState.anchorInitialThreadBottomToLatest(
-                        latestItemIndex = latestItemIndex
+                        latestItemIndex = initialBottomAnchorTargetItemIndex,
+                        trailingPaddingSize = initialBottomAnchorTrailingPaddingPx
                     )
                 if (anchored) {
+                    diagnosticsLogger(
+                        "thread_initial_bottom_anchor result=anchored latestItemIndex=$latestItemIndex " +
+                            "targetItemIndex=$initialBottomAnchorTargetItemIndex " +
+                            "trailingPaddingPx=$initialBottomAnchorTrailingPaddingPx " +
+                            listState.threadViewportGeometryDiagnostics(initialBottomAnchorTargetItemIndex)
+                    )
                     initialBottomAnchorReady = true
                     return@LaunchedEffect
                 }
                 diagnosticsLogger(
                     "thread_initial_bottom_anchor result=retry latestItemIndex=$latestItemIndex " +
+                        "targetItemIndex=$initialBottomAnchorTargetItemIndex " +
+                        "trailingPaddingPx=$initialBottomAnchorTrailingPaddingPx " +
                         "totalItems=${listState.layoutInfo.totalItemsCount} " +
                         "visibleItems=${listState.layoutInfo.visibleItemsInfo.size} " +
-                        listState.threadViewportGeometryDiagnostics(latestItemIndex)
+                        listState.threadViewportGeometryDiagnostics(initialBottomAnchorTargetItemIndex)
                 )
                 delay(ThreadInitialBottomAnchorRetryDelayMs)
             }
@@ -14682,6 +14704,12 @@ private fun ThreadLazyWindowStats.toDiagnosticsString(result: String): String =
 internal fun threadInitialFirstVisibleItemIndex(latestItemIndex: Int): Int =
     0
 
+internal fun threadInitialBottomAnchorTargetItemIndex(
+    latestMessageItemIndex: Int,
+    bottomPaddingItemIndex: Int
+): Int =
+    latestMessageItemIndex.takeIf { it >= 0 } ?: bottomPaddingItemIndex
+
 internal enum class ThreadInitialBottomAnchorStage {
     UserOwned,
     PrepositionThenAnchor,
@@ -15263,7 +15291,8 @@ private fun LazyListState.canScrollToThreadItem(index: Int): Boolean =
     index >= 0 && layoutInfo.totalItemsCount > index
 
 private suspend fun LazyListState.anchorInitialThreadBottomToLatest(
-    latestItemIndex: Int
+    latestItemIndex: Int,
+    trailingPaddingSize: Int = 0
 ): Boolean {
     if (latestItemIndex < 0) return true
     repeat(ThreadInitialBottomAnchorAttempts) { attempt ->
@@ -15279,13 +15308,17 @@ private suspend fun LazyListState.anchorInitialThreadBottomToLatest(
             delay(ThreadLayoutStabilityFrameDelayMs)
         }
         awaitThreadMessagesLayoutStability(latestItemIndex)
-        scrollLatestItemToRenderedBottom(latestItemIndex)
+        scrollLatestItemToRenderedBottom(latestItemIndex, trailingPaddingSize)
         delay(ThreadLayoutStabilityFrameDelayMs)
 
         val anchorState =
             ThreadInitialBottomAnchorState(
                 canScrollToLatest = canScrollToLatest,
-                isAtRenderedBottom = isLatestItemAtRenderedBottom(latestItemIndex),
+                isAtRenderedBottom =
+                    isLatestItemAtRenderedBottom(
+                        latestItemIndex = latestItemIndex,
+                        trailingPaddingSize = trailingPaddingSize
+                    ),
                 attempt = attempt
             )
         if (shouldRevealInitialThreadBottomAnchor(anchorState)) {
@@ -15297,12 +15330,15 @@ private suspend fun LazyListState.anchorInitialThreadBottomToLatest(
     }
     scrollToItem(latestItemIndex)
     awaitThreadMessagesLayoutStability(latestItemIndex)
-    scrollLatestItemToRenderedBottom(latestItemIndex)
+    scrollLatestItemToRenderedBottom(latestItemIndex, trailingPaddingSize)
     delay(ThreadLayoutStabilityFrameDelayMs)
-    return isLatestItemAtRenderedBottom(latestItemIndex)
+    return isLatestItemAtRenderedBottom(latestItemIndex, trailingPaddingSize)
 }
 
-private suspend fun LazyListState.scrollLatestItemToRenderedBottom(latestItemIndex: Int) {
+private suspend fun LazyListState.scrollLatestItemToRenderedBottom(
+    latestItemIndex: Int,
+    trailingPaddingSize: Int = 0
+) {
     if (latestItemIndex < 0) return
     if (layoutInfo.totalItemsCount <= latestItemIndex) {
         return
@@ -15316,7 +15352,8 @@ private suspend fun LazyListState.scrollLatestItemToRenderedBottom(latestItemInd
                     itemSize = it.size,
                     viewportHeight = viewportHeight,
                     visibleItemCount = layoutInfo.visibleItemsInfo.size,
-                    totalItemCount = layoutInfo.totalItemsCount
+                    totalItemCount = layoutInfo.totalItemsCount,
+                    trailingPaddingSize = trailingPaddingSize
                 )
             }
             ?: 0
@@ -15431,10 +15468,11 @@ internal fun threadLatestItemBottomAnchorScrollOffset(
     itemSize: Int,
     viewportHeight: Int,
     visibleItemCount: Int,
-    totalItemCount: Int
+    totalItemCount: Int,
+    trailingPaddingSize: Int = 0
 ): Int {
     if (itemSize <= 0 || viewportHeight <= 0) return 0
-    return itemSize - viewportHeight
+    return itemSize + trailingPaddingSize.coerceAtLeast(0) - viewportHeight
 }
 
 internal fun threadFocusedItemScrollOffset(
@@ -15454,11 +15492,14 @@ private fun LazyListState.shouldShowThreadBackToBottom(latestItemIndex: Int): Bo
     return latestBottom < layoutInfo.viewportEndOffset - ThreadBackToBottomTolerancePx
 }
 
-private fun LazyListState.isLatestItemAtRenderedBottom(latestItemIndex: Int): Boolean {
+private fun LazyListState.isLatestItemAtRenderedBottom(
+    latestItemIndex: Int,
+    trailingPaddingSize: Int = 0
+): Boolean {
     val layoutInfo = layoutInfo
     if (layoutInfo.totalItemsCount <= latestItemIndex) return false
     val latestItem = layoutInfo.visibleItemsInfo.firstOrNull { it.index == latestItemIndex } ?: return false
-    val latestBottom = latestItem.offset + latestItem.size
+    val latestBottom = latestItem.offset + latestItem.size + trailingPaddingSize.coerceAtLeast(0)
     return kotlin.math.abs(latestBottom - layoutInfo.viewportEndOffset) <= ThreadBackToBottomTolerancePx
 }
 
