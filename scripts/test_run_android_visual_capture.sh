@@ -171,6 +171,10 @@ case "$cmd" in
         ;;
       cmd)
         if [[ "${2:-}" == "package" && "${3:-}" == "list" ]]; then
+          # Android's substring filter can return the instrumentation package
+          # before the exact target package. The runner must bind provenance to
+          # the exact app package instead of taking the first UID in the list.
+          echo "package:build.raft.app.connectedtest.test uid:10124"
           echo "package:build.raft.app.connectedtest uid:10123"
         elif [[ "${2:-}" == "uimode" && "${3:-}" == "night" ]]; then
           echo "Night mode: no"

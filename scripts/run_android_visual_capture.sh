@@ -617,7 +617,17 @@ TEST_INSTALLED_SHA256="$(installed_apk_sha256 "$TEST_PACKAGE" test)"
 CURRENT_PHASE="freeze_process_scope"
 best_effort_device_identity
 [[ -n "$BOOT_ID" ]] || finish_early_failure 1 "device_boot_id_missing" "Device boot ID unavailable"
-TARGET_UID="$($ADB_BIN shell cmd package list packages -U "$APP_PACKAGE" 2>/dev/null | tr -d '\r' | sed -n 's/.*uid:\([0-9][0-9]*\).*/\1/p' | head -n 1)"
+TARGET_UID="$($ADB_BIN shell cmd package list packages -U "$APP_PACKAGE" 2>/dev/null | tr -d '\r' | awk -v package="$APP_PACKAGE" '
+  $1 == "package:" package {
+    for (field_index = 2; field_index <= NF; field_index++) {
+      if ($field_index ~ /^uid:[0-9]+$/) {
+        sub(/^uid:/, "", $field_index)
+        print $field_index
+        exit
+      }
+    }
+  }
+')"
 [[ "$TARGET_UID" =~ ^[1-9][0-9]*$ ]] || finish_early_failure 1 "target_uid_missing" "Target package UID unavailable"
 
 "$ADB_BIN" shell am force-stop "$TEST_PACKAGE" || true
