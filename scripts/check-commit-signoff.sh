@@ -8,6 +8,24 @@ set -euo pipefail
 
 MAIL_BUILD_EMAIL_RE='[A-Za-z0-9._%+-]+@mail\.build'
 SIGNOFF_RE="^[[:space:]]*Signed-off-by:[[:space:]].*<${MAIL_BUILD_EMAIL_RE}>[[:space:]]*$"
+ATTESTATIONS_FILE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/commit-signoff-attestations.tsv"
+
+attested_source_for_commit() {
+  local commit="$1"
+  [ -f "${ATTESTATIONS_FILE}" ] || return 1
+  awk -F '\t' -v commit="${commit}" '
+    $0 !~ /^#/ && $1 == commit && $2 ~ /^[0-9a-f]{40}$/ && $3 ~ /^[A-Za-z0-9._%+-]+@mail[.]build$/ {
+      if (found) exit 2
+      source = $2
+      signer = $3
+      found = 1
+    }
+    END {
+      if (!found) exit 1
+      print source "\t" signer
+    }
+  ' "${ATTESTATIONS_FILE}"
+}
 
 print_fix_instructions() {
   cat <<'EOF'
@@ -62,12 +80,16 @@ check_commit_range() {
     exit 0
   fi
 
-  local commit body subject
+  local commit body subject attestation
   while IFS= read -r commit; do
     body="$(git log -1 --format='%B' "$commit")"
     subject="$(git log -1 --format='%s' "$commit")"
     if ! printf '%s\n' "$body" | grep -qiE "$SIGNOFF_RE"; then
-      fail "commit sign-off check failed — ${commit} (${subject}) lacks a Signed-off-by trailer with @mail.build."
+      if attestation="$(attested_source_for_commit "$commit")"; then
+        echo "commit sign-off: immutable merge ${commit} (${subject}) is attested by signed source ${attestation%%$'\t'*} (${attestation#*$'\t'})."
+      else
+        fail "commit sign-off check failed — ${commit} (${subject}) lacks a Signed-off-by trailer with @mail.build."
+      fi
     fi
   done < <(git rev-list --reverse "$range")
 

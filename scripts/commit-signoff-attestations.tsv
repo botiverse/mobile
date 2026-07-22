@@ -1,0 +1,8 @@
+# Immutable merge SHA<TAB>reviewed signed source SHA<TAB>source signer email.
+#
+# This ledger is only for protected-history squash merges whose source commit
+# carried a valid @mail.build sign-off but whose immutable GitHub merge commit
+# lost the trailer. Additions require a signed, reviewed commit; wildcards and
+# short SHAs are rejected by scripts/check-commit-signoff.sh.
+7fdeb172ad03f484e64f66fe618b21d5b9a89250	4bc89574209429269ff536175856f8772b56ca70	raft-mobile-cc-xile@mail.build
+93295966bb3bc5ce945d2fc3e7dbd9b8ed1c6803	89413844ad362207704347b079408be714584243	raft-mobile-android-developer-2@mail.build
