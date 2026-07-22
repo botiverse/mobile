@@ -909,10 +909,10 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
-    fun initialFirstVisibleIndex_usesLatestItemInsteadOfTop() {
+    fun initialFirstVisibleIndex_buildsNativeViewportAtTopBeforeAnchoring() {
         assertEquals(0, threadInitialFirstVisibleItemIndex(-1))
         assertEquals(0, threadInitialFirstVisibleItemIndex(0))
-        assertEquals(29, threadInitialFirstVisibleItemIndex(29))
+        assertEquals(0, threadInitialFirstVisibleItemIndex(29))
     }
 
     @Test
@@ -932,10 +932,6 @@ class ThreadBottomAnchorSignatureTest {
                 userScrollInProgress = false,
                 latestItemVisible = true
             )
-        )
-        assertTrue(
-            ThreadProgrammaticScrollNativeSyncDelayMs > 150L,
-            "programmatic anchor retries must not cancel Kuikly's 150ms native offset sync"
         )
     }
 
@@ -992,7 +988,7 @@ class ThreadBottomAnchorSignatureTest {
         val latestIndex = replyThreadPayload.latestMessageListItemIndexPublic()
 
         assertEquals(3, latestIndex)
-        assertEquals(3, threadInitialFirstVisibleItemIndex(latestIndex))
+        assertEquals(0, threadInitialFirstVisibleItemIndex(latestIndex))
         assertEquals(
             true,
             shouldAnchorLatestLocalSendToBottom(
