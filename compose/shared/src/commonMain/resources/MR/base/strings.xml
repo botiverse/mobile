@@ -239,6 +239,12 @@
     <string name="thread_error_reason_response_unreadable">The response could not be read. Please try again.</string>
     <string name="thread_error_reason_cancelled">The request was cancelled. Please try again.</string>
     <string name="thread_error_reason_generic">Something went wrong. Please try again.</string>
+    <string name="thread_send_failure_summary">Send failed: %1$s</string>
+    <string name="thread_send_failure_retry">Retry</string>
+    <string name="thread_send_failure_details">Details</string>
+    <string name="thread_send_failure_hide_details">Hide details</string>
+    <string name="thread_send_failure_copy_details">Copy details</string>
+    <string name="thread_send_failure_details_copied">Failure details copied</string>
     <string name="thread_state_original_unavailable">Original message is unavailable.</string>
     <string name="thread_reply_title">Thread</string>
     <string name="thread_state_no_replies">No replies yet</string>
