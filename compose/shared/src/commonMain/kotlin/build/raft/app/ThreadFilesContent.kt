@@ -7,6 +7,10 @@ import build.raft.app.data.formatAttachmentSizeLabel
 import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
@@ -159,6 +163,7 @@ internal fun ThreadAttachmentOpenUiState?.threadAttachmentIsOpening(): Boolean =
 internal fun ThreadFilesContent(
     payload: KuiklyThreadFilesPayload,
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
+    autoLoadRouteListKey: String = payload.instanceId,
     onEvent: (action: String, attachmentId: String?) -> Unit
 ) {
     Column(
@@ -170,7 +175,7 @@ internal fun ThreadFilesContent(
             "error" -> ThreadFilesError(payload.errorCode ?: "unknown_error") { onEvent("retry", null) }
             "no_permission" -> ThreadFilesStateMessage(stringResource(MR.strings.thread_files_no_permission), payload.errorCode ?: "missing capability")
             "empty" -> ThreadFilesStateMessage(stringResource(MR.strings.thread_files_empty_title), stringResource(MR.strings.thread_files_empty_detail))
-            else -> ThreadFilesList(payload, attachmentOpenStates, onEvent)
+            else -> ThreadFilesList(payload, attachmentOpenStates, autoLoadRouteListKey, onEvent)
         }
     }
 }
@@ -179,6 +184,7 @@ internal fun ThreadFilesContent(
 private fun ThreadFilesList(
     payload: KuiklyThreadFilesPayload,
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState>,
+    autoLoadRouteListKey: String,
     onEvent: (action: String, attachmentId: String?) -> Unit
 ) {
     if (payload.items.isEmpty()) {
@@ -186,8 +192,10 @@ private fun ThreadFilesList(
         return
     }
     val listState = rememberLazyListState()
+    var autoLoadFence by remember { mutableStateOf(ThreadFilesAutoLoadFence()) }
     LaunchedEffect(
         listState,
+        autoLoadRouteListKey,
         payload.items.size,
         payload.hasMore,
         payload.loadingMore,
@@ -199,8 +207,10 @@ private fun ThreadFilesList(
         }
             .distinctUntilChanged()
             .collect { lastVisibleItemIndex ->
-                if (
-                    threadFilesShouldRequestLoadMore(
+                val transition =
+                    threadFilesAutoLoadTransition(
+                        fence = autoLoadFence,
+                        routeListKey = autoLoadRouteListKey,
                         itemCount = payload.items.size,
                         lastVisibleItemIndex = lastVisibleItemIndex,
                         hasMore = payload.hasMore,
@@ -208,7 +218,8 @@ private fun ThreadFilesList(
                         nextCursor = payload.nextCursor,
                         errorCode = payload.errorCode
                     )
-                ) {
+                autoLoadFence = transition.fence
+                if (transition.requestedCursor != null) {
                     onEvent("loadMore", null)
                 }
             }
@@ -241,6 +252,54 @@ private fun ThreadFilesList(
                 )
             }
         }
+    }
+}
+
+internal data class ThreadFilesAutoLoadFence(
+    val routeListKey: String = "",
+    val lastAutoRequestedCursor: String? = null
+)
+
+internal data class ThreadFilesAutoLoadTransition(
+    val fence: ThreadFilesAutoLoadFence,
+    val requestedCursor: String? = null
+)
+
+internal fun threadFilesAutoLoadTransition(
+    fence: ThreadFilesAutoLoadFence,
+    routeListKey: String,
+    itemCount: Int,
+    lastVisibleItemIndex: Int,
+    hasMore: Boolean,
+    loadingMore: Boolean,
+    nextCursor: String?,
+    errorCode: String?
+): ThreadFilesAutoLoadTransition {
+    val routeFence =
+        if (fence.routeListKey == routeListKey) {
+            fence
+        } else {
+            ThreadFilesAutoLoadFence(routeListKey = routeListKey)
+        }
+    val cursor = nextCursor?.takeIf { it.isNotBlank() }
+    val shouldRequest =
+        cursor != null &&
+            cursor != routeFence.lastAutoRequestedCursor &&
+            threadFilesShouldRequestLoadMore(
+                itemCount = itemCount,
+                lastVisibleItemIndex = lastVisibleItemIndex,
+                hasMore = hasMore,
+                loadingMore = loadingMore,
+                nextCursor = cursor,
+                errorCode = errorCode
+            )
+    return if (shouldRequest) {
+        ThreadFilesAutoLoadTransition(
+            fence = routeFence.copy(lastAutoRequestedCursor = cursor),
+            requestedCursor = cursor
+        )
+    } else {
+        ThreadFilesAutoLoadTransition(fence = routeFence)
     }
 }
 
