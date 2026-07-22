@@ -50,6 +50,10 @@ def main() -> int:
     assert "captureKmpSettingsPageCase" not in appearance
     assert "prior.sameAs(normalized)" in harness
     assert "clamped capture rejected" in harness
+    forward_probe = harness.split("fun captureThreadForwardModalScrollProbe()", 1)[1].split("\n    private fun", 1)[0]
+    assert "FORWARD_SCROLL_PROBE phase=swipe" in forward_probe
+    assert "FORWARD_SCROLL_PROBE phase=tap" in forward_probe
+    assert "writeSuccessfulVisualArtifacts(" in forward_probe
     assert "settings_route_visual_ready destination=${route.destination}" in settings
     assert '--all --shard-index "$SHARD_INDEX" --shard-total "$SHARD_TOTAL"' in runner
     assert "missing_artifact_cases" in runner
