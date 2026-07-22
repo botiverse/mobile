@@ -129,6 +129,7 @@ class FocusDismissProductionContractTest {
         val thread = source("build/raft/app/ThreadPage.kt")
         val composer = source("build/raft/app/ThreadComposerPage.kt")
         val settings = source("build/raft/app/SettingsHomePage.kt")
+        val account = source("build/raft/app/SettingsAccountPage.kt")
         val feedback =
             functionBlock(
                 settings,
@@ -146,6 +147,18 @@ class FocusDismissProductionContractTest {
                 basic,
                 "internal fun Modifier.dismissInputFocusOnScrollableChrome(",
                 "/**\n * Installs the shared blank-down focus-dismiss boundary"
+            )
+        val accountContent =
+            functionBlock(
+                account,
+                "internal fun SettingsAccountContent(",
+                "@Composable\nprivate fun SettingsAccountSectionHeader("
+            )
+        val accountProfileCard =
+            functionBlock(
+                account,
+                "private fun SettingsAccountProfileCard(",
+                "internal fun settingsAccountHeaderHandleLabel("
             )
 
         assertContains(thread, ".dismissInputFocusOnScrollableChrome()\n                    .touchListener { type, _ ->")
@@ -167,13 +180,29 @@ class FocusDismissProductionContractTest {
                 .sorted()
         assertTrue(
             scrollableChromeCallsites ==
-                listOf("build/raft/app/SettingsHomePage.kt", "build/raft/app/ThreadPage.kt"),
+                listOf(
+                    "build/raft/app/SettingsAccountPage.kt",
+                    "build/raft/app/SettingsHomePage.kt",
+                    "build/raft/app/ThreadPage.kt"
+                ),
             "Unexpected production scrollable-chrome callsites: $scrollableChromeCallsites"
         )
+        assertContains(
+            accountContent,
+            ".fillMaxSize()\n                .dismissInputFocusOnScrollableChrome()\n                .background(SlockColor.SurfaceWhite)"
+        )
+        assertContains(accountContent, "item { SettingsAccountProfileCard(")
+        assertContains(accountProfileCard, "SlockBrutalTextField(")
+        assertContains(accountProfileCard, "label = payload.displayNameLabel")
         assertFalse("focusManager.clearFocus(force = true)" in thread)
         assertContains(scrollableChromeObserver, "shouldDismissInputFocusOnScrollableChrome(type)")
-        assertContains(scrollableChromeObserver, "focusOwnerRegistry?.hasActiveOwner == true")
+        assertContains(scrollableChromeObserver, "val scrollAnchor = remember { SlockLiveRootAnchorRef() }")
+        assertContains(scrollableChromeObserver, "onGloballyPositioned(scrollAnchor::update)")
+        assertContains(scrollableChromeObserver, "touchListener { type, position ->")
+        assertContains(scrollableChromeObserver, "val rootPosition = scrollAnchor.resolve(position)")
+        assertContains(scrollableChromeObserver, "focusOwnerRegistry?.shouldClearFocus(rootPosition) == true")
         assertContains(scrollableChromeObserver, "currentFocusManager.clearFocus(force = true)")
+        assertFalse("focusOwnerRegistry?.hasActiveOwner == true" in scrollableChromeObserver)
         assertFalse(".consume()" in scrollableChromeObserver)
         assertContains(thread, "if (type == TouchType.Move) {")
         assertContains(thread, "userScrollGeneration.value += 1")
