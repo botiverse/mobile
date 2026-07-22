@@ -30,6 +30,10 @@ on:
         description: "Reuse the qa-acceptance-apk artifact from this workflow run id (skips build)"
         required: false
         default: ""
+      apk_artifact_id:
+        description: "Exact GitHub Actions artifact id frozen by Stamp (preferred for strict coordinates)"
+        required: false
+        default: ""
       apk_url:
         description: "Direct APK download URL to test (skips build)"
         required: false
@@ -225,8 +229,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           APK_RUN_ID: ${{ inputs.apk_run_id }}
+          APK_ARTIFACT_ID: ${{ inputs.apk_artifact_id }}
           APK_URL: ${{ inputs.apk_url }}
           FROZEN_ARTIFACT_SHA256: ${{ inputs.artifact_sha256 }}
+          FROZEN_ARTIFACT_SOURCE_COMMIT: ${{ inputs.artifact_source_commit }}
         run: |
           mkdir -p apks
           if [ -n "$APK_RUN_ID" ]; then
@@ -237,12 +243,22 @@ jobs:
             if [ -n "$FROZEN_ARTIFACT_SHA256" ]; then
               metadata="$RUNNER_TEMP/pinned-android-artifacts.json"
               resolved="$RUNNER_TEMP/pinned-android-artifact.json"
-              gh api "repos/$GITHUB_REPOSITORY/actions/runs/$APK_RUN_ID/artifacts?per_page=100" > "$metadata"
-              node scripts/qa/resolve_pinned_android_artifact.mjs "$metadata" "$resolved" "$APK_RUN_ID"
+              if [ -n "$APK_ARTIFACT_ID" ]; then
+                gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$APK_ARTIFACT_ID" > "$metadata"
+                node scripts/qa/resolve_pinned_android_artifact.mjs "$metadata" "$resolved" "$APK_RUN_ID" "$APK_ARTIFACT_ID"
+              else
+                gh api "repos/$GITHUB_REPOSITORY/actions/runs/$APK_RUN_ID/artifacts?per_page=100" > "$metadata"
+                node scripts/qa/resolve_pinned_android_artifact.mjs "$metadata" "$resolved" "$APK_RUN_ID"
+              fi
               artifact_name=$(jq -r .artifactName "$resolved")
-              source_commit=$(jq -r .sourceCommit "$resolved")
+              source_commit="$FROZEN_ARTIFACT_SOURCE_COMMIT"
               artifact_id=$(jq -r .artifactId "$resolved")
-              gh run download "$APK_RUN_ID" --repo "$GITHUB_REPOSITORY" -n "$artifact_name" -D apks
+              if [ -n "$APK_ARTIFACT_ID" ]; then
+                gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$APK_ARTIFACT_ID/zip" > "$RUNNER_TEMP/pinned-android-artifact.zip"
+                unzip -q "$RUNNER_TEMP/pinned-android-artifact.zip" -d apks
+              else
+                gh run download "$APK_RUN_ID" --repo "$GITHUB_REPOSITORY" -n "$artifact_name" -D apks
+              fi
               apk=$(find apks -type f -name '*.apk' -print -quit)
               test -s "$apk"
               bt=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
