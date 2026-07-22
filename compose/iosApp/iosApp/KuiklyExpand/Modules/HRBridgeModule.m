@@ -1842,19 +1842,34 @@ static NSString *SlockAttachmentExportFileName(NSString *value) {
     return trimmed.length > 0 ? trimmed : @"attachment";
 }
 
-static UTType *SlockPreferredPickedImageType(NSItemProvider *provider) {
-    UTType *fallback = nil;
+static UTType *SlockPreferredPickedMediaType(NSItemProvider *provider) {
+    UTType *preferred = nil;
+    NSInteger preferredScore = NSIntegerMin;
     for (NSString *identifier in provider.registeredTypeIdentifiers) {
         UTType *type = [UTType typeWithIdentifier:identifier];
-        if (![type conformsToType:UTTypeImage]) {
+        BOOL isImage = [type conformsToType:UTTypeImage];
+        BOOL isVideo = [type conformsToType:UTTypeMovie];
+        if (!isImage && !isVideo) {
             continue;
         }
-        if (type.preferredMIMEType.length > 0 || type.preferredFilenameExtension.length > 0) {
-            return type;
+        BOOL isGeneric =
+            [type isEqual:UTTypeImage] ||
+            [type isEqual:UTTypeMovie] ||
+            [type isEqual:UTTypeVideo] ||
+            [type isEqual:UTTypeAudiovisualContent];
+        NSInteger score = isGeneric ? 0 : 4;
+        if (type.preferredMIMEType.length > 0) {
+            score += 2;
         }
-        fallback = type;
+        if (type.preferredFilenameExtension.length > 0) {
+            score += 2;
+        }
+        if (!preferred || score > preferredScore) {
+            preferred = type;
+            preferredScore = score;
+        }
     }
-    return fallback ?: UTTypeImage;
+    return preferred;
 }
 
 static NSString *SlockPickedAttachmentDisplayName(NSString *suggestedName,
@@ -2374,7 +2389,10 @@ static NSString *SlockPickedAttachmentDisplayName(NSString *suggestedName,
         }
         PHPickerConfiguration *configuration =
             [[PHPickerConfiguration alloc] initWithPhotoLibrary:PHPhotoLibrary.sharedPhotoLibrary];
-        configuration.filter = PHPickerFilter.imagesFilter;
+        configuration.filter = [PHPickerFilter anyFilterMatchingSubfilters:@[
+            PHPickerFilter.imagesFilter,
+            PHPickerFilter.videosFilter
+        ]];
         configuration.selectionLimit = 0;
         configuration.preferredAssetRepresentationMode = PHPickerConfigurationAssetRepresentationModeCurrent;
         PHPickerViewController *picker = [[PHPickerViewController alloc] initWithConfiguration:configuration];
@@ -2422,9 +2440,9 @@ static NSString *SlockPickedAttachmentDisplayName(NSString *suggestedName,
     }
     [results enumerateObjectsUsingBlock:^(PHPickerResult *result, NSUInteger index, BOOL *stop) {
         NSItemProvider *provider = result.itemProvider;
-        UTType *imageType = SlockPreferredPickedImageType(provider);
-        NSString *typeIdentifier = imageType.identifier;
-        if (![provider hasItemConformingToTypeIdentifier:typeIdentifier]) {
+        UTType *mediaType = SlockPreferredPickedMediaType(provider);
+        NSString *typeIdentifier = mediaType.identifier;
+        if (mediaType == nil || ![provider hasItemConformingToTypeIdentifier:typeIdentifier]) {
             @synchronized (errors) {
                 [errors addObject:@{ @"index" : @(index), @"errorCode" : @"attachment_read_failed" }];
             }
@@ -2441,7 +2459,7 @@ static NSString *SlockPickedAttachmentDisplayName(NSString *suggestedName,
             if (url && !cacheError) {
                 file = [self slock_cachePickedAttachmentURL:url
                                              suggestedName:provider.suggestedName
-                                                  mimeType:imageType.preferredMIMEType
+                                                  mimeType:mediaType.preferredMIMEType
                                                      error:&cacheError];
             }
             if (file) {
