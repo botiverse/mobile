@@ -138,11 +138,12 @@ published those artifacts.
 ## Post-Delivery Git Audit Tag
 
 An iOS release tag is an immutable audit pointer created **after** the exact
-signed IPA has been stored in Hands and its App Store Connect Build Upload has
-reached terminal `COMPLETE`. It is not a workflow trigger and does not mean the
-build has been assigned to a TestFlight group, testers have been notified, a
-Hands release has been activated, or an App Store production release has been
-submitted.
+signed IPA has been stored in Hands, its exact App Store Connect Build Upload
+has reached terminal `COMPLETE` with no Apple errors/warnings/infos, and the
+corresponding processed build reads back as `VALID` and not expired. It is not
+a workflow trigger and does not mean the build has been assigned to a
+TestFlight group, testers have been notified, a Hands release has been
+activated, or an App Store production release has been submitted.
 
 Use this platform- and build-qualified format:
 
@@ -165,33 +166,39 @@ tip or the latest `main`. The annotated message records at least:
 - bundle id;
 - Hands build and release ids;
 - signed IPA SHA-256;
-- App Store Connect Build Upload id and terminal state.
+- App Store Connect Build Upload id and terminal upload state;
+- App Store Connect processed build id and processing state.
 
-Fetch the containing release ref, run the helper once in check-only mode, then
-repeat with the explicit push acknowledgement:
+The helper fetches `refs/heads/release-X.Y.Z` directly into the selected
+remote-tracking ref. It then uses Raft Agent Login and the registered Hands
+read-only actions to resolve the `raft-ios` app and read back the release,
+build, IPA asset, exact Build Upload, and processed TestFlight build. Operator-
+provided UUIDs, hashes, or status words are never treated as receipts.
+
+Run the helper once in check-only mode, then repeat with the explicit push
+acknowledgement:
 
 ```bash
-git fetch origin release-1.6.0 --prune
-
 scripts/create_ios_release_audit_tag.sh \
   --version 1.0.0 \
   --build 1000005 \
   --source 034db84238b593214cededed8c432d7c7d8085aa \
-  --source-ref origin/release-1.6.0 \
+  --release-branch release-1.6.0 \
   --hands-build 52c7616c-a017-4def-b487-c2612970cd84 \
   --hands-release 84821c08-177f-4458-a2d1-c303c7f9e110 \
-  --ipa-sha256 4f1738cdc358b509a8fa8c8f392836a5848012f52727bda63df132bb179c5665 \
-  --asc-build-upload 43584169-d2c2-4323-848f-40c44147fb4c \
-  --asc-state COMPLETE
+  --asc-build-upload 43584169-d2c2-4323-848f-40c44147fb4c
 
 # After reviewing the printed identity:
 scripts/create_ios_release_audit_tag.sh <same arguments> --confirm-push
 ```
 
-The helper fails closed on short source SHAs, invalid identifiers, a source
-outside the stated ref, a non-`COMPLETE` Apple state, or an existing local or
-remote tag. Never force-move, delete, or reuse an audit tag to repair a bad
-baseline; stop and record an explicit correction with the release owner.
+The helper fails closed on short source SHAs, invalid identifiers, a commit-
+like/local/tag source ref, a source outside the freshly fetched remote release
+branch, any Hands app/build/release/source/version/IPA mismatch, a non-
+`COMPLETE` or noisy Build Upload, a non-`VALID`/expired processed build, or an
+existing local or remote tag. Never force-move, delete, or reuse an audit tag
+to repair a bad baseline; stop and record an explicit correction with the
+release owner.
 
 After push, verify the remote annotated tag and its peeled commit separately:
 
