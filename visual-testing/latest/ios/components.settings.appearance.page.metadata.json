@@ -4,10 +4,13 @@
   "source": "kmp-shared",
   "caseId": "components.settings.appearance.page",
   "image": "components.settings.appearance.page.png",
-  "pageName": "compose_settings_page_visual",
+  "pageName": "compose_settings_route_visual",
   "pageData": {
-    "variant": "appearance",
-    "pageName": "compose_settings_page_visual",
+    "destination": "appearance",
+    "fixtureKey": "canonical",
+    "fixtureRevision": "settings-appearance-v1",
+    "renderedGoalSha256": "6f8210b1c05e7f09df898d6b38d7d3f0f98bd5b270d9f56d9975f33002f3d234",
+    "pageName": "compose_settings_route_visual",
     "slockVisualZeroSafeArea": true
   },
   "viewport": {

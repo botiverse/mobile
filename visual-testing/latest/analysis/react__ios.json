@@ -1,15 +1,15 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-21T10:49:29.058Z",
+  "generatedAt": "2026-07-22T11:27:24.866Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
   "analysisProvider": "minimax",
   "analysisModel": "MiniMax-M3",
   "summary": {
-    "total": 84,
-    "ready": 77,
-    "pending": 7
+    "total": 85,
+    "ready": 71,
+    "pending": 14
   },
   "cases": [
     {
@@ -667,36 +667,16 @@
     },
     {
       "id": "components.auth.register.inputs",
-      "status": "ready",
-      "imageHash": "p1:1ffe1ffe000000000000000030800000fe7f0000fe7ffffff08ffe7ff00ffe7f9ffff81f83fcdfff8000c0fb8fffc00380fcdf038000c3fb881fc003f61fcfff8000c0038001c003c3e3d40fb00cc0038000c003b00cf01f8000fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe7ffeffffffff",
-      "generatedAt": "2026-07-19T05:31:40.834Z",
-      "severity": "high",
-      "summary": [
-        "iOS adds a 'Name' input field above Email that is missing on the React baseline",
-        "iOS omits the 'Continue with Google' and 'Continue with GitHub' OAuth buttons plus the 'OR' divider present on React",
-        "React header reads 'Create your account' (lowercase) while iOS uses 'Create Account' (title case), and iOS heading is visibly larger/heavier",
-        "Primary CTA text differs: React shows 'Continue', iOS shows 'Create Account'",
-        "iOS logo is vertically centered higher in the yellow band with much larger vertical padding, while React logo sits near the top of the band"
-      ],
-      "likelyCauses": [
-        "iOS screen is a different form variant (signup-with-name) than the React screen (email-only signup)",
-        "OAuth provider stack not yet implemented or intentionally hidden on iOS screen",
-        "Heading copy and CTA label were updated on iOS but not synced to React baseline",
-        "Header logo vertical alignment/padding uses platform-specific safe-area insets on iOS"
-      ],
-      "suggestedOwner": "design-systems",
-      "suggestedFixes": [
-        "Decide whether 'Name' field is required on both platforms and add it to React, or remove from iOS to match baseline",
-        "Restore the 'OR' divider and Google/GitHub buttons on the iOS screen, or update both baselines together",
-        "Align heading text to one casing ('Create your account') and CTA to one label ('Continue') across web and iOS",
-        "Normalize header logo padding/alignment so the yellow band proportions match across platforms",
-        "Re-snapshot with consistent input set and OAuth options so the diff reflects true visual deltas, not content differences"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.22756916595779153
+      "status": "pending",
+      "imageHash": "p1:1ffe1ffe000000000000000030000000fe7f0000fe7ffffff08ffe7ff00ffe7f9ffff81f83fcdfff8000c3fb8fffc00380fcc0038000d00b881fc003f61fd41f8000e00f8001c003c183c003b00cffff8000ffffb00cffff8000fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe7ffeffffffff",
+      "generatedAt": "2026-07-22T11:27:23.609Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.2146082283523042
     },
     {
       "id": "components.navigation.tabbar.states",
@@ -796,38 +776,16 @@
     },
     {
       "id": "components.thread.composer.pending-mention-actions",
-      "status": "ready",
-      "imageHash": "p1:03f803fc0001000300010003000163830001781b000100038001000300010fb30ff900030001ffff8001fffffffdfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffee002fffe3fff",
-      "generatedAt": "2026-07-21T10:47:27.123Z",
-      "severity": "medium",
-      "summary": [
-        "React (left) uses a bold yellow/orange filled warning banner with icon and 'UNDELIVERED MENTIONS' header; iOS (right) uses a flat off-white/cream background with no header title or icon, just body text.",
-        "iOS is missing the 'UNDELIVERED MENTIONS' heading and supporting description line ('Message sent, but these @mentions were not delivered.').",
-        "Button labels differ: React shows 'Add to channel' (with person-plus icon) and 'Notify once' (with bell icon); iOS shows shorter 'Add' and 'Notify' without leading icons.",
-        "React's mention sub-text is truncated ('@Android-Developer-4 was not notified b…'); iOS shows a full explanatory sentence ('@Android-Developer-4 isn't in #design. Add them to #design or send a one-time notification.').",
-        "iOS adds an empty avatar/picture tile next to the user name that is absent in React (React shows only the person-plus glyph)."
-      ],
-      "likelyCauses": [
-        "iOS implementation appears to be a simplified/draft variant missing the warning header, descriptive body copy, and iconography from the React design spec.",
-        "Different content/copy strategy chosen for iOS (channel-aware explanation vs. generic 'undelivered' framing).",
-        "Possible incomplete migration of the warning banner styling (background color, title, icon) from the React spec to native iOS."
-      ],
-      "suggestedOwner": "iOS",
-      "suggestedFixes": [
-        "Add the 'UNDELIVERED MENTIONS' bold title and the descriptive subline ('Message sent, but these @mentions were not delivered.') to the iOS banner.",
-        "Apply the yellow/orange warning background color and prominent warning icon to the iOS banner to match React's emphasis.",
-        "Restore the person-plus icon on the 'Add' button and the bell icon on the 'Notify' button (or use full labels 'Add to channel' / 'Notify once') for parity.",
-        "Align the avatar tile handling: either add it on both platforms or remove it from iOS to match React.",
-        "Standardize the sub-text rendering so both platforms either truncate or show the full mention explanation consistently."
-      ],
-      "intentional": [
-        "Use of cream/off-white background instead of warning yellow may be an intentional iOS design choice to feel less alarming.",
-        "Shorter button labels ('Add' / 'Notify') could be intentional for compact mobile UI, but should be confirmed against design spec."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.1729979341353749
+      "status": "pending",
+      "imageHash": "p1:01f803fc0001000200090002080966020001701a0001000203f9000207810fb200010002fffdfffefffdfffe0001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffa1fff",
+      "generatedAt": "2026-07-22T11:27:23.698Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.08151186184361536
     },
     {
       "id": "components.thread.composer.as-task-selected",
@@ -1216,7 +1174,7 @@
     {
       "id": "components.thread.forward-modal",
       "status": "ready",
-      "imageHash": "p1:bffeffff0000dfff000097ff0000bfff0000fffd2ff8dfff3ffcffff29fc97ff0ffcdfff07fcffff07fc9fff07fcffff00fc9eff3ffcdfff3ffcffff3ffc9fff3ffcffff3ffcffff3ffcffff3ffcffff3ffcffff3ffcffff3ffcffff3ffcffff3ffcffff0000ffff3ff0ffff0000ffff0000ffff0000ffff0000ffffffffffff",
+      "imageHash": "p1:bffeffff0000dfff000097ff0000bfff0000fffd2ff8dfff3ffcffff29fc97ff0ffcdfff07fc9fff07fc9fff07fcffff00fc9eff3ffcdfff3ffcffff3ffc9fff3ffcffff3ffcffff3ffcffff3ffcffff3ffcffff3ffcffff3ffcffff3ffcffff3ffcffff0000ffff3ff0ffff0000ffff0000ffff0000ffff0000ffffffffffff",
       "generatedAt": "2026-07-13T22:12:02.465Z",
       "severity": "low",
       "summary": [
@@ -1385,7 +1343,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.26784036132377365
+      "metricMismatch": 0.26783259745345056
     },
     {
       "id": "components.home.search.channel-dropdown",
@@ -1421,7 +1379,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.26763580021873856
+      "metricMismatch": 0.2676327621825252
     },
     {
       "id": "components.home.saved.results",
@@ -1455,36 +1413,20 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.11595812910978787
+      "metricMismatch": 0.11593314970092217
     },
     {
       "id": "components.home.activity.results",
-      "status": "ready",
-      "imageHash": "p1:1ff83ffc83fc07fe82fc03fe000000020040000200000006cbf13fc680f18026801d001e807d01fef07d81fec0e13fc6801100068a1d00fe8ffd1ffec7a1fe4683f117c6fffda3e6fffdfffefffdfffefffdfffefffdfffe0001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffa1fff",
-      "generatedAt": "2026-07-18T07:40:26.289Z",
-      "severity": "low",
-      "summary": [
-        "Activity card timestamps are positioned on the right side of the tag row in iOS but inline with the title row in React (intentional divergence per known list).",
-        "Body text content within activity cards shows differences in line wrapping/clipping, likely a downstream effect of title-row timestamp consuming width in React.",
-        "Filter chips (All, Unread, Mentions) and 'Mark all read' button appear with comparable sizing and alignment across both sides."
-      ],
-      "likelyCauses": [
-        "React renders the relative timestamp in the title row, reducing available width for the message body and forcing more aggressive truncation.",
-        "Canvas pixel-density differences between baselines (342x620 vs 1170x2532) may amplify minor spacing/font-size mismatches after element-bounds crop."
-      ],
-      "suggestedOwner": "react-activity-card",
-      "suggestedFixes": [
-        "Move the relative timestamp from the title row to the right edge of the channel-tag row in React to match the desired product behavior.",
-        "Allow the title to wrap onto two lines without truncation where width permits, once the timestamp is relocated.",
-        "Verify card bounds, filter chip alignment, and badge positions at the 1170x2532 target density to ensure consistent rendering after the timestamp relocation."
-      ],
-      "intentional": [
-        "Activity card timestamp placement: right-aligned on the channel-tag row in iOS vs inline with the title in React. Android/iOS is the desired behavior; React to adopt later (react-adopts-later)."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.09553172384925934
+      "status": "pending",
+      "imageHash": "p1:1ff83ffc87fc07fe82fc03ff000000030040000300000007cbf13fc780f18027801d803f807d007f807d007fc1e11fff8011e7c78fbd00078ffd00ffcff11fff83f13ffffffd1fc7fffd03e7fffdfffffffdfffffffdffff0005fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe0000fffe1fff",
+      "generatedAt": "2026-07-22T11:27:24.055Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.10745500330808389
     },
     {
       "id": "components.tasks.panel.states",
@@ -1660,7 +1602,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-21T10:49:28.312Z",
+      "generatedAt": "2026-07-22T11:27:24.061Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1776,39 +1718,16 @@
     },
     {
       "id": "components.settings.root.page",
-      "status": "ready",
-      "imageHash": "p1:1ffc1ffc0000000000000000000000008ffe1ffecffe03fe81fe01fec7fe07fec7fe07fe83fe07fedffe0ffe87fe0ffe83fe5ffe87fe03fe83fe1ffe83fe03fec3fe43fe83fe03fe87fe07fefffe7ffe8ffe1ffe8ffe07fe83fe03fefffe03fefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
-      "generatedAt": "2026-07-18T07:40:36.011Z",
-      "severity": "medium",
-      "summary": [
-        "iOS version includes 2 additional PERSONAL items that React is missing: 'Mobile' and 'Storage'",
-        "iOS adds a 'Send feedback' item under ABOUT that is absent in React",
-        "iOS header includes a settings cog icon next to the 'Settings' title, which is missing in React",
-        "React label reads 'Plan & Billing' while iOS is shortened to 'Billing'",
-        "iOS body type appears slightly larger/bolder than React, with looser vertical spacing between rows"
-      ],
-      "likelyCauses": [
-        "Feature parity gap: iOS implementation exposes additional settings options (Mobile, Storage, Send feedback) that have not been ported to the React baseline",
-        "React version is missing the leading settings icon in the page header",
-        "Label normalization inconsistency: React kept the legacy 'Plan & Billing' label while iOS uses 'Billing'",
-        "Typography token drift between web and iOS style sheets (font-size/line-height differ)"
-      ],
-      "suggestedOwner": "design-systems",
-      "suggestedFixes": [
-        "Add the missing 'Mobile' and 'Storage' rows under PERSONAL in the React settings page",
-        "Add the 'Send feedback' row under ABOUT in React",
-        "Add the cog icon to the React Settings page header to match iOS",
-        "Rename React 'Plan & Billing' to 'Billing' to match iOS, or align labels across platforms via a shared tokens sheet",
-        "Reconcile type tokens (font-size, weight, line-height) between React and iOS so row spacing and text size match"
-      ],
-      "intentional": [
-        "iOS additional items 'Mobile' and 'Storage' may be platform-specific mobile entries pending React roll-out",
-        "'Send feedback' addition on iOS may be intentional during a phased rollout"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.036323098526889974
+      "status": "pending",
+      "imageHash": "p1:1ffc1ffc0000000000000000000000008ffe1ffecffe03fe81fe01fec7fe07fec7fe07fe83fe07fedffe0ffe87fe0ffe83fe5ffe87fe03fe83fe1ffe83fe03fec3fe43fe83fe03fe87fe07fefffe7ffe8ffe1ffe8ffe07fe83fe03fe83fe03fe87fe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
+      "generatedAt": "2026-07-22T11:27:24.314Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.03803216267671239
     },
     {
       "id": "components.settings.page.states",
@@ -2059,76 +1978,29 @@
     },
     {
       "id": "components.settings.appearance.page",
-      "status": "ready",
-      "imageHash": "p1:0ffe0ffe8ffe07fe81fe01fe06021f0e8200001681fc001280cc01f280040072a3fc0002807c0002817c0072bffc00128ffc2002807c00028004c006b1fcfffe8000fffe8000fffe81f0fffe8018fffebffcfffe83fcfffe8000fffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffefffefffe7ffe00066002fffe3fff",
-      "generatedAt": "2026-07-21T10:47:28.099Z",
-      "severity": "high",
-      "summary": [
-        "React page shows two full settings cards (Message font size + Live agent activity); iOS page only renders the Message font size card — Live agent activity section is missing entirely.",
-        "React page title font ('Appearance') is larger and bolder than iOS equivalent.",
-        "iOS page header shows 'Appearance' in title-case smaller weight versus React's larger heading-style title.",
-        "iOS preview block shows only one chat bubble ('Onboarding Assistant'); React preview shows a different sample ('Cindy' with timestamp, inline code, and reference chip styling).",
-        "iOS content uses smaller body text and tighter vertical spacing compared to React's roomier card layout."
-      ],
-      "likelyCauses": [
-        "iOS implementation did not port the 'Live agent activity' setting card from the React baseline.",
-        "iOS preview copy/data differs from React — likely a placeholder/different sample message used during iOS development.",
-        "Typography scale differs between platforms — iOS used smaller font tokens than React's design system.",
-        "Density/spacing tokens not aligned between iOS and React implementations."
-      ],
-      "suggestedOwner": "mobile-ios",
-      "suggestedFixes": [
-        "Add the 'Live agent activity' toggle card to the iOS Appearance page to match React scope.",
-        "Align iOS preview sample message content with React baseline (or accept it as intentional copy difference and verify with design).",
-        "Unify header typography: match React's 'Appearance' title size/weight in iOS using shared design tokens.",
-        "Standardize body text size and card vertical padding/spacing using shared spacing scale tokens across platforms.",
-        "Re-run Slock comparison with crop targets set to element bounds to remove whitespace from iOS canvas."
-      ],
-      "intentional": [
-        "iOS canvas size (1170x2532) is larger than React (390x844); whitespace at bottom of iOS view is from raw viewport, not a layout gap.",
-        "Preview chat sample differences may be intentional placeholder content per platform."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.20032945814936332
+      "status": "pending",
+      "imageHash": "p1:0ffe0ffc8ffe07fe81fe01fe06021f028200000081fc180c80cc007c80040054a3fc0000807c007c817c0004bffc20048ffc0000807cfffe8004fffeb1fcfffe8000fffe8000fffe81f0fffe8018fffebffcfffe83fcfffe8000fffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffefffefffe7ffe00066002fffe3fff",
+      "generatedAt": "2026-07-22T11:27:24.496Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.19782814166700424
     },
     {
       "id": "components.settings.notifications.page",
-      "status": "ready",
-      "imageHash": "p1:0ffe0ffe9fff9fff81fe80fe9cfe1ffe80ff8ff3807c000080600000806087fbbffc81ffbffc81f1bffcff19a01c81ff807c81f1807cffff81fc807be274ffd1fff0cfffbfe080fd800000fdffffffffffff0001ffff0000ffff0000ffff0000ffff03feffff283cffff0000ffff07fcffff3bfcfffffffffffe7ffeffffffff",
-      "generatedAt": "2026-07-21T10:47:28.184Z",
-      "severity": "high",
-      "summary": [
-        "iOS renders a fully populated notifications settings page while React shows only an empty/unavailable state with one disabled card",
-        "React displays a yellow 'UNAVAILABLE' badge and pink 'Enable Push Notifications' button indicating push is not configured; iOS has a green 'Notifications allowed' system status banner instead",
-        "iOS uses sectioned layout with SYSTEM / ON THIS DEVICE / WORKSPACE headers and a 3-option radio group (All messages / Only mentions / Nothing); React only shows a single Mute-this-server card",
-        "Toggle controls differ: iOS uses standard green/gray switches aligned right of each row; React uses a small empty checkbox for 'Mute this server'",
-        "iOS includes a 'Send a test notification' row with a 'Ready' status and paper-plane icon absent from React"
-      ],
-      "likelyCauses": [
-        "React baseline was captured in an environment where web push is unsupported/denied, producing a fallback unavailable UI",
-        "iOS current build was captured with notification permissions granted, so it renders the full settings surface",
-        "Platform-specific implementation divergence: React web client lacks the SYSTEM/ON THIS DEVICE/WORKSPACE sectioning that native iOS exposes",
-        "Different state machines drive the two views — React's push vs mute logic is collapsed into one card; iOS splits into system permission, per-device toggles, and per-workspace radios",
-        "Visual differences (typography, spacing, toggle style) reflect native iOS HIG defaults vs React web component library choices"
-      ],
-      "suggestedOwner": "mobile-platform",
-      "suggestedFixes": [
-        "Align React component to render the same SYSTEM / ON THIS DEVICE / WORKSPACE section structure when push is available",
-        "Replace React's checkbox mute control with the iOS-style toggle (or a unified switch component) and place it on the right edge of each row",
-        "Add equivalent 'Send a test notification' action row in React with a status indicator when supported",
-        "Standardize header typography weight, back-button padding, and divider styling across React and iOS to remove the top-of-page misalignment",
-        "When push is unavailable, render a clearly differentiated unavailable card on iOS that mirrors the React 'UNAVAILABLE' badge pattern for consistency"
-      ],
-      "intentional": [
-        "Platform permission banners are necessarily different (web Notification API vs iOS UNUserNotificationCenter) so divergence in the top status card may be intentional",
-        "Different control primitives (checkbox vs UISwitch) are expected cross-platform but should be normalized via design tokens"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.2720969876183146
+      "status": "pending",
+      "imageHash": "p1:0ffe1ffe9fff9fff81ff80ff9cfe1ffe80ff9ffb807c00008060000080e087ffbffcc1ffbffc81f1bffcff19a0dc81ff807c81f1807cffff81fc807ffa7cffd1fff0ffffbff081fd8001c0fdffffffffffff0001ffff0000ffff0000ffff0000ffff43feffff383effff0000ffff07feffff7ffcffff0001fffe00f0ffffffff",
+      "generatedAt": "2026-07-22T11:27:24.515Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.2762344553813748
     },
     {
       "id": "components.settings.connected-apps.page",
@@ -2199,10 +2071,23 @@
       "metricMismatch": 0.2529566843547886
     },
     {
+      "id": "screens.auth.profile-setup",
+      "status": "pending",
+      "imageHash": "p1:3ffe1ffe000000000000000030000000ffff0000fffffffffffffe7ffffffe7ffe7ff00ffe7ffffff00fefffffffcfff8fffc00381fdc0038001ffffcfffc7ffffffc3fb87ffc00383fcffff80008003ff5b800387ffffff80ffffff87ffffff8001ffff8001fffffffffffffffffffffffffffffffffffffffe7ffeffffffff",
+      "generatedAt": "2026-07-22T11:27:24.603Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.22626821133930142
+    },
+    {
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-21T10:49:28.666Z",
+      "generatedAt": "2026-07-22T11:27:24.435Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2215,7 +2100,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-21T10:49:28.666Z",
+      "generatedAt": "2026-07-22T11:27:24.435Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2228,7 +2113,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-21T10:49:28.666Z",
+      "generatedAt": "2026-07-22T11:27:24.435Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2241,7 +2126,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-21T10:49:28.666Z",
+      "generatedAt": "2026-07-22T11:27:24.435Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2254,7 +2139,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-21T10:49:28.666Z",
+      "generatedAt": "2026-07-22T11:27:24.435Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2362,7 +2247,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.25410404936471287
+      "metricMismatch": 0.25410438692429216
     },
     {
       "id": "screens.settings.server-danger-modal",
@@ -2712,7 +2597,7 @@
       "id": "screens.settings.connected-apps.full-height",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-21T10:49:28.937Z",
+      "generatedAt": "2026-07-22T11:27:24.777Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

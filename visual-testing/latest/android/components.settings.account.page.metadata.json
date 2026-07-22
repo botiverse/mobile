@@ -3,6 +3,7 @@
               "providerType": "android-kuikly-shared-page",
               "source": "kmp-shared",
               "caseId": "components.settings.account.page",
+              "route": {"pageName":"compose_settings_page_visual","realProductRoute":false},
               "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.settings.account.page.png",
               "viewport": { "width": 1170, "height": 2532, "density": 1 },
               "systemBars": "hidden",
@@ -18,7 +19,9 @@
                 "validation": {
                   "uniqueColors": 419,
                   "dominantRatio": 0.7247387
-                }
+                },
+                "readyTokenObserved": false,
+                "stableFrameCount": 1
               },
               "diagnostics": {
     "displayWidthPx": 1170,
@@ -29,8 +32,18 @@
     "hardwareAccelerated": true,
     "totalViews": 121,
     "laidOutViews": 119,
-    "visibleContentLeafViews": 3
+    "visibleContentLeafViews": 3,
+    "targetPackage": "build.raft.app.connectedtest",
+    "processId": 4249,
+    "processUid": 10192
 },
+              "captureIdentity": {
+                "attempt": 1,
+                "generation": "ab3f58d4c48d68a3371bc533747fee73",
+                "bootId": "531f6971-1f41-45a7-a815-3fb1a91ae1da",
+                "capturedAtEpochMs": 1784718652712,
+                "capturedAtMonotonicNs": 97631225990
+              },
               "clampedToShortWindow": false,
-              "capturedAt": "1784630013942"
+              "capturedAt": "1784718652712"
             }

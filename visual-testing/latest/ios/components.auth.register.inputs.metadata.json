@@ -6,7 +6,6 @@
   "image": "components.auth.register.inputs.png",
   "pageName": "compose_auth_register_inputs",
   "pageData": {
-    "registerName": "Product UX Designer",
     "registerEmail": "new@slock.ai",
     "registerPassword": "correct horse battery staple",
     "pageName": "compose_auth_register_inputs",

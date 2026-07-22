@@ -3,6 +3,7 @@
               "providerType": "android-kuikly-shared-page",
               "source": "kmp-shared",
               "caseId": "components.ui.selection-popover.states",
+              "route": {"pageName":"compose_ui_selection_popover_visual","realProductRoute":false},
               "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.ui.selection-popover.states.png",
               "viewport": { "width": 1026, "height": 756, "density": 1 },
               "systemBars": "hidden",
@@ -18,7 +19,9 @@
                 "validation": {
                   "uniqueColors": 248,
                   "dominantRatio": 0.88653344
-                }
+                },
+                "readyTokenObserved": false,
+                "stableFrameCount": 1
               },
               "diagnostics": {
     "displayWidthPx": 1170,
@@ -29,8 +32,18 @@
     "hardwareAccelerated": true,
     "totalViews": 44,
     "laidOutViews": 39,
-    "visibleContentLeafViews": 1
+    "visibleContentLeafViews": 1,
+    "targetPackage": "build.raft.app.connectedtest",
+    "processId": 3968,
+    "processUid": 10192
 },
+              "captureIdentity": {
+                "attempt": 1,
+                "generation": "3a58b19bf48d32ec32403e1085ca97f7",
+                "bootId": "cbe7024c-58d4-4e25-a935-b06ad7532cfb",
+                "capturedAtEpochMs": 1784718616360,
+                "capturedAtMonotonicNs": 58838031477
+              },
               "clampedToShortWindow": false,
-              "capturedAt": "1784629984438"
+              "capturedAt": "1784718616360"
             }
