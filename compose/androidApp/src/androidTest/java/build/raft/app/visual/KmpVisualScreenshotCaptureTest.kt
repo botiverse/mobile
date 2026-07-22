@@ -37,6 +37,15 @@ import org.junit.runner.Description
 import kotlin.math.roundToInt
 
 class KmpVisualScreenshotCaptureTest {
+    private fun visualAttempt(): Int =
+        InstrumentationRegistry.getArguments().getString("visualAttempt")?.toIntOrNull() ?: 0
+
+    private fun visualGeneration(): String =
+        InstrumentationRegistry.getArguments().getString("visualGeneration").orEmpty()
+
+    private fun visualBootId(): String =
+        InstrumentationRegistry.getArguments().getString("visualBootId").orEmpty()
+
     // Per-case timing to logcat + a hard per-case wall-clock backstop (task
     // #362). AndroidJUnitRunner buffers its one-dot-per-test stream, so a hung
     // shard prints nothing until the 45m job timeout kills it — these rules
@@ -59,14 +68,19 @@ class KmpVisualScreenshotCaptureTest {
                 val dm = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics
                 Log.i(
                     VISUAL_LOG_TAG,
-                    "CASE_START ${description.methodName} display=${dm.widthPixels}x${dm.heightPixels} densityDpi=${dm.densityDpi}"
+                    "CASE_START ${description.methodName} display=${dm.widthPixels}x${dm.heightPixels} " +
+                        "densityDpi=${dm.densityDpi} attempt=${visualAttempt()} generation=${visualGeneration()}"
                 )
                 recordTiming("START ${description.methodName}")
             }
 
             override fun succeeded(description: Description) {
                 val durationMs = SystemClock.uptimeMillis() - startUptimeMs
-                Log.i(VISUAL_LOG_TAG, "CASE_END ${description.methodName} status=OK durationMs=$durationMs")
+                Log.i(
+                    VISUAL_LOG_TAG,
+                    "CASE_END ${description.methodName} status=OK durationMs=$durationMs " +
+                        "attempt=${visualAttempt()} generation=${visualGeneration()}"
+                )
                 recordTiming("OK ${description.methodName} durationMs=$durationMs")
             }
 
@@ -74,7 +88,9 @@ class KmpVisualScreenshotCaptureTest {
                 val durationMs = SystemClock.uptimeMillis() - startUptimeMs
                 Log.w(
                     VISUAL_LOG_TAG,
-                    "CASE_END ${description.methodName} status=FAIL durationMs=$durationMs error=${e.javaClass.simpleName}: ${e.message}"
+                    "CASE_END ${description.methodName} status=FAIL durationMs=$durationMs " +
+                        "attempt=${visualAttempt()} generation=${visualGeneration()} " +
+                        "error=${e.javaClass.simpleName}: ${e.message}"
                 )
                 recordTiming("FAIL ${description.methodName} durationMs=$durationMs error=${e.javaClass.simpleName}")
                 currentCaseId?.let { writeExceptionFailureArtifact(it, e) }
@@ -106,6 +122,8 @@ class KmpVisualScreenshotCaptureTest {
     private var lastCaptureClampedToShortWindow = false
 
     private var lastCaptureMethod: String? = null
+    private var lastStableFrameCount = 0
+    private var lastReadyTokenObserved = false
 
 
     @Test
@@ -407,6 +425,7 @@ class KmpVisualScreenshotCaptureTest {
 
     @Test
     fun captureRaftUiSegmentedControlStates() {
+        // TESTBOX_ELIGIBLE: library.raft-ui.segmented-control.states
         captureKmpComponentCase(
             caseId = "library.raft-ui.segmented-control.states",
             pageName = "compose_raft_ui_segmented_control_visual",
@@ -2120,7 +2139,26 @@ class KmpVisualScreenshotCaptureTest {
 
     @Test
     fun captureSettingsAppearancePage() {
-        captureKmpSettingsPageCase("components.settings.appearance.page", "appearance")
+        // TESTBOX_ELIGIBLE: components.settings.appearance.page
+        captureKmpComponentCase(
+            caseId = "components.settings.appearance.page",
+            pageName = "compose_settings_route_visual",
+            pageData =
+                JSONObject()
+                    .put("destination", "appearance")
+                    .put("fixtureKey", "canonical")
+                    .put("fixtureRevision", "settings-appearance-v1")
+                    // SHA-256 of the frozen rendered goal:
+                    // route=compose_settings_route_visual;destination=appearance;fixture=canonical;
+                    // fixtureRevision=settings-appearance-v1;viewport=1170x2532@480
+                    .put(
+                        "renderedGoalSha256",
+                        "6f8210b1c05e7f09df898d6b38d7d3f0f98bd5b270d9f56d9975f33002f3d234"
+                    ),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_500,
+            readyToken = "settings_route_visual_ready destination=appearance fixtureKey=canonical"
+        )
     }
 
     @Test
@@ -2363,6 +2401,7 @@ class KmpVisualScreenshotCaptureTest {
         crop: VisualCrop = FULL_VIEWPORT_CROP
     ) {
         currentCaseId = caseId
+        lastReadyTokenObserved = false
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val intent =
             Intent(context, SlockKuiklyActivity::class.java)
@@ -2415,6 +2454,7 @@ class KmpVisualScreenshotCaptureTest {
         suppressSoftKeyboard: Boolean = true,
         captureSystemSurface: Boolean = false,
         assertBitmap: ((Bitmap) -> Unit)? = null,
+        readyToken: String? = null,
         // Full-height cases (#388) only know the crop height after the page
         // reports its content bottom; invoked post-settle to replace [crop].
         cropOverride: (() -> VisualCrop)? = null
@@ -2437,6 +2477,7 @@ class KmpVisualScreenshotCaptureTest {
                 onActivityNoIdle { suppressVisualKeyboard(it) }
                 waitForIdleBounded()
             }
+            lastReadyTokenObserved = readyToken?.let { awaitVisualReadyToken(caseId, it) } ?: false
             val effectiveCrop = cropOverride?.invoke() ?: crop
             val normalized =
                 if (captureSystemSurface) {
@@ -2444,7 +2485,13 @@ class KmpVisualScreenshotCaptureTest {
                         "Unable to capture system surface for $caseId"
                     }
                 } else {
-                    captureStableVisualBitmap(context, caseId, effectiveCrop, requireReactionAtlas)
+                    captureStableVisualBitmap(
+                        context = context,
+                        caseId = caseId,
+                        crop = effectiveCrop,
+                        requireReactionAtlas = requireReactionAtlas,
+                        requiredStableFrames = if (readyToken == null) 1 else 2
+                    )
                 }
             val outputDir = visualOutputDir(context)
             outputDir.mkdirs()
@@ -2467,7 +2514,11 @@ class KmpVisualScreenshotCaptureTest {
                     imageFile = imageFile,
                     bitmap = normalized,
                     crop = effectiveCrop,
-                    captureMethod = effectiveCrop.captureMethod
+                    captureMethod = effectiveCrop.captureMethod,
+                    routePageName = pageName,
+                    fixtureKey = pageData?.optString("fixtureKey")?.takeIf { it.isNotBlank() },
+                    fixtureRevision = pageData?.optString("fixtureRevision")?.takeIf { it.isNotBlank() },
+                    renderedGoalSha256 = pageData?.optString("renderedGoalSha256")?.takeIf { it.isNotBlank() }
                 )
             )
             mirrorFileForAdbPull(context, metadataFile)
@@ -2872,10 +2923,12 @@ class KmpVisualScreenshotCaptureTest {
         context: Context,
         caseId: String,
         crop: VisualCrop,
-        requireReactionAtlas: Boolean = false
+        requireReactionAtlas: Boolean = false,
+        requiredStableFrames: Int = 1
     ): Bitmap {
         lastCaptureClampedToShortWindow = false
         lastCaptureMethod = crop.captureMethod
+        lastStableFrameCount = 0
         if (requireReactionAtlas) {
             awaitReactionAtlasReady(caseId)
         }
@@ -2902,9 +2955,10 @@ class KmpVisualScreenshotCaptureTest {
             // = exactly 3x, matching React's deviceScaleFactor 3) instead of
             // downsampling to 1x dp pixels — the downsample blurred every
             // android capture and hid sub-dp diffs.
-            val normalized = cropped
-            val stats = normalized.visualStats()
-            val problems = visualValidationProblems(normalized, stats)
+            var normalized = cropped
+            var stats = normalized.visualStats()
+            var problems = visualValidationProblems(normalized, stats)
+            var sourceFrameRecycled = false
             val uiAutomationFallback =
                 if (problems.isNotEmpty() && shouldTryUiAutomationFallback(stats)) {
                     captureUiAutomationFallbackBitmap(caseId, crop)
@@ -2919,49 +2973,64 @@ class KmpVisualScreenshotCaptureTest {
                     screenshot.recycle()
                 }
                 normalized.recycle()
-                lastBitmap?.recycle()
+                sourceFrameRecycled = true
                 lastCaptureMethod = UI_AUTOMATION_CAPTURE_METHOD
-                return uiAutomationFallback
+                normalized = uiAutomationFallback
+                stats = normalized.visualStats()
+                problems = visualValidationProblems(normalized, stats)
             }
             if (problems.isEmpty()) {
-                if (cropped !== screenshot && cropped !== normalized) {
+                if (!sourceFrameRecycled && cropped !== screenshot && cropped !== normalized) {
                     cropped.recycle()
                 }
-                if (screenshot !== normalized) {
+                if (!sourceFrameRecycled && screenshot !== normalized) {
                     screenshot.recycle()
                 }
-                lastBitmap?.recycle()
-                return normalized
+                if (requiredStableFrames <= 1) {
+                    lastStableFrameCount = 1
+                    lastBitmap?.recycle()
+                    return normalized
+                }
+                val prior = lastBitmap
+                if (prior != null && prior.sameAs(normalized)) {
+                    lastStableFrameCount = 2
+                    prior.recycle()
+                    return normalized
+                }
+                prior?.recycle()
+                lastBitmap = normalized
+                lastStats = stats
+                lastProblems = listOf("stable-frame oracle has not observed two identical consecutive frames")
+                Thread.sleep(STABLE_CAPTURE_RETRY_MS)
+                continue
             }
 
             lastBitmap?.recycle()
             lastBitmap = normalized
             lastStats = stats
             lastProblems = problems
-            if (cropped !== screenshot && cropped !== normalized) {
+            if (!sourceFrameRecycled && cropped !== screenshot && cropped !== normalized) {
                 cropped.recycle()
             }
-            if (screenshot !== normalized) {
+            if (!sourceFrameRecycled && screenshot !== normalized) {
                 screenshot.recycle()
             }
             Thread.sleep(STABLE_CAPTURE_RETRY_MS)
         } while (SystemClock.uptimeMillis() < deadline)
 
         if (lastBitmap == null) {
-            // The window never reached the crop's full size within the deadline
-            // (task #370: a flaky wm-size run can leave the display undersize, so
-            // a FULL_VIEWPORT 2532px crop never fits). Rather than drop the case
-            // to "missing", capture the actual window with a clamped crop (cropDp
-            // coerces to the available bounds) — the diff normalizes the size
-            // difference, so a slightly-short image beats nothing.
-            Log.w(VISUAL_LOG_TAG, "$caseId window never reached full crop size within ${STABLE_CAPTURE_TIMEOUT_MS}ms; capturing clamped best-effort")
+            Log.w(VISUAL_LOG_TAG, "$caseId window never reached full crop size within ${STABLE_CAPTURE_TIMEOUT_MS}ms; rejecting clamped frame")
             lastCaptureClampedToShortWindow = true
             val screenshot = captureActivityScreenshot(caseId)
             val clamped = screenshot.cropDp(crop)
             if (clamped !== screenshot) {
                 screenshot.recycle()
             }
-            return clamped
+            val stats = clamped.visualStats()
+            val problems = listOf("full viewport unavailable; clamped capture is not admissible")
+            writeFailureArtifacts(context, caseId, clamped, crop, stats, problems)
+            clamped.recycle()
+            throw AssertionError("$caseId full viewport unavailable; clamped capture rejected")
         }
 
         val failureBitmap = requireNotNull(lastBitmap) {
@@ -2977,6 +3046,21 @@ class KmpVisualScreenshotCaptureTest {
         )
         failureBitmap.recycle()
         throw AssertionError("$caseId visual capture failed validation after waiting for first frame: ${lastProblems.joinToString("; ")}")
+    }
+
+    private fun awaitVisualReadyToken(
+        caseId: String,
+        token: String
+    ): Boolean {
+        val deadline = SystemClock.uptimeMillis() + VISUAL_READY_TIMEOUT_MS
+        do {
+            if (logcatContainsToken(token)) {
+                Log.i(VISUAL_LOG_TAG, "$caseId observed ready token: $token")
+                return true
+            }
+            Thread.sleep(STABLE_CAPTURE_RETRY_MS)
+        } while (SystemClock.uptimeMillis() < deadline)
+        throw AssertionError("$caseId did not emit required visual ready token: $token")
     }
 
     /**
@@ -3432,6 +3516,7 @@ class KmpVisualScreenshotCaptureTest {
                 "errors": ${JSONArray(problems)}
               },
               "diagnostics": $diagnostics,
+              "clampedToShortWindow": $lastCaptureClampedToShortWindow,
               "capturedAt": "${System.currentTimeMillis()}"
             }
             """.trimIndent() + "\n"
@@ -3446,16 +3531,33 @@ class KmpVisualScreenshotCaptureTest {
         imageFile: File,
         bitmap: Bitmap,
         crop: VisualCrop,
-        captureMethod: String
+        captureMethod: String,
+        routePageName: String? = null,
+        fixtureKey: String? = null,
+        fixtureRevision: String? = null,
+        renderedGoalSha256: String? = null
     ): String {
         val stats = bitmap.visualStats()
         val diagnostics = collectDiagnosticsJson(context)
+        val capturedAtEpochMs = System.currentTimeMillis()
+        val capturedAtMonotonicNs = SystemClock.elapsedRealtimeNanos()
+        val attempt = visualAttempt()
+        val generation = visualGeneration()
+        val bootId = visualBootId()
+        val route =
+            JSONObject()
+                .put("pageName", routePageName)
+                .put("fixtureKey", fixtureKey)
+                .put("fixtureRevision", fixtureRevision)
+                .put("renderedGoalSha256", renderedGoalSha256)
+                .put("realProductRoute", routePageName == "compose_settings_route_visual")
         return """
             {
               "provider": "android",
               "providerType": "android-kuikly-shared-page",
               "source": "kmp-shared",
               "caseId": "$caseId",
+              "route": $route,
               "image": "${imageFile.absolutePath}",
               "viewport": { "width": ${bitmap.width}, "height": ${bitmap.height}, "density": 1 },
               "systemBars": "hidden",
@@ -3471,11 +3573,20 @@ class KmpVisualScreenshotCaptureTest {
                 "validation": {
                   "uniqueColors": ${stats.uniqueColors},
                   "dominantRatio": ${stats.dominantRatio}
-                }
+                },
+                "readyTokenObserved": $lastReadyTokenObserved,
+                "stableFrameCount": $lastStableFrameCount
               },
               "diagnostics": $diagnostics,
+              "captureIdentity": {
+                "attempt": $attempt,
+                "generation": "$generation",
+                "bootId": "$bootId",
+                "capturedAtEpochMs": $capturedAtEpochMs,
+                "capturedAtMonotonicNs": $capturedAtMonotonicNs
+              },
               "clampedToShortWindow": $lastCaptureClampedToShortWindow,
-              "capturedAt": "${System.currentTimeMillis()}"
+              "capturedAt": "$capturedAtEpochMs"
             }
             """.trimIndent() + "\n"
     }
@@ -3514,7 +3625,10 @@ class KmpVisualScreenshotCaptureTest {
                 "hardwareAccelerated": $hardwareAccelerated,
                 "totalViews": ${counts[0]},
                 "laidOutViews": ${counts[1]},
-                "visibleContentLeafViews": ${counts[2]}
+                "visibleContentLeafViews": ${counts[2]},
+                "targetPackage": "${context.packageName}",
+                "processId": ${android.os.Process.myPid()},
+                "processUid": ${android.os.Process.myUid()}
             }
         """.trimIndent()
     }
@@ -4157,6 +4271,7 @@ class KmpVisualScreenshotCaptureTest {
 
         private const val STABLE_CAPTURE_TIMEOUT_MS = 20_000L
         private const val STABLE_CAPTURE_RETRY_MS = 750L
+        private const val VISUAL_READY_TIMEOUT_MS = 10_000L
 
         // Reaction-glyph sprite atlas settle (task #379). The reaction atlas is
         // decoded async off an imageResource; in the headless capture env the
