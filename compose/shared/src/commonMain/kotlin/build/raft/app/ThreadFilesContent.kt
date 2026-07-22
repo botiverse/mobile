@@ -6,6 +6,8 @@ import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.data.formatAttachmentSizeLabel
 import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
@@ -21,6 +23,7 @@ import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
+import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
@@ -29,9 +32,12 @@ import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.kuikly.compose.ui.unit.sp
 import kotlinx.serialization.Serializable
+import kotlinx.coroutines.flow.distinctUntilChanged
 
 private const val ThreadFilesVisualPreviewUri =
     "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20128%20128%22%3E%3Crect%20width%3D%22128%22%20height%3D%22128%22%20fill%3D%22%23FDE047%22%2F%3E%3Ccircle%20cx%3D%2288%22%20cy%3D%2240%22%20r%3D%2220%22%20fill%3D%22%23F472B6%22%2F%3E%3Cpath%20d%3D%22M16%20104L48%2068l22%2024%2018-16%2024%2028H16z%22%20fill%3D%22%23000000%22%2F%3E%3C%2Fsvg%3E"
+
+private const val ThreadFilesAutoLoadPrefetchRows = 4
 
 @Composable
 internal fun ThreadFilesVisualScreen() {
@@ -179,7 +185,36 @@ private fun ThreadFilesList(
         ThreadFilesStateMessage(stringResource(MR.strings.thread_files_empty_title), stringResource(MR.strings.thread_files_empty_detail))
         return
     }
+    val listState = rememberLazyListState()
+    LaunchedEffect(
+        listState,
+        payload.items.size,
+        payload.hasMore,
+        payload.loadingMore,
+        payload.nextCursor,
+        payload.errorCode
+    ) {
+        snapshotFlow {
+            listState.layoutInfo.visibleItemsInfo.maxOfOrNull { item -> item.index } ?: -1
+        }
+            .distinctUntilChanged()
+            .collect { lastVisibleItemIndex ->
+                if (
+                    threadFilesShouldRequestLoadMore(
+                        itemCount = payload.items.size,
+                        lastVisibleItemIndex = lastVisibleItemIndex,
+                        hasMore = payload.hasMore,
+                        loadingMore = payload.loadingMore,
+                        nextCursor = payload.nextCursor,
+                        errorCode = payload.errorCode
+                    )
+                ) {
+                    onEvent("loadMore", null)
+                }
+            }
+    }
     LazyColumn(
+        state = listState,
         modifier = Modifier.fillMaxSize().padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
@@ -196,11 +231,32 @@ private fun ThreadFilesList(
             item {
                 ThreadFilesLoadMore(
                     loading = payload.loadingMore,
-                    onClick = { onEvent("loadMore", null) }
+                    onClick = { onEvent("loadMore", null) },
+                    label =
+                        if (payload.errorCode != null) {
+                            stringResource(MR.strings.common_retry)
+                        } else {
+                            "Load more"
+                        }
                 )
             }
         }
     }
+}
+
+internal fun threadFilesShouldRequestLoadMore(
+    itemCount: Int,
+    lastVisibleItemIndex: Int,
+    hasMore: Boolean,
+    loadingMore: Boolean,
+    nextCursor: String?,
+    errorCode: String?,
+    prefetchRows: Int = ThreadFilesAutoLoadPrefetchRows
+): Boolean {
+    if (!hasMore || loadingMore || errorCode != null || nextCursor.isNullOrBlank()) return false
+    if (itemCount <= 0 || lastVisibleItemIndex < 0) return false
+    val triggerIndex = (itemCount - 1 - prefetchRows.coerceAtLeast(0)).coerceAtLeast(0)
+    return lastVisibleItemIndex >= triggerIndex
 }
 
 @Composable
