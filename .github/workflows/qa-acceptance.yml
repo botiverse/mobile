@@ -19,6 +19,14 @@ on:
         description: "Agent turn budget"
         required: false
         default: "30"
+      max_minutes:
+        description: "Case-specific wall-clock budget"
+        required: false
+        default: "20"
+      no_progress_turns:
+        description: "Abort after this many repeated identical actions"
+        required: false
+        default: "8"
       stamp_run_case_id:
         description: "Stamp run_case id — when set, evidence + verdict report back to Stamp"
         required: false
@@ -429,6 +437,8 @@ jobs:
           QA_TEST_PASSWORD: ${{ secrets.QA_TEST_PASSWORD }}
           QA_GOAL: ${{ inputs.goal || '' }}
           QA_MAX_TURNS: ${{ inputs.max_turns || '30' }}
+          QA_MAX_MINUTES: ${{ inputs.max_minutes || '20' }}
+          QA_NO_PROGRESS_TURNS: ${{ inputs.no_progress_turns || '8' }}
           STAMP_RUN_CASE_ID: ${{ inputs.stamp_run_case_id || '' }}
           STAMP_URL: ${{ secrets.STAMP_URL }}
           STAMP_TOKEN: ${{ secrets.STAMP_TOKEN }}
@@ -473,7 +483,7 @@ jobs:
             adb shell dumpsys gfxinfo "$(cat qa-app-package.txt 2>/dev/null || echo build.raft.app)" reset || true
             date +%s%3N > qa-evidence/perf-started.txt
             adb shell "nohup sh -c 'i=1; while [ \$i -le 8 ]; do screenrecord --size 540x1200 --bit-rate 1000000 --time-limit 180 /sdcard/qa-rec-\$(printf %02d \$i).mp4; i=\$((i+1)); done' >/dev/null 2>&1 &"
-            export MINIMAX_API_KEY="$PI_API_KEY"; node scripts/qa/acceptance_agent.mjs --goal "${QA_GOAL:-$DEFAULT_GOAL}" --max-turns "$QA_MAX_TURNS" --package "$(cat qa-app-package.txt 2>/dev/null || echo build.raft.app)" --out qa-evidence; echo "$?" > qa-evidence/agent-rc.txt; echo "agent exit code $(cat qa-evidence/agent-rc.txt)"
+            export MINIMAX_API_KEY="$PI_API_KEY"; node scripts/qa/acceptance_agent.mjs --goal "${QA_GOAL:-$DEFAULT_GOAL}" --max-turns "$QA_MAX_TURNS" --max-minutes "$QA_MAX_MINUTES" --no-progress-turns "$QA_NO_PROGRESS_TURNS" --package "$(cat qa-app-package.txt 2>/dev/null || echo build.raft.app)" --out qa-evidence; echo "$?" > qa-evidence/agent-rc.txt; echo "agent exit code $(cat qa-evidence/agent-rc.txt)"
             adb logcat -d -v threadtime > qa-evidence/logcat-full.txt 2>&1 || true
             PKG="$(cat qa-app-package.txt 2>/dev/null || echo build.raft.app)"; adb shell pidof "$PKG" >> qa-evidence/app-pids.txt 2>/dev/null || true; node scripts/qa/scope_logcat.mjs --input qa-evidence/logcat-full.txt --output qa-evidence/logcat.txt --verdict qa-evidence/verdict.json --pids qa-evidence/app-pids.txt --package "$PKG" --generation "${GITHUB_RUN_ID}:${GITHUB_RUN_ATTEMPT}" || true
             adb shell dumpsys activity top > qa-evidence/activity-top.txt 2>&1 || true

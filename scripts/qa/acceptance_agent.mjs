@@ -27,6 +27,7 @@ import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { normalizeAssertionAnnotation } from "./assertion_annotations.mjs";
+import { effectiveExecutorVerdict, normalizeSelfDiagnosis, repeatedActionKey } from "./execution_diagnosis.mjs";
 import { captureAndroidScreenshotWithPostProof } from "./android_capture_proof.mjs";
 import { buildEvidenceOverlays, screenshotPixelTap } from "./evidence_annotations.mjs";
 import { capacityClientFromEnv, runWithModelRetries } from "./model_capacity.mjs";
@@ -39,7 +40,8 @@ const opts = {
   goal: arg("--goal", process.env.QA_GOAL || ""),
   out: arg("--out", "qa-evidence"),
   maxTurns: Number(arg("--max-turns", process.env.QA_MAX_TURNS || "30")),
-  maxMinutes: Number(arg("--max-minutes", "20")),
+  maxMinutes: Number(arg("--max-minutes", process.env.QA_MAX_MINUTES || "20")),
+  noProgressTurns: Number(arg("--no-progress-turns", process.env.QA_NO_PROGRESS_TURNS || "8")),
   device: arg("--device", ""),
   appPackage: arg("--package", "build.raft.app"),
   playbook: arg("--playbook", process.env.QA_PLAYBOOK || "docs/qa-acceptance-operations.md"),
@@ -295,6 +297,11 @@ function preamble(size) {
     '  {"action":"note","milestone":"<3-6 words>","note":"<one-sentence conclusion>"}   record a',
     "                                                 progress checkpoint reviewers watch live",
     '  {"action":"finish","verdict":"pass|fail|error","reason":"<what you verified / what failed>",',
+    '   "diagnosis":{"classification":"product|navigation_contract|fixture|budget|infra",',
+    '     "target_surface_reached":true|false,"first_blocked_step":"<step or null>",',
+    '     "missing_guidance":["<specific locator/navigation/precondition gap>"],',
+    '     "first_product_failure":{"action":"<performed action>","expected":"<state>",',
+    '       "observed":"<contradictory fresh state>","evidence_step":<turn>}|null},',
     '   "annotations":[{"assertion_id":"<stable id from [id] in goal>","step":<turn>,"result":"pass|fail","bounds":"[x1,y1][x2,y2]","label":"[id] <short>"}]}',
     "",
     "Rules:",
@@ -318,6 +325,9 @@ function preamble(size) {
     "- After typing into a field, verify via the screenshot that the text landed in the",
     "  INTENDED field. If text went to the wrong field, tap that field, use clear, and redo.",
     "- finish with verdict pass ONLY if you visually confirmed every requirement of the goal;",
+    "  use product fail only when the target surface was reached, a real action was performed,",
+    "  and fresh evidence contradicts the expected state. Navigation/fixture/budget gaps are",
+    "  diagnosis causes, not product failures; the runner preserves them as harness/incomplete.",
     "  use fail only when the APP UNDER TEST contradicts the goal or its own UI is blocked/loading;",
     "  use error when a foreign system surface (Pixel Launcher, System UI, emulator/OS dialog)",
     "  prevents testing. Never turn a launcher/emulator failure into a product fail.",
@@ -588,7 +598,8 @@ async function main() {
   // (auto:* prefix distinguishes source on the Stamp timeline).
   stampCheckpoint(0, "auto:start", opts.goal);
 
-  let verdict = null, reason = "", turns = 0;
+  let verdict = null, reason = "", turns = 0, executionDiagnosis = null;
+  let noProgressTriggered = false, lastActionKey = "", sameActionTurns = 0;
   const tapAnnotations = [];
   const assertionAnnotations = [];
   while (turns < opts.maxTurns && Date.now() < deadline) {
@@ -624,11 +635,16 @@ async function main() {
     } catch (e) {
       logStep({ turn: turns, event: "model_error", error: String(e?.message || e).slice(0, 300) });
       verdict = "error"; reason = `model call failed: ${String(e?.message || e).slice(0, 200)}`;
+      executionDiagnosis = {
+        classification: "infra", target_surface_reached: false,
+        first_blocked_step: "model-call", missing_guidance: [], first_product_failure: null,
+      };
       break;
     }
 
     if (action.action === "finish") {
-      verdict = action.verdict === "pass" ? "pass" : action.verdict === "error" ? "error" : "fail";
+      executionDiagnosis = normalizeSelfDiagnosis(action.diagnosis, redact);
+      verdict = action.verdict === "error" ? "error" : effectiveExecutorVerdict(action.verdict, executionDiagnosis);
       reason = String(action.reason || "");
       if (Array.isArray(action.annotations)) assertionAnnotations.push(...action.annotations);
       logStep({ turn: turns, action });
@@ -724,6 +740,9 @@ async function main() {
     await new Promise((r) => setTimeout(r, 1500));
 
     logStep({ turn: turns, action: { ...action, value: action.action === "text" ? redact(String(action.value ?? "")) : action.value }, feedback: feedback === "ok" ? "ok" : `${feedback.length} chars` });
+    const actionKey = repeatedActionKey(action);
+    sameActionTurns = actionKey === lastActionKey ? sameActionTurns + 1 : 1;
+    lastActionKey = actionKey;
     recordSession("user_turn", { turn: turns, feedback: feedback === "ok" ? "ok" : `${feedback.length} chars`, screenshot: `step-${String(turns).padStart(2, "0")}.png` });
     messages.push({
       role: "user",
@@ -733,6 +752,11 @@ async function main() {
       ],
       timestamp: Date.now(),
     });
+    if (sameActionTurns >= opts.noProgressTurns) {
+      noProgressTriggered = true;
+      logStep({ turn: turns, event: "no_progress_fuse", repeated_action: action.action, repeated_turns: sameActionTurns });
+      break;
+    }
   }
 
   if (!verdict) {
@@ -741,19 +765,22 @@ async function main() {
     // two 8-minute runs uploaded evidence but died verdict-less). The prompt
     // forbids upgrading unverified requirements to pass; exit 2 stays
     // reserved for real infrastructure (emulator dead, model unreachable).
-    const budgetCause = turns >= opts.maxTurns ? `turn budget (${opts.maxTurns})` : `wall clock (${opts.maxMinutes}min)`;
+    const budgetCause = noProgressTriggered
+      ? `no-progress fuse (${opts.noProgressTurns} repeated actions)`
+      : turns >= opts.maxTurns ? `turn budget (${opts.maxTurns})` : `wall clock (${opts.maxMinutes}min)`;
     logStep({ turn: turns, event: "forced_verdict", cause: budgetCause });
     try {
       pruneImages(messages);
       messages.push({
         role: "user",
-        content: [{ type: "text", text: `BUDGET EXHAUSTED (${budgetCause}). Produce your final verdict NOW as a single finish action. Judge ONLY from what you actually verified: an unverified requirement caused by the app makes the verdict fail; a foreign system/emulator blocker makes it error. Name each unverified requirement and include annotations for whatever you DID verify.` }],
+        content: [{ type: "text", text: `EXECUTION BUDGET STOP (${budgetCause}). Produce one finish action including the full diagnosis object. An unverified requirement is NOT automatically a product failure. Use classification=product only if you reached the target surface, performed the relevant action, and fresh evidence contradicts the expected state; otherwise classify navigation_contract, fixture, budget, or infra. Name each unverified requirement and include annotations for whatever you DID verify.` }],
         timestamp: Date.now(),
       });
       const reply = await callModel(models, model, messages);
       const action = parseAction(reply);
       if (action.action === "finish") {
-        verdict = action.verdict === "pass" ? "pass" : action.verdict === "error" ? "error" : "fail";
+        executionDiagnosis = normalizeSelfDiagnosis(action.diagnosis, redact);
+        verdict = action.verdict === "error" ? "error" : effectiveExecutorVerdict(action.verdict, executionDiagnosis);
         reason = `[forced at ${budgetCause}] ${String(action.reason || "")}`;
         if (Array.isArray(action.annotations)) assertionAnnotations.push(...action.annotations);
         logStep({ turn: turns, action });
@@ -765,6 +792,13 @@ async function main() {
   if (!verdict) {
     verdict = "error";
     reason = turns >= opts.maxTurns ? `no verdict within ${opts.maxTurns} turns` : `wall-clock cap ${opts.maxMinutes}min hit`;
+    executionDiagnosis = {
+      classification: "infra",
+      target_surface_reached: false,
+      first_blocked_step: null,
+      missing_guidance: [],
+      first_product_failure: null,
+    };
   }
 
   // Model judgment is not authoritative for infrastructure ownership. If the
@@ -779,6 +813,13 @@ async function main() {
         logStep({ turn: turns, event: "foreign_system_blocker", blocker });
         verdict = "error";
         reason = `harness/system blocker (${blocker.code}): ${blocker.label}; product requirements were not evaluated`;
+        executionDiagnosis = {
+          classification: "infra",
+          target_surface_reached: false,
+          first_blocked_step: "foreign-system-blocker",
+          missing_guidance: [],
+          first_product_failure: null,
+        };
       }
     } catch (e) {
       logStep({ turn: turns, event: "system_blocker_check_failed", error: String(e?.message || e).slice(0, 200) });
@@ -790,6 +831,8 @@ async function main() {
   const result = {
     goal: redact(opts.goal), verdict, reason: redact(reason), turns,
     durationMs: Date.now() - started, model: "MiniMax-M3", screen: size,
+    execution_diagnosis: executionDiagnosis,
+    execution_budget: { max_turns: opts.maxTurns, max_minutes: opts.maxMinutes, no_progress_turns: opts.noProgressTurns },
     usage: { ...modelUsage, totalTokens: modelUsage.input + modelUsage.output },
     annotations: {
       assertion: assertionAnnotations.map((a) => normalizeAssertionAnnotation({

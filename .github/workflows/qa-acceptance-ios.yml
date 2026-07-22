@@ -17,6 +17,14 @@ on:
         description: "Agent turn budget"
         required: false
         default: "40"
+      max_minutes:
+        description: "Case-specific wall-clock budget"
+        required: false
+        default: "20"
+      no_progress_turns:
+        description: "Abort after this many repeated identical actions"
+        required: false
+        default: "8"
       stamp_run_case_id:
         description: "Stamp run_case id — when set, evidence + verdict report back to Stamp"
         required: false
@@ -316,6 +324,8 @@ jobs:
           QA_TEST_PASSWORD: ${{ secrets.QA_TEST_PASSWORD }}
           QA_GOAL: ${{ inputs.goal || '' }}
           QA_MAX_TURNS: ${{ inputs.max_turns || '40' }}
+          QA_MAX_MINUTES: ${{ inputs.max_minutes || '20' }}
+          QA_NO_PROGRESS_TURNS: ${{ inputs.no_progress_turns || '8' }}
           STAMP_RUN_CASE_ID: ${{ inputs.stamp_run_case_id || '' }}
           STAMP_URL: ${{ secrets.STAMP_URL }}
           STAMP_TOKEN: ${{ secrets.STAMP_TOKEN }}
@@ -330,7 +340,7 @@ jobs:
           set +e
           node scripts/qa/acceptance_agent.mjs \
             --platform ios --ios-udid "$UDID" --package "$BUNDLE_ID" \
-            --goal "${QA_GOAL:-$DEFAULT_GOAL}" --max-turns "$QA_MAX_TURNS" --out qa-evidence
+            --goal "${QA_GOAL:-$DEFAULT_GOAL}" --max-turns "$QA_MAX_TURNS" --max-minutes "$QA_MAX_MINUTES" --no-progress-turns "$QA_NO_PROGRESS_TURNS" --out qa-evidence
           echo "$?" > qa-evidence/agent-rc.txt
           echo "agent exit code $(cat qa-evidence/agent-rc.txt)"
 

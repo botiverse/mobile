@@ -1,0 +1,39 @@
+name: Stamp failure diagnosis (independent M3)
+
+on:
+  workflow_dispatch:
+    inputs:
+      stamp_run_case_id:
+        description: "Terminal Stamp run_case requiring evidence-only diagnosis"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Diagnose immutable attempt
+        env:
+          STAMP_RUN_CASE_ID: ${{ inputs.stamp_run_case_id }}
+          STAMP_URL: ${{ secrets.STAMP_URL }}
+          STAMP_REVIEW_TOKEN: ${{ secrets.STAMP_REVIEW_TOKEN }}
+          PI_API_KEY: ${{ secrets.PI_API_KEY }}
+          SLOCK_PI_AI_MODULE: ${{ runner.temp }}/m3/node_modules/@earendil-works/pi-ai/dist/providers/all.js
+        run: |
+          mkdir -p "$RUNNER_TEMP/m3"
+          npm install --prefix "$RUNNER_TEMP/m3" --no-save @earendil-works/pi-ai
+          node scripts/qa/failure_diagnosis_agent.mjs --run-case-id "$STAMP_RUN_CASE_ID" --out failure-diagnosis.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: failure-diagnosis-${{ inputs.stamp_run_case_id }}
+          path: failure-diagnosis.json
+          if-no-files-found: warn
