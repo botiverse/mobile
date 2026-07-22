@@ -21,6 +21,10 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Test sign-off policy
+        shell: bash
+        run: scripts/test_check_commit_signoff.sh
+
       - name: Determine commit range
         id: range
         shell: bash
