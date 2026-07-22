@@ -209,7 +209,26 @@ FAKEAAPT
 cat > "$TMP/apksigner" <<'FAKESIGNER'
 #!/usr/bin/env bash
 set -euo pipefail
-echo "Signer #1 certificate SHA-256 digest: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+apk="${@: -1}"
+current="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+if [[ "${FAKE_SIGNER_STYLE:-rotated}" == "mismatch" && "$apk" == *test.apk ]]; then
+  current="cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+fi
+case "${FAKE_SIGNER_STYLE:-rotated}" in
+  rotated|mismatch)
+    echo "Signer (minSdkVersion=33, maxSdkVersion=2147483647) certificate SHA-256 digest: $current"
+    echo "Signer (minSdkVersion=24, maxSdkVersion=32) certificate SHA-256 digest: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    ;;
+  legacy)
+    echo "Signer #1 certificate SHA-256 digest: $current"
+    ;;
+  missing)
+    echo 'Signer #1 certificate DN: CN=Missing Digest'
+    ;;
+  *)
+    exit 2
+    ;;
+esac
 FAKESIGNER
 chmod +x "$TMP/aapt" "$TMP/apksigner"
 
@@ -248,6 +267,8 @@ for item in receipt["evidence_inventory"]:
     assert receipt["timeline"]["device_started_monotonic_ns"] <= item["captured_at_monotonic_ns"] <= receipt["timeline"]["device_finished_monotonic_ns"], item
 assert receipt["apks"]["app"]["source_sha256"] == receipt["apks"]["app"]["installed_sha256"]
 assert receipt["apks"]["instrumentation"]["source_sha256"] == receipt["apks"]["instrumentation"]["installed_sha256"]
+assert receipt["apks"]["app"]["signer_sha256"] == "a" * 64, receipt
+assert receipt["apks"]["instrumentation"]["signer_sha256"] == "a" * 64, receipt
 PY
 
 rm -rf "$FAKE_ADB_STATE"
@@ -308,7 +329,39 @@ PY
 
 rm -rf "$FAKE_ADB_STATE"
 mkdir -p "$FAKE_ADB_STATE/device-results"
-env "${COMMON_ENV[@]}" FAKE_BAD_APP_HASH=1 "$ROOT/scripts/run_android_visual_capture.sh" \
+env "${COMMON_ENV[@]}" FAKE_SIGNER_STYLE=missing "$ROOT/scripts/run_android_visual_capture.sh" \
+  --app-apk "$TMP/app.apk" \
+  --test-apk "$TMP/test.apk" \
+  --method-filter "$FILTER" \
+  --output-dir "$TMP/signer-missing" \
+  --defer-verdict
+python3 - "$TMP/signer-missing/android-visual-runner-receipt.json" <<'PY'
+import json, sys
+receipt = json.load(open(sys.argv[1], encoding="utf-8"))
+assert receipt["harness_status"] == "harness_incomplete", receipt
+assert receipt["failure_phase"] == "apk_identity", receipt
+assert "apk_signer_missing" in receipt["failure_reasons"], receipt
+PY
+
+rm -rf "$FAKE_ADB_STATE"
+mkdir -p "$FAKE_ADB_STATE/device-results"
+env "${COMMON_ENV[@]}" FAKE_SIGNER_STYLE=mismatch "$ROOT/scripts/run_android_visual_capture.sh" \
+  --app-apk "$TMP/app.apk" \
+  --test-apk "$TMP/test.apk" \
+  --method-filter "$FILTER" \
+  --output-dir "$TMP/signer-mismatch" \
+  --defer-verdict
+python3 - "$TMP/signer-mismatch/android-visual-runner-receipt.json" <<'PY'
+import json, sys
+receipt = json.load(open(sys.argv[1], encoding="utf-8"))
+assert receipt["harness_status"] == "harness_incomplete", receipt
+assert receipt["failure_phase"] == "apk_identity", receipt
+assert "apk_signer_mismatch" in receipt["failure_reasons"], receipt
+PY
+
+rm -rf "$FAKE_ADB_STATE"
+mkdir -p "$FAKE_ADB_STATE/device-results"
+env "${COMMON_ENV[@]}" FAKE_SIGNER_STYLE=legacy FAKE_BAD_APP_HASH=1 "$ROOT/scripts/run_android_visual_capture.sh" \
   --app-apk "$TMP/app.apk" \
   --test-apk "$TMP/test.apk" \
   --method-filter "$FILTER" \
