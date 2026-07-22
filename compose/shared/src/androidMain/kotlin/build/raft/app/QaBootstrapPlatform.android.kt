@@ -5,6 +5,7 @@ import android.os.SystemClock
 import android.util.Log
 import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.SharedAuthResult
+import build.raft.app.data.QA_BOOTSTRAP_LOGIN_PROTOCOL
 import build.raft.app.data.StoredQaBootstrapMetadata
 import build.raft.app.data.StoredQaBootstrapReadyReceipt
 import build.raft.app.data.StoredQaBootstrapRuntimeEnvelope
@@ -41,7 +42,13 @@ internal actual suspend fun slockPlatformCompleteQaBootstrapRouteReady(authDataS
     val persistedEnvelope = metadata.runtimeEnvelope ?: return
     Log.i(
         QaBootstrapLogTag,
-        "QA_BOOTSTRAP_READY ticketDigest=${metadata.ticketDigest} runCaseId=${metadata.runCaseId} " +
+        "QA_BOOTSTRAP_READY " +
+            (if (metadata.protocol == QA_BOOTSTRAP_LOGIN_PROTOCOL) {
+                "envelopeDigest=${metadata.ticketDigest} "
+            } else {
+                "ticketDigest=${metadata.ticketDigest} "
+            }) +
+            "runCaseId=${metadata.runCaseId} " +
             "attempt=${metadata.attempt} ciJobRef=${metadata.ciJobRef} principalId=${metadata.principalId} " +
             "serverId=${metadata.serverId} sessionGeneration=${metadata.sessionGeneration} " +
             "route=${metadata.targetRoute} applicationId=${metadata.applicationId} " +

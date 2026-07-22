@@ -12,6 +12,9 @@ BASE="$STAMP_URL/api/agent/run-cases/$STAMP_RUN_CASE_ID"
 JOB_REF="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-}/actions/runs/${GITHUB_RUN_ID:-}"
 JOB_HEADER="X-Stamp-CI-Job-Ref: $JOB_REF"
 CLAIM_TOKEN_FILE="${RUNNER_TEMP:-$EV}/stamp-claim-$STAMP_RUN_CASE_ID"
+BOOTSTRAP_SPEC_FILE="${RUNNER_TEMP:-$EV}/stamp-bootstrap-spec-$STAMP_RUN_CASE_ID.json"
+BOOTSTRAP_LOGIN_RESPONSE_FILE="${RUNNER_TEMP:-$EV}/stamp-bootstrap-login-$STAMP_RUN_CASE_ID.json"
+BOOTSTRAP_READY_RESPONSE_FILE="${RUNNER_TEMP:-$EV}/stamp-bootstrap-ready-$STAMP_RUN_CASE_ID.json"
 
 if [ "$PHASE" = "dispatch-start" ] || [ "$PHASE" = "dispatch-error" ]; then
   # Once a claim lease exists, ordinary executor/product failures belong to
@@ -60,7 +63,7 @@ if [ "$PHASE" = "claim" ]; then
   if curl -sf -X POST "$BASE/claim" -H "$AUTH" -H 'content-type: application/json' \
     --data-binary @"$CLAIM_PAYLOAD" \
     -o "$CLAIM_RESPONSE"; then
-    node -e 'const fs=require("fs");const v=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if(v.claim_token)fs.writeFileSync(process.argv[2],v.claim_token,{mode:0o600})' "$CLAIM_RESPONSE" "$CLAIM_TOKEN_FILE"
+    node -e 'const fs=require("fs");const v=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if(!v.claim_token)process.exit(2);fs.writeFileSync(process.argv[2],v.claim_token,{mode:0o600});const b=v.auth_bootstrap&&typeof v.auth_bootstrap==="object"?v.auth_bootstrap:{required:false};fs.writeFileSync(process.argv[3],JSON.stringify({...b,required:b.required===true,run_case_id:v.run_case_id},null,2),{mode:0o600})' "$CLAIM_RESPONSE" "$CLAIM_TOKEN_FILE" "$BOOTSTRAP_SPEC_FILE"
     rm -f "$CLAIM_RESPONSE" "$CLAIM_PAYLOAD"
     echo "stamp: claimed (commit=${SOURCE_COMMIT:-?} artifact=${ARTIFACT_SHA:0:12})"
     exit 0
@@ -72,6 +75,69 @@ fi
 
 CLAIM_TOKEN=""; [ -f "$CLAIM_TOKEN_FILE" ] && CLAIM_TOKEN=$(cat "$CLAIM_TOKEN_FILE")
 CLAIM_HEADER="X-Stamp-Claim-Token: $CLAIM_TOKEN"
+
+if [ "$PHASE" = "bootstrap-login" ]; then
+  BINDING_FILE="${2:-${RUNNER_TEMP:-qa-evidence}/stamp-bootstrap-device-binding.json}"
+  [ -s "$BOOTSTRAP_SPEC_FILE" ] && [ -s "$BINDING_FILE" ] || { echo "stamp: bootstrap spec/device binding missing" >&2; exit 1; }
+  ENDPOINT=$(node -e 'const v=require(process.argv[1]);if(v.required!==true||v.contract_version!=="qa-bootstrap-login/v1"||typeof v.login_endpoint!=="string")process.exit(2);process.stdout.write(v.login_endpoint)' "$BOOTSTRAP_SPEC_FILE") \
+    || { echo "stamp: bootstrap login contract unavailable" >&2; exit 1; }
+  install -m 600 /dev/null "$BOOTSTRAP_LOGIN_RESPONSE_FILE"
+  if curl -sfS --retry 2 --retry-all-errors -X POST "${STAMP_URL%/}$ENDPOINT" \
+    -H "$AUTH" -H "$JOB_HEADER" -H "$CLAIM_HEADER" -H 'content-type: application/json' \
+    --data-binary @"$BINDING_FILE" -o "$BOOTSTRAP_LOGIN_RESPONSE_FILE"; then
+    chmod 600 "$BOOTSTRAP_LOGIN_RESPONSE_FILE"
+    node -e 'const fs=require("fs"),v=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if(typeof v.request_id!=="string"||!v.envelope||typeof v.envelope_digest!=="string"||typeof v.expires_at!=="string")process.exit(2)' "$BOOTSTRAP_LOGIN_RESPONSE_FILE" \
+      || { rm -f "$BOOTSTRAP_LOGIN_RESPONSE_FILE"; echo "stamp: bootstrap login response invalid" >&2; exit 1; }
+    echo "stamp: bootstrap login envelope received"
+    exit 0
+  fi
+  rm -f "$BOOTSTRAP_LOGIN_RESPONSE_FILE"
+  echo "stamp: bootstrap login failed" >&2
+  exit 1
+fi
+
+if [ "$PHASE" = "bootstrap-ready" ]; then
+  READY_FILE="${2:-${RUNNER_TEMP:-qa-evidence}/stamp-bootstrap-ready.json}"
+  [ -s "$BOOTSTRAP_SPEC_FILE" ] && [ -s "$READY_FILE" ] || { echo "stamp: bootstrap spec/READY payload missing" >&2; exit 1; }
+  ENDPOINT=$(node -e 'const v=require(process.argv[1]);if(v.required!==true||typeof v.ready_endpoint!=="string")process.exit(2);process.stdout.write(v.ready_endpoint)' "$BOOTSTRAP_SPEC_FILE") \
+    || { echo "stamp: bootstrap READY contract unavailable" >&2; exit 1; }
+  install -m 600 /dev/null "$BOOTSTRAP_READY_RESPONSE_FILE"
+  if curl -sfS --retry 2 --retry-all-errors -X POST "${STAMP_URL%/}$ENDPOINT" \
+    -H "$AUTH" -H "$JOB_HEADER" -H "$CLAIM_HEADER" -H 'content-type: application/json' \
+    --data-binary @"$READY_FILE" -o "$BOOTSTRAP_READY_RESPONSE_FILE"; then
+    chmod 600 "$BOOTSTRAP_READY_RESPONSE_FILE"
+    echo "stamp: bootstrap READY accepted"
+    exit 0
+  fi
+  rm -f "$BOOTSTRAP_READY_RESPONSE_FILE"
+  echo "stamp: bootstrap READY failed" >&2
+  exit 1
+fi
+
+if [ "$PHASE" = "bootstrap-terminal" ]; then
+  OUTCOME="${2:-aborted}"
+  CLEANUP_FILE="${3:-${RUNNER_TEMP:-qa-evidence}/stamp-bootstrap-cleanup.json}"
+  [ "$OUTCOME" = "completed" ] || [ "$OUTCOME" = "aborted" ] || { echo "stamp: invalid bootstrap terminal outcome" >&2; exit 1; }
+  [ -s "$BOOTSTRAP_SPEC_FILE" ] && [ -s "$BOOTSTRAP_LOGIN_RESPONSE_FILE" ] && [ -s "$CLEANUP_FILE" ] \
+    || { echo "stamp: bootstrap terminal inputs missing" >&2; rm -f "$BOOTSTRAP_LOGIN_RESPONSE_FILE" "$BOOTSTRAP_READY_RESPONSE_FILE"; exit 1; }
+  ENDPOINT=$(node -e 'const v=require(process.argv[1]);if(v.required!==true||typeof v.terminal_endpoint!=="string")process.exit(2);process.stdout.write(v.terminal_endpoint)' "$BOOTSTRAP_SPEC_FILE") \
+    || { echo "stamp: bootstrap terminal contract unavailable" >&2; rm -f "$BOOTSTRAP_LOGIN_RESPONSE_FILE" "$BOOTSTRAP_READY_RESPONSE_FILE"; exit 1; }
+  TERMINAL_PAYLOAD="${RUNNER_TEMP:-$EV}/stamp-bootstrap-terminal-$STAMP_RUN_CASE_ID.json"
+  OUTCOME="$OUTCOME" node -e 'const fs=require("fs"),login=JSON.parse(fs.readFileSync(process.argv[1],"utf8")),cleanup=JSON.parse(fs.readFileSync(process.argv[2],"utf8"));const refresh=login.envelope?.refresh_token;if(typeof refresh!=="string"||!refresh)process.exit(2);fs.writeFileSync(process.argv[3],JSON.stringify({request_id:login.request_id,envelope_digest:login.envelope_digest,refresh_token:refresh,outcome:process.env.OUTCOME,device_cleanup:cleanup}),{mode:0o600})' \
+    "$BOOTSTRAP_LOGIN_RESPONSE_FILE" "$CLEANUP_FILE" "$TERMINAL_PAYLOAD" \
+    || { rm -f "$BOOTSTRAP_LOGIN_RESPONSE_FILE" "$BOOTSTRAP_READY_RESPONSE_FILE" "$TERMINAL_PAYLOAD"; echo "stamp: bootstrap terminal payload invalid" >&2; exit 1; }
+  rc=0
+  curl -sfS --retry 2 --retry-all-errors -X POST "${STAMP_URL%/}$ENDPOINT" \
+    -H "$AUTH" -H "$JOB_HEADER" -H "$CLAIM_HEADER" -H 'content-type: application/json' \
+    --data-binary @"$TERMINAL_PAYLOAD" >/dev/null || rc=$?
+  rm -f "$BOOTSTRAP_LOGIN_RESPONSE_FILE" "$BOOTSTRAP_READY_RESPONSE_FILE" "$TERMINAL_PAYLOAD"
+  if [ "$rc" = "0" ]; then
+    echo "stamp: bootstrap terminal accepted outcome=$OUTCOME"
+    exit 0
+  fi
+  echo "stamp: bootstrap terminal failed outcome=$OUTCOME" >&2
+  exit 1
+fi
 
 # report phase: upload evidence files, then the verdict
 # Freeze the execution identity before any scoped log or verdict write. Stamp

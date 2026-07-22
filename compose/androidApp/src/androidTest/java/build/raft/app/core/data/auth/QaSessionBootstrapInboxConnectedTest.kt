@@ -14,6 +14,22 @@ class QaSessionBootstrapInboxConnectedTest {
     private val inbox = File(context.filesDir, "qa-bootstrap/inbox")
 
     @Test
+    fun sessionEnvelopeUsesTheSameConsumeOnce0600Boundary() {
+        inbox.mkdirs()
+        val file = File(inbox, "login-envelope.session")
+        file.writeBytes("canonical-envelope".encodeToByteArray())
+        Os.chmod(file.absolutePath, 0b110000000)
+
+        assertArrayEquals(
+            "canonical-envelope".encodeToByteArray(),
+            QaSessionBootstrapInbox.consume(context, "login-envelope", "session")
+        )
+        assertFalse(file.exists())
+        assertNull(QaSessionBootstrapInbox.consume(context, "login-envelope", "session"))
+        assertNull(QaSessionBootstrapInbox.consume(context, "login-envelope", "unknown"))
+    }
+
+    @Test
     fun consumesOnlyExact0600RegularFiles() {
         val file = requestFile("mode")
         file.writeBytes("ticket".encodeToByteArray())

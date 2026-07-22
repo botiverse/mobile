@@ -1,0 +1,104 @@
+import crypto from "node:crypto";
+
+const DIGEST = /^sha256:[a-f0-9]{64}$/;
+const REQUEST_ID = /^[A-Za-z0-9._-]{1,80}$/;
+
+export function canonicalJson(value) {
+  if (value === null || typeof value === "boolean" || typeof value === "number" || typeof value === "string") {
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(",")}}`;
+  }
+  throw new Error("unsupported canonical JSON value");
+}
+
+export function sha256Digest(bytes) {
+  return `sha256:${crypto.createHash("sha256").update(bytes).digest("hex")}`;
+}
+
+export function validateLoginResponse(value, expected) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("login response must be an object");
+  if (!REQUEST_ID.test(value.request_id ?? "") || !DIGEST.test(value.envelope_digest ?? "") || !value.envelope) {
+    throw new Error("login response identity is invalid");
+  }
+  const envelope = value.envelope;
+  const exactKeys = [
+    "version", "run_case_id", "attempt", "ci_job_ref", "principal_id", "server_id", "target_route",
+    "application_id", "signing_cert_sha256", "boot_generation", "user", "access_token", "refresh_token",
+  ];
+  if (!envelope || typeof envelope !== "object" || Array.isArray(envelope) ||
+      Object.keys(envelope).sort().join("\0") !== exactKeys.sort().join("\0")) {
+    throw new Error("login envelope keys are invalid");
+  }
+  if (
+    envelope.version !== "qa-bootstrap-login/v1" ||
+    envelope.run_case_id !== expected.runCaseId ||
+    !Number.isInteger(envelope.attempt) || envelope.attempt < 1 ||
+    envelope.ci_job_ref !== expected.ciJobRef ||
+    envelope.target_route !== "compose_slock_app_shell" ||
+    envelope.application_id !== expected.applicationId ||
+    envelope.signing_cert_sha256 !== expected.signingCertSha256 ||
+    envelope.boot_generation !== expected.bootGeneration ||
+    typeof envelope.principal_id !== "string" || envelope.principal_id !== envelope.user?.id ||
+    typeof envelope.server_id !== "string" || !envelope.server_id ||
+    typeof envelope.access_token !== "string" || !envelope.access_token ||
+    typeof envelope.refresh_token !== "string" || !envelope.refresh_token
+  ) throw new Error("login envelope binding is invalid");
+  const bytes = Buffer.from(canonicalJson(envelope), "utf8");
+  if (sha256Digest(bytes) !== value.envelope_digest) {
+    bytes.fill(0);
+    throw new Error("login envelope digest mismatch");
+  }
+  return { requestId: value.request_id, envelopeDigest: value.envelope_digest, envelope, bytes };
+}
+
+export function parseReadyLine(text, expected) {
+  const lines = String(text).split(/\r?\n/).filter((line) => line.includes("QA_BOOTSTRAP_READY "));
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const marker = lines[index].slice(lines[index].indexOf("QA_BOOTSTRAP_READY ") + "QA_BOOTSTRAP_READY ".length);
+    const fields = Object.fromEntries(marker.split(/\s+/).map((entry) => {
+      const separator = entry.indexOf("=");
+      return separator > 0 ? [entry.slice(0, separator), entry.slice(separator + 1)] : [entry, ""];
+    }));
+    if (
+      fields.envelopeDigest === expected.envelopeDigest &&
+      fields.runCaseId === expected.runCaseId &&
+      fields.attempt === String(expected.attempt) &&
+      fields.ciJobRef === expected.ciJobRef &&
+      fields.principalId === expected.principalId &&
+      fields.serverId === expected.serverId &&
+      fields.route === expected.targetRoute &&
+      fields.applicationId === expected.applicationId &&
+      fields.bootGeneration === expected.bootGeneration &&
+      /^\d+$/.test(fields.pid ?? "") &&
+      fields.processInstanceId && fields.processGeneration &&
+      /^\d+$/.test(fields.deviceReadyElapsedRealtimeNanos ?? "") &&
+      DIGEST.test(fields.readyReceiptDigest ?? "") &&
+      DIGEST.test(fields.runtimeEnvelopeDigest ?? "") &&
+      DIGEST.test(fields.routeReadyProofDigest ?? "")
+    ) return { line: lines[index], fields };
+  }
+  return null;
+}
+
+export function readyPayload(login, ready) {
+  const fields = ready.fields;
+  return {
+    request_id: login.requestId,
+    envelope_digest: login.envelopeDigest,
+    runtime_envelope: {
+      ready_receipt_digest: fields.readyReceiptDigest,
+      pid: Number(fields.pid),
+      process_instance_id: fields.processInstanceId,
+      process_start: fields.processGeneration,
+      process_generation: fields.processGeneration,
+      boot_generation: fields.bootGeneration,
+      device_ready_elapsed_realtime_nanos: fields.deviceReadyElapsedRealtimeNanos,
+      route_ready_proof_digest: fields.routeReadyProofDigest,
+      recovery_of: fields.recoveryOf ?? null,
+    },
+  };
+}
+

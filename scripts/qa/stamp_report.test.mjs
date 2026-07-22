@@ -139,3 +139,63 @@ test("report reads a relative verdict path and freezes scope before writes", () 
   assert.notEqual(new URL(annotated.match(/https:\/\/\S+/)[0]).searchParams.get("seq"), new URL(raw.match(/https:\/\/\S+/)[0]).searchParams.get("seq"));
   assert.match(calls.at(-1), /\/verdict/);
 });
+
+test("login bootstrap keeps session material private and deletes it after terminal", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "stamp-bootstrap-login-"));
+  const bin = path.join(root, "bin");
+  const runnerTemp = path.join(root, "runner-temp");
+  fs.mkdirSync(bin);
+  fs.mkdirSync(runnerTemp);
+  const terminalPayload = path.join(root, "terminal.json");
+  fs.writeFileSync(path.join(bin, "curl"), `#!/usr/bin/env bash
+out=""; payload=""; url=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -o) out="$2"; shift 2;;
+    --data-binary) payload="$2"; shift 2;;
+    http*) url="$1"; shift;;
+    *) shift;;
+  esac
+done
+case "$url" in
+  */claim) printf '%s' '{"run_case_id":"rc-login","claim_token":"lease-token","auth_bootstrap":{"required":true,"contract_version":"qa-bootstrap-login/v1","login_endpoint":"/login","ready_endpoint":"/ready","terminal_endpoint":"/terminal"}}' > "$out";;
+  */login) printf '%s' '{"request_id":"request-1","envelope":{"refresh_token":"refresh-secret"},"envelope_digest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","expires_at":"soon"}' > "$out";;
+  */ready) printf '%s' '{"ok":true}' > "$out";;
+  */terminal) cp "\${payload#@}" "${terminalPayload}";;
+esac
+`, { mode: 0o755 });
+  const binding = path.join(root, "binding.json");
+  const ready = path.join(root, "ready.json");
+  const cleanup = path.join(root, "cleanup.json");
+  fs.writeFileSync(binding, JSON.stringify({ signing_cert_sha256: "sha256:cert", boot_generation: "sha256:boot" }));
+  fs.writeFileSync(ready, JSON.stringify({ request_id: "request-1", envelope_digest: "sha256:a", runtime_envelope: {} }));
+  fs.writeFileSync(cleanup, JSON.stringify({
+    application_id: "build.raft.app.alpha", boot_generation: "sha256:boot", request_id: "request-1",
+    envelope_digest: "sha256:a", process_instance_id: "p", process_generation: "g",
+    force_stopped: true, package_data_cleared: true,
+  }));
+  const env = {
+    ...process.env,
+    PATH: `${bin}:${path.dirname(process.execPath)}:${process.env.PATH}`,
+    RUNNER_TEMP: runnerTemp,
+    STAMP_RUN_CASE_ID: "rc-login",
+    STAMP_URL: "https://stamp.test",
+    STAMP_TOKEN: "test-token",
+    GITHUB_RUN_ID: "321",
+    GITHUB_REPOSITORY: "botiverse/mobile",
+    STAMP_VERIFIED_SOURCE_COMMIT: "source",
+    STAMP_VERIFIED_ARTIFACT_SHA256: "sha",
+    STAMP_VERIFIED_APP_VERSION: "1",
+    STAMP_VERIFIED_VERSION_CODE: "1",
+    STAMP_VERIFIED_PACKAGE_ID: "build.raft.app.alpha",
+  };
+  execFileSync("bash", [new URL("./stamp_report.sh", import.meta.url).pathname, "claim"], { cwd: root, env });
+  execFileSync("bash", [new URL("./stamp_report.sh", import.meta.url).pathname, "bootstrap-login", binding], { cwd: root, env });
+  execFileSync("bash", [new URL("./stamp_report.sh", import.meta.url).pathname, "bootstrap-ready", ready], { cwd: root, env });
+  const output = execFileSync("bash", [new URL("./stamp_report.sh", import.meta.url).pathname, "bootstrap-terminal", "completed", cleanup], {
+    cwd: root, env, encoding: "utf8",
+  });
+  assert.equal(output.includes("refresh-secret"), false);
+  assert.equal(JSON.parse(fs.readFileSync(terminalPayload, "utf8")).refresh_token, "refresh-secret");
+  assert.equal(fs.existsSync(path.join(runnerTemp, "stamp-bootstrap-login-rc-login.json")), false);
+});
