@@ -39,10 +39,13 @@ object AndroidMobileOAuth {
         return AndroidMobileOAuthPkce(codeVerifier = verifier, codeChallenge = challenge)
     }
 
-    fun isCallbackUri(scheme: String?, host: String?, path: String?, code: String?, error: String?): Boolean =
+    fun isCallbackRoute(scheme: String?, host: String?, path: String?): Boolean =
         scheme.equals("raft-dev", ignoreCase = true) &&
             host.equals("oauth", ignoreCase = true) &&
-            path == "/callback" &&
+            path == "/callback"
+
+    fun isCallbackUri(scheme: String?, host: String?, path: String?, code: String?, error: String?): Boolean =
+        isCallbackRoute(scheme, host, path) &&
             (!code.isNullOrBlank() || !error.isNullOrBlank())
 
     private fun base64Url(bytes: ByteArray): String =

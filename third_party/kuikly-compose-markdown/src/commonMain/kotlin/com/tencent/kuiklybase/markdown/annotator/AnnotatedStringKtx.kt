@@ -257,6 +257,7 @@ internal fun AnnotatedString.Builder.appendAutoLink(
     node: ASTNode,
     annotatorSettings: AnnotatorSettings,
     followingNodes: List<ASTNode> = emptyList(),
+    visiblePrefixAlreadyAppended: String = "",
 ): Int {
     val targetNode = node.children.firstOrNull {
         it.type.name == MarkdownElementTypes.AUTOLINK.name
@@ -265,7 +266,7 @@ internal fun AnnotatedString.Builder.appendAutoLink(
     val (boundedDestination, trailingText) = rawDestination.splitAutoLinkDestination()
     val expectedClosers = boundedDestination.unclosedAutoLinkDelimiters()
     var consumedFollowingNodes = 0
-    var destination = boundedDestination
+    var destination = visiblePrefixAlreadyAppended + boundedDestination
     for (expected in expectedClosers) {
         val following = followingNodes.getOrNull(consumedFollowingNodes) ?: break
         if (following.getUnescapedTextInNode(content) != expected.toString()) break
@@ -274,14 +275,20 @@ internal fun AnnotatedString.Builder.appendAutoLink(
     }
 
     annotatorSettings.referenceLinkHandler?.store(destination, destination)
-    withLink(
+    val link =
         LinkAnnotation.Url(
             destination,
             annotatorSettings.linkTextSpanStyle,
             linkInteractionListener = annotatorSettings.linkInteractionListener
         )
-    ) {
-        append(destination)
+    if (visiblePrefixAlreadyAppended.isEmpty()) {
+        withLink(link) {
+            append(destination)
+        }
+    } else {
+        val linkStart = length - visiblePrefixAlreadyAppended.length
+        append(destination.removePrefix(visiblePrefixAlreadyAppended))
+        addLink(link, linkStart, length)
     }
     append(trailingText)
     return consumedFollowingNodes
@@ -524,12 +531,24 @@ fun AnnotatedString.Builder.buildMarkdownAnnotatedString(
                         // Code spans are verbatim (task #493): no linkification.
                         append(child.getUnescapedTextInNode(content))
                     } else {
+                        // GFM can tokenize a CJK-adjacent `https://www...` as
+                        // visible `https`, `:`, `//`, then a `www...` autolink.
+                        // Extend the annotation back over that already-rendered
+                        // scheme so display text and clickable destination agree.
+                        val sourcePrefix = content.substring(0, child.startOffset)
+                        val visibleScheme =
+                            when {
+                                sourcePrefix.endsWith("https://") -> "https://"
+                                sourcePrefix.endsWith("http://") -> "http://"
+                                else -> ""
+                            }
                         childIndex +=
                             appendAutoLink(
                                 content = content,
                                 node = child,
                                 annotatorSettings = annotatorSettings,
                                 followingNodes = children.drop(childIndex + 1),
+                                visiblePrefixAlreadyAppended = visibleScheme,
                             )
                     }
 

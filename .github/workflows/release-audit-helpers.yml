@@ -1,0 +1,38 @@
+name: Release Audit Helpers
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/release-audit-helpers.yml"
+      - "scripts/create_ios_release_audit_tag.sh"
+      - "scripts/test_create_ios_release_audit_tag.sh"
+      - "docs/ios-hands-release-practices-2026-07-09.md"
+      - "docs/android-release-sop.md"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/release-audit-helpers.yml"
+      - "scripts/create_ios_release_audit_tag.sh"
+      - "scripts/test_create_ios_release_audit_tag.sh"
+
+permissions:
+  contents: read
+
+jobs:
+  ios-release-audit-tag:
+    name: iOS release audit tag contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Validate helper syntax and receipts
+        shell: bash
+        run: |
+          bash -n scripts/create_ios_release_audit_tag.sh
+          bash -n scripts/test_create_ios_release_audit_tag.sh
+          scripts/test_create_ios_release_audit_tag.sh

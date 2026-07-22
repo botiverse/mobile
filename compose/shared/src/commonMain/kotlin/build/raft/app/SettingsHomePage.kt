@@ -21526,6 +21526,10 @@ private fun SettingsRouteVisualScreen() {
             "settings_route_visual_render destination=${route.destination} " +
                 "fixtureKey=${route.fixtureKey} itemId=${route.itemId.orEmpty()} fullHeight=${route.fullHeight}"
         )
+        bridge.log(
+            "settings_route_visual_ready destination=${route.destination} " +
+                "fixtureKey=${route.fixtureKey}"
+        )
     }
 
     SettingsAppShellContent(

@@ -1,0 +1,291 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/botiverse/mobile/main/docs/qa-acceptance/testbox-preflight/testbox-preflight-manifest.v1.schema.json",
+  "title": "Android visual Testbox preflight manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schema_version",
+    "evidence_class",
+    "terminal_eligible",
+    "matrix_coverage",
+    "product_verdict",
+    "coordinate_id",
+    "source",
+    "case",
+    "binaries",
+    "testbox",
+    "device",
+    "execution",
+    "artifacts",
+    "transformations",
+    "integrity"
+  ],
+  "properties": {
+    "$schema": { "type": "string", "minLength": 1 },
+    "schema_version": { "const": "testbox-preflight-manifest.v1" },
+    "evidence_class": { "const": "testbox_preflight" },
+    "terminal_eligible": { "const": false },
+    "matrix_coverage": { "const": false },
+    "product_verdict": { "const": "not_allowed" },
+    "coordinate_id": { "type": "null" },
+    "source": { "$ref": "#/$defs/source" },
+    "case": { "$ref": "#/$defs/case" },
+    "binaries": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["app", "instrumentation"],
+      "properties": {
+        "app": { "$ref": "#/$defs/apk" },
+        "instrumentation": { "$ref": "#/$defs/apk" }
+      }
+    },
+    "testbox": { "$ref": "#/$defs/testbox" },
+    "device": { "$ref": "#/$defs/device" },
+    "execution": { "$ref": "#/$defs/execution" },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/artifact" }
+    },
+    "transformations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/transformation" }
+    },
+    "integrity": { "$ref": "#/$defs/integrity" }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "git_oid": { "type": "string", "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$" },
+    "utc": { "type": "string", "format": "date-time" },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "commit_sha", "tree_sha", "resolved_ref", "resolved_ref_sha", "dirty", "diff_sha256", "workflow", "harness_commit_sha", "executor_commit_sha"],
+      "properties": {
+        "repository": { "type": "string", "minLength": 1 },
+        "commit_sha": { "$ref": "#/$defs/git_oid" },
+        "tree_sha": { "$ref": "#/$defs/git_oid" },
+        "resolved_ref": { "type": "string", "minLength": 1 },
+        "resolved_ref_sha": { "$ref": "#/$defs/git_oid" },
+        "dirty": { "type": "boolean" },
+        "diff_sha256": { "anyOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }] },
+        "workflow": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "blob_sha", "action_pins"],
+          "properties": {
+            "path": { "type": "string", "minLength": 1 },
+            "blob_sha": { "$ref": "#/$defs/git_oid" },
+            "action_pins": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["begin_testbox", "run_testbox"],
+              "properties": {
+                "begin_testbox": { "$ref": "#/$defs/git_oid" },
+                "run_testbox": { "$ref": "#/$defs/git_oid" }
+              }
+            }
+          }
+        },
+        "harness_commit_sha": { "$ref": "#/$defs/git_oid" },
+        "executor_commit_sha": { "$ref": "#/$defs/git_oid" }
+      }
+    },
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "testbox_eligible", "revision", "harness_source_body_sha256", "rendered_goal_sha256", "provider_source", "real_product_route", "fixture", "fixture_revision", "fixture_sensitivity_review"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "testbox_eligible": { "const": true },
+        "revision": { "type": "string", "minLength": 1 },
+        "harness_source_body_sha256": { "$ref": "#/$defs/sha256" },
+        "rendered_goal_sha256": { "$ref": "#/$defs/sha256" },
+        "provider_source": { "type": "string", "minLength": 1 },
+        "real_product_route": { "const": true },
+        "fixture": { "type": "string", "minLength": 1 },
+        "fixture_revision": { "type": "string", "minLength": 1 },
+        "fixture_sensitivity_review": { "const": "non_sensitive_synthetic" }
+      }
+    },
+    "apk": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "size_bytes", "source_sha256", "installed_sha256", "package_name", "version_code", "version_name", "min_sdk", "target_sdk", "signer_sha256", "lineage_sha256"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "size_bytes": { "type": "integer", "minimum": 1 },
+        "source_sha256": { "$ref": "#/$defs/sha256" },
+        "installed_sha256": { "$ref": "#/$defs/sha256" },
+        "package_name": { "type": "string", "minLength": 1 },
+        "version_code": { "type": "string", "minLength": 1 },
+        "version_name": { "type": "string", "minLength": 1 },
+        "min_sdk": { "type": "integer", "minimum": 1 },
+        "target_sdk": { "type": "integer", "minimum": 1 },
+        "signer_sha256": { "$ref": "#/$defs/sha256" },
+        "lineage_sha256": { "anyOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }] }
+      }
+    },
+    "testbox": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "actions_run_id", "workflow", "job", "cli_version", "explicit_stop_result", "stop_receipt_sha256"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^tbx_" },
+        "actions_run_id": { "type": "string", "pattern": "^[0-9]+$" },
+        "workflow": { "const": "visual-android-testbox.yml" },
+        "job": { "const": "android_visual" },
+        "cli_version": { "type": "string", "minLength": 1 },
+        "explicit_stop_result": { "const": "completed" },
+        "stop_receipt_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "device": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["avd_name", "system_image", "build_fingerprint", "boot_id", "api_level", "abi", "kvm", "renderer", "viewport", "insets", "orientation", "locale", "timezone", "theme", "font_scale", "animation_scales"],
+      "properties": {
+        "avd_name": { "type": "string", "minLength": 1 },
+        "system_image": { "type": "string", "minLength": 1 },
+        "build_fingerprint": { "type": "string", "minLength": 1 },
+        "boot_id": { "type": "string", "minLength": 1 },
+        "api_level": { "type": "integer", "minimum": 1 },
+        "abi": { "type": "string", "minLength": 1 },
+        "kvm": { "type": "boolean" },
+        "renderer": { "type": "string", "minLength": 1 },
+        "viewport": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["width_px", "height_px", "density_dpi"],
+          "properties": {
+            "width_px": { "type": "integer", "minimum": 1 },
+            "height_px": { "type": "integer", "minimum": 1 },
+            "density_dpi": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "insets": { "type": "string" },
+        "orientation": { "type": "string", "minLength": 1 },
+        "locale": { "type": "string", "minLength": 1 },
+        "timezone": { "type": "string", "minLength": 1 },
+        "theme": { "type": "string", "minLength": 1 },
+        "font_scale": { "type": "string", "minLength": 1 },
+        "animation_scales": { "type": "string", "minLength": 1 }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["attempt", "retry", "shard_index", "shard_total", "expected_test_list_sha256", "executed_test_list_sha256", "runner_receipt_sha256", "started_at_utc", "finished_at_utc", "started_monotonic_ns", "finished_monotonic_ns", "instrumentation_rc", "junit_summary", "failure_json_count", "tail_drop_methods", "crash_count", "anr_count", "harness_status", "settle_oracle", "baseline_sha256", "comparison_tool", "thresholds_sha256", "mask_sha256", "controls"],
+      "properties": {
+        "attempt": { "type": "integer", "minimum": 1 },
+        "retry": { "type": "integer", "minimum": 0 },
+        "shard_index": { "type": "integer", "minimum": 0 },
+        "shard_total": { "type": "integer", "minimum": 1 },
+        "expected_test_list_sha256": { "$ref": "#/$defs/sha256" },
+        "executed_test_list_sha256": { "$ref": "#/$defs/sha256" },
+        "runner_receipt_sha256": { "$ref": "#/$defs/sha256" },
+        "started_at_utc": { "$ref": "#/$defs/utc" },
+        "finished_at_utc": { "$ref": "#/$defs/utc" },
+        "started_monotonic_ns": { "type": "integer", "minimum": 0 },
+        "finished_monotonic_ns": { "type": "integer", "minimum": 0 },
+        "instrumentation_rc": { "type": "integer", "minimum": 0 },
+        "junit_summary": { "type": "string" },
+        "failure_json_count": { "type": "integer", "minimum": 0 },
+        "tail_drop_methods": { "type": "array", "items": { "type": "string" } },
+        "crash_count": { "type": "integer", "minimum": 0 },
+        "anr_count": { "type": "integer", "minimum": 0 },
+        "harness_status": { "enum": ["complete", "harness_incomplete"] },
+        "settle_oracle": { "type": "string", "minLength": 1 },
+        "baseline_sha256": { "anyOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }] },
+        "comparison_tool": { "type": "string", "minLength": 1 },
+        "thresholds_sha256": { "anyOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }] },
+        "mask_sha256": { "anyOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }] },
+        "controls": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["known_green", "known_red"],
+          "properties": {
+            "known_green": { "$ref": "#/$defs/control" },
+            "known_red": { "$ref": "#/$defs/control" }
+          }
+        }
+      }
+    },
+    "control": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["injected_fault", "expected_harness_status", "observed_harness_status", "evidence_sha256"],
+      "properties": {
+        "injected_fault": { "type": ["string", "null"] },
+        "expected_harness_status": { "enum": ["complete", "harness_incomplete"] },
+        "observed_harness_status": { "enum": ["complete", "harness_incomplete"] },
+        "evidence_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "kind", "role", "size_bytes", "sha256", "captured_at_utc"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "kind": { "enum": ["raw_png", "metadata_json", "failure_png", "failure_json", "scoped_logcat", "instrumentation_stdout", "instrumentation_rc", "instrumentation_processes", "runner_receipt", "control_receipt", "testbox_stop_receipt", "device_reset", "install_receipt", "test_list", "case_map", "derived_png", "derived_json"] },
+        "role": { "enum": ["raw", "support", "derived"] },
+        "size_bytes": { "type": "integer", "minimum": 0 },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "captured_at_utc": { "$ref": "#/$defs/utc" }
+      }
+    },
+    "transformation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version", "input_sha256", "output_sha256", "started_at_utc", "finished_at_utc", "started_monotonic_ns", "finished_monotonic_ns", "rc"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 },
+        "input_sha256": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/sha256" } },
+        "output_sha256": { "$ref": "#/$defs/sha256" },
+        "started_at_utc": { "$ref": "#/$defs/utc" },
+        "finished_at_utc": { "$ref": "#/$defs/utc" },
+        "started_monotonic_ns": { "type": "integer", "minimum": 0 },
+        "finished_monotonic_ns": { "type": "integer", "minimum": 0 },
+        "rc": { "type": "integer" }
+      }
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["canonicalization", "canonical_json_sha256", "schema_sha256", "sha256sums_path", "sha256sums_sha256", "sensitive_scan", "validator"],
+      "properties": {
+        "canonicalization": { "const": "json-sort-keys-compact-utf8-with-canonical-hash-zeroed" },
+        "canonical_json_sha256": { "$ref": "#/$defs/sha256" },
+        "schema_sha256": { "$ref": "#/$defs/sha256" },
+        "sha256sums_path": { "const": "SHA256SUMS" },
+        "sha256sums_sha256": { "$ref": "#/$defs/sha256" },
+        "sensitive_scan": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["result", "scanner", "scanned_roles", "pixel_ocr", "pixel_exemption"],
+          "properties": {
+            "result": { "const": "pass" },
+            "scanner": { "const": "streaming-byte-pattern-v1" },
+            "scanned_roles": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+            "pixel_ocr": { "const": false },
+            "pixel_exemption": { "const": "only source-reviewed non-sensitive synthetic fixtures are eligible; PNG structure/content is decoded but pixels are not OCR-scanned" }
+          }
+        },
+        "validator": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "version", "result"],
+          "properties": {
+            "name": { "const": "build_testbox_preflight_manifest.py" },
+            "version": { "const": "1" },
+            "result": { "const": "pass" }
+          }
+        }
+      }
+    }
+  }
+}

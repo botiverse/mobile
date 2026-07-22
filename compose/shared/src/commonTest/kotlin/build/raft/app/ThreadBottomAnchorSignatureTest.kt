@@ -909,10 +909,90 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
-    fun initialFirstVisibleIndex_usesLatestItemInsteadOfTop() {
+    fun initialFirstVisibleIndex_buildsNativeViewportAtTopBeforeAnchoring() {
         assertEquals(0, threadInitialFirstVisibleItemIndex(-1))
         assertEquals(0, threadInitialFirstVisibleItemIndex(0))
-        assertEquals(29, threadInitialFirstVisibleItemIndex(29))
+        assertEquals(0, threadInitialFirstVisibleItemIndex(29))
+    }
+
+    @Test
+    fun initialBottomAnchor_targetsDrawableLatestMessageBeforeSyntheticPadding() {
+        assertEquals(
+            30,
+            threadInitialBottomAnchorTargetItemIndex(
+                latestMessageItemIndex = 30,
+                bottomPaddingItemIndex = 31
+            )
+        )
+        assertEquals(
+            0,
+            threadInitialBottomAnchorTargetItemIndex(
+                latestMessageItemIndex = -1,
+                bottomPaddingItemIndex = 0
+            )
+        )
+    }
+
+    @Test
+    fun initialBottomAnchor_invisibleTargetAdvancesThenContinuesAnchoring() {
+        assertEquals(
+            ThreadInitialBottomAnchorStage.AdvanceThenAnchor,
+            threadInitialBottomAnchorStage(
+                initialBottomAnchorReady = false,
+                userScrollInProgress = false,
+                latestItemVisible = false
+            )
+        )
+        assertEquals(
+            ThreadInitialBottomAnchorStage.Anchor,
+            threadInitialBottomAnchorStage(
+                initialBottomAnchorReady = false,
+                userScrollInProgress = false,
+                latestItemVisible = true
+            )
+        )
+    }
+
+    @Test
+    fun initialBottomAnchor_deltaAdvancesByViewportThenAlignsDrawableTarget() {
+        assertEquals(
+            24,
+            threadInitialBottomAnchorScrollDelta(
+                itemOffset = 840,
+                itemSize = 36,
+                trailingPaddingSize = 24,
+                viewportEndOffset = 876
+            )
+        )
+        assertEquals(
+            0,
+            threadInitialBottomAnchorScrollDelta(
+                itemOffset = 816,
+                itemSize = 36,
+                trailingPaddingSize = 24,
+                viewportEndOffset = 876
+            )
+        )
+    }
+
+    @Test
+    fun initialBottomAnchor_userGestureOwnsPendingViewport() {
+        assertEquals(
+            ThreadInitialBottomAnchorStage.UserOwned,
+            threadInitialBottomAnchorStage(
+                initialBottomAnchorReady = false,
+                userScrollInProgress = true,
+                latestItemVisible = false
+            )
+        )
+        assertEquals(
+            ThreadInitialBottomAnchorStage.Settled,
+            threadInitialBottomAnchorStage(
+                initialBottomAnchorReady = true,
+                userScrollInProgress = true,
+                latestItemVisible = false
+            )
+        )
     }
 
     @Test
@@ -948,7 +1028,7 @@ class ThreadBottomAnchorSignatureTest {
         val latestIndex = replyThreadPayload.latestMessageListItemIndexPublic()
 
         assertEquals(3, latestIndex)
-        assertEquals(3, threadInitialFirstVisibleItemIndex(latestIndex))
+        assertEquals(0, threadInitialFirstVisibleItemIndex(latestIndex))
         assertEquals(
             true,
             shouldAnchorLatestLocalSendToBottom(

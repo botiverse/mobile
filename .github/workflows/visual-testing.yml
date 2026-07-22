@@ -133,30 +133,7 @@ jobs:
         id: methods
         env:
           CASES: ${{ inputs.case_filter }}
-        run: |
-          python3 - <<'EOF'
-          import os, re
-          cases = [c.strip() for c in os.environ.get("CASES", "").split(",") if c.strip()]
-          methods = []
-          if cases:
-              src = open("compose/androidApp/src/androidTest/java/build/raft/app/visual/KmpVisualScreenshotCaptureTest.kt").read()
-              chunks = re.split(r"\bfun\s+(\w+)\s*\(", src)
-              for case in cases:
-                  needle = f'"{case}"'
-                  found = None
-                  for i in range(1, len(chunks) - 1, 2):
-                      if needle in chunks[i + 1]:
-                          found = chunks[i]
-                          break
-                  if found:
-                      methods.append(f"build.raft.app.visual.KmpVisualScreenshotCaptureTest#{found}")
-                  else:
-                      print(f"::warning::no capture method found for case {case}")
-          value = ",".join(methods)
-          print(f"derived method filter: {value or '(none — full sharded run)'}")
-          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
-              out.write(f"filter={value}\n")
-          EOF
+        run: python3 scripts/visual_android_case_filter.py --cases "$CASES" --github-output "$GITHUB_OUTPUT"
 
       - name: Free runner disk space
         run: |
@@ -343,6 +320,10 @@ jobs:
       matrix:
         shard: [0, 1, 2, 3, 4, 5, 6, 7]
     steps:
+      - name: Checkout mobile capture runner
+        if: ${{ needs.android-build.outputs.method_filter == '' || matrix.shard == 0 }}
+        uses: actions/checkout@v5
+
       # Targeted case_filter runs only use shard 0; the other shards no-op
       # so the round finishes in one emulator's time.
       - name: Free runner disk space for emulator
@@ -354,6 +335,10 @@ jobs:
       - name: Setup Android SDK
         if: ${{ needs.android-build.outputs.method_filter == '' || matrix.shard == 0 }}
         uses: android-actions/setup-android@v3
+
+      - name: Install APK identity tools
+        if: ${{ needs.android-build.outputs.method_filter == '' || matrix.shard == 0 }}
+        run: sdkmanager "platform-tools" "build-tools;36.0.0"
 
       - name: Download APKs
         if: ${{ needs.android-build.outputs.method_filter == '' || matrix.shard == 0 }}
@@ -385,67 +370,7 @@ jobs:
           # The runner executes each script line as a separate command;
           # backslash line continuations break ("Task '\' not found").
           script: |
-            adb wait-for-device
-            # Per-case timing (task #362): grow the device logcat ring so the
-            # sparse VisualCapture CASE_START/CASE_END lines survive a full
-            # shard, then clear so the dump only holds this run. Each script
-            # line is a separate command (no background jobs / shared vars), so
-            # we size+clear here and dump after instrumentation below.
-            adb logcat -G 16M
-            adb logcat -c
-            # True 3x captures at the manifest viewport (390x844dp), task #370.
-            # `wm density 480` alone is NOT enough: pixel_6_pro is 1440px wide,
-            # so at 480dpi the layout window is 480dp (confirmed via #90
-            # diagnostics: rootView 1440x2975), NOT 390dp. cropDp then takes the
-            # top-left 1170x2532 (390x844dp * 3), so content centered in the
-            # wider window is offset by half the difference and clipped —
-            # centered dialogs (server-danger-modal, create-channel) even fell
-            # off and failed to capture. Pinning the physical size to 1170x2532
-            # makes the layout window == the crop == React's 390dp viewport, so
-            # both top-left- and centre-anchored content align. `wm size` is
-            # flaky on the CI AVD (sometimes the override doesn't stick and the
-            # window comes back ~2414/2342px, so FULL_VIEWPORT 2532px crops clip
-            # — task #370), so set it in a device-shell loop that reads back the
-            # override and retries with a reset until it sticks, and echo the
-            # final `wm size` for the log.
-            adb shell 'for i in 1 2 3 4 5; do wm size 1170x2532; sleep 1; if wm size | grep -q "Override size: 1170x2532"; then echo "wm size applied on try $i"; break; fi; echo "wm size not applied on try $i, resetting"; wm size reset; sleep 1; done; if wm size | grep -q "Override size: 1170x2532"; then echo "wm-size: APPLIED"; else echo "wm-size: GAVE-UP-after-5 (test-side clamp will handle)"; fi; echo "final: $(wm size | tr "\n" " ")"'
-            adb shell wm density 480
-            adb install -r "$(find apks -name '*connectedTest.apk' -not -name '*androidTest*' | head -1)"
-            adb install -r "$(find apks -name '*androidTest.apk' | head -1)"
-            mkdir -p visual-testing-results/android
-            # Record the instrumentation exit code instead of swallowing it with
-            # `|| echo`: a hung case aborts AndroidJUnitRunner and `am instrument`
-            # exits non-zero, which the old `|| echo` hid so the job stayed green
-            # while the shard tail was silently dropped (see tail-drop guard
-            # below). `cmd; echo $? > file` keeps the line's own exit at 0 so a
-            # non-zero instrumentation run still falls through to the pull (never
-            # aborts the script) — we just persist rc to a file (script lines
-            # don't share shell vars) for the guard to report.
-            adb shell am instrument -w -e class ${{ needs.android-build.outputs.method_filter != '' && needs.android-build.outputs.method_filter || format('build.raft.app.visual.KmpVisualScreenshotCaptureTest -e numShards 8 -e shardIndex {0}', matrix.shard) }} build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner; echo "$?" > visual-testing-results/instr-rc-${{ matrix.shard }}.txt; echo "instrumentation exit code $(cat visual-testing-results/instr-rc-${{ matrix.shard }}.txt); pulling whatever was captured"
-            adb pull /sdcard/Download/slock-visual-testing/android/. visual-testing-results/android/ || echo "nothing captured on this shard"
-            # Per-case timing + idle-wait warnings for this shard. Grep
-            # CASE_START/CASE_END to see how long every android item ran and
-            # which case (if any) stalled.
-            # System.out:I is included so the shared SlockMarkdownBody caps
-            # marker (task #441 — Kotlin println lands on the System.out tag on
-            # Android; iOS routes it to the launch console) is captured for
-            # scripts/collect_richtext_caps.py to merge per case.
-            adb logcat -d -v time -s VisualCapture:V TestRunner:V System.out:I Task139Reuse:I > visual-testing-results/logcat-shard-${{ matrix.shard }}.txt || echo "logcat dump failed"
-            # Tail-drop guard: a case that hangs past the per-case Timeout kills
-            # this shard's AndroidJUnitRunner, so every case MethodSorter orders
-            # after it never emits CASE_START and its results are silently lost
-            # (root-caused deterministically: each never-started case sat in a
-            # shard that had a hung case, ordered after it). The signature is a
-            # methodName with CASE_START but no CASE_END — a normally-FAILing case
-            # still logs CASE_END status=FAIL, so only a true hang trips this.
-            # Surface it LOUDLY as a red ::error:: annotation naming the hung
-            # case, but let this collection step finish so screenshots, failure
-            # JSON, and logcat upload first. The post-upload verdict step below
-            # turns any instrumentation/tail-drop failure into the terminal job
-            # result. Portable (grep -oE isolates the two-token marker so awk
-            # $NF is the methodName regardless of the logcat -v time prefix;
-            # no gawk/procsub).
-            grep -oE 'CASE_START [A-Za-z0-9_]+' visual-testing-results/logcat-shard-${{ matrix.shard }}.txt 2>/dev/null | awk '{print $NF}' | sort -u > /tmp/td-started-${{ matrix.shard }}; grep -oE 'CASE_END [A-Za-z0-9_]+' visual-testing-results/logcat-shard-${{ matrix.shard }}.txt 2>/dev/null | awk '{print $NF}' | sort -u > /tmp/td-ended-${{ matrix.shard }}; HUNG=$(comm -23 /tmp/td-started-${{ matrix.shard }} /tmp/td-ended-${{ matrix.shard }} | tr '\n' ' '); RC=$(cat visual-testing-results/instr-rc-${{ matrix.shard }}.txt 2>/dev/null || echo '?'); if [ -n "$HUNG" ]; then MSG="tail-drop shard ${{ matrix.shard }}: hung case(s) with CASE_START but no CASE_END: ${HUNG}(instrumentation rc=$RC). Every case MethodSorter ordered after a hung case never ran and this shard's tail was dropped — not a timeout."; echo "::error title=Visual capture tail-drop (shard ${{ matrix.shard }})::$MSG"; echo "TAIL_DROP_GUARD: $MSG" >> visual-testing-results/logcat-shard-${{ matrix.shard }}.txt; else echo "tail-drop guard: shard ${{ matrix.shard }} clean (instrumentation rc=$RC, every CASE_START matched a CASE_END)"; fi
+            bash scripts/run_android_visual_capture.sh --app-apk "$(find apks -name '*connectedTest.apk' -not -name '*androidTest*' | sort | head -1)" --test-apk "$(find apks -name '*androidTest.apk' | sort | head -1)" --method-filter "${{ needs.android-build.outputs.method_filter }}" --shard-index "${{ matrix.shard }}" --shard-total 8 --output-dir visual-testing-results --defer-verdict
 
       - name: Upload android results
         if: ${{ always() && (needs.android-build.outputs.method_filter == '' || matrix.shard == 0) }}
@@ -463,12 +388,32 @@ jobs:
           path: visual-testing-results/logcat-shard-${{ matrix.shard }}.txt
           if-no-files-found: warn
 
+      - name: Upload capture harness evidence
+        if: ${{ always() && (needs.android-build.outputs.method_filter == '' || matrix.shard == 0) }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-harness-shard-${{ matrix.shard }}
+          path: |
+            visual-testing-results/android-visual-runner-receipt.json
+            visual-testing-results/device-reset.txt
+            visual-testing-results/instr-rc-${{ matrix.shard }}.txt
+            visual-testing-results/started-methods-${{ matrix.shard }}.txt
+            visual-testing-results/ended-methods-${{ matrix.shard }}.txt
+            visual-testing-results/expected-methods-${{ matrix.shard }}.txt
+            visual-testing-results/actual-cases-${{ matrix.shard }}.txt
+            visual-testing-results/expected-cases-${{ matrix.shard }}.txt
+            visual-testing-results/actual-case-map-${{ matrix.shard }}.json
+            visual-testing-results/expected-case-map-${{ matrix.shard }}.json
+            visual-testing-results/instrumentation/
+          if-no-files-found: error
+
       - name: Finalize Android capture verdict
         if: ${{ always() && (needs.android-build.outputs.method_filter == '' || matrix.shard == 0) }}
         shell: bash
         run: |
           rc_file="visual-testing-results/instr-rc-${{ matrix.shard }}.txt"
           log_file="visual-testing-results/logcat-shard-${{ matrix.shard }}.txt"
+          receipt_file="visual-testing-results/android-visual-runner-receipt.json"
           if [ ! -s "$rc_file" ]; then
             echo "::error title=Visual capture verdict missing (shard ${{ matrix.shard }})::instrumentation exit code was not recorded; uploaded evidence may be partial"
             exit 1
@@ -478,19 +423,24 @@ jobs:
             echo "::error title=Visual capture verdict invalid (shard ${{ matrix.shard }})::invalid instrumentation exit code '$rc'"
             exit 1
           fi
+          if [ ! -s "$receipt_file" ]; then
+            echo "::error title=Visual capture receipt missing (shard ${{ matrix.shard }})::runner receipt was not persisted; uploaded evidence may be partial"
+            exit 1
+          fi
+          harness_status="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["harness_status"])' "$receipt_file")"
           mapfile -t failures < <(find visual-testing-results/android -type f -name '*.failure.json' -print 2>/dev/null | sort)
           tail_drop=0
           if [ -f "$log_file" ] && grep -q '^TAIL_DROP_GUARD:' "$log_file"; then
             tail_drop=1
           fi
-          if [ "$rc" -ne 0 ] || [ "${#failures[@]}" -ne 0 ] || [ "$tail_drop" -ne 0 ]; then
-            echo "::error title=Visual capture shard failed (shard ${{ matrix.shard }})::instrumentation rc=$rc, failure_json=${#failures[@]}, tail_drop=$tail_drop; results and logcat were uploaded before this verdict"
+          if [ "$rc" -ne 0 ] || [ "${#failures[@]}" -ne 0 ] || [ "$tail_drop" -ne 0 ] || [ "$harness_status" != "complete" ]; then
+            echo "::error title=Visual capture shard failed (shard ${{ matrix.shard }})::harness_status=$harness_status, instrumentation rc=$rc, failure_json=${#failures[@]}, tail_drop=$tail_drop; results, logcat, and runner receipt were uploaded before this verdict"
             if [ "${#failures[@]}" -ne 0 ]; then
               printf 'failure artifact: %s\n' "${failures[@]}"
             fi
             exit 1
           fi
-          echo "visual capture shard ${{ matrix.shard }} verdict: PASS (instrumentation rc=0, no failure JSON, no tail-drop)"
+          echo "visual capture shard ${{ matrix.shard }} verdict: PASS (harness complete, instrumentation rc=0, no failure JSON, no tail-drop)"
 
   # iOS simulator capture (task #418). Additive: the report job does not (yet)
   # depend on this leg — results upload as their own artifact and the diff

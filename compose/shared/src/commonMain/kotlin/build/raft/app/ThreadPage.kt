@@ -188,6 +188,7 @@ import com.tencent.kuikly.compose.foundation.gestures.detectHorizontalDragGestur
 import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
 import com.tencent.kuikly.compose.foundation.gestures.awaitEachGesture
 import com.tencent.kuikly.compose.foundation.gestures.awaitFirstDown
+import com.tencent.kuikly.compose.foundation.gestures.scrollBy
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.ExperimentalLayoutApi
 import com.tencent.kuikly.compose.foundation.layout.FlowRow
@@ -8684,6 +8685,7 @@ internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_SLICE1 = "md_wrap_slice
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_CLARIFY = "md_wrap_clarify"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_TASK607 = "md_wrap_task607"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_ADJACENT = "md_wrap_adjacent"
+internal const val THREAD_MESSAGE_VISUAL_FIXTURE_CJK_ADJACENT_URL = "cjk_adjacent_url"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_STATUS606 = "md_wrap_status606"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_BLOCKQUOTE = "md_blockquote"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_CODE_EMAIL = "md_code_email"
@@ -9707,6 +9709,47 @@ internal fun threadVisualFixture(
                             messageType = "Chat",
                             body =
                                 "对照：#31 / #521 两块同行。\n\n紧凑：#31/#521。\n\n尾宽对照：task #607 与 #对话流专修。"
+                        )
+                    ),
+                members = emptyList(),
+                showComposer = false,
+                joined = true,
+                composer =
+                    KuiklyThreadComposerPayload(
+                        instanceId = resolvedInstanceId,
+                        enabled = false
+                    )
+            )
+        THREAD_MESSAGE_VISUAL_FIXTURE_CJK_ADJACENT_URL ->
+            KuiklyThreadScreenPayload(
+                instanceId = resolvedInstanceId,
+                title = "#markdown",
+                subtitle = "CJK-adjacent bare URL fixture",
+                status = "content",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                streamChannelId = "channel-markdown",
+                sourceThreadId = "channel-markdown",
+                selectedTab = "chat",
+                showModeTabs = false,
+                showReplyActions = false,
+                alignOwnMessagesRight = false,
+                showMessageSaveAction = false,
+                showTaskOpenActions = false,
+                showTaskStatusActions = false,
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "msg_cjk_adjacent_url_visual",
+                            authorId = "agent-cindy",
+                            authorName = "Cindy",
+                            authorDescription = "Keeps markdown link targets aligned.",
+                            authorKind = "agent",
+                            avatarLabel = "CI",
+                            timestampLabel = "07/22 06:00",
+                            messageType = "Chat",
+                            body =
+                                "@huxijin 情绪板已经准备完成，有空可以看下" +
+                                    "https://www.figma.com/design/TiPWa8K3dfNyNxvTrz1SN0/Raft-brand---Exploration?node-id=372-1396&t=I3oSfVqdbsEJjUIP-1"
                         )
                     ),
                 members = emptyList(),
@@ -12559,7 +12602,27 @@ private fun ThreadMessagesList(
     ) {
         renderPayload.bottomScrollPaddingListItemIndex(lazyItemCount)
     }
+    val latestMessageListItemIndex = renderPayload.latestMessageListItemIndex()
+    val initialBottomAnchorTargetItemIndex =
+        threadInitialBottomAnchorTargetItemIndex(
+            latestMessageItemIndex = latestMessageListItemIndex,
+            bottomPaddingItemIndex = latestItemIndex
+        )
+    val initialBottomAnchorTrailingPaddingPx =
+        if (latestMessageListItemIndex >= 0) {
+            with(LocalDensity.current) {
+                ThreadBottomScrollPaddingHeight.roundToPx()
+            }
+        } else {
+            0
+        }
     val listState = rememberLazyListState(
+        // Kuikly's native ScrollView always starts with contentOffset=0. If
+        // Compose starts at the synthetic latest/padding item, layoutInfo can
+        // report bottom rows as placed and visible while native pixels still
+        // show the empty offset-0 viewport. Establish the shared viewport at
+        // index 0 first; the existing initial-anchor effect owns the later
+        // bottom/focused move after the native scroller is mounted.
         initialFirstVisibleItemIndex =
             threadInitialFirstVisibleItemIndex(latestItemIndex = latestItemIndex)
     )
@@ -12962,7 +13025,6 @@ private fun ThreadMessagesList(
     var nextNewerPageCycleId by remember(threadInstanceKey) { mutableStateOf(0L) }
     var newerPageCycle by remember(threadInstanceKey) { mutableStateOf<ThreadNewerPageCycle?>(null) }
     val newerPageCycleActive = newerPageCycle != null
-    val latestMessageListItemIndex = renderPayload.latestMessageListItemIndex()
     suspend fun settleNewerPageCycle(cycleId: Long) {
         val cycle = newerPageCycle?.takeIf { active -> active.id == cycleId } ?: return
         if (!shouldSettleThreadNewerPageCycle(
@@ -13565,6 +13627,8 @@ private fun ThreadMessagesList(
         focusedMessageTargetSignature,
         latestMessageLayoutKey,
         latestItemIndex,
+        initialBottomAnchorTargetItemIndex,
+        initialBottomAnchorTrailingPaddingPx,
         shareSelectionCaptureActive,
         newerPageCycleActive
     ) {
@@ -13614,17 +13678,23 @@ private fun ThreadMessagesList(
                     "elapsedMs=$bottomAnchorFocusedYieldElapsedMs"
             )
         }
-        // A drag during the initial-anchor window wins: reveal the list where
-        // the user already is instead of yanking to the bottom (task #554
-        // pattern scan — entry-window race).
-        if (!initialBottomAnchorReady && listState.isScrollInProgress) {
-            initialBottomAnchorReady = true
-            return@LaunchedEffect
-        }
-        if (!initialBottomAnchorReady && !listState.isThreadItemVisible(latestItemIndex)) {
-            listState.scrollToItem(latestItemIndex)
-            delay(ThreadLayoutStabilityFrameDelayMs)
-            return@LaunchedEffect
+        when (
+            threadInitialBottomAnchorStage(
+                initialBottomAnchorReady = initialBottomAnchorReady,
+                userScrollInProgress = listState.isScrollInProgress,
+                latestItemVisible = listState.isThreadItemVisible(initialBottomAnchorTargetItemIndex)
+            )
+        ) {
+            ThreadInitialBottomAnchorStage.UserOwned -> {
+                // A drag during the initial-anchor window wins: reveal the list where
+                // the user already is instead of yanking to the bottom (task #554
+                // pattern scan — entry-window race).
+                initialBottomAnchorReady = true
+                return@LaunchedEffect
+            }
+            ThreadInitialBottomAnchorStage.AdvanceThenAnchor -> Unit
+            ThreadInitialBottomAnchorStage.Anchor,
+            ThreadInitialBottomAnchorStage.Settled -> Unit
         }
         if (!initialBottomAnchorReady) {
             while (!initialBottomAnchorReady) {
@@ -13634,16 +13704,26 @@ private fun ThreadMessagesList(
                 }
                 val anchored =
                     listState.anchorInitialThreadBottomToLatest(
-                        latestItemIndex = latestItemIndex
+                        latestItemIndex = initialBottomAnchorTargetItemIndex,
+                        trailingPaddingSize = initialBottomAnchorTrailingPaddingPx
                     )
                 if (anchored) {
+                    diagnosticsLogger(
+                        "thread_initial_bottom_anchor result=anchored latestItemIndex=$latestItemIndex " +
+                            "targetItemIndex=$initialBottomAnchorTargetItemIndex " +
+                            "trailingPaddingPx=$initialBottomAnchorTrailingPaddingPx " +
+                            listState.threadViewportGeometryDiagnostics(initialBottomAnchorTargetItemIndex)
+                    )
                     initialBottomAnchorReady = true
                     return@LaunchedEffect
                 }
                 diagnosticsLogger(
                     "thread_initial_bottom_anchor result=retry latestItemIndex=$latestItemIndex " +
+                        "targetItemIndex=$initialBottomAnchorTargetItemIndex " +
+                        "trailingPaddingPx=$initialBottomAnchorTrailingPaddingPx " +
                         "totalItems=${listState.layoutInfo.totalItemsCount} " +
-                        "visibleItems=${listState.layoutInfo.visibleItemsInfo.size}"
+                        "visibleItems=${listState.layoutInfo.visibleItemsInfo.size} " +
+                        listState.threadViewportGeometryDiagnostics(initialBottomAnchorTargetItemIndex)
                 )
                 delay(ThreadInitialBottomAnchorRetryDelayMs)
             }
@@ -14700,8 +14780,34 @@ private fun ThreadLazyWindowStats.toDiagnosticsString(result: String): String =
         "visibleMessageRange=$firstVisibleMessage..$lastVisibleMessage " +
         "visibleMessages=$visibleMessages"
 
+@Suppress("UNUSED_PARAMETER")
 internal fun threadInitialFirstVisibleItemIndex(latestItemIndex: Int): Int =
-    latestItemIndex.coerceAtLeast(0)
+    0
+
+internal fun threadInitialBottomAnchorTargetItemIndex(
+    latestMessageItemIndex: Int,
+    bottomPaddingItemIndex: Int
+): Int =
+    latestMessageItemIndex.takeIf { it >= 0 } ?: bottomPaddingItemIndex
+
+internal enum class ThreadInitialBottomAnchorStage {
+    UserOwned,
+    AdvanceThenAnchor,
+    Anchor,
+    Settled
+}
+
+internal fun threadInitialBottomAnchorStage(
+    initialBottomAnchorReady: Boolean,
+    userScrollInProgress: Boolean,
+    latestItemVisible: Boolean
+): ThreadInitialBottomAnchorStage =
+    when {
+        initialBottomAnchorReady -> ThreadInitialBottomAnchorStage.Settled
+        userScrollInProgress -> ThreadInitialBottomAnchorStage.UserOwned
+        !latestItemVisible -> ThreadInitialBottomAnchorStage.AdvanceThenAnchor
+        else -> ThreadInitialBottomAnchorStage.Anchor
+    }
 
 internal fun KuiklyThreadMessageItem.threadMessageRenderIdentity(): String =
     randomId?.trim()?.takeIf { it.isNotBlank() }?.let { "random:$it" }
@@ -15265,46 +15371,58 @@ private fun LazyListState.canScrollToThreadItem(index: Int): Boolean =
     index >= 0 && layoutInfo.totalItemsCount > index
 
 private suspend fun LazyListState.anchorInitialThreadBottomToLatest(
-    latestItemIndex: Int
+    latestItemIndex: Int,
+    trailingPaddingSize: Int = 0
 ): Boolean {
     if (latestItemIndex < 0) return true
-    repeat(ThreadInitialBottomAnchorAttempts) { attempt ->
+    repeat(ThreadInitialBottomAnchorAttempts) {
         awaitThreadMessagesLayoutFrame()
-        val canScrollToLatest = canScrollToThreadItem(latestItemIndex)
-        if (!canScrollToLatest) {
+        if (!canScrollToThreadItem(latestItemIndex)) {
             delay(ThreadLayoutStabilityFrameDelayMs)
             return@repeat
         }
-
-        if (!isThreadItemVisible(latestItemIndex)) {
-            scrollToItem(latestItemIndex)
+        val layoutInfo = layoutInfo
+        val viewportSize = layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset
+        if (viewportSize <= 0) {
             delay(ThreadLayoutStabilityFrameDelayMs)
+            return@repeat
         }
-        awaitThreadMessagesLayoutStability(latestItemIndex)
-        scrollLatestItemToRenderedBottom(latestItemIndex)
+        val latestItem = layoutInfo.visibleItemsInfo.firstOrNull { item -> item.index == latestItemIndex }
+        val requestedDelta =
+            if (latestItem == null) {
+                viewportSize
+            } else {
+                threadInitialBottomAnchorScrollDelta(
+                    itemOffset = latestItem.offset,
+                    itemSize = latestItem.size,
+                    trailingPaddingSize = trailingPaddingSize,
+                    viewportEndOffset = layoutInfo.viewportEndOffset
+                )
+            }
+        if (kotlin.math.abs(requestedDelta) <= ThreadBackToBottomTolerancePx) {
+            return true
+        }
+        val consumedDelta = scrollBy(requestedDelta.toFloat())
         delay(ThreadLayoutStabilityFrameDelayMs)
-
-        val anchorState =
-            ThreadInitialBottomAnchorState(
-                canScrollToLatest = canScrollToLatest,
-                isAtRenderedBottom = isLatestItemAtRenderedBottom(latestItemIndex),
-                attempt = attempt
+        if (kotlin.math.abs(consumedDelta) < ThreadInitialBottomAnchorMinimumConsumedDeltaPx) {
+            return false
+        }
+        if (
+            isLatestItemAtRenderedBottom(
+                latestItemIndex = latestItemIndex,
+                trailingPaddingSize = trailingPaddingSize
             )
-        if (shouldRevealInitialThreadBottomAnchor(anchorState)) {
+        ) {
             return true
         }
     }
-    if (!canScrollToThreadItem(latestItemIndex)) {
-        return false
-    }
-    scrollToItem(latestItemIndex)
-    awaitThreadMessagesLayoutStability(latestItemIndex)
-    scrollLatestItemToRenderedBottom(latestItemIndex)
-    delay(ThreadLayoutStabilityFrameDelayMs)
-    return isLatestItemAtRenderedBottom(latestItemIndex)
+    return false
 }
 
-private suspend fun LazyListState.scrollLatestItemToRenderedBottom(latestItemIndex: Int) {
+private suspend fun LazyListState.scrollLatestItemToRenderedBottom(
+    latestItemIndex: Int,
+    trailingPaddingSize: Int = 0
+) {
     if (latestItemIndex < 0) return
     if (layoutInfo.totalItemsCount <= latestItemIndex) {
         return
@@ -15318,7 +15436,8 @@ private suspend fun LazyListState.scrollLatestItemToRenderedBottom(latestItemInd
                     itemSize = it.size,
                     viewportHeight = viewportHeight,
                     visibleItemCount = layoutInfo.visibleItemsInfo.size,
-                    totalItemCount = layoutInfo.totalItemsCount
+                    totalItemCount = layoutInfo.totalItemsCount,
+                    trailingPaddingSize = trailingPaddingSize
                 )
             }
             ?: 0
@@ -15348,6 +15467,18 @@ private suspend fun LazyListState.scrollThreadItemToFocusedViewport(itemIndex: I
         delay(ThreadLayoutStabilityFrameDelayMs)
     }
     return didScroll
+}
+
+private fun LazyListState.threadViewportGeometryDiagnostics(targetIndex: Int): String {
+    val info = layoutInfo
+    val visibleItems = info.visibleItemsInfo
+    val first = visibleItems.firstOrNull()
+    val last = visibleItems.lastOrNull()
+    val target = visibleItems.firstOrNull { item -> item.index == targetIndex }
+    return "viewport=${info.viewportStartOffset}..${info.viewportEndOffset} " +
+        "first=${first?.index ?: -1}:${first?.offset ?: 0}+${first?.size ?: 0} " +
+        "last=${last?.index ?: -1}:${last?.offset ?: 0}+${last?.size ?: 0} " +
+        "target=${target?.index ?: -1}:${target?.offset ?: 0}+${target?.size ?: 0}"
 }
 
 private suspend fun LazyListState.awaitThreadMessagesLayoutStability(
@@ -15421,11 +15552,23 @@ internal fun threadLatestItemBottomAnchorScrollOffset(
     itemSize: Int,
     viewportHeight: Int,
     visibleItemCount: Int,
-    totalItemCount: Int
+    totalItemCount: Int,
+    trailingPaddingSize: Int = 0
 ): Int {
     if (itemSize <= 0 || viewportHeight <= 0) return 0
-    return itemSize - viewportHeight
+    return itemSize + trailingPaddingSize.coerceAtLeast(0) - viewportHeight
 }
+
+internal fun threadInitialBottomAnchorScrollDelta(
+    itemOffset: Int,
+    itemSize: Int,
+    trailingPaddingSize: Int,
+    viewportEndOffset: Int
+): Int =
+    itemOffset +
+        itemSize.coerceAtLeast(0) +
+        trailingPaddingSize.coerceAtLeast(0) -
+        viewportEndOffset
 
 internal fun threadFocusedItemScrollOffset(
     itemSize: Int,
@@ -15444,11 +15587,14 @@ private fun LazyListState.shouldShowThreadBackToBottom(latestItemIndex: Int): Bo
     return latestBottom < layoutInfo.viewportEndOffset - ThreadBackToBottomTolerancePx
 }
 
-private fun LazyListState.isLatestItemAtRenderedBottom(latestItemIndex: Int): Boolean {
+private fun LazyListState.isLatestItemAtRenderedBottom(
+    latestItemIndex: Int,
+    trailingPaddingSize: Int = 0
+): Boolean {
     val layoutInfo = layoutInfo
     if (layoutInfo.totalItemsCount <= latestItemIndex) return false
     val latestItem = layoutInfo.visibleItemsInfo.firstOrNull { it.index == latestItemIndex } ?: return false
-    val latestBottom = latestItem.offset + latestItem.size
+    val latestBottom = latestItem.offset + latestItem.size + trailingPaddingSize.coerceAtLeast(0)
     return kotlin.math.abs(latestBottom - layoutInfo.viewportEndOffset) <= ThreadBackToBottomTolerancePx
 }
 
@@ -15488,6 +15634,7 @@ private const val ThreadBackToBottomTolerancePx = 24
 private const val ThreadBottomAnchorMinimumAttempts = 2
 private const val ThreadInitialBottomAnchorAttempts = 12
 private const val ThreadInitialBottomAnchorRetryDelayMs = 80L
+private const val ThreadInitialBottomAnchorMinimumConsumedDeltaPx = 0.5f
 private const val ThreadLayoutStabilityFrameDelayMs = 16L
 private const val ThreadMarkdownTagActiveFeedbackMs = 900L
 private const val ThreadFirstContentTaskJoinDelayMs = 96L

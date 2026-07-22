@@ -1722,19 +1722,20 @@ class ThreadPayloadTest {
     @Test
     fun threadBottomAnchorOffsetKeepsShortReplyThreadPaddingAtViewportBottom() {
         assertEquals(
-            -544,
+            -528,
             threadLatestItemBottomAnchorScrollOffset(
                 itemSize = 96,
                 viewportHeight = 640,
                 visibleItemCount = 5,
-                totalItemCount = 5
+                totalItemCount = 6,
+                trailingPaddingSize = 16
             )
         )
     }
 
     @Test
-    fun threadOriginContentInitializesAtLatestItem() {
-        assertEquals(8, threadInitialFirstVisibleItemIndex(latestItemIndex = 8))
+    fun threadOriginContentInitializesAtNativeViewportStart() {
+        assertEquals(0, threadInitialFirstVisibleItemIndex(latestItemIndex = 8))
     }
 
     @Test
