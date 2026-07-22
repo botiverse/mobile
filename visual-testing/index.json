@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-07-22T22:13:08.034Z",
+  "generatedAt": "2026-07-22T22:16:42.691Z",
   "latestRunId": "785f4dc-20260722221033",
   "latest": {
     "runId": "785f4dc-20260722221033",
     "commit": "785f4dc-20260722221033",
     "commitSubject": "perf(thread): mark first content composition start (task #20 t4) (#1451)",
-    "generatedAt": "2026-07-22T22:13:08.034Z",
+    "generatedAt": "2026-07-22T22:16:42.691Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -129,7 +129,7 @@
       "runId": "785f4dc-20260722221033",
       "commit": "785f4dc-20260722221033",
       "commitSubject": "perf(thread): mark first content composition start (task #20 t4) (#1451)",
-      "generatedAt": "2026-07-22T22:13:08.034Z",
+      "generatedAt": "2026-07-22T22:16:42.691Z",
       "baseline": "react",
       "current": "android",
       "summary": {
