@@ -4399,6 +4399,7 @@ internal fun SharedThreadRouteContent(
     val attachmentPickerUnavailableLabel = stringResource(MR.strings.thread_error_attachment_picker)
     val fileSourceUnavailableLabel = stringResource(MR.strings.thread_error_file_source)
     val copiedLabel = stringResource(MR.strings.thread_feedback_copied)
+    val failureDetailsCopiedLabel = stringResource(MR.strings.thread_send_failure_details_copied)
     val linksCopiedLabel = stringResource(MR.strings.thread_feedback_links_copied)
     val forwardNeedsApiTemplate =
         stringResource(
@@ -6252,6 +6253,16 @@ internal fun SharedThreadRouteContent(
                         bridge.toast(copiedLabel)
                     }
                 }
+                    action == "copyLocalSendFailureDetails" && !itemId.isNullOrBlank() -> {
+                        val failedMessage = renderedTimelineSlice.threadMessageById(itemId)
+                        val detail = failedMessage?.let {
+                            threadFailureDiagnosticDetail(it.pendingSendErrorCode, it.pendingSendErrorMessage)
+                        }
+                        if (!detail.isNullOrBlank()) {
+                            bridge.copyToPasteboard(detail)
+                            bridge.toast(failureDetailsCopiedLabel)
+                        }
+                    }
                 action == "copyShareSelectionMarkdown" && !itemId.isNullOrBlank() -> {
                     bridge.copyToPasteboard(itemId)
                     bridge.toast(copiedLabel)
@@ -14065,6 +14076,9 @@ private fun ThreadMessagesList(
                                 attachmentCommentsEnabled = attachmentCommentsEnabled,
                                 onOpenAttachmentComments = { onThreadEvent("openAttachmentComments", message.id, it, null) },
                                 onRetryLocalSend = { onThreadEvent("retryLocalSend", message.id, null, null) },
+                                onCopyLocalSendFailureDetails = {
+                                    onThreadEvent("copyLocalSendFailureDetails", message.id, null, null)
+                                },
                                 attachmentOpenStates = if (isRichContentEnabled) attachmentOpenStates else emptyMap(),
                                 pendingActionCardIds = if (isRichContentEnabled) pendingActionCardIds else emptySet(),
                                 onCommitActionCard = { onThreadEvent("commitActionCard", it, null, null) },
@@ -15698,6 +15712,7 @@ private fun ThreadMessageCard(
     attachmentCommentsEnabled: Boolean = false,
     onOpenAttachmentComments: (String) -> Unit = {},
     onRetryLocalSend: () -> Unit = {},
+    onCopyLocalSendFailureDetails: () -> Unit = {},
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
     pendingActionCardIds: Set<String> = emptySet(),
     onCommitActionCard: (String) -> Unit = {},
@@ -16106,7 +16121,8 @@ private fun ThreadMessageCard(
                                 ThreadMessageLocalSendStatus(
                                     message = message,
                                     alignEnd = alignOwnMessageRight,
-                                    onRetry = onRetryLocalSend
+                                    onRetry = onRetryLocalSend,
+                                    onCopyDetails = onCopyLocalSendFailureDetails
                                 )
                             }
                         }
@@ -16235,52 +16251,109 @@ private fun ThreadMessageSelectionToggle(
 private fun ThreadMessageLocalSendStatus(
     message: KuiklyThreadMessageItem,
     alignEnd: Boolean,
-    onRetry: () -> Unit
+    onRetry: () -> Unit,
+    onCopyDetails: () -> Unit
 ) {
     val isFailed = message.deliveryState.equals(ThreadMessageDeliveryFailed, ignoreCase = true)
-    val label =
-        if (isFailed) {
-            threadSendFailureStatusLabel(
-                errorCode = message.pendingSendErrorCode,
-                errorMessage = message.pendingSendErrorMessage
-            )
-        } else if (message.pendingSendContext?.asTask == true) {
-            "Sending as task..."
-        } else {
-            "Sending..."
-        }
-    Row(
+    val userFacingLabels = threadUserFacingErrorLabels()
+    val summary = threadSendFailureSummary(message.pendingSendErrorCode, userFacingLabels)
+    val label = if (isFailed) {
+        stringResource(MR.strings.thread_send_failure_summary, summary)
+    } else if (message.pendingSendContext?.asTask == true) {
+        "Sending as task..."
+    } else {
+        "Sending..."
+    }
+    val detail = remember(message.id, message.pendingSendErrorCode, message.pendingSendErrorMessage) {
+        threadFailureDiagnosticDetail(message.pendingSendErrorCode, message.pendingSendErrorMessage)
+    }
+    var detailsExpanded by remember(message.id, detail) { mutableStateOf(false) }
+    Column(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = if (alignEnd) Arrangement.End else Arrangement.Start,
-        verticalAlignment = Alignment.CenterVertically
+        horizontalAlignment = if (alignEnd) Alignment.End else Alignment.Start,
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        Button(
-            onClick = { if (message.canRetryLocalSend()) onRetry() },
-            enabled = isFailed,
-            pressFeedback = isFailed,
-            modifier = Modifier.heightIn(min = 28.dp).background(Color.Transparent)
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                SlockLucideIcon(
-                    if (isFailed) SlockLucideIconName.RefreshCw else SlockLucideIconName.LoaderCircle,
-                    modifier = Modifier.size(13.dp),
-                    color = if (isFailed) "#FFF97264" else SlockColor.TextMutedGrayArgb,
-                    spinning = !isFailed
-                )
-                Text(
-                    text = label,
-                    style =
-                        SlockType.Caption.copy(
-                            color = if (isFailed) SlockColor.AccentRed else SlockColor.TextMutedGray
-                        ),
-                    color = if (isFailed) SlockColor.AccentRed else SlockColor.TextMutedGray,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+            SlockLucideIcon(
+                if (isFailed) SlockLucideIconName.TriangleAlert else SlockLucideIconName.LoaderCircle,
+                modifier = Modifier.size(13.dp),
+                color = if (isFailed) "#FFF97264" else SlockColor.TextMutedGrayArgb,
+                spinning = !isFailed
+            )
+            Text(
+                text = label,
+                style =
+                    SlockType.Caption.copy(
+                        color = if (isFailed) SlockColor.AccentRed else SlockColor.TextMutedGray
+                    ),
+                color = if (isFailed) SlockColor.AccentRed else SlockColor.TextMutedGray,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false)
+            )
+            if (isFailed) {
+                Button(
+                    onClick = { if (message.canRetryLocalSend()) onRetry() },
+                    enabled = message.canRetryLocalSend(),
+                    pressFeedback = message.canRetryLocalSend(),
+                    modifier = Modifier.heightIn(min = 28.dp).background(Color.Transparent)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        SlockLucideIcon(
+                            SlockLucideIconName.RefreshCw,
+                            modifier = Modifier.size(12.dp),
+                            color = "#FFF97264"
+                        )
+                        Text(
+                            text = stringResource(MR.strings.thread_send_failure_retry),
+                            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
+                            color = SlockColor.AccentRed
+                        )
+                    }
+                }
             }
+        }
+        if (isFailed && detail != null) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(
+                        if (detailsExpanded) MR.strings.thread_send_failure_hide_details
+                        else MR.strings.thread_send_failure_details
+                    ),
+                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
+                    color = SlockColor.TextMutedGray,
+                    modifier = Modifier.clickable { detailsExpanded = !detailsExpanded }.padding(vertical = 2.dp)
+                )
+                if (detailsExpanded) {
+                    Text(
+                        text = stringResource(MR.strings.thread_send_failure_copy_details),
+                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
+                        color = SlockColor.TextMutedGray,
+                        modifier = Modifier.clickable(onClick = onCopyDetails).padding(vertical = 2.dp)
+                    )
+                }
+            }
+        }
+        if (detailsExpanded && detail != null) {
+            Text(
+                text = detail,
+                style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 10.sp, lineHeight = 14.sp),
+                color = SlockColor.TextMutedGray,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                    .background(SlockColor.SurfaceWhite)
+                    .padding(8.dp)
+            )
         }
     }
 }

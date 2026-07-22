@@ -49,14 +49,10 @@ private val ThreadUserFacingKnownReasons =
         "thread_send_exception" to ThreadUserFacingErrorReason.Generic
     )
 
-internal fun threadSendFailureStatusLabel(errorCode: String?, errorMessage: String? = null): String {
-    val reason = threadFailureReasonLabel(errorMessage) ?: threadFailureReasonLabel(errorCode)
-    return if (reason == null) {
-        "Send failed · Retry"
-    } else {
-        "Send failed: $reason · Retry"
-    }
-}
+internal fun threadSendFailureSummary(
+    errorCode: String?,
+    labels: ThreadUserFacingErrorLabels
+): String = labels.forErrorCode(errorCode) ?: labels.generic()
 
 internal fun threadFailureReasonLabel(errorCode: String?): String? =
     errorCode
@@ -72,6 +68,22 @@ internal fun threadFailureReasonLabel(errorCode: String?): String? =
                 value.take(ThreadFailureReasonMaxLength - 3).trimEnd() + "..."
             }
         }
+
+internal fun threadFailureDiagnosticDetail(
+    errorCode: String?,
+    errorMessage: String?
+): String? {
+    val code = errorCode?.trim()?.takeIf { it.isNotBlank() }
+    val message = errorMessage?.trim()?.takeIf { it.isNotBlank() }
+    if (code == null && message == null) return null
+    return buildString {
+        code?.let { append("Code: ").append(it) }
+        message?.let {
+            if (isNotEmpty()) append('\n')
+            append("Detail: ").append(it)
+        }
+    }.let(::redactThreadFailureReason)
+}
 
 internal fun threadUserFacingErrorCodeReason(errorCode: String?): ThreadUserFacingErrorReason? {
     val normalized =
@@ -140,6 +152,8 @@ internal class ThreadUserFacingErrorLabels(
 
     fun forErrorCode(errorCode: String?): String? =
         threadUserFacingErrorCodeReason(errorCode)?.let(labels::get)
+
+    fun generic(): String = checkNotNull(labels[ThreadUserFacingErrorReason.Generic])
 }
 
 @Composable
@@ -224,11 +238,35 @@ internal fun threadFailureDiagnosticCode(errorBodyText: String?): String? =
         ?.threadFailureJsonObjectOrNull()
         ?.threadFailureStringField("code", "errorCode", "diagnosticCode")
 
-private fun redactThreadFailureReason(value: String): String =
+internal fun redactThreadFailureReason(value: String): String =
     value
         .replace(Regex("sk_agent_[A-Za-z0-9_=-]+"), "sk_agent_<redacted>")
         .replace(Regex("sk_machine_[A-Za-z0-9_=-]+"), "sk_machine_<redacted>")
         .replace(Regex("Bearer\\s+[A-Za-z0-9._=-]+", RegexOption.IGNORE_CASE), "Bearer <redacted>")
+        .replace(
+            Regex("(?i)((?:authorization)\\s*[:=]\\s*)(?:(?:basic|bearer)\\s+)?([^\\s,;]+)"),
+            "$1<redacted>"
+        )
+        .replace(
+            Regex("(?i)((?:cookie|set-cookie)\\s*[:=]\\s*)([^\\s,]+)"),
+            "$1<redacted>"
+        )
+        .replace(
+            Regex("(?i)((?:x-api-key|api[_-]?key)\\s*[:=]\\s*)([^\\s,;]+)"),
+            "$1<redacted>"
+        )
+        .replace(
+            Regex("(?i)([?&](?:access_token|token|api_key|apikey|signature|sig)=)([^&\\s]+)"),
+            "$1<redacted>"
+        )
+        .replace(
+            Regex("(?<![A-Za-z0-9])/(?:Users|home|var|tmp|private|data)/[^\\s,;]+"),
+            "<absolute-path-redacted>"
+        )
+        .replace(
+            Regex("[A-Za-z]:\\\\[^\\s,;]+"),
+            "<absolute-path-redacted>"
+        )
 
 private fun String.threadFailureJsonObjectOrNull(): JsonObject? =
     runCatching { ThreadFailureReasonJson.parseToJsonElement(this).jsonObject }.getOrNull()

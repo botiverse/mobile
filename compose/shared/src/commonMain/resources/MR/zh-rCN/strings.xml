@@ -239,6 +239,12 @@
     <string name="thread_error_reason_response_unreadable">无法读取服务器响应，请重试。</string>
     <string name="thread_error_reason_cancelled">请求已取消，请重试。</string>
     <string name="thread_error_reason_generic">出现问题，请重试。</string>
+    <string name="thread_send_failure_summary">发送失败：%1$s</string>
+    <string name="thread_send_failure_retry">重试</string>
+    <string name="thread_send_failure_details">详情</string>
+    <string name="thread_send_failure_hide_details">收起详情</string>
+    <string name="thread_send_failure_copy_details">复制详情</string>
+    <string name="thread_send_failure_details_copied">失败详情已复制</string>
     <string name="thread_state_original_unavailable">原消息不可用。</string>
     <string name="thread_reply_title">对话串</string>
     <string name="thread_state_no_replies">暂无回复</string>

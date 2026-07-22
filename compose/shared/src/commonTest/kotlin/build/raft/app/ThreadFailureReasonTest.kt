@@ -8,41 +8,71 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class ThreadFailureReasonTest {
+    private val labels =
+        ThreadUserFacingErrorLabels(
+            ThreadUserFacingErrorReason.entries.associateWith { reason -> "localized:${reason.name}" }
+        )
+
     @Test
-    fun sendFailureStatusIncludesSanitizedReason() {
-        assertEquals("Send failed · Retry", threadSendFailureStatusLabel(null))
+    fun sendFailureSummaryUsesTypedReasonAndNeverRawMessage() {
         assertEquals(
-            "Send failed: upload_failed · Retry",
-            threadSendFailureStatusLabel(" upload_failed ")
+            "localized:Generic",
+            threadSendFailureSummary(null, labels)
         )
         assertEquals(
-            "Send failed: request timed out · Retry",
-            threadSendFailureStatusLabel("thread_send_timeout")
+            "localized:RequestTimedOut",
+            threadSendFailureSummary("thread_send_timeout", labels)
         )
         assertEquals(
-            "Send failed: request cancelled · Retry",
-            threadSendFailureStatusLabel("thread_send_cancelled")
+            "localized:RequestCancelled",
+            threadSendFailureSummary("thread_send_cancelled", labels)
         )
         assertEquals(
-            "Send failed: server rejected the message body · Retry",
-            threadSendFailureStatusLabel(
-                errorCode = "validation_failed",
-                errorMessage = " server rejected the message body "
-            )
+            "localized:Generic",
+            threadSendFailureSummary("server rejected Bearer secret", labels)
         )
     }
 
     @Test
-    fun failureReasonRedactsSecretsAndTruncatesLongBodies() {
-        val label =
-            threadFailureReasonLabel(
-                "server rejected Bearer abc.def.ghi and sk_agent_secretvalue " +
-                    "because the body was malformed".repeat(8)
-            )
+    fun failureDiagnosticDetailRedactsSecretsAndPreservesCompleteLongBody() {
+        val longTail = "because-the-body-was-malformed-".repeat(12)
+        val detail = threadFailureDiagnosticDetail(
+            errorCode = "thread_send_exception",
+            errorMessage =
+                "Bearer abc.def.ghi sk_agent_secretvalue sk_machine_machinevalue " +
+                    "Authorization: Basic auth-secret Cookie=session-secret;other-secret api_key=key-secret " +
+                    "https://example.test/upload?access_token=query-secret&sig=signed-secret " +
+                    "/home/alice/private/message.txt C:\\Users\\Alice\\token.txt $longTail"
+        )
 
-        assertTrue(label!!.contains("Bearer <redacted>"))
-        assertTrue(label.contains("sk_agent_<redacted>"))
-        assertTrue(label.length <= 120)
+        assertTrue(detail!!.contains("Bearer <redacted>"))
+        assertTrue(detail.contains("sk_agent_<redacted>"))
+        assertTrue(detail.contains("sk_machine_<redacted>"))
+        assertTrue(detail.contains("Authorization: <redacted>"))
+        assertTrue(detail.contains("Cookie=<redacted>"))
+        assertTrue(detail.contains("api_key=<redacted>"))
+        assertTrue(detail.contains("access_token=<redacted>"))
+        assertTrue(detail.contains("sig=<redacted>"))
+        assertTrue(detail.contains("<absolute-path-redacted>"))
+        assertTrue(detail.contains(longTail))
+        assertTrue(detail.length > 120)
+        assertTrue("abc.def.ghi" !in detail)
+        assertTrue("auth-secret" !in detail)
+        assertTrue("session-secret" !in detail)
+        assertTrue("other-secret" !in detail)
+        assertTrue("query-secret" !in detail)
+    }
+
+    @Test
+    fun legacyFailureReasonLabelStaysBoundedWhileDiagnosticDetailRemainsComplete() {
+        val longReason = "safe-diagnostic-".repeat(20)
+        val legacyLabel = threadFailureReasonLabel(longReason)
+        val diagnosticDetail = threadFailureDiagnosticDetail("thread_send_exception", longReason)
+
+        assertEquals(120, legacyLabel?.length)
+        assertTrue(legacyLabel!!.endsWith("..."))
+        assertTrue(diagnosticDetail!!.contains(longReason))
+        assertTrue(diagnosticDetail.length > 120)
     }
 
     @Test
