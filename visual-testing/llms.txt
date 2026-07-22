@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-07-22 11:27:30 UTC
+Generated: 2026-07-22 11:31:14 UTC
 Latest run: 6f81bef-20260722112452
 Latest commit: 6f81bef-20260722112452
 Commit subject: fix(visual): persist forward scroll probe evidence (#1448)
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 85, same 0, pass 0, basic-pass 1, different 83, missing 1
-AI analysis: ready 76 / total 85, pending 9
+AI analysis: ready 84 / total 85, pending 1
 Visual coverage matrix: active 94 / total 113, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 

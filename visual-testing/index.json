@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-07-22T11:27:30.142Z",
+  "generatedAt": "2026-07-22T11:31:14.484Z",
   "latestRunId": "6f81bef-20260722112452",
   "latest": {
     "runId": "6f81bef-20260722112452",
     "commit": "6f81bef-20260722112452",
     "commitSubject": "fix(visual): persist forward scroll probe evidence (#1448)",
-    "generatedAt": "2026-07-22T11:27:30.142Z",
+    "generatedAt": "2026-07-22T11:31:14.484Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -20,8 +20,8 @@
     },
     "analysisSummary": {
       "total": 85,
-      "ready": 76,
-      "pending": 9
+      "ready": 84,
+      "pending": 1
     },
     "comparisons": [
       "react__android",
@@ -129,7 +129,7 @@
       "runId": "6f81bef-20260722112452",
       "commit": "6f81bef-20260722112452",
       "commitSubject": "fix(visual): persist forward scroll probe evidence (#1448)",
-      "generatedAt": "2026-07-22T11:27:30.142Z",
+      "generatedAt": "2026-07-22T11:31:14.484Z",
       "baseline": "react",
       "current": "android",
       "summary": {
@@ -142,8 +142,8 @@
       },
       "analysisSummary": {
         "total": 85,
-        "ready": 76,
-        "pending": 9
+        "ready": 84,
+        "pending": 1
       },
       "comparisons": [
         "react__android",
