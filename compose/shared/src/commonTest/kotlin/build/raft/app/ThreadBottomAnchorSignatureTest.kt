@@ -934,9 +934,9 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
-    fun initialBottomAnchor_invisibleTargetPrepositionsThenContinuesAnchoring() {
+    fun initialBottomAnchor_invisibleTargetAdvancesThenContinuesAnchoring() {
         assertEquals(
-            ThreadInitialBottomAnchorStage.PrepositionThenAnchor,
+            ThreadInitialBottomAnchorStage.AdvanceThenAnchor,
             threadInitialBottomAnchorStage(
                 initialBottomAnchorReady = false,
                 userScrollInProgress = false,
@@ -949,6 +949,28 @@ class ThreadBottomAnchorSignatureTest {
                 initialBottomAnchorReady = false,
                 userScrollInProgress = false,
                 latestItemVisible = true
+            )
+        )
+    }
+
+    @Test
+    fun initialBottomAnchor_deltaAdvancesByViewportThenAlignsDrawableTarget() {
+        assertEquals(
+            24,
+            threadInitialBottomAnchorScrollDelta(
+                itemOffset = 840,
+                itemSize = 36,
+                trailingPaddingSize = 24,
+                viewportEndOffset = 876
+            )
+        )
+        assertEquals(
+            0,
+            threadInitialBottomAnchorScrollDelta(
+                itemOffset = 816,
+                itemSize = 36,
+                trailingPaddingSize = 24,
+                viewportEndOffset = 876
             )
         )
     }

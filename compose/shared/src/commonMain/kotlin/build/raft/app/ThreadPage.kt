@@ -186,6 +186,7 @@ import com.tencent.kuikly.compose.foundation.gestures.detectHorizontalDragGestur
 import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
 import com.tencent.kuikly.compose.foundation.gestures.awaitEachGesture
 import com.tencent.kuikly.compose.foundation.gestures.awaitFirstDown
+import com.tencent.kuikly.compose.foundation.gestures.scrollBy
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.ExperimentalLayoutApi
 import com.tencent.kuikly.compose.foundation.layout.FlowRow
@@ -13607,13 +13608,7 @@ private fun ThreadMessagesList(
                 initialBottomAnchorReady = true
                 return@LaunchedEffect
             }
-            ThreadInitialBottomAnchorStage.PrepositionThenAnchor -> {
-                // The synthetic bottom-padding item is not drawable content and cannot
-                // establish the native viewport. Preposition the last real message;
-                // the anchor below includes the trailing padding in its final offset.
-                listState.scrollToItem(initialBottomAnchorTargetItemIndex)
-                delay(ThreadLayoutStabilityFrameDelayMs)
-            }
+            ThreadInitialBottomAnchorStage.AdvanceThenAnchor -> Unit
             ThreadInitialBottomAnchorStage.Anchor,
             ThreadInitialBottomAnchorStage.Settled -> Unit
         }
@@ -14712,7 +14707,7 @@ internal fun threadInitialBottomAnchorTargetItemIndex(
 
 internal enum class ThreadInitialBottomAnchorStage {
     UserOwned,
-    PrepositionThenAnchor,
+    AdvanceThenAnchor,
     Anchor,
     Settled
 }
@@ -14725,7 +14720,7 @@ internal fun threadInitialBottomAnchorStage(
     when {
         initialBottomAnchorReady -> ThreadInitialBottomAnchorStage.Settled
         userScrollInProgress -> ThreadInitialBottomAnchorStage.UserOwned
-        !latestItemVisible -> ThreadInitialBottomAnchorStage.PrepositionThenAnchor
+        !latestItemVisible -> ThreadInitialBottomAnchorStage.AdvanceThenAnchor
         else -> ThreadInitialBottomAnchorStage.Anchor
     }
 
@@ -15295,44 +15290,48 @@ private suspend fun LazyListState.anchorInitialThreadBottomToLatest(
     trailingPaddingSize: Int = 0
 ): Boolean {
     if (latestItemIndex < 0) return true
-    repeat(ThreadInitialBottomAnchorAttempts) { attempt ->
+    repeat(ThreadInitialBottomAnchorAttempts) {
         awaitThreadMessagesLayoutFrame()
-        val canScrollToLatest = canScrollToThreadItem(latestItemIndex)
-        if (!canScrollToLatest) {
+        if (!canScrollToThreadItem(latestItemIndex)) {
             delay(ThreadLayoutStabilityFrameDelayMs)
             return@repeat
         }
-
-        if (!isThreadItemVisible(latestItemIndex)) {
-            scrollToItem(latestItemIndex)
+        val layoutInfo = layoutInfo
+        val viewportSize = layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset
+        if (viewportSize <= 0) {
             delay(ThreadLayoutStabilityFrameDelayMs)
+            return@repeat
         }
-        awaitThreadMessagesLayoutStability(latestItemIndex)
-        scrollLatestItemToRenderedBottom(latestItemIndex, trailingPaddingSize)
+        val latestItem = layoutInfo.visibleItemsInfo.firstOrNull { item -> item.index == latestItemIndex }
+        val requestedDelta =
+            if (latestItem == null) {
+                viewportSize
+            } else {
+                threadInitialBottomAnchorScrollDelta(
+                    itemOffset = latestItem.offset,
+                    itemSize = latestItem.size,
+                    trailingPaddingSize = trailingPaddingSize,
+                    viewportEndOffset = layoutInfo.viewportEndOffset
+                )
+            }
+        if (kotlin.math.abs(requestedDelta) <= ThreadBackToBottomTolerancePx) {
+            return true
+        }
+        val consumedDelta = scrollBy(requestedDelta.toFloat())
         delay(ThreadLayoutStabilityFrameDelayMs)
-
-        val anchorState =
-            ThreadInitialBottomAnchorState(
-                canScrollToLatest = canScrollToLatest,
-                isAtRenderedBottom =
-                    isLatestItemAtRenderedBottom(
-                        latestItemIndex = latestItemIndex,
-                        trailingPaddingSize = trailingPaddingSize
-                    ),
-                attempt = attempt
+        if (kotlin.math.abs(consumedDelta) < ThreadInitialBottomAnchorMinimumConsumedDeltaPx) {
+            return false
+        }
+        if (
+            isLatestItemAtRenderedBottom(
+                latestItemIndex = latestItemIndex,
+                trailingPaddingSize = trailingPaddingSize
             )
-        if (shouldRevealInitialThreadBottomAnchor(anchorState)) {
+        ) {
             return true
         }
     }
-    if (!canScrollToThreadItem(latestItemIndex)) {
-        return false
-    }
-    scrollToItem(latestItemIndex)
-    awaitThreadMessagesLayoutStability(latestItemIndex)
-    scrollLatestItemToRenderedBottom(latestItemIndex, trailingPaddingSize)
-    delay(ThreadLayoutStabilityFrameDelayMs)
-    return isLatestItemAtRenderedBottom(latestItemIndex, trailingPaddingSize)
+    return false
 }
 
 private suspend fun LazyListState.scrollLatestItemToRenderedBottom(
@@ -15475,6 +15474,17 @@ internal fun threadLatestItemBottomAnchorScrollOffset(
     return itemSize + trailingPaddingSize.coerceAtLeast(0) - viewportHeight
 }
 
+internal fun threadInitialBottomAnchorScrollDelta(
+    itemOffset: Int,
+    itemSize: Int,
+    trailingPaddingSize: Int,
+    viewportEndOffset: Int
+): Int =
+    itemOffset +
+        itemSize.coerceAtLeast(0) +
+        trailingPaddingSize.coerceAtLeast(0) -
+        viewportEndOffset
+
 internal fun threadFocusedItemScrollOffset(
     itemSize: Int,
     viewportHeight: Int
@@ -15539,6 +15549,7 @@ private const val ThreadBackToBottomTolerancePx = 24
 private const val ThreadBottomAnchorMinimumAttempts = 2
 private const val ThreadInitialBottomAnchorAttempts = 12
 private const val ThreadInitialBottomAnchorRetryDelayMs = 80L
+private const val ThreadInitialBottomAnchorMinimumConsumedDeltaPx = 0.5f
 private const val ThreadLayoutStabilityFrameDelayMs = 16L
 private const val ThreadMarkdownTagActiveFeedbackMs = 900L
 private const val ThreadFirstContentTaskJoinDelayMs = 96L
