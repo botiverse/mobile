@@ -527,13 +527,14 @@ read_apk_identity() {
   min_sdk="$(sed -n "s/^sdkVersion:'\([^']*\)'.*/\1/p" "$badging" | head -n 1)"
   target_sdk="$(sed -n "s/^targetSdkVersion:'\([^']*\)'.*/\1/p" "$badging" | head -n 1)"
   # apksigner prints the current signer in two forms depending on whether the
-  # APK carries a rotated signing lineage:
+  # APK carries a rotated signing lineage and which build-tools version runs:
   #   Signer #1 certificate SHA-256 digest: ...
   #   Signer (minSdkVersion=33, maxSdkVersion=...) certificate SHA-256 digest: ...
-  # In both formats the first SHA-256 signer line is the signer Android uses on
+  #   V3.1 Signer: (minSdkVersion=33, maxSdkVersion=...) certificate SHA-256 digest: ...
+  # In all formats the first SHA-256 signer line is the signer Android uses on
   # the newest supported API range. Keep selecting that current signer, while
-  # accepting the lineage-aware prefix emitted by build-tools 36.
-  signer="$(sed -n 's/^Signer.* certificate SHA-256 digest:[[:space:]]*//p' "$certs" | head -n 1 | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+  # accepting the versioned lineage prefixes emitted by build-tools 36 and 37.
+  signer="$(sed -n 's/^.*certificate SHA-256 digest:[[:space:]]*//p' "$certs" | head -n 1 | tr -d ':' | tr '[:upper:]' '[:lower:]')"
   printf -v "${prefix}_PACKAGE_NAME" '%s' "$package"
   printf -v "${prefix}_VERSION_CODE" '%s' "$version_code"
   printf -v "${prefix}_VERSION_NAME" '%s' "$version_name"
