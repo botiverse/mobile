@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-22T11:31:06.745Z",
+  "generatedAt": "2026-07-22T22:12:57.708Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -1078,7 +1078,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.34045520565128407
+      "metricMismatch": 0.3404579564710284
     },
     {
       "id": "components.thread.message-row.deleted-human",
@@ -1222,7 +1222,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.7067643564089061
+      "metricMismatch": 0.7067650315280647
     },
     {
       "id": "components.thread.forward-modal",
@@ -1399,7 +1399,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.26708895370032815
+      "metricMismatch": 0.26706329917230387
     },
     {
       "id": "components.home.search.channel-dropdown",
@@ -1432,7 +1432,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.26688506771445164
+      "metricMismatch": 0.2668584005076896
     },
     {
       "id": "components.home.saved.results",
@@ -1468,7 +1468,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19354838709677424
+      "metricMismatch": 0.1934021882663648
     },
     {
       "id": "components.home.activity.results",
@@ -1502,7 +1502,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.18627669831687943
+      "metricMismatch": 0.18623268146471317
     },
     {
       "id": "components.tasks.panel.states",
@@ -1680,7 +1680,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-22T11:31:05.943Z",
+      "generatedAt": "2026-07-22T22:12:56.788Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2102,7 +2102,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19910209151915315
+      "metricMismatch": 0.1991726414712197
     },
     {
       "id": "components.settings.notifications.page",
@@ -2519,7 +2519,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.25289794898799633
+      "metricMismatch": 0.2528969363092586
     },
     {
       "id": "screens.settings.server-danger-modal",
@@ -2585,7 +2585,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.15672013610402236
+      "metricMismatch": 0.15671541026991265
     },
     {
       "id": "components.thread.message-row.rich-content",
