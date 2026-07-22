@@ -12,6 +12,8 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
+private const val ThreadFailureReasonMaxLength = 120
+
 private val ThreadFailureReasonJson = Json {
     ignoreUnknownKeys = true
 }
@@ -59,6 +61,13 @@ internal fun threadFailureReasonLabel(errorCode: String?): String? =
         ?.takeIf { it.isNotBlank() }
         ?.let { value -> ThreadFailureReasonKnownLabels[value] ?: value }
         ?.let(::redactThreadFailureReason)
+        ?.let { value ->
+            if (value.length <= ThreadFailureReasonMaxLength) {
+                value
+            } else {
+                value.take(ThreadFailureReasonMaxLength - 3).trimEnd() + "..."
+            }
+        }
 
 internal fun threadFailureDiagnosticDetail(
     errorCode: String?,

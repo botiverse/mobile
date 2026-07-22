@@ -64,9 +64,15 @@ class ThreadFailureReasonTest {
     }
 
     @Test
-    fun failureReasonLabelNoLongerIrreversiblyTruncatesRedactedDetail() {
+    fun legacyFailureReasonLabelStaysBoundedWhileDiagnosticDetailRemainsComplete() {
         val longReason = "safe-diagnostic-".repeat(20)
-        assertEquals(longReason, threadFailureReasonLabel(longReason))
+        val legacyLabel = threadFailureReasonLabel(longReason)
+        val diagnosticDetail = threadFailureDiagnosticDetail("thread_send_exception", longReason)
+
+        assertEquals(120, legacyLabel?.length)
+        assertTrue(legacyLabel!!.endsWith("..."))
+        assertTrue(diagnosticDetail!!.contains(longReason))
+        assertTrue(diagnosticDetail.length > 120)
     }
 
     @Test
