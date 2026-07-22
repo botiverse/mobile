@@ -1037,6 +1037,7 @@ class KmpVisualScreenshotCaptureTest {
         var before: Bitmap? = null
         var afterSwipe: Bitmap? = null
         var afterTap: Bitmap? = null
+        var artifact: Bitmap? = null
         try {
             onActivityNoIdle { applyVisualFullscreen(it) }
             waitForIdleBounded()
@@ -1059,6 +1060,7 @@ class KmpVisualScreenshotCaptureTest {
                 "Forward recipient LazyColumn did not move after a real vertical swipe; changedRatio=$scrollChangedRatio",
                 scrollChangedRatio >= FORWARD_PROBE_MIN_SCROLL_CHANGED_RATIO
             )
+            artifact = captureStableVisualBitmap(context, caseId, FULL_VIEWPORT_CROP)
 
             tapDisplayFraction(xFraction = 0.50f, yFraction = 0.68f)
             waitForIdleBounded()
@@ -1074,10 +1076,23 @@ class KmpVisualScreenshotCaptureTest {
                 "A visible recipient row must remain tappable after scrolling; changedRatio=$tapChangedRatio",
                 tapChangedRatio >= FORWARD_PROBE_MIN_TAP_CHANGED_RATIO
             )
+
+            // This probe owns its interaction sequence instead of going
+            // through captureKmpComponentCase. Persist the stable post-swipe
+            // frame so the artifact visibly proves the scrolled row geometry;
+            // the post-scroll tap assertion above remains a separate gate.
+            writeSuccessfulVisualArtifacts(
+                context = context,
+                caseId = caseId,
+                bitmap = requireNotNull(artifact),
+                crop = FULL_VIEWPORT_CROP,
+                routePageName = "compose_thread_forward_modal_visual"
+            )
         } finally {
             before?.recycle()
             afterSwipe?.recycle()
             afterTap?.recycle()
+            artifact?.recycle()
             closeScenarioBounded(scenario)
         }
     }
@@ -2440,6 +2455,36 @@ class KmpVisualScreenshotCaptureTest {
         } finally {
             closeScenarioBounded(scenario)
         }
+    }
+
+    private fun writeSuccessfulVisualArtifacts(
+        context: Context,
+        caseId: String,
+        bitmap: Bitmap,
+        crop: VisualCrop,
+        routePageName: String? = null
+    ) {
+        val outputDir = visualOutputDir(context)
+        outputDir.mkdirs()
+        clearMirroredCaseArtifacts(context, caseId)
+        val imageFile = File(outputDir, "$caseId.png")
+        imageFile.outputStream().use { out ->
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+        }
+        mirrorFileForAdbPull(context, imageFile)
+        val metadataFile = File(outputDir, "$caseId.metadata.json")
+        metadataFile.writeText(
+            visualMetadata(
+                context = context,
+                caseId = caseId,
+                imageFile = imageFile,
+                bitmap = bitmap,
+                crop = crop,
+                captureMethod = crop.captureMethod,
+                routePageName = routePageName
+            )
+        )
+        mirrorFileForAdbPull(context, metadataFile)
     }
 
     private fun captureKmpComponentCase(
