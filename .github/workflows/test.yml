@@ -614,6 +614,25 @@ jobs:
             grep -Fq 'TASK2_RUNTIME scenario=generation_safety' attachment-download-runtime-instrumentation.txt
             adb shell am instrument -w -r -e class build.raft.app.core.data.diagnostics.PerformanceTraceFeedbackArchiveConnectedTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner | tee performance-trace-feedback-instrumentation.txt
             scripts/ci/assert-instrumentation-ok.sh performance-trace-feedback-instrumentation.txt 1
+            # Promoted from never-run to gating by the task #19 triage: deterministic
+            # invariants that regressed repeatedly or guard fork/data-integrity paths.
+            # (AndroidShellTaskReuseConnectedTest is NOT promoted: its first CI run
+            # showed its normalization expectation predates #1152's multi-shell
+            # gating — pending the shell lane's behavior decision, see
+            # docs/instrumented-manual-harnesses.md.)
+            adb shell am instrument -w -r -e class build.raft.app.shared.SlockChildPageVisibilityConnectedTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner | tee child-page-visibility-instrumentation.txt
+            scripts/ci/assert-instrumentation-ok.sh child-page-visibility-instrumentation.txt 1
+            adb shell am instrument -w -r -e class build.raft.app.shared.SlockPagerScrollProbeConnectedTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner | tee pager-scroll-probe-instrumentation.txt
+            scripts/ci/assert-instrumentation-ok.sh pager-scroll-probe-instrumentation.txt 1
+            adb shell am instrument -w -r -e class build.raft.app.core.data.diagnostics.DiagnosticsCallerPipelineConnectedTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner | tee diagnostics-caller-pipeline-instrumentation.txt
+            scripts/ci/assert-instrumentation-ok.sh diagnostics-caller-pipeline-instrumentation.txt 1
+            adb shell am instrument -w -r -e class build.raft.app.data.DurablePartitionAndroidDriverMigrationTest build.raft.app.shared.test/androidx.test.runner.AndroidJUnitRunner | tee durable-partition-migration-instrumentation.txt
+            scripts/ci/assert-instrumentation-ok.sh durable-partition-migration-instrumentation.txt 2
+            # Long (60-90s) gesture-driven acceptance for task #692: main/nightly
+            # only, mirroring the iOS-compile policy of keeping slow coverage off
+            # the PR critical path. Single line: the emulator-runner action feeds
+            # each script line to its own `sh -c`, so multi-line if/fi breaks.
+            if [ "${GITHUB_EVENT_NAME}" != "pull_request" ]; then adb shell am instrument -w -r -e class build.raft.app.shared.SlockThreadNewerAutoPaginationConnectedTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner | tee thread-newer-auto-pagination-instrumentation.txt && scripts/ci/assert-instrumentation-ok.sh thread-newer-auto-pagination-instrumentation.txt 1; fi
 
       - name: Upload instrumentation output
         if: always()
@@ -625,6 +644,11 @@ jobs:
             attachment-atomic-sink-instrumentation.txt
             attachment-download-runtime-instrumentation.txt
             performance-trace-feedback-instrumentation.txt
+            child-page-visibility-instrumentation.txt
+            pager-scroll-probe-instrumentation.txt
+            diagnostics-caller-pipeline-instrumentation.txt
+            durable-partition-migration-instrumentation.txt
+            thread-newer-auto-pagination-instrumentation.txt
           if-no-files-found: warn
           retention-days: 7
 

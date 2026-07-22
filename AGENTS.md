@@ -148,6 +148,55 @@ git submodule update --init --recursive third_party/slock-source
   boundaries precisely. Helper/policy tests do not replace production wiring
   review, deterministic bridge coverage, or physical-device anchor evidence.
 
+## Unit Test Case Rule
+
+Origin: Raft #Perf task #17 audit (2026-07-21); full report in the #Perf
+task thread. Admission checklist for new cases:
+
+- **Assert substance.** Every test asserts a value/state of the behavior under
+  test. `withTimeout` alone is not an assertion. Polling waits must fail with
+  a contextual message (`error("waited for X, state=$s")`), never a bare
+  `TimeoutCancellationException`.
+- **Deterministic time (JVM/common unit tests).** New async coroutine unit
+  tests use `runTest` + virtual time (`kotlinx-coroutines-test` is in
+  commonTest). No new real `delay`/`sleep`/wall-clock polling or wall-clock
+  duration assertions in JVM/common suites. Real-concurrency race tests must
+  use deterministic injection points (latches, admission hooks — see
+  `AttachmentDownloadCoordinatorRaceTest` for the pattern) and justify in the
+  PR why virtual time cannot express the interleaving.
+- **Device waits (instrumented tests).** Instrumentation/device lifecycle
+  states (activity stage changes, page-spec application, task counts) have no
+  virtual clock. When no deterministic callback exists, bounded monotonic
+  polling is allowed: short deadline, small interval, contextual failure
+  message on expiry (see `AndroidShellTaskReuseConnectedTest`'s wait
+  helpers), and the PR states why no deterministic hook applies. Never a
+  single unsynchronized read, never an unbounded wait, and never a wall-clock
+  duration assertion as the property under test.
+- **No literal clones.** A case differing from an existing one only in literal
+  values is parameterized into it, not added as a new method.
+- **Shared fixtures.** Do not re-declare `sampleSession`/`Fake*` helpers per
+  file; extend the shared test-support fixtures instead.
+- **No mirror assertions.** Do not assert entire serialized JSON bodies or
+  stringified call logs; assert parsed fields/structured recorder data.
+  Exception: explicit wire-contract vectors vendored with a pinned source
+  SHA (see scripts/check_*_vector.sh).
+- **File budget.** Test files over 1500 lines must be split before growing.
+  Name files `<Subject><Facet>Test` so the subject is greppable.
+- **Red naming is transient.** `*RedTest` names exist only inside a RED→GREEN
+  PR sequence; rename on merge.
+
+Retirement rules:
+
+- Literal-duplicate cases are merged; incidental-format assertions (key
+  order, toString, log wording) are rewritten or dropped; anything @Ignore'd
+  for 90 days is deleted.
+- An instrumented class that CI compiles but no workflow runs must be
+  promoted to a workflow, documented in
+  `docs/instrumented-manual-harnesses.md`, or deleted.
+- Suite runtime is never a reason to delete unit cases (the JVM suite runs in
+  under a minute); flaky tests are fixed or quarantined visibly, never
+  silently retried.
+
 ## Kuikly Text Decoration Rule
 
 - In shared Kuikly Compose, do not put visual container modifiers such as
