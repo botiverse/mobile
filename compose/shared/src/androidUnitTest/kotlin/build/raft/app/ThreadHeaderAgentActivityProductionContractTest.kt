@@ -15,6 +15,18 @@ class ThreadHeaderAgentActivityProductionContractTest {
                 .substringBefore("@Composable\nprivate fun ThreadChannelTile(")
 
         assertContains(source, "agentStatusResolver = agentStatusResolver")
+        assertContains(
+            source,
+            "remember(serverMembersStore, headerProjectionServerId)"
+        )
+        assertContains(
+            source,
+            "slockAgentStatusResolver(serverMembersStore, headerProjectionServerId?.value)"
+        )
+        assertFalse(
+            "slockAgentStatusResolver(serverMembersStore, currentSession?.currentServerId)" in source,
+            "Session-pending activity lookup must retain the route/store scope instead of falling back across servers"
+        )
         assertContains(header, "headerDisplay.dmAgentActivityMemberId()")
         assertContains(header, "rememberSlockAgentStatusIndicatorState(")
         assertContains(header, "dmAgentActivity?.let { ThreadDmAgentActivity(state = it) }")

@@ -44,6 +44,40 @@ class ThreadHeaderDmAgentActivityTest {
         )
     }
 
+    @Test
+    fun sessionPendingKeepsActivityLookupInsideTheRouteServer() {
+        val memberId = "agent-friday"
+        val statusByServerAndMember =
+            mapOf(
+                ("server-route" to memberId) to "Reviewing release",
+                ("server-other" to memberId) to "Handling another workspace"
+            )
+
+        val scopedServerId =
+            threadHeaderProjectionServerId(
+                sessionServerId = null,
+                scopeInitialServerId = "server-route"
+            )
+
+        assertEquals("Reviewing release", statusByServerAndMember[scopedServerId to memberId])
+    }
+
+    @Test
+    fun unknownServerScopeNeverFallsBackToAnotherServersMatchingMemberId() {
+        val memberId = "agent-friday"
+        val statusByServerAndMember =
+            mapOf(("server-other" to memberId) to "Handling another workspace")
+
+        val scopedServerId =
+            threadHeaderProjectionServerId(
+                sessionServerId = "   ",
+                scopeInitialServerId = null
+            )
+
+        assertNull(scopedServerId)
+        assertNull(scopedServerId?.let { statusByServerAndMember[it to memberId] })
+    }
+
     private fun displayModel(kind: MemberKind): ThreadHeaderDisplayModel =
         ThreadHeaderDisplayModel(
             title = "Friday",
