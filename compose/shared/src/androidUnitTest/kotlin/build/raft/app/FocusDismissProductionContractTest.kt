@@ -8,27 +8,6 @@ import kotlin.test.assertTrue
 
 class FocusDismissProductionContractTest {
     @Test
-    fun sharedDismissModifierUsesUnconsumedDownAndNeverConsumesTheGesture() {
-        val source = source("build/raft/app/BasicWidget.kt")
-        val helper = source.substringAfter("internal fun Modifier.dismissInputFocusOnUnconsumedPointerDown(")
-            .substringBefore("/**\n * [touchListener] plus")
-
-        assertContains(helper, "awaitFirstDown(requireUnconsumed = true)")
-        assertContains(helper, "currentFocusManager.clearFocus(force = true)")
-        assertFalse(".consume()" in helper)
-    }
-
-    @Test
-    fun everyBaseTextFieldRegistersWithTheActiveFocusOwnerByDefault() {
-        val source = source("build/raft/app/BasicWidget.kt")
-
-        assertTrue(source.occurrences("participatesInGlobalFocusDismiss: Boolean = true") == 2)
-        assertTrue(source.occurrences("focusOwnerRegistry?.setFocused(focusOwner, true)") == 2)
-        assertTrue(source.occurrences("focusOwnerRegistry?.setFocused(focusOwner, false)") >= 4)
-        assertContains(source, "DisposableEffect(focusOwnerRegistry, focusOwner, participatesInGlobalFocusDismiss)")
-    }
-
-    @Test
     fun appAuthFilePreviewAndEveryModalInstallTheSameFocusDismissHost() {
         val basic = source("build/raft/app/BasicWidget.kt")
         val appShell = source("build/raft/app/SlockAppShell.kt")
@@ -60,7 +39,7 @@ class FocusDismissProductionContractTest {
                 .filter { it.isFile && it.extension == "kt" }
                 .filter { file ->
                     file.relativeTo(commonMain).invariantSeparatorsPath != "build/raft/app/BasicWidget.kt" &&
-                        "dismissInputFocusOnUnconsumedPointerDown(" in file.readText()
+                        "dismissInputFocusOnOutsidePointerDown(" in file.readText()
                 }
                 .map { it.relativeTo(commonMain).invariantSeparatorsPath }
                 .toList()
@@ -70,13 +49,100 @@ class FocusDismissProductionContractTest {
     }
 
     @Test
-    fun threadComposerKeepsItsDedicatedNonConsumingTimelineDismissContract() {
+    fun mainScrollableFocusDismissContractRejectsLegacyProduction() {
+        val basic = source("build/raft/app/BasicWidget.kt")
         val thread = source("build/raft/app/ThreadPage.kt")
         val composer = source("build/raft/app/ThreadComposerPage.kt")
+        val settings = source("build/raft/app/SettingsHomePage.kt")
+        val account = source("build/raft/app/SettingsAccountPage.kt")
+        val hostObserver =
+            functionBlock(
+                basic,
+                "internal fun Modifier.dismissInputFocusOnOutsidePointerDown(",
+                "internal class SlockInputFocusRootAnchor"
+            )
+        val scrollObserver =
+            functionBlock(
+                basic,
+                "internal fun Modifier.dismissInputFocusOnScrollableChrome(",
+                "/**\n * Installs the shared blank-down focus-dismiss boundary"
+            )
+        val feedback =
+            functionBlock(
+                settings,
+                "private fun SharedQuiverFeedbackContent(",
+                "internal fun resolveSettingsFeedbackBottomAnchorAllowed("
+            )
+        val accountContent =
+            functionBlock(
+                account,
+                "internal fun SettingsAccountContent(",
+                "@Composable\nprivate fun SettingsAccountSectionHeader("
+            )
 
-        assertContains(thread, ".touchListenerWithConfiguration { type, position, touchSlop ->")
-        assertContains(thread, "focusManager.clearFocus(force = true)")
-        assertContains(composer, "participatesInGlobalFocusDismiss = false")
+        assertContains(hostObserver, "awaitPointerEvent(PointerEventPass.Initial)")
+        assertContains(hostObserver, "changedToDownIgnoreConsumed()")
+        assertContains(hostObserver, "hostAnchor.resolve(firstDown.position)")
+        assertContains(hostObserver, "registry.shouldClearFocus(rootPosition)")
+        assertFalse("awaitFirstDown(" in hostObserver)
+        assertFalse(".consume()" in hostObserver)
+
+        assertTrue(basic.occurrences("participatesInGlobalFocusDismiss: Boolean = true") == 2)
+        assertTrue(basic.occurrences("focusOwnerRegistry?.setFocused(focusOwner, true, focusOwnerAnchor::resolveBounds)") == 2)
+        assertTrue(basic.occurrences("focusOwnerRegistry?.remove(focusOwner)") == 2)
+        assertTrue(basic.occurrences(".onGloballyPositioned(focusOwnerAnchor::update)") == 2)
+
+        assertContains(scrollObserver, "shouldDismissInputFocusOnScrollableChrome(type)")
+        assertContains(scrollObserver, "val rootPosition = scrollAnchor.resolve(position)")
+        assertContains(scrollObserver, "focusOwnerRegistry?.shouldClearFocus(rootPosition) == true")
+        assertFalse("focusOwnerRegistry?.hasActiveOwner == true" in scrollObserver)
+        assertFalse(".consume()" in scrollObserver)
+
+        val callsites =
+            commonMainRoot().walkTopDown()
+                .filter { it.isFile && it.extension == "kt" }
+                .filter { it.relativeTo(commonMainRoot()).invariantSeparatorsPath != "build/raft/app/BasicWidget.kt" }
+                .flatMap { file ->
+                    file.readLines().asSequence()
+                        .filter { ".dismissInputFocusOnScrollableChrome()" in it }
+                        .map { file.relativeTo(commonMainRoot()).invariantSeparatorsPath }
+                }
+                .toList()
+                .sorted()
+        assertTrue(
+            callsites ==
+                listOf(
+                    "build/raft/app/SettingsAccountPage.kt",
+                    "build/raft/app/SettingsHomePage.kt",
+                    "build/raft/app/ThreadPage.kt"
+                ),
+            "Unexpected production scrollable-chrome callsites: $callsites"
+        )
+        assertContains(feedback, "Modifier.weight(1f).fillMaxWidth().dismissInputFocusOnScrollableChrome()")
+        assertTrue(feedback.indexOf(".dismissInputFocusOnScrollableChrome()") < feedback.indexOf("ThreadComposerContent("))
+        assertContains(
+            accountContent,
+            ".fillMaxSize()\n                .dismissInputFocusOnScrollableChrome()\n                .background(SlockColor.SurfaceWhite)"
+        )
+
+        assertContains(thread, ".dismissInputFocusOnScrollableChrome()\n                    .touchListenerWithConfiguration")
+        assertFalse("focusManager.clearFocus(force = true)" in thread)
+        assertContains(thread, "if (type == TouchType.Move) {")
+        assertContains(thread, "userScrollGeneration.value += 1")
+        assertContains(thread, "pendingFocusedMessageAnchorIdentityState.value")
+        assertContains(thread, "latestLocalSendBottomAnchorActiveKey = null")
+        assertContains(thread, "allowBottomAutoAnchor = false")
+
+        assertFalse("participatesInGlobalFocusDismiss = false" in composer)
+        assertContains(
+            functionBlock(composer, "internal fun ThreadComposerScreen()", "@Composable\nprivate fun rememberThreadComposerPayloadTrace("),
+            "SlockInputFocusDismissHost"
+        )
+        assertContains(composer, "dismissKeyboardOnBlur: Boolean = false")
+        assertContains(settings, "dismissKeyboardOnBlur = true")
+        assertContains(composer, "softwareKeyboardController?.hide()")
+
+        assertFalse("dismissInputFocusOnBackgroundDown" in commonMainRoot().readAllKotlin())
     }
 
     private fun source(path: String): String {
