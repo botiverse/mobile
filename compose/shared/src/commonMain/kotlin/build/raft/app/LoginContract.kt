@@ -41,7 +41,6 @@ data class CreateAccountFormState(
 private const val AUTH_IDENTITY_NAME_MIN_LENGTH = 5
 private const val AUTH_IDENTITY_NAME_MAX_LENGTH = 32
 private const val AUTH_IDENTITY_DISPLAY_NAME_MAX_LENGTH = 80
-private val AUTH_IDENTITY_NAME_REGEX = Regex("""^[\p{L}][\p{L}\p{N}_-]*$""")
 private val AUTH_IDENTITY_RESERVED_NAMES =
     setOf("all", "human", "humans", "agent", "agents", "here", "idle", "busy", "system")
 
@@ -52,7 +51,7 @@ internal fun identityHandleValidationError(value: String): String? {
             "Username must be at least $AUTH_IDENTITY_NAME_MIN_LENGTH characters"
         handle.length > AUTH_IDENTITY_NAME_MAX_LENGTH ->
             "Username must be at most $AUTH_IDENTITY_NAME_MAX_LENGTH characters"
-        !AUTH_IDENTITY_NAME_REGEX.matches(handle) ->
+        !handle.isCanonicalIdentityHandle() ->
             "Username must start with a letter and can only contain letters, numbers, hyphens, and underscores"
         handle.lowercase().startsWith("pending_") || handle.lowercase() in AUTH_IDENTITY_RESERVED_NAMES ->
             "This username is reserved. Choose another name."
