@@ -9925,6 +9925,7 @@ private fun threadMessagePermalinkVisualPayload(instanceId: String): KuiklyThrea
                     timestampLabel = "07/11 23:55",
                     messageType = "Chat",
                     body =
+                        "Split external URL: https://[www.figma.com/design/TiPWa8K3dfNuNxvTrz1SN0/Raft-brand---Exploration?node-id=372-1396&t=I3oSfVqdbsEJjUIP-1](www.figma.com/design/TiPWa8K3dfNuNxvTrz1SN0/Raft-brand---Exploration?node-id=372-1396&t=I3oSfVqdbsEJjUIP-1)\n\n" +
                         "Single line: https://app.raft.build/s/mobile/channel/channel-proj-server-management?msg=msg-single\n\n" +
                             "Line-end collision keeps text on both sides before https://app.raft.build/s/mobile/channel/channel-proj-server-management?msg=msg-edge after.\n\n" +
                             "Thread reply: https://app.raft.build/s/mobile/channel/channel-proj-server-management?thread=channel-proj-server-management%3Amsg-parent&msg=msg-reply and DM: https://app.raft.build/s/mobile/dm/dm-mahua?msg=msg-dm.\n\n" +

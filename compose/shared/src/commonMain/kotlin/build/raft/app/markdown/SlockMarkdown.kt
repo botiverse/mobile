@@ -1244,14 +1244,17 @@ private object SlockMarkdownTextProvider : TextProvider {
             LocalSlockMarkdownRenderConfig.current.renderMessagePermalinksAsTag
         val permalinkUriHandler = LocalUriHandler.current
         val permalinkCoroutineScope = rememberCoroutineScope()
+        val normalizedText = remember(text) {
+            text.withSlockAbsoluteUrlPrefixLinks()
+        }
         val permalinkContent =
             remember(
-                text,
+                normalizedText,
                 permalinkLabelResolver,
                 permalinkUriHandler,
                 renderMessagePermalinksAsTag,
             ) {
-                text.withSlockMessagePermalinkRenderConfig(
+                normalizedText.withSlockMessagePermalinkRenderConfig(
                     config =
                         SlockMarkdownRenderConfig(
                             renderMessagePermalinksAsTag = renderMessagePermalinksAsTag,
@@ -1382,6 +1385,92 @@ internal fun AnnotatedString.withSlockMarkdownBodyClick(onClick: (() -> Unit)?):
         }
         .toAnnotatedString()
 }
+
+/**
+ * Some rich-text producers serialize a pasted URL as a plain scheme followed by
+ * a Markdown link whose label and target both start at `www.`. Visually that is
+ * one URL, but leaving the annotation on the host alone sends a scheme-less
+ * target to strict link navigation. Coalesce only that contiguous shape.
+ */
+internal fun AnnotatedString.withSlockAbsoluteUrlPrefixLinks(): AnnotatedString {
+    val links = getLinkAnnotations(0, length)
+    val inlineCodeRanges =
+        getStringAnnotations(SLOCK_RICHTEXT_INLINE_CODE_ANNOTATION_TAG, 0, length)
+    val replacements =
+        links.mapNotNull { range ->
+            val link = range.item as? LinkAnnotation.Url ?: return@mapNotNull null
+            val linkedText = text.substring(range.start, range.end)
+            if (!linkedText.startsWith("www.", ignoreCase = true)) return@mapNotNull null
+            val scheme =
+                SlockAbsoluteUrlPrefixes.firstOrNull { prefix ->
+                    range.start >= prefix.length &&
+                        text.regionMatches(
+                            thisOffset = range.start - prefix.length,
+                            other = prefix,
+                            otherOffset = 0,
+                            length = prefix.length,
+                            ignoreCase = true,
+                        )
+                } ?: return@mapNotNull null
+            val prefixStart = range.start - scheme.length
+            val prefixEnd = range.start
+            if (inlineCodeRanges.any { it.overlaps(prefixStart, prefixEnd) } ||
+                links.any { it.overlaps(prefixStart, prefixEnd) }
+            ) {
+                return@mapNotNull null
+            }
+            val normalizedUrl =
+                if (link.url.startsWith("http://", ignoreCase = true) ||
+                    link.url.startsWith("https://", ignoreCase = true)
+                ) {
+                    link.url
+                } else if (link.url.startsWith("www.", ignoreCase = true)) {
+                    scheme + link.url
+                } else {
+                    return@mapNotNull null
+                }
+            range to
+                AnnotatedString.Range(
+                    item =
+                        LinkAnnotation.Url(
+                            url = normalizedUrl,
+                            styles = link.styles,
+                            linkInteractionListener = link.linkInteractionListener,
+                        ),
+                    start = range.start - scheme.length,
+                    end = range.end,
+                )
+        }.toMap()
+    if (replacements.isEmpty()) return this
+
+    return AnnotatedString.Builder(length)
+        .apply {
+            append(text)
+            spanStyles.forEach { range -> addStyle(range.item, range.start, range.end) }
+            paragraphStyles.forEach { range -> addStyle(range.item, range.start, range.end) }
+            getStringAnnotations(0, length).forEach { range ->
+                addStringAnnotation(range.tag, range.item, range.start, range.end)
+            }
+            links.forEach { range ->
+                val replacement = replacements[range]
+                when (val link = replacement?.item ?: range.item) {
+                    is LinkAnnotation.Url ->
+                        addLink(
+                            link,
+                            replacement?.start ?: range.start,
+                            replacement?.end ?: range.end,
+                        )
+                    is LinkAnnotation.Clickable -> addLink(link, range.start, range.end)
+                }
+            }
+        }
+        .toAnnotatedString()
+}
+
+private val SlockAbsoluteUrlPrefixes = listOf("https://", "http://")
+
+private fun AnnotatedString.Range<*>.overlaps(start: Int, end: Int): Boolean =
+    this.start < end && this.end > start
 
 internal fun slockMarkdownContentOverflow(overflow: TextOverflow): TextOverflow =
     if (overflow == TextOverflow.Ellipsis) TextOverflow.Clip else overflow

@@ -1731,6 +1731,80 @@ class SlockMarkdownTest {
     }
 
     @Test
+    fun splitFigmaUrlKeepsHttpsSchemeInLinkTextAndTarget() {
+        var openedUrl: String? = null
+        val url =
+            "https://www.figma.com/design/TiPWa8K3dfNuNxvTrz1SN0/" +
+                "Raft-brand---Exploration?node-id=372-1396&t=I3oSfVqdbsEJjUIP-1"
+        val hostAndPath = url.removePrefix("https://")
+        val annotated =
+            buildSlockMarkdownParagraphAnnotatedString(
+                content = "@wenyi mood board is ready\nhttps://[$hostAndPath]($hostAndPath)",
+                linkInteractionListener = { link ->
+                    openedUrl = (link as? LinkAnnotation.Url)?.url
+                }
+            ).withSlockAbsoluteUrlPrefixLinks()
+        val range = annotated.getLinkAnnotations(0, annotated.length).single()
+        val link = range.item as LinkAnnotation.Url
+
+        assertEquals(url, link.url)
+        assertEquals(url, annotated.text.substring(range.start, range.end))
+        assertEquals("@wenyi mood board is ready\n$url", annotated.text)
+        link.linkInteractionListener?.onClick(link)
+        assertEquals(url, openedUrl)
+    }
+
+    @Test
+    fun splitUrlPrefixIsNotMergedAcrossWhitespace() {
+        val annotated =
+            buildSlockMarkdownParagraphAnnotatedString(
+                "https:// [www.example.com](www.example.com)"
+            ).withSlockAbsoluteUrlPrefixLinks()
+        val range = annotated.getLinkAnnotations(0, annotated.length).single()
+        val link = range.item as LinkAnnotation.Url
+
+        assertEquals("www.example.com", link.url)
+        assertEquals("www.example.com", annotated.text.substring(range.start, range.end))
+    }
+
+    @Test
+    fun splitUrlPrefixIsNotMergedAcrossInlineCodeInProductionChain() {
+        val annotated =
+            buildSlockMarkdownParagraphAnnotatedString(
+                "`https://`[www.example.com](www.example.com)"
+            ).withSlockAbsoluteUrlPrefixLinks()
+                .withSlockMessagePermalinkRenderConfig()
+                .text
+        val range = annotated.getLinkAnnotations(0, annotated.length).single()
+        val link = range.item as LinkAnnotation.Url
+
+        assertEquals(listOf("https://"), annotated.slockInlineCodeMarkerTextSegments())
+        assertEquals("www.example.com", link.url)
+        assertEquals("www.example.com", annotated.text.substring(range.start, range.end))
+    }
+
+    @Test
+    fun splitUrlPrefixIsNotMergedWhenPrefixIsAlreadyLinkedInProductionChain() {
+        val annotated =
+            buildSlockMarkdownParagraphAnnotatedString(
+                "[https://](https://prefix.example)[www.example.com](www.example.com)"
+            ).withSlockAbsoluteUrlPrefixLinks()
+                .withSlockMessagePermalinkRenderConfig()
+                .text
+        val links = annotated.getLinkAnnotations(0, annotated.length)
+
+        assertEquals(2, links.size)
+        assertEquals(
+            listOf("https://prefix.example", "www.example.com"),
+            links.map { (it.item as LinkAnnotation.Url).url }
+        )
+        assertEquals(
+            listOf("https://", "www.example.com"),
+            links.map { annotated.text.substring(it.start, it.end) }
+        )
+    }
+
+    @Test
     fun inlineMarkdownUrlsKeepClickListener() {
         var openedUrl: String? = null
         val annotated =
