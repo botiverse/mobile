@@ -6,17 +6,20 @@
 
 import crypto from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { runWithModelRetries, StampModelCapacityClient } from "./model_capacity.mjs";
 import { validateReviewerDiagnosis } from "./failure_diagnosis_contract.mjs";
+import { extractRecordingFrames } from "./recording_frames.mjs";
 
 const argv = process.argv.slice(2);
 const arg = (name, fallback = "") => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : fallback; };
 const runCaseId = arg("--run-case-id", process.env.STAMP_RUN_CASE_ID || "");
 const stampUrl = (process.env.STAMP_URL || "https://stamp.build").replace(/\/$/, "");
 const stampToken = process.env.STAMP_REVIEW_TOKEN || "";
-const piKey = process.env.MINIMAX_API_KEY || process.env.PI_API_KEY || "";
-const providerName = String(process.env.PI_PROVIDER || "minimax");
-const modelName = String(process.env.PI_MODEL || "MiniMax-M3");
+const piKey = process.env.QWEN_TOKEN_PLAN_CN_API_KEY || process.env.PI_API_KEY || process.env.MINIMAX_API_KEY || "";
+const providerName = String(process.env.PI_PROVIDER || "qwen-token-plan-cn");
+const modelName = String(process.env.PI_MODEL || "qwen3.8-max-preview");
 const ciJobRef = process.env.GITHUB_SERVER_URL && process.env.GITHUB_REPOSITORY && process.env.GITHUB_RUN_ID
   ? `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}` : "";
 const out = arg("--out", "failure-diagnosis.json");
@@ -60,10 +63,17 @@ async function main() {
   const rc = context.run_case;
   const evidence = context.evidence;
   const shots = evenly(evidence.filter((item) => ["screenshot", "screenshot_annotated"].includes(item.kind)), 12);
+  const recordings = evenly(evidence.filter((item) => item.kind === "recording"), 2);
   const textEvidence = evidence.filter((item) => ["steps_log", "session_log", "ui_dump", "report", "logcat", "checkpoint"].includes(item.kind));
-  const included = [...shots, ...textEvidence];
+  const included = [...shots, ...textEvidence, ...recordings];
   const bytes = new Map();
   for (const item of included) bytes.set(item.id, await evidenceBytes(rc.run_id, item));
+  const recordingFrames = recordings.flatMap((item) => extractRecordingFrames({
+    bytes: bytes.get(item.id),
+    evidence: item,
+    outDir: path.join(os.tmpdir(), `stamp-recording-${item.id}`),
+    count: 3,
+  }));
 
   const prompt = [
     "You are an independent failure-diagnosis M3 reviewer. You are NOT deciding release and must not reward or punish the executor.",
@@ -87,9 +97,13 @@ async function main() {
     if (["screenshot", "screenshot_annotated"].includes(item.kind)) {
       content.push({ type: "text", text: `SCREENSHOT id=${item.id} seq=${item.seq} step=${item.step_index ?? "?"}` });
       content.push({ type: "image", data: value.toString("base64"), mimeType: "image/png" });
-    } else {
+    } else if (item.kind !== "recording") {
       content.push({ type: "text", text: `${item.kind.toUpperCase()} id=${item.id} seq=${item.seq}\n${sanitized(value)}` });
     }
+  }
+  for (const frame of recordingFrames) {
+    content.push({ type: "text", text: `RECORDING FRAME source_evidence=${frame.evidence_id} source_sha256=${frame.source_sha256} timestamp_ms=${frame.timestamp_ms}` });
+    content.push({ type: "image", data: frame.bytes.toString("base64"), mimeType: "image/jpeg" });
   }
 
   const providers = await import(process.env.SLOCK_PI_AI_MODULE || "@earendil-works/pi-ai/providers/all");
@@ -144,6 +158,7 @@ async function main() {
     prompt_version: "failure-diagnosis-prompt/v1",
     model: `${providerName}/${modelName}`,
     source_commit: process.env.GITHUB_SHA || "",
+    recording_frames: recordingFrames.map(({ bytes: _bytes, ...frame }) => frame),
     workflow_run_id: process.env.GITHUB_RUN_ID || "",
     workflow_run_attempt: process.env.GITHUB_RUN_ATTEMPT || "",
     workflow_ref: process.env.GITHUB_WORKFLOW_REF || "",

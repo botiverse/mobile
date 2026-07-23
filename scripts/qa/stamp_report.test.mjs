@@ -335,6 +335,11 @@ test("iOS workflow terminalizes any post-claim failure and Qwen panel is the def
   assert.match(panel, /PI_MODEL:.*qwen3\.8-max-preview/);
   assert.match(panel, /QWEN_TOKEN_PLAN_CN_API_KEY/);
   assert.doesNotMatch(panel, /m3-review-/);
+  const diagnosis = fs.readFileSync(new URL("../../.github/workflows/qa-failure-diagnosis.yml", import.meta.url), "utf8");
+  assert.match(diagnosis, /@earendil-works\/pi-ai@0\.81\.1/);
+  assert.match(diagnosis, /PI_PROVIDER:.*qwen-token-plan-cn/);
+  assert.match(diagnosis, /PI_MODEL:.*qwen3\.8-max-preview/);
+  assert.match(diagnosis, /QWEN_TOKEN_PLAN_CN_API_KEY/);
 });
 
 test("bootstrap reporting enforces ready evidence, torn-down verdict, and no post-terminal evidence retry", () => {
