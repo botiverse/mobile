@@ -14,7 +14,6 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.intellij.markdown.ast.ASTNode
 import org.intellij.markdown.flavours.MarkdownFlavourDescriptor
-import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
 import org.intellij.markdown.parser.MarkdownParser
 
 /**
@@ -50,7 +49,7 @@ internal fun rememberMarkdownParserState(
     initialContent: MarkdownParserContent? = null
 ): MarkdownState {
     val state = remember(lookupLinks, isShareMode, initialContent) {
-        val flavour = GFMFlavourDescriptor()
+        val flavour = SlockGFMFlavourDescriptor()
         val initialParserContent = initialContent?.parserContent
         MarkdownState(
             Input(
@@ -100,7 +99,7 @@ suspend fun prepareMarkdownContent(content: MarkdownParserContent, lookupLinks: 
     )
     val parsed =
         withContext(SlockMarkdownParseDispatcher) {
-            val flavour = GFMFlavourDescriptor()
+            val flavour = SlockGFMFlavourDescriptor()
             parseMarkdownContent(
                 content = parserContent,
                 lookupLinks = lookupLinks,

@@ -14,6 +14,7 @@ import androidx.compose.runtime.Composable
 import com.tencent.kuiklybase.markdown.model.MarkdownAnnotator
 import com.tencent.kuiklybase.markdown.model.MarkdownParserContent
 import com.tencent.kuiklybase.markdown.model.ReferenceLinkHandler
+import com.tencent.kuiklybase.markdown.model.SlockGFMFlavourDescriptor
 import com.tencent.kuiklybase.markdown.model.markdownAnnotator
 import com.tencent.kuiklybase.markdown.utils.MARKDOWN_TAG_IMAGE_URL
 import com.tencent.kuiklybase.markdown.utils.findChildOfTypeRecursive
@@ -28,7 +29,6 @@ import org.intellij.markdown.ast.ASTNode
 import org.intellij.markdown.ast.findChildOfType
 import org.intellij.markdown.flavours.MarkdownFlavourDescriptor
 import org.intellij.markdown.flavours.gfm.GFMElementTypes
-import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
 import org.intellij.markdown.flavours.gfm.GFMTokenTypes
 import org.intellij.markdown.parser.MarkdownParser
 import build.raft.app.markdown.SLOCK_RICHTEXT_INLINE_CODE_ANNOTATION_TAG
@@ -95,7 +95,7 @@ fun String.buildMarkdownAnnotatedString(
     style: TextStyle,
     linkTextSpanStyle: SpanStyle = style.toSpanStyle(),
     codeSpanStyle: SpanStyle = style.toSpanStyle(),
-    flavour: MarkdownFlavourDescriptor = GFMFlavourDescriptor(),
+    flavour: MarkdownFlavourDescriptor = SlockGFMFlavourDescriptor(),
     annotator: MarkdownAnnotator = markdownAnnotator(),
     referenceLinkHandler: ReferenceLinkHandler? = null,
     linkInteractionListener: LinkInteractionListener? = null,
@@ -126,7 +126,7 @@ fun String.buildMarkdownAnnotatedString(
 fun String.buildMarkdownAnnotatedString(
     style: TextStyle,
     annotatorSettings: AnnotatorSettings,
-    flavour: MarkdownFlavourDescriptor = GFMFlavourDescriptor(),
+    flavour: MarkdownFlavourDescriptor = SlockGFMFlavourDescriptor(),
 ): AnnotatedString {
     val content = MarkdownParserContent.from(this).parserContent
     val parsedTree = MarkdownParser(flavour).buildMarkdownTreeFromString(content)
