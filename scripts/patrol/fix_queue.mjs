@@ -383,7 +383,12 @@ function parseJsonReply(message) {
 
 async function completeJson(models, model, prompt, maxTokens, callOpts = {}) {
   const attempts = [];
-  for (let attempt = 1; attempt <= 2; attempt += 1) {
+  // Cross-border providers (qwen-token-plan-cn from GitHub runners) fail with
+  // immediate connection errors on some runners; extra bounded attempts with a
+  // short backoff recover the transient cases without hiding hard failures.
+  const maxAttempts = callOpts.attempts || 2;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    if (attempt > 1) await new Promise((resolve) => setTimeout(resolve, 4_000));
     const controller = new AbortController();
     const timeoutMs = 180_000;
     const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -406,7 +411,7 @@ async function completeJson(models, model, prompt, maxTokens, callOpts = {}) {
       clearTimeout(timer);
     }
   }
-  const error = new Error("strict JSON completion failed after 2 bounded attempts");
+  const error = new Error(`strict JSON completion failed after ${maxAttempts} bounded attempts`);
   error.attempts = attempts;
   throw error;
 }
@@ -537,7 +542,7 @@ async function processCandidate(candidate, opts, models, model, panel) {
   const votes = await Promise.all(panel.map(async (entry, index) => {
     try {
       const call = await completeJson(models, entry.model, reviewPrompt(candidate, truth, patchResult, index + 1), entry.maxTokens,
-        { apiKey: entry.apiKey, reasoningEffort: entry.reasoningEffort });
+        { apiKey: entry.apiKey, reasoningEffort: entry.reasoningEffort, attempts: entry.provider === "minimax" ? 2 : 4 });
       usages.push(call.usage);
       return { voter: index + 1, model: entry.label, ...call.data, audit: call.attempts };
     } catch (error) {
@@ -639,6 +644,40 @@ async function main() {
     return { ...entry, model: panelModel, apiKey };
   });
 
+  // Preflight non-primary voter endpoints BEFORE claiming issues or spending
+  // primary-model truth/patch tokens: qwen-token-plan-cn is reachable from
+  // some GitHub runners and hard-blocked from others, and a blocked runner
+  // would otherwise burn the whole run's M3 budget only to end in REVIEW.
+  // A failed preflight defers the run (exit 0, report status "deferred") so
+  // the next scheduled run re-rolls onto a different runner.
+  const preflights = [];
+  for (const entry of panel) {
+    if (entry.provider === provider) continue;
+    if (preflights.some((record) => record.label === entry.label)) continue;
+    const record = { label: entry.label, ok: false };
+    try {
+      const call = await completeJson(models, entry.model, 'Return strict JSON: {"ok":true}', 1_024,
+        { apiKey: entry.apiKey, reasoningEffort: entry.reasoningEffort, attempts: 3 });
+      record.ok = call.data?.ok === true || Boolean(call.data);
+    } catch (error) {
+      record.error = redactModelText(error?.message || error, 300);
+    }
+    preflights.push(record);
+  }
+  const unreachable = preflights.filter((record) => !record.ok);
+  if (unreachable.length) {
+    const report = {
+      status: "deferred",
+      reason: `panel voter endpoint unreachable from this runner: ${unreachable.map((record) => record.label).join(", ")}`,
+      preflights,
+      generatedAt: new Date().toISOString(),
+      note: "No issue was claimed and no primary-model tokens were spent; the next scheduled run retries on a fresh runner.",
+    };
+    fs.writeFileSync(opts.report, `${JSON.stringify(report, null, 2)}\n`);
+    console.log(JSON.stringify(report, null, 2));
+    return;
+  }
+
   const runKey = `${process.env.GITHUB_RUN_ID || "local"}.${process.env.GITHUB_RUN_ATTEMPT || "1"}`;
   const baseProvenance = {
     runKey,
@@ -649,6 +688,7 @@ async function main() {
     analysisSource: analysisRecord.provenance,
     model: `${provider}/${modelName}`,
     panelModels: panel.map((entry) => entry.label),
+    panelPreflights: preflights,
     scriptSha256: scriptSha(),
     reservedTokens: DEFAULT_CASE_TOKEN_RESERVATION,
   };
