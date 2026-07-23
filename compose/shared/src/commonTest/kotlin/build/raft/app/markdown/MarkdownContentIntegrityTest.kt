@@ -7,9 +7,10 @@ import com.tencent.kuikly.compose.ui.text.buildAnnotatedString
 import com.tencent.kuiklybase.markdown.annotator.DefaultAnnotatorSettings
 import com.tencent.kuiklybase.markdown.annotator.buildMarkdownAnnotatedString
 import com.tencent.kuiklybase.markdown.model.MarkdownParserContent
+import com.tencent.kuiklybase.markdown.model.SlockGFMFlavourDescriptor
 import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.ast.ASTNode
-import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
+import org.intellij.markdown.flavours.gfm.GFMTokenTypes
 import org.intellij.markdown.parser.MarkdownParser
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -152,6 +153,18 @@ class MarkdownContentIntegrityTest {
     @Test
     fun cjkAdjacentInlineCodeUrlStaysCodeAndUnlinked() {
         val source = "回归测试从`http://internal/`、反代HTTP、恶意Host三种入站验证，最终`return_to`始终等于注册的外部HTTPS callback。"
+        val parserContent = MarkdownParserContent.from(source).parserContent
+        val tree = MarkdownParser(SlockGFMFlavourDescriptor()).buildMarkdownTreeFromString(parserContent)
+        val allNodes = buildList {
+            fun collect(node: ASTNode) {
+                add(node)
+                node.children.forEach(::collect)
+            }
+            collect(tree)
+        }
+        assertEquals(2, allNodes.count { it.type == MarkdownElementTypes.CODE_SPAN })
+        assertEquals(0, allNodes.count { it.type == GFMTokenTypes.GFM_AUTOLINK })
+
         val rendered = renderTopParagraphsWithLinks(source).single()
         assertEquals(
             "回归测试从http://internal/、反代HTTP、恶意Host三种入站验证，最终return_to始终等于注册的外部HTTPS callback。",
@@ -182,7 +195,7 @@ class MarkdownContentIntegrityTest {
         // Uses the PRODUCTION annotator (slockMarkdownAnnotator) so app-side
         // annotate hooks are part of the integrity contract too.
         val parserContent = MarkdownParserContent.from(content).parserContent
-        val tree = MarkdownParser(GFMFlavourDescriptor()).buildMarkdownTreeFromString(parserContent)
+        val tree = MarkdownParser(SlockGFMFlavourDescriptor()).buildMarkdownTreeFromString(parserContent)
         val paragraphs = mutableListOf<ASTNode>()
         fun collect(node: ASTNode) {
             if (node.type == MarkdownElementTypes.PARAGRAPH) paragraphs += node
@@ -204,7 +217,7 @@ class MarkdownContentIntegrityTest {
 
     private fun renderTopParagraphsWithLinks(content: String): List<RenderedParagraph> {
         val parserContent = MarkdownParserContent.from(content).parserContent
-        val tree = MarkdownParser(GFMFlavourDescriptor()).buildMarkdownTreeFromString(parserContent)
+        val tree = MarkdownParser(SlockGFMFlavourDescriptor()).buildMarkdownTreeFromString(parserContent)
         val paragraphs = mutableListOf<ASTNode>()
         fun collect(node: ASTNode) {
             if (node.type == MarkdownElementTypes.PARAGRAPH) paragraphs += node

@@ -29,6 +29,7 @@ import com.tencent.kuiklybase.markdown.model.NoOpTextProvider
 import com.tencent.kuiklybase.markdown.model.ReferenceLinkHandler
 import com.tencent.kuiklybase.markdown.model.ReferenceLinkHandlerImpl
 import com.tencent.kuiklybase.markdown.model.SLOCK_MARKDOWN_PARSE_DISPATCHER_LABEL
+import com.tencent.kuiklybase.markdown.model.SlockGFMFlavourDescriptor
 import com.tencent.kuiklybase.markdown.model.TextProvider
 import com.tencent.kuiklybase.markdown.model.markdownAnimations
 import com.tencent.kuiklybase.markdown.model.markdownAnnotator
@@ -37,7 +38,6 @@ import com.tencent.kuiklybase.markdown.model.markdownExtendedSpans
 import com.tencent.kuiklybase.markdown.model.markdownPadding
 import com.tencent.kuiklybase.markdown.model.rememberMarkdownParserState
 import org.intellij.markdown.flavours.MarkdownFlavourDescriptor
-import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
 import org.intellij.markdown.parser.MarkdownParser
 
 
@@ -72,7 +72,7 @@ fun Markdown(
     modifier: Modifier = Modifier.fillMaxSize(),
     padding: MarkdownPadding = markdownPadding(),
     dimens: MarkdownDimens = markdownDimens(),
-    flavour: MarkdownFlavourDescriptor = GFMFlavourDescriptor(),
+    flavour: MarkdownFlavourDescriptor = SlockGFMFlavourDescriptor(),
     parser: MarkdownParser = MarkdownParser(flavour),
     imageTransformer: ImageTransformer = NoOpImageTransformerImpl(),
     imageLinkHandler: ImageLinkHandler = ImageLinkHandlerImpl(),
@@ -120,7 +120,7 @@ fun Markdown(
     modifier: Modifier = Modifier.fillMaxSize(),
     padding: MarkdownPadding = markdownPadding(),
     dimens: MarkdownDimens = markdownDimens(),
-    flavour: MarkdownFlavourDescriptor = GFMFlavourDescriptor(),
+    flavour: MarkdownFlavourDescriptor = SlockGFMFlavourDescriptor(),
     parser: MarkdownParser = MarkdownParser(flavour),
     imageTransformer: ImageTransformer = NoOpImageTransformerImpl(),
     imageLinkHandler: ImageLinkHandler = ImageLinkHandlerImpl(),
