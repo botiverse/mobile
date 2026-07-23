@@ -27,6 +27,8 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlin.time.TimeSource
 
 private val conversationRepositoryJson = Json {
@@ -47,11 +49,13 @@ private suspend fun SlockNetworkClient.channelMessages(
     channelId: ChannelId,
     limit: Int,
     beforeSeq: Long? = null,
-    afterSeq: Long? = null
+    afterSeq: Long? = null,
+    serverIdOverride: ServerId? = null,
 ): HomeNetworkResponse =
     request(
         priority = priority,
         path = "messages/channel/${channelId.value}",
+        serverIdOverride = serverIdOverride,
         query =
             listOfNotNull(
                 "limit" to limit.toString(),
@@ -63,23 +67,27 @@ private suspend fun SlockNetworkClient.channelMessages(
 private suspend fun SlockNetworkClient.messageContext(
     priority: DataRequestPriority,
     messageId: MessageId,
-    channelId: ChannelId? = null
+    channelId: ChannelId? = null,
+    serverIdOverride: ServerId? = null,
 ): HomeNetworkResponse =
     request(
         priority = priority,
         path = "messages/context/${messageId.value}",
-        query = listOfNotNull(channelId?.let { "channelId" to it.value })
+        query = listOfNotNull(channelId?.let { "channelId" to it.value }),
+        serverIdOverride = serverIdOverride,
     )
 
 private suspend fun SlockNetworkClient.messageSync(
     priority: DataRequestPriority,
     sinceSeq: Long,
     limit: Int,
-    channelId: ChannelId? = null
+    channelId: ChannelId? = null,
+    serverIdOverride: ServerId? = null,
 ): HomeNetworkResponse =
     request(
         priority = priority,
         path = "messages/sync",
+        serverIdOverride = serverIdOverride,
         query =
             listOfNotNull(
                 "since_seq" to sinceSeq.toString(),
@@ -92,11 +100,13 @@ private suspend fun SlockNetworkClient.channelThreads(
     priority: DataRequestPriority,
     channelId: ChannelId,
     limit: Int? = null,
-    parentMessageIds: List<MessageId>? = null
+    parentMessageIds: List<MessageId>? = null,
+    serverIdOverride: ServerId? = null,
 ): HomeNetworkResponse =
     request(
-        priority,
-        "channels/${channelId.value}/threads",
+        priority = priority,
+        path = "channels/${channelId.value}/threads",
+        serverIdOverride = serverIdOverride,
         query =
             listOfNotNull(
                 limit?.let { "limit" to it.toString() },
@@ -126,9 +136,16 @@ private suspend fun SlockNetworkClient.followedThreads(
 private suspend fun SlockNetworkClient.createOrOpenThread(
     priority: DataRequestPriority,
     channelId: ChannelId,
-    bodyText: String
+    bodyText: String,
+    serverIdOverride: ServerId? = null,
 ): HomeNetworkResponse =
-    request(priority, "channels/${channelId.value}/threads", method = "POST", bodyText = bodyText)
+    request(
+        priority = priority,
+        path = "channels/${channelId.value}/threads",
+        method = "POST",
+        bodyText = bodyText,
+        serverIdOverride = serverIdOverride,
+    )
 
 private suspend fun SlockNetworkClient.followThread(
     priority: DataRequestPriority,
@@ -187,6 +204,8 @@ private suspend fun SlockNetworkClient.executePendingMentionActions(
 class RealConversationRepository(
     private val sessionStore: SlockAuthSessionStore,
     private val networkClient: SlockNetworkClient,
+    private val routeServerIdProvider: (() -> String?)? = null,
+    private val canonicalVisitedSnapshotBinding: CanonicalMessageV2VisitedSnapshotBinding? = null,
     private val warningLogger: (String) -> Unit = projectionRejectingDiagnosticsLogger
 ) : ConversationRepository {
     override suspend fun getThread(
@@ -200,7 +219,20 @@ class RealConversationRepository(
             context = context,
             threadId = threadId,
             messageLimit = messageLimit,
-            block = { networkClient.channelMessages(DataRequestPriority.Foreground, ChannelId(threadId.value), messageLimit) },
+            block = {
+                loadCanonicalTopLevelMessages(
+                    context = context,
+                    channelId = ChannelId(threadId.value),
+                    block = {
+                        networkClient.channelMessages(
+                            DataRequestPriority.Foreground,
+                            ChannelId(threadId.value),
+                            messageLimit,
+                            serverIdOverride = context.server.id,
+                        )
+                    },
+                )
+            },
             source = "messages_channel",
             includeChannelSummaries = includeFollowedSummaries,
             includeFollowedSummaries = includeFollowedSummaries
@@ -229,7 +261,8 @@ class RealConversationRepository(
                         networkClient.channelThreads(
                             priority = DataRequestPriority.Visible,
                             channelId = ChannelId(threadId.value),
-                            parentMessageIds = visibleParentMessageIds
+                            parentMessageIds = visibleParentMessageIds,
+                            serverIdOverride = context.server.id,
                         )
                     },
                     emptyWhen = { false },
@@ -241,7 +274,13 @@ class RealConversationRepository(
             async {
                 executeConversation(
                     emptyReason = EmptyReason.NoInboxItems,
-                    block = { networkClient.followedThreads(DataRequestPriority.Visible, MESSAGE_PAGE_LIMIT) },
+                    block = {
+                        networkClient.followedThreads(
+                            DataRequestPriority.Visible,
+                            MESSAGE_PAGE_LIMIT,
+                            context.server.id,
+                        )
+                    },
                     emptyWhen = { false },
                     source = "thread_summary_followed_threads",
                     mapper = { bodyText -> parseFollowedThreadListSnapshotFromBody(bodyText, context) }
@@ -319,11 +358,18 @@ class RealConversationRepository(
         channelId: ChannelId?,
         priority: DataRequestPriority
     ): DataResult<ThreadSnapshot> {
-        currentContext() ?: return authRequired()
+        val context = currentContext() ?: return authRequired()
         var canonicalTargetKind: String? = null
         val result = executeConversation(
             emptyReason = EmptyReason.NoMessages,
-            block = { networkClient.messageContext(priority, messageId, channelId) },
+            block = {
+                networkClient.messageContext(
+                    priority = priority,
+                    messageId = messageId,
+                    channelId = channelId,
+                    serverIdOverride = context.server.id,
+                )
+            },
             emptyWhen = { it.messages.isEmpty() && it.parentMessage == null },
             source = "messages_context",
             mapper = { bodyText ->
@@ -342,7 +388,7 @@ class RealConversationRepository(
         )
         val snapshot = (result as? DataResult.Content)?.data ?: return result
         val detailChannelId = snapshot.conversation.channelId ?: channelId ?: return result
-        val detail = loadConversationDetail(detailChannelId, priority)
+        val detail = loadConversationDetail(detailChannelId, priority, context.server.id)
         return DataResult.Content(
             snapshot.withConversationDetail(
                 detail = detail,
@@ -353,11 +399,16 @@ class RealConversationRepository(
 
     private suspend fun loadConversationDetail(
         channelId: ChannelId,
-        priority: DataRequestPriority
+        priority: DataRequestPriority,
+        serverId: ServerId,
     ): ConversationSummary? {
         val response =
             try {
-                networkClient.request(priority, "channels/${channelId.value}")
+                networkClient.request(
+                    priority = priority,
+                    path = "channels/${channelId.value}",
+                    serverIdOverride = serverId,
+                )
             } catch (cancellation: kotlinx.coroutines.CancellationException) {
                 throw cancellation
             } catch (exception: Exception) {
@@ -394,7 +445,8 @@ class RealConversationRepository(
                     DataRequestPriority.Visible,
                     ChannelId(threadId.value),
                     messageLimit,
-                    beforeSeq = beforeSeq
+                    beforeSeq = beforeSeq,
+                    serverIdOverride = context.server.id,
                 )
             },
             source = "messages_channel_older",
@@ -407,7 +459,7 @@ class RealConversationRepository(
         afterSeq: Long,
         limit: Int
     ): DataResult<ThreadSnapshot> {
-        currentContext() ?: return authRequired()
+        val context = currentContext() ?: return authRequired()
         val messageLimit = limit.coerceAtLeast(1)
         return executeConversation(
             emptyReason = EmptyReason.NoMessages,
@@ -416,7 +468,8 @@ class RealConversationRepository(
                     DataRequestPriority.Visible,
                     ChannelId(threadId.value),
                     messageLimit,
-                    afterSeq = afterSeq
+                    afterSeq = afterSeq,
+                    serverIdOverride = context.server.id,
                 )
             },
             emptyWhen = { it.messages.isEmpty() },
@@ -437,7 +490,7 @@ class RealConversationRepository(
         sinceSeq: Long,
         limit: Int
     ): DataResult<ThreadSnapshot> {
-        currentContext() ?: return authRequired()
+        val context = currentContext() ?: return authRequired()
         val messageLimit = limit.coerceAtLeast(1)
         return executeConversation(
             emptyReason = EmptyReason.NoMessages,
@@ -446,7 +499,8 @@ class RealConversationRepository(
                     DataRequestPriority.Visible,
                     sinceSeq = sinceSeq,
                     limit = messageLimit,
-                    channelId = ChannelId(threadId.value)
+                    channelId = ChannelId(threadId.value),
+                    serverIdOverride = context.server.id,
                 )
             },
             emptyWhen = { it.messages.isEmpty() },
@@ -469,7 +523,14 @@ class RealConversationRepository(
         val context = currentContext() ?: return authRequired()
         return executeConversation(
             emptyReason = EmptyReason.NoInboxItems,
-            block = { networkClient.channelThreads(DataRequestPriority.Visible, channelId, limit) },
+            block = {
+                networkClient.channelThreads(
+                    DataRequestPriority.Visible,
+                    channelId,
+                    limit,
+                    serverIdOverride = context.server.id,
+                )
+            },
             emptyWhen = { it.threads.isEmpty() },
             source = "channel_threads",
             mapper = { bodyText -> parseChannelThreadListSnapshotFromBody(bodyText, context) }
@@ -493,8 +554,9 @@ class RealConversationRepository(
     override suspend fun createOrOpenThread(
         channelId: ChannelId,
         parentMessageId: MessageId
-    ): DataResult<ThreadActionResult> =
-        threadAction(
+    ): DataResult<ThreadActionResult> {
+        val context = currentContext() ?: return authRequired()
+        return threadAction(
             fallbackThreadChannelId = null,
             fallbackParentMessageId = parentMessageId,
             source = "thread_create_or_open"
@@ -502,9 +564,11 @@ class RealConversationRepository(
             networkClient.createOrOpenThread(
                 DataRequestPriority.Foreground,
                 channelId,
-                parentMessageId.toParentMessageThreadBody()
+                parentMessageId.toParentMessageThreadBody(),
+                serverIdOverride = context.server.id,
             )
         }
+    }
 
     override suspend fun followThread(parentMessageId: MessageId): DataResult<ThreadActionResult> =
         threadAction(
@@ -677,7 +741,8 @@ class RealConversationRepository(
                 networkClient.createOrOpenThread(
                     priority,
                     parentChannelId,
-                    parentMessageId.toParentMessageThreadBody()
+                    parentMessageId.toParentMessageThreadBody(),
+                    serverIdOverride = context.server.id,
                 )
             }
         if (createOrOpen !is DataResult.Content) {
@@ -699,10 +764,19 @@ class RealConversationRepository(
             executeConversation(
                 emptyReason = EmptyReason.NoMessages,
                 block = {
-                    networkClient.channelMessages(
-                        priority,
-                        resolvedThreadChannelId,
-                        messageLimit
+                    loadCanonicalReplyMessages(
+                        context = context,
+                        replyScopeId = resolvedThreadChannelId,
+                        parentChannelId = parentChannelId,
+                        parentMessageId = parentMessageId,
+                        block = {
+                            networkClient.channelMessages(
+                                priority,
+                                resolvedThreadChannelId,
+                                messageLimit,
+                                serverIdOverride = context.server.id,
+                            )
+                        },
                     )
                 },
                 emptyWhen = { it.messages.isEmpty() },
@@ -804,7 +878,8 @@ class RealConversationRepository(
                             networkClient.channelThreads(
                                 priority = DataRequestPriority.Visible,
                                 channelId = ChannelId(threadId.value),
-                                parentMessageIds = visibleParentMessageIds
+                                parentMessageIds = visibleParentMessageIds,
+                                serverIdOverride = context.server.id,
                             )
                         },
                         emptyWhen = { false },
@@ -834,7 +909,13 @@ class RealConversationRepository(
                     val branchStartedAt = TimeSource.Monotonic.markNow()
                     val result = executeConversation(
                         emptyReason = EmptyReason.NoInboxItems,
-                        block = { networkClient.followedThreads(DataRequestPriority.Visible, MESSAGE_PAGE_LIMIT) },
+                        block = {
+                            networkClient.followedThreads(
+                                DataRequestPriority.Visible,
+                                MESSAGE_PAGE_LIMIT,
+                                context.server.id,
+                            )
+                        },
                         emptyWhen = { false },
                         source = "${source}_followed_summaries",
                         mapper = { bodyText -> parseFollowedThreadListSnapshotFromBody(bodyText, context) }
@@ -957,8 +1038,95 @@ class RealConversationRepository(
 
     private suspend fun currentContext(): NetworkServerContext? {
         val session = sessionStore.readSession() ?: return null
-        val selectedId = session.currentServerId ?: return null
+        val routeServerId = routeServerIdProvider?.invoke()?.trim()?.takeIf { it.isNotEmpty() }
+        val sessionServerId = session.currentServerId?.trim()?.takeIf { it.isNotEmpty() }
+        val selectedId = (routeServerId ?: sessionServerId)
+            ?.takeIf { candidate -> session.servers.isEmpty() || session.servers.any { it.id == candidate } }
+            ?: return null
         return session.toNetworkServerContext(ServerId(selectedId))
+    }
+
+    private suspend fun loadCanonicalTopLevelMessages(
+        context: NetworkServerContext,
+        channelId: ChannelId,
+        block: suspend () -> HomeNetworkResponse,
+    ): HomeNetworkResponse {
+        val binding = canonicalVisitedSnapshotBinding ?: return block()
+        val kind = loadCanonicalChannelKind(
+            channelId = channelId,
+            priority = DataRequestPriority.Background,
+            serverId = context.server.id,
+        ) ?: return block()
+        val identity = binding.topLevelIdentity(
+            serverId = context.server.id.value,
+            principalId = context.session.user.id,
+            scopeId = channelId.value,
+            scopeKind = kind,
+        )
+        return binding.load(identity, block)
+    }
+
+    private suspend fun loadCanonicalReplyMessages(
+        context: NetworkServerContext,
+        replyScopeId: ChannelId,
+        parentChannelId: ChannelId,
+        parentMessageId: MessageId,
+        block: suspend () -> HomeNetworkResponse,
+    ): HomeNetworkResponse {
+        val binding = canonicalVisitedSnapshotBinding ?: return block()
+        val parentKind = loadCanonicalChannelKind(
+            channelId = parentChannelId,
+            priority = DataRequestPriority.Background,
+            serverId = context.server.id,
+        ) ?: return block()
+        val identity = binding.threadIdentity(
+            serverId = context.server.id.value,
+            principalId = context.session.user.id,
+            replyScopeId = replyScopeId.value,
+            parentScopeId = parentChannelId.value,
+            parentScopeKind = parentKind,
+            rootMessageId = parentMessageId.value,
+        )
+        return binding.loadReply(
+            identity = identity,
+            parentBlock = {
+                networkClient.messageContext(
+                    priority = DataRequestPriority.Background,
+                    messageId = parentMessageId,
+                    channelId = parentChannelId,
+                    serverIdOverride = context.server.id,
+                )
+            },
+            replyBlock = block,
+        )
+    }
+
+    private suspend fun loadCanonicalChannelKind(
+        channelId: ChannelId,
+        priority: DataRequestPriority,
+        serverId: ServerId,
+    ): String? {
+        val response = try {
+            networkClient.request(
+                priority = priority,
+                path = "channels/${channelId.value}",
+                serverIdOverride = serverId,
+            )
+        } catch (cancellation: kotlinx.coroutines.CancellationException) {
+            throw cancellation
+        } catch (_: Throwable) {
+            return null
+        }
+        if (!response.isSuccessful) return null
+        val detail = try {
+            response.bodyText?.let { conversationRepositoryJson.parseToJsonElement(it) as? JsonObject }
+        } catch (_: Throwable) {
+            null
+        } ?: return null
+        return (detail["type"] as? JsonPrimitive)
+            ?.takeIf { it.isString }
+            ?.content
+            ?.takeIf { it in setOf("channel", "private", "dm", "joint") }
     }
 
     private companion object {
@@ -1007,7 +1175,7 @@ private fun parseChannelThreadListSnapshotFromBody(
     )
 }
 
-private fun buildSharedThreadSnapshot(
+internal fun buildSharedThreadSnapshot(
     payload: SharedMessagesPayload,
     threadId: ThreadId,
     canLoadMoreBefore: Boolean = false,
@@ -1053,6 +1221,36 @@ private fun buildSharedThreadSnapshot(
         historyLimited = payload.historyLimited,
         highlightedMessageId = highlightedMessageId
     )
+}
+
+internal fun buildCanonicalRestoredThreadSnapshot(
+    identity: CanonicalMessageV2VisitedSnapshotIdentity,
+    messages: List<Message>,
+    threadId: ThreadId,
+    parentMessage: Message? = null,
+): ThreadSnapshot {
+    val snapshot = buildSharedThreadSnapshot(
+        payload = SharedMessagesPayload(messages = messages),
+        threadId = threadId,
+        canLoadMoreBefore = false,
+        canLoadMoreAfter = false,
+    )
+    val context = identity.producerContext
+    return if (context.channelType == "thread") {
+        snapshot.withReplyThreadConversation(
+            parentChannelId = ChannelId(requireNotNull(context.parentChannelId)),
+            parentMessageId = MessageId(requireNotNull(context.parentMessageId)),
+            streamChannelId = ChannelId(identity.scope.scopeId),
+        ).copy(parentMessage = parentMessage)
+    } else {
+        snapshot.copy(
+            conversation = snapshot.conversation.copy(
+                channelType = context.channelType,
+                kind = build.raft.app.parseConversationKindOrNull(context.channelType)
+                    ?: snapshot.conversation.kind,
+            ),
+        )
+    }
 }
 
 private fun ThreadSnapshot.withConversationDetail(

@@ -140,6 +140,7 @@ import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 
 private data class ReplyThreadResolveKey(
+    val namespaceId: String,
     val parentChannelId: String,
     val parentMessageId: String
 )
@@ -444,19 +445,20 @@ internal class SharedThreadMessageStore(
         return selected
     }
 
-    fun getReplyThreadStream(parentChannelId: String, parentMessageId: String): String? =
+    fun getReplyThreadStream(namespaceId: String, parentChannelId: String, parentMessageId: String): String? =
         synchronized(messageLock) {
-            replyThreadStreams[ReplyThreadResolveKey(parentChannelId, parentMessageId)]
+            replyThreadStreams[ReplyThreadResolveKey(namespaceId, parentChannelId, parentMessageId)]
         }
 
     fun upsertReplyThreadStream(
+        namespaceId: String,
         parentChannelId: String,
         parentMessageId: String,
         threadChannelId: String
     ) {
-        if (parentChannelId.isBlank() || parentMessageId.isBlank() || threadChannelId.isBlank()) return
+        if (namespaceId.isBlank() || parentChannelId.isBlank() || parentMessageId.isBlank() || threadChannelId.isBlank()) return
         synchronized(messageLock) {
-            val key = ReplyThreadResolveKey(parentChannelId, parentMessageId)
+            val key = ReplyThreadResolveKey(namespaceId, parentChannelId, parentMessageId)
             replyThreadStreams.remove(key)
             replyThreadStreams[key] = threadChannelId
             while (replyThreadStreams.size > limit) {
@@ -1017,6 +1019,8 @@ internal class SharedThreadDataSource(
     private val homeSnapshotProvider: ((ServerId) -> HomeSnapshot?)? = null,
     private val channelProfileUpdateSink: suspend (ChannelProfileUpdateResult) -> Unit = {},
     private val messageStore: SharedThreadMessageStore? = null,
+    private val canonicalVisitedSnapshotBinding: build.raft.app.data.CanonicalMessageV2VisitedSnapshotBinding? = null,
+    private val cacheEnvironmentIdProvider: () -> String = { "" },
     payloadStore: SharedThreadPayloadStore? = null,
     private val agentsApiClient: SlockAgentsApiClient? = null,
     private val actionCardsApiClient: SlockIntegrationsActionsPushApiClient? = null,
@@ -1057,6 +1061,8 @@ internal class SharedThreadDataSource(
         homeSnapshotProvider: ((ServerId) -> HomeSnapshot?)? = null,
         channelProfileUpdateSink: suspend (ChannelProfileUpdateResult) -> Unit = {},
         messageStore: SharedThreadMessageStore? = null,
+        canonicalVisitedSnapshotBinding: build.raft.app.data.CanonicalMessageV2VisitedSnapshotBinding? = null,
+        cacheEnvironmentIdProvider: () -> String = { "" },
         payloadStore: SharedThreadPayloadStore? = null,
         agentsApiClient: SlockAgentsApiClient? = null,
         actionCardsApiClient: SlockIntegrationsActionsPushApiClient? = null,
@@ -1077,6 +1083,8 @@ internal class SharedThreadDataSource(
         homeSnapshotProvider = homeSnapshotProvider,
         channelProfileUpdateSink = channelProfileUpdateSink,
         messageStore = messageStore,
+        canonicalVisitedSnapshotBinding = canonicalVisitedSnapshotBinding,
+        cacheEnvironmentIdProvider = cacheEnvironmentIdProvider,
         payloadStore = payloadStore,
         agentsApiClient = agentsApiClient,
         actionCardsApiClient = actionCardsApiClient,
@@ -1091,23 +1099,62 @@ internal class SharedThreadDataSource(
     private val payloadCache = payloadStore ?: SharedThreadPayloadStore()
     private val messageResolver = messageStore ?: SharedThreadMessageStore()
     private val replyThreadResolveCache = mutableMapOf<ReplyThreadResolveKey, String>()
+    private val cacheEnvironmentId = MutableStateFlow("")
     private val cacheServerId = MutableStateFlow("")
     private val cachePrincipalId = MutableStateFlow("")
+    private val cacheNamespaceId = MutableStateFlow("")
 
     private fun threadPageSize(serverId: String?): Int =
         SharedThreadPaging.resolve(
             threadPageSizeProvider(serverId?.trim()?.takeIf { it.isNotEmpty() }?.let(::ServerId))
         )
 
-    suspend fun readSession(): StoredAuthSession? =
-        sessionStore.readSession()?.also { session ->
-            cacheServerId.value = session.currentServerId.orEmpty()
-            cachePrincipalId.value = session.user.id
+    suspend fun readSession(): StoredAuthSession? {
+        val session = sessionStore.readSession()
+        if (session == null) {
+            cacheEnvironmentId.value = ""
+            cacheServerId.value = ""
+            cachePrincipalId.value = ""
+            cacheNamespaceId.value = ""
+            return null
         }
+        val routeServerId = selectedServerStore?.selectedServerId?.value
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+        val serverId = (routeServerId ?: session.currentServerId)
+            ?.trim()
+            ?.takeIf { candidate ->
+                candidate.isNotEmpty() &&
+                    (session.servers.isEmpty() || session.servers.any { it.id == candidate })
+            }
+            .orEmpty()
+        val environmentId = cacheEnvironmentIdProvider().trim().trimEnd('/')
+        val principalId = session.user.id.trim()
+        cacheEnvironmentId.value = environmentId
+        cacheServerId.value = serverId
+        cachePrincipalId.value = principalId
+        cacheNamespaceId.value =
+            if (environmentId.isNotEmpty() && principalId.isNotEmpty() && serverId.isNotEmpty()) {
+                listOf(environmentId, principalId, serverId).joinToString("\u001f")
+            } else {
+                serverId
+            }
+        return session
+    }
+
+    fun processCacheIdentityToken(): String = cacheNamespaceId.value
+
+    fun routeServerId(): ServerId? = cacheServerId.value.takeIf { it.isNotBlank() }?.let(::ServerId)
+
+    private fun replyResolutionNamespaceId(): String? {
+        val principalId = cachePrincipalId.value.takeIf { it.isNotBlank() } ?: return null
+        val serverId = cacheServerId.value.takeIf { it.isNotBlank() } ?: return null
+        return listOf(cacheEnvironmentId.value, principalId, serverId).joinToString("\u001f")
+    }
 
     fun cachePayload(
         payload: KuiklyThreadScreenPayload,
-        serverId: String = cacheServerId.value,
+        serverId: String = cacheNamespaceId.value,
         expectedGeneration: SharedThreadFreshnessGeneration? = null
     ): Boolean {
         val threadId = payload.resolveThreadRouteIdentity().timelineChannelId ?: return false
@@ -1147,7 +1194,8 @@ internal class SharedThreadDataSource(
     }
 
     fun cachedPayload(threadId: String): KuiklyThreadScreenPayload? =
-        payloadCache.get(cacheServerId.value, threadId, cachePrincipalId.value)
+        cacheNamespaceId.value.takeIf { it.isNotBlank() }
+            ?.let { namespace -> payloadCache.get(namespace, threadId, cachePrincipalId.value) }
 
     // Reserved for UNRECOVERABLE scenarios only (task #562 boundary):
     // permission/visibility loss, epoch/server switches, identity proof
@@ -1155,9 +1203,89 @@ internal class SharedThreadDataSource(
     // store's merged snapshot instead (see applyRealtimeEvent). Narrow by
     // design: removes exactly one thread's candidate; never touches durable
     // stores, the message resolver, or the active screen's in-memory state.
-    fun invalidateCachedPayload(payload: KuiklyThreadScreenPayload) {
+    suspend fun invalidateCachedPayload(payload: KuiklyThreadScreenPayload) {
         val threadId = payload.resolveThreadRouteIdentity().timelineChannelId ?: return
-        payloadCache.remove(cacheServerId.value, threadId)
+        cacheNamespaceId.value.takeIf { it.isNotBlank() }
+            ?.let { namespace -> payloadCache.remove(namespace, threadId) }
+        canonicalVisitedIdentity(payload)?.let { identity ->
+            canonicalVisitedSnapshotBinding?.clear(identity)
+        }
+    }
+
+    suspend fun restoreCanonicalVisitedPayload(
+        basePayload: KuiklyThreadScreenPayload,
+    ): KuiklyThreadScreenPayload? {
+        val binding = canonicalVisitedSnapshotBinding ?: return null
+        val session = readSession() ?: return null
+        val identity = canonicalVisitedIdentity(basePayload, session) ?: return null
+        val snapshot = binding.restore(identity) ?: return null
+        return snapshot
+            .toKuiklyThreadPayload(basePayload, session.user.id)
+            .withRouteContext(basePayload)
+            .copy(
+                backgroundRefreshing = true,
+                errorCode = "thread_cached_stale",
+                canSend = false,
+                showReactionActions = false,
+                showTaskStatusActions = false,
+            )
+    }
+
+    private suspend fun canonicalVisitedIdentity(
+        payload: KuiklyThreadScreenPayload,
+    ): build.raft.app.data.CanonicalMessageV2VisitedSnapshotIdentity? {
+        val session = readSession() ?: return null
+        return canonicalVisitedIdentity(payload, session)
+    }
+
+    private fun canonicalVisitedIdentity(
+        payload: KuiklyThreadScreenPayload,
+        session: StoredAuthSession,
+    ): build.raft.app.data.CanonicalMessageV2VisitedSnapshotIdentity? {
+        val binding = canonicalVisitedSnapshotBinding ?: return null
+        val routeServerId = selectedServerStore?.selectedServerId?.value
+        val serverId = (routeServerId ?: session.currentServerId)
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?: return null
+        if (session.servers.isNotEmpty() && session.servers.none { it.id == serverId }) return null
+        return if (payload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+            val parentScopeId = payload.parentChannelId?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+            val rootMessageId = (payload.parentMessageId ?: payload.originParentMessageId)
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+                ?: return null
+            val replyScopeId = (payload.streamChannelId ?: payload.sourceThreadId)
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() && it != parentScopeId }
+                ?: return null
+            val parentKind = (payload.parentChannelKind ?: payload.channelKind)
+                .trim()
+                .takeIf { it in setOf("channel", "private", "dm", "joint") }
+                ?: return null
+            binding.threadIdentity(
+                serverId = serverId,
+                principalId = session.user.id,
+                replyScopeId = replyScopeId,
+                parentScopeId = parentScopeId,
+                parentScopeKind = parentKind,
+                rootMessageId = rootMessageId,
+            )
+        } else {
+            val scopeId = (payload.sourceThreadId ?: payload.streamChannelId)
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+                ?: return null
+            val scopeKind = payload.channelKind.trim()
+                .takeIf { it in setOf("channel", "private", "dm", "joint") }
+                ?: return null
+            binding.topLevelIdentity(
+                serverId = serverId,
+                principalId = session.user.id,
+                scopeId = scopeId,
+                scopeKind = scopeKind,
+            )
+        }
     }
 
     suspend fun withCachedReplyParentCandidate(basePayload: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
@@ -1169,7 +1297,7 @@ internal class SharedThreadDataSource(
                 ?: basePayload.originParentMessageId?.takeIf { it.isNotBlank() }
                 ?: return basePayload
         val session = readSession() ?: return basePayload
-        val serverId = session.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId) ?: return basePayload
+        val serverId = routeServerId() ?: return basePayload
         val parent =
             getCachedReplyParentMessage(
                 serverId = serverId,
@@ -1233,8 +1361,8 @@ internal class SharedThreadDataSource(
                     diagnostics = diagnosticsLogger,
                 ) ?: return
         val exactServerId =
-            serverId?.takeIf { it.isNotBlank() }?.let(::ServerId)
-                ?: cacheServerId.value.takeIf { it.isNotBlank() }?.let(::ServerId)
+            cacheServerId.value.takeIf { it.isNotBlank() }?.let(::ServerId)
+                ?: serverId?.takeIf { it.isNotBlank() }?.let(::ServerId)
                 ?: return
         messageResolver.upsert(serverId = exactServerId, channelId = channelId, message = projectedParent)
         diagnosticsLogger(
@@ -1271,9 +1399,12 @@ internal class SharedThreadDataSource(
     suspend fun withHomeConversationContext(payload: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload =
         homeConversationContextResolution(payload).payload
 
-    private fun cachedReplyThreadStreamId(parentChannelId: String, parentMessageId: String): String? =
-        replyThreadResolveCache[ReplyThreadResolveKey(parentChannelId, parentMessageId)]
-            ?: messageStore?.getReplyThreadStream(parentChannelId, parentMessageId)
+    private fun cachedReplyThreadStreamId(parentChannelId: String, parentMessageId: String): String? {
+        val namespaceId = replyResolutionNamespaceId() ?: return null
+        val key = ReplyThreadResolveKey(namespaceId, parentChannelId, parentMessageId)
+        return replyThreadResolveCache[key]
+            ?: messageStore?.getReplyThreadStream(namespaceId, parentChannelId, parentMessageId)
+    }
 
     private fun KuiklyThreadScreenPayload.matchesCachedReplyThreadStreamResolution(): Boolean {
         val parentChannel = parentChannelId?.takeIf { it.isNotBlank() } ?: return false
@@ -1292,7 +1423,7 @@ internal class SharedThreadDataSource(
         val shortId = threadShortId.trim().lowercase()
         if (parentChannelId.isBlank() || shortId.isBlank()) return null
         val matches =
-            payloadCache.values(cacheServerId.value)
+            payloadCache.values(cacheNamespaceId.value)
                 .mapNotNull { payload ->
                     val parentMessageId =
                         payload.parentMessageId?.takeIf { it.isNotBlank() }
@@ -1333,10 +1464,11 @@ internal class SharedThreadDataSource(
         parentMessageId: String,
         threadChannelId: String
     ) {
+        val namespaceId = replyResolutionNamespaceId() ?: return
         if (parentChannelId.isBlank() || parentMessageId.isBlank() || threadChannelId.isBlank()) return
         if (parentChannelId == threadChannelId) return
-        replyThreadResolveCache[ReplyThreadResolveKey(parentChannelId, parentMessageId)] = threadChannelId
-        messageStore?.upsertReplyThreadStream(parentChannelId, parentMessageId, threadChannelId)
+        replyThreadResolveCache[ReplyThreadResolveKey(namespaceId, parentChannelId, parentMessageId)] = threadChannelId
+        messageStore?.upsertReplyThreadStream(namespaceId, parentChannelId, parentMessageId, threadChannelId)
     }
 
     suspend fun joinChannel(channelId: ChannelId) =
@@ -1361,6 +1493,7 @@ internal class SharedThreadDataSource(
     }
 
     suspend fun cacheCanonicalPayload(payload: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
+        if (cacheNamespaceId.value.isBlank()) readSession()
         cachePayload(payload)
         return payload
     }
@@ -1371,6 +1504,7 @@ internal class SharedThreadDataSource(
         errorCode: String?,
         errorMessage: String?
     ): KuiklyThreadScreenPayload {
+        if (cacheNamespaceId.value.isBlank()) readSession()
         val failedPayload =
             basePayload
                 .withLocalSendStarted(localMessage)
@@ -1390,7 +1524,9 @@ internal class SharedThreadDataSource(
         val latestCachedPayload =
             threadId
                 ?.let(::cachedPayload)
-                ?.takeIf { cached -> cached.isUsableCachedPayloadForRoute(basePayload) }
+                ?.takeIf { cached ->
+                    cached.isUsableCachedPayloadForRoute(basePayload, routeServerId())
+                }
                 ?.withRouteContext(basePayload)
         // Concurrent sends complete independently. Always fold the next
         // canonical response into the latest cached timeline instead of the
@@ -1747,14 +1883,14 @@ internal class SharedThreadDataSource(
                 ?: resolvedBasePayload.streamChannelId?.takeIf { it.isNotBlank() }
         var failedPrewarm = false
         if (reusePrewarm && threadId != null) {
-            val serverId = session.currentServerId.orEmpty()
-            if (payloadCache.promoteQueuedPrewarm(serverId, threadId)) {
+            val cacheNamespace = cacheNamespaceId.value
+            if (payloadCache.promoteQueuedPrewarm(cacheNamespace, threadId)) {
                 diagnosticsLogger(
                     "thread_prewarm_promote threadId=$threadId from=background_queue to=foreground"
                 )
                 failedPrewarm = true
             } else {
-                when (val warmed = payloadCache.joinOrConsumePrewarm(serverId, threadId)) {
+                when (val warmed = payloadCache.joinOrConsumePrewarm(cacheNamespace, threadId)) {
                     is DataResult.Content -> {
                         cacheReplyThreadResolution(warmed.data)
                         return warmed
@@ -1789,9 +1925,9 @@ internal class SharedThreadDataSource(
                         ?: return DataResult.Error(ScreenError(code = "thread_id_missing", retryable = false))
                 val response =
                     try {
-                        val pageSize = threadPageSize(session.currentServerId)
+                        val pageSize = threadPageSize(cacheServerId.value)
                         diagnosticsLogger(
-                            "thread_page_size source=initial_api server=${session.currentServerId.orEmpty()} " +
+                            "thread_page_size source=initial_api server=${cacheServerId.value} " +
                                 "pageSize=$pageSize"
                         )
                         api.channelMessages(resolvedThreadId, limit = pageSize)
@@ -1820,7 +1956,7 @@ internal class SharedThreadDataSource(
             val resolvedThreadId = threadId ?: return fetchCanonicalPayload()
             while (true) {
                 val generation =
-                    payloadCache.captureGeneration(session.currentServerId.orEmpty(), resolvedThreadId)
+                    payloadCache.captureGeneration(cacheNamespaceId.value, resolvedThreadId)
                 val result = fetchCanonicalPayload()
                 if (payloadCache.freshnessLedger.isCurrent(generation)) {
                     canonicalRequestGeneration = generation
@@ -1831,7 +1967,7 @@ internal class SharedThreadDataSource(
         val payloadResult =
             if (failedPrewarm && threadId != null) {
                 payloadCache.takeOverFailedPrewarm(
-                    serverId = session.currentServerId.orEmpty(),
+                    serverId = cacheNamespaceId.value,
                     threadId = threadId,
                     fetch = { fetchCanonicalPayload() }
                 )
@@ -1855,7 +1991,7 @@ internal class SharedThreadDataSource(
                 .let { canonicalPayload ->
                     canonicalPayload.cacheThreadId()?.let { resolvedThreadId ->
                         payloadCache.applyReplyCountFacts(
-                            serverId = session.currentServerId.orEmpty(),
+                            serverId = cacheNamespaceId.value,
                             threadId = resolvedThreadId,
                             principalId = session.user.id,
                             payload = canonicalPayload
@@ -1869,7 +2005,7 @@ internal class SharedThreadDataSource(
         if (persistResult && canonicalRequestGeneration != null) {
             cachePayload(
                 payload = payload,
-                serverId = session.currentServerId.orEmpty(),
+                serverId = cacheNamespaceId.value,
                 expectedGeneration = canonicalRequestGeneration
             )
         }
@@ -1907,7 +2043,7 @@ internal class SharedThreadDataSource(
             )
         val result =
             payloadCache.prewarm(
-                serverId = key.serverId,
+                serverId = cacheNamespaceId.value,
                 threadId = key.threadChannelId
             ) {
                 val fetched =
@@ -2063,7 +2199,7 @@ internal class SharedThreadDataSource(
             }
         if (facts.isEmpty()) return
         payloadCache.recordReplyCountFacts(
-            serverId = cacheServerId.value,
+            serverId = cacheNamespaceId.value,
             threadId = threadId,
             principalId = cachePrincipalId.value,
             facts = facts
@@ -2615,6 +2751,7 @@ internal class SharedThreadDataSource(
         basePayload: KuiklyThreadScreenPayload,
         parentMessage: KuiklyThreadMessageItem
     ): DataResult<KuiklyThreadScreenPayload> {
+        readSession() ?: return authSessionRequiredResult()
         val parentChannelId =
             basePayload.sourceThreadId?.takeIf { it.isNotBlank() }
                 ?: basePayload.parentChannelId?.takeIf { it.isNotBlank() }
@@ -2873,9 +3010,9 @@ internal class SharedThreadDataSource(
         val session =
             readSession()
                 ?: return authSessionRequiredResult()
-        val pageSize = threadPageSize(session.currentServerId)
+        val pageSize = threadPageSize(cacheServerId.value)
         diagnosticsLogger(
-            "thread_page_size source=$source server=${session.currentServerId.orEmpty()} pageSize=$pageSize"
+            "thread_page_size source=$source server=${cacheServerId.value} pageSize=$pageSize"
         )
         val result =
             if (conversationRepository != null) {
@@ -2958,9 +3095,9 @@ internal class SharedThreadDataSource(
         }
         val initialResult =
             fetchThreadSnapshotFromRepository("thread_network") { repository ->
-                val pageSize = threadPageSize(session.currentServerId)
+                val pageSize = threadPageSize(cacheServerId.value)
                 diagnosticsLogger(
-                    "thread_page_size source=initial_repository server=${session.currentServerId.orEmpty()} " +
+                    "thread_page_size source=initial_repository server=${cacheServerId.value} " +
                         "pageSize=$pageSize"
                 )
                 repository.getThread(
@@ -3016,7 +3153,7 @@ internal class SharedThreadDataSource(
             context
                 .withCachedReplyParentMessage(
                     basePayload = basePayload,
-                    serverId = session.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
+                    serverId = routeServerId()
                 )
                 .withConversationAccessFallback(accessFallback)
                 .toKuiklyThreadPayload(basePayload, session.user.id)
@@ -3145,9 +3282,9 @@ internal class SharedThreadDataSource(
             }
         val initialResult =
             fetchThreadSnapshotFromRepository("thread_network_reply") { repository ->
-                val pageSize = threadPageSize(session.currentServerId)
+                val pageSize = threadPageSize(cacheServerId.value)
                 diagnosticsLogger(
-                    "thread_page_size source=initial_reply server=${session.currentServerId.orEmpty()} " +
+                    "thread_page_size source=initial_reply server=${cacheServerId.value} " +
                         "pageSize=$pageSize"
                 )
                 repository.getReplyThread(
@@ -3258,7 +3395,7 @@ internal class SharedThreadDataSource(
     ): SharedThreadMessageResolution {
         val session = readSession()
             ?: return SharedThreadMessageResolution.Error("thread_parent_context_session_missing")
-        val serverId = session.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
+        val serverId = routeServerId()
             ?: return SharedThreadMessageResolution.Error("thread_parent_context_server_missing")
         val parentChannel = ChannelId(parentChannelId)
         val parentMessage = MessageId(parentMessageId)
@@ -3412,9 +3549,9 @@ internal class SharedThreadDataSource(
                 ?: return DataResult.Error(ScreenError(code = "thread_id_missing", retryable = false))
         val resolvedResult =
             fetchThreadSnapshotFromRepository("thread_network") { repository ->
-                val pageSize = threadPageSize(session.currentServerId)
+                val pageSize = threadPageSize(cacheServerId.value)
                 diagnosticsLogger(
-                    "thread_page_size source=resolved_reply server=${session.currentServerId.orEmpty()} " +
+                    "thread_page_size source=resolved_reply server=${cacheServerId.value} " +
                         "pageSize=$pageSize"
                 )
                 repository.getThread(
@@ -3510,7 +3647,7 @@ internal class SharedThreadDataSource(
     }
 
     private suspend fun currentHomeSnapshot(session: StoredAuthSession): HomeSnapshot? {
-        val serverId = session.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId) ?: return null
+        val serverId = routeServerId() ?: return null
         homeSnapshotProvider?.invoke(serverId)?.let { snapshot ->
             diagnosticsLogger("thread_home_context source=shared_home_store serverId=${serverId.value}")
             return snapshot
@@ -3524,7 +3661,7 @@ internal class SharedThreadDataSource(
         session: StoredAuthSession
     ): KuiklyThreadScreenPayload {
         val repository = savedStatusRepository ?: return this
-        val serverId = session.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId) ?: return this
+        val serverId = routeServerId() ?: return this
         val messageIds =
             (messages.map { it.id } + listOfNotNull(originMessage?.id))
                 .map { it.trim() }
@@ -3834,6 +3971,7 @@ internal class SharedThreadStore(
     private var lastCompletedReadMarker: ThreadVisibleReadMarker? = null
     private var lastCompletedReadAt: TimeMark? = null
     private var lastRoutePayload: KuiklyThreadScreenPayload? = null
+    private var lastProcessCacheIdentityToken: String? = null
     private var firstContentReadyRouteKey: String? = null
     private var pendingAuxiliaryHydration: PendingAuxiliaryHydration? = null
     private var routeStaleToken = MviStaleToken.Initial
@@ -4053,6 +4191,11 @@ internal class SharedThreadStore(
         focusedOriginHydrationJob?.cancel()
         focusedOriginHydrationJob = null
         val session = dataSource.readSession()
+        val processCacheIdentityToken = dataSource.processCacheIdentityToken()
+        val processCacheIdentityChanged =
+            lastProcessCacheIdentityToken != null &&
+                lastProcessCacheIdentityToken != processCacheIdentityToken
+        lastProcessCacheIdentityToken = processCacheIdentityToken
         val routeCandidatePayload = initialPayload.withoutRouteCandidateContent()
         val routeContextPayload =
             dataSource
@@ -4068,24 +4211,38 @@ internal class SharedThreadStore(
             threadId
                 ?.let(dataSource::cachedPayload)
                 ?.takeIf { routeIdentity.canRenderTimelineCandidates }
-                ?.takeIf { it.isUsableCachedPayloadForRoute(routeContextPayload) }
+                ?.takeIf {
+                    it.isUsableCachedPayloadForRoute(routeContextPayload, dataSource.routeServerId())
+                }
                 ?.withRouteContext(routeContextPayload)
         val current =
-            if (routeIdentity.canRenderTimelineCandidates) {
+            if (routeIdentity.canRenderTimelineCandidates && !processCacheIdentityChanged) {
                 _state.value.payload.takeIf {
-                    it.isUsableCachedPayloadForRoute(routeContextPayload) && it.hasRenderableThreadContent()
+                    it.isUsableCachedPayloadForRoute(routeContextPayload, dataSource.routeServerId()) &&
+                        it.hasRenderableThreadContent()
                 }?.withRouteContext(routeContextPayload)
+            } else {
+                null
+            }
+        val durable =
+            if (cached == null && current == null && routeIdentity.canRenderTimelineCandidates) {
+                dataSource.restoreCanonicalVisitedPayload(routeContextPayload)
+                    ?.takeIf {
+                        it.isUsableCachedPayloadForRoute(routeContextPayload, dataSource.routeServerId())
+                    }
             } else {
                 null
             }
         diagnosticsLogger?.invoke(
             "thread_start threadId=${threadId.orEmpty()} cachedMemory=${cached != null || current != null} " +
+                "cachedDurable=${durable != null} " +
                 "status=${routeContextPayload.status} messages=${routeContextPayload.messages.size} " +
                 routeContextPayload.originDiagnostics()
         )
         val visiblePayload =
             cached
                 ?: current
+                ?: durable
                 ?: if (threadId == null) {
                     routeContextPayload
                 } else {
@@ -6146,7 +6303,7 @@ internal class SharedThreadStore(
         stage: String,
         currentPayload: KuiklyThreadScreenPayload = _state.value.payload
     ): Boolean {
-        if (currentPayload.isUsableCachedPayloadForRoute(routePayload)) {
+        if (currentPayload.isUsableCachedPayloadForRoute(routePayload, dataSource.routeServerId())) {
             return true
         }
         diagnosticsLogger?.invoke(
@@ -6228,7 +6385,11 @@ internal class SharedThreadViewModel(
 
 private fun KuiklyThreadScreenPayload.asRefreshFailed(code: String): KuiklyThreadScreenPayload =
     if (hasRenderableThreadContent()) {
-        copy(status = "content", backgroundRefreshing = false, errorCode = code)
+        copy(
+            status = "content",
+            backgroundRefreshing = false,
+            errorCode = if (errorCode == "thread_cached_stale") errorCode else code,
+        )
     } else {
         copy(status = "error", backgroundRefreshing = false, errorCode = code)
     }
@@ -7146,9 +7307,12 @@ private fun Message.belongsToReplyThreadContent(threadChannelId: String): Boolea
         messageThreadId = threadId.value
     )
 
-private fun KuiklyThreadScreenPayload.isUsableCachedPayloadForRoute(route: KuiklyThreadScreenPayload): Boolean =
+private fun KuiklyThreadScreenPayload.isUsableCachedPayloadForRoute(
+    route: KuiklyThreadScreenPayload,
+    serverId: ServerId?,
+): Boolean =
     ThreadCandidateProofGate
-        .prove(route = route.toThreadRouteId(), candidate = toThreadRouteId())
+        .prove(route = route.toThreadRouteId(serverId), candidate = toThreadRouteId(serverId))
         .let { it is ThreadIdentityProof.Accepted }
 
 private fun KuiklyThreadScreenPayload.toThreadRouteId(serverId: ServerId? = null): ThreadRouteId {

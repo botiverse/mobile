@@ -43,6 +43,8 @@
     <string name="common_optional_suffix">(optional)</string>
     <string name="common_no_actions_available">No actions available</string>
     <string name="app_shell_offline_banner">No internet connection</string>
+    <string name="thread_cached_snapshot_refreshing">Showing saved messages while refreshing</string>
+    <string name="thread_cached_snapshot_offline">Showing saved messages; refresh unavailable</string>
     <string name="settings_title">Settings</string>
     <string name="settings_navigation_section_personal">Personal</string>
     <string name="settings_navigation_section_workspace">Workspace</string>

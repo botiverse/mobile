@@ -73,6 +73,7 @@ import build.raft.app.data.SlockComputersApiClient
 import build.raft.app.data.SlockIntegrationsActionsPushApi
 import build.raft.app.data.SlockIntegrationsActionsPushApiClient
 import build.raft.app.data.StoredAuthSession
+import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthUser
 import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.ThreadActionCardMetadataItem
@@ -540,6 +541,195 @@ class SharedThreadStoreTest {
         assertEquals("server two", (second as SharedThreadMessageResolution.Loaded).message.body)
         assertEquals("server one", store.get(ServerId("server-1"), channel, messageId)?.body)
         assertEquals("server two", store.get(ServerId("server-2"), channel, messageId)?.body)
+    }
+
+    @Test
+    fun replyParentCacheAndFetchUseRouteServerInsteadOfMutableSessionSelection() = runBlocking {
+        val parentChannel = ChannelId("parent-channel-1")
+        val parentMessageId = MessageId("parent-1")
+        val messageStore = SharedThreadMessageStore()
+        messageStore.upsert(
+            serverId = ServerId("server-a"),
+            channelId = parentChannel,
+            message = message(threadId = parentChannel.value, id = parentMessageId.value, seq = 1, body = "server A parent"),
+        )
+        val serverBParent =
+            message(threadId = parentChannel.value, id = parentMessageId.value, seq = 1, body = "server B parent")
+        val repository =
+            FakeConversationRepository(
+                messageContextResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            threadId = parentChannel.value,
+                            messages = listOf(serverBParent),
+                        ),
+                    ),
+            )
+        val selection =
+            SelectedServerStore(
+                SlockShellStoreScope.create(
+                    shellInstanceId = "reply-parent-route-server-b",
+                    initialServerId = "server-b",
+                ),
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(multiIdentitySession("user-1")),
+                selectedServerStore = selection,
+                conversationRepository = repository,
+                messageStore = messageStore,
+            )
+        val route = focusedReplyRoute()
+
+        val firstFrame = dataSource.withCachedReplyParentCandidate(route)
+        assertEquals(null, firstFrame.originMessage, "route B must never show the cached server A parent")
+
+        val resolved = assertIs<SharedThreadOriginResolution.Loaded>(dataSource.resolveReplyOrigin(route))
+        assertEquals("server B parent", resolved.message.body)
+        assertEquals(
+            "server B parent",
+            messageStore.get(ServerId("server-b"), parentChannel, parentMessageId)?.body,
+        )
+        assertEquals(
+            "server A parent",
+            messageStore.get(ServerId("server-a"), parentChannel, parentMessageId)?.body,
+        )
+
+        dataSource.rememberReplyParentCandidate(
+            serverId = "server-a",
+            parentChannelId = parentChannel.value,
+            parentMessage =
+                KuiklyThreadMessageItem(
+                    id = parentMessageId.value,
+                    authorId = "u1",
+                    authorName = "User",
+                    authorKind = "human",
+                    body = "route B rendered parent",
+                ),
+            threadChannelId = "thread-parent-1",
+        )
+        assertEquals(
+            "route B rendered parent",
+            messageStore.get(ServerId("server-b"), parentChannel, parentMessageId)?.body,
+        )
+        assertEquals(
+            "server A parent",
+            messageStore.get(ServerId("server-a"), parentChannel, parentMessageId)?.body,
+        )
+    }
+
+    @Test
+    fun replyThreadStreamResolutionDoesNotCrossEnvironmentPrincipalOrRouteServerNamespace() = runBlocking {
+        val messageStore = SharedThreadMessageStore()
+        val prodEnvironment = "https://prod.example.test/"
+        val parent = contentPayload("parent body").messages.single()
+        fun repositoryFor(threadId: String, body: String): FakeConversationRepository =
+            FakeConversationRepository(
+                threadResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            threadId = threadId,
+                            messages = listOf(message(threadId = threadId, id = "reply-$threadId", seq = 2, body = body)),
+                            parentMessage = message(threadId = "channel-1", id = "m1", seq = 1, body = "parent body"),
+                        ),
+                    ),
+                createThreadResult =
+                    DataResult.Content(
+                        ThreadActionResult(
+                            threadChannelId = ChannelId(threadId),
+                            changed = true,
+                            parentMessageId = MessageId("m1"),
+                            replyCount = 1,
+                        ),
+                    ),
+            )
+
+        val serverBRepository = repositoryFor("thread-b", "reply B")
+        val serverASelection =
+            SelectedServerStore(
+                SlockShellStoreScope.create(
+                    shellInstanceId = "reply-stream-route-server-a",
+                    initialServerId = "server-a",
+                ),
+            )
+        val serverADataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(multiIdentitySession("user-1")),
+                selectedServerStore = serverASelection,
+                conversationRepository = serverBRepository,
+                messageStore = messageStore,
+                cacheEnvironmentIdProvider = { prodEnvironment },
+            )
+        serverADataSource.readSession()
+        serverADataSource.rememberReplyParentCandidate(
+            serverId = "server-a",
+            parentChannelId = "channel-1",
+            parentMessage = parent,
+            threadChannelId = "thread-a",
+        )
+
+        serverASelection.select("server-b", "server-b")
+        val openedOnServerB =
+            assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(
+                serverADataSource.createOrOpenReplyThread(contentPayload("parent body"), parent),
+            ).data
+
+        assertEquals("thread-b", openedOnServerB.streamChannelId)
+        assertEquals("reply B", openedOnServerB.messages.single().body)
+        assertEquals(
+            listOf(ChannelId("channel-1") to MessageId("m1")),
+            serverBRepository.createOrOpenRequests,
+            "route B must not reuse route A's parent-to-stream resolution",
+        )
+
+        serverASelection.select("server-a", "server-a")
+        val account2Repository = repositoryFor("thread-account-2", "reply account 2")
+        val account2DataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(multiIdentitySession("user-2")),
+                selectedServerStore = serverASelection,
+                conversationRepository = account2Repository,
+                messageStore = messageStore,
+                cacheEnvironmentIdProvider = { prodEnvironment },
+            )
+        val openedForAccount2 =
+            assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(
+                account2DataSource.createOrOpenReplyThread(contentPayload("parent body"), parent),
+            ).data
+
+        assertEquals("thread-account-2", openedForAccount2.streamChannelId)
+        assertEquals("reply account 2", openedForAccount2.messages.single().body)
+        assertEquals(
+            listOf(ChannelId("channel-1") to MessageId("m1")),
+            account2Repository.createOrOpenRequests,
+            "account 2 must not reuse account 1's parent-to-stream resolution",
+        )
+
+        val stagingRepository = repositoryFor("thread-staging", "reply staging")
+        val stagingDataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(multiIdentitySession("user-1")),
+                selectedServerStore = serverASelection,
+                conversationRepository = stagingRepository,
+                messageStore = messageStore,
+                cacheEnvironmentIdProvider = { "https://staging.example.test/" },
+            )
+        val openedOnStaging =
+            assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(
+                stagingDataSource.createOrOpenReplyThread(contentPayload("parent body"), parent),
+            ).data
+
+        assertEquals("thread-staging", openedOnStaging.streamChannelId)
+        assertEquals("reply staging", openedOnStaging.messages.single().body)
+        assertEquals(
+            listOf(ChannelId("channel-1") to MessageId("m1")),
+            stagingRepository.createOrOpenRequests,
+            "staging must not reuse production's parent-to-stream resolution",
+        )
     }
 
     @Test
@@ -2436,6 +2626,310 @@ class SharedThreadStoreTest {
         assertFalse(payload.backgroundRefreshing)
         assertEquals("network body", payload.messages.single().body)
         scope.cancel()
+    }
+
+    @Test
+    fun processCacheIdentitySeparatesServerAccountEnvironmentAndLogout() = runBlocking {
+        var environmentId = "https://prod.example.test"
+        val authStore = InMemorySlockAuthSessionStore(multiIdentitySession("user-1"))
+        val selection =
+            SelectedServerStore(
+                SlockShellStoreScope.create(
+                    shellInstanceId = "process-cache-identity",
+                    initialServerId = "server-a",
+                ),
+            )
+        val payloadStore = SharedThreadPayloadStore()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = authStore,
+                selectedServerStore = selection,
+                cacheEnvironmentIdProvider = { environmentId },
+                payloadStore = payloadStore,
+            )
+
+        dataSource.readSession()
+        dataSource.cachePayload(contentPayload("server-a/user-1/prod"))
+        assertEquals("server-a/user-1/prod", dataSource.cachedPayload("channel-1")?.messages?.single()?.body)
+
+        selection.select("server-b", "server-b")
+        dataSource.readSession()
+        assertEquals(null, dataSource.cachedPayload("channel-1"), "server B must not see server A process cache")
+
+        selection.select("server-a", "server-a")
+        authStore.saveSession(multiIdentitySession("user-2"))
+        dataSource.readSession()
+        assertEquals(null, dataSource.cachedPayload("channel-1"), "account 2 must not see account 1 process cache")
+
+        authStore.saveSession(multiIdentitySession("user-1"))
+        environmentId = "https://staging.example.test"
+        dataSource.readSession()
+        assertEquals(null, dataSource.cachedPayload("channel-1"), "staging must not see production process cache")
+
+        authStore.clearSession("test", "test")
+        assertEquals(null, dataSource.readSession())
+        assertEquals(null, dataSource.cachedPayload("channel-1"), "logout must expose no prior process cache")
+    }
+
+    @Test
+    fun routeServerChangeSuppressesOldCurrentPayloadOnNextFirstFrame() = runBlocking {
+        var environmentId = "https://prod.example.test"
+        val authStore = InMemorySlockAuthSessionStore(multiIdentitySession("user-1"))
+        val selection =
+            SelectedServerStore(
+                SlockShellStoreScope.create(
+                    shellInstanceId = "process-cache-first-frame",
+                    initialServerId = "server-a",
+                ),
+            )
+        val api =
+            FakeThreadApi(bodyText = messagesResponse("network body")).apply {
+                channelMessagesStarted = CompletableDeferred()
+                releaseChannelMessages = CompletableDeferred()
+            }
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = authStore,
+                selectedServerStore = selection,
+                cacheEnvironmentIdProvider = { environmentId },
+            )
+        dataSource.readSession()
+        dataSource.cachePayload(contentPayload("server-a cached body"))
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+
+        store.dispatch(SharedThreadIntent.Start(basePayload()))
+        api.channelMessagesStarted?.await()
+        assertEquals("server-a cached body", store.state.value.payload.messages.single().body)
+
+        selection.select("server-b", "server-b")
+        api.channelMessagesStarted = CompletableDeferred()
+        store.dispatch(SharedThreadIntent.Start(basePayload()))
+        api.channelMessagesStarted?.await()
+
+        val serverBFirstFrame = store.state.value.payload
+        assertTrue(serverBFirstFrame.messages.isEmpty())
+        assertEquals("loading", serverBFirstFrame.status)
+        assertFalse(serverBFirstFrame.messages.any { it.body == "server-a cached body" })
+
+        api.bodyText = messagesResponse("server-b/user-1/prod")
+        api.releaseChannelMessages?.complete(Unit)
+        withTimeout(1_000) {
+            while (store.state.value.payload.messages.singleOrNull()?.body != "server-b/user-1/prod") {
+                delay(10)
+            }
+        }
+
+        api.channelMessagesStarted = CompletableDeferred()
+        api.releaseChannelMessages = CompletableDeferred()
+        authStore.saveSession(multiIdentitySession("user-2"))
+        store.dispatch(SharedThreadIntent.Start(basePayload()))
+        api.channelMessagesStarted?.await()
+        assertTrue(store.state.value.payload.messages.isEmpty(), "account 2 first frame must hide account 1 content")
+        api.bodyText = messagesResponse("server-b/user-2/prod")
+        api.releaseChannelMessages?.complete(Unit)
+        withTimeout(1_000) {
+            while (store.state.value.payload.messages.singleOrNull()?.body != "server-b/user-2/prod") {
+                delay(10)
+            }
+        }
+
+        api.channelMessagesStarted = CompletableDeferred()
+        api.releaseChannelMessages = CompletableDeferred()
+        environmentId = "https://staging.example.test"
+        store.dispatch(SharedThreadIntent.Start(basePayload()))
+        api.channelMessagesStarted?.await()
+        assertTrue(store.state.value.payload.messages.isEmpty(), "staging first frame must hide production content")
+        api.bodyText = messagesResponse("server-b/user-2/staging")
+        api.releaseChannelMessages?.complete(Unit)
+        withTimeout(1_000) {
+            while (store.state.value.payload.messages.singleOrNull()?.body != "server-b/user-2/staging") {
+                delay(10)
+            }
+        }
+
+        authStore.clearSession("test", "test")
+        store.dispatch(SharedThreadIntent.Start(basePayload()))
+        delay(50)
+        assertTrue(store.state.value.payload.messages.isEmpty(), "logout Start must hide the previous account content")
+        scope.cancel()
+    }
+
+    @Test
+    fun durableCanonicalCandidateIsVisibleBeforeBlockedChannelRefresh() = runBlocking {
+        val session =
+            StoredAuthSession(
+                user = StoredAuthUser(id = "u1", email = "artin@slock.ai", displayName = "Artin"),
+                accessToken = "access",
+                refreshToken = "refresh",
+                selectedServerId = "server-a",
+                servers = listOf(
+                    StoredAuthServer(id = "server-a", name = "Server A", slug = "server-a"),
+                    StoredAuthServer(id = "server-b", name = "Server B", slug = "server-b"),
+                ),
+            )
+        val authStore = InMemorySlockAuthSessionStore(session)
+        val selectedServerStore =
+            SelectedServerStore(
+                SlockShellStoreScope.create(
+                    shellInstanceId = "durable-route-server-b",
+                    initialServerId = "server-b",
+                ),
+            )
+        val environmentStore =
+            build.raft.app.data.SharedApiEnvironmentStore(build.raft.app.data.InMemorySlockKeyValueStore())
+        val canonicalStore = RecordingCanonicalMessageV2Store()
+        val engine =
+            build.raft.app.network.sync.CanonicalMessageV2GenerationEngine(
+                coordinator = build.raft.app.network.sync.CanonicalMessageV2BaselineCoordinator(),
+                store = canonicalStore,
+                snapshotCommitObserver = build.raft.app.network.sync.CanonicalMessageV2SnapshotCommitObserver {},
+            )
+        val binding =
+            build.raft.app.data.CanonicalMessageV2VisitedSnapshotBinding(
+                gateway =
+                    build.raft.app.network.sync.CanonicalMessageV2VisitedWindowGateway(
+                        generationEngine = engine,
+                        isEnabledForServer = { true },
+                    ),
+                authStore = authStore,
+                apiEnvironmentStore = environmentStore,
+            )
+        val identity =
+            binding.topLevelIdentity(
+                serverId = "server-b",
+                principalId = "u1",
+                scopeId = "channel-1",
+                scopeKind = "channel",
+            )
+        val cachedResponse = HomeNetworkResponse(200, fullCanonicalMessagesResponse("durable body"))
+        binding.load(identity) { cachedResponse }
+
+        val api =
+            FakeThreadApi(bodyText = messagesResponse("network body")).apply {
+                channelMessagesStarted = CompletableDeferred()
+                releaseChannelMessages = CompletableDeferred()
+            }
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = authStore,
+                selectedServerStore = selectedServerStore,
+                canonicalVisitedSnapshotBinding = binding,
+            )
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+
+        store.dispatch(SharedThreadIntent.Start(basePayload()))
+        api.channelMessagesStarted?.await()
+
+        val firstFrame = store.state.value.payload
+        assertEquals("content", firstFrame.status)
+        assertEquals("durable body", firstFrame.messages.single().body)
+        assertTrue(firstFrame.backgroundRefreshing)
+        assertEquals("thread_cached_stale", firstFrame.errorCode)
+        assertFalse(firstFrame.canSend)
+        assertTrue(firstFrame.toThreadTimelineRenderConfig().showsCachedSnapshotBanner())
+
+        api.failChannelMessages = true
+        api.releaseChannelMessages?.complete(Unit)
+        withTimeout(1_000) {
+            while (store.state.value.payload.backgroundRefreshing) {
+                delay(10)
+            }
+        }
+        val offlineFrame = store.state.value.payload
+        assertEquals("durable body", offlineFrame.messages.single().body)
+        assertFalse(offlineFrame.backgroundRefreshing)
+        assertEquals("thread_cached_stale", offlineFrame.errorCode)
+        assertTrue(offlineFrame.toThreadTimelineRenderConfig().showsCachedSnapshotBanner())
+
+        scope.cancel()
+    }
+
+    @Test
+    fun durableReplyCandidateRestoresExactTopLevelRootWithoutSeedingReplyRows() = runBlocking {
+        val session =
+            StoredAuthSession(
+                user = StoredAuthUser(id = "u1", email = "artin@slock.ai", displayName = "Artin"),
+                accessToken = "access",
+                refreshToken = "refresh",
+                selectedServerId = "server-1",
+                servers = listOf(StoredAuthServer(id = "server-1", name = "Slock", slug = "slock")),
+            )
+        val authStore = InMemorySlockAuthSessionStore(session)
+        val environmentStore =
+            build.raft.app.data.SharedApiEnvironmentStore(build.raft.app.data.InMemorySlockKeyValueStore())
+        val engine =
+            build.raft.app.network.sync.CanonicalMessageV2GenerationEngine(
+                coordinator = build.raft.app.network.sync.CanonicalMessageV2BaselineCoordinator(),
+                store = RecordingCanonicalMessageV2Store(),
+                snapshotCommitObserver = build.raft.app.network.sync.CanonicalMessageV2SnapshotCommitObserver {},
+            )
+        val binding =
+            build.raft.app.data.CanonicalMessageV2VisitedSnapshotBinding(
+                gateway =
+                    build.raft.app.network.sync.CanonicalMessageV2VisitedWindowGateway(
+                        generationEngine = engine,
+                        isEnabledForServer = { true },
+                    ),
+                authStore = authStore,
+                apiEnvironmentStore = environmentStore,
+            )
+        val parentIdentity = binding.topLevelIdentity("server-1", "u1", "channel-1", "channel")
+        val replyIdentity =
+            binding.threadIdentity(
+                serverId = "server-1",
+                principalId = "u1",
+                replyScopeId = "reply-stream",
+                parentScopeId = "channel-1",
+                parentScopeKind = "channel",
+                rootMessageId = "root-message",
+            )
+        binding.load(parentIdentity) {
+            HomeNetworkResponse(
+                200,
+                fullCanonicalMessagesResponse("root body", id = "root-message", channelId = "channel-1"),
+            )
+        }
+        binding.load(replyIdentity) {
+            HomeNetworkResponse(
+                200,
+                fullCanonicalMessagesResponse("reply body", id = "reply-message", channelId = "reply-stream"),
+            )
+        }
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = authStore,
+                canonicalVisitedSnapshotBinding = binding,
+            )
+
+        val restored = assertNotNull(
+            dataSource.restoreCanonicalVisitedPayload(
+                replyPayload(parentMessageId = "root-message", threadId = "reply-stream"),
+            ),
+        )
+
+        assertEquals("root-message", restored.originMessage?.id)
+        assertEquals("root body", restored.originMessage?.body)
+        assertEquals(listOf("reply-message"), restored.messages.map { it.id })
+        assertEquals("reply body", restored.messages.single().body)
+
+        val dmIdentity = binding.topLevelIdentity("server-1", "u1", "dm-1", "dm")
+        binding.load(dmIdentity) {
+            HomeNetworkResponse(
+                200,
+                fullCanonicalMessagesResponse("dm body", id = "dm-message", channelId = "dm-1"),
+            )
+        }
+        val restoredDm = assertNotNull(
+            dataSource.restoreCanonicalVisitedPayload(directMessagePayload().copy(channelKind = "dm")),
+        )
+        assertEquals(listOf("dm-message"), restoredDm.messages.map { it.id })
+        assertEquals("dm body", restoredDm.messages.single().body)
     }
 
     @Test
@@ -7532,11 +8026,14 @@ class SharedThreadStoreTest {
     fun visibleReplyMetadataSeedsSharedStoreForDirectReplyThreadFetch() = runBlocking {
         val messageStore = SharedThreadMessageStore()
         val parent = contentPayload("parent body").messages.single()
-        SharedThreadDataSource(
-            networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
-            sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-            messageStore = messageStore
-        ).rememberReplyParentCandidate(
+        val seedDataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                messageStore = messageStore,
+            )
+        seedDataSource.readSession()
+        seedDataSource.rememberReplyParentCandidate(
             serverId = "server-1",
             parentChannelId = "channel-1",
             parentMessage = parent,
@@ -11686,7 +12183,7 @@ class SharedThreadStoreTest {
 
         assertEquals(emptyList(), api.syncSinceSeqs)
         assertEquals("error", store.state.value.payload.newerMessagesStatus)
-        assertEquals("error", dataSource.cachedPayload("channel-1")?.newerMessagesStatus)
+        assertEquals(null, dataSource.cachedPayload("channel-1"), "logout must not retain a first-frame cache")
         scope.cancel()
     }
 
@@ -11840,6 +12337,46 @@ class SharedThreadStoreTest {
         assertEquals(listOf(10L), api.afterSeqs)
         assertEquals(emptyList(), api.syncSinceSeqs)
         scope.cancel()
+    }
+
+    private class RecordingCanonicalMessageV2Store : build.raft.app.network.sync.CanonicalMessageV2Store {
+        private val states =
+            mutableMapOf<
+                build.raft.app.network.sync.SyncScopeKey,
+                build.raft.app.network.sync.RestoredCanonicalMessageV2Scope,
+            >()
+
+        override suspend fun applySnapshot(frame: build.raft.app.network.sync.CanonicalMessageV2SnapshotFrame): build.raft.app.network.sync.CanonicalMessageV2StoreWriteResult {
+            states[frame.scope] =
+                build.raft.app.network.sync.RestoredCanonicalMessageV2Scope(frame.envelopes, frame.cursor)
+            return build.raft.app.network.sync.CanonicalMessageV2StoreWriteResult()
+        }
+
+        override suspend fun applyIncremental(frame: build.raft.app.network.sync.CanonicalMessageV2IncrementalFrame): build.raft.app.network.sync.CanonicalMessageV2StoreWriteResult {
+            val previous = states[frame.scope]?.envelopes.orEmpty().associateBy { it.fact.id }
+            states[frame.scope] =
+                build.raft.app.network.sync.RestoredCanonicalMessageV2Scope(
+                    envelopes = (previous + frame.envelopes.associateBy { it.fact.id }).values.toList(),
+                    cursor = frame.cursor,
+                )
+            return build.raft.app.network.sync.CanonicalMessageV2StoreWriteResult()
+        }
+
+        override suspend fun restore(
+            scope: build.raft.app.network.sync.SyncScopeKey,
+        ): build.raft.app.network.sync.RestoredCanonicalMessageV2Scope =
+            states[scope] ?: build.raft.app.network.sync.RestoredCanonicalMessageV2Scope(emptyList(), null)
+
+        override suspend fun clearScope(
+            scope: build.raft.app.network.sync.SyncScopeKey,
+        ): Set<build.raft.app.network.sync.SyncScopeKey> {
+            states.remove(scope)
+            return setOf(scope)
+        }
+
+        override suspend fun clearPartition(partition: build.raft.app.network.sync.DurablePartitionKey) {
+            states.keys.removeAll { it.partition == partition }
+        }
     }
 
     private class FakeThreadApi(
@@ -13153,6 +13690,18 @@ class SharedThreadStoreTest {
             selectedServerId = "server-1"
         )
 
+    private fun multiIdentitySession(userId: String): StoredAuthSession =
+        StoredAuthSession(
+            user = StoredAuthUser(id = userId, email = "$userId@example.test", displayName = userId),
+            accessToken = "access-$userId",
+            refreshToken = "refresh-$userId",
+            selectedServerId = "server-a",
+            servers = listOf(
+                StoredAuthServer(id = "server-a", name = "Server A", slug = "server-a"),
+                StoredAuthServer(id = "server-b", name = "Server B", slug = "server-b"),
+            ),
+        )
+
     private fun member(id: String, name: String): MemberProfile =
         MemberProfile(
             id = MemberId(id),
@@ -13293,6 +13842,40 @@ class SharedThreadStoreTest {
                   "senderName": "Artin",
                   "senderType": "user",
                   "messageType": "chat"
+                }
+              ]
+            }
+            """.trimIndent()
+
+        private fun fullCanonicalMessagesResponse(
+            body: String,
+            id: String = "cached-message",
+            channelId: String = "channel-1",
+        ): String =
+            """
+            {
+              "historyLimited": false,
+              "messages": [
+                {
+                  "id": "$id",
+                  "seq": 7,
+                  "channelId": "$channelId",
+                  "senderType": "user",
+                  "senderId": "u1",
+                  "content": "$body",
+                  "messageType": "chat",
+                  "randomId": null,
+                  "threadId": null,
+                  "createdAt": "2026-07-23T00:00:00.000Z",
+                  "senderName": "Artin",
+                  "senderDescription": null,
+                  "senderMembershipStatus": null,
+                  "mentions": [],
+                  "attachments": [],
+                  "reactions": [],
+                  "commentRef": null,
+                  "actionMetadata": null,
+                  "replyCount": 0
                 }
               ]
             }

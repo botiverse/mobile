@@ -43,6 +43,8 @@
     <string name="common_optional_suffix">（可选）</string>
     <string name="common_no_actions_available">暂无可用操作</string>
     <string name="app_shell_offline_banner">无网络连接</string>
+    <string name="thread_cached_snapshot_refreshing">正在刷新，当前显示已保存的消息</string>
+    <string name="thread_cached_snapshot_offline">刷新暂不可用，当前显示已保存的消息</string>
     <string name="settings_title">设置</string>
     <string name="settings_navigation_section_personal">个人</string>
     <string name="settings_navigation_section_workspace">工作区</string>
