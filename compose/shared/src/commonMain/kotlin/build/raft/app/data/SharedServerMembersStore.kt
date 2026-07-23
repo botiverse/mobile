@@ -475,6 +475,7 @@ class SharedServerMembersStore internal constructor(
                 server = snapshot.server,
                 members =
                     snapshot.members
+                        .filterServerRosterMembers(key)
                         .filterDeletedAgents(key),
                 status = SharedServerMembersLoadStatus.Loaded,
                 errorCode = null
@@ -497,6 +498,7 @@ class SharedServerMembersStore internal constructor(
         }
         profiles
             .filter { it.id.value.trim().isNotBlank() }
+            .filterServerRosterMembers(key)
             .filterNot { it.isDeletedAgentProfile(key) }
             .forEach { profile ->
                 val profileKey = profile.id.value.trim()
@@ -873,6 +875,7 @@ class SharedServerMembersStore internal constructor(
                                 result.data.copy(
                                     members =
                                         result.data.members
+                                            .filterServerRosterMembers(normalizedKey)
                                             .filterDeletedAgents(normalizedKey)
 
                                 )
@@ -1639,6 +1642,14 @@ class SharedServerMembersStore internal constructor(
         val deletedAgentIds = deletedAgentIdsByServerId[serverKey].orEmpty()
         if (deletedAgentIds.isEmpty()) return this
         return filterNot { it.kind == MemberKind.Agent && it.id.value.trim() in deletedAgentIds }
+    }
+
+    private fun List<MemberProfile>.filterServerRosterMembers(serverKey: String): List<MemberProfile> {
+        val cleanServerKey = serverKey.trim()
+        return filter { member ->
+            val sourceServerId = member.serverId?.value?.trim().orEmpty()
+            sourceServerId.isEmpty() || sourceServerId == cleanServerKey
+        }
     }
 
     private fun MemberProfile.isDeletedAgentProfile(serverKey: String): Boolean =

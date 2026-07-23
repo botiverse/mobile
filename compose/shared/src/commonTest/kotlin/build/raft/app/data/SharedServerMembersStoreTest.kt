@@ -310,6 +310,24 @@ class SharedServerMembersStoreTest {
     }
 
     @Test
+    fun serverRosterSeedsExcludeExplicitRemoteJointParticipants() {
+        val repository = FakeMemberRepository()
+        val store = SharedServerMembersStore(repository)
+        val localServer = server("server-1")
+        val local = member("local", "Local").copy(serverId = ServerId("server-1"))
+        val legacy = member("legacy", "Legacy")
+        val remote = member("remote", "Remote").copy(serverId = ServerId("server-remote"))
+
+        store.seed(MemberSnapshot(localServer, listOf(local, legacy, remote)))
+        store.seedProfiles(ServerId("server-1"), listOf(remote.copy(id = MemberId("remote-seed"))))
+
+        assertEquals(
+            listOf("local", "legacy"),
+            store.currentServerMembers(ServerId("server-1")).map { it.id.value }
+        )
+    }
+
+    @Test
     fun applyPresenceUpdatesStatusResolverWithoutRewritingCachedRoster() {
         val repository = FakeMemberRepository()
         val store = SharedServerMembersStore(repository)
@@ -769,6 +787,30 @@ class SharedServerMembersStoreTest {
         assertEquals(
             "pixel:build",
             store.state.value.memberProfile(ServerId("server-1"), "agent-1")?.avatar?.wireValue
+        )
+    }
+
+    @Test
+    fun jointChannelLoadKeepsRemoteParticipantsOutOfServerRoster() = runBlocking {
+        val repository = FakeMemberRepository()
+        repository.channelMembersByChannel["joint-1"] =
+            listOf(
+                member("local", "Local").copy(serverId = ServerId("server-1")),
+                member("remote", "Remote").copy(serverId = ServerId("server-remote"))
+            )
+        val store = SharedServerMembersStore(repository)
+
+        val result = store.loadChannelMembers(ServerId("server-1"), ChannelId("joint-1"))
+
+        assertIs<DataResult.Content<ChannelMemberSnapshot>>(result)
+        assertEquals(listOf("local", "remote"), result.data.members.map { it.id.value })
+        assertEquals(
+            listOf("local", "remote"),
+            store.currentChannelMembers(ServerId("server-1"), ChannelId("joint-1")).map { it.id.value }
+        )
+        assertEquals(
+            listOf("local"),
+            store.currentServerMembers(ServerId("server-1")).map { it.id.value }
         )
     }
 

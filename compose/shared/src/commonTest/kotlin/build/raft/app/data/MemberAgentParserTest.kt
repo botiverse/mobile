@@ -281,6 +281,46 @@ class MemberAgentParserTest {
     }
 
     @Test
+    fun serverMembersExcludeExplicitRemoteJointParticipants() {
+        val snapshot = parseSharedServerMemberSnapshot(
+            bodyText =
+                """
+                {
+                  "members": [
+                    {
+                      "userId": "local-user",
+                      "serverId": "server-1",
+                      "name": "local",
+                      "displayName": "Local Member"
+                    },
+                    {
+                      "userId": "legacy-user",
+                      "name": "legacy",
+                      "displayName": "Legacy Member"
+                    },
+                    {
+                      "userId": "remote-user",
+                      "serverId": "server-remote",
+                      "serverName": "Remote Lab",
+                      "serverSlug": "remote-lab",
+                      "name": "remote",
+                      "displayName": "Remote Joint Participant"
+                    }
+                  ]
+                }
+                """.trimIndent(),
+            server = build.raft.app.model.ServerSummary(
+                id = build.raft.app.model.ServerId("server-1"),
+                name = "Slock"
+            )
+        )
+
+        val members = assertNotNull(snapshot).members
+        assertEquals(listOf("local-user", "legacy-user"), members.map { it.id.value })
+        assertEquals(listOf("server-1", "server-1"), members.map { it.serverId?.value })
+    }
+
+    @Test
     fun channelMembersPreserveSourceServerMetadata() {
         val snapshot = parseSharedChannelMemberSnapshot(
             bodyText =
