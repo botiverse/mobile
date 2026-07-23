@@ -136,11 +136,10 @@ adb shell pm list instrumentation > canonical-final-instrumentation-list-after.t
 grep 'canonical_final_actual_host_trace' canonical-final-logcat.txt > canonical-final-trace.txt || true
 test -n "$PID_DURING"
 test "$INSTRUMENT_STATUS" = 0
-grep -Fq 'OK (1 test)' canonical-final-instrumentation.txt
-if grep -Eiq '(^|[^0-9])0 tests|skipped|ignored|assumption.*fail' canonical-final-instrumentation.txt; then
-  echo 'Instrumentation reported a skipped or zero-test run.' >&2
-  exit 1
-fi
+# Shared min-count contract (fail-closes on failure markers, skipped/ignored/assumption and zero-test
+# runs): the class currently owns 3 tests — the actual-host scenario plus the two deterministic
+# terminal-payload budget teeth.
+scripts/ci/assert-instrumentation-ok.sh canonical-final-instrumentation.txt 3
 test "$(awk '$3 == "REJECT" { print $1 " " $2 }' canonical-final-iptables-after.txt)" = "0 0"
 test "$(awk '$3 == "REJECT" { print $1 " " $2 }' canonical-final-ip6tables-after.txt)" = "0 0"
 
