@@ -4,6 +4,7 @@ import {
   capSources,
   caseIdNeedles,
   dedupeSources,
+  excerptSource,
   isEligibleIssue,
   panelApiKey,
   panelDecision,
@@ -124,6 +125,20 @@ test("case ids yield component-name needles without generic noise", () => {
   // generic single-word segments must not become needles
   assert.deepEqual(caseIdNeedles("components.settings.page.states"), []);
   assert.deepEqual(caseIdNeedles(""), []);
+});
+
+test("oversized files excerpt around the anchored definition, not the head", () => {
+  const filler = "// filler\n".repeat(3_000);
+  const src = `${filler}function LanguageRegionSection() { return null; }\n${filler}`;
+  const excerpt = excerptSource({ path: "SettingsPanel.tsx", src }, ["LanguageRegionSection"], 1_000);
+  assert.match(excerpt.src, /fix-queue excerpt of SettingsPanel\.tsx/);
+  assert.match(excerpt.src, /function LanguageRegionSection/);
+  // small files pass through untouched
+  const small = { path: "a.tsx", src: "function Tiny() {}" };
+  assert.equal(excerptSource(small, ["Tiny"], 1_000), small);
+  // no needle hit falls back to the head
+  const headOnly = excerptSource({ path: "b.tsx", src }, ["NotPresent"], 1_000);
+  assert.equal(headOnly.src, src.slice(0, 1_000));
 });
 
 test("panel spec defaults to the primary model for every voter", () => {
