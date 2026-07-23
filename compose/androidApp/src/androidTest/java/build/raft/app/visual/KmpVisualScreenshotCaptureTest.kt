@@ -2077,28 +2077,15 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
-    @Test
-    fun captureSettingsPageStates() {
-        captureKmpComponentCase(
-            caseId = "components.settings.page.states",
-            pageName = "compose_settings_page_visual",
-            crop = FULL_VIEWPORT_CROP
-        )
-    }
+    // components.settings.page.states, account.provider-linked, and
+    // account.password-expanded retired by owner ruling (artin,
+    // #wg-nightly-visual-fix 2026-07-23): the structural section-composition
+    // differences on these native settings surfaces are intentional and must
+    // not be re-verified. Manifest/harness removal in slock #5317.
 
     @Test
     fun captureSettingsAccountPage() {
         captureKmpSettingsPageCase("components.settings.account.page", "account")
-    }
-
-    @Test
-    fun captureSettingsAccountProviderLinked() {
-        captureKmpSettingsPageCase("components.settings.account.provider-linked", "account-provider-linked")
-    }
-
-    @Test
-    fun captureSettingsAccountPasswordExpanded() {
-        captureKmpSettingsPageCase("components.settings.account.password-expanded", "account-password-expanded")
     }
 
     @Test
@@ -2148,32 +2135,20 @@ class KmpVisualScreenshotCaptureTest {
     // an in-app WebView (SettingsAdministrationPage, Billing pattern), so
     // there is no native admin surface left to compare against React.
 
-    @Test
-    fun captureSettingsConnectedAppsFullRoute() {
-        captureKmpComponentCase(
-            caseId = "screens.settings.connected-apps.full",
-            pageName = "compose_settings_route_visual",
-            pageData =
-                JSONObject()
-                    .put("destination", "connected-apps")
-                    .put("fixtureKey", "canonical"),
-            crop = FULL_VIEWPORT_CROP,
-            settleMs = 2_500
-        )
-    }
+    // Connected Apps cases retired: production routes the destination to
+    // SettingsMarketplacePage → StandaloneSettingsWebViewPage (Administration/
+    // Billing WebView pattern), so these captures exercised the bypassed
+    // legacy native SettingsConnectedAppsContent. WebView surfaces cannot be
+    // reliably diffed; a WebView-capable provider would return as a NEW case,
+    // not by reviving the native fixture.
 
     // Full-height (long-scroll) variants of the route captures (task #388):
     // whole route in one frame at content height, paired with React's
     // fullPage captures under the shared contract "full-height".
-    @Test
-    fun captureSettingsConnectedAppsFullHeight() {
-        captureKmpFullHeightSettingsCase("screens.settings.connected-apps.full-height", "connected-apps")
-    }
 
-    @Test
-    fun captureSettingsLanguageRegionPage() {
-        captureKmpSettingsPageCase("components.settings.language-region.page", "language-region")
-    }
+    // components.settings.language-region.page retired by the same owner
+    // ruling (artin, 2026-07-23) — composition difference is intentional,
+    // never re-verify.
 
     @Test
     fun captureSettingsAppearancePage() {
@@ -2211,11 +2186,6 @@ class KmpVisualScreenshotCaptureTest {
             crop = FULL_VIEWPORT_CROP,
             settleMs = 2_500
         )
-    }
-
-    @Test
-    fun captureSettingsConnectedAppsPage() {
-        captureKmpSettingsPageCase("components.settings.connected-apps.page", "connected-apps")
     }
 
     @Test
