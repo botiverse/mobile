@@ -1086,8 +1086,11 @@ class SlockMarkdownTest {
         assertEquals(SlockType.Body.fontFamily, typography.textLink.style?.fontFamily)
         assertEquals(expectedLinkBlue, typography.textLink.style?.color)
         assertEquals(TextDecoration.Underline, typography.textLink.style?.textDecoration)
+        assertEquals(2.sp, typography.textLink.style?.textDecorationThickness)
+        assertEquals(SlockType.Body.fontWeight, typography.textLink.style?.fontWeight)
         assertEquals(expectedLinkBlue, typography.link.color)
         assertEquals(TextDecoration.Underline, typography.link.textDecoration)
+        assertEquals(SlockType.Body.fontWeight, typography.link.fontWeight)
         assertEquals(SlockType.Caption.fontFamily, typography.code.fontFamily)
         assertFalse(typography.code.fontFamily == FontFamily.Monospace)
     }
@@ -1107,6 +1110,8 @@ class SlockMarkdownTest {
         assertEquals("https://raft.build", link.url)
         assertEquals(expectedLinkBlue, linkStyle?.color)
         assertEquals(TextDecoration.Underline, linkStyle?.textDecoration)
+        assertEquals(2.sp, linkStyle?.textDecorationThickness)
+        assertEquals(SlockType.Body.fontWeight, linkStyle?.fontWeight)
     }
 
     @Test
