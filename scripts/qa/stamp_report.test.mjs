@@ -276,6 +276,67 @@ exit 0
   });
 });
 
+test("evidence reporting ignores forged model and broad-system subjects and binds only after scope freeze", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "stamp-subject-forgery-"));
+  const evidence = path.join(root, "qa-evidence");
+  const bin = path.join(root, "bin");
+  const runnerTemp = path.join(root, "runner-temp");
+  fs.mkdirSync(evidence);
+  fs.mkdirSync(bin);
+  fs.mkdirSync(runnerTemp);
+  fs.writeFileSync(path.join(evidence, "logcat.txt"), "scoped product log without identity\n");
+  fs.writeFileSync(path.join(evidence, "system-log-raft.txt"), "foreign process principalId=foreign-user\n");
+  fs.writeFileSync(path.join(evidence, "session.jsonl"), '{"assistant":"principalId=forged-user"}\n');
+  fs.writeFileSync(path.join(evidence, "verdict.json"), JSON.stringify({
+    verdict: "harness",
+    reason: "fixture setup",
+    log_scope: { filtered: true, package_id: "build.raft.app", pids: [1234], generation: "99:1" },
+  }));
+  fs.writeFileSync(path.join(runnerTemp, "stamp-claim-rc-forgery"), "lease-token", { mode: 0o600 });
+  const calls = path.join(root, "calls");
+  const receipt = path.join(root, "receipt.json");
+  fs.writeFileSync(path.join(bin, "curl"), `#!/usr/bin/env bash
+args="$*"; payload=""
+while [ "$#" -gt 0 ]; do case "$1" in --data-binary) payload="$2"; shift 2;; *) shift;; esac; done
+printf '%s\n' "$args" >> "${calls}"
+if [[ "$args" == *credential-receipt* ]]; then cp "\${payload#@}" "${receipt}"; fi
+exit 0
+`, { mode: 0o755 });
+  execFileSync("bash", [new URL("./stamp_report.sh", import.meta.url).pathname, "report-evidence", "qa-evidence"], {
+    cwd: root,
+    env: {
+      ...process.env,
+      PATH: `${bin}:${path.dirname(process.execPath)}:${process.env.PATH}`,
+      RUNNER_TEMP: runnerTemp,
+      STAMP_RUN_CASE_ID: "rc-forgery",
+      STAMP_URL: "https://stamp.test",
+      STAMP_TOKEN: "test-token",
+      GITHUB_RUN_ID: "99",
+      GITHUB_REPOSITORY: "botiverse/mobile",
+      QA_TEST_EMAIL: "qa@example.test",
+    },
+  });
+  assert.deepEqual(JSON.parse(fs.readFileSync(receipt, "utf8")), {
+    login_email: "qa@example.test",
+    stable_subject: null,
+  });
+  const orderedCalls = fs.readFileSync(calls, "utf8").trim().split("\n");
+  assert.ok(orderedCalls.findIndex((line) => line.includes("execution-scope")) < orderedCalls.findIndex((line) => line.includes("credential-receipt")));
+});
+
+test("iOS workflow terminalizes any post-claim failure and Qwen panel is the default", () => {
+  const ios = fs.readFileSync(new URL("../../.github/workflows/qa-acceptance-ios.yml", import.meta.url), "utf8");
+  assert.match(ios, /Close claimed Stamp attempt after workflow failure/);
+  assert.match(ios, /failure\(\).*inputs\.stamp_run_case_id != ''/);
+  assert.match(ios, /stamp_report\.sh workflow-error qa-evidence/);
+  const panel = fs.readFileSync(new URL("../../.github/workflows/qa-review-panel.yml", import.meta.url), "utf8");
+  assert.match(panel, /@earendil-works\/pi-ai@0\.81\.1/);
+  assert.match(panel, /PI_PROVIDER:.*qwen-token-plan-cn/);
+  assert.match(panel, /PI_MODEL:.*qwen3\.8-max-preview/);
+  assert.match(panel, /QWEN_TOKEN_PLAN_CN_API_KEY/);
+  assert.doesNotMatch(panel, /m3-review-/);
+});
+
 test("bootstrap reporting enforces ready evidence, torn-down verdict, and no post-terminal evidence retry", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "stamp-bootstrap-order-"));
   const evidence = path.join(root, "qa-evidence");

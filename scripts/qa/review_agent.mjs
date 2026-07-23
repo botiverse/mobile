@@ -18,12 +18,14 @@ const reviewer = arg("--reviewer", process.env.STAMP_REVIEWER || "");
 const outPath = arg("--out", process.env.STAMP_REVIEW_OUT || `panel-review-${reviewer || "unknown"}.json`);
 const stampUrl = (process.env.STAMP_URL || "https://stamp.build").replace(/\/$/, "");
 const stampToken = process.env.STAMP_TOKEN || "";
-const piKey = process.env.MINIMAX_API_KEY || process.env.PI_API_KEY || "";
-const record = { run_id: runId, reviewer, stage: "init" };
+const piKey = process.env.QWEN_TOKEN_PLAN_CN_API_KEY || process.env.PI_API_KEY || process.env.MINIMAX_API_KEY || "";
+const providerName = String(process.env.PI_PROVIDER || "qwen-token-plan-cn");
+const modelName = String(process.env.PI_MODEL || "qwen3.8-max-preview");
+const record = { run_id: runId, reviewer, provider: providerName, model: modelName, stage: "init" };
 
 if (!runId || !reviewer) throw new Error("--run-id and --reviewer are required");
 if (!stampToken) throw new Error("STAMP_TOKEN is required");
-if (!piKey) throw new Error("PI_API_KEY/MINIMAX_API_KEY is required");
+if (!piKey) throw new Error("QWEN_TOKEN_PLAN_CN_API_KEY/PI_API_KEY is required");
 
 function saveRecord(patch = {}) {
   Object.assign(record, patch);
@@ -278,7 +280,7 @@ async function main() {
 
   const providers = await import(process.env.SLOCK_PI_AI_MODULE || "@earendil-works/pi-ai/providers/all");
   const models = providers.builtinModels();
-  const model = models.getModel(String(process.env.PI_PROVIDER || "minimax"), String(process.env.PI_MODEL || "MiniMax-M3"));
+  const model = models.getModel(providerName, modelName);
   let response;
   let text = "";
   let vote;
@@ -330,7 +332,8 @@ async function main() {
     evidence_manifest: evidenceManifest,
     raw_evidence_ids: rawShots.map((e) => e.id),
     log_scans: logScans,
-    model: String(process.env.PI_MODEL || "MiniMax-M3"),
+    provider: providerName,
+    model: modelName,
     usage: response.usage || null,
   };
   const posted = await stamp(`/api/runs/${runId}/panel-review`, {

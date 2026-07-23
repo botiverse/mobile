@@ -500,3 +500,13 @@ jobs:
           fi
           echo "Evidence: qa-acceptance-ios-evidence artifact (per-step screenshots + steps.jsonl + xcodebuild-loop.log + system-log-raft.txt + crashes/*.ips + *.xcresult)." >> "$GITHUB_STEP_SUMMARY"
           exit "$rc"
+
+      - name: Close claimed Stamp attempt after workflow failure
+        if: ${{ failure() && inputs.stamp_run_case_id != '' }}
+        env:
+          STAMP_RUN_CASE_ID: ${{ inputs.stamp_run_case_id }}
+          STAMP_URL: ${{ secrets.STAMP_URL }}
+          STAMP_TOKEN: ${{ secrets.STAMP_TOKEN }}
+          STAMP_POSTCLAIM_ERROR_PHASE: ios_workflow
+          STAMP_POSTCLAIM_ERROR_REASON: iOS workflow failed after Stamp dispatch or claim
+        run: bash scripts/qa/stamp_report.sh workflow-error qa-evidence

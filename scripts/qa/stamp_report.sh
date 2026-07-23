@@ -299,25 +299,6 @@ case "$PHASE" in
   *) echo "stamp: unknown phase $PHASE" >&2; exit 2;;
 esac
 
-# CI secret values are visible only inside this executor. Freeze the actual
-# non-secret email automatically; once app-scoped logs expose exactly one
-# principalId, bind that stable subject to the same first-write-wins receipt.
-if [ "$REPORT_EVIDENCE" = "true" ] && [ -n "${QA_TEST_EMAIL:-}" ]; then
-  if ! node "$SCRIPT_DIR/credential_receipt.mjs" --out "$CREDENTIAL_RECEIPT_FILE" \
-    --log "$EV/logcat.txt" --log "$EV/system-log-raft.txt" --log "$EV/session.jsonl"; then
-    echo "stamp: credential receipt construction failed" >&2
-    exit 1
-  fi
-  if ! curl -sfS -X POST "$BASE/credential-receipt" -H "$AUTH" -H "$JOB_HEADER" -H "$CLAIM_HEADER" \
-    -H 'content-type: application/json' --data-binary @"$CREDENTIAL_RECEIPT_FILE" >/dev/null; then
-    rm -f "$CREDENTIAL_RECEIPT_FILE"
-    echo "stamp: credential receipt subject bind failed" >&2
-    exit 1
-  fi
-  rm -f "$CREDENTIAL_RECEIPT_FILE"
-  echo "stamp: credential receipt refreshed"
-fi
-
 # Freeze the execution identity before any scoped log or verdict write. Stamp
 # accepts an exact repeat idempotently and rejects a conflicting generation.
 evidence_rc=0
@@ -343,6 +324,27 @@ if [ "$REPORT_EVIDENCE" = "true" ] && [ -f "$EV/verdict.json" ] && [ -f "$EV/log
   fi
   curl -sf -X POST "$BASE/execution-scope" -H "$AUTH" -H "$JOB_HEADER" -H "$CLAIM_HEADER" -H 'content-type: application/json' \
     -d "$SCOPE" >/dev/null && echo "stamp: execution scope frozen" || { echo "stamp: execution scope freeze failed" >&2; exit 1; }
+fi
+
+# The email is frozen at claim. Subject binding is optional and may use only
+# the package/PID/generation-scoped product log after Stamp accepts that exact
+# execution scope. Model transcripts and broad host/system logs are never
+# identity authorities. If no scoped log exists, repeat the email-only receipt.
+if [ "$REPORT_EVIDENCE" = "true" ] && [ -n "${QA_TEST_EMAIL:-}" ]; then
+  RECEIPT_LOG_ARGS=()
+  [ -f "$EV/logcat.txt" ] && RECEIPT_LOG_ARGS=(--log "$EV/logcat.txt")
+  if ! node "$SCRIPT_DIR/credential_receipt.mjs" --out "$CREDENTIAL_RECEIPT_FILE" "${RECEIPT_LOG_ARGS[@]}"; then
+    echo "stamp: credential receipt construction failed" >&2
+    exit 1
+  fi
+  if ! curl -sfS -X POST "$BASE/credential-receipt" -H "$AUTH" -H "$JOB_HEADER" -H "$CLAIM_HEADER" \
+    -H 'content-type: application/json' --data-binary @"$CREDENTIAL_RECEIPT_FILE" >/dev/null; then
+    rm -f "$CREDENTIAL_RECEIPT_FILE"
+    echo "stamp: credential receipt subject bind failed" >&2
+    exit 1
+  fi
+  rm -f "$CREDENTIAL_RECEIPT_FILE"
+  echo "stamp: credential receipt refreshed"
 fi
 
 seq=0

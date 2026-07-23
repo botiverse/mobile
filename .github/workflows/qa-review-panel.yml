@@ -1,4 +1,4 @@
-name: Stamp Review Panel (3x M3)
+name: Stamp Review Panel (3x independent agent)
 
 on:
   workflow_dispatch:
@@ -24,25 +24,26 @@ jobs:
       - name: Checkout mobile
         uses: actions/checkout@v5
 
-      - name: Install M3 SDK
+      - name: Install agent review SDK
         working-directory: ${{ runner.temp }}
         run: |
-          mkdir -p stamp-review-m3
-          cd stamp-review-m3
+          mkdir -p stamp-review-agent
+          cd stamp-review-agent
           npm init -y >/dev/null
-          npm i @earendil-works/pi-ai@0.80.10 yaml@2.8.1 --no-audit --no-fund
+          npm i @earendil-works/pi-ai@0.81.1 yaml@2.8.1 --no-audit --no-fund
 
       - name: Review raw evidence and submit panel vote
         env:
           STAMP_URL: ${{ secrets.STAMP_URL }}
           STAMP_TOKEN: ${{ secrets.STAMP_TOKEN }}
           STAMP_RUN_ID: ${{ inputs.run_id }}
-          STAMP_REVIEWER: m3-review-${{ matrix.slot }}
-          PI_API_KEY: ${{ secrets.PI_API_KEY }}
-          MINIMAX_API_KEY: ${{ secrets.PI_API_KEY }}
-          PI_MODEL: ${{ vars.PI_MODEL || 'MiniMax-M3' }}
-          SLOCK_PI_AI_MODULE: ${{ runner.temp }}/stamp-review-m3/node_modules/@earendil-works/pi-ai/dist/providers/all.js
-          SLOCK_YAML_MODULE: ${{ runner.temp }}/stamp-review-m3/node_modules/yaml/dist/index.js
+          STAMP_REVIEWER: agent-review-${{ matrix.slot }}
+          PI_API_KEY: ${{ secrets.QWEN_TOKEN_PLAN_CN_API_KEY }}
+          QWEN_TOKEN_PLAN_CN_API_KEY: ${{ secrets.QWEN_TOKEN_PLAN_CN_API_KEY }}
+          PI_PROVIDER: ${{ vars.PI_REVIEW_PROVIDER || 'qwen-token-plan-cn' }}
+          PI_MODEL: ${{ vars.PI_REVIEW_MODEL || 'qwen3.8-max-preview' }}
+          SLOCK_PI_AI_MODULE: ${{ runner.temp }}/stamp-review-agent/node_modules/@earendil-works/pi-ai/dist/providers/all.js
+          SLOCK_YAML_MODULE: ${{ runner.temp }}/stamp-review-agent/node_modules/yaml/dist/index.js
           STAMP_REVIEW_OUT: panel-review-${{ matrix.slot }}.json
         run: node scripts/qa/review_agent.mjs
 
@@ -82,12 +83,13 @@ jobs:
           test "$(wc -w <<<"$records")" -eq 3
           jq -es '
             length == 3 and
-            ([.[].reviewer] | sort) == ["m3-review-1","m3-review-2","m3-review-3"] and
+            ([.[].reviewer] | sort) == ["agent-review-1","agent-review-2","agent-review-3"] and
             ([.[].run_id] | unique) == [env.RUN_ID] and
             all(.[]; .stage == "submitted" or .stage == "already_submitted") and
             ([.[] | select(.stage == "submitted")] | length) >= 1 and
             ([.[].evidence_manifest_sha256] | unique | length) == 1 and
             ([.[].review_input_sha256] | unique | length) == 1 and
+            all(.[]; .provider == "qwen-token-plan-cn" and .model == "qwen3.8-max-preview") and
             all(.[];
               (.parsed_vote.verdict == "passed" or .parsed_vote.verdict == "failed") and
               (if .stage == "submitted" then .post_receipt.ok == true
@@ -100,12 +102,16 @@ jobs:
           local_failed=$(jq -rs '[.[].parsed_vote.verdict | select(. == "failed")] | length' $records)
           json=$(curl -fsS -H "Authorization: Bearer $STAMP_TOKEN" "$STAMP_URL/api/runs/$RUN_ID")
           jq -e --arg sha "$input_sha" --argjson passed "$local_passed" --argjson failed "$local_failed" '
-            ([.reviews[] | select(.role == "panel") | .reviewer] | sort) == ["m3-review-1","m3-review-2","m3-review-3"] and
+            ([.reviews[] | select(.role == "panel") | .reviewer] | sort) == ["agent-review-1","agent-review-2","agent-review-3"] and
             ([.reviews[] | select(.role == "panel") | .detail_json | (if type == "string" then fromjson else . end) | .review_input_sha256] | unique) == [$sha] and
+            all(.reviews[] | select(.role == "panel"); (.detail_json | (if type == "string" then fromjson else . end) | .provider == "qwen-token-plan-cn" and .model == "qwen3.8-max-preview")) and
             ([.reviews[] | select(.role == "panel" and .verdict == "passed")] | length) == $passed and
             ([.reviews[] | select(.role == "panel" and .verdict == "failed")] | length) == $failed and
-            (if $passed >= 2 then
-              .run.review_policy == "agent-auto" and .run.status == "passed" and
+            (if $passed >= 2 and .run.human_final_required == 1 then
+              .run.panel_policy == "auto" and .run.status == "in_review" and
+              (any(.reviews[]; .role == "final" and .reviewer == "panel-consensus") | not)
+            elif $passed >= 2 then
+              .run.panel_policy == "auto" and .run.status == "passed" and
               any(.reviews[]; .role == "final" and .reviewer == "panel-consensus" and .verdict == "passed")
             else
               .run.status == "in_review" and
