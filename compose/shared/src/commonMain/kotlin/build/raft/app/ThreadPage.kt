@@ -8785,6 +8785,7 @@ internal const val THREAD_MESSAGE_VISUAL_FIXTURE_CJK_ADJACENT_URL = "cjk_adjacen
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_STATUS606 = "md_wrap_status606"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_BLOCKQUOTE = "md_blockquote"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_CODE_EMAIL = "md_code_email"
+internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_CODE_URL = "md_code_url"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_CODE_BLOCK = "md_code_block"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_TABLE = "md_table"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_TABLE_TIGHT = "md_table_tight"
@@ -9670,6 +9671,56 @@ internal fun threadVisualFixture(
                                 "Inline code keeps the email literal: `artin <artin@cat.ms>` end.\n\n" +
                                     "Bare autolink form: <artin@cat.ms> end.\n\n" +
                                     "Plain text form: artin@cat.ms end."
+                        )
+                    ),
+                members = emptyList(),
+                showComposer = false,
+                joined = true,
+                composer =
+                    KuiklyThreadComposerPayload(
+                        instanceId = resolvedInstanceId,
+                        enabled = false
+                    )
+            )
+        THREAD_MESSAGE_VISUAL_FIXTURE_MD_CODE_URL ->
+            // task #513: exact XiShi message reported by artin. Every URL-like
+            // payload wrapped in backticks must keep inline-code chrome and
+            // must not inherit bare-URL link color/underline semantics.
+            KuiklyThreadScreenPayload(
+                instanceId = resolvedInstanceId,
+                title = "#stamp",
+                subtitle = "Exact backticked HTTP URL specimen (task #513)",
+                status = "content",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                streamChannelId = "channel-stamp",
+                sourceThreadId = "channel-stamp",
+                selectedTab = "chat",
+                showModeTabs = false,
+                showReplyActions = true,
+                alignOwnMessagesRight = false,
+                showMessageSaveAction = false,
+                showTaskOpenActions = false,
+                showTaskStatusActions = false,
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "msg_md_code_url_visual",
+                            authorId = "agent-xishi",
+                            authorName = "XiShi",
+                            authorDescription = "视觉测试采集 harness 与 CI 排查。",
+                            authorKind = "agent",
+                            avatarLabel = "西",
+                            timestampLabel = "07/22 04:32",
+                            messageType = "Chat",
+                            body =
+                                "对，create-raft-app模板很可能是同源问题，应该一起扫，不只修Stamp实例。\n\n" +
+                                    "我刚对Stamp源码确认了根因：它用 `new URL(\"/login/raft/callback\", c.req.url)` 生成callback。手机这次入站是`http://stamp.build/login/raft`，所以产出`return_to=http://stamp.build/login/raft/callback`；Raft OAuth client注册的是HTTPS exact URL，于是严格拒绝。桌面可能因HSTS/历史自动升HTTPS而没暴露。\n\n" +
+                                    "正确公共模板合同应是：\n" +
+                                    "- callback基于显式可信`PUBLIC_ORIGIN=https://...`（或经过严格allowlist的forwarded origin），绝不直接信任入站scheme/Host；\n" +
+                                    "- HTTP入口先308 HTTPS并加HSTS，但OAuth正确性不能依赖浏览器自动升级；\n" +
+                                    "- production禁止HTTP callback，localhost开发例外要显式限定；\n" +
+                                    "- 回归测试从`http://internal/`、反代HTTP、恶意Host三种入站验证，最终`return_to`始终等于注册的外部HTTPS callback。\n\n" +
+                                    "临时可直接开 <https://stamp.build/login/raft>。@Argus 已在查Stamp+模板同类代码；应把hotfix落实例，同时把create-raft-app模板修掉，避免以后每个新app复制这个坑。"
                         )
                     ),
                 members = emptyList(),
