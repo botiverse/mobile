@@ -4142,6 +4142,135 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun stableTimelineKeepsPendingSendAcrossNonEmptyStaleRefreshUntilExactEcho() {
+        val pending = localPendingMessage("local-send-channel-1-1", "pending", randomId = "rid-1")
+        val current = contentPayload("old").copy(messages = contentPayload("old").messages + pending)
+        val staleRefresh = contentPayload("old")
+
+        val preserved =
+            staleRefresh.preserveStableTimelineFrom(
+                previous = current,
+                sendEchoMatchPolicy = ThreadSendEchoMatchPolicy.ExactRandomId
+            )
+
+        assertEquals(listOf("m1", "local-send-channel-1-1"), preserved.messages.map { it.id })
+
+        val canonicalEcho =
+            contentPayload("pending", id = "server-1").messages.single().copy(
+                isOwn = true,
+                randomId = "rid-1"
+            )
+        val echoed =
+            staleRefresh
+                .copy(messages = staleRefresh.messages + canonicalEcho)
+                .preserveStableTimelineFrom(current)
+
+        assertEquals(listOf("m1", "server-1"), echoed.messages.map { it.id })
+        assertFalse(echoed.messages.any { it.id == "local-send-channel-1-1" })
+    }
+
+    @Test
+    fun stableTimelineDoesNotAbsorbPendingSendForWrongRandomId() {
+        val pending = localPendingMessage("local-send-channel-1-1", "same body", randomId = "rid-1")
+        val current = contentPayload("old").copy(messages = contentPayload("old").messages + pending)
+        val wrongCanonical =
+            contentPayload("same body", id = "server-other").messages.single().copy(
+                isOwn = true,
+                randomId = "rid-other"
+            )
+
+        val preserved =
+            contentPayload("old")
+                .copy(messages = contentPayload("old").messages + wrongCanonical)
+                .preserveStableTimelineFrom(current)
+
+        assertEquals(
+            setOf("m1", "local-send-channel-1-1", "server-other"),
+            preserved.messages.map { it.id }.toSet()
+        )
+    }
+
+    @Test
+    fun stableTimelineDoesNotAbsorbPendingSendFromSameBodyCanonicalWithoutRandomId() {
+        val pending = localPendingMessage("local-send-channel-1-1", "same body", randomId = "rid-1")
+        val current = contentPayload("old").copy(messages = contentPayload("old").messages + pending)
+        val missingRandomIdCanonical =
+            contentPayload("same body", id = "server-missing-random").messages.single().copy(isOwn = true)
+        val staleRefresh =
+            contentPayload("old").copy(
+                messages = contentPayload("old").messages + missingRandomIdCanonical
+            )
+
+        val preserved =
+            staleRefresh.preserveStableTimelineFrom(
+                previous = current,
+                sendEchoMatchPolicy = ThreadSendEchoMatchPolicy.ExactRandomId
+            )
+
+        assertEquals(
+            setOf("m1", "local-send-channel-1-1", "server-missing-random"),
+            preserved.messages.map { it.id }.toSet()
+        )
+
+        val exactEcho =
+            contentPayload("same body", id = "server-exact").messages.single().copy(
+                isOwn = true,
+                randomId = "rid-1"
+            )
+        val converged =
+            contentPayload("old")
+                .copy(messages = contentPayload("old").messages + exactEcho)
+                .preserveStableTimelineFrom(
+                    previous = preserved,
+                    sendEchoMatchPolicy = ThreadSendEchoMatchPolicy.ExactRandomId
+                )
+
+        assertEquals(listOf("m1", "server-exact"), converged.messages.map { it.id })
+        assertFalse(converged.messages.any { it.id == "local-send-channel-1-1" })
+    }
+
+    @Test
+    fun refreshFenceKeepsCanonicalOwnSendAcknowledgedAfterRefreshStarted() {
+        val acknowledged =
+            contentPayload("sent", id = "server-1").messages.single().copy(
+                isOwn = true,
+                randomId = "rid-1"
+            )
+        val current = contentPayload("old").copy(messages = contentPayload("old").messages + acknowledged)
+        val staleRefresh = contentPayload("old")
+
+        val preserved =
+            staleRefresh.preserveStableTimelineFrom(
+                previous = current,
+                refreshObservedMessageIds = setOf("m1")
+            )
+
+        assertEquals(listOf("m1", "server-1"), preserved.messages.map { it.id })
+    }
+
+    @Test
+    fun refreshFenceDropsStalePendingShadowWhenCurrentStateAlreadyHasExactCanonicalAck() {
+        val stalePending = localPendingMessage("local-send-channel-1-1", "sent", randomId = "rid-1")
+        val acknowledged =
+            contentPayload("sent", id = "server-1").messages.single().copy(
+                isOwn = true,
+                randomId = "rid-1"
+            )
+        val staleRefreshProjection =
+            contentPayload("old").copy(messages = contentPayload("old").messages + stalePending)
+        val current = contentPayload("old").copy(messages = contentPayload("old").messages + acknowledged)
+
+        val preserved =
+            staleRefreshProjection.preserveStableTimelineFrom(
+                previous = current,
+                refreshObservedMessageIds = setOf("m1")
+            )
+
+        assertEquals(listOf("m1", "server-1"), preserved.messages.map { it.id })
+        assertFalse(preserved.messages.any { it.id == "local-send-channel-1-1" })
+    }
+
+    @Test
     fun appendSentPagePatchesTimelineAndPreservesStoreHeaderIdentity() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
@@ -4260,6 +4389,74 @@ class SharedThreadStoreTest {
         assertFalse(store.state.value.payload.messages.any { it.id.startsWith("local-") })
         val cachedIds = dataSource.cachedPayload("channel-1")?.messages.orEmpty().map { it.id }.toSet()
         assertEquals(setOf("m1", "server-1", "server-2", "agent-1"), cachedIds)
+        scope.cancel()
+    }
+
+    @Test
+    fun staleRefreshCannotDeletePendingOrAcknowledgedSendsStartedAfterItsObservationFence() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api = FakeThreadApi(bodyText = messagesResponse("network body"))
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        api.channelMessagesStarted = CompletableDeferred()
+        api.releaseChannelMessages = CompletableDeferred()
+        val refresh = async { store.accept(SharedThreadIntent.Refresh) }
+        api.channelMessagesStarted?.await()
+
+        store.accept(
+            SharedThreadIntent.ApplyLocalSendStarted(
+                localPendingMessage("local-send-a", "first", randomId = "rid-a")
+            )
+        )
+        store.accept(
+            SharedThreadIntent.ApplyLocalSendStarted(
+                localPendingMessage("local-send-b", "second", randomId = "rid-b")
+            )
+        )
+        store.accept(
+            SharedThreadIntent.ReplaceLocalSendWithSentPage(
+                "local-send-a",
+                sentPage("server-a", "first", randomId = "rid-a")
+            )
+        )
+
+        api.releaseChannelMessages?.complete(Unit)
+        refresh.await()
+
+        assertEquals(
+            setOf("m1", "server-a", "local-send-b"),
+            store.state.value.payload.messages.map { it.id }.toSet()
+        )
+        assertFalse(store.state.value.payload.messages.any { it.id == "local-send-a" })
+
+        store.accept(
+            SharedThreadIntent.ApplyRealtimeEvent(
+                MessageNew(
+                    Message(
+                        id = MessageId("server-b"),
+                        threadId = ThreadId("channel-1"),
+                        channelId = ChannelId("channel-1"),
+                        author = member("u1", "Artin"),
+                        timestampLabel = "2026-05-19T16:02:00Z",
+                        body = "second",
+                        seq = 12,
+                        randomId = "rid-b"
+                    )
+                )
+            )
+        )
+
+        assertEquals(
+            setOf("m1", "server-a", "server-b"),
+            store.state.value.payload.messages.map { it.id }.toSet()
+        )
+        assertFalse(store.state.value.payload.messages.any { it.id.startsWith("local-send-") })
         scope.cancel()
     }
 
@@ -12729,7 +12926,8 @@ class SharedThreadStoreTest {
         id: String,
         body: String,
         channelId: String = "channel-1",
-        threadId: String? = null
+        threadId: String? = null,
+        randomId: String? = null
     ): ThreadMessagesPage =
         ThreadMessagesPage(
             messages =
@@ -12744,7 +12942,8 @@ class SharedThreadStoreTest {
                         messageType = "chat",
                         content = body,
                         createdAt = "2026-05-19T16:01:00Z",
-                        seq = 11
+                        seq = 11,
+                        randomId = randomId
                     )
                 ),
             canLoadMoreBefore = null,
@@ -12756,7 +12955,8 @@ class SharedThreadStoreTest {
         body: String,
         asTask: Boolean = false,
         attachmentIds: List<String> = emptyList(),
-        streamChannelId: String = "channel-1"
+        streamChannelId: String = "channel-1",
+        randomId: String? = null
     ): KuiklyThreadMessageItem =
         KuiklyThreadMessageItem(
             id = id,
@@ -12793,7 +12993,8 @@ class SharedThreadStoreTest {
                         },
                     mentionChannelId = "channel-1",
                     streamChannelId = streamChannelId,
-                    memberScopedMentions = false
+                    memberScopedMentions = false,
+                    randomId = randomId
                 )
         )
 

@@ -82,6 +82,20 @@ class ThreadSendEchoAbsorptionTest {
     }
 
     @Test
+    fun exactRandomIdPolicyDoesNotUseLegacyContentFallback() {
+        val shadow = pendingShadow(body = "offline send")
+        val pushEcho = canonicalEcho(body = "offline send", randomId = null)
+
+        val retained =
+            listOf(shadow).absorbingCanonicalSendEchoes(
+                canonicalMessages = listOf(pushEcho),
+                matchPolicy = ThreadSendEchoMatchPolicy.ExactRandomId
+            )
+
+        assertEquals(listOf(shadow), retained)
+    }
+
+    @Test
     fun randomIdMismatchDoesNotAbsorbEvenWhenContentMatches() {
         val shadow = pendingShadow(body = "same", randomId = "rid-local")
         val echo = canonicalEcho(body = "same", randomId = "rid-other")
