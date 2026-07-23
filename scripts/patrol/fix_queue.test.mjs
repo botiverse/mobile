@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   capSources,
+  caseIdNeedles,
   dedupeSources,
   isEligibleIssue,
   panelApiKey,
@@ -102,6 +103,27 @@ test("source prompt input is capped across files", () => {
     { path: "a.kt", src: "1234" },
     { path: "b.kt", src: "56" },
   ]);
+});
+
+test("one oversized file cannot evict later primitives from the source budget", () => {
+  assert.deepEqual(capSources([
+    { path: "big.tsx", src: "x".repeat(100) },
+    { path: "primitive.tsx", src: "yyyy" },
+  ], 20, 8), [
+    { path: "big.tsx", src: "x".repeat(8) },
+    { path: "primitive.tsx", src: "yyyy" },
+  ]);
+});
+
+test("case ids yield component-name needles without generic noise", () => {
+  assert.deepEqual(caseIdNeedles("components.ui.segmented-control.states"), ["SegmentedControl"]);
+  assert.deepEqual(caseIdNeedles("components.ui.avatar-list-row.states"), ["AvatarListRow"]);
+  assert.deepEqual(caseIdNeedles("components.ui.textarea.states"), ["Textarea"]);
+  assert.deepEqual(caseIdNeedles("components.home.notification-center.states"), ["NotificationCenter"]);
+  assert.deepEqual(caseIdNeedles("screens.settings.server-danger-modal"), ["ServerDangerModal"]);
+  // generic single-word segments must not become needles
+  assert.deepEqual(caseIdNeedles("components.settings.page.states"), []);
+  assert.deepEqual(caseIdNeedles(""), []);
 });
 
 test("panel spec defaults to the primary model for every voter", () => {

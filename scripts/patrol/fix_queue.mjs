@@ -231,17 +231,42 @@ export function dedupeSources(sources) {
   });
 }
 
-export function capSources(sources, maxChars = 60_000) {
+// Per-file cap keeps one oversized file (e.g. SettingsPanel.tsx) from eating
+// the whole budget and evicting the small RUI primitives collected after it —
+// that eviction is how several fix-queue candidates ended refuted with
+// "authoritative source missing" despite the file existing.
+export function capSources(sources, maxChars = 60_000, perFileChars = 20_000) {
   const capped = [];
   let remaining = maxChars;
   for (const source of sources) {
     if (remaining <= 0) break;
-    const src = source.src.slice(0, remaining);
+    const src = source.src.slice(0, Math.min(remaining, perFileChars));
     if (!src) continue;
     capped.push({ ...source, src });
     remaining -= src.length;
   }
   return capped;
+}
+
+// Derive component-name needles from the case id itself so library primitives
+// are found even when the manifest hints omit them (e.g.
+// components.ui.segmented-control.states -> SegmentedControl in rui).
+// Single generic words (states/page/panel/...) are excluded because they match
+// half the tree and would exhaust the per-search file limit with noise.
+const CASE_NEEDLE_STOPWORDS = new Set([
+  "components", "screens", "states", "state", "page", "pages", "panel", "panels",
+  "default", "empty", "full", "screen", "item", "items", "view", "views", "open",
+  "closed", "home", "settings", "thread", "channel", "members", "results",
+]);
+export function caseIdNeedles(caseId) {
+  const needles = new Set();
+  for (const segment of String(caseId || "").split(".")) {
+    const words = segment.split("-").filter(Boolean);
+    const pascal = words.map((word) => word[0].toUpperCase() + word.slice(1)).join("");
+    if (words.length >= 2 && pascal.length >= 4) needles.add(pascal);
+    if (words.length === 1 && pascal.length >= 5 && !CASE_NEEDLE_STOPWORDS.has(words[0].toLowerCase())) needles.add(pascal);
+  }
+  return [...needles];
 }
 
 export function collectSources(entry, opts) {
@@ -251,8 +276,9 @@ export function collectSources(entry, opts) {
   const reactPath = react.path || reactHintPath;
   const reactExact = sourceRecord(opts.slockRoot, reactPath ? path.join(opts.slockRoot, reactPath) : "");
   const androidExact = sourceRecord(opts.mobileRoot, android.path ? path.join(opts.mobileRoot, android.path) : "");
-  const reactComponents = [...(react.components || []), entry?.reactPathHint];
-  const androidComponents = [...(android.components || []), entry?.androidCaseHint];
+  const derivedNeedles = caseIdNeedles(entry?.id);
+  const reactComponents = [...(react.components || []), entry?.reactPathHint, ...derivedNeedles];
+  const androidComponents = [...(android.components || []), entry?.androidCaseHint, ...derivedNeedles];
   const androidSeedSources = sourceMatches(path.join(opts.mobileRoot, "compose"), androidComponents, 6);
   const androidExpandedSources = sourceMatches(
     path.join(opts.mobileRoot, "compose"),
@@ -262,10 +288,13 @@ export function collectSources(entry, opts) {
   const androidComponentSources = [...androidSeedSources, ...androidExpandedSources]
     .map((source) => ({ ...source, path: `compose/${source.path}` }));
   return {
+    // RUI primitives are ranked before slock app files: for library cases the
+    // primitive IS the truth source, and the app-level exact path already
+    // leads the list when the manifest provides one.
     react: capSources(dedupeSources([
       reactExact,
-      ...sourceMatches(opts.slockRoot, reactComponents, 4),
       ...sourceMatches(opts.ruiRoot, reactComponents, 5),
+      ...sourceMatches(opts.slockRoot, reactComponents, 4),
     ])),
     android: capSources(dedupeSources([
       androidExact,
