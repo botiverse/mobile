@@ -202,19 +202,43 @@ function sourceMatches(root, needles, limit = 5) {
     return [text.split(/[/.]/).pop(), ...text.split(/[#:+/\s]/)].filter((part) => part && part.length >= 4);
   }))];
   if (!normalized.length) return [];
-  const matches = [];
-  for (const file of walkFiles(root)) {
+  // Files NAMED after a needle are the component itself; files whose name
+  // merely embeds a needle (SettingsSegmentedControls.tsx) are close variants;
+  // files only CONTAINING a needle are often harness/consumer noise. A single
+  // walk-order pass let that noise exhaust the match limit before ever
+  // reaching e.g. packages/web/src/components/ui/ProgressBar.tsx, so matches
+  // are ranked exact-name > name-contains > content-contains.
+  const files = walkFiles(root);
+  const nameTier = (file) => {
     const basename = path.basename(file, path.extname(file));
-    const basenameHit = normalized.some((needle) => basename === needle);
-    let content = "";
-    if (!basenameHit) {
-      content = fs.readFileSync(file, "utf8");
-      if (!normalized.some((needle) => content.includes(needle))) continue;
+    if (normalized.some((needle) => basename === needle)) return 1;
+    if (normalized.some((needle) => basename.includes(needle))) return 2;
+    return 0;
+  };
+  const matches = [];
+  for (const tier of [1, 2]) {
+    for (const file of files) {
+      if (nameTier(file) !== tier) continue;
+      matches.push({ source: sourceRecord(root, file), tier });
+      if (matches.length >= limit) return matches.filter((match) => match.source);
     }
-    matches.push(sourceRecord(root, file));
+  }
+  for (const file of files) {
+    if (nameTier(file) !== 0) continue;
+    const content = fs.readFileSync(file, "utf8");
+    if (!normalized.some((needle) => content.includes(needle))) continue;
+    matches.push({ source: sourceRecord(root, file), tier: 3 });
     if (matches.length >= limit) break;
   }
-  return matches.filter(Boolean);
+  return matches.filter((match) => match.source);
+}
+
+// Merge matches from several roots by tier so an exact-name component file in
+// one repo outranks content-noise from another; within a tier the earlier
+// root wins (stable sort). Without this, rui content matches consumed the
+// prompt budget ahead of slock's exact ProgressBar.tsx.
+function rankedSources(rootMatches) {
+  return rootMatches.flat().sort((a, b) => a.tier - b.tier).map((match) => match.source);
 }
 
 export function isForbiddenSourcePath(sourcePath) {
@@ -231,17 +255,42 @@ export function dedupeSources(sources) {
   });
 }
 
-export function capSources(sources, maxChars = 60_000) {
+// Per-file cap keeps one oversized file (e.g. SettingsPanel.tsx) from eating
+// the whole budget and evicting the small RUI primitives collected after it —
+// that eviction is how several fix-queue candidates ended refuted with
+// "authoritative source missing" despite the file existing.
+export function capSources(sources, maxChars = 60_000, perFileChars = 20_000) {
   const capped = [];
   let remaining = maxChars;
   for (const source of sources) {
     if (remaining <= 0) break;
-    const src = source.src.slice(0, remaining);
+    const src = source.src.slice(0, Math.min(remaining, perFileChars));
     if (!src) continue;
     capped.push({ ...source, src });
     remaining -= src.length;
   }
   return capped;
+}
+
+// Derive component-name needles from the case id itself so library primitives
+// are found even when the manifest hints omit them (e.g.
+// components.ui.segmented-control.states -> SegmentedControl in rui).
+// Single generic words (states/page/panel/...) are excluded because they match
+// half the tree and would exhaust the per-search file limit with noise.
+const CASE_NEEDLE_STOPWORDS = new Set([
+  "components", "screens", "states", "state", "page", "pages", "panel", "panels",
+  "default", "empty", "full", "screen", "item", "items", "view", "views", "open",
+  "closed", "home", "settings", "thread", "channel", "members", "results",
+]);
+export function caseIdNeedles(caseId) {
+  const needles = new Set();
+  for (const segment of String(caseId || "").split(".")) {
+    const words = segment.split("-").filter(Boolean);
+    const pascal = words.map((word) => word[0].toUpperCase() + word.slice(1)).join("");
+    if (words.length >= 2 && pascal.length >= 4) needles.add(pascal);
+    if (words.length === 1 && pascal.length >= 5 && !CASE_NEEDLE_STOPWORDS.has(words[0].toLowerCase())) needles.add(pascal);
+  }
+  return [...needles];
 }
 
 export function collectSources(entry, opts) {
@@ -251,21 +300,26 @@ export function collectSources(entry, opts) {
   const reactPath = react.path || reactHintPath;
   const reactExact = sourceRecord(opts.slockRoot, reactPath ? path.join(opts.slockRoot, reactPath) : "");
   const androidExact = sourceRecord(opts.mobileRoot, android.path ? path.join(opts.mobileRoot, android.path) : "");
-  const reactComponents = [...(react.components || []), entry?.reactPathHint];
-  const androidComponents = [...(android.components || []), entry?.androidCaseHint];
-  const androidSeedSources = sourceMatches(path.join(opts.mobileRoot, "compose"), androidComponents, 6);
-  const androidExpandedSources = sourceMatches(
+  const derivedNeedles = caseIdNeedles(entry?.id);
+  const reactComponents = [...(react.components || []), entry?.reactPathHint, ...derivedNeedles];
+  const androidComponents = [...(android.components || []), entry?.androidCaseHint, ...derivedNeedles];
+  const androidSeedSources = rankedSources([sourceMatches(path.join(opts.mobileRoot, "compose"), androidComponents, 6)]);
+  const androidExpandedSources = rankedSources([sourceMatches(
     path.join(opts.mobileRoot, "compose"),
     referencedUiIdentifiers(androidSeedSources, androidComponents),
     8,
-  );
+  )]);
   const androidComponentSources = [...androidSeedSources, ...androidExpandedSources]
     .map((source) => ({ ...source, path: `compose/${source.path}` }));
   return {
+    // rui and slock matches merge by tier (exact-name first across both
+    // repos, rui winning ties); the app-level exact manifest path still leads.
     react: capSources(dedupeSources([
       reactExact,
-      ...sourceMatches(opts.slockRoot, reactComponents, 4),
-      ...sourceMatches(opts.ruiRoot, reactComponents, 5),
+      ...rankedSources([
+        sourceMatches(opts.ruiRoot, reactComponents, 5),
+        sourceMatches(opts.slockRoot, reactComponents, 4),
+      ]),
     ])),
     android: capSources(dedupeSources([
       androidExact,
