@@ -4,8 +4,11 @@
 // This job deliberately stops before mutating product source. It claims a small,
 // bounded batch of open+verified+unassigned issues, derives React truth, asks M3
 // for a minimal Android patch, and submits that patch to three fresh adversarial
-// M3 reviewers. REFUTED issues receive the concrete flaw. UNREFUTED issues receive
-// an agent-ready handoff for targeted capture, visual_verify, and a draft PR.
+// reviewers. The review panel may be heterogeneous (PI_PANEL_MODELS, e.g.
+// 2x MiniMax-M3 + 1x qwen3.8-max-preview) so a same-model blind spot cannot
+// carry a 2/3 consensus alone. REFUTED issues receive the concrete flaw.
+// UNREFUTED issues receive an agent-ready handoff for targeted capture,
+// visual_verify, and a draft PR.
 
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -324,7 +327,7 @@ function parseJsonReply(message) {
   return { data: JSON.parse(match ? match[0] : text), raw: redactModelText(text) };
 }
 
-async function completeJson(models, model, prompt, maxTokens) {
+async function completeJson(models, model, prompt, maxTokens, callOpts = {}) {
   const attempts = [];
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     const controller = new AbortController();
@@ -333,7 +336,13 @@ async function completeJson(models, model, prompt, maxTokens) {
     try {
       const message = await models.complete(model,
         { messages: [{ role: "user", content: [{ type: "text", text: prompt }], timestamp: Date.now() }] },
-        { apiKey: process.env.MINIMAX_API_KEY || process.env.PI_API_KEY, maxTokens, signal: controller.signal, timeoutMs });
+        {
+          apiKey: callOpts.apiKey || process.env.MINIMAX_API_KEY || process.env.PI_API_KEY,
+          maxTokens,
+          signal: controller.signal,
+          timeoutMs,
+          ...(callOpts.reasoningEffort ? { reasoningEffort: callOpts.reasoningEffort } : {}),
+        });
       const parsed = parseJsonReply(message);
       attempts.push({ attempt, ok: true, raw: parsed.raw });
       return { data: parsed.data, usage: message.usage || null, attempts };
@@ -397,6 +406,40 @@ function reviewPrompt(candidate, truth, patchResult, voter) {
   ].join("\n\n");
 }
 
+// Panel voter specs. PI_PANEL_MODELS is a comma-separated provider/model list
+// whose length must equal the voter count; empty means every voter uses the
+// primary PI_PROVIDER/PI_MODEL. qwen-token-plan endpoints reject
+// enable_thinking=false, and their reasoning tokens share the completion
+// budget, so those voters run with reasoningEffort on and a larger cap.
+export function resolvePanelSpec(voters, env = process.env) {
+  const primary = {
+    provider: String(env.PI_PROVIDER || "minimax"),
+    modelName: String(env.PI_MODEL || "MiniMax-M3"),
+  };
+  const raw = String(env.PI_PANEL_MODELS || "").trim();
+  const entries = raw
+    ? raw.split(",").map((spec) => spec.trim()).filter(Boolean).map((spec) => {
+      const slash = spec.indexOf("/");
+      if (slash <= 0 || slash === spec.length - 1) throw new Error(`PI_PANEL_MODELS entry must be provider/model, got: ${spec}`);
+      return { provider: spec.slice(0, slash), modelName: spec.slice(slash + 1) };
+    })
+    : Array.from({ length: voters }, () => ({ ...primary }));
+  if (entries.length !== voters) throw new Error(`PI_PANEL_MODELS must list exactly ${voters} voters, got ${entries.length}`);
+  return entries.map((entry) => ({
+    ...entry,
+    label: `${entry.provider}/${entry.modelName}`,
+    reasoningEffort: entry.provider.startsWith("qwen-token-plan") ? "low" : null,
+    maxTokens: entry.provider.startsWith("qwen-token-plan") ? 8_192 : 2_048,
+  }));
+}
+
+export function panelApiKey(provider, env = process.env) {
+  const dedicated = env[`PI_API_KEY_${provider.toUpperCase().replace(/-/g, "_")}`];
+  if (dedicated) return dedicated;
+  if (provider === "minimax" || provider === "minimax-cn") return env.MINIMAX_API_KEY || env.PI_API_KEY;
+  return env.PI_API_KEY;
+}
+
 export function panelDecision(votes, threshold) {
   const valid = votes.filter((vote) => !vote.error);
   const refuted = valid.filter((vote) => vote.refuted).length;
@@ -410,7 +453,7 @@ function usageTokens(usage) {
     || Number(usage.inputTokens || usage.input_tokens || 0) + Number(usage.outputTokens || usage.output_tokens || 0);
 }
 
-async function processCandidate(candidate, opts, models, model) {
+async function processCandidate(candidate, opts, models, model, panel) {
   const usages = [];
   const audit = {};
   let truthCall;
@@ -437,13 +480,14 @@ async function processCandidate(candidate, opts, models, model) {
     return { verdict: "REVIEW", stage: "patch_scope", specificFlaw: scopeProblem, truth, patch: patchResult, audit, votes: [], tokenUsage: usages.reduce((sum, usage) => sum + usageTokens(usage), 0) };
   }
 
-  const votes = await Promise.all(Array.from({ length: opts.voters }, async (_, index) => {
+  const votes = await Promise.all(panel.map(async (entry, index) => {
     try {
-      const call = await completeJson(models, model, reviewPrompt(candidate, truth, patchResult, index + 1), 2_048);
+      const call = await completeJson(models, entry.model, reviewPrompt(candidate, truth, patchResult, index + 1), entry.maxTokens,
+        { apiKey: entry.apiKey, reasoningEffort: entry.reasoningEffort });
       usages.push(call.usage);
-      return { voter: index + 1, ...call.data, audit: call.attempts };
+      return { voter: index + 1, model: entry.label, ...call.data, audit: call.attempts };
     } catch (error) {
-      return { voter: index + 1, error: String(error?.message || error).slice(0, 300), audit: error.attempts || [] };
+      return { voter: index + 1, model: entry.label, error: String(error?.message || error).slice(0, 300), audit: error.attempts || [] };
     }
   }));
   const decision = panelDecision(votes, opts.threshold);
@@ -531,6 +575,15 @@ async function main() {
   const modelName = String(process.env.PI_MODEL || "MiniMax-M3");
   const model = models.getModel(provider, modelName);
   if (!model) throw new Error(`${provider}/${modelName} not found`);
+  // Fail closed before claiming any issue: a panel voter with a missing model
+  // or key must abort the run, not silently degrade to a smaller/same-model panel.
+  const panel = resolvePanelSpec(opts.voters).map((entry) => {
+    const panelModel = models.getModel(entry.provider, entry.modelName);
+    if (!panelModel) throw new Error(`panel model ${entry.label} not found`);
+    const apiKey = panelApiKey(entry.provider);
+    if (!apiKey) throw new Error(`no API key for panel provider ${entry.provider}; set PI_API_KEY_${entry.provider.toUpperCase().replace(/-/g, "_")}`);
+    return { ...entry, model: panelModel, apiKey };
+  });
 
   const runKey = `${process.env.GITHUB_RUN_ID || "local"}.${process.env.GITHUB_RUN_ATTEMPT || "1"}`;
   const baseProvenance = {
@@ -541,6 +594,7 @@ async function main() {
     analysisGeneratedAt: analysis.generatedAt || null,
     analysisSource: analysisRecord.provenance,
     model: `${provider}/${modelName}`,
+    panelModels: panel.map((entry) => entry.label),
     scriptSha256: scriptSha(),
     reservedTokens: DEFAULT_CASE_TOKEN_RESERVATION,
   };
@@ -579,7 +633,7 @@ async function main() {
         results.push({ issue: issue.number, caseId, ...result, provenance });
         continue;
       }
-      const result = await processCandidate(candidate, opts, models, model);
+      const result = await processCandidate(candidate, opts, models, model, panel);
       applyResult(issue, result, opts, provenance);
       results.push({ issue: issue.number, caseId, ...result, provenance });
     } catch (error) {

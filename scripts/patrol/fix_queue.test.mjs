@@ -4,8 +4,10 @@ import {
   capSources,
   dedupeSources,
   isEligibleIssue,
+  panelApiKey,
   panelDecision,
   patchScopeProblem,
+  resolvePanelSpec,
   resultComment,
   selectFixQueueIssues,
   sourceAuthorityProblem,
@@ -100,6 +102,48 @@ test("source prompt input is capped across files", () => {
     { path: "a.kt", src: "1234" },
     { path: "b.kt", src: "56" },
   ]);
+});
+
+test("panel spec defaults to the primary model for every voter", () => {
+  const spec = resolvePanelSpec(3, {});
+  assert.deepEqual(spec.map((entry) => entry.label), [
+    "minimax/MiniMax-M3",
+    "minimax/MiniMax-M3",
+    "minimax/MiniMax-M3",
+  ]);
+  assert.deepEqual(spec.map((entry) => entry.maxTokens), [2_048, 2_048, 2_048]);
+  assert.deepEqual(spec.map((entry) => entry.reasoningEffort), [null, null, null]);
+});
+
+test("heterogeneous panel spec parses per-voter models and thinking-endpoint quirks", () => {
+  const spec = resolvePanelSpec(3, {
+    PI_PANEL_MODELS: "minimax/MiniMax-M3, minimax/MiniMax-M3, qwen-token-plan-cn/qwen3.8-max-preview",
+  });
+  assert.deepEqual(spec.map((entry) => entry.label), [
+    "minimax/MiniMax-M3",
+    "minimax/MiniMax-M3",
+    "qwen-token-plan-cn/qwen3.8-max-preview",
+  ]);
+  // qwen token-plan mandates enable_thinking=true and reasoning shares the
+  // completion budget, so the voter needs effort on and a larger cap.
+  assert.equal(spec[2].reasoningEffort, "low");
+  assert.equal(spec[2].maxTokens, 8_192);
+  assert.equal(spec[0].reasoningEffort, null);
+  assert.equal(spec[0].maxTokens, 2_048);
+});
+
+test("panel spec fails closed on wrong count or malformed entries", () => {
+  assert.throws(() => resolvePanelSpec(3, { PI_PANEL_MODELS: "minimax/MiniMax-M3" }), /exactly 3 voters/);
+  assert.throws(() => resolvePanelSpec(3, { PI_PANEL_MODELS: "minimax,minimax/M3,qwen/x" }), /provider\/model/);
+  assert.throws(() => resolvePanelSpec(3, { PI_PANEL_MODELS: "minimax/,a/b,c/d" }), /provider\/model/);
+});
+
+test("panel api key prefers per-provider env, then legacy fallbacks", () => {
+  assert.equal(panelApiKey("qwen-token-plan-cn", { PI_API_KEY_QWEN_TOKEN_PLAN_CN: "qk", PI_API_KEY: "pk" }), "qk");
+  assert.equal(panelApiKey("qwen-token-plan-cn", { PI_API_KEY: "pk" }), "pk");
+  assert.equal(panelApiKey("minimax", { MINIMAX_API_KEY: "mk", PI_API_KEY: "pk" }), "mk");
+  assert.equal(panelApiKey("minimax", { PI_API_KEY: "pk" }), "pk");
+  assert.equal(panelApiKey("minimax", {}), undefined);
 });
 
 test("UNREFUTED handoff is explicit about targeted evidence, draft PR, and no auto merge", () => {
