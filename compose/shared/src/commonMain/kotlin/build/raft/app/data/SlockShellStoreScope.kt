@@ -76,6 +76,11 @@ internal data class SelectedServerSelection(
     val serverSlug: String?
 )
 
+internal data class SelectedServerSelectionUpdate(
+    val selection: SelectedServerSelection,
+    val changed: Boolean,
+)
+
 internal class SelectedServerStore internal constructor(
     val scope: SlockShellStoreScope,
     private val mutex: Mutex = Mutex(),
@@ -110,6 +115,28 @@ internal class SelectedServerStore internal constructor(
             setSelectedServerId(normalizedServerId)
             selectedServerSlug = serverSlug?.trim()?.takeIf { it.isNotBlank() }
             selection()
+        }
+
+    internal suspend fun selectIfAccountMatches(
+        expectedAccountId: String,
+        serverId: String?,
+        serverSlug: String?,
+    ): SelectedServerSelectionUpdate? =
+        mutex.withLock {
+            if (ownerUserId != null && ownerUserId != expectedAccountId) {
+                return@withLock null
+            }
+            val previous = selection()
+            ownerUserId = expectedAccountId
+            val normalizedServerId = serverId?.trim()?.takeIf { it.isNotBlank() }
+            selectionInitialized = true
+            setSelectedServerId(normalizedServerId)
+            selectedServerSlug = serverSlug?.trim()?.takeIf { it.isNotBlank() }
+            val updated = selection()
+            SelectedServerSelectionUpdate(
+                selection = updated,
+                changed = updated != previous,
+            )
         }
 
     internal suspend fun reconcile(session: StoredAuthSession): SelectedServerSelection =
@@ -194,6 +221,7 @@ internal class SlockShellAuthSessionStore(
     private val onProcessSessionCleared: suspend () -> Unit = {}
 ) : SlockAuthSessionStore, SlockAuthSessionEventSource {
     private val eventMutex = Mutex()
+    private val selectionMutationMutex = Mutex()
     private val events = MutableSharedFlow<AuthSessionEvent>(extraBufferCapacity = 64)
     private var eventGeneration = 0L
 
@@ -203,7 +231,9 @@ internal class SlockShellAuthSessionStore(
         (delegate as? SlockAuthSessionEventSource)?.let { source ->
             eventScope.launch {
                 source.authSessionEvents.collect { event ->
-                    emitAuthSessionEvent { generation -> event.withGeneration(generation) }
+                    selectionMutationMutex.withLock {
+                        emitAuthSessionEvent { generation -> event.withGeneration(generation) }
+                    }
                 }
             }
         }
@@ -274,6 +304,37 @@ internal class SlockShellAuthSessionStore(
         }
         delegate.readSession()?.let { selectedServerStore.reconcile(it) }
     }
+
+    override suspend fun selectServerIfAccountMatches(
+        expectedAccountId: String,
+        serverId: String,
+    ): StoredAuthSession? =
+        selectionMutationMutex.withLock {
+            val processSession =
+                delegate.selectServerIfAccountMatches(
+                    expectedAccountId = expectedAccountId,
+                    serverId = serverId,
+                ) ?: return@withLock null
+            val target = processSession.servers.firstOrNull { it.id == serverId } ?: return@withLock null
+            val update =
+                selectedServerStore.selectIfAccountMatches(
+                    expectedAccountId = expectedAccountId,
+                    serverId = target.id,
+                    serverSlug = target.slug,
+                ) ?: return@withLock null
+            (delegate as? SlockAuthServerSelectionMemory)?.saveRememberedServerSelection(
+                processSession.user,
+                StoredAuthServerSelection(serverId = target.id, serverSlug = target.slug),
+            )
+            if (update.changed) {
+                emitAuthSessionEvent { generation -> AuthSessionEvent.BindingMetadataChanged(generation) }
+            }
+            processSession.copy(
+                selectedServerId = update.selection.serverId,
+                selectedServerSlug = update.selection.serverSlug,
+                allowImplicitServerFallback = false,
+            )
+        }
 
     private suspend fun StoredAuthSession.withShellSelection(): StoredAuthSession {
         val selection = selectedServerStore.reconcile(this)

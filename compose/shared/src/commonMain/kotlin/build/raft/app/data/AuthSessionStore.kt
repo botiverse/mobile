@@ -122,6 +122,30 @@ interface SlockAuthSessionStore {
     }
 
     /**
+     * Atomically selects [serverId] only while the latest session still belongs to
+     * [expectedAccountId]. The target is resolved from the latest server list inside
+     * the metadata write, so a removed server or concurrent account switch fails
+     * closed instead of publishing a stale selection.
+     *
+     * Shell-scoped stores override this primitive so the same explicit action updates
+     * both the shell selection authority and the process next-launch default.
+     */
+    suspend fun selectServerIfAccountMatches(
+        expectedAccountId: String,
+        serverId: String,
+    ): StoredAuthSession? {
+        var selected: StoredAuthSession? = null
+        updateMetadata(expectedAccountId = expectedAccountId) { latest ->
+            val target = latest.servers.firstOrNull { it.id == serverId } ?: return@updateMetadata latest
+            latest.copy(
+                selectedServerId = target.id,
+                selectedServerSlug = target.slug,
+            ).also { selected = it }
+        }
+        return selected
+    }
+
+    /**
      * Applies a QA-bootstrap session mutation only while the complete immutable binding captured
      * by the caller is still current. The binding comparison runs inside [updateMetadata]'s store
      * write lock, so a same-account successor attempt cannot receive an older attempt's receipt,

@@ -879,18 +879,12 @@ class SharedAuthDataSource(
 
     suspend fun selectServer(serverId: String): SharedAuthResult<StoredAuthSession> {
         val session = sessionStore.readSession() ?: return SharedAuthResult.Unauthenticated
-        val selected = session.servers.firstOrNull { it.id == serverId }
-            ?: return SharedAuthResult.Failure(SharedAuthErrorCode.Unknown, "Server not found.")
-        // #466: selection is metadata — write it onto the LATEST session under the lock (keep latest
-        // tokens), preferring the server as it exists in the latest list.
-        var persisted: StoredAuthSession? = null
-        sessionStore.updateMetadata(expectedAccountId = session.user.id) { latest ->
-            val target = latest.servers.firstOrNull { it.id == serverId } ?: selected
-            latest.copy(selectedServerId = target.id, selectedServerSlug = target.slug).also { persisted = it }
-        }
-        val updated = persisted ?: return SharedAuthResult.Unauthenticated
-        updated.rememberSelectedServer(serverSelectionMemory)
-        return SharedAuthResult.Success(updated)
+        return selectStoredAuthServer(
+            sessionStore = sessionStore,
+            expectedSession = session,
+            serverId = serverId,
+            serverSelectionMemory = serverSelectionMemory,
+        )
     }
 
     suspend fun createServer(
@@ -931,19 +925,22 @@ class SharedAuthDataSource(
                 .ifEmpty { listOf(created) }
                 .orderedByServerOrder(loadServerOrderOrNull(session.bearer(), source = "create_server"))
         val selected = latestServers.firstOrNull { it.id == created.id } ?: created
-        // #466: server list + selection are metadata — apply onto the LATEST session under the lock
-        // (keep latest tokens) instead of whole-saving the captured snapshot.
+        // #466: update the server list on the LATEST session under the lock (keep latest tokens),
+        // then use the explicit selected-server primitive so shell and process selection authorities
+        // converge on the newly created server.
         var persisted: StoredAuthSession? = null
         sessionStore.updateMetadata(expectedAccountId = session.user.id) { latest ->
             latest.copy(
                 servers = latestServers,
-                selectedServerId = selected.id,
-                selectedServerSlug = selected.slug
             ).also { persisted = it }
         }
         val updated = persisted ?: return SharedAuthResult.Unauthenticated
-        updated.rememberSelectedServer(serverSelectionMemory)
-        return SharedAuthResult.Success(updated)
+        return selectStoredAuthServer(
+            sessionStore = sessionStore,
+            expectedSession = updated,
+            serverId = selected.id,
+            serverSelectionMemory = serverSelectionMemory,
+        )
     }
 
     suspend fun consumeQaBootstrap(request: QaBootstrapConsumeRequest): SharedAuthResult<StoredAuthSession> {
@@ -1315,6 +1312,27 @@ class SharedAuthDataSource(
                 null
             }
         }
+}
+
+internal suspend fun selectStoredAuthServer(
+    sessionStore: SlockAuthSessionStore,
+    expectedSession: StoredAuthSession,
+    serverId: String,
+    serverSelectionMemory: SlockAuthServerSelectionMemory? = null,
+): SharedAuthResult<StoredAuthSession> {
+    if (expectedSession.servers.none { it.id == serverId }) {
+        return SharedAuthResult.Failure(
+            SharedAuthErrorCode.Unknown,
+            "Server not found."
+        )
+    }
+    val updated =
+        sessionStore.selectServerIfAccountMatches(
+            expectedAccountId = expectedSession.user.id,
+            serverId = serverId,
+        ) ?: return SharedAuthResult.Unauthenticated
+    updated.rememberSelectedServer(serverSelectionMemory)
+    return SharedAuthResult.Success(updated)
 }
 
 private fun <T> AuthApiResult.Success<T>.toSharedAuthResult(): SharedAuthResult<T> = SharedAuthResult.Success(data)
