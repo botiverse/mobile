@@ -1,4 +1,4 @@
-name: Stamp failure diagnosis (independent M3)
+name: Stamp failure diagnosis (independent agent)
 
 on:
   workflow_dispatch:
@@ -25,11 +25,14 @@ jobs:
           STAMP_RUN_CASE_ID: ${{ inputs.stamp_run_case_id }}
           STAMP_URL: ${{ secrets.STAMP_URL }}
           STAMP_REVIEW_TOKEN: ${{ secrets.STAMP_REVIEW_TOKEN }}
-          PI_API_KEY: ${{ secrets.PI_API_KEY }}
-          SLOCK_PI_AI_MODULE: ${{ runner.temp }}/m3/node_modules/@earendil-works/pi-ai/dist/providers/all.js
+          PI_API_KEY: ${{ secrets.QWEN_TOKEN_PLAN_CN_API_KEY }}
+          QWEN_TOKEN_PLAN_CN_API_KEY: ${{ secrets.QWEN_TOKEN_PLAN_CN_API_KEY }}
+          PI_PROVIDER: ${{ vars.PI_REVIEW_PROVIDER || 'qwen-token-plan-cn' }}
+          PI_MODEL: ${{ vars.PI_REVIEW_MODEL || 'qwen3.8-max-preview' }}
+          SLOCK_PI_AI_MODULE: ${{ runner.temp }}/agent-review/node_modules/@earendil-works/pi-ai/dist/providers/all.js
         run: |
-          mkdir -p "$RUNNER_TEMP/m3"
-          npm install --prefix "$RUNNER_TEMP/m3" --no-save @earendil-works/pi-ai
+          mkdir -p "$RUNNER_TEMP/agent-review"
+          npm install --prefix "$RUNNER_TEMP/agent-review" --no-save @earendil-works/pi-ai@0.81.1
           node scripts/qa/failure_diagnosis_agent.mjs --run-case-id "$STAMP_RUN_CASE_ID" --out failure-diagnosis.json
       - uses: actions/upload-artifact@v4
         if: always()

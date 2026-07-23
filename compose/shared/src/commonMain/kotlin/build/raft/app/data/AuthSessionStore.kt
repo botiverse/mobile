@@ -668,6 +668,7 @@ class KeyValueAuthSessionStore(
                 previous != fingerprint
             }
         storeEvents.emit(AuthSessionEvent.Authenticated(generation))
+        qaCredentialIdentityDiagnostic(session, generation)?.let { diagnosticsLogger(it) }
         if (changed) {
             changes.emit(fingerprint)
         }
@@ -688,6 +689,7 @@ class KeyValueAuthSessionStore(
             }
         storeEvents.emit(AuthSessionEvent.Authenticated(generation))
         val updated = requireNotNull(persisted)
+        qaCredentialIdentityDiagnostic(updated, generation)?.let { diagnosticsLogger(it) }
         if (changed) {
             changes.emit(updated.authSessionClearFingerprint())
         }
@@ -997,6 +999,17 @@ private fun String.toSafeAuthSessionDiagnosticsToken(): String =
         .ifBlank { "unknown" }
         .replace(Regex("""[^A-Za-z0-9_.:/-]"""), "_")
         .take(96)
+
+internal fun qaCredentialIdentityDiagnostic(session: StoredAuthSession, authGeneration: Long): String? {
+    val principalId = session.user.id
+    if (
+        authGeneration <= 0L ||
+        !principalId.matches(Regex("[A-Za-z0-9][A-Za-z0-9._:@/-]{0,255}"))
+    ) {
+        return null
+    }
+    return "QA_CREDENTIAL_IDENTITY version=1 principalId=$principalId authGeneration=$authGeneration"
+}
 
 private fun classifyAuthSessionClearReason(reason: String): AuthSessionClearReason =
     // Explicit user logout / account switch → an authenticated unbind is still possible (the #560

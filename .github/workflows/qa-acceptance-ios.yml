@@ -295,6 +295,44 @@ jobs:
       - name: Install sharp (evidence annotation)
         run: npm i --no-save sharp@0.33.5 --no-audit --no-fund
 
+      - name: Claim Stamp run case and resolve auth mode
+        id: stamp-claim
+        if: ${{ inputs.stamp_run_case_id != '' }}
+        env:
+          STAMP_RUN_CASE_ID: ${{ inputs.stamp_run_case_id }}
+          STAMP_URL: ${{ secrets.STAMP_URL }}
+          STAMP_TOKEN: ${{ secrets.STAMP_TOKEN }}
+        run: |
+          bash scripts/qa/stamp_report.sh claim
+          spec="$RUNNER_TEMP/stamp-bootstrap-spec-${STAMP_RUN_CASE_ID}.json"
+          required=$(node -e 'const fs=require("fs"),v=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));process.stdout.write(v.required===true?"true":"false")' "$spec")
+          echo "bootstrap_required=$required" >> "$GITHUB_OUTPUT"
+          echo "STAMP_BOOTSTRAP_REQUIRED=$required" >> "$GITHUB_ENV"
+
+      - name: Expose legacy UI-login credentials
+        if: ${{ inputs.stamp_run_case_id == '' || steps.stamp-claim.outputs.bootstrap_required != 'true' }}
+        env:
+          QA_TEST_EMAIL_SECRET: ${{ secrets.QA_TEST_EMAIL }}
+          QA_TEST_PASSWORD_SECRET: ${{ secrets.QA_TEST_PASSWORD }}
+        run: |
+          python3 - <<'PY'
+          import os, uuid
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as out:
+              for name in ("QA_TEST_EMAIL", "QA_TEST_PASSWORD"):
+                  value = os.environ[f"{name}_SECRET"]
+                  delimiter = f"SLOCK_{uuid.uuid4().hex}"
+                  out.write(f"{name}<<{delimiter}\n{value}\n{delimiter}\n")
+          PY
+
+      - name: Freeze legacy credential identity receipt
+        if: ${{ inputs.stamp_run_case_id != '' && steps.stamp-claim.outputs.bootstrap_required != 'true' }}
+        env:
+          STAMP_RUN_CASE_ID: ${{ inputs.stamp_run_case_id }}
+          STAMP_URL: ${{ secrets.STAMP_URL }}
+          STAMP_TOKEN: ${{ secrets.STAMP_TOKEN }}
+          QA_TEST_EMAIL: ${{ env.QA_TEST_EMAIL }}
+        run: bash scripts/qa/stamp_report.sh credential-receipt
+
       - name: Start loop harness (background)
         working-directory: compose/iosApp
         run: |
@@ -320,17 +358,16 @@ jobs:
         env:
           PI_API_KEY: ${{ secrets.PI_API_KEY }}
           SLOCK_PI_AI_MODULE: ${{ runner.temp }}/m3/node_modules/@earendil-works/pi-ai/dist/providers/all.js
-          QA_TEST_EMAIL: ${{ secrets.QA_TEST_EMAIL }}
-          QA_TEST_PASSWORD: ${{ secrets.QA_TEST_PASSWORD }}
+          QA_TEST_EMAIL: ${{ env.QA_TEST_EMAIL }}
+          QA_TEST_PASSWORD: ${{ env.QA_TEST_PASSWORD }}
           QA_GOAL: ${{ inputs.goal || '' }}
           QA_MAX_TURNS: ${{ inputs.max_turns || '40' }}
           QA_MAX_MINUTES: ${{ inputs.max_minutes || '20' }}
           QA_NO_PROGRESS_TURNS: ${{ inputs.no_progress_turns || '8' }}
           STAMP_RUN_CASE_ID: ${{ inputs.stamp_run_case_id || '' }}
-          STAMP_URL: ${{ secrets.STAMP_URL }}
-          STAMP_TOKEN: ${{ secrets.STAMP_TOKEN }}
+          STAMP_URL: ${{ inputs.stamp_run_case_id != '' && secrets.STAMP_URL || '' }}
+          STAMP_TOKEN: ${{ inputs.stamp_run_case_id != '' && secrets.STAMP_TOKEN || '' }}
         run: |
-          bash scripts/qa/stamp_report.sh claim
           mkdir -p qa-evidence
           cp "$GITHUB_WORKSPACE/build-info-ios.json" qa-evidence/build-info.json 2>/dev/null || true
           # BSD date (macOS) has no %3N — compose ms from seconds instead.
@@ -355,8 +392,8 @@ jobs:
       - name: Run deterministic repro
         if: ${{ inputs.mode == 'deterministic' }}
         env:
-          QA_TEST_EMAIL: ${{ secrets.QA_TEST_EMAIL }}
-          QA_TEST_PASSWORD: ${{ secrets.QA_TEST_PASSWORD }}
+          QA_TEST_EMAIL: ${{ env.QA_TEST_EMAIL }}
+          QA_TEST_PASSWORD: ${{ env.QA_TEST_PASSWORD }}
         run: |
           mkdir -p qa-evidence
           cp "$GITHUB_WORKSPACE/build-info-ios.json" qa-evidence/build-info.json 2>/dev/null || true
@@ -475,6 +512,7 @@ jobs:
           STAMP_RUN_CASE_ID: ${{ inputs.stamp_run_case_id || '' }}
           STAMP_URL: ${{ secrets.STAMP_URL }}
           STAMP_TOKEN: ${{ secrets.STAMP_TOKEN }}
+          QA_TEST_EMAIL: ${{ secrets.QA_TEST_EMAIL }}
         run: bash scripts/qa/stamp_report.sh report qa-evidence
 
       - name: Upload evidence
@@ -499,3 +537,13 @@ jobs:
           fi
           echo "Evidence: qa-acceptance-ios-evidence artifact (per-step screenshots + steps.jsonl + xcodebuild-loop.log + system-log-raft.txt + crashes/*.ips + *.xcresult)." >> "$GITHUB_STEP_SUMMARY"
           exit "$rc"
+
+      - name: Close claimed Stamp attempt after workflow failure
+        if: ${{ failure() && inputs.stamp_run_case_id != '' }}
+        env:
+          STAMP_RUN_CASE_ID: ${{ inputs.stamp_run_case_id }}
+          STAMP_URL: ${{ secrets.STAMP_URL }}
+          STAMP_TOKEN: ${{ secrets.STAMP_TOKEN }}
+          STAMP_POSTCLAIM_ERROR_PHASE: ios_workflow
+          STAMP_POSTCLAIM_ERROR_REASON: iOS workflow failed after Stamp dispatch or claim
+        run: bash scripts/qa/stamp_report.sh workflow-error qa-evidence

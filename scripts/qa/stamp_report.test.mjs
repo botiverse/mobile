@@ -96,6 +96,163 @@ printf '{"claim_token":"lease-token"}' > "$out"
   assert.equal(fs.readFileSync(path.join(runnerTemp, "stamp-claim-rc-frozen"), "utf8"), "lease-token");
 });
 
+test("legacy credential phase freezes the actual CI login email after claim without exposing password", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "stamp-credential-"));
+  const evidence = path.join(root, "qa-evidence");
+  const bin = path.join(root, "bin");
+  const runnerTemp = path.join(root, "runner-temp");
+  fs.mkdirSync(evidence);
+  fs.mkdirSync(bin);
+  fs.mkdirSync(runnerTemp);
+  const count = path.join(root, "count");
+  fs.writeFileSync(count, "0");
+  fs.writeFileSync(path.join(bin, "curl"), `#!/usr/bin/env bash
+out=""; payload=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -o) out="$2"; shift 2;;
+    --data-binary) payload="$2"; shift 2;;
+    *) shift;;
+  esac
+done
+n=$(( $(cat "${count}") + 1 )); echo "$n" > "${count}"
+cp "\${payload#@}" "${root}/payload-$n.json"
+if [ -n "$out" ]; then printf '{"claim_token":"lease-token"}' > "$out"; fi
+`, { mode: 0o755 });
+
+  execFileSync("bash", [new URL("./stamp_report.sh", import.meta.url).pathname, "claim", "qa-evidence"], {
+    cwd: root,
+    env: {
+      ...process.env,
+      PATH: `${bin}:${path.dirname(process.execPath)}:${process.env.PATH}`,
+      RUNNER_TEMP: runnerTemp,
+      STAMP_RUN_CASE_ID: "rc-email",
+      STAMP_URL: "https://stamp.test",
+      STAMP_TOKEN: "test-token",
+      GITHUB_SHA: "source",
+      GITHUB_RUN_ID: "123",
+      GITHUB_REPOSITORY: "botiverse/mobile",
+      STAMP_VERIFIED_SOURCE_COMMIT: "source",
+      STAMP_VERIFIED_ARTIFACT_SHA256: "sha",
+      STAMP_VERIFIED_APP_VERSION: "1.0",
+      STAMP_VERIFIED_VERSION_CODE: "1",
+      STAMP_VERIFIED_PACKAGE_ID: "build.raft.app",
+      QA_TEST_EMAIL: "qa@example.test",
+      QA_TEST_PASSWORD: "must-not-appear",
+    },
+  });
+  assert.equal(fs.readFileSync(count, "utf8").trim(), "1", "claim itself never posts executor identity");
+  execFileSync("bash", [new URL("./stamp_report.sh", import.meta.url).pathname, "credential-receipt", "qa-evidence"], {
+    cwd: root,
+    env: {
+      ...process.env,
+      PATH: `${bin}:${path.dirname(process.execPath)}:${process.env.PATH}`,
+      RUNNER_TEMP: runnerTemp,
+      STAMP_RUN_CASE_ID: "rc-email",
+      STAMP_URL: "https://stamp.test",
+      STAMP_TOKEN: "test-token",
+      GITHUB_RUN_ID: "123",
+      GITHUB_REPOSITORY: "botiverse/mobile",
+      QA_TEST_EMAIL: "qa@example.test",
+      QA_TEST_PASSWORD: "must-not-appear",
+    },
+  });
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(root, "payload-2.json"), "utf8")), {
+    login_email: "qa@example.test",
+    stable_subject: null,
+  });
+  assert.equal(fs.readFileSync(path.join(root, "payload-2.json"), "utf8").includes("must-not-appear"), false);
+});
+
+test("legacy credential phase failure preserves the claim token for workflow-error cleanup", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "stamp-credential-fail-"));
+  const evidence = path.join(root, "qa-evidence");
+  const bin = path.join(root, "bin");
+  const runnerTemp = path.join(root, "runner-temp");
+  fs.mkdirSync(evidence);
+  fs.mkdirSync(bin);
+  fs.mkdirSync(runnerTemp);
+  const count = path.join(root, "count");
+  fs.writeFileSync(count, "0");
+  fs.writeFileSync(path.join(bin, "curl"), `#!/usr/bin/env bash
+out=""
+while [ "$#" -gt 0 ]; do case "$1" in -o) out="$2"; shift 2;; *) shift;; esac; done
+n=$(( $(cat "${count}") + 1 )); echo "$n" > "${count}"
+if [ "$n" -eq 1 ]; then printf '{"claim_token":"lease-token"}' > "$out"; exit 0; fi
+exit 22
+`, { mode: 0o755 });
+  execFileSync("bash", [new URL("./stamp_report.sh", import.meta.url).pathname, "claim", "qa-evidence"], {
+    cwd: root,
+    env: {
+      ...process.env,
+      PATH: `${bin}:${path.dirname(process.execPath)}:${process.env.PATH}`,
+      RUNNER_TEMP: runnerTemp,
+      STAMP_RUN_CASE_ID: "rc-email-fail",
+      STAMP_URL: "https://stamp.test",
+      STAMP_TOKEN: "test-token",
+      GITHUB_SHA: "source",
+      GITHUB_RUN_ID: "123",
+      GITHUB_REPOSITORY: "botiverse/mobile",
+      STAMP_VERIFIED_SOURCE_COMMIT: "source",
+      STAMP_VERIFIED_ARTIFACT_SHA256: "sha",
+      STAMP_VERIFIED_APP_VERSION: "1.0",
+      STAMP_VERIFIED_VERSION_CODE: "1",
+      STAMP_VERIFIED_PACKAGE_ID: "build.raft.app",
+      QA_TEST_EMAIL: "qa@example.test",
+    },
+  });
+  assert.throws(() => execFileSync("bash", [new URL("./stamp_report.sh", import.meta.url).pathname, "credential-receipt", "qa-evidence"], {
+    cwd: root,
+    env: {
+      ...process.env,
+      PATH: `${bin}:${path.dirname(process.execPath)}:${process.env.PATH}`,
+      RUNNER_TEMP: runnerTemp,
+      STAMP_RUN_CASE_ID: "rc-email-fail",
+      STAMP_URL: "https://stamp.test",
+      STAMP_TOKEN: "test-token",
+      GITHUB_RUN_ID: "123",
+      GITHUB_REPOSITORY: "botiverse/mobile",
+      QA_TEST_EMAIL: "qa@example.test",
+    },
+    stdio: "pipe",
+  }));
+  assert.equal(fs.readFileSync(path.join(runnerTemp, "stamp-claim-rc-email-fail"), "utf8"), "lease-token");
+});
+
+test("bootstrap claim and credential phase make zero executor credential-receipt calls", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "stamp-bootstrap-no-receipt-"));
+  const bin = path.join(root, "bin");
+  const runnerTemp = path.join(root, "runner-temp");
+  fs.mkdirSync(bin); fs.mkdirSync(runnerTemp); fs.mkdirSync(path.join(root, "qa-evidence"));
+  const calls = path.join(root, "calls");
+  fs.writeFileSync(calls, "0");
+  fs.writeFileSync(path.join(bin, "curl"), `#!/usr/bin/env bash
+out=""
+while [ "$#" -gt 0 ]; do case "$1" in -o) out="$2"; shift 2;; *) shift;; esac; done
+n=$(( $(cat "${calls}") + 1 )); echo "$n" > "${calls}"
+printf '%s' '{"run_case_id":"rc-bootstrap","claim_token":"lease-token","auth_bootstrap":{"required":true,"contract_version":"qa-bootstrap-login/v1"}}' > "$out"
+`, { mode: 0o755 });
+  const env = {
+    ...process.env,
+    PATH: `${bin}:${path.dirname(process.execPath)}:${process.env.PATH}`,
+    RUNNER_TEMP: runnerTemp,
+    STAMP_RUN_CASE_ID: "rc-bootstrap",
+    STAMP_URL: "https://stamp.test",
+    STAMP_TOKEN: "test-token",
+    GITHUB_RUN_ID: "123",
+    GITHUB_REPOSITORY: "botiverse/mobile",
+    STAMP_VERIFIED_SOURCE_COMMIT: "source",
+    STAMP_VERIFIED_ARTIFACT_SHA256: "sha",
+    STAMP_VERIFIED_APP_VERSION: "1.0",
+    STAMP_VERIFIED_VERSION_CODE: "1",
+    STAMP_VERIFIED_PACKAGE_ID: "build.raft.app",
+    QA_TEST_EMAIL: "qa@example.test",
+  };
+  execFileSync("bash", [new URL("./stamp_report.sh", import.meta.url).pathname, "claim", "qa-evidence"], { cwd: root, env });
+  execFileSync("bash", [new URL("./stamp_report.sh", import.meta.url).pathname, "credential-receipt", "qa-evidence"], { cwd: root, env });
+  assert.equal(fs.readFileSync(calls, "utf8").trim(), "1", "only claim may call Stamp");
+});
+
 test("report reads a relative verdict path and freezes scope before writes", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "stamp-report-"));
   const evidence = path.join(root, "qa-evidence");
@@ -138,6 +295,147 @@ test("report reads a relative verdict path and freezes scope before writes", () 
   assert.match(raw, /[?&]step=19(?:&|\s)/);
   assert.notEqual(new URL(annotated.match(/https:\/\/\S+/)[0]).searchParams.get("seq"), new URL(raw.match(/https:\/\/\S+/)[0]).searchParams.get("seq"));
   assert.match(calls.at(-1), /\/verdict/);
+});
+
+test("evidence reporting binds one app-scoped stable principal to the frozen email", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "stamp-subject-"));
+  const evidence = path.join(root, "qa-evidence");
+  const bin = path.join(root, "bin");
+  const runnerTemp = path.join(root, "runner-temp");
+  fs.mkdirSync(evidence);
+  fs.mkdirSync(bin);
+  fs.mkdirSync(runnerTemp);
+  fs.writeFileSync(path.join(evidence, "logcat.txt"), "07-23 I/SlockSharedAuth: shared_auth_session QA_CREDENTIAL_IDENTITY version=1 principalId=user-123 authGeneration=9\n");
+  fs.writeFileSync(path.join(evidence, "verdict.json"), JSON.stringify({
+    verdict: "harness",
+    reason: "fixture setup",
+    log_scope: { filtered: true, package_id: "build.raft.app", pids: [1234], generation: "99:1" },
+  }));
+  fs.writeFileSync(path.join(runnerTemp, "stamp-claim-rc-subject"), "lease-token", { mode: 0o600 });
+  fs.writeFileSync(path.join(runnerTemp, "stamp-bootstrap-spec-rc-subject.json"), JSON.stringify({ required: false }), { mode: 0o600 });
+  const receipt = path.join(root, "receipt.json");
+  fs.writeFileSync(path.join(bin, "curl"), `#!/usr/bin/env bash
+args="$*"; payload=""
+while [ "$#" -gt 0 ]; do case "$1" in --data-binary) payload="$2"; shift 2;; *) shift;; esac; done
+if [[ "$args" == *credential-receipt* ]]; then cp "\${payload#@}" "${receipt}"; fi
+exit 0
+`, { mode: 0o755 });
+  execFileSync("bash", [new URL("./stamp_report.sh", import.meta.url).pathname, "report-evidence", "qa-evidence"], {
+    cwd: root,
+    env: {
+      ...process.env,
+      PATH: `${bin}:${path.dirname(process.execPath)}:${process.env.PATH}`,
+      RUNNER_TEMP: runnerTemp,
+      STAMP_RUN_CASE_ID: "rc-subject",
+      STAMP_URL: "https://stamp.test",
+      STAMP_TOKEN: "test-token",
+      GITHUB_RUN_ID: "99",
+      GITHUB_REPOSITORY: "botiverse/mobile",
+      QA_TEST_EMAIL: "qa@example.test",
+      QA_TEST_PASSWORD: "must-not-appear",
+    },
+  });
+  assert.deepEqual(JSON.parse(fs.readFileSync(receipt, "utf8")), {
+    login_email: "qa@example.test",
+    stable_subject: "user-123",
+  });
+});
+
+test("evidence reporting ignores forged model and broad-system subjects and binds only after scope freeze", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "stamp-subject-forgery-"));
+  const evidence = path.join(root, "qa-evidence");
+  const bin = path.join(root, "bin");
+  const runnerTemp = path.join(root, "runner-temp");
+  fs.mkdirSync(evidence);
+  fs.mkdirSync(bin);
+  fs.mkdirSync(runnerTemp);
+  fs.writeFileSync(path.join(evidence, "logcat.txt"), "rendered message body principalId=attacker-user\n");
+  fs.writeFileSync(path.join(evidence, "system-log-raft.txt"), "foreign process principalId=foreign-user\n");
+  fs.writeFileSync(path.join(evidence, "session.jsonl"), '{"assistant":"principalId=forged-user"}\n');
+  fs.writeFileSync(path.join(evidence, "verdict.json"), JSON.stringify({
+    verdict: "harness",
+    reason: "fixture setup",
+    log_scope: { filtered: true, package_id: "build.raft.app", pids: [1234], generation: "99:1" },
+  }));
+  fs.writeFileSync(path.join(runnerTemp, "stamp-claim-rc-forgery"), "lease-token", { mode: 0o600 });
+  fs.writeFileSync(path.join(runnerTemp, "stamp-bootstrap-spec-rc-forgery.json"), JSON.stringify({ required: false }), { mode: 0o600 });
+  const calls = path.join(root, "calls");
+  const receipt = path.join(root, "receipt.json");
+  fs.writeFileSync(path.join(bin, "curl"), `#!/usr/bin/env bash
+args="$*"; payload=""
+while [ "$#" -gt 0 ]; do case "$1" in --data-binary) payload="$2"; shift 2;; *) shift;; esac; done
+printf '%s\n' "$args" >> "${calls}"
+if [[ "$args" == *credential-receipt* ]]; then cp "\${payload#@}" "${receipt}"; fi
+exit 0
+`, { mode: 0o755 });
+  execFileSync("bash", [new URL("./stamp_report.sh", import.meta.url).pathname, "report-evidence", "qa-evidence"], {
+    cwd: root,
+    env: {
+      ...process.env,
+      PATH: `${bin}:${path.dirname(process.execPath)}:${process.env.PATH}`,
+      RUNNER_TEMP: runnerTemp,
+      STAMP_RUN_CASE_ID: "rc-forgery",
+      STAMP_URL: "https://stamp.test",
+      STAMP_TOKEN: "test-token",
+      GITHUB_RUN_ID: "99",
+      GITHUB_REPOSITORY: "botiverse/mobile",
+      QA_TEST_EMAIL: "qa@example.test",
+    },
+  });
+  assert.deepEqual(JSON.parse(fs.readFileSync(receipt, "utf8")), {
+    login_email: "qa@example.test",
+    stable_subject: null,
+  });
+  const orderedCalls = fs.readFileSync(calls, "utf8").trim().split("\n");
+  assert.ok(orderedCalls.findIndex((line) => line.includes("execution-scope")) < orderedCalls.findIndex((line) => line.includes("credential-receipt")));
+});
+
+test("iOS workflow terminalizes any post-claim failure and Qwen panel is the default", () => {
+  const ios = fs.readFileSync(new URL("../../.github/workflows/qa-acceptance-ios.yml", import.meta.url), "utf8");
+  assert.match(ios, /Close claimed Stamp attempt after workflow failure/);
+  assert.match(ios, /failure\(\).*inputs\.stamp_run_case_id != ''/);
+  assert.match(ios, /stamp_report\.sh workflow-error qa-evidence/);
+  const panel = fs.readFileSync(new URL("../../.github/workflows/qa-review-panel.yml", import.meta.url), "utf8");
+  assert.match(panel, /@earendil-works\/pi-ai@0\.81\.1/);
+  assert.match(panel, /PI_PROVIDER:.*qwen-token-plan-cn/);
+  assert.match(panel, /PI_MODEL:.*qwen3\.8-max-preview/);
+  assert.match(panel, /QWEN_TOKEN_PLAN_CN_API_KEY/);
+  assert.match(panel, /max-parallel: 1/);
+  assert.match(panel, /timeout-minutes: 30/);
+  assert.doesNotMatch(panel, /m3-review-/);
+  const reviewer = fs.readFileSync(new URL("./review_agent.mjs", import.meta.url), "utf8");
+  assert.match(reviewer, /attempt <= 2/);
+  assert.match(reviewer, /timeoutMs: 600000/);
+  assert.match(reviewer, /maxTokens: 8000/);
+  assert.match(reviewer, /reasoningEffort: "low"/);
+  assert.match(reviewer, /for \(const ev of reviewedEvidence\) await bytesFor\(ev\)/);
+  const diagnosisAgent = fs.readFileSync(new URL("./failure_diagnosis_agent.mjs", import.meta.url), "utf8");
+  assert.match(diagnosisAgent, /reasoningEffort: "low"/);
+  assert.match(diagnosisAgent, /maxTokens: 8000/);
+  const diagnosis = fs.readFileSync(new URL("../../.github/workflows/qa-failure-diagnosis.yml", import.meta.url), "utf8");
+  assert.match(diagnosis, /@earendil-works\/pi-ai@0\.81\.1/);
+  assert.match(diagnosis, /PI_PROVIDER:.*qwen-token-plan-cn/);
+  assert.match(diagnosis, /PI_MODEL:.*qwen3\.8-max-preview/);
+  assert.match(diagnosis, /QWEN_TOKEN_PLAN_CN_API_KEY/);
+});
+
+test("Android and iOS freeze legacy email before execution and expose none for bootstrap", () => {
+  for (const workflow of ["qa-acceptance.yml", "qa-acceptance-ios.yml"]) {
+    const source = fs.readFileSync(new URL(`../../.github/workflows/${workflow}`, import.meta.url), "utf8");
+    const claim = source.indexOf("name: Claim Stamp run case and resolve auth mode");
+    const expose = source.indexOf("name: Expose legacy UI-login credentials");
+    const receipt = source.indexOf("name: Freeze legacy credential identity receipt");
+    const execute = source.indexOf("name: Run acceptance agent");
+    assert.ok(claim >= 0 && expose > claim && receipt > expose && execute > receipt, workflow);
+    assert.equal(source.slice(claim, expose).includes("QA_TEST_EMAIL"), false, `${workflow} claim has no credential identity`);
+    assert.match(source.slice(expose, receipt), /bootstrap_required != 'true'/);
+    const receiptBlock = source.slice(receipt, execute);
+    assert.match(receiptBlock, /bootstrap_required != 'true'/);
+    assert.equal((receiptBlock.match(/stamp_report\.sh credential-receipt/g) ?? []).length, 1);
+    const executeBlock = source.slice(execute, source.indexOf("\n      - name:", execute + 1));
+    assert.match(executeBlock, /STAMP_URL:.*stamp_run_case_id != ''/);
+    assert.match(executeBlock, /STAMP_TOKEN:.*stamp_run_case_id != ''/);
+  }
 });
 
 test("bootstrap reporting enforces ready evidence, torn-down verdict, and no post-terminal evidence retry", () => {

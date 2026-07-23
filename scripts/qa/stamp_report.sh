@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Report an acceptance run's evidence + verdict back to Stamp
 # (https://raft-app-stamp.botiverse.dev). No-op unless STAMP_RUN_CASE_ID is set.
-# Usage: stamp_report.sh <phase: dispatch-start|dispatch-error|claim|report-evidence|report-verdict|report> <evidence-dir> [prerequisite-rc]
+# Usage: stamp_report.sh <phase: dispatch-start|dispatch-error|claim|credential-receipt|report-evidence|report-verdict|report> <evidence-dir> [prerequisite-rc]
 set -u
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
 PHASE="${1:-report}"
 EV="${2:-qa-evidence}"
 [ -n "${STAMP_RUN_CASE_ID:-}" ] || { echo "stamp: no run_case_id, skipping"; exit 0; }
@@ -17,6 +18,7 @@ BOOTSTRAP_LOGIN_RESPONSE_FILE="${RUNNER_TEMP:-$EV}/stamp-bootstrap-login-$STAMP_
 BOOTSTRAP_READY_RESPONSE_FILE="${RUNNER_TEMP:-$EV}/stamp-bootstrap-ready-$STAMP_RUN_CASE_ID.json"
 BOOTSTRAP_CAPTURE_CONTEXT_FILE="${RUNNER_TEMP:-$EV}/stamp-bootstrap-capture-context-$STAMP_RUN_CASE_ID.json"
 BOOTSTRAP_CAPTURE_ENV_FILE="${RUNNER_TEMP:-$EV}/stamp-bootstrap-capture-env-$STAMP_RUN_CASE_ID.sh"
+CREDENTIAL_RECEIPT_FILE="${RUNNER_TEMP:-$EV}/stamp-credential-receipt-$STAMP_RUN_CASE_ID.json"
 
 if [ "$PHASE" = "workflow-error" ] && [ ! -f "$CLAIM_TOKEN_FILE" ]; then
   PHASE="dispatch-error"
@@ -81,6 +83,29 @@ fi
 
 CLAIM_TOKEN=""; [ -f "$CLAIM_TOKEN_FILE" ] && CLAIM_TOKEN=$(cat "$CLAIM_TOKEN_FILE")
 CLAIM_HEADER="X-Stamp-Claim-Token: $CLAIM_TOKEN"
+
+if [ "$PHASE" = "credential-receipt" ]; then
+  [ -s "$BOOTSTRAP_SPEC_FILE" ] || { echo "stamp: bootstrap spec missing" >&2; exit 1; }
+  if node -e 'const v=require(process.argv[1]);process.exit(v.required===true?0:1)' "$BOOTSTRAP_SPEC_FILE"; then
+    echo "stamp: bootstrap coordinate forbids executor credential receipt"
+    exit 0
+  fi
+  [ -n "${QA_TEST_EMAIL:-}" ] || { echo "stamp: legacy credential email missing" >&2; exit 1; }
+  if ! node "$SCRIPT_DIR/credential_receipt.mjs" --out "$CREDENTIAL_RECEIPT_FILE"; then
+    rm -f "$CREDENTIAL_RECEIPT_FILE"
+    echo "stamp: credential email receipt invalid" >&2
+    exit 1
+  fi
+  if ! curl -sfS -X POST "$BASE/credential-receipt" -H "$AUTH" -H "$JOB_HEADER" -H "$CLAIM_HEADER" \
+    -H 'content-type: application/json' --data-binary @"$CREDENTIAL_RECEIPT_FILE" >/dev/null; then
+    rm -f "$CREDENTIAL_RECEIPT_FILE"
+    echo "stamp: credential email receipt freeze failed" >&2
+    exit 1
+  fi
+  rm -f "$CREDENTIAL_RECEIPT_FILE"
+  echo "stamp: credential email receipt frozen"
+  exit 0
+fi
 
 if [ "$PHASE" = "bootstrap-login" ]; then
   BINDING_FILE="${2:-${RUNNER_TEMP:-qa-evidence}/stamp-bootstrap-device-binding.json}"
@@ -305,6 +330,32 @@ if [ "$REPORT_EVIDENCE" = "true" ] && [ -f "$EV/verdict.json" ] && [ -f "$EV/log
   fi
   curl -sf -X POST "$BASE/execution-scope" -H "$AUTH" -H "$JOB_HEADER" -H "$CLAIM_HEADER" -H 'content-type: application/json' \
     -d "$SCOPE" >/dev/null && echo "stamp: execution scope frozen" || { echo "stamp: execution scope freeze failed" >&2; exit 1; }
+fi
+
+# The email is frozen by the dedicated pre-executor phase. Subject binding is optional and may use only
+# the package/PID/generation-scoped product log after Stamp accepts that exact
+# execution scope. Model transcripts and broad host/system logs are never
+# identity authorities. If no scoped log exists, repeat the email-only receipt.
+if [ "$REPORT_EVIDENCE" = "true" ] && [ -n "${QA_TEST_EMAIL:-}" ]; then
+  [ -s "$BOOTSTRAP_SPEC_FILE" ] || { echo "stamp: bootstrap spec missing for credential receipt" >&2; exit 1; }
+  if ! node -e 'const v=require(process.argv[1]);process.exit(v.required===true?0:1)' "$BOOTSTRAP_SPEC_FILE"; then
+    RECEIPT_LOG_ARGS=()
+    [ -f "$EV/logcat.txt" ] && RECEIPT_LOG_ARGS=(--log "$EV/logcat.txt")
+    if ! node "$SCRIPT_DIR/credential_receipt.mjs" --out "$CREDENTIAL_RECEIPT_FILE" "${RECEIPT_LOG_ARGS[@]}"; then
+      echo "stamp: credential receipt construction failed" >&2
+      exit 1
+    fi
+    if ! curl -sfS -X POST "$BASE/credential-receipt" -H "$AUTH" -H "$JOB_HEADER" -H "$CLAIM_HEADER" \
+      -H 'content-type: application/json' --data-binary @"$CREDENTIAL_RECEIPT_FILE" >/dev/null; then
+      rm -f "$CREDENTIAL_RECEIPT_FILE"
+      echo "stamp: credential receipt subject bind failed" >&2
+      exit 1
+    fi
+    rm -f "$CREDENTIAL_RECEIPT_FILE"
+    echo "stamp: credential receipt refreshed"
+  else
+    echo "stamp: bootstrap coordinate skips executor credential receipt refresh"
+  fi
 fi
 
 seq=0

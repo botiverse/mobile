@@ -18,12 +18,14 @@ const reviewer = arg("--reviewer", process.env.STAMP_REVIEWER || "");
 const outPath = arg("--out", process.env.STAMP_REVIEW_OUT || `panel-review-${reviewer || "unknown"}.json`);
 const stampUrl = (process.env.STAMP_URL || "https://stamp.build").replace(/\/$/, "");
 const stampToken = process.env.STAMP_TOKEN || "";
-const piKey = process.env.MINIMAX_API_KEY || process.env.PI_API_KEY || "";
-const record = { run_id: runId, reviewer, stage: "init" };
+const piKey = process.env.QWEN_TOKEN_PLAN_CN_API_KEY || process.env.PI_API_KEY || process.env.MINIMAX_API_KEY || "";
+const providerName = String(process.env.PI_PROVIDER || "qwen-token-plan-cn");
+const modelName = String(process.env.PI_MODEL || "qwen3.8-max-preview");
+const record = { run_id: runId, reviewer, provider: providerName, model: modelName, stage: "init" };
 
 if (!runId || !reviewer) throw new Error("--run-id and --reviewer are required");
 if (!stampToken) throw new Error("STAMP_TOKEN is required");
-if (!piKey) throw new Error("PI_API_KEY/MINIMAX_API_KEY is required");
+if (!piKey) throw new Error("QWEN_TOKEN_PLAN_CN_API_KEY/PI_API_KEY is required");
 
 function saveRecord(patch = {}) {
   Object.assign(record, patch);
@@ -45,9 +47,21 @@ async function stamp(path, init = {}) {
 }
 
 async function evidenceBytes(ev) {
-  const res = await fetch(`${stampUrl}/api/runs/${runId}/evidence/${ev.id}`, {
-    headers: { authorization: `Bearer ${stampToken}` },
-  });
+  let res;
+  let lastError;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      res = await fetch(`${stampUrl}/api/runs/${runId}/evidence/${ev.id}`, {
+        headers: { authorization: `Bearer ${stampToken}` },
+      });
+      if (res.ok || res.status < 500) break;
+      lastError = new Error(`HTTP ${res.status}`);
+    } catch (error) {
+      lastError = error;
+    }
+    if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, attempt * 1000));
+  }
+  if (!res) throw lastError || new Error(`evidence ${ev.id}: fetch failed`);
   if (!res.ok) throw new Error(`evidence ${ev.id}: HTTP ${res.status}`);
   const bytes = Buffer.from(await res.arrayBuffer());
   const actual = crypto.createHash("sha256").update(bytes).digest("hex");
@@ -182,7 +196,10 @@ async function main() {
 
   const reviewedEvidence = [...rawShots, ...rawDumps, ...rawLogs]
     .sort((a, b) => a.id.localeCompare(b.id));
-  await Promise.all(reviewedEvidence.map((ev) => bytesFor(ev)));
+  // Keep evidence acquisition bounded and deterministic. A large run can have
+  // dozens of objects; a single Promise.all burst has caused transient R2/fetch
+  // failures before the reviewer ever reached the model.
+  for (const ev of reviewedEvidence) await bytesFor(ev);
   const evidenceManifest = reviewedEvidence.map((e) => ({ id: e.id, kind: e.kind, sha256: e.sha256 }));
   const evidenceManifestSha256 = crypto.createHash("sha256").update(JSON.stringify(evidenceManifest)).digest("hex");
   const reviewInput = {
@@ -278,15 +295,15 @@ async function main() {
 
   const providers = await import(process.env.SLOCK_PI_AI_MODULE || "@earendil-works/pi-ai/providers/all");
   const models = providers.builtinModels();
-  const model = models.getModel(String(process.env.PI_PROVIDER || "minimax"), String(process.env.PI_MODEL || "MiniMax-M3"));
+  const model = models.getModel(providerName, modelName);
   let response;
   let text = "";
   let vote;
   const modelAttempts = [];
   let lastError;
-  for (let attempt = 1; attempt <= 3; attempt++) {
+  for (let attempt = 1; attempt <= 2; attempt++) {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 180000);
+    const timer = setTimeout(() => controller.abort(), 600000);
     let attemptText = "";
     let attemptResponse;
     try {
@@ -296,7 +313,7 @@ async function main() {
       ];
       attemptResponse = await models.complete(model,
         { messages: [{ role: "user", content: attemptContent, timestamp: Date.now() }] },
-        { apiKey: piKey, maxTokens: 2500, signal: controller.signal, timeoutMs: 180000 });
+        { apiKey: piKey, maxTokens: 8000, reasoningEffort: "low", signal: controller.signal, timeoutMs: 600000 });
       if (attemptResponse.stopReason === "error" || attemptResponse.stopReason === "aborted") {
         throw new Error(attemptResponse.errorMessage || attemptResponse.stopReason);
       }
@@ -330,7 +347,8 @@ async function main() {
     evidence_manifest: evidenceManifest,
     raw_evidence_ids: rawShots.map((e) => e.id),
     log_scans: logScans,
-    model: String(process.env.PI_MODEL || "MiniMax-M3"),
+    provider: providerName,
+    model: modelName,
     usage: response.usage || null,
   };
   const posted = await stamp(`/api/runs/${runId}/panel-review`, {
