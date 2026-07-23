@@ -1,5 +1,6 @@
 package build.raft.app.shared
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -40,5 +41,32 @@ class ScreenshotFeedbackPromptPolicyTest {
         val secondGeneration = gate.start()
         assertFalse(gate.accepts(firstGeneration))
         assertTrue(gate.accepts(secondGeneration))
+    }
+
+    @Test
+    fun screenCaptureRegistrationFailsClosedAndAllowsRetry() {
+        var registerAttempts = 0
+        var unregisterAttempts = 0
+        val registration =
+            FailClosedScreenCaptureRegistration<String>(
+                register = {
+                    registerAttempts += 1
+                    if (registerAttempts == 1) throw SecurityException("permission denied")
+                },
+                unregister = { unregisterAttempts += 1 },
+            )
+
+        val failedStart = registration.start("first")
+        assertTrue(failedStart.isFailure)
+        assertTrue(failedStart.exceptionOrNull() is SecurityException)
+        assertEquals(1, registerAttempts)
+
+        assertFalse(registration.stop().getOrThrow())
+        assertEquals(0, unregisterAttempts)
+
+        assertTrue(registration.start("retry").getOrThrow())
+        assertEquals(2, registerAttempts)
+        assertTrue(registration.stop().getOrThrow())
+        assertEquals(1, unregisterAttempts)
     }
 }
