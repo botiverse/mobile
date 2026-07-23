@@ -129,6 +129,7 @@ internal fun SharedHomeActivityScreen(
     val pager = LocalActivity.current.getPager() as Pager
     val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
     val networkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
+    val selectedServerStore = remember(sharedStores, storeScope) { sharedStores.selectedServerStore(storeScope) }
     val repository =
         remember(authStore, networkClient) {
             RealInboxRepository(
@@ -148,10 +149,11 @@ internal fun SharedHomeActivityScreen(
             )
         }
     val conversationRepository =
-        remember(authStore, networkClient) {
+        remember(authStore, networkClient, selectedServerStore) {
             RealConversationRepository(
                 sessionStore = authStore,
                 networkClient = networkClient,
+                routeServerIdProvider = { selectedServerStore.selectedServerId.value },
                 warningLogger = { message -> bridge.log("shared_activity_thread_warning $message") }
             )
         }
@@ -164,7 +166,6 @@ internal fun SharedHomeActivityScreen(
                 warningLogger = { message -> bridge.log("shared_activity_member_warning $message") }
             )
         }
-    val selectedServerStore = remember(sharedStores, storeScope) { sharedStores.selectedServerStore(storeScope) }
     val replyThreadPrewarmDataSource =
         remember(
             authStore,
