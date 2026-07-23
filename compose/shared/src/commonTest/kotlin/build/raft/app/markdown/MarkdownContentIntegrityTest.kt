@@ -7,9 +7,10 @@ import com.tencent.kuikly.compose.ui.text.buildAnnotatedString
 import com.tencent.kuiklybase.markdown.annotator.DefaultAnnotatorSettings
 import com.tencent.kuiklybase.markdown.annotator.buildMarkdownAnnotatedString
 import com.tencent.kuiklybase.markdown.model.MarkdownParserContent
+import com.tencent.kuiklybase.markdown.model.SlockGFMFlavourDescriptor
 import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.ast.ASTNode
-import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
+import org.intellij.markdown.flavours.gfm.GFMTokenTypes
 import org.intellij.markdown.parser.MarkdownParser
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -150,6 +151,38 @@ class MarkdownContentIntegrityTest {
     }
 
     @Test
+    fun cjkAdjacentInlineCodeUrlStaysCodeAndUnlinked() {
+        val source = "回归测试从`http://internal/`、反代HTTP、恶意Host三种入站验证，最终`return_to`始终等于注册的外部HTTPS callback。"
+        val parserContent = MarkdownParserContent.from(source).parserContent
+        val tree = MarkdownParser(SlockGFMFlavourDescriptor()).buildMarkdownTreeFromString(parserContent)
+        val allNodes = buildList {
+            fun collect(node: ASTNode) {
+                add(node)
+                node.children.forEach(::collect)
+            }
+            collect(tree)
+        }
+        assertEquals(2, allNodes.count { it.type == MarkdownElementTypes.CODE_SPAN })
+        assertEquals(0, allNodes.count { it.type == GFMTokenTypes.GFM_AUTOLINK })
+
+        val rendered = renderTopParagraphsWithLinks(source).single()
+        assertEquals(
+            "回归测试从http://internal/、反代HTTP、恶意Host三种入站验证，最终return_to始终等于注册的外部HTTPS callback。",
+            rendered.text,
+        )
+        assertEquals(emptyList(), rendered.urls)
+    }
+
+    @Test
+    fun recoveredInlineCodeDoesNotSuppressFollowingBareUrl() {
+        val bareUrl = "https://stamp.build/login/raft"
+        val source = "从`http://internal/`验证。临时可直接开 <$bareUrl>。"
+        val rendered = renderTopParagraphsWithLinks(source).single()
+        assertEquals("从http://internal/验证。临时可直接开 $bareUrl。", rendered.text)
+        assertEquals(listOf(bareUrl), rendered.urls)
+    }
+
+    @Test
     fun cjkAdjacentBareUrlIsClickableWithoutChangingVisibleText() {
         val url = "https://www.figma.com/design/TiPWa8K3dfNyNxvTrz1SN0/Raft-brand---Exploration?node-id=372-1396&t=I3oSfVqdbsEJjUIP-1"
         val source = "@huxijin 情绪板已经准备完成，有空可以看下$url"
@@ -162,7 +195,7 @@ class MarkdownContentIntegrityTest {
         // Uses the PRODUCTION annotator (slockMarkdownAnnotator) so app-side
         // annotate hooks are part of the integrity contract too.
         val parserContent = MarkdownParserContent.from(content).parserContent
-        val tree = MarkdownParser(GFMFlavourDescriptor()).buildMarkdownTreeFromString(parserContent)
+        val tree = MarkdownParser(SlockGFMFlavourDescriptor()).buildMarkdownTreeFromString(parserContent)
         val paragraphs = mutableListOf<ASTNode>()
         fun collect(node: ASTNode) {
             if (node.type == MarkdownElementTypes.PARAGRAPH) paragraphs += node
@@ -184,7 +217,7 @@ class MarkdownContentIntegrityTest {
 
     private fun renderTopParagraphsWithLinks(content: String): List<RenderedParagraph> {
         val parserContent = MarkdownParserContent.from(content).parserContent
-        val tree = MarkdownParser(GFMFlavourDescriptor()).buildMarkdownTreeFromString(parserContent)
+        val tree = MarkdownParser(SlockGFMFlavourDescriptor()).buildMarkdownTreeFromString(parserContent)
         val paragraphs = mutableListOf<ASTNode>()
         fun collect(node: ASTNode) {
             if (node.type == MarkdownElementTypes.PARAGRAPH) paragraphs += node
@@ -271,9 +304,16 @@ class MarkdownContentIntegrityTest {
     }
 
     private fun generatedInlineCodeUrlPayloads(): List<String> {
-        val base = "https://xxx.com/xx/asd"
+        val bases =
+            listOf(
+                // Exact task #513 payload from the reported XiShi message.
+                "http://internal/",
+                "https://xxx.com/xx/asd",
+            )
         val tails = listOf("", ".", ", next", "] now", ") now", "} now", "> now")
-        return generatedBalancedUrlTargets(base).flatMap { url -> tails.map { tail -> url + tail } }
+        return bases.flatMap { base ->
+            generatedBalancedUrlTargets(base).flatMap { url -> tails.map { tail -> url + tail } }
+        }
     }
 
     private fun generatedBalancedUrlTargets(base: String): List<String> =
