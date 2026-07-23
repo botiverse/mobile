@@ -380,6 +380,10 @@ jobs:
     env:
       GITHUB_PACKAGES_USERNAME: ${{ vars.GITHUB_PACKAGES_USERNAME || 'bytemain' }}
       GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_PACKAGES_TOKEN || github.token }}
+      # This compile gate must not inherit a poisoned Gradle transform cache
+      # from a previous hosted run. A corrupt instrumented AGP jar otherwise
+      # fails during root-project configuration before any source is compiled.
+      GRADLE_USER_HOME: ${{ runner.temp }}/android-compile-gradle-home
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -429,6 +433,8 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
+        with:
+          cache-disabled: true
 
       - name: Write GitHub Packages credentials
         shell: bash
