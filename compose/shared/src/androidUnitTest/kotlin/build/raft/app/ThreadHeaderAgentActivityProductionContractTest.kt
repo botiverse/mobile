@@ -48,6 +48,9 @@ class ThreadHeaderAgentActivityProductionContractTest {
     @Test
     fun visualFixtureUsesTheRealHeaderWithAClippedLongActivityLabel() {
         val source = productionSource()
+        val header =
+            source.substringAfter("private fun ThreadPageHeader(")
+                .substringBefore("@Composable\nprivate fun ThreadChannelTile(")
         val fixture =
             source.substringAfter("internal fun ThreadDmAgentActivityHeaderVisualScreen()")
                 .substringBefore("@Composable\ninternal fun ThreadActivityMuteVisualScreen()")
