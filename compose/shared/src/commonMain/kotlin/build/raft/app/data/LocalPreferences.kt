@@ -243,6 +243,7 @@ data class ChatLayoutPreferenceSnapshot(
     val imageAnnotationEnabled: Boolean = true,
     val foregroundMessageBannersEnabled: Boolean = false,
     val activityTaskStatusBadgesEnabled: Boolean = false,
+    val activitySenderAvatarsEnabled: Boolean = false,
     val composerSendKeyEnabled: Boolean = false,
     val multiShellHostEnabled: Boolean = false,
     val serverDrawerEnabled: Boolean = false,
@@ -281,6 +282,9 @@ interface ChatLayoutPreferenceStore {
     fun readActivityTaskStatusBadgesEnabledSync(): Boolean
     suspend fun readActivityTaskStatusBadgesEnabled(): Boolean
     suspend fun saveActivityTaskStatusBadgesEnabled(enabled: Boolean)
+    fun readActivitySenderAvatarsEnabledSync(): Boolean
+    suspend fun readActivitySenderAvatarsEnabled(): Boolean
+    suspend fun saveActivitySenderAvatarsEnabled(enabled: Boolean)
     fun readComposerSendKeyEnabledSync(): Boolean
     suspend fun readComposerSendKeyEnabled(): Boolean
     suspend fun saveComposerSendKeyEnabled(enabled: Boolean)
@@ -388,6 +392,16 @@ class KeyValueChatLayoutPreferenceStore(
         store.putBoolean(KEY_ACTIVITY_TASK_STATUS_BADGES_ENABLED, enabled)
     }
 
+    override fun readActivitySenderAvatarsEnabledSync(): Boolean =
+        store.getBoolean(KEY_ACTIVITY_SENDER_AVATARS_ENABLED, false)
+
+    override suspend fun readActivitySenderAvatarsEnabled(): Boolean =
+        readActivitySenderAvatarsEnabledSync()
+
+    override suspend fun saveActivitySenderAvatarsEnabled(enabled: Boolean) {
+        store.putBoolean(KEY_ACTIVITY_SENDER_AVATARS_ENABLED, enabled)
+    }
+
     override fun readComposerSendKeyEnabledSync(): Boolean =
         store.getBoolean(KEY_COMPOSER_SEND_KEY_ENABLED, false)
 
@@ -475,6 +489,7 @@ class KeyValueChatLayoutPreferenceStore(
         const val KEY_IMAGE_ANNOTATION_ENABLED = "chatLayout:image_annotation_enabled"
         const val KEY_FOREGROUND_MESSAGE_BANNERS_ENABLED = "chatLayout:foreground_message_banners_enabled"
         const val KEY_ACTIVITY_TASK_STATUS_BADGES_ENABLED = "chatLayout:activity_task_status_badges_enabled"
+        const val KEY_ACTIVITY_SENDER_AVATARS_ENABLED = "chatLayout:activity_sender_avatars_enabled"
         const val KEY_COMPOSER_SEND_KEY_ENABLED = "chatLayout:composer_send_key_enabled"
         const val KEY_MULTI_SHELL_HOST_ENABLED = "mobile:multi_shell_host_enabled"
         const val KEY_SERVER_DRAWER_ENABLED = "mobile:server_drawer_enabled"
@@ -498,6 +513,7 @@ interface ChatLayoutPreferenceRepository {
     suspend fun setImageAnnotationEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setForegroundMessageBannersEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setActivityTaskStatusBadgesEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
+    suspend fun setActivitySenderAvatarsEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setComposerSendKeyEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setMultiShellHostEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setServerDrawerEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
@@ -522,6 +538,7 @@ class PersistentChatLayoutPreferenceRepository(
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
+            activitySenderAvatarsEnabled = store.readActivitySenderAvatarsEnabled(),
             composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
             serverDrawerEnabled = store.readServerDrawerEnabled(),
@@ -543,6 +560,7 @@ class PersistentChatLayoutPreferenceRepository(
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
+            activitySenderAvatarsEnabled = store.readActivitySenderAvatarsEnabled(),
             composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
             serverDrawerEnabled = store.readServerDrawerEnabled(),
@@ -565,6 +583,7 @@ class PersistentChatLayoutPreferenceRepository(
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
+            activitySenderAvatarsEnabled = store.readActivitySenderAvatarsEnabled(),
             composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
             serverDrawerEnabled = store.readServerDrawerEnabled(),
@@ -585,6 +604,7 @@ class PersistentChatLayoutPreferenceRepository(
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
+            activitySenderAvatarsEnabled = store.readActivitySenderAvatarsEnabled(),
             composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
             serverDrawerEnabled = store.readServerDrawerEnabled(),
@@ -615,6 +635,7 @@ class PersistentChatLayoutPreferenceRepository(
             imageAnnotationEnabled = enabled,
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
+            activitySenderAvatarsEnabled = store.readActivitySenderAvatarsEnabled(),
             composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
             serverDrawerEnabled = store.readServerDrawerEnabled(),
@@ -635,6 +656,7 @@ class PersistentChatLayoutPreferenceRepository(
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             foregroundMessageBannersEnabled = enabled,
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
+            activitySenderAvatarsEnabled = store.readActivitySenderAvatarsEnabled(),
             composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
             serverDrawerEnabled = store.readServerDrawerEnabled(),
@@ -655,6 +677,7 @@ class PersistentChatLayoutPreferenceRepository(
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = enabled,
+            activitySenderAvatarsEnabled = store.readActivitySenderAvatarsEnabled(),
             composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
             serverDrawerEnabled = store.readServerDrawerEnabled(),
@@ -662,6 +685,11 @@ class PersistentChatLayoutPreferenceRepository(
             translationTargetLanguage = store.readTranslationTargetLanguage(),
             threadRowAffordances = store.readThreadRowAffordances()
         )
+    }
+
+    override suspend fun setActivitySenderAvatarsEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
+        store.saveActivitySenderAvatarsEnabled(enabled)
+        return getChatLayoutPreference()
     }
 
     override suspend fun setComposerSendKeyEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
@@ -690,6 +718,7 @@ class PersistentChatLayoutPreferenceRepository(
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
+            activitySenderAvatarsEnabled = store.readActivitySenderAvatarsEnabled(),
             composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
             serverDrawerEnabled = store.readServerDrawerEnabled(),
@@ -725,6 +754,7 @@ class PersistentChatLayoutPreferenceRepository(
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
+            activitySenderAvatarsEnabled = store.readActivitySenderAvatarsEnabled(),
             composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
             serverDrawerEnabled = store.readServerDrawerEnabled(),

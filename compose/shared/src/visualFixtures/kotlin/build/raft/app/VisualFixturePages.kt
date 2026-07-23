@@ -294,6 +294,26 @@ internal class ComposeHomeActivityHitTargetVisualPage : BasePager() {
     }
 }
 
+// #65: dedicated sender-avatar fixture. Exercises every Activity-row avatar
+// branch (human placeholder, two agent pixel avatars, app "SY" placeholder for
+// unknown + mention/system senders) with read + unread rows on one narrow
+// screen. This is additive Android evidence for a Mobile-only experiment.
+@Page("compose_home_activity_avatar_visual", supportInLocal = true)
+internal class ComposeHomeActivityAvatarVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { HomeActivityAvatarVisualContent(activitySenderAvatarsEnabled = true) }
+    }
+}
+
+@Page("compose_home_activity_avatar_off_visual", supportInLocal = true)
+internal class ComposeHomeActivityAvatarOffVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { HomeActivityAvatarVisualContent(activitySenderAvatarsEnabled = false) }
+    }
+}
+
 @Page("compose_home_create_channel_dialog_visual", supportInLocal = true)
 internal class ComposeHomeCreateChannelDialogVisualPage : BasePager() {
     override fun willInit() {

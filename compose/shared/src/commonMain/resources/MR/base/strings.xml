@@ -139,6 +139,10 @@
     <string name="settings_language_region_title">Language &amp; Region</string>
     <string name="settings_language_region_subtitle">Language, timezone, translation</string>
     <string name="settings_appearance_title">Appearance</string>
+    <string name="settings_appearance_activity_sender_avatars">Activity sender avatars</string>
+    <string name="settings_appearance_activity_sender_avatars_detail">Show the latest sender avatar beside each Activity item.</string>
+    <string name="settings_appearance_activity_sender_avatars_enabled">Shown</string>
+    <string name="settings_appearance_activity_sender_avatars_disabled">Hidden</string>
     <string name="settings_appearance_subtitle">Message font size and reading density</string>
     <string name="settings_notifications_title">Notifications</string>
     <string name="settings_notifications_subtitle">Push status and workspace mute</string>

@@ -7751,6 +7751,7 @@ private fun ThreadMarkdownTaskCandidateRow(
                     iconName = statusMeta.icon,
                     iconSize = statusMeta.iconSize,
                     color = statusMeta.color,
+                    contentColor = statusMeta.foregroundColor,
                     modifier = Modifier.widthIn(max = 112.dp),
                     onClick = null
                 )

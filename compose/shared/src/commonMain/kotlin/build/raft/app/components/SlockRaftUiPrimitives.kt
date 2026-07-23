@@ -66,14 +66,16 @@ internal fun SlockBrutalBadge(
     modifier: Modifier = Modifier,
     tone: SlockBrutalTone = SlockBrutalTone.White,
     uppercase: Boolean = true,
-    leadingIcon: SlockLucideIconName? = null
+    leadingIcon: SlockLucideIconName? = null,
+    contentColor: Color? = null
 ) {
     SlockBrutalBadgeChrome(
         label = label,
         modifier = modifier,
         tone = tone,
         uppercase = uppercase,
-        leadingIcon = leadingIcon
+        leadingIcon = leadingIcon,
+        contentColor = contentColor
     )
 }
 
@@ -108,9 +110,10 @@ private fun SlockBrutalBadgeChrome(
     modifier: Modifier = Modifier,
     tone: SlockBrutalTone = SlockBrutalTone.White,
     uppercase: Boolean = true,
-    leadingIcon: SlockLucideIconName? = null
+    leadingIcon: SlockLucideIconName? = null,
+    contentColor: Color? = null
 ) {
-    val foreground = if (tone == SlockBrutalTone.Black) SlockColor.SurfaceWhite else SlockColor.TextBlack
+    val foreground = contentColor ?: if (tone == SlockBrutalTone.Black) SlockColor.SurfaceWhite else SlockColor.TextBlack
     Row(
         modifier =
             modifier

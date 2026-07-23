@@ -40,6 +40,7 @@ import build.raft.app.model.ThreadId
 import build.raft.app.model.slockEpochDayForDate
 import build.raft.app.model.threadIdentity
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
+import com.tencent.kuikly.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -163,6 +164,186 @@ class SharedInboxPanelTest {
         assertTrue(readDirectMessage.activityPrimaryContentMuted())
         assertTrue(readMention.activityPrimaryContentMuted())
         assertEquals(false, readSystem.activityPrimaryContentMuted())
+    }
+
+    @Test
+    fun activitySenderAvatarThreadUsesLatestActivitySender() {
+        val thread =
+            activityItem(key = "thread:agent").copy(
+                kind = InboxItemKind.Thread,
+                latestActivitySenderKind = MemberKind.Agent,
+                latestActivitySenderId = "agent-1",
+                latestActivitySenderAvatarWireValue = "pixel:agent-1",
+                // Last-message sender must NOT win for a thread.
+                lastMessageSenderKind = MemberKind.Human,
+                lastMessageSenderId = "human-9",
+                lastMessageSenderAvatarWireValue = "gravatar:human-9"
+            )
+
+        val identity = thread.activitySenderAvatarIdentity()
+
+        assertEquals(MemberKind.Agent, identity.senderKind)
+        assertEquals("pixel:agent-1", identity.avatarWireValue)
+    }
+
+    @Test
+    fun activitySenderAvatarChannelAndDmUseLastMessageSender() {
+        val channel =
+            activityItem(key = "channel:human").copy(
+                kind = InboxItemKind.Channel,
+                lastMessageSenderKind = MemberKind.Human,
+                lastMessageSenderId = "human-2",
+                lastMessageSenderAvatarWireValue = "gravatar:human-2",
+                // Latest-activity sender must NOT win for a channel/DM.
+                latestActivitySenderKind = MemberKind.Agent,
+                latestActivitySenderId = "agent-9",
+                latestActivitySenderAvatarWireValue = "pixel:agent-9"
+            )
+        val dm = channel.copy(key = "dm:human", kind = InboxItemKind.DirectMessage)
+
+        assertEquals(MemberKind.Human, channel.activitySenderAvatarIdentity().senderKind)
+        assertEquals("gravatar:human-2", channel.activitySenderAvatarIdentity().avatarWireValue)
+        assertEquals(MemberKind.Human, dm.activitySenderAvatarIdentity().senderKind)
+        assertEquals("gravatar:human-2", dm.activitySenderAvatarIdentity().avatarWireValue)
+    }
+
+    @Test
+    fun activitySenderAvatarMentionActionIsSystemApp() {
+        val mention =
+            activityItem(key = "mention:1").copy(
+                kind = InboxItemKind.MentionAction,
+                // A mention action is a system/app sender even when a last-message
+                // sender is present — mirrors web InboxRow (senderType = "system").
+                lastMessageSenderKind = MemberKind.Human,
+                lastMessageSenderId = "human-3",
+                lastMessageSenderAvatarWireValue = "gravatar:human-3"
+            )
+
+        val identity = mention.activitySenderAvatarIdentity()
+
+        assertEquals(MemberKind.System, identity.senderKind)
+        assertEquals(null, identity.avatarWireValue)
+    }
+
+    @Test
+    fun activitySenderAvatarFallsBackAcrossSenderFieldsButNeverParentAuthor() {
+        // Thread missing latest-activity sender falls back to last-message sender.
+        val threadFallback =
+            activityItem(key = "thread:fallback").copy(
+                kind = InboxItemKind.Thread,
+                latestActivitySenderKind = null,
+                latestActivitySenderAvatarWireValue = null,
+                lastMessageSenderKind = MemberKind.Human,
+                lastMessageSenderId = "human-4",
+                lastMessageSenderAvatarWireValue = "gravatar:human-4"
+            )
+        assertEquals(MemberKind.Human, threadFallback.activitySenderAvatarIdentity().senderKind)
+        assertEquals("gravatar:human-4", threadFallback.activitySenderAvatarIdentity().avatarWireValue)
+
+        // Channel missing last-message sender falls back to latest-activity sender.
+        val channelFallback =
+            activityItem(key = "channel:fallback").copy(
+                kind = InboxItemKind.Channel,
+                lastMessageSenderKind = null,
+                lastMessageSenderAvatarWireValue = null,
+                latestActivitySenderKind = MemberKind.Agent,
+                latestActivitySenderId = "agent-5",
+                latestActivitySenderAvatarWireValue = "pixel:agent-5"
+            )
+        assertEquals(MemberKind.Agent, channelFallback.activitySenderAvatarIdentity().senderKind)
+        assertEquals("pixel:agent-5", channelFallback.activitySenderAvatarIdentity().avatarWireValue)
+
+        // A thread that only carries a parent author must NOT surface it — the
+        // avatar falls through to the app placeholder (null kind / null wire).
+        val threadParentOnly =
+            activityItem(key = "thread:parent-only").copy(
+                kind = InboxItemKind.Thread,
+                latestActivitySenderKind = null,
+                latestActivitySenderAvatarWireValue = null,
+                lastMessageSenderKind = null,
+                lastMessageSenderAvatarWireValue = null,
+                parentMessageSenderKind = MemberKind.Agent,
+                parentMessageSenderId = "parent-author"
+            )
+        val parentOnlyIdentity = threadParentOnly.activitySenderAvatarIdentity()
+        assertEquals(null, parentOnlyIdentity.senderKind)
+        assertEquals(null, parentOnlyIdentity.avatarWireValue)
+    }
+
+    @Test
+    fun activitySenderAvatarSystemAndUnknownKindsRenderAppPlaceholder() {
+        val system =
+            activityItem(key = "system:1").copy(
+                kind = InboxItemKind.System,
+                lastMessageSenderKind = MemberKind.System
+            )
+        assertEquals(MemberKind.System, system.activitySenderAvatarIdentity().senderKind)
+
+        // No sender fields at all → null kind → app placeholder branch.
+        val unknown = activityItem(key = "channel:unknown")
+        assertEquals(null, unknown.activitySenderAvatarIdentity().senderKind)
+        assertEquals(null, unknown.activitySenderAvatarIdentity().avatarWireValue)
+    }
+
+    @Test
+    fun activitySenderAvatarKeepsSenderKindWhenAvatarWireMissing() {
+        // A normal channel/DM that carries a sender KIND but no avatar wire
+        // value (missing profile/avatar) must keep that sender kind so the row
+        // renders the human/agent SlockAvatar placeholder - it must NOT collapse
+        // to the system/app "SY" placeholder. Mirrors @Mahua's #65 review note:
+        // only a System/unknown (null) kind surfaces "SY".
+        val agentNoAvatar =
+            activityItem(key = "channel:agent-no-avatar").copy(
+                kind = InboxItemKind.Channel,
+                lastMessageSenderKind = MemberKind.Agent,
+                lastMessageSenderId = "agent-noavatar",
+                lastMessageSenderName = "NoAvatar",
+                lastMessageSenderAvatarWireValue = null
+            )
+        val agentIdentity = agentNoAvatar.activitySenderAvatarIdentity()
+        assertEquals(MemberKind.Agent, agentIdentity.senderKind)
+        assertEquals(null, agentIdentity.avatarWireValue)
+
+        val humanNoAvatar =
+            activityItem(key = "dm:human-no-avatar").copy(
+                kind = InboxItemKind.DirectMessage,
+                lastMessageSenderKind = MemberKind.Human,
+                lastMessageSenderId = "human-noavatar",
+                lastMessageSenderName = "NoAvatarHuman",
+                lastMessageSenderAvatarWireValue = null
+            )
+        val humanIdentity = humanNoAvatar.activitySenderAvatarIdentity()
+        assertEquals(MemberKind.Human, humanIdentity.senderKind)
+        assertEquals(null, humanIdentity.avatarWireValue)
+    }
+
+    @Test
+    fun activitySenderAvatarLabelResolvesFromSenderProfiles() {
+        val thread =
+            activityItem(key = "thread:label").copy(
+                kind = InboxItemKind.Thread,
+                latestActivitySenderKind = MemberKind.Agent,
+                latestActivitySenderId = "agent-7",
+                latestActivitySenderName = "agent-fallback-name",
+                latestActivitySenderAvatarWireValue = "pixel:agent-7"
+            )
+        val profiles = mapOf("agent-7" to SharedActivitySenderProfile(displayName = "Agent Seven"))
+
+        assertEquals("Agent Seven", thread.activitySenderAvatarIdentity(profiles).label)
+        // Without a profile, the wire sender name is the label fallback.
+        assertEquals("agent-fallback-name", thread.activitySenderAvatarIdentity(emptyMap()).label)
+    }
+
+    @Test
+    fun activitySenderAvatarPreferenceDefaultsToExactNoAvatarLayout() {
+        assertEquals(
+            ActivitySenderAvatarPresentation(visible = false, contentStartPadding = 12.dp),
+            activitySenderAvatarPresentation(enabled = false)
+        )
+        assertEquals(
+            ActivitySenderAvatarPresentation(visible = true, contentStartPadding = 0.dp),
+            activitySenderAvatarPresentation(enabled = true)
+        )
     }
 
     @Test
@@ -1333,7 +1514,11 @@ class SharedInboxPanelTest {
     @Test
     fun activityFooterSlotsProjectEveryMetadataKindToSquareBadgeVisuals() {
         assertEquals(
-            SharedActivityFooterBadgeVisual(SlockBrutalTone.Cyan, SlockLucideIconName.Play),
+            SharedActivityFooterBadgeVisual(
+                tone = SlockBrutalTone.Cyan,
+                leadingIcon = SlockLucideIconName.Play,
+                foregroundColor = TaskStatus.InProgress.sharedTaskStatusChipMeta().foregroundColor
+            ),
             SharedActivityFooterSlot.Task.badgeVisual(TaskStatus.InProgress)
         )
         assertEquals(
@@ -1361,6 +1546,17 @@ class SharedInboxPanelTest {
         assertEquals(SlockBrutalTone.Lavender, SharedActivityFooterSlot.Task.badgeVisual(TaskStatus.InReview).tone)
         assertEquals(SlockBrutalTone.Lime, SharedActivityFooterSlot.Task.badgeVisual(TaskStatus.Done).tone)
         assertEquals(SlockBrutalTone.Stone, SharedActivityFooterSlot.Task.badgeVisual(TaskStatus.Closed).tone)
+    }
+
+    @Test
+    fun activityTaskBadgeForegroundUsesConversationTaskChipToken() {
+        TaskStatus.entries.forEach { status ->
+            assertEquals(
+                status.sharedTaskStatusChipMeta().foregroundColor,
+                SharedActivityFooterSlot.Task.badgeVisual(status).foregroundColor,
+                "foreground drift for $status"
+            )
+        }
     }
 
     @Test

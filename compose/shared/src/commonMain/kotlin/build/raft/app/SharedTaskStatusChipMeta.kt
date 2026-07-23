@@ -11,6 +11,7 @@ internal data class SharedTaskStatusChipMeta(
     val label: String,
     val icon: SlockLucideIconName,
     val color: Color,
+    val foregroundColor: Color = SlockColor.TextBlack,
     val iconSize: Dp = 10.dp
 )
 

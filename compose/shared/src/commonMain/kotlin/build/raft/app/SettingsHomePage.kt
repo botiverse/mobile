@@ -901,6 +901,7 @@ private data class HomeSecondaryRouteEnvironment(
     val compactConsecutiveMessages: Boolean,
     val foregroundMessageBannersEnabled: Boolean,
     val activityTaskStatusBadgesEnabled: Boolean,
+    val activitySenderAvatarsEnabled: Boolean,
     val threadRowAffordances: Set<ThreadRowAffordancePreference>,
     val storeScope: SlockShellStoreScope,
     val shellScope: SlockAppShellScope,
@@ -943,6 +944,7 @@ private fun rememberHomeSecondaryRouteEnvironment(
     var compactConsecutiveMessages by remember { mutableStateOf(false) }
     var foregroundMessageBannersEnabled by remember { mutableStateOf(false) }
     var activityTaskStatusBadgesEnabled by remember { mutableStateOf(false) }
+    var activitySenderAvatarsEnabled by remember { mutableStateOf(false) }
     var threadRowAffordances by remember { mutableStateOf(ThreadRowAffordancePreference.Default) }
     LaunchedEffect(chatLayoutPreferenceRepository) {
         val chatLayout = chatLayoutPreferenceRepository.getChatLayoutPreference()
@@ -950,6 +952,7 @@ private fun rememberHomeSecondaryRouteEnvironment(
         compactConsecutiveMessages = chatLayout.compactConsecutiveMessages
         foregroundMessageBannersEnabled = chatLayout.foregroundMessageBannersEnabled
         activityTaskStatusBadgesEnabled = chatLayout.activityTaskStatusBadgesEnabled
+        activitySenderAvatarsEnabled = chatLayout.activitySenderAvatarsEnabled
         threadRowAffordances = chatLayout.threadRowAffordances
     }
     val seedTimeContext =
@@ -972,6 +975,7 @@ private fun rememberHomeSecondaryRouteEnvironment(
         compactConsecutiveMessages,
         foregroundMessageBannersEnabled,
         activityTaskStatusBadgesEnabled,
+        activitySenderAvatarsEnabled,
         threadRowAffordances,
         storeScope,
         shellScope
@@ -990,6 +994,7 @@ private fun rememberHomeSecondaryRouteEnvironment(
             compactConsecutiveMessages = compactConsecutiveMessages,
             foregroundMessageBannersEnabled = foregroundMessageBannersEnabled,
             activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
+            activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
             threadRowAffordances = threadRowAffordances,
             storeScope = storeScope,
             shellScope = shellScope,
@@ -1060,6 +1065,7 @@ private fun HomeActivityRouterContent(
         shellScope = environment.shellScope,
         listState = listState,
         activityTaskStatusBadgesEnabled = environment.activityTaskStatusBadgesEnabled,
+        activitySenderAvatarsEnabled = environment.activitySenderAvatarsEnabled,
         storeScope = environment.storeScope,
         onTitleClick = { scrollScope.launch { listState.animateScrollToTopExpressive() } }
     )
@@ -2843,6 +2849,7 @@ internal fun SlockAppShellContent(
     var compactConsecutiveMessages by remember { mutableStateOf(false) }
     var foregroundMessageBannersEnabled by remember { mutableStateOf(false) }
     var activityTaskStatusBadgesEnabled by remember { mutableStateOf(false) }
+    var activitySenderAvatarsEnabled by remember { mutableStateOf(false) }
     var serverDrawerEnabled by remember { mutableStateOf(false) }
     var serverDrawerProgrammaticCloseFence by remember { mutableStateOf<((String) -> Unit)?>(null) }
     var threadRowAffordances by remember { mutableStateOf(ThreadRowAffordancePreference.Default) }
@@ -3407,6 +3414,7 @@ internal fun SlockAppShellContent(
         compactConsecutiveMessages = chatLayout.compactConsecutiveMessages
         foregroundMessageBannersEnabled = chatLayout.foregroundMessageBannersEnabled
         activityTaskStatusBadgesEnabled = chatLayout.activityTaskStatusBadgesEnabled
+        activitySenderAvatarsEnabled = chatLayout.activitySenderAvatarsEnabled
         serverDrawerEnabled = chatLayout.serverDrawerEnabled
         threadRowAffordances = chatLayout.threadRowAffordances
     }
@@ -4885,6 +4893,14 @@ internal fun SlockAppShellContent(
                                 prewarmAdmissionGate.invalidate("settings_activity_badges")
                                 activityTaskStatusBadgesEnabled = it
                             },
+                            activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
+                            onActivitySenderAvatarsSelected = { enabled ->
+                                prewarmAdmissionGate.invalidate("settings_activity_sender_avatars")
+                                activitySenderAvatarsEnabled = enabled
+                                appShellCoroutineScope.launch {
+                                    chatLayoutPreferenceRepository.setActivitySenderAvatarsEnabled(enabled)
+                                }
+                            },
                             onServerDrawerSelected = {
                                 prewarmAdmissionGate.invalidate("settings_server_drawer")
                                 serverDrawerEnabled = it
@@ -5393,6 +5409,8 @@ private fun SettingsAppShellContent(
     onCompactConsecutiveMessagesSelected: (Boolean) -> Unit,
     onForegroundMessageBannersSelected: (Boolean) -> Unit,
     onActivityTaskStatusBadgesSelected: (Boolean) -> Unit,
+    activitySenderAvatarsEnabled: Boolean,
+    onActivitySenderAvatarsSelected: (Boolean) -> Unit,
     onServerDrawerSelected: (Boolean) -> Unit,
     onThreadRowAffordanceSelected: (ThreadRowAffordancePreference, Boolean) -> Unit,
     onSettingsAction: (String, String?) -> Unit,
@@ -5863,8 +5881,10 @@ private fun SettingsAppShellContent(
                     state = settingsState.appearance,
                     actionState = settingsState.actionState,
                     fontSizeDraft = appearanceMessageFontSizeDraft,
+                    activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
                     bottomContentPadding = bottomContentPadding,
                     onFontSizeDraftChange = { appearanceMessageFontSizeDraft = it },
+                    onActivitySenderAvatarsChange = onActivitySenderAvatarsSelected,
                     onSave = {
                         onSettingsIntent(
                             SharedSettingsIntent.UpdateAppearance(
@@ -7170,8 +7190,10 @@ private fun SettingsAppearanceContent(
     state: ScreenLoadState<SettingsAppearanceSnapshot>,
     actionState: SharedSettingsActionState?,
     fontSizeDraft: String,
+    activitySenderAvatarsEnabled: Boolean,
     bottomContentPadding: Dp,
     onFontSizeDraftChange: (String) -> Unit,
+    onActivitySenderAvatarsChange: (Boolean) -> Unit,
     onSave: () -> Unit,
     onRetry: () -> Unit
 ) {
@@ -7179,6 +7201,12 @@ private fun SettingsAppearanceContent(
         modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        item {
+            SettingsActivitySenderAvatarsCard(
+                enabled = activitySenderAvatarsEnabled,
+                onEnabledChange = onActivitySenderAvatarsChange
+            )
+        }
         when (state) {
             ScreenLoadState.Loading ->
                 item {
@@ -7232,6 +7260,32 @@ private fun SettingsAppearanceContent(
                 }
         }
         item { Spacer(Modifier.height(bottomContentPadding)) }
+    }
+}
+
+@Composable
+private fun SettingsActivitySenderAvatarsCard(
+    enabled: Boolean,
+    onEnabledChange: (Boolean) -> Unit
+) {
+    SettingsFormSectionCard(
+        iconName = SlockLucideIconName.CircleUser,
+        title = stringResource(MR.strings.settings_appearance_activity_sender_avatars)
+    ) {
+        SettingsNotificationToggleRow(
+            title =
+                stringResource(
+                    if (enabled) {
+                        MR.strings.settings_appearance_activity_sender_avatars_enabled
+                    } else {
+                        MR.strings.settings_appearance_activity_sender_avatars_disabled
+                    }
+                ),
+            detail = stringResource(MR.strings.settings_appearance_activity_sender_avatars_detail),
+            checked = enabled,
+            enabled = true,
+            onCheckedChange = onEnabledChange
+        )
     }
 }
 
@@ -20512,8 +20566,10 @@ private fun SettingsVisualAppearanceContent() {
         state = ScreenLoadState.Content(snapshot),
         actionState = null,
         fontSizeDraft = snapshot.messageBodyFontSize.selectedKey,
+        activitySenderAvatarsEnabled = false,
         bottomContentPadding = SlockSpacing.Lg,
         onFontSizeDraftChange = {},
+        onActivitySenderAvatarsChange = {},
         onSave = {},
         onRetry = {}
     )
@@ -21445,6 +21501,156 @@ internal fun HomeActivityHitTargetVisualContent() {
     }
 }
 
+// #65 sender-avatar fixture: exercises every Activity-row avatar branch in the
+// Mobile-only appearance experiment. One screen carries read + unread rows so the muted-read title and
+// the bold-unread title are visible together, and the leading avatar column
+// covers: human placeholder (Human sender, no wire value), real agent pixel
+// avatars (two distinct deterministic specs), an agent kind present but
+// missing its avatar wire value (user-icon placeholder, NOT collapsed to
+// system), and the app "SY" placeholder for both an unknown-kind sender and a
+// mention-action (system) sender. The first
+// row also carries a long two-line preview plus the full Task/Replies/Mention/
+// New/Draft badge run and the Done button, at the narrow 342dp fixture width,
+// to prove the avatar column does not crowd or clip the content column.
+private val homeActivityAvatarVisualSnapshot = InboxSnapshot(
+    server = homeSearchVisualServer,
+    items =
+        listOf(
+            // Unread thread, Human sender WITHOUT an avatar wire value ->
+            // human User-icon placeholder. Long two-line preview + full badge
+            // run (Task/Replies/Mention/New/Draft) + Done, bold unread title.
+            InboxItem(
+                key = "activity-avatar-thread-human",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("thread-msg-avatar-human"),
+                channelName = "thread",
+                unreadCount = 3,
+                hasMention = true,
+                hasDraft = true,
+                firstUnreadMessageId = MessageId("msg-avatar-reply"),
+                threadChannelId = ChannelId("thread-msg-avatar-human"),
+                parentChannelId = ChannelId("channel-design"),
+                parentChannelName = "design",
+                parentChannelKind = ConversationKind.Channel,
+                parentMessageId = MessageId("msg-avatar-parent"),
+                parentMessagePreview = "Captured the sender-avatar visual artifact and queued the React parity follow-up for staging.",
+                latestActivityMessageId = MessageId("msg-avatar-reply"),
+                latestActivityPreview = "Review the avatar column before release.",
+                latestActivityAt = "2 hours ago",
+                latestActivitySenderName = "artin",
+                latestActivitySenderId = "visual-user",
+                latestActivitySenderKind = MemberKind.Human,
+                replyCount = 5,
+                taskNumber = 612,
+                taskStatus = TaskStatus.InProgress,
+                taskClaimedByName = "Mahua"
+            ),
+            // Unread channel, Agent sender with a real pixel avatar (default
+            // "robot" spec) -> agent pixel avatar, bold unread title.
+            InboxItem(
+                key = "activity-avatar-channel-agent",
+                kind = InboxItemKind.Channel,
+                channelId = ChannelId("channel-android"),
+                channelName = "android-artifacts",
+                unreadCount = 1,
+                firstUnreadMessageId = MessageId("msg-avatar-android"),
+                lastMessageId = MessageId("msg-avatar-android"),
+                lastMessagePreview = "Published the new render artifact to staging.",
+                lastMessageAt = "3 hours ago",
+                lastMessageSenderName = "Cindy",
+                lastMessageSenderId = "agent-cindy",
+                lastMessageSenderKind = MemberKind.Agent,
+                lastMessageSenderAvatarWireValue = "pixel:robot"
+            ),
+            // Read DM, Agent sender with a distinct deterministic pixel avatar
+            // -> agent pixel avatar, muted (gray) read title.
+            InboxItem(
+                key = "activity-avatar-dm-agent-read",
+                kind = InboxItemKind.DirectMessage,
+                channelId = ChannelId("dm-agent-fable"),
+                channelName = "Fable",
+                lastMessageId = MessageId("msg-avatar-dm"),
+                lastMessagePreview = "Storyboard for the launch thread is ready to review.",
+                lastMessageAt = "yesterday",
+                lastMessageSenderName = "Fable",
+                lastMessageSenderId = "agent-fable",
+                lastMessageSenderKind = MemberKind.Agent,
+                lastMessageSenderAvatarWireValue = "pixel:random:fixture-fable"
+            ),
+            // Read DM, Agent sender WITH a kind but NO avatar wire value
+            // (missing profile/avatar) -> SlockAvatar default user-icon
+            // placeholder, NOT the app "SY". Proves a normal channel/DM keeps
+            // its sender kind for the human/agent fallback and does not
+            // collapse to system. Mirrors @Mahua's #65 review note.
+            InboxItem(
+                key = "activity-avatar-dm-agent-no-avatar",
+                kind = InboxItemKind.DirectMessage,
+                channelId = ChannelId("dm-agent-quill"),
+                channelName = "Quill",
+                lastMessageId = MessageId("msg-avatar-noavatar"),
+                lastMessagePreview = "Notes from the design sync are in the shared doc.",
+                lastMessageAt = "yesterday",
+                lastMessageSenderName = "Quill",
+                lastMessageSenderId = "agent-quill",
+                lastMessageSenderKind = MemberKind.Agent
+                // NOTE: deliberately no lastMessageSenderAvatarWireValue ->
+                // SlockAvatar renders the default user-icon placeholder, not
+                // the app "SY".
+            ),
+            // Read channel, sender kind/id absent -> app "SY" placeholder
+            // (unknown sender), muted read title.
+            InboxItem(
+                key = "activity-avatar-channel-unknown-read",
+                kind = InboxItemKind.Channel,
+                channelId = ChannelId("channel-releases"),
+                channelName = "releases",
+                lastMessageId = MessageId("msg-avatar-release"),
+                lastMessagePreview = "Build #4821 completed for the release candidate.",
+                lastMessageAt = "yesterday"
+            ),
+            // Unread mention-action -> forced system/app "SY" placeholder with
+            // the Mention + New badges.
+            InboxItem(
+                key = "activity-avatar-mention-system",
+                kind = InboxItemKind.MentionAction,
+                channelId = ChannelId("channel-general"),
+                channelName = "general",
+                unreadCount = 1,
+                hasMention = true,
+                lastMessageId = MessageId("msg-avatar-mention"),
+                lastMessagePreview = "@you the avatar column needs a final pass.",
+                lastMessageAt = "4 hours ago"
+            )
+        ),
+    totalCount = 6,
+    totalUnreadCount = 3,
+    hasMore = false
+)
+
+private val homeActivityAvatarVisualDraftProjection =
+    setOf(
+        SharedThreadComposerDraftRecord(
+            key = "reply:msg-avatar-parent",
+            sendChannelId = "thread-msg-avatar-human",
+            parentMessageId = "msg-avatar-parent"
+        )
+    ).toSharedThreadComposerDraftProjection()
+
+@Composable
+internal fun HomeActivityAvatarVisualContent(activitySenderAvatarsEnabled: Boolean) {
+    Box(modifier = Modifier.width(342.dp).height(800.dp)) {
+        SharedHomeActivityPanel(
+            snapshot = homeActivityAvatarVisualSnapshot,
+            onOpenItem = {},
+            onClose = {},
+            activityTaskStatusBadgesEnabled = true,
+            activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
+            draftProjection = homeActivityAvatarVisualDraftProjection,
+            modifier = Modifier.fillMaxSize()
+        )
+    }
+}
+
 @Composable
 internal fun HomeCreateChannelDialogVisualContent() {
     Box(
@@ -21560,6 +21766,8 @@ private fun SettingsRouteVisualScreen() {
         onCompactConsecutiveMessagesSelected = {},
         onForegroundMessageBannersSelected = {},
         onActivityTaskStatusBadgesSelected = {},
+        activitySenderAvatarsEnabled = false,
+        onActivitySenderAvatarsSelected = {},
         onServerDrawerSelected = {},
         onThreadRowAffordanceSelected = { _, _ -> },
         onSettingsAction = { _, _ -> },
