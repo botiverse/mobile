@@ -10,6 +10,7 @@ import com.tencent.kuikly.compose.ui.text.buildAnnotatedString
 import com.tencent.kuiklybase.markdown.annotator.AnnotatorSettings
 import com.tencent.kuiklybase.markdown.annotator.annotatorSettings
 import com.tencent.kuiklybase.markdown.annotator.buildMarkdownAnnotatedString
+import com.tencent.kuiklybase.markdown.compose.LocalSlockMarkdownRenderTiming
 import com.tencent.kuiklybase.markdown.compose.slockMarkdownLogSubTrace
 
 import org.intellij.markdown.ast.ASTNode
@@ -22,11 +23,26 @@ fun MarkdownParagraph(
     style: TextStyle = LocalMarkdownTypography.current.paragraph,
     annotatorSettings: AnnotatorSettings = annotatorSettings(),
 ) {
-    val styledText = buildAnnotatedString {
-        pushStyle(style.toSpanStyle())
-        buildMarkdownAnnotatedString(content = content, node = node, annotatorSettings = annotatorSettings)
-        pop()
-    }
+    // t6-a paragraph sub-phases: annotate = AnnotatedString build (plain
+    // block, measured via the timing's clock), textCall = MarkdownText
+    // composable call (sequential enter/exit). Null timing = untimed path.
+    val nodeTiming = LocalSlockMarkdownRenderTiming.current
+    val styledText =
+        if (nodeTiming != null) {
+            nodeTiming.measureParagraphAnnotate {
+                buildAnnotatedString {
+                    pushStyle(style.toSpanStyle())
+                    buildMarkdownAnnotatedString(content = content, node = node, annotatorSettings = annotatorSettings)
+                    pop()
+                }
+            }
+        } else {
+            buildAnnotatedString {
+                pushStyle(style.toSpanStyle())
+                buildMarkdownAnnotatedString(content = content, node = node, annotatorSettings = annotatorSettings)
+                pop()
+            }
+        }
     slockMarkdownLogSubTrace(
         "phase=markdown.paragraph.annotated contentHash=${content.hashCode().toString(16)} " +
             "nodeStart=${node.startOffset} nodeEnd=${node.endOffset} textLength=${styledText.text.length} " +
@@ -36,10 +52,12 @@ fun MarkdownParagraph(
 
     // 套个娃，解决placeholder span位置不对的问题
     Column(modifier = Modifier.fillMaxWidth()) {
+        nodeTiming?.enterParagraphText()
         MarkdownText(
             styledText,
             modifier = modifier,
             style = style,
         )
+        nodeTiming?.exitParagraphText()
     }
 }

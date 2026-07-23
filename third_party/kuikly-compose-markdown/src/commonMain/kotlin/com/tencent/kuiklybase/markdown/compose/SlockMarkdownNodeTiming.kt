@@ -47,6 +47,13 @@ private class NodeFrame(
     val startMark: kotlin.time.TimeMark,
 ) {
     var childTotalUs: Long = 0L
+    // Reviewed paragraph sub-phases (mutually exclusive slices of this
+    // node's exclusive time): annotate = AnnotatedString build,
+    // textCall = MarkdownText composable call; the rest of exclusive time
+    // reports as paragraph "other" (dispatch/model/spacer plumbing).
+    var annotateUs: Long = 0L
+    var textCallUs: Long = 0L
+    var textCallStart: kotlin.time.TimeMark? = null
 }
 
 private class TypeSummary {
@@ -54,6 +61,8 @@ private class TypeSummary {
     var totalExclusiveUs: Long = 0L
     var maxExclusiveUs: Long = 0L
     var belowThresholdCount: Int = 0
+    var totalAnnotateUs: Long = 0L
+    var totalTextCallUs: Long = 0L
 }
 
 /**
@@ -81,6 +90,34 @@ internal class SlockMarkdownRenderTiming(
         return true
     }
 
+    /**
+     * Measures the paragraph AnnotatedString build (non-composable block).
+     * No-ops when no frame is open (defensive: never throws in production).
+     */
+    fun <T> measureParagraphAnnotate(block: () -> T): T {
+        val frame = stack.lastOrNull() ?: return block()
+        val mark = timeSource.markNow()
+        val result = block()
+        frame.annotateUs += mark.elapsedNow().inWholeMicroseconds
+        return result
+    }
+
+    /** Sequential pair around the MarkdownText composable call (Compose
+     * forbids try/finally around composable invocations — same contract as
+     * enter/exitNode: an abandoned pass invalidates the render). */
+    fun enterParagraphText() {
+        stack.lastOrNull()?.let { it.textCallStart = timeSource.markNow() }
+    }
+
+    fun exitParagraphText() {
+        stack.lastOrNull()?.let { frame ->
+            frame.textCallStart?.let { start ->
+                frame.textCallUs += start.elapsedNow().inWholeMicroseconds
+                frame.textCallStart = null
+            }
+        }
+    }
+
     fun exitNode() {
         val frame = stack.removeLastOrNull() ?: return
         val totalUs = frame.startMark.elapsedNow().inWholeMicroseconds
@@ -90,14 +127,22 @@ internal class SlockMarkdownRenderTiming(
         val summary = summaries.getOrPut(frame.typeKey) { TypeSummary() }
         summary.count++
         summary.totalExclusiveUs += exclusiveUs
+        summary.totalAnnotateUs += frame.annotateUs
+        summary.totalTextCallUs += frame.textCallUs
         if (exclusiveUs > summary.maxExclusiveUs) summary.maxExclusiveUs = exclusiveUs
         if (exclusiveUs >= SlockNodeDetailThresholdUs) {
             if (detailEmitted < SlockNodeDetailCapPerRender) {
                 detailEmitted++
+                val subPhases =
+                    if (frame.annotateUs > 0L || frame.textCallUs > 0L) {
+                        val otherUs =
+                            (exclusiveUs - frame.annotateUs - frame.textCallUs).coerceAtLeast(0L)
+                        " annotateUs=${frame.annotateUs} textCallUs=${frame.textCallUs} otherUs=$otherUs"
+                    } else ""
                 sink.emit(
                     "SlockMarkdownSpike phase=markdown.node.render renderSeq=$renderSeq " +
                         "type=${frame.typeKey} exclusiveUs=$exclusiveUs totalUs=$totalUs " +
-                        "depth=${frame.depth} topIndex=${frame.topIndex}"
+                        "depth=${frame.depth} topIndex=${frame.topIndex}" + subPhases
                 )
             } else {
                 detailDropped++
@@ -125,7 +170,8 @@ internal class SlockMarkdownRenderTiming(
             sink.emit(
                 "SlockMarkdownSpike phase=markdown.node.summary renderSeq=$renderSeq " +
                     "type=$typeKey count=${s.count} totalExclusiveUs=${s.totalExclusiveUs} " +
-                    "maxUs=${s.maxExclusiveUs} belowThreshold=${s.belowThresholdCount}"
+                    "maxUs=${s.maxExclusiveUs} belowThreshold=${s.belowThresholdCount} " +
+                    "totalAnnotateUs=${s.totalAnnotateUs} totalTextCallUs=${s.totalTextCallUs}"
             )
         }
         val remainderUs = (renderNodesUs - exclusiveSumUs)

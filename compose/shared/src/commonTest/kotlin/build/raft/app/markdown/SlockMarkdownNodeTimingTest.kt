@@ -162,7 +162,8 @@ class SlockMarkdownNodeTimingTest {
             "phase", "renderSeq", "type", "exclusiveUs", "totalUs", "depth",
             "topIndex", "count", "totalExclusiveUs", "maxUs", "belowThreshold",
             "renderNodesUs", "exclusiveSumUs", "remainderUs", "detailDropped",
-            "abortedFrames", "invalid"
+            "abortedFrames", "invalid", "annotateUs", "textCallUs", "otherUs",
+            "totalAnnotateUs", "totalTextCallUs"
         )
         for (line in sink.lines) {
             assertTrue(line.startsWith("SlockMarkdownSpike "), line)
@@ -217,5 +218,31 @@ class SlockMarkdownNodeTimingTest {
     fun sinkSelectorInstallsOnEnableAndClearsOnDisable() {
         assertSame(SlockMarkdownNodeSpikeSink, slockMarkdownNodeSinkFor(true))
         assertNull(slockMarkdownNodeSinkFor(false))
+    }
+
+    @Test
+    fun paragraphSubPhasesAreMutuallyExclusiveSlicesOfExclusiveTime() {
+        val sink = RecordingSink()
+        val clock = TestTimeSource()
+        val timing = SlockMarkdownRenderTiming(sink, clock)
+
+        timing.enterNode("PARAGRAPH")
+        clock += 500.microseconds                         // dispatch/pre work
+        timing.measureParagraphAnnotate { clock += 2_000.microseconds }
+        timing.enterParagraphText()
+        clock += 3_000.microseconds
+        timing.exitParagraphText()
+        clock += 500.microseconds                         // post work
+        timing.exitNode()
+        timing.finishRender(renderNodesUs = 6_000)
+
+        val detail = sink.lines.single { "phase=markdown.node.render" in it }
+        assertEquals("6000", field(detail, "exclusiveUs"))
+        assertEquals("2000", field(detail, "annotateUs"))
+        assertEquals("3000", field(detail, "textCallUs"))
+        assertEquals("1000", field(detail, "otherUs"))    // exclusive - annotate - textCall
+        val summary = sink.lines.single { "phase=markdown.node.summary" in it }
+        assertEquals("2000", field(summary, "totalAnnotateUs"))
+        assertEquals("3000", field(summary, "totalTextCallUs"))
     }
 }
