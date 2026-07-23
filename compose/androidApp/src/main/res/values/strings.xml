@@ -1,5 +1,7 @@
 <resources>
     <string name="app_name">Raft</string>
+    <string name="screenshot_feedback_action">Send feedback</string>
+    <string name="screenshot_feedback_content_description">Send feedback about this screen</string>
     <string name="auth_logo">RAFT</string>
     <string name="slock_activity_widget_name">Raft Activity</string>
     <string name="slock_activity_widget_description">Unread Activity and Saved counters for the selected Raft workspace.</string>

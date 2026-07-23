@@ -356,6 +356,13 @@ open class SlockKuiklyActivity :
             registerForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
                 handleAttachmentExportResult(uri)
             }
+    private val screenshotFeedbackEventGate =
+            ScreenshotFeedbackEventGate(SCREENSHOT_FEEDBACK_MINIMUM_INTERVAL_MILLIS)
+    private val screenshotFeedbackListeningGate = ScreenshotFeedbackListeningGate()
+    private val screenshotFeedbackHideRunnable = Runnable { hideScreenshotFeedbackAction() }
+    private var screenCaptureObserver: ScreenCaptureObserver? = null
+    private var screenshotFeedbackActionView: View? = null
+    private var screenshotFeedbackSubmissionActive = false
 
     private val pageName: String
         get() = resolvedPageName(intent)
@@ -366,6 +373,7 @@ open class SlockKuiklyActivity :
         ProcessAndroidAttachmentMediaStoreCleanup.start(applicationContext)
         onBackPressedDispatcher.addCallback(this, kuiklySystemBackCallback)
         setContentView(R.layout.activity_slock_kuikly)
+        prepareScreenshotFeedbackObserver()
         registerAndroidShellWindow(intent)
         setupImmersiveMode()
         setupImeInsetsRelayout()
@@ -528,6 +536,10 @@ open class SlockKuiklyActivity :
     }
 
     override fun onDestroy() {
+        screenshotFeedbackListeningGate.stop()
+        screenCaptureObserver?.stop()
+        screenCaptureObserver = null
+        hideScreenshotFeedbackAction()
         removeHomeColdStartFirstDrawListener()
         removeHomeColdStartNativeHold(reason = "destroy")
         removeSlockInputFontBridge()
@@ -551,6 +563,167 @@ open class SlockKuiklyActivity :
             kuiklyRenderViewDelegator.onDetach()
         }
     }
+
+    override fun onStart() {
+        super.onStart()
+        screenCaptureObserver?.start(screenshotFeedbackListeningGate.start())
+    }
+
+    override fun onStop() {
+        screenshotFeedbackListeningGate.stop()
+        screenCaptureObserver?.stop()
+        hideScreenshotFeedbackAction()
+        super.onStop()
+    }
+
+    private fun prepareScreenshotFeedbackObserver() {
+        val runtimeEnabled = resources.getBoolean(R.bool.slock_screenshot_feedback_runtime_enabled)
+        if (
+            !shouldEnableScreenshotFeedback(
+                buildEnabled = BuildConfig.SCREENSHOT_FEEDBACK_ENABLED,
+                runtimeEnabled = runtimeEnabled,
+                sdkInt = Build.VERSION.SDK_INT,
+            )
+        ) {
+            return
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            screenCaptureObserver =
+                    Android14ScreenCaptureObserver(
+                        activity = this,
+                        executor = ContextCompat.getMainExecutor(this),
+                        onScreenCaptured = ::handleSystemScreenCaptured,
+                    )
+        }
+    }
+
+    private fun handleSystemScreenCaptured(generation: Long) {
+        if (!screenshotFeedbackListeningGate.accepts(generation)) return
+        if (screenshotFeedbackSubmissionActive || isFinishing || isDestroyed) return
+        if (!screenshotFeedbackEventGate.accept(SystemClock.elapsedRealtime())) return
+        SlockAppLog.record(
+            "SlockScreenshotFeedback",
+            "screenshot_detected route=$pageName contentCaptured=false",
+        )
+        showScreenshotFeedbackAction()
+    }
+
+    private fun showScreenshotFeedbackAction() {
+        val root = findViewById<android.widget.FrameLayout?>(R.id.slock_kuikly_root) ?: return
+        val actionView =
+                screenshotFeedbackActionView
+                    ?: android.widget.TextView(this).apply {
+                        text = getString(R.string.screenshot_feedback_action)
+                        contentDescription =
+                                getString(R.string.screenshot_feedback_content_description)
+                        textSize = 14f
+                        typeface = Typeface.DEFAULT_BOLD
+                        gravity = android.view.Gravity.CENTER
+                        setTextColor(Color.BLACK)
+                        minWidth = screenshotFeedbackDp(112)
+                        setPadding(
+                            screenshotFeedbackDp(18),
+                            0,
+                            screenshotFeedbackDp(18),
+                            0,
+                        )
+                        background =
+                                android.graphics.drawable.GradientDrawable().apply {
+                                    shape = android.graphics.drawable.GradientDrawable.RECTANGLE
+                                    cornerRadius = screenshotFeedbackDp(6).toFloat()
+                                    setColor(ContextCompat.getColor(context, R.color.slock_accent_pink))
+                                    setStroke(screenshotFeedbackDp(2), Color.BLACK)
+                                }
+                        elevation = screenshotFeedbackDp(6).toFloat()
+                        isClickable = true
+                        isFocusable = true
+                        setOnClickListener { openScreenshotFeedbackPrompt() }
+                    }.also { view ->
+                        screenshotFeedbackActionView = view
+                        root.addView(
+                            view,
+                            android.widget.FrameLayout.LayoutParams(
+                                ViewGroup.LayoutParams.WRAP_CONTENT,
+                                screenshotFeedbackDp(48),
+                            ).apply {
+                                gravity = android.view.Gravity.END or android.view.Gravity.CENTER_VERTICAL
+                                marginEnd = screenshotFeedbackDp(16)
+                            },
+                        )
+                    }
+        actionView.visibility = View.VISIBLE
+        actionView.removeCallbacks(screenshotFeedbackHideRunnable)
+        actionView.postDelayed(
+            screenshotFeedbackHideRunnable,
+            SCREENSHOT_FEEDBACK_VISIBLE_MILLIS,
+        )
+    }
+
+    private fun hideScreenshotFeedbackAction() {
+        screenshotFeedbackActionView?.let { view ->
+            view.removeCallbacks(screenshotFeedbackHideRunnable)
+            view.visibility = View.GONE
+        }
+    }
+
+    private fun openScreenshotFeedbackPrompt() {
+        if (screenshotFeedbackSubmissionActive) return
+        screenshotFeedbackSubmissionActive = true
+        hideScreenshotFeedbackAction()
+        SlockAppLog.record(
+            "SlockScreenshotFeedback",
+            "feedback_action_opened route=$pageName screenshotAttached=false",
+        )
+        lifecycleScope.launch {
+            try {
+                val description = promptScreenshotFeedbackDescription() ?: return@launch
+                SlockKuiklyBridgeModule(applicationContext).submitNativeFeedback(
+                    JSONObject().put("message", description)
+                )
+            } finally {
+                screenshotFeedbackSubmissionActive = false
+            }
+        }
+    }
+
+    private suspend fun promptScreenshotFeedbackDescription(): String? =
+            withContext(Dispatchers.Main) {
+                suspendCancellableCoroutine { continuation ->
+                    val input = EditText(this@SlockKuiklyActivity).apply {
+                        hint = SlockHostStrings.feedbackPromptPlaceholder()
+                        minLines = 3
+                        setPadding(
+                            screenshotFeedbackDp(16),
+                            screenshotFeedbackDp(12),
+                            screenshotFeedbackDp(16),
+                            screenshotFeedbackDp(12),
+                        )
+                    }
+                    val dialog =
+                            AlertDialog.Builder(this@SlockKuiklyActivity)
+                                .setTitle(SlockHostStrings.feedbackPromptTitle())
+                                .setMessage(SlockHostStrings.feedbackPromptMessage())
+                                .setView(input)
+                                .setPositiveButton(SlockHostStrings.feedbackSend()) { _, _ ->
+                                    val text = input.text?.toString()?.trim().orEmpty()
+                                    if (continuation.isActive) {
+                                        continuation.resume(text.ifBlank { null })
+                                    }
+                                }
+                                .setNegativeButton(SlockHostStrings.feedbackCancel()) { _, _ ->
+                                    if (continuation.isActive) continuation.resume(null)
+                                }
+                                .setOnCancelListener {
+                                    if (continuation.isActive) continuation.resume(null)
+                                }
+                                .create()
+                    continuation.invokeOnCancellation { runCatching { dialog.dismiss() } }
+                    dialog.show()
+                }
+            }
+
+    private fun screenshotFeedbackDp(value: Int): Int =
+            (value * resources.displayMetrics.density).roundToInt()
 
     private fun registerAndroidShellWindow(intent: Intent?) {
         if (resolvedPageName(intent) != PAGE_APP_SHELL) return
@@ -2600,6 +2773,9 @@ internal class SlockKuiklyBridgeModule(
         private val appContext: Context,
 ) : KuiklyRenderBaseModule() {
     private val attachmentSystemDownloads = ProcessAndroidAttachmentSystemDownloads.get(appContext)
+
+    internal suspend fun submitNativeFeedback(request: JSONObject): Map<String, Any> =
+            submitFeedbackToQuiver(request)
 
     override fun call(method: String, params: String?, callback: KuiklyRenderCallback?): Any? {
         return when (method) {

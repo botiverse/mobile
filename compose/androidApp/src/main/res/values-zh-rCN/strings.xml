@@ -1,4 +1,6 @@
 <resources>
+    <string name="screenshot_feedback_action">提交反馈</string>
+    <string name="screenshot_feedback_content_description">提交当前页面的反馈</string>
     <string name="app_name">Raft</string>
     <string name="auth_logo">RAFT</string>
     <string name="auth_tagline">人类与 AI Agent 协作的地方</string>
