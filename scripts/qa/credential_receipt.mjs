@@ -5,14 +5,23 @@ const SUBJECT = /^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,255}$/;
 
 export function extractStableSubject(texts) {
   const found = new Set();
-  const patterns = [
-    /["']principalId["']\s*:\s*["']([^"']+)["']/g,
-    /\bprincipalId=([A-Za-z0-9][A-Za-z0-9._:@/-]{0,255})/g,
-  ];
   for (const text of texts) {
-    for (const pattern of patterns) {
-      pattern.lastIndex = 0;
-      for (const match of text.matchAll(pattern)) if (SUBJECT.test(match[1])) found.add(match[1]);
+    for (const line of String(text).split(/\r?\n/)) {
+      let message = null;
+      try {
+        const parsed = JSON.parse(line);
+        if (typeof parsed?.eventMessage === "string" && parsed.eventMessage.startsWith("[SlockSharedAuth][info] ")) {
+          message = parsed.eventMessage.slice("[SlockSharedAuth][info] ".length);
+        }
+      } catch {}
+      if (message === null) {
+        const android = /(?:^|\s)I\/SlockSharedAuth(?:\(\s*\d+\))?:\s+(.+)$/.exec(line);
+        const ios = /\b[^\s]+\[\d+\]:\s+\([^)]*\)\s+\[SlockSharedAuth\]\[info\]\s+(.+)$/.exec(line);
+        message = android?.[1] ?? ios?.[1] ?? null;
+      }
+      if (message === null) continue;
+      const match = /^shared_auth_session QA_CREDENTIAL_IDENTITY version=1 principalId=([^\s]+) authGeneration=([1-9][0-9]*)$/.exec(message);
+      if (match && SUBJECT.test(match[1])) found.add(match[1]);
     }
   }
   return found.size === 1 ? [...found][0] : null;

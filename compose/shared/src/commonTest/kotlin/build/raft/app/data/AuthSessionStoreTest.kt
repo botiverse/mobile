@@ -492,6 +492,18 @@ class AuthSessionStoreTest {
         assertTrue(event is AuthSessionEvent.Authenticated) // NOT a fabricated Cleared from the no-op notify
     }
 
+    @Test
+    fun authenticatedReplacementEmitsCanonicalCredentialIdentityWithoutEmailOrTokens() = runBlocking {
+        val logs = mutableListOf<String>()
+        val store = KeyValueAuthSessionStore(InMemorySlockKeyValueStore(), diagnosticsLogger = logs::add)
+        store.replaceAuthenticatedSession(sampleSession())
+        val identity = logs.single { it.startsWith("QA_CREDENTIAL_IDENTITY ") }
+        assertEquals("QA_CREDENTIAL_IDENTITY version=1 principalId=user-1 authGeneration=1", identity)
+        assertTrue("artin@slock.ai" !in identity)
+        assertTrue("token-a" !in identity)
+        assertNull(qaCredentialIdentityDiagnostic(sampleSession().copy(user = sampleSession().user.copy(id = "bad id")), 2))
+    }
+
     private class CountingSlockKeyValueStore : SlockKeyValueStore {
         private val delegate = InMemorySlockKeyValueStore()
         var readCount: Int = 0

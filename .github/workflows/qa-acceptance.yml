@@ -431,6 +431,15 @@ jobs:
                   out.write(f"{name}<<{delimiter}\n{value}\n{delimiter}\n")
           PY
 
+      - name: Freeze legacy credential identity receipt
+        if: ${{ inputs.stamp_run_case_id != '' && steps.stamp-claim.outputs.bootstrap_required != 'true' }}
+        env:
+          STAMP_RUN_CASE_ID: ${{ inputs.stamp_run_case_id }}
+          STAMP_URL: ${{ secrets.STAMP_URL }}
+          STAMP_TOKEN: ${{ secrets.STAMP_TOKEN }}
+          QA_TEST_EMAIL: ${{ env.QA_TEST_EMAIL }}
+        run: bash scripts/qa/stamp_report.sh credential-receipt
+
       - name: Mark pre-claim preparation complete
         if: ${{ inputs.stamp_run_case_id != '' }}
         run: printf '%s' ready_to_claim > "$RUNNER_TEMP/stamp-preclaim-phase"
