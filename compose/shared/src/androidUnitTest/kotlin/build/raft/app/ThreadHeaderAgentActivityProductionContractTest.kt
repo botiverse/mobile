@@ -55,6 +55,10 @@ class ThreadHeaderAgentActivityProductionContractTest {
         assertContains(fixture, "ThreadPageHeader(")
         assertContains(fixture, "Reviewing release readiness and visual diffs")
         assertContains(source, "ThreadHeaderDmAgentActivityMaxWidth")
+        assertContains(
+            source,
+            "ThreadHeaderDmAgentActivityDotSize = SlockStatusIndicatorTokens.InlineSize"
+        )
         assertContains(source, "overflow = TextOverflow.Ellipsis")
         assertTrue(File(visualFixturesRoot(), "build/raft/app/VisualFixturePages.kt").readText().contains("compose_thread_dm_agent_activity_header_visual"))
     }

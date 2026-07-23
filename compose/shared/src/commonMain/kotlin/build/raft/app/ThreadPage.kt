@@ -649,7 +649,10 @@ private val ThreadHeaderActionGroupSpacing = 4.dp
 private val ThreadHeaderActionIconSize = 15.dp
 private val ThreadHeaderActionLabelMinWidth = 46.dp
 private val ThreadHeaderDmAgentActivityMaxWidth = 150.dp
-private val ThreadHeaderDmAgentActivityDotSize = 8.dp
+// React AgentDMStatus uses the canonical StatusDot default (`md`, 10px).
+// Keep the mobile header on the same canonical inline token instead of a
+// smaller one-off dot.
+private val ThreadHeaderDmAgentActivityDotSize = SlockStatusIndicatorTokens.InlineSize
 private val ThreadHeaderChannelTileSize = 34.dp
 private val ThreadHeaderChannelIconSize = 16.dp
 
