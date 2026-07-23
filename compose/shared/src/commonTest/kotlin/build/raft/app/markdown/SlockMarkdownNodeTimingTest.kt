@@ -216,8 +216,14 @@ class SlockMarkdownNodeTimingTest {
 
     @Test
     fun sinkSelectorInstallsOnEnableAndClearsOnDisable() {
-        assertSame(SlockMarkdownNodeSpikeSink, slockMarkdownNodeSinkFor(true))
-        assertNull(slockMarkdownNodeSinkFor(false))
+        assertSame(SlockMarkdownNodeSpikeSink, slockMarkdownNodeSinkFor(true, suppressedForOverheadTest = false))
+        assertNull(slockMarkdownNodeSinkFor(false, suppressedForOverheadTest = false))
+    }
+
+    @Test
+    fun overheadSuppressionKeepsSinkUninstalledEvenWhenEnabled() {
+        assertNull(slockMarkdownNodeSinkFor(true, suppressedForOverheadTest = true))
+        assertNull(slockMarkdownNodeSinkFor(false, suppressedForOverheadTest = true))
     }
 
     @Test

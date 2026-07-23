@@ -30,6 +30,15 @@ object SlockMarkdownNodeTrace {
      * into app code.
      */
     var sink: SlockMarkdownNodeTraceSink? = null
+
+    /**
+     * Overhead-A/B suppression (reviewed): true keeps the sink uninstalled
+     * even with diagnostics enabled, so paired runs on one exact differ ONLY
+     * in this instrumentation. Session-only by construction (plain field,
+     * reset on process death), settable solely via the app's debug
+     * diagnostics deep link — no release/production control surface.
+     */
+    var suppressedForOverheadTest: Boolean = false
 }
 
 /** Individual node details below this exclusive duration are summarized only. */

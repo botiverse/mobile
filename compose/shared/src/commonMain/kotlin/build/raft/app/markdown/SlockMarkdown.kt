@@ -626,8 +626,11 @@ internal object SlockMarkdownNodeSpikeSink : SlockMarkdownNodeTraceSink {
 // Pure selection (reviewed stale-sink tooth): true -> the spike sink,
 // false -> null; assigning the result on every SlockMarkdownBody composition
 // guarantees a disabled gate clears any previously installed sink.
-internal fun slockMarkdownNodeSinkFor(diagnosticsEnabled: Boolean): SlockMarkdownNodeTraceSink? =
-    if (diagnosticsEnabled) SlockMarkdownNodeSpikeSink else null
+internal fun slockMarkdownNodeSinkFor(
+    diagnosticsEnabled: Boolean,
+    suppressedForOverheadTest: Boolean = SlockMarkdownNodeTrace.suppressedForOverheadTest,
+): SlockMarkdownNodeTraceSink? =
+    if (diagnosticsEnabled && !suppressedForOverheadTest) SlockMarkdownNodeSpikeSink else null
 
 internal fun shouldLogSlockMarkdownPerformance(durationMs: Long): Boolean =
     DEBUG_SLOCK_MARKDOWN_PERF_LOG || durationMs >= SlockMarkdownPerformanceSlowThresholdMs
