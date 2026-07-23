@@ -1327,8 +1327,10 @@ internal suspend fun selectStoredAuthServer(
         )
     }
     val updated =
-        sessionStore.selectServerIfAccountMatches(
+        sessionStore.selectServerIfSessionMatches(
             expectedAccountId = expectedSession.user.id,
+            expectedAccessToken = expectedSession.accessToken,
+            expectedRefreshToken = expectedSession.refreshToken,
             serverId = serverId,
         ) ?: return SharedAuthResult.Unauthenticated
     updated.rememberSelectedServer(serverSelectionMemory)

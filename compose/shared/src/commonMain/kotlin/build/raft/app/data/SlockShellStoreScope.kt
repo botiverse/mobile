@@ -305,14 +305,18 @@ internal class SlockShellAuthSessionStore(
         delegate.readSession()?.let { selectedServerStore.reconcile(it) }
     }
 
-    override suspend fun selectServerIfAccountMatches(
+    override suspend fun selectServerIfSessionMatches(
         expectedAccountId: String,
+        expectedAccessToken: String,
+        expectedRefreshToken: String,
         serverId: String,
     ): StoredAuthSession? =
         selectionMutationMutex.withLock {
             val processSession =
-                delegate.selectServerIfAccountMatches(
+                delegate.selectServerIfSessionMatches(
                     expectedAccountId = expectedAccountId,
+                    expectedAccessToken = expectedAccessToken,
+                    expectedRefreshToken = expectedRefreshToken,
                     serverId = serverId,
                 ) ?: return@withLock null
             val target = processSession.servers.firstOrNull { it.id == serverId } ?: return@withLock null

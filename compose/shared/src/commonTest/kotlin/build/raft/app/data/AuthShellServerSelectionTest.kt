@@ -2,25 +2,27 @@ package build.raft.app.data
 
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 
-@OptIn(ExperimentalCoroutinesApi::class)
 class AuthShellServerSelectionTest {
     @Test
-    fun freshLoginSelectionPublishesToShellAndProcessAuthorities() = runTest {
+    fun freshLoginSelectionPublishesToShellAndProcessAuthorities() = runBlocking {
         val initial = authSessionFixture(userId = "user-1", servers = authServerFixtures(), selectedServerId = null)
         val processStore = InMemorySlockAuthSessionStore(initial)
         val selectedServerStore =
@@ -49,7 +51,7 @@ class AuthShellServerSelectionTest {
     }
 
     @Test
-    fun staleAccountGenerationCannotSelectIntoCurrentAccount() = runTest {
+    fun staleAccountGenerationCannotSelectIntoCurrentAccount() = runBlocking {
         val staleSession =
             authSessionFixture(
                 userId = "user-old",
@@ -81,7 +83,57 @@ class AuthShellServerSelectionTest {
     }
 
     @Test
-    fun serverRemovedAfterCaptureCannotBeSelected() = runTest {
+    fun sameAccountSuccessorGenerationRejectsLateSelectionWithoutWrites() = runBlocking {
+        val generationA =
+            authSessionFixture(
+                userId = "user-1",
+                servers = authServerFixtures(),
+                selectedServerId = "server-1",
+            ).copy(
+                accessToken = "access-generation-a",
+                refreshToken = "refresh-generation-a",
+            )
+        val generationB =
+            generationA.copy(
+                accessToken = "access-generation-b",
+                refreshToken = "refresh-generation-b",
+            )
+        val processStore = InMemorySlockAuthSessionStore(generationA)
+        val selectedServerStore = SelectedServerStore(SlockShellStoreScope.create("same-account-successor-shell"))
+        val shellStore = SlockShellAuthSessionStore(processStore, selectedServerStore)
+        shellStore.readSession()
+        processStore.saveRememberedServerSelection(
+            generationA.user,
+            StoredAuthServerSelection(serverId = "server-1", serverSlug = "one"),
+        )
+        processStore.replaceAuthenticatedSession(generationB)
+        val events = mutableListOf<AuthSessionEvent>()
+        val eventObserver =
+            launch(start = CoroutineStart.UNDISPATCHED) {
+                shellStore.authSessionEvents.collect { events += it }
+            }
+        val processBefore = processStore.readSession()
+
+        val result =
+            selectStoredAuthServer(
+                sessionStore = shellStore,
+                expectedSession = generationA,
+                serverId = "server-2",
+            )
+        assertIs<SharedAuthResult.Unauthenticated>(result)
+        assertEquals(processBefore, processStore.readSession())
+        assertEquals("server-1", selectedServerStore.selectedServerId.value)
+        assertEquals("server-1", shellStore.readSession()?.selectedServerId)
+        assertEquals(
+            StoredAuthServerSelection(serverId = "server-1", serverSlug = "one"),
+            processStore.readRememberedServerSelection(generationB.user),
+        )
+        assertEquals(emptyList(), events)
+        eventObserver.cancel()
+    }
+
+    @Test
+    fun serverRemovedAfterCaptureCannotBeSelected() = runBlocking {
         val captured =
             authSessionFixture(
                 userId = "user-1",
@@ -107,7 +159,7 @@ class AuthShellServerSelectionTest {
     }
 
     @Test
-    fun existingSelectionSwitchAndRepeatStayConverged() = runTest {
+    fun existingSelectionSwitchAndRepeatStayConverged() = runBlocking {
         val initial =
             authSessionFixture(
                 userId = "user-1",
@@ -139,7 +191,7 @@ class AuthShellServerSelectionTest {
     }
 
     @Test
-    fun staleMetadataCompletionCannotRollbackExplicitSelection() = runTest {
+    fun staleMetadataCompletionCannotRollbackExplicitSelection() = runBlocking {
         val initial =
             authSessionFixture(
                 userId = "user-1",
@@ -177,34 +229,37 @@ class AuthShellServerSelectionTest {
     }
 
     @Test
-    fun processSelectionEventCannotExposeOldShellSelection() = runTest {
+    fun processSelectionEventCannotExposeOldShellSelection() = runBlocking {
         val initial = authSessionFixture(userId = "user-1", servers = authServerFixtures(), selectedServerId = null)
         val processStore = YieldingEventStore(InMemorySlockAuthSessionStore(initial))
         val selectedServerStore = SelectedServerStore(SlockShellStoreScope.create("event-order-shell"))
-        val shellStore =
-            SlockShellAuthSessionStore(
-                delegate = processStore,
-                selectedServerStore = selectedServerStore,
-                eventScope = backgroundScope,
+        val eventScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        try {
+            val shellStore =
+                SlockShellAuthSessionStore(
+                    delegate = processStore,
+                    selectedServerStore = selectedServerStore,
+                    eventScope = eventScope,
+                )
+            shellStore.readSession()
+            val selectionAtFirstEvent = CompletableDeferred<String?>()
+            val observation =
+                launch(start = CoroutineStart.UNDISPATCHED) {
+                    shellStore.authSessionEvents.first()
+                    selectionAtFirstEvent.complete(selectedServerStore.selectedServerId.value)
+                }
+
+            selectStoredAuthServer(
+                sessionStore = shellStore,
+                expectedSession = initial,
+                serverId = "server-2",
             )
-        shellStore.readSession()
-        runCurrent()
-        val selectionAtFirstEvent = CompletableDeferred<String?>()
-        val observation =
-            launch(start = CoroutineStart.UNDISPATCHED) {
-                shellStore.authSessionEvents.first()
-                selectionAtFirstEvent.complete(selectedServerStore.selectedServerId.value)
-            }
 
-        selectStoredAuthServer(
-            sessionStore = shellStore,
-            expectedSession = initial,
-            serverId = "server-2",
-        )
-        runCurrent()
-
-        assertEquals("server-2", selectionAtFirstEvent.await())
-        observation.cancel()
+            assertEquals("server-2", selectionAtFirstEvent.await())
+            observation.cancel()
+        } finally {
+            eventScope.cancel()
+        }
     }
 
     private class DelayedMetadataStore(
@@ -234,6 +289,24 @@ class AuthShellServerSelectionTest {
         private var generation = 0L
 
         override val authSessionEvents: SharedFlow<AuthSessionEvent> = events.asSharedFlow()
+
+        override suspend fun selectServerIfSessionMatches(
+            expectedAccountId: String,
+            expectedAccessToken: String,
+            expectedRefreshToken: String,
+            serverId: String,
+        ): StoredAuthSession? {
+            val selected =
+                delegate.selectServerIfSessionMatches(
+                    expectedAccountId = expectedAccountId,
+                    expectedAccessToken = expectedAccessToken,
+                    expectedRefreshToken = expectedRefreshToken,
+                    serverId = serverId,
+                ) ?: return null
+            events.emit(AuthSessionEvent.BindingMetadataChanged(++generation))
+            yield()
+            return selected
+        }
 
         override suspend fun updateMetadata(
             expectedAccountId: String?,

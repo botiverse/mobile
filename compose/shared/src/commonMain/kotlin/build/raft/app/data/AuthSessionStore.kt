@@ -122,20 +122,29 @@ interface SlockAuthSessionStore {
     }
 
     /**
-     * Atomically selects [serverId] only while the latest session still belongs to
-     * [expectedAccountId]. The target is resolved from the latest server list inside
-     * the metadata write, so a removed server or concurrent account switch fails
-     * closed instead of publishing a stale selection.
+     * Atomically selects [serverId] only while the latest session still matches the
+     * complete captured account/token generation. The generation comparison and target
+     * resolution from the latest server list both run inside the real store's metadata
+     * write lock, so a removed server, account switch, or same-account login/token
+     * successor fails closed instead of publishing a stale selection.
      *
      * Shell-scoped stores override this primitive so the same explicit action updates
      * both the shell selection authority and the process next-launch default.
      */
-    suspend fun selectServerIfAccountMatches(
+    suspend fun selectServerIfSessionMatches(
         expectedAccountId: String,
+        expectedAccessToken: String,
+        expectedRefreshToken: String,
         serverId: String,
     ): StoredAuthSession? {
         var selected: StoredAuthSession? = null
         updateMetadata(expectedAccountId = expectedAccountId) { latest ->
+            if (
+                latest.accessToken != expectedAccessToken ||
+                latest.refreshToken != expectedRefreshToken
+            ) {
+                return@updateMetadata latest
+            }
             val target = latest.servers.firstOrNull { it.id == serverId } ?: return@updateMetadata latest
             latest.copy(
                 selectedServerId = target.id,
