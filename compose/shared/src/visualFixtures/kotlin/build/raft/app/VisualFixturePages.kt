@@ -130,6 +130,14 @@ internal class ComposeThreadHeaderVisualPage : BasePager() {
     }
 }
 
+@Page("compose_thread_dm_agent_activity_header_visual", supportInLocal = true)
+internal class ComposeThreadDmAgentActivityHeaderVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { ThreadDmAgentActivityHeaderVisualScreen() }
+    }
+}
+
 @Page("compose_thread_activity_mute_visual", supportInLocal = true)
 internal class ComposeThreadActivityMuteVisualPage : BasePager() {
     override fun willInit() {

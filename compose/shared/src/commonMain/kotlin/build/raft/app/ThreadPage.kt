@@ -276,6 +276,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
@@ -646,6 +647,12 @@ private val ThreadHeaderActionShadowOffset = 2.dp
 private val ThreadHeaderActionGroupSpacing = 4.dp
 private val ThreadHeaderActionIconSize = 15.dp
 private val ThreadHeaderActionLabelMinWidth = 46.dp
+private val ThreadHeaderDmAgentActivityMaxWidth = 150.dp
+private val ThreadHeaderDmAgentActivityLeadingGap = SlockSpacing.Sm
+// React AgentDMStatus uses the canonical StatusDot default (`md`, 10px).
+// Keep the mobile header on the same canonical inline token instead of a
+// smaller one-off dot.
+private val ThreadHeaderDmAgentActivityDotSize = SlockStatusIndicatorTokens.InlineSize
 private val ThreadHeaderChannelTileSize = 34.dp
 private val ThreadHeaderChannelIconSize = 16.dp
 
@@ -3258,6 +3265,66 @@ internal fun ThreadHeaderVisualScreen() {
 }
 
 @Composable
+internal fun ThreadDmAgentActivityHeaderVisualScreen() {
+    val agentIdentity =
+        remember {
+            MemberDetailIdentity(
+                memberId = MemberId("agent-visual-friday"),
+                kind = MemberKind.Agent,
+                sourceServerId = ServerId("server-visual")
+            )
+        }
+    val payload =
+        remember {
+            KuiklyThreadScreenPayload(
+                instanceId = "visual-thread-dm-agent-activity",
+                title = "Friday",
+                status = "content",
+                surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+                dmPeerIdentity = agentIdentity,
+                showModeTabs = false,
+                showSettingsAction = false,
+                showMembersAction = false,
+                showOpenInChannelAction = false
+            )
+        }
+    val headerDisplay =
+        remember(agentIdentity) {
+            ThreadHeaderDisplayModel(
+                title = "Friday",
+                subtitle = null,
+                surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+                channelKind = KuiklyThreadSurfaceKind.DirectMessage,
+                dmPeerAvatarLabel = "FR",
+                dmPeerIdentity = agentIdentity
+            )
+        }
+    val activityState =
+        remember {
+            slockAgentStatusIndicatorState(
+                status = AgentStatus.Working,
+                presence = Presence.Active,
+                statusLabel = "Reviewing release readiness and visual diffs"
+            )
+        }
+    val activityResolver: SlockAgentStatusResolver = remember(activityState) { { flowOf(activityState) } }
+    Column(modifier = Modifier.width(390.dp).height(120.dp).background(SlockColor.SurfaceWhite)) {
+        ThreadPageHeader(
+            payload = payload,
+            headerDisplay = headerDisplay,
+            agentStatusResolver = activityResolver,
+            applyTopSafeArea = false,
+            onBack = {},
+            onOpenInChannel = {},
+            onOpenMemberProfile = {},
+            onOpenSearch = {},
+            onShowMembers = {},
+            onShowSettings = {}
+        )
+    }
+}
+
+@Composable
 internal fun ThreadActivityMuteVisualScreen() {
     val unmutedPayload =
         remember {
@@ -4941,8 +5008,8 @@ internal fun SharedThreadRouteContent(
         mutableStateOf<ThreadDeferredAttachmentSend?>(null)
     }
     val agentStatusResolver =
-        remember(serverMembersStore, currentSession?.currentServerId) {
-            slockAgentStatusResolver(serverMembersStore, currentSession?.currentServerId)
+        remember(serverMembersStore, headerProjectionServerId) {
+            slockScopedAgentStatusResolver(serverMembersStore, headerProjectionServerId?.value)
         }
     val renderedThread = renderedPayload
     val messagePermalinkLabelResolver =
@@ -11133,6 +11200,7 @@ private fun ThreadPageContent(
                 payload = payload,
                 headerDisplay = headerDisplay,
                 activityMuteState = activityMuteState,
+                agentStatusResolver = agentStatusResolver,
                 memberAvatarResolver = memberAvatarResolver,
                 onBack = onBack,
                 onOpenInChannel = {
@@ -11480,6 +11548,7 @@ private fun ThreadPageHeader(
     payload: KuiklyThreadScreenPayload,
     headerDisplay: ThreadHeaderDisplayModel = payload.threadHeaderFallbackDisplayModel(),
     activityMuteState: ThreadActivityMuteUiState? = payload.threadActivityMuteState(null),
+    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     applyTopSafeArea: Boolean = true,
     showActions: Boolean = true,
@@ -11506,6 +11575,11 @@ private fun ThreadPageHeader(
         rememberSlockMemberAvatarWireValue(
             memberAvatarResolver,
             headerDisplay.dmPeerIdentity?.memberId?.value
+        )
+    val dmAgentActivity =
+        rememberSlockAgentStatusIndicatorState(
+            agentStatusResolver = agentStatusResolver,
+            memberId = headerDisplay.dmAgentActivityMemberId()
         )
     Column(modifier = Modifier.fillMaxWidth().height(topSafeArea + SlockSize.PageHeaderHeight).background(SlockColor.SurfaceWhite)) {
         Row(
@@ -11543,7 +11617,7 @@ private fun ThreadPageHeader(
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(ThreadHeaderDmAgentActivityLeadingGap)
                 ) {
                     Text(
                         text = localizedHeaderTitle,
@@ -11553,6 +11627,7 @@ private fun ThreadPageHeader(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false)
                     )
+                    dmAgentActivity?.let { ThreadDmAgentActivity(state = it) }
                 }
                 headerDisplay.subtitle?.takeIf { it.isNotBlank() }?.let {
                     Text(
@@ -11600,6 +11675,46 @@ private fun ThreadPageHeader(
             }
         }
         Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+    }
+}
+
+internal fun ThreadHeaderDisplayModel.dmAgentActivityMemberId(): String? =
+    dmPeerIdentity
+        ?.takeIf {
+            surfaceKind == KuiklyThreadSurfaceKind.DirectMessage &&
+                it.kind == MemberKind.Agent
+        }
+        ?.memberId
+        ?.value
+        ?.trim()
+        ?.takeIf(String::isNotBlank)
+
+@Composable
+private fun ThreadDmAgentActivity(state: SlockAgentStatusIndicatorState) {
+    Row(
+        modifier =
+            Modifier
+                .widthIn(max = ThreadHeaderDmAgentActivityMaxWidth)
+                .semantics { contentDescription = state.label },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+    ) {
+        SlockStatusIndicator(
+            color = state.color,
+            size = ThreadHeaderDmAgentActivityDotSize,
+            pulsing = state.pulsing
+        )
+        Text(
+            text = state.label,
+            style =
+                SlockType.Caption.copy(
+                    color = SlockColor.TextMutedGray,
+                    fontFamily = SlockMonoFamily
+                ),
+            color = SlockColor.TextMutedGray,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
