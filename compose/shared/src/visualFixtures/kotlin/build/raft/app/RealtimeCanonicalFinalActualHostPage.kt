@@ -138,6 +138,56 @@ private fun registrationIdsBySlot(trace: String): Map<String, String> {
  * byte equality with a frozen snapshot. It requires: every expected slot is present, and no slot has fallen
  * back to the forbidden (old-generation) registrationId. Failure messages carry the actual trace.
  */
+/**
+ * Deterministic terminal-payload builder. Never throws: the registrations capture is best-effort and the
+ * final rendered UTF-8 JSON is budgeted to [maxBytes] by dropping optional diagnostics first and then
+ * halving the error text, so exactly one parseable terminal sentinel is always emitted even for the
+ * largest failure message, the maximum registration trace, or a diagnostics capture that itself throws.
+ * Public so the connected suite can prove these properties deterministically on device.
+ */
+fun buildCanonicalFinalTerminalPayload(
+    runNonce: String,
+    terminalSeq: Int,
+    phaseCount: Int,
+    lastSeq: Int,
+    chainSha256: String,
+    success: Boolean,
+    error: String,
+    maxBytes: Int,
+    captureRegistrations: () -> String,
+): String {
+    val registrationsSnapshot =
+        runCatching(captureRegistrations).getOrElse { failure ->
+            "capture-failed:${failure.message.orEmpty().take(120)}"
+        }
+
+    fun render(errorText: String, registrationsText: String): String =
+        JSONObject().apply {
+            put("runNonce", runNonce)
+            put("seq", terminalSeq)
+            put("terminal", true)
+            put("success", success)
+            put("error", errorText)
+            put("phaseCount", phaseCount)
+            put("lastSeq", lastSeq)
+            put("chainSha256", chainSha256)
+            put("registrations", registrationsText)
+        }.toString()
+
+    var errorText = error
+    var registrationsText = registrationsSnapshot
+    var payload = render(errorText, registrationsText)
+    if (payload.encodeToByteArray().size > maxBytes) {
+        registrationsText = "omitted:over-budget"
+        payload = render(errorText, registrationsText)
+    }
+    while (payload.encodeToByteArray().size > maxBytes && errorText.isNotEmpty()) {
+        errorText = errorText.take(errorText.length / 2)
+        payload = render(errorText, registrationsText)
+    }
+    return payload
+}
+
 private fun checkSuccessorRetained(
     run: ActualHostRun,
     provider: SlockSharedStoreProvider,
@@ -1381,22 +1431,22 @@ private class ActualHostRun(
     ) {
         val terminalPayload =
             synchronized(lock) {
-                JSONObject().apply {
-                    put("runNonce", nonce)
-                    put("seq", sequence + 1)
-                    put("terminal", true)
-                    put("success", success)
-                    put("error", error)
-                    put("phaseCount", phaseHashes.size)
-                    put("lastSeq", sequence)
-                    put("chainSha256", codec.sha256(phaseHashes.joinToString("|")))
+                buildCanonicalFinalTerminalPayload(
+                    runNonce = nonce,
+                    terminalSeq = sequence + 1,
+                    phaseCount = phaseHashes.size,
+                    lastSeq = sequence,
+                    chainSha256 = codec.sha256(phaseHashes.joinToString("|")),
+                    success = success,
+                    error = error,
+                    maxBytes = ActualHostMaxPayloadBytes,
+                ) {
                     if (provider != null && scopeKey != null) {
-                        put(
-                            "registrations",
-                            registrations(provider.realtimeAuthorityProvider.authorityFlow(scopeKey).value),
-                        )
+                        registrations(provider.realtimeAuthorityProvider.authorityFlow(scopeKey).value)
+                    } else {
+                        ""
                     }
-                }.toString()
+                }
             }
         emitPayload(codec, terminalPayload, terminal = true)
     }

@@ -54,6 +54,54 @@ class RealtimeCanonicalFinalActualHostConnectedTest {
         }
     }
 
+    @Test
+    fun terminalPayloadBudgetSurvivesLongErrorAndMaxTrace() {
+        val maxTrace =
+            (1..8).joinToString(";") { index ->
+                "ThreadCore:actual-host-thread-0123456789abcdef0123456789abcdef," +
+                    "mobile-1784822740821-3869354940999758981:lease:$index,host-server-a,registration-$index,ref-$index"
+            }
+        val longError = buildString { repeat(500) { index -> append("boom \"quoted\" \\path segment $index ") } }
+        val payload =
+            build.raft.app.buildCanonicalFinalTerminalPayload(
+                runNonce = "0123456789abcdef0123456789abcdef",
+                terminalSeq = 18,
+                phaseCount = 17,
+                lastSeq = 17,
+                chainSha256 = "f".repeat(64),
+                success = false,
+                error = longError,
+                maxBytes = 1_800,
+            ) { maxTrace }
+        assertTrue("terminal payload must fit the producer budget", payload.toByteArray(Charsets.UTF_8).size <= 1_800)
+        val json = JSONObject(payload)
+        assertTrue(json.getBoolean("terminal"))
+        assertFalse(json.getBoolean("success"))
+        assertTrue("truncated error must preserve the original failure prefix", json.getString("error").isNotEmpty())
+        assertTrue(longError.startsWith(json.getString("error")))
+        assertEquals(17, json.getInt("phaseCount"))
+        assertEquals(17, json.getInt("lastSeq"))
+    }
+
+    @Test
+    fun terminalPayloadBudgetSurvivesRegistrationCaptureFailure() {
+        val payload =
+            build.raft.app.buildCanonicalFinalTerminalPayload(
+                runNonce = "0123456789abcdef0123456789abcdef",
+                terminalSeq = 2,
+                phaseCount = 1,
+                lastSeq = 1,
+                chainSha256 = "a".repeat(64),
+                success = false,
+                error = "original failure",
+                maxBytes = 1_800,
+            ) { throw IllegalStateException("registration trace exceeded bound") }
+        assertTrue(payload.toByteArray(Charsets.UTF_8).size <= 1_800)
+        val json = JSONObject(payload)
+        assertEquals("diagnostics capture failure must not displace the original error", "original failure", json.getString("error"))
+        assertTrue(json.getString("registrations").startsWith("capture-failed:"))
+    }
+
     private fun verifyEvidence(evidence: TraceEvidence, nonce: String) {
         val entries = evidence.entries
         assertTrue("Expected non-terminal trace phases.", entries.size > 2)
