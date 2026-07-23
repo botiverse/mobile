@@ -972,10 +972,16 @@ private fun SegmentedControlItem(
                 overflow = TextOverflow.Ellipsis
             )
             option.count?.takeIf { it > 0 }?.let { count ->
+                // react (rui segmented-control, brutal theme): count is
+                // font-mono text-xs leading-4 font-bold at text-foreground/65,
+                // checked -> /70 — bold 12/16 at high alpha, not a muted 10sp.
                 Text(
                     text = count.toString(),
-                    style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 10.sp, lineHeight = 10.sp),
-                    color = SlockColor.TextBlack.copy(alpha = if (selected) 0.6f else 0.4f),
+                    style =
+                        SlockType.Caption
+                            .copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 16.sp)
+                            .withSlockFontWeight(FontWeight.Bold),
+                    color = SlockColor.TextBlack.copy(alpha = if (selected) 0.70f else 0.65f),
                     maxLines = 1
                 )
             }

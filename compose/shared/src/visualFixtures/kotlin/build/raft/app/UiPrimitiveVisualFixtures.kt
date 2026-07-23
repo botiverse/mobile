@@ -176,7 +176,7 @@ internal fun UiTextareaVisualContent() {
                 hint = "Plain helper text",
                 showCounter = true,
                 limit = 120,
-                fieldHeight = 90.dp,
+                fieldHeight = 92.dp,
                 maxLines = 3
             )
             SlockBrutalTextarea(
@@ -185,7 +185,7 @@ internal fun UiTextareaVisualContent() {
                 error = "Agreement body must be shorter.",
                 showCounter = true,
                 limit = 40,
-                fieldHeight = 60.dp,
+                fieldHeight = 68.dp,
                 maxLines = 2
             )
         }
@@ -577,12 +577,12 @@ internal fun UiAvatarListRowVisualContent() {
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             SlockAvatarListRow(
-                avatarWireValue = "pixel:random:cindy",
+                avatarWireValue = null,
                 avatarLabel = "Cindy",
                 name = "Cindy",
                 subtitle = "Claude Code",
                 rightContent = {
-                    SlockBrutalBadge("Online", tone = SlockBrutalTone.Lime)
+                    SlockBrutalBadge("Online", tone = SlockBrutalTone.Lime, uppercase = false)
                 }
             )
             SlockAvatarListRow(
