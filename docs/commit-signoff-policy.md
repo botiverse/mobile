@@ -76,8 +76,9 @@ narrow forward-attestation ledger in `scripts/commit-signoff-attestations.tsv`.
 Each exception is exact-bound to one full immutable commit SHA, one full signed
 reviewed-source SHA, and that source commit's exact `@mail.build` signer. The
 checker requires the source SHA to identify an exact commit object (not a tag
-or other peelable object) and verifies the exact trailer. A
-single-parent squash must be tree-identical to its source. A two-parent merge
+or other peelable object) and verifies the exact trailer. In the legacy
+three-field format, a single-parent squash must be tree-identical to its source.
+A two-parent merge
 must name its reviewed second parent as the source, `git merge-tree --write-tree`
 must prove the parents merge cleanly, and the immutable merge tree must equal
 that clean synthetic tree. Conflict resolutions, extra merge-only changes,
@@ -85,6 +86,32 @@ octopus merges, reversed/wrong source parents, short SHAs, wildcards,
 duplicates, missing source objects, signer mismatches, and tree mismatches fail
 closed. This mechanism is not an alternative to `git commit -s` for new work;
 ledger additions require independent review and a signed commit.
+
+For a squash created after the base branch advanced, the ledger uses five
+fields: immutable squash, reviewed signed head, exact signer, reviewed source
+parent, and immutable parent. The checker requires every commit in the reviewed
+source range to have a real `@mail.build` sign-off; the declared source parent
+to be the exact merge-base; path/status and per-path add/delete sets to match;
+zero-context stable patch-id and normalized diff SHA-256 to match; and
+`git merge-tree --write-tree` of immutable parent plus reviewed head to be clean
+and exactly equal the immutable squash tree. Any mismatch fails closed.
+
+## Guarded Squash Merge
+
+Both Mobile and Slock configure GitHub squash bodies as `COMMIT_MESSAGES`.
+Use the repository wrapper so GitHub preserves source commit trailers with real
+newlines:
+
+```bash
+scripts/guarded-squash-merge.sh botiverse/mobile <pr-number> <reviewed-full-sha>
+```
+
+The wrapper keeps `--match-head-commit`, verifies the repository still uses
+`COMMIT_MESSAGES`, and intentionally accepts no custom subject or body. Keep
+parent/tree/patch/CI/authorization receipts in the PR and Raft task thread. Do
+not pass strings containing `\\n` to `gh pr merge --body`; shell quoting and gh
+preserve those bytes literally, so a visual `Signed-off-by` substring is not a
+Git trailer.
 
 ## PR-only Main Integration
 
