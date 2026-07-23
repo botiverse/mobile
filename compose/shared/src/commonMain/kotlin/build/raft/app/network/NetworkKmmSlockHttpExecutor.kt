@@ -145,7 +145,7 @@ internal class NetworkKmmSlockHttpExecutor(
         val path = url.substringBefore('?')
         val traceHeaders = networkKmmTraceHeaders(headers)
         val clientRequestId = traceHeaders.getValue(NETWORK_KMM_REQUEST_ID_HEADER)
-        val requestBytes = files.sumOf { it.bytes.size }
+        val requestBytes = files.sumOf { file -> file.bytes.size.toLong().takeIf { it > 0L } ?: file.sizeBytes ?: 0L }
         warningLogger(
             "slock_networkkmm_multipart_start path=$path method=POST priority=$priority " +
                 "fields=${fields.size} files=${files.size} requestBytes=$requestBytes " +
@@ -166,7 +166,7 @@ internal class NetworkKmmSlockHttpExecutor(
                                         NetworkMultipartPart(
                                             name = file.name,
                                             fileName = file.fileName.sanitizeMultipartFileName(),
-                                            body = NetworkBody.Bytes(file.bytes),
+                                            body = file.toNetworkMultipartBody(),
                                             headers = mapOf("Content-Type" to file.mimeType)
                                         )
                                     }
@@ -199,6 +199,21 @@ internal class NetworkKmmSlockHttpExecutor(
             )
             SlockHttpExecutorResponse(code = 0, bodyText = null, errorBodyText = error.message)
         }
+    }
+}
+
+internal fun MultipartFile.toNetworkMultipartBody(): NetworkBody {
+    val opener = streamOpener
+    val ref = fileRef
+    return if (opener != null && ref != null) {
+        NetworkBody.FileRef(
+            path = ref,
+            contentType = mimeType,
+            contentLength = sizeBytes,
+            openStreamBlock = { opener.open() }
+        )
+    } else {
+        NetworkBody.Bytes(bytes, contentType = mimeType)
     }
 }
 

@@ -11,9 +11,12 @@ import build.raft.app.network.SlockRequestScheduler
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertNotSame
 import kotlin.test.assertTrue
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runTest
 
 class SharedSlockNetworkClientTest {
     private class RecordedRequest(
@@ -320,16 +323,17 @@ class SharedSlockNetworkClientTest {
         val response = client.uploadAccountAvatar(DataRequestPriority.Foreground, file)
 
         assertEquals(201, response.code)
-        assertEquals(listOf("native://avatar"), resolver.calls)
+        assertEquals(listOf("native://avatar"), resolver.readCalls)
         val request = executor.multiparts.single()
         assertEquals("https://api.slock.test/api/auth/me/avatar", request.url)
         assertEquals("Bearer access-token", request.headers["Authorization"])
         assertEquals(listOf("avatar"), request.files.map { it.name })
-        assertTrue(request.files.single().bytes?.isNotEmpty() == true)
+        assertTrue(request.files.single().bytes.isNotEmpty())
+        assertEquals(null, request.files.single().streamOpener)
     }
 
     @Test
-    fun threadAttachmentUploadResolvesFileRefAndKeepsFilesFieldName() = runBlocking {
+    fun threadAttachmentUploadStreamsFileRefAndKeepsFilesFieldName() = runBlocking {
         val executor = RecordingExecutor { ok("""{"attachments":[]}""", code = 200) }
         val resolver = RecordingPlatformFileResolver()
         val file =
@@ -351,7 +355,7 @@ class SharedSlockNetworkClientTest {
         val response = client.uploadAttachments(DataRequestPriority.Foreground, ChannelId("channel-1"), listOf(file))
 
         assertEquals(200, response.code)
-        assertEquals(listOf("content://picker/photo"), resolver.calls)
+        assertEquals(listOf("content://picker/photo"), resolver.statCalls)
         val request = executor.multiparts.single()
         assertEquals("https://api.slock.test/api/attachments/upload", request.url)
         assertEquals(mapOf("channelId" to "channel-1"), request.fields)
@@ -361,9 +365,153 @@ class SharedSlockNetworkClientTest {
         val resolvedFile = request.files.single()
         assertEquals("photo.png", resolvedFile.fileName)
         assertEquals("image/png", resolvedFile.mimeType)
-        assertEquals(null, resolvedFile.fileRef)
+        assertEquals("content://picker/photo", resolvedFile.fileRef)
         assertEquals(42, resolvedFile.sizeBytes)
-        assertEquals(listOf<Byte>(1, 2, 3), resolvedFile.bytes.toList())
+        assertTrue(resolvedFile.bytes.isEmpty())
+        val opener = assertNotNull(resolvedFile.streamOpener)
+        val firstAttempt = opener.open()
+        val secondAttempt = opener.open()
+        assertNotSame(firstAttempt, secondAttempt)
+        assertEquals(
+            listOf("content://picker/photo", "content://picker/photo"),
+            resolver.openCalls.map { it.first }
+        )
+        assertEquals(listOf(42L, 42L), resolver.openCalls.map { it.second })
+    }
+
+    @Test
+    fun frozenLargeThreadAttachmentNeverMaterializesWholeFileBytes() = runTest {
+        val executor = RecordingExecutor { ok("""{"attachments":[]}""") }
+        val resolver = RecordingPlatformFileResolver(sizeBytes = 199_229_440L)
+        val logs = mutableListOf<String>()
+        val client =
+            SharedSlockNetworkClient(
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                baseUrl = "https://api.slock.test/api",
+                platformFileResolver = resolver,
+                warningLogger = logs::add,
+                executor = executor
+            )
+
+        val response =
+            client.uploadAttachments(
+                DataRequestPriority.Foreground,
+                ChannelId("channel-1"),
+                listOf(
+                    MultipartFile(
+                        name = "files",
+                        fileName = "frozen-190m.bin",
+                        mimeType = "application/octet-stream",
+                        fileRef = "file:///cache/frozen-190m.bin",
+                        sizeBytes = 199_229_440L
+                    )
+                )
+            )
+
+        assertEquals(200, response.code)
+        assertEquals(listOf("file:///cache/frozen-190m.bin"), resolver.statCalls)
+        assertTrue(resolver.openCalls.isEmpty(), "transport seam must own lazy per-attempt opens")
+        val streamed = executor.multiparts.single().files.single()
+        assertTrue(streamed.bytes.isEmpty(), "190 MiB must not be copied into MultipartFile.bytes")
+        assertEquals(199_229_440L, streamed.sizeBytes)
+        assertNotNull(streamed.streamOpener)
+        assertContains(logs.single(), "requestBytes=199229440")
+    }
+
+    @Test
+    fun missingPlatformSizeFailsBeforeMultipartTransport() = runTest {
+        val executor = RecordingExecutor { ok() }
+        val resolver = RecordingPlatformFileResolver(sizeBytes = null)
+        val client =
+            SharedSlockNetworkClient(
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                baseUrl = "https://api.slock.test/api",
+                platformFileResolver = resolver,
+                executor = executor
+            )
+
+        val response =
+            client.uploadAttachments(
+                DataRequestPriority.Foreground,
+                ChannelId("channel-1"),
+                listOf(
+                    MultipartFile(
+                        name = "files",
+                        fileName = "unknown.bin",
+                        mimeType = "application/octet-stream",
+                        fileRef = "file:///cache/unknown.bin"
+                    )
+                )
+            )
+
+        assertEquals(400, response.code)
+        assertContains(response.errorBodyText.orEmpty(), "attachment_size_unavailable")
+        assertTrue(executor.multiparts.isEmpty(), "stat failure must terminate before transport")
+        assertTrue(resolver.openCalls.isEmpty())
+    }
+
+    @Test
+    fun multiFileMetadataAdmissionIsAllOrNoneBeforeAnyAttemptOpens() = runTest {
+        val executor = RecordingExecutor { ok() }
+        val resolver = PerFileRecordingResolver(mapOf("file:///a" to 3L, "file:///b" to null))
+        val client =
+            SharedSlockNetworkClient(
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                baseUrl = "https://api.slock.test/api",
+                platformFileResolver = resolver,
+                executor = executor
+            )
+
+        val response =
+            client.uploadAttachments(
+                DataRequestPriority.Foreground,
+                ChannelId("channel-1"),
+                listOf(
+                    MultipartFile("files", "a.bin", "application/octet-stream", fileRef = "file:///a"),
+                    MultipartFile("files", "b.bin", "application/octet-stream", fileRef = "file:///b")
+                )
+            )
+
+        assertEquals(400, response.code)
+        assertEquals(listOf("file:///a", "file:///b"), resolver.statCalls)
+        assertTrue(resolver.openCalls.isEmpty(), "metadata admission must not open A before B is admitted")
+        assertTrue(executor.multiparts.isEmpty(), "no partial multipart may start")
+    }
+
+    @Test
+    fun inMemorySmallAttachmentKeepsBufferedPathWithoutPlatformResolver() = runTest {
+        val executor = RecordingExecutor { ok("""{"attachments":[]}""") }
+        val resolver = RecordingPlatformFileResolver()
+        val client =
+            SharedSlockNetworkClient(
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                baseUrl = "https://api.slock.test/api",
+                platformFileResolver = resolver,
+                executor = executor
+            )
+
+        val response =
+            client.uploadAttachments(
+                DataRequestPriority.Foreground,
+                ChannelId("channel-1"),
+                listOf(
+                    MultipartFile(
+                        name = "files",
+                        fileName = "small.txt",
+                        mimeType = "text/plain",
+                        bytes = byteArrayOf(1, 2, 3),
+                        sizeBytes = 3
+                    )
+                )
+            )
+
+        assertEquals(200, response.code)
+        assertTrue(resolver.readCalls.isEmpty())
+        assertTrue(resolver.statCalls.isEmpty())
+        assertTrue(resolver.openCalls.isEmpty())
+        val buffered = executor.multiparts.single().files.single()
+        assertEquals(listOf<Byte>(1, 2, 3), buffered.bytes.toList())
+        assertEquals(null, buffered.streamOpener)
     }
 
     @Test
@@ -414,16 +562,69 @@ class SharedSlockNetworkClientTest {
         assertContains(logs.single(), "detail=bad_request")
     }
 
-    private class RecordingPlatformFileResolver : SlockPlatformFileResolver {
-        val calls = mutableListOf<String>()
+    private class RecordingPlatformFileResolver(
+        private val sizeBytes: Long? = 42L
+    ) : SlockPlatformFileResolver {
+        val readCalls = mutableListOf<String>()
+        val statCalls = mutableListOf<String>()
+        val openCalls = mutableListOf<Pair<String, Long>>()
 
         override suspend fun readFile(fileRef: String): SlockPlatformFileReadResult {
-            calls += fileRef
-            return SlockPlatformFileReadResult(
-                code = 200,
-                bytes = byteArrayOf(1, 2, 3),
-                sizeBytes = 3
-            )
+            readCalls += fileRef
+            return SlockPlatformFileReadResult(code = 200, bytes = byteArrayOf(1, 2, 3), sizeBytes = 3)
+        }
+
+        override suspend fun statFile(fileRef: String): SlockPlatformFileStatResult {
+            statCalls += fileRef
+            return if (sizeBytes != null) {
+                SlockPlatformFileStatResult(code = 200, sizeBytes = sizeBytes)
+            } else {
+                SlockPlatformFileStatResult(
+                    code = 400,
+                    errorCode = "attachment_size_unavailable",
+                    message = "Attachment size unavailable"
+                )
+            }
+        }
+
+        override suspend fun openFileStream(
+            fileRef: String,
+            expectedSizeBytes: Long
+        ): SlockPlatformFileChunkSource {
+            openCalls += fileRef to expectedSizeBytes
+            return virtualChunkSource(expectedSizeBytes)
+        }
+    }
+
+    private class PerFileRecordingResolver(
+        private val sizes: Map<String, Long?>
+    ) : SlockPlatformFileResolver {
+        val statCalls = mutableListOf<String>()
+        val openCalls = mutableListOf<String>()
+
+        override suspend fun readFile(fileRef: String): SlockPlatformFileReadResult =
+            SlockPlatformFileReadResult(code = 200, bytes = byteArrayOf(1), sizeBytes = 1)
+
+        override suspend fun statFile(fileRef: String): SlockPlatformFileStatResult {
+            statCalls += fileRef
+            val size = sizes[fileRef]
+            return if (size != null) {
+                SlockPlatformFileStatResult(code = 200, sizeBytes = size)
+            } else {
+                SlockPlatformFileStatResult(
+                    code = 400,
+                    errorCode = "attachment_size_unavailable",
+                    message = "Attachment size unavailable"
+                )
+            }
+        }
+
+        override suspend fun openFileStream(
+            fileRef: String,
+            expectedSizeBytes: Long
+        ): SlockPlatformFileChunkSource {
+            openCalls += fileRef
+            return virtualChunkSource(expectedSizeBytes)
         }
     }
 
@@ -435,4 +636,18 @@ class SharedSlockNetworkClientTest {
             selectedServerId = "server-1",
             servers = listOf(StoredAuthServer(id = "server-1", name = "Slock"))
         )
+}
+
+private fun virtualChunkSource(sizeBytes: Long): SlockPlatformFileChunkSource {
+    var remaining = sizeBytes
+    return object : SlockPlatformFileChunkSource {
+        override suspend fun read(maxBytes: Int): ByteArray {
+            if (remaining <= 0L) return ByteArray(0)
+            val count = minOf(remaining, maxBytes.toLong()).toInt()
+            remaining -= count
+            return ByteArray(count)
+        }
+
+        override fun close() = Unit
+    }
 }

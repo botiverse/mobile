@@ -6,6 +6,7 @@ import build.raft.app.model.ServerId
 import build.raft.app.network.HEADER_AUTHORIZATION
 import build.raft.app.network.HEADER_SERVER_ID
 import build.raft.app.network.MultipartFile
+import build.raft.app.network.MultipartFileStreamOpener
 import build.raft.app.network.SlockHttpExecutor
 import build.raft.app.network.SlockHttpExecutorResponse
 import build.raft.app.network.SlockRequestPriority
@@ -151,7 +152,7 @@ internal class SharedSlockNetworkClient(
         channelId: ChannelId,
         files: List<MultipartFile>
     ): HomeNetworkResponse {
-        val resolvedFiles = files.resolvePlatformFileRefs().getOrElse { return it }
+        val resolvedFiles = files.preparePlatformFileStreams().getOrElse { return it }
         return uploadMultipart(
             priority = priority,
             path = "attachments/upload",
@@ -217,6 +218,62 @@ internal class SharedSlockNetworkClient(
             requestBytes = resolvedFile.bytes.size.toLong(),
             key = path
         )
+    }
+
+    private suspend fun List<MultipartFile>.preparePlatformFileStreams(): ResolvedPlatformFiles {
+        if (!requiresPlatformFileResolver()) return ResolvedPlatformFiles.Content(this)
+        val resolver = platformFileResolver
+            ?: return ResolvedPlatformFiles.Error(fileRefUnsupportedResponse())
+        val resolved = mutableListOf<MultipartFile>()
+        forEach { file ->
+            val fileRef = file.fileRef
+            if (fileRef == null || file.bytes.isNotEmpty()) {
+                resolved += file
+                return@forEach
+            }
+            val stat = resolver.statFile(fileRef)
+            if (!stat.success) {
+                return ResolvedPlatformFiles.Error(
+                    HomeNetworkResponse(
+                        code = 400,
+                        bodyText = null,
+                        errorBodyText =
+                            platformFileReadErrorBody(
+                                errorCode = stat.errorCode,
+                                message = stat.message
+                            )
+                    )
+                )
+            }
+            val actualSizeBytes = stat.sizeBytes
+                ?: return ResolvedPlatformFiles.Error(
+                    HomeNetworkResponse(
+                        code = 400,
+                        bodyText = null,
+                        errorBodyText =
+                            platformFileReadErrorBody(
+                                errorCode = "attachment_size_unavailable",
+                                message = "Attachment size unavailable"
+                            )
+                    )
+                )
+            resolved +=
+                file.copy(
+                    sizeBytes = actualSizeBytes,
+                    streamOpener =
+                        MultipartFileStreamOpener {
+                            boundedPlatformFileNetworkStream(
+                                expectedSizeBytes = actualSizeBytes,
+                                source =
+                                    resolver.openFileStream(
+                                        fileRef = fileRef,
+                                        expectedSizeBytes = actualSizeBytes
+                                    )
+                            )
+                        }
+                )
+        }
+        return ResolvedPlatformFiles.Content(resolved)
     }
 
     private suspend fun List<MultipartFile>.resolvePlatformFileRefs(): ResolvedPlatformFiles {
@@ -575,7 +632,7 @@ private fun List<MultipartFile>.requiresPlatformFileResolver(): Boolean =
     any { it.requiresPlatformFileResolver() }
 
 private fun MultipartFile.requiresPlatformFileResolver(): Boolean =
-    fileRef != null && bytes.isEmpty()
+    fileRef != null && bytes.isEmpty() && streamOpener == null
 
 private fun fileRefUnsupportedResponse(): HomeNetworkResponse =
     HomeNetworkResponse(
