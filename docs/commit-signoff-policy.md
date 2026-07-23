@@ -69,14 +69,19 @@ The hook rejects commit messages that do not include a `Signed-off-by:` trailer 
 ## Immutable Shipped History
 
 Do not rewrite an already shipped or protected branch solely to repair a squash
-commit whose reviewed source head had a valid sign-off but whose immutable
-GitHub-generated commit lost that trailer. Such a commit may use the narrow
-forward-attestation ledger in `scripts/commit-signoff-attestations.tsv`.
+or merge commit whose reviewed source head had a valid sign-off but whose
+immutable GitHub-generated commit lost that trailer. Such a commit may use the
+narrow forward-attestation ledger in `scripts/commit-signoff-attestations.tsv`.
 
-Each exception is exact-bound to one full immutable squash SHA, one full signed
-source SHA, and that source commit's exact `@mail.build` signer. The checker
-requires the source object to exist, verifies the exact trailer, requires a
-single-parent squash, and compares both commit trees. Short SHAs, wildcards,
+Each exception is exact-bound to one full immutable commit SHA, one full signed
+reviewed-source SHA, and that source commit's exact `@mail.build` signer. The
+checker requires the source SHA to identify an exact commit object (not a tag
+or other peelable object) and verifies the exact trailer. A
+single-parent squash must be tree-identical to its source. A two-parent merge
+must name its reviewed second parent as the source, `git merge-tree --write-tree`
+must prove the parents merge cleanly, and the immutable merge tree must equal
+that clean synthetic tree. Conflict resolutions, extra merge-only changes,
+octopus merges, reversed/wrong source parents, short SHAs, wildcards,
 duplicates, missing source objects, signer mismatches, and tree mismatches fail
 closed. This mechanism is not an alternative to `git commit -s` for new work;
 ledger additions require independent review and a signed commit.

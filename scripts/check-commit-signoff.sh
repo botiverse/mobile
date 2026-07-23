@@ -83,24 +83,41 @@ verify_attestation() {
   local commit="$1"
   local subject="$2"
   local attestation="$3"
-  local source_commit signer commit_tree source_tree parent_line
+  local source_commit signer commit_tree source_tree parent_line parent_count
   IFS=$'\t' read -r source_commit signer <<< "$attestation"
 
-  git cat-file -e "${source_commit}^{commit}" 2>/dev/null ||
-    fail "commit sign-off attestation for ${commit} (${subject}) references missing source commit ${source_commit}."
+  [ "$(git cat-file -t "$source_commit" 2>/dev/null || true)" = "commit" ] ||
+    fail "commit sign-off attestation for ${commit} (${subject}) requires source ${source_commit} to be an exact commit object."
   source_has_exact_signer "$source_commit" "$signer" ||
     fail "commit sign-off attestation for ${commit} (${subject}) does not match an exact Signed-off-by trailer for <${signer}> on source ${source_commit}."
 
-  parent_line="$(git rev-list --parents -n 1 "$commit")"
-  [ "$(printf '%s\n' "$parent_line" | awk '{ print NF }')" -eq 2 ] ||
-    fail "commit sign-off attestation for ${commit} (${subject}) is only valid for a single-parent immutable squash commit."
-
   commit_tree="$(git rev-parse "${commit}^{tree}")"
-  source_tree="$(git rev-parse "${source_commit}^{tree}")"
-  [ "$commit_tree" = "$source_tree" ] ||
-    fail "commit sign-off attestation for ${commit} (${subject}) does not match source tree ${source_commit}."
-
-  echo "commit sign-off: immutable squash ${commit} (${subject}) is attested by tree-identical signed source ${source_commit} (<${signer}>)."
+  parent_line="$(git rev-list --parents -n 1 "$commit")"
+  parent_count="$(printf '%s\n' "$parent_line" | awk '{ print NF - 1 }')"
+  case "$parent_count" in
+    1)
+      source_tree="$(git rev-parse "${source_commit}^{tree}")"
+      [ "$commit_tree" = "$source_tree" ] ||
+        fail "commit sign-off attestation for ${commit} (${subject}) does not match source tree ${source_commit}."
+      echo "commit sign-off: immutable squash ${commit} (${subject}) is attested by tree-identical signed source ${source_commit} (<${signer}>)."
+      ;;
+    2)
+      local first_parent second_parent clean_merge_tree
+      first_parent="$(printf '%s\n' "$parent_line" | awk '{ print $2 }')"
+      second_parent="$(printf '%s\n' "$parent_line" | awk '{ print $3 }')"
+      [ "$source_commit" = "$second_parent" ] ||
+        fail "commit sign-off attestation for ${commit} (${subject}) must reference its reviewed second parent ${second_parent}, not ${source_commit}."
+      if ! clean_merge_tree="$(git merge-tree --write-tree "$first_parent" "$second_parent" 2>/dev/null)"; then
+        fail "commit sign-off attestation for ${commit} (${subject}) is only valid for a clean two-parent merge."
+      fi
+      [ "$clean_merge_tree" = "$commit_tree" ] ||
+        fail "commit sign-off attestation for ${commit} (${subject}) does not match the clean merge tree of ${first_parent} and ${second_parent}."
+      echo "commit sign-off: immutable merge ${commit} (${subject}) is attested by signed reviewed second parent ${source_commit} (<${signer}>) with exact clean merge tree ${commit_tree}."
+      ;;
+    *)
+      fail "commit sign-off attestation for ${commit} (${subject}) is only valid for a single-parent immutable squash or clean two-parent merge commit."
+      ;;
+  esac
 }
 
 print_fix_instructions() {
