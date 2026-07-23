@@ -26,11 +26,14 @@ class SlockGFMFlavourDescriptor : GFMFlavourDescriptor() {
 private class SlockCodeSpanShieldingLexer : GeneratedLexer {
     private val delegate = _GFMLexer()
 
-    override fun getTokenStart(): Int = delegate.tokenStart
+    override val tokenStart: Int
+        get() = delegate.tokenStart
 
-    override fun getTokenEnd(): Int = delegate.tokenEnd
+    override val tokenEnd: Int
+        get() = delegate.tokenEnd
 
-    override fun getState(): Int = delegate.state
+    override val state: Int
+        get() = delegate.state
 
     override fun advance() = delegate.advance()
 
