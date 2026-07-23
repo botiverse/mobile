@@ -93,6 +93,7 @@ internal object CanonicalMessageV2GreenTestPort : CanonicalMessageV2GreenPort {
             overlayStore.compareAndWrite(overlayKey(), overlay(1, "heart"))
         }
         val sharedBytes = database.queries.selectServerBackedMessagesForChannel(
+            environmentId = scope.environmentId,
             serverId = scope.serverId,
             principalId = scope.principalId,
             consumerId = scope.consumerId,
@@ -100,6 +101,7 @@ internal object CanonicalMessageV2GreenTestPort : CanonicalMessageV2GreenPort {
             channelId = scope.scopeId,
         ).executeAsList().singleOrNull()?.canonicalFactJson.orEmpty()
         val overlayRows = database.queries.selectMessageViewerOverlay(
+            environmentId = overlayKey().partition.environmentId,
             serverId = overlayKey().partition.serverId,
             principalId = overlayKey().partition.principalId,
             consumerId = overlayKey().partition.consumerId,
@@ -367,7 +369,21 @@ internal object CanonicalMessageV2GreenTestPort : CanonicalMessageV2GreenPort {
         val recording = RecordingV2Store(delegate)
         val cache = AttachmentCommentsReadCacheV2()
         val engine = CanonicalMessageV2GenerationEngine(CanonicalMessageV2BaselineCoordinator(), recording, cache::invalidateParent)
-        val cursor = PersistedCursor(decoded.envelope.fact.seq, 1, decoded.envelope.fact.seq, epoch = "snapshot")
+        val context = decoded.envelope.context as CanonicalConversationContextV2.Thread
+        val cursor = PersistedCursor(
+            latestSeq = decoded.envelope.fact.seq,
+            oldestLoadedSeq = 1,
+            newestLoadedSeq = decoded.envelope.fact.seq,
+            epoch = "snapshot",
+            parentScopeKind = when (context.parentTopLevelScope) {
+                is TopLevelScopeRefV2.Channel -> "channel"
+                is TopLevelScopeRefV2.Private -> "private"
+                is TopLevelScopeRefV2.DirectMessage -> "dm"
+                is TopLevelScopeRefV2.Joint -> "joint"
+            },
+            parentScopeId = context.parentTopLevelScope.scopeId,
+            rootMessageId = context.rootMessageRef.messageId,
+        )
         runBlocking {
             engine.applySnapshot(CanonicalMessageV2SnapshotFrame(scope, listOf(decoded.envelope), cursor))
         }
@@ -391,6 +407,7 @@ internal object CanonicalMessageV2GreenTestPort : CanonicalMessageV2GreenPort {
                 else -> "malformed"
             }
             database.queries.insertCanonicalFactIfAbsent(
+                environmentId = scope.environmentId,
                 serverId = scope.serverId,
                 principalId = scope.principalId,
                 consumerId = scope.consumerId,
@@ -404,6 +421,7 @@ internal object CanonicalMessageV2GreenTestPort : CanonicalMessageV2GreenPort {
         }
         database.queries.upsertSyncCursor(
             scopeId = scope.scopeId,
+            environmentId = scope.environmentId,
             serverId = scope.serverId,
             principalId = scope.principalId,
             consumerId = scope.consumerId,
@@ -415,6 +433,9 @@ internal object CanonicalMessageV2GreenTestPort : CanonicalMessageV2GreenPort {
             hasLoadedNewest = 1,
             updatedAtMs = 1,
             epoch = "poison",
+            parentScopeKind = null,
+            parentScopeId = null,
+            rootMessageId = null,
         )
         val store = SqlDelightCanonicalMessageV2Store(database, now = { 1L })
         val poisoned = runCatching { runBlocking { store.restore(scope) } }.exceptionOrNull() is CanonicalMessageV2ScopePoisoned
@@ -571,18 +592,25 @@ internal object CanonicalMessageV2GreenTestPort : CanonicalMessageV2GreenPort {
         var incrementalWrites: Int = 0
             private set
 
-        override suspend fun applySnapshot(frame: CanonicalMessageV2SnapshotFrame) {
+        override suspend fun applySnapshot(frame: CanonicalMessageV2SnapshotFrame): CanonicalMessageV2StoreWriteResult {
             snapshotWrites += 1
-            delegate?.applySnapshot(frame)
+            return delegate?.applySnapshot(frame) ?: CanonicalMessageV2StoreWriteResult()
         }
 
-        override suspend fun applyIncremental(frame: CanonicalMessageV2IncrementalFrame) {
+        override suspend fun applyIncremental(frame: CanonicalMessageV2IncrementalFrame): CanonicalMessageV2StoreWriteResult {
             incrementalWrites += 1
-            delegate?.applyIncremental(frame)
+            return delegate?.applyIncremental(frame) ?: CanonicalMessageV2StoreWriteResult()
         }
 
         override suspend fun restore(scope: SyncScopeKey): RestoredCanonicalMessageV2Scope =
             delegate?.restore(scope) ?: RestoredCanonicalMessageV2Scope(emptyList(), null)
+
+        override suspend fun clearScope(scope: SyncScopeKey): Set<SyncScopeKey> =
+            delegate?.clearScope(scope) ?: setOf(scope)
+
+        override suspend fun clearPartition(partition: DurablePartitionKey) {
+            delegate?.clearPartition(partition)
+        }
     }
 
     private class RecordingOverlayStore(

@@ -68,10 +68,20 @@ internal class CanonicalMessageV2ProductionCanary(
     private val generationEngine: CanonicalMessageV2GenerationEngine,
     private val logger: (String) -> Unit = {},
 ) {
+    private data class MutexEntry(
+        val mutex: Mutex = Mutex(),
+        var users: Int = 0,
+    )
+
     private val selectionMutex = Mutex()
     private val selectedScopeByPartition = mutableMapOf<DurablePartitionKey, SyncScopeKey>()
-    private val scopeMutexByKey = mutableMapOf<SyncScopeKey, Mutex>()
+    private val scopeMutexByKey = mutableMapOf<SyncScopeKey, MutexEntry>()
     private val stateByScope = mutableMapOf<SyncScopeKey, CanonicalMessageV2CanaryScopeState>()
+
+    init {
+        generationEngine.addPartitionRevocationObserver(::onPartitionRevoked)
+        generationEngine.addScopeInvalidationObserver(::onScopesInvalidated)
+    }
 
     suspend fun accept(
         partition: DurablePartitionKey,
@@ -79,6 +89,7 @@ internal class CanonicalMessageV2ProductionCanary(
         snapshotLoader: CanonicalMessageV2SnapshotLoader,
     ): CanonicalMessageV2CanaryOutcome {
         require(partition.consumerId == SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
+        val partitionGeneration = generationEngine.partitionGeneration(partition)
         val existingSelection = selectionMutex.withLock { selectedScopeByPartition[partition] }
         val scope = when {
             existingSelection?.scopeId == foldInput.row.channelId -> existingSelection
@@ -99,62 +110,107 @@ internal class CanonicalMessageV2ProductionCanary(
         }
         if (!selected) return CanonicalMessageV2CanaryOutcome.NotSelected
 
-        val mutex = selectionMutex.withLock { scopeMutexByKey.getOrPut(scope) { Mutex() } }
-        return mutex.withLock {
-            val state = selectionMutex.withLock {
-                stateByScope.getOrPut(scope) { CanonicalMessageV2CanaryScopeState() }
-            }
-            if (!isEnabledForServer(partition.serverId)) {
-                return@withLock revokeAtSnapshotBarrier(scope, foldInput.row.id, state, snapshotLoader)
-            }
-            if (!CANONICAL_MESSAGE_FULL_V2_SOLE_APPLY_ELIGIBLE) {
-                state.mode = CanonicalMessageV2CanaryMode.ShadowOnly
-                return@withLock CanonicalMessageV2CanaryOutcome.NotSelected
-            }
-
-            if (!state.initialized) {
-                val restored = try {
-                    generationEngine.restore(scope)
-                } catch (throwable: Throwable) {
-                    state.mode = CanonicalMessageV2CanaryMode.Broken
-                    logger(
-                        "canonical_v2_canary mode=broken server=${scope.serverId} scope=${scope.scopeId} " +
-                            "reason=restore_${throwable::class.simpleName ?: "unknown"}",
-                    )
-                    return@withLock CanonicalMessageV2CanaryOutcome.Held(CANONICAL_MESSAGE_V2_SCOPE_POISONED)
+        return withScopeMutex(scope) {
+            generationEngine.withScopeWriter(scope) writer@{
+                val state = selectionMutex.withLock {
+                    stateByScope.getOrPut(scope) { CanonicalMessageV2CanaryScopeState() }
                 }
-                state.initialized = true
-                state.cursor = restored.cursor
-                state.mode =
-                    if (restored.cursor == null) CanonicalMessageV2CanaryMode.Activating
-                    else CanonicalMessageV2CanaryMode.SoleApply
-            }
+                if (!isEnabledForServer(partition.serverId)) {
+                    return@writer revokeAtSnapshotBarrier(
+                        scope,
+                        foldInput.row.id,
+                        state,
+                        snapshotLoader,
+                        partitionGeneration,
+                    )
+                }
+                if (!CANONICAL_MESSAGE_FULL_V2_SOLE_APPLY_ELIGIBLE) {
+                    state.mode = CanonicalMessageV2CanaryMode.ShadowOnly
+                    return@writer CanonicalMessageV2CanaryOutcome.NotSelected
+                }
 
-            if (foldInput.kind == CanonicalMessageFoldKind.New && state.cursor != null) {
-                val envelope = foldInput.toCanonicalMessageV2Envelope(partition, replyCount = 0)
-                if (envelope != null) {
-                    val cursor = state.cursor!!.advancedBy(envelope.fact.seq)
-                    return@withLock when (
-                        generationEngine.applyIncremental(
-                            CanonicalMessageV2IncrementalFrame(scope, listOf(envelope), cursor),
+                if (!state.initialized) {
+                    val restored = try {
+                        generationEngine.restore(scope)
+                    } catch (throwable: Throwable) {
+                        state.mode = CanonicalMessageV2CanaryMode.Broken
+                        logger(
+                            "canonical_v2_canary mode=broken server=${scope.serverId} scope=${scope.scopeId} " +
+                                "reason=restore_${throwable::class.simpleName ?: "unknown"}",
                         )
-                    ) {
-                        CanonicalMessageV2CommitResult.Committed -> {
-                            state.cursor = cursor
-                            state.mode = CanonicalMessageV2CanaryMode.SoleApply
-                            logger(
-                                "canonical_v2_canary mode=sole_apply server=${scope.serverId} " +
-                                    "scope=${scope.scopeId} source=incremental",
+                        return@writer CanonicalMessageV2CanaryOutcome.Held(CANONICAL_MESSAGE_V2_SCOPE_POISONED)
+                    }
+                    state.initialized = true
+                    state.cursor = restored.cursor
+                    state.mode =
+                        if (restored.cursor == null) CanonicalMessageV2CanaryMode.Activating
+                        else CanonicalMessageV2CanaryMode.SoleApply
+                }
+                state.cursor = generationEngine.currentCursor(scope)
+                if (state.cursor == null) state.mode = CanonicalMessageV2CanaryMode.Activating
+
+                if (foldInput.kind == CanonicalMessageFoldKind.New && state.cursor != null) {
+                    val envelope = foldInput.toCanonicalMessageV2Envelope(partition, replyCount = 0)
+                    if (envelope != null) {
+                        val cursor = state.cursor!!.advancedBy(envelope.fact.seq)
+                        return@writer when (
+                            generationEngine.applyIncremental(
+                                CanonicalMessageV2IncrementalFrame(scope, listOf(envelope), cursor),
+                                expectedPartitionGeneration = partitionGeneration,
                             )
-                            CanonicalMessageV2CanaryOutcome.Committed
+                        ) {
+                            CanonicalMessageV2CommitResult.Committed -> {
+                                state.cursor = cursor
+                                state.mode = CanonicalMessageV2CanaryMode.SoleApply
+                                logger(
+                                    "canonical_v2_canary mode=sole_apply server=${scope.serverId} " +
+                                        "scope=${scope.scopeId} source=incremental",
+                                )
+                                CanonicalMessageV2CanaryOutcome.Committed
+                            }
+                            is CanonicalMessageV2CommitResult.BaselineRequired ->
+                                applyAuthoritativeSnapshot(
+                                    scope,
+                                    foldInput.row.id,
+                                    state,
+                                    snapshotLoader,
+                                    partitionGeneration,
+                                )
+                            CanonicalMessageV2CommitResult.PartitionRevoked ->
+                                heldAfterPartitionRevoke(scope, state)
+                            CanonicalMessageV2CommitResult.ScopeEvicted ->
+                                heldAfterScopeEviction(scope, state)
                         }
-                        is CanonicalMessageV2CommitResult.BaselineRequired ->
-                            applyAuthoritativeSnapshot(scope, foldInput.row.id, state, snapshotLoader)
                     }
                 }
-            }
 
-            applyAuthoritativeSnapshot(scope, foldInput.row.id, state, snapshotLoader)
+                applyAuthoritativeSnapshot(
+                    scope,
+                    foldInput.row.id,
+                    state,
+                    snapshotLoader,
+                    partitionGeneration,
+                )
+            }
+        }
+    }
+
+    private suspend fun <T> withScopeMutex(
+        scope: SyncScopeKey,
+        block: suspend () -> T,
+    ): T {
+        val entry = selectionMutex.withLock {
+            scopeMutexByKey.getOrPut(scope) { MutexEntry() }.also { it.users += 1 }
+        }
+        return try {
+            entry.mutex.withLock { block() }
+        } finally {
+            selectionMutex.withLock {
+                entry.users -= 1
+                if (entry.users == 0 && scopeMutexByKey[scope] === entry) {
+                    scopeMutexByKey.remove(scope)
+                }
+            }
         }
     }
 
@@ -171,6 +227,7 @@ internal class CanonicalMessageV2ProductionCanary(
         targetFactId: String,
         state: CanonicalMessageV2CanaryScopeState,
         snapshotLoader: CanonicalMessageV2SnapshotLoader,
+        partitionGeneration: Long,
     ): CanonicalMessageV2CanaryOutcome {
         state.mode = CanonicalMessageV2CanaryMode.Activating
         return when (val loaded = snapshotLoader.load(CanonicalMessageV2SnapshotRequest(scope, targetFactId))) {
@@ -191,14 +248,28 @@ internal class CanonicalMessageV2ProductionCanary(
                     return CanonicalMessageV2CanaryOutcome.Held("canonical_v2_snapshot_missing_target")
                 }
                 try {
-                    generationEngine.applySnapshot(frame)
-                    state.cursor = frame.cursor
-                    state.mode = CanonicalMessageV2CanaryMode.SoleApply
-                    logger(
-                        "canonical_v2_canary mode=sole_apply server=${scope.serverId} " +
-                            "scope=${scope.scopeId} source=snapshot",
-                    )
-                    CanonicalMessageV2CanaryOutcome.Committed
+                    when (
+                        generationEngine.applySnapshot(
+                            frame,
+                            expectedPartitionGeneration = partitionGeneration,
+                        )
+                    ) {
+                        CanonicalMessageV2CommitResult.Committed -> {
+                            state.cursor = frame.cursor
+                            state.mode = CanonicalMessageV2CanaryMode.SoleApply
+                            logger(
+                                "canonical_v2_canary mode=sole_apply server=${scope.serverId} " +
+                                    "scope=${scope.scopeId} source=snapshot",
+                            )
+                            CanonicalMessageV2CanaryOutcome.Committed
+                        }
+                        CanonicalMessageV2CommitResult.PartitionRevoked ->
+                            heldAfterPartitionRevoke(scope, state)
+                        CanonicalMessageV2CommitResult.ScopeEvicted ->
+                            heldAfterScopeEviction(scope, state)
+                        is CanonicalMessageV2CommitResult.BaselineRequired ->
+                            error("snapshot commit cannot require a baseline")
+                    }
                 } catch (throwable: Throwable) {
                     generationEngine.rebaselineFailed(scope)
                     state.mode = CanonicalMessageV2CanaryMode.Broken
@@ -215,20 +286,66 @@ internal class CanonicalMessageV2ProductionCanary(
         targetFactId: String,
         state: CanonicalMessageV2CanaryScopeState,
         snapshotLoader: CanonicalMessageV2SnapshotLoader,
+        partitionGeneration: Long,
     ): CanonicalMessageV2CanaryOutcome {
         if (state.mode == CanonicalMessageV2CanaryMode.Off) return CanonicalMessageV2CanaryOutcome.NotSelected
-        val barrier = applyAuthoritativeSnapshot(scope, targetFactId, state, snapshotLoader)
+        val barrier = applyAuthoritativeSnapshot(
+            scope,
+            targetFactId,
+            state,
+            snapshotLoader,
+            partitionGeneration,
+        )
         if (barrier != CanonicalMessageV2CanaryOutcome.Committed) return barrier
-        generationEngine.invalidate(scope)
+        generationEngine.clearScope(scope)
         selectionMutex.withLock {
             if (selectedScopeByPartition[scope.partition] == scope) {
                 selectedScopeByPartition.remove(scope.partition)
             }
-            scopeMutexByKey.remove(scope)
             stateByScope.remove(scope)
         }
         logger("canonical_v2_canary mode=off server=${scope.serverId} scope=${scope.scopeId} reason=flag_revoked")
         return CanonicalMessageV2CanaryOutcome.NotSelected
+    }
+
+    private suspend fun onPartitionRevoked(partition: DurablePartitionKey) {
+        selectionMutex.withLock {
+            selectedScopeByPartition.remove(partition)
+            stateByScope.keys.removeAll { it.partition == partition }
+        }
+    }
+
+    private suspend fun onScopesInvalidated(scopes: Set<SyncScopeKey>) {
+        selectionMutex.withLock {
+            selectedScopeByPartition.entries.removeAll { it.value in scopes }
+            stateByScope.keys.removeAll { it in scopes }
+        }
+    }
+
+    private fun heldAfterPartitionRevoke(
+        scope: SyncScopeKey,
+        state: CanonicalMessageV2CanaryScopeState,
+    ): CanonicalMessageV2CanaryOutcome {
+        state.cursor = null
+        state.mode = CanonicalMessageV2CanaryMode.Off
+        logger(
+            "canonical_v2_canary mode=off server=${scope.serverId} " +
+                "scope=${scope.scopeId} reason=partition_revoked",
+        )
+        return CanonicalMessageV2CanaryOutcome.Held("canonical_v2_partition_revoked")
+    }
+
+    private fun heldAfterScopeEviction(
+        scope: SyncScopeKey,
+        state: CanonicalMessageV2CanaryScopeState,
+    ): CanonicalMessageV2CanaryOutcome {
+        state.cursor = null
+        state.mode = CanonicalMessageV2CanaryMode.Off
+        logger(
+            "canonical_v2_canary mode=off server=${scope.serverId} " +
+                "scope=${scope.scopeId} reason=retention_evicted",
+        )
+        return CanonicalMessageV2CanaryOutcome.Held("canonical_v2_scope_evicted")
     }
 }
 

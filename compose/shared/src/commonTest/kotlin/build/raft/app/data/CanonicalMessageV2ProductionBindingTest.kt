@@ -13,7 +13,9 @@ import build.raft.app.network.sync.CanonicalMessageV2ProductionCanary
 import build.raft.app.network.sync.CanonicalMessageV2SnapshotCommitObserver
 import build.raft.app.network.sync.CanonicalMessageV2SnapshotFrame
 import build.raft.app.network.sync.CanonicalMessageV2Store
+import build.raft.app.network.sync.CanonicalMessageV2StoreWriteResult
 import build.raft.app.network.sync.CanonicalMessageV2IncrementalFrame
+import build.raft.app.network.sync.DurablePartitionKey
 import build.raft.app.network.sync.RestoredCanonicalMessageV2Scope
 import build.raft.app.network.sync.SyncScopeKey
 import build.raft.app.network.sync.SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID
@@ -154,13 +156,19 @@ class CanonicalMessageV2ProductionBindingTest {
     private class RecordingStore : CanonicalMessageV2Store {
         val snapshots = mutableListOf<CanonicalMessageV2SnapshotFrame>()
 
-        override suspend fun applySnapshot(frame: CanonicalMessageV2SnapshotFrame) {
+        override suspend fun applySnapshot(frame: CanonicalMessageV2SnapshotFrame): CanonicalMessageV2StoreWriteResult {
             snapshots += frame
+            return CanonicalMessageV2StoreWriteResult()
         }
 
-        override suspend fun applyIncremental(frame: CanonicalMessageV2IncrementalFrame) = Unit
+        override suspend fun applyIncremental(frame: CanonicalMessageV2IncrementalFrame) =
+            CanonicalMessageV2StoreWriteResult()
 
         override suspend fun restore(scope: SyncScopeKey): RestoredCanonicalMessageV2Scope =
             RestoredCanonicalMessageV2Scope(emptyList(), null)
+
+        override suspend fun clearScope(scope: SyncScopeKey): Set<SyncScopeKey> = setOf(scope)
+
+        override suspend fun clearPartition(partition: DurablePartitionKey) = Unit
     }
 }

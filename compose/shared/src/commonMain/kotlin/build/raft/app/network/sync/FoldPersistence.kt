@@ -34,6 +34,9 @@ data class SyncScopeKey(
 
     val consumerId: String
         get() = partition.consumerId
+
+    val environmentId: String
+        get() = partition.environmentId
 }
 
 /** The durable per-scope cursor + epoch (mirror of `syncCursorEntity`) committed with the facts. */
@@ -44,6 +47,9 @@ data class PersistedCursor(
     val hasLoadedOldest: Boolean = false,
     val hasLoadedNewest: Boolean = true,
     val epoch: SyncEpoch? = null,
+    val parentScopeKind: String? = null,
+    val parentScopeId: String? = null,
+    val rootMessageId: String? = null,
 )
 
 /**

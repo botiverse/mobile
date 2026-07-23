@@ -30,6 +30,7 @@ internal class SqlDelightFoldPersistStore(
             val json = encodeCanonicalFact(fact)
             // INSERT-OR-IGNORE + scoped UPDATE = an in-place upsert without replacing a foreign-scope row.
             q.insertCanonicalFactIfAbsent(
+                environmentId = scope.environmentId,
                 serverId = scope.serverId,
                 principalId = scope.principalId,
                 consumerId = scope.consumerId,
@@ -45,6 +46,7 @@ internal class SqlDelightFoldPersistStore(
                 createdAt = fact.createdAt,
                 canonicalFactJson = json,
                 id = fact.id,
+                environmentId = scope.environmentId,
                 serverId = scope.serverId,
                 principalId = scope.principalId,
                 consumerId = scope.consumerId,
@@ -53,6 +55,7 @@ internal class SqlDelightFoldPersistStore(
             )
             val present = q.countCanonicalFactInScope(
                 id = fact.id,
+                environmentId = scope.environmentId,
                 serverId = scope.serverId,
                 principalId = scope.principalId,
                 consumerId = scope.consumerId,
@@ -66,6 +69,7 @@ internal class SqlDelightFoldPersistStore(
     override suspend fun writeCursor(scope: SyncScopeKey, cursor: PersistedCursor) {
         database.queries.upsertSyncCursor(
             scopeId = scope.scopeId,
+            environmentId = scope.environmentId,
             serverId = scope.serverId,
             principalId = scope.principalId,
             consumerId = scope.consumerId,
@@ -77,6 +81,9 @@ internal class SqlDelightFoldPersistStore(
             hasLoadedNewest = if (cursor.hasLoadedNewest) 1L else 0L,
             updatedAtMs = now(),
             epoch = cursor.epoch,
+            parentScopeKind = cursor.parentScopeKind,
+            parentScopeId = cursor.parentScopeId,
+            rootMessageId = cursor.rootMessageId,
         )
     }
 
@@ -88,6 +95,7 @@ internal class SqlDelightFoldPersistStore(
         for (id in factIds) {
             q.deleteCanonicalFactInScope(
                 id = id.value,
+                environmentId = scope.environmentId,
                 serverId = scope.serverId,
                 principalId = scope.principalId,
                 consumerId = scope.consumerId,
@@ -99,6 +107,7 @@ internal class SqlDelightFoldPersistStore(
 
     override suspend fun clearScope(scope: SyncScopeKey) {
         database.queries.clearCanonicalFactsForScope(
+            environmentId = scope.environmentId,
             serverId = scope.serverId,
             principalId = scope.principalId,
             consumerId = scope.consumerId,
@@ -110,6 +119,7 @@ internal class SqlDelightFoldPersistStore(
     override suspend fun readFacts(scope: SyncScopeKey): List<CanonicalMessageRow> =
         database.queries
             .selectServerBackedMessagesForChannel(
+                environmentId = scope.environmentId,
                 serverId = scope.serverId,
                 principalId = scope.principalId,
                 consumerId = scope.consumerId,
@@ -122,6 +132,7 @@ internal class SqlDelightFoldPersistStore(
                     ?: return@mapNotNull run { onDecodeFailure(scope, row.id); null }
                 val consistent =
                     row.serverId == scope.serverId &&
+                        row.environmentId == scope.environmentId &&
                         row.principalId == scope.principalId &&
                         row.consumerId == scope.consumerId &&
                         row.scopeKind == scope.scopeKind &&
@@ -137,6 +148,7 @@ internal class SqlDelightFoldPersistStore(
     override suspend fun readCursor(scope: SyncScopeKey): PersistedCursor? =
         database.queries
             .selectSyncCursor(
+                environmentId = scope.environmentId,
                 serverId = scope.serverId,
                 principalId = scope.principalId,
                 consumerId = scope.consumerId,
@@ -152,6 +164,9 @@ internal class SqlDelightFoldPersistStore(
                     hasLoadedOldest = cursor.hasLoadedOldest != 0L,
                     hasLoadedNewest = cursor.hasLoadedNewest != 0L,
                     epoch = cursor.epoch,
+                    parentScopeKind = cursor.parentScopeKind,
+                    parentScopeId = cursor.parentScopeId,
+                    rootMessageId = cursor.rootMessageId,
                 )
             }
 }

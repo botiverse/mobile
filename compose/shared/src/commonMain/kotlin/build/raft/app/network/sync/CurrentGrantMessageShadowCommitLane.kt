@@ -202,6 +202,7 @@ internal class SqlDelightStrictMessageScopeSnapshotReader(
         database.transaction {
             val storedFacts = database.queries
                 .selectServerBackedMessagesForChannel(
+                    environmentId = scope.environmentId,
                     serverId = scope.serverId,
                     principalId = scope.principalId,
                     consumerId = scope.consumerId,
@@ -225,6 +226,7 @@ internal class SqlDelightStrictMessageScopeSnapshotReader(
             hooks.afterFactsRead()
             val cursor = database.queries
                 .selectSyncCursor(
+                    environmentId = scope.environmentId,
                     serverId = scope.serverId,
                     principalId = scope.principalId,
                     consumerId = scope.consumerId,
