@@ -219,18 +219,26 @@ function sourceMatches(root, needles, limit = 5) {
   for (const tier of [1, 2]) {
     for (const file of files) {
       if (nameTier(file) !== tier) continue;
-      matches.push(sourceRecord(root, file));
-      if (matches.length >= limit) return matches.filter(Boolean);
+      matches.push({ source: sourceRecord(root, file), tier });
+      if (matches.length >= limit) return matches.filter((match) => match.source);
     }
   }
   for (const file of files) {
     if (nameTier(file) !== 0) continue;
     const content = fs.readFileSync(file, "utf8");
     if (!normalized.some((needle) => content.includes(needle))) continue;
-    matches.push(sourceRecord(root, file));
+    matches.push({ source: sourceRecord(root, file), tier: 3 });
     if (matches.length >= limit) break;
   }
-  return matches.filter(Boolean);
+  return matches.filter((match) => match.source);
+}
+
+// Merge matches from several roots by tier so an exact-name component file in
+// one repo outranks content-noise from another; within a tier the earlier
+// root wins (stable sort). Without this, rui content matches consumed the
+// prompt budget ahead of slock's exact ProgressBar.tsx.
+function rankedSources(rootMatches) {
+  return rootMatches.flat().sort((a, b) => a.tier - b.tier).map((match) => match.source);
 }
 
 export function isForbiddenSourcePath(sourcePath) {
@@ -295,22 +303,23 @@ export function collectSources(entry, opts) {
   const derivedNeedles = caseIdNeedles(entry?.id);
   const reactComponents = [...(react.components || []), entry?.reactPathHint, ...derivedNeedles];
   const androidComponents = [...(android.components || []), entry?.androidCaseHint, ...derivedNeedles];
-  const androidSeedSources = sourceMatches(path.join(opts.mobileRoot, "compose"), androidComponents, 6);
-  const androidExpandedSources = sourceMatches(
+  const androidSeedSources = rankedSources([sourceMatches(path.join(opts.mobileRoot, "compose"), androidComponents, 6)]);
+  const androidExpandedSources = rankedSources([sourceMatches(
     path.join(opts.mobileRoot, "compose"),
     referencedUiIdentifiers(androidSeedSources, androidComponents),
     8,
-  );
+  )]);
   const androidComponentSources = [...androidSeedSources, ...androidExpandedSources]
     .map((source) => ({ ...source, path: `compose/${source.path}` }));
   return {
-    // RUI primitives are ranked before slock app files: for library cases the
-    // primitive IS the truth source, and the app-level exact path already
-    // leads the list when the manifest provides one.
+    // rui and slock matches merge by tier (exact-name first across both
+    // repos, rui winning ties); the app-level exact manifest path still leads.
     react: capSources(dedupeSources([
       reactExact,
-      ...sourceMatches(opts.ruiRoot, reactComponents, 5),
-      ...sourceMatches(opts.slockRoot, reactComponents, 4),
+      ...rankedSources([
+        sourceMatches(opts.ruiRoot, reactComponents, 5),
+        sourceMatches(opts.slockRoot, reactComponents, 4),
+      ]),
     ])),
     android: capSources(dedupeSources([
       androidExact,
