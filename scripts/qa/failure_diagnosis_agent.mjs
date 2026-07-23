@@ -211,14 +211,17 @@ async function main() {
     capacity_evidence_sha256: crypto.createHash("sha256").update(capacityBytes).digest("hex"),
     capacity_evidence_jsonl: capacityBytes.toString("utf8"),
   };
+  fs.writeFileSync(out, JSON.stringify({ stage: "ready_to_submit", run_case_id: runCaseId, diagnosis, raw_model_output: raw }, null, 2));
   const submitted = await stamp(`/api/diagnoses/${runCaseId}`, { method: "POST", body: JSON.stringify(diagnosis) });
-  fs.writeFileSync(out, JSON.stringify({ run_case_id: runCaseId, diagnosis, submitted, raw_model_output: raw }, null, 2));
+  fs.writeFileSync(out, JSON.stringify({ stage: "submitted", run_case_id: runCaseId, diagnosis, submitted, raw_model_output: raw }, null, 2));
   fs.rmSync(workspaceRoot, { recursive: true, force: true });
   console.log(JSON.stringify({ run_case_id: runCaseId, diagnosis, submitted }, null, 2));
 }
 
 main().catch((error) => {
-  fs.writeFileSync(out, JSON.stringify({ run_case_id: runCaseId, error: String(error?.stack || error) }, null, 2));
+  let prior = {};
+  try { prior = JSON.parse(fs.readFileSync(out, "utf8")); } catch { prior = {}; }
+  fs.writeFileSync(out, JSON.stringify({ ...prior, run_case_id: runCaseId, error: String(error?.stack || error) }, null, 2));
   console.error(error);
   process.exit(1);
 });
