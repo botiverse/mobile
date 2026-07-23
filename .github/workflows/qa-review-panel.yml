@@ -15,9 +15,12 @@ jobs:
   review:
     name: Independent reviewer ${{ matrix.slot }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
-    timeout-minutes: 15
+    timeout-minutes: 30
     strategy:
       fail-fast: false
+      # Token Plan capacity is shared.  Keep the three contexts independent but
+      # serialize their requests so they do not starve each other until timeout.
+      max-parallel: 1
       matrix:
         slot: [1, 2, 3]
     steps:

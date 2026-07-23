@@ -286,9 +286,9 @@ async function main() {
   let vote;
   const modelAttempts = [];
   let lastError;
-  for (let attempt = 1; attempt <= 3; attempt++) {
+  for (let attempt = 1; attempt <= 2; attempt++) {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 180000);
+    const timer = setTimeout(() => controller.abort(), 600000);
     let attemptText = "";
     let attemptResponse;
     try {
@@ -298,7 +298,7 @@ async function main() {
       ];
       attemptResponse = await models.complete(model,
         { messages: [{ role: "user", content: attemptContent, timestamp: Date.now() }] },
-        { apiKey: piKey, maxTokens: 2500, signal: controller.signal, timeoutMs: 180000 });
+        { apiKey: piKey, maxTokens: 2500, signal: controller.signal, timeoutMs: 600000 });
       if (attemptResponse.stopReason === "error" || attemptResponse.stopReason === "aborted") {
         throw new Error(attemptResponse.errorMessage || attemptResponse.stopReason);
       }

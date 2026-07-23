@@ -334,7 +334,12 @@ test("iOS workflow terminalizes any post-claim failure and Qwen panel is the def
   assert.match(panel, /PI_PROVIDER:.*qwen-token-plan-cn/);
   assert.match(panel, /PI_MODEL:.*qwen3\.8-max-preview/);
   assert.match(panel, /QWEN_TOKEN_PLAN_CN_API_KEY/);
+  assert.match(panel, /max-parallel: 1/);
+  assert.match(panel, /timeout-minutes: 30/);
   assert.doesNotMatch(panel, /m3-review-/);
+  const reviewer = fs.readFileSync(new URL("./review_agent.mjs", import.meta.url), "utf8");
+  assert.match(reviewer, /attempt <= 2/);
+  assert.match(reviewer, /timeoutMs: 600000/);
   const diagnosis = fs.readFileSync(new URL("../../.github/workflows/qa-failure-diagnosis.yml", import.meta.url), "utf8");
   assert.match(diagnosis, /@earendil-works\/pi-ai@0\.81\.1/);
   assert.match(diagnosis, /PI_PROVIDER:.*qwen-token-plan-cn/);
