@@ -3,6 +3,7 @@ import SwiftUI
 import shared
 
 struct ContentView: View {
+    @StateObject private var oauthRouteStore = SlockIosOAuthRouteStore.shared
 
     var body: some View {
         // task #419: the visual-testing capture harness launches the app with a
@@ -29,14 +30,30 @@ struct ContentView: View {
                     print("SLOCK_VISUAL_FIXTURE_READY page=\(fixture.pageName)")
                 }
         } else {
+            let destination = oauthRouteStore.destination
             KuiklyRenderViewPage(
-                pageName: "compose_slock_app_shell",
-                data: [
-                    "pageName": "compose_slock_app_shell",
-                    "slockNativeTabBarRenderer": ContentView.appTabBarRenderer()
-                ]
-            ).ignoresSafeArea()
+                pageName: destination.pageName,
+                data: ContentView.hostPageData(destination)
+            )
+                .id(destination.revision)
+                .ignoresSafeArea()
+                .onOpenURL { url in
+                    _ = SlockIosMobileOAuthHost.shared.acceptCallbackURL(url, source: "swiftui_open_url")
+                }
+                .onAppear {
+                    SlockIosMobileOAuthHost.shared.resumeDeferredCallbackIfNeeded()
+                }
         }
+    }
+
+    private static func hostPageData(_ destination: SlockIosOAuthDestination) -> [String: Any] {
+        var data = destination.pageData
+        data["pageName"] = destination.pageName
+        data["slockSocialAuthProviders"] = slockIosOAuthProviders
+        if destination.pageName == "compose_slock_app_shell" {
+            data["slockNativeTabBarRenderer"] = appTabBarRenderer()
+        }
+        return data
     }
 
     private static func appTabBarRenderer() -> String {

@@ -189,6 +189,7 @@ class SharedAuthDataSource(
 
     suspend fun startMobileOAuthLogin(
         provider: String,
+        platform: String = "android",
         appEnv: String,
         returnUri: String,
         codeChallenge: String
@@ -200,7 +201,7 @@ class SharedAuthDataSource(
                 "This sign-in provider is not available on this device."
             )
         }
-        if (appEnv.isBlank() || returnUri.isBlank() || codeChallenge.isBlank()) {
+        if (platform.isBlank() || appEnv.isBlank() || returnUri.isBlank() || codeChallenge.isBlank()) {
             return SharedAuthResult.Failure(
                 SharedAuthErrorCode.Validation,
                 "Mobile sign-in could not be prepared."
@@ -211,7 +212,7 @@ class SharedAuthDataSource(
                 api.startMobileOAuth(
                     provider = normalizedProvider,
                     mode = "login",
-                    platform = "android",
+                    platform = platform.trim(),
                     appEnv = appEnv.trim(),
                     returnUri = returnUri.trim(),
                     codeChallenge = codeChallenge.trim()

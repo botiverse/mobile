@@ -367,7 +367,20 @@ final class SlockIosAppDelegate: NSObject, UIApplicationDelegate, UNUserNotifica
                 source: "cold_launch"
             )
         }
+        if let url = launchOptions?[.url] as? URL {
+            DispatchQueue.main.async {
+                _ = SlockIosMobileOAuthHost.shared.acceptCallbackURL(url, source: "cold_launch")
+            }
+        }
         return true
+    }
+
+    func application(
+        _ app: UIApplication,
+        open url: URL,
+        options: [UIApplication.OpenURLOptionsKey: Any] = [:]
+    ) -> Bool {
+        SlockIosMobileOAuthHost.shared.acceptCallbackURL(url, source: "app_delegate")
     }
 
     func application(

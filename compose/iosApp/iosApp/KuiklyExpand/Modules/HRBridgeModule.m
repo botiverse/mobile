@@ -2136,6 +2136,15 @@ static NSString *SlockPickedAttachmentDisplayName(NSString *suggestedName,
         [self slock_openNotificationSettingsWithCallback:callback];
         return;
     }
+    if ([action isEqualToString:@"mobileOAuthLink"]) {
+        NSString *provider = SlockBridgeString(params[@"providerId"]);
+        [[SlockIosMobileOAuthHost shared] startWithProvider:provider
+                                                      mode:@"link"
+                                                completion:^(NSDictionary *result) {
+            callback(result);
+        }];
+        return;
+    }
     callback([self slock_settingsCapabilityResultForAction:action params:params]);
 }
 
@@ -2205,11 +2214,17 @@ static NSString *SlockPickedAttachmentDisplayName(NSString *suggestedName,
 }
 
 - (void)socialAuth:(NSDictionary *)args {
+    NSDictionary *params = SlockBridgeParams(args);
     KuiklyRenderCallback callback = args[KR_CALLBACK_KEY];
-    if (callback) {
-        callback([self slock_unsupportedResultWithCode:@"social_auth_unavailable"
-                                               message:@"Social auth is out of scope for iOS P0 host bridge"]);
+    if (!callback) {
+        return;
     }
+    NSString *provider = SlockBridgeString(params[@"provider"]);
+    [[SlockIosMobileOAuthHost shared] startWithProvider:provider
+                                                  mode:@"login"
+                                            completion:^(NSDictionary *result) {
+        callback(result);
+    }];
 }
 
 - (void)openAttachment:(NSDictionary *)args {
