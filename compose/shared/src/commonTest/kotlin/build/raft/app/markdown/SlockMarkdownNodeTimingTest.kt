@@ -40,9 +40,9 @@ class SlockMarkdownNodeTimingTest {
         val clock = TestTimeSource()
         val timing = SlockMarkdownRenderTiming(sink, clock)
 
-        timing.enterNode("paragraph")
+        timing.enterNode("PARAGRAPH")
         clock += 1_000.microseconds
-        timing.enterNode("text")
+        timing.enterNode("TEXT")
         clock += 3_000.microseconds
         timing.exitNode()
         clock += 2_000.microseconds
@@ -72,7 +72,7 @@ class SlockMarkdownNodeTimingTest {
         val timing = SlockMarkdownRenderTiming(sink, clock)
 
         repeat(3) {
-            timing.enterNode("eol")
+            timing.enterNode("EOL")
             clock += 50.microseconds
             timing.exitNode()
         }
@@ -94,7 +94,7 @@ class SlockMarkdownNodeTimingTest {
         val timing = SlockMarkdownRenderTiming(sink, clock)
 
         repeat(SlockNodeDetailCapPerRender + 5) {
-            timing.enterNode("paragraph")
+            timing.enterNode("PARAGRAPH")
             clock += 1_000.microseconds
             timing.exitNode()
         }
@@ -114,12 +114,12 @@ class SlockMarkdownNodeTimingTest {
         val timing = SlockMarkdownRenderTiming(sink, clock)
 
         // One properly closed node, then two frames left open (abandoned pass).
-        timing.enterNode("paragraph")
+        timing.enterNode("PARAGRAPH")
         clock += 1_000.microseconds
         timing.exitNode()
-        timing.enterNode("block_quote")
+        timing.enterNode("BLOCK_QUOTE")
         clock += 1_000.microseconds
-        timing.enterNode("paragraph")
+        timing.enterNode("PARAGRAPH")
         clock += 500.microseconds
         timing.finishRender(renderNodesUs = 2_500)
 
@@ -138,7 +138,7 @@ class SlockMarkdownNodeTimingTest {
         val clock = TestTimeSource()
         val timing = SlockMarkdownRenderTiming(sink, clock)
 
-        timing.enterNode("paragraph")
+        timing.enterNode("PARAGRAPH")
         clock += 1_000.microseconds
         timing.exitNode()
         timing.finishRender(renderNodesUs = 4_000)
@@ -153,7 +153,7 @@ class SlockMarkdownNodeTimingTest {
         val sink = RecordingSink()
         val clock = TestTimeSource()
         val timing = SlockMarkdownRenderTiming(sink, clock)
-        timing.enterNode("paragraph")
+        timing.enterNode("PARAGRAPH")
         clock += 1_000.microseconds
         timing.exitNode()
         timing.finishRender(renderNodesUs = 1_000)
