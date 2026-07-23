@@ -164,6 +164,7 @@ fun parseSharedServerMemberSnapshot(
     MemberSnapshot(
         server = server,
         members = decodeServerMembers(bodyText)
+            .filter { member -> member.belongsToServerRoster(server.id) }
             .map { it.withSourceServer(server.id, server.name, server.slug) }
             .distinctBy { it.id.value },
     )
@@ -760,6 +761,11 @@ private fun String?.toServerIdOrNull(): ServerId? =
 
 private fun String?.normalizedServerRoleOrNull(): String? =
     this?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
+
+private fun MemberProfile.belongsToServerRoster(serverId: ServerId): Boolean {
+    val sourceServerId = this.serverId?.value?.trim().orEmpty()
+    return sourceServerId.isEmpty() || sourceServerId == serverId.value.trim()
+}
 
 private fun MemberProfile.withSourceServer(
     serverId: ServerId,
