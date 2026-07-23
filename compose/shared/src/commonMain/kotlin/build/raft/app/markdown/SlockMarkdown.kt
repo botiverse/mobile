@@ -78,6 +78,7 @@ import com.tencent.kuiklybase.markdown.compose.components.markdownComponents
 import com.tencent.kuiklybase.markdown.model.DefaultMarkdownColors
 import com.tencent.kuiklybase.markdown.model.DefaultMarkdownTypography
 import com.tencent.kuiklybase.markdown.model.MarkdownAnnotator
+import com.tencent.kuiklybase.markdown.compose.LocalSlockMarkdownAnnotationRevision
 import com.tencent.kuiklybase.markdown.compose.SlockMarkdownNodeTrace
 import com.tencent.kuiklybase.markdown.compose.SlockMarkdownNodeTraceSink
 import com.tencent.kuiklybase.markdown.compose.SlockMarkdownSubTrace
@@ -1290,9 +1291,11 @@ private object SlockMarkdownTextProvider : TextProvider {
                 styledText.withSlockMarkdownBodyClick(bodyClick)
             }
         val resolvedInlineContent =
-            resolvedText.filteredSlockMarkdownInlineContent(
-                inlineContent + permalinkContent.inlineContent
-            )
+            remember(resolvedText, inlineContent, permalinkContent) {
+                resolvedText.filteredSlockMarkdownInlineContent(
+                    inlineContent + permalinkContent.inlineContent
+                )
+            }
         logMarkdownSpike(
             phase = "markdown.diagnostics.rich_text",
             durationUs = 0L,
@@ -2021,6 +2024,27 @@ fun SlockMarkdownBody(
             "thread_markdown_render stage=markdown_renderer key=$performanceKey contentLength=${content.length}"
         )
     }
+    // Annotation revision for the vendor's opt-in AnnotatedString memo.
+    // Dynamic tag/channel label resolution reaches the built string through a
+    // stable annotator identity (currentResolveTagLabel is a
+    // rememberUpdatedState read), so the memo key must carry the RESULTS: the
+    // resolved label snapshot for THIS document's actions, recomputed inline
+    // each composition as a plain list — no Compose state is read or written
+    // here (a read-then-write generation counter was rejected in review as a
+    // backward write scheduling an extra recomposition pass). Structural list
+    // equality gives the memo semantics: identity-stable resolver with
+    // unchanged results reuses, a result change rebuilds exactly once.
+    // CONTRACT: any FUTURE dynamic annotation input added to the Slock
+    // annotator MUST be folded into this revision value, or the vendor memo
+    // will serve stale output for it.
+    val annotationRevision: List<String?> =
+        if (resolveTagLabel == null || richTextDocument.actions.isEmpty()) {
+            emptyList()
+        } else {
+            richTextDocument.actions.map { action ->
+                currentResolveTagLabel?.invoke(action.toThreadMarkdownTag())
+            }
+        }
     val padding = remember {
         markdownPadding(
             block = 0.dp,
@@ -2075,7 +2099,8 @@ fun SlockMarkdownBody(
     CompositionLocalProvider(
         LocalTextProvider provides SlockMarkdownTextProvider,
         LocalUriHandler provides uriHandler,
-        LocalSlockMarkdownBodyClick provides onClick
+        LocalSlockMarkdownBodyClick provides onClick,
+        LocalSlockMarkdownAnnotationRevision provides annotationRevision
     ) {
         traceMarkdownSection(SlockMarkdownTraceNames.LAYOUT, body.length) {
             // #192 long-body sub-trace: split layout phase into pre-block setup

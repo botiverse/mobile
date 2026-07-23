@@ -90,6 +90,19 @@ internal class SlockMarkdownRenderTiming(
     private var detailDropped = 0
     private var exclusiveSumUs = 0L
     private var topLevelCounter = -1
+    private var annotatedStringHits = 0
+    private var annotatedStringRebuilds = 0
+
+    /** AnnotatedString memo accounting (counts only — no content/labels/hashes
+     * per the reviewed privacy vocabulary). A textCall drop without these
+     * counters could not be attributed to cache hits vs workload drift. */
+    fun recordAnnotatedStringHit() {
+        annotatedStringHits++
+    }
+
+    fun recordAnnotatedStringRebuild() {
+        annotatedStringRebuilds++
+    }
 
     fun enterNode(rawTypeName: String): Boolean {
         val typeKey = slockMarkdownNodeTypeKey(rawTypeName)
@@ -187,7 +200,8 @@ internal class SlockMarkdownRenderTiming(
         sink.emit(
             "SlockMarkdownSpike phase=markdown.node.reconcile renderSeq=$renderSeq " +
                 "renderNodesUs=$renderNodesUs exclusiveSumUs=$exclusiveSumUs " +
-                "remainderUs=$remainderUs detailDropped=$detailDropped abortedFrames=0"
+                "remainderUs=$remainderUs detailDropped=$detailDropped abortedFrames=0 " +
+                "annotatedStringHits=$annotatedStringHits annotatedStringRebuilds=$annotatedStringRebuilds"
         )
     }
 }
@@ -240,3 +254,48 @@ internal fun slockMarkdownRenderTimingOrNull(
     sink: SlockMarkdownNodeTraceSink? = SlockMarkdownNodeTrace.sink,
     timeSource: TimeSource = TimeSource.Monotonic,
 ): SlockMarkdownRenderTiming? = sink?.let { SlockMarkdownRenderTiming(it, timeSource) }
+
+/**
+ * Sentinel for "the host declared NO annotation revision". Compared by
+ * IDENTITY (===) so no legitimate revision value — including null, empty
+ * lists, or any structurally-equal object — can collide with it.
+ */
+object SlockMarkdownAnnotationRevisionUnspecified
+
+/**
+ * Host-provided revision for dynamic annotation inputs (e.g. tag / channel
+ * label resolution) that affect the built AnnotatedString but are not part of
+ * the (content, node, style, settings) memo keys.
+ *
+ * Contract: AnnotatedString memoization is OPT-IN. With the default
+ * (identity-)sentinel the paragraph/text builds keep the legacy semantics —
+ * rebuilt every recomposition — because a MarkdownAnnotator is a behavior
+ * callback whose output can change behind a stable identity; memoizing it
+ * without a revision would silently freeze such output. A host that provides
+ * a revision value promises it changes (structural equality) whenever ANY
+ * dynamic annotation input changes; the value itself should be cheap,
+ * structurally comparable data (e.g. the resolved label snapshot list) and
+ * must never be bumped per-recomposition (permanent cache miss).
+ */
+val LocalSlockMarkdownAnnotationRevision =
+    compositionLocalOf<Any?> { SlockMarkdownAnnotationRevisionUnspecified }
+
+/**
+ * Single decision point for AnnotatedString memoization, shared by
+ * MarkdownParagraph and MarkdownText and locked by contract teeth:
+ * null = memo DISABLED (legacy rebuild-every-recomposition semantics);
+ * non-null = the exact remember keys to use. Only the identity sentinel
+ * disables — null is a valid host revision meaning "static annotations".
+ */
+internal fun slockMarkdownAnnotatedStringMemoKeys(
+    content: Any?,
+    node: Any?,
+    style: Any?,
+    annotatorSettings: Any?,
+    revision: Any?,
+): Array<Any?>? =
+    if (revision === SlockMarkdownAnnotationRevisionUnspecified) {
+        null
+    } else {
+        arrayOf(content, node, style, annotatorSettings, revision)
+    }

@@ -163,7 +163,9 @@ class SlockMarkdownNodeTimingTest {
             "topIndex", "count", "totalExclusiveUs", "maxUs", "belowThreshold",
             "renderNodesUs", "exclusiveSumUs", "remainderUs", "detailDropped",
             "abortedFrames", "invalid", "annotateUs", "textCallUs", "otherUs",
-            "totalAnnotateUs", "totalTextCallUs"
+            "totalAnnotateUs", "totalTextCallUs",
+            // PR-2 memo accounting: pure counts, no content/labels/hashes.
+            "annotatedStringHits", "annotatedStringRebuilds"
         )
         for (line in sink.lines) {
             assertTrue(line.startsWith("SlockMarkdownSpike "), line)
@@ -172,6 +174,45 @@ class SlockMarkdownNodeTimingTest {
                 assertTrue(key in allowedKeys, "unexpected field '$key' in: $line")
             }
         }
+    }
+
+    @Test
+    fun annotatedStringCountersLandInTheValidReconcileLine() {
+        val sink = RecordingSink()
+        val clock = TestTimeSource()
+        val timing = SlockMarkdownRenderTiming(sink, clock)
+        timing.enterNode("PARAGRAPH")
+        clock += 1_000.microseconds
+        timing.recordAnnotatedStringRebuild()
+        timing.exitNode()
+        timing.enterNode("PARAGRAPH")
+        clock += 1_000.microseconds
+        timing.recordAnnotatedStringHit()
+        timing.recordAnnotatedStringHit()
+        timing.exitNode()
+        timing.finishRender(renderNodesUs = 2_000)
+
+        val reconcile = sink.lines.single { "phase=markdown.node.reconcile" in it }
+        assertEquals("2", field(reconcile, "annotatedStringHits"))
+        assertEquals("1", field(reconcile, "annotatedStringRebuilds"))
+    }
+
+    @Test
+    fun abortedRenderDiscardsAnnotatedStringCountersWithEverythingElse() {
+        val sink = RecordingSink()
+        val clock = TestTimeSource()
+        val timing = SlockMarkdownRenderTiming(sink, clock)
+        timing.enterNode("PARAGRAPH")
+        timing.recordAnnotatedStringRebuild()
+        timing.recordAnnotatedStringHit()
+        // No exitNode: abandoned pass -> only the invalid reconcile line, and
+        // it must not carry memo counters (no-false-data contract).
+        timing.finishRender(renderNodesUs = 1_000)
+
+        val reconcile = sink.lines.single { "phase=markdown.node.reconcile" in it }
+        assertEquals("1", field(reconcile, "invalid"))
+        assertEquals(null, field(reconcile, "annotatedStringHits"))
+        assertEquals(null, field(reconcile, "annotatedStringRebuilds"))
     }
 
     @Test
