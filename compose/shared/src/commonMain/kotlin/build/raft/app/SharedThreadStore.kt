@@ -4253,7 +4253,8 @@ internal class SharedThreadStore(
                     if (result is DataResult.Content) {
                         nextPayload.preserveStableTimelineFrom(
                             previous = currentPayload,
-                            refreshObservedMessageIds = refreshObservedMessageIds
+                            refreshObservedMessageIds = refreshObservedMessageIds,
+                            sendEchoMatchPolicy = ThreadSendEchoMatchPolicy.ExactRandomId
                         )
                     } else {
                         nextPayload
@@ -6708,7 +6709,8 @@ private fun KuiklyThreadScreenPayload.withResolvedReplyThreadAction(
 internal fun KuiklyThreadScreenPayload.preserveStableTimelineFrom(
     previous: KuiklyThreadScreenPayload,
     preserveSelectedReactions: Boolean = true,
-    refreshObservedMessageIds: Set<String>? = null
+    refreshObservedMessageIds: Set<String>? = null,
+    sendEchoMatchPolicy: ThreadSendEchoMatchPolicy = ThreadSendEchoMatchPolicy.LegacyCompatible
 ): KuiklyThreadScreenPayload {
     val visibleWindowMessages =
         if (
@@ -6720,9 +6722,15 @@ internal fun KuiklyThreadScreenPayload.preserveStableTimelineFrom(
             messages
         }
     val visibleAfterPreviousCanonicalEchoes =
-        visibleWindowMessages.absorbingCanonicalSendEchoes(previous.messages)
+        visibleWindowMessages.absorbingCanonicalSendEchoes(
+            canonicalMessages = previous.messages,
+            matchPolicy = sendEchoMatchPolicy
+        )
     val previousAfterCanonicalEchoes =
-        previous.messages.absorbingCanonicalSendEchoes(visibleAfterPreviousCanonicalEchoes)
+        previous.messages.absorbingCanonicalSendEchoes(
+            canonicalMessages = visibleAfterPreviousCanonicalEchoes,
+            matchPolicy = sendEchoMatchPolicy
+        )
     val timelineMessages =
         visibleAfterPreviousCanonicalEchoes
             .withRetainedTransientLocalSendingMessagesFrom(previousAfterCanonicalEchoes)

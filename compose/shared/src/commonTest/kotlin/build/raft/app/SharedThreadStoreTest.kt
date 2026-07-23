@@ -4147,7 +4147,11 @@ class SharedThreadStoreTest {
         val current = contentPayload("old").copy(messages = contentPayload("old").messages + pending)
         val staleRefresh = contentPayload("old")
 
-        val preserved = staleRefresh.preserveStableTimelineFrom(current)
+        val preserved =
+            staleRefresh.preserveStableTimelineFrom(
+                previous = current,
+                sendEchoMatchPolicy = ThreadSendEchoMatchPolicy.ExactRandomId
+            )
 
         assertEquals(listOf("m1", "local-send-channel-1-1"), preserved.messages.map { it.id })
 
@@ -4184,6 +4188,45 @@ class SharedThreadStoreTest {
             setOf("m1", "local-send-channel-1-1", "server-other"),
             preserved.messages.map { it.id }.toSet()
         )
+    }
+
+    @Test
+    fun stableTimelineDoesNotAbsorbPendingSendFromSameBodyCanonicalWithoutRandomId() {
+        val pending = localPendingMessage("local-send-channel-1-1", "same body", randomId = "rid-1")
+        val current = contentPayload("old").copy(messages = contentPayload("old").messages + pending)
+        val missingRandomIdCanonical =
+            contentPayload("same body", id = "server-missing-random").messages.single().copy(isOwn = true)
+        val staleRefresh =
+            contentPayload("old").copy(
+                messages = contentPayload("old").messages + missingRandomIdCanonical
+            )
+
+        val preserved =
+            staleRefresh.preserveStableTimelineFrom(
+                previous = current,
+                sendEchoMatchPolicy = ThreadSendEchoMatchPolicy.ExactRandomId
+            )
+
+        assertEquals(
+            setOf("m1", "local-send-channel-1-1", "server-missing-random"),
+            preserved.messages.map { it.id }.toSet()
+        )
+
+        val exactEcho =
+            contentPayload("same body", id = "server-exact").messages.single().copy(
+                isOwn = true,
+                randomId = "rid-1"
+            )
+        val converged =
+            contentPayload("old")
+                .copy(messages = contentPayload("old").messages + exactEcho)
+                .preserveStableTimelineFrom(
+                    previous = preserved,
+                    sendEchoMatchPolicy = ThreadSendEchoMatchPolicy.ExactRandomId
+                )
+
+        assertEquals(listOf("m1", "server-exact"), converged.messages.map { it.id })
+        assertFalse(converged.messages.any { it.id == "local-send-channel-1-1" })
     }
 
     @Test

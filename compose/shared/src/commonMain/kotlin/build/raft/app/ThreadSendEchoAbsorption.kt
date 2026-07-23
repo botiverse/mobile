@@ -16,14 +16,15 @@ package build.raft.app
  *   decision paths; see binding doc §3 obligation 5).
  */
 internal fun List<KuiklyThreadMessageItem>.absorbingCanonicalSendEchoes(
-    canonicalMessages: List<KuiklyThreadMessageItem>
+    canonicalMessages: List<KuiklyThreadMessageItem>,
+    matchPolicy: ThreadSendEchoMatchPolicy = ThreadSendEchoMatchPolicy.LegacyCompatible
 ): List<KuiklyThreadMessageItem> {
     if (canonicalMessages.isEmpty()) return this
     val retained =
         filterNot { localMessage ->
             localMessage.isTransientLocalSendingMessage() &&
                 canonicalMessages.any { canonicalMessage ->
-                    localMessage.matchesCanonicalSendEcho(canonicalMessage)
+                    localMessage.matchesCanonicalSendEcho(canonicalMessage, matchPolicy)
                 }
         }
     return if (retained.size == size) this else retained
@@ -31,12 +32,18 @@ internal fun List<KuiklyThreadMessageItem>.absorbingCanonicalSendEchoes(
 
 internal const val ThreadTransientLocalSendIdPrefix = "local-send-"
 
+internal enum class ThreadSendEchoMatchPolicy {
+    ExactRandomId,
+    LegacyCompatible
+}
+
 internal fun KuiklyThreadMessageItem.isTransientLocalSendingMessage(): Boolean =
     id.startsWith(ThreadTransientLocalSendIdPrefix) &&
         deliveryState.equals(ThreadMessageDeliverySending, ignoreCase = true)
 
 private fun KuiklyThreadMessageItem.matchesCanonicalSendEcho(
-    canonicalMessage: KuiklyThreadMessageItem
+    canonicalMessage: KuiklyThreadMessageItem,
+    matchPolicy: ThreadSendEchoMatchPolicy
 ): Boolean {
     val context = pendingSendContext ?: return false
     if (!isTransientLocalSendingMessage()) return false
@@ -46,6 +53,7 @@ private fun KuiklyThreadMessageItem.matchesCanonicalSendEcho(
     val localRandomId = context.randomId?.takeIf { it.isNotBlank() }
     val canonicalRandomId = canonicalMessage.randomId?.takeIf { it.isNotBlank() }
     if (canonicalRandomId != null) return localRandomId == canonicalRandomId
+    if (matchPolicy == ThreadSendEchoMatchPolicy.ExactRandomId) return false
     if (authorId.isNotBlank() && canonicalMessage.authorId.isNotBlank() && authorId != canonicalMessage.authorId) {
         return false
     }
