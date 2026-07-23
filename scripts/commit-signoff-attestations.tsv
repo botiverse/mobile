@@ -1,7 +1,10 @@
 # Immutable squash SHA<TAB>reviewed signed source SHA<TAB>exact source signer email.
 #
 # This ledger is only for protected, shipped history that cannot be rewritten. The checker
-# requires full lowercase SHAs, one row per immutable squash, a real source commit with the exact
-# declared @mail.build trailer, a single-parent squash, and identical source/squash trees.
+# requires full lowercase SHAs, one row per immutable commit, and a real source commit with the
+# exact declared @mail.build trailer. A squash must be single-parent and tree-identical to its
+# source. A merge must have exactly two parents, reference its reviewed second parent as source,
+# and match the clean synthetic merge tree exactly.
 7fdeb172ad03f484e64f66fe618b21d5b9a89250	4bc89574209429269ff536175856f8772b56ca70	raft-mobile-cc-xile@mail.build
 93295966bb3bc5ce945d2fc3e7dbd9b8ed1c6803	89413844ad362207704347b079408be714584243	raft-mobile-android-developer-2@mail.build
+63d87164e03bbc576b6ce5f8dcfdce4b8d291439	4f8b30791bd48fd6d224093db0e0f1fb7d683c9f	raft-mobile-codex-android-devops@mail.build

@@ -37,6 +37,71 @@ git -C "$fixture_repo" add payload.txt
 git -C "$fixture_repo" commit -q -m "fix: different signed source" -m "Signed-off-by: Sign-off Test <${signer}>"
 other_source_commit="$(git -C "$fixture_repo" rev-parse HEAD)"
 
+git -C "$fixture_repo" switch -q -c merge-source "$squash_commit"
+printf 'reviewed merge source\n' > "${fixture_repo}/merge-source.txt"
+git -C "$fixture_repo" add merge-source.txt
+git -C "$fixture_repo" commit -q -m "fix: signed reviewed merge source" -m "Signed-off-by: Sign-off Test <${signer}>"
+merge_source_commit="$(git -C "$fixture_repo" rev-parse HEAD)"
+
+git -C "$fixture_repo" switch -q main
+printf 'main advanced\n' > "${fixture_repo}/main-side.txt"
+git -C "$fixture_repo" add main-side.txt
+git -C "$fixture_repo" commit -q -m "test: signed main advance" -m "Signed-off-by: Sign-off Test <${signer}>"
+merge_base_commit="$(git -C "$fixture_repo" rev-parse HEAD)"
+git -C "$fixture_repo" merge -q --no-ff merge-source -m "merge: immutable clean merge without trailer"
+merge_commit="$(git -C "$fixture_repo" rev-parse HEAD)"
+
+git -C "$fixture_repo" switch -q -c tampered-merge-source "$merge_commit"
+printf 'reviewed second source\n' > "${fixture_repo}/tampered-source.txt"
+git -C "$fixture_repo" add tampered-source.txt
+git -C "$fixture_repo" commit -q -m "fix: signed tampered merge source" -m "Signed-off-by: Sign-off Test <${signer}>"
+tampered_source_commit="$(git -C "$fixture_repo" rev-parse HEAD)"
+
+git -C "$fixture_repo" switch -q main
+git -C "$fixture_repo" reset -q --hard "$merge_commit"
+printf 'next main advance\n' > "${fixture_repo}/next-main-side.txt"
+git -C "$fixture_repo" add next-main-side.txt
+git -C "$fixture_repo" commit -q -m "test: signed next main advance" -m "Signed-off-by: Sign-off Test <${signer}>"
+tampered_base_commit="$(git -C "$fixture_repo" rev-parse HEAD)"
+git -C "$fixture_repo" merge -q --no-ff --no-commit tampered-merge-source
+printf 'unexpected merge-only payload\n' > "${fixture_repo}/merge-only.txt"
+git -C "$fixture_repo" add merge-only.txt
+git -C "$fixture_repo" commit -q -m "merge: immutable merge with extra payload"
+tampered_merge_commit="$(git -C "$fixture_repo" rev-parse HEAD)"
+
+git -C "$fixture_repo" tag -a non-commit-source "$source_commit" -m "test tag object"
+non_commit_source="$(git -C "$fixture_repo" rev-parse non-commit-source^{tag})"
+
+git -C "$fixture_repo" switch -q main
+printf 'conflict base\n' > "${fixture_repo}/conflict.txt"
+git -C "$fixture_repo" add conflict.txt
+git -C "$fixture_repo" commit -q -m "test: signed conflict base" -m "Signed-off-by: Sign-off Test <${signer}>"
+conflict_root_commit="$(git -C "$fixture_repo" rev-parse HEAD)"
+
+git -C "$fixture_repo" switch -q -c conflict-source
+printf 'source side\n' > "${fixture_repo}/conflict.txt"
+git -C "$fixture_repo" add conflict.txt
+git -C "$fixture_repo" commit -q -m "fix: signed conflicting source" -m "Signed-off-by: Sign-off Test <${signer}>"
+conflict_source_commit="$(git -C "$fixture_repo" rev-parse HEAD)"
+
+git -C "$fixture_repo" switch -q main
+printf 'main side\n' > "${fixture_repo}/conflict.txt"
+git -C "$fixture_repo" add conflict.txt
+git -C "$fixture_repo" commit -q -m "test: signed conflicting main" -m "Signed-off-by: Sign-off Test <${signer}>"
+conflict_base_commit="$(git -C "$fixture_repo" rev-parse HEAD)"
+if git -C "$fixture_repo" merge -q --no-ff conflict-source -m "merge: conflicted merge without trailer"; then
+  echo "FAIL: conflict fixture unexpectedly merged cleanly" >&2
+  exit 1
+fi
+printf 'manual conflict resolution\n' > "${fixture_repo}/conflict.txt"
+git -C "$fixture_repo" add conflict.txt
+git -C "$fixture_repo" commit -q -m "merge: conflicted merge without trailer"
+conflict_merge_commit="$(git -C "$fixture_repo" rev-parse HEAD)"
+
+octopus_tree="$(git -C "$fixture_repo" rev-parse "${merge_commit}^{tree}")"
+octopus_commit="$(printf 'merge: octopus without trailer\n' | git -C "$fixture_repo" commit-tree "$octopus_tree" \
+  -p "$merge_base_commit" -p "$merge_source_commit" -p "$other_source_commit")"
+
 run_checker() {
   local ledger_path="$1"
   local range_base="$2"
@@ -91,6 +156,9 @@ expect_fail "wrong exact signer" run_checker "$ledger" "$base_commit" "$squash_c
 printf '%s\t%s\t%s\n' "$squash_commit" 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' "$signer" > "$ledger"
 expect_fail "missing source commit" run_checker "$ledger" "$base_commit" "$squash_commit"
 
+printf '%s\t%s\t%s\n' "$squash_commit" "$non_commit_source" "$signer" > "$ledger"
+expect_fail "source must be an exact commit object" run_checker "$ledger" "$base_commit" "$squash_commit"
+
 printf '%s\t%s\t%s\n' "$squash_commit" "$other_source_commit" "$signer" > "$ledger"
 expect_fail "different source tree" run_checker "$ledger" "$base_commit" "$squash_commit"
 
@@ -108,9 +176,25 @@ printf '%s\t%s\t%s\n%s\t%s\t%s\n' \
   "$squash_commit" "$source_commit" "$signer" > "$ledger"
 expect_fail "duplicate immutable SHA" run_checker "$ledger" "$base_commit" "$squash_commit"
 
+printf '%s\t%s\t%s\n' "$merge_commit" "$merge_source_commit" "$signer" > "$ledger"
+expect_pass "clean two-parent merge attestation" run_checker "$ledger" "$merge_base_commit" "$merge_commit"
+
+printf '%s\t%s\t%s\n' "$merge_commit" "$source_commit" "$signer" > "$ledger"
+expect_fail "merge attestation requires reviewed second parent" run_checker "$ledger" "$merge_base_commit" "$merge_commit"
+
+printf '%s\t%s\t%s\n' "$tampered_merge_commit" "$tampered_source_commit" "$signer" > "$ledger"
+expect_fail "merge-only payload differs from clean merge tree" run_checker "$ledger" "$tampered_base_commit" "$tampered_merge_commit"
+
+printf '%s\t%s\t%s\n' "$conflict_merge_commit" "$conflict_source_commit" "$signer" > "$ledger"
+expect_fail "conflicted merge is not attestable" run_checker "$ledger" "$conflict_base_commit" "$conflict_merge_commit"
+
+printf '%s\t%s\t%s\n' "$octopus_commit" "$merge_source_commit" "$signer" > "$ledger"
+expect_fail "octopus merge is not attestable" run_checker "$ledger" "$merge_base_commit" "$octopus_commit"
+
 for attested_commit in \
   7fdeb172ad03f484e64f66fe618b21d5b9a89250 \
-  93295966bb3bc5ce945d2fc3e7dbd9b8ed1c6803; do
+  93295966bb3bc5ce945d2fc3e7dbd9b8ed1c6803 \
+  63d87164e03bbc576b6ce5f8dcfdce4b8d291439; do
   attested_parent="$(git -C "$repo_root" rev-parse "${attested_commit}^")"
   expect_pass "repository attestation ${attested_commit}" \
     run_repository_checker "$attested_parent" "$attested_commit"
