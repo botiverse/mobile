@@ -15,6 +15,46 @@ import kotlin.test.assertTrue
 
 class ThreadAttachmentUploadOrchestratorTest {
     @Test
+    fun localPreparationFailureDoesNotBeginOrCompleteSend() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        try {
+            val store = SharedThreadComposerDraftStore(scope = scope)
+            val orchestrator = ThreadAttachmentUploadOrchestrator(scope)
+            val finished = CompletableDeferred<Unit>()
+            store.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "preserve draft"))
+            store.dispatch(
+                SharedThreadComposerDraftIntent.AddLocalAttachments(
+                    listOf(localAttachment("picked-large"))
+                )
+            )
+
+            orchestrator.launch("picked-large") {
+                val failedIds = orchestrator.failActive(setOf("picked-large"))
+                store.dispatch(
+                    SharedThreadComposerDraftIntent.MarkAttachmentsFailed(
+                        attachmentIds = failedIds,
+                        errorCode = "attachment_size_unavailable"
+                    )
+                )
+                finished.complete(Unit)
+            }
+            finished.await()
+
+            assertEquals("preserve draft", store.state.value.seedText)
+            assertFalse(store.state.value.sending, "attachment preparation must not dispatch BeginSend")
+            assertEquals(null, store.state.value.failureLabel)
+            assertEquals(
+                listOf("picked-large"),
+                store.state.value.uploadedAttachments.map { it.id }
+            )
+            assertEquals("failed", store.state.value.uploadedAttachments.single().status)
+            assertTrue(store.state.value.uploadedAttachments.none { it.id.startsWith("local-") })
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
     fun siblingFailureMarksEveryUnfinishedTileAndDropsCancelledLateCompletion() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         try {

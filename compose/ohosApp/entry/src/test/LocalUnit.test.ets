@@ -30,6 +30,60 @@ import {
   activityUnreadPersistedFallbackCount,
   createActivityUnreadWidgetRefreshError,
 } from '../main/ets/forms/SlockWidgetData';
+import {
+  SlockOhosPlatformFileBackend,
+  SlockOhosPlatformFileReader,
+  SLOCK_OHOS_PLATFORM_FILE_MAX_STREAM_CHUNK_BYTES,
+} from '../main/ets/entryability/SlockOhosPlatformFileReader';
+
+class FakePlatformFileHandle {
+  readonly fileRef: string;
+
+  constructor(fileRef: string) {
+    this.fileRef = fileRef;
+  }
+}
+
+class FakePlatformFileBackend implements SlockOhosPlatformFileBackend {
+  private readonly data: Map<string, Array<number>> = new Map();
+  private readonly offsets: Map<FakePlatformFileHandle, number> = new Map();
+  readonly requestedMaxBytes: Array<number> = [];
+  closeCount: number = 0;
+
+  setData(fileRef: string, bytes: Array<number>): void {
+    this.data.set(fileRef, bytes);
+  }
+
+  open(fileRef: string): Object {
+    const handle = new FakePlatformFileHandle(fileRef);
+    this.offsets.set(handle, 0);
+    return handle;
+  }
+
+  statSize(handle: Object): number {
+    return this.data.get((handle as FakePlatformFileHandle).fileRef)?.length ?? 0;
+  }
+
+  read(handle: Object, maxBytes: number): ArrayBuffer {
+    this.requestedMaxBytes.push(maxBytes);
+    const typed = handle as FakePlatformFileHandle;
+    const bytes = this.data.get(typed.fileRef) ?? [];
+    const offset = this.offsets.get(typed) ?? 0;
+    const count = Math.min(maxBytes, Math.max(0, bytes.length - offset));
+    const result = new ArrayBuffer(count);
+    const view = new Uint8Array(result);
+    for (let index = 0; index < count; index++) {
+      view[index] = bytes[offset + index];
+    }
+    this.offsets.set(typed, offset + count);
+    return result;
+  }
+
+  close(handle: Object): void {
+    this.offsets.delete(handle as FakePlatformFileHandle);
+    this.closeCount += 1;
+  }
+}
 
 class FakeOhosDiagnosticsSourceInspector implements OhosDiagnosticsSourceInspector {
   private readonly kinds: Map<string, OhosDiagnosticsSourceNodeKind>;
@@ -80,6 +134,58 @@ function diagnosticWork(
 
 export default function localUnitTest() {
   describe('localUnitTest',() => {
+    it('platformFileReaderCapsChunksAdvancesOffsetAndClosesOnce', 0, () => {
+      const backend = new FakePlatformFileBackend();
+      backend.setData('large', new Array<number>(SLOCK_OHOS_PLATFORM_FILE_MAX_STREAM_CHUNK_BYTES * 2 + 3).fill(7));
+      const reader = new SlockOhosPlatformFileReader(backend);
+      const stat = reader.statFile('large');
+      expect(stat['sizeBytes'] as number).assertEqual(SLOCK_OHOS_PLATFORM_FILE_MAX_STREAM_CHUNK_BYTES * 2 + 3);
+      const opened = reader.openFileStream('large', stat['sizeBytes'] as number);
+      const streamId = opened['streamId'] as string;
+
+      const first = reader.readFileChunk(streamId, SLOCK_OHOS_PLATFORM_FILE_MAX_STREAM_CHUNK_BYTES * 4);
+      const second = reader.readFileChunk(streamId, SLOCK_OHOS_PLATFORM_FILE_MAX_STREAM_CHUNK_BYTES * 4);
+      const third = reader.readFileChunk(streamId, SLOCK_OHOS_PLATFORM_FILE_MAX_STREAM_CHUNK_BYTES * 4);
+      const eof = reader.readFileChunk(streamId, 1);
+      reader.closeFileStream(streamId);
+      reader.closeFileStream(streamId);
+
+      expect(first['readBytes'] as number).assertEqual(SLOCK_OHOS_PLATFORM_FILE_MAX_STREAM_CHUNK_BYTES);
+      expect((first['bodyBase64'] as string).length <=
+        Math.ceil(SLOCK_OHOS_PLATFORM_FILE_MAX_STREAM_CHUNK_BYTES / 3) * 4
+      ).assertTrue();
+      expect(second['readBytes'] as number).assertEqual(SLOCK_OHOS_PLATFORM_FILE_MAX_STREAM_CHUNK_BYTES);
+      expect(third['readBytes'] as number).assertEqual(3);
+      expect(eof['eof'] as boolean).assertTrue();
+      expect(backend.requestedMaxBytes.every((value: number) =>
+        value <= SLOCK_OHOS_PLATFORM_FILE_MAX_STREAM_CHUNK_BYTES
+      )).assertTrue();
+      expect(backend.closeCount).assertEqual(2); // stat probe + one stream close
+    });
+
+    it('platformFileReaderExposesShortAndGrowingReadsForKmpExactLengthFence', 0, () => {
+      const shortBackend = new FakePlatformFileBackend();
+      shortBackend.setData('short', [1, 2, 3, 4]);
+      const shortReader = new SlockOhosPlatformFileReader(shortBackend);
+      const shortId = shortReader.openFileStream('short', 4)['streamId'] as string;
+      shortBackend.setData('short', [1, 2]);
+      expect(shortReader.readFileChunk(shortId, 4)['readBytes'] as number).assertEqual(2);
+      expect(shortReader.readFileChunk(shortId, 2)['eof'] as boolean).assertTrue();
+      shortReader.closeFileStream(shortId);
+
+      const growBackend = new FakePlatformFileBackend();
+      growBackend.setData('grow', [1, 2]);
+      const growReader = new SlockOhosPlatformFileReader(growBackend);
+      const growId = growReader.openFileStream('grow', 2)['streamId'] as string;
+      growBackend.setData('grow', [1, 2, 3]);
+      expect(growReader.readFileChunk(growId, 2)['readBytes'] as number).assertEqual(2);
+      expect(growReader.readFileChunk(growId, 1)['readBytes'] as number).assertEqual(1);
+      growReader.closeFileStream(growId);
+
+      expect(shortBackend.closeCount).assertEqual(1);
+      expect(growBackend.closeCount).assertEqual(1);
+    });
+
     it('diagnosticsArchiveUsesOnlyRaftNames', 0, () => {
       expect(isOhosDiagnosticsLogFileName('raft-diagnostics.jsonl')).assertTrue();
       expect(isOhosDiagnosticsLogFileName('old-brand-diagnostics.jsonl.1')).assertFalse();

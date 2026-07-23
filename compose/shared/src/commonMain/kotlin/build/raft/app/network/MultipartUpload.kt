@@ -1,5 +1,11 @@
 package build.raft.app.network
 
+import com.tencent.kmm.network.export.NetworkByteStream
+
+fun interface MultipartFileStreamOpener {
+    suspend fun open(): NetworkByteStream
+}
+
 /**
  * Represents a file to be uploaded in a multipart form
  */
@@ -9,7 +15,8 @@ data class MultipartFile(
     val mimeType: String,       // MIME type (e.g., "image/png")
     val bytes: ByteArray = ByteArray(0),
     val fileRef: String? = null,
-    val sizeBytes: Long? = null
+    val sizeBytes: Long? = null,
+    val streamOpener: MultipartFileStreamOpener? = null
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -22,6 +29,7 @@ data class MultipartFile(
         if (mimeType != other.mimeType) return false
         if (fileRef != other.fileRef) return false
         if (sizeBytes != other.sizeBytes) return false
+        if ((streamOpener == null) != (other.streamOpener == null)) return false
         if (!bytes.contentEquals(other.bytes)) return false
 
         return true
@@ -33,6 +41,7 @@ data class MultipartFile(
         result = 31 * result + mimeType.hashCode()
         result = 31 * result + (fileRef?.hashCode() ?: 0)
         result = 31 * result + (sizeBytes?.hashCode() ?: 0)
+        result = 31 * result + (streamOpener != null).hashCode()
         result = 31 * result + bytes.contentHashCode()
         return result
     }
