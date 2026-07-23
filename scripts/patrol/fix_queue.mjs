@@ -202,15 +202,31 @@ function sourceMatches(root, needles, limit = 5) {
     return [text.split(/[/.]/).pop(), ...text.split(/[#:+/\s]/)].filter((part) => part && part.length >= 4);
   }))];
   if (!normalized.length) return [];
-  const matches = [];
-  for (const file of walkFiles(root)) {
+  // Files NAMED after a needle are the component itself; files whose name
+  // merely embeds a needle (SettingsSegmentedControls.tsx) are close variants;
+  // files only CONTAINING a needle are often harness/consumer noise. A single
+  // walk-order pass let that noise exhaust the match limit before ever
+  // reaching e.g. packages/web/src/components/ui/ProgressBar.tsx, so matches
+  // are ranked exact-name > name-contains > content-contains.
+  const files = walkFiles(root);
+  const nameTier = (file) => {
     const basename = path.basename(file, path.extname(file));
-    const basenameHit = normalized.some((needle) => basename === needle);
-    let content = "";
-    if (!basenameHit) {
-      content = fs.readFileSync(file, "utf8");
-      if (!normalized.some((needle) => content.includes(needle))) continue;
+    if (normalized.some((needle) => basename === needle)) return 1;
+    if (normalized.some((needle) => basename.includes(needle))) return 2;
+    return 0;
+  };
+  const matches = [];
+  for (const tier of [1, 2]) {
+    for (const file of files) {
+      if (nameTier(file) !== tier) continue;
+      matches.push(sourceRecord(root, file));
+      if (matches.length >= limit) return matches.filter(Boolean);
     }
+  }
+  for (const file of files) {
+    if (nameTier(file) !== 0) continue;
+    const content = fs.readFileSync(file, "utf8");
+    if (!normalized.some((needle) => content.includes(needle))) continue;
     matches.push(sourceRecord(root, file));
     if (matches.length >= limit) break;
   }
