@@ -366,8 +366,10 @@ The canonical flow is:
 3. Run focused validation and `scripts/check-commit-signoff.sh` for the PR
    range.
 4. Push the topic branch and open a GitHub PR to `main`.
-5. Let GitHub merge the PR after required checks pass and owner/reviewer
-   approval is clear.
+5. After required checks pass and owner/reviewer approval is clear, merge only
+   with `scripts/guarded-squash-merge.sh <owner/repo> <pr> <reviewed-full-sha>`.
+   Do not use the GitHub Merge button or `gh pr merge --merge`; ordinary merge
+   commits do not preserve source sign-off trailers and make main-push DCO red.
 6. After the PR is merged, sync local checkouts by fetching and resetting or
    fast-forwarding clean local branches as appropriate. Do not reset a dirty
    shared checkout; identify/move the dirty work first.
