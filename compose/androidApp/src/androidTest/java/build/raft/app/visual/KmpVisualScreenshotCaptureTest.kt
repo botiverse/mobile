@@ -2077,28 +2077,15 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
-    @Test
-    fun captureSettingsPageStates() {
-        captureKmpComponentCase(
-            caseId = "components.settings.page.states",
-            pageName = "compose_settings_page_visual",
-            crop = FULL_VIEWPORT_CROP
-        )
-    }
+    // components.settings.page.states, account.provider-linked, and
+    // account.password-expanded retired by owner ruling (artin,
+    // #wg-nightly-visual-fix 2026-07-23): the structural section-composition
+    // differences on these native settings surfaces are intentional and must
+    // not be re-verified. Manifest/harness removal in slock #5317.
 
     @Test
     fun captureSettingsAccountPage() {
         captureKmpSettingsPageCase("components.settings.account.page", "account")
-    }
-
-    @Test
-    fun captureSettingsAccountProviderLinked() {
-        captureKmpSettingsPageCase("components.settings.account.provider-linked", "account-provider-linked")
-    }
-
-    @Test
-    fun captureSettingsAccountPasswordExpanded() {
-        captureKmpSettingsPageCase("components.settings.account.password-expanded", "account-password-expanded")
     }
 
     @Test
@@ -2159,10 +2146,9 @@ class KmpVisualScreenshotCaptureTest {
     // whole route in one frame at content height, paired with React's
     // fullPage captures under the shared contract "full-height".
 
-    @Test
-    fun captureSettingsLanguageRegionPage() {
-        captureKmpSettingsPageCase("components.settings.language-region.page", "language-region")
-    }
+    // components.settings.language-region.page retired by the same owner
+    // ruling (artin, 2026-07-23) — composition difference is intentional,
+    // never re-verify.
 
     @Test
     fun captureSettingsAppearancePage() {
