@@ -3,6 +3,7 @@
 # (https://raft-app-stamp.botiverse.dev). No-op unless STAMP_RUN_CASE_ID is set.
 # Usage: stamp_report.sh <phase: dispatch-start|dispatch-error|claim|report-evidence|report-verdict|report> <evidence-dir> [prerequisite-rc]
 set -u
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
 PHASE="${1:-report}"
 EV="${2:-qa-evidence}"
 [ -n "${STAMP_RUN_CASE_ID:-}" ] || { echo "stamp: no run_case_id, skipping"; exit 0; }
@@ -17,6 +18,7 @@ BOOTSTRAP_LOGIN_RESPONSE_FILE="${RUNNER_TEMP:-$EV}/stamp-bootstrap-login-$STAMP_
 BOOTSTRAP_READY_RESPONSE_FILE="${RUNNER_TEMP:-$EV}/stamp-bootstrap-ready-$STAMP_RUN_CASE_ID.json"
 BOOTSTRAP_CAPTURE_CONTEXT_FILE="${RUNNER_TEMP:-$EV}/stamp-bootstrap-capture-context-$STAMP_RUN_CASE_ID.json"
 BOOTSTRAP_CAPTURE_ENV_FILE="${RUNNER_TEMP:-$EV}/stamp-bootstrap-capture-env-$STAMP_RUN_CASE_ID.sh"
+CREDENTIAL_RECEIPT_FILE="${RUNNER_TEMP:-$EV}/stamp-credential-receipt-$STAMP_RUN_CASE_ID.json"
 
 if [ "$PHASE" = "workflow-error" ] && [ ! -f "$CLAIM_TOKEN_FILE" ]; then
   PHASE="dispatch-error"
@@ -70,6 +72,23 @@ if [ "$PHASE" = "claim" ]; then
     --data-binary @"$CLAIM_PAYLOAD" \
     -o "$CLAIM_RESPONSE"; then
     node -e 'const fs=require("fs");const v=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if(!v.claim_token)process.exit(2);fs.writeFileSync(process.argv[2],v.claim_token,{mode:0o600});const b=v.auth_bootstrap&&typeof v.auth_bootstrap==="object"?v.auth_bootstrap:{required:false};fs.writeFileSync(process.argv[3],JSON.stringify({...b,required:b.required===true,run_case_id:v.run_case_id},null,2),{mode:0o600})' "$CLAIM_RESPONSE" "$CLAIM_TOKEN_FILE" "$BOOTSTRAP_SPEC_FILE"
+    if [ -n "${QA_TEST_EMAIL:-}" ]; then
+      if ! node "$SCRIPT_DIR/credential_receipt.mjs" --out "$CREDENTIAL_RECEIPT_FILE"; then
+        rm -f "$CLAIM_RESPONSE" "$CLAIM_PAYLOAD" "$CREDENTIAL_RECEIPT_FILE"
+        echo "stamp: credential email receipt invalid" >&2
+        exit 1
+      fi
+      CLAIM_TOKEN=$(cat "$CLAIM_TOKEN_FILE")
+      if ! curl -sfS -X POST "$BASE/credential-receipt" -H "$AUTH" -H "$JOB_HEADER" \
+        -H "X-Stamp-Claim-Token: $CLAIM_TOKEN" -H 'content-type: application/json' \
+        --data-binary @"$CREDENTIAL_RECEIPT_FILE" >/dev/null; then
+        rm -f "$CLAIM_RESPONSE" "$CLAIM_PAYLOAD" "$CREDENTIAL_RECEIPT_FILE"
+        echo "stamp: credential email receipt freeze failed" >&2
+        exit 1
+      fi
+      rm -f "$CREDENTIAL_RECEIPT_FILE"
+      echo "stamp: credential email receipt frozen"
+    fi
     rm -f "$CLAIM_RESPONSE" "$CLAIM_PAYLOAD"
     echo "stamp: claimed (commit=${SOURCE_COMMIT:-?} artifact=${ARTIFACT_SHA:0:12})"
     exit 0
@@ -279,6 +298,25 @@ case "$PHASE" in
   report) REPORT_EVIDENCE=true; REPORT_VERDICT=true;;
   *) echo "stamp: unknown phase $PHASE" >&2; exit 2;;
 esac
+
+# CI secret values are visible only inside this executor. Freeze the actual
+# non-secret email automatically; once app-scoped logs expose exactly one
+# principalId, bind that stable subject to the same first-write-wins receipt.
+if [ "$REPORT_EVIDENCE" = "true" ] && [ -n "${QA_TEST_EMAIL:-}" ]; then
+  if ! node "$SCRIPT_DIR/credential_receipt.mjs" --out "$CREDENTIAL_RECEIPT_FILE" \
+    --log "$EV/logcat.txt" --log "$EV/system-log-raft.txt" --log "$EV/session.jsonl"; then
+    echo "stamp: credential receipt construction failed" >&2
+    exit 1
+  fi
+  if ! curl -sfS -X POST "$BASE/credential-receipt" -H "$AUTH" -H "$JOB_HEADER" -H "$CLAIM_HEADER" \
+    -H 'content-type: application/json' --data-binary @"$CREDENTIAL_RECEIPT_FILE" >/dev/null; then
+    rm -f "$CREDENTIAL_RECEIPT_FILE"
+    echo "stamp: credential receipt subject bind failed" >&2
+    exit 1
+  fi
+  rm -f "$CREDENTIAL_RECEIPT_FILE"
+  echo "stamp: credential receipt refreshed"
+fi
 
 # Freeze the execution identity before any scoped log or verdict write. Stamp
 # accepts an exact repeat idempotently and rejects a conflicting generation.

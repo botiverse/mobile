@@ -210,6 +210,7 @@ jobs:
           STAMP_RUN_CASE_ID: ${{ inputs.stamp_run_case_id }}
           STAMP_URL: ${{ secrets.STAMP_URL }}
           STAMP_TOKEN: ${{ secrets.STAMP_TOKEN }}
+          QA_TEST_EMAIL: ${{ secrets.QA_TEST_EMAIL }}
         run: |
           printf '%s' checkout_complete > "$RUNNER_TEMP/stamp-preclaim-phase"
           bash scripts/qa/stamp_report.sh dispatch-start

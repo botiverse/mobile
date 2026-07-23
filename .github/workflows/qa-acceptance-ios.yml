@@ -475,6 +475,7 @@ jobs:
           STAMP_RUN_CASE_ID: ${{ inputs.stamp_run_case_id || '' }}
           STAMP_URL: ${{ secrets.STAMP_URL }}
           STAMP_TOKEN: ${{ secrets.STAMP_TOKEN }}
+          QA_TEST_EMAIL: ${{ secrets.QA_TEST_EMAIL }}
         run: bash scripts/qa/stamp_report.sh report qa-evidence
 
       - name: Upload evidence

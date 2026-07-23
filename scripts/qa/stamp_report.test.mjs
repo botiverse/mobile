@@ -96,6 +96,99 @@ printf '{"claim_token":"lease-token"}' > "$out"
   assert.equal(fs.readFileSync(path.join(runnerTemp, "stamp-claim-rc-frozen"), "utf8"), "lease-token");
 });
 
+test("claim automatically freezes the actual CI login email without exposing password", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "stamp-credential-"));
+  const evidence = path.join(root, "qa-evidence");
+  const bin = path.join(root, "bin");
+  const runnerTemp = path.join(root, "runner-temp");
+  fs.mkdirSync(evidence);
+  fs.mkdirSync(bin);
+  fs.mkdirSync(runnerTemp);
+  const count = path.join(root, "count");
+  fs.writeFileSync(count, "0");
+  fs.writeFileSync(path.join(bin, "curl"), `#!/usr/bin/env bash
+out=""; payload=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -o) out="$2"; shift 2;;
+    --data-binary) payload="$2"; shift 2;;
+    *) shift;;
+  esac
+done
+n=$(( $(cat "${count}") + 1 )); echo "$n" > "${count}"
+cp "\${payload#@}" "${root}/payload-$n.json"
+if [ -n "$out" ]; then printf '{"claim_token":"lease-token"}' > "$out"; fi
+`, { mode: 0o755 });
+
+  execFileSync("bash", [new URL("./stamp_report.sh", import.meta.url).pathname, "claim", "qa-evidence"], {
+    cwd: root,
+    env: {
+      ...process.env,
+      PATH: `${bin}:${path.dirname(process.execPath)}:${process.env.PATH}`,
+      RUNNER_TEMP: runnerTemp,
+      STAMP_RUN_CASE_ID: "rc-email",
+      STAMP_URL: "https://stamp.test",
+      STAMP_TOKEN: "test-token",
+      GITHUB_SHA: "source",
+      GITHUB_RUN_ID: "123",
+      GITHUB_REPOSITORY: "botiverse/mobile",
+      STAMP_VERIFIED_SOURCE_COMMIT: "source",
+      STAMP_VERIFIED_ARTIFACT_SHA256: "sha",
+      STAMP_VERIFIED_APP_VERSION: "1.0",
+      STAMP_VERIFIED_VERSION_CODE: "1",
+      STAMP_VERIFIED_PACKAGE_ID: "build.raft.app",
+      QA_TEST_EMAIL: "qa@example.test",
+      QA_TEST_PASSWORD: "must-not-appear",
+    },
+  });
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(root, "payload-2.json"), "utf8")), {
+    login_email: "qa@example.test",
+    stable_subject: null,
+  });
+  assert.equal(fs.readFileSync(path.join(root, "payload-2.json"), "utf8").includes("must-not-appear"), false);
+});
+
+test("credential receipt failure preserves the claim token for workflow-error cleanup", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "stamp-credential-fail-"));
+  const evidence = path.join(root, "qa-evidence");
+  const bin = path.join(root, "bin");
+  const runnerTemp = path.join(root, "runner-temp");
+  fs.mkdirSync(evidence);
+  fs.mkdirSync(bin);
+  fs.mkdirSync(runnerTemp);
+  const count = path.join(root, "count");
+  fs.writeFileSync(count, "0");
+  fs.writeFileSync(path.join(bin, "curl"), `#!/usr/bin/env bash
+out=""
+while [ "$#" -gt 0 ]; do case "$1" in -o) out="$2"; shift 2;; *) shift;; esac; done
+n=$(( $(cat "${count}") + 1 )); echo "$n" > "${count}"
+if [ "$n" -eq 1 ]; then printf '{"claim_token":"lease-token"}' > "$out"; exit 0; fi
+exit 22
+`, { mode: 0o755 });
+  assert.throws(() => execFileSync("bash", [new URL("./stamp_report.sh", import.meta.url).pathname, "claim", "qa-evidence"], {
+    cwd: root,
+    env: {
+      ...process.env,
+      PATH: `${bin}:${path.dirname(process.execPath)}:${process.env.PATH}`,
+      RUNNER_TEMP: runnerTemp,
+      STAMP_RUN_CASE_ID: "rc-email-fail",
+      STAMP_URL: "https://stamp.test",
+      STAMP_TOKEN: "test-token",
+      GITHUB_SHA: "source",
+      GITHUB_RUN_ID: "123",
+      GITHUB_REPOSITORY: "botiverse/mobile",
+      STAMP_VERIFIED_SOURCE_COMMIT: "source",
+      STAMP_VERIFIED_ARTIFACT_SHA256: "sha",
+      STAMP_VERIFIED_APP_VERSION: "1.0",
+      STAMP_VERIFIED_VERSION_CODE: "1",
+      STAMP_VERIFIED_PACKAGE_ID: "build.raft.app",
+      QA_TEST_EMAIL: "qa@example.test",
+    },
+    stdio: "pipe",
+  }));
+  assert.equal(fs.readFileSync(path.join(runnerTemp, "stamp-claim-rc-email-fail"), "utf8"), "lease-token");
+});
+
 test("report reads a relative verdict path and freezes scope before writes", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "stamp-report-"));
   const evidence = path.join(root, "qa-evidence");
@@ -138,6 +231,49 @@ test("report reads a relative verdict path and freezes scope before writes", () 
   assert.match(raw, /[?&]step=19(?:&|\s)/);
   assert.notEqual(new URL(annotated.match(/https:\/\/\S+/)[0]).searchParams.get("seq"), new URL(raw.match(/https:\/\/\S+/)[0]).searchParams.get("seq"));
   assert.match(calls.at(-1), /\/verdict/);
+});
+
+test("evidence reporting binds one app-scoped stable principal to the frozen email", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "stamp-subject-"));
+  const evidence = path.join(root, "qa-evidence");
+  const bin = path.join(root, "bin");
+  const runnerTemp = path.join(root, "runner-temp");
+  fs.mkdirSync(evidence);
+  fs.mkdirSync(bin);
+  fs.mkdirSync(runnerTemp);
+  fs.writeFileSync(path.join(evidence, "logcat.txt"), "authority ready principalId=user-123\n");
+  fs.writeFileSync(path.join(evidence, "verdict.json"), JSON.stringify({
+    verdict: "harness",
+    reason: "fixture setup",
+    log_scope: { filtered: true, package_id: "build.raft.app", pids: [1234], generation: "99:1" },
+  }));
+  fs.writeFileSync(path.join(runnerTemp, "stamp-claim-rc-subject"), "lease-token", { mode: 0o600 });
+  const receipt = path.join(root, "receipt.json");
+  fs.writeFileSync(path.join(bin, "curl"), `#!/usr/bin/env bash
+args="$*"; payload=""
+while [ "$#" -gt 0 ]; do case "$1" in --data-binary) payload="$2"; shift 2;; *) shift;; esac; done
+if [[ "$args" == *credential-receipt* ]]; then cp "\${payload#@}" "${receipt}"; fi
+exit 0
+`, { mode: 0o755 });
+  execFileSync("bash", [new URL("./stamp_report.sh", import.meta.url).pathname, "report-evidence", "qa-evidence"], {
+    cwd: root,
+    env: {
+      ...process.env,
+      PATH: `${bin}:${path.dirname(process.execPath)}:${process.env.PATH}`,
+      RUNNER_TEMP: runnerTemp,
+      STAMP_RUN_CASE_ID: "rc-subject",
+      STAMP_URL: "https://stamp.test",
+      STAMP_TOKEN: "test-token",
+      GITHUB_RUN_ID: "99",
+      GITHUB_REPOSITORY: "botiverse/mobile",
+      QA_TEST_EMAIL: "qa@example.test",
+      QA_TEST_PASSWORD: "must-not-appear",
+    },
+  });
+  assert.deepEqual(JSON.parse(fs.readFileSync(receipt, "utf8")), {
+    login_email: "qa@example.test",
+    stable_subject: "user-123",
+  });
 });
 
 test("bootstrap reporting enforces ready evidence, torn-down verdict, and no post-terminal evidence retry", () => {
