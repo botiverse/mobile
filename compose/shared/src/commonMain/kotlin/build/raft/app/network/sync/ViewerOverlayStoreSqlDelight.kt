@@ -83,6 +83,7 @@ internal class SqlDelightViewerOverlayStore(
 ) : ViewerOverlayStore {
     override suspend fun read(key: ViewerOverlayKey): VersionedViewerOverlayV1? =
         database.queries.selectMessageViewerOverlay(
+            environmentId = key.partition.environmentId,
             serverId = key.partition.serverId,
             principalId = key.partition.principalId,
             consumerId = key.partition.consumerId,
@@ -109,6 +110,7 @@ internal class SqlDelightViewerOverlayStore(
                     val payload = encodeViewerOverlayPayloadCanonical(incoming.payload)
                     if (stored == null) {
                         queries.insertMessageViewerOverlay(
+                            environmentId = key.partition.environmentId,
                             serverId = key.partition.serverId,
                             principalId = key.partition.principalId,
                             consumerId = key.partition.consumerId,
@@ -126,6 +128,7 @@ internal class SqlDelightViewerOverlayStore(
                             overlayVersion = incoming.version,
                             completeness = incoming.completeness.serializedName,
                             payloadJson = payload,
+                            environmentId = key.partition.environmentId,
                             serverId = key.partition.serverId,
                             principalId = key.partition.principalId,
                             consumerId = key.partition.consumerId,
@@ -154,6 +157,7 @@ internal class SqlDelightViewerOverlayStore(
 
     private fun readInsideTransaction(key: ViewerOverlayKey): VersionedViewerOverlayV1? =
         database.queries.selectMessageViewerOverlay(
+            environmentId = key.partition.environmentId,
             serverId = key.partition.serverId,
             principalId = key.partition.principalId,
             consumerId = key.partition.consumerId,

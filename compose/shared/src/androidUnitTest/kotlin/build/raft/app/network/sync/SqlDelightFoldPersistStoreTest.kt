@@ -140,6 +140,7 @@ class SqlDelightFoldPersistStoreTest {
         val (db, _) = freshDb()
         adapter(db).applyFrame(frame(scope, row("m1", 5)))
         val stored = db.queries.selectServerBackedMessagesForChannel(
+            environmentId = scope.environmentId,
             serverId = scope.serverId,
             principalId = scope.principalId,
             consumerId = scope.consumerId,
@@ -215,6 +216,7 @@ class SqlDelightFoldPersistStoreTest {
         assertEquals(listOf("m1"), poisoned, "the drifted row is a counted poison-gate input")
         // Restore-purity: the payload itself was never mutated — it still decodes to the true fact.
         val payload = db.queries.selectServerBackedMessagesForChannel(
+            environmentId = scope.environmentId,
             serverId = scope.serverId,
             principalId = scope.principalId,
             consumerId = scope.consumerId,

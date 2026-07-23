@@ -36,80 +36,80 @@ class DurablePartitionJdbcMigrationTest {
     )
 
     @Test
-    fun exactCheckedInV1MigratesToFreshV4WhilePreservingEveryNonCoreDefinitionAndOutboxByte() {
+    fun exactCheckedInV1MigratesToFreshV5WhilePreservingEveryNonCoreDefinitionAndOutboxByte() {
         val migratedPath = copyDatabaseResource("1.db")
-        val freshV4Path = Files.createTempFile("slock-fresh-v4-", ".db").also { it.deleteIfExists() }
+        val freshV5Path = Files.createTempFile("slock-fresh-v5-", ".db").also { it.deleteIfExists() }
         try {
             val before = JdbcSqliteDriver(url(migratedPath))
             val expectedOutbox = seedExactBaselineRows(before)
             val nonCoreBefore = before.masterDefinitions().filterNot { it.isCoreDefinition() }
-            migrateInOneTransaction(before, SlockDatabase.Schema, oldVersion = 1L, newVersion = 4L)
+            migrateInOneTransaction(before, SlockDatabase.Schema, oldVersion = 1L, newVersion = 5L)
 
             assertEquals(expectedOutbox, before.outboxRow())
             assertEquals(nonCoreBefore, before.masterDefinitions().filterNot { it.isCoreDefinition() })
-            assertV4Core(before)
+            assertV5Core(before)
             assertEquals(0L, before.scalarLong("SELECT COUNT(*) FROM messageEntity"), "legacy facts must not copy")
             assertEquals(0L, before.scalarLong("SELECT COUNT(*) FROM syncCursorEntity"), "legacy cursor must not seed")
 
-            val freshV4 = JdbcSqliteDriver(url(freshV4Path))
+            val freshV5 = JdbcSqliteDriver(url(freshV5Path))
             try {
-                SlockDatabase.Schema.create(freshV4).value
+                SlockDatabase.Schema.create(freshV5).value
                 assertEquals(
-                    freshV4.masterDefinitions().map { it.canonicalSchema() },
+                    freshV5.masterDefinitions().map { it.canonicalSchema() },
                     before.masterDefinitions().map { it.canonicalSchema() },
-                    "migrated v4 schema must equal fresh generated v4 after comment/whitespace canonicalization",
+                    "migrated v5 schema must equal fresh generated v5 after comment/whitespace canonicalization",
                 )
             } finally {
-                freshV4.close()
+                freshV5.close()
             }
             before.close()
         } finally {
             migratedPath.deleteIfExists()
-            freshV4Path.deleteIfExists()
+            freshV5Path.deleteIfExists()
         }
     }
 
     @Test
-    fun exactCheckedInV2MigratesToFreshV4WhilePreservingPartitionRowsAndDefinitions() {
+    fun exactCheckedInV2MigratesToFreshV5WhileDroppingEnvironmentAmbiguousRows() {
         val migratedPath = copyDatabaseResource("2.db")
-        val freshV4Path = Files.createTempFile("slock-fresh-v4-", ".db").also { it.deleteIfExists() }
+        val freshV5Path = Files.createTempFile("slock-fresh-v5-", ".db").also { it.deleteIfExists() }
         try {
             val migrated = JdbcSqliteDriver(url(migratedPath))
             val expectedOutbox = seedExactV2Rows(migrated)
             val nonCoreBefore = migrated.masterDefinitions().filterNot { it.isCoreDefinition() }
-            migrateInOneTransaction(migrated, SlockDatabase.Schema, oldVersion = 2L, newVersion = 4L)
+            migrateInOneTransaction(migrated, SlockDatabase.Schema, oldVersion = 2L, newVersion = 5L)
 
-            assertV4Core(migrated)
-            assertEquals(1L, migrated.scalarLong("SELECT COUNT(*) FROM messageEntity"))
-            assertEquals(1L, migrated.scalarLong("SELECT COUNT(*) FROM syncCursorEntity"))
+            assertV5Core(migrated)
+            assertEquals(0L, migrated.scalarLong("SELECT COUNT(*) FROM messageEntity"))
+            assertEquals(0L, migrated.scalarLong("SELECT COUNT(*) FROM syncCursorEntity"))
             assertEquals(expectedOutbox, migrated.outboxRow())
             assertEquals(nonCoreBefore, migrated.masterDefinitions().filterNot { it.isCoreDefinition() })
 
-            val freshV4 = JdbcSqliteDriver(url(freshV4Path))
+            val freshV5 = JdbcSqliteDriver(url(freshV5Path))
             try {
-                SlockDatabase.Schema.create(freshV4).value
+                SlockDatabase.Schema.create(freshV5).value
                 assertEquals(
-                    freshV4.masterDefinitions().map { it.canonicalSchema() },
+                    freshV5.masterDefinitions().map { it.canonicalSchema() },
                     migrated.masterDefinitions().map { it.canonicalSchema() },
-                    "checked-in v2 migration must equal fresh generated v4",
+                    "checked-in v2 migration must equal fresh generated v5",
                 )
             } finally {
-                freshV4.close()
+                freshV5.close()
             }
             migrated.close()
         } finally {
             migratedPath.deleteIfExists()
-            freshV4Path.deleteIfExists()
+            freshV5Path.deleteIfExists()
         }
     }
 
     @Test
-    fun exactCheckedInV3MigratesToFreshV4WithIndependentReadStateTable() {
+    fun exactCheckedInV3MigratesToFreshV5WithIndependentReadStateTable() {
         val path = copyDatabaseResource("3.db")
         try {
             val driver = JdbcSqliteDriver(url(path))
-            migrateInOneTransaction(driver, SlockDatabase.Schema, oldVersion = 3L, newVersion = 4L)
-            assertV4Core(driver)
+            migrateInOneTransaction(driver, SlockDatabase.Schema, oldVersion = 3L, newVersion = 5L)
+            assertV5Core(driver)
             assertEquals(0L, driver.scalarLong("SELECT COUNT(*) FROM syncReadStateFactEntity"))
             driver.close()
         } finally {
@@ -118,8 +118,8 @@ class DurablePartitionJdbcMigrationTest {
     }
 
     @Test
-    fun exactCheckedInV1RollsBackAndRetriesAtEveryOneOfEightDdlBoundaries() {
-        for (failAt in 1..8) {
+    fun exactCheckedInV1RollsBackAndRetriesAtEveryDdlBoundary() {
+        for (failAt in 1..17) {
             val path = copyDatabaseResource("1.db")
             try {
                 val driver = JdbcSqliteDriver(url(path))
@@ -131,7 +131,7 @@ class DurablePartitionJdbcMigrationTest {
                         driver,
                         FailAtMigrationStatementSchema(SlockDatabase.Schema, failAt),
                         oldVersion = 1L,
-                        newVersion = 4L,
+                        newVersion = 5L,
                     )
                 }
                 assertEquals(failAt, failure.statementNumber)
@@ -142,8 +142,8 @@ class DurablePartitionJdbcMigrationTest {
                 assertTrue(driver.hasMasterObject("index", "messageEntity_channelSeqId"))
                 assertFalse(driver.hasMasterObject("index", "messageEntity_partitionChannelSeqId"))
 
-                migrateInOneTransaction(driver, SlockDatabase.Schema, oldVersion = 1L, newVersion = 4L)
-                assertV4Core(driver)
+                migrateInOneTransaction(driver, SlockDatabase.Schema, oldVersion = 1L, newVersion = 5L)
+                assertV5Core(driver)
                 assertEquals(expectedOutbox, driver.outboxRow(), "fail-at-$failAt retry must preserve outbox bytes")
                 driver.close()
             } finally {
@@ -153,8 +153,8 @@ class DurablePartitionJdbcMigrationTest {
     }
 
     @Test
-    fun exactCheckedInV2RollsBackAndRetriesAtBothNewDdlBoundaries() {
-        for (failAt in 1..2) {
+    fun exactCheckedInV2RollsBackAndRetriesAtEveryRemainingDdlBoundary() {
+        for (failAt in 1..11) {
             val path = copyDatabaseResource("2.db")
             try {
                 val driver = JdbcSqliteDriver(url(path))
@@ -166,7 +166,7 @@ class DurablePartitionJdbcMigrationTest {
                         driver,
                         FailAtMigrationStatementSchema(SlockDatabase.Schema, failAt),
                         oldVersion = 2L,
-                        newVersion = 4L,
+                        newVersion = 5L,
                     )
                 }
                 assertEquals(failAt, failure.statementNumber)
@@ -175,10 +175,10 @@ class DurablePartitionJdbcMigrationTest {
                 assertFalse(driver.hasMasterObject("table", "messageViewerOverlayEntity"))
                 assertFalse(driver.hasMasterObject("table", "syncReadStateFactEntity"))
 
-                migrateInOneTransaction(driver, SlockDatabase.Schema, oldVersion = 2L, newVersion = 4L)
-                assertV4Core(driver)
-                assertEquals(1L, driver.scalarLong("SELECT COUNT(*) FROM messageEntity"))
-                assertEquals(1L, driver.scalarLong("SELECT COUNT(*) FROM syncCursorEntity"))
+                migrateInOneTransaction(driver, SlockDatabase.Schema, oldVersion = 2L, newVersion = 5L)
+                assertV5Core(driver)
+                assertEquals(0L, driver.scalarLong("SELECT COUNT(*) FROM messageEntity"))
+                assertEquals(0L, driver.scalarLong("SELECT COUNT(*) FROM syncCursorEntity"))
                 assertEquals(expectedOutbox, driver.outboxRow())
                 driver.close()
             } finally {
@@ -247,9 +247,10 @@ class DurablePartitionJdbcMigrationTest {
         return requireNotNull(driver.outboxRow())
     }
 
-    private fun assertV4Core(driver: SqlDriver) {
+    private fun assertV5Core(driver: SqlDriver) {
         assertEquals(
             listOf(
+                "environmentId",
                 "serverId",
                 "principalId",
                 "consumerId",
@@ -265,6 +266,7 @@ class DurablePartitionJdbcMigrationTest {
         assertEquals(
             listOf(
                 "scopeId",
+                "environmentId",
                 "serverId",
                 "principalId",
                 "consumerId",
@@ -276,13 +278,18 @@ class DurablePartitionJdbcMigrationTest {
                 "hasLoadedNewest",
                 "updatedAtMs",
                 "epoch",
+                "parentScopeKind",
+                "parentScopeId",
+                "rootMessageId",
             ),
             driver.tableColumns("syncCursorEntity"),
         )
         assertFalse(driver.hasMasterObject("index", "messageEntity_channelSeqId"))
         assertTrue(driver.hasMasterObject("index", "messageEntity_partitionChannelSeqId"))
+        assertTrue(driver.hasMasterObject("index", "syncCursorEntity_partitionUpdatedScope"))
         assertEquals(
             listOf(
+                "environmentId",
                 "serverId",
                 "principalId",
                 "consumerId",
@@ -355,6 +362,7 @@ class DurablePartitionJdbcMigrationTest {
         "syncReadStateFactEntity",
         "messageEntity_channelSeqId",
         "messageEntity_partitionChannelSeqId",
+        "syncCursorEntity_partitionUpdatedScope",
     )
 
     private fun MasterDefinition.canonicalSchema(): MasterDefinition = copy(

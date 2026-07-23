@@ -102,6 +102,7 @@ CREATE INDEX threadFollowEntity_parentMessageId ON threadFollowEntity(serverId, 
 -- CanonicalMessageRow.toAppMessage). Pending/optimistic/outbox rows NEVER enter this table — `seq NOT NULL`
 -- makes that structural, so `clearScope` is a plain full-scope delete (no exceptions).
 CREATE TABLE messageEntity (
+  environmentId TEXT NOT NULL,
   serverId TEXT NOT NULL,
   principalId TEXT NOT NULL,
   consumerId TEXT NOT NULL,
@@ -111,16 +112,17 @@ CREATE TABLE messageEntity (
   seq INTEGER NOT NULL,
   createdAt TEXT NOT NULL,
   canonicalFactJson TEXT NOT NULL,
-  PRIMARY KEY (serverId, principalId, consumerId, id)
+  PRIMARY KEY (environmentId, serverId, principalId, consumerId, id)
 );
 
 -- Canonical (seq, id) tie-break order for server-backed restore/timeline reads (#491 P1).
 CREATE INDEX messageEntity_partitionChannelSeqId
-ON messageEntity(serverId, principalId, consumerId, scopeKind, channelId, seq, id);
+ON messageEntity(environmentId, serverId, principalId, consumerId, scopeKind, channelId, seq, id);
 
 -- Receiver-private authoritative overlay. It has a separate owner and restore lifecycle from messageEntity:
 -- shared room frames cannot write this table, and overlay compare+write runs in its own transaction.
 CREATE TABLE messageViewerOverlayEntity (
+  environmentId TEXT NOT NULL,
   serverId TEXT NOT NULL,
   principalId TEXT NOT NULL,
   consumerId TEXT NOT NULL,
@@ -133,7 +135,7 @@ CREATE TABLE messageViewerOverlayEntity (
   completeness TEXT NOT NULL,
   payloadJson TEXT NOT NULL,
   PRIMARY KEY (
-    serverId, principalId, consumerId,
+    environmentId, serverId, principalId, consumerId,
     scopeKind, scopeId,
     subjectKind, subjectId, overlayKind
   )
@@ -204,6 +206,7 @@ CREATE INDEX memberProfileEntity_membershipStatus ON memberProfileEntity(serverI
 
 CREATE TABLE syncCursorEntity (
   scopeId TEXT NOT NULL,
+  environmentId TEXT NOT NULL,
   serverId TEXT NOT NULL,
   principalId TEXT NOT NULL,
   consumerId TEXT NOT NULL,
@@ -215,10 +218,16 @@ CREATE TABLE syncCursorEntity (
   hasLoadedNewest INTEGER NOT NULL DEFAULT 1,
   updatedAtMs INTEGER NOT NULL,
   epoch TEXT,
+  parentScopeKind TEXT,
+  parentScopeId TEXT,
+  rootMessageId TEXT,
   -- Full durable partition + scope key: a channel and a thread (etc.) that happen to share a partition and
   -- scopeId must not collide on the cursor. scopeKind is part of the identity, so it is in the PK.
-  PRIMARY KEY (serverId, principalId, consumerId, scopeKind, scopeId)
+  PRIMARY KEY (environmentId, serverId, principalId, consumerId, scopeKind, scopeId)
 );
+
+CREATE INDEX syncCursorEntity_partitionUpdatedScope
+ON syncCursorEntity(environmentId, serverId, principalId, consumerId, updatedAtMs DESC, scopeKind, scopeId);
 
 CREATE TABLE outboxMessageEntity (
   localId TEXT NOT NULL PRIMARY KEY,
@@ -464,6 +473,7 @@ WHERE serverId = ?
 -- rather than another scope's fact — the store then fail-stops on that 0-row result.
 insertCanonicalFactIfAbsent:
 INSERT OR IGNORE INTO messageEntity(
+  environmentId,
   serverId,
   principalId,
   consumerId,
@@ -473,12 +483,13 @@ INSERT OR IGNORE INTO messageEntity(
   seq,
   createdAt,
   canonicalFactJson
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 updateCanonicalFact:
 UPDATE messageEntity
 SET seq = ?, createdAt = ?, canonicalFactJson = ?
 WHERE id = ?
+  AND environmentId = ?
   AND serverId = ?
   AND principalId = ?
   AND consumerId = ?
@@ -490,6 +501,7 @@ WHERE id = ?
 countCanonicalFactInScope:
 SELECT COUNT(*) FROM messageEntity
 WHERE id = ?
+  AND environmentId = ?
   AND serverId = ?
   AND principalId = ?
   AND consumerId = ?
@@ -500,6 +512,7 @@ selectMessageViewerOverlay:
 SELECT *
 FROM messageViewerOverlayEntity
 WHERE serverId = ?
+  AND environmentId = ?
   AND principalId = ?
   AND consumerId = ?
   AND scopeKind = ?
@@ -510,6 +523,7 @@ WHERE serverId = ?
 
 insertMessageViewerOverlay:
 INSERT INTO messageViewerOverlayEntity(
+  environmentId,
   serverId,
   principalId,
   consumerId,
@@ -521,12 +535,13 @@ INSERT INTO messageViewerOverlayEntity(
   overlayVersion,
   completeness,
   payloadJson
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 updateMessageViewerOverlayAtVersion:
 UPDATE messageViewerOverlayEntity
 SET overlayVersion = ?, completeness = ?, payloadJson = ?
 WHERE serverId = ?
+  AND environmentId = ?
   AND principalId = ?
   AND consumerId = ?
   AND scopeKind = ?
@@ -539,6 +554,7 @@ WHERE serverId = ?
 deleteMessageViewerOverlaysForScope:
 DELETE FROM messageViewerOverlayEntity
 WHERE serverId = ?
+  AND environmentId = ?
   AND principalId = ?
   AND consumerId = ?
   AND scopeKind = ?
@@ -550,15 +566,39 @@ WHERE serverId = ?
 clearCanonicalFactsForScope:
 DELETE FROM messageEntity
 WHERE serverId = ?
+  AND environmentId = ?
   AND principalId = ?
   AND consumerId = ?
   AND scopeKind = ?
   AND channelId = ?;
 
+-- Snapshot rebaseline keeps exact roots that are still referenced by retained typed reply cursors.
+clearUnpinnedCanonicalFactsForScope:
+DELETE FROM messageEntity
+WHERE serverId = ?
+  AND environmentId = ?
+  AND principalId = ?
+  AND consumerId = ?
+  AND scopeKind = ?
+  AND channelId = ?
+  AND NOT EXISTS (
+    SELECT 1
+    FROM syncCursorEntity AS reply
+    WHERE reply.environmentId = messageEntity.environmentId
+      AND reply.serverId = messageEntity.serverId
+      AND reply.principalId = messageEntity.principalId
+      AND reply.consumerId = messageEntity.consumerId
+      AND reply.scopeKind = 'thread'
+      AND reply.parentScopeKind = messageEntity.scopeKind
+      AND reply.parentScopeId = messageEntity.channelId
+      AND reply.rootMessageId = messageEntity.id
+  );
+
 -- Retention prune: delete one canonical fact by id within its full scope.
 deleteCanonicalFactInScope:
 DELETE FROM messageEntity
 WHERE id = ?
+  AND environmentId = ?
   AND serverId = ?
   AND principalId = ?
   AND consumerId = ?
@@ -689,6 +729,7 @@ WHERE serverId = ?
 upsertSyncCursor:
 INSERT OR REPLACE INTO syncCursorEntity(
   scopeId,
+  environmentId,
   serverId,
   principalId,
   consumerId,
@@ -699,13 +740,17 @@ INSERT OR REPLACE INTO syncCursorEntity(
   hasLoadedOldest,
   hasLoadedNewest,
   updatedAtMs,
-  epoch
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+  epoch,
+  parentScopeKind,
+  parentScopeId,
+  rootMessageId
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 selectSyncCursor:
 SELECT *
 FROM syncCursorEntity
 WHERE serverId = ?
+  AND environmentId = ?
   AND principalId = ?
   AND consumerId = ?
   AND scopeKind = ?
@@ -720,12 +765,111 @@ WHERE serverId = ?
 selectServerBackedMessagesForChannel:
 SELECT *
 FROM messageEntity
-WHERE serverId = ?
+WHERE environmentId = ?
+  AND serverId = ?
   AND principalId = ?
   AND consumerId = ?
   AND scopeKind = ?
   AND channelId = ?
 ORDER BY seq, id;
+
+deleteSyncCursorForScope:
+DELETE FROM syncCursorEntity
+WHERE environmentId = ?
+  AND serverId = ?
+  AND principalId = ?
+  AND consumerId = ?
+  AND scopeKind = ?
+  AND scopeId = ?;
+
+clearCanonicalFactsForPartition:
+DELETE FROM messageEntity
+WHERE environmentId = ?
+  AND serverId = ?
+  AND principalId = ?
+  AND consumerId = ?;
+
+clearSyncCursorsForPartition:
+DELETE FROM syncCursorEntity
+WHERE environmentId = ?
+  AND serverId = ?
+  AND principalId = ?
+  AND consumerId = ?;
+
+clearMessageViewerOverlaysForPartition:
+DELETE FROM messageViewerOverlayEntity
+WHERE environmentId = ?
+  AND serverId = ?
+  AND principalId = ?
+  AND consumerId = ?;
+
+selectCanonicalScopeRetentionStats:
+SELECT
+  cursor.scopeKind,
+  cursor.scopeId,
+  cursor.updatedAtMs,
+  COUNT(message.id) AS factCount,
+  COALESCE(SUM(LENGTH(message.canonicalFactJson)), 0) AS byteCount
+FROM syncCursorEntity AS cursor
+LEFT JOIN messageEntity AS message
+  ON message.environmentId = cursor.environmentId
+  AND message.serverId = cursor.serverId
+  AND message.principalId = cursor.principalId
+  AND message.consumerId = cursor.consumerId
+  AND message.scopeKind = cursor.scopeKind
+  AND message.channelId = cursor.scopeId
+WHERE cursor.environmentId = ?
+  AND cursor.serverId = ?
+  AND cursor.principalId = ?
+  AND cursor.consumerId = ?
+GROUP BY cursor.scopeKind, cursor.scopeId, cursor.updatedAtMs
+ORDER BY cursor.updatedAtMs DESC, cursor.scopeKind, cursor.scopeId;
+
+selectCanonicalFactIdsBeyondLimit:
+SELECT fact.id
+FROM messageEntity AS fact
+WHERE fact.environmentId = ?
+  AND fact.serverId = ?
+  AND fact.principalId = ?
+  AND fact.consumerId = ?
+  AND fact.scopeKind = ?
+  AND fact.channelId = ?
+  AND NOT EXISTS (
+    SELECT 1
+    FROM syncCursorEntity AS reply
+    WHERE reply.environmentId = fact.environmentId
+      AND reply.serverId = fact.serverId
+      AND reply.principalId = fact.principalId
+      AND reply.consumerId = fact.consumerId
+      AND reply.scopeKind = 'thread'
+      AND reply.parentScopeKind = fact.scopeKind
+      AND reply.parentScopeId = fact.channelId
+      AND reply.rootMessageId = fact.id
+  )
+ORDER BY fact.seq DESC, fact.id DESC
+LIMIT -1 OFFSET ?;
+
+selectReplyScopesDependingOnParent:
+SELECT scopeKind, scopeId
+FROM syncCursorEntity
+WHERE environmentId = ?
+  AND serverId = ?
+  AND principalId = ?
+  AND consumerId = ?
+  AND scopeKind = 'thread'
+  AND parentScopeKind = ?
+  AND parentScopeId = ?;
+
+selectCanonicalMessageV2Partitions:
+SELECT environmentId, serverId, principalId, consumerId FROM messageEntity
+WHERE consumerId = ?
+UNION
+SELECT environmentId, serverId, principalId, consumerId FROM syncCursorEntity
+WHERE consumerId = ?
+UNION
+SELECT environmentId, serverId, principalId, consumerId FROM messageViewerOverlayEntity
+WHERE consumerId = ?
+ORDER BY environmentId, principalId, serverId, consumerId;
 
 insertOutboxMessage:
 INSERT INTO outboxMessageEntity(

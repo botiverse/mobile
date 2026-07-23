@@ -35,15 +35,15 @@ class SyncPersistenceSchemaTest {
         assertEquals("TEXT", epoch.type)
         driver.execute(
             null,
-            "INSERT INTO syncCursorEntity(scopeId, serverId, principalId, consumerId, scopeKind, latestSeq, updatedAtMs) " +
-                "VALUES ('scope1','s1','p1','sync-core.messages.v1','channel', 42, 300);",
+            "INSERT INTO syncCursorEntity(scopeId, environmentId, serverId, principalId, consumerId, scopeKind, latestSeq, updatedAtMs) " +
+                "VALUES ('scope1','legacy','s1','p1','sync-core.messages.v1','channel', 42, 300);",
             0,
         )
         assertNull(driver.singleText("SELECT epoch FROM syncCursorEntity WHERE scopeId='scope1';"))
 
         // 2) canonical tie-break index exists with the EXACT column order.
         assertEquals(
-            listOf("serverId", "principalId", "consumerId", "scopeKind", "channelId", "seq", "id"),
+            listOf("environmentId", "serverId", "principalId", "consumerId", "scopeKind", "channelId", "seq", "id"),
             driver.indexColumns("messageEntity_partitionChannelSeqId"),
         )
 
@@ -75,6 +75,7 @@ class SyncPersistenceSchemaTest {
         driver.insertMessage(id = "m1", seq = 7)
         val restored = SlockDatabase(driver).slockDatabaseQueries
             .selectServerBackedMessagesForChannel(
+                environmentId = "legacy",
                 serverId = "s1",
                 principalId = "p1",
                 consumerId = "sync-core.messages.v1",
@@ -94,8 +95,8 @@ class SyncPersistenceSchemaTest {
 
     private fun JdbcSqliteDriver.insertMessage(id: String, seq: Int) = execute(
         null,
-        "INSERT INTO messageEntity(serverId, principalId, consumerId, id, channelId, scopeKind, seq, createdAt, canonicalFactJson) " +
-            "VALUES ('s1','p1','sync-core.messages.v1','$id','c1','channel', $seq, 't', '{\"version\":1,\"id\":\"$id\"}');",
+        "INSERT INTO messageEntity(environmentId, serverId, principalId, consumerId, id, channelId, scopeKind, seq, createdAt, canonicalFactJson) " +
+            "VALUES ('legacy','s1','p1','sync-core.messages.v1','$id','c1','channel', $seq, 't', '{\"version\":1,\"id\":\"$id\"}');",
         0,
     )
 
