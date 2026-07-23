@@ -1,0 +1,49 @@
+            {
+              "provider": "android",
+              "providerType": "android-kuikly-shared-page",
+              "source": "kmp-shared",
+              "caseId": "components.members.create-agent.builtin-dialog",
+              "route": {"pageName":"compose_create_agent_builtin_dialog_visual","realProductRoute":false},
+              "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.members.create-agent.builtin-dialog.png",
+              "viewport": { "width": 1024, "height": 2216, "density": 1 },
+              "systemBars": "hidden",
+              "crop": {
+                "mode": "manual-rect",
+                "contract": "viewport-bounds",
+                "rect": { "x": 0, "y": 0, "width": 390, "height": 844 }
+              },
+              "capture": {
+                "method": "ui-automation-take-screenshot-viewport-crop",
+                "fullscreen": true,
+                "systemBars": "hidden",
+                "validation": {
+                  "uniqueColors": 272,
+                  "dominantRatio": 0.8559219
+                },
+                "readyTokenObserved": false,
+                "stableFrameCount": 1
+              },
+              "diagnostics": {
+    "displayWidthPx": 1080,
+    "displayHeightPx": 2424,
+    "densityDpi": 420,
+    "rootWidthPx": 1080,
+    "rootHeightPx": 2424,
+    "hardwareAccelerated": true,
+    "totalViews": 130,
+    "laidOutViews": 127,
+    "visibleContentLeafViews": 3,
+    "targetPackage": "build.raft.app.connectedtest",
+    "processId": 6474,
+    "processUid": 10228
+},
+              "captureIdentity": {
+                "attempt": 0,
+                "generation": "",
+                "bootId": "",
+                "capturedAtEpochMs": 1784799781745,
+                "capturedAtMonotonicNs": 489430865690
+              },
+              "clampedToShortWindow": false,
+              "capturedAt": "1784799781745"
+            }

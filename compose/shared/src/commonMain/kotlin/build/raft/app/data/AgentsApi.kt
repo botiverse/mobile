@@ -707,6 +707,7 @@ internal data class CreateAgentBody(
      * (which doesn't collect runtimeConfig yet) keeps working unchanged.
      */
     val runtimeConfig: build.raft.app.model.RuntimeConfig? = null,
+    val formDefinitionRef: SharedRuntimeFormDefinitionRef? = null,
     /**
      * Indicates this create call comes from the external-agent flow (no Computer).
      * Mirrors React `CreateAgentDialog` `external` flag.

@@ -1,6 +1,10 @@
 package build.raft.app.data
 
 import build.raft.app.model.MemberId
+import build.raft.app.model.RuntimeConfig
+import build.raft.app.model.RuntimeHostUserState
+import build.raft.app.model.RuntimeModelConfig
+import build.raft.app.model.RuntimeProviderConfig
 import build.raft.app.model.buildRuntimeConfig
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -141,6 +145,83 @@ class AgentsApiTest {
             "fast",
             runtimeConfig.getValue("mode").jsonObject.getValue("kind").jsonPrimitive.content
         )
+    }
+
+    @Test
+    fun createAgentBodySerializesBuiltInPresetAndExactFormRef() {
+        val body = buildCreateAgentBody(
+            CreateAgentBody(
+                name = "Pi Preset",
+                machineId = "machine-1",
+                runtimeConfig = RuntimeConfig(
+                    runtime = "builtin",
+                    provider = RuntimeProviderConfig.Preset("deepseek", "secret-preset"),
+                    model = RuntimeModelConfig.Preset("deepseek/deepseek-v4-pro"),
+                    hostUserState = RuntimeHostUserState.Forbidden
+                ),
+                formDefinitionRef = SharedRuntimeFormDefinitionRef(1, "builtin", "builtin-pi.create.v1")
+            )
+        )
+        val json = Json.parseToJsonElement(body).jsonObject
+        val runtimeConfig = json.getValue("runtimeConfig").jsonObject
+        assertEquals("builtin", runtimeConfig.getValue("runtime").jsonPrimitive.content)
+        assertEquals("forbidden", runtimeConfig.getValue("hostUserState").jsonPrimitive.content)
+        assertEquals("preset", runtimeConfig.getValue("provider").jsonObject.getValue("kind").jsonPrimitive.content)
+        assertEquals("deepseek", runtimeConfig.getValue("provider").jsonObject.getValue("providerId").jsonPrimitive.content)
+        assertEquals("secret-preset", runtimeConfig.getValue("provider").jsonObject.getValue("apiKey").jsonPrimitive.content)
+        assertEquals("preset", runtimeConfig.getValue("model").jsonObject.getValue("kind").jsonPrimitive.content)
+        val ref = json.getValue("formDefinitionRef").jsonObject
+        assertEquals(1, ref.getValue("protocolVersion").jsonPrimitive.content.toInt())
+        assertEquals("builtin", ref.getValue("runtimeId").jsonPrimitive.content)
+        assertEquals("builtin-pi.create.v1", ref.getValue("schemaVersion").jsonPrimitive.content)
+    }
+
+    @Test
+    fun createAgentBodySerializesBuiltInGatewayCustomModel() {
+        val body = buildCreateAgentBody(
+            CreateAgentBody(
+                name = "Pi Gateway",
+                machineId = "machine-1",
+                runtimeConfig = RuntimeConfig(
+                    runtime = "builtin",
+                    provider = RuntimeProviderConfig.Gateway(
+                        providerId = "openai-compatible",
+                        baseUrl = "https://gateway.example.com/v1",
+                        apiKey = "secret-gateway"
+                    ),
+                    model = RuntimeModelConfig.Custom("vendor/model-v2"),
+                    hostUserState = RuntimeHostUserState.Forbidden
+                ),
+                formDefinitionRef = SharedRuntimeFormDefinitionRef(1, "builtin", "builtin-pi.create.v1")
+            )
+        )
+        val runtimeConfig = Json.parseToJsonElement(body).jsonObject.getValue("runtimeConfig").jsonObject
+        val provider = runtimeConfig.getValue("provider").jsonObject
+        assertEquals("gateway", provider.getValue("kind").jsonPrimitive.content)
+        assertEquals("openai-compatible", provider.getValue("providerId").jsonPrimitive.content)
+        assertEquals("https://gateway.example.com/v1", provider.getValue("baseUrl").jsonPrimitive.content)
+        assertEquals("secret-gateway", provider.getValue("apiKey").jsonPrimitive.content)
+        val model = runtimeConfig.getValue("model").jsonObject
+        assertEquals("custom", model.getValue("kind").jsonPrimitive.content)
+        assertEquals("vendor/model-v2", model.getValue("name").jsonPrimitive.content)
+    }
+
+    @Test
+    fun repeatedAgentReadsNeverRetainRuntimeProviderSecrets() = runBlocking {
+        val sentinel = "sentinel-provider-secret"
+        val client = SlockAgentsApiClient(
+            RecordingAgentsApi(
+                agentBody =
+                    """{"id":"agent-1","name":"Pi","runtimeConfig":{"version":1,"runtime":"builtin","provider":{"kind":"preset","providerId":"deepseek","apiKey":"$sentinel"},"model":{"kind":"preset","id":"deepseek/deepseek-v4-pro"},"mode":{"kind":"default"},"hostUserState":"forbidden"}}"""
+            )
+        )
+
+        repeat(2) {
+            val detail = assertIs<DataResult.Content<AgentSummary>>(client.agent(MemberId("agent-1"))).data
+            assertEquals("builtin", detail.runtime)
+            assertEquals("deepseek/deepseek-v4-pro", detail.model)
+            assertEquals(false, sentinel in detail.toString())
+        }
     }
 
     @Test

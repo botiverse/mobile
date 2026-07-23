@@ -1936,6 +1936,16 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureMembersCreateAgentBuiltInDialog() {
+        captureKmpComponentCase(
+            caseId = "components.members.create-agent.builtin-dialog",
+            pageName = "compose_create_agent_builtin_dialog_visual",
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_500
+        )
+    }
+
+    @Test
     fun captureMembersAgentDetailProfile() {
         captureKmpComponentCase(
             caseId = "components.members.agent-detail.profile",

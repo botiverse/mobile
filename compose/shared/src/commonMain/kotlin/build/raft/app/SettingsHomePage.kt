@@ -250,6 +250,7 @@ import build.raft.app.data.SlockComputersApiClient
 import build.raft.app.data.SlockComputersNetworkApi
 import build.raft.app.data.SlockNetworkClient
 import build.raft.app.data.SharedCreateAgentCoordinator
+import build.raft.app.data.SharedCreateAgentFormStore
 import build.raft.app.data.SharedActivityIntent
 import build.raft.app.data.SharedAgentDetailActions
 import build.raft.app.data.SharedAgentDetailIntent
@@ -2647,6 +2648,8 @@ internal fun SlockAppShellContent(
         remember(appShellNetworkClient) {
             SlockComputersApiClient(SlockComputersNetworkApi(appShellNetworkClient))
         }
+    val createAgentFormStore =
+        remember(sharedStores, storeScope) { sharedStores.createAgentFormStore(storeScope) }
     val createAgentCoordinator =
         remember(agentsApiClient, computersApiClient) {
             SharedCreateAgentCoordinator(
@@ -4800,6 +4803,7 @@ internal fun SlockAppShellContent(
                             memberRepository = memberRepository,
                             settingsRepository = settingsRepository,
                             createAgentCoordinator = createAgentCoordinator,
+                            createAgentFormStore = createAgentFormStore,
                             computersStore = appShellComputersStore,
                             agentDetailStore = appShellAgentDetailStore,
                             agentPanelTabOrderStore = sharedStores.agentPanelTabOrderStore,
@@ -14920,6 +14924,7 @@ private fun SharedMembersScreen(
     memberRepository: MemberRepository,
     settingsRepository: SettingsRepository,
     createAgentCoordinator: SharedCreateAgentCoordinator,
+    createAgentFormStore: SharedCreateAgentFormStore,
     computersStore: SharedComputersStore,
     agentDetailStore: SharedAgentDetailStore,
     agentPanelTabOrderStore: SharedAgentPanelTabOrderStore,
@@ -15274,6 +15279,8 @@ private fun SharedMembersScreen(
                 createAgentRuntimeModelsByMachineAndRuntime = createAgentRuntimeModels,
                 createAgentRuntimeModelLoadsInFlight = createAgentRuntimeModelLoadsInFlight,
                 createAgentLoadRuntimeModels = loadRuntimeModels,
+                createAgentFormStore = createAgentFormStore,
+                createAgentServerId = serverId,
                 inviteHumanSubmit = inviteHumanSubmit,
                 inviteHumanJoinLinkLoading = inviteJoinLinkLoading,
                 inviteHumanJoinLinkUrl = inviteJoinLinkUrl,

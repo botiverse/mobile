@@ -387,6 +387,7 @@ internal class SlockSharedStoreProvider private constructor(
     private val shellRealtimeDomainEventOwners = SlockShellScopedStoreCache<SharedRealtimeDomainEventOwner>()
     private val realtimeAuthorityRegistrations = SlockShellScopedStoreCache<String>()
     private val shellAgentDetailStores = SlockShellScopedStoreCache<SharedAgentDetailStore>()
+    private val shellCreateAgentFormStores = SlockShellScopedStoreCache<SharedCreateAgentFormStore>()
     private val shellNavigationCoordinators = SlockShellScopedStoreCache<SharedWindowNavigationCoordinator>()
     private val shellForegroundBannerStores = SlockShellScopedStoreCache<SharedForegroundBannerStore>()
     private val processReadReceiptLock = SynchronizedObject()
@@ -728,6 +729,15 @@ internal class SlockSharedStoreProvider private constructor(
                     logger = sharedInfoLogger("SlockAgentDetail", "shell_agent_detail_store")
                 )
             }
+        }
+
+    fun createAgentFormStore(scope: SlockShellStoreScope): SharedCreateAgentFormStore =
+        shellCreateAgentFormStores.getOrPut(scope) {
+            SharedCreateAgentFormStore(
+                computersApiClient = SlockComputersApiClient(SlockComputersNetworkApi(networkClient(scope))),
+                scope = threadSendScope,
+                logger = sharedInfoLogger("SlockCreateAgentForm", "shared_create_agent_form_store")
+            )
         }
 
     /**
@@ -1089,6 +1099,7 @@ internal class SlockSharedStoreProvider private constructor(
         shellServerMembersStores.remove(scope)
         shellRealtimeDomainEventOwners.remove(scope)
         shellAgentDetailStores.remove(scope)
+        shellCreateAgentFormStores.remove(scope)
         shellNavigationCoordinators.remove(scope)?.clear()
         shellForegroundBannerStores.remove(scope)?.clear()
         selectedServerStores.remove(scope)
