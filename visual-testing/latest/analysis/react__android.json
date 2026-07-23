@@ -1,21 +1,21 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-22T22:16:32.986Z",
+  "generatedAt": "2026-07-23T22:50:58.551Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
   "analysisProvider": "minimax",
   "analysisModel": "MiniMax-M3",
   "summary": {
-    "total": 85,
-    "ready": 84,
-    "pending": 1
+    "total": 79,
+    "ready": 74,
+    "pending": 5
   },
   "cases": [
     {
       "id": "components.ui.segmented-control.states",
       "status": "ready",
-      "imageHash": "p1:ffffffff000000009ffc9ffc07fc07fc07fe07fefffe7ffefffefffefffefffed13ed03e801e001ea0de20de801e801e801e801ea0de20de801e001e801e801efffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000000080018001fffffffffff01ffffff00ffffffe7fffffffffff",
+      "imageHash": "p1:ffffffff000000009ffc9ffc07fc07fc07fe07fefffe7ffefffefffefffefffed13ed13e801e001ea0de20de801e801e801e801ea0de20de801e001e801e801efffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000000080018001fffffffffff01ffffff00ffffffe7fffffffffff",
       "generatedAt": "2026-07-10T22:11:40.731Z",
       "severity": "medium",
       "summary": [
@@ -43,7 +43,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.4146124377301278
+      "metricMismatch": 0.4146293588910548
     },
     {
       "id": "components.ui.button.states",
@@ -139,36 +139,16 @@
     },
     {
       "id": "components.ui.textarea.states",
-      "status": "ready",
-      "imageHash": "p1:ffffffff1ffc1ffc1ffe1ffeffffffff8001800380008000886480048000bd7cfffc80fc801cbffcb7bcfffcfffcfffcfffcfffcbffc800080008001cffbffffffffffffffffffff8000bffdfffe80008000c000fffc83fc807cc3fcc07ebc01bf8480018001fffb807ddbffffffffff00000000fffffffffff81fffffffffff",
-      "generatedAt": "2026-07-11T22:10:05.896Z",
-      "severity": "medium",
-      "summary": [
-        "Textarea vertical alignment differs: React text is centered vertically, Android text is top-aligned within the textarea box",
-        "Error-state textarea border thickness is heavier on React (visibly thicker red outline) than on Android (thinner red outline)",
-        "Error-state textarea appears shorter in height on Android compared to React, while text content area is positioned at the top",
-        "Helper text and character counter vertical spacing from the textarea differs slightly between the two implementations",
-        "Header meta tag badge color differs: React uses yellow, Android uses a darker/muted amber tone"
-      ],
-      "likelyCauses": [
-        "Android implementation is not applying vertical centering (gravity) for multiline text content",
-        "Different border stroke width tokens applied to error-state text fields across platforms",
-        "Android text field intrinsic height calculation does not match the React min-height spec",
-        "Platform-specific default font line-height or padding tokens diverging from shared design spec"
-      ],
-      "suggestedOwner": "android-platform",
-      "suggestedFixes": [
-        "Apply center vertical gravity (or equivalent paddingTop/paddingBottom balancing) to the textarea text content to match React baseline",
-        "Align error border stroke width with the React token (increase from current thinner red border)",
-        "Set explicit min-height on the Android TextField to match the React textarea container height",
-        "Verify shared design token mapping for helper text and counter vertical margin between platforms",
-        "Normalize header badge color tokens so the React and Android platform tags render identically"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.3813488195798137
+      "status": "pending",
+      "imageHash": "p1:ffffffff1ffc1ffc1ffe1ffeffffffff80018003800080008864800480008004fffcfffc801c801cb7bcbffcfffcfffcfffcfffcbffc800080008001cffbffffffffffffffffffff8000c001fffe9ff480008000fffcff7c807c807cc07e80fcbf84bf0180018001807dfffbffffffff00000000fffffffffffa1fffffffffff",
+      "generatedAt": "2026-07-23T22:50:57.491Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.36638374485596703
     },
     {
       "id": "components.ui.checkbox.states",
@@ -365,7 +345,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.41497942386831277
+      "metricMismatch": 0.41496209659952354
     },
     {
       "id": "components.ui.spinner.states",
@@ -436,7 +416,7 @@
     {
       "id": "components.ui.section-eyebrow.states",
       "status": "ready",
-      "imageHash": "p1:80008001000000001ffc1ffc0ffc0ffc0ffe0ffe7ffe7ffefffefffefffefffefffefffefffefffe81fe03fe83fe03fefffefffefffefffefffefffe81fefffe81fe01fe83fe01fefffeeffefffefffefffefffefffefffe81fec3fe83fe81fefffec3fe0000000080018001fffffffffff00ffffff00ffffffe7fffffffffff",
+      "imageHash": "p1:80008001000000001ffc1ffc0ffc0ffc0ffe0ffe7ffe7ffefffefffefffefffefffefffefffefffe81fe03fe83fe03fefffefffefffefffefffefffe83fefffe03fe01fe83fe01fefffeeffefffefffefffefffefffefffe81fec3fe83fe81fefffec3fe0000000080018001fffffffffff00ffffff00ffffffe7fffffffffff",
       "generatedAt": "2026-07-11T22:10:11.176Z",
       "severity": "medium",
       "summary": [
@@ -464,12 +444,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.08364056275955589
+      "metricMismatch": 0.08517317851795347
     },
     {
       "id": "components.ui.section-header.states",
       "status": "ready",
-      "imageHash": "p1:bfffbffd000000001ffc1ffc0ffc0ffc0ffe0ffe7ffe7ffefffefffefffefffefffefffefff8fff0fff8fff081f881f081f881f0fff8fff0fff8fff1fff8fffe8000800080008000fffefffefffefffefffefffefffefffefffefffefffefffefffefffe00000000fffffffffffffffffff00ffffff00ffffffe7fffffffffff",
+      "imageHash": "p1:bfffbffd000000001ffc1ffc0ffc0ffc0ffe0ffe7ffe7ffefffefffefffefffefffefffefff8fff0fff8fff083f881f083f881f0fff8fff0fff8fff1fff8fffe8000800080008000fffefffefffefffefffefffefffefffefffefffefffefffefffefffe00000000fffffffffffffffffff00ffffff00ffffffe7fffffffffff",
       "generatedAt": "2026-07-21T10:48:11.817Z",
       "severity": "low",
       "summary": [
@@ -500,7 +480,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.06482589048378518
+      "metricMismatch": 0.06911217437533224
     },
     {
       "id": "components.ui.selection-popover.states",
@@ -640,36 +620,16 @@
     },
     {
       "id": "components.ui.avatar-list-row.states",
-      "status": "ready",
-      "imageHash": "p1:fffffffffffcfffc0ffc0ffc3fff3fffffffffffffffffffffffffffffffffffcfff9ff3cff387f3c27383f3cbf39ff3cfff9ffffffffffbffffffffc003800180019ffdfffc80618030802180319f618b3180e180719ff188f18001fffc80018000ffffc003ffffffffffff00000000fffffffffffbdffffffa5fffffffffff",
-      "generatedAt": "2026-07-11T22:10:13.330Z",
-      "severity": "medium",
-      "summary": [
-        "Avatar in top row on Android renders as a pixelated/black-yellow placeholder icon instead of the purple person avatar shown in React baseline",
-        "Online status badge text is rendered in all-caps ('ONLINE') on Android versus title-case ('Online') on React, with slightly bolder weight",
-        "Top row card on Android appears taller/less compact, causing vertical spacing between rows to be tighter than React",
-        "Bottom row selected card on Android uses heavier black border stroke and wider padding than React baseline",
-        "Secondary text ('Claude Code', 'product@slock.ai') on Android appears bolder/larger and more tightly spaced compared to React"
-      ],
-      "likelyCauses": [
-        "Android renderer falling back to default missing-image placeholder for avatar asset",
-        "TextTransform property not honored (uppercase applied on Android via theme/typography instead of React's title-case string)",
-        "Android Compose theme defines different font weights (semibold/bold) for primary/secondary text vs React's regular/medium tokens",
-        "Card selected-state border width and elevation differ between Android theme and React design token spec"
-      ],
-      "suggestedOwner": "android-platform",
-      "suggestedFixes": [
-        "Verify avatar asset is bundled correctly in Android resources and Image/Icon composable is resolving it; remove placeholder fallback path",
-        "Apply textTransform = TextTransform.None or use exact 'Online' string on Android to match React casing",
-        "Align Android typography tokens (fontWeight, fontSize) with React baseline for primary/secondary labels",
-        "Match selected-card border width, corner radius, and padding to React design tokens (likely 2dp border, 16dp padding)",
-        "Re-run visual diff after fixes; target pixel-perfect similarity ≥ 95%"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.2848575915096383
+      "status": "pending",
+      "imageHash": "p1:fffffffffffcfffc0ffc0ffc3fff3fffffffffffffffffffffffffffffffffffcfff9ff3cff38773c07383f3cbf39ff3cfffdffffffffff3ffffffffc003800180009ffdfffc80618030802180319f618b31806180719ff188708001fffc80018000ffffc003ffffffffffff00000000fffffffffffbdffffffa1fffffffffff",
+      "generatedAt": "2026-07-23T22:50:57.567Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.27707579133017735
     },
     {
       "id": "components.auth.register.inputs",
@@ -1078,7 +1038,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.3404579564710284
+      "metricMismatch": 0.34045520565128407
     },
     {
       "id": "components.thread.message-row.deleted-human",
@@ -1368,7 +1328,7 @@
     {
       "id": "components.home.search.results",
       "status": "ready",
-      "imageHash": "p1:1ffe1ffe85f807fc80000000800000008cef0000800300120002dfffffffffffffff80ff80009fff803cc0ff800080ff88035fffe7ffffffc0fe8001c00e8002fffe83ffd8fe87ffd05ed9fedffe9fffffffc27effff5bffffff403fffff83effffffc3ffffff81ffffffdbffffffffffffffffffffffffffffe7ffeffffffff",
+      "imageHash": "p1:1ffe1ffe85f807fc80000000800000008cef0000800300120002dfffffffffffffff80ff80009fff8038c0ff800080ff88035fffe7ff7fffc0fe8001c00e8002fffe83ffd8fe87ffd05ed9fedffe9fffffffc27effff5bffffff403fffff83effffffc3ffffff81ffffffdbffffffffffffffffffffffffffffe7ffeffffffff",
       "generatedAt": "2026-07-11T22:10:21.250Z",
       "severity": "medium",
       "summary": [
@@ -1399,7 +1359,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.26706329917230387
+      "metricMismatch": 0.2678592646602125
     },
     {
       "id": "components.home.search.channel-dropdown",
@@ -1432,7 +1392,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2668584005076896
+      "metricMismatch": 0.26737216618733206
     },
     {
       "id": "components.home.saved.results",
@@ -1468,12 +1428,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1934021882663648
+      "metricMismatch": 0.1934834098388145
     },
     {
       "id": "components.home.activity.results",
       "status": "ready",
-      "imageHash": "p1:0ffc0ffcfffe3ffe83fe83fe877e9ffe000000008040804000000000fffefffecff9dff1c1f9c011c07ec00ec38e800e807e83fec07e801efffa87fec0f18ffec019fff3801e81318ffe801afffe831eeff98ffec3f18ffefffefffafffe9ff1fffed9fafffefffefffefffefffefffefffefffefffefffe80000000ffff7fff",
+      "imageHash": "p1:0ffc0ffcfffe3ffe83fe83fe877e9ffe000000008040804000000000fffefffecff9dff1c1f9c011c07ec00ec38e800e807e83fec07e801efffa87fec0f18ffec019fff3801e81318ffe801afffe831efff98ffec3f18ffefffefffafffe9ff1fffed9fafffefffefffefffefffefffefffefffefffefffe80000000ffff7fff",
       "generatedAt": "2026-07-22T11:29:09.632Z",
       "severity": "low",
       "summary": [
@@ -1502,7 +1462,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.18623268146471317
+      "metricMismatch": 0.1861556519734222
     },
     {
       "id": "components.tasks.panel.states",
@@ -1680,7 +1640,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-22T22:16:31.869Z",
+      "generatedAt": "2026-07-23T22:50:57.894Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1795,72 +1755,16 @@
     },
     {
       "id": "components.settings.root.page",
-      "status": "ready",
-      "imageHash": "p1:1ffc1ffc0000000000000000000000008ffe1ffecffe03fe81fe01fec7fe07fec7fe07fe83fe0ffedffe0ffe87fe0ffe83fe5ffe87fe03fe83fe1ffe83fe03fec3fe03fe83fe03fe87fe07fefffe7ffe8ffe1ffe8ffe07fe83fe03fe83fe03fe87fe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
-      "generatedAt": "2026-07-22T11:29:09.894Z",
-      "severity": "medium",
-      "summary": [
-        "Android has extra items in PERSONAL section (Mobile, Storage) that React baseline does not show",
-        "Android has 'Send feedback' item in ABOUT section that React baseline does not show",
-        "Android has shorter label 'Billing' vs React's 'Plan & Billing'",
-        "Android header includes a settings gear icon (outlined square) next to 'Settings' title; React shows the title alone",
-        "Android lists are more compact vertically: tighter row height and reduced inter-item spacing compared to React"
-      ],
-      "likelyCauses": [
-        "Android implementation renders a different navigation/destination graph (additional settings entries)",
-        "Label string resources differ between platforms (Plan & Billing vs Billing)",
-        "Android adds a leading header icon for the Settings title that React omits",
-        "Row padding/spacing tokens are not aligned across the two platforms"
-      ],
-      "suggestedOwner": "android",
-      "suggestedFixes": [
-        "Audit Android Settings destinations against React baseline and remove Mobile, Storage, Send feedback if not intended for parity",
-        "Unify label to 'Plan & Billing' (or update React) via shared i18n key",
-        "Remove or align the header settings icon so React and Android headers match",
-        "Align list row height and vertical spacing tokens (e.g., listItemPadding) between platforms",
-        "Verify section header spacing (PERSONAL/WORKSPACE/ABOUT) is consistent between React and Android"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.03811925304816299
-    },
-    {
-      "id": "components.settings.page.states",
-      "status": "ready",
-      "imageHash": "p1:1ffe1ffe9fff9fff87ff83ff80007fff81fccfff83fc8ff7860c83f780010ff7ffff5ff781fc7ff781fcc7f787fc9fe7fffc800787fc7e3788088237800083f78ffcc0f7cffc61f79e3c7307823c7f0783fc77f780fc430781fc5f07a7fc61f7bffc61f7ffe08007c7c0fff7bfe08ff7c0fc7ff78084800780000002ffffffff",
-      "generatedAt": "2026-07-18T07:39:44.274Z",
-      "severity": "high",
-      "summary": [
-        "Android view is missing the 'Workspace mode' card entirely — React baseline shows it prominently at top below the header",
-        "Profile avatar and name/handle block uses different ordering and additional 'NAME' field appears on Android; React baseline only shows Display Name, Username, Email",
-        "Android shows 'Profile' section icon label while React shows 'ACCOUNT' section label with icon",
-        "Connected accounts state differs: React shows Google as 'Connected as artin@slock.ai', Android shows Google as 'Not connected' with a Connect button",
-        "Android includes additional 'Session' section with 'Log out' action (red button + description) that is not present in the React baseline"
-      ],
-      "likelyCauses": [
-        "Android implementation renders different page state than React baseline (different scroll position or different screen of multi-page settings)",
-        "Section ordering and field labels not synchronized between React and Android designs",
-        "Connected accounts data differs because Android is showing a disconnected/stale state vs React connected state",
-        "Android view captured a longer scroll region exposing Session/Log out section absent from React crop",
-        "Component library mismatch: different label typography conventions (uppercase vs title case) and missing 'Workspace mode' card on Android"
-      ],
-      "suggestedOwner": "mobile-android",
-      "suggestedFixes": [
-        "Ensure Android settings screen renders 'Workspace mode' card at top of Account page to match React baseline",
-        "Unify label typography: switch Android fields from uppercase small-caps to title case (or align React to match design spec)",
-        "Add Username input field with '@' prefix adornment on Android to match React form",
-        "Sync connected-account states: if Google is connected, render 'Connected as …' instead of 'Not connected' + Connect button",
-        "Verify both views are capturing the same scroll position / same settings page section before snapshot"
-      ],
-      "intentional": [
-        "Different background color blocks in Slock annotation overlays are test-harness artifacts, not product UI"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.43322092599343787
+      "status": "pending",
+      "imageHash": "p1:1ffc1ffc0000000000000000000000008ffe1ffecffe01fe81fe01fec7fe07fec7fe07fe83fe0ffedffe0ffe87fe0ffe83fe5ffe87fe03fe83fe0ffe83fe03fec7fe03fe87fe03fe87fe07fe87fe7ffe87fe1ffebffe03fe8ffe03fe83fe03fe83fe7ffe87fe7ffe83fe7ffe83fe7ffefffe7ffefffe7ffe00000000fff81fff",
+      "generatedAt": "2026-07-23T22:50:58.063Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.04213114864773637
     },
     {
       "id": "components.settings.account.page",
@@ -1894,77 +1798,6 @@
       "analysisModel": "MiniMax-M3",
       "error": null,
       "metricMismatch": 0.43322092599343787
-    },
-    {
-      "id": "components.settings.account.provider-linked",
-      "status": "ready",
-      "imageHash": "p1:0ffe0ffe9fff9fff87ff83ff80007fff81fccfff83fc8ff7860c83f780010ff7ffff5ff781fc7ff781fcc7f787fc9fe7fffc800787fc7e3788088237800083f78ffcc097cffc61f79e3c7307823c7f9783fc77f780fc430781fc5f07a7fc61f7bffc61f7ffe08007c7c0fff7bfe08ff7c0fc7ff78084800780000002ffffffff",
-      "generatedAt": "2026-07-22T11:29:10.002Z",
-      "severity": "high",
-      "summary": [
-        "React (left) renders a 'Workspace mode' banner card at the top below the back/Account header; Android (right) omits this section entirely, replacing it with a 'Profile' section label and avatar block.",
-        "React shows 'Account' as the only section header and uses lowercase 'Account' label with a person icon; Android uses uppercase 'ACCOUNT' and 'PROFILE' section typography with different weight/spacing.",
-        "React form uses sentence-case labels ('Display Name', 'Username', 'Email'); Android uses uppercase letter-spaced labels ('NAME', 'DISPLAY NAME', 'Email') — inconsistent casing and tracking.",
-        "React places a 'Username' field with an '@' prefix chip ('@artin'); Android has no username field at all — field is missing.",
-        "Android additionally renders a 'Session' group with 'Log out' card and red CTA button at the bottom; React has no Session/Log out section, only a 'Change Password' row."
-      ],
-      "likelyCauses": [
-        "Android component is implementing a different screen variant (Profile + Session + Log out) than the React baseline (Account + Change Password), indicating the wrong route or component mapping is being snapshotted on Android.",
-        "Form labels are not shared via a design-token style guide; Android uses uppercase tracked labels while React uses sentence case.",
-        "Provider connection status is rendered via a pill/badge on Android but as plain text on React — inconsistent status indicator implementation across platforms.",
-        "Username input is conditionally omitted on Android (not implemented or hidden in this state), while React always renders it.",
-        "Section ordering and grouping differ: React groups Connected accounts + Change Password; Android groups Connected accounts + Change password + Session/Log out — likely different information architecture between platforms."
-      ],
-      "suggestedOwner": "android-settings",
-      "suggestedFixes": [
-        "Verify which route the Android snapshot is capturing; align it to the same 'Account' screen the React baseline renders, or update the Slock contract to target the intended Profile+Session screen.",
-        "Add the 'Workspace mode' banner and 'Username' field to the Android Account screen, or remove them from the React baseline if intentional — pick one source of truth.",
-        "Unify form label typography: use a shared label style (case, weight, letter-spacing) across React and Android.",
-        "Standardize the connected-account status indicator: render a 'Connected' pill on both platforms, or remove it on both.",
-        "Align section headers (case, weight, iconography) and ensure the 'Change Password' row matches the React pattern (label-only with chevron, no nested card)."
-      ],
-      "intentional": [
-        "Color/intensity difference of the 'Save Profile' button may be an intentional disabled-vs-enabled state distinction if the Android form has unsaved changes.",
-        "Differences in connected-account copy ('Connected as artin@slock.ai' vs 'Connected as ar…') could be intentional truncation on Android."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.43320404801447454
-    },
-    {
-      "id": "components.settings.account.password-expanded",
-      "status": "ready",
-      "imageHash": "p1:07fe2ffe87fc9ffffffc83fffe3cffff83fccfff83fc8ff780fc83f7a7fc8ff7e7fcfff7fffc7ff7c7c0c7f7e7c09fe7fffc8007e0fcfe37e3fc8237bff883f78000c0f787fce1f780007307c3fc7f0797f87ff78000430780fcff07800061f7ffff61f7ffff43f78fc0bfe7dfc08007b7c09ff7801d0007ffff0112ffffffff",
-      "generatedAt": "2026-07-18T07:39:51.053Z",
-      "severity": "high",
-      "summary": [
-        "Completely different page structure: Android renders a full Account settings screen with header, Profile card, Name/Display Name/Email fields, Connected accounts, and Change Password, while React shows only the lower portion (Connected accounts, Change Password, Session/Log out) without a header or profile card.",
-        "Android shows Google as 'Not connected' with a 'Connect' button; React shows Google as 'Connected as artin@slock.ai' with no Connect button (state mismatch).",
-        "Field label casing differs: Android uses ALL CAPS labels (NAME, DISPLAY NAME, CURRENT PASSWORD, NEW PASSWORD, CONFIRM PASSWORD, SESSION) while React uses Title Case ('Email', 'Current Password', 'New Password', 'Confirm Password').",
-        "Android shows both Google and GitHub as 'Not connected' with Connect buttons; React shows GitHub as 'Not connected' with Connect but Google as already connected.",
-        "Android has an Avatar/profile card at the top with username 'artin' and '@artin' handle; React has no profile card."
-      ],
-      "likelyCauses": [
-        "Android implementation renders a separate, more complete Account screen rather than the inline settings component captured in the React baseline.",
-        "Different default states between platforms (Google connection status, expanded Password section).",
-        "Inconsistent design tokens: label casing (uppercase vs sentence case) not aligned across React and Android.",
-        "Crop/contract mismatch: baseline crops to component-bounds omitting header, while current uses viewport-bounds exposing header and missing Log out section.",
-        "React component may not yet implement the profile card, name/display name fields, or avatar present in Android."
-      ],
-      "suggestedOwner": "android-settings",
-      "suggestedFixes": [
-        "Align field label casing between platforms: pick one convention (e.g., sentence case) and apply to both React and Android.",
-        "Sync connected-account state: ensure Google connection status and corresponding button (Connect vs. Connected label) match across platforms.",
-        "Make accordion title casing identical ('Change Password') on both platforms.",
-        "Ensure both platforms render the same set of sections (Profile card, Connected accounts, Change Password, Session/Log out) for the expanded state, or split the snapshot into per-component baselines.",
-        "Add the profile/avatar card, NAME, and DISPLAY NAME fields to the React component if they belong to the Account settings surface."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.3691997137494768
     },
     {
       "id": "components.settings.account.error-state",
@@ -2036,73 +1869,17 @@
       "metricMismatch": 0.3318794642254358
     },
     {
-      "id": "components.settings.language-region.page",
-      "status": "ready",
-      "imageHash": "p1:0ffe0ffe9fff9fff80ff803fbffe3fff87ff03f783fc7ff3c1fc0073803c00178fe88007800083f7c1fc03f3fffc7ed383fc007387fc000787fc003380007ff3ffff00f78ffc0ff7cffc8007bffc07f38000800787fc87ffdffc0ff381fc7ff381fc0ff787fc8007800007f3ffff00f3ffff00f3ffff0ff3ffff07f2ffffffff",
-      "generatedAt": "2026-07-19T05:31:32.133Z",
-      "severity": "high",
-      "summary": [
-        "Android splits the Language section into two separate cards ('App language' and 'Language') while React combines display language and translation mode in one card.",
-        "Android uses sentence-case section headings ('App language', 'Language', 'Date & Time') whereas React uses uppercase tracked labels ('LANGUAGE', 'DATE & TIME').",
-        "Android adds a third Translation mode option ('Original') not present in React; React only offers Auto/Off.",
-        "Android introduces a separate 'Preferred translation language' dropdown that React lacks.",
-        "Android translation-mode buttons include leading icons (translate/pencil/document) which React does not show."
-      ],
-      "likelyCauses": [
-        "Android implementation followed a newer component spec with split cards, extra translation options, and icons.",
-        "Inconsistent typography token mapping between platforms: Android did not apply the uppercase/letter-spacing style used by React.",
-        "Timezone label formatting differs — Android uses IANA name only while React includes UTC offset.",
-        "Different crop contract used for the two images (element-bounds vs viewport-bounds) exposes a layout-overflow issue on Android."
-      ],
-      "suggestedOwner": "android-settings",
-      "suggestedFixes": [
-        "Unify the Language section structure across platforms: merge display language and translation mode into one card or split consistently in both.",
-        "Apply uppercase + tracked style to Android section headings to match the React typography tokens.",
-        "Add the 'Original' translation mode (and matching icon) to the React build, or remove it from Android to keep parity.",
-        "Remove the extra 'Preferred translation language' dropdown from Android or add it to React if it is required.",
-        "Standardize timezone select label format (e.g., always include UTC offset) on both platforms."
-      ],
-      "intentional": [
-        "The third 'Original' translation option and the 'Preferred translation language' field may be an intentional Android-only expansion pending React rollout."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.3228186899987848
-    },
-    {
       "id": "components.settings.appearance.page",
-      "status": "ready",
-      "imageHash": "p1:0ffe0ffc8ffe0ffe81fe01fe06021e028200000081fc1c0c80cc007c80040044a3fc0000807c007c817c0004bffc20048ffc0000807cfffe8004fffeb1fcfffe8000fffe8000fffe81f0fffe8018fffebffcfffe83fcfffe8000fffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffefffefffe7ffe00066002fffe3fff",
-      "generatedAt": "2026-07-22T11:29:10.325Z",
-      "severity": "high",
-      "summary": [
-        "Android (right) is missing the entire \"Live agent activity\" setting card shown in React (left), including its title, description, toggle switch, and \"Saved on this device.\" hint",
-        "Android (right) Preview block is a condensed single-line card with a generic \"Onboarding Assistant\" avatar, whereas React (left) shows a full multi-element message preview with avatar, username \"Cindy\", timestamp \"11:07 AM\", mentions, hashtag chip, and inline code chip",
-        "Android (right) lacks the \"Saved on this device.\" hint text under the message-font-size segmented control",
-        "Android (right) \"APPEARANCE\" section header is rendered as sentence-case \"Appearance\" in a lighter weight, while React (left) uses uppercase tracked \"APPEARANCE\" in a heavier weight",
-        "Content vertical layout is shifted: Android places the segmented control and Preview near the top of the screen with large empty space below, while React flows both cards fully down the viewport"
-      ],
-      "likelyCauses": [
-        "Android implementation did not render the second settings card (\"Live agent activity\") or is conditionally hiding it",
-        "Preview component on Android uses a simplified/stub variant instead of the rich message preview used on React",
-        "Section header typography style (uppercase + tracking) not ported to the Android Compose typography scale",
-        "Helper/caption text \"Saved on this device.\" omitted in the Android component tree",
-        "React preview includes message metadata (name, timestamp, mentions, code chips) that has no Android counterpart"
-      ],
-      "suggestedOwner": "android-settings",
-      "suggestedFixes": [
-        "Add the \"Live agent activity\" card on Android mirroring React's title, description body, toggle, and \"Saved on this device.\" caption",
-        "Replace the simplified Preview card with the full message preview (avatar, sender name, timestamp, mention, hashtag chip, inline code chip) styled identically to React",
-        "Apply uppercase tracked styling to the \"APPEARANCE\" section header in Android typography tokens to match React",
-        "Include the \"Saved on this device.\" helper text under the segmented control in Android",
-        "Verify the settings scroll content fills the viewport similarly to React so the page is not dominated by empty space"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.1991726414712197
+      "status": "pending",
+      "imageHash": "p1:0ffe0ffc8ffe0ffe81fe81fe97fe1efe820f001c81fc4ff481fc4ff080040004bffc8000807c03fc81fc3d0cbffc007c8ffc007c807c00008004007cb1fc0004800020008000000081f0ffffa018ffffbffcffff9bfcffff8000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7ffe7ffeffff7fff",
+      "generatedAt": "2026-07-23T22:50:58.147Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.19744906225948877
     },
     {
       "id": "components.settings.notifications.page",
@@ -2138,41 +1915,6 @@
       "analysisModel": "MiniMax-M3",
       "error": null,
       "metricMismatch": 0.2738155034363565
-    },
-    {
-      "id": "components.settings.connected-apps.page",
-      "status": "ready",
-      "imageHash": "p1:fffe7ffeffffdfff80ff807fffc1ffffffc0abf7ffc18207c03ee607fffefff7fffefff7c00efff7800e87f78001bb37b7fcbb378001800783fc80078001bfff8ffe8017800cdff7807cff07867cff07affcff17bfe080078020bfff800183f780fe80078ffe83e78ffe8007fff087f78071ff078001dff780fc8707ffffffff",
-      "generatedAt": "2026-07-18T07:39:54.737Z",
-      "severity": "medium",
-      "summary": [
-        "Layout is intentionally stacked on Android vs. two-column on React (known platform divergence).",
-        "Android shows three separate category tabs with large numeric counters (3/2/1) in stat-card style, while React renders Marketplace/Installed/My apps as compact filter chips with inline counts.",
-        "Android replaces React's primary pink 'Register app' placement above the third-party card with an inline pink 'Register app' button inside the third-party card on the right.",
-        "Android inserts an 'EXPERIMENTAL' yellow badge under the third-party description that is not present on React.",
-        "Android's GitHub tile omits the green 'BUILT-IN' tag, the yellow avatar swatch, and the separate 'Built-in source control integration.' line — collapsing them into the description text with a pink 'Open' button."
-      ],
-      "likelyCauses": [
-        "Independent reimplementation of the Connected Apps page on Android using a different component library (cards + stat tiles vs. React's list rows).",
-        "Missing mapping for built-in tag chip and category tag chip on Android variant.",
-        "Button variant mismatch: Install/Details state not reflected consistently; built-in apps show 'Open' as filled pink instead of React's neutral state.",
-        "Text overflow handling not applied to numeric tabs and chip labels on Android."
-      ],
-      "suggestedOwner": "android-settings",
-      "suggestedFixes": [
-        "Add the green 'BUILT-IN' tag and yellow avatar tile to the Android GitHub built-in card to match React.",
-        "Render a filled pink 'Install' CTA on Android Slack Bridge card (and other non-installed apps) instead of an outlined 'Details' button.",
-        "Re-add the 'PRODUCTIVITY' (and similar) category tag chips under app titles on Android.",
-        "Truncate tab labels with ellipsis intentionally and increase chip width, or shorten labels, so 'Marketplace' and 'My apps' are not cut to 'Marketpla...'/'My A...'.",
-        "Hide the 'EXPERIMENTAL' badge or gate it behind a flag so it does not appear on baseline render."
-      ],
-      "intentional": [
-        "Section layout: Android stacks Connected Apps into separate Third-party / Built-in / Marketplace sections instead of React's two-column layout — intentional platform adaptation."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.45500668367966945
     },
     {
       "id": "screens.auth.login.signing",
@@ -2245,7 +1987,7 @@
     {
       "id": "screens.members.agent-detail.profile",
       "status": "ready",
-      "imageHash": "p1:1ffe3ffe801000318010082100000000001206e2817f0f7f8fff001f8fff0fffffffdfff83ffe7ffffffdfff81fbdfff803f81ffffffffffffffffff8fff0fff8fff0fff80ffd87f80fff9fffffff1ffd47fffffffffffffd7ff0c3f80010c3f80010c7f80ff0007807f0003807fffffffff97ffdfff87ff80781c02ffffffff",
+      "imageHash": "p1:1ffe3ffe801000318010082100000000001206e281ff0f7f8fff001f8fff0fffffffdfff83ffe7ffffffdfff81fbdfff803f81ffffffffffffffffff8fff0fff8fff0fff80ffd87f80fff9fffffff1ffd47fffffffffffffd7ff0c3f80010c3f80010c7f80ff0007807f0003807fffffffff97ffdfff87ff80781c02ffffffff",
       "generatedAt": "2026-07-18T07:39:56.994Z",
       "severity": "high",
       "summary": [
@@ -2310,7 +2052,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.05967749557796953
+      "metricMismatch": 0.05968897260366457
     },
     {
       "id": "screens.members.agent-detail.workspace",
@@ -2346,12 +2088,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.04799557121831999
+      "metricMismatch": 0.04842427188398757
     },
     {
       "id": "screens.members.agent-detail.apps",
       "status": "ready",
-      "imageHash": "p1:07fe17fc8010003080100020000000008010000083fefffefdff0000ffff1efcffff0000ffff03e0ffff23fdffff001dffff3c05ffff007dffff0030ffff0000ffff0000ffff0000ffff07e0ffff0009ffff03fdffff0038ffff0000ffff0000ffff0000fffefffefffefffefffefffefffffffefffefffe7ffe7ffefffe7fff",
+      "imageHash": "p1:07fe17fc8010003080100020000000000000000087fefffefdff0000ffff1efcffff0000ffff03e0ffff23fdffff001dffff3c05ffff007dffff0030ffff0000ffff0000ffff0000ffff07e0ffff0009ffff03fdffff0038ffff0000ffff0000ffff0000fffefffefffefffefffefffefffffffefffefffe7ffe7ffefffe7fff",
       "generatedAt": "2026-07-18T07:39:58.524Z",
       "severity": "high",
       "summary": [
@@ -2380,7 +2122,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.11944579468276151
+      "metricMismatch": 0.11929355531251262
     },
     {
       "id": "screens.members.agent-detail.activity",
@@ -2585,12 +2327,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.15671541026991265
+      "metricMismatch": 0.15672013610402236
     },
     {
       "id": "components.thread.message-row.rich-content",
       "status": "ready",
-      "imageHash": "p1:07fc0ffc03fe07fcfffefffe07fefffe160287fe00028702e0028000e002f000e003e000e002e006e002e002e003f000e03ee000fffef3fee03ee3fef07efffefffef03ee0fefffefffefffefffef0fee03efffef2fefffefffef01efffefffefffefffee002f3fee002fbfeeffee000fffee00200000e00fff81fffffffffff",
+      "imageHash": "p1:07fc0ffc03fe07fcfffefffe07fefffe160287fe00028702e0028000e002f000e003e000e002e006e002e002e003e000e03ee000fffef3fee03ee3fef07efffefffef03ee0fefffefffefffefffef0fee03efffef2fefffefffef01efffefffefffefffee002f3fee002fbfeeffee000fffee00200000e00fff81fffffffffff",
       "generatedAt": "2026-07-19T22:09:39.335Z",
       "severity": "medium",
       "summary": [
@@ -2618,7 +2360,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.24887856509105066
+      "metricMismatch": 0.250236655749168
     },
     {
       "id": "components.thread.message-row.long-inline-code",
@@ -2721,7 +2463,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.3396306760643254
+      "metricMismatch": 0.33960890347146266
     },
     {
       "id": "components.thread.message-row.md-wrap-clarify",
@@ -2757,7 +2499,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.5547155385425527
+      "metricMismatch": 0.5546957913071657
     },
     {
       "id": "components.thread.message-row.md-wrap-adjacent",
@@ -2827,7 +2569,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.7108626672607715
+      "metricMismatch": 0.7108522029138142
     },
     {
       "id": "components.thread.message-row.md-wrap-task607",
@@ -2863,43 +2605,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.6400443553287155
-    },
-    {
-      "id": "screens.settings.connected-apps.full-height",
-      "status": "ready",
-      "imageHash": "p1:fffe7ffeffc093ffffc098ffc03efffffffe8081fffeff8181befffc800487fc800187fc8000b99c80008001800180038ffe8fff800c8efd807c9fdc87fcffc1bffc8000bfe0803f8001bffd80fc80018dfe8001fffe83fde0f0c7c18001ffc180fcdfe18ffe8001fffeffff87f0ffff8001ffffffffffffffffffffffffffff",
-      "generatedAt": "2026-07-21T10:47:16.139Z",
-      "severity": "high",
-      "summary": [
-        "Android adds a top navigation header with back arrow and 'Connected Apps' title absent in React baseline",
-        "Tab structure differs: React shows 'Marketplace/Installed/My apps' as single chip-row; Android splits into two rows with separate 'Marketplace/Installed/My Apps' chips above secondary 'Marketplace' search section",
-        "Android adds an 'EXPERIMENTAL' badge not present in React",
-        "Stat card layout differs: React uses combined tab labels with numbers; Android uses separate large-number cards (3/2/1) with labels below",
-        "Search field and category dropdown are moved below tabs on Android vs above on React"
-      ],
-      "likelyCauses": [
-        "Native Android implementation diverged from the React design spec, adding platform-specific app bar and reordering sections",
-        "Different information architecture decisions between platforms (split tabs vs combined, separate Marketplace browse section)",
-        "Android 'experimental' badge not yet replicated in React implementation",
-        "Avatar/icon assets and tag rendering styles differ between web (React) and native (Android) implementations",
-        "Viewport/scroll height contract mismatch between platforms (390x973 vs 390x868)"
-      ],
-      "suggestedOwner": "android-platform",
-      "suggestedFixes": [
-        "Align Android navigation header with React's design (remove back arrow/page title or match header pattern across platforms)",
-        "Consolidate Android tabs into single combined row to match React 'Marketplace 3 / Installed 2 / My apps 1' pattern",
-        "Remove 'EXPERIMENTAL' badge from Android or add it consistently to React if intentional",
-        "Restore square colored avatar tiles (yellow BG with initials) on Android app cards",
-        "Normalize app card CTA: show 'Install' for unlisted apps and 'Open' for installed built-in, matching React behavior"
-      ],
-      "intentional": [
-        "Different navigation paradigm (top app bar with back button) is common for Android and may be platform-idiomatic"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.34836950952058865
+      "metricMismatch": 0.640026633450804
     }
   ]
 }

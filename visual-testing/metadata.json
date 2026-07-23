@@ -1,8 +1,8 @@
 {
-  "generatedAt": "2026-07-22T22:16:42.691Z",
-  "runId": "785f4dc-20260722221033",
-  "commit": "785f4dc-20260722221033",
-  "commitSubject": "perf(thread): mark first content composition start (task #20 t4) (#1451)",
+  "generatedAt": "2026-07-23T22:51:05.883Z",
+  "runId": "37df1bb1-20260723224841",
+  "commit": "37df1bb1-20260723224841",
+  "commitSubject": "fix(visual): preserve artifacts across targeted processes (#1499)",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -18,17 +18,17 @@
       "comparison": "react__android",
       "detailHref": "index.html",
       "summary": {
-        "total": 85,
+        "total": 79,
         "same": 0,
         "pass": 0,
-        "basic-pass": 1,
-        "different": 83,
+        "basic-pass": 0,
+        "different": 78,
         "missing": 1
       },
       "analysisSummary": {
-        "total": 85,
-        "ready": 84,
-        "pending": 1
+        "total": 79,
+        "ready": 74,
+        "pending": 5
       }
     },
     {
@@ -42,17 +42,17 @@
       "comparison": "react__ios",
       "detailHref": "react__ios.html",
       "summary": {
-        "total": 85,
+        "total": 79,
         "same": 0,
         "pass": 13,
-        "basic-pass": 10,
-        "different": 55,
-        "missing": 7
+        "basic-pass": 9,
+        "different": 51,
+        "missing": 6
       },
       "analysisSummary": {
-        "total": 85,
-        "ready": 78,
-        "pending": 7
+        "total": 79,
+        "ready": 69,
+        "pending": 10
       }
     },
     {
@@ -66,70 +66,70 @@
       "comparison": "android__ios",
       "detailHref": "android__ios.html",
       "summary": {
-        "total": 85,
+        "total": 79,
         "same": 0,
         "pass": 14,
         "basic-pass": 18,
-        "different": 47,
-        "missing": 6
+        "different": 42,
+        "missing": 5
       },
       "analysisSummary": {
-        "total": 85,
-        "ready": 79,
-        "pending": 6
+        "total": 79,
+        "ready": 70,
+        "pending": 9
       }
     }
   ],
   "summary": {
-    "total": 85,
+    "total": 79,
     "same": 0,
     "pass": 0,
-    "basic-pass": 1,
-    "different": 83,
+    "basic-pass": 0,
+    "different": 78,
     "missing": 1
   },
   "analysisSummary": {
-    "total": 85,
-    "ready": 84,
-    "pending": 1
+    "total": 79,
+    "ready": 74,
+    "pending": 5
   },
   "componentMatrixSummary": {
-    "total": 113,
-    "active": 94,
+    "total": 107,
+    "active": 88,
     "pending": 16,
     "skipped": 3,
     "captureTypes": {
       "component-fixture": {
-        "total": 86,
-        "active": 82,
+        "total": 81,
+        "active": 77,
         "pending": 2,
         "skipped": 2
       },
       "real-screen": {
-        "total": 27,
-        "active": 12,
+        "total": 26,
+        "active": 11,
         "pending": 14,
         "skipped": 1
       }
     },
     "providers": {
       "react": {
-        "active": 94,
+        "active": 88,
         "pending": 13,
         "unsupported": 0,
-        "total": 107
+        "total": 101
       },
       "android": {
-        "active": 88,
+        "active": 82,
         "pending": 19,
         "unsupported": 0,
-        "total": 107
+        "total": 101
       },
       "harmony": {
         "active": 0,
-        "pending": 87,
+        "pending": 81,
         "unsupported": 0,
-        "total": 87
+        "total": 81
       },
       "ios": {
         "active": 0,
@@ -262,7 +262,7 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8909675794543859,
+        "rgbSimilarity": 0.8909679854083903,
         "pixelPerfectSimilarity": 0.7972134456731613,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.members.agent-lifecycle-actions.side-by-side.png"
       }
@@ -378,7 +378,7 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9225515506427858,
+        "rgbSimilarity": 0.922550913912756,
         "pixelPerfectSimilarity": 0.5813832516439151,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-menu.default.side-by-side.png"
       }
@@ -437,7 +437,7 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9187362064992506,
+        "rgbSimilarity": 0.9187452901613404,
         "pixelPerfectSimilarity": 0.5705131580723998,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-menu.task.side-by-side.png"
       }
@@ -547,7 +547,7 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8200191385268701,
+        "rgbSimilarity": 0.8200189439337009,
         "pixelPerfectSimilarity": 0.4905955901216565,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.long-inline-code.side-by-side.png"
       }
@@ -602,7 +602,7 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.85475394995454,
+        "rgbSimilarity": 0.8547540558555838,
         "pixelPerfectSimilarity": 0.23235441055346268,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.md-latest-release.side-by-side.png"
       }
@@ -657,7 +657,7 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8807297490946646,
+        "rgbSimilarity": 0.8807299176538292,
         "pixelPerfectSimilarity": 0.12811432467830572,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.md-wrap-adjacent.side-by-side.png"
       }
@@ -712,8 +712,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8606616869348056,
-        "pixelPerfectSimilarity": 0.44528446145744727,
+        "rgbSimilarity": 0.8606735180671182,
+        "pixelPerfectSimilarity": 0.44530420869283427,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.md-wrap-clarify.side-by-side.png"
       }
     },
@@ -767,8 +767,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8432399987712428,
-        "pixelPerfectSimilarity": 0.6603693239356746,
+        "rgbSimilarity": 0.8432541392082065,
+        "pixelPerfectSimilarity": 0.6603910965285373,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.md-wrap-slice1.side-by-side.png"
       }
     },
@@ -822,8 +822,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8495603050409835,
-        "pixelPerfectSimilarity": 0.2891373327392285,
+        "rgbSimilarity": 0.8495641973456219,
+        "pixelPerfectSimilarity": 0.2891477970861857,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.md-wrap-status606.side-by-side.png"
       }
     },
@@ -877,8 +877,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8618356000127945,
-        "pixelPerfectSimilarity": 0.3599556446712845,
+        "rgbSimilarity": 0.8618292108704041,
+        "pixelPerfectSimilarity": 0.35997336654919593,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.md-wrap-task607.side-by-side.png"
       }
     },
@@ -932,8 +932,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8874542412196877,
-        "pixelPerfectSimilarity": 0.7511214349089493,
+        "rgbSimilarity": 0.8864465590887726,
+        "pixelPerfectSimilarity": 0.749763344250832,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.rich-content.side-by-side.png"
       }
     },
@@ -1035,7 +1035,7 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9171713676582064,
+        "rgbSimilarity": 0.9171703832197471,
         "pixelPerfectSimilarity": 0.2932349684719353,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-share.selection.side-by-side.png"
       }
@@ -1120,8 +1120,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8533076189829091,
-        "pixelPerfectSimilarity": 0.7151424084903617,
+        "rgbSimilarity": 0.8575812008436388,
+        "pixelPerfectSimilarity": 0.7229242086698227,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.avatar-list-row.states.side-by-side.png"
       }
     },
@@ -1452,8 +1452,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9667145825474297,
-        "pixelPerfectSimilarity": 0.9163594372404441,
+        "rgbSimilarity": 0.9643584691365409,
+        "pixelPerfectSimilarity": 0.9148268214820465,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.section-eyebrow.states.side-by-side.png"
       }
     },
@@ -1495,8 +1495,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9723718764683104,
-        "pixelPerfectSimilarity": 0.9351741095162148,
+        "rgbSimilarity": 0.9672574076197514,
+        "pixelPerfectSimilarity": 0.9308878256246678,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.section-header.states.side-by-side.png"
       }
     },
@@ -1539,8 +1539,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9595841809397262,
-        "pixelPerfectSimilarity": 0.5853875622698722,
+        "rgbSimilarity": 0.9604775695745044,
+        "pixelPerfectSimilarity": 0.5853706411089452,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.segmented-control.states.side-by-side.png"
       }
     },
@@ -1666,8 +1666,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9937769708706528,
-        "pixelPerfectSimilarity": 0.5850205761316872,
+        "rgbSimilarity": 0.9938029702675959,
+        "pixelPerfectSimilarity": 0.5850379034004765,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.skeleton.states.side-by-side.png"
       }
     },
@@ -1789,7 +1789,7 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9854781183221281,
+        "rgbSimilarity": 0.9854669702631644,
         "pixelPerfectSimilarity": 0.9597882588919965,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.status-dot.states.side-by-side.png"
       }
@@ -1871,8 +1871,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8936391369769839,
-        "pixelPerfectSimilarity": 0.6186511804201863,
+        "rgbSimilarity": 0.9168401375418034,
+        "pixelPerfectSimilarity": 0.633616255144033,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.textarea.states.side-by-side.png"
       }
     },
@@ -2457,8 +2457,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8518180581210482,
-        "pixelPerfectSimilarity": 0.6595420435289716,
+        "rgbSimilarity": 0.8517581765508502,
+        "pixelPerfectSimilarity": 0.6595447943487159,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message.row.side-by-side.png"
       }
     },
@@ -2788,8 +2788,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9063603221162462,
-        "pixelPerfectSimilarity": 0.8137673185352868,
+        "rgbSimilarity": 0.9066102934498083,
+        "pixelPerfectSimilarity": 0.8138443480265778,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.home.activity.results.side-by-side.png"
       }
     },
@@ -2963,8 +2963,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9039474560985842,
-        "pixelPerfectSimilarity": 0.8065978117336352,
+        "rgbSimilarity": 0.9039194006639272,
+        "pixelPerfectSimilarity": 0.8065165901611855,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.home.saved.results.side-by-side.png"
       }
     },
@@ -3021,8 +3021,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8817761087769834,
-        "pixelPerfectSimilarity": 0.7331415994923104,
+        "rgbSimilarity": 0.881309251082465,
+        "pixelPerfectSimilarity": 0.7326278338126679,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.home.search.channel-dropdown.side-by-side.png"
       }
     },
@@ -3082,8 +3082,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8896317335309338,
-        "pixelPerfectSimilarity": 0.7329367008276961,
+        "rgbSimilarity": 0.8888533048147339,
+        "pixelPerfectSimilarity": 0.7321407353397875,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.home.search.results.side-by-side.png"
       }
     },
@@ -3201,7 +3201,7 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9003379787710593,
+        "rgbSimilarity": 0.9003350082467617,
         "pixelPerfectSimilarity": 0.8203099472056818,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.members.agent-detail.profile.side-by-side.png"
       }
@@ -3434,122 +3434,6 @@
         "rgbSimilarity": 0.8752148793966689,
         "pixelPerfectSimilarity": 0.5667790740065621,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.account.page.side-by-side.png"
-      }
-    },
-    {
-      "id": "components.settings.account.password-expanded",
-      "title": "Settings Account Password Expanded",
-      "captureType": "component-fixture",
-      "captureGroup": "Components Parity",
-      "category": "app/settings",
-      "surface": "settings",
-      "group": "product-settings",
-      "status": "baseline",
-      "providers": {
-        "react": {
-          "id": "react",
-          "status": "ready",
-          "components": [
-            "AccountSection"
-          ],
-          "path": "packages/web/src/components/settings/SettingsPanel.tsx",
-          "fixture": "fixtures/components.settings.account.password-expanded.json",
-          "reason": ""
-        },
-        "android": {
-          "id": "android",
-          "status": "ready",
-          "source": "kmp-shared",
-          "components": [
-            "SettingsAccountPage",
-            "SettingsHomePage"
-          ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsAccountPage.kt",
-          "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsAccountPasswordExpanded",
-          "route": "compose_settings_page_visual:account-password-expanded",
-          "reason": ""
-        },
-        "harmony": {
-          "id": "harmony",
-          "status": "pending",
-          "source": "kmp-shared-ohos",
-          "components": [
-            "SettingsAccountPage",
-            "SettingsHomePage"
-          ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsAccountPage.kt",
-          "reason": "Needs Harmony real-device/provider capture.",
-          "fixture": ""
-        }
-      },
-      "notes": "Account password disclosure state maps React current/new/confirm password form to shared KMP Settings without exposing password values in snapshot fixtures.",
-      "comparison": {
-        "baseline": "react",
-        "current": "android",
-        "status": "different",
-        "rawStatus": "different",
-        "acceptance": "",
-        "rgbSimilarity": 0.8617550896260219,
-        "pixelPerfectSimilarity": 0.6308002862505232,
-        "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.account.password-expanded.side-by-side.png"
-      }
-    },
-    {
-      "id": "components.settings.account.provider-linked",
-      "title": "Settings Account Provider Linked",
-      "captureType": "component-fixture",
-      "captureGroup": "Components Parity",
-      "category": "app/settings",
-      "surface": "settings",
-      "group": "product-settings",
-      "status": "baseline",
-      "providers": {
-        "react": {
-          "id": "react",
-          "status": "ready",
-          "components": [
-            "AccountSection"
-          ],
-          "path": "packages/web/src/components/settings/SettingsPanel.tsx",
-          "fixture": "fixtures/components.settings.account.provider-linked.json",
-          "reason": ""
-        },
-        "android": {
-          "id": "android",
-          "status": "ready",
-          "source": "kmp-shared",
-          "components": [
-            "SettingsAccountPage",
-            "SettingsHomePage"
-          ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsAccountPage.kt",
-          "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsAccountProviderLinked",
-          "route": "compose_settings_page_visual:account-provider-linked",
-          "reason": ""
-        },
-        "harmony": {
-          "id": "harmony",
-          "status": "pending",
-          "source": "kmp-shared-ohos",
-          "components": [
-            "SettingsAccountPage",
-            "SettingsHomePage"
-          ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsAccountPage.kt",
-          "reason": "Needs Harmony real-device/provider capture.",
-          "fixture": ""
-        }
-      },
-      "notes": "Account connected-provider state maps React AccountSection identities and provider connect affordances to shared KMP Settings.",
-      "comparison": {
-        "baseline": "react",
-        "current": "android",
-        "status": "different",
-        "rawStatus": "different",
-        "acceptance": "",
-        "rgbSimilarity": 0.8764044786256433,
-        "pixelPerfectSimilarity": 0.5667959519855255,
-        "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.account.provider-linked.side-by-side.png"
       }
     },
     {
@@ -3949,125 +3833,9 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9201642992929746,
-        "pixelPerfectSimilarity": 0.8008273585287803,
+        "rgbSimilarity": 0.9136894308904838,
+        "pixelPerfectSimilarity": 0.8025509377405112,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.appearance.page.side-by-side.png"
-      }
-    },
-    {
-      "id": "components.settings.connected-apps.page",
-      "title": "Settings Connected Apps Page",
-      "captureType": "component-fixture",
-      "captureGroup": "Components Parity",
-      "category": "app/settings",
-      "surface": "settings",
-      "group": "product-settings",
-      "status": "baseline",
-      "providers": {
-        "react": {
-          "id": "react",
-          "status": "ready",
-          "components": [
-            "IntegrationsSection"
-          ],
-          "path": "packages/web/src/components/settings/SettingsPanel.tsx",
-          "fixture": "fixtures/components.settings.connected-apps.page.json",
-          "reason": ""
-        },
-        "android": {
-          "id": "android",
-          "status": "ready",
-          "source": "kmp-shared",
-          "components": [
-            "SettingsHomePage",
-            "SettingsDetailShell"
-          ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
-          "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsConnectedAppsPage",
-          "route": "compose_settings_page_visual:connected-apps",
-          "reason": ""
-        },
-        "harmony": {
-          "id": "harmony",
-          "status": "pending",
-          "source": "kmp-shared-ohos",
-          "components": [
-            "SettingsHomePage",
-            "SettingsDetailShell"
-          ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
-          "reason": "Needs Harmony real-device/provider capture; pending providers are excluded from similarity accounting.",
-          "fixture": ""
-        }
-      },
-      "notes": "React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.",
-      "comparison": {
-        "baseline": "react",
-        "current": "android",
-        "status": "different",
-        "rawStatus": "different",
-        "acceptance": "",
-        "rgbSimilarity": 0.8155568691695472,
-        "pixelPerfectSimilarity": 0.5449933163203305,
-        "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.connected-apps.page.side-by-side.png"
-      }
-    },
-    {
-      "id": "components.settings.language-region.page",
-      "title": "Settings Language & Region Page",
-      "captureType": "component-fixture",
-      "captureGroup": "Components Parity",
-      "category": "app/settings",
-      "surface": "settings",
-      "group": "product-settings",
-      "status": "baseline",
-      "providers": {
-        "react": {
-          "id": "react",
-          "status": "ready",
-          "components": [
-            "LanguageRegionSection"
-          ],
-          "path": "packages/web/src/components/settings/SettingsPanel.tsx",
-          "fixture": "fixtures/components.settings.language-region.page.json",
-          "reason": ""
-        },
-        "android": {
-          "id": "android",
-          "status": "ready",
-          "source": "kmp-shared",
-          "components": [
-            "SettingsHomePage",
-            "SettingsDetailShell"
-          ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
-          "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsLanguageRegionPage",
-          "route": "compose_settings_page_visual:language-region",
-          "reason": ""
-        },
-        "harmony": {
-          "id": "harmony",
-          "status": "pending",
-          "source": "kmp-shared-ohos",
-          "components": [
-            "SettingsHomePage",
-            "SettingsDetailShell"
-          ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
-          "reason": "Needs Harmony real-device/provider capture; pending providers are excluded from similarity accounting.",
-          "fixture": ""
-        }
-      },
-      "notes": "React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.",
-      "comparison": {
-        "baseline": "react",
-        "current": "android",
-        "status": "different",
-        "rawStatus": "different",
-        "acceptance": "",
-        "rgbSimilarity": 0.8649165707158739,
-        "pixelPerfectSimilarity": 0.6771813100012152,
-        "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.language-region.page.side-by-side.png"
       }
     },
     {
@@ -4126,63 +3894,6 @@
         "rgbSimilarity": 0.869146571281629,
         "pixelPerfectSimilarity": 0.7261844965636435,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.notifications.page.side-by-side.png"
-      }
-    },
-    {
-      "id": "components.settings.page.states",
-      "title": "Settings Page States",
-      "captureType": "component-fixture",
-      "captureGroup": "Components Parity",
-      "category": "app/settings",
-      "surface": "settings",
-      "group": "product-settings",
-      "status": "baseline",
-      "providers": {
-        "react": {
-          "id": "react",
-          "status": "ready",
-          "components": [
-            "SettingsPanel"
-          ],
-          "path": "packages/web/src/components/settings/SettingsPanel.tsx",
-          "fixture": "fixtures/components.settings.page.states.json",
-          "reason": ""
-        },
-        "android": {
-          "id": "android",
-          "status": "ready",
-          "source": "kmp-shared",
-          "components": [
-            "Shared Settings page",
-            "SettingsDetailShell"
-          ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
-          "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsPageStates",
-          "reason": ""
-        },
-        "harmony": {
-          "id": "harmony",
-          "status": "pending",
-          "source": "kmp-shared-ohos",
-          "components": [
-            "SettingsHomePage",
-            "SettingsDetailShell"
-          ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
-          "reason": "Needs Harmony real-device/provider capture.",
-          "fixture": ""
-        }
-      },
-      "notes": "Real React SettingsPanel Account page vs Android rendering of shared SettingsDetailShell/SharedSettingsSectionContent.",
-      "comparison": {
-        "baseline": "react",
-        "current": "android",
-        "status": "different",
-        "rawStatus": "different",
-        "acceptance": "",
-        "rgbSimilarity": 0.8752148793966689,
-        "pixelPerfectSimilarity": 0.5667790740065621,
-        "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.page.states.side-by-side.png"
       }
     },
     {
@@ -4246,11 +3957,11 @@
       "comparison": {
         "baseline": "react",
         "current": "android",
-        "status": "basic-pass",
+        "status": "different",
         "rawStatus": "different",
-        "acceptance": "basic pass: pixel perfect 96.19% > 96%",
-        "rgbSimilarity": 0.9742836923952373,
-        "pixelPerfectSimilarity": 0.961880746951837,
+        "acceptance": "",
+        "rgbSimilarity": 0.9710768260892165,
+        "pixelPerfectSimilarity": 0.9578688513522636,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.root.page.side-by-side.png"
       }
     },
@@ -4805,8 +4516,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9572695357201135,
-        "pixelPerfectSimilarity": 0.8432845897300874,
+        "rgbSimilarity": 0.957239304943205,
+        "pixelPerfectSimilarity": 0.8432798638959776,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.home.loading.side-by-side.png"
       }
     },
@@ -4903,7 +4614,7 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9485684318870342,
+        "rgbSimilarity": 0.9485773906741416,
         "pixelPerfectSimilarity": 0.9054812924481171,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.activity.side-by-side.png"
       }
@@ -4961,8 +4672,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.909695448011279,
-        "pixelPerfectSimilarity": 0.8805542053172385,
+        "rgbSimilarity": 0.909674301778969,
+        "pixelPerfectSimilarity": 0.8807064446874874,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.apps.side-by-side.png"
       }
     },
@@ -5019,7 +4730,7 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9005957825087113,
+        "rgbSimilarity": 0.9006032525036367,
         "pixelPerfectSimilarity": 0.8197549992573689,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.profile.side-by-side.png"
       }
@@ -5077,8 +4788,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9679685315928832,
-        "pixelPerfectSimilarity": 0.9403225044220305,
+        "rgbSimilarity": 0.9679508028755295,
+        "pixelPerfectSimilarity": 0.9403110273963354,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.reminders.side-by-side.png"
       }
     },
@@ -5135,8 +4846,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9721700690465954,
-        "pixelPerfectSimilarity": 0.95200442878168,
+        "rgbSimilarity": 0.9718101391954473,
+        "pixelPerfectSimilarity": 0.9515757281160124,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.workspace.side-by-side.png"
       }
     },
@@ -5363,61 +5074,6 @@
       },
       "notes": "Skipped: billing portal is an external browser URL action (https://raft.build/settings/billing), not an in-app screen/WebView route. Validate the Billing page/action state instead.",
       "comparison": null
-    },
-    {
-      "id": "screens.settings.connected-apps.full-height",
-      "title": "Settings Connected Apps Full Height Screen",
-      "captureType": "real-screen",
-      "captureGroup": "Screens Parity",
-      "category": "app/settings",
-      "surface": "settings",
-      "group": "screens-settings",
-      "status": "baseline",
-      "providers": {
-        "react": {
-          "id": "react",
-          "status": "ready",
-          "components": [
-            "IntegrationsSection"
-          ],
-          "path": "packages/web/src/components/settings/SettingsPanel.tsx",
-          "fixture": "fixtures/screens.settings.connected-apps.full-height.json",
-          "reason": ""
-        },
-        "android": {
-          "id": "android",
-          "status": "ready",
-          "components": [
-            "SettingsAppShellContent"
-          ],
-          "source": "kmp-shared",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsPage.kt",
-          "fixture": "",
-          "reason": ""
-        },
-        "harmony": {
-          "id": "harmony",
-          "status": "pending",
-          "components": [
-            "SettingsAppShellContent"
-          ],
-          "source": "kmp-shared-ohos",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsPage.kt",
-          "reason": "OHOS visual capture requires a self-hosted runner with an HDC-attached device; blocked on infra approval.",
-          "fixture": ""
-        }
-      },
-      "notes": "Full-height (content-height, not viewport-clipped) Settings Connected Apps route for react↔android parity (task #388). React renders IntegrationsSection unclamped, captured fullPage (harness stubs the connected-apps endpoints so it mirrors the canonical seed: Marketplace 3 / Installed 2 / My apps 1, no Storage Sync); short routes report true content height. Android capture (#259) + data alignment (#404/#405 via #262: server_local counts as Installed, Storage Sync placeholder removed) both on main. Validated by the first react↔android full-height pairing (run 28880036248) + fidelity/data alignment (#4103/#4110/#262); active as of 2026-07-07.",
-      "comparison": {
-        "baseline": "react",
-        "current": "android",
-        "status": "different",
-        "rawStatus": "different",
-        "acceptance": "",
-        "rgbSimilarity": 0.8228346010015423,
-        "pixelPerfectSimilarity": 0.6516304904794114,
-        "sideBySideImage": "visual-testing-results/diff/react__android/screens.settings.connected-apps.full-height.side-by-side.png"
-      }
     },
     {
       "id": "screens.settings.server-danger-modal",

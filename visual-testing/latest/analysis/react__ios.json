@@ -1,15 +1,15 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-22T22:16:36.852Z",
+  "generatedAt": "2026-07-23T22:51:01.187Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
   "analysisProvider": "minimax",
   "analysisModel": "MiniMax-M3",
   "summary": {
-    "total": 85,
-    "ready": 78,
-    "pending": 7
+    "total": 79,
+    "ready": 69,
+    "pending": 10
   },
   "cases": [
     {
@@ -40,7 +40,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.007153900163378801
+      "metricMismatch": 0.0068180283820094
     },
     {
       "id": "components.ui.button.states",
@@ -136,36 +136,16 @@
     },
     {
       "id": "components.ui.textarea.states",
-      "status": "ready",
-      "imageHash": "p1:1ff83ffc000000020000000200387ff200000002000000260001000200000002000000060001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
-      "generatedAt": "2026-07-12T22:10:23.862Z",
-      "severity": "high",
-      "summary": [
-        "Error-state textarea on iOS renders at a different vertical position/height relative to the helper text and counter, causing the error helper to be clipped against the bottom of the comparison canvas.",
-        "iOS error helper text 'Aareement body must be shorter.' (note typo) appears clipped/cut off at the bottom of the visible area, while React shows it fully below the textarea with proper spacing.",
-        "iOS error-state character counter '57/40' sits on the same baseline as a truncated/clipped helper text, whereas React places the counter flush right with the full helper text on its own line beneath the field.",
-        "Error-state textarea background tint on iOS appears slightly different (more saturated/pink) compared with React's lighter fill, indicating a color-token mismatch in the danger state.",
-        "iOS text size appears larger than React, causing the same string to wrap to fewer words per line and altering line-height/leading inside the textarea."
-      ],
-      "likelyCauses": [
-        "iOS component not honoring the same vertical padding/spacing tokens used by React, causing the error helper + counter row to be pushed past the bottom edge.",
-        "iOS rendering canvas is uncropped (1170×2532) while React is element-cropped (342×240), so absolute pixel-position comparison misaligns the footer row and clips it.",
-        "Helper text string differs by a typo ('Aareement' vs 'Agreement') suggesting copy was not centralized through the shared token/catalog.",
-        "iOS error-state fill color and/or text size diverges from the React design tokens (different theme mapping for danger/error)."
-      ],
-      "suggestedOwner": "design-system / iOS platform team",
-      "suggestedFixes": [
-        "Align iOS Textarea padding, helper-text gap, and counter baseline to the shared spacing tokens used by React; verify with a side-by-side at identical DP scale.",
-        "Crop the iOS snapshot to the component bounds (same contract as baseline) so layout diffing is not affected by empty canvas area.",
-        "Fix the typo in the iOS helper string ('Aareement' → 'Agreement') by sourcing copy from the shared localization catalog.",
-        "Reconcile the error-state background and border colors with the React tokens (e.g., danger-50 fill, danger-500 border) in the iOS theme map.",
-        "Verify iOS text font/size matches React's body token so line wrapping and leading inside the textarea are consistent."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.08877816934688976
+      "status": "pending",
+      "imageHash": "p1:1ff83ffc00000002000000020038007200000002000000060001000200010002000000020001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
+      "generatedAt": "2026-07-23T22:50:59.828Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.08595245810885621
     },
     {
       "id": "components.ui.checkbox.states",
@@ -273,34 +253,15 @@
     },
     {
       "id": "components.ui.status-dot.states",
-      "status": "ready",
-      "imageHash": "p1:0000000007fc0ffe03fc07fe03fc07fe0000fffec3fcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00001",
-      "generatedAt": "2026-07-21T10:47:26.794Z",
-      "severity": "low",
-      "summary": [
-        "All four status dots (green, orange, gray, cyan) match in color, shape, size, and spacing between React and iOS.",
-        "Pink 'Waiting pulse' dot matches in color, size, and vertical alignment across both platforms.",
-        "'Waiting pulse' label text matches in font weight, size, color, and baseline alignment.",
-        "Header text ('Raft UI Status Dot', dimensions label, component ID label) matches in typography and positioning.",
-        "Overall component bounds and layout are visually equivalent; pixel-perfect similarity is 99.77% with only 0.23% mismatch, likely from anti-aliasing differences."
-      ],
-      "likelyCauses": [
-        "Minor anti-aliasing/font rasterization differences between React (web) and iOS (native) rendering.",
-        "Larger iOS canvas viewport causing comparison region to include extra whitespace below the actual component."
-      ],
-      "suggestedOwner": "design-systems",
-      "suggestedFixes": [
-        "No action required; differences are within tolerance and attributed to anti-aliasing.",
-        "If desired, crop the iOS capture to match the component bounds (342×92) before comparison to avoid whitespace diff.",
-        "Confirm the 0.23% mismatch area is limited to font/dot edge anti-aliasing and not a structural layout shift."
-      ],
-      "intentional": [
-        "Empty whitespace below the component in the iOS capture is due to viewport size and is not a real UI difference.",
-        "All dot colors, sizes, and the 'Waiting pulse' label appear intentionally identical across platforms."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
+      "status": "pending",
+      "imageHash": "p1:0000000007fc0ffe03f407fe03fc07fe0000fffe0000fffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00000",
+      "generatedAt": "2026-07-23T22:50:59.910Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
       "metricMismatch": 0.0022987807347997213
     },
     {
@@ -364,7 +325,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.062095097284670775
+      "metricMismatch": 0.062097122642146285
     },
     {
       "id": "components.ui.spinner.states",
@@ -463,12 +424,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.0062678062678063196
+      "metricMismatch": 0.006261730195379456
     },
     {
       "id": "components.ui.section-header.states",
       "status": "ready",
-      "imageHash": "p1:0000001003e007c2000000020000f0060000fffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00001",
+      "imageHash": "p1:0000001007e007c2000000020000f0060000fffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00001",
       "generatedAt": "2026-07-09T22:21:15.986Z",
       "severity": "low",
       "summary": [
@@ -490,7 +451,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.004694103509269354
+      "metricMismatch": 0.004841279485829242
     },
     {
       "id": "components.ui.selection-popover.states",
@@ -633,7 +594,7 @@
     {
       "id": "components.ui.avatar-list-row.states",
       "status": "ready",
-      "imageHash": "p1:0ff81ffc0ffc3ffe806100c6000100060000000200000002000100060001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
+      "imageHash": "p1:03f81ffc0ffc3ffe806100c6000000060000000200000002000000060001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
       "generatedAt": "2026-07-09T22:21:21.361Z",
       "severity": "medium",
       "summary": [
@@ -663,7 +624,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.046069793818608984
+      "metricMismatch": 0.04473474568261293
     },
     {
       "id": "components.auth.register.inputs",
@@ -1349,7 +1310,7 @@
     {
       "id": "components.home.search.results",
       "status": "ready",
-      "imageHash": "p1:1ffe1ffe85f807fc80000000800000008cef0000800310120002dfffffffffffffff80ff80009fff803cc0ff800080ff88035fffe7ffffffc0fe8003c00e8002fffe83ffd8fe87ffd05ec1fedffe9fffffff807effff4bffffff403fffff83effffffc3ffffff81ffffffffffffffffffffffffffffffffffffe7ffeffffffff",
+      "imageHash": "p1:1ffe1ffe85f807fc80000000800000008cef0000800310120002dfffffffffffffff80ff80009fff8038c0ff800080ff88035fffe7ff7fffc0fe8003c00e8002fffe83ffd8fe87ffd05ec1fedffe9fffffff807effff4bffffff403fffff83effffffc3ffffff81ffffffffffffffffffffffffffffffffffffe7ffeffffffff",
       "generatedAt": "2026-07-11T22:11:11.488Z",
       "severity": "medium",
       "summary": [
@@ -1379,7 +1340,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2678147067957495
+      "metricMismatch": 0.2686083093666032
     },
     {
       "id": "components.home.search.channel-dropdown",
@@ -1415,7 +1376,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.26761622176314115
+      "metricMismatch": 0.2681404517897409
     },
     {
       "id": "components.home.saved.results",
@@ -1449,12 +1410,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.11583188182714244
+      "metricMismatch": 0.11588555380024579
     },
     {
       "id": "components.home.activity.results",
       "status": "ready",
-      "imageHash": "p1:1ff83ffc87fc07fe82fc03ff000000030040000300000007cbf13fc780f18027801d803f807d007f807d007fc1e11fff8011e7c78fbd00078ffd00ffcff11fff83f13ffffffd1fc7fffd03e7fffdfffffffdfffffffdffff0005fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe0000fffe1fff",
+      "imageHash": "p1:1ff83ffc87fc07fe82fc03ff000000030040000300000007cbf13fc780f18027801d803f807d007f807d007fc1e11fff8011e7c78fbd00078ffd00ffeff11fff83f13ffffffd1fc7fffd03e7fffdfffffffdfffffffdffff0005fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe0000fffe1fff",
       "generatedAt": "2026-07-22T11:29:24.834Z",
       "severity": "medium",
       "summary": [
@@ -1485,7 +1446,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.10742664830342552
+      "metricMismatch": 0.10737702704527352
     },
     {
       "id": "components.tasks.panel.states",
@@ -1661,7 +1622,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-22T22:16:36.015Z",
+      "generatedAt": "2026-07-23T22:51:00.579Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1777,72 +1738,16 @@
     },
     {
       "id": "components.settings.root.page",
-      "status": "ready",
-      "imageHash": "p1:1ffc1ffc0000000000000000000000008ffe1ffecffe03fe81fe01fec7fe07fec7fe07fe83fe07fedffe0ffe87fe0ffe83fe5ffe87fe03fe83fe1ffe83fe03fec3fe43fe83fe03fe87fe07fefffe7ffe8ffe1ffe8ffe07fe83fe03fe83fe03fe87fe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
-      "generatedAt": "2026-07-22T11:29:25.018Z",
-      "severity": "medium",
-      "summary": [
-        "iOS adds a settings gear icon inside a square border to the left of the 'Settings' title in the header; React has none.",
-        "iOS renders two extra menu items: 'Mobile' and 'Storage' under the PERSONAL section, and 'Send feedback' in the ABOUT section, none of which appear in React.",
-        "iOS label is 'Billing' while React label is 'Plan & Billing'.",
-        "iOS removes the 'Documentation' row from the ABOUT section that exists in React.",
-        "React's item font weight appears slightly heavier than iOS; iOS list items use a lighter, thinner typeface/weight."
-      ],
-      "likelyCauses": [
-        "iOS implementation adds a leading icon container and additional navigation rows that were omitted from the React baseline design.",
-        "iOS shortens the 'Plan & Billing' label to 'Billing' and drops 'Documentation' as part of a feature-scoping decision unique to iOS.",
-        "iOS uses a different font family/weight (likely SF Pro) versus React's (likely system Inter/Helvetica), producing perceivable weight differences at the same nominal size.",
-        "iOS applies a smaller row height / tighter list spacing token than React's settings list."
-      ],
-      "suggestedOwner": "ios-design",
-      "suggestedFixes": [
-        "Decide whether the gear icon in the header is intentional for iOS; align with React or remove to match the baseline.",
-        "Reconcile menu list contents: add 'Mobile', 'Storage', and 'Send feedback' to the React baseline, or remove them from iOS, and restore 'Documentation' / 'Plan & Billing' labels on iOS if they should be present.",
-        "Normalize font weight between platforms or pin the same font-family token (e.g., SF Pro vs Inter) for the settings list items.",
-        "Align iOS row height and section spacing to React's values; verify list section header top margins are consistent.",
-        "Match the header bottom border thickness between the two platforms."
-      ],
-      "intentional": [
-        "Different raw canvas resolution (390x844 vs 1170x2532) is a viewport dimension difference, not a layout defect."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.03803216267671239
-    },
-    {
-      "id": "components.settings.page.states",
-      "status": "ready",
-      "imageHash": "p1:1ffe1ffe9fff9fff87ff83ff80007fff81fccfff81fc8ff7820c83f780010ff7ffff5ff781fc7ff781fc07f787fc8ff7fffc000787fc7e3780088237800083f78ffc00978ffc41f79e3c5307823c7f0783fc7ff780fc430781fc5d07a7fc6ff7bffc61f79fe08007c7c0fff7bfe00ff7c0fc7ff78004000780000002ffffffff",
-      "generatedAt": "2026-07-18T07:40:36.132Z",
-      "severity": "high",
-      "summary": [
-        "iOS renders a 'Workspace mode' hint card at the top that React does not have in this state (or React omits it), changing vertical order and pushing Account content down.",
-        "iOS shows the Google account as 'Not connected' with a Connect button, while React shows Google as 'Connected as artin@slock.ai' — different connected-account state.",
-        "iOS displays a 'Session' section with 'Log out' card and orange 'Log out' button at the bottom; React does not show this in the captured region (cropped/missing).",
-        "Username field with '@' prefix is present in React but absent in iOS view (iOS only has Name and Display Name inputs).",
-        "Field label typography differs: iOS uses small-caps-style uppercase tracking (NAME, DISPLAY NAME) for labels, React uses sentence case ('Display Name', 'Username', 'Email')."
-      ],
-      "likelyCauses": [
-        "Different default/explicit state passed into the component on iOS (Google disconnected, Workspace mode toggle visible).",
-        "iOS SwiftUI implementation renders a different field set and order than the React component spec.",
-        "Label typography variant not aligned to design tokens between platforms (uppercase tracked labels vs sentence case).",
-        "Section composition differs: iOS includes a Session/Log out section that React either doesn't render or renders below the captured region.",
-        "Missing Username input on iOS suggests that field was intentionally omitted or not yet implemented for the iOS build."
-      ],
-      "suggestedOwner": "mobile-platform",
-      "suggestedFixes": [
-        "Align Account screen state parity: ensure both platforms use the same source-of-truth for connected accounts, workspace mode visibility, and field set (Name/Display Name/Username/Email).",
-        "Reuse the shared design token for form labels so iOS labels render in sentence case like React (or update React to match iOS if uppercase is the intended token).",
-        "Standardize the field order and grouping: avatar+handle row, then Name/Display Name, then Username, then Email in both implementations.",
-        "Add/verify the Session section with Log out card renders identically (or remove from one platform) and ensure the bottom region is within the captured frame.",
-        "Normalize section divider style (thin rule) and chevron affordance for 'Change password' across platforms."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.33241550883730975
+      "status": "pending",
+      "imageHash": "p1:1ffc1ffc0000000000000000000000008ffe1ffecffe03fe81fe01fec7fe07fec7fe07fe83fe07fedffe0ffe87fe0ffe83fe5ffe87fe03fe83fe1ffe83fe03fec7fe43fe87fe03fe87fe07fe87fe7ffe87fe1ffebffe07fe8ffe03fe83fe03fe83fe7ffe87fe7ffe83fe7ffe83fe7ffefffe7ffefffe7ffe00000000fff81fff",
+      "generatedAt": "2026-07-23T22:51:00.776Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.040952390596940336
     },
     {
       "id": "components.settings.account.page",
@@ -1878,76 +1783,6 @@
       "analysisModel": "MiniMax-M3",
       "error": null,
       "metricMismatch": 0.33241550883730975
-    },
-    {
-      "id": "components.settings.account.provider-linked",
-      "status": "ready",
-      "imageHash": "p1:0ffe0ffe9fff9fff87ff83ff80007fff81fccfff81fc8ff7820c83f780010ff7ffff5ff781fc7ff781fc07f787fc8ff7fffc000787fc7e3780088237800083f78ffc00178ffc41f79e3c5307823c7f9783fc7ff780fc430781fc5d07a7fc6ff7bffc61f79fe08007c7c0fff7bfe00ff7c0fc7ff78004000780000002ffffffff",
-      "generatedAt": "2026-07-18T07:40:36.739Z",
-      "severity": "high",
-      "summary": [
-        "iOS adds a 'Workspace mode' callout card at top (with toggle) that React does not render.",
-        "iOS shows a 'NAME' (non-editable) field above 'DISPLAY NAME', while React shows 'Username' with @ prefix and no separate Name row.",
-        "React renders 'Account' section header with person icon above the profile card; iOS uses a 'Profile' section header.",
-        "iOS shows a green 'VERIFIED' pill with shield icon next to email; React shows it as plain text 'VERIFIED' without shield icon and with different color.",
-        "iOS includes a separate 'Session' section with 'Log out' destructive action and explanatory copy; React has no logout/session section visible."
-      ],
-      "likelyCauses": [
-        "iOS implementation introduced extra sections (Workspace mode, Session/Log out) not present in React baseline.",
-        "iOS uses a different profile schema (split NAME vs DISPLAY NAME) than React (Username with @ prefix).",
-        "iOS visual variants for status pills (VERIFIED, Connected) diverge from shared design tokens used by React.",
-        "Save Profile button enabled/disabled state differs because form validity logic differs between platforms."
-      ],
-      "suggestedOwner": "ios-engineering",
-      "suggestedFixes": [
-        "Remove iOS-only 'Workspace mode' card or move it out of this component bounds so it doesn't appear in the visual diff.",
-        "Align iOS profile fields with React: remove standalone NAME row and use 'Username' with @ prefix input.",
-        "Standardize VERIFIED and Connected pill colors/icons across platforms via shared tokens.",
-        "Either remove iOS Session/Log out section from this screenshot scope or add equivalent to React baseline.",
-        "Ensure Save Profile button rendering (color, disabled state) matches React design spec."
-      ],
-      "intentional": [
-        "Differences in screen canvas resolution and aspect ratio (390×844 vs 1170×2532) cause natural layout shifts.",
-        "iOS back arrow and Account title typography weight appear bolder, which may be platform-native styling."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.3325019240896018
-    },
-    {
-      "id": "components.settings.account.password-expanded",
-      "status": "ready",
-      "imageHash": "p1:07fe2ffe87fc9ffffffc83fffe3cffff83fccfff83fc8ff780fc83f7a7fc8ff7e7fcdff7fffc7ff7c7c0c7f7e7c08ff7fffc8007e0fcfe37e3fc8237bff883f78000c0f787fce1f780007307c3fc7f0797f87ff78000430780fcff0780006ff7ffff61f7ffff43f78fc0bff7dfc08007b7c097f7801d0007ffff0112ffffffff",
-      "generatedAt": "2026-07-18T07:40:39.824Z",
-      "severity": "high",
-      "summary": [
-        "React layout shows profile + email + connected accounts + change password + logout stacked vertically with change password expanded showing all fields; iOS shows profile (with avatar, Name, Display Name fields) + email + connected accounts + change password collapsed/expanded, but no Log out / Session section visible",
-        "iOS adds an 'Account' navigation header with back-arrow chevron not present on React baseline",
-        "iOS renders a profile card with purple avatar tile, 'artin' name, '@artin' handle, and separate Name + Display Name fields; React has no avatar, no handle, and no Name/Display Name fields — only an email/username prefix input",
-        "Google connected-account row differs: React shows 'Connected as artin@slock.ai' with no Connect button; iOS shows 'Not connected' with a Connect button",
-        "GitHub row: React shows a Connect button on the right; iOS also shows Connect but both apps label it 'Not connected' (React inconsistency not in scope but visible)"
-      ],
-      "likelyCauses": [
-        "iOS screen was captured at a larger 1170×2532 resolution while React baseline is 390×844, but the iOS content is not scaled to fit and overflows / clips at the bottom",
-        "React and iOS implementations diverge on which sections to render — iOS omits the Log out / Session card entirely",
-        "Different component structures: React uses a single expanded-password inline form; iOS uses a collapsible 'Change password' section plus a separate profile sub-section with avatar and Name/Display Name fields",
-        "Label casing tokens differ between platforms (Title Case on web vs UPPERCASE on iOS, suggesting different i18n/text-style transforms)",
-        "Connected-account copy and CTA presence differ because iOS renders the un-connected state for both Google and GitHub, while React renders Google as already connected"
-      ],
-      "suggestedOwner": "design-systems",
-      "suggestedFixes": [
-        "Normalize resolution scaling so the iOS 1170×2532 canvas is proportionally compared to React's 390×844, or capture both at the same logical size",
-        "Decide on a single Account screen layout: keep Name + Display Name + avatar on both platforms, or remove from iOS to match React",
-        "Add the Log out / Session card to the iOS Account screen, or remove it from the React baseline — pick one source of truth",
-        "Unify label casing for password fields across platforms (pick Title Case or UPPERCASE and apply globally via design tokens)",
-        "Align connected-account row content: show the connected email when linked, hide the Connect button when already connected, and show Connect only when 'Not connected'"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.25728419816097536
     },
     {
       "id": "components.settings.account.error-state",
@@ -2022,73 +1857,17 @@
       "metricMismatch": 0.21314862073155916
     },
     {
-      "id": "components.settings.language-region.page",
-      "status": "ready",
-      "imageHash": "p1:0ffe0ffe9fff9fff80ff803fbffe3fff87ff03f783fc7ff7c1fc0077803c00178fe88007800083f7c1fc03f7fffc7ed783fc007787fc000787fc003780007ff7ffff35f78ffc0e27cffc8007bffc07f78000800787fc8fffdffc0ff781fc7ff781fc3ff787fc8007800007f7ffff00f7ffff00f7ffff0ff7ffff07f2ffffffff",
-      "generatedAt": "2026-07-19T05:31:51.247Z",
-      "severity": "medium",
-      "summary": [
-        "iOS splits Language settings into two nested sections (App language + Language/Translation mode), while React renders a single combined LANGUAGE section",
-        "React uses Title case section/field labels (e.g., 'LANGUAGE', 'Display language', 'Translation mode'); iOS uses Sentence case and ALL CAPS inconsistently (e.g., 'App language', 'LANGUAGE' for icons, 'TRANSLATION MODE', 'TIME FORMAT')",
-        "iOS adds an explicit 'Preferred translation language' dropdown and a third 'Original' translation-mode pill (with icons); React omits both and shows only a generic English select",
-        "Selected-state color (yellow #FFC107-ish) matches between sides, but iOS adds leading icons inside selected pills (pencil on Manual, document on Original, clock on time format) where React shows plain text",
-        "iOS Save buttons include a leading floppy-disk icon and sit inside cards; React Save buttons are icon-less and visually share the same card background instead of breaking into a separate card"
-      ],
-      "likelyCauses": [
-        "iOS implementation followed HIG/iOS conventions (ALL CAPS section headers, segmented controls with icons, SF Symbols) while React implementation follows web/Material conventions",
-        "Translation-mode logic differs: iOS surfaces three explicit modes plus a preferred target language; React collapses options to a single dropdown",
-        "Two independent design sources or diverged specs — no shared component or single source of truth for the Language & Region screen",
-        "Save-button styling was not tokenized; iOS used icon variant while React used text-only"
-      ],
-      "suggestedOwner": "design-system",
-      "suggestedFixes": [
-        "Decide on a single label casing convention (likely Sentence case for web, ALL CAPS only for icon-labeled section headers) and document in the design system; align React to match iOS card structure",
-        "Reconcile translation-mode options: either add the 'Original' pill and 'Preferred translation language' field to React, or remove them from iOS so parity holds",
-        "Unify Save button styling — pick icon or no-icon and apply consistently across platforms via a shared token",
-        "Standardize section-header typography (weight, case, size) and the divider weight under the page title",
-        "Add visual regression coverage to Slock at the contract level so future drift between React and iOS is caught before merge"
-      ],
-      "intentional": [
-        "Yellow selected state color and pill outline styling are intentionally identical across platforms",
-        "Back-arrow icon and 'Language & Region' page title appear consistent in size/position"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.2030198079961113
-    },
-    {
       "id": "components.settings.appearance.page",
-      "status": "ready",
-      "imageHash": "p1:0ffe0ffc8ffe07fe81fe01fe06021f028200000081fc180c80cc007c80040054a3fc0000807c007c817c0004bffc20048ffc0000807cfffe8004fffeb1fcfffe8000fffe8000fffe81f0fffe8018fffebffcfffe83fcfffe8000fffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffefffefffe7ffe00066002fffe3fff",
-      "generatedAt": "2026-07-22T11:29:25.328Z",
-      "severity": "high",
-      "summary": [
-        "iOS is missing the 'Live agent activity' toggle section entirely",
-        "iOS header label reads 'Appearance' (mixed case) vs React's 'APPEARANCE' (uppercase)",
-        "iOS preview avatar is a plain purple square with person icon, React shows a green pixel-art avatar",
-        "iOS preview lacks the timestamp '11:07 AM' shown on React's message preview",
-        "iOS preview text does not render the '#proj-uiux' chip or 'git pull' inline-code highlight as visually distinct elements"
-      ],
-      "likelyCauses": [
-        "iOS implementation dropped or did not yet ship the 'Live agent activity' feature",
-        "Inconsistent typography token mapping (case, font family) between React and iOS",
-        "iOS preview reuses a generic user avatar placeholder instead of the seeded test avatar",
-        "iOS message renderer does not apply mention/inline-code styling in the preview"
-      ],
-      "suggestedOwner": "ios-engineering",
-      "suggestedFixes": [
-        "Add the 'Live agent activity' toggle card to the iOS Appearance page, matching React's layout and copy",
-        "Align section header style with React: uppercase letter-spacing and serif 'T' glyph",
-        "Replace generic purple placeholder avatar in preview with the seeded green pixel-art avatar (or tokenize so React and iOS render the same)",
-        "Ensure timestamp '11:07 AM' is rendered alongside the author name in the iOS preview",
-        "Apply mention-chip and inline-code visual styles (#proj-uiux background, monospace 'git pull' pill) in the iOS preview renderer"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.1978986916190708
+      "status": "pending",
+      "imageHash": "p1:0ffe0ffe8ffe1ffe81fe81fe97fe1efe820f001c81fc4ff481fc4ff080040004bffc8000807c07fc81fc3d0cbffc007c8ffc007c807c00008004007cb1fc0004800020008000000081f0ffffa018ffffbffcffff9bfcffff8000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7ffe7ffeffff7fff",
+      "generatedAt": "2026-07-23T22:51:00.860Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.19377607647749828
     },
     {
       "id": "components.settings.notifications.page",
@@ -2124,41 +1903,6 @@
       "analysisModel": "MiniMax-M3",
       "error": null,
       "metricMismatch": 0.2762344553813748
-    },
-    {
-      "id": "components.settings.connected-apps.page",
-      "status": "ready",
-      "imageHash": "p1:fffe7ffeffffdfff80ff807fffc1ffffffc0b3f7ffc18207c03ece07fffefff7fffefff7c00efff7800e87f78001bb37b7fcbb378001800783fc80078001bfff8ffe8017800c9ff7807cff07867cff07affcff17bfe08007802087178001bff780fe80078ffea7f78ffe8007fff087d78071ff078001dff780fc8707ffffffff",
-      "generatedAt": "2026-07-18T07:40:44.344Z",
-      "severity": "medium",
-      "summary": [
-        "iOS displays additional numeric stat tiles (Marketplace 3, Installed 2, My apps 1) inside the header card with an 'EXPERIMENTAL' badge, not present on React",
-        "iOS tabs row includes leading icons on each tab (storefront, check, key) and uses a yellow filled style for the active 'Marketplace' tab vs React's plain outlined tabs",
-        "iOS section ordering differs: header stats → tabs → Built-in card → Marketplace (search/categories/list), whereas React shows header description → search → categories → Built-in card → list",
-        "'My apps' tab label is truncated to 'My Ap...' on iOS but fits fully on React",
-        "Search field placeholder text differs ('Search apps' on iOS vs 'Search apps...' on React)"
-      ],
-      "likelyCauses": [
-        "Platform-specific layout pass reorganized sections and added experimental stat tiles only on iOS",
-        "Tab component on iOS renders icon prefixes and applies active-state fill color, while React tab uses text-only outlined style",
-        "Truncation of 'My apps' tab likely due to fixed-width tab container not accounting for icon prefix on iOS",
-        "Slack Bridge card on iOS collapsed the category tag and author line into a single metadata string instead of separate elements"
-      ],
-      "suggestedOwner": "mobile-platform",
-      "suggestedFixes": [
-        "Decide whether the 'EXPERIMENTAL' stat tiles are intentional for iOS; if not, hide them or gate behind a feature flag and align React",
-        "Fix 'My apps' tab truncation by allowing tab to wrap to a second line or shrinking icon/text size on iOS",
-        "Normalize Slack Bridge card structure so the category tag and author are rendered consistently with React",
-        "Unify search placeholder wording across platforms",
-        "Verify bottom content (GitHub Issues) is reachable via scroll on iOS viewport without clipping"
-      ],
-      "intentional": [
-        "Section layout reorganization into stacked sections on iOS vs React's two-column layout is an accepted mobile adaptation"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.3613062205479267
     },
     {
       "id": "screens.auth.login.signing",
@@ -2233,7 +1977,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-22T22:16:36.414Z",
+      "generatedAt": "2026-07-23T22:51:00.839Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2246,7 +1990,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-22T22:16:36.414Z",
+      "generatedAt": "2026-07-23T22:51:00.839Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2259,7 +2003,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-22T22:16:36.414Z",
+      "generatedAt": "2026-07-23T22:51:00.839Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2272,7 +2016,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-22T22:16:36.414Z",
+      "generatedAt": "2026-07-23T22:51:00.839Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2285,7 +2029,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-22T22:16:36.414Z",
+      "generatedAt": "2026-07-23T22:51:00.839Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2459,12 +2203,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19295243110408988
+      "metricMismatch": 0.19295310622324835
     },
     {
       "id": "components.thread.message-row.rich-content",
       "status": "ready",
-      "imageHash": "p1:03f807fc07fcfffe00050002e0050002e001c002e001c006e03dc006e07dc0fee1fdc0fee1fdfffee07dc17efffdc07ee005fffec005c0064ffdc006f05dfffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
+      "imageHash": "p1:03f807fc07fcfffe00050002e0050002e001c002e001c006e03dc006e07dc0fee1fdc0fee1fdfffee07dc17efffdc07ee005fffec005c0064ffdc006f05dfffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffa1fff",
       "generatedAt": "2026-07-09T22:22:14.971Z",
       "severity": "medium",
       "summary": [
@@ -2493,7 +2237,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.10204932420572232
+      "metricMismatch": 0.10234873955253099
     },
     {
       "id": "components.thread.message-row.long-inline-code",
@@ -2738,19 +2482,6 @@
       "analysisModel": "MiniMax-M3",
       "error": null,
       "metricMismatch": 0.06754027085780645
-    },
-    {
-      "id": "screens.settings.connected-apps.full-height",
-      "status": "pending",
-      "imageHash": null,
-      "generatedAt": "2026-07-22T22:16:36.764Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "missing side-by-side image",
-      "metricMismatch": null
     }
   ]
 }

@@ -1,31 +1,31 @@
 # Raft Visual Testing
 
-Generated: 2026-07-22 22:16:42 UTC
-Latest run: 785f4dc-20260722221033
-Latest commit: 785f4dc-20260722221033
-Commit subject: perf(thread): mark first content composition start (task #20 t4) (#1451)
+Generated: 2026-07-23 22:51:05 UTC
+Latest run: 37df1bb1-20260723224841
+Latest commit: 37df1bb1-20260723224841
+Commit subject: fix(visual): preserve artifacts across targeted processes (#1499)
 Providers: react vs android, react vs ios, android vs ios
-Summary: total 85, same 0, pass 0, basic-pass 1, different 83, missing 1
-AI analysis: ready 84 / total 85, pending 1
-Visual coverage matrix: active 94 / total 113, pending 16, skipped 3
+Summary: total 79, same 0, pass 0, basic-pass 0, different 78, missing 1
+AI analysis: ready 74 / total 79, pending 5
+Visual coverage matrix: active 88 / total 107, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Comparisons
 
-- react__android: total 85, same 0, pass 0, basic-pass 1, different 83, missing 1
-- react__ios: total 85, same 0, pass 13, basic-pass 10, different 55, missing 7
-- android__ios: total 85, same 0, pass 14, basic-pass 18, different 47, missing 6
+- react__android: total 79, same 0, pass 0, basic-pass 0, different 78, missing 1
+- react__ios: total 79, same 0, pass 13, basic-pass 9, different 51, missing 6
+- android__ios: total 79, same 0, pass 14, basic-pass 18, different 42, missing 5
 
 ## Capture Type Coverage
 
-- Components Parity (component-fixture): active 82, pending 2, total 86
-- Screens Parity (real-screen): active 12, pending 14, total 27
+- Components Parity (component-fixture): active 77, pending 2, total 81
+- Screens Parity (real-screen): active 11, pending 14, total 26
 
 ## Provider Coverage
 
-- react: active 94, pending 13, unsupported 0
-- android: active 88, pending 19, unsupported 0
-- harmony: active 0, pending 87, unsupported 0
+- react: active 88, pending 13, unsupported 0
+- android: active 82, pending 19, unsupported 0
+- harmony: active 0, pending 81, unsupported 0
 - ios: active 0, pending 1, unsupported 0
 
 ## Pending Coverage Rows
@@ -73,8 +73,6 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 - components.navigation.tabbar.states: React now captures the real MainLayout MobileTabBar from the visual route. The previous hand-built VisualMobileTabBar approximation was removed from the provider path. Harmony remains pending real-device/provider capture.
 - components.settings.account.error-state: Account save/avatar/password/provider error messages are rendered from typed Store action state rather than raw API responses.
 - components.settings.account.page: React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.
-- components.settings.account.password-expanded: Account password disclosure state maps React current/new/confirm password form to shared KMP Settings without exposing password values in snapshot fixtures.
-- components.settings.account.provider-linked: Account connected-provider state maps React AccountSection identities and provider connect affordances to shared KMP Settings.
 - components.settings.administration.admins: React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.
 - components.settings.administration.invites: React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.
 - components.settings.administration.join-links: React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.
@@ -83,10 +81,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 - components.settings.administration.pre-join-agreement: React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.
 - components.settings.administration.translation: React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.
 - components.settings.appearance.page: Real React SettingsPanel AppearanceSection mapped to KMP SettingsAppearanceContent through the shared settings visual page; full Settings route coverage remains screens.settings.appearance pending.
-- components.settings.connected-apps.page: React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.
-- components.settings.language-region.page: React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.
 - components.settings.notifications.page: React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.
-- components.settings.page.states: Real React SettingsPanel Account page vs Android rendering of shared SettingsDetailShell/SharedSettingsSectionContent.
 - components.settings.root.page: Real mobile Settings tab root / first screen: React Sidebar mobileInline grouped list vs Android shared SettingsAppShellContent home route. Covers PERSONAL, WORKSPACE, ABOUT groups and Mobile, About, Release Notes rows.
 - components.settings.server.profile: React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.
 - components.tasks.panel.states: Real React TasksPanel (server mode, list view) with shared tasksFixture.json rows covering todo / in_progress / in_review / done status sections, task numbers, and per-status InlineBadgeEditor chips.
@@ -110,7 +105,6 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 - screens.settings.administration.full-height: Full-height (content-height, not viewport-clipped) Settings Administration route for react↔android parity (task #388). React renders all ADMINISTRATION_VISUAL_SECTIONS stacked, unclamped, captured fullPage (verified 1170x6648). Android eager full-height capture on main (#259, verified 1170x7382; density diff normalizes). First react↔android full-height pairing runs next full/nightly.
 - screens.settings.appearance: Pending as a full Settings screen route. Component coverage lives in components.settings.appearance.page; this screen case needs real Settings route launch on both providers, not a component visual page.
 - screens.settings.billing-portal: Skipped: billing portal is an external browser URL action (https://raft.build/settings/billing), not an in-app screen/WebView route. Validate the Billing page/action state instead.
-- screens.settings.connected-apps.full-height: Full-height (content-height, not viewport-clipped) Settings Connected Apps route for react↔android parity (task #388). React renders IntegrationsSection unclamped, captured fullPage (harness stubs the connected-apps endpoints so it mirrors the canonical seed: Marketplace 3 / Installed 2 / My apps 1, no Storage Sync); short routes report true content height. Android capture (#259) + data alignment (#404/#405 via #262: server_local counts as Installed, Storage Sync placeholder removed) both on main. Validated by the first react↔android full-height pairing (run 28880036248) + fidelity/data alignment (#4103/#4110/#262); active as of 2026-07-07.
 - screens.settings.server-danger-modal: Real React SettingsPanel DangerZoneSection modal and KMP SettingsServerDeleteConfirmationDialog safe open state; destructive submit stays disabled and no delete action is invoked.
 - screens.settings.storage: Pending: needs React Settings Storage route/provider plus Android Settings Storage route capture with seeded storage rows; do not activate through the generic settings visual page.
 - screens.tasks.index: Missing true Tasks screen parity: list, filters, task status, and create-task entry need real route captures.
@@ -121,6 +115,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- 37df1bb1-20260723224841: react vs android, total 79, pass 0, basic-pass 0, different 78, matrix runs/37df1bb1-20260723224841/component-matrix.json, page runs/37df1bb1-20260723224841/
 - 785f4dc-20260722221033: react vs android, total 85, pass 0, basic-pass 1, different 83, matrix runs/785f4dc-20260722221033/component-matrix.json, page runs/785f4dc-20260722221033/
 - 6f81bef-20260722112452: react vs android, total 85, pass 0, basic-pass 1, different 83, matrix runs/6f81bef-20260722112452/component-matrix.json, page runs/6f81bef-20260722112452/
 - 8cf0118-20260721104254: react vs android, total 84, pass 0, basic-pass 1, different 82, matrix runs/8cf0118-20260721104254/component-matrix.json, page runs/8cf0118-20260721104254/
