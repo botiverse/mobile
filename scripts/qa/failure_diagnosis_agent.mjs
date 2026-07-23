@@ -10,7 +10,7 @@ import os from "node:os";
 import path from "node:path";
 import { runWithModelRetries, StampModelCapacityClient } from "./model_capacity.mjs";
 import { validateReviewerDiagnosis } from "./failure_diagnosis_contract.mjs";
-import { extractRecordingFrames } from "./recording_frames.mjs";
+import { createVideoEvidenceWorkspace } from "./video_evidence_workspace.mjs";
 
 const argv = process.argv.slice(2);
 const arg = (name, fallback = "") => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : fallback; };
@@ -63,17 +63,24 @@ async function main() {
   const rc = context.run_case;
   const evidence = context.evidence;
   const shots = evenly(evidence.filter((item) => ["screenshot", "screenshot_annotated"].includes(item.kind)), 12);
-  const recordings = evenly(evidence.filter((item) => item.kind === "recording"), 2);
+  const recordings = evidence.filter((item) => item.kind === "recording");
   const textEvidence = evidence.filter((item) => ["steps_log", "session_log", "ui_dump", "report", "logcat", "checkpoint"].includes(item.kind));
   const included = [...shots, ...textEvidence, ...recordings];
   const bytes = new Map();
   for (const item of included) bytes.set(item.id, await evidenceBytes(rc.run_id, item));
-  const recordingFrames = recordings.flatMap((item) => extractRecordingFrames({
-    bytes: bytes.get(item.id),
-    evidence: item,
-    outDir: path.join(os.tmpdir(), `stamp-recording-${item.id}`),
-    count: 3,
-  }));
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "stamp-diagnosis-"));
+  const videoWorkspace = createVideoEvidenceWorkspace({ root: workspaceRoot, recordings, bytesById: bytes });
+  const textWorkspaceManifest = textEvidence.map((item) => {
+    const filename = `${String(item.id).replace(/[^A-Za-z0-9._-]/g, "_")}-${item.kind}.txt`;
+    const value = sanitized(bytes.get(item.id), 2_000_000);
+    fs.writeFileSync(path.join(workspaceRoot, filename), value, { mode: 0o600 });
+    return { evidence_id: item.id, source_sha256: item.sha256, kind: item.kind, filename, size_bytes: Buffer.byteLength(value) };
+  });
+  fs.writeFileSync(path.join(workspaceRoot, "README.txt"), [
+    "This workspace contains SHA-verified original MP4 evidence and redacted text evidence.",
+    "The diagnosis agent chooses whether and where to inspect recordings through the provided ffprobe/ffmpeg tools.",
+    "No platform-selected fixed frames are present.",
+  ].join("\n"), { mode: 0o600 });
 
   const prompt = [
     "You are an independent failure-diagnosis M3 reviewer. You are NOT deciding release and must not reward or punish the executor.",
@@ -82,6 +89,7 @@ async function main() {
     "Use navigation_contract for missing/ambiguous entry or locator; fixture for seed/login/permission/assertion/environment; budget only when the target surface was reached and the trajectory kept making useful progress; infra for runner/provider/system failures.",
     "For budget, recommend a bounded case-specific max_turns/max_minutes from observed progress plus margin and retain a no-progress fuse. Do not globally increase time.",
     "Old attempt/revision remains immutable. Product -> human review only; navigation -> new case revision; fixture -> repair then retry; budget/infra -> new immutable retry.",
+    "Original SHA-verified MP4 recordings are available in your diagnosis workspace. The provider does not accept native video content, so use inspect_video and extract_video_frame yourself at timestamps chosen from the trajectory; no platform-selected fixed frames exist. Cite the original recording evidence id, not a derived frame filename.",
     "",
     `Run case: ${runCaseId}; case=${rc.case_id}; revision=${rc.case_revision}; attempt=${rc.attempt}; coordinate=${rc.coordinate_key}`,
     `Executor verdict: ${rc.verdict_json}`,
@@ -101,10 +109,7 @@ async function main() {
       content.push({ type: "text", text: `${item.kind.toUpperCase()} id=${item.id} seq=${item.seq}\n${sanitized(value)}` });
     }
   }
-  for (const frame of recordingFrames) {
-    content.push({ type: "text", text: `RECORDING FRAME source_evidence=${frame.evidence_id} source_sha256=${frame.source_sha256} timestamp_ms=${frame.timestamp_ms}` });
-    content.push({ type: "image", data: frame.bytes.toString("base64"), mimeType: "image/jpeg" });
-  }
+  content.push({ type: "text", text: `DIAGNOSIS WORKSPACE MANIFEST\n${JSON.stringify({ recordings: videoWorkspace.manifest, text_evidence: textWorkspaceManifest })}` });
 
   const providers = await import(process.env.SLOCK_PI_AI_MODULE || "@earendil-works/pi-ai/providers/all");
   const models = providers.builtinModels();
@@ -144,21 +149,62 @@ async function main() {
         { type: "text", text: "FORMAT/CONTRACT CORRECTION: return exactly one JSON object matching every classification, retry-plan, budget, and evidence-id constraint." },
         ...content,
       ];
-      const response = await models.complete(model,
-        { messages: [{ role: "user", content: attemptContent, timestamp: Date.now() }] },
-        { apiKey: piKey, maxTokens: 3000, timeoutMs: 180000 });
-      if (response.stopReason === "error" || response.stopReason === "aborted") throw new Error(response.errorMessage || response.stopReason);
+      const messages = [{ role: "user", content: attemptContent, timestamp: Date.now() }];
+      const tools = videoWorkspace.manifest.length ? [
+        {
+          name: "inspect_video",
+          description: "Inspect one original SHA-verified MP4 with ffprobe before choosing timestamps.",
+          parameters: { type: "object", additionalProperties: false, required: ["evidence_id"], properties: { evidence_id: { type: "string" } } },
+        },
+        {
+          name: "extract_video_frame",
+          description: "Extract one JPEG from an original MP4 at an agent-chosen exact timestamp in milliseconds. Use only after inspect_video.",
+          parameters: { type: "object", additionalProperties: false, required: ["evidence_id", "timestamp_ms"], properties: { evidence_id: { type: "string" }, timestamp_ms: { type: "integer", minimum: 0 } } },
+        },
+      ] : [];
+      let response = null;
+      for (let turn = 0; turn < 24; turn++) {
+        response = await models.complete(model, { messages, tools }, { apiKey: piKey, maxTokens: 3000, timeoutMs: 180000 });
+        if (response.stopReason === "error" || response.stopReason === "aborted") throw new Error(response.errorMessage || response.stopReason);
+        messages.push(response);
+        const calls = response.content.filter((block) => block.type === "toolCall");
+        if (!calls.length) break;
+        for (const call of calls) {
+          try {
+            if (call.name === "inspect_video") {
+              const result = videoWorkspace.inspectVideo(call.arguments.evidence_id);
+              messages.push({ role: "toolResult", toolCallId: call.id, toolName: call.name, content: [{ type: "text", text: JSON.stringify(result) }], isError: false, timestamp: Date.now() });
+            } else if (call.name === "extract_video_frame") {
+              const frame = videoWorkspace.extractFrame(call.arguments.evidence_id, call.arguments.timestamp_ms);
+              messages.push({ role: "toolResult", toolCallId: call.id, toolName: call.name, content: [
+                { type: "text", text: JSON.stringify({ evidence_id: frame.evidence_id, source_sha256: frame.source_sha256, timestamp_ms: frame.timestamp_ms }) },
+                { type: "image", data: frame.bytes.toString("base64"), mimeType: "image/jpeg" },
+              ], isError: false, timestamp: Date.now() });
+            } else {
+              throw new Error(`unsupported tool: ${call.name}`);
+            }
+          } catch (error) {
+            messages.push({ role: "toolResult", toolCallId: call.id, toolName: call.name, content: [{ type: "text", text: String(error?.message || error) }], isError: true, timestamp: Date.now() });
+          }
+        }
+      }
+      if (!response || response.stopReason === "toolUse") throw new Error("diagnosis agent exhausted tool turns without a final answer");
       raw = response.content.filter((block) => block.type === "text").map((block) => block.text).join("\n");
       return validateReviewerDiagnosis(JSON.parse(raw.trim()), { evidenceIndex, executorDiagnosis, trajectory });
     },
   });
   const capacityBytes = fs.readFileSync("model-capacity.jsonl");
   diagnosis.provenance = {
-    schema_version: "failure-diagnosis/v1",
-    prompt_version: "failure-diagnosis-prompt/v1",
+    schema_version: "failure-diagnosis/v2",
+    prompt_version: "failure-diagnosis-prompt/v2",
     model: `${providerName}/${modelName}`,
     source_commit: process.env.GITHUB_SHA || "",
-    recording_frames: recordingFrames.map(({ bytes: _bytes, ...frame }) => frame),
+    video_workspace: {
+      native_video_input: false,
+      original_recordings: videoWorkspace.manifest,
+      text_evidence: textWorkspaceManifest,
+      agent_tool_calls: videoWorkspace.toolLog,
+    },
     workflow_run_id: process.env.GITHUB_RUN_ID || "",
     workflow_run_attempt: process.env.GITHUB_RUN_ATTEMPT || "",
     workflow_ref: process.env.GITHUB_WORKFLOW_REF || "",
@@ -167,6 +213,7 @@ async function main() {
   };
   const submitted = await stamp(`/api/diagnoses/${runCaseId}`, { method: "POST", body: JSON.stringify(diagnosis) });
   fs.writeFileSync(out, JSON.stringify({ run_case_id: runCaseId, diagnosis, submitted, raw_model_output: raw }, null, 2));
+  fs.rmSync(workspaceRoot, { recursive: true, force: true });
   console.log(JSON.stringify({ run_case_id: runCaseId, diagnosis, submitted }, null, 2));
 }
 
