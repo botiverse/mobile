@@ -44,7 +44,7 @@ fun handleElement(
     // around composable calls); an abandoned pass emits nothing — see
     // LocalSlockMarkdownRenderTiming docs. Null timing = zero added work.
     val nodeTiming = LocalSlockMarkdownRenderTiming.current
-    nodeTiming?.enterNode(slockMarkdownNodeTypeKey(node.type.name))
+    nodeTiming?.enterNode(node.type.name)
     val markdownTypography = LocalMarkdownTypography.current
     val model = MarkdownComponentModel(
         content = content(),
@@ -104,7 +104,7 @@ fun handleElement(
 ) {
     // t6-a: same sequential enter/exit contract as the ParseResult overload.
     val nodeTiming = LocalSlockMarkdownRenderTiming.current
-    nodeTiming?.enterNode(slockMarkdownNodeTypeKey(node.type.name))
+    nodeTiming?.enterNode(node.type.name)
     val markdownTypography = LocalMarkdownTypography.current
     val model = MarkdownComponentModel(
         content = content,

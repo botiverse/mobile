@@ -2,10 +2,14 @@ package build.raft.app.markdown
 
 import com.tencent.kuiklybase.markdown.compose.SlockMarkdownNodeTraceSink
 import com.tencent.kuiklybase.markdown.compose.SlockMarkdownRenderTiming
+import com.tencent.kuiklybase.markdown.compose.slockMarkdownRenderTimingOrNull
 import com.tencent.kuiklybase.markdown.compose.SlockNodeDetailCapPerRender
 import com.tencent.kuiklybase.markdown.compose.slockMarkdownNodeTypeKey
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.microseconds
 import kotlin.time.ExperimentalTime
@@ -104,22 +108,28 @@ class SlockMarkdownNodeTimingTest {
     }
 
     @Test
-    fun abortedFramesAreDrainedAndReported() {
+    fun abortedRenderDiscardsAllAttributionAndMarksInvalid() {
         val sink = RecordingSink()
         val clock = TestTimeSource()
         val timing = SlockMarkdownRenderTiming(sink, clock)
 
+        // One properly closed node, then two frames left open (abandoned pass).
+        timing.enterNode("paragraph")
+        clock += 1_000.microseconds
+        timing.exitNode()
         timing.enterNode("block_quote")
         clock += 1_000.microseconds
         timing.enterNode("paragraph")
         clock += 500.microseconds
-        // No exits: simulates a pass that still reaches finishRender.
-        timing.finishRender(renderNodesUs = 1_500)
+        timing.finishRender(renderNodesUs = 2_500)
 
+        // No-false-data contract: no summaries, no detail beyond the already
+        // emitted closed-node line, and an explicit invalid reconcile only.
+        assertTrue(sink.lines.none { "phase=markdown.node.summary" in it })
         val reconcile = sink.lines.single { "phase=markdown.node.reconcile" in it }
+        assertEquals("1", field(reconcile, "invalid"))
         assertEquals("2", field(reconcile, "abortedFrames"))
-        // Both frames were closed: their exclusive time is accounted for.
-        assertEquals("1500", field(reconcile, "exclusiveSumUs"))
+        assertEquals(null, field(reconcile, "exclusiveSumUs"))
     }
 
     @Test
@@ -152,7 +162,7 @@ class SlockMarkdownNodeTimingTest {
             "phase", "renderSeq", "type", "exclusiveUs", "totalUs", "depth",
             "topIndex", "count", "totalExclusiveUs", "maxUs", "belowThreshold",
             "renderNodesUs", "exclusiveSumUs", "remainderUs", "detailDropped",
-            "abortedFrames"
+            "abortedFrames", "invalid"
         )
         for (line in sink.lines) {
             assertTrue(line.startsWith("SlockMarkdownSpike "), line)
@@ -171,5 +181,41 @@ class SlockMarkdownNodeTimingTest {
         assertEquals("table", slockMarkdownNodeTypeKey("TABLE"))
         assertEquals("other", slockMarkdownNodeTypeKey("SOME_CUSTOM_NODE"))
         assertEquals("other", slockMarkdownNodeTypeKey("MESSAGE_BODY_LEAK"))
+    }
+
+    private class CountingTimeSource(private val delegate: TestTimeSource) : kotlin.time.TimeSource {
+        var markNowCalls = 0
+        override fun markNow(): kotlin.time.TimeMark {
+            markNowCalls++
+            return delegate.markNow()
+        }
+    }
+
+    @Test
+    fun offCounterfactualCreatesNothingAndReadsNoClock() {
+        val clock = CountingTimeSource(TestTimeSource())
+        val timing = slockMarkdownRenderTimingOrNull(sink = null, timeSource = clock)
+        assertNull(timing)
+        assertEquals(0, clock.markNowCalls)
+    }
+
+    @Test
+    fun onPathClockUsageMatchesEnteredNodeCount() {
+        val sink = RecordingSink()
+        val clock = CountingTimeSource(TestTimeSource())
+        val timing = slockMarkdownRenderTimingOrNull(sink = sink, timeSource = clock)
+        assertNotNull(timing)
+        repeat(3) {
+            timing.enterNode("PARAGRAPH")
+            timing.exitNode()
+        }
+        assertEquals(3, clock.markNowCalls)
+        timing.finishRender(renderNodesUs = 0)
+    }
+
+    @Test
+    fun sinkSelectorInstallsOnEnableAndClearsOnDisable() {
+        assertSame(SlockMarkdownNodeSpikeSink, slockMarkdownNodeSinkFor(true))
+        assertNull(slockMarkdownNodeSinkFor(false))
     }
 }

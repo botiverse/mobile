@@ -73,7 +73,8 @@ internal class SlockMarkdownRenderTiming(
     private var exclusiveSumUs = 0L
     private var topLevelCounter = -1
 
-    fun enterNode(typeKey: String): Boolean {
+    fun enterNode(rawTypeName: String): Boolean {
+        val typeKey = slockMarkdownNodeTypeKey(rawTypeName)
         val depth = stack.size
         val topIndex = if (depth == 0) ++topLevelCounter else topLevelCounter
         stack.addLast(NodeFrame(typeKey, depth, topIndex, timeSource.markNow()))
@@ -107,12 +108,18 @@ internal class SlockMarkdownRenderTiming(
     }
 
     fun finishRender(renderNodesUs: Long) {
-        // Defensive: a composition abort can leave frames; close them so the
-        // reconciliation line reflects reality instead of silently dropping.
-        var abortedFrames = 0
-        while (stack.isNotEmpty()) {
-            abortedFrames++
-            exitNode()
+        // Reviewed no-false-data contract: frames left open by an abandoned
+        // pass must NOT be synthesized into durations. If any frame is still
+        // open, the whole render's attribution is discarded — only an
+        // explicit invalid reconcile line is emitted so censoring is visible.
+        if (stack.isNotEmpty()) {
+            val abortedFrames = stack.size
+            stack.clear()
+            sink.emit(
+                "SlockMarkdownSpike phase=markdown.node.reconcile renderSeq=$renderSeq " +
+                    "invalid=1 abortedFrames=$abortedFrames renderNodesUs=$renderNodesUs"
+            )
+            return
         }
         for ((typeKey, s) in summaries) {
             sink.emit(
@@ -125,8 +132,7 @@ internal class SlockMarkdownRenderTiming(
         sink.emit(
             "SlockMarkdownSpike phase=markdown.node.reconcile renderSeq=$renderSeq " +
                 "renderNodesUs=$renderNodesUs exclusiveSumUs=$exclusiveSumUs " +
-                "remainderUs=$remainderUs detailDropped=$detailDropped " +
-                "abortedFrames=$abortedFrames"
+                "remainderUs=$remainderUs detailDropped=$detailDropped abortedFrames=0"
         )
     }
 }
@@ -167,3 +173,15 @@ internal fun slockMarkdownNodeTypeKey(typeName: String): String = when (typeName
  */
 internal val LocalSlockMarkdownRenderTiming =
     compositionLocalOf<SlockMarkdownRenderTiming?> { null }
+
+/**
+ * Creation seam (reviewed OFF-counterfactual requirement): the ONLY place a
+ * render timing is constructed. With sink == null it returns null before any
+ * clock/normalizer/string work — tests inject counting doubles to prove the
+ * OFF path performs zero instrumentation calls and the ON path the expected
+ * number.
+ */
+internal fun slockMarkdownRenderTimingOrNull(
+    sink: SlockMarkdownNodeTraceSink? = SlockMarkdownNodeTrace.sink,
+    timeSource: TimeSource = TimeSource.Monotonic,
+): SlockMarkdownRenderTiming? = sink?.let { SlockMarkdownRenderTiming(it, timeSource) }

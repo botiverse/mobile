@@ -623,6 +623,12 @@ internal object SlockMarkdownNodeSpikeSink : SlockMarkdownNodeTraceSink {
     }
 }
 
+// Pure selection (reviewed stale-sink tooth): true -> the spike sink,
+// false -> null; assigning the result on every SlockMarkdownBody composition
+// guarantees a disabled gate clears any previously installed sink.
+internal fun slockMarkdownNodeSinkFor(diagnosticsEnabled: Boolean): SlockMarkdownNodeTraceSink? =
+    if (diagnosticsEnabled) SlockMarkdownNodeSpikeSink else null
+
 internal fun shouldLogSlockMarkdownPerformance(durationMs: Long): Boolean =
     DEBUG_SLOCK_MARKDOWN_PERF_LOG || durationMs >= SlockMarkdownPerformanceSlowThresholdMs
 
@@ -1869,8 +1875,7 @@ fun SlockMarkdownBody(
     // diagnostics gate as the phase traces. Assignment only — with the gate
     // OFF the vendor stays on its untimed path (executable counterfactual:
     // sink == null before any clock read; see SlockMarkdownNodeTiming.kt).
-    SlockMarkdownNodeTrace.sink =
-        if (slockTraceDiagnosticsEnabled()) SlockMarkdownNodeSpikeSink else null
+    SlockMarkdownNodeTrace.sink = slockMarkdownNodeSinkFor(slockTraceDiagnosticsEnabled())
     val content = remember(body, performanceKey) {
         val startedAt = performanceKey?.let { TimeSource.Monotonic.markNow() }
         val (prepared, cacheHit) =

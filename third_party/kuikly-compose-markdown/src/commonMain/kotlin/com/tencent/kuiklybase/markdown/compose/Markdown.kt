@@ -255,7 +255,7 @@ fun MarkdownSuccess(
     // t6-a node timing (diagnostics only): fresh per-execution handle only when
     // the host installed a sink; null keeps the pre-existing untimed path (the
     // null check is the only added work — no clock read, no allocation).
-    val nodeTiming = SlockMarkdownNodeTrace.sink?.let { SlockMarkdownRenderTiming(it) }
+    val nodeTiming = slockMarkdownRenderTimingOrNull()
     val renderStartMark = TimeSource.Monotonic.markNow()
     slockMarkdownLogSubTrace(
         "phase=markdown.success.compose contentHash=${content().hashCode().toString(16)} " +
