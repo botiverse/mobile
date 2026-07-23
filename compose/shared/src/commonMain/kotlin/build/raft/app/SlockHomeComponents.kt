@@ -83,6 +83,7 @@ import com.tencent.kuikly.compose.foundation.layout.BoxScope
 import com.tencent.kuikly.compose.foundation.layout.BoxWithConstraints
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.Row
+import com.tencent.kuikly.compose.foundation.layout.fillMaxHeight
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.height
@@ -3956,7 +3957,6 @@ private fun ServerSwitcherPanel(
     val serversById = remember(servers) { servers.associateBy { it.id } }
     val listState = rememberLazyListState()
     val density = LocalDensity.current
-    val handleWidthPx = with(density) { HomeServerSwitcherDragHandleWidth.toPx() }
     val rowStepPx = with(density) { HomeServerSwitcherRowMinHeight.toPx().coerceAtLeast(1f) }
     val edgeScrollZonePx = with(density) { SlockSortEdgeScrollZone.toPx() }
     val edgeScrollStepPx = with(density) { SlockSortEdgeScrollStep.toPx() }
@@ -4033,48 +4033,7 @@ private fun ServerSwitcherPanel(
             Box(modifier = serverListModifier.clipToBounds()) {
                 LazyColumn(
                     state = listState,
-                    modifier =
-                        serverLazyListModifier
-                            .pointerInput(order) {
-                                detectDragGesturesAfterLongPress(
-                                    onDragStart = { pos ->
-                                        if (pos.x < size.width - handleWidthPx) return@detectDragGesturesAfterLongPress
-                                        val target = resolveSortTargetIndex(pos.y, visibleServerRowBounds(), order.lastIndex)
-                                        val id = order.getOrNull(target)
-                                        if (id != null) {
-                                            draggedId = id
-                                            draggedStartIndex = target
-                                            pointerViewportY = pos.y
-                                            targetIndex = target
-                                            slockLogInfo("SlockServerSwitcher", "dragStart id=$id index=$target size=${order.size}")
-                                        }
-                                    },
-                                    onDragEnd = {
-                                        val active = draggedId
-                                        var changed = false
-                                        if (active != null && targetIndex >= 0 && targetIndex != draggedStartIndex) {
-                                            changed = true
-                                            val next = order.moveItem(active, targetIndex)
-                                            order = next
-                                            onServerOrderChange(next)
-                                        }
-                                        slockLogInfo("SlockServerSwitcher", "dragEnd changed=$changed from=$draggedStartIndex to=$targetIndex")
-                                        draggedId = null
-                                        targetIndex = -1
-                                    },
-                                    onDragCancel = {
-                                        slockLogInfo("SlockServerSwitcher", "dragCancel id=$draggedId")
-                                        draggedId = null
-                                        targetIndex = -1
-                                    }
-                                ) { change, dragAmount ->
-                                    if (draggedId != null) {
-                                        change.consume()
-                                        pointerViewportY += dragAmount.y
-                                        recomputeDrag()
-                                    }
-                                }
-                            },
+                    modifier = serverLazyListModifier,
                     beyondBoundsItemCount = homeServerSwitcherBeyondBoundsItemCount(order.size),
                     userScrollEnabled = draggedId == null
                 ) {
@@ -4091,6 +4050,64 @@ private fun ServerSwitcherPanel(
                                 onClick = if (draggedId == null) ({ onServerSelected(server.id) }) else null
                             )
                         }
+                    }
+                }
+                if (order.size > 1) {
+                    // Keep reorder ownership on the visible grip column. A long-press detector on
+                    // the full LazyColumn competes with each row's clickable gesture on iOS, so a
+                    // normal server tap can be swallowed before SelectServer is dispatched. The
+                    // stable overlay still survives row replacement while dragging.
+                    Box(
+                        modifier =
+                            Modifier
+                                .matchParentSize(),
+                        contentAlignment = Alignment.CenterEnd
+                    ) {
+                        Box(
+                            modifier =
+                                Modifier
+                                    .fillMaxHeight()
+                                    .width(HomeServerSwitcherDragHandleWidth)
+                                    .pointerInput(order) {
+                                        detectDragGesturesAfterLongPress(
+                                            onDragStart = { pos ->
+                                                val target = resolveSortTargetIndex(pos.y, visibleServerRowBounds(), order.lastIndex)
+                                                val id = order.getOrNull(target)
+                                                if (id != null) {
+                                                    draggedId = id
+                                                    draggedStartIndex = target
+                                                    pointerViewportY = pos.y
+                                                    targetIndex = target
+                                                    slockLogInfo("SlockServerSwitcher", "dragStart id=$id index=$target size=${order.size}")
+                                                }
+                                            },
+                                            onDragEnd = {
+                                                val active = draggedId
+                                                var changed = false
+                                                if (active != null && targetIndex >= 0 && targetIndex != draggedStartIndex) {
+                                                    changed = true
+                                                    val next = order.moveItem(active, targetIndex)
+                                                    order = next
+                                                    onServerOrderChange(next)
+                                                }
+                                                slockLogInfo("SlockServerSwitcher", "dragEnd changed=$changed from=$draggedStartIndex to=$targetIndex")
+                                                draggedId = null
+                                                targetIndex = -1
+                                            },
+                                            onDragCancel = {
+                                                slockLogInfo("SlockServerSwitcher", "dragCancel id=$draggedId")
+                                                draggedId = null
+                                                targetIndex = -1
+                                            }
+                                        ) { change, dragAmount ->
+                                            if (draggedId != null) {
+                                                change.consume()
+                                                pointerViewportY += dragAmount.y
+                                                recomputeDrag()
+                                            }
+                                        }
+                                    }
+                        )
                     }
                 }
                 val active = draggedId
