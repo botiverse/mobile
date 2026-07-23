@@ -13,10 +13,11 @@ import org.intellij.markdown.lexer.MarkdownLexer
  * `` `http://internal/`、后续文本 `` it can emit one GFM_AUTOLINK that consumes
  * the closing backtick and following prose, so no CODE_SPAN reaches the AST.
  *
- * Shield URL scheme separators only in balanced backtick ranges in the
- * lexer's same-length shadow buffer. [MarkdownLexer] retains the untouched
- * original source, so AST offsets and rendered text remain exact; the shadow
- * exists only to prevent autolink tokenization from stealing code content.
+ * Replace code payload characters with neutral same-length text in the
+ * lexer's shadow buffer while preserving delimiters and whitespace.
+ * [MarkdownLexer] retains the untouched original source, so AST offsets and
+ * rendered text remain exact; the shadow exists only to let backtick parsing
+ * claim code ranges before URL, email, HTML, or emphasis tokenization.
  */
 class SlockGFMFlavourDescriptor : GFMFlavourDescriptor() {
     override fun createInlinesLexer(): MarkdownLexer =
@@ -60,30 +61,16 @@ private fun CharSequence.slockCodeSpanLexerShadow(start: Int, end: Int): CharSeq
             continue
         }
 
-        var codeCursor = openingStart + markerLength
-        while (codeCursor < closingStart) {
-            val colonOffset = urlSchemeColonOffsetAt(codeCursor, closingStart)
-            if (colonOffset != null) {
-                shadow[codeCursor + colonOffset] = SLOCK_LEXER_URL_SCHEME_SHIELD
-                codeCursor += colonOffset + 1
-            } else {
-                codeCursor++
+        for (codeIndex in openingStart + markerLength until closingStart) {
+            val char = this[codeIndex]
+            if (char != '`' && !char.isWhitespace()) {
+                shadow[codeIndex] = SLOCK_LEXER_CODE_PAYLOAD_SHIELD
             }
         }
         cursor = closingStart + markerLength
     }
     return shadow
 }
-
-private fun CharSequence.urlSchemeColonOffsetAt(index: Int, limit: Int): Int? =
-    SLOCK_LEXER_URL_SCHEMES.firstNotNullOfOrNull { scheme ->
-        scheme.indexOf(':').takeIf { colonOffset ->
-            index + scheme.length <= limit && regionMatches(index, scheme)
-        }
-    }
-
-private fun CharSequence.regionMatches(start: Int, value: String): Boolean =
-    value.indices.all { offset -> this[start + offset].equals(value[offset], ignoreCase = true) }
 
 private fun CharSequence.backtickRunLength(start: Int, end: Int): Int {
     var length = 0
@@ -100,14 +87,18 @@ private fun CharSequence.indexOf(char: Char, start: Int, end: Int): Int {
 
 private fun CharSequence.indexOfBacktickRun(start: Int, end: Int, length: Int): Int {
     var cursor = start
-    while (cursor + length <= end) {
-        if ((0 until length).all { offset -> this[cursor + offset] == '`' }) {
+    while (cursor < end) {
+        if (this[cursor] != '`') {
+            cursor++
+            continue
+        }
+        val runLength = backtickRunLength(cursor, end)
+        if (runLength == length) {
             return cursor
         }
-        cursor++
+        cursor += runLength
     }
     return -1
 }
 
-private const val SLOCK_LEXER_URL_SCHEME_SHIELD: Char = '\uFF1A'
-private val SLOCK_LEXER_URL_SCHEMES = listOf("http://", "https://")
+private const val SLOCK_LEXER_CODE_PAYLOAD_SHIELD: Char = 'x'
