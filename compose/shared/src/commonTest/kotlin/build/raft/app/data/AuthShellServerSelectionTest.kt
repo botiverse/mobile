@@ -120,6 +120,8 @@ class AuthShellServerSelectionTest {
                 expectedSession = generationA,
                 serverId = "server-2",
             )
+        yield()
+
         assertIs<SharedAuthResult.Unauthenticated>(result)
         assertEquals(processBefore, processStore.readSession())
         assertEquals("server-1", selectedServerStore.selectedServerId.value)
