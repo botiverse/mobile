@@ -26,6 +26,17 @@ data class SlockTimeContext(
 
     fun formatTimestampClockWithSeconds(value: String?): String =
         formatSlockTimestampClockWithSeconds(value, localOffsetMinutes, timeFormat)
+
+    fun refreshedAt(nowEpochMillis: Long): SlockTimeContext =
+        copy(
+            todayEpochDay = nowEpochMillis.toLocalEpochDay(localOffsetMinutes),
+            nowEpochMillis = nowEpochMillis
+        )
+}
+
+fun slockTimeContextRefreshDelayMillis(nowEpochMillis: Long): Long {
+    val millisIntoMinute = floorMod(nowEpochMillis, MillisPerMinute)
+    return MillisPerMinute - millisIntoMinute
 }
 
 fun normalizeSlockTimeFormatPreference(value: String?): String =

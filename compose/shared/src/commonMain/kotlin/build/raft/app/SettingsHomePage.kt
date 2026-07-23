@@ -911,7 +911,9 @@ private data class HomeSecondaryRouteEnvironment(
 )
 
 @Composable
-private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironment {
+private fun rememberHomeSecondaryRouteEnvironment(
+    routeVisibleTick: Int = 0
+): HomeSecondaryRouteEnvironment {
     RememberKmmResourceLocaleSeedFromLocalActivity()
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember(pager) { Utils.bridgeModule(pager.pagerId) }
@@ -950,10 +952,11 @@ private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironme
         activityTaskStatusBadgesEnabled = chatLayout.activityTaskStatusBadgesEnabled
         threadRowAffordances = chatLayout.threadRowAffordances
     }
-    val timeContext =
+    val seedTimeContext =
         remember(pager.pageData.params.toString()) {
             pager.pageData.params.threadTimeContext()
         }
+    val timeContext = rememberLiveSlockTimeContext(seedTimeContext, routeVisibleTick)
     val shellScope = rememberSlockAppShellScope()
     return remember(
         pager,
@@ -1006,7 +1009,7 @@ private fun HomeSecondaryRouterContent(
     initialSearchOpenFilterId: String? = null,
     initialSearchFocusInput: Boolean = false
 ) {
-    val environment = rememberHomeSecondaryRouteEnvironment()
+    val environment = rememberHomeSecondaryRouteEnvironment(routeVisibleTick)
     val retainedDestination = retainedHomeSecondaryDestination(destination)
     PerformanceSceneEffect(
         bridge = environment.bridge,
@@ -1361,6 +1364,7 @@ private fun rememberHomeSearchSavedViewModel(
     environment: HomeSecondaryRouteEnvironment,
     key: String
 ): SharedHomeSearchSavedViewModel {
+    val currentTimeContext = rememberUpdatedState(environment.timeContext)
     val savedRepository =
         remember(environment.authStore, environment.networkClient) {
             RealSavedRepository(
@@ -1396,7 +1400,7 @@ private fun rememberHomeSearchSavedViewModel(
             savedStateCache = environment.homeSavedStateCache,
             readReceiptCoordinator = environment.readReceiptCoordinator,
             readReceiptOwnerFactory = environment.readReceiptOwnerFactory,
-            timeRangeBoundsProvider = { range -> environment.timeContext.toSearchIsoBounds(range) }
+            timeRangeBoundsProvider = { range -> currentTimeContext.value.toSearchIsoBounds(range) }
         )
     }
 }
@@ -2867,9 +2871,11 @@ internal fun SlockAppShellContent(
     val diagnosticsDraftReadyToast = stringResource(MR.strings.settings_diagnostics_feedback_draft_ready)
     val diagnosticsUploadFailedPrefix = stringResource(MR.strings.settings_diagnostics_feedback_upload_failed_prefix)
     val diagnosticsComposerSeed = stringResource(MR.strings.settings_diagnostics_feedback_composer_seed)
-    val hostThreadTimeContext = remember(pager.pageData.params.toString()) {
+    val hostThreadTimeContextSeed = remember(pager.pageData.params.toString()) {
         pager.pageData.params.threadTimeContext()
     }
+    val hostThreadTimeContext = rememberLiveSlockTimeContext(hostThreadTimeContextSeed, pageVisibleTick)
+    val currentHostThreadTimeContext = rememberUpdatedState(hostThreadTimeContext)
     val notificationWindowNavigationIntent =
         remember(pager.pageData.params.toString()) {
             pager.pageData.params.appShellWindowNavigationIntent(
@@ -2920,7 +2926,7 @@ internal fun SlockAppShellContent(
                 savedStateCache = sharedStores.homeSavedStateCache,
                 readReceiptCoordinator = sharedStores.processReadReceiptCoordinator(),
                 readReceiptOwnerFactory = sharedStores::readReceiptOwner,
-                timeRangeBoundsProvider = { range -> hostThreadTimeContext.toSearchIsoBounds(range) },
+                timeRangeBoundsProvider = { range -> currentHostThreadTimeContext.value.toSearchIsoBounds(range) },
                 diagnosticsLogger = slockLogger("SlockHomeSearchSaved", "shared_home_search_saved")
             )
         }

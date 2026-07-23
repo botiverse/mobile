@@ -92,6 +92,30 @@ class SlockTimeTest {
     }
 
     @Test
+    fun refreshesTimeContextAcrossLocalMidnight() {
+        val beforeMidnight =
+            parseSlockTimestampEpochMillisOrNull("2026-07-22T23:59:30+08:00")!!
+        val afterMidnight =
+            parseSlockTimestampEpochMillisOrNull("2026-07-23T00:00:05+08:00")!!
+        val seed =
+            SlockTimeContext(
+                localOffsetMinutes = 480,
+                todayEpochDay = slockEpochDayForDate(2026, 7, 22),
+                nowEpochMillis = beforeMidnight,
+                timeFormat = SlockTimeFormat12Hour
+            )
+
+        val refreshed = seed.refreshedAt(afterMidnight)
+
+        assertEquals(slockEpochDayForDate(2026, 7, 23), refreshed.todayEpochDay)
+        assertEquals(afterMidnight, refreshed.nowEpochMillis)
+        assertEquals(480, refreshed.localOffsetMinutes)
+        assertEquals(SlockTimeFormat12Hour, refreshed.timeFormat)
+        assertEquals(30_000L, slockTimeContextRefreshDelayMillis(beforeMidnight))
+        assertEquals(55_000L, slockTimeContextRefreshDelayMillis(afterMidnight))
+    }
+
+    @Test
     fun includesDateOutsideToday() {
         val today = slockEpochDayForDate(2026, 5, 10)
 

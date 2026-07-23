@@ -709,7 +709,7 @@ internal fun threadHeaderDisplayTitle(
 internal class ComposeThreadPage : build.raft.app.base.BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { ThreadPageScreen() }
+        setContent { ThreadPageScreen(slockPageVisibleResumeTick) }
     }
 }
 
@@ -2184,7 +2184,7 @@ private fun KuiklyThreadTab.toSlockTabSpec(): SlockTabSpec<KuiklyThreadTab> =
     )
 
 @Composable
-private fun ThreadPageScreen() {
+private fun ThreadPageScreen(pageVisibleTick: Int = 0) {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = Utils.bridgeModule(pager.pagerId)
     val params = pager.pageData.params
@@ -2208,7 +2208,21 @@ private fun ThreadPageScreen() {
             instanceId = instanceId
         )
     }
-    val payload = payloadTrace.payload
+    val parsedPayload = payloadTrace.payload
+    val liveTimeContext =
+        rememberLiveSlockTimeContext(
+            seed = parsedPayload.toSlockTimeContext(),
+            pageVisibleTick = pageVisibleTick
+        )
+    val payload =
+        remember(parsedPayload, liveTimeContext) {
+            parsedPayload.copy(
+                localOffsetMinutes = liveTimeContext?.localOffsetMinutes ?: parsedPayload.localOffsetMinutes,
+                todayEpochDay = liveTimeContext?.todayEpochDay ?: parsedPayload.todayEpochDay,
+                nowEpochMillis = liveTimeContext?.nowEpochMillis ?: parsedPayload.nowEpochMillis,
+                timeFormat = liveTimeContext?.timeFormat ?: parsedPayload.timeFormat
+            )
+        }
     LaunchedEffect(payloadText, instanceId) {
         bridge.log(
             "thread_launch_payload_parse source=pageData result=${payloadTrace.result} " +
