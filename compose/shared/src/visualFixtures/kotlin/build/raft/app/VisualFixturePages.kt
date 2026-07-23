@@ -174,6 +174,14 @@ internal class ComposeChannelSettingsPanelVisualPage : BasePager() {
     }
 }
 
+@Page("compose_channel_settings_pinned_panel_visual", supportInLocal = true)
+internal class ComposeChannelSettingsPinnedPanelVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { ChannelSettingsPanelVisualScreen(pinned = true) }
+    }
+}
+
 @Page("compose_channel_add_member_panel_visual", supportInLocal = true)
 internal class ComposeChannelAddMemberPanelVisualPage : BasePager() {
     override fun willInit() {
@@ -255,6 +263,14 @@ internal class ComposeHomeSearchVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
         setContent { HomeSearchVisualContent() }
+    }
+}
+
+@Page("compose_home_search_channel_pin_visual", supportInLocal = true)
+internal class ComposeHomeSearchChannelPinVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { HomeSearchPinVisualContent() }
     }
 }
 

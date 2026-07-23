@@ -3054,7 +3054,7 @@ private fun SettingsServerSidebarOrderSnapshot.withToggledPinnedTarget(
     return withCanonicalTypedPinned(nextPinned)
 }
 
-private fun SettingsServerSidebarOrderSnapshot.typedPinnedOrLegacy(): List<SettingsServerSidebarPinnedItem> {
+internal fun SettingsServerSidebarOrderSnapshot.typedPinnedOrLegacy(): List<SettingsServerSidebarPinnedItem> {
     if (pinned.isNotEmpty()) return pinned
     val orderedIds =
         (pinnedOrder + pinnedChannelIds + pinnedAgentIds)
