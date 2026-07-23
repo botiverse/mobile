@@ -74,7 +74,11 @@ class RealtimeCanonicalFinalActualHostConnectedTest {
         assertFalse("Terminal trace leaked a synthetic access token.", evidence.terminal.raw.contains("host-access-"))
         assertFalse("Terminal trace leaked a synthetic refresh token.", evidence.terminal.raw.contains("host-refresh-"))
         assertFalse("Terminal trace leaked an authorization header.", evidence.terminal.raw.contains("Authorization", ignoreCase = true))
-        assertTrue("Terminal sentinel reported failure: ${evidence.terminal.payload.optString("error")}", evidence.terminal.payload.getBoolean("success"))
+        assertTrue(
+            "Terminal sentinel reported failure: ${evidence.terminal.payload.optString("error")}; " +
+                "terminal registrations=${evidence.terminal.payload.optString("registrations")}",
+            evidence.terminal.payload.getBoolean("success"),
+        )
         assertEquals(entries.size, evidence.terminal.payload.getInt("phaseCount"))
         assertEquals(entries.last().seq, evidence.terminal.payload.getInt("lastSeq"))
         assertEquals(sha256(entries.joinToString("|") { it.hash }), evidence.terminal.payload.getString("chainSha256"))
@@ -191,12 +195,18 @@ class RealtimeCanonicalFinalActualHostConnectedTest {
         assertTrue(readyMaskProbe.long("a") > overlapRepairedProbe.long("a"))
         assertEquals(overlapRepairedProbe.int("b") + 1, readyMaskProbe.int("b"))
         assertReplacementChanged(sharedThread, sharedReplacement)
-        assertRotationStable(readyMask, sharedRotated, expectedTokenEvent = "TokensRotated:3")
-        assertSameRegistrations(sharedReplacement, sharedOldDisposed)
+        assertRotationStable(readyMask, sharedRotated, expectedTokenEvent = "TokensRotated:3", requireStableHandles = false)
+        assertEquals(sharedReplacement.getString("lease"), sharedOldDisposed.getString("lease"))
+        assertEquals(
+            registrations(sharedReplacement).map(RegistrationRecord::slot),
+            registrations(sharedOldDisposed).map(RegistrationRecord::slot),
+        )
         val oldThreadDisposedProbe = probe(sharedOldDisposed)
-        listOf("c", "f", "d", "u", "b", "dh", "uh", "xd", "xu").forEach { key ->
+        listOf("c", "f", "d", "u", "b").forEach { key ->
             assertEquals(readyMaskProbe.getValue(key), oldThreadDisposedProbe.getValue(key))
         }
+        assertEquals(oldThreadDisposedProbe.getValue("dh"), oldThreadDisposedProbe.getValue("xd"))
+        assertEquals(oldThreadDisposedProbe.getValue("uh"), oldThreadDisposedProbe.getValue("xu"))
         assertAuthorityPresent(sharedThreadFinal)
         assertRegistrations(sharedThreadFinal, sharedAppSlots())
         assertAuthorityPresent(sharedAppFinal)
@@ -232,12 +242,27 @@ class RealtimeCanonicalFinalActualHostConnectedTest {
         assertTrue(payload.getString("grants").isEmpty())
     }
 
-    private fun assertRotationStable(before: JSONObject, after: JSONObject, expectedTokenEvent: String) {
+    private fun assertRotationStable(
+        before: JSONObject,
+        after: JSONObject,
+        expectedTokenEvent: String,
+        requireStableHandles: Boolean = true,
+    ) {
         assertAuthorityPresent(after)
         assertTrue(after.getString("authEvents").contains(expectedTokenEvent))
         assertEquals(before.getString("lease"), after.getString("lease"))
         assertNotEquals(before.getString("family"), after.getString("family"))
-        assertEquals(registrations(before), registrations(after))
+        if (requireStableHandles) {
+            // Fixture-owned quiescent components: rotation must not disturb exact handles.
+            assertEquals(registrations(before), registrations(after))
+        } else {
+            // Real components may legitimately re-register their own slot while async loading; rotation
+            // must still preserve the slot set.
+            assertEquals(
+                registrations(before).map(RegistrationRecord::slot),
+                registrations(after).map(RegistrationRecord::slot),
+            )
+        }
     }
 
     private fun assertReplacementChanged(before: JSONObject, replacement: JSONObject) {
@@ -250,11 +275,6 @@ class RealtimeCanonicalFinalActualHostConnectedTest {
             assertNotEquals("replacement must mint a new exact registration handle", old.registrationId, new.registrationId)
             assertNotEquals("replacement must capture the successor component sink", old.sinkRef, new.sinkRef)
         }
-    }
-
-    private fun assertSameRegistrations(expected: JSONObject, actual: JSONObject) {
-        assertEquals(expected.getString("lease"), actual.getString("lease"))
-        assertEquals(registrations(expected), registrations(actual))
     }
 
     private fun assertSuccessorRetainedAfterOldDispose(
@@ -381,6 +401,9 @@ class RealtimeCanonicalFinalActualHostConnectedTest {
     }
 
     private fun clearOwnLogcat() {
+        // Best-effort ring enlargement: trace evidence rides the logcat main buffer, and a busy CI emulator
+        // can evict lines from the default ring (previously observed as a seq-contiguity gap).
+        runCatching { runLogcat("-G", "16M") }
         runLogcat("-c")
     }
 

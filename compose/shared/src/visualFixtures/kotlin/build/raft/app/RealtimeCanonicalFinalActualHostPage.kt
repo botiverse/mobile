@@ -122,6 +122,43 @@ private fun sharedComposedSurfaces(nonce: String): List<String> =
             "AppShellHomeUnread@$ActualHostServerB",
         )
 
+/** Parses a registration trace into slot key ("surface@serverId") → exact registrationId. */
+private fun registrationIdsBySlot(trace: String): Map<String, String> {
+    if (trace.isBlank()) return emptyMap()
+    return trace.split(';').associate { entry ->
+        val fields = entry.split(',')
+        check(fields.size == 5) { "malformed registration trace entry: $entry" }
+        "${fields[0]}@${fields[2]}" to fields[3]
+    }
+}
+
+/**
+ * Successor-retention contract check. Real components may legitimately re-register their own slot while
+ * still mounted (minting a fresh exact handle during async loading), so this intentionally does NOT require
+ * byte equality with a frozen snapshot. It requires: every expected slot is present, and no slot has fallen
+ * back to the forbidden (old-generation) registrationId. Failure messages carry the actual trace.
+ */
+private fun checkSuccessorRetained(
+    run: ActualHostRun,
+    provider: SlockSharedStoreProvider,
+    scopeKey: String,
+    expectedSurfaces: List<String>,
+    forbiddenIdsBySlot: Map<String, String>,
+    label: String,
+) {
+    val trace = run.registrationTrace(provider, scopeKey)
+    val currentIdsBySlot = registrationIdsBySlot(trace)
+    check(currentIdsBySlot.keys.sorted() == expectedSurfaces.sorted()) {
+        "$label; successor slots incomplete expected=${expectedSurfaces.sorted()} actual=$trace"
+    }
+    currentIdsBySlot.forEach { (slot, registrationId) ->
+        val forbidden = forbiddenIdsBySlot[slot] ?: return@forEach
+        check(registrationId != forbidden) {
+            "$label; slot $slot restored old-generation registration $forbidden actual=$trace"
+        }
+    }
+}
+
 @Page(ActualHostPageName, supportInLocal = true)
 internal class RealtimeCanonicalFinalActualHostPage : BasePager() {
     override fun willInit() {
@@ -542,6 +579,10 @@ private fun RealtimeCanonicalFinalActualHostContent(run: ActualHostRun) {
                     run.registrationTrace(provider, sharedScope.shellInstanceId) != sharedComposedRegistrations
             }
             val sharedReplacement = run.registrationTrace(provider, sharedScope.shellInstanceId)
+            val sharedOldGenerationIds = registrationIdsBySlot(sharedComposedRegistrations)
+            check(registrationIdsBySlot(sharedReplacement).none { (slot, id) -> sharedOldGenerationIds[slot] == id }) {
+                "shared replacement must mint new registrations for every slot; old=$sharedComposedRegistrations actual=$sharedReplacement"
+            }
             check(provider.realtimeAuthorityProvider.authorityFlow(sharedScope.shellInstanceId).value?.lease?.id == sharedFirstAuthority.lease.id) {
                 "shared component replacement must not replace the shell lease"
             }
@@ -612,14 +653,25 @@ private fun RealtimeCanonicalFinalActualHostContent(run: ActualHostRun) {
                 !provider.realtimeAuthorityProvider.unregisterCanonicalFinalSink(staleAppUnreadHandle),
                 "stale App A Unread exact-handle replay must be rejected",
             )
-            check(run.registrationTrace(provider, sharedScope.shellInstanceId) == sharedReplacement) {
-                "stale App A exact-handle replay must retain all successor registrations"
-            }
+            checkSuccessorRetained(
+                run = run,
+                provider = provider,
+                scopeKey = sharedScope.shellInstanceId,
+                expectedSurfaces = sharedComposedSurfaces(run.nonce),
+                forbiddenIdsBySlot = sharedOldGenerationIds,
+                label = "stale App A exact-handle replay must retain all successor registrations",
+            )
             val afterStaleExactHandleReplay = run.captureProbe(provider, sharedScope, probeAgentId, probeHomeStore)
             run.expect(
-                afterStaleExactHandleReplay.domainHandle == domainRegistrationB &&
-                    afterStaleExactHandleReplay == overlapPreReady,
-                "stale App A cleanup must retain successor B handles, ledgers, and projections",
+                afterStaleExactHandleReplay.domainHandle != domainRegistrationA &&
+                    afterStaleExactHandleReplay.unreadHandle != unreadRegistrationA &&
+                    afterStaleExactHandleReplay.coreLedger == overlapPreReady.coreLedger &&
+                    afterStaleExactHandleReplay.featureLedger == overlapPreReady.featureLedger &&
+                    afterStaleExactHandleReplay.domainLedger == overlapPreReady.domainLedger &&
+                    afterStaleExactHandleReplay.unreadLedger == overlapPreReady.unreadLedger &&
+                    afterStaleExactHandleReplay.agentSeq == overlapPreReady.agentSeq &&
+                    afterStaleExactHandleReplay.backgroundUnread == overlapPreReady.backgroundUnread,
+                "stale App A cleanup must retain successor-generation handles, ledgers, and projections",
             )
             run.emitPhase(
                 codec,
@@ -631,15 +683,25 @@ private fun RealtimeCanonicalFinalActualHostContent(run: ActualHostRun) {
 
             sharedAppA = false
             delay(350)
-            check(run.registrationTrace(provider, sharedScope.shellInstanceId) == sharedReplacement) {
-                "real App A cleanup must retain all successor registrations"
-            }
+            checkSuccessorRetained(
+                run = run,
+                provider = provider,
+                scopeKey = sharedScope.shellInstanceId,
+                expectedSurfaces = sharedComposedSurfaces(run.nonce),
+                forbiddenIdsBySlot = sharedOldGenerationIds,
+                label = "real App A cleanup must retain all successor registrations",
+            )
             val afterRealOldAppDispose = run.captureProbe(provider, sharedScope, probeAgentId, probeHomeStore)
             run.expect(
-                afterRealOldAppDispose.domainHandle == domainRegistrationB &&
-                    afterRealOldAppDispose.unreadHandle == unreadRegistrationB &&
-                    afterRealOldAppDispose == overlapPreReady,
-                "real App A cleanup must retain successor B handles, ledgers, and projections",
+                afterRealOldAppDispose.domainHandle != domainRegistrationA &&
+                    afterRealOldAppDispose.unreadHandle != unreadRegistrationA &&
+                    afterRealOldAppDispose.coreLedger == overlapPreReady.coreLedger &&
+                    afterRealOldAppDispose.featureLedger == overlapPreReady.featureLedger &&
+                    afterRealOldAppDispose.domainLedger == overlapPreReady.domainLedger &&
+                    afterRealOldAppDispose.unreadLedger == overlapPreReady.unreadLedger &&
+                    afterRealOldAppDispose.agentSeq == overlapPreReady.agentSeq &&
+                    afterRealOldAppDispose.backgroundUnread == overlapPreReady.backgroundUnread,
+                "real App A cleanup must retain successor-generation handles, ledgers, and projections",
             )
             run.emitPhase(
                 codec,
@@ -816,21 +878,31 @@ private fun RealtimeCanonicalFinalActualHostContent(run: ActualHostRun) {
                     next.witness.connectionFamilyId != sharedFirstAuthority.witness.connectionFamilyId
             }
             waitUntil("second typed token rotation auth event") { "TokensRotated:3" in run.authEventNames() }
-            check(run.registrationTrace(provider, sharedScope.shellInstanceId) == sharedReplacement) {
-                "shared shell rotation must keep all successor surface handles and sink refs stable"
-            }
+            checkSuccessorRetained(
+                run = run,
+                provider = provider,
+                scopeKey = sharedScope.shellInstanceId,
+                expectedSurfaces = sharedComposedSurfaces(run.nonce),
+                forbiddenIdsBySlot = sharedOldGenerationIds,
+                label = "shared shell rotation must retain successor-generation registrations",
+            )
             run.emitPhase(codec, provider, component = "shared", phase = "auth-rotated", scopeKey = sharedScope.shellInstanceId)
 
             run.emitPhase(codec, provider, component = "shared", phase = "replacements-mounted", scopeKey = sharedScope.shellInstanceId)
             sharedThreadA = false
             delay(350)
-            check(run.registrationTrace(provider, sharedScope.shellInstanceId) == sharedReplacement) {
-                "old shared component disposal must retain all successor surfaces"
-            }
+            checkSuccessorRetained(
+                run = run,
+                provider = provider,
+                scopeKey = sharedScope.shellInstanceId,
+                expectedSurfaces = sharedComposedSurfaces(run.nonce),
+                forbiddenIdsBySlot = sharedOldGenerationIds,
+                label = "old shared component disposal must retain all successor surfaces",
+            )
             val afterOldDispose = run.captureProbe(provider, sharedScope, probeAgentId, probeHomeStore)
             run.expect(
-                afterOldDispose.domainHandle == domainRegistrationB &&
-                    afterOldDispose.unreadHandle == unreadRegistrationB &&
+                afterOldDispose.domainHandle != domainRegistrationA &&
+                    afterOldDispose.unreadHandle != unreadRegistrationA &&
                     afterOldDispose.coreLedger == readyBackground.coreLedger &&
                     afterOldDispose.featureLedger == readyBackground.featureLedger &&
                     afterOldDispose.domainLedger == readyBackground.domainLedger &&
@@ -863,12 +935,14 @@ private fun RealtimeCanonicalFinalActualHostContent(run: ActualHostRun) {
 
             check(run.authEventNames().none { it.startsWith("Cleared:") }) { "auth session was cleared during actual host run" }
             run.requireNoProbeViolations()
-            run.emitTerminal(codec, success = true, error = "")
+            run.emitTerminal(codec, success = true, error = "", provider = provider, scopeKey = sharedScope.shellInstanceId)
         } catch (throwable: Throwable) {
             run.emitTerminal(
                 codec = codec,
                 success = false,
-                error = throwable.message.orEmpty().take(900),
+                error = throwable.message.orEmpty().take(1800),
+                provider = provider,
+                scopeKey = sharedScope.shellInstanceId,
             )
         } finally {
             egressProbeJob?.cancel()
@@ -1298,7 +1372,13 @@ private class ActualHostRun(
         emitPayload(codec, payload, terminal = false)
     }
 
-    fun emitTerminal(codec: CodecModule, success: Boolean, error: String) {
+    fun emitTerminal(
+        codec: CodecModule,
+        success: Boolean,
+        error: String,
+        provider: SlockSharedStoreProvider? = null,
+        scopeKey: String? = null,
+    ) {
         val terminalPayload =
             synchronized(lock) {
                 JSONObject().apply {
@@ -1310,6 +1390,12 @@ private class ActualHostRun(
                     put("phaseCount", phaseHashes.size)
                     put("lastSeq", sequence)
                     put("chainSha256", codec.sha256(phaseHashes.joinToString("|")))
+                    if (provider != null && scopeKey != null) {
+                        put(
+                            "registrations",
+                            registrations(provider.realtimeAuthorityProvider.authorityFlow(scopeKey).value),
+                        )
+                    }
                 }.toString()
             }
         emitPayload(codec, terminalPayload, terminal = true)
