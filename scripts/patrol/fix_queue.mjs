@@ -330,14 +330,30 @@ export function collectSources(entry, opts) {
   // a monolith file (SettingsPanel.tsx#LanguageRegionSection) — it is the
   // highest-precision excerpt anchor available.
   const reactAnchor = String(entry?.reactPathHint || "").split("#")[1] || "";
+  // Android fixture pages/composables are named after the case hint's page id
+  // (compose_ui_avatar_list_row_visual -> ComposeUiAvatarListRowVisualPage in
+  // VisualFixturePages.kt and UiAvatarListRowVisualContent in the fixture
+  // file), so derive Pascal needles from it — the truth stage repeatedly
+  // refuted candidates because these files never reached the evidence pack.
+  const androidPageId = String(entry?.androidCaseHint || "").split(":")[0];
+  const androidPageNeedles = [];
+  if (androidPageId.includes("_")) {
+    const pascal = androidPageId.split("_").filter(Boolean).map((word) => word[0].toUpperCase() + word.slice(1)).join("");
+    if (pascal.length >= 4) androidPageNeedles.push(pascal, pascal.replace(/^Compose/, ""));
+  }
   const reactComponents = [...(react.components || []), entry?.reactPathHint, ...derivedNeedles];
-  const androidComponents = [...(android.components || []), entry?.androidCaseHint, ...derivedNeedles];
+  const androidComponents = [...(android.components || []), entry?.androidCaseHint, ...androidPageNeedles, ...derivedNeedles];
   const reactExcerptNeedles = [reactAnchor, ...derivedNeedles].filter(Boolean);
   const androidExcerptNeedles = [
     ...(android.components || []).map((component) => String(component).split(".").pop()),
+    ...androidPageNeedles,
     entry?.androidCaseHint,
     ...derivedNeedles,
   ].filter(Boolean);
+  // Both sides' concrete token values (bg-brutal-yellow hex etc.) live in one
+  // canonical file per repo; truth derivation needs them for every case.
+  const reactTokens = sourceRecord(opts.slockRoot, path.join(opts.slockRoot, "packages/web/src/index.css"));
+  const androidTokens = sourceRecord(opts.mobileRoot, path.join(opts.mobileRoot, "compose/shared/src/commonMain/kotlin/build/raft/app/SlockDesignTokens.kt"));
   const androidSeedSources = rankedSources([sourceMatches(path.join(opts.mobileRoot, "compose"), androidComponents, 6)]);
   const androidExpandedSources = rankedSources([sourceMatches(
     path.join(opts.mobileRoot, "compose"),
@@ -351,6 +367,7 @@ export function collectSources(entry, opts) {
     // repos, rui winning ties); the app-level exact manifest path still leads.
     react: capSources(dedupeSources([
       reactExact,
+      reactTokens,
       ...rankedSources([
         sourceMatches(opts.ruiRoot, reactComponents, 5),
         sourceMatches(opts.slockRoot, reactComponents, 4),
@@ -358,6 +375,7 @@ export function collectSources(entry, opts) {
     ]).map((source) => excerptSource(source, reactExcerptNeedles))),
     android: capSources(dedupeSources([
       androidExact,
+      androidTokens,
       ...androidComponentSources,
     ]).map((source) => excerptSource(source, androidExcerptNeedles))),
   };
