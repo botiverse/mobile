@@ -20,6 +20,7 @@
 		D41350012E0F000100C0DE02 /* GeneratedRealtimeContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = D41350032E0F000100C0DE02 /* GeneratedRealtimeContract.swift */; };
 		D41350022E0F000100C0DE02 /* SlockIosRealtimeHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = D41350042E0F000100C0DE02 /* SlockIosRealtimeHost.swift */; };
 		D41350062E140100100C0DE03 /* SlockIosAppScopeMMKV.swift in Sources */ = {isa = PBXBuildFile; fileRef = D41350052E140100100C0DE03 /* SlockIosAppScopeMMKV.swift */; };
+		D46363012E17000100C0DE09 /* SlockIosMobileOAuthHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = D46363022E17000100C0DE09 /* SlockIosMobileOAuthHost.swift */; };
 		D43B80142E0E500100C0DE01 /* SlockKuiklyPageView.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B80162E0E500100C0DE01 /* SlockKuiklyPageView.m */; };
 		D43B80172E0F000100C0DE03 /* SlockKRVideoViewHandler.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B80192E0F000100C0DE03 /* SlockKRVideoViewHandler.m */; };
 		D43B80202E0F100100C0DE04 /* SlockSandboxWebView.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B80222E0F100100C0DE04 /* SlockSandboxWebView.m */; };
@@ -68,6 +69,7 @@
 		D41350032E0F000100C0DE02 /* GeneratedRealtimeContract.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedRealtimeContract.swift; sourceTree = "<group>"; };
 		D41350042E0F000100C0DE02 /* SlockIosRealtimeHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosRealtimeHost.swift; sourceTree = "<group>"; };
 		D41350052E140100100C0DE03 /* SlockIosAppScopeMMKV.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosAppScopeMMKV.swift; sourceTree = "<group>"; };
+		D46363022E17000100C0DE09 /* SlockIosMobileOAuthHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosMobileOAuthHost.swift; sourceTree = "<group>"; };
 		D43B80152E0E500100C0DE01 /* SlockKuiklyPageView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SlockKuiklyPageView.h; sourceTree = "<group>"; };
 		D43B80162E0E500100C0DE01 /* SlockKuiklyPageView.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockKuiklyPageView.m; sourceTree = "<group>"; };
 		D43B80182E0F000100C0DE03 /* SlockKRVideoViewHandler.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SlockKRVideoViewHandler.h; sourceTree = "<group>"; };
@@ -188,6 +190,7 @@
 				D41350032E0F000100C0DE02 /* GeneratedRealtimeContract.swift */,
 				D41350042E0F000100C0DE02 /* SlockIosRealtimeHost.swift */,
 				D41350052E140100100C0DE03 /* SlockIosAppScopeMMKV.swift */,
+				D46363022E17000100C0DE09 /* SlockIosMobileOAuthHost.swift */,
 				FF6B713E29A2A10E009349F1 /* KuiklyExpand */,
 				058557BA273AAA24004C7B11 /* Assets.xcassets */,
 				D49163102E14000100C0DE01 /* Fonts */,
@@ -508,6 +511,7 @@
 				2152FB042600AC8F00CF470E /* iOSApp.swift in Sources */,
 				D41350012E0F000100C0DE02 /* GeneratedRealtimeContract.swift in Sources */,
 				D41350062E140100100C0DE03 /* SlockIosAppScopeMMKV.swift in Sources */,
+				D46363012E17000100C0DE09 /* SlockIosMobileOAuthHost.swift in Sources */,
 				FF6B714529A2A174009349F1 /* HRBridgeModule.m in Sources */,
 				D41350022E0F000100C0DE02 /* SlockIosRealtimeHost.swift in Sources */,
 				FF6B714729A2A315009349F1 /* KuiklyRenderViewPage.swift in Sources */,

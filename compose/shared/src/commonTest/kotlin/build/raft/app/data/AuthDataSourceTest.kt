@@ -692,6 +692,28 @@ class AuthDataSourceTest {
     }
 
     @Test
+    fun mobileOAuthStartHonorsExplicitIosPlatformContract() = runBlocking {
+        val store = InMemorySlockAuthSessionStore()
+        val api = FakeAuthApi()
+        val source = SharedAuthDataSource(transport = api, sessionStore = store)
+
+        val result =
+            source.startMobileOAuthLogin(
+                provider = "google",
+                platform = "ios",
+                appEnv = "production",
+                returnUri = "raft://oauth/callback",
+                codeChallenge = "challenge-ios"
+            )
+
+        assertTrue(result is SharedAuthResult.Success)
+        assertEquals(
+            """{"provider":"google","mode":"login","platform":"ios","appEnv":"production","returnUri":"raft://oauth/callback","codeChallenge":"challenge-ios","codeChallengeMethod":"S256"}""",
+            api.mobileOAuthStartBody
+        )
+    }
+
+    @Test
     fun mobileOAuthCompleteStoresReturnedSessionAndFetchesServers() = runBlocking {
         val store = InMemorySlockAuthSessionStore()
         val api = FakeAuthApi()

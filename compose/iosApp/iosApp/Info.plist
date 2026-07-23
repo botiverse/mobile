@@ -20,6 +20,20 @@
         <string>$(MARKETING_VERSION)</string>
         <key>CFBundleVersion</key>
         <string>$(CURRENT_PROJECT_VERSION)</string>
+        <key>CFBundleURLTypes</key>
+        <array>
+            <dict>
+                <key>CFBundleTypeRole</key>
+                <string>Editor</string>
+                <key>CFBundleURLName</key>
+                <string>build.raft.app.oauth</string>
+                <key>CFBundleURLSchemes</key>
+                <array>
+                    <string>raft</string>
+                    <string>raft-dev</string>
+                </array>
+            </dict>
+        </array>
         <key>HandsBuildCommit</key>
         <string></string>
         <key>SlockAPNSEnvironment</key>
