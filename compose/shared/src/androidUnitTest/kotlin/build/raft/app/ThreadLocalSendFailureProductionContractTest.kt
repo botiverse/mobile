@@ -79,6 +79,82 @@ class ThreadLocalSendFailureProductionContractTest {
         )
     }
 
+    @Test
+    fun routeDisposalTerminatesAttemptsBeforeCancellingUploadJobs() {
+        val source = threadPageSource()
+        val disposal = block(
+            source,
+            "    val currentAttachmentUploadJobs by rememberUpdatedState(attachmentUploadJobs)",
+            "    val agentStatusResolver ="
+        )
+
+        assertContains(disposal, "currentAttachmentUploadAttemptFence.activeAttemptTokens.keys")
+        assertContains(disposal, "attachmentUploadAttemptFence = currentAttachmentUploadAttemptFence.terminate")
+        assertContains(disposal, "currentAttachmentUploadJobs.values.forEach { job -> job.cancel() }")
+        assertTrue(
+            disposal.indexOf("terminate(terminalUploadIds)") <
+                disposal.indexOf("currentAttachmentUploadJobs.values.forEach"),
+            "Upload attempts must become terminal before route disposal cancels their jobs"
+        )
+        assertFalse("CancelLocalSend" in disposal)
+        assertFalse("CompleteInlineSendFailure" in disposal)
+    }
+
+    @Test
+    fun blockingAttachmentSendExitsBeforeCreatingOrClearingAnything() {
+        val source = threadPageSource()
+        val send = block(source, "                \"send\" -> {", "                \"dismissMention\" -> {")
+
+        assertContains(send, "hasBlockingAttachmentUpload -> \"attachment_upload_in_progress\"")
+        assertContains(send, "return@ThreadPageContent")
+        assertTrue(send.indexOf("return@ThreadPageContent") < send.indexOf("ThreadLocalSendNextId.value"))
+        assertTrue(send.indexOf("return@ThreadPageContent") < send.indexOf("ApplyLocalSendStarted"))
+        assertTrue(send.indexOf("return@ThreadPageContent") < send.indexOf("SharedThreadComposerDraftIntent.BeginSend"))
+        assertFalse("ThreadMessageDeliveryWaitingAttachments" in send)
+        assertFalse("deferredAttachmentSend" in send)
+    }
+
+    @Test
+    fun uploadStatusDrivesDisabledSpinningSendButtonAndFailureStopsTheSpinner() {
+        val page = threadPageSource()
+        val composer = threadComposerPageSource()
+        val draftProjection = block(page, "private fun KuiklyThreadComposerPayload.withThreadComposerDraftState(", "@Composable\nprivate fun ThreadDeferredLoadingRouteContent(")
+        val sendButton = block(composer, "    val composerEnabled =", "    val composerKeyboardOptions =") +
+            block(composer, "                            ComposerSendButton(", "                        }\n                    }\n                }")
+
+        assertContains(draftProjection, "pendingAttachmentItems.hasUploadingThreadAttachment() -> \"uploading\"")
+        assertContains(sendButton, "state.composerMode != \"uploading\"")
+        assertContains(sendButton, "!state.pendingAttachments.hasFailedThreadAttachmentUpload()")
+        assertContains(sendButton, "sending = state.composerMode == \"sending\" || state.composerMode == \"uploading\"")
+
+        val helper = block(composer, "internal fun List<KuiklyPendingAttachmentItem>.hasUploadingThreadAttachment()", "internal fun List<KuiklyPendingAttachmentItem>.hasFailedThreadAttachmentUpload()")
+        assertContains(helper, "attachment.status != \"failed\"")
+        assertContains(helper, "!attachment.isReadyThreadAttachmentForSend()")
+
+        val attachmentTray = block(composer, "private fun ComposerAttachmentTray(", "private fun ComposerAttachmentPreviewChip(")
+        assertContains(attachmentTray, "onRemove = { onEvent(\"removeAttachment\", attachment.id) }")
+        assertContains(attachmentTray, "onRetry = { onEvent(\"retryAttachments\", attachment.id) }")
+    }
+
+    @Test
+    fun failureAndLateCompletionUseOneWayTerminalOrdering() {
+        val source = threadPageSource()
+        val uploadFlow = block(source, "    fun handleAttachmentUploadFailure(", "    fun openComposerImageAnnotation(")
+
+        assertTrue(
+            uploadFlow.indexOf("attachmentUploadAttemptFence.terminate(terminalAttachmentIds)") <
+                uploadFlow.indexOf("attachmentUploadJobs[attachmentId]?.cancel()"),
+            "Failure must terminate tokens before sibling cancellation"
+        )
+        assertContains(uploadFlow, "SharedThreadComposerDraftIntent.MarkAttachmentsFailed")
+        assertTrue(
+            uploadFlow.indexOf("attachmentUploadAttemptFence.accepts(localAttachmentId, uploadAttemptToken)") <
+                uploadFlow.indexOf("SharedThreadComposerDraftIntent.AddUploadedAttachments"),
+            "Every completion must cross the attempt fence before publishing into Composer"
+        )
+        assertContains(uploadFlow, "reason=stale_or_terminal")
+    }
+
     private fun block(source: String, startMarker: String, endMarker: String): String {
         val start = source.indexOf(startMarker)
         val end = source.indexOf(endMarker, start + startMarker.length)
@@ -94,6 +170,16 @@ class ThreadLocalSendFailureProductionContractTest {
                 ?: error("Could not locate shared commonMain Kotlin sources")
         val file = File(commonMain, "build/raft/app/ThreadPage.kt")
         assertTrue(file.isFile, "Missing production ThreadPage.kt")
+        return file.readText().replace("\r\n", "\n")
+    }
+
+    private fun threadComposerPageSource(): String {
+        val commonMain =
+            listOf(File("src/commonMain/kotlin"), File("shared/src/commonMain/kotlin"))
+                .firstOrNull(File::isDirectory)
+                ?: error("Could not locate shared commonMain Kotlin sources")
+        val file = File(commonMain, "build/raft/app/ThreadComposerPage.kt")
+        assertTrue(file.isFile, "Missing production ThreadComposerPage.kt")
         return file.readText().replace("\r\n", "\n")
     }
 }

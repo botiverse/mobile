@@ -1265,13 +1265,8 @@ internal data class KuiklyThreadMessageItem(
 )
 
 internal const val ThreadMessageDeliverySending = "sending"
-internal const val ThreadMessageDeliveryWaitingAttachments = "waiting_attachments"
 internal const val ThreadMessageDeliverySent = "sent"
 internal const val ThreadMessageDeliveryFailed = "failed"
-
-internal fun String.isActiveThreadLocalSendDelivery(): Boolean =
-    equals(ThreadMessageDeliverySending, ignoreCase = true) ||
-        equals(ThreadMessageDeliveryWaitingAttachments, ignoreCase = true)
 
 @Serializable
 internal data class KuiklyThreadPendingSendContext(
@@ -1295,7 +1290,7 @@ internal fun threadComposerMessageBodyForSend(draftText: String, attachmentCount
 }
 
 internal fun KuiklyThreadMessageItem.hasLocalSendState(): Boolean =
-    deliveryState.isActiveThreadLocalSendDelivery() ||
+    deliveryState.equals(ThreadMessageDeliverySending, ignoreCase = true) ||
         deliveryState.equals(ThreadMessageDeliveryFailed, ignoreCase = true) ||
         pendingSendContext != null
 
@@ -1306,14 +1301,13 @@ private fun KuiklyThreadMessageItem.isFailedLocalSend(): Boolean =
     deliveryState.equals(ThreadMessageDeliveryFailed, ignoreCase = true) && pendingSendContext != null
 
 private fun KuiklyThreadMessageItem.isSendingLocalSend(): Boolean =
-    deliveryState.isActiveThreadLocalSendDelivery() && pendingSendContext != null
+    deliveryState.equals(ThreadMessageDeliverySending, ignoreCase = true) && pendingSendContext != null
 
 private fun buildThreadPendingSendMessage(
     localMessageId: String,
     context: KuiklyThreadPendingSendContext,
     session: StoredAuthSession?,
-    timestampLabel: String = "Now",
-    deliveryState: String = ThreadMessageDeliverySending
+    timestampLabel: String = "Now"
 ): KuiklyThreadMessageItem {
     val user = session?.user
     val authorName = user?.bestDisplayName ?: "You"
@@ -1347,7 +1341,7 @@ private fun buildThreadPendingSendMessage(
                     thumbnailUrl = attachment.previewUri
                 )
             },
-        deliveryState = deliveryState,
+        deliveryState = ThreadMessageDeliverySending,
         pendingSendContext = context,
         pendingSendErrorCode = null,
         pendingSendErrorMessage = null
@@ -4472,8 +4466,6 @@ internal fun SharedThreadRouteContent(
     }
     var firstContentLoggedThreadId by remember { mutableStateOf<String?>(null) }
     var performanceSnapshotLoggedThreadId by remember { mutableStateOf<String?>(null) }
-    val currentAttachmentUploadJobs by rememberUpdatedState(attachmentUploadJobs)
-    val currentAttachmentUploadAttemptFence by rememberUpdatedState(attachmentUploadAttemptFence)
 
     // Diagnostics only (task #20 t4): marks the START of the first content
     // composition for this thread instance, splitting the previously unmarked
@@ -4488,14 +4480,6 @@ internal fun SharedThreadRouteContent(
             )
         }
         true
-    }
-
-    DisposableEffect(threadInstanceKey) {
-        onDispose {
-            val terminalUploadIds = currentAttachmentUploadAttemptFence.activeAttemptTokens.keys
-            attachmentUploadAttemptFence = currentAttachmentUploadAttemptFence.terminate(terminalUploadIds)
-            currentAttachmentUploadJobs.values.forEach { job -> job.cancel() }
-        }
     }
 
     LaunchedEffect(threadInstanceKey, threadTimelineKey, timelineSlice.status, timelineSlice.messages.size) {
@@ -4943,10 +4927,15 @@ internal fun SharedThreadRouteContent(
             renderedPayload = renderedPayload,
             resolvedAuxiliaryThreadId = resolvedAuxiliaryThreadId
         )
-    var deferredAttachmentSend by remember(threadInstanceKey) {
-        mutableStateOf<ThreadDeferredAttachmentSend?>(null)
+    val currentAttachmentUploadJobs by rememberUpdatedState(attachmentUploadJobs)
+    val currentAttachmentUploadAttemptFence by rememberUpdatedState(attachmentUploadAttemptFence)
+    DisposableEffect(threadInstanceKey) {
+        onDispose {
+            val terminalUploadIds = currentAttachmentUploadAttemptFence.activeAttemptTokens.keys
+            attachmentUploadAttemptFence = currentAttachmentUploadAttemptFence.terminate(terminalUploadIds)
+            currentAttachmentUploadJobs.values.forEach { job -> job.cancel() }
+        }
     }
-    var nextDeferredAttachmentSendGeneration by remember(threadInstanceKey) { mutableStateOf(0L) }
     val agentStatusResolver =
         remember(serverMembersStore, currentSession?.currentServerId) {
             slockAgentStatusResolver(serverMembersStore, currentSession?.currentServerId)
@@ -5759,78 +5748,27 @@ internal fun SharedThreadRouteContent(
             }
         }
     }
-    fun finishDeferredAttachmentSendIfReady(pending: ThreadDeferredAttachmentSend) {
-        val current = deferredAttachmentSend
-            ?.takeIf { active -> active.generation == pending.generation }
-            ?: return
-        val readyContext = current.readyContextOrNull() ?: return
-        val boundLocalAttachmentIds = current.pendingLocalAttachmentIds.toSet()
-        deferredAttachmentSend = null
-        attachmentUploadAttemptFence = attachmentUploadAttemptFence.terminate(boundLocalAttachmentIds)
-        boundLocalAttachmentIds.forEach { attachmentId -> attachmentUploadJobs[attachmentId]?.cancel() }
-        attachmentUploadJobs = attachmentUploadJobs - boundLocalAttachmentIds
-        attachmentUploadFilesByLocalId = attachmentUploadFilesByLocalId - boundLocalAttachmentIds
-        threadViewModel.dispatch(
-            SharedThreadIntent.ApplyLocalSendStarted(
-                buildThreadPendingSendMessage(
-                    localMessageId = current.localMessageId,
-                    context = readyContext,
-                    session = currentSession,
-                    timestampLabel = current.timestampLabel,
-                    deliveryState = ThreadMessageDeliverySending
-                )
-            )
-        )
-        sendPendingLocalMessage(
-            current.localMessageId,
-            readyContext,
-            startedFromComposer = current.startedFromComposer
-        )
-    }
-    fun markDeferredAttachmentSendFailed(errorCode: String?, errorMessage: String? = null) {
-        val pending = deferredAttachmentSend ?: return
-        val boundLocalAttachmentIds = pending.pendingLocalAttachmentIds.toSet()
-        deferredAttachmentSend = null
-        attachmentUploadAttemptFence = attachmentUploadAttemptFence.terminate(boundLocalAttachmentIds)
-        boundLocalAttachmentIds.forEach { attachmentId -> attachmentUploadJobs[attachmentId]?.cancel() }
-        attachmentUploadJobs = attachmentUploadJobs - boundLocalAttachmentIds
-        threadViewModel.dispatch(
-            SharedThreadIntent.ApplyLocalSendFailure(
-                messageId = pending.localMessageId,
-                errorCode = errorCode,
-                errorMessage = errorMessage
-            )
-        )
-        composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.CompleteInlineSendFailure)
-    }
     fun handleAttachmentUploadFailure(errorCode: String, attachmentIds: Set<String> = emptySet()) {
-        val deferredOwnsFailure =
-            deferredAttachmentSend?.let { pending ->
-                attachmentIds.any(pending::ownsLocalAttachment)
-            } == true
-        if (deferredOwnsFailure) {
-            markDeferredAttachmentSendFailed(errorCode)
-        } else {
-            if (attachmentIds.isNotEmpty()) {
-                composerDraftViewModel.dispatch(
-                    SharedThreadComposerDraftIntent.MarkAttachmentsFailed(
-                        attachmentIds = attachmentIds,
-                        errorCode = errorCode
-                    )
+        val terminalAttachmentIds =
+            attachmentUploadAttemptFence.activeAttemptTokens.keys + attachmentIds
+        attachmentUploadAttemptFence = attachmentUploadAttemptFence.terminate(terminalAttachmentIds)
+        terminalAttachmentIds.forEach { attachmentId -> attachmentUploadJobs[attachmentId]?.cancel() }
+        attachmentUploadJobs = attachmentUploadJobs - terminalAttachmentIds
+        if (terminalAttachmentIds.isNotEmpty()) {
+            composerDraftViewModel.dispatch(
+                SharedThreadComposerDraftIntent.MarkAttachmentsFailed(
+                    attachmentIds = terminalAttachmentIds,
+                    errorCode = errorCode
                 )
-            }
-            bridge.toast(
+            )
+        }
+        bridge.toast(
             localizedAttachmentUploadFailedDetail(
                 userFacingErrorLabels.forErrorCode(errorCode) ?: genericThreadErrorLabel
             )
-            )
-        }
+        )
     }
-    fun uploadComposerAttachmentFiles(
-        files: List<PlatformFile>,
-        replaceAttachmentId: String? = null,
-        stageInComposer: Boolean = true
-    ) {
+    fun uploadComposerAttachmentFiles(files: List<PlatformFile>, replaceAttachmentId: String? = null) {
         val channelId = composerSurface.sendChannelId
         if (channelId == null) {
             bridge.toast(attachmentPickerUnavailableLabel)
@@ -5877,13 +5815,11 @@ internal fun SharedThreadRouteContent(
                     acceptedFiles
                         .filter { file -> file.id.isNotBlank() }
                         .associateBy { file -> file.id }
-            if (stageInComposer) {
-                composerDraftViewModel.dispatch(
-                    SharedThreadComposerDraftIntent.AddLocalAttachments(localAttachments)
-                )
-            }
+            composerDraftViewModel.dispatch(
+                SharedThreadComposerDraftIntent.AddLocalAttachments(localAttachments)
+            )
             bridge.log(
-                "thread_composer_attachment_local_queue fileCount=${localAttachments.size} staged=$stageInComposer " +
+                "thread_composer_attachment_local_queue fileCount=${localAttachments.size} " +
                     "ids=${localAttachments.joinToString(",") { it.id }}"
             )
         }
@@ -5930,47 +5866,25 @@ internal fun SharedThreadRouteContent(
                                     handleAttachmentUploadFailure("empty_upload_result", setOf(localAttachmentId))
                                     return@launch
                                 }
-                                val uploadedPendingAttachments =
-                                    uploaded.map { attachment ->
-                                        KuiklyPendingAttachmentItem(
-                                            id = attachment.id,
-                                            fileName = attachment.fileName,
-                                            sizeLabel = attachment.sizeLabel,
-                                            sizeBytes = attachment.sizeBytes,
-                                            mimeType = attachment.mimeType,
-                                            previewUri = attachment.previewUri,
-                                            status = attachment.status,
-                                            errorCode = attachment.errorCode
-                                        )
+                                if (uploaded.none { attachment ->
+                                        attachment.id.isNotBlank() && !attachment.id.startsWith("picked-")
                                     }
-                                if (uploadedPendingAttachments.none { it.isReadyThreadAttachmentForSend() }) {
+                                ) {
                                     handleAttachmentUploadFailure("empty_upload_result", setOf(localAttachmentId))
                                     return@launch
                                 }
-                                val pending = deferredAttachmentSend
-                                    ?.takeIf { deferred -> deferred.ownsLocalAttachment(localAttachmentId) }
-                                if (pending != null) {
-                                    val updated =
-                                        pending.recordUploadSuccess(
-                                            localAttachmentId = localAttachmentId,
-                                            attachments = uploadedPendingAttachments
-                                        )
-                                    deferredAttachmentSend = updated
-                                    finishDeferredAttachmentSendIfReady(updated)
-                                } else {
-                                    replaceAttachmentId?.takeIf { it.isNotBlank() }?.let { id ->
-                                        composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.RemoveAttachment(id))
-                                    }
-                                    composerDraftViewModel.dispatch(
-                                        SharedThreadComposerDraftIntent.AddUploadedAttachments(
-                                            attachments = uploaded,
-                                            replacedAttachmentIds = setOf(localAttachmentId),
-                                            replacedAttachmentIdsByUploadedId =
-                                                uploaded.associate { attachment -> attachment.id to localAttachmentId }
-                                        )
-                                    )
-                                    attachmentUploadFilesByLocalId = attachmentUploadFilesByLocalId - localAttachmentId
+                                replaceAttachmentId?.takeIf { it.isNotBlank() }?.let { id ->
+                                    composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.RemoveAttachment(id))
                                 }
+                                composerDraftViewModel.dispatch(
+                                    SharedThreadComposerDraftIntent.AddUploadedAttachments(
+                                        attachments = uploaded,
+                                        replacedAttachmentIds = setOf(localAttachmentId),
+                                        replacedAttachmentIdsByUploadedId =
+                                            uploaded.associate { attachment -> attachment.id to localAttachmentId }
+                                    )
+                                )
+                                attachmentUploadFilesByLocalId = attachmentUploadFilesByLocalId - localAttachmentId
                             }
                             is DataResult.Error ->
                                 handleAttachmentUploadFailure(uploadResult.error.code, setOf(localAttachmentId))
@@ -7166,18 +7080,6 @@ internal fun SharedThreadRouteContent(
                 action == "cancelLocalSend" && !itemId.isNullOrBlank() -> {
                     val message = renderedTimelineSlice.threadMessageById(itemId) ?: return@ThreadPageContent
                     if (message.isSendingLocalSend()) {
-                        deferredAttachmentSend
-                            ?.takeIf { pending -> pending.localMessageId == itemId }
-                            ?.let { pending ->
-                                val pendingAttachmentIds = pending.pendingLocalAttachmentIds.toSet()
-                                attachmentUploadAttemptFence =
-                                    attachmentUploadAttemptFence.terminate(pendingAttachmentIds)
-                                pendingAttachmentIds.forEach { attachmentId -> attachmentUploadJobs[attachmentId]?.cancel() }
-                                attachmentUploadJobs = attachmentUploadJobs - pendingAttachmentIds
-                                attachmentUploadFilesByLocalId = attachmentUploadFilesByLocalId - pendingAttachmentIds
-                                deferredAttachmentSend = null
-                                composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.CompleteInlineSendFailure)
-                            }
                         threadViewModel.dispatch(SharedThreadIntent.CancelLocalSend(message.id))
                     }
                 }
@@ -7187,60 +7089,17 @@ internal fun SharedThreadRouteContent(
                     if (!message.canRetryLocalSend()) {
                         return@ThreadPageContent
                     }
-                    val pendingLocalAttachmentIds =
-                        pendingContext.attachments
-                            .filterNot { attachment -> attachment.isReadyThreadAttachmentForSend() }
-                            .map { attachment -> attachment.id }
-                            .filter { id -> id.isNotBlank() }
-                            .distinct()
-                    val pendingUploadFiles =
-                        pendingLocalAttachmentIds.mapNotNull { id -> attachmentUploadFilesByLocalId[id] }
-                    if (
-                        pendingLocalAttachmentIds.isNotEmpty() &&
-                        pendingUploadFiles.size != pendingLocalAttachmentIds.size
-                    ) {
-                        bridge.log(
-                            "thread_deferred_attachment_retry result=missing_file_ref " +
-                                "localMessageId=${message.id} expected=${pendingLocalAttachmentIds.size} " +
-                                "available=${pendingUploadFiles.size}"
-                        )
-                        bridge.toast(attachmentRetryUnavailableLabel)
-                        return@ThreadPageContent
-                    }
                     threadViewModel.dispatch(SharedThreadIntent.PrepareForLocalSend)
-                    if (pendingLocalAttachmentIds.isNotEmpty()) {
-                        nextDeferredAttachmentSendGeneration += 1L
-                        deferredAttachmentSend =
-                            newThreadDeferredAttachmentSend(
-                                localMessageId = message.id,
-                                context = pendingContext,
-                                timestampLabel = message.timestampLabel,
-                                generation = nextDeferredAttachmentSendGeneration,
-                                startedFromComposer = false
-                            )
-                    }
                     threadViewModel.dispatch(
                         SharedThreadIntent.ApplyLocalSendStarted(
                             message.copy(
-                                deliveryState =
-                                    if (pendingLocalAttachmentIds.isNotEmpty()) {
-                                        ThreadMessageDeliveryWaitingAttachments
-                                    } else {
-                                        ThreadMessageDeliverySending
-                                    },
+                                deliveryState = ThreadMessageDeliverySending,
                                 pendingSendErrorCode = null,
                                 pendingSendErrorMessage = null
                             )
                         )
                     )
-                    if (pendingLocalAttachmentIds.isNotEmpty()) {
-                        uploadComposerAttachmentFiles(
-                            files = pendingUploadFiles,
-                            stageInComposer = false
-                        )
-                    } else {
-                        sendPendingLocalMessage(message.id, pendingContext, startedFromComposer = false)
-                    }
+                    sendPendingLocalMessage(message.id, pendingContext, startedFromComposer = false)
                 }
                 else -> {
                     bridge.log(
@@ -7310,23 +7169,13 @@ internal fun SharedThreadRouteContent(
                     val attachmentIds = currentComposer.pendingAttachments.readyThreadAttachmentIdsForSend()
                     val hasBlockingAttachmentUpload = currentComposer.pendingAttachments.hasBlockingThreadAttachmentUpload()
                     val hasFailedAttachmentUpload = currentComposer.pendingAttachments.hasFailedThreadAttachmentUpload()
-                    val waitingLocalAttachmentIds =
-                        currentComposer.pendingAttachments
-                            .filterNot { attachment -> attachment.isReadyThreadAttachmentForSend() }
-                            .map { attachment -> attachment.id }
-                            .filter { id -> id.isNotBlank() }
-                            .distinct()
-                    val hasMissingActiveAttachmentUpload =
-                        waitingLocalAttachmentIds.any { id -> attachmentUploadJobs[id]?.isActive != true }
                     val gateBlockReason =
                         when {
                             !payload.canSend -> "payload_can_send_false"
                             threadId == null -> "missing_send_channel"
-                            deferredAttachmentSend != null -> "attachment_send_already_waiting"
                             hasFailedAttachmentUpload -> "attachment_upload_failed"
-                            hasBlockingAttachmentUpload && hasMissingActiveAttachmentUpload ->
-                                "attachment_upload_not_active"
-                            draftText.isBlank() && attachmentIds.isEmpty() && !hasBlockingAttachmentUpload -> "empty_draft"
+                            hasBlockingAttachmentUpload -> "attachment_upload_in_progress"
+                            draftText.isBlank() && attachmentIds.isEmpty() -> "empty_draft"
                             else -> null
                         }
                     if (gateBlockReason != null) {
@@ -7339,7 +7188,7 @@ internal fun SharedThreadRouteContent(
                                 "composerStreamChannelId=${composerSurface.streamChannelId.orEmpty()} " +
                                 "hasText=${draftText.isNotBlank()} attachments=${attachmentIds.size} " +
                                 "blockingAttachments=$hasBlockingAttachmentUpload " +
-                                "failedAttachments=$hasFailedAttachmentUpload missingActive=$hasMissingActiveAttachmentUpload"
+                                "failedAttachments=$hasFailedAttachmentUpload"
                         )
                         return@ThreadPageContent
                     }
@@ -7351,15 +7200,10 @@ internal fun SharedThreadRouteContent(
                             "parentChannelId=${payload.parentChannelId.orEmpty()} parentMessageId=${payload.parentMessageId.orEmpty()} " +
                             "composerStreamChannelId=${composerSurface.streamChannelId.orEmpty()} " +
                             "hasText=${draftText.isNotBlank()} attachments=${attachmentIds.size} " +
-                            "blockingAttachments=$hasBlockingAttachmentUpload waitingIds=${waitingLocalAttachmentIds.size}"
+                            "blockingAttachments=$hasBlockingAttachmentUpload"
                     )
                     val draftAsTask = currentDraftState.seedAsTask
-                    val pendingAttachments =
-                        if (hasBlockingAttachmentUpload) {
-                            currentComposer.pendingAttachments.withThreadAttachmentUploadWaitingState()
-                        } else {
-                            currentComposer.pendingAttachments
-                        }
+                    val pendingAttachments = currentComposer.pendingAttachments
                     val messageBody =
                         threadComposerMessageBodyForSend(
                             draftText = draftText,
@@ -7381,17 +7225,6 @@ internal fun SharedThreadRouteContent(
                     val localMessageId = ThreadLocalSendNextId.value(composerInstanceId)
                     val localTimestampLabel =
                         buildThreadPendingSendTimestampLabel(bridge, payload.nowEpochMillis)
-                    if (hasBlockingAttachmentUpload) {
-                        nextDeferredAttachmentSendGeneration += 1L
-                        deferredAttachmentSend =
-                            newThreadDeferredAttachmentSend(
-                                localMessageId = localMessageId,
-                                context = pendingContext,
-                                timestampLabel = localTimestampLabel,
-                                generation = nextDeferredAttachmentSendGeneration,
-                                startedFromComposer = true
-                            )
-                    }
                     threadViewModel.dispatch(SharedThreadIntent.PrepareForLocalSend)
                     threadViewModel.dispatch(
                         SharedThreadIntent.ApplyLocalSendStarted(
@@ -7399,13 +7232,7 @@ internal fun SharedThreadRouteContent(
                                 localMessageId = localMessageId,
                                 context = pendingContext,
                                 session = currentSession,
-                                timestampLabel = localTimestampLabel,
-                                deliveryState =
-                                    if (hasBlockingAttachmentUpload) {
-                                        ThreadMessageDeliveryWaitingAttachments
-                                    } else {
-                                        ThreadMessageDeliverySending
-                                    }
+                                timestampLabel = localTimestampLabel
                             )
                         )
                     )
@@ -7416,9 +7243,7 @@ internal fun SharedThreadRouteContent(
                             sentAttachmentIds = pendingContext.attachmentIds.toSet()
                         )
                     )
-                    if (!hasBlockingAttachmentUpload) {
-                        sendPendingLocalMessage(localMessageId, pendingContext, startedFromComposer = true)
-                    }
+                    sendPendingLocalMessage(localMessageId, pendingContext, startedFromComposer = true)
                 }
                 "dismissMention" -> {
                     value?.takeIf { it.isNotBlank() }?.let { resolutionId ->
@@ -10509,26 +10334,32 @@ private fun KuiklyThreadComposerPayload.withThreadComposerDraftState(
         } + draftState.uploadedAttachments)
             .distinctBy { attachment -> attachment.id }
             .filterNot { attachment -> attachment.id in draftState.removedAttachmentIds }
+    val pendingAttachmentItems =
+        pendingAttachments.map { attachment ->
+            KuiklyPendingAttachmentItem(
+                id = attachment.id,
+                fileName = attachment.fileName,
+                sizeLabel = attachment.sizeLabel,
+                sizeBytes = attachment.sizeBytes,
+                mimeType = attachment.mimeType,
+                previewUri = attachment.previewUri,
+                status = attachment.status,
+                errorCode = attachment.errorCode
+            )
+        }
     return copy(
         instanceId = instanceId.ifBlank { renderedPayload.instanceId },
         seedText = draftState.seedText,
         seedAsTask = draftState.seedAsTask,
         syncNonce = draftState.syncNonce,
         focusRequestNonce = draftState.focusRequestNonce,
-        pendingAttachments =
-            pendingAttachments.map { attachment ->
-                KuiklyPendingAttachmentItem(
-                    id = attachment.id,
-                    fileName = attachment.fileName,
-                    sizeLabel = attachment.sizeLabel,
-                    sizeBytes = attachment.sizeBytes,
-                    mimeType = attachment.mimeType,
-                    previewUri = attachment.previewUri,
-                    status = attachment.status,
-                    errorCode = attachment.errorCode
-                )
+        pendingAttachments = pendingAttachmentItems,
+        composerMode =
+            when {
+                composerMode == "failed" -> "failed"
+                pendingAttachmentItems.hasUploadingThreadAttachment() -> "uploading"
+                else -> composerMode
             },
-        composerMode = if (composerMode == "failed") "failed" else composerMode,
         statusLabel = statusLabel,
         pendingMentionActions = draftState.pendingMentionActions,
         mentionActionNotice = draftState.mentionActionNotice,
@@ -15360,14 +15191,14 @@ internal fun KuiklyThreadScreenPayload.hasSendingLocalSendAnchor(anchorKey: Stri
     val messageId = anchorKey?.substringBefore(':')?.takeIf { it.isNotBlank() } ?: return false
     return messages.any { message ->
         message.id == messageId &&
-            message.deliveryState.isActiveThreadLocalSendDelivery() &&
+            message.deliveryState.equals(ThreadMessageDeliverySending, ignoreCase = true) &&
             message.pendingSendContext != null
     }
 }
 
 internal fun KuiklyThreadScreenPayload.latestLocalSendBottomAnchorKey(): String? {
     val latest = messages.lastOrNull() ?: return null
-    if (!latest.deliveryState.isActiveThreadLocalSendDelivery() ||
+    if (!latest.deliveryState.equals(ThreadMessageDeliverySending, ignoreCase = true) ||
         latest.pendingSendContext == null
     ) {
         return null
@@ -16579,8 +16410,6 @@ private fun ThreadMessageLocalSendStatus(
     val summary = threadSendFailureSummary(message.pendingSendErrorCode, userFacingLabels)
     val label = if (isFailed) {
         stringResource(MR.strings.thread_send_failure_summary, summary)
-    } else if (message.deliveryState.equals(ThreadMessageDeliveryWaitingAttachments, ignoreCase = true)) {
-        stringResource(MR.strings.thread_send_waiting_attachments)
     } else if (message.pendingSendContext?.asTask == true) {
         "Sending as task..."
     } else {

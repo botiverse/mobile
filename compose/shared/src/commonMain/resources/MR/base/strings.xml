@@ -241,7 +241,6 @@
     <string name="thread_error_reason_generic">Something went wrong. Please try again.</string>
     <string name="thread_send_failure_summary">Send failed: %1$s</string>
     <string name="thread_send_failure_retry">Retry</string>
-    <string name="thread_send_waiting_attachments">Waiting for attachments...</string>
     <string name="thread_send_failure_details">Details</string>
     <string name="thread_send_failure_hide_details">Hide details</string>
     <string name="thread_send_failure_copy_details">Copy details</string>

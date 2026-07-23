@@ -1287,6 +1287,7 @@ internal fun ThreadComposerContent(
             state.composerMode != "sending" &&
             state.composerMode != "uploading" &&
             state.composerMode != "no_permission" &&
+            !state.pendingAttachments.hasFailedThreadAttachmentUpload() &&
             (text.isNotBlank() || state.pendingAttachments.isNotEmpty())
     val composerKeyboardOptions =
         if (composerSendKeyEnabled) {
@@ -1954,17 +1955,15 @@ internal fun List<KuiklyPendingAttachmentItem>.readyThreadAttachmentIdsForSend()
 internal fun List<KuiklyPendingAttachmentItem>.hasBlockingThreadAttachmentUpload(): Boolean =
     any { attachment -> attachment.id.isNotBlank() && !attachment.isReadyThreadAttachmentForSend() }
 
+internal fun List<KuiklyPendingAttachmentItem>.hasUploadingThreadAttachment(): Boolean =
+    any { attachment ->
+        attachment.id.isNotBlank() &&
+            attachment.status != "failed" &&
+            !attachment.isReadyThreadAttachmentForSend()
+    }
+
 internal fun List<KuiklyPendingAttachmentItem>.hasFailedThreadAttachmentUpload(): Boolean =
     any { attachment -> attachment.id.isNotBlank() && attachment.status == "failed" }
-
-internal fun List<KuiklyPendingAttachmentItem>.withThreadAttachmentUploadWaitingState(): List<KuiklyPendingAttachmentItem> =
-    map { attachment ->
-        if (attachment.isReadyThreadAttachmentForSend() || attachment.id.isBlank()) {
-            attachment
-        } else {
-            attachment.copy(status = "uploading")
-        }
-    }
 
 internal fun KuiklyPendingAttachmentItem.isReadyThreadAttachmentForSend(): Boolean =
     id.isNotBlank() && status == "ready" && !id.startsWith("picked-")

@@ -314,11 +314,8 @@ class ThreadComposerPayloadTest {
 
         assertEquals(listOf("remote-attachment-1"), attachments.readyThreadAttachmentIdsForSend())
         assertTrue(attachments.hasBlockingThreadAttachmentUpload())
+        assertTrue(attachments.hasUploadingThreadAttachment())
         assertFalse(attachments.hasFailedThreadAttachmentUpload())
-        assertEquals(
-            listOf("uploading", "ready", "uploading"),
-            attachments.withThreadAttachmentUploadWaitingState().map { attachment -> attachment.status }
-        )
     }
 
     @Test
@@ -334,6 +331,7 @@ class ThreadComposerPayloadTest {
 
         assertEquals(listOf("remote-attachment-1"), attachments.readyThreadAttachmentIdsForSend())
         assertFalse(attachments.hasBlockingThreadAttachmentUpload())
+        assertFalse(attachments.hasUploadingThreadAttachment())
     }
 
     @Test
@@ -349,6 +347,7 @@ class ThreadComposerPayloadTest {
             )
 
         assertTrue(attachments.hasBlockingThreadAttachmentUpload())
+        assertFalse(attachments.hasUploadingThreadAttachment())
         assertTrue(attachments.hasFailedThreadAttachmentUpload())
         assertEquals(emptyList(), attachments.readyThreadAttachmentIdsForSend())
     }
