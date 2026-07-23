@@ -5,6 +5,12 @@ import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
 import build.raft.app.model.slockEpochDayForDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 
 class SlockLiveTimeContextTest {
     @Test
@@ -21,7 +27,9 @@ class SlockLiveTimeContextTest {
         val activeDelays = mutableListOf<Long>()
         var activeClockIndex = 0
         var activeCallback: (() -> Unit)? = null
-        val clearedTimeouts = mutableListOf<String>()
+        val canceledTimeouts = mutableListOf<String>()
+        val activeArmedGenerations = mutableListOf<Long>()
+        val activeDeliveredGenerations = mutableListOf<Long>()
         val activeController =
             SlockTimeContextRefreshController(
                 seed = seed,
@@ -29,16 +37,19 @@ class SlockLiveTimeContextTest {
                 scheduleTimeout = { delayMillis, callback ->
                     activeDelays += delayMillis.toLong()
                     activeCallback = callback
-                    "active-${activeDelays.size}"
+                    val timeoutId = "active-${activeDelays.size}"
+                    SlockTimeoutHandle { canceledTimeouts += timeoutId }
                 },
-                clearTimeout = clearedTimeouts::add,
-                onRefresh = activeRefreshes::add
+                onRefresh = activeRefreshes::add,
+                onTimeoutScheduled = { generation, _, _ -> activeArmedGenerations += generation },
+                onTimeoutDelivered = { generation, _ -> activeDeliveredGenerations += generation }
             )
 
         activeController.start()
         activeController.start()
         assertEquals(1, activeRefreshes.size)
         assertEquals(listOf(30_000L), activeDelays)
+        assertEquals(listOf(1L), activeArmedGenerations)
         activeClockIndex = 1
         activeCallback!!.invoke()
 
@@ -50,29 +61,94 @@ class SlockLiveTimeContextTest {
             activeRefreshes.map { it?.todayEpochDay }
         )
         assertEquals(listOf(30_000L, 55_000L), activeDelays)
+        assertEquals(listOf(1L, 2L), activeArmedGenerations)
+        assertEquals(listOf(1L), activeDeliveredGenerations)
         activeController.stop()
-        assertEquals(listOf("active-2"), clearedTimeouts)
+        assertEquals(listOf("active-2"), canceledTimeouts)
         activeCallback!!.invoke()
         assertEquals(2, activeRefreshes.size)
         assertEquals(listOf(30_000L, 55_000L), activeDelays)
 
         val resumedRefreshes = mutableListOf<SlockTimeContext?>()
         val resumedDelays = mutableListOf<Long>()
+        val resumedArmedGenerations = mutableListOf<Long>()
         val resumedController =
             SlockTimeContextRefreshController(
                 seed = seed,
                 nowEpochMillis = { afterMidnight },
                 scheduleTimeout = { delayMillis, _ ->
                     resumedDelays += delayMillis.toLong()
-                    "resumed-1"
+                    SlockTimeoutHandle {}
                 },
-                clearTimeout = {},
-                onRefresh = resumedRefreshes::add
+                onRefresh = resumedRefreshes::add,
+                onTimeoutScheduled = { generation, _, _ -> resumedArmedGenerations += generation }
             )
         resumedController.start()
 
         assertEquals(slockEpochDayForDate(2026, 7, 23), resumedRefreshes.single()?.todayEpochDay)
         assertEquals(listOf(55_000L), resumedDelays)
+        assertEquals(listOf(1L), resumedArmedGenerations)
+    }
+
+    @Test
+    fun independentTimeoutSchedulerFencesCancellationBeforeAndAfterWake() = runBlocking {
+        val queuedDeliveries = mutableListOf<() -> Unit>()
+        val pendingWakes = mutableListOf<CompletableDeferred<Unit>>()
+        val scheduler =
+            SlockIndependentTimeoutScheduler(
+                timerScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+                dispatchCallback = queuedDeliveries::add,
+                wait = {
+                    CompletableDeferred<Unit>()
+                        .also(pendingWakes::add)
+                        .await()
+                }
+            )
+        var callbackCount = 0
+
+        scheduler.schedule(30_000) { callbackCount += 1 }
+        assertEquals(1, pendingWakes.size)
+        assertEquals(0, callbackCount)
+        pendingWakes.removeAt(0).complete(Unit)
+        assertEquals(1, queuedDeliveries.size)
+        assertEquals(0, callbackCount)
+        queuedDeliveries.removeAt(0).invoke()
+        assertEquals(1, callbackCount)
+
+        val canceledBeforeWake = scheduler.schedule(10_000) { callbackCount += 1 }
+        assertEquals(1, pendingWakes.size)
+        canceledBeforeWake.cancel()
+        pendingWakes.removeAt(0).complete(Unit)
+        assertEquals(0, queuedDeliveries.size)
+        assertEquals(1, callbackCount)
+
+        val canceledAfterWake = scheduler.schedule(10_000) { callbackCount += 1 }
+        pendingWakes.removeAt(0).complete(Unit)
+        assertEquals(1, queuedDeliveries.size)
+        canceledAfterWake.cancel()
+        queuedDeliveries.removeAt(0).invoke()
+        assertEquals(1, callbackCount)
+
+        scheduler.schedule(10_000) { callbackCount += 1 }
+        pendingWakes.removeAt(0).complete(Unit)
+        assertEquals(1, queuedDeliveries.size)
+        scheduler.close()
+        queuedDeliveries.removeAt(0).invoke()
+        assertEquals(1, callbackCount)
+    }
+
+    @Test
+    fun independentTimeoutSchedulerUsesRealDefaultDispatcherWake() = runBlocking {
+        val delivered = CompletableDeferred<Unit>()
+        val scheduler =
+            SlockIndependentTimeoutScheduler(
+                timerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+                dispatchCallback = { callback -> callback() }
+            )
+
+        scheduler.schedule(1) { delivered.complete(Unit) }
+        withTimeout(5_000) { delivered.await() }
+        scheduler.close()
     }
 
     private fun epochMillis(value: String): Long =
