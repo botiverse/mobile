@@ -383,7 +383,12 @@ function parseJsonReply(message) {
 
 async function completeJson(models, model, prompt, maxTokens, callOpts = {}) {
   const attempts = [];
-  for (let attempt = 1; attempt <= 2; attempt += 1) {
+  // Cross-border providers (qwen-token-plan-cn from GitHub runners) fail with
+  // immediate connection errors on some runners; extra bounded attempts with a
+  // short backoff recover the transient cases without hiding hard failures.
+  const maxAttempts = callOpts.attempts || 2;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    if (attempt > 1) await new Promise((resolve) => setTimeout(resolve, 4_000));
     const controller = new AbortController();
     const timeoutMs = 180_000;
     const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -406,7 +411,7 @@ async function completeJson(models, model, prompt, maxTokens, callOpts = {}) {
       clearTimeout(timer);
     }
   }
-  const error = new Error("strict JSON completion failed after 2 bounded attempts");
+  const error = new Error(`strict JSON completion failed after ${maxAttempts} bounded attempts`);
   error.attempts = attempts;
   throw error;
 }
@@ -537,7 +542,7 @@ async function processCandidate(candidate, opts, models, model, panel) {
   const votes = await Promise.all(panel.map(async (entry, index) => {
     try {
       const call = await completeJson(models, entry.model, reviewPrompt(candidate, truth, patchResult, index + 1), entry.maxTokens,
-        { apiKey: entry.apiKey, reasoningEffort: entry.reasoningEffort });
+        { apiKey: entry.apiKey, reasoningEffort: entry.reasoningEffort, attempts: entry.provider === "minimax" ? 2 : 4 });
       usages.push(call.usage);
       return { voter: index + 1, model: entry.label, ...call.data, audit: call.attempts };
     } catch (error) {
