@@ -47,9 +47,21 @@ async function stamp(path, init = {}) {
 }
 
 async function evidenceBytes(ev) {
-  const res = await fetch(`${stampUrl}/api/runs/${runId}/evidence/${ev.id}`, {
-    headers: { authorization: `Bearer ${stampToken}` },
-  });
+  let res;
+  let lastError;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      res = await fetch(`${stampUrl}/api/runs/${runId}/evidence/${ev.id}`, {
+        headers: { authorization: `Bearer ${stampToken}` },
+      });
+      if (res.ok || res.status < 500) break;
+      lastError = new Error(`HTTP ${res.status}`);
+    } catch (error) {
+      lastError = error;
+    }
+    if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, attempt * 1000));
+  }
+  if (!res) throw lastError || new Error(`evidence ${ev.id}: fetch failed`);
   if (!res.ok) throw new Error(`evidence ${ev.id}: HTTP ${res.status}`);
   const bytes = Buffer.from(await res.arrayBuffer());
   const actual = crypto.createHash("sha256").update(bytes).digest("hex");
@@ -184,7 +196,10 @@ async function main() {
 
   const reviewedEvidence = [...rawShots, ...rawDumps, ...rawLogs]
     .sort((a, b) => a.id.localeCompare(b.id));
-  await Promise.all(reviewedEvidence.map((ev) => bytesFor(ev)));
+  // Keep evidence acquisition bounded and deterministic. A large run can have
+  // dozens of objects; a single Promise.all burst has caused transient R2/fetch
+  // failures before the reviewer ever reached the model.
+  for (const ev of reviewedEvidence) await bytesFor(ev);
   const evidenceManifest = reviewedEvidence.map((e) => ({ id: e.id, kind: e.kind, sha256: e.sha256 }));
   const evidenceManifestSha256 = crypto.createHash("sha256").update(JSON.stringify(evidenceManifest)).digest("hex");
   const reviewInput = {
