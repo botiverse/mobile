@@ -638,7 +638,7 @@ jobs:
             # only — currently 3/3 runs fail the 100ms draw budget, so this must
             # NOT gate until the budget or the render path is fixed. `|| true`
             # keeps collection failures from failing the nightly job.
-            if [ "${GITHUB_EVENT_NAME}" != "pull_request" ]; then adb logcat -d -v threadtime | grep -E "thread_first_content_budget|kuikly_perf_snapshot|thread_payload_ready_gate|thread_host_traversal|thread_first_content_ready" > thread-open-budget-telemetry.txt || true; fi
+            if [ "${GITHUB_EVENT_NAME}" != "pull_request" ]; then adb logcat -d -v threadtime | grep -E "thread_first_content_budget|kuikly_perf_snapshot|thread_payload_ready_gate|thread_host_traversal|thread_first_content_ready|thread_content_compose_start|thread_refresh_result|thread_markdown_body_recompose" > thread-open-budget-telemetry.txt || true; fi
 
       - name: Upload instrumentation output
         if: always()
