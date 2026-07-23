@@ -271,9 +271,16 @@ class MarkdownContentIntegrityTest {
     }
 
     private fun generatedInlineCodeUrlPayloads(): List<String> {
-        val base = "https://xxx.com/xx/asd"
+        val bases =
+            listOf(
+                // Exact task #513 payload from the reported XiShi message.
+                "http://internal/",
+                "https://xxx.com/xx/asd",
+            )
         val tails = listOf("", ".", ", next", "] now", ") now", "} now", "> now")
-        return generatedBalancedUrlTargets(base).flatMap { url -> tails.map { tail -> url + tail } }
+        return bases.flatMap { base ->
+            generatedBalancedUrlTargets(base).flatMap { url -> tails.map { tail -> url + tail } }
+        }
     }
 
     private fun generatedBalancedUrlTargets(base: String): List<String> =
