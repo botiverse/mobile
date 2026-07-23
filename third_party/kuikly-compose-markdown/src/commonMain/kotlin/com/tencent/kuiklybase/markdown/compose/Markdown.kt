@@ -252,20 +252,26 @@ fun MarkdownSuccess(
     val content = { state.getContent() }
     val skipLinkDefinition = state.skipLinkDefinition()
     val rememberedComponents = remember { components }
+    // t6-a node timing (diagnostics only): fresh per-execution handle only when
+    // the host installed a sink; null keeps the pre-existing untimed path (the
+    // null check is the only added work — no clock read, no allocation).
+    val nodeTiming = slockMarkdownRenderTimingOrNull()
     val renderStartMark = TimeSource.Monotonic.markNow()
     slockMarkdownLogSubTrace(
         "phase=markdown.success.compose contentHash=${content().hashCode().toString(16)} " +
             "contentLength=${content().length} nodeListSize=${state.nodeListState.size}"
     )
-    Column(modifier = modifier) {
-        state.nodeListState.forEachIndexed { index, result ->
-            handleElement(
-                result,
-                rememberedComponents,
-                content,
-                includeSpacer = false,
-                skipLinkDefinition = skipLinkDefinition
-            )
+    CompositionLocalProvider(LocalSlockMarkdownRenderTiming provides nodeTiming) {
+        Column(modifier = modifier) {
+            state.nodeListState.forEachIndexed { index, result ->
+                handleElement(
+                    result,
+                    rememberedComponents,
+                    content,
+                    includeSpacer = false,
+                    skipLinkDefinition = skipLinkDefinition
+                )
+            }
         }
     }
     val renderDurationUs = slockMarkdownMonotonicNanosSince(renderStartMark) / 1_000L
@@ -274,6 +280,7 @@ fun MarkdownSuccess(
             "phase=markdown.layout.render_nodes durationUs=$renderDurationUs nodeCount=${state.nodeListState.size}"
         )
     }
+    nodeTiming?.finishRender(renderDurationUs)
 }
 
 internal const val SlockMarkdownVendorTraceThresholdUs: Long = 200L

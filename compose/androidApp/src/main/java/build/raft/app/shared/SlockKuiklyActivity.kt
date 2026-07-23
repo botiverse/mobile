@@ -1831,6 +1831,19 @@ open class SlockKuiklyActivity :
                 this?.action == ACTION_OPEN_DIAGNOSTICS
 
         private fun diagnosticsDeepLinkPageData(intent: Intent?): JSONObject {
+            // t6-a overhead A/B (debug diagnostics only): apply the sink
+            // suppression flag BEFORE any Markdown composition and emit a
+            // content-free receipt so each run's arm is verifiable.
+            if (intent?.hasExtra("suppress_md_node_sink") == true) {
+                val suppressed = intent.getBooleanExtra("suppress_md_node_sink", false)
+                com.tencent.kuiklybase.markdown.compose.SlockMarkdownNodeTrace
+                    .suppressedForOverheadTest = suppressed
+                SlockAppLog.record(
+                    "SlockDiagnostics",
+                    "md_node_sink_receipt mdNodeSink=${if (suppressed) "suppressed" else "enabled"} " +
+                        "profilerExtra=${intent.getBooleanExtra("enable_profiler", false)}"
+                )
+            }
             val pageData =
                     JSONObject()
                             .put(KEY_PAGE_NAME, PAGE_APP_SHELL)
