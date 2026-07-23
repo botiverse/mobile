@@ -171,7 +171,10 @@ internal fun SlockBrutalTextarea(
             fieldMinHeight = fieldHeight,
             borderColor = if (hasError) SlockColor.AccentRed else SlockColor.BorderBlack,
             enabledBackgroundColor = if (hasError) Color(0xFFFFF4F4) else SlockColor.SurfaceWhite,
-            textStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack)
+            // react .input-brutal textareas inherit the 16px body font with
+            // Tailwind's 1.5 line-height (16/24); 14/18 wrapped one word earlier
+            // per line and read visibly smaller than the web baseline.
+            textStyle = SlockType.Input.copy(fontSize = 16.sp, lineHeight = 24.sp, color = SlockColor.TextBlack)
         )
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
             Text(
@@ -227,7 +230,10 @@ internal fun SlockBrutalTextarea(
             fieldMinHeight = fieldHeight,
             borderColor = if (hasError) SlockColor.AccentRed else SlockColor.BorderBlack,
             enabledBackgroundColor = if (hasError) Color(0xFFFFF4F4) else SlockColor.SurfaceWhite,
-            textStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack)
+            // react .input-brutal textareas inherit the 16px body font with
+            // Tailwind's 1.5 line-height (16/24); 14/18 wrapped one word earlier
+            // per line and read visibly smaller than the web baseline.
+            textStyle = SlockType.Input.copy(fontSize = 16.sp, lineHeight = 24.sp, color = SlockColor.TextBlack)
         )
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
             Text(
