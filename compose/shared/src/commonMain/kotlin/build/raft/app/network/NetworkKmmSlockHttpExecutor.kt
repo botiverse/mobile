@@ -29,6 +29,24 @@ internal fun createPlatformSlockHttpExecutor(
 
 private const val SLOCK_REQUEST_TIMEOUT_MILLIS = 30_000L
 
+/**
+ * task #783 (human ruling in `#proj-chat:8b673a88`): streaming fileRef
+ * uploads get a 3-minute total budget instead of the generic 30s request
+ * deadline — a healthy 190 MiB upload legitimately outlives 30s. Ordinary
+ * requests and in-memory bytes multipart keep [SLOCK_REQUEST_TIMEOUT_MILLIS];
+ * on timeout the existing failed-attachment terminal UI (Upload failed /
+ * Tap to retry, draft preserved, zero send side effects) stays as-is.
+ */
+internal const val SLOCK_UPLOAD_TOTAL_TIMEOUT_MILLIS = 180_000L
+
+/**
+ * Only multipart requests that stream a fileRef body get the upload budget;
+ * a part without both an opener and a fileRef maps to NetworkBody.Bytes and
+ * keeps the ordinary bound.
+ */
+internal fun List<MultipartFile>.hasStreamingFileRefParts(): Boolean =
+    any { it.streamOpener != null && it.fileRef != null }
+
 @Volatile
 private var networkKmmInitialized = false
 
@@ -62,7 +80,9 @@ internal fun createNetworkKmmLog(warningLogger: (String) -> Unit): IVBPBLog =
     }
 
 internal class NetworkKmmSlockHttpExecutor(
-    private val warningLogger: (String) -> Unit = {}
+    private val warningLogger: (String) -> Unit = {},
+    /** Test seam only: production always routes through [client]. */
+    private val multipartTransportOverride: (suspend (NetworkRequest) -> NetworkResponse)? = null
 ) : SlockHttpExecutor {
 
     private val client: NetworkClient by lazy {
@@ -146,9 +166,13 @@ internal class NetworkKmmSlockHttpExecutor(
         val traceHeaders = networkKmmTraceHeaders(headers)
         val clientRequestId = traceHeaders.getValue(NETWORK_KMM_REQUEST_ID_HEADER)
         val requestBytes = files.sumOf { file -> file.bytes.size.toLong().takeIf { it > 0L } ?: file.sizeBytes ?: 0L }
+        val totalTimeoutMillis =
+            if (files.hasStreamingFileRefParts()) SLOCK_UPLOAD_TOTAL_TIMEOUT_MILLIS
+            else SLOCK_REQUEST_TIMEOUT_MILLIS
         warningLogger(
             "slock_networkkmm_multipart_start path=$path method=POST priority=$priority " +
                 "fields=${fields.size} files=${files.size} requestBytes=$requestBytes " +
+                "totalTimeoutMs=$totalTimeoutMillis " +
                 "clientRequestId=$clientRequestId headers=${traceHeaders.toSafeHeaderDiagnostics()}"
         )
         return try {
@@ -173,12 +197,14 @@ internal class NetworkKmmSlockHttpExecutor(
                         ),
                     policy =
                         NetworkRequestPolicy(
-                            timeoutMillis = SLOCK_REQUEST_TIMEOUT_MILLIS,
+                            timeoutMillis = totalTimeoutMillis,
                             priority = priority.toNetworkKmmPriority()
                         )
                 )
             traceHeaders.forEach { (name, value) -> request.setHeader(name, value) }
-            val response = client.execute(request).toExecutorResponse()
+            val response =
+                (multipartTransportOverride?.invoke(request) ?: client.execute(request))
+                    .toExecutorResponse()
             warningLogger(
                 "slock_networkkmm_multipart_finish path=$path method=POST priority=$priority " +
                     "fields=${fields.size} files=${files.size} requestBytes=$requestBytes " +
