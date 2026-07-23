@@ -28,6 +28,7 @@ import build.raft.app.model.TaskSummary
 import build.raft.app.model.ThreadConversation
 import build.raft.app.model.ThreadId
 import build.raft.app.model.slockEpochDayForDate
+import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
 import build.raft.app.model.threadIdentity
 import build.raft.app.markdown.ThreadMarkdownTag
 import build.raft.app.markdown.ThreadMarkdownTagKind
@@ -674,6 +675,41 @@ class ThreadPayloadTest {
         assertEquals("YESTERDAY", threadDateDividerLabel(julyOneLater, julyThree, timeContext))
         assertEquals("TODAY", threadDateDividerLabel(julyThree, julyFour, timeContext))
         assertEquals(null, threadDateDividerLabel(julyFour, julyFour.copy(id = "local", timestampLabel = "Now"), timeContext))
+    }
+
+    @Test
+    fun threadDateDividerLabelsRefreshAcrossLocalMidnightWithoutReorderingMessages() {
+        val previousDayMessage =
+            KuiklyThreadMessageItem(
+                id = "m1",
+                authorId = "u-artin",
+                authorName = "Artin",
+                timestampLabel = "2026-07-22T20:21:00+08:00"
+            )
+        val currentDayMessage =
+            previousDayMessage.copy(
+                id = "m2",
+                timestampLabel = "2026-07-23T00:01:00+08:00"
+            )
+        val launchContext =
+            SlockTimeContext(
+                localOffsetMinutes = 480,
+                todayEpochDay = slockEpochDayForDate(2026, 7, 22),
+                nowEpochMillis = parseSlockTimestampEpochMillisOrNull("2026-07-22T23:59:30+08:00")
+            )
+        val refreshedContext =
+            launchContext.refreshedAt(
+                parseSlockTimestampEpochMillisOrNull("2026-07-23T00:01:05+08:00")!!
+            )
+
+        assertEquals("YESTERDAY", threadDateDividerLabel(null, previousDayMessage, refreshedContext))
+        assertEquals("TODAY", threadDateDividerLabel(previousDayMessage, currentDayMessage, refreshedContext))
+        assertEquals(
+            listOf("m1", "m2"),
+            listOf(previousDayMessage, currentDayMessage)
+                .sortedBy { parseSlockTimestampEpochMillisOrNull(it.timestampLabel, refreshedContext.localOffsetMinutes) }
+                .map(KuiklyThreadMessageItem::id)
+        )
     }
 
     @Test
