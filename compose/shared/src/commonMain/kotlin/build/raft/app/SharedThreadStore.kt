@@ -4170,6 +4170,7 @@ internal class SharedThreadStore(
         if (!routeStillCurrent(basePayload, "thread_refresh", "start", existing)) {
             return
         }
+        val refreshObservedMessageIds = existing.messages.mapTo(mutableSetOf()) { message -> message.id }
         val hasRenderableContent = existing.hasRenderableThreadContent()
         diagnosticsLogger?.invoke(
             "thread_refresh_start threadId=${basePayload.sourceThreadId.orEmpty()} " +
@@ -4248,9 +4249,18 @@ internal class SharedThreadStore(
                 routeStillCurrent(basePayload, "thread_refresh", "apply", currentPayload)
             ) {
                 val resolvingInitialAccess = currentState.accessResolution != ThreadAccessResolution.Resolved
+                val refreshStableNextPayload =
+                    if (result is DataResult.Content) {
+                        nextPayload.preserveStableTimelineFrom(
+                            previous = currentPayload,
+                            refreshObservedMessageIds = refreshObservedMessageIds
+                        )
+                    } else {
+                        nextPayload
+                    }
                 val projectedPayload =
                     currentPayload
-                        .withThreadContentProjectionFrom(nextPayload)
+                        .withThreadContentProjectionFrom(refreshStableNextPayload)
                         .let { payload ->
                             if (
                                 resolvingInitialAccess &&
@@ -6697,7 +6707,8 @@ private fun KuiklyThreadScreenPayload.withResolvedReplyThreadAction(
 
 internal fun KuiklyThreadScreenPayload.preserveStableTimelineFrom(
     previous: KuiklyThreadScreenPayload,
-    preserveSelectedReactions: Boolean = true
+    preserveSelectedReactions: Boolean = true,
+    refreshObservedMessageIds: Set<String>? = null
 ): KuiklyThreadScreenPayload {
     val visibleWindowMessages =
         if (
@@ -6708,12 +6719,17 @@ internal fun KuiklyThreadScreenPayload.preserveStableTimelineFrom(
         } else {
             messages
         }
+    val visibleAfterPreviousCanonicalEchoes =
+        visibleWindowMessages.absorbingCanonicalSendEchoes(previous.messages)
+    val previousAfterCanonicalEchoes =
+        previous.messages.absorbingCanonicalSendEchoes(visibleAfterPreviousCanonicalEchoes)
     val timelineMessages =
-        if (visibleWindowMessages.isEmpty()) {
-            visibleWindowMessages.withRetainedTransientLocalSendingMessagesFrom(previous.messages)
-        } else {
-            visibleWindowMessages
-        }
+        visibleAfterPreviousCanonicalEchoes
+            .withRetainedTransientLocalSendingMessagesFrom(previousAfterCanonicalEchoes)
+            .withRetainedCanonicalOwnSendsAfterRefreshFrom(
+                previousMessages = previousAfterCanonicalEchoes,
+                refreshObservedMessageIds = refreshObservedMessageIds
+            )
     val stableMessages =
         timelineMessages
             .withRetainedLocalFailedMessagesFrom(previous.messages)
@@ -7345,6 +7361,30 @@ private fun List<KuiklyThreadMessageItem>.withRetainedTransientLocalSendingMessa
         }
     return if (retainedSendingMessages.isEmpty()) this else (this + retainedSendingMessages).sortedByThreadTimeline()
 }
+
+private fun List<KuiklyThreadMessageItem>.withRetainedCanonicalOwnSendsAfterRefreshFrom(
+    previousMessages: List<KuiklyThreadMessageItem>,
+    refreshObservedMessageIds: Set<String>?
+): List<KuiklyThreadMessageItem> {
+    refreshObservedMessageIds ?: return this
+    val existingIds = mapTo(mutableSetOf()) { message -> message.id }
+    val incomingRandomIds = mapNotNullTo(mutableSetOf()) { message -> message.randomId?.takeIf { it.isNotBlank() } }
+    val retainedMessages =
+        previousMessages.filter { message ->
+            val randomId = message.randomId?.takeIf { it.isNotBlank() } ?: return@filter false
+            message.id !in existingIds &&
+                message.id !in refreshObservedMessageIds &&
+                message.isCanonicalOwnSend() &&
+                randomId !in incomingRandomIds
+        }
+    return if (retainedMessages.isEmpty()) this else (this + retainedMessages).sortedByThreadTimeline()
+}
+
+private fun KuiklyThreadMessageItem.isCanonicalOwnSend(): Boolean =
+    isOwn &&
+        pendingSendContext == null &&
+        deliveryState.equals(ThreadMessageDeliverySent, ignoreCase = true) &&
+        !randomId.isNullOrBlank()
 
 private fun List<KuiklyThreadMessageItem>.withRetainedLocalFailedMessagesFrom(
     previousMessages: List<KuiklyThreadMessageItem>
