@@ -314,6 +314,7 @@ class ThreadComposerPayloadTest {
 
         assertEquals(listOf("remote-attachment-1"), attachments.readyThreadAttachmentIdsForSend())
         assertTrue(attachments.hasBlockingThreadAttachmentUpload())
+        assertFalse(attachments.hasFailedThreadAttachmentUpload())
         assertEquals(
             listOf("uploading", "ready", "uploading"),
             attachments.withThreadAttachmentUploadWaitingState().map { attachment -> attachment.status }
@@ -333,6 +334,23 @@ class ThreadComposerPayloadTest {
 
         assertEquals(listOf("remote-attachment-1"), attachments.readyThreadAttachmentIdsForSend())
         assertFalse(attachments.hasBlockingThreadAttachmentUpload())
+    }
+
+    @Test
+    fun failedAttachmentMustBeRetriedBeforeComposerSendCanQueue() {
+        val attachments =
+            listOf(
+                KuiklyPendingAttachmentItem(
+                    id = "picked-local-1",
+                    fileName = "failed.png",
+                    status = "failed",
+                    errorCode = "network_error"
+                )
+            )
+
+        assertTrue(attachments.hasBlockingThreadAttachmentUpload())
+        assertTrue(attachments.hasFailedThreadAttachmentUpload())
+        assertEquals(emptyList(), attachments.readyThreadAttachmentIdsForSend())
     }
 
     @Test

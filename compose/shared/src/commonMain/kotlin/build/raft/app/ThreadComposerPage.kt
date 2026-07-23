@@ -1954,6 +1954,9 @@ internal fun List<KuiklyPendingAttachmentItem>.readyThreadAttachmentIdsForSend()
 internal fun List<KuiklyPendingAttachmentItem>.hasBlockingThreadAttachmentUpload(): Boolean =
     any { attachment -> attachment.id.isNotBlank() && !attachment.isReadyThreadAttachmentForSend() }
 
+internal fun List<KuiklyPendingAttachmentItem>.hasFailedThreadAttachmentUpload(): Boolean =
+    any { attachment -> attachment.id.isNotBlank() && attachment.status == "failed" }
+
 internal fun List<KuiklyPendingAttachmentItem>.withThreadAttachmentUploadWaitingState(): List<KuiklyPendingAttachmentItem> =
     map { attachment ->
         if (attachment.isReadyThreadAttachmentForSend() || attachment.id.isBlank()) {
