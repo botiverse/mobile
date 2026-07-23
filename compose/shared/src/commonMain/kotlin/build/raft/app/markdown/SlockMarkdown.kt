@@ -2175,7 +2175,8 @@ private fun SlockMarkdownHorizontalRule() {
 internal fun slockMarkdownLinkSpanStyle(base: TextStyle): SpanStyle =
     base.toSpanStyle().copy(
         color = SlockMarkdownLinkBlue,
-        textDecoration = TextDecoration.Underline
+        textDecoration = TextDecoration.Underline,
+        textDecorationThickness = 2.sp
     )
 
 private val SlockMarkdownColorsDefault: DefaultMarkdownColors =
