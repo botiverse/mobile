@@ -4290,12 +4290,29 @@ class KmpVisualScreenshotCaptureTest {
         @BeforeClass
         @JvmStatic
         fun clearVisualOutputDirectory() {
-            VisualAndroidArtifacts.resetPublicOutput()
-            // Start each shard's per-case timing log clean.
-            File(
-                InstrumentationRegistry.getInstrumentation().targetContext.filesDir,
-                "visual-testing/android/$CAPTURE_TIMING_FILE"
-            ).delete()
+            val instrumentation = InstrumentationRegistry.getInstrumentation()
+            // Targeted capture normally runs one case per instrumentation
+            // process. Every process executes @BeforeClass, but all processes
+            // share one public artifact directory that the host pulls only
+            // after the full selector loop. Resetting here unconditionally
+            // therefore erased every case except the last one. The harness
+            // explicitly sends true for process 0 and false thereafter;
+            // absent/malformed values retain the safe legacy reset behavior.
+            val shouldResetPublicOutput =
+                InstrumentationRegistry.getArguments()
+                    .getString(VISUAL_RESET_PUBLIC_OUTPUT_ARG)
+                    ?.equals("false", ignoreCase = true) != true
+            if (shouldResetPublicOutput) {
+                VisualAndroidArtifacts.resetPublicOutput()
+                // Start the shard's aggregate per-case timing log clean only
+                // once. Later processes append their START/OK lines.
+                File(
+                    instrumentation.targetContext.filesDir,
+                    "visual-testing/android/$CAPTURE_TIMING_FILE"
+                ).delete()
+            } else {
+                VisualAndroidArtifacts.ensurePublicOutput()
+            }
             // Suppress the immersive-fullscreen education overlay before any case
             // enters immersive (task #395).
             confirmImmersiveEducationDismissed()
@@ -4397,6 +4414,7 @@ class KmpVisualScreenshotCaptureTest {
 
         // Shard-scoped per-case timing log carried in the results artifact.
         private const val CAPTURE_TIMING_FILE = "_capture-timing.log"
+        private const val VISUAL_RESET_PUBLIC_OUTPUT_ARG = "visualResetPublicOutput"
 
         // Cap the diagnostics view-tree walk so it never dominates a capture.
         private const val DIAGNOSTICS_MAX_VIEWS = 2_000
