@@ -254,6 +254,55 @@ expect_fail "duplicate immutable SHA" run_checker "$ledger" "$base_commit" "$squ
 printf '%s\t%s\t%s\n' "$merge_commit" "$merge_source_commit" "$signer" > "$ledger"
 expect_pass "clean two-parent merge attestation" run_checker "$ledger" "$merge_base_commit" "$merge_commit"
 
+merge_tree="$(git -C "$fixture_repo" rev-parse "${merge_commit}^{tree}")"
+merge_paths="$(git -C "$fixture_repo" diff --no-renames --name-only "$merge_base_commit" "$merge_commit" | awk 'NF { count++ } END { print count + 0 }')"
+read -r merge_insertions merge_deletions <<< "$(
+  git -C "$fixture_repo" diff --no-renames --numstat "$merge_base_commit" "$merge_commit" |
+    awk 'NF { additions += $1; deletions += $2 } END { print additions + 0, deletions + 0 }'
+)"
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+  "$merge_commit" "$merge_source_commit" "$signer" "$squash_commit" "$merge_base_commit" \
+  "$merge_tree" "$merge_paths" "$merge_insertions" "$merge_deletions" > "$ledger"
+expect_pass "strict clean two-parent merge attestation" run_checker "$ledger" "$merge_base_commit" "$merge_commit"
+
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+  "$merge_commit" "$merge_source_commit" "$signer" "$base_commit" "$merge_base_commit" \
+  "$merge_tree" "$merge_paths" "$merge_insertions" "$merge_deletions" > "$ledger"
+expect_fail "strict merge attestation requires exact source parent" run_checker "$ledger" "$merge_base_commit" "$merge_commit"
+
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+  "$merge_commit" "$merge_source_commit" "$signer" "$squash_commit" "$advanced_parent_commit" \
+  "$merge_tree" "$merge_paths" "$merge_insertions" "$merge_deletions" > "$ledger"
+expect_fail "strict merge attestation requires actual first parent" run_checker "$ledger" "$merge_base_commit" "$merge_commit"
+
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+  "$merge_commit" "$merge_source_commit" "$signer" "$squash_commit" "$merge_base_commit" \
+  "$source_commit" "$merge_paths" "$merge_insertions" "$merge_deletions" > "$ledger"
+expect_fail "strict merge attestation requires exact immutable tree" run_checker "$ledger" "$merge_base_commit" "$merge_commit"
+
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+  "$merge_commit" "$merge_source_commit" "$signer" "$squash_commit" "$merge_base_commit" \
+  "$merge_tree" "$((merge_paths + 1))" "$merge_insertions" "$merge_deletions" > "$ledger"
+expect_fail "strict merge attestation requires exact path count" run_checker "$ledger" "$merge_base_commit" "$merge_commit"
+
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+  "$merge_commit" "$merge_source_commit" "$signer" "$squash_commit" "$merge_base_commit" \
+  "$merge_tree" "$merge_paths" "$((merge_insertions + 1))" "$merge_deletions" > "$ledger"
+expect_fail "strict merge attestation requires exact insertion count" run_checker "$ledger" "$merge_base_commit" "$merge_commit"
+
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+  "$merge_commit" "$merge_source_commit" "$signer" "$squash_commit" "$merge_base_commit" \
+  "$merge_tree" "$merge_paths" "$merge_insertions" "$((merge_deletions + 1))" > "$ledger"
+expect_fail "strict merge attestation requires exact deletion count" run_checker "$ledger" "$merge_base_commit" "$merge_commit"
+
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+  "$tampered_merge_commit" "$tampered_source_commit" "$signer" "$merge_commit" "$tampered_base_commit" \
+  "$(git -C "$fixture_repo" rev-parse "${tampered_merge_commit}^{tree}")" \
+  "$(git -C "$fixture_repo" diff --no-renames --name-only "$tampered_base_commit" "$tampered_merge_commit" | awk 'NF { count++ } END { print count + 0 }')" \
+  "$(git -C "$fixture_repo" diff --no-renames --numstat "$tampered_base_commit" "$tampered_merge_commit" | awk 'NF { additions += $1 } END { print additions + 0 }')" \
+  "$(git -C "$fixture_repo" diff --no-renames --numstat "$tampered_base_commit" "$tampered_merge_commit" | awk 'NF { deletions += $2 } END { print deletions + 0 }')" > "$ledger"
+expect_fail "strict merge attestation rejects merge-only payload" run_checker "$ledger" "$tampered_base_commit" "$tampered_merge_commit"
+
 printf '%s\t%s\t%s\n' "$merge_commit" "$source_commit" "$signer" > "$ledger"
 expect_fail "merge attestation requires reviewed second parent" run_checker "$ledger" "$merge_base_commit" "$merge_commit"
 
@@ -278,5 +327,9 @@ done
 attested_parent="$(git -C "$repo_root" rev-parse "8d1eb30929bdde9e53c73c3eea4e9e112e9dde93^")"
 expect_pass "repository advanced-base attestation 8d1eb30929bdde9e53c73c3eea4e9e112e9dde93" \
   run_repository_checker "$attested_parent" 8d1eb30929bdde9e53c73c3eea4e9e112e9dde93
+
+attested_parent="$(git -C "$repo_root" rev-parse "1c13ae1631e038f1c71c36f4e5b18d263f2f4777^1")"
+expect_pass "repository strict merge attestation 1c13ae1631e038f1c71c36f4e5b18d263f2f4777" \
+  run_repository_checker "$attested_parent" 1c13ae1631e038f1c71c36f4e5b18d263f2f4777
 
 echo "All commit sign-off attestation tests passed."

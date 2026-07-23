@@ -19,8 +19,8 @@ validate_attestation_ledger() {
   if ! error="$({
     awk -F '\t' '
       /^[[:space:]]*#/ || /^[[:space:]]*$/ { next }
-      NF != 3 && NF != 5 {
-        printf "line %d must contain exactly 3 or 5 tab-separated fields", NR
+      NF != 3 && NF != 5 && NF != 9 {
+        printf "line %d must contain exactly 3, 5, or 9 tab-separated fields", NR
         exit 1
       }
       length($1) != 40 || $1 ~ /[^0-9a-f]/ {
@@ -43,6 +43,22 @@ validate_attestation_ledger() {
         printf "line %d has an invalid immutable parent SHA", NR
         exit 1
       }
+      NF == 9 && (length($4) != 40 || $4 ~ /[^0-9a-f]/) {
+        printf "line %d has an invalid reviewed source parent SHA", NR
+        exit 1
+      }
+      NF == 9 && (length($5) != 40 || $5 ~ /[^0-9a-f]/) {
+        printf "line %d has an invalid immutable first parent SHA", NR
+        exit 1
+      }
+      NF == 9 && (length($6) != 40 || $6 ~ /[^0-9a-f]/) {
+        printf "line %d has an invalid immutable merge tree SHA", NR
+        exit 1
+      }
+      NF == 9 && ($7 !~ /^[0-9]+$/ || $8 !~ /^[0-9]+$/ || $9 !~ /^[0-9]+$/) {
+        printf "line %d has invalid immutable path/add/delete counts", NR
+        exit 1
+      }
       seen[$1]++ {
         printf "line %d duplicates immutable commit %s", NR, $1
         exit 1
@@ -60,8 +76,10 @@ attestation_for_commit() {
     $0 !~ /^[[:space:]]*#/ && $0 !~ /^[[:space:]]*$/ && $1 == commit {
       if (NF == 3) {
         print $2 "\t" $3
-      } else {
+      } else if (NF == 5) {
         print $2 "\t" $3 "\t" $4 "\t" $5
+      } else {
+        print $2 "\t" $3 "\t" $4 "\t" $5 "\t" $6 "\t" $7 "\t" $8 "\t" $9
       }
       found = 1
     }
@@ -156,6 +174,90 @@ verify_advanced_squash_attestation() {
   echo "commit sign-off: advanced-base immutable squash ${commit} (${subject}) is attested by signed reviewed range ${source_parent}..${source_commit} (<${signer}>), parent ${immutable_parent}, patch-id ${source_patch_id}, and exact synthetic tree ${commit_tree}."
 }
 
+verify_strict_merge_attestation() {
+  local commit="$1"
+  local subject="$2"
+  local source_commit="$3"
+  local signer="$4"
+  local source_parent="$5"
+  local immutable_first_parent="$6"
+  local expected_tree="$7"
+  local expected_paths="$8"
+  local expected_insertions="$9"
+  local expected_deletions="${10}"
+  local parent_line actual_first_parent actual_second_parent merge_base commit_tree synthetic_tree
+  local source_name_status immutable_name_status source_numstat immutable_numstat
+  local actual_paths actual_insertions actual_deletions source_patch_id immutable_patch_id
+  local source_diff_sha immutable_diff_sha path source_blob immutable_blob
+
+  [ "$(git cat-file -t "$source_parent" 2>/dev/null || true)" = "commit" ] ||
+    fail "commit sign-off attestation for ${commit} (${subject}) requires reviewed source parent ${source_parent} to be an exact commit object."
+  [ "$(git cat-file -t "$immutable_first_parent" 2>/dev/null || true)" = "commit" ] ||
+    fail "commit sign-off attestation for ${commit} (${subject}) requires immutable first parent ${immutable_first_parent} to be an exact commit object."
+  source_range_has_exact_signoffs "$source_parent" "$source_commit" ||
+    fail "commit sign-off attestation for ${commit} (${subject}) requires every reviewed source commit in ${source_parent}..${source_commit} to carry an exact @mail.build Signed-off-by trailer."
+
+  parent_line="$(git rev-list --parents -n 1 "$commit")"
+  actual_first_parent="$(printf '%s\n' "$parent_line" | awk '{ print $2 }')"
+  actual_second_parent="$(printf '%s\n' "$parent_line" | awk '{ print $3 }')"
+  [ "$actual_first_parent" = "$immutable_first_parent" ] ||
+    fail "commit sign-off attestation for ${commit} (${subject}) declares immutable first parent ${immutable_first_parent}, but its actual first parent is ${actual_first_parent}."
+  [ "$actual_second_parent" = "$source_commit" ] ||
+    fail "commit sign-off attestation for ${commit} (${subject}) declares reviewed source ${source_commit}, but its actual second parent is ${actual_second_parent}."
+
+  merge_base="$(git merge-base "$immutable_first_parent" "$source_commit" 2>/dev/null || true)"
+  [ "$merge_base" = "$source_parent" ] ||
+    fail "commit sign-off attestation for ${commit} (${subject}) declares reviewed source parent ${source_parent}, but the exact merge-base is ${merge_base:-missing}."
+
+  commit_tree="$(git rev-parse "${commit}^{tree}")"
+  [ "$commit_tree" = "$expected_tree" ] ||
+    fail "commit sign-off attestation for ${commit} (${subject}) declares immutable tree ${expected_tree}, but its actual tree is ${commit_tree}."
+  if ! synthetic_tree="$(git merge-tree --write-tree "$immutable_first_parent" "$source_commit" 2>/dev/null)"; then
+    fail "commit sign-off attestation for ${commit} (${subject}) requires immutable first parent and reviewed source to merge cleanly."
+  fi
+  [ "$synthetic_tree" = "$commit_tree" ] ||
+    fail "commit sign-off attestation for ${commit} (${subject}) clean synthetic merge tree ${synthetic_tree} does not match immutable tree ${commit_tree}."
+
+  source_name_status="$(git diff --no-renames --name-status "$source_parent" "$source_commit")"
+  immutable_name_status="$(git diff --no-renames --name-status "$immutable_first_parent" "$commit")"
+  [ "$source_name_status" = "$immutable_name_status" ] ||
+    fail "commit sign-off attestation for ${commit} (${subject}) does not match the reviewed source path/status set."
+  actual_paths="$(printf '%s\n' "$immutable_name_status" | awk 'NF { count++ } END { print count + 0 }')"
+  [ "$actual_paths" = "$expected_paths" ] ||
+    fail "commit sign-off attestation for ${commit} (${subject}) declares ${expected_paths} changed paths, but the immutable diff has ${actual_paths}."
+
+  source_numstat="$(git diff --no-renames --numstat "$source_parent" "$source_commit")"
+  immutable_numstat="$(git diff --no-renames --numstat "$immutable_first_parent" "$commit")"
+  [ "$source_numstat" = "$immutable_numstat" ] ||
+    fail "commit sign-off attestation for ${commit} (${subject}) does not match the reviewed source per-path add/delete counts."
+  read -r actual_insertions actual_deletions <<< "$(printf '%s\n' "$immutable_numstat" | awk '
+    NF && ($1 !~ /^[0-9]+$/ || $2 !~ /^[0-9]+$/) { exit 1 }
+    NF { additions += $1; deletions += $2 }
+    END { print additions + 0, deletions + 0 }
+  ')" || fail "commit sign-off attestation for ${commit} (${subject}) requires numeric per-path add/delete counts."
+  [ "$actual_insertions" = "$expected_insertions" ] && [ "$actual_deletions" = "$expected_deletions" ] ||
+    fail "commit sign-off attestation for ${commit} (${subject}) declares +${expected_insertions}/-${expected_deletions}, but the immutable diff is +${actual_insertions}/-${actual_deletions}."
+
+  source_patch_id="$(zero_context_patch_id "$source_parent" "$source_commit")"
+  immutable_patch_id="$(zero_context_patch_id "$immutable_first_parent" "$commit")"
+  [ -n "$source_patch_id" ] && [ "$source_patch_id" = "$immutable_patch_id" ] ||
+    fail "commit sign-off attestation for ${commit} (${subject}) does not match the reviewed source zero-context stable patch-id."
+  source_diff_sha="$(normalized_zero_context_diff_sha256 "$source_parent" "$source_commit")"
+  immutable_diff_sha="$(normalized_zero_context_diff_sha256 "$immutable_first_parent" "$commit")"
+  [ "$source_diff_sha" = "$immutable_diff_sha" ] ||
+    fail "commit sign-off attestation for ${commit} (${subject}) does not match the reviewed source normalized zero-context diff SHA-256."
+
+  while IFS= read -r path; do
+    [ -n "$path" ] || continue
+    source_blob="$(git rev-parse "${source_commit}:${path}" 2>/dev/null || printf 'missing')"
+    immutable_blob="$(git rev-parse "${commit}:${path}" 2>/dev/null || printf 'missing')"
+    [ "$source_blob" = "$immutable_blob" ] ||
+      fail "commit sign-off attestation for ${commit} (${subject}) does not match reviewed source blob for ${path}."
+  done < <(git diff --no-renames --name-only "$source_parent" "$source_commit")
+
+  echo "commit sign-off: strict immutable merge ${commit} (${subject}) is attested by signed reviewed range ${source_parent}..${source_commit} (<${signer}>), first parent ${immutable_first_parent}, tree ${commit_tree}, ${actual_paths} paths, +${actual_insertions}/-${actual_deletions}, patch-id ${source_patch_id}, exact blobs, and clean synthetic merge identity."
+}
+
 source_has_exact_signer() {
   local source_commit="$1"
   local signer="$2"
@@ -182,8 +284,9 @@ verify_attestation() {
   local commit="$1"
   local subject="$2"
   local attestation="$3"
-  local source_commit signer source_parent immutable_parent commit_tree source_tree parent_line parent_count
-  IFS=$'\t' read -r source_commit signer source_parent immutable_parent <<< "$attestation"
+  local source_commit signer source_parent immutable_parent expected_tree expected_paths expected_insertions expected_deletions
+  local commit_tree source_tree parent_line parent_count
+  IFS=$'\t' read -r source_commit signer source_parent immutable_parent expected_tree expected_paths expected_insertions expected_deletions <<< "$attestation"
 
   [ "$(git cat-file -t "$source_commit" 2>/dev/null || true)" = "commit" ] ||
     fail "commit sign-off attestation for ${commit} (${subject}) requires source ${source_commit} to be an exact commit object."
@@ -211,6 +314,15 @@ verify_attestation() {
       local first_parent second_parent clean_merge_tree
       first_parent="$(printf '%s\n' "$parent_line" | awk '{ print $2 }')"
       second_parent="$(printf '%s\n' "$parent_line" | awk '{ print $3 }')"
+      if [ -n "${source_parent:-}" ] || [ -n "${immutable_parent:-}" ] || [ -n "${expected_tree:-}" ]; then
+        [ -n "${source_parent:-}" ] && [ -n "${immutable_parent:-}" ] && [ -n "${expected_tree:-}" ] &&
+          [ -n "${expected_paths:-}" ] && [ -n "${expected_insertions:-}" ] && [ -n "${expected_deletions:-}" ] ||
+          fail "commit sign-off attestation for ${commit} (${subject}) strict merge row must declare source parent, first parent, tree, path count, insertions, and deletions."
+        verify_strict_merge_attestation \
+          "$commit" "$subject" "$source_commit" "$signer" "$source_parent" "$immutable_parent" \
+          "$expected_tree" "$expected_paths" "$expected_insertions" "$expected_deletions"
+        return
+      fi
       [ "$source_commit" = "$second_parent" ] ||
         fail "commit sign-off attestation for ${commit} (${subject}) must reference its reviewed second parent ${second_parent}, not ${source_commit}."
       if ! clean_merge_tree="$(git merge-tree --write-tree "$first_parent" "$second_parent" 2>/dev/null)"; then

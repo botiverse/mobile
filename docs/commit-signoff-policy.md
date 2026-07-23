@@ -78,10 +78,16 @@ reviewed-source SHA, and that source commit's exact `@mail.build` signer. The
 checker requires the source SHA to identify an exact commit object (not a tag
 or other peelable object) and verifies the exact trailer. In the legacy
 three-field format, a single-parent squash must be tree-identical to its source.
-A two-parent merge
-must name its reviewed second parent as the source, `git merge-tree --write-tree`
-must prove the parents merge cleanly, and the immutable merge tree must equal
-that clean synthetic tree. Conflict resolutions, extra merge-only changes,
+A legacy two-parent merge must name its reviewed second parent as the source,
+`git merge-tree --write-tree` must prove the parents merge cleanly, and the
+immutable merge tree must equal that clean synthetic tree. New two-parent
+recovery entries use the strict nine-field format: immutable merge, reviewed
+signed head, exact signer, reviewed source parent, immutable first parent,
+immutable tree, changed-path count, insertions, and deletions. The checker also
+requires every reviewed source commit to be signed, the declared source parent
+to be the exact merge-base, exact path/status and per-path numstat equality,
+stable patch-id and normalized diff equality, exact changed blobs, and clean
+synthetic merge identity. Conflict resolutions, extra merge-only changes,
 octopus merges, reversed/wrong source parents, short SHAs, wildcards,
 duplicates, missing source objects, signer mismatches, and tree mismatches fail
 closed. This mechanism is not an alternative to `git commit -s` for new work;
@@ -99,8 +105,8 @@ and exactly equal the immutable squash tree. Any mismatch fails closed.
 ## Guarded Squash Merge
 
 Both Mobile and Slock configure GitHub squash bodies as `COMMIT_MESSAGES`.
-Use the repository wrapper so GitHub preserves source commit trailers with real
-newlines:
+The repository wrapper is the only allowed merge path. It forces squash mode so
+GitHub preserves source commit trailers with real newlines:
 
 ```bash
 scripts/guarded-squash-merge.sh botiverse/mobile <pr-number> <reviewed-full-sha>
@@ -111,7 +117,9 @@ The wrapper keeps `--match-head-commit`, verifies the repository still uses
 parent/tree/patch/CI/authorization receipts in the PR and Raft task thread. Do
 not pass strings containing `\\n` to `gh pr merge --body`; shell quoting and gh
 preserve those bytes literally, so a visual `Signed-off-by` substring is not a
-Git trailer.
+Git trailer. Do not use the GitHub Merge button or `gh pr merge --merge`; a
+two-parent GitHub merge commit does not preserve source trailers and turns the
+next main-push DCO check red.
 
 ## PR-only Main Integration
 
@@ -125,8 +133,8 @@ Use this flow:
 3. Validate the touched area locally.
 4. Run `scripts/check-commit-signoff.sh <base> HEAD` for the PR range.
 5. Push the topic branch and open a PR.
-6. Wait for required GitHub checks and owner/reviewer approval, then merge via
-   the PR UI or `gh pr merge`.
+6. Wait for required GitHub checks and owner/reviewer approval, then merge only
+   with `scripts/guarded-squash-merge.sh` and the reviewed full head SHA.
 
 Do not directly merge finished work into a shared local `main` as the delivery
 step, and do not run `git push origin main`. If local `main` is already ahead,
