@@ -150,6 +150,26 @@ class MarkdownContentIntegrityTest {
     }
 
     @Test
+    fun cjkAdjacentInlineCodeUrlStaysCodeAndUnlinked() {
+        val source = "回归测试从`http://internal/`、反代HTTP、恶意Host三种入站验证，最终`return_to`始终等于注册的外部HTTPS callback。"
+        val rendered = renderTopParagraphsWithLinks(source).single()
+        assertEquals(
+            "回归测试从http://internal/、反代HTTP、恶意Host三种入站验证，最终return_to始终等于注册的外部HTTPS callback。",
+            rendered.text,
+        )
+        assertEquals(emptyList(), rendered.urls)
+    }
+
+    @Test
+    fun recoveredInlineCodeDoesNotSuppressFollowingBareUrl() {
+        val bareUrl = "https://stamp.build/login/raft"
+        val source = "从`http://internal/`验证。临时可直接开 <$bareUrl>。"
+        val rendered = renderTopParagraphsWithLinks(source).single()
+        assertEquals("从http://internal/验证。临时可直接开 $bareUrl。", rendered.text)
+        assertEquals(listOf(bareUrl), rendered.urls)
+    }
+
+    @Test
     fun cjkAdjacentBareUrlIsClickableWithoutChangingVisibleText() {
         val url = "https://www.figma.com/design/TiPWa8K3dfNyNxvTrz1SN0/Raft-brand---Exploration?node-id=372-1396&t=I3oSfVqdbsEJjUIP-1"
         val source = "@huxijin 情绪板已经准备完成，有空可以看下$url"

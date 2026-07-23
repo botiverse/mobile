@@ -390,6 +390,117 @@ fun AnnotatedString.Builder.buildMarkdownAnnotatedString(
     insideCodeSpan = insideCodeSpan,
 )
 
+private data class RecoveredInlineCodeRange(
+    val start: Int,
+    val contentStart: Int,
+    val contentEndExclusive: Int,
+    val endExclusive: Int,
+) {
+    val openingMarkerRange: IntRange = start until contentStart
+}
+
+/**
+ * Source-level inline-code recovery for a GFM lexer edge case.
+ *
+ * A URL adjacent to CJK inside backticks can be tokenized as one GFM_AUTOLINK
+ * that consumes the closing backtick, following prose, and even a later code
+ * span. The AST then has no CODE_SPAN node, so the ordinary renderer cannot
+ * preserve explicit markdown precedence. Scan only balanced backtick runs and
+ * use those source ranges as the SSOT when such an autolink overlaps them.
+ */
+private fun String.recoveredInlineCodeRanges(): List<RecoveredInlineCodeRange> {
+    val ranges = mutableListOf<RecoveredInlineCodeRange>()
+    var cursor = 0
+    while (cursor < length) {
+        val start = indexOf('`', startIndex = cursor)
+        if (start < 0) break
+        var markerLength = 1
+        while (start + markerLength < length && this[start + markerLength] == '`') {
+            markerLength++
+        }
+        val marker = substring(start, start + markerLength)
+        val close = indexOf(marker, startIndex = start + markerLength)
+        if (close < 0) break
+        ranges +=
+            RecoveredInlineCodeRange(
+                start = start,
+                contentStart = start + markerLength,
+                contentEndExclusive = close,
+                endExclusive = close + markerLength,
+            )
+        cursor = close + markerLength
+    }
+    return ranges
+}
+
+private fun AnnotatedString.Builder.appendRecoveredInlineCodeAutolink(
+    content: String,
+    child: ASTNode,
+    ranges: List<RecoveredInlineCodeRange>,
+    annotatorSettings: AnnotatorSettings,
+) {
+    val childStart = child.startOffset
+    val childEnd = child.endOffset
+    var cursor = childStart
+    ranges.sortedBy { it.start }.forEach { range ->
+        val visiblePrefixEnd = maxOf(cursor, range.start).coerceAtMost(childEnd)
+        if (visiblePrefixEnd > cursor) {
+            append(content.substring(cursor, visiblePrefixEnd))
+        }
+        val codeStart = maxOf(range.contentStart, childStart)
+        val codeEnd = minOf(range.contentEndExclusive, childEnd)
+        if (codeEnd > codeStart) {
+            appendSlockInlineCodeText(
+                content.substring(codeStart, codeEnd).normalizeRecoveredInlineCodeText(),
+                annotatorSettings,
+            )
+        }
+        cursor = maxOf(cursor, minOf(range.endExclusive, childEnd))
+    }
+    if (cursor < childEnd) {
+        append(content.substring(cursor, childEnd))
+    }
+}
+
+private fun String.normalizeRecoveredInlineCodeText(): String =
+    if (length >= 2 && first() == ' ' && last() == ' ' && any { it != ' ' }) {
+        substring(1, lastIndex)
+    } else {
+        this
+    }
+
+private fun AnnotatedString.Builder.appendSlockInlineCodeText(
+    codeText: String,
+    annotatorSettings: AnnotatorSettings,
+) {
+    val codeStart = length
+    pushStyle(annotatorSettings.codeSpanStyle)
+    val charWrapThreshold = slockInlineCodeCharWrapBridgeThreshold()
+    val usesEdgePaddingBridge = slockInlineCodeUsesEdgePaddingBridge()
+    // NBSP edge padding is only for platforms whose fallback renderer does
+    // not own chip box metrics. Keep this gate independent from wrapping.
+    if (usesEdgePaddingBridge) {
+        append(SLOCK_RICHTEXT_INLINE_CODE_EDGE_PADDING)
+    }
+    append(
+        if (charWrapThreshold != null) {
+            codeText.withSlockInlineCodeCharWrapBreaks(charWrapThreshold)
+        } else {
+            codeText
+        }
+    )
+    if (usesEdgePaddingBridge) {
+        append(SLOCK_RICHTEXT_INLINE_CODE_EDGE_PADDING)
+    }
+    pop()
+    addStringAnnotation(
+        tag = SLOCK_RICHTEXT_INLINE_CODE_ANNOTATION_TAG,
+        annotation = "true",
+        start = codeStart,
+        end = length
+    )
+}
+
 /**
  * Builds an [AnnotatedString] with the contents of the given Markdown [ASTNode] node.
  *
@@ -408,6 +519,8 @@ fun AnnotatedString.Builder.buildMarkdownAnnotatedString(
     val annotate = annotatorSettings.annotator.annotate
     val annotateSequence = annotatorSettings.annotator.annotateSequence
     val eolAsNewLine = annotatorSettings.annotator.config.eolAsNewLine
+    val recoveredInlineCodeRanges =
+        if (insideCodeSpan) emptyList() else content.recoveredInlineCodeRanges()
     var skipIfNext: Any? = null
     var childIndex = 0
     while (childIndex < children.size) {
@@ -420,6 +533,35 @@ fun AnnotatedString.Builder.buildMarkdownAnnotatedString(
         // has no normal-rendering branch (task #502).
         if (insideCodeSpan) {
             append(child.getUnescapedTextInNode(content))
+            childIndex++
+            continue
+        }
+        val childRecoveredCodeRanges =
+            recoveredInlineCodeRanges.filter { range ->
+                range.start < child.endOffset && range.endExclusive > child.startOffset
+            }
+        if (child.type == MarkdownTokenTypes.BACKTICK &&
+            child.parent?.type != MarkdownElementTypes.CODE_SPAN &&
+            childRecoveredCodeRanges.any { range -> child.startOffset in range.openingMarkerRange }
+        ) {
+            // GFM's extended autolink lexer can swallow a closing backtick and
+            // all following CJK prose into one GFM_AUTOLINK. In that malformed
+            // AST the opening marker survives as a sibling BACKTICK. The raw
+            // source scanner below remains the SSOT for the explicit code span,
+            // so suppress this leaked delimiter before recovering its payload.
+            childIndex++
+            continue
+        }
+        if (child.type == GFMTokenTypes.GFM_AUTOLINK &&
+            child.parent?.type != MarkdownElementTypes.CODE_SPAN &&
+            childRecoveredCodeRanges.isNotEmpty()
+        ) {
+            appendRecoveredInlineCodeAutolink(
+                content = content,
+                child = child,
+                ranges = childRecoveredCodeRanges,
+                annotatorSettings = annotatorSettings,
+            )
             childIndex++
             continue
         }
@@ -466,49 +608,16 @@ fun AnnotatedString.Builder.buildMarkdownAnnotatedString(
                     }
 
                     MarkdownElementTypes.CODE_SPAN -> {
-                        val codeStart = length
-                        pushStyle(annotatorSettings.codeSpanStyle)
-                        val charWrapThreshold = slockInlineCodeCharWrapBridgeThreshold()
-                        val usesEdgePaddingBridge = slockInlineCodeUsesEdgePaddingBridge()
-                        // NBSP edge padding is only for platforms whose fallback
-                        // renderer does not own chip box metrics. Keep this gate
-                        // independent from charWrapThreshold: iOS now owns native
-                        // chrome/padding but still needs U+200B break opportunities,
-                        // while OHOS needs both fallback behaviours.
-                        if (usesEdgePaddingBridge) {
-                            append(SLOCK_RICHTEXT_INLINE_CODE_EDGE_PADDING)
-                        }
-                        if (charWrapThreshold != null) {
-                            // task #401 A-bridge (see the expect in
-                            // SlockKuiklyPlatformCapabilities.kt): on platforms whose
-                            // native layout cannot atomize long inline-code runs, append
-                            // zero-width-space break opportunities so they wrap at
-                            // character boundaries. Code spans carry no
-                            // nested markup, so flattening the recursion's output text
-                            // is lossless here.
-                            val codeText =
-                                AnnotatedString.Builder().apply {
-                                    buildMarkdownAnnotatedString(
-                                        content,
-                                        child.children.innerList(),
-                                        annotatorSettings,
-                                        insideCodeSpan = true
-                                    )
-                                }.toAnnotatedString().text
-                            append(codeText.withSlockInlineCodeCharWrapBreaks(charWrapThreshold))
-                        } else {
-                            buildMarkdownAnnotatedString(content, child.children.innerList(), annotatorSettings, insideCodeSpan = true)
-                        }
-                        if (usesEdgePaddingBridge) {
-                            append(SLOCK_RICHTEXT_INLINE_CODE_EDGE_PADDING)
-                        }
-                        pop()
-                        addStringAnnotation(
-                            tag = SLOCK_RICHTEXT_INLINE_CODE_ANNOTATION_TAG,
-                            annotation = "true",
-                            start = codeStart,
-                            end = length
-                        )
+                        val codeText =
+                            AnnotatedString.Builder().apply {
+                                buildMarkdownAnnotatedString(
+                                    content,
+                                    child.children.innerList(),
+                                    annotatorSettings,
+                                    insideCodeSpan = true
+                                )
+                            }.toAnnotatedString().text
+                        appendSlockInlineCodeText(codeText, annotatorSettings)
                     }
 
                     MarkdownElementTypes.AUTOLINK -> appendAutoLink(content, child, annotatorSettings)
