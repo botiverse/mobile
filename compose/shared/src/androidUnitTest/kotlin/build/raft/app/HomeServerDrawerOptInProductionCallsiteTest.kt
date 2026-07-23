@@ -53,10 +53,21 @@ class HomeServerDrawerOptInProductionCallsiteTest {
         val source = homeComponentsSource()
         val hosted = source.substringAfter("internal fun HomeServerDrawerHostedPanel(")
             .substringBefore("private fun HomeServerDrawerServerHeader(")
+        val canonicalRow =
+            source.substringAfter("private fun HomeServerDrawerConversationRow(")
+                .substringBefore("private fun HomeServerDrawerErrorRow(")
 
         assertContains(hosted, "interactiveGeneration == rowObservationGeneration")
         assertContains(hosted, "interactiveGeneration == authoritativeOpenGeneration")
-        assertContains(hosted, ".clickable(enabled = enabled, onClick = onClick)")
+        assertContains(hosted, "HomeServerDrawerConversationRow(")
+        assertContains(hosted, "memberAvatarResolver = memberAvatarResolver")
+        assertFalse(hosted.contains("HomeServerDrawerHostedConversationRow"))
+        assertFalse(hosted.contains("text = item.homeChannelSymbol()"))
+        assertContains(canonicalRow, "DirectMessageRow(")
+        assertContains(canonicalRow, "memberAvatarResolver = memberAvatarResolver")
+        assertContains(canonicalRow, "ChannelRow(")
+        assertContains(canonicalRow, "symbol = item.homeChannelSymbol()")
+        assertEquals(2, Regex("onClick = onClick\\.takeIf \\{ enabled }").findAll(canonicalRow).count())
         assertContains(hosted, "onConversationClick(generation, serverId, item.id)")
     }
 

@@ -3702,6 +3702,10 @@ internal fun HomeServerDrawerHostedPanel(
                                     )
                                 is HomeServerDrawerNormalizedRow.Conversation -> {
                                     val item = remember(row.conversation) { projector.project(row.conversation) }
+                                    val memberAvatarResolver =
+                                        remember(serverMembersStore, serverId) {
+                                            slockMemberAvatarResolver(serverMembersStore, serverId)
+                                        }
                                     val markerModifier =
                                         if (
                                             serverId == firstInteractiveServerId &&
@@ -3719,10 +3723,14 @@ internal fun HomeServerDrawerHostedPanel(
                                             Modifier
                                         }
                                     Box(modifier = Modifier.fillMaxWidth().then(markerModifier)) {
-                                        HomeServerDrawerHostedConversationRow(
-                                            serverId = serverId,
-                                            item = item,
-                                            serverMembersStore = serverMembersStore,
+                                        HomeServerDrawerConversationRow(
+                                            row =
+                                                SlockHomeServerDrawerRow.Conversation(
+                                                    serverId = serverId,
+                                                    section = row.section.toSlockHomeConversationSection(),
+                                                    item = item
+                                                ),
+                                            memberAvatarResolver = memberAvatarResolver,
                                             enabled =
                                                 interactiveGeneration != null &&
                                                     interactiveGeneration == rowObservationGeneration &&
@@ -3760,60 +3768,6 @@ internal fun HomeServerDrawerHostedPanel(
             }
         }
         Spacer(Modifier.fillMaxWidth().height(bottomSafeArea))
-    }
-}
-
-@Composable
-private fun HomeServerDrawerHostedConversationRow(
-    serverId: String,
-    item: SlockHomeConversationItem,
-    serverMembersStore: SharedServerMembersStore?,
-    enabled: Boolean,
-    onClick: () -> Unit
-) {
-    val badgeProjection = item.homeConversationBadgeProjection()
-    val isDirectMessage = item.isDirectMessageConversation()
-    val avatarWireValue =
-        if (isDirectMessage) {
-            val resolver = remember(serverMembersStore, serverId) { slockMemberAvatarResolver(serverMembersStore, serverId) }
-            rememberSlockMemberAvatarWireValue(resolver, item.presenceMemberId)
-        } else {
-            null
-        }
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = HomeServerDrawerConversationHorizontalPadding)
-                .height(ChannelRowHeight)
-                .clickable(enabled = enabled, onClick = onClick)
-                .padding(start = ChannelRowHorizontalPadding, end = SlockSpacing.Sm),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier.size(width = ChannelAvatarSize, height = ChannelAvatarSize),
-            contentAlignment = Alignment.Center
-        ) {
-            if (isDirectMessage) {
-                SlockAvatar(avatarWireValue = avatarWireValue, label = item.avatarLabel)
-            } else {
-                Text(
-                    text = item.homeChannelSymbol(),
-                    style = SlockType.Button,
-                    color = SlockColor.TextBlack.copy(alpha = if (item.joined) 1f else 0.46f),
-                    textAlign = TextAlign.Center
-                )
-            }
-        }
-        Text(
-            text = item.name,
-            style = if (badgeProjection.label != null) SlockType.ButtonBold else SlockType.Button,
-            color = homeConversationTitleColor(item.activityMuted, item.joined),
-            modifier = Modifier.padding(start = SidebarActionLabelGap).weight(1f),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        badgeProjection.label?.let { HomeUnreadBadge(it) }
     }
 }
 
@@ -3897,7 +3851,12 @@ private fun HomeServerDrawerSectionHeader(
 }
 
 @Composable
-private fun HomeServerDrawerConversationRow(row: SlockHomeServerDrawerRow.Conversation) {
+private fun HomeServerDrawerConversationRow(
+    row: SlockHomeServerDrawerRow.Conversation,
+    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    enabled: Boolean = false,
+    onClick: () -> Unit = {}
+) {
     val item = row.item
     val badgeProjection = item.homeConversationBadgeProjection()
     if (item.isDirectMessageConversation()) {
@@ -3908,13 +3867,14 @@ private fun HomeServerDrawerConversationRow(row: SlockHomeServerDrawerRow.Conver
             avatarLabel = item.avatarLabel,
             peerType = item.peerType,
             memberId = item.presenceMemberId,
+            memberAvatarResolver = memberAvatarResolver,
             modifier = Modifier.padding(horizontal = HomeServerDrawerConversationHorizontalPadding),
             hasDraft = item.hasDraft,
             muted = item.activityMuted,
             badge = badgeProjection.label,
             badgeTone = badgeProjection.tone,
             interactionState = ChannelRowInteractionState.Default,
-            onClick = null,
+            onClick = onClick.takeIf { enabled },
             onLongPress = null,
             onPress = null,
             onPressEnd = {}
@@ -3936,7 +3896,7 @@ private fun HomeServerDrawerConversationRow(row: SlockHomeServerDrawerRow.Conver
                 ChannelRowInteraction(
                     identity = "drawer:${row.serverId}:${row.section.name}:${item.id}",
                     state = ChannelRowInteractionState.Default,
-                    onClick = null,
+                    onClick = onClick.takeIf { enabled },
                     onLongPress = null,
                     onPress = null,
                     onPressEnd = {}
