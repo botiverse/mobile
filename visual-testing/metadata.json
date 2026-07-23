@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-23T22:51:05.883Z",
+  "generatedAt": "2026-07-23T22:54:58.597Z",
   "runId": "37df1bb1-20260723224841",
   "commit": "37df1bb1-20260723224841",
   "commitSubject": "fix(visual): preserve artifacts across targeted processes (#1499)",
@@ -27,8 +27,8 @@
       },
       "analysisSummary": {
         "total": 79,
-        "ready": 74,
-        "pending": 5
+        "ready": 78,
+        "pending": 1
       }
     },
     {
@@ -51,8 +51,8 @@
       },
       "analysisSummary": {
         "total": 79,
-        "ready": 69,
-        "pending": 10
+        "ready": 73,
+        "pending": 6
       }
     },
     {
@@ -75,8 +75,8 @@
       },
       "analysisSummary": {
         "total": 79,
-        "ready": 70,
-        "pending": 9
+        "ready": 74,
+        "pending": 5
       }
     }
   ],
@@ -90,8 +90,8 @@
   },
   "analysisSummary": {
     "total": 79,
-    "ready": 74,
-    "pending": 5
+    "ready": 78,
+    "pending": 1
   },
   "componentMatrixSummary": {
     "total": 107,

@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-07-23T22:51:05.883Z",
+  "generatedAt": "2026-07-23T22:54:58.597Z",
   "latestRunId": "37df1bb1-20260723224841",
   "latest": {
     "runId": "37df1bb1-20260723224841",
     "commit": "37df1bb1-20260723224841",
     "commitSubject": "fix(visual): preserve artifacts across targeted processes (#1499)",
-    "generatedAt": "2026-07-23T22:51:05.883Z",
+    "generatedAt": "2026-07-23T22:54:58.597Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -20,8 +20,8 @@
     },
     "analysisSummary": {
       "total": 79,
-      "ready": 74,
-      "pending": 5
+      "ready": 78,
+      "pending": 1
     },
     "comparisons": [
       "react__android",
@@ -129,7 +129,7 @@
       "runId": "37df1bb1-20260723224841",
       "commit": "37df1bb1-20260723224841",
       "commitSubject": "fix(visual): preserve artifacts across targeted processes (#1499)",
-      "generatedAt": "2026-07-23T22:51:05.883Z",
+      "generatedAt": "2026-07-23T22:54:58.597Z",
       "baseline": "react",
       "current": "android",
       "summary": {
@@ -142,8 +142,8 @@
       },
       "analysisSummary": {
         "total": 79,
-        "ready": 74,
-        "pending": 5
+        "ready": 78,
+        "pending": 1
       },
       "comparisons": [
         "react__android",

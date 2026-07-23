@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-23T22:51:04.285Z",
+  "generatedAt": "2026-07-23T22:54:56.167Z",
   "baseline": "android",
   "current": "ios",
   "comparison": "android__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 79,
-    "ready": 70,
-    "pending": 9
+    "ready": 74,
+    "pending": 5
   },
   "cases": [
     {
@@ -127,15 +127,38 @@
     },
     {
       "id": "components.ui.textarea.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ff83ffc00000002000000020038007200000002001000060000000200000002000000020001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
-      "generatedAt": "2026-07-23T22:51:02.870Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-23T22:53:15.105Z",
+      "severity": "high",
+      "summary": [
+        "iOS side is missing the error-state row: no helper text 'Agreement body must be shorter.' and no counter '57/40' under the second textarea",
+        "iOS textarea error styling differs: second textarea border is red but background fill is white/light instead of the pink/red error tint present on Android",
+        "iOS second textarea border appears noticeably thicker than Android's error border",
+        "Vertical spacing/padding between the two textarea blocks differs; iOS compresses vertical gap relative to Android",
+        "Typography weight/size for body and helper text appears slightly larger/heavier on iOS (SF-style) vs Android (Roboto-style)"
+      ],
+      "likelyCauses": [
+        "Kuikly iOS renderer not wiring the error/invalid state props (status=error, helper error copy, maxLength counter) for the second textarea",
+        "iOS TextArea error-state background color token not mapped; only border color is applied",
+        "Platform-specific TextArea default border-width differs (iOS native UITextView border thicker) and is not overridden by component",
+        "Font family fallback not normalized across platforms, causing SF vs Roboto size/weight drift",
+        "Spacing tokens (gap between textareas) not shared between Android and iOS Kuikly layouts"
+      ],
+      "suggestedOwner": "kuikly-mobile/textarea-component",
+      "suggestedFixes": [
+        "Ensure the error-state slot renders helper text and character counter on iOS when status='error' and overLimit is true",
+        "Apply the error background tint (e.g., color-error-bg) to iOS TextArea, not just the border",
+        "Normalize TextArea border-width across platforms (e.g., 1dp) via shared token",
+        "Map body and helper text to a shared typography token so SF and Roboto render at consistent size/weight",
+        "Use a shared spacing token for the vertical gap between stacked TextArea instances"
+      ],
+      "intentional": [
+        "None of the observed divergences look intentional — missing error copy and missing error background are likely regressions"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.03421436383521692
     },
     {
@@ -569,15 +592,34 @@
     },
     {
       "id": "components.ui.avatar-list-row.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0ff81ffc0ff83ffe806100c6000000060000000200000002000000060001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
-      "generatedAt": "2026-07-23T22:51:03.123Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-23T22:53:15.477Z",
+      "severity": "low",
+      "summary": [
+        "Both Android (left) and iOS (right) renders are visually isomorphic for the Avatar List Row states component.",
+        "All structural elements—avatar tile, primary text, secondary text, and right-aligned status pill—appear at matching positions and proportions in both renders.",
+        "Typography weight, family, and size for 'Cindy', 'Claude Code', 'Product UX Designer', and 'product@slock.ai' are visually consistent across both platforms.",
+        "Status pills ('Online' green, 'Open' outlined) match in fill, stroke, corner radius, and label weight on both sides.",
+        "The selected/highlighted row (light cyan fill on the second row) has matching background color and inner padding on both platforms."
+      ],
+      "likelyCauses": [
+        "Pixel mismatch (1.33%) and RGB difference (~11.6%) are dominated by canvas background scaling and minor anti-aliasing variance between the 342×168 baseline crop and 1170×2532 full-canvas render, not by component-level differences.",
+        "No structural, color, or typography divergence attributable to platform-specific rendering."
+      ],
+      "suggestedOwner": "ui-platform",
+      "suggestedFixes": [
+        "No component-level fix required; current iOS render is within tolerance.",
+        "Optional: normalize the compare-canvas crop on iOS to match the Android component-bounds rect so future diffs isolate only the component, reducing noise from empty canvas pixels.",
+        "Optional: add a snapshot baseline for the iOS render once normalized to enable true cross-platform regression checks."
+      ],
+      "intentional": [
+        "Different raw canvas sizes (342×168 component crop on Android vs. 1170×2532 full canvas on iOS) are a snapshot framing artifact, not a UI divergence.",
+        "Pixel-perfect similarity of 98.67% and structural parity confirm the two ends are isomorphic."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.013325839510673676
     },
     {
@@ -1657,15 +1699,31 @@
     },
     {
       "id": "components.settings.root.page",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ffc1ffc0000000000000000000000009ffe1ffe01fe03fe81fe01fe87fe07fe83fe07fe8ffe07fe8ffe0ffe8ffe0ffedffe5ffe03fe03fe8ffe1ffe83fe03fe83fe43fe83fe03fe87fe07fefffe7ffe8ffe1ffe83fe07fe03fe03fe03fe03fefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
-      "generatedAt": "2026-07-23T22:51:03.862Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-23T22:53:16.317Z",
+      "severity": "low",
+      "summary": [
+        "iOS build renders the Settings list with slightly heavier/bolder typography weight on menu items and section headers compared to Android.",
+        "Vertical spacing between list items and section headers (PERSONAL, WORKSPACE, ABOUT) appears marginally larger on iOS.",
+        "Top header bar (yellow band) height and icon-to-title gap are essentially identical with negligible pixel differences."
+      ],
+      "likelyCauses": [
+        "Kuikly's iOS text style mapping applies a default heavier font weight than Android's Roboto equivalent.",
+        "iOS and Android use different default line-height/multiplier for body and label typography tokens."
+      ],
+      "suggestedOwner": "design-system",
+      "suggestedFixes": [
+        "Normalize font-weight across platforms by binding menu item and header typography to a shared design token with explicit weight (e.g., Medium 500).",
+        "Tighten list item leading and section header spacing on iOS to match Android metrics, or define per-platform tokens that resolve to visually identical layouts.",
+        "Re-run Slock comparison after typography token updates to confirm pixel-perfect similarity ≥ 0.99."
+      ],
+      "intentional": [
+        "Differences are sub-tolerance and likely reflect platform-native font rendering rather than a layout bug."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.02898522839281137
     },
     {
@@ -1759,15 +1817,34 @@
     },
     {
       "id": "components.settings.appearance.page",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0ffc0ffe9ffe1ffe81fe81fe1efe1efe805c001c8ffc4ff48ff04ff0800400048000000083fc07fcbd0c3d0c807c007c807c007c80000000807c007c800400048000200080000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7ffe7ffeffffffff",
-      "generatedAt": "2026-07-23T22:51:03.946Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-23T22:53:16.454Z",
+      "severity": "low",
+      "summary": [
+        "Layout, typography, colors, component structure and state indicators are visually isomorphic between Android (390x844) and iOS (1170x2532) renders.",
+        "Checkbox indicator for Hidden appears slightly smaller / lighter-stroked on iOS, but state and position are consistent.",
+        "Toggle button group (Small/Medium/Large) selection state, spacing and alignment match across platforms.",
+        "Preview block background tint, avatar color and message body text rendering are consistent.",
+        "No clipping, missing elements, or component bounds differences observed; pixel mismatch (3.34%) is within antialiasing tolerance."
+      ],
+      "likelyCauses": [
+        "Minor sub-pixel/antialiasing differences on the checkbox border between Android and iOS renderers.",
+        "Minor font hinting differences inherent to platform text engines."
+      ],
+      "suggestedOwner": "kuikly-renderer",
+      "suggestedFixes": [
+        "No fix required; differences are within visual tolerance and likely intentional platform rendering nuances.",
+        "If stricter parity is desired, align the checkbox stroke width and corner radius to a shared design token across Android and iOS.",
+        "Verify the Small/Medium/Large segmented control uses the same horizontal padding token on both platforms."
+      ],
+      "intentional": [
+        "Checkbox border weight and corner radius may intentionally follow platform defaults.",
+        "Font kerning/weight may intentionally use platform-native font stacks."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.03344270263701543
     },
     {
@@ -1876,7 +1953,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-23T22:51:03.877Z",
+      "generatedAt": "2026-07-23T22:54:55.685Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1889,7 +1966,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-23T22:51:03.877Z",
+      "generatedAt": "2026-07-23T22:54:55.685Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1902,7 +1979,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-23T22:51:03.877Z",
+      "generatedAt": "2026-07-23T22:54:55.685Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1915,7 +1992,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-23T22:51:03.877Z",
+      "generatedAt": "2026-07-23T22:54:55.685Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1928,7 +2005,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-23T22:51:03.877Z",
+      "generatedAt": "2026-07-23T22:54:55.685Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

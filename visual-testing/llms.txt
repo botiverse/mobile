@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-07-23 22:51:05 UTC
+Generated: 2026-07-23 22:54:58 UTC
 Latest run: 37df1bb1-20260723224841
 Latest commit: 37df1bb1-20260723224841
 Commit subject: fix(visual): preserve artifacts across targeted processes (#1499)
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 79, same 0, pass 0, basic-pass 0, different 78, missing 1
-AI analysis: ready 74 / total 79, pending 5
+AI analysis: ready 78 / total 79, pending 1
 Visual coverage matrix: active 88 / total 107, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 

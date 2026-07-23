@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-23T22:51:01.187Z",
+  "generatedAt": "2026-07-23T22:54:52.011Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 79,
-    "ready": 69,
-    "pending": 10
+    "ready": 73,
+    "pending": 6
   },
   "cases": [
     {
@@ -136,15 +136,36 @@
     },
     {
       "id": "components.ui.textarea.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ff83ffc00000002000000020038007200000002000000060001000200010002000000020001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
-      "generatedAt": "2026-07-23T22:50:59.828Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-23T22:53:07.227Z",
+      "severity": "high",
+      "summary": [
+        "The iOS error-state textarea is missing the error helper text 'Agreement body must be shorter.' that is present on React.",
+        "The iOS view leaves the bottom ~85% of the canvas blank while React composes two stacked textareas tightly, suggesting the second textarea is clipped or omitted.",
+        "iOS error-state textarea height is significantly shorter than React's, causing the wrapping of the placeholder text to differ (React wraps to 3 lines, iOS to 2).",
+        "Font weight appears heavier/bolder in the iOS textarea text compared to the lighter React rendering."
+      ],
+      "likelyCauses": [
+        "iOS component does not render the validation/helperText slot in the error state.",
+        "iOS component is missing the second (error-state) textarea instance, or its layout constrains it to a smaller height.",
+        "Platform-specific font metrics (iOS San Francisco vs. React web font) causing different line wrapping at the same width.",
+        "iOS sample render omitted the error helper label due to a state-binding bug."
+      ],
+      "suggestedOwner": "ios",
+      "suggestedFixes": [
+        "Re-enable the helperText/errorMessage rendering for the error-state textarea on iOS so it matches the React helper label 'Agreement body must be shorter.'.",
+        "Ensure the iOS error-state textarea receives the same minHeight/multiline affordance as React so text wraps to 3 lines instead of clipping to 2.",
+        "Verify the iOS preview mounts both textarea states (default + error) within the same component bounds rather than letting the second instance collapse.",
+        "Normalize font (e.g., pin to system font with equivalent weight) or increase the iOS textarea width slightly to match React line-break behavior.",
+        "Confirm component-bounds cropping includes both textareas on iOS so the bottom helper text is not cut off."
+      ],
+      "intentional": [
+        "Higher native iOS font weight relative to web is expected platform behavior."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.08595245810885621
     },
     {
@@ -253,15 +274,33 @@
     },
     {
       "id": "components.ui.status-dot.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0000000007fc0ffe03f407fe03fc07fe0000fffe0000fffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00000",
-      "generatedAt": "2026-07-23T22:50:59.910Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-23T22:53:07.321Z",
+      "severity": "low",
+      "summary": [
+        "The four static status dots (green, orange, gray, blue) render with identical color, size, and spacing across React and iOS.",
+        "The pink \"Waiting pulse\" dot and its accompanying bold label render at matching position, color, and weight on both sides.",
+        "Typography for the component title and metadata labels is consistent in family and weight between platforms.",
+        "Pixel-perfect similarity of 99.77% and RGB similarity of 97.9% confirm no meaningful visual divergence within the cropped component region."
+      ],
+      "likelyCauses": [
+        "Minor antialiasing variation between web (subpixel rendering) and iOS (native rendering) of the circular dot edges.",
+        "Slight differences in font hinting between browser and UIFont rendering of the \"Waiting pulse\" label and title text."
+      ],
+      "suggestedOwner": "design-system",
+      "suggestedFixes": [
+        "No action required — visual parity is within tolerance.",
+        "If stricter parity is desired, normalize dot border/edge rendering by using identical SVG or CALayer with shared stroke parameters.",
+        "Consider pinning the label to a system font that matches the React baseline's metric to eliminate remaining subpixel drift."
+      ],
+      "intentional": [
+        "Cross-platform minor rendering differences are expected and within the configured 0.02 pixel-ratio tolerance.",
+        "The iOS viewport (1170×2532) is a full screen capture while the React baseline is cropped to component bounds; this does not indicate a UI defect."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.0022987807347997213
     },
     {
@@ -1622,7 +1661,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-23T22:51:00.579Z",
+      "generatedAt": "2026-07-23T22:54:51.036Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1738,15 +1777,35 @@
     },
     {
       "id": "components.settings.root.page",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ffc1ffc0000000000000000000000008ffe1ffecffe03fe81fe01fec7fe07fec7fe07fe83fe07fedffe0ffe87fe0ffe83fe5ffe87fe03fe83fe1ffe83fe03fec7fe43fe87fe03fe87fe07fe87fe7ffe87fe1ffebffe07fe8ffe03fe83fe03fe83fe7ffe87fe7ffe83fe7ffe83fe7ffefffe7ffefffe7ffe00000000fff81fff",
-      "generatedAt": "2026-07-23T22:51:00.776Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-23T22:53:08.374Z",
+      "severity": "high",
+      "summary": [
+        "iOS header includes a large settings gear icon next to the 'Settings' title; React header has text only",
+        "iOS adds 'Mobile' and 'Storage' menu items under PERSONAL that are absent in React",
+        "React shows 'Plan & Billing', 'Applications', and 'MCP Servers' under WORKSPACE; iOS replaces these with 'Billing', 'Connected Apps', and 'Computers' (Computers is duplicated in both)",
+        "React 'ABOUT' section lists 'About', 'Documentation', 'Feedback', 'Release Notes'; iOS 'ABOUT' lists 'About', 'Send feedback', 'Release Notes' (missing 'Documentation')",
+        "Vertical spacing between menu items is noticeably tighter on iOS than React, producing a denser list"
+      ],
+      "likelyCauses": [
+        "Settings menu item lists were independently authored for iOS without reusing the React/Web menu definition",
+        "Platform-specific menu configuration diverged (item additions, removals, renames) instead of being shared",
+        "Differences in default list/row padding between the iOS list component and the React web component",
+        "iOS header gained a decorative/functional icon not present on the web design spec"
+      ],
+      "suggestedOwner": "Design Systems / iOS Engineer (settings navigation owner)",
+      "suggestedFixes": [
+        "Sync menu items from a single shared source-of-truth across web and iOS so additions/removals match",
+        "Align item label text exactly (e.g., 'Plan & Billing' vs 'Billing', 'Applications' vs 'Connected Apps', 'Feedback' vs 'Send feedback')",
+        "Match React's row spacing on iOS by setting the list row height/padding to the web equivalent",
+        "Remove the extra header gear icon on iOS, or add the equivalent on React, so the header layout is consistent",
+        "Verify the PERSONAL group on React should include 'Mobile' and 'Storage', and the ABOUT group should include 'Documentation' — then mirror accordingly"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.040952390596940336
     },
     {
@@ -1858,15 +1917,35 @@
     },
     {
       "id": "components.settings.appearance.page",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0ffe0ffe8ffe1ffe81fe81fe97fe1efe820f001c81fc4ff481fc4ff080040004bffc8000807c07fc81fc3d0cbffc007c8ffc007c807c00008004007cb1fc0004800020008000000081f0ffffa018ffffbffcffff9bfcffff8000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7ffe7ffeffff7fff",
-      "generatedAt": "2026-07-23T22:51:00.860Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-23T22:53:08.508Z",
+      "severity": "high",
+      "summary": [
+        "iOS shows an additional 'Activity sender avatars' toggle card at the top, absent in the React baseline.",
+        "React shows a 'Live agent activity' toggle card at the bottom, absent in the iOS view.",
+        "Section ordering differs: React places the 'APPEARANCE' (Message font size) section first; iOS leads with 'Activity sender avatars' then 'Appearance'.",
+        "Message font size copy is reworded and shortened on iOS (e.g., 'Adjusts message body text only...' vs. React's longer description).",
+        "Preview rendering differs: React shows inline colored chips (#proj-uiux highlighted, `git pull` code-styled) plus avatar and timestamp; iOS uses a flat card with a single avatar and no chips/timestamp."
+      ],
+      "likelyCauses": [
+        "iOS implementation added a new 'Activity sender avatars' setting not yet present in the web/React Settings page.",
+        "React implementation includes a 'Live agent activity' toggle that hasn't been ported to iOS.",
+        "Component copy was independently rewritten rather than shared from a single source of truth.",
+        "Preview card layout differs because the iOS renderer doesn't yet support inline mentions, code spans, or timestamp formatting used in the web preview."
+      ],
+      "suggestedOwner": "mobile-ios",
+      "suggestedFixes": [
+        "Add the 'Live agent activity' toggle to the iOS Appearance page to match React parity.",
+        "Decide whether 'Activity sender avatars' should also exist on web; if so, add it to React, otherwise remove from iOS.",
+        "Unify the 'Message font size' description copy across platforms via a shared strings/content source.",
+        "Standardize the preview card markup so iOS renders mentions, code chips, and timestamps like React.",
+        "Re-snapshot after changes and confirm pixel similarity ≥ 0.98."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.19377607647749828
     },
     {
@@ -1977,7 +2056,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-23T22:51:00.839Z",
+      "generatedAt": "2026-07-23T22:54:51.475Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1990,7 +2069,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-23T22:51:00.839Z",
+      "generatedAt": "2026-07-23T22:54:51.475Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2003,7 +2082,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-23T22:51:00.839Z",
+      "generatedAt": "2026-07-23T22:54:51.475Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2016,7 +2095,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-23T22:51:00.839Z",
+      "generatedAt": "2026-07-23T22:54:51.475Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2029,7 +2108,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-23T22:51:00.839Z",
+      "generatedAt": "2026-07-23T22:54:51.475Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

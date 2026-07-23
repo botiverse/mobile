@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-23T22:50:58.551Z",
+  "generatedAt": "2026-07-23T22:54:47.686Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 79,
-    "ready": 74,
-    "pending": 5
+    "ready": 78,
+    "pending": 1
   },
   "cases": [
     {
@@ -139,15 +139,34 @@
     },
     {
       "id": "components.ui.textarea.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:ffffffff1ffc1ffc1ffe1ffeffffffff80018003800080008864800480008004fffcfffc801c801cb7bcbffcfffcfffcfffcfffcbffc800080008001cffbffffffffffffffffffff8000c001fffe9ff480008000fffcff7c807c807cc07e80fcbf84bf0180018001807dfffbffffffff00000000fffffffffffa1fffffffffff",
-      "generatedAt": "2026-07-23T22:50:57.491Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-23T22:52:59.651Z",
+      "severity": "low",
+      "summary": [
+        "Body and helper text typography weight/size match closely between React and Android.",
+        "Error state textarea background fill color is more saturated/opaque on React (deeper red) versus a paler pink wash on Android.",
+        "Error state border color and 'Agreement body must be shorter.' text color appear consistent across both renderings.",
+        "Character count, helper text, and error text positioning are well aligned vertically with no clipping."
+      ],
+      "likelyCauses": [
+        "Android TextArea error-state uses a lighter/unfilled error container color token vs React's solid error background fill.",
+        "Possible difference in Compose theme color mapping for 'errorContainer' or equivalent surface tint versus the React token (e.g., error.50 vs error.100).",
+        "Subtle default opacity/saturation in Android error background versus React's flat fill."
+      ],
+      "suggestedOwner": "android-ui",
+      "suggestedFixes": [
+        "Update Android TextArea error background to match React's deeper red fill (use the same error surface color token as the web baseline).",
+        "Verify the Compose theme's errorContainer/onErrorContainer tokens against the shared design token spec.",
+        "If a lighter wash is intentional for Android, mark the error background as an intentional platform divergence in the contract.",
+        "Re-run Slock capture after color token update and confirm pixel mismatch drops below 2%."
+      ],
+      "intentional": [
+        "A lighter error background on Android could be an intentional Material 3 surface tint convention."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.36638374485596703
     },
     {
@@ -620,15 +639,35 @@
     },
     {
       "id": "components.ui.avatar-list-row.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:fffffffffffcfffc0ffc0ffc3fff3fffffffffffffffffffffffffffffffffffcfff9ff3cff38773c07383f3cbf39ff3cfffdffffffffff3ffffffffc003800180009ffdfffc80618030802180319f618b31806180719ff188708001fffc80018000ffffc003ffffffffffff00000000fffffffffffbdffffffa1fffffffffff",
-      "generatedAt": "2026-07-23T22:50:57.567Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-23T22:52:59.812Z",
+      "severity": "high",
+      "summary": [
+        "Cindy (Claude Code) row is missing in Android — only the second 'Product UX Designer' row is rendered.",
+        "Product UX Designer title text in Android is visibly larger than React baseline.",
+        "product@slock.ai subtitle in Android is larger/heavier and sits lower, crowding the row.",
+        "Avatar tile in Android row appears slightly larger than React.",
+        "Row card padding and vertical spacing differ between React and Android."
+      ],
+      "likelyCauses": [
+        "Android implementation only renders the second list item instead of both rows.",
+        "Title/subtitle typography scale and weights are not mapped to the Android Material token set.",
+        "Avatar Image/IconButton size and row inner padding use different dp values than the React spec."
+      ],
+      "suggestedOwner": "android-ui-engineer",
+      "suggestedFixes": [
+        "Render both 'Cindy — Claude Code' (Online) and 'Product UX Designer' (Open) rows in the Android AvatarListRow states fixture.",
+        "Map title and subtitle to the same type scale used by React (font size + weight) via shared design tokens.",
+        "Constrain avatar size and card horizontal/vertical padding to match the React component bounds contract.",
+        "Re-run the Slock visual test once component bounds, padding, and typography match baseline."
+      ],
+      "intentional": [
+        "The 'Online' badge appears in the same green and position in both builds, suggesting that state is intentional and only the second-row content differs."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.27707579133017735
     },
     {
@@ -1640,7 +1679,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-23T22:50:57.894Z",
+      "generatedAt": "2026-07-23T22:54:46.204Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1755,15 +1794,38 @@
     },
     {
       "id": "components.settings.root.page",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ffc1ffc0000000000000000000000008ffe1ffecffe01fe81fe01fec7fe07fec7fe07fe83fe0ffedffe0ffe87fe0ffe83fe5ffe87fe03fe83fe0ffe83fe03fec7fe03fe87fe03fe87fe07fe87fe7ffe87fe1ffebffe03fe8ffe03fe83fe03fe83fe7ffe87fe7ffe83fe7ffe83fe7ffefffe7ffefffe7ffe00000000fff81fff",
-      "generatedAt": "2026-07-23T22:50:58.063Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-23T22:53:00.418Z",
+      "severity": "medium",
+      "summary": [
+        "Android adds a settings (gear) icon to the left of the 'Settings' title in the yellow header; React shows only the text.",
+        "Android list items are more vertically condensed: spacing between rows is smaller and section headers (PERSONAL/WORKSPACE/ABOUT) are closer to items.",
+        "Android includes extra list items not present in React: 'Mobile', 'Storage' under PERSONAL, and 'Send feedback' under ABOUT.",
+        "Android renames 'Plan & Billing' to 'Billing' and 'Feedback' to 'Send feedback'; React shows 'Applications', 'MCP Servers', and 'Documentation' which Android omits.",
+        "Android moves 'Mobile' and 'Storage' into the PERSONAL section (between Notifications and WORKSPACE) rather than the order seen in React."
+      ],
+      "likelyCauses": [
+        "Android implementation renders a different settings menu list (likely a platform-native navigation drawer vs. the React web settings page).",
+        "Icon and header composition was added on Android but not on React baseline.",
+        "Section ordering and item copy differ between the two codebases, indicating divergent feature flags or menu configs.",
+        "Missing items (Applications, MCP Servers, Documentation) suggest Android build is missing menu entries the React app exposes."
+      ],
+      "suggestedOwner": "android-settings",
+      "suggestedFixes": [
+        "Remove the gear icon from the Android header so it matches the React 'Settings' text-only title.",
+        "Match React's vertical row spacing and section-header-to-item gap in the Android list.",
+        "Reorder PERSONAL section on Android so it reads Account, Language & Region, Appearance, Notifications (drop Mobile/Storage here, or place per spec).",
+        "Remove 'Send feedback' or align naming ('Feedback') with React copy, and verify 'Billing' label matches 'Plan & Billing'.",
+        "Add missing entries on Android: 'Applications', 'MCP Servers' (Workspace), and 'Documentation' (About) to match React baseline."
+      ],
+      "intentional": [
+        "Different item ordering may be intentional platform adaptation.",
+        "Gear icon in header may be intentional Android pattern (e.g., navigation drawer opener)."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.04213114864773637
     },
     {
@@ -1870,15 +1932,35 @@
     },
     {
       "id": "components.settings.appearance.page",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0ffe0ffc8ffe0ffe81fe81fe97fe1efe820f001c81fc4ff481fc4ff080040004bffc8000807c03fc81fc3d0cbffc007c8ffc007c807c00008004007cb1fc0004800020008000000081f0ffffa018ffffbffcffff9bfcffff8000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7ffe7ffeffff7fff",
-      "generatedAt": "2026-07-23T22:50:58.147Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-23T22:53:00.533Z",
+      "severity": "high",
+      "summary": [
+        "Content order is reordered: React shows 'Message font size' above 'Live agent activity', while Android shows 'Activity sender avatars' above 'Appearance' (font size)",
+        "'Live agent activity' toggle card is missing on the Android side",
+        "'Message font size' heading text and detailed description differ: Android uses 'Appearance' (lowercase tag) with shortened description ('Adjusts message body text only...') vs React's full 'Message font size' title with verbose paragraph",
+        "Android version missing timestamp ('10:28 PM') in the message preview and uses 'Onboarding Assistant' name with person icon instead of 'Cindy' with green pixel-art avatar",
+        "Preview card styling differs: React has white/cream background with colored mention and inline-code chips, Android uses solid pale-yellow background with plain text and no colored chips"
+      ],
+      "likelyCauses": [
+        "Android implementation is rendering a different or incomplete set of setting cards (e.g., it shows 'Activity sender avatars' where React shows 'Live agent activity')",
+        "Copy/text content for the font size setting was rewritten or truncated on Android",
+        "Message preview component is using different sample message data (different sender, avatar, no timestamp, no formatted chips)",
+        "Component composition differs: React groups preview inside a card with 'Small/Medium/Large' selector and preview together; Android splits them with extra spacing"
+      ],
+      "suggestedOwner": "android-settings-engineering",
+      "suggestedFixes": [
+        "Verify that all React setting cards are mapped 1:1 on Android; specifically restore the 'Live agent activity' card with its toggle",
+        "Align section order on Android to match React (Message font size first, Live agent activity second) or vice-versa intentionally and update baseline",
+        "Reconcile the font-size setting copy: use the same title ('Message font size') and full description on both platforms",
+        "Use the same sample message data in the preview (Cindy + 10:28 PM timestamp + '@Joy #proj-uiux' mention chip + 'git pull' inline-code chip) and the same preview container background",
+        "Ensure the preview card rendering (background color, chip styles, avatar) matches React's appearance model"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.19744906225948877
     },
     {
