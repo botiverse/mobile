@@ -37,6 +37,52 @@ git -C "$fixture_repo" add payload.txt
 git -C "$fixture_repo" commit -q -m "fix: different signed source" -m "Signed-off-by: Sign-off Test <${signer}>"
 other_source_commit="$(git -C "$fixture_repo" rev-parse HEAD)"
 
+git -C "$fixture_repo" switch -q -c advanced-base "$base_commit"
+printf 'advanced main context\n' > "${fixture_repo}/advanced-main.txt"
+git -C "$fixture_repo" add advanced-main.txt
+git -C "$fixture_repo" commit -q -m "test: signed advanced main" -m "Signed-off-by: Sign-off Test <${signer}>"
+advanced_parent_commit="$(git -C "$fixture_repo" rev-parse HEAD)"
+git -C "$fixture_repo" merge -q --squash signed-source
+git -C "$fixture_repo" commit -q -m "fix: advanced-base immutable squash without trailer"
+advanced_squash_commit="$(git -C "$fixture_repo" rev-parse HEAD)"
+
+git -C "$fixture_repo" switch -q -c advanced-extra "$advanced_parent_commit"
+git -C "$fixture_repo" merge -q --squash signed-source
+printf 'unexpected immutable-only payload\n' > "${fixture_repo}/advanced-extra.txt"
+git -C "$fixture_repo" add advanced-extra.txt
+git -C "$fixture_repo" commit -q -m "fix: advanced-base squash with extra path"
+advanced_extra_commit="$(git -C "$fixture_repo" rev-parse HEAD)"
+
+git -C "$fixture_repo" switch -q -c unsigned-reviewed-range "$base_commit"
+printf 'unsigned reviewed step\n' > "${fixture_repo}/unsigned-range.txt"
+git -C "$fixture_repo" add unsigned-range.txt
+git -C "$fixture_repo" commit -q -m "fix: unsigned reviewed step\\n\\nSigned-off-by: Sign-off Test <${signer}>"
+printf 'signed reviewed head\n' >> "${fixture_repo}/unsigned-range.txt"
+git -C "$fixture_repo" add unsigned-range.txt
+git -C "$fixture_repo" commit -q -m "fix: signed reviewed head" -m "Signed-off-by: Sign-off Test <${signer}>"
+unsigned_reviewed_head="$(git -C "$fixture_repo" rev-parse HEAD)"
+
+git -C "$fixture_repo" switch -q -c positional-root "$base_commit"
+printf 'same\nsame\n' > "${fixture_repo}/positional.txt"
+git -C "$fixture_repo" add positional.txt
+git -C "$fixture_repo" commit -q -m "test: signed positional root" -m "Signed-off-by: Sign-off Test <${signer}>"
+positional_source_parent="$(git -C "$fixture_repo" rev-parse HEAD)"
+git -C "$fixture_repo" switch -q -c positional-source
+printf 'changed\nsame\n' > "${fixture_repo}/positional.txt"
+git -C "$fixture_repo" add positional.txt
+git -C "$fixture_repo" commit -q -m "fix: signed positional source" -m "Signed-off-by: Sign-off Test <${signer}>"
+positional_source_head="$(git -C "$fixture_repo" rev-parse HEAD)"
+git -C "$fixture_repo" switch -q -c positional-immutable-parent "$positional_source_parent"
+printf 'positional main context\n' > "${fixture_repo}/positional-main.txt"
+git -C "$fixture_repo" add positional-main.txt
+git -C "$fixture_repo" commit -q -m "test: signed positional main" -m "Signed-off-by: Sign-off Test <${signer}>"
+positional_immutable_parent="$(git -C "$fixture_repo" rev-parse HEAD)"
+git -C "$fixture_repo" switch -q -c positional-immutable
+printf 'same\nchanged\n' > "${fixture_repo}/positional.txt"
+git -C "$fixture_repo" add positional.txt
+git -C "$fixture_repo" commit -q -m "fix: positional squash with wrong synthetic tree"
+positional_immutable_commit="$(git -C "$fixture_repo" rev-parse HEAD)"
+
 git -C "$fixture_repo" switch -q -c merge-source "$squash_commit"
 printf 'reviewed merge source\n' > "${fixture_repo}/merge-source.txt"
 git -C "$fixture_repo" add merge-source.txt
@@ -150,6 +196,32 @@ expect_fail "unsigned unlisted squash" run_checker "$missing_ledger" "$base_comm
 printf '%s\t%s\t%s\n' "$squash_commit" "$source_commit" "$signer" > "$ledger"
 expect_pass "tree-identical exact attestation" run_checker "$ledger" "$base_commit" "$squash_commit"
 
+printf '%s\t%s\t%s\t%s\t%s\n' \
+  "$advanced_squash_commit" "$source_commit" "$signer" "$base_commit" "$advanced_parent_commit" > "$ledger"
+expect_pass "advanced-base squash exact attestation" run_checker "$ledger" "$advanced_parent_commit" "$advanced_squash_commit"
+
+printf '%s\t%s\t%s\t%s\t%s\n' \
+  "$advanced_squash_commit" "$source_commit" "$signer" "$squash_commit" "$advanced_parent_commit" > "$ledger"
+expect_fail "advanced-base attestation requires exact merge-base source parent" run_checker "$ledger" "$advanced_parent_commit" "$advanced_squash_commit"
+
+printf '%s\t%s\t%s\t%s\t%s\n' \
+  "$advanced_squash_commit" "$source_commit" "$signer" "$base_commit" "$base_commit" > "$ledger"
+expect_fail "advanced-base attestation requires actual immutable parent" run_checker "$ledger" "$advanced_parent_commit" "$advanced_squash_commit"
+
+printf '%s\t%s\t%s\t%s\t%s\n' \
+  "$advanced_extra_commit" "$source_commit" "$signer" "$base_commit" "$advanced_parent_commit" > "$ledger"
+expect_fail "advanced-base attestation rejects immutable-only path" run_checker "$ledger" "$advanced_parent_commit" "$advanced_extra_commit"
+
+printf '%s\t%s\t%s\t%s\t%s\n' \
+  "$advanced_squash_commit" "$unsigned_reviewed_head" "$signer" "$base_commit" "$advanced_parent_commit" > "$ledger"
+expect_fail "advanced-base attestation rejects literal backslash-n fake source trailer" run_checker "$ledger" "$advanced_parent_commit" "$advanced_squash_commit"
+
+printf '%s\t%s\t%s\t%s\t%s\n' \
+  "$positional_immutable_commit" "$positional_source_head" "$signer" \
+  "$positional_source_parent" "$positional_immutable_parent" > "$ledger"
+expect_fail "advanced-base attestation rejects wrong synthetic tree despite matching line delta" \
+  run_checker "$ledger" "$positional_immutable_parent" "$positional_immutable_commit"
+
 printf '%s\t%s\t%s\n' "$squash_commit" "$source_commit" 'raft-mobile-wrong@mail.build' > "$ledger"
 expect_fail "wrong exact signer" run_checker "$ledger" "$base_commit" "$squash_commit"
 
@@ -170,6 +242,9 @@ expect_fail "wildcard immutable SHA" run_checker "$ledger" "$base_commit" "$squa
 
 printf '%s\t%s\n' "$squash_commit" "$source_commit" > "$ledger"
 expect_fail "malformed ledger row" run_checker "$ledger" "$base_commit" "$squash_commit"
+
+printf '%s\t%s\t%s\t%s\n' "$squash_commit" "$source_commit" "$signer" "$base_commit" > "$ledger"
+expect_fail "four-field ledger row" run_checker "$ledger" "$base_commit" "$squash_commit"
 
 printf '%s\t%s\t%s\n%s\t%s\t%s\n' \
   "$squash_commit" "$source_commit" "$signer" \
@@ -199,5 +274,9 @@ for attested_commit in \
   expect_pass "repository attestation ${attested_commit}" \
     run_repository_checker "$attested_parent" "$attested_commit"
 done
+
+attested_parent="$(git -C "$repo_root" rev-parse "8d1eb30929bdde9e53c73c3eea4e9e112e9dde93^")"
+expect_pass "repository advanced-base attestation 8d1eb30929bdde9e53c73c3eea4e9e112e9dde93" \
+  run_repository_checker "$attested_parent" 8d1eb30929bdde9e53c73c3eea4e9e112e9dde93
 
 echo "All commit sign-off attestation tests passed."

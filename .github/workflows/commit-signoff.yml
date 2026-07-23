@@ -23,7 +23,9 @@ jobs:
 
       - name: Test sign-off policy
         shell: bash
-        run: scripts/test_check_commit_signoff.sh
+        run: |
+          scripts/test_check_commit_signoff.sh
+          scripts/test_guarded_squash_merge.sh
 
       - name: Determine commit range
         id: range
