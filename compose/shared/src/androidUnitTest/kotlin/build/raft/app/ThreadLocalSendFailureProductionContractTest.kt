@@ -84,16 +84,18 @@ class ThreadLocalSendFailureProductionContractTest {
         val source = threadPageSource()
         val disposal = block(
             source,
-            "    val currentAttachmentUploadJobs by rememberUpdatedState(attachmentUploadJobs)",
+            "    DisposableEffect(threadInstanceKey, attachmentUploadOrchestrator) {",
             "    val agentStatusResolver ="
         )
+        val orchestrator = attachmentUploadOrchestratorSource()
+        val terminal = block(orchestrator, "    private fun terminateAndCancel(", "    }\n}")
 
-        assertContains(disposal, "currentAttachmentUploadAttemptFence.activeAttemptTokens.keys")
-        assertContains(disposal, "attachmentUploadAttemptFence = currentAttachmentUploadAttemptFence.terminate")
-        assertContains(disposal, "currentAttachmentUploadJobs.values.forEach { job -> job.cancel() }")
+        assertContains(disposal, "attachmentUploadOrchestrator.dispose()")
+        assertContains(terminal, "fence = fence.terminate(localAttachmentIds)")
+        assertContains(terminal, "jobs[localAttachmentId]?.cancel()")
         assertTrue(
-            disposal.indexOf("terminate(terminalUploadIds)") <
-                disposal.indexOf("currentAttachmentUploadJobs.values.forEach"),
+            terminal.indexOf("fence.terminate(localAttachmentIds)") <
+                terminal.indexOf("jobs[localAttachmentId]?.cancel()"),
             "Upload attempts must become terminal before route disposal cancels their jobs"
         )
         assertFalse("CancelLocalSend" in disposal)
@@ -140,15 +142,18 @@ class ThreadLocalSendFailureProductionContractTest {
     fun failureAndLateCompletionUseOneWayTerminalOrdering() {
         val source = threadPageSource()
         val uploadFlow = block(source, "    fun handleAttachmentUploadFailure(", "    fun openComposerImageAnnotation(")
+        val orchestrator = attachmentUploadOrchestratorSource()
+        val terminal = block(orchestrator, "    private fun terminateAndCancel(", "    }\n}")
 
         assertTrue(
-            uploadFlow.indexOf("attachmentUploadAttemptFence.terminate(terminalAttachmentIds)") <
-                uploadFlow.indexOf("attachmentUploadJobs[attachmentId]?.cancel()"),
+            terminal.indexOf("fence.terminate(localAttachmentIds)") <
+                terminal.indexOf("jobs[localAttachmentId]?.cancel()"),
             "Failure must terminate tokens before sibling cancellation"
         )
+        assertContains(uploadFlow, "attachmentUploadOrchestrator.failActive(attachmentIds)")
         assertContains(uploadFlow, "SharedThreadComposerDraftIntent.MarkAttachmentsFailed")
         assertTrue(
-            uploadFlow.indexOf("attachmentUploadAttemptFence.accepts(localAttachmentId, uploadAttemptToken)") <
+            uploadFlow.indexOf("attachmentUploadOrchestrator.publishIfAccepted(localAttachmentId, uploadAttemptToken)") <
                 uploadFlow.indexOf("SharedThreadComposerDraftIntent.AddUploadedAttachments"),
             "Every completion must cross the attempt fence before publishing into Composer"
         )
@@ -180,6 +185,16 @@ class ThreadLocalSendFailureProductionContractTest {
                 ?: error("Could not locate shared commonMain Kotlin sources")
         val file = File(commonMain, "build/raft/app/ThreadComposerPage.kt")
         assertTrue(file.isFile, "Missing production ThreadComposerPage.kt")
+        return file.readText().replace("\r\n", "\n")
+    }
+
+    private fun attachmentUploadOrchestratorSource(): String {
+        val commonMain =
+            listOf(File("src/commonMain/kotlin"), File("shared/src/commonMain/kotlin"))
+                .firstOrNull(File::isDirectory)
+                ?: error("Could not locate shared commonMain Kotlin sources")
+        val file = File(commonMain, "build/raft/app/ThreadAttachmentUploadAttemptFence.kt")
+        assertTrue(file.isFile, "Missing production ThreadAttachmentUploadAttemptFence.kt")
         return file.readText().replace("\r\n", "\n")
     }
 }

@@ -1,5 +1,10 @@
 package build.raft.app
 
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+
 /**
  * Per-local-attachment generation fence.
  *
@@ -46,3 +51,73 @@ internal data class ThreadAttachmentUploadAdmission(
     val fence: ThreadAttachmentUploadAttemptFence,
     val attemptToken: Long
 )
+
+/**
+ * Production owner for attachment upload attempts and jobs.
+ *
+ * Tests can drive the same owner with controlled deferred transports; UI code supplies the actual
+ * upload block and applies accepted results to the Composer draft reducer.
+ */
+internal class ThreadAttachmentUploadOrchestrator(
+    private val scope: CoroutineScope
+) {
+    private var fence = ThreadAttachmentUploadAttemptFence()
+    private var jobs: Map<String, Job> = emptyMap()
+
+    val activeAttemptIds: Set<String>
+        get() = fence.activeAttemptTokens.keys
+
+    fun isActive(localAttachmentId: String): Boolean = jobs[localAttachmentId]?.isActive == true
+
+    fun launch(
+        localAttachmentId: String,
+        block: suspend (attemptToken: Long) -> Unit
+    ): Long {
+        val admission = fence.begin(localAttachmentId)
+        fence = admission.fence
+        val attemptToken = admission.attemptToken
+        val job =
+            scope.launch(start = CoroutineStart.LAZY) {
+                try {
+                    block(attemptToken)
+                } finally {
+                    if (fence.activeAttemptTokens[localAttachmentId] == attemptToken) {
+                        jobs = jobs - localAttachmentId
+                        fence = fence.complete(localAttachmentId, attemptToken)
+                    }
+                }
+            }
+        jobs = jobs + (localAttachmentId to job)
+        job.start()
+        return attemptToken
+    }
+
+    fun publishIfAccepted(
+        localAttachmentId: String,
+        attemptToken: Long,
+        publish: () -> Unit
+    ): Boolean {
+        if (!fence.accepts(localAttachmentId, attemptToken)) return false
+        publish()
+        return true
+    }
+
+    fun failActive(additionalAttachmentIds: Set<String> = emptySet()): Set<String> =
+        terminateAndCancel(activeAttemptIds + additionalAttachmentIds)
+
+    fun remove(localAttachmentId: String) {
+        terminateAndCancel(setOf(localAttachmentId))
+    }
+
+    fun dispose() {
+        terminateAndCancel(activeAttemptIds)
+    }
+
+    private fun terminateAndCancel(localAttachmentIds: Set<String>): Set<String> {
+        if (localAttachmentIds.isEmpty()) return emptySet()
+        fence = fence.terminate(localAttachmentIds)
+        localAttachmentIds.forEach { localAttachmentId -> jobs[localAttachmentId]?.cancel() }
+        jobs = jobs - localAttachmentIds
+        return localAttachmentIds
+    }
+}
