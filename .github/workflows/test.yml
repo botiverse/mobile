@@ -383,7 +383,7 @@ jobs:
       # This compile gate must not inherit a poisoned Gradle transform cache
       # from a previous hosted run. A corrupt instrumented AGP jar otherwise
       # fails during root-project configuration before any source is compiled.
-      GRADLE_USER_HOME: ${{ runner.temp }}/android-compile-gradle-home
+      GRADLE_USER_HOME: /tmp/android-compile-gradle-home-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
