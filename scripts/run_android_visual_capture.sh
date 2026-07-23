@@ -670,11 +670,23 @@ if [[ "$ONE_CASE_PER_PROCESS" -eq 1 ]]; then
   for selector in "${selectors[@]}"; do
     selector="$(printf '%s' "$selector" | xargs)"
     [[ -n "$selector" ]] || continue
-    run_instrumentation "target-${process_index}" -e class "$selector"
+    # Each selector runs in a fresh instrumentation process, so its @BeforeClass
+    # executes again. Reset the shared public artifact directory only for the
+    # first process; later processes must preserve earlier PNG/metadata/timing
+    # until the single evidence pull after the loop.
+    reset_public_output=false
+    if [[ "$process_index" -eq 0 ]]; then
+      reset_public_output=true
+    fi
+    run_instrumentation "target-${process_index}" \
+      -e visualResetPublicOutput "$reset_public_output" \
+      -e class "$selector"
     process_index=$((process_index + 1))
   done
 else
-  run_instrumentation "${EXECUTION_MODE}-${SHARD_INDEX}" -e class "$METHOD_FILTER"
+  run_instrumentation "${EXECUTION_MODE}-${SHARD_INDEX}" \
+    -e visualResetPublicOutput true \
+    -e class "$METHOD_FILTER"
 fi
 printf '%s\n' "$INSTRUMENTATION_RC" > "$RC_FILE"
 

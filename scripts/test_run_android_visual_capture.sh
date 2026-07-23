@@ -86,6 +86,7 @@ case "$cmd" in
           selector=""
           attempt=""
           generation=""
+          reset_public_output=""
           previous=""
           for arg in "$@"; do
             if [[ "$previous" == "class" ]]; then
@@ -94,9 +95,22 @@ case "$cmd" in
               attempt="$arg"
             elif [[ "$previous" == "visualGeneration" ]]; then
               generation="$arg"
+            elif [[ "$previous" == "visualResetPublicOutput" ]]; then
+              reset_public_output="$arg"
             fi
             previous="$arg"
           done
+          printf '%s\n' "$reset_public_output" >> "$state/reset-public-output-flags.txt"
+          # Model KmpVisualScreenshotCaptureTest.@BeforeClass: a fresh
+          # instrumentation process clears the shared public artifact directory
+          # only when the harness explicitly requests it. This reproduces the
+          # real per-process deletion protocol rather than letting the fake ADB
+          # accidentally preserve every target.
+          if [[ "$reset_public_output" == "true" ]]; then
+            rm -rf "$state/device-results"
+            mkdir -p "$state/device-results"
+            : > "$state/capture-timing.log"
+          fi
           method="${selector##*#}"
           case "$method" in
             captureRaftUiSegmentedControlStates) case_id="library.raft-ui.segmented-control.states" ;;
@@ -115,6 +129,8 @@ case "$cmd" in
           epoch="$(date -u +%s.%3N)"
           printf '%s %s %s I VisualCapture: CASE_END %s status=OK durationMs=10 attempt=%s generation=%s\n' \
             "$epoch" "$pid" "$pid" "$method" "$attempt" "$generation" >> "$state/logcat.txt"
+          printf 'START %s\nOK %s\n' "$method" "$method" >> "$state/capture-timing.log"
+          cp "$state/capture-timing.log" "$state/device-results/_capture-timing.log"
           if [[ "${FAKE_MISSING_ARTIFACT_METHOD:-}" != "$method" ]]; then
             printf 'png\n' > "$state/device-results/${case_id}.png"
             captured_ms="$(date -u +%s%3N)"
@@ -241,6 +257,7 @@ FAKESIGNER
 chmod +x "$TMP/aapt" "$TMP/apksigner"
 
 FILTER="build.raft.app.visual.KmpVisualScreenshotCaptureTest#captureRaftUiSegmentedControlStates,build.raft.app.visual.KmpVisualScreenshotCaptureTest#captureSettingsAppearancePage"
+SINGLE_FILTER="build.raft.app.visual.KmpVisualScreenshotCaptureTest#captureRaftUiSegmentedControlStates"
 COMMON_ENV=(ADB="$TMP/adb" AAPT="$TMP/aapt" APKSIGNER="$TMP/apksigner")
 env "${COMMON_ENV[@]}" "$ROOT/scripts/run_android_visual_capture.sh" \
   --app-apk "$TMP/app.apk" \
@@ -249,6 +266,10 @@ env "${COMMON_ENV[@]}" "$ROOT/scripts/run_android_visual_capture.sh" \
   --output-dir "$TMP/pass"
 
 [[ "$(wc -l < "$TMP/pass/instrumentation/processes.tsv" | tr -d ' ')" == "2" ]]
+printf 'true\nfalse\n' > "$TMP/expected-reset-flags.txt"
+cmp "$TMP/expected-reset-flags.txt" "$FAKE_ADB_STATE/reset-public-output-flags.txt"
+grep -q '^START captureRaftUiSegmentedControlStates$' "$TMP/pass/android/_capture-timing.log"
+grep -q '^START captureSettingsAppearancePage$' "$TMP/pass/android/_capture-timing.log"
 python3 - "$TMP/pass/android-visual-runner-receipt.json" <<'PY'
 import json
 import sys
@@ -278,6 +299,18 @@ assert receipt["apks"]["instrumentation"]["source_sha256"] == receipt["apks"]["i
 assert receipt["apks"]["app"]["signer_sha256"] == "a" * 64, receipt
 assert receipt["apks"]["instrumentation"]["signer_sha256"] == "a" * 64, receipt
 PY
+
+rm -rf "$FAKE_ADB_STATE"
+mkdir -p "$FAKE_ADB_STATE/device-results"
+env "${COMMON_ENV[@]}" "$ROOT/scripts/run_android_visual_capture.sh" \
+  --app-apk "$TMP/app.apk" \
+  --test-apk "$TMP/test.apk" \
+  --method-filter "$SINGLE_FILTER" \
+  --single-process-targets \
+  --output-dir "$TMP/single-process"
+printf 'true\n' > "$TMP/expected-reset-flags.txt"
+cmp "$TMP/expected-reset-flags.txt" "$FAKE_ADB_STATE/reset-public-output-flags.txt"
+[[ "$(wc -l < "$TMP/single-process/instrumentation/processes.tsv" | tr -d ' ')" == "1" ]]
 
 rm -rf "$FAKE_ADB_STATE"
 mkdir -p "$FAKE_ADB_STATE/device-results"
