@@ -13,13 +13,17 @@ data class DurablePartitionKey(
     val serverId: String,
     val principalId: String,
     val consumerId: String,
+    val environmentId: String = LEGACY_DURABLE_ENVIRONMENT_ID,
 ) {
     init {
         requireOpaqueDurableIdentity("serverId", serverId)
         requireOpaqueDurableIdentity("principalId", principalId)
         requireOpaqueDurableIdentity("consumerId", consumerId)
+        requireOpaqueDurableIdentity("environmentId", environmentId)
     }
 }
+
+const val LEGACY_DURABLE_ENVIRONMENT_ID: String = "legacy"
 
 internal fun requireOpaqueDurableIdentity(label: String, value: String) {
     require(value.isNotBlank()) { "$label must not be blank" }

@@ -58,6 +58,7 @@ class CanonicalMessageV2GreenStoreTest {
         runBlocking {
             store.applySnapshot(CanonicalMessageV2SnapshotFrame(scope, listOf(minimal), cursor))
             database.queries.insertCanonicalFactIfAbsent(
+                environmentId = LEGACY_DURABLE_ENVIRONMENT_ID,
                 serverId = "server-a",
                 principalId = "principal-a",
                 consumerId = SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID,
@@ -75,6 +76,7 @@ class CanonicalMessageV2GreenStoreTest {
                 createdAt = minimal.fact.createdAt,
                 canonicalFactJson = "malformed",
                 id = minimal.fact.id,
+                environmentId = scope.environmentId,
                 serverId = scope.serverId,
                 principalId = scope.principalId,
                 consumerId = scope.consumerId,
@@ -270,15 +272,21 @@ class CanonicalMessageV2GreenStoreTest {
         var snapshotWrites: Int = 0
         var incrementalWrites: Int = 0
 
-        override suspend fun applySnapshot(frame: CanonicalMessageV2SnapshotFrame) {
+        override suspend fun applySnapshot(frame: CanonicalMessageV2SnapshotFrame): CanonicalMessageV2StoreWriteResult {
             snapshotWrites += 1
+            return CanonicalMessageV2StoreWriteResult()
         }
 
-        override suspend fun applyIncremental(frame: CanonicalMessageV2IncrementalFrame) {
+        override suspend fun applyIncremental(frame: CanonicalMessageV2IncrementalFrame): CanonicalMessageV2StoreWriteResult {
             incrementalWrites += 1
+            return CanonicalMessageV2StoreWriteResult()
         }
 
         override suspend fun restore(scope: SyncScopeKey): RestoredCanonicalMessageV2Scope =
             RestoredCanonicalMessageV2Scope(emptyList(), null)
+
+        override suspend fun clearScope(scope: SyncScopeKey) = Unit
+
+        override suspend fun clearPartition(partition: DurablePartitionKey) = Unit
     }
 }

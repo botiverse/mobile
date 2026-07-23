@@ -8,6 +8,9 @@ import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.components.SlockBrutalSearchField
 import build.raft.app.components.SlockBrutalTextField
 import build.raft.app.components.SlockRaftUiControlledMenu
+import build.raft.app.components.SlockRaftUiBanner
+import build.raft.app.components.SlockRaftUiBannerSize
+import build.raft.app.components.SlockRaftUiBannerStatus
 import build.raft.app.components.SlockRaftUiMenuItem
 import build.raft.app.components.SharedHomeSearchInput
 import build.raft.app.components.SlockToolbarChip
@@ -2311,6 +2314,8 @@ private fun ThreadPageScreen(pageVisibleTick: Int = 0) {
             sharedStores.threadMessageStore,
             createAgentCoordinator
         ) {
+            val canonicalVisitedSnapshotBinding =
+                sharedStores.canonicalMessageV2VisitedSnapshotBinding(authStore)
             SharedThreadDataSource(
                 networkApi = NetworkSlockThreadApi(networkClient),
                 sessionStore = authStore,
@@ -2321,6 +2326,10 @@ private fun ThreadPageScreen(pageVisibleTick: Int = 0) {
                     RealConversationRepository(
                         sessionStore = authStore,
                         networkClient = networkClient,
+                        routeServerIdProvider = {
+                            sharedStores.selectedServerStore(storeScope).selectedServerId.value
+                        },
+                        canonicalVisitedSnapshotBinding = canonicalVisitedSnapshotBinding,
                         warningLogger = { message -> bridge.log("thread_conversation_repository $message") }
                     ),
                 channelRepository = channelRepository,
@@ -2335,6 +2344,7 @@ private fun ThreadPageScreen(pageVisibleTick: Int = 0) {
                     )
                 },
                 messageStore = sharedStores.threadMessageStore,
+                canonicalVisitedSnapshotBinding = canonicalVisitedSnapshotBinding,
                 payloadStore = sharedStores.threadPayloadStore,
                 agentsApiClient = SlockAgentsApiClient(
                     transport = SlockAgentsNetworkApi(networkClient),
@@ -12123,177 +12133,200 @@ private fun ThreadChatTab(
                 "originStatus=${timelineSlice.originStatus} branch=$chatRenderBranch"
         )
     }
-    when (timelineSlice.status) {
-        "loading" ->
-            if (timelineSlice.originStatus != "none") {
-                ThreadMessagesList(
-                    threadInstanceKey = threadInstanceKey,
-                    renderConfig = renderConfig,
-                    timelineSlice = timelineSlice,
-                    replyMetadataByParentId = replyMetadataByParentId,
-                    activeReplyDraftParentMessageIds = activeReplyDraftParentMessageIds,
-                    composerKeyboardInsetDp = composerKeyboardInsetDp,
-                    linkedTasksProjection = linkedTasksProjection,
-                    highlightedMentions = highlightedMentions,
-                    agentStatusResolver = agentStatusResolver,
-                    memberAvatarResolver = memberAvatarResolver,
-                    pendingActionCardIds = pendingActionCardIds,
-                    pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
-                    attachmentOpenStates = attachmentOpenStates,
-                    attachmentCommentsEnabled = attachmentCommentsEnabled,
-                    currentServerSlug = currentServerSlug,
-                    contentExtrasVisible = contentExtrasVisible,
-                    longMessageCollapseEnabled = longMessageCollapseEnabled,
-                    singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
-                    inlineSearchVisible = inlineSearchVisible,
-                    isMarkdownTagValid = isMarkdownTagValid,
-                    markdownTagContextSignature = markdownTagContextSignature,
-                    resolveMarkdownTagLabel = resolveMarkdownTagLabel,
-                    activeMarkdownTagKey = activeMarkdownTagKey,
-                    onThreadEvent = onThreadEvent,
-                    onLoadNewer = onLoadNewer,
-                    onOpenMember = onOpenMember,
-                    onMentionAuthor = onMentionAuthor,
-                    onOpenMarkdownTag = onOpenMarkdownTag,
-                    onOpenMarkdownUrl = onOpenMarkdownUrl,
-                    diagnosticsLogger = diagnosticsLogger,
-                    shareSelectionActive = shareSelectionActive,
-                    shareSelectionCaptureActive = shareSelectionCaptureActive,
-                    shareSelectionCaptureAnchorMessageId = shareSelectionCaptureAnchorMessageId,
-                    shareSelectionCaptureAnchorBeforeTarget = shareSelectionCaptureAnchorBeforeTarget,
-                    shareSelectionCaptureTailPaddingActive = shareSelectionCaptureTailPaddingActive,
-                    shareSelectionCaptureScrollOffsetPx = shareSelectionCaptureScrollOffsetPx,
-                    headerScrollToTopRequest = headerScrollToTopRequest,
-                    selectedShareMessageIds = selectedShareMessageIds,
-                    onShareSelectionBounds = onShareSelectionBounds,
-                    onEnterShareSelection = onEnterShareSelection,
-                    onToggleShareSelection = onToggleShareSelection,
-                    onOpenForwardBundle = onOpenForwardBundle,
-                    translationStore = translationStore,
-                    onThreadContentReady = onThreadContentReady
-                )
-            } else {
-                ThreadStateMessage(stringResource(MR.strings.thread_state_loading), null)
+    Column(modifier = Modifier.fillMaxSize()) {
+        if (renderConfig.showsCachedSnapshotBanner()) {
+            SlockRaftUiBanner(
+                status = SlockRaftUiBannerStatus.Warning,
+                description =
+                    stringResource(
+                        if (renderConfig.backgroundRefreshing) {
+                            MR.strings.thread_cached_snapshot_refreshing
+                        } else {
+                            MR.strings.thread_cached_snapshot_offline
+                        }
+                    ),
+                size = SlockRaftUiBannerSize.Small,
+                iconName = SlockLucideIconName.RefreshCw,
+                modifier = Modifier.padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Xs)
+            )
+        }
+        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            when (timelineSlice.status) {
+                "loading" ->
+                    if (timelineSlice.originStatus != "none") {
+                        ThreadMessagesList(
+                            threadInstanceKey = threadInstanceKey,
+                            renderConfig = renderConfig,
+                            timelineSlice = timelineSlice,
+                            replyMetadataByParentId = replyMetadataByParentId,
+                            activeReplyDraftParentMessageIds = activeReplyDraftParentMessageIds,
+                            composerKeyboardInsetDp = composerKeyboardInsetDp,
+                            linkedTasksProjection = linkedTasksProjection,
+                            highlightedMentions = highlightedMentions,
+                            agentStatusResolver = agentStatusResolver,
+                            memberAvatarResolver = memberAvatarResolver,
+                            pendingActionCardIds = pendingActionCardIds,
+                            pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
+                            attachmentOpenStates = attachmentOpenStates,
+                            attachmentCommentsEnabled = attachmentCommentsEnabled,
+                            currentServerSlug = currentServerSlug,
+                            contentExtrasVisible = contentExtrasVisible,
+                            longMessageCollapseEnabled = longMessageCollapseEnabled,
+                            singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
+                            inlineSearchVisible = inlineSearchVisible,
+                            isMarkdownTagValid = isMarkdownTagValid,
+                            markdownTagContextSignature = markdownTagContextSignature,
+                            resolveMarkdownTagLabel = resolveMarkdownTagLabel,
+                            activeMarkdownTagKey = activeMarkdownTagKey,
+                            onThreadEvent = onThreadEvent,
+                            onLoadNewer = onLoadNewer,
+                            onOpenMember = onOpenMember,
+                            onMentionAuthor = onMentionAuthor,
+                            onOpenMarkdownTag = onOpenMarkdownTag,
+                            onOpenMarkdownUrl = onOpenMarkdownUrl,
+                            diagnosticsLogger = diagnosticsLogger,
+                            shareSelectionActive = shareSelectionActive,
+                            shareSelectionCaptureActive = shareSelectionCaptureActive,
+                            shareSelectionCaptureAnchorMessageId = shareSelectionCaptureAnchorMessageId,
+                            shareSelectionCaptureAnchorBeforeTarget = shareSelectionCaptureAnchorBeforeTarget,
+                            shareSelectionCaptureTailPaddingActive = shareSelectionCaptureTailPaddingActive,
+                            shareSelectionCaptureScrollOffsetPx = shareSelectionCaptureScrollOffsetPx,
+                            headerScrollToTopRequest = headerScrollToTopRequest,
+                            selectedShareMessageIds = selectedShareMessageIds,
+                            onShareSelectionBounds = onShareSelectionBounds,
+                            onEnterShareSelection = onEnterShareSelection,
+                            onToggleShareSelection = onToggleShareSelection,
+                            onOpenForwardBundle = onOpenForwardBundle,
+                            translationStore = translationStore,
+                            onThreadContentReady = onThreadContentReady
+                        )
+                    } else {
+                        ThreadStateMessage(stringResource(MR.strings.thread_state_loading), null)
+                    }
+                "error" ->
+                    ThreadStateActionMessage(
+                        title = stringResource(MR.strings.thread_error_load),
+                        detail =
+                            userFacingErrorLabels.forErrorCode(renderConfig.errorCode)
+                                ?: stringResource(MR.strings.common_error),
+                        actionLabel = stringResource(MR.strings.common_retry),
+                        onClick = { onThreadEvent("retryThreadLoad", null, null, null) }
+                    )
+                "no_permission" ->
+                    ThreadStateMessage(
+                        stringResource(MR.strings.thread_state_no_permission),
+                        stringResource(MR.strings.thread_error_no_permission)
+                    )
+                "empty" ->
+                    if (timelineSlice.originStatus != "none") {
+                        ThreadMessagesList(
+                            threadInstanceKey = threadInstanceKey,
+                            renderConfig = renderConfig,
+                            timelineSlice = timelineSlice,
+                            replyMetadataByParentId = replyMetadataByParentId,
+                            activeReplyDraftParentMessageIds = activeReplyDraftParentMessageIds,
+                            composerKeyboardInsetDp = composerKeyboardInsetDp,
+                            linkedTasksProjection = linkedTasksProjection,
+                            highlightedMentions = highlightedMentions,
+                            agentStatusResolver = agentStatusResolver,
+                            memberAvatarResolver = memberAvatarResolver,
+                            pendingActionCardIds = pendingActionCardIds,
+                            pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
+                            attachmentOpenStates = attachmentOpenStates,
+                            attachmentCommentsEnabled = attachmentCommentsEnabled,
+                            currentServerSlug = currentServerSlug,
+                            contentExtrasVisible = contentExtrasVisible,
+                            longMessageCollapseEnabled = longMessageCollapseEnabled,
+                            singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
+                            inlineSearchVisible = inlineSearchVisible,
+                            isMarkdownTagValid = isMarkdownTagValid,
+                            markdownTagContextSignature = markdownTagContextSignature,
+                            resolveMarkdownTagLabel = resolveMarkdownTagLabel,
+                            activeMarkdownTagKey = activeMarkdownTagKey,
+                            onThreadEvent = onThreadEvent,
+                            onLoadNewer = onLoadNewer,
+                            onOpenMember = onOpenMember,
+                            onMentionAuthor = onMentionAuthor,
+                            onOpenMarkdownTag = onOpenMarkdownTag,
+                            onOpenMarkdownUrl = onOpenMarkdownUrl,
+                            diagnosticsLogger = diagnosticsLogger,
+                            shareSelectionActive = shareSelectionActive,
+                            shareSelectionCaptureActive = shareSelectionCaptureActive,
+                            shareSelectionCaptureAnchorMessageId = shareSelectionCaptureAnchorMessageId,
+                            shareSelectionCaptureAnchorBeforeTarget = shareSelectionCaptureAnchorBeforeTarget,
+                            shareSelectionCaptureTailPaddingActive = shareSelectionCaptureTailPaddingActive,
+                            shareSelectionCaptureScrollOffsetPx = shareSelectionCaptureScrollOffsetPx,
+                            headerScrollToTopRequest = headerScrollToTopRequest,
+                            selectedShareMessageIds = selectedShareMessageIds,
+                            onShareSelectionBounds = onShareSelectionBounds,
+                            onEnterShareSelection = onEnterShareSelection,
+                            onToggleShareSelection = onToggleShareSelection,
+                            onOpenForwardBundle = onOpenForwardBundle,
+                            translationStore = translationStore,
+                            onThreadContentReady = onThreadContentReady
+                        )
+                    } else {
+                        LaunchedEffect(threadInstanceKey, timelineSlice.status) {
+                            onThreadContentReady()
+                        }
+                        ThreadStateMessage(
+                            localizedThreadStateTitle(timelineSlice.emptyTitle),
+                            localizedThreadStateDetail(timelineSlice.emptyDetail)
+                        )
+                    }
+                else ->
+                    ThreadMessagesList(
+                        threadInstanceKey = threadInstanceKey,
+                        renderConfig = renderConfig,
+                        timelineSlice = timelineSlice,
+                        replyMetadataByParentId = replyMetadataByParentId,
+                        activeReplyDraftParentMessageIds = activeReplyDraftParentMessageIds,
+                        composerKeyboardInsetDp = composerKeyboardInsetDp,
+                        linkedTasksProjection = linkedTasksProjection,
+                        highlightedMentions = highlightedMentions,
+                        agentStatusResolver = agentStatusResolver,
+                        memberAvatarResolver = memberAvatarResolver,
+                        pendingActionCardIds = pendingActionCardIds,
+                        pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
+                        attachmentOpenStates = attachmentOpenStates,
+                        attachmentCommentsEnabled = attachmentCommentsEnabled,
+                        currentServerSlug = currentServerSlug,
+                        contentExtrasVisible = contentExtrasVisible,
+                        longMessageCollapseEnabled = longMessageCollapseEnabled,
+                        singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
+                        inlineSearchVisible = inlineSearchVisible,
+                        isMarkdownTagValid = isMarkdownTagValid,
+                        markdownTagContextSignature = markdownTagContextSignature,
+                        resolveMarkdownTagLabel = resolveMarkdownTagLabel,
+                        onThreadEvent = onThreadEvent,
+                        onLoadNewer = onLoadNewer,
+                        onOpenMember = onOpenMember,
+                        onMentionAuthor = onMentionAuthor,
+                        onOpenMarkdownTag = onOpenMarkdownTag,
+                        onOpenMarkdownUrl = onOpenMarkdownUrl,
+                        diagnosticsLogger = diagnosticsLogger,
+                        shareSelectionActive = shareSelectionActive,
+                        shareSelectionCaptureActive = shareSelectionCaptureActive,
+                        shareSelectionCaptureAnchorMessageId = shareSelectionCaptureAnchorMessageId,
+                        shareSelectionCaptureAnchorBeforeTarget = shareSelectionCaptureAnchorBeforeTarget,
+                        shareSelectionCaptureTailPaddingActive = shareSelectionCaptureTailPaddingActive,
+                        shareSelectionCaptureScrollOffsetPx = shareSelectionCaptureScrollOffsetPx,
+                        headerScrollToTopRequest = headerScrollToTopRequest,
+                        selectedShareMessageIds = selectedShareMessageIds,
+                        onShareSelectionBounds = onShareSelectionBounds,
+                        onEnterShareSelection = onEnterShareSelection,
+                        onToggleShareSelection = onToggleShareSelection,
+                        onOpenForwardBundle = onOpenForwardBundle,
+                        translationStore = translationStore,
+                        onThreadContentReady = onThreadContentReady
+                    )
             }
-        "error" ->
-            ThreadStateActionMessage(
-                title = stringResource(MR.strings.thread_error_load),
-                detail =
-                    userFacingErrorLabels.forErrorCode(renderConfig.errorCode)
-                        ?: stringResource(MR.strings.common_error),
-                actionLabel = stringResource(MR.strings.common_retry),
-                onClick = { onThreadEvent("retryThreadLoad", null, null, null) }
-            )
-        "no_permission" ->
-            ThreadStateMessage(
-                stringResource(MR.strings.thread_state_no_permission),
-                stringResource(MR.strings.thread_error_no_permission)
-            )
-        "empty" ->
-            if (timelineSlice.originStatus != "none") {
-                ThreadMessagesList(
-                    threadInstanceKey = threadInstanceKey,
-                    renderConfig = renderConfig,
-                    timelineSlice = timelineSlice,
-                    replyMetadataByParentId = replyMetadataByParentId,
-                    activeReplyDraftParentMessageIds = activeReplyDraftParentMessageIds,
-                    composerKeyboardInsetDp = composerKeyboardInsetDp,
-                    linkedTasksProjection = linkedTasksProjection,
-                    highlightedMentions = highlightedMentions,
-                    agentStatusResolver = agentStatusResolver,
-                    memberAvatarResolver = memberAvatarResolver,
-                    pendingActionCardIds = pendingActionCardIds,
-                    pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
-                    attachmentOpenStates = attachmentOpenStates,
-                    attachmentCommentsEnabled = attachmentCommentsEnabled,
-                    currentServerSlug = currentServerSlug,
-                    contentExtrasVisible = contentExtrasVisible,
-                    longMessageCollapseEnabled = longMessageCollapseEnabled,
-                    singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
-                    inlineSearchVisible = inlineSearchVisible,
-                    isMarkdownTagValid = isMarkdownTagValid,
-                    markdownTagContextSignature = markdownTagContextSignature,
-                    resolveMarkdownTagLabel = resolveMarkdownTagLabel,
-                    activeMarkdownTagKey = activeMarkdownTagKey,
-                    onThreadEvent = onThreadEvent,
-                    onLoadNewer = onLoadNewer,
-                    onOpenMember = onOpenMember,
-                    onMentionAuthor = onMentionAuthor,
-                    onOpenMarkdownTag = onOpenMarkdownTag,
-                    onOpenMarkdownUrl = onOpenMarkdownUrl,
-                    diagnosticsLogger = diagnosticsLogger,
-                    shareSelectionActive = shareSelectionActive,
-                    shareSelectionCaptureActive = shareSelectionCaptureActive,
-                    shareSelectionCaptureAnchorMessageId = shareSelectionCaptureAnchorMessageId,
-                    shareSelectionCaptureAnchorBeforeTarget = shareSelectionCaptureAnchorBeforeTarget,
-                    shareSelectionCaptureTailPaddingActive = shareSelectionCaptureTailPaddingActive,
-                    shareSelectionCaptureScrollOffsetPx = shareSelectionCaptureScrollOffsetPx,
-                    headerScrollToTopRequest = headerScrollToTopRequest,
-                    selectedShareMessageIds = selectedShareMessageIds,
-                    onShareSelectionBounds = onShareSelectionBounds,
-                    onEnterShareSelection = onEnterShareSelection,
-                    onToggleShareSelection = onToggleShareSelection,
-                    onOpenForwardBundle = onOpenForwardBundle,
-                    translationStore = translationStore,
-                    onThreadContentReady = onThreadContentReady
-                )
-            } else {
-                LaunchedEffect(threadInstanceKey, timelineSlice.status) {
-                    onThreadContentReady()
-                }
-                ThreadStateMessage(
-                    localizedThreadStateTitle(timelineSlice.emptyTitle),
-                    localizedThreadStateDetail(timelineSlice.emptyDetail)
-                )
-            }
-        else ->
-            ThreadMessagesList(
-                threadInstanceKey = threadInstanceKey,
-                renderConfig = renderConfig,
-                timelineSlice = timelineSlice,
-                replyMetadataByParentId = replyMetadataByParentId,
-                activeReplyDraftParentMessageIds = activeReplyDraftParentMessageIds,
-                composerKeyboardInsetDp = composerKeyboardInsetDp,
-                linkedTasksProjection = linkedTasksProjection,
-                highlightedMentions = highlightedMentions,
-                agentStatusResolver = agentStatusResolver,
-                memberAvatarResolver = memberAvatarResolver,
-                pendingActionCardIds = pendingActionCardIds,
-                pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
-                attachmentOpenStates = attachmentOpenStates,
-                attachmentCommentsEnabled = attachmentCommentsEnabled,
-                currentServerSlug = currentServerSlug,
-                contentExtrasVisible = contentExtrasVisible,
-                longMessageCollapseEnabled = longMessageCollapseEnabled,
-                singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
-                inlineSearchVisible = inlineSearchVisible,
-                isMarkdownTagValid = isMarkdownTagValid,
-                markdownTagContextSignature = markdownTagContextSignature,
-                resolveMarkdownTagLabel = resolveMarkdownTagLabel,
-                onThreadEvent = onThreadEvent,
-                onLoadNewer = onLoadNewer,
-                onOpenMember = onOpenMember,
-                onMentionAuthor = onMentionAuthor,
-                onOpenMarkdownTag = onOpenMarkdownTag,
-                onOpenMarkdownUrl = onOpenMarkdownUrl,
-                diagnosticsLogger = diagnosticsLogger,
-                shareSelectionActive = shareSelectionActive,
-                shareSelectionCaptureActive = shareSelectionCaptureActive,
-                shareSelectionCaptureAnchorMessageId = shareSelectionCaptureAnchorMessageId,
-                shareSelectionCaptureAnchorBeforeTarget = shareSelectionCaptureAnchorBeforeTarget,
-                shareSelectionCaptureTailPaddingActive = shareSelectionCaptureTailPaddingActive,
-                shareSelectionCaptureScrollOffsetPx = shareSelectionCaptureScrollOffsetPx,
-                headerScrollToTopRequest = headerScrollToTopRequest,
-                selectedShareMessageIds = selectedShareMessageIds,
-                onShareSelectionBounds = onShareSelectionBounds,
-                onEnterShareSelection = onEnterShareSelection,
-                onToggleShareSelection = onToggleShareSelection,
-                onOpenForwardBundle = onOpenForwardBundle,
-                translationStore = translationStore,
-                onThreadContentReady = onThreadContentReady
-            )
+        }
     }
 }
+
+internal fun ThreadTimelineRenderConfig.showsCachedSnapshotBanner(): Boolean =
+    errorCode == "thread_cached_stale"
 
 private data class ThreadMarkdownPreparsePlan(
     val key: String,

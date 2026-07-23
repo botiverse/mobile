@@ -40,9 +40,9 @@ class DurablePartitionAndroidDriverMigrationTest {
     )
 
     @Test
-    fun androidFileBackedMigrationRollsBackAndRetriesForEveryDdlBoundary() {
+    fun androidFileBackedV1ToV5MigrationRollsBackAndRetriesForEveryDdlBoundary() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        for (failAt in 1..8) {
+        for (failAt in 1..17) {
             val name = "slock-durable-android-$failAt-${UUID.randomUUID()}.db"
             context.deleteDatabase(name)
             try {
@@ -77,20 +77,21 @@ class DurablePartitionAndroidDriverMigrationTest {
                     assertEquals(expectedOutbox, driver.outboxRow())
                 }
                 AndroidSqliteDriver(SlockDatabase.Schema, context, name).useDriver { driver ->
-                    assertEquals(4L, driver.scalarLong("PRAGMA user_version"))
+                    assertEquals(5L, driver.scalarLong("PRAGMA user_version"))
                     assertMigratedState(driver)
                     assertEquals(expectedNonCoreMaster, driver.nonCoreMasterDefinitions())
                     assertEquals(expectedOutbox, driver.outboxRow())
                     seedNewPartitionRows(driver)
                 }
                 AndroidSqliteDriver(SlockDatabase.Schema, context, name).useDriver { driver ->
-                    assertEquals(4L, driver.scalarLong("PRAGMA user_version"))
+                    assertEquals(5L, driver.scalarLong("PRAGMA user_version"))
                     assertEquals(1L, driver.scalarLong("SELECT COUNT(*) FROM messageEntity WHERE id='partition-message'"))
                     assertEquals(
                         11L,
                         driver.scalarLong(
                             "SELECT latestSeq FROM syncCursorEntity " +
-                                "WHERE serverId='server-a' AND principalId='principal-a' " +
+                                "WHERE environmentId='https://api.raft.build' " +
+                                "AND serverId='server-a' AND principalId='principal-a' " +
                                 "AND consumerId='sync-core.messages.v1' AND scopeKind='channel' AND scopeId='channel-a'",
                         ),
                     )
@@ -104,9 +105,9 @@ class DurablePartitionAndroidDriverMigrationTest {
     }
 
     @Test
-    fun androidFileBackedV2ToV4MigrationRollsBackAndRetriesAtBothDdlBoundaries() {
+    fun androidFileBackedV2ToV5MigrationRollsBackAndRetriesAtEveryRemainingDdlBoundary() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        for (failAt in 1..2) {
+        for (failAt in 1..11) {
             val name = "slock-overlay-android-$failAt-${UUID.randomUUID()}.db"
             context.deleteDatabase(name)
             try {
@@ -123,13 +124,13 @@ class DurablePartitionAndroidDriverMigrationTest {
                     AndroidSqliteDriver(FailAtSchema(SlockDatabase.Schema, failAt), context, name).useDriver { driver ->
                         driver.scalarLong("SELECT 1")
                     }
-                    fail("v2->v4 fail-at-$failAt must abort AndroidSqliteDriver migration")
+                    fail("v2->v5 fail-at-$failAt must abort AndroidSqliteDriver migration")
                     error("unreachable")
                 } catch (throwable: Throwable) {
                     throwable
                 }
                 assertTrue(
-                    "v2->v4 must expose the injected DDL failure: $failure",
+                    "v2->v5 must expose the injected DDL failure: $failure",
                     failure.hasCause<InjectedAndroidMigrationFailure>(),
                 )
 
@@ -140,14 +141,14 @@ class DurablePartitionAndroidDriverMigrationTest {
                     assertEquals(expectedOutbox, driver.outboxRow())
                 }
                 AndroidSqliteDriver(SlockDatabase.Schema, context, name).useDriver { driver ->
-                    assertEquals(4L, driver.scalarLong("PRAGMA user_version"))
-                    assertMigratedState(driver, expectedCoreRows = 1L)
+                    assertEquals(5L, driver.scalarLong("PRAGMA user_version"))
+                    assertMigratedState(driver)
                     assertEquals(expectedNonCoreMaster, driver.nonCoreMasterDefinitions())
                     assertEquals(expectedOutbox, driver.outboxRow())
                     seedOverlayRow(driver)
                 }
                 AndroidSqliteDriver(SlockDatabase.Schema, context, name).useDriver { driver ->
-                    assertEquals(4L, driver.scalarLong("PRAGMA user_version"))
+                    assertEquals(5L, driver.scalarLong("PRAGMA user_version"))
                     assertEquals(1L, driver.scalarLong("SELECT COUNT(*) FROM messageViewerOverlayEntity"))
                     assertEquals(Long.MAX_VALUE, driver.scalarLong("SELECT overlayVersion FROM messageViewerOverlayEntity"))
                     assertEquals(expectedNonCoreMaster, driver.nonCoreMasterDefinitions())
@@ -403,9 +404,9 @@ class DurablePartitionAndroidDriverMigrationTest {
         driver.execute(
             null,
             "INSERT INTO messageViewerOverlayEntity(" +
-                "serverId,principalId,consumerId,scopeKind,scopeId,subjectKind,subjectId,overlayKind," +
+                "environmentId,serverId,principalId,consumerId,scopeKind,scopeId,subjectKind,subjectId,overlayKind," +
                 "overlayVersion,completeness,payloadJson" +
-                ") VALUES ('server-a','principal-a','sync-core.messages.v2','channel','channel-a'," +
+                ") VALUES ('https://api.raft.build','server-a','principal-a','sync-core.messages.v2','channel','channel-a'," +
                 "'message','partition-message','reactions',9223372036854775807,'complete','{}')",
             0,
         )
@@ -415,16 +416,17 @@ class DurablePartitionAndroidDriverMigrationTest {
         driver.execute(
             null,
             "INSERT INTO messageEntity(" +
-                "serverId,principalId,consumerId,id,channelId,scopeKind,seq,createdAt,canonicalFactJson" +
-                ") VALUES ('server-a','principal-a','sync-core.messages.v1','partition-message'," +
+                "environmentId,serverId,principalId,consumerId,id,channelId,scopeKind,seq,createdAt,canonicalFactJson" +
+                ") VALUES ('https://api.raft.build','server-a','principal-a','sync-core.messages.v1','partition-message'," +
                 "'channel-a','channel',11,'t','{}')",
             0,
         )
         driver.execute(
             null,
             "INSERT INTO syncCursorEntity(" +
-                "scopeId,serverId,principalId,consumerId,scopeKind,latestSeq,updatedAtMs" +
-                ") VALUES ('channel-a','server-a','principal-a','sync-core.messages.v1','channel',11,123)",
+                "scopeId,environmentId,serverId,principalId,consumerId,scopeKind,latestSeq,updatedAtMs" +
+                ") VALUES ('channel-a','https://api.raft.build','server-a','principal-a'," +
+                "'sync-core.messages.v1','channel',11,123)",
             0,
         )
     }
@@ -453,6 +455,7 @@ class DurablePartitionAndroidDriverMigrationTest {
                 "syncReadStateFactEntity",
                 "messageEntity_channelSeqId",
                 "messageEntity_partitionChannelSeqId",
+                "syncCursorEntity_partitionUpdatedScope",
             )
         }
 

@@ -1017,6 +1017,7 @@ internal class SharedThreadDataSource(
     private val homeSnapshotProvider: ((ServerId) -> HomeSnapshot?)? = null,
     private val channelProfileUpdateSink: suspend (ChannelProfileUpdateResult) -> Unit = {},
     private val messageStore: SharedThreadMessageStore? = null,
+    private val canonicalVisitedSnapshotBinding: build.raft.app.data.CanonicalMessageV2VisitedSnapshotBinding? = null,
     payloadStore: SharedThreadPayloadStore? = null,
     private val agentsApiClient: SlockAgentsApiClient? = null,
     private val actionCardsApiClient: SlockIntegrationsActionsPushApiClient? = null,
@@ -1057,6 +1058,7 @@ internal class SharedThreadDataSource(
         homeSnapshotProvider: ((ServerId) -> HomeSnapshot?)? = null,
         channelProfileUpdateSink: suspend (ChannelProfileUpdateResult) -> Unit = {},
         messageStore: SharedThreadMessageStore? = null,
+        canonicalVisitedSnapshotBinding: build.raft.app.data.CanonicalMessageV2VisitedSnapshotBinding? = null,
         payloadStore: SharedThreadPayloadStore? = null,
         agentsApiClient: SlockAgentsApiClient? = null,
         actionCardsApiClient: SlockIntegrationsActionsPushApiClient? = null,
@@ -1077,6 +1079,7 @@ internal class SharedThreadDataSource(
         homeSnapshotProvider = homeSnapshotProvider,
         channelProfileUpdateSink = channelProfileUpdateSink,
         messageStore = messageStore,
+        canonicalVisitedSnapshotBinding = canonicalVisitedSnapshotBinding,
         payloadStore = payloadStore,
         agentsApiClient = agentsApiClient,
         actionCardsApiClient = actionCardsApiClient,
@@ -1155,9 +1158,88 @@ internal class SharedThreadDataSource(
     // store's merged snapshot instead (see applyRealtimeEvent). Narrow by
     // design: removes exactly one thread's candidate; never touches durable
     // stores, the message resolver, or the active screen's in-memory state.
-    fun invalidateCachedPayload(payload: KuiklyThreadScreenPayload) {
+    suspend fun invalidateCachedPayload(payload: KuiklyThreadScreenPayload) {
         val threadId = payload.resolveThreadRouteIdentity().timelineChannelId ?: return
         payloadCache.remove(cacheServerId.value, threadId)
+        canonicalVisitedIdentity(payload)?.let { identity ->
+            canonicalVisitedSnapshotBinding?.clear(identity)
+        }
+    }
+
+    suspend fun restoreCanonicalVisitedPayload(
+        basePayload: KuiklyThreadScreenPayload,
+    ): KuiklyThreadScreenPayload? {
+        val binding = canonicalVisitedSnapshotBinding ?: return null
+        val session = readSession() ?: return null
+        val identity = canonicalVisitedIdentity(basePayload, session) ?: return null
+        val snapshot = binding.restore(identity) ?: return null
+        return snapshot
+            .toKuiklyThreadPayload(basePayload, session.user.id)
+            .withRouteContext(basePayload)
+            .copy(
+                backgroundRefreshing = true,
+                errorCode = "thread_cached_stale",
+                canSend = false,
+                showReactionActions = false,
+                showTaskStatusActions = false,
+            )
+    }
+
+    private suspend fun canonicalVisitedIdentity(
+        payload: KuiklyThreadScreenPayload,
+    ): build.raft.app.data.CanonicalMessageV2VisitedSnapshotIdentity? {
+        val session = readSession() ?: return null
+        return canonicalVisitedIdentity(payload, session)
+    }
+
+    private fun canonicalVisitedIdentity(
+        payload: KuiklyThreadScreenPayload,
+        session: StoredAuthSession,
+    ): build.raft.app.data.CanonicalMessageV2VisitedSnapshotIdentity? {
+        val binding = canonicalVisitedSnapshotBinding ?: return null
+        val routeServerId = selectedServerStore?.selectedServerId?.value
+        val serverId = (routeServerId ?: session.currentServerId)
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?: return null
+        if (session.servers.isNotEmpty() && session.servers.none { it.id == serverId }) return null
+        return if (payload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+            val parentScopeId = payload.parentChannelId?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+            val rootMessageId = (payload.parentMessageId ?: payload.originParentMessageId)
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+                ?: return null
+            val replyScopeId = (payload.streamChannelId ?: payload.sourceThreadId)
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() && it != parentScopeId }
+                ?: return null
+            val parentKind = (payload.parentChannelKind ?: payload.channelKind)
+                .trim()
+                .takeIf { it in setOf("channel", "private", "dm", "joint") }
+                ?: return null
+            binding.threadIdentity(
+                serverId = serverId,
+                principalId = session.user.id,
+                replyScopeId = replyScopeId,
+                parentScopeId = parentScopeId,
+                parentScopeKind = parentKind,
+                rootMessageId = rootMessageId,
+            )
+        } else {
+            val scopeId = (payload.sourceThreadId ?: payload.streamChannelId)
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+                ?: return null
+            val scopeKind = payload.channelKind.trim()
+                .takeIf { it in setOf("channel", "private", "dm", "joint") }
+                ?: return null
+            binding.topLevelIdentity(
+                serverId = serverId,
+                principalId = session.user.id,
+                scopeId = scopeId,
+                scopeKind = scopeKind,
+            )
+        }
     }
 
     suspend fun withCachedReplyParentCandidate(basePayload: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
@@ -4078,14 +4160,23 @@ internal class SharedThreadStore(
             } else {
                 null
             }
+        val durable =
+            if (cached == null && current == null && routeIdentity.canRenderTimelineCandidates) {
+                dataSource.restoreCanonicalVisitedPayload(routeContextPayload)
+                    ?.takeIf { it.isUsableCachedPayloadForRoute(routeContextPayload) }
+            } else {
+                null
+            }
         diagnosticsLogger?.invoke(
             "thread_start threadId=${threadId.orEmpty()} cachedMemory=${cached != null || current != null} " +
+                "cachedDurable=${durable != null} " +
                 "status=${routeContextPayload.status} messages=${routeContextPayload.messages.size} " +
                 routeContextPayload.originDiagnostics()
         )
         val visiblePayload =
             cached
                 ?: current
+                ?: durable
                 ?: if (threadId == null) {
                     routeContextPayload
                 } else {
@@ -6217,7 +6308,11 @@ internal class SharedThreadViewModel(
 
 private fun KuiklyThreadScreenPayload.asRefreshFailed(code: String): KuiklyThreadScreenPayload =
     if (hasRenderableThreadContent()) {
-        copy(status = "content", backgroundRefreshing = false, errorCode = code)
+        copy(
+            status = "content",
+            backgroundRefreshing = false,
+            errorCode = if (errorCode == "thread_cached_stale") errorCode else code,
+        )
     } else {
         copy(status = "error", backgroundRefreshing = false, errorCode = code)
     }

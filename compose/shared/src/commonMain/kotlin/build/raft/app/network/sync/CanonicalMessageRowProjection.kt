@@ -6,10 +6,17 @@ import build.raft.app.canonical.message.CanonicalCommentHostSourceWire
 import build.raft.app.canonical.message.CanonicalCommentRefWire
 import build.raft.app.canonical.message.CanonicalConversationContextWire
 import build.raft.app.canonical.message.CanonicalMessageRow
+import build.raft.app.canonical.message.CanonicalMentionWire
 import build.raft.app.canonical.message.CanonicalReactionWire
 import build.raft.app.commentHostRouteKindOrNull
 import build.raft.app.commentHostTypeOrNull
 import build.raft.app.data.WireActionCardMetadata
+import build.raft.app.data.WireActionCardAction
+import build.raft.app.data.WireActionCardResult
+import build.raft.app.data.WireForwardedBundleAttachment
+import build.raft.app.data.WireForwardedBundleAuthor
+import build.raft.app.data.WireForwardedBundleItem
+import build.raft.app.data.WireForwardedBundleTarget
 import build.raft.app.data.toForwardMessageBundle
 import build.raft.app.data.toMessageMetadata
 import build.raft.app.data.toThreadActionCard
@@ -36,6 +43,8 @@ import build.raft.app.strictMessageTypeOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.encodeToJsonElement
+import kotlinx.serialization.json.jsonObject
 
 /**
  * Optional app-directory enrichment applied after the canonical flat sender has been rebuilt.
@@ -101,6 +110,156 @@ fun CanonicalMessageRow.toAppMessage(
         conversationContext = conversationContext?.toAppConversationContext(),
         randomId = randomId?.takeIf { it.isNotBlank() },
     )
+}
+
+fun CanonicalMessageEnvelopeV2.toAppMessage(
+    scope: SyncScopeKey,
+    diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
+): Message? {
+    val contextWire = when (val typed = context) {
+        is CanonicalConversationContextV2.TopLevel ->
+            CanonicalConversationContextWire(channelType = typed.scope.scopeKindForProjection())
+        is CanonicalConversationContextV2.Thread ->
+            CanonicalConversationContextWire(
+                channelType = "thread",
+                parentChannelId = typed.parentTopLevelScope.scopeId,
+                parentChannelType = typed.parentTopLevelScope.scopeKindForProjection(),
+                parentMessageId = typed.rootMessageRef.messageId,
+            )
+    }
+    val row = CanonicalMessageRow(
+        id = fact.id,
+        channelId = scope.scopeId,
+        seq = fact.seq,
+        senderType = fact.senderType,
+        senderId = fact.senderId,
+        content = fact.content,
+        messageType = fact.messageType,
+        createdAt = fact.createdAt,
+        randomId = fact.randomId,
+        threadId = childReplyScope?.scopeId,
+        senderName = fact.senderName,
+        senderDescription = fact.senderDescription,
+        senderMembershipStatus = fact.senderMembershipStatus,
+        mentions = fact.mentions.map { CanonicalMentionWire(it.id, it.name, it.type) },
+        attachments = fact.attachments.map {
+            CanonicalAttachmentWire(
+                id = it.id,
+                filename = it.filename,
+                mimeType = it.mimeType,
+                sizeBytes = it.sizeBytes,
+                width = it.width,
+                height = it.height,
+                thumbnailUrl = it.thumbnailUrl,
+            )
+        },
+        reactions = fact.reactions.map { reaction ->
+            CanonicalReactionWire(
+                emoji = reaction.emoji,
+                count = reaction.count,
+                reactorIds = reaction.previewK.map { it.id },
+                reactorNames = reaction.previewK.map { it.displayName },
+            )
+        },
+        actionMetadata = fact.actionMetadata.toWireActionMetadataJson(),
+        conversationContext = contextWire,
+    )
+    return row.toAppMessage(diagnostics)?.copy(
+        threadChannelId = childReplyScope?.scopeId?.let(::ChannelId),
+        replyCount = fact.replyCount,
+        parentMessageId =
+            (context as? CanonicalConversationContextV2.Thread)
+                ?.rootMessageRef
+                ?.messageId
+                ?.let(::MessageId),
+    )
+}
+
+private fun TopLevelScopeRefV2.scopeKindForProjection(): String =
+    when (this) {
+        is TopLevelScopeRefV2.Channel -> "channel"
+        is TopLevelScopeRefV2.Private -> "private"
+        is TopLevelScopeRefV2.DirectMessage -> "dm"
+        is TopLevelScopeRefV2.Joint -> "joint"
+    }
+
+private fun CanonicalActionMetadataV2?.toWireActionMetadataJson(): JsonElement? {
+    val wire = when (val metadata = this) {
+        null -> return null
+        is CanonicalActionMetadataV2.ActionCard ->
+            WireActionCardMetadata(
+                kind = "action-card",
+                version = metadata.version,
+                action = canonicalProjectionJson.encodeToJsonElement(
+                    WireActionCardAction.serializer(),
+                    WireActionCardAction(
+                        type = metadata.action.type,
+                        name = metadata.action.name,
+                        description = metadata.action.description,
+                        visibility = metadata.action.visibility,
+                        channel = metadata.action.channel,
+                        suggestedComputer = metadata.action.suggestedComputer,
+                        requiredComputer = metadata.action.requiredComputer,
+                        humans = metadata.action.humans,
+                        agents = metadata.action.agents,
+                        initialHumans = metadata.action.initialHumans,
+                        initialAgents = metadata.action.initialAgents,
+                        draftHint = metadata.action.draftHint,
+                        requestId = metadata.action.requestId,
+                        agentId = metadata.action.agentId,
+                        agentName = metadata.action.agentName,
+                        clientId = metadata.action.clientId,
+                        clientKey = metadata.action.clientKey,
+                        clientName = metadata.action.clientName,
+                        scopes = metadata.action.scopes,
+                    ),
+                ).jsonObject,
+                state = metadata.state,
+                executedAt = metadata.executedAt,
+                executedByUserName = metadata.executedByUserName,
+                result = metadata.result?.let {
+                    WireActionCardResult(
+                        kind = it.kind,
+                        id = it.id,
+                        name = it.name,
+                        channelId = it.channelId,
+                        channelName = it.channelName,
+                        addedHumanIds = it.addedHumanIds,
+                        addedAgentIds = it.addedAgentIds,
+                    )
+                },
+            )
+        is CanonicalActionMetadataV2.ForwardedBundle ->
+            WireActionCardMetadata(
+                kind = "forwarded-bundle",
+                version = metadata.version,
+                forwardedItems = metadata.items.map { item ->
+                    WireForwardedBundleItem(
+                        index = item.index,
+                        sourceAuthorSnapshot = item.author?.let {
+                            WireForwardedBundleAuthor(
+                                type = it.type,
+                                name = it.name,
+                                uniqueName = it.uniqueName,
+                            )
+                        },
+                        sourceCreatedAt = item.createdAt,
+                        sourceTargetSnapshot = item.target?.let {
+                            WireForwardedBundleTarget(
+                                type = it.type,
+                                label = it.label,
+                                labelVisibility = it.labelVisibility,
+                            )
+                        },
+                        contentSnapshot = item.content,
+                        attachmentSnapshots = item.attachments.map {
+                            WireForwardedBundleAttachment(it.filename, it.mimeType)
+                        },
+                    )
+                },
+            )
+    }
+    return canonicalProjectionJson.encodeToJsonElement(WireActionCardMetadata.serializer(), wire)
 }
 
 private fun CanonicalAttachmentWire.toAppAttachment(): Attachment = Attachment(

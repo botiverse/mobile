@@ -1,0 +1,67 @@
+-- Durable message V2 owner identity now includes the normalized API environment.
+-- Existing rows cannot be attributed to production vs staging, so fail closed by
+-- rebuilding only the canonical message/cursor/overlay tables. The next
+-- authoritative snapshot rebaselines every visited scope.
+DROP INDEX messageEntity_partitionChannelSeqId;
+DROP TABLE messageViewerOverlayEntity;
+DROP TABLE syncCursorEntity;
+DROP TABLE messageEntity;
+
+CREATE TABLE messageEntity (
+  environmentId TEXT NOT NULL,
+  serverId TEXT NOT NULL,
+  principalId TEXT NOT NULL,
+  consumerId TEXT NOT NULL,
+  id TEXT NOT NULL,
+  channelId TEXT NOT NULL,
+  scopeKind TEXT NOT NULL,
+  seq INTEGER NOT NULL,
+  createdAt TEXT NOT NULL,
+  canonicalFactJson TEXT NOT NULL,
+  PRIMARY KEY (environmentId, serverId, principalId, consumerId, id)
+);
+
+CREATE INDEX messageEntity_partitionChannelSeqId
+ON messageEntity(environmentId, serverId, principalId, consumerId, scopeKind, channelId, seq, id);
+
+CREATE TABLE messageViewerOverlayEntity (
+  environmentId TEXT NOT NULL,
+  serverId TEXT NOT NULL,
+  principalId TEXT NOT NULL,
+  consumerId TEXT NOT NULL,
+  scopeKind TEXT NOT NULL,
+  scopeId TEXT NOT NULL,
+  subjectKind TEXT NOT NULL,
+  subjectId TEXT NOT NULL,
+  overlayKind TEXT NOT NULL,
+  overlayVersion INTEGER NOT NULL,
+  completeness TEXT NOT NULL,
+  payloadJson TEXT NOT NULL,
+  PRIMARY KEY (
+    environmentId, serverId, principalId, consumerId,
+    scopeKind, scopeId, subjectKind, subjectId, overlayKind
+  )
+);
+
+CREATE TABLE syncCursorEntity (
+  scopeId TEXT NOT NULL,
+  environmentId TEXT NOT NULL,
+  serverId TEXT NOT NULL,
+  principalId TEXT NOT NULL,
+  consumerId TEXT NOT NULL,
+  scopeKind TEXT NOT NULL,
+  latestSeq INTEGER,
+  oldestLoadedSeq INTEGER,
+  newestLoadedSeq INTEGER,
+  hasLoadedOldest INTEGER NOT NULL DEFAULT 0,
+  hasLoadedNewest INTEGER NOT NULL DEFAULT 1,
+  updatedAtMs INTEGER NOT NULL,
+  epoch TEXT,
+  parentScopeKind TEXT,
+  parentScopeId TEXT,
+  rootMessageId TEXT,
+  PRIMARY KEY (environmentId, serverId, principalId, consumerId, scopeKind, scopeId)
+);
+
+CREATE INDEX syncCursorEntity_partitionUpdatedScope
+ON syncCursorEntity(environmentId, serverId, principalId, consumerId, updatedAtMs DESC, scopeKind, scopeId);

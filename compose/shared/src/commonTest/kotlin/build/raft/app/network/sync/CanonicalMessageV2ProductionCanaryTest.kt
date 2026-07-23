@@ -197,22 +197,32 @@ class CanonicalMessageV2ProductionCanaryTest {
         var incrementalCalls = 0
         private val restored = mutableMapOf<SyncScopeKey, RestoredCanonicalMessageV2Scope>()
 
-        override suspend fun applySnapshot(frame: CanonicalMessageV2SnapshotFrame) {
+        override suspend fun applySnapshot(frame: CanonicalMessageV2SnapshotFrame): CanonicalMessageV2StoreWriteResult {
             snapshotCalls += 1
             restored[frame.scope] = RestoredCanonicalMessageV2Scope(frame.envelopes, frame.cursor)
+            return CanonicalMessageV2StoreWriteResult()
         }
 
-        override suspend fun applyIncremental(frame: CanonicalMessageV2IncrementalFrame) {
+        override suspend fun applyIncremental(frame: CanonicalMessageV2IncrementalFrame): CanonicalMessageV2StoreWriteResult {
             incrementalCalls += 1
             val previous = restored[frame.scope]?.envelopes.orEmpty().associateBy { it.fact.id }
             restored[frame.scope] = RestoredCanonicalMessageV2Scope(
                 envelopes = (previous + frame.envelopes.associateBy { it.fact.id }).values.toList(),
                 cursor = frame.cursor,
             )
+            return CanonicalMessageV2StoreWriteResult()
         }
 
         override suspend fun restore(scope: SyncScopeKey): RestoredCanonicalMessageV2Scope =
             restored[scope] ?: RestoredCanonicalMessageV2Scope(emptyList(), null)
+
+        override suspend fun clearScope(scope: SyncScopeKey) {
+            restored.remove(scope)
+        }
+
+        override suspend fun clearPartition(partition: DurablePartitionKey) {
+            restored.keys.removeAll { it.partition == partition }
+        }
     }
 
     private fun cursor(seq: Long) = PersistedCursor(

@@ -16,6 +16,41 @@ import kotlin.test.assertTrue
 
 class ConversationRepositoryDataSourceTest {
     @Test
+    fun routeScopedServerOverridesMutableSessionSelectionForThreadReads() = runBlocking {
+        val authStore =
+            InMemorySlockAuthSessionStore(
+                StoredAuthSession(
+                    user = StoredAuthUser(id = "user-1", email = "artin@slock.ai"),
+                    accessToken = "token-a",
+                    refreshToken = "token-r",
+                    selectedServerId = "server-a",
+                    servers = listOf(
+                        StoredAuthServer(id = "server-a", name = "Server A"),
+                        StoredAuthServer(id = "server-b", name = "Server B"),
+                    ),
+                ),
+            )
+        val network =
+            FakeConversationNetworkClient(
+                responses =
+                    mapOf(
+                        "GET messages/channel/channel-1" to
+                            """{"historyLimited":false,"messages":[${messageJson("message-1", "channel-1")}] }""",
+                    ),
+            )
+        val repository = RealConversationRepository(
+            sessionStore = authStore,
+            networkClient = network,
+            routeServerIdProvider = { "server-b" },
+        )
+
+        assertIs<DataResult.Content<ThreadSnapshot>>(repository.getThread(ThreadId("channel-1")))
+
+        assertTrue(network.serverOverrides.isNotEmpty())
+        assertTrue(network.serverOverrides.all { it == "server-b" })
+    }
+
+    @Test
     fun messageContextHydratesDeletedAgentDmDetailByChannelId() = runBlocking {
         val network =
             FakeConversationNetworkClient(
@@ -674,6 +709,7 @@ class ConversationRepositoryDataSourceTest {
         private val uploadBody: String = """{"attachments":[]}"""
     ) : SlockNetworkClient {
         val requests = mutableListOf<RecordedConversationRequest>()
+        val serverOverrides = mutableListOf<String?>()
         val bodies = mutableListOf<String>()
         val uploadedFileNames = mutableListOf<String>()
 
@@ -687,6 +723,7 @@ class ConversationRepositoryDataSourceTest {
         ): HomeNetworkResponse {
             val normalized = path.trim('/')
             requests += RecordedConversationRequest(priority, method, normalized, query)
+            serverOverrides += serverIdOverride?.value
             bodyText?.let { bodies += it }
             failures["$method $normalized"]?.let { message ->
                 return HomeNetworkResponse(code = 0, bodyText = null, errorBodyText = message)

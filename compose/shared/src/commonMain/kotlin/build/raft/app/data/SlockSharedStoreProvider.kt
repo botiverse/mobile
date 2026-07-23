@@ -52,6 +52,7 @@ import build.raft.app.network.sync.CanonicalMessageV2BaselineCoordinator
 import build.raft.app.network.sync.CanonicalMessageV2CanaryOutcome
 import build.raft.app.network.sync.CanonicalMessageV2GenerationEngine
 import build.raft.app.network.sync.CanonicalMessageV2ProductionCanary
+import build.raft.app.network.sync.CanonicalMessageV2VisitedWindowGateway
 import build.raft.app.network.sync.CanonicalMessageV2SnapshotCommitObserver
 import build.raft.app.network.sync.CurrentGrantMessageShadowCommitLane
 import build.raft.app.network.sync.DefaultFoldPersistenceAdapter
@@ -351,6 +352,7 @@ internal class SlockSharedStoreProvider private constructor(
     val serverFeatureFlags: SharedServerFeatureFlags,
     private val currentGrantMessageShadowCommitLane: CurrentGrantMessageShadowCommitLane,
     private val canonicalMessageV2Canary: CanonicalMessageV2ProductionCanary,
+    internal val canonicalMessageV2VisitedWindowGateway: CanonicalMessageV2VisitedWindowGateway,
     val localDataStore: ComposeLocalDataStore,
     val agentDetailStore: SharedAgentDetailStore,
     val agentPanelTabOrderStore: SharedAgentPanelTabOrderStore,
@@ -506,8 +508,24 @@ internal class SlockSharedStoreProvider private constructor(
             authStore.sessionInvalidations.collect {
                 clearActiveShellServerSelections()
                 updateNetworkKmmRecoveryEnvironment()
+                reconcileCanonicalMessageV2Partitions()
             }
         }
+        threadSendScope.launch {
+            reconcileCanonicalMessageV2Partitions()
+            authStore.authSessionEvents.collect {
+                reconcileCanonicalMessageV2Partitions()
+            }
+        }
+    }
+
+    private suspend fun reconcileCanonicalMessageV2Partitions() {
+        val session = authStore.readSession()
+        canonicalMessageV2VisitedWindowGateway.reconcileAuthorizedPartitions(
+            environmentId = apiEnvironmentStore.current().apiBaseUrl,
+            principalId = session?.user?.id,
+            serverIds = session?.servers?.mapTo(mutableSetOf()) { it.id }.orEmpty(),
+        )
     }
 
     /** Legacy/unowned shadow lane retained on the process owner. */
@@ -533,8 +551,20 @@ internal class SlockSharedStoreProvider private constructor(
         ProviderBackedCanonicalMessageV2OwnerGateway(
             canary = canonicalMessageV2Canary,
             authStore = sessionStore,
+            apiEnvironmentStore = apiEnvironmentStore,
             networkClient = client,
+            visitedWindowGateway = canonicalMessageV2VisitedWindowGateway,
             logger = sharedInfoLogger("CanonicalMessageV2Canary", "canonical_v2_canary"),
+        )
+
+    internal fun canonicalMessageV2VisitedSnapshotBinding(
+        sessionStore: SlockAuthSessionStore,
+    ): CanonicalMessageV2VisitedSnapshotBinding =
+        CanonicalMessageV2VisitedSnapshotBinding(
+            gateway = canonicalMessageV2VisitedWindowGateway,
+            authStore = sessionStore,
+            apiEnvironmentStore = apiEnvironmentStore,
+            logger = sharedInfoLogger("CanonicalMessageV2Visited", "canonical_v2_visited"),
         )
 
     val conversationIdentityProvider: SharedConversationIdentityProvider?
@@ -1450,6 +1480,17 @@ internal class SlockSharedStoreProvider private constructor(
                     generationEngine = canonicalMessageV2GenerationEngine,
                     logger = sharedInfoLogger("CanonicalMessageV2Canary", "canonical_v2_canary"),
                 )
+            val canonicalMessageV2VisitedWindowGateway =
+                CanonicalMessageV2VisitedWindowGateway(
+                    generationEngine = canonicalMessageV2GenerationEngine,
+                    isEnabledForServer = { serverId ->
+                        serverFeatureFlags.isEnabled(
+                            ServerId(serverId),
+                            SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY,
+                        )
+                    },
+                    logger = sharedInfoLogger("CanonicalMessageV2Visited", "canonical_v2_visited"),
+                )
             val threadSendScope = CoroutineScope(SupervisorJob())
             val realtimeAuthorityDiagnosticsLogger =
                 sharedInfoLogger("RealtimeAuthority", "realtime_authority")
@@ -1587,6 +1628,7 @@ internal class SlockSharedStoreProvider private constructor(
                 serverFeatureFlags = serverFeatureFlags,
                 currentGrantMessageShadowCommitLane = currentGrantMessageShadowCommitLane,
                 canonicalMessageV2Canary = canonicalMessageV2Canary,
+                canonicalMessageV2VisitedWindowGateway = canonicalMessageV2VisitedWindowGateway,
                 localDataStore = localDataStore,
                 agentDetailStore = SharedAgentDetailStore(
                     logger = sharedInfoLogger("SlockAgentDetail", "shared_agent_detail_store")

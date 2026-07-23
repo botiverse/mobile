@@ -73,6 +73,7 @@ import build.raft.app.data.SlockComputersApiClient
 import build.raft.app.data.SlockIntegrationsActionsPushApi
 import build.raft.app.data.SlockIntegrationsActionsPushApiClient
 import build.raft.app.data.StoredAuthSession
+import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthUser
 import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.ThreadActionCardMetadataItem
@@ -2436,6 +2437,181 @@ class SharedThreadStoreTest {
         assertFalse(payload.backgroundRefreshing)
         assertEquals("network body", payload.messages.single().body)
         scope.cancel()
+    }
+
+    @Test
+    fun durableCanonicalCandidateIsVisibleBeforeBlockedChannelRefresh() = runBlocking {
+        val session =
+            StoredAuthSession(
+                user = StoredAuthUser(id = "u1", email = "artin@slock.ai", displayName = "Artin"),
+                accessToken = "access",
+                refreshToken = "refresh",
+                selectedServerId = "server-a",
+                servers = listOf(
+                    StoredAuthServer(id = "server-a", name = "Server A", slug = "server-a"),
+                    StoredAuthServer(id = "server-b", name = "Server B", slug = "server-b"),
+                ),
+            )
+        val authStore = InMemorySlockAuthSessionStore(session)
+        val selectedServerStore =
+            SelectedServerStore(
+                SlockShellStoreScope.create(
+                    shellInstanceId = "durable-route-server-b",
+                    initialServerId = "server-b",
+                ),
+            )
+        val environmentStore =
+            build.raft.app.data.SharedApiEnvironmentStore(build.raft.app.data.InMemorySlockKeyValueStore())
+        val canonicalStore = RecordingCanonicalMessageV2Store()
+        val engine =
+            build.raft.app.network.sync.CanonicalMessageV2GenerationEngine(
+                coordinator = build.raft.app.network.sync.CanonicalMessageV2BaselineCoordinator(),
+                store = canonicalStore,
+                snapshotCommitObserver = build.raft.app.network.sync.CanonicalMessageV2SnapshotCommitObserver {},
+            )
+        val binding =
+            build.raft.app.data.CanonicalMessageV2VisitedSnapshotBinding(
+                gateway =
+                    build.raft.app.network.sync.CanonicalMessageV2VisitedWindowGateway(
+                        generationEngine = engine,
+                        isEnabledForServer = { true },
+                    ),
+                authStore = authStore,
+                apiEnvironmentStore = environmentStore,
+            )
+        val identity =
+            binding.topLevelIdentity(
+                serverId = "server-b",
+                principalId = "u1",
+                scopeId = "channel-1",
+                scopeKind = "channel",
+            )
+        val cachedResponse = HomeNetworkResponse(200, fullCanonicalMessagesResponse("durable body"))
+        binding.load(identity) { cachedResponse }
+
+        val api =
+            FakeThreadApi(bodyText = messagesResponse("network body")).apply {
+                channelMessagesStarted = CompletableDeferred()
+                releaseChannelMessages = CompletableDeferred()
+            }
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = authStore,
+                selectedServerStore = selectedServerStore,
+                canonicalVisitedSnapshotBinding = binding,
+            )
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+
+        store.dispatch(SharedThreadIntent.Start(basePayload()))
+        api.channelMessagesStarted?.await()
+
+        val firstFrame = store.state.value.payload
+        assertEquals("content", firstFrame.status)
+        assertEquals("durable body", firstFrame.messages.single().body)
+        assertTrue(firstFrame.backgroundRefreshing)
+        assertEquals("thread_cached_stale", firstFrame.errorCode)
+        assertFalse(firstFrame.canSend)
+        assertTrue(firstFrame.toThreadTimelineRenderConfig().showsCachedSnapshotBanner())
+
+        api.failChannelMessages = true
+        api.releaseChannelMessages?.complete(Unit)
+        withTimeout(1_000) {
+            while (store.state.value.payload.backgroundRefreshing) {
+                delay(10)
+            }
+        }
+        val offlineFrame = store.state.value.payload
+        assertEquals("durable body", offlineFrame.messages.single().body)
+        assertFalse(offlineFrame.backgroundRefreshing)
+        assertEquals("thread_cached_stale", offlineFrame.errorCode)
+        assertTrue(offlineFrame.toThreadTimelineRenderConfig().showsCachedSnapshotBanner())
+
+        scope.cancel()
+    }
+
+    @Test
+    fun durableReplyCandidateRestoresExactTopLevelRootWithoutSeedingReplyRows() = runBlocking {
+        val session =
+            StoredAuthSession(
+                user = StoredAuthUser(id = "u1", email = "artin@slock.ai", displayName = "Artin"),
+                accessToken = "access",
+                refreshToken = "refresh",
+                selectedServerId = "server-1",
+                servers = listOf(StoredAuthServer(id = "server-1", name = "Slock", slug = "slock")),
+            )
+        val authStore = InMemorySlockAuthSessionStore(session)
+        val environmentStore =
+            build.raft.app.data.SharedApiEnvironmentStore(build.raft.app.data.InMemorySlockKeyValueStore())
+        val engine =
+            build.raft.app.network.sync.CanonicalMessageV2GenerationEngine(
+                coordinator = build.raft.app.network.sync.CanonicalMessageV2BaselineCoordinator(),
+                store = RecordingCanonicalMessageV2Store(),
+                snapshotCommitObserver = build.raft.app.network.sync.CanonicalMessageV2SnapshotCommitObserver {},
+            )
+        val binding =
+            build.raft.app.data.CanonicalMessageV2VisitedSnapshotBinding(
+                gateway =
+                    build.raft.app.network.sync.CanonicalMessageV2VisitedWindowGateway(
+                        generationEngine = engine,
+                        isEnabledForServer = { true },
+                    ),
+                authStore = authStore,
+                apiEnvironmentStore = environmentStore,
+            )
+        val parentIdentity = binding.topLevelIdentity("server-1", "u1", "channel-1", "channel")
+        val replyIdentity =
+            binding.threadIdentity(
+                serverId = "server-1",
+                principalId = "u1",
+                replyScopeId = "reply-stream",
+                parentScopeId = "channel-1",
+                parentScopeKind = "channel",
+                rootMessageId = "root-message",
+            )
+        binding.load(parentIdentity) {
+            HomeNetworkResponse(
+                200,
+                fullCanonicalMessagesResponse("root body", id = "root-message", channelId = "channel-1"),
+            )
+        }
+        binding.load(replyIdentity) {
+            HomeNetworkResponse(
+                200,
+                fullCanonicalMessagesResponse("reply body", id = "reply-message", channelId = "reply-stream"),
+            )
+        }
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = authStore,
+                canonicalVisitedSnapshotBinding = binding,
+            )
+
+        val restored = assertNotNull(
+            dataSource.restoreCanonicalVisitedPayload(
+                replyPayload(parentMessageId = "root-message", threadId = "reply-stream"),
+            ),
+        )
+
+        assertEquals("root-message", restored.originMessage?.id)
+        assertEquals("root body", restored.originMessage?.body)
+        assertEquals(listOf("reply-message"), restored.messages.map { it.id })
+        assertEquals("reply body", restored.messages.single().body)
+
+        val dmIdentity = binding.topLevelIdentity("server-1", "u1", "dm-1", "dm")
+        binding.load(dmIdentity) {
+            HomeNetworkResponse(
+                200,
+                fullCanonicalMessagesResponse("dm body", id = "dm-message", channelId = "dm-1"),
+            )
+        }
+        val restoredDm = assertNotNull(
+            dataSource.restoreCanonicalVisitedPayload(directMessagePayload().copy(channelKind = "dm")),
+        )
+        assertEquals(listOf("dm-message"), restoredDm.messages.map { it.id })
+        assertEquals("dm body", restoredDm.messages.single().body)
     }
 
     @Test
@@ -11645,6 +11821,43 @@ class SharedThreadStoreTest {
         scope.cancel()
     }
 
+    private class RecordingCanonicalMessageV2Store : build.raft.app.network.sync.CanonicalMessageV2Store {
+        private val states =
+            mutableMapOf<
+                build.raft.app.network.sync.SyncScopeKey,
+                build.raft.app.network.sync.RestoredCanonicalMessageV2Scope,
+            >()
+
+        override suspend fun applySnapshot(frame: build.raft.app.network.sync.CanonicalMessageV2SnapshotFrame): build.raft.app.network.sync.CanonicalMessageV2StoreWriteResult {
+            states[frame.scope] =
+                build.raft.app.network.sync.RestoredCanonicalMessageV2Scope(frame.envelopes, frame.cursor)
+            return build.raft.app.network.sync.CanonicalMessageV2StoreWriteResult()
+        }
+
+        override suspend fun applyIncremental(frame: build.raft.app.network.sync.CanonicalMessageV2IncrementalFrame): build.raft.app.network.sync.CanonicalMessageV2StoreWriteResult {
+            val previous = states[frame.scope]?.envelopes.orEmpty().associateBy { it.fact.id }
+            states[frame.scope] =
+                build.raft.app.network.sync.RestoredCanonicalMessageV2Scope(
+                    envelopes = (previous + frame.envelopes.associateBy { it.fact.id }).values.toList(),
+                    cursor = frame.cursor,
+                )
+            return build.raft.app.network.sync.CanonicalMessageV2StoreWriteResult()
+        }
+
+        override suspend fun restore(
+            scope: build.raft.app.network.sync.SyncScopeKey,
+        ): build.raft.app.network.sync.RestoredCanonicalMessageV2Scope =
+            states[scope] ?: build.raft.app.network.sync.RestoredCanonicalMessageV2Scope(emptyList(), null)
+
+        override suspend fun clearScope(scope: build.raft.app.network.sync.SyncScopeKey) {
+            states.remove(scope)
+        }
+
+        override suspend fun clearPartition(partition: build.raft.app.network.sync.DurablePartitionKey) {
+            states.keys.removeAll { it.partition == partition }
+        }
+    }
+
     private class FakeThreadApi(
         var bodyText: String = messagesResponse("network body"),
         var olderBodyText: String = messagesResponse("older body", id = "older", seq = 1, historyLimited = false),
@@ -13092,6 +13305,40 @@ class SharedThreadStoreTest {
                   "senderName": "Artin",
                   "senderType": "user",
                   "messageType": "chat"
+                }
+              ]
+            }
+            """.trimIndent()
+
+        private fun fullCanonicalMessagesResponse(
+            body: String,
+            id: String = "cached-message",
+            channelId: String = "channel-1",
+        ): String =
+            """
+            {
+              "historyLimited": false,
+              "messages": [
+                {
+                  "id": "$id",
+                  "seq": 7,
+                  "channelId": "$channelId",
+                  "senderType": "user",
+                  "senderId": "u1",
+                  "content": "$body",
+                  "messageType": "chat",
+                  "randomId": null,
+                  "threadId": null,
+                  "createdAt": "2026-07-23T00:00:00.000Z",
+                  "senderName": "Artin",
+                  "senderDescription": null,
+                  "senderMembershipStatus": null,
+                  "mentions": [],
+                  "attachments": [],
+                  "reactions": [],
+                  "commentRef": null,
+                  "actionMetadata": null,
+                  "replyCount": 0
                 }
               ]
             }
