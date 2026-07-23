@@ -1087,6 +1087,7 @@ class SlockMarkdownTest {
         assertEquals(expectedLinkBlue, typography.textLink.style?.color)
         assertEquals(TextDecoration.Underline, typography.textLink.style?.textDecoration)
         assertEquals(2.sp, typography.textLink.style?.textDecorationThickness)
+        assertEquals(2.sp, typography.textLink.style?.textDecorationOffset)
         assertEquals(SlockType.Body.fontWeight, typography.textLink.style?.fontWeight)
         assertEquals(expectedLinkBlue, typography.link.color)
         assertEquals(TextDecoration.Underline, typography.link.textDecoration)
@@ -1111,6 +1112,7 @@ class SlockMarkdownTest {
         assertEquals(expectedLinkBlue, linkStyle?.color)
         assertEquals(TextDecoration.Underline, linkStyle?.textDecoration)
         assertEquals(2.sp, linkStyle?.textDecorationThickness)
+        assertEquals(2.sp, linkStyle?.textDecorationOffset)
         assertEquals(SlockType.Body.fontWeight, linkStyle?.fontWeight)
     }
 

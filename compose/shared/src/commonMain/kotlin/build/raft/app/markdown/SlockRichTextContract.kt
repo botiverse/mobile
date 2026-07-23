@@ -149,8 +149,8 @@ object SlockRichTextChromeStyleTokens {
             chipFill = chipFill,
             textDecoration = SlockRichTextTextDecorationToken.Underline,
             textDecorationColor = SlockRichTextColorToken.BorderBlack30,
-            textDecorationThicknessSp = 2f,
-            textDecorationOffsetSp = 2f,
+            textDecorationThicknessSp = SLOCK_RICHTEXT_REFERENCE_UNDERLINE_THICKNESS_SP,
+            textDecorationOffsetSp = SLOCK_RICHTEXT_REFERENCE_UNDERLINE_OFFSET_SP,
             horizontalChromeSp = SLOCK_RICHTEXT_INLINE_CHIP_HORIZONTAL_CHROME_SP
         )
 
@@ -169,6 +169,8 @@ const val SLOCK_RICHTEXT_INLINE_CODE_TRAILING_MARGIN_ANNOTATION_TAG =
 const val SLOCK_RICHTEXT_INLINE_CODE_EDGE_PADDING = '\u00A0'
 const val SLOCK_RICHTEXT_INLINE_CODE_CHAR_WRAP_BREAK = '\u200B'
 const val SLOCK_RICHTEXT_INLINE_CHIP_HORIZONTAL_CHROME_SP = 12f
+const val SLOCK_RICHTEXT_REFERENCE_UNDERLINE_THICKNESS_SP = 2f
+const val SLOCK_RICHTEXT_REFERENCE_UNDERLINE_OFFSET_SP = 2f
 
 enum class SlockRichTextRefKind(val wireValue: String) {
     Channel("channel"),

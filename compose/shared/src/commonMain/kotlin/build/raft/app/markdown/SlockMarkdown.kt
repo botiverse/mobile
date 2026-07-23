@@ -2176,7 +2176,8 @@ internal fun slockMarkdownLinkSpanStyle(base: TextStyle): SpanStyle =
     base.toSpanStyle().copy(
         color = SlockMarkdownLinkBlue,
         textDecoration = TextDecoration.Underline,
-        textDecorationThickness = 2.sp
+        textDecorationThickness = SLOCK_RICHTEXT_REFERENCE_UNDERLINE_THICKNESS_SP.sp,
+        textDecorationOffset = SLOCK_RICHTEXT_REFERENCE_UNDERLINE_OFFSET_SP.sp
     )
 
 private val SlockMarkdownColorsDefault: DefaultMarkdownColors =
