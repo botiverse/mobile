@@ -167,11 +167,14 @@ function walkFiles(root, output = []) {
   return output;
 }
 
+// Full content is kept here so excerptSource can anchor on sections deep in
+// monolith files (SettingsPanel.tsx puts LanguageRegionSection past char
+// 25k); prompt size stays bounded by excerptSource + capSources downstream.
 function sourceRecord(root, file) {
   if (!file || !fs.existsSync(file)) return null;
   return {
     path: path.relative(root, file),
-    src: fs.readFileSync(file, "utf8").slice(0, 28_000),
+    src: fs.readFileSync(file, "utf8").slice(0, 400_000),
   };
 }
 
@@ -272,6 +275,28 @@ export function capSources(sources, maxChars = 60_000, perFileChars = 20_000) {
   return capped;
 }
 
+// Monolith files (SettingsPanel.tsx is ~274k chars) can never fit a sane
+// per-file cap, and head-truncation always misses the relevant section (e.g.
+// LanguageRegionSection at ~line 708). When a file is oversized, slice a
+// window anchored on the needle's definition site instead of the file head.
+export function excerptSource(source, needles, windowChars = 20_000) {
+  const src = source?.src || "";
+  if (src.length <= windowChars) return source;
+  const words = [...new Set(needles.filter(Boolean).map(String).filter((word) => word.length >= 4))];
+  let pos = -1;
+  if (words.length) {
+    const escaped = words.map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    const definition = new RegExp(`(?:function|const|class|fun|val|object)\\s+(?:${escaped.join("|")})`).exec(src);
+    if (definition) pos = definition.index;
+    else pos = words.map((word) => src.indexOf(word)).filter((index) => index >= 0).sort((a, b) => a - b)[0] ?? -1;
+  }
+  if (pos < 0) return { ...source, src: src.slice(0, windowChars) };
+  const start = Math.max(0, pos - Math.floor(windowChars / 5));
+  const excerpt = src.slice(start, start + windowChars);
+  const marker = `/* fix-queue excerpt of ${source.path}: chars ${start}-${start + excerpt.length} of ${src.length}, anchored on: ${words.join(", ")} */\n`;
+  return { ...source, src: marker + excerpt };
+}
+
 // Derive component-name needles from the case id itself so library primitives
 // are found even when the manifest hints omit them (e.g.
 // components.ui.segmented-control.states -> SegmentedControl in rui).
@@ -301,8 +326,18 @@ export function collectSources(entry, opts) {
   const reactExact = sourceRecord(opts.slockRoot, reactPath ? path.join(opts.slockRoot, reactPath) : "");
   const androidExact = sourceRecord(opts.mobileRoot, android.path ? path.join(opts.mobileRoot, android.path) : "");
   const derivedNeedles = caseIdNeedles(entry?.id);
+  // The part after "#" in a manifest path hint names the exact section inside
+  // a monolith file (SettingsPanel.tsx#LanguageRegionSection) — it is the
+  // highest-precision excerpt anchor available.
+  const reactAnchor = String(entry?.reactPathHint || "").split("#")[1] || "";
   const reactComponents = [...(react.components || []), entry?.reactPathHint, ...derivedNeedles];
   const androidComponents = [...(android.components || []), entry?.androidCaseHint, ...derivedNeedles];
+  const reactExcerptNeedles = [reactAnchor, ...derivedNeedles].filter(Boolean);
+  const androidExcerptNeedles = [
+    ...(android.components || []).map((component) => String(component).split(".").pop()),
+    entry?.androidCaseHint,
+    ...derivedNeedles,
+  ].filter(Boolean);
   const androidSeedSources = rankedSources([sourceMatches(path.join(opts.mobileRoot, "compose"), androidComponents, 6)]);
   const androidExpandedSources = rankedSources([sourceMatches(
     path.join(opts.mobileRoot, "compose"),
@@ -320,11 +355,11 @@ export function collectSources(entry, opts) {
         sourceMatches(opts.ruiRoot, reactComponents, 5),
         sourceMatches(opts.slockRoot, reactComponents, 4),
       ]),
-    ])),
+    ]).map((source) => excerptSource(source, reactExcerptNeedles))),
     android: capSources(dedupeSources([
       androidExact,
       ...androidComponentSources,
-    ])),
+    ]).map((source) => excerptSource(source, androidExcerptNeedles))),
   };
 }
 
