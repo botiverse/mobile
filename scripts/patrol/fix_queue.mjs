@@ -283,17 +283,34 @@ export function excerptSource(source, needles, windowChars = 20_000) {
   const src = source?.src || "";
   if (src.length <= windowChars) return source;
   const words = [...new Set(needles.filter(Boolean).map(String).filter((word) => word.length >= 4))];
-  let pos = -1;
-  if (words.length) {
-    const escaped = words.map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-    const definition = new RegExp(`(?:function|const|class|fun|val|object)\\s+(?:${escaped.join("|")})`).exec(src);
-    if (definition) pos = definition.index;
-    else pos = words.map((word) => src.indexOf(word)).filter((index) => index >= 0).sort((a, b) => a - b)[0] ?? -1;
+  if (!words.length) return { ...source, src: src.slice(0, windowChars) };
+  const escaped = words.map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  // Candidate anchors: definition sites plus every needle occurrence. The
+  // window with the highest total needle density wins — a case id's map
+  // registration ("components.ui.segmented-control.states": {...}) is a
+  // single hit, while the actual fixture/render block references the
+  // components repeatedly, so density ranks the meaty region first.
+  const candidates = new Set();
+  const definitionRe = new RegExp(`(?:function|const|class|fun|val|object)\\s+(?:${escaped.join("|")})`, "g");
+  let match;
+  while ((match = definitionRe.exec(src)) && candidates.size < 64) candidates.add(match.index);
+  for (const word of words) {
+    let index = -1;
+    for (let n = 0; n < 16 && (index = src.indexOf(word, index + 1)) >= 0; n += 1) candidates.add(index);
   }
-  if (pos < 0) return { ...source, src: src.slice(0, windowChars) };
-  const start = Math.max(0, pos - Math.floor(windowChars / 5));
-  const excerpt = src.slice(start, start + windowChars);
-  const marker = `/* fix-queue excerpt of ${source.path}: chars ${start}-${start + excerpt.length} of ${src.length}, anchored on: ${words.join(", ")} */\n`;
+  if (!candidates.size) return { ...source, src: src.slice(0, windowChars) };
+  const occurrenceRe = new RegExp(escaped.join("|"), "g");
+  const hits = [];
+  while ((match = occurrenceRe.exec(src))) hits.push(match.index);
+  let bestStart = 0;
+  let bestScore = -1;
+  for (const pos of candidates) {
+    const start = Math.max(0, pos - Math.floor(windowChars / 5));
+    const score = hits.filter((hit) => hit >= start && hit < start + windowChars).length;
+    if (score > bestScore) { bestScore = score; bestStart = start; }
+  }
+  const excerpt = src.slice(bestStart, bestStart + windowChars);
+  const marker = `/* fix-queue excerpt of ${source.path}: chars ${bestStart}-${bestStart + excerpt.length} of ${src.length}, anchored on: ${words.join(", ")} */\n`;
   return { ...source, src: marker + excerpt };
 }
 
@@ -343,8 +360,9 @@ export function collectSources(entry, opts) {
   }
   const reactComponents = [...(react.components || []), entry?.reactPathHint, ...derivedNeedles];
   const androidComponents = [...(android.components || []), entry?.androidCaseHint, ...androidPageNeedles, ...derivedNeedles];
-  const reactExcerptNeedles = [reactAnchor, ...derivedNeedles].filter(Boolean);
+  const reactExcerptNeedles = [entry?.id, reactAnchor, ...(react.components || []).map((component) => String(component).split("/").pop()), ...derivedNeedles].filter(Boolean);
   const androidExcerptNeedles = [
+    entry?.id,
     ...(android.components || []).map((component) => String(component).split(".").pop()),
     ...androidPageNeedles,
     entry?.androidCaseHint,
@@ -475,6 +493,9 @@ function truthPrompt(candidate) {
     "Do not estimate from prose. Trace component -> token/class -> concrete value and enumerate every theme/state variant.",
     "Classify whether the finding is safely patchable as a narrow style/token/fixture change. Semantic, structural,",
     "interaction, ambiguous-source, or geometry-without-exact-source findings are patchable=false with one precise flaw.",
+    "Scope discipline: judge patchability ONLY against the specific drift named in the verified issue. If the sources",
+    "give concrete values for that drift, set patchable=true even when unrelated variants, auxiliary fixtures, or",
+    "surrounding context are absent — missing context that the reported drift does not depend on is NOT a flaw.",
     `Case: ${candidate.caseId} Comparison: ${candidate.comparison}`,
     "Verified issue:", candidate.issueBody,
     "React sources:",
@@ -490,6 +511,9 @@ function patchPrompt(candidate, truth) {
     "Change only the verified divergence. Enumerate and cover all relevant theme/state variants. Do not apply the patch.",
     "Do not edit tests, registries, baselines, or unrelated properties. If exact source authority is missing, return patchable=false",
     "and a precise specificFlaw instead of guessing. CSS px is not automatically dp; preserve units explicitly.",
+    "Scope discipline: the React truth above is authoritative — do not re-litigate it or withhold a patch because",
+    "auxiliary context outside the reported drift is missing. If the Android sources contain the site controlling the",
+    "reported drift and the truth gives its target value, you MUST emit the minimal diff for that site.",
     `Case: ${candidate.caseId}`,
     `React truth: ${truth.reactTruth}`,
     "Verified issue:", candidate.issueBody,
