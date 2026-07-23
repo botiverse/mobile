@@ -313,7 +313,7 @@ async function main() {
       ];
       attemptResponse = await models.complete(model,
         { messages: [{ role: "user", content: attemptContent, timestamp: Date.now() }] },
-        { apiKey: piKey, maxTokens: 2500, reasoningEffort: "low", signal: controller.signal, timeoutMs: 600000 });
+        { apiKey: piKey, maxTokens: 8000, reasoningEffort: "low", signal: controller.signal, timeoutMs: 600000 });
       if (attemptResponse.stopReason === "error" || attemptResponse.stopReason === "aborted") {
         throw new Error(attemptResponse.errorMessage || attemptResponse.stopReason);
       }

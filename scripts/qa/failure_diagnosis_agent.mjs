@@ -164,7 +164,7 @@ async function main() {
       ] : [];
       let response = null;
       for (let turn = 0; turn < 24; turn++) {
-        response = await models.complete(model, { messages, tools }, { apiKey: piKey, maxTokens: 3000, reasoningEffort: "low", timeoutMs: 180000 });
+        response = await models.complete(model, { messages, tools }, { apiKey: piKey, maxTokens: 8000, reasoningEffort: "low", timeoutMs: 180000 });
         if (response.stopReason === "error" || response.stopReason === "aborted") throw new Error(response.errorMessage || response.stopReason);
         messages.push(response);
         const calls = response.content.filter((block) => block.type === "toolCall");
