@@ -1791,6 +1791,30 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureHomeActivityAvatarOn() {
+        // #65: dedicated sender-avatar fixture. Read + unread rows on one
+        // narrow screen, covering human placeholder / agent pixel / app "SY"
+        // placeholder and the full badge run + Done. Additive Android evidence
+        // for a Mobile-only appearance experiment.
+        captureKmpComponentCase(
+            caseId = "components.home.activity.avatar.on",
+            pageName = "compose_home_activity_avatar_visual",
+            crop = HOME_ACTIVITY_AVATAR_CROP,
+            settleMs = 4_500
+        )
+    }
+
+    @Test
+    fun captureHomeActivityAvatarOff() {
+        captureKmpComponentCase(
+            caseId = "components.home.activity.avatar.off",
+            pageName = "compose_home_activity_avatar_off_visual",
+            crop = HOME_ACTIVITY_AVATAR_CROP,
+            settleMs = 4_500
+        )
+    }
+
+    @Test
     fun captureHomeActivityBottomHitTarget() {
         val openedMarker = "ACTIVITY_HIT_TARGET_OPENED:activity-thread-visual-parity"
         captureKmpComponentCase(
@@ -3871,6 +3895,13 @@ class KmpVisualScreenshotCaptureTest {
                 topDp = 0,
                 widthDp = 342,
                 heightDp = 620
+            )
+        private val HOME_ACTIVITY_AVATAR_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 800
             )
         private val TOKEN_PALETTE_CROP =
             VisualCrop(

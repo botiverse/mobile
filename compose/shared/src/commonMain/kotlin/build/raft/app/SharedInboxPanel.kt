@@ -91,6 +91,7 @@ import com.tencent.kuikly.compose.material3.rememberPullToRefreshState
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.geometry.Offset
+import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.AnnotatedString
@@ -123,6 +124,7 @@ internal fun SharedHomeActivityScreen(
     storeScope: SlockShellStoreScope = SlockShellStoreScope.Legacy,
     listState: LazyListState = rememberLazyListState(),
     activityTaskStatusBadgesEnabled: Boolean = false,
+    activitySenderAvatarsEnabled: Boolean = false,
     onTitleClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -318,6 +320,7 @@ internal fun SharedHomeActivityScreen(
         timeContext = timeContext,
         listState = listState,
         activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
+        activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
         draftProjection = draftProjection,
         onTitleClick = onTitleClick,
         stableOrderEnabled = stableOrderEnabledAtRouteEntry,
@@ -399,6 +402,7 @@ internal fun SharedHomeActivityScreen(
     shellScope: SlockAppShellScope = rememberSlockAppShellScope(),
     listState: LazyListState = rememberLazyListState(),
     activityTaskStatusBadgesEnabled: Boolean = false,
+    activitySenderAvatarsEnabled: Boolean = false,
     draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
     onTitleClick: (() -> Unit)? = null,
     stableOrderEnabled: Boolean = true,
@@ -416,6 +420,7 @@ internal fun SharedHomeActivityScreen(
         timeContext = timeContext,
         listState = listState,
         activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
+        activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
         draftProjection = draftProjection,
         onTitleClick = onTitleClick,
         stableOrderEnabled = stableOrderEnabled,
@@ -437,6 +442,7 @@ internal fun SharedHomeActivityPanel(
     shellScope: SlockAppShellScope = rememberSlockAppShellScope(),
     listState: LazyListState = rememberLazyListState(),
     activityTaskStatusBadgesEnabled: Boolean = false,
+    activitySenderAvatarsEnabled: Boolean = false,
     draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
     onTitleClick: (() -> Unit)? = null,
     stableOrderEnabled: Boolean = true,
@@ -459,6 +465,7 @@ internal fun SharedHomeActivityPanel(
             timeContext = timeContext,
             listState = listState,
             activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
+            activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
             draftProjection = draftProjection,
             onTitleClick = onTitleClick,
             stableOrderEnabled = stableOrderEnabled,
@@ -480,6 +487,7 @@ private fun SharedActivityPanelContent(
     timeContext: SlockTimeContext?,
     listState: LazyListState,
     activityTaskStatusBadgesEnabled: Boolean,
+    activitySenderAvatarsEnabled: Boolean,
     draftProjection: SharedThreadComposerDraftProjection,
     onTitleClick: (() -> Unit)?,
     stableOrderEnabled: Boolean,
@@ -514,6 +522,7 @@ private fun SharedActivityPanelContent(
             timeContext = timeContext,
             listState = listState,
             activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
+            activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
             draftProjection = draftProjection,
             presentationAccountId = state.ownerUserId.orEmpty(),
             stableOrderEnabled = stableOrderEnabled,
@@ -533,6 +542,7 @@ private fun SharedActivityBodyContent(
     timeContext: SlockTimeContext?,
     listState: LazyListState,
     activityTaskStatusBadgesEnabled: Boolean,
+    activitySenderAvatarsEnabled: Boolean,
     draftProjection: SharedThreadComposerDraftProjection,
     presentationAccountId: String,
     stableOrderEnabled: Boolean,
@@ -604,6 +614,7 @@ private fun SharedActivityBodyContent(
                     timeContext = timeContext,
                     listState = listState,
                     activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
+                    activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
                     presentationAccountId = presentationAccountId,
                     stableOrderEnabled = stableOrderEnabled,
                     stableOrderDecisionRevision = stableOrderDecisionRevision,
@@ -731,6 +742,7 @@ private fun SharedActivityList(
     timeContext: SlockTimeContext?,
     listState: LazyListState = rememberLazyListState(),
     activityTaskStatusBadgesEnabled: Boolean,
+    activitySenderAvatarsEnabled: Boolean,
     presentationAccountId: String,
     stableOrderEnabled: Boolean,
     stableOrderDecisionRevision: Long,
@@ -979,6 +991,7 @@ private fun SharedActivityList(
                     modifier = Modifier.padding(horizontal = 16.dp),
                     timeContext = timeContext,
                     activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
+                    activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
                     captureMenuAnchor = !listState.isScrollInProgress,
                     presentationGeneration = renderedPresentationGeneration,
                     presentationOwnerIdentity = renderedPresentationOwnerIdentity,
@@ -1238,6 +1251,7 @@ private fun SharedActivityRow(
     modifier: Modifier = Modifier,
     timeContext: SlockTimeContext?,
     activityTaskStatusBadgesEnabled: Boolean,
+    activitySenderAvatarsEnabled: Boolean,
     captureMenuAnchor: Boolean = true,
     presentationGeneration: Int = 0,
     presentationOwnerIdentity: String = "",
@@ -1256,6 +1270,7 @@ private fun SharedActivityRow(
     val threadFallback = stringResource(MR.strings.activity_fallback_thread_update)
     val actionFallback = stringResource(MR.strings.activity_fallback_action_required)
     val conversationFallback = stringResource(MR.strings.activity_fallback_conversation_update)
+    val avatarPresentation = activitySenderAvatarPresentation(activitySenderAvatarsEnabled)
     SharedActivitySelectedRowSurface(selected = selected, modifier = modifier) { surfaceModifier ->
         Column(modifier = surfaceModifier) {
             Row(
@@ -1263,6 +1278,29 @@ private fun SharedActivityRow(
                 verticalAlignment = Alignment.Top,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                // Optional latest-activity sender avatar: 32dp frame, 2dp
+                // black border, 12dp gap to the content column, and a 2dp top
+                // nudge. Pure presentation —
+                // it shares the row open/long-press gesture and never changes
+                // the Done button's independent click. The frame is a fixed
+                // 32dp regardless of sender kind / missing avatar URL so the
+                // row height never drifts.
+                if (avatarPresentation.visible) {
+                    SharedActivitySenderAvatar(
+                        item = item,
+                        senderProfiles = senderProfiles,
+                        modifier =
+                            Modifier
+                                .activityRowGestures(
+                                    openGestureKey,
+                                    captureMenuAnchor,
+                                    onOpen,
+                                    onOpenMenu
+                                )
+                                .padding(start = 12.dp, top = 12.dp)
+                                .offset(y = 2.dp)
+                    )
+                }
                 Column(
                     modifier =
                         Modifier
@@ -1273,7 +1311,7 @@ private fun SharedActivityRow(
                                 onOpen,
                                 onOpenMenu
                             )
-                            .padding(start = 12.dp, top = 12.dp)
+                            .padding(start = avatarPresentation.contentStartPadding, top = 12.dp)
                 ) {
                 // Tag + timestamp share the top row — artin's ruling on #1039
                 // (#wg-nightly-visual-fix:4670869d, 2026-07-17): react's
@@ -1396,6 +1434,116 @@ private fun SharedActivityRow(
 internal fun InboxItem.activityPrimaryContentMuted(): Boolean =
     kind != InboxItemKind.System && unreadCount == 0
 
+// Activity sender avatar for the Mobile-only appearance experiment. The outer frame is
+// 32dp with a 2dp black border; the fill is keyed by sender kind: agent /
+// human reuse the canonical SlockAvatar wire-value pipeline (pixel avatar,
+// uploaded image, Gravatar, then User-icon placeholder), while system /
+// unknown render the app "SY" initials placeholder.
+internal val ActivitySenderAvatarSize = 32.dp
+private val ActivitySenderAvatarBorder = SlockStroke.Default
+private const val ActivitySenderAppInitials = "SY"
+
+internal data class ActivitySenderAvatarPresentation(
+    val visible: Boolean,
+    val contentStartPadding: Dp
+)
+
+internal fun activitySenderAvatarPresentation(enabled: Boolean): ActivitySenderAvatarPresentation =
+    ActivitySenderAvatarPresentation(
+        visible = enabled,
+        contentStartPadding = if (enabled) 0.dp else 12.dp
+    )
+
+/**
+ * Resolved sender identity for an Activity row's leading avatar.
+ *
+ * A thread surfaces its latest activity sender; a channel/DM surfaces its last message sender; a mention
+ * action is treated as a system/app sender. Missing primary fields fall back
+ * to the row's other sender fields — never to the thread parent author —
+ * so the avatar always matches the byline shown in the row.
+ */
+internal data class ActivitySenderAvatarIdentity(
+    val senderKind: MemberKind?,
+    val avatarWireValue: String?,
+    val label: String
+)
+
+internal fun InboxItem.activitySenderAvatarIdentity(
+    senderProfiles: Map<String, SharedActivitySenderProfile> = emptyMap()
+): ActivitySenderAvatarIdentity {
+    val senderKind: MemberKind?
+    val avatarWireValue: String?
+    when (kind) {
+        InboxItemKind.Thread -> {
+            senderKind = latestActivitySenderKind ?: lastMessageSenderKind
+            avatarWireValue = latestActivitySenderAvatarWireValue ?: lastMessageSenderAvatarWireValue
+        }
+        InboxItemKind.MentionAction -> {
+            senderKind = MemberKind.System
+            avatarWireValue = null
+        }
+        InboxItemKind.Channel,
+        InboxItemKind.DirectMessage,
+        InboxItemKind.System -> {
+            senderKind = lastMessageSenderKind ?: latestActivitySenderKind
+            avatarWireValue = lastMessageSenderAvatarWireValue ?: latestActivitySenderAvatarWireValue
+        }
+    }
+    return ActivitySenderAvatarIdentity(
+        senderKind = senderKind,
+        avatarWireValue = avatarWireValue,
+        label = senderDisplayName(senderProfiles).orEmpty()
+    )
+}
+
+@Composable
+private fun SharedActivitySenderAvatar(
+    item: InboxItem,
+    senderProfiles: Map<String, SharedActivitySenderProfile>,
+    modifier: Modifier = Modifier
+) {
+    val identity = remember(item, senderProfiles) { item.activitySenderAvatarIdentity(senderProfiles) }
+    Box(
+        modifier = modifier.size(ActivitySenderAvatarSize),
+        contentAlignment = Alignment.Center
+    ) {
+        when (identity.senderKind) {
+            MemberKind.Agent,
+            MemberKind.Human ->
+                SlockAvatar(
+                    avatarWireValue = identity.avatarWireValue,
+                    label = identity.label,
+                    avatarSize = ActivitySenderAvatarSize,
+                    borderWidth = ActivitySenderAvatarBorder
+                )
+            MemberKind.System,
+            null -> SharedActivityAppAvatar()
+        }
+    }
+}
+
+@Composable
+private fun SharedActivityAppAvatar(modifier: Modifier = Modifier) {
+    Box(
+        modifier =
+            modifier
+                .size(ActivitySenderAvatarSize)
+                .background(SlockColor.SoftSignal)
+                .border(ActivitySenderAvatarBorder, SlockColor.BorderBlack),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = ActivitySenderAppInitials,
+            style =
+                SlockType.Caption
+                    .withSlockFontWeight(FontWeight.Black)
+                    .copy(fontSize = 12.sp, lineHeight = 12.sp),
+            color = SlockColor.TextBlack,
+            maxLines = 1
+        )
+    }
+}
+
 internal fun InboxItem.activityDoneClickIdentity(
     presentationGeneration: Int = 0,
     presentationOwnerIdentity: String = "",
@@ -1498,13 +1646,30 @@ private fun SharedActivityFooter(
                         modifier = Modifier.align(Alignment.CenterVertically)
                     )
                 SharedActivityFooterSlot.Draft ->
-                    SharedActivityFooterBadge(
-                        label = "",
-                        slot = slot,
+                    SharedActivityFooterDraftBadge(
                         modifier = Modifier.align(Alignment.CenterVertically)
                     )
             }
         }
+    }
+}
+
+@Composable
+private fun SharedActivityFooterDraftBadge(modifier: Modifier = Modifier) {
+    Box(
+        modifier =
+            modifier
+                .size(20.dp)
+                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                .background(SlockColor.SurfaceWhite)
+                .slockSquareCorners(),
+        contentAlignment = Alignment.Center
+    ) {
+        SlockLucideIcon(
+            name = SlockLucideIconName.Pencil,
+            modifier = Modifier.size(10.dp),
+            color = "#FF000000"
+        )
     }
 }
 
@@ -1521,7 +1686,8 @@ private fun SharedActivityFooterBadge(
         modifier = modifier,
         tone = visual.tone,
         uppercase = false,
-        leadingIcon = visual.leadingIcon
+        leadingIcon = visual.leadingIcon,
+        contentColor = visual.foregroundColor
     )
 }
 
@@ -1831,7 +1997,8 @@ internal enum class SharedActivityFooterSlot {
 
 internal data class SharedActivityFooterBadgeVisual(
     val tone: SlockBrutalTone,
-    val leadingIcon: SlockLucideIconName? = null
+    val leadingIcon: SlockLucideIconName? = null,
+    val foregroundColor: Color? = null
 )
 
 internal fun SharedActivityFooterSlot.badgeVisual(taskStatus: TaskStatus? = null): SharedActivityFooterBadgeVisual =
@@ -1847,7 +2014,11 @@ internal fun SharedActivityFooterSlot.badgeVisual(taskStatus: TaskStatus? = null
                     TaskStatus.Done -> SlockBrutalTone.Lime
                     TaskStatus.Closed -> SlockBrutalTone.Stone
                 }
-            SharedActivityFooterBadgeVisual(tone, statusMeta.icon)
+            SharedActivityFooterBadgeVisual(
+                tone = tone,
+                leadingIcon = statusMeta.icon,
+                foregroundColor = statusMeta.foregroundColor
+            )
         }
         SharedActivityFooterSlot.Replies -> SharedActivityFooterBadgeVisual(SlockBrutalTone.White)
         SharedActivityFooterSlot.Mention -> SharedActivityFooterBadgeVisual(SlockBrutalTone.Yellow, SlockLucideIconName.AtSign)

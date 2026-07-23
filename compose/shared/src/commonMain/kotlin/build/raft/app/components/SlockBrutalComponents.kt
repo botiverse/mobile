@@ -121,6 +121,7 @@ internal fun SlockAnchoredMetaChip(
     onClick: ((SlockPopoverAnchor) -> Unit)?,
     modifier: Modifier = Modifier,
     iconSize: Dp = 10.dp,
+    contentColor: Color = SlockColor.TextBlack,
     iconColorArgb: String = SlockColor.TextBlackArgb,
     iconFillArgb: String? = null,
     trailingIconName: SlockLucideIconName? = null,
@@ -186,7 +187,7 @@ internal fun SlockAnchoredMetaChip(
             Text(
                 text = label,
                 style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = labelFontSize, lineHeight = labelLineHeight),
-                color = SlockColor.TextBlack,
+                color = contentColor,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )

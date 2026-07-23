@@ -3818,6 +3818,7 @@ class SharedSettingsStoreTest {
         var imageAnnotationEnabled: Boolean = false,
         var foregroundMessageBannersEnabled: Boolean = false,
         var activityTaskStatusBadgesEnabled: Boolean = false,
+        var activitySenderAvatarsEnabled: Boolean = false,
         var composerSendKeyEnabled: Boolean = true,
         var multiShellHostEnabled: Boolean = false,
         var serverDrawerEnabled: Boolean = false,
@@ -3835,6 +3836,7 @@ class SharedSettingsStoreTest {
                 imageAnnotationEnabled = imageAnnotationEnabled,
                 foregroundMessageBannersEnabled = foregroundMessageBannersEnabled,
                 activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
+                activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
                 composerSendKeyEnabled = composerSendKeyEnabled,
                 multiShellHostEnabled = multiShellHostEnabled,
                 serverDrawerEnabled = serverDrawerEnabled,
@@ -3938,6 +3940,11 @@ class SharedSettingsStoreTest {
                 translationMode = translationMode,
                 threadRowAffordances = threadRowAffordances
             )
+        }
+
+        override suspend fun setActivitySenderAvatarsEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
+            activitySenderAvatarsEnabled = enabled
+            return getChatLayoutPreference()
         }
 
         override suspend fun setComposerSendKeyEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
