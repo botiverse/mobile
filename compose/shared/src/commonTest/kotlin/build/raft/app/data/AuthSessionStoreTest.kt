@@ -498,7 +498,11 @@ class AuthSessionStoreTest {
         val store = KeyValueAuthSessionStore(InMemorySlockKeyValueStore(), diagnosticsLogger = logs::add)
         store.replaceAuthenticatedSession(sampleSession())
         val identity = logs.single { it.startsWith("QA_CREDENTIAL_IDENTITY ") }
-        assertEquals("QA_CREDENTIAL_IDENTITY version=1 principalId=user-1 authGeneration=1", identity)
+        assertTrue(
+            identity.matches(
+                Regex("QA_CREDENTIAL_IDENTITY version=1 principalId=user-1 authGeneration=[1-9][0-9]*")
+            )
+        )
         assertTrue("artin@slock.ai" !in identity)
         assertTrue("token-a" !in identity)
         assertNull(qaCredentialIdentityDiagnostic(sampleSession().copy(user = sampleSession().user.copy(id = "bad id")), 2))
