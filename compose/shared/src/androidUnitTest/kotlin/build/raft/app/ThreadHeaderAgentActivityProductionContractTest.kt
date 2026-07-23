@@ -59,6 +59,18 @@ class ThreadHeaderAgentActivityProductionContractTest {
             source,
             "ThreadHeaderDmAgentActivityDotSize = SlockStatusIndicatorTokens.InlineSize"
         )
+        assertContains(
+            source,
+            "ThreadHeaderDmAgentActivityLeadingGap = SlockSpacing.Sm"
+        )
+        assertContains(
+            header,
+            "horizontalArrangement = Arrangement.spacedBy(ThreadHeaderDmAgentActivityLeadingGap)"
+        )
+        assertContains(
+            header,
+            "horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)"
+        )
         assertContains(source, "overflow = TextOverflow.Ellipsis")
         assertTrue(File(visualFixturesRoot(), "build/raft/app/VisualFixturePages.kt").readText().contains("compose_thread_dm_agent_activity_header_visual"))
     }
