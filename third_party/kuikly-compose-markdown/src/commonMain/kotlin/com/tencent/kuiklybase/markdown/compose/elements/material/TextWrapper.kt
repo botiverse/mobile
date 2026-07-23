@@ -61,9 +61,9 @@ fun MarkdownBasicText(
     )
     val styleMergeDurationUs = slockMarkdownMonotonicNanosSince(styleMergeStartMark) / 1_000L
     if (styleMergeDurationUs >= SlockMarkdownVendorTraceThresholdUs) {
-        slockMarkdownLogSubTrace(
+        slockMarkdownLogSubTrace {
             "phase=markdown.text.merge_style durationUs=$styleMergeDurationUs textLength=${text.length}"
-        )
+        }
     }
 
     val textProviderStartMark = TimeSource.Monotonic.markNow()
@@ -88,9 +88,9 @@ fun MarkdownBasicText(
     )
     val textProviderDurationUs = slockMarkdownMonotonicNanosSince(textProviderStartMark) / 1_000L
     if (textProviderDurationUs >= SlockMarkdownVendorTraceThresholdUs) {
-        slockMarkdownLogSubTrace(
+        slockMarkdownLogSubTrace {
             "phase=markdown.text.provider_text durationUs=$textProviderDurationUs textLength=${text.length}"
-        )
+        }
     }
 }
 
@@ -134,9 +134,9 @@ fun MarkdownBasicText(
     )
     val styleMergeDurationUs = slockMarkdownMonotonicNanosSince(styleMergeStartMark) / 1_000L
     if (styleMergeDurationUs >= SlockMarkdownVendorTraceThresholdUs) {
-        slockMarkdownLogSubTrace(
+        slockMarkdownLogSubTrace {
             "phase=markdown.text.merge_style durationUs=$styleMergeDurationUs textLength=${text.text.length}"
-        )
+        }
     }
 
     val textProviderStartMark = TimeSource.Monotonic.markNow()
@@ -161,19 +161,24 @@ fun MarkdownBasicText(
         inlineContent = inlineContent,
     )
     val textProviderDurationUs = slockMarkdownMonotonicNanosSince(textProviderStartMark) / 1_000L
-    val stringAnnotationCount = text.getStringAnnotations(start = 0, end = text.length).size
-    val linkAnnotationCount = text.getLinkAnnotations(start = 0, end = text.length).size
-    slockMarkdownLogSubTrace(
+    // Annotation scans are O(annotations) and only feed the log line, so they
+    // live inside the lazily-evaluated message lambdas (skipped when the
+    // SlockMarkdownSubTrace gate is off).
+    slockMarkdownLogSubTrace {
+        val stringAnnotationCount = text.getStringAnnotations(start = 0, end = text.length).size
+        val linkAnnotationCount = text.getLinkAnnotations(start = 0, end = text.length).size
         "phase=markdown.text.provider_rich_text_all durationUs=$textProviderDurationUs textHash=${text.text.hashCode().toString(16)} " +
             "textLength=${text.text.length} spanStyles=${text.spanStyles.size} paragraphStyles=${text.paragraphStyles.size} " +
             "stringAnnotations=$stringAnnotationCount linkAnnotations=$linkAnnotationCount inlineContent=${inlineContent.size}"
-    )
+    }
     if (textProviderDurationUs >= SlockMarkdownVendorTraceThresholdUs) {
-        slockMarkdownLogSubTrace(
+        slockMarkdownLogSubTrace {
+            val stringAnnotationCount = text.getStringAnnotations(start = 0, end = text.length).size
+            val linkAnnotationCount = text.getLinkAnnotations(start = 0, end = text.length).size
             "phase=markdown.text.provider_rich_text durationUs=$textProviderDurationUs textLength=${text.text.length} " +
                 "spanStyles=${text.spanStyles.size} paragraphStyles=${text.paragraphStyles.size} " +
                 "stringAnnotations=$stringAnnotationCount linkAnnotations=$linkAnnotationCount inlineContent=${inlineContent.size}"
-        )
+        }
     }
 }
 

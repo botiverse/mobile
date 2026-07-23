@@ -30,10 +30,11 @@ internal actual fun logMarkdownSpike(
     phase: String,
     durationUs: Long,
     bodyLength: Int,
-    extra: String
+    extra: () -> String
 ) {
     if (!slockTraceDiagnosticsEnabled()) return
-    val extras = if (extra.isNotEmpty()) " $extra" else ""
+    val extraText = extra()
+    val extras = if (extraText.isNotEmpty()) " $extraText" else ""
     android.util.Log.i(
         SpikeLogTag,
         "phase=$phase durationUs=$durationUs bodyLength=$bodyLength$extras"

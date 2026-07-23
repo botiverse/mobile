@@ -93,12 +93,12 @@ fun MarkdownText(
     } else {
         content
     }
-    slockMarkdownLogSubTrace(
+    slockMarkdownLogSubTrace {
         "phase=markdown.text.annotated_input textHash=${extendedStyledText.text.hashCode().toString(16)} " +
             "textLength=${extendedStyledText.text.length} spanStyles=${extendedStyledText.spanStyles.size} " +
             "stringAnnotations=${extendedStyledText.getStringAnnotations(0, extendedStyledText.length).size} " +
             "linkAnnotations=${extendedStyledText.getLinkAnnotations(0, extendedStyledText.length).size}"
-    )
+    }
 
     // forward the `onTextLayout` to `extended-spans` if provided
     val onTextLayout: ((TextLayoutResult, Color?) -> Unit)? = if (extendedSpans != null) {
