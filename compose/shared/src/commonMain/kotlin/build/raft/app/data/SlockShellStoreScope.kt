@@ -1,8 +1,14 @@
 package build.raft.app.data
 
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.sync.Mutex
@@ -184,8 +190,25 @@ internal suspend fun SlockShellScopedStoreCache<SelectedServerStore>.clearActive
 internal class SlockShellAuthSessionStore(
     private val delegate: SlockAuthSessionStore,
     private val selectedServerStore: SelectedServerStore,
+    eventScope: CoroutineScope = CoroutineScope(SupervisorJob()),
     private val onProcessSessionCleared: suspend () -> Unit = {}
-) : SlockAuthSessionStore {
+) : SlockAuthSessionStore, SlockAuthSessionEventSource {
+    private val eventMutex = Mutex()
+    private val events = MutableSharedFlow<AuthSessionEvent>(extraBufferCapacity = 64)
+    private var eventGeneration = 0L
+
+    override val authSessionEvents: SharedFlow<AuthSessionEvent> = events.asSharedFlow()
+
+    init {
+        (delegate as? SlockAuthSessionEventSource)?.let { source ->
+            eventScope.launch {
+                source.authSessionEvents.collect { event ->
+                    emitAuthSessionEvent { generation -> event.withGeneration(generation) }
+                }
+            }
+        }
+    }
+
     override suspend fun readSession(): StoredAuthSession? {
         val session = delegate.readSession() ?: return null
         val selection = selectedServerStore.reconcile(session)
@@ -263,6 +286,7 @@ internal class SlockShellAuthSessionStore(
 
     override suspend fun updateSelectedServer(serverId: String?, serverSlug: String?) {
         val selection = selectedServerStore.select(serverId, serverSlug)
+        emitAuthSessionEvent { generation -> AuthSessionEvent.BindingMetadataChanged(generation) }
         // The process-level value is intentionally only the next-launch default.
         delegate.updateSelectedServer(selection.serverId, selection.serverSlug)
     }
@@ -294,4 +318,19 @@ internal class SlockShellAuthSessionStore(
         }
         return cleared
     }
+
+    private suspend fun emitAuthSessionEvent(
+        create: (Long) -> AuthSessionEvent
+    ) {
+        val event = eventMutex.withLock { create(++eventGeneration) }
+        events.emit(event)
+    }
+
+    private fun AuthSessionEvent.withGeneration(generation: Long): AuthSessionEvent =
+        when (this) {
+            is AuthSessionEvent.Authenticated -> AuthSessionEvent.Authenticated(generation)
+            is AuthSessionEvent.TokensRotated -> AuthSessionEvent.TokensRotated(generation)
+            is AuthSessionEvent.BindingMetadataChanged -> AuthSessionEvent.BindingMetadataChanged(generation)
+            is AuthSessionEvent.Cleared -> AuthSessionEvent.Cleared(generation, reason)
+        }
 }

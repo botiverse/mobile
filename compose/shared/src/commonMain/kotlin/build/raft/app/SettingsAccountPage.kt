@@ -317,6 +317,7 @@ internal fun SettingsAccountContent(
         modifier =
             Modifier
                 .fillMaxSize()
+                .dismissInputFocusOnScrollableChrome()
                 .background(SlockColor.SurfaceWhite)
                 .padding(top = topSafeArea)
                 .padding(horizontal = 20.dp, vertical = 14.dp),

@@ -132,6 +132,24 @@ internal class SlockPopoverAnchor private constructor(
 
 internal typealias SlockLiveRootAnchorRef = SlockPopoverAnchor.LiveRef
 
+/**
+ * Focus dismissal also needs live local-to-root conversion, but it must not reuse or expose the
+ * typed popover-anchor capability. This small focus-only handle keeps that conversion centralized
+ * with the live-coordinate implementation while returning no persistent popup anchor.
+ */
+internal class SlockInputFocusRootAnchor {
+    private var coordinates: LayoutCoordinates? = null
+
+    fun update(next: LayoutCoordinates) {
+        coordinates = next
+    }
+
+    fun resolve(localPosition: Offset): Offset? =
+        coordinates
+            ?.takeIf { it.isAttached }
+            ?.localToRoot(localPosition)
+}
+
 private object SlockLiveRootAnchorCaptureRegistry {
     private data class Entry(
         val coordinates: LayoutCoordinates,

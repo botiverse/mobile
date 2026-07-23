@@ -57,14 +57,18 @@ import com.tencent.kuikly.compose.ui.focus.FocusRequester
 import com.tencent.kuikly.compose.ui.focus.focusRequester
 import com.tencent.kuikly.compose.ui.focus.onFocusChanged
 import com.tencent.kuikly.compose.ui.geometry.Offset
+import com.tencent.kuikly.compose.ui.geometry.Rect
 import com.tencent.kuikly.compose.ui.graphics.Brush
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.graphics.SolidColor
 import com.tencent.kuikly.compose.ui.input.pointer.PointerId
+import com.tencent.kuikly.compose.ui.input.pointer.PointerEventPass
+import com.tencent.kuikly.compose.ui.input.pointer.changedToDownIgnoreConsumed
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.input.pointer.positionChanged
 import com.tencent.kuikly.compose.ui.input.pointer.positionChangedIgnoreConsumed
 import com.tencent.kuikly.compose.ui.layout.ContentScale
+import com.tencent.kuikly.compose.ui.layout.LayoutCoordinates
 import com.tencent.kuikly.compose.ui.layout.boundsInRoot
 import com.tencent.kuikly.compose.ui.layout.layout
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
@@ -523,45 +527,115 @@ fun Modifier.touchListener(
     }
 
 /**
- * Clears the current input focus when a pointer down reaches container chrome without a child
- * consuming it.
+ * Clears the current input focus when a pointer down lands outside every focused standard input.
  *
- * Kuikly text fields and clickable controls consume their down event during the Main pass, so
- * their focus/cursor/click behavior remains intact. Blank container regions and the first down of
- * a scroll stay unconsumed, allowing the page/dialog to dismiss the software keyboard without
- * consuming the gesture that owns the eventual tap or drag.
+ * Scroll and clickable containers may consume their down during the Main pass, so the shared host
+ * must observe all downs. Focused inputs register their root bounds, allowing the host to preserve
+ * cursor/selection behavior for an inside tap while still clearing focus on scrollable chrome.
+ * The host never consumes the gesture that owns the eventual tap or drag.
  */
 @Composable
-internal fun Modifier.dismissInputFocusOnUnconsumedPointerDown(
-    enabled: Boolean = true
+internal fun Modifier.dismissInputFocusOnOutsidePointerDown(
+    registry: SlockInputFocusOwnerRegistry,
+    enabled: Boolean = true,
 ): Modifier {
     val currentFocusManager by rememberUpdatedState(LocalFocusManager.current)
-    return pointerInput(enabled) {
+    val hostAnchor = remember { SlockInputFocusRootAnchor() }
+    return onGloballyPositioned(hostAnchor::update).pointerInput(enabled, registry) {
         if (!enabled) return@pointerInput
         awaitEachGesture {
-            awaitFirstDown(requireUnconsumed = true)
-            currentFocusManager.clearFocus(force = true)
+            var down = awaitPointerEvent(PointerEventPass.Initial)
+                .changes
+                .firstOrNull { it.changedToDownIgnoreConsumed() }
+            while (down == null) {
+                down = awaitPointerEvent(PointerEventPass.Initial)
+                    .changes
+                    .firstOrNull { it.changedToDownIgnoreConsumed() }
+            }
+            val firstDown = down ?: return@awaitEachGesture
+            val rootPosition = hostAnchor.resolve(firstDown.position)
+            if (rootPosition != null && registry.shouldClearFocus(rootPosition)) {
+                currentFocusManager.clearFocus(force = true)
+            }
         }
     }
 }
 
+internal class SlockInputFocusOwnerAnchor {
+    private var coordinates: LayoutCoordinates? = null
+
+    fun update(next: LayoutCoordinates) {
+        coordinates = next
+    }
+
+    fun resolveBounds(): Rect? =
+        coordinates
+            ?.takeIf { it.isAttached }
+            ?.boundsInRoot()
+}
+
 internal class SlockInputFocusOwnerRegistry {
-    private val activeOwners = mutableSetOf<Any>()
+    private val activeOwners = mutableMapOf<Any, () -> Rect?>()
     var hasActiveOwner by mutableStateOf(false)
         private set
 
-    fun setFocused(owner: Any, focused: Boolean) {
+    fun setFocused(owner: Any, focused: Boolean, bounds: (() -> Rect?)? = null) {
         if (focused) {
-            activeOwners += owner
+            activeOwners[owner] = bounds ?: { null }
         } else {
             activeOwners -= owner
         }
+        hasActiveOwner = activeOwners.isNotEmpty()
+    }
+
+    fun shouldClearFocus(position: Offset): Boolean {
+        if (activeOwners.isEmpty()) return false
+        activeOwners.values.forEach { resolveBounds ->
+            val bounds = resolveBounds() ?: return false
+            if (
+                position.x >= bounds.left &&
+                position.x <= bounds.right &&
+                position.y >= bounds.top &&
+                position.y <= bounds.bottom
+            ) {
+                return false
+            }
+        }
+        return true
+    }
+
+    fun remove(owner: Any) {
+        activeOwners -= owner
         hasActiveOwner = activeOwners.isNotEmpty()
     }
 }
 
 internal val LocalSlockInputFocusOwnerRegistry =
     compositionLocalOf<SlockInputFocusOwnerRegistry?> { null }
+
+internal fun shouldDismissInputFocusOnScrollableChrome(type: TouchType): Boolean =
+    type == TouchType.Down
+
+/**
+ * Shared non-consuming outside-focus observer for native-backed scrollable chrome. Attaching
+ * directly to the scroll node is required on Kuikly/iOS because the native scroll host does not
+ * relay its consumed pointer stream to an ancestor Compose pointerInput. The local down is resolved
+ * into root coordinates before checking every active input bound, so inputs nested inside the same
+ * scroll node preserve cursor and selection behavior.
+ */
+@Composable
+internal fun Modifier.dismissInputFocusOnScrollableChrome(): Modifier {
+    val focusOwnerRegistry = LocalSlockInputFocusOwnerRegistry.current
+    val currentFocusManager by rememberUpdatedState(LocalFocusManager.current)
+    val scrollAnchor = remember { SlockInputFocusRootAnchor() }
+    return onGloballyPositioned(scrollAnchor::update).touchListener { type, position ->
+        if (!shouldDismissInputFocusOnScrollableChrome(type)) return@touchListener
+        val rootPosition = scrollAnchor.resolve(position)
+        if (rootPosition != null && focusOwnerRegistry?.shouldClearFocus(rootPosition) == true) {
+            currentFocusManager.clearFocus(force = true)
+        }
+    }
+}
 
 /**
  * Installs the shared blank-down focus-dismiss boundary for an app, page, or modal root.
@@ -575,7 +649,8 @@ internal fun SlockInputFocusDismissHost(
     val registry = remember { SlockInputFocusOwnerRegistry() }
     CompositionLocalProvider(LocalSlockInputFocusOwnerRegistry provides registry) {
         content(
-            Modifier.dismissInputFocusOnUnconsumedPointerDown(
+            Modifier.dismissInputFocusOnOutsidePointerDown(
+                registry = registry,
                 enabled = registry.hasActiveOwner
             )
         )
@@ -859,6 +934,7 @@ internal fun TextField(
     var lastFocus by remember { mutableStateOf(false) }
     val focusOwnerRegistry = LocalSlockInputFocusOwnerRegistry.current
     val focusOwner = remember { Any() }
+    val focusOwnerAnchor = remember { SlockInputFocusOwnerAnchor() }
 
     val currentOnBlur by rememberUpdatedState(onBlur)
     val currentOnFocus by rememberUpdatedState(onFocus)
@@ -868,7 +944,7 @@ internal fun TextField(
     DisposableEffect(focusOwnerRegistry, focusOwner, participatesInGlobalFocusDismiss) {
         onDispose {
             if (participatesInGlobalFocusDismiss) {
-                focusOwnerRegistry?.setFocused(focusOwner, false)
+                focusOwnerRegistry?.remove(focusOwner)
             }
         }
     }
@@ -878,11 +954,12 @@ internal fun TextField(
         .let { if (systemNewlineAction) it.setProp(SLOCK_TEXT_FIELD_NUMBER_OF_LINES_PROP, maxLines) else it }
         .keyboardHeightChange(currentKeyboardHeightChange)
         .focusRequester(focusRequester)
+        .onGloballyPositioned(focusOwnerAnchor::update)
         .onFocusChanged {
             if (it.isFocused) {
                 if (!lastFocus) {
                     if (participatesInGlobalFocusDismiss) {
-                        focusOwnerRegistry?.setFocused(focusOwner, true)
+                        focusOwnerRegistry?.setFocused(focusOwner, true, focusOwnerAnchor::resolveBounds)
                     }
                     currentOnFocus()
                     lastFocus = true
@@ -962,6 +1039,7 @@ internal fun TextField(
     var lastFocus by remember { mutableStateOf(false) }
     val focusOwnerRegistry = LocalSlockInputFocusOwnerRegistry.current
     val focusOwner = remember { Any() }
+    val focusOwnerAnchor = remember { SlockInputFocusOwnerAnchor() }
 
     val currentOnBlur by rememberUpdatedState(onBlur)
     val currentOnFocus by rememberUpdatedState(onFocus)
@@ -971,7 +1049,7 @@ internal fun TextField(
     DisposableEffect(focusOwnerRegistry, focusOwner, participatesInGlobalFocusDismiss) {
         onDispose {
             if (participatesInGlobalFocusDismiss) {
-                focusOwnerRegistry?.setFocused(focusOwner, false)
+                focusOwnerRegistry?.remove(focusOwner)
             }
         }
     }
@@ -981,11 +1059,12 @@ internal fun TextField(
         .let { if (systemNewlineAction) it.setProp(SLOCK_TEXT_FIELD_NUMBER_OF_LINES_PROP, maxLines) else it }
         .keyboardHeightChange(currentKeyboardHeightChange)
         .focusRequester(focusRequester)
+        .onGloballyPositioned(focusOwnerAnchor::update)
         .onFocusChanged {
             if (it.isFocused) {
                 if (!lastFocus) {
                     if (participatesInGlobalFocusDismiss) {
-                        focusOwnerRegistry?.setFocused(focusOwner, true)
+                        focusOwnerRegistry?.setFocused(focusOwner, true, focusOwnerAnchor::resolveBounds)
                     }
                     currentOnFocus()
                     lastFocus = true

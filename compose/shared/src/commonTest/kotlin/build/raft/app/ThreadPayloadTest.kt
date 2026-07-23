@@ -46,6 +46,7 @@ import build.raft.app.data.SharedTasksDataStore
 import build.raft.app.data.SharedTasksDataStoreStatus
 import build.raft.app.data.SharedTasksProjectionSlice
 import build.raft.app.data.SharedTasksScope
+import build.raft.app.data.SharedTaskReferenceResolutionSource
 import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.data.SharedConversationDirectoryState
@@ -6860,6 +6861,248 @@ class ThreadPayloadTest {
         assertEquals("parent-message", found.payload.parentMessageId)
         assertEquals("reply-stream", found.payload.streamChannelId)
         assertEquals(listOf("taskByNumber:parent-channel:541"), api.calls)
+    }
+
+    @Test
+    fun markdownTaskNumberOpenUsesLoadedServerStoreWithoutNetwork() = runBlocking {
+        val store = SharedTasksDataStore()
+        store.publishSnapshot(
+            serverId = "server-1",
+            scope = SharedTasksScope.Server,
+            snapshot =
+                TaskSnapshot(
+                    tasks =
+                        listOf(
+                            TaskSummary(
+                                id = TaskId("task-340"),
+                                title = "Loaded task",
+                                status = TaskStatus.InProgress,
+                                taskNumber = 340,
+                                channelId = ChannelId("target-channel"),
+                                threadId = ThreadId("target-thread"),
+                                messageId = MessageId("target-message"),
+                                updatedAtLabel = ""
+                            )
+                        ),
+                    summaryCounts = emptyMap()
+                )
+        )
+        val api =
+            FakeMarkdownTaskNumberApi(
+                channelTaskBody = """{"task":{"id":"network-task"}}""",
+                serverTasksBody = """{"tasks":[]}"""
+            )
+        val targetProjection =
+            SharedConversationDirectoryProjection(
+                serverId = "server-1",
+                canonicalChannelId = "target-channel",
+                aliases = setOf("target-channel"),
+                conversationKind = ConversationKind.Channel,
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                channelKind = "channel",
+                title = "target"
+            )
+        val conversationIdentityProvider =
+            object : SharedConversationIdentityProvider {
+                override fun observeServer(serverId: ServerId): Flow<SharedConversationDirectoryState> =
+                    flowOf(SharedConversationDirectoryState())
+
+                override fun projectionFlow(
+                    serverId: ServerId,
+                    ids: Collection<String>
+                ): Flow<Map<String, SharedConversationDirectoryProjection>> = flowOf(emptyMap())
+
+                override fun resolveProjection(
+                    serverId: ServerId,
+                    id: String
+                ): SharedConversationDirectoryProjection? =
+                    targetProjection.takeIf { serverId.value == "server-1" && id == "target-channel" }
+            }
+
+        val result =
+            openMarkdownTaskNumberPayload(
+                serverId = ServerId("server-1"),
+                taskNumber = 340,
+                currentPayload =
+                    KuiklyThreadScreenPayload(
+                        status = "content",
+                        surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                        channelKind = "channel",
+                        sourceThreadId = "current-channel",
+                        streamChannelId = "current-channel"
+                    ),
+                currentTaskChannelId = ChannelId("current-channel"),
+                tasksDataSource = SharedTasksDataSource(api),
+                tasksDataStore = store,
+                conversationIdentityProvider = conversationIdentityProvider
+            )
+
+        val found = assertIs<MarkdownTaskNumberOpenResult.Found>(result)
+        assertEquals("task-340", found.task.id.value)
+        assertEquals(SharedTaskReferenceResolutionSource.LoadedServer, found.source)
+        assertEquals("target-channel", found.payload.parentChannelId)
+        assertEquals("target-message", found.payload.parentMessageId)
+        assertEquals(emptyList(), api.calls)
+    }
+
+    @Test
+    fun markdownTaskNumberOpenUsesLoadedExactChannelStoreWithoutNetwork() = runBlocking {
+        val store = SharedTasksDataStore()
+        store.publishSnapshot(
+            serverId = "server-1",
+            scope = SharedTasksScope.Channel(ChannelId("parent-channel")),
+            snapshot =
+                TaskSnapshot(
+                    tasks =
+                        listOf(
+                            TaskSummary(
+                                id = TaskId("task-541"),
+                                title = "Loaded channel task",
+                                status = TaskStatus.InProgress,
+                                taskNumber = 541,
+                                channelId = ChannelId("parent-channel"),
+                                messageId = MessageId("parent-message"),
+                                updatedAtLabel = ""
+                            )
+                        ),
+                    summaryCounts = emptyMap()
+                )
+        )
+        val api =
+            FakeMarkdownTaskNumberApi(
+                channelTaskBody = """{"task":{"id":"network-task"}}""",
+                serverTasksBody = """{"tasks":[]}"""
+            )
+
+        val result =
+            openMarkdownTaskNumberPayload(
+                serverId = ServerId("server-1"),
+                taskNumber = 541,
+                currentPayload =
+                    KuiklyThreadScreenPayload(
+                        status = "content",
+                        surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                        channelKind = "channel",
+                        sourceThreadId = "parent-channel",
+                        streamChannelId = "parent-channel"
+                    ),
+                currentTaskChannelId = ChannelId("parent-channel"),
+                tasksDataSource = SharedTasksDataSource(api),
+                tasksDataStore = store
+            )
+
+        val found = assertIs<MarkdownTaskNumberOpenResult.Found>(result)
+        assertEquals("task-541", found.task.id.value)
+        assertEquals(SharedTaskReferenceResolutionSource.LoadedChannel, found.source)
+        assertEquals(emptyList(), api.calls)
+    }
+
+    @Test
+    fun markdownTaskNumberOpenShowsLoadedAmbiguousStoreWithoutNetwork() = runBlocking {
+        val store = SharedTasksDataStore()
+        store.publishSnapshot(
+            serverId = "server-1",
+            scope = SharedTasksScope.Server,
+            snapshot =
+                TaskSnapshot(
+                    tasks =
+                        listOf(
+                            TaskSummary(
+                                id = TaskId("task-a-343"),
+                                title = "A",
+                                status = TaskStatus.Todo,
+                                taskNumber = 343,
+                                channelId = ChannelId("channel-a"),
+                                messageId = MessageId("message-a"),
+                                updatedAtLabel = ""
+                            ),
+                            TaskSummary(
+                                id = TaskId("task-b-343"),
+                                title = "B",
+                                status = TaskStatus.Done,
+                                taskNumber = 343,
+                                channelId = ChannelId("channel-b"),
+                                messageId = MessageId("message-b"),
+                                updatedAtLabel = ""
+                            )
+                        ),
+                    summaryCounts = emptyMap()
+                )
+        )
+        val api =
+            FakeMarkdownTaskNumberApi(
+                channelTaskBody = """{"task":{"id":"network-task"}}""",
+                serverTasksBody = """{"tasks":[]}"""
+            )
+
+        val result =
+            openMarkdownTaskNumberPayload(
+                serverId = ServerId("server-1"),
+                taskNumber = 343,
+                currentPayload =
+                    KuiklyThreadScreenPayload(
+                        status = "content",
+                        surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                        channelKind = "channel",
+                        sourceThreadId = "parent-channel",
+                        streamChannelId = "parent-channel"
+                    ),
+                currentTaskChannelId = ChannelId("current-channel"),
+                tasksDataSource = SharedTasksDataSource(api),
+                tasksDataStore = store
+            )
+
+        val ambiguous = assertIs<MarkdownTaskNumberOpenResult.Ambiguous>(result)
+        assertEquals(listOf("task-a-343", "task-b-343"), ambiguous.candidates.map { it.id.value })
+        assertEquals(SharedTaskReferenceResolutionSource.LoadedServer, ambiguous.source)
+        assertEquals(emptyList(), api.calls)
+    }
+
+    @Test
+    fun markdownTaskNumberLoadedMissStillAllowsCurrentChannelFallback() = runBlocking {
+        val store = SharedTasksDataStore()
+        store.publishSnapshot(
+            serverId = "server-1",
+            scope = SharedTasksScope.Server,
+            snapshot = TaskSnapshot(tasks = emptyList(), summaryCounts = emptyMap())
+        )
+        val api =
+            FakeMarkdownTaskNumberApi(
+                channelTaskBody =
+                    """{"task":{"id":"task-541","channelId":"parent-channel","threadId":"reply-stream","messageId":"parent-message","taskNumber":541,"title":"Fallback task","status":"in_progress"}}""",
+                serverTasksBody = """{"tasks":[]}"""
+            )
+
+        val result =
+            openMarkdownTaskNumberPayload(
+                serverId = ServerId("server-1"),
+                taskNumber = 541,
+                currentPayload =
+                    KuiklyThreadScreenPayload(
+                        status = "content",
+                        surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                        channelKind = "channel",
+                        sourceThreadId = "parent-channel",
+                        streamChannelId = "parent-channel"
+                    ),
+                currentTaskChannelId = ChannelId("parent-channel"),
+                tasksDataSource = SharedTasksDataSource(api),
+                tasksDataStore = store
+            )
+
+        val found = assertIs<MarkdownTaskNumberOpenResult.Found>(result)
+        assertEquals(SharedTaskReferenceResolutionSource.NetworkChannel, found.source)
+        assertEquals(listOf("taskByNumber:parent-channel:541"), api.calls)
+    }
+
+    @Test
+    fun markdownTaskNumberOpenRequestGateRejectsOlderCompletion() {
+        val gate = MarkdownTaskNumberOpenRequestGate()
+        val older = gate.nextRequest()
+        val newer = gate.nextRequest()
+
+        assertNull(gate.accept(older, "old-result"))
+        assertEquals("new-result", gate.accept(newer, "new-result"))
     }
 
     @Test

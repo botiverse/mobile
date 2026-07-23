@@ -66,6 +66,21 @@ scripts/install_git_hooks.sh
 
 The hook rejects commit messages that do not include a `Signed-off-by:` trailer with a `@mail.build` email. CI also runs `scripts/check-commit-signoff.sh` over the commit range for pushes and pull requests.
 
+## Immutable Shipped History
+
+Do not rewrite an already shipped or protected branch solely to repair a squash
+commit whose reviewed source head had a valid sign-off but whose immutable
+GitHub-generated commit lost that trailer. Such a commit may use the narrow
+forward-attestation ledger in `scripts/commit-signoff-attestations.tsv`.
+
+Each exception is exact-bound to one full immutable squash SHA, one full signed
+source SHA, and that source commit's exact `@mail.build` signer. The checker
+requires the source object to exist, verifies the exact trailer, requires a
+single-parent squash, and compares both commit trees. Short SHAs, wildcards,
+duplicates, missing source objects, signer mismatches, and tree mismatches fail
+closed. This mechanism is not an alternative to `git commit -s` for new work;
+ledger additions require independent review and a signed commit.
+
 ## PR-only Main Integration
 
 GitHub `main` is protected. A valid signed commit is necessary but not enough

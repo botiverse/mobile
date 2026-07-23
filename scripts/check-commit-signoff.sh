@@ -8,6 +8,100 @@ set -euo pipefail
 
 MAIL_BUILD_EMAIL_RE='[A-Za-z0-9._%+-]+@mail\.build'
 SIGNOFF_RE="^[[:space:]]*Signed-off-by:[[:space:]].*<${MAIL_BUILD_EMAIL_RE}>[[:space:]]*$"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ATTESTATIONS_FILE="${COMMIT_SIGNOFF_ATTESTATIONS_FILE:-${SCRIPT_DIR}/commit-signoff-attestations.tsv}"
+
+validate_attestation_ledger() {
+  [ -e "$ATTESTATIONS_FILE" ] || return 0
+  [ -f "$ATTESTATIONS_FILE" ] || fail "commit sign-off attestation ledger is not a file: $ATTESTATIONS_FILE"
+
+  local error
+  if ! error="$({
+    awk -F '\t' '
+      /^[[:space:]]*#/ || /^[[:space:]]*$/ { next }
+      NF != 3 {
+        printf "line %d must contain exactly 3 tab-separated fields", NR
+        exit 1
+      }
+      length($1) != 40 || $1 ~ /[^0-9a-f]/ {
+        printf "line %d has an invalid immutable commit SHA", NR
+        exit 1
+      }
+      length($2) != 40 || $2 ~ /[^0-9a-f]/ {
+        printf "line %d has an invalid signed source SHA", NR
+        exit 1
+      }
+      $3 !~ /^[A-Za-z0-9._%+-]+@mail[.]build$/ {
+        printf "line %d has an invalid source signer", NR
+        exit 1
+      }
+      seen[$1]++ {
+        printf "line %d duplicates immutable commit %s", NR, $1
+        exit 1
+      }
+    ' "$ATTESTATIONS_FILE"
+  } 2>&1)"; then
+    fail "commit sign-off attestation ledger is invalid: $error"
+  fi
+}
+
+attestation_for_commit() {
+  local commit="$1"
+  [ -f "$ATTESTATIONS_FILE" ] || return 1
+  awk -F '\t' -v commit="$commit" '
+    $0 !~ /^[[:space:]]*#/ && $0 !~ /^[[:space:]]*$/ && $1 == commit {
+      print $2 "\t" $3
+      found = 1
+    }
+    END { if (!found) exit 1 }
+  ' "$ATTESTATIONS_FILE"
+}
+
+source_has_exact_signer() {
+  local source_commit="$1"
+  local signer="$2"
+  git log -1 --format='%B' "$source_commit" |
+    git interpret-trailers --parse |
+    awk -v signer="$signer" '
+      {
+        key = $0
+        sub(/:.*/, "", key)
+        value = $0
+        sub(/^[^:]*:[[:space:]]*/, "", value)
+        suffix = "<" signer ">"
+        if (tolower(key) == "signed-off-by" &&
+            length(value) >= length(suffix) &&
+            substr(value, length(value) - length(suffix) + 1) == suffix) {
+          found = 1
+        }
+      }
+      END { exit found ? 0 : 1 }
+    '
+}
+
+verify_attestation() {
+  local commit="$1"
+  local subject="$2"
+  local attestation="$3"
+  local source_commit signer commit_tree source_tree parent_line
+  IFS=$'\t' read -r source_commit signer <<< "$attestation"
+
+  git cat-file -e "${source_commit}^{commit}" 2>/dev/null ||
+    fail "commit sign-off attestation for ${commit} (${subject}) references missing source commit ${source_commit}."
+  source_has_exact_signer "$source_commit" "$signer" ||
+    fail "commit sign-off attestation for ${commit} (${subject}) does not match an exact Signed-off-by trailer for <${signer}> on source ${source_commit}."
+
+  parent_line="$(git rev-list --parents -n 1 "$commit")"
+  [ "$(printf '%s\n' "$parent_line" | awk '{ print NF }')" -eq 2 ] ||
+    fail "commit sign-off attestation for ${commit} (${subject}) is only valid for a single-parent immutable squash commit."
+
+  commit_tree="$(git rev-parse "${commit}^{tree}")"
+  source_tree="$(git rev-parse "${source_commit}^{tree}")"
+  [ "$commit_tree" = "$source_tree" ] ||
+    fail "commit sign-off attestation for ${commit} (${subject}) does not match source tree ${source_commit}."
+
+  echo "commit sign-off: immutable squash ${commit} (${subject}) is attested by tree-identical signed source ${source_commit} (<${signer}>)."
+}
 
 print_fix_instructions() {
   cat <<'EOF'
@@ -62,12 +156,18 @@ check_commit_range() {
     exit 0
   fi
 
-  local commit body subject
+  validate_attestation_ledger
+
+  local commit body subject attestation
   while IFS= read -r commit; do
     body="$(git log -1 --format='%B' "$commit")"
     subject="$(git log -1 --format='%s' "$commit")"
     if ! printf '%s\n' "$body" | grep -qiE "$SIGNOFF_RE"; then
-      fail "commit sign-off check failed — ${commit} (${subject}) lacks a Signed-off-by trailer with @mail.build."
+      if attestation="$(attestation_for_commit "$commit")"; then
+        verify_attestation "$commit" "$subject" "$attestation"
+      else
+        fail "commit sign-off check failed — ${commit} (${subject}) lacks a Signed-off-by trailer with @mail.build."
+      fi
     fi
   done < <(git rev-list --reverse "$range")
 
