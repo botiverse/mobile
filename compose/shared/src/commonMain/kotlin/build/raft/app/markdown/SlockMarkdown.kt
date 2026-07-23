@@ -78,6 +78,8 @@ import com.tencent.kuiklybase.markdown.compose.components.markdownComponents
 import com.tencent.kuiklybase.markdown.model.DefaultMarkdownColors
 import com.tencent.kuiklybase.markdown.model.DefaultMarkdownTypography
 import com.tencent.kuiklybase.markdown.model.MarkdownAnnotator
+import com.tencent.kuiklybase.markdown.compose.SlockMarkdownNodeTrace
+import com.tencent.kuiklybase.markdown.compose.SlockMarkdownNodeTraceSink
 import com.tencent.kuiklybase.markdown.model.MarkdownParserContent
 import com.tencent.kuiklybase.markdown.model.TextProvider
 import com.tencent.kuiklybase.markdown.model.markdownAnnotator
@@ -611,6 +613,15 @@ private val SlockMarkdownThematicBreakRegex = Regex("""^(?:-{3,}|\*{3,}|_{3,})\s
 
 internal const val DEBUG_SLOCK_MARKDOWN_PERF_LOG = false
 private const val SlockMarkdownPerformanceSlowThresholdMs = 8L
+
+
+// t6-a: app-owned sink for the vendor per-node timing; same println channel as
+// the other SlockMarkdownSpike lines so existing collection tooling applies.
+internal object SlockMarkdownNodeSpikeSink : SlockMarkdownNodeTraceSink {
+    override fun emit(line: String) {
+        println(line)
+    }
+}
 
 internal fun shouldLogSlockMarkdownPerformance(durationMs: Long): Boolean =
     DEBUG_SLOCK_MARKDOWN_PERF_LOG || durationMs >= SlockMarkdownPerformanceSlowThresholdMs
@@ -1854,6 +1865,12 @@ fun SlockMarkdownBody(
         bodyLength = body.length,
         performanceLogger = performanceLogger
     )
+    // t6-a: install/clear the vendor node-timing sink keyed to the same
+    // diagnostics gate as the phase traces. Assignment only — with the gate
+    // OFF the vendor stays on its untimed path (executable counterfactual:
+    // sink == null before any clock read; see SlockMarkdownNodeTiming.kt).
+    SlockMarkdownNodeTrace.sink =
+        if (slockTraceDiagnosticsEnabled()) SlockMarkdownNodeSpikeSink else null
     val content = remember(body, performanceKey) {
         val startedAt = performanceKey?.let { TimeSource.Monotonic.markNow() }
         val (prepared, cacheHit) =
