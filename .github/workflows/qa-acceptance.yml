@@ -482,8 +482,8 @@ jobs:
           QA_MAX_MINUTES: ${{ inputs.max_minutes || '20' }}
           QA_NO_PROGRESS_TURNS: ${{ inputs.no_progress_turns || '8' }}
           STAMP_RUN_CASE_ID: ${{ inputs.stamp_run_case_id || '' }}
-          STAMP_URL: ${{ secrets.STAMP_URL }}
-          STAMP_TOKEN: ${{ secrets.STAMP_TOKEN }}
+          STAMP_URL: ${{ inputs.stamp_run_case_id != '' && secrets.STAMP_URL || '' }}
+          STAMP_TOKEN: ${{ inputs.stamp_run_case_id != '' && secrets.STAMP_TOKEN || '' }}
         with:
           api-level: 34
           arch: x86_64

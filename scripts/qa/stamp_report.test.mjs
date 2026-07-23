@@ -432,6 +432,9 @@ test("Android and iOS freeze legacy email before execution and expose none for b
     const receiptBlock = source.slice(receipt, execute);
     assert.match(receiptBlock, /bootstrap_required != 'true'/);
     assert.equal((receiptBlock.match(/stamp_report\.sh credential-receipt/g) ?? []).length, 1);
+    const executeBlock = source.slice(execute, source.indexOf("\n      - name:", execute + 1));
+    assert.match(executeBlock, /STAMP_URL:.*stamp_run_case_id != ''/);
+    assert.match(executeBlock, /STAMP_TOKEN:.*stamp_run_case_id != ''/);
   }
 });
 
