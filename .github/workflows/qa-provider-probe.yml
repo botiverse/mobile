@@ -1,0 +1,64 @@
+name: QA Provider Probe
+
+# Measures review-panel provider reachability and minimal-completion latency
+# from the SAME runner class that runs qa-review-panel.yml. Dispatch with a
+# custom base_url to compare a Cloudflare proxy against the direct
+# qwen-token-plan-cn endpoint. Logs and the uploaded report contain latency,
+# HTTP status, and error class only — never the API key.
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Provider base URL override (e.g. CF proxy); empty = direct qwen-token-plan-cn"
+        required: false
+        type: string
+      model:
+        description: "Model for the 1-token completion probe"
+        required: false
+        type: string
+        default: "qwen3.8-max-preview"
+      completion:
+        description: "Run the authenticated 1-token completion probe"
+        required: false
+        type: boolean
+        default: true
+      completion_timeout_ms:
+        description: "Completion probe hard timeout in ms"
+        required: false
+        type: string
+        default: "90000"
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: Probe provider from panel runner
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 10
+    steps:
+      - name: Checkout mobile
+        uses: actions/checkout@v5
+
+      - name: Probe provider
+        env:
+          QWEN_TOKEN_PLAN_CN_API_KEY: ${{ secrets.QWEN_TOKEN_PLAN_CN_API_KEY }}
+          PROBE_BASE_URL: ${{ inputs.base_url }}
+          PROBE_MODEL: ${{ inputs.model }}
+          PROBE_COMPLETION: ${{ inputs.completion }}
+          PROBE_COMPLETION_TIMEOUT_MS: ${{ inputs.completion_timeout_ms }}
+        run: |
+          set -euo pipefail
+          args=(--out provider-probe.json --model "$PROBE_MODEL" --completion-timeout-ms "$PROBE_COMPLETION_TIMEOUT_MS")
+          if [ -n "$PROBE_BASE_URL" ]; then args+=(--base-url "$PROBE_BASE_URL"); fi
+          if [ "$PROBE_COMPLETION" != "true" ]; then args+=(--no-completion); fi
+          node scripts/qa/provider_probe.mjs "${args[@]}"
+
+      - name: Upload probe report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: provider-probe-report
+          path: provider-probe.json
+          if-no-files-found: error
