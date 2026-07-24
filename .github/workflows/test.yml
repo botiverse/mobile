@@ -104,6 +104,9 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      - name: Apply Gradle cache policy
+        uses: ./.github/actions/gradle-cache-policy
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
 
@@ -230,6 +233,9 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+
+      - name: Apply Gradle cache policy
+        uses: ./.github/actions/gradle-cache-policy
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
@@ -438,6 +444,9 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+
+      - name: Apply Gradle cache policy
+        uses: ./.github/actions/gradle-cache-policy
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
@@ -779,6 +788,9 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      - name: Apply Gradle cache policy
+        uses: ./.github/actions/gradle-cache-policy
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
 
@@ -891,6 +903,9 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      - name: Apply Gradle cache policy
+        uses: ./.github/actions/gradle-cache-policy
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
 
@@ -993,6 +1008,9 @@ jobs:
       # zstd (actions/cache compression fingerprint) and curl (the SQLite
       # amalgamation download in prepare_ohos_sqlite_provider.sh) are now baked
       # into harmonyos-ci-image, so the per-run apt-get install is gone.
+      - name: Apply Gradle cache policy
+        uses: ./.github/actions/gradle-cache-policy
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
 

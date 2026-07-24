@@ -1,0 +1,11 @@
+name: Gradle cache policy
+description: >
+  Exports the repository Gradle cache policy (epoch key prefix and quarantined bundles) for the
+  gradle/actions/setup-gradle step that must follow this one. Fail-closed: a missing or malformed
+  policy file fails the job rather than silently running without the policy.
+runs:
+  using: composite
+  steps:
+    - name: Apply Gradle cache policy
+      shell: bash
+      run: bash "${GITHUB_ACTION_PATH}/apply.sh"

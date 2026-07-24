@@ -1,0 +1,33 @@
+name: Gradle cache policy lint
+
+on:
+  pull_request:
+    paths:
+      - ".github/**"
+      - "scripts/ci/check_gradle_cache_policy_wiring.py"
+      - "scripts/ci/test_gradle_cache_policy.sh"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/**"
+
+permissions:
+  contents: read
+
+jobs:
+  wiring:
+    name: Policy wiring invariant
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Self-test checker and policy parser
+        run: |
+          python3 scripts/ci/check_gradle_cache_policy_wiring.py --self-test
+          bash scripts/ci/test_gradle_cache_policy.sh
+
+      - name: Enforce wiring invariant and validate policy files
+        run: python3 scripts/ci/check_gradle_cache_policy_wiring.py

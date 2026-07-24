@@ -119,6 +119,9 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      - name: Apply Gradle cache policy
+        uses: ./.github/actions/gradle-cache-policy
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
 

@@ -123,6 +123,9 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Apply Gradle cache policy
+        uses: ./.github/actions/gradle-cache-policy
+
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v5
 
