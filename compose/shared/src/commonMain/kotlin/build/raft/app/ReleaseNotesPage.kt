@@ -641,8 +641,8 @@ internal fun releaseNotesCachedDocument(
             val versionCode = payload.optLong("versionCode")
             val markdown = payload.optString("markdown").trim()
             if (versionCode <= 0 || markdown.isBlank()) return@let null
-            requestedVersionCode?.let { requested ->
-                val exactRequestedVersion = releaseNotesSanitizeVersionCode(requested)
+            if (requestedVersionCode != null) {
+                val exactRequestedVersion = releaseNotesSanitizeVersionCode(requestedVersionCode)
                 if (
                     exactRequestedVersion.isBlank() ||
                     versionCode.toString() != exactRequestedVersion ||
