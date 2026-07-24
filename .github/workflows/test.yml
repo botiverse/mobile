@@ -971,6 +971,12 @@ jobs:
             echo "required=true" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Set up Node.js for OHOS native contract checks
+        if: steps.ohos_native.outputs.required == 'true'
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
       - name: Compile shared OHOS target and unit tests
         working-directory: compose
         env:
