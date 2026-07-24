@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-23T22:54:52.011Z",
+  "generatedAt": "2026-07-24T22:24:47.043Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 79,
-    "ready": 73,
-    "pending": 6
+    "ready": 71,
+    "pending": 8
   },
   "cases": [
     {
@@ -364,7 +364,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.062097122642146285
+      "metricMismatch": 0.06209779776130486
     },
     {
       "id": "components.ui.spinner.states",
@@ -1349,7 +1349,7 @@
     {
       "id": "components.home.search.results",
       "status": "ready",
-      "imageHash": "p1:1ffe1ffe85f807fc80000000800000008cef0000800310120002dfffffffffffffff80ff80009fff8038c0ff800080ff88035fffe7ff7fffc0fe8003c00e8002fffe83ffd8fe87ffd05ec1fedffe9fffffff807effff4bffffff403fffff83effffffc3ffffff81ffffffffffffffffffffffffffffffffffffe7ffeffffffff",
+      "imageHash": "p1:1ffe1ffe85f807fc80000000800000008cef0000800310120002dfffffffffffffff80ff80009fff803cc0ff800080ff88035fffe7ffffffc0fe8003c00e8002fffe83ffd8fe87ffd05ec1fedffe9fffffff807effff4bffffff403fffff83effffffc3ffffff81ffffffffffffffffffffffffffffffffffffe7ffeffffffff",
       "generatedAt": "2026-07-11T22:11:11.488Z",
       "severity": "medium",
       "summary": [
@@ -1379,7 +1379,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2686083093666032
+      "metricMismatch": 0.26783225989387127
     },
     {
       "id": "components.home.search.channel-dropdown",
@@ -1415,7 +1415,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2681404517897409
+      "metricMismatch": 0.26762837390799477
     },
     {
       "id": "components.home.saved.results",
@@ -1449,7 +1449,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.11588555380024579
+      "metricMismatch": 0.11587914016823975
     },
     {
       "id": "components.home.activity.results",
@@ -1485,7 +1485,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.10737702704527352
+      "metricMismatch": 0.10742090979057806
     },
     {
       "id": "components.tasks.panel.states",
@@ -1661,7 +1661,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-23T22:54:51.036Z",
+      "generatedAt": "2026-07-24T22:24:46.159Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1706,38 +1706,16 @@
     },
     {
       "id": "components.channel.settings.panel",
-      "status": "ready",
-      "imageHash": "p1:ffffffff8000000100000000000000000000000000000000000000007ffe7ffc7ffe7ffc7ffe7ffe7ffe7ffc7ffe7ffc7ffe7ffe7ffe7ffc7ffe7ffc7ffe7ffc7f867ffc7f827ffc7ffe7ffc7c3e7c3860027dfc781e781c40024004400240007ffe2004000000000000000000000000000000000000000080018001ffffffff",
-      "generatedAt": "2026-07-19T05:31:49.912Z",
-      "severity": "medium",
-      "summary": [
-        "'Save Changes' button state differs: React shows active pink/enabled styling, iOS shows disabled gray/muted styling",
-        "All three action buttons (Make Private, Archive Channel, Delete Channel) appear noticeably smaller in the iOS render with reduced vertical padding",
-        "Typography in iOS appears lighter weight and slightly smaller throughout the modal compared to React",
-        "Modal panel width relative to viewport is wider on iOS, with less side margin/padding",
-        "Button vertical spacing between Make Private / Archive Channel / Delete Channel is tighter on iOS"
-      ],
-      "likelyCauses": [
-        "iOS implementation not mapping disabled/save button state to the active visual style",
-        "iOS font scale or design tokens using smaller type sizes than React baseline",
-        "iOS component density tokens using more compact button heights than React spec",
-        "Inconsistent token mapping between React and iOS button color/weight definitions"
-      ],
-      "suggestedOwner": "iOS",
-      "suggestedFixes": [
-        "Sync Save Changes button enabled state styling to match React's pink fill when form is valid",
-        "Normalize button height/padding tokens between React and iOS to use the same density scale",
-        "Align font weight and size tokens so modal titles, labels, and button text render at identical visual weight",
-        "Align modal horizontal margins so panel width matches React baseline proportionally",
-        "Review action button group spacing tokens to ensure consistent vertical rhythm"
-      ],
-      "intentional": [
-        "None clearly intentional — disabled Save button likely indicates a real state or token mismatch"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.17753068416575524
+      "status": "pending",
+      "imageHash": "p1:ffffffff000000000000000000000000000000000000000000007ffc7ffe7ffc7ffe7ffc7ffe7ffc7ffe7ffc7ffe7ffc7ffe7ffc7ffe7ffc7ffe7ffc7ffe7ffc7f867ffc7f827ffc7ffe7ffc7c3e7ffc40025838781e783440025818400240047ffe4000000000040000000000000000000000000000000080018001ffffffff",
+      "generatedAt": "2026-07-24T22:24:46.419Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.2778523784447955
     },
     {
       "id": "components.channel.members.add-panel",
@@ -1777,36 +1755,16 @@
     },
     {
       "id": "components.settings.root.page",
-      "status": "ready",
-      "imageHash": "p1:1ffc1ffc0000000000000000000000008ffe1ffecffe03fe81fe01fec7fe07fec7fe07fe83fe07fedffe0ffe87fe0ffe83fe5ffe87fe03fe83fe1ffe83fe03fec7fe43fe87fe03fe87fe07fe87fe7ffe87fe1ffebffe07fe8ffe03fe83fe03fe83fe7ffe87fe7ffe83fe7ffe83fe7ffefffe7ffefffe7ffe00000000fff81fff",
-      "generatedAt": "2026-07-23T22:53:08.374Z",
-      "severity": "high",
-      "summary": [
-        "iOS header includes a large settings gear icon next to the 'Settings' title; React header has text only",
-        "iOS adds 'Mobile' and 'Storage' menu items under PERSONAL that are absent in React",
-        "React shows 'Plan & Billing', 'Applications', and 'MCP Servers' under WORKSPACE; iOS replaces these with 'Billing', 'Connected Apps', and 'Computers' (Computers is duplicated in both)",
-        "React 'ABOUT' section lists 'About', 'Documentation', 'Feedback', 'Release Notes'; iOS 'ABOUT' lists 'About', 'Send feedback', 'Release Notes' (missing 'Documentation')",
-        "Vertical spacing between menu items is noticeably tighter on iOS than React, producing a denser list"
-      ],
-      "likelyCauses": [
-        "Settings menu item lists were independently authored for iOS without reusing the React/Web menu definition",
-        "Platform-specific menu configuration diverged (item additions, removals, renames) instead of being shared",
-        "Differences in default list/row padding between the iOS list component and the React web component",
-        "iOS header gained a decorative/functional icon not present on the web design spec"
-      ],
-      "suggestedOwner": "Design Systems / iOS Engineer (settings navigation owner)",
-      "suggestedFixes": [
-        "Sync menu items from a single shared source-of-truth across web and iOS so additions/removals match",
-        "Align item label text exactly (e.g., 'Plan & Billing' vs 'Billing', 'Applications' vs 'Connected Apps', 'Feedback' vs 'Send feedback')",
-        "Match React's row spacing on iOS by setting the list row height/padding to the web equivalent",
-        "Remove the extra header gear icon on iOS, or add the equivalent on React, so the header layout is consistent",
-        "Verify the PERSONAL group on React should include 'Mobile' and 'Storage', and the ABOUT group should include 'Documentation' — then mirror accordingly"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.040952390596940336
+      "status": "pending",
+      "imageHash": "p1:1ffc1ffc0000000000000000000000008ffe1ffecffe03fe81fe01fec7fe07fec7fe07fe83fe07fedffe0ffe87fe0ffe83fe5ffe87fe03fe83fe1ffe83fe03fec7fe43fe87fe03fe87fe07fe87fe7ffe87fe1ffebffe07fe8ffe03fe83fe03fe83fe7ffe83fe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
+      "generatedAt": "2026-07-24T22:24:46.532Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.03978747248889425
     },
     {
       "id": "components.settings.account.page",
@@ -1946,7 +1904,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19377607647749828
+      "metricMismatch": 0.19379227933730303
     },
     {
       "id": "components.settings.notifications.page",
@@ -2056,7 +2014,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-23T22:54:51.475Z",
+      "generatedAt": "2026-07-24T22:24:46.549Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2069,7 +2027,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-23T22:54:51.475Z",
+      "generatedAt": "2026-07-24T22:24:46.549Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2082,7 +2040,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-23T22:54:51.475Z",
+      "generatedAt": "2026-07-24T22:24:46.549Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2095,7 +2053,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-23T22:54:51.475Z",
+      "generatedAt": "2026-07-24T22:24:46.549Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2108,7 +2066,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-23T22:54:51.475Z",
+      "generatedAt": "2026-07-24T22:24:46.549Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2216,7 +2174,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.25410438692429216
+      "metricMismatch": 0.25410404936471287
     },
     {
       "id": "screens.settings.server-danger-modal",
@@ -2316,7 +2274,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.10234873955253099
+      "metricMismatch": 0.10234333859926281
     },
     {
       "id": "components.thread.message-row.long-inline-code",

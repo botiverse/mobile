@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-23T22:54:47.686Z",
+  "generatedAt": "2026-07-24T22:24:43.727Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 79,
-    "ready": 78,
-    "pending": 1
+    "ready": 75,
+    "pending": 4
   },
   "cases": [
     {
@@ -364,7 +364,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.41496209659952354
+      "metricMismatch": 0.4149707602339181
     },
     {
       "id": "components.ui.spinner.states",
@@ -1221,7 +1221,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.7067650315280647
+      "metricMismatch": 0.7067643564089061
     },
     {
       "id": "components.thread.forward-modal",
@@ -1367,7 +1367,7 @@
     {
       "id": "components.home.search.results",
       "status": "ready",
-      "imageHash": "p1:1ffe1ffe85f807fc80000000800000008cef0000800300120002dfffffffffffffff80ff80009fff8038c0ff800080ff88035fffe7ff7fffc0fe8001c00e8002fffe83ffd8fe87ffd05ed9fedffe9fffffffc27effff5bffffff403fffff83effffffc3ffffff81ffffffdbffffffffffffffffffffffffffffe7ffeffffffff",
+      "imageHash": "p1:1ffe1ffe85f807fc80000000800000008cef0000800300120002dfffffffffffffff80ff80009fff803cc0ff800080ff88035fffe7ffffffc0fe8001c00e8002fffe83ffd8fe87ffd05ed9fedffe9fffffffc27effff5bffffff403fffff83effffffc3ffffff81ffffffdbffffffffffffffffffffffffffffe7ffeffffffff",
       "generatedAt": "2026-07-11T22:10:21.250Z",
       "severity": "medium",
       "summary": [
@@ -1398,7 +1398,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2678592646602125
+      "metricMismatch": 0.26707848935337086
     },
     {
       "id": "components.home.search.channel-dropdown",
@@ -1431,7 +1431,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.26737216618733206
+      "metricMismatch": 0.2668732531291773
     },
     {
       "id": "components.home.saved.results",
@@ -1467,7 +1467,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1934834098388145
+      "metricMismatch": 0.19346402146345554
     },
     {
       "id": "components.home.activity.results",
@@ -1501,7 +1501,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1861556519734222
+      "metricMismatch": 0.18622377329225093
     },
     {
       "id": "components.tasks.panel.states",
@@ -1679,7 +1679,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-23T22:54:46.204Z",
+      "generatedAt": "2026-07-24T22:24:42.939Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1727,34 +1727,16 @@
     },
     {
       "id": "components.channel.settings.panel",
-      "status": "ready",
-      "imageHash": "p1:ffffffff8000000000000000000000000000000000000000000000007ffe7ffc7ffe7ffc7ffe7ffe7ffe7ffc7ffe7ffc7ffe7ffe7ffe7ffc7ffe7ffc7ffe7ffc7f867ffc7f827ffc7ffe7ffc7c3e7c3860027ffc781e781c40026004400240007ffe23c4000000000000000000000000000000000000000080018001ffffffff",
-      "generatedAt": "2026-07-19T05:31:29.921Z",
-      "severity": "high",
-      "summary": [
-        "Save Changes button on Android is rendered disabled (greyed out, grey text) while React shows it active in pink",
-        "Android panel has smaller vertical spacing — the Cancel/Save row sits closer to the Description field and the action buttons (Make Private, Archive, Delete) are more tightly stacked",
-        "Title 'EDIT CHANNEL' and close (×) icon have less vertical breathing room on Android, sitting closer to the panel top",
-        "Make Private, Archive Channel, and Delete Channel buttons appear slightly narrower / shorter on Android, causing icon+label to wrap tighter",
-        "Required-field asterisk on 'NAME *' and '(optional)' label color/weight on Description look visually identical, so those are not the source of the diff"
-      ],
-      "likelyCauses": [
-        "Android component binds Save Changes disabled state to a validation/form-condition that React does not enforce",
-        "Differing vertical padding/margin tokens between the React and Android design-token implementations",
-        "Android buttons use a different height/padding token than the React spec for destructive/secondary actions"
-      ],
-      "suggestedOwner": "android",
-      "suggestedFixes": [
-        "Verify the Save Changes enabled/disabled logic on Android matches React; remove premature disabled state when form is valid",
-        "Align Android spacing scale (panel internal padding, row gaps, action-button height) to the React design tokens",
-        "Ensure the same button-height token is applied to Make Private / Archive / Delete on both platforms",
-        "Re-run slock with crop contract consistent on both sides (baseline 'modal-viewport' vs current 'viewport-bounds') to eliminate false layout diff"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.1774965906482494
+      "status": "pending",
+      "imageHash": "p1:ffffffff000000000000000000000000000000000000000000007ffc7ffe7ffc7ffe7ffc7ffe7ffc7ffe7ffc7ffe7ffc7ffe7ffc7ffe7ffc7ffe7ffc7ffe7ffc7f867ffc7f827ffc7ffe7ffc7c3e7ffc40024000781e7ffc40024000400260047ffe4000000020040000000000000000000000000000000080018001ffffffff",
+      "generatedAt": "2026-07-24T22:24:43.122Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.27497907130608557
     },
     {
       "id": "components.channel.members.add-panel",
@@ -1794,39 +1776,16 @@
     },
     {
       "id": "components.settings.root.page",
-      "status": "ready",
-      "imageHash": "p1:1ffc1ffc0000000000000000000000008ffe1ffecffe01fe81fe01fec7fe07fec7fe07fe83fe0ffedffe0ffe87fe0ffe83fe5ffe87fe03fe83fe0ffe83fe03fec7fe03fe87fe03fe87fe07fe87fe7ffe87fe1ffebffe03fe8ffe03fe83fe03fe83fe7ffe87fe7ffe83fe7ffe83fe7ffefffe7ffefffe7ffe00000000fff81fff",
-      "generatedAt": "2026-07-23T22:53:00.418Z",
-      "severity": "medium",
-      "summary": [
-        "Android adds a settings (gear) icon to the left of the 'Settings' title in the yellow header; React shows only the text.",
-        "Android list items are more vertically condensed: spacing between rows is smaller and section headers (PERSONAL/WORKSPACE/ABOUT) are closer to items.",
-        "Android includes extra list items not present in React: 'Mobile', 'Storage' under PERSONAL, and 'Send feedback' under ABOUT.",
-        "Android renames 'Plan & Billing' to 'Billing' and 'Feedback' to 'Send feedback'; React shows 'Applications', 'MCP Servers', and 'Documentation' which Android omits.",
-        "Android moves 'Mobile' and 'Storage' into the PERSONAL section (between Notifications and WORKSPACE) rather than the order seen in React."
-      ],
-      "likelyCauses": [
-        "Android implementation renders a different settings menu list (likely a platform-native navigation drawer vs. the React web settings page).",
-        "Icon and header composition was added on Android but not on React baseline.",
-        "Section ordering and item copy differ between the two codebases, indicating divergent feature flags or menu configs.",
-        "Missing items (Applications, MCP Servers, Documentation) suggest Android build is missing menu entries the React app exposes."
-      ],
-      "suggestedOwner": "android-settings",
-      "suggestedFixes": [
-        "Remove the gear icon from the Android header so it matches the React 'Settings' text-only title.",
-        "Match React's vertical row spacing and section-header-to-item gap in the Android list.",
-        "Reorder PERSONAL section on Android so it reads Account, Language & Region, Appearance, Notifications (drop Mobile/Storage here, or place per spec).",
-        "Remove 'Send feedback' or align naming ('Feedback') with React copy, and verify 'Billing' label matches 'Plan & Billing'.",
-        "Add missing entries on Android: 'Applications', 'MCP Servers' (Workspace), and 'Documentation' (About) to match React baseline."
-      ],
-      "intentional": [
-        "Different item ordering may be intentional platform adaptation.",
-        "Gear icon in header may be intentional Android pattern (e.g., navigation drawer opener)."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.04213114864773637
+      "status": "pending",
+      "imageHash": "p1:1ffc1ffc0000000000000000000000008ffe1ffecffe01fe81fe01fec7fe07fec7fe07fe83fe0ffedffe0ffe87fe0ffe83fe5ffe87fe03fe83fe0ffe83fe03fec7fe03fe87fe03fe87fe07fe87fe7ffe87fe1ffebffe03fe8ffe03fe83fe03fe83fe7ffe83fe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
+      "generatedAt": "2026-07-24T22:24:43.152Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.040966230539690285
     },
     {
       "id": "components.settings.account.page",
@@ -1933,7 +1892,7 @@
     {
       "id": "components.settings.appearance.page",
       "status": "ready",
-      "imageHash": "p1:0ffe0ffc8ffe0ffe81fe81fe97fe1efe820f001c81fc4ff481fc4ff080040004bffc8000807c03fc81fc3d0cbffc007c8ffc007c807c00008004007cb1fc0004800020008000000081f0ffffa018ffffbffcffff9bfcffff8000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7ffe7ffeffff7fff",
+      "imageHash": "p1:0ffe0ffc8ffe0ffe81fe81fe97fe1efe820f001c81fc4ff481fc4ff080040004bffc8000807c03fc81fc3d0cbffc007c8ffc007c807c00008004007cb1fc0004800020008000000081f0ffffa018ffffbffcffff9bfcffff8000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7ffe7ffeffffffff",
       "generatedAt": "2026-07-23T22:53:00.533Z",
       "severity": "high",
       "summary": [
@@ -1961,7 +1920,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19744906225948877
+      "metricMismatch": 0.19746796559592772
     },
     {
       "id": "components.settings.notifications.page",
@@ -2069,7 +2028,7 @@
     {
       "id": "screens.members.agent-detail.profile",
       "status": "ready",
-      "imageHash": "p1:1ffe3ffe801000318010082100000000001206e281ff0f7f8fff001f8fff0fffffffdfff83ffe7ffffffdfff81fbdfff803f81ffffffffffffffffff8fff0fff8fff0fff80ffd87f80fff9fffffff1ffd47fffffffffffffd7ff0c3f80010c3f80010c7f80ff0007807f0003807fffffffff97ffdfff87ff80781c02ffffffff",
+      "imageHash": "p1:1ffe3ffe801000318010082100000000001206e2817f0f7f8fff001f8fff0fffffffdfff83ffe7ffffffdfff81fbdfff803f81ffffffffffffffffff8fff0fff8fff0fff80ffd87f80fff9fffffff1ffd47fffffffffffffd7ff0c3f80010c3f80010c7f80ff0007807f0003807fffffffff97ffdfff87ff80781c02ffffffff",
       "generatedAt": "2026-07-18T07:39:56.994Z",
       "severity": "high",
       "summary": [
@@ -2134,7 +2093,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.05968897260366457
+      "metricMismatch": 0.059678508256707286
     },
     {
       "id": "screens.members.agent-detail.workspace",
@@ -2413,36 +2372,16 @@
     },
     {
       "id": "components.thread.message-row.rich-content",
-      "status": "ready",
-      "imageHash": "p1:07fc0ffc03fe07fcfffefffe07fefffe160287fe00028702e0028000e002f000e003e000e002e006e002e002e003e000e03ee000fffef3fee03ee3fef07efffefffef03ee0fefffefffefffefffef0fee03efffef2fefffefffef01efffefffefffefffee002f3fee002fbfeeffee000fffee00200000e00fff81fffffffffff",
-      "generatedAt": "2026-07-19T22:09:39.335Z",
-      "severity": "medium",
-      "summary": [
-        "Android capture uses a monospace typeface for the body, author/username, and metadata text, while React uses a proportional sans-serif, causing different line wrapping and right-edge clipping.",
-        "React renders a richer message header line (avatar + 'Cindy', a longer username excerpt, and full timestamp '06/22 03:30 PM'); Android truncates the username earlier and the timestamp is clipped on the right ('06/22 23' visible, rest cut off).",
-        "Inline tag/mention chips (#design, @artin, #222) differ slightly in size, padding, and border weight between platforms; on Android they appear marginally larger and more rectangular.",
-        "Android shows a 'Text preview' affordance inside the second attachment card with an eye icon, whereas React renders a 'Document preview' row without that label; the file metadata format also differs ('HTML preview · 32 KB' on Android vs 'HTML preview · 32 KB' with different layout on React).",
-        "Action chip row is wrapped to two lines on React (#222 @Cindy, 7 replies·2 new, 👍 3, + stacked vertically) but laid out on a single row on Android with the + button beside the reactions, changing the overall component height."
-      ],
-      "likelyCauses": [
-        "Android client maps the rich-text renderer to a monospace system font instead of the design-system proportional font used on web/React.",
-        "Truncation/ellipsis policy for the username and timestamp row is configured with a smaller available width or earlier break point on Android.",
-        "Attachment card component variant differs between platforms (different preview affordance labels and metadata separator styling).",
-        "Action chip row uses a flex layout on Android that fits horizontally, while React stacks chips vertically due to wrap behavior or container width."
-      ],
-      "suggestedOwner": "android-chat",
-      "suggestedFixes": [
-        "Switch the Android rich-content TextView/Spannable rendering to the design-system proportional font (matching React's typeface) and verify line metrics.",
-        "Re-tune header row layout: allow more width or shrink avatar padding so the full username and '06/22 03:30 PM' timestamp render without clipping.",
-        "Normalize tag/mention chip dimensions across platforms (same padding, border radius, font weight) so #design, @artin, and #222 visually match.",
-        "Align attachment card preview affordance labels and metadata separator (use consistent 'Document preview' / 'HTML preview' copy and bullet style on Android).",
-        "Make the action chip row wrap consistently across platforms (either both stack or both inline) to keep bounds and total height predictable."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.250236655749168
+      "status": "pending",
+      "imageHash": "p1:07fc0ffc03fe07fcfffefffe07fefffe160287fe00028702e0028000e002f000e003e000e002e006e002e002e003e000e03ee000fffef3fee03ee3fef1befffefffef03ee0fefffefffefffefffef0fee03efffef3befffefffef01efffefffefffefffee002f3fee002fbfeeffee000fffee00200000e00fff81fffffffffff",
+      "generatedAt": "2026-07-24T22:24:43.561Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.25023335741120045
     },
     {
       "id": "components.thread.message-row.long-inline-code",

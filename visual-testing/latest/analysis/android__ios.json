@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-23T22:54:56.167Z",
+  "generatedAt": "2026-07-24T22:24:50.566Z",
   "baseline": "android",
   "current": "ios",
   "comparison": "android__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 79,
-    "ready": 74,
-    "pending": 5
+    "ready": 73,
+    "pending": 6
   },
   "cases": [
     {
@@ -940,7 +940,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.059455043815233366
+      "metricMismatch": 0.05944964286196519
     },
     {
       "id": "components.thread.header.states",
@@ -1071,7 +1071,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.3766152225867866
+      "metricMismatch": 0.3767050134348713
     },
     {
       "id": "components.thread.message-menu.task",
@@ -1631,37 +1631,20 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.08855571758415359
+      "metricMismatch": 0.08855639270331217
     },
     {
       "id": "components.channel.settings.panel",
-      "status": "ready",
-      "imageHash": "p1:ffffffff8000000100000000000000000000000000000000000000007ffe7ffc7ffc7ffc7ffe7ffe7ffe7ffc7ffe7ffc7ffe7ffe7ffe7ffc7ffc7ffc7ffe7ffc7ffe7ffc7ffe7ffc7ffe7ffc7c387c387ffe7dfc781c781c640440044000400023c42004000000000000000000000000000000000000000080018001ffffffff",
-      "generatedAt": "2026-07-19T05:32:09.503Z",
-      "severity": "low",
-      "summary": [
-        "Layout, typography, colors, spacing, alignment, and component bounds appear visually isomorphic between Android and iOS renders.",
-        "Panel modal width relative to viewport and vertical rhythm between Name field, Description field, action buttons (Cancel/Save Changes), and the destructive action stack (Make Private / Archive Channel / Delete Channel) match across both ends.",
-        "Form field borders, placeholder text styling, required-field '*' indicator color (pink/red), and button fill colors (orange for Make Private/Archive, red for Delete) are consistent between the two platforms."
-      ],
-      "likelyCauses": [
-        "High similarity scores (RGB 97.96%, pixel-perfect 96.57%, mismatch 3.43%) are driven by minor sub-pixel/anti-aliasing differences rather than real structural divergence.",
-        "Any remaining delta is attributable to platform-default font hinting/rendering rather than layout code differences."
-      ],
-      "suggestedOwner": "kuikly-renderer",
-      "suggestedFixes": [
-        "No layout-level fixes required; the two ends are effectively isomorphic at the component level.",
-        "If strict parity is desired, consider normalizing text rendering options (e.g., subpixel antialiasing, font weight mapping) on iOS to match Android output.",
-        "Confirm the 3.43% pixel mismatch stays within the 0.02 pixel-ratio tolerance for CI gating."
-      ],
-      "intentional": [
-        "Use of platform-native font rendering (Roboto on Android vs. system font on iOS) is expected and acceptable.",
-        "Different raw device pixel dimensions (390x844 vs 1170x2532) are normal and normalized by the compare canvas."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.03428390110854562
+      "status": "pending",
+      "imageHash": "p1:ffffffff00000000000000000000000000000000000000007ffe7ffc7ffc7ffc7ffe7ffc7ffc7ffc7ffc7ffc7ffe7ffc7ffc7ffc7ffc7ffc7ffe7ffc7ffe7ffc7ffe7ffc7ffe7ffc7ffc7ffc7ffc7ffc60004000699c6004600040006004400440004000000400040000000000000000000000000000000080018001ffffffff",
+      "generatedAt": "2026-07-24T22:24:50.009Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.04180405341542781
     },
     {
       "id": "components.channel.members.add-panel",
@@ -1953,7 +1936,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-23T22:54:55.685Z",
+      "generatedAt": "2026-07-24T22:24:50.108Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1966,7 +1949,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-23T22:54:55.685Z",
+      "generatedAt": "2026-07-24T22:24:50.108Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1979,7 +1962,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-23T22:54:55.685Z",
+      "generatedAt": "2026-07-24T22:24:50.108Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1992,7 +1975,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-23T22:54:55.685Z",
+      "generatedAt": "2026-07-24T22:24:50.108Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2005,7 +1988,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-23T22:54:55.685Z",
+      "generatedAt": "2026-07-24T22:24:50.108Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

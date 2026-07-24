@@ -1,20 +1,20 @@
 # Raft Visual Testing
 
-Generated: 2026-07-23 22:54:58 UTC
-Latest run: 37df1bb1-20260723224841
-Latest commit: 37df1bb1-20260723224841
-Commit subject: fix(visual): preserve artifacts across targeted processes (#1499)
+Generated: 2026-07-24 22:24:52 UTC
+Latest run: 91f78973-20260724222236
+Latest commit: 91f78973-20260724222236
+Commit subject: fix(qa): bootstrap canonical release cases (#1563)
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 79, same 0, pass 0, basic-pass 0, different 78, missing 1
-AI analysis: ready 78 / total 79, pending 1
+AI analysis: ready 75 / total 79, pending 4
 Visual coverage matrix: active 88 / total 107, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Comparisons
 
 - react__android: total 79, same 0, pass 0, basic-pass 0, different 78, missing 1
-- react__ios: total 79, same 0, pass 13, basic-pass 9, different 51, missing 6
-- android__ios: total 79, same 0, pass 14, basic-pass 18, different 42, missing 5
+- react__ios: total 79, same 0, pass 13, basic-pass 10, different 50, missing 6
+- android__ios: total 79, same 0, pass 14, basic-pass 17, different 43, missing 5
 
 ## Capture Type Coverage
 
@@ -115,6 +115,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- 91f78973-20260724222236: react vs android, total 79, pass 0, basic-pass 0, different 78, matrix runs/91f78973-20260724222236/component-matrix.json, page runs/91f78973-20260724222236/
 - 37df1bb1-20260723224841: react vs android, total 79, pass 0, basic-pass 0, different 78, matrix runs/37df1bb1-20260723224841/component-matrix.json, page runs/37df1bb1-20260723224841/
 - 785f4dc-20260722221033: react vs android, total 85, pass 0, basic-pass 1, different 83, matrix runs/785f4dc-20260722221033/component-matrix.json, page runs/785f4dc-20260722221033/
 - 6f81bef-20260722112452: react vs android, total 85, pass 0, basic-pass 1, different 83, matrix runs/6f81bef-20260722112452/component-matrix.json, page runs/6f81bef-20260722112452/

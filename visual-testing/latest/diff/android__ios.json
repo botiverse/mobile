@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-23T22:54:45.312Z",
+  "generatedAt": "2026-07-24T22:24:42.412Z",
   "baseline": "android",
   "current": "ios",
   "key": "android__ios",
@@ -61,7 +61,7 @@
         },
         "diagnostics": {
           "displayWidthPx": 1170,
-          "displayHeightPx": 2342,
+          "displayHeightPx": 2460,
           "densityDpi": 480,
           "rootWidthPx": 1170,
           "rootHeightPx": 2532,
@@ -70,18 +70,18 @@
           "laidOutViews": 22,
           "visibleContentLeafViews": 0,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 3833,
+          "processId": 3943,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "86a78fb7f0c1e000288eb68b5730349f",
-          "bootId": "268bf148-10b8-455e-b48e-741cc912598b",
-          "capturedAtEpochMs": 1784846030102,
-          "capturedAtMonotonicNs": 71870783608
+          "generation": "81d8cb3f1e605da586c5e412cfe10670",
+          "bootId": "ee5aa321-2555-4f73-91e0-bf65c36ee709",
+          "capturedAtEpochMs": 1784930353647,
+          "capturedAtMonotonicNs": 73115837437
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846030102"
+        "capturedAt": "1784930353647"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -178,7 +178,7 @@
         },
         "diagnostics": {
           "displayWidthPx": 1170,
-          "displayHeightPx": 2342,
+          "displayHeightPx": 2460,
           "densityDpi": 480,
           "rootWidthPx": 1170,
           "rootHeightPx": 2532,
@@ -187,18 +187,18 @@
           "laidOutViews": 42,
           "visibleContentLeafViews": 0,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 3833,
+          "processId": 3943,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "86a78fb7f0c1e000288eb68b5730349f",
-          "bootId": "268bf148-10b8-455e-b48e-741cc912598b",
-          "capturedAtEpochMs": 1784846027074,
-          "capturedAtMonotonicNs": 68842625239
+          "generation": "81d8cb3f1e605da586c5e412cfe10670",
+          "bootId": "ee5aa321-2555-4f73-91e0-bf65c36ee709",
+          "capturedAtEpochMs": 1784930334928,
+          "capturedAtMonotonicNs": 54396858509
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846027074"
+        "capturedAt": "1784930334928"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -304,18 +304,18 @@
           "laidOutViews": 23,
           "visibleContentLeafViews": 0,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4408,
+          "processId": 3916,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "e90ed809422219e52c37815a2a956f21",
-          "bootId": "69d80b55-ab02-4eb1-bdeb-bfc54da8f017",
-          "capturedAtEpochMs": 1784846036012,
-          "capturedAtMonotonicNs": 67726381344
+          "generation": "d5e66d1a986d2347c2a9634625a7c431",
+          "bootId": "adf8b5b5-7b14-4637-a995-7ca34248157a",
+          "capturedAtEpochMs": 1784930425724,
+          "capturedAtMonotonicNs": 92806983539
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846036012"
+        "capturedAt": "1784930425724"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -421,18 +421,18 @@
           "laidOutViews": 44,
           "visibleContentLeafViews": 3,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 3898,
+          "processId": 4101,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "84849efd2933d5657ec9bff8d2938742",
-          "bootId": "af8ae784-9e40-49c1-95e2-84126a7d0a37",
-          "capturedAtEpochMs": 1784846085703,
-          "capturedAtMonotonicNs": 117507812833
+          "generation": "a5b99be4e82bcc8368a6578fc472c007",
+          "bootId": "276f39ee-6a77-4018-bd60-10f264389906",
+          "capturedAtEpochMs": 1784930328722,
+          "capturedAtMonotonicNs": 85268084976
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846085703"
+        "capturedAt": "1784930328722"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -529,7 +529,7 @@
         },
         "diagnostics": {
           "displayWidthPx": 1170,
-          "displayHeightPx": 2342,
+          "displayHeightPx": 2460,
           "densityDpi": 480,
           "rootWidthPx": 1170,
           "rootHeightPx": 2532,
@@ -538,18 +538,18 @@
           "laidOutViews": 32,
           "visibleContentLeafViews": 2,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 3833,
+          "processId": 3943,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "86a78fb7f0c1e000288eb68b5730349f",
-          "bootId": "268bf148-10b8-455e-b48e-741cc912598b",
-          "capturedAtEpochMs": 1784846035708,
-          "capturedAtMonotonicNs": 77477033808
+          "generation": "81d8cb3f1e605da586c5e412cfe10670",
+          "bootId": "ee5aa321-2555-4f73-91e0-bf65c36ee709",
+          "capturedAtEpochMs": 1784930357208,
+          "capturedAtMonotonicNs": 76676624401
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846035708"
+        "capturedAt": "1784930357208"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -655,18 +655,18 @@
           "laidOutViews": 25,
           "visibleContentLeafViews": 0,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4061,
+          "processId": 4008,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "cfb775e7f0cad618f64b4b58da011069",
-          "bootId": "aa1bdc17-db77-4b22-afdf-34237677efed",
-          "capturedAtEpochMs": 1784846126867,
-          "capturedAtMonotonicNs": 142367664846
+          "generation": "b14f097c0087ba710e77225b3c3609c4",
+          "bootId": "031eb5ca-2291-4b6f-ab3a-552add3893f3",
+          "capturedAtEpochMs": 1784930407958,
+          "capturedAtMonotonicNs": 149499744482
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846126867"
+        "capturedAt": "1784930407958"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -772,18 +772,18 @@
           "laidOutViews": 28,
           "visibleContentLeafViews": 3,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4159,
+          "processId": 4156,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "0a6636c5ed3860b8ddec436331882b11",
-          "bootId": "162d56ca-fbc1-45c7-af9f-484dac0a9b5a",
-          "capturedAtEpochMs": 1784846066122,
-          "capturedAtMonotonicNs": 86612195736
+          "generation": "4b02918e717d191ee9478449c9b905a6",
+          "bootId": "a359ab8c-33ec-4689-b1c6-4c1c10a81449",
+          "capturedAtEpochMs": 1784930382567,
+          "capturedAtMonotonicNs": 103810155576
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846066122"
+        "capturedAt": "1784930382567"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -880,7 +880,7 @@
         },
         "diagnostics": {
           "displayWidthPx": 1170,
-          "displayHeightPx": 2460,
+          "displayHeightPx": 2342,
           "densityDpi": 480,
           "rootWidthPx": 1170,
           "rootHeightPx": 2532,
@@ -889,18 +889,18 @@
           "laidOutViews": 19,
           "visibleContentLeafViews": 3,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 3982,
+          "processId": 3926,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "cd99ab87cf3d63a68b20e13378ad7d6b",
-          "bootId": "3304e976-da0c-4eaf-8ca5-ccf8ba656a10",
-          "capturedAtEpochMs": 1784846050819,
-          "capturedAtMonotonicNs": 80886581764
+          "generation": "9ed5bde91407678b391aabfe414707e3",
+          "bootId": "ed99a6bd-5d11-481c-b495-f36eb0405df6",
+          "capturedAtEpochMs": 1784930445201,
+          "capturedAtMonotonicNs": 111329447233
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846050819"
+        "capturedAt": "1784930445201"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -989,7 +989,7 @@
           "fullscreen": true,
           "systemBars": "hidden",
           "validation": {
-            "uniqueColors": 297,
+            "uniqueColors": 306,
             "dominantRatio": 0.9576306
           },
           "readyTokenObserved": false,
@@ -1006,18 +1006,18 @@
           "laidOutViews": 18,
           "visibleContentLeafViews": 5,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4332,
+          "processId": 4018,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "1f41104d6e5c0a39fc6f9381499ec0ef",
-          "bootId": "77be90ea-03a1-40b9-9a90-75597755fb31",
-          "capturedAtEpochMs": 1784846729346,
-          "capturedAtMonotonicNs": 46001045204
+          "generation": "9c1642503bc1f002876c1b2e0b4b37b3",
+          "bootId": "b45ad9d5-e825-498e-9cf3-22442a33f81b",
+          "capturedAtEpochMs": 1784931515374,
+          "capturedAtMonotonicNs": 76783049123
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846729346"
+        "capturedAt": "1784931515374"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -1039,8 +1039,8 @@
         "systemBars": "status-hidden-home-indicator-visible"
       },
       "status": "pass",
-      "baselineSha256": "e8934f6a28b71cd8626e28b2d9a0ef37e165243ba9271fed775e07e779bc0228",
-      "currentSha256": "d6911d2c32f9ba194b35b673ed640438e09cb9c75a0d86abf3df20a8d307fd31",
+      "baselineSha256": "c6395b854af0e37d0b99abeaf908354c86d0a20758aabe4afbd2be34a7713e34",
+      "currentSha256": "37aa5843aec986ccf9877b5a0e8e9c8fae50e54d4aaad3ccf1da34c08d5e2cbf",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/android__ios/components.ui.status-dot.states.side-by-side.png",
       "metrics": {
@@ -1050,7 +1050,7 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.9795513925854938,
+        "rgbSimilarity": 0.9795977035534974,
         "pixelPerfectSimilarity": 0.9970007831382239,
         "pixelMismatchRatio": 0.002999216861776066,
         "compositor": "sharp",
@@ -1114,7 +1114,7 @@
         },
         "diagnostics": {
           "displayWidthPx": 1170,
-          "displayHeightPx": 2460,
+          "displayHeightPx": 2342,
           "densityDpi": 480,
           "rootWidthPx": 1170,
           "rootHeightPx": 2532,
@@ -1123,18 +1123,18 @@
           "laidOutViews": 24,
           "visibleContentLeafViews": 2,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 3982,
+          "processId": 3926,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "cd99ab87cf3d63a68b20e13378ad7d6b",
-          "bootId": "3304e976-da0c-4eaf-8ca5-ccf8ba656a10",
-          "capturedAtEpochMs": 1784846072861,
-          "capturedAtMonotonicNs": 102928313525
+          "generation": "9ed5bde91407678b391aabfe414707e3",
+          "bootId": "ed99a6bd-5d11-481c-b495-f36eb0405df6",
+          "capturedAtEpochMs": 1784930466112,
+          "capturedAtMonotonicNs": 132240564036
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846072861"
+        "capturedAt": "1784930466112"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -1240,18 +1240,18 @@
           "laidOutViews": 19,
           "visibleContentLeafViews": 2,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 3898,
+          "processId": 4101,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "84849efd2933d5657ec9bff8d2938742",
-          "bootId": "af8ae784-9e40-49c1-95e2-84126a7d0a37",
-          "capturedAtEpochMs": 1784846090224,
-          "capturedAtMonotonicNs": 122028625090
+          "generation": "a5b99be4e82bcc8368a6578fc472c007",
+          "bootId": "276f39ee-6a77-4018-bd60-10f264389906",
+          "capturedAtEpochMs": 1784930335753,
+          "capturedAtMonotonicNs": 92298691334
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846090224"
+        "capturedAt": "1784930335753"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -1348,7 +1348,7 @@
         },
         "diagnostics": {
           "displayWidthPx": 1170,
-          "displayHeightPx": 2460,
+          "displayHeightPx": 2342,
           "densityDpi": 480,
           "rootWidthPx": 1170,
           "rootHeightPx": 2532,
@@ -1357,18 +1357,18 @@
           "laidOutViews": 16,
           "visibleContentLeafViews": 5,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 3982,
+          "processId": 3926,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "cd99ab87cf3d63a68b20e13378ad7d6b",
-          "bootId": "3304e976-da0c-4eaf-8ca5-ccf8ba656a10",
-          "capturedAtEpochMs": 1784846063779,
-          "capturedAtMonotonicNs": 93845860437
+          "generation": "9ed5bde91407678b391aabfe414707e3",
+          "bootId": "ed99a6bd-5d11-481c-b495-f36eb0405df6",
+          "capturedAtEpochMs": 1784930455729,
+          "capturedAtMonotonicNs": 121857831678
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846063779"
+        "capturedAt": "1784930455729"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -1474,18 +1474,18 @@
           "laidOutViews": 26,
           "visibleContentLeafViews": 2,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4207,
+          "processId": 4153,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "27ad3c53973b112b0876cafb71eb7725",
-          "bootId": "07c95fb0-7b52-4852-8464-e8652f786423",
-          "capturedAtEpochMs": 1784846076812,
-          "capturedAtMonotonicNs": 108573749292
+          "generation": "3835fca77fb6ba065ce8f4fc922920dd",
+          "bootId": "411d96e2-15a7-4511-bf32-8474c329fdcc",
+          "capturedAtEpochMs": 1784930408676,
+          "capturedAtMonotonicNs": 106699579504
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846076812"
+        "capturedAt": "1784930408676"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -1591,18 +1591,18 @@
           "laidOutViews": 12,
           "visibleContentLeafViews": 0,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4332,
+          "processId": 4018,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "1f41104d6e5c0a39fc6f9381499ec0ef",
-          "bootId": "77be90ea-03a1-40b9-9a90-75597755fb31",
-          "capturedAtEpochMs": 1784846740920,
-          "capturedAtMonotonicNs": 57574941789
+          "generation": "9c1642503bc1f002876c1b2e0b4b37b3",
+          "bootId": "b45ad9d5-e825-498e-9cf3-22442a33f81b",
+          "capturedAtEpochMs": 1784931528736,
+          "capturedAtMonotonicNs": 90145532039
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846740920"
+        "capturedAt": "1784931528736"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -1708,18 +1708,18 @@
           "laidOutViews": 20,
           "visibleContentLeafViews": 0,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4408,
+          "processId": 3916,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "e90ed809422219e52c37815a2a956f21",
-          "bootId": "69d80b55-ab02-4eb1-bdeb-bfc54da8f017",
-          "capturedAtEpochMs": 1784846091893,
-          "capturedAtMonotonicNs": 123607100414
+          "generation": "d5e66d1a986d2347c2a9634625a7c431",
+          "bootId": "adf8b5b5-7b14-4637-a995-7ca34248157a",
+          "capturedAtEpochMs": 1784930480455,
+          "capturedAtMonotonicNs": 147537999496
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846091893"
+        "capturedAt": "1784930480455"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -1825,18 +1825,18 @@
           "laidOutViews": 39,
           "visibleContentLeafViews": 1,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4061,
+          "processId": 4008,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "cfb775e7f0cad618f64b4b58da011069",
-          "bootId": "aa1bdc17-db77-4b22-afdf-34237677efed",
-          "capturedAtEpochMs": 1784846097510,
-          "capturedAtMonotonicNs": 113009917507
+          "generation": "b14f097c0087ba710e77225b3c3609c4",
+          "bootId": "031eb5ca-2291-4b6f-ab3a-552add3893f3",
+          "capturedAtEpochMs": 1784930360896,
+          "capturedAtMonotonicNs": 102436884280
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846097510"
+        "capturedAt": "1784930360896"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -1942,18 +1942,18 @@
           "laidOutViews": 22,
           "visibleContentLeafViews": 0,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4207,
+          "processId": 4153,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "27ad3c53973b112b0876cafb71eb7725",
-          "bootId": "07c95fb0-7b52-4852-8464-e8652f786423",
-          "capturedAtEpochMs": 1784846026541,
-          "capturedAtMonotonicNs": 58302768414
+          "generation": "3835fca77fb6ba065ce8f4fc922920dd",
+          "bootId": "411d96e2-15a7-4511-bf32-8474c329fdcc",
+          "capturedAtEpochMs": 1784930348265,
+          "capturedAtMonotonicNs": 46289136477
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846026541"
+        "capturedAt": "1784930348265"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -2059,18 +2059,18 @@
           "laidOutViews": 24,
           "visibleContentLeafViews": 0,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4159,
+          "processId": 4156,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "0a6636c5ed3860b8ddec436331882b11",
-          "bootId": "162d56ca-fbc1-45c7-af9f-484dac0a9b5a",
-          "capturedAtEpochMs": 1784846053789,
-          "capturedAtMonotonicNs": 74278944538
+          "generation": "4b02918e717d191ee9478449c9b905a6",
+          "bootId": "a359ab8c-33ec-4689-b1c6-4c1c10a81449",
+          "capturedAtEpochMs": 1784930361884,
+          "capturedAtMonotonicNs": 83126909705
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846053789"
+        "capturedAt": "1784930361884"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -2176,18 +2176,18 @@
           "laidOutViews": 21,
           "visibleContentLeafViews": 0,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4408,
+          "processId": 3916,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "e90ed809422219e52c37815a2a956f21",
-          "bootId": "69d80b55-ab02-4eb1-bdeb-bfc54da8f017",
-          "capturedAtEpochMs": 1784846064686,
-          "capturedAtMonotonicNs": 96400835537
+          "generation": "d5e66d1a986d2347c2a9634625a7c431",
+          "bootId": "adf8b5b5-7b14-4637-a995-7ca34248157a",
+          "capturedAtEpochMs": 1784930455243,
+          "capturedAtMonotonicNs": 122326133711
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846064686"
+        "capturedAt": "1784930455243"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -2293,18 +2293,18 @@
           "laidOutViews": 38,
           "visibleContentLeafViews": 0,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4332,
+          "processId": 4018,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "1f41104d6e5c0a39fc6f9381499ec0ef",
-          "bootId": "77be90ea-03a1-40b9-9a90-75597755fb31",
-          "capturedAtEpochMs": 1784846723574,
-          "capturedAtMonotonicNs": 40228845479
+          "generation": "9c1642503bc1f002876c1b2e0b4b37b3",
+          "bootId": "b45ad9d5-e825-498e-9cf3-22442a33f81b",
+          "capturedAtEpochMs": 1784931498210,
+          "capturedAtMonotonicNs": 59618955472
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846723574"
+        "capturedAt": "1784931498210"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -2410,18 +2410,18 @@
           "laidOutViews": 60,
           "visibleContentLeafViews": 4,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4207,
+          "processId": 3926,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "27ad3c53973b112b0876cafb71eb7725",
-          "bootId": "07c95fb0-7b52-4852-8464-e8652f786423",
-          "capturedAtEpochMs": 1784846062573,
-          "capturedAtMonotonicNs": 94334620126
+          "generation": "9ed5bde91407678b391aabfe414707e3",
+          "bootId": "ed99a6bd-5d11-481c-b495-f36eb0405df6",
+          "capturedAtEpochMs": 1784930462946,
+          "capturedAtMonotonicNs": 129074582681
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846062573"
+        "capturedAt": "1784930462946"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -2528,18 +2528,18 @@
           "laidOutViews": 36,
           "visibleContentLeafViews": 0,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 3898,
+          "processId": 4008,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "84849efd2933d5657ec9bff8d2938742",
-          "bootId": "af8ae784-9e40-49c1-95e2-84126a7d0a37",
-          "capturedAtEpochMs": 1784846069016,
-          "capturedAtMonotonicNs": 100820891661
+          "generation": "b14f097c0087ba710e77225b3c3609c4",
+          "bootId": "031eb5ca-2291-4b6f-ab3a-552add3893f3",
+          "capturedAtEpochMs": 1784930364749,
+          "capturedAtMonotonicNs": 106290759195
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846069016"
+        "capturedAt": "1784930364749"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -2645,18 +2645,18 @@
           "laidOutViews": 48,
           "visibleContentLeafViews": 1,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4332,
+          "processId": 3926,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "1f41104d6e5c0a39fc6f9381499ec0ef",
-          "bootId": "77be90ea-03a1-40b9-9a90-75597755fb31",
-          "capturedAtEpochMs": 1784846795337,
-          "capturedAtMonotonicNs": 111992492783
+          "generation": "9ed5bde91407678b391aabfe414707e3",
+          "bootId": "ed99a6bd-5d11-481c-b495-f36eb0405df6",
+          "capturedAtEpochMs": 1784930483923,
+          "capturedAtMonotonicNs": 150051488717
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846795337"
+        "capturedAt": "1784930483923"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -2764,18 +2764,18 @@
           "laidOutViews": 47,
           "visibleContentLeafViews": 1,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 3898,
+          "processId": 4008,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "84849efd2933d5657ec9bff8d2938742",
-          "bootId": "af8ae784-9e40-49c1-95e2-84126a7d0a37",
-          "capturedAtEpochMs": 1784846056798,
-          "capturedAtMonotonicNs": 88602324336
+          "generation": "b14f097c0087ba710e77225b3c3609c4",
+          "bootId": "031eb5ca-2291-4b6f-ab3a-552add3893f3",
+          "capturedAtEpochMs": 1784930354665,
+          "capturedAtMonotonicNs": 96206066453
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846056798"
+        "capturedAt": "1784930354665"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -2883,18 +2883,18 @@
           "laidOutViews": 80,
           "visibleContentLeafViews": 1,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4061,
+          "processId": 4156,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "cfb775e7f0cad618f64b4b58da011069",
-          "bootId": "aa1bdc17-db77-4b22-afdf-34237677efed",
-          "capturedAtEpochMs": 1784846100937,
-          "capturedAtMonotonicNs": 116437160516
+          "generation": "4b02918e717d191ee9478449c9b905a6",
+          "bootId": "a359ab8c-33ec-4689-b1c6-4c1c10a81449",
+          "capturedAtEpochMs": 1784930364976,
+          "capturedAtMonotonicNs": 86218865493
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846100937"
+        "capturedAt": "1784930364976"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -3001,18 +3001,18 @@
           "laidOutViews": 50,
           "visibleContentLeafViews": 1,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4207,
+          "processId": 4101,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "27ad3c53973b112b0876cafb71eb7725",
-          "bootId": "07c95fb0-7b52-4852-8464-e8652f786423",
-          "capturedAtEpochMs": 1784846030654,
-          "capturedAtMonotonicNs": 62416341447
+          "generation": "a5b99be4e82bcc8368a6578fc472c007",
+          "bootId": "276f39ee-6a77-4018-bd60-10f264389906",
+          "capturedAtEpochMs": 1784930312109,
+          "capturedAtMonotonicNs": 68654411061
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846030654"
+        "capturedAt": "1784930312109"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -3111,7 +3111,7 @@
         },
         "diagnostics": {
           "displayWidthPx": 1170,
-          "displayHeightPx": 2342,
+          "displayHeightPx": 2460,
           "densityDpi": 480,
           "rootWidthPx": 1170,
           "rootHeightPx": 2532,
@@ -3120,18 +3120,18 @@
           "laidOutViews": 88,
           "visibleContentLeafViews": 1,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4159,
+          "processId": 3943,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "0a6636c5ed3860b8ddec436331882b11",
-          "bootId": "162d56ca-fbc1-45c7-af9f-484dac0a9b5a",
-          "capturedAtEpochMs": 1784846126621,
-          "capturedAtMonotonicNs": 147111742707
+          "generation": "81d8cb3f1e605da586c5e412cfe10670",
+          "bootId": "ee5aa321-2555-4f73-91e0-bf65c36ee709",
+          "capturedAtEpochMs": 1784930401241,
+          "capturedAtMonotonicNs": 120709592554
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846126621"
+        "capturedAt": "1784930401241"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -3229,7 +3229,7 @@
         },
         "diagnostics": {
           "displayWidthPx": 1170,
-          "displayHeightPx": 2460,
+          "displayHeightPx": 2342,
           "densityDpi": 480,
           "rootWidthPx": 1170,
           "rootHeightPx": 2532,
@@ -3238,18 +3238,18 @@
           "laidOutViews": 81,
           "visibleContentLeafViews": 1,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 3982,
+          "processId": 4153,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "cd99ab87cf3d63a68b20e13378ad7d6b",
-          "bootId": "3304e976-da0c-4eaf-8ca5-ccf8ba656a10",
-          "capturedAtEpochMs": 1784846098088,
-          "capturedAtMonotonicNs": 128155805122
+          "generation": "3835fca77fb6ba065ce8f4fc922920dd",
+          "bootId": "411d96e2-15a7-4511-bf32-8474c329fdcc",
+          "capturedAtEpochMs": 1784930434515,
+          "capturedAtMonotonicNs": 132539151827
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846098088"
+        "capturedAt": "1784930434515"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -3356,18 +3356,18 @@
           "laidOutViews": 57,
           "visibleContentLeafViews": 2,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 3833,
+          "processId": 3916,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "86a78fb7f0c1e000288eb68b5730349f",
-          "bootId": "268bf148-10b8-455e-b48e-741cc912598b",
-          "capturedAtEpochMs": 1784846022687,
-          "capturedAtMonotonicNs": 64455955674
+          "generation": "d5e66d1a986d2347c2a9634625a7c431",
+          "bootId": "adf8b5b5-7b14-4637-a995-7ca34248157a",
+          "capturedAtEpochMs": 1784930404661,
+          "capturedAtMonotonicNs": 71744407974
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846022687"
+        "capturedAt": "1784930404661"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -3466,7 +3466,7 @@
         },
         "diagnostics": {
           "displayWidthPx": 1170,
-          "displayHeightPx": 2460,
+          "displayHeightPx": 2342,
           "densityDpi": 480,
           "rootWidthPx": 1170,
           "rootHeightPx": 2532,
@@ -3475,18 +3475,18 @@
           "laidOutViews": 108,
           "visibleContentLeafViews": 1,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 3982,
+          "processId": 4153,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "cd99ab87cf3d63a68b20e13378ad7d6b",
-          "bootId": "3304e976-da0c-4eaf-8ca5-ccf8ba656a10",
-          "capturedAtEpochMs": 1784846037679,
-          "capturedAtMonotonicNs": 67746767388
+          "generation": "3835fca77fb6ba065ce8f4fc922920dd",
+          "bootId": "411d96e2-15a7-4511-bf32-8474c329fdcc",
+          "capturedAtEpochMs": 1784930356253,
+          "capturedAtMonotonicNs": 54276525075
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846037679"
+        "capturedAt": "1784930356253"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -3509,7 +3509,7 @@
       },
       "status": "different",
       "baselineSha256": "43b6cf2cf989c78407c8d02e462a03082eb72f2c1f54afb9929a48a27fc67bd4",
-      "currentSha256": "d8257764bddcad44e83b55d594ee76d69c09ddbf2e8cf306e01d69527eebb45e",
+      "currentSha256": "650dc133296d1beeee5fc7d8aba925fbed295d30a9bbb0867cb96e9e7b6f570a",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/android__ios/components.thread.files.list.side-by-side.png",
       "metrics": {
@@ -3519,9 +3519,9 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.9172693737797526,
-        "pixelPerfectSimilarity": 0.9405449561847666,
-        "pixelMismatchRatio": 0.059455043815233366,
+        "rgbSimilarity": 0.9172691235885351,
+        "pixelPerfectSimilarity": 0.9405503571380348,
+        "pixelMismatchRatio": 0.05944964286196519,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -3591,18 +3591,18 @@
           "laidOutViews": 65,
           "visibleContentLeafViews": 0,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 3898,
+          "processId": 4008,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "84849efd2933d5657ec9bff8d2938742",
-          "bootId": "af8ae784-9e40-49c1-95e2-84126a7d0a37",
-          "capturedAtEpochMs": 1784846142686,
-          "capturedAtMonotonicNs": 174490687154
+          "generation": "b14f097c0087ba710e77225b3c3609c4",
+          "bootId": "031eb5ca-2291-4b6f-ab3a-552add3893f3",
+          "capturedAtEpochMs": 1784930433209,
+          "capturedAtMonotonicNs": 174750364744
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846142686"
+        "capturedAt": "1784930433209"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -3691,7 +3691,7 @@
           "fullscreen": true,
           "systemBars": "hidden",
           "validation": {
-            "uniqueColors": 545,
+            "uniqueColors": 549,
             "dominantRatio": 0.8244427
           },
           "readyTokenObserved": false,
@@ -3708,18 +3708,18 @@
           "laidOutViews": 50,
           "visibleContentLeafViews": 2,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 3898,
+          "processId": 4008,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "84849efd2933d5657ec9bff8d2938742",
-          "bootId": "af8ae784-9e40-49c1-95e2-84126a7d0a37",
-          "capturedAtEpochMs": 1784846075596,
-          "capturedAtMonotonicNs": 107400689812
+          "generation": "b14f097c0087ba710e77225b3c3609c4",
+          "bootId": "031eb5ca-2291-4b6f-ab3a-552add3893f3",
+          "capturedAtEpochMs": 1784930370707,
+          "capturedAtMonotonicNs": 112248125163
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846075596"
+        "capturedAt": "1784930370707"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -3758,7 +3758,7 @@
         ]
       },
       "status": "different",
-      "baselineSha256": "fc3389f850c2c61b22cab6935dcd7eb325699c8fdd715317759b2437ac1435dc",
+      "baselineSha256": "c378679708fa8760f6ab0d2da7abf2a01288ad4d7d315c272a1e0ff3cbc87486",
       "currentSha256": "9458ffcb4ed74eb9d6481fe6ba151d64890077203169963e06e93718760f33e2",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/android__ios/components.thread.message.row.side-by-side.png",
@@ -3769,7 +3769,7 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.9015231738401834,
+        "rgbSimilarity": 0.9015255936790524,
         "pixelPerfectSimilarity": 0.9542144313471328,
         "pixelMismatchRatio": 0.0457855686528672,
         "compositor": "sharp",
@@ -3832,7 +3832,7 @@
         },
         "diagnostics": {
           "displayWidthPx": 1170,
-          "displayHeightPx": 2460,
+          "displayHeightPx": 2342,
           "densityDpi": 480,
           "rootWidthPx": 1170,
           "rootHeightPx": 2532,
@@ -3841,18 +3841,18 @@
           "laidOutViews": 47,
           "visibleContentLeafViews": 1,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 3982,
+          "processId": 4153,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "cd99ab87cf3d63a68b20e13378ad7d6b",
-          "bootId": "3304e976-da0c-4eaf-8ca5-ccf8ba656a10",
-          "capturedAtEpochMs": 1784846057289,
-          "capturedAtMonotonicNs": 87356580417
+          "generation": "3835fca77fb6ba065ce8f4fc922920dd",
+          "bootId": "411d96e2-15a7-4511-bf32-8474c329fdcc",
+          "capturedAtEpochMs": 1784930394107,
+          "capturedAtMonotonicNs": 92131167019
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846057289"
+        "capturedAt": "1784930394107"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -3943,7 +3943,7 @@
           "fullscreen": true,
           "systemBars": "hidden",
           "validation": {
-            "uniqueColors": 674,
+            "uniqueColors": 672,
             "dominantRatio": 0.6158677
           },
           "readyTokenObserved": false,
@@ -3960,18 +3960,18 @@
           "laidOutViews": 119,
           "visibleContentLeafViews": 9,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 3833,
+          "processId": 3916,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "86a78fb7f0c1e000288eb68b5730349f",
-          "bootId": "268bf148-10b8-455e-b48e-741cc912598b",
-          "capturedAtEpochMs": 1784846055786,
-          "capturedAtMonotonicNs": 97555072196
+          "generation": "d5e66d1a986d2347c2a9634625a7c431",
+          "bootId": "adf8b5b5-7b14-4637-a995-7ca34248157a",
+          "capturedAtEpochMs": 1784930448740,
+          "capturedAtMonotonicNs": 115823284933
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846055786"
+        "capturedAt": "1784930448740"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -4011,8 +4011,8 @@
         ]
       },
       "status": "different",
-      "baselineSha256": "7b32c845668a0049b5ab380c9177130cc22cb78ffd146d160f5b27387f588593",
-      "currentSha256": "1b4a41d645bfba32901f611dcba4c2ca365741cd68ce7d898394f81f59ee947e",
+      "baselineSha256": "b9db6bdf8578da20734c7de3eaa68a89b5cfeba3ac4121237f47bb90d7477401",
+      "currentSha256": "14efa5a035ffab50dab1ee4c900fcf0c93ca36a7ae971b6df74968266c2683a8",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/android__ios/components.thread.message-menu.default.side-by-side.png",
       "metrics": {
@@ -4022,9 +4022,9 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.9650219078373257,
-        "pixelPerfectSimilarity": 0.6233847774132134,
-        "pixelMismatchRatio": 0.3766152225867866,
+        "rgbSimilarity": 0.9650162134499135,
+        "pixelPerfectSimilarity": 0.6232949865651287,
+        "pixelMismatchRatio": 0.3767050134348713,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -4077,7 +4077,7 @@
           "fullscreen": true,
           "systemBars": "hidden",
           "validation": {
-            "uniqueColors": 766,
+            "uniqueColors": 768,
             "dominantRatio": 0.61044174
           },
           "readyTokenObserved": false,
@@ -4094,18 +4094,18 @@
           "laidOutViews": 125,
           "visibleContentLeafViews": 9,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4061,
+          "processId": 4156,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "cfb775e7f0cad618f64b4b58da011069",
-          "bootId": "aa1bdc17-db77-4b22-afdf-34237677efed",
-          "capturedAtEpochMs": 1784846092692,
-          "capturedAtMonotonicNs": 108192244859
+          "generation": "4b02918e717d191ee9478449c9b905a6",
+          "bootId": "a359ab8c-33ec-4689-b1c6-4c1c10a81449",
+          "capturedAtEpochMs": 1784930351759,
+          "capturedAtMonotonicNs": 73002459388
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846092692"
+        "capturedAt": "1784930351759"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -4145,8 +4145,8 @@
         ]
       },
       "status": "different",
-      "baselineSha256": "2a88bc191bfc32eca677c9ecc1f8e699edbfe56c343d303242b66a5fd2c7f6c8",
-      "currentSha256": "6d8122f68a038c770376ae14e7aaaeb9da2154e4d7d9df8b66bcc7d4eefd964a",
+      "baselineSha256": "7d2cd6c8693b2b2509e8a6e8e65f9bf47759313fa48d4a5f5482ddc1fec39a69",
+      "currentSha256": "a77fd1aa9a851c440e838276737b8f8b456cabdb7e47e90be7b1b851c697cbf7",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/android__ios/components.thread.message-menu.task.side-by-side.png",
       "metrics": {
@@ -4156,7 +4156,7 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.9632580200405427,
+        "rgbSimilarity": 0.9632587856168434,
         "pixelPerfectSimilarity": 0.6207788174612819,
         "pixelMismatchRatio": 0.37922118253871806,
         "compositor": "sharp",
@@ -4228,18 +4228,18 @@
           "laidOutViews": 101,
           "visibleContentLeafViews": 0,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4061,
+          "processId": 4008,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "cfb775e7f0cad618f64b4b58da011069",
-          "bootId": "aa1bdc17-db77-4b22-afdf-34237677efed",
-          "capturedAtEpochMs": 1784846112565,
-          "capturedAtMonotonicNs": 128065379668
+          "generation": "b14f097c0087ba710e77225b3c3609c4",
+          "bootId": "031eb5ca-2291-4b6f-ab3a-552add3893f3",
+          "capturedAtEpochMs": 1784930392510,
+          "capturedAtMonotonicNs": 134051510989
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846112565"
+        "capturedAt": "1784930392510"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -4361,18 +4361,18 @@
           "laidOutViews": 83,
           "visibleContentLeafViews": 1,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 3833,
+          "processId": 3916,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "86a78fb7f0c1e000288eb68b5730349f",
-          "bootId": "268bf148-10b8-455e-b48e-741cc912598b",
-          "capturedAtEpochMs": 1784846060381,
-          "capturedAtMonotonicNs": 102150380907
+          "generation": "d5e66d1a986d2347c2a9634625a7c431",
+          "bootId": "adf8b5b5-7b14-4637-a995-7ca34248157a",
+          "capturedAtEpochMs": 1784930452509,
+          "capturedAtMonotonicNs": 119592260794
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846060381"
+        "capturedAt": "1784930452509"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -4478,18 +4478,18 @@
           "laidOutViews": 111,
           "visibleContentLeafViews": 1,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 3898,
+          "processId": 4008,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "84849efd2933d5657ec9bff8d2938742",
-          "bootId": "af8ae784-9e40-49c1-95e2-84126a7d0a37",
-          "capturedAtEpochMs": 1784846128952,
-          "capturedAtMonotonicNs": 160756447785
+          "generation": "b14f097c0087ba710e77225b3c3609c4",
+          "bootId": "031eb5ca-2291-4b6f-ab3a-552add3893f3",
+          "capturedAtEpochMs": 1784930430551,
+          "capturedAtMonotonicNs": 172092662758
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846128952"
+        "capturedAt": "1784930430551"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -4610,18 +4610,18 @@
           "laidOutViews": 31,
           "visibleContentLeafViews": 3,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 3898,
+          "processId": 4156,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "84849efd2933d5657ec9bff8d2938742",
-          "bootId": "af8ae784-9e40-49c1-95e2-84126a7d0a37",
-          "capturedAtEpochMs": 1784846052168,
-          "capturedAtMonotonicNs": 83972688590
+          "generation": "4b02918e717d191ee9478449c9b905a6",
+          "bootId": "a359ab8c-33ec-4689-b1c6-4c1c10a81449",
+          "capturedAtEpochMs": 1784930345946,
+          "capturedAtMonotonicNs": 67188949038
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846052168"
+        "capturedAt": "1784930345946"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -4726,18 +4726,18 @@
           "laidOutViews": 55,
           "visibleContentLeafViews": 0,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 3898,
+          "processId": 3926,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "84849efd2933d5657ec9bff8d2938742",
-          "bootId": "af8ae784-9e40-49c1-95e2-84126a7d0a37",
-          "capturedAtEpochMs": 1784846118791,
-          "capturedAtMonotonicNs": 150595743571
+          "generation": "9ed5bde91407678b391aabfe414707e3",
+          "bootId": "ed99a6bd-5d11-481c-b495-f36eb0405df6",
+          "capturedAtEpochMs": 1784930472420,
+          "capturedAtMonotonicNs": 138548677833
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846118791"
+        "capturedAt": "1784930472420"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -4838,22 +4838,22 @@
           "rootWidthPx": 1170,
           "rootHeightPx": 2532,
           "hardwareAccelerated": true,
-          "totalViews": 168,
-          "laidOutViews": 165,
+          "totalViews": 170,
+          "laidOutViews": 167,
           "visibleContentLeafViews": 1,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4408,
+          "processId": 3926,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "e90ed809422219e52c37815a2a956f21",
-          "bootId": "69d80b55-ab02-4eb1-bdeb-bfc54da8f017",
-          "capturedAtEpochMs": 1784846042333,
-          "capturedAtMonotonicNs": 74047506179
+          "generation": "9ed5bde91407678b391aabfe414707e3",
+          "bootId": "ed99a6bd-5d11-481c-b495-f36eb0405df6",
+          "capturedAtEpochMs": 1784930423059,
+          "capturedAtMonotonicNs": 89187115258
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846042333"
+        "capturedAt": "1784930423059"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -4954,22 +4954,22 @@
           "rootWidthPx": 1170,
           "rootHeightPx": 2532,
           "hardwareAccelerated": true,
-          "totalViews": 219,
-          "laidOutViews": 215,
+          "totalViews": 221,
+          "laidOutViews": 217,
           "visibleContentLeafViews": 2,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 3982,
+          "processId": 3943,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "cd99ab87cf3d63a68b20e13378ad7d6b",
-          "bootId": "3304e976-da0c-4eaf-8ca5-ccf8ba656a10",
-          "capturedAtEpochMs": 1784846028477,
-          "capturedAtMonotonicNs": 58543897982
+          "generation": "81d8cb3f1e605da586c5e412cfe10670",
+          "bootId": "ee5aa321-2555-4f73-91e0-bf65c36ee709",
+          "capturedAtEpochMs": 1784930342699,
+          "capturedAtMonotonicNs": 62167091093
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846028477"
+        "capturedAt": "1784930342699"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -5074,18 +5074,18 @@
           "laidOutViews": 90,
           "visibleContentLeafViews": 0,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4207,
+          "processId": 4018,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "27ad3c53973b112b0876cafb71eb7725",
-          "bootId": "07c95fb0-7b52-4852-8464-e8652f786423",
-          "capturedAtEpochMs": 1784846089881,
-          "capturedAtMonotonicNs": 121642374352
+          "generation": "9c1642503bc1f002876c1b2e0b4b37b3",
+          "bootId": "b45ad9d5-e825-498e-9cf3-22442a33f81b",
+          "capturedAtEpochMs": 1784931606309,
+          "capturedAtMonotonicNs": 167718165682
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846089881"
+        "capturedAt": "1784931606309"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -5190,18 +5190,18 @@
           "laidOutViews": 127,
           "visibleContentLeafViews": 0,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4408,
+          "processId": 4156,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "e90ed809422219e52c37815a2a956f21",
-          "bootId": "69d80b55-ab02-4eb1-bdeb-bfc54da8f017",
-          "capturedAtEpochMs": 1784846033062,
-          "capturedAtMonotonicNs": 64776251631
+          "generation": "4b02918e717d191ee9478449c9b905a6",
+          "bootId": "a359ab8c-33ec-4689-b1c6-4c1c10a81449",
+          "capturedAtEpochMs": 1784930358645,
+          "capturedAtMonotonicNs": 79888251520
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846033062"
+        "capturedAt": "1784930358645"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -5297,7 +5297,7 @@
         },
         "diagnostics": {
           "displayWidthPx": 1170,
-          "displayHeightPx": 2460,
+          "displayHeightPx": 2342,
           "densityDpi": 480,
           "rootWidthPx": 1170,
           "rootHeightPx": 2532,
@@ -5306,18 +5306,18 @@
           "laidOutViews": 173,
           "visibleContentLeafViews": 0,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 3982,
+          "processId": 4153,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "cd99ab87cf3d63a68b20e13378ad7d6b",
-          "bootId": "3304e976-da0c-4eaf-8ca5-ccf8ba656a10",
-          "capturedAtEpochMs": 1784846047361,
-          "capturedAtMonotonicNs": 77428707567
+          "generation": "3835fca77fb6ba065ce8f4fc922920dd",
+          "bootId": "411d96e2-15a7-4511-bf32-8474c329fdcc",
+          "capturedAtEpochMs": 1784930384362,
+          "capturedAtMonotonicNs": 82385617881
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846047361"
+        "capturedAt": "1784930384362"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -5422,18 +5422,18 @@
           "laidOutViews": 43,
           "visibleContentLeafViews": 0,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4332,
+          "processId": 3926,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "1f41104d6e5c0a39fc6f9381499ec0ef",
-          "bootId": "77be90ea-03a1-40b9-9a90-75597755fb31",
-          "capturedAtEpochMs": 1784846770819,
-          "capturedAtMonotonicNs": 87474496601
+          "generation": "9ed5bde91407678b391aabfe414707e3",
+          "bootId": "ed99a6bd-5d11-481c-b495-f36eb0405df6",
+          "capturedAtEpochMs": 1784930448995,
+          "capturedAtMonotonicNs": 115123784192
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846770819"
+        "capturedAt": "1784930448995"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -5539,18 +5539,18 @@
           "laidOutViews": 132,
           "visibleContentLeafViews": 5,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4159,
+          "processId": 4101,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "0a6636c5ed3860b8ddec436331882b11",
-          "bootId": "162d56ca-fbc1-45c7-af9f-484dac0a9b5a",
-          "capturedAtEpochMs": 1784846116640,
-          "capturedAtMonotonicNs": 137130061012
+          "generation": "a5b99be4e82bcc8368a6578fc472c007",
+          "bootId": "276f39ee-6a77-4018-bd60-10f264389906",
+          "capturedAtEpochMs": 1784930362378,
+          "capturedAtMonotonicNs": 118923611228
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846116640"
+        "capturedAt": "1784930362378"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -5646,7 +5646,7 @@
         },
         "diagnostics": {
           "displayWidthPx": 1170,
-          "displayHeightPx": 2342,
+          "displayHeightPx": 2460,
           "densityDpi": 480,
           "rootWidthPx": 1170,
           "rootHeightPx": 2532,
@@ -5655,18 +5655,18 @@
           "laidOutViews": 125,
           "visibleContentLeafViews": 2,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4159,
+          "processId": 3943,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "0a6636c5ed3860b8ddec436331882b11",
-          "bootId": "162d56ca-fbc1-45c7-af9f-484dac0a9b5a",
-          "capturedAtEpochMs": 1784846138467,
-          "capturedAtMonotonicNs": 158957432814
+          "generation": "81d8cb3f1e605da586c5e412cfe10670",
+          "bootId": "ee5aa321-2555-4f73-91e0-bf65c36ee709",
+          "capturedAtEpochMs": 1784930407597,
+          "capturedAtMonotonicNs": 127066020518
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846138467"
+        "capturedAt": "1784930407597"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -5771,18 +5771,18 @@
           "laidOutViews": 136,
           "visibleContentLeafViews": 2,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 3833,
+          "processId": 3916,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "86a78fb7f0c1e000288eb68b5730349f",
-          "bootId": "268bf148-10b8-455e-b48e-741cc912598b",
-          "capturedAtEpochMs": 1784846090672,
-          "capturedAtMonotonicNs": 132441075737
+          "generation": "d5e66d1a986d2347c2a9634625a7c431",
+          "bootId": "adf8b5b5-7b14-4637-a995-7ca34248157a",
+          "capturedAtEpochMs": 1784930465643,
+          "capturedAtMonotonicNs": 132726332382
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846090672"
+        "capturedAt": "1784930465643"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -5887,18 +5887,18 @@
           "laidOutViews": 177,
           "visibleContentLeafViews": 5,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4408,
+          "processId": 4018,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "e90ed809422219e52c37815a2a956f21",
-          "bootId": "69d80b55-ab02-4eb1-bdeb-bfc54da8f017",
-          "capturedAtEpochMs": 1784846062002,
-          "capturedAtMonotonicNs": 93716817443
+          "generation": "9c1642503bc1f002876c1b2e0b4b37b3",
+          "bootId": "b45ad9d5-e825-498e-9cf3-22442a33f81b",
+          "capturedAtEpochMs": 1784931564377,
+          "capturedAtMonotonicNs": 125786248803
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846062002"
+        "capturedAt": "1784931564377"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -6003,18 +6003,18 @@
           "laidOutViews": 263,
           "visibleContentLeafViews": 2,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4408,
+          "processId": 3926,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "e90ed809422219e52c37815a2a956f21",
-          "bootId": "69d80b55-ab02-4eb1-bdeb-bfc54da8f017",
-          "capturedAtEpochMs": 1784846089221,
-          "capturedAtMonotonicNs": 120935936766
+          "generation": "9ed5bde91407678b391aabfe414707e3",
+          "bootId": "ed99a6bd-5d11-481c-b495-f36eb0405df6",
+          "capturedAtEpochMs": 1784930500098,
+          "capturedAtMonotonicNs": 166226334802
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846089221"
+        "capturedAt": "1784930500098"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -6036,8 +6036,8 @@
         "systemBars": "status-hidden-home-indicator-visible"
       },
       "status": "different",
-      "baselineSha256": "80903dc68c84c6a213452c9a7e19015ce42ea7ca8368d6cbbe9f7e5c52ff712c",
-      "currentSha256": "dbe2d469a8c4b9336345c03e6e57ee5ac1253728bbb0f580ae5f111cb95be6a3",
+      "baselineSha256": "b65f94f9632d2af667d0555976eb0f91178b6392d98cef90f1366f65b2d6af97",
+      "currentSha256": "dc75c47ad2c10533c46dfe8494cfd3d8d80ca68f416d6805ed780d284e699396",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/android__ios/components.members.agent-detail.profile.side-by-side.png",
       "metrics": {
@@ -6047,9 +6047,9 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.951718868380274,
-        "pixelPerfectSimilarity": 0.9114442824158464,
-        "pixelMismatchRatio": 0.08855571758415359,
+        "rgbSimilarity": 0.9517011087751157,
+        "pixelPerfectSimilarity": 0.9114436072966878,
+        "pixelMismatchRatio": 0.08855639270331217,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -6102,8 +6102,8 @@
           "fullscreen": true,
           "systemBars": "hidden",
           "validation": {
-            "uniqueColors": 539,
-            "dominantRatio": 0.43671772
+            "uniqueColors": 524,
+            "dominantRatio": 0.42494532
           },
           "readyTokenObserved": false,
           "stableFrameCount": 1
@@ -6115,22 +6115,22 @@
           "rootWidthPx": 1170,
           "rootHeightPx": 2532,
           "hardwareAccelerated": true,
-          "totalViews": 88,
-          "laidOutViews": 86,
+          "totalViews": 96,
+          "laidOutViews": 94,
           "visibleContentLeafViews": 2,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4332,
+          "processId": 3916,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "1f41104d6e5c0a39fc6f9381499ec0ef",
-          "bootId": "77be90ea-03a1-40b9-9a90-75597755fb31",
-          "capturedAtEpochMs": 1784846749869,
-          "capturedAtMonotonicNs": 66524590599
+          "generation": "d5e66d1a986d2347c2a9634625a7c431",
+          "bootId": "adf8b5b5-7b14-4637-a995-7ca34248157a",
+          "capturedAtEpochMs": 1784930422735,
+          "capturedAtMonotonicNs": 89817989208
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846749869"
+        "capturedAt": "1784930422735"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -6151,9 +6151,9 @@
         "device": "iPhone 14",
         "systemBars": "status-hidden-home-indicator-visible"
       },
-      "status": "basic-pass",
-      "baselineSha256": "ff5b627340c0ea6bfba290cbd17456e274efa9607dff6ce6cad4ea1fd6c6ea72",
-      "currentSha256": "c9a038bdf0dd6b319ddffd6c8a18d2ab7a5d6892bf4db227a79ce33c50075ba4",
+      "status": "different",
+      "baselineSha256": "4d2e7e4992f708319ed9b3a996f96383923f1968d426db5967b504065d72abc4",
+      "currentSha256": "940afcc6a559e7a5011caa3038b2eefd6de184215b231f0539cd780820b2d6f3",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/android__ios/components.channel.settings.panel.side-by-side.png",
       "metrics": {
@@ -6163,14 +6163,13 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.9796455461153478,
-        "pixelPerfectSimilarity": 0.9657160988914544,
-        "pixelMismatchRatio": 0.03428390110854562,
+        "rgbSimilarity": 0.9749014974672263,
+        "pixelPerfectSimilarity": 0.9581959465845722,
+        "pixelMismatchRatio": 0.04180405341542781,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
       },
-      "acceptance": "basic pass: pixel perfect 96.57% > 96%",
       "note": "Side-by-side and site raw captures preserve provider image sizes. Metrics use an in-memory comparison canvas: rgbSimilarity rescales for coarse color similarity, while pixelPerfectSimilarity pads the original images without cropping."
     },
     {
@@ -6227,7 +6226,7 @@
         },
         "diagnostics": {
           "displayWidthPx": 1170,
-          "displayHeightPx": 2460,
+          "displayHeightPx": 2342,
           "densityDpi": 480,
           "rootWidthPx": 1170,
           "rootHeightPx": 2532,
@@ -6236,18 +6235,18 @@
           "laidOutViews": 78,
           "visibleContentLeafViews": 2,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 3982,
+          "processId": 4018,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "cd99ab87cf3d63a68b20e13378ad7d6b",
-          "bootId": "3304e976-da0c-4eaf-8ca5-ccf8ba656a10",
-          "capturedAtEpochMs": 1784846102325,
-          "capturedAtMonotonicNs": 132392194956
+          "generation": "9c1642503bc1f002876c1b2e0b4b37b3",
+          "bootId": "b45ad9d5-e825-498e-9cf3-22442a33f81b",
+          "capturedAtEpochMs": 1784931617615,
+          "capturedAtMonotonicNs": 179024627931
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846102325"
+        "capturedAt": "1784931617615"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -6354,18 +6353,18 @@
           "laidOutViews": 112,
           "visibleContentLeafViews": 0,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 3833,
+          "processId": 3916,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "86a78fb7f0c1e000288eb68b5730349f",
-          "bootId": "268bf148-10b8-455e-b48e-741cc912598b",
-          "capturedAtEpochMs": 1784846108737,
-          "capturedAtMonotonicNs": 150506392298
+          "generation": "d5e66d1a986d2347c2a9634625a7c431",
+          "bootId": "adf8b5b5-7b14-4637-a995-7ca34248157a",
+          "capturedAtEpochMs": 1784930484273,
+          "capturedAtMonotonicNs": 151356873140
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846108737"
+        "capturedAt": "1784930484273"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -6473,18 +6472,18 @@
           "laidOutViews": 119,
           "visibleContentLeafViews": 3,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 3898,
+          "processId": 4008,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "84849efd2933d5657ec9bff8d2938742",
-          "bootId": "af8ae784-9e40-49c1-95e2-84126a7d0a37",
-          "capturedAtEpochMs": 1784846109481,
-          "capturedAtMonotonicNs": 141285286653
+          "generation": "b14f097c0087ba710e77225b3c3609c4",
+          "bootId": "031eb5ca-2291-4b6f-ab3a-552add3893f3",
+          "capturedAtEpochMs": 1784930395491,
+          "capturedAtMonotonicNs": 137032670060
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846109481"
+        "capturedAt": "1784930395491"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -6590,18 +6589,18 @@
           "laidOutViews": 176,
           "visibleContentLeafViews": 6,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4061,
+          "processId": 4156,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "cfb775e7f0cad618f64b4b58da011069",
-          "bootId": "aa1bdc17-db77-4b22-afdf-34237677efed",
-          "capturedAtEpochMs": 1784846079045,
-          "capturedAtMonotonicNs": 94545752430
+          "generation": "4b02918e717d191ee9478449c9b905a6",
+          "bootId": "a359ab8c-33ec-4689-b1c6-4c1c10a81449",
+          "capturedAtEpochMs": 1784930334045,
+          "capturedAtMonotonicNs": 55288359432
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846079045"
+        "capturedAt": "1784930334045"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -6707,18 +6706,18 @@
           "laidOutViews": 80,
           "visibleContentLeafViews": 1,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 3898,
+          "processId": 4008,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "84849efd2933d5657ec9bff8d2938742",
-          "bootId": "af8ae784-9e40-49c1-95e2-84126a7d0a37",
-          "capturedAtEpochMs": 1784846037770,
-          "capturedAtMonotonicNs": 69573931147
+          "generation": "b14f097c0087ba710e77225b3c3609c4",
+          "bootId": "031eb5ca-2291-4b6f-ab3a-552add3893f3",
+          "capturedAtEpochMs": 1784930346287,
+          "capturedAtMonotonicNs": 87828614548
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846037770"
+        "capturedAt": "1784930346287"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -6827,18 +6826,18 @@
           "laidOutViews": 72,
           "visibleContentLeafViews": 0,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4207,
+          "processId": 4101,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "27ad3c53973b112b0876cafb71eb7725",
-          "bootId": "07c95fb0-7b52-4852-8464-e8652f786423",
-          "capturedAtEpochMs": 1784846084246,
-          "capturedAtMonotonicNs": 116007632266
+          "generation": "a5b99be4e82bcc8368a6578fc472c007",
+          "bootId": "276f39ee-6a77-4018-bd60-10f264389906",
+          "capturedAtEpochMs": 1784930383075,
+          "capturedAtMonotonicNs": 139620998078
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846084246"
+        "capturedAt": "1784930383075"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -6949,18 +6948,18 @@
           "laidOutViews": 97,
           "visibleContentLeafViews": 0,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4408,
+          "processId": 4018,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "e90ed809422219e52c37815a2a956f21",
-          "bootId": "69d80b55-ab02-4eb1-bdeb-bfc54da8f017",
-          "capturedAtEpochMs": 1784846068953,
-          "capturedAtMonotonicNs": 100667377065
+          "generation": "9c1642503bc1f002876c1b2e0b4b37b3",
+          "bootId": "b45ad9d5-e825-498e-9cf3-22442a33f81b",
+          "capturedAtEpochMs": 1784931575154,
+          "capturedAtMonotonicNs": 136562918377
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846068953"
+        "capturedAt": "1784931575154"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -7067,18 +7066,18 @@
           "laidOutViews": 76,
           "visibleContentLeafViews": 6,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4061,
+          "processId": 4101,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "cfb775e7f0cad618f64b4b58da011069",
-          "bootId": "aa1bdc17-db77-4b22-afdf-34237677efed",
-          "capturedAtEpochMs": 1784846065097,
-          "capturedAtMonotonicNs": 80597080765
+          "generation": "a5b99be4e82bcc8368a6578fc472c007",
+          "bootId": "276f39ee-6a77-4018-bd60-10f264389906",
+          "capturedAtEpochMs": 1784930302089,
+          "capturedAtMonotonicNs": 58634545018
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846065097"
+        "capturedAt": "1784930302089"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -7184,18 +7183,18 @@
           "laidOutViews": 49,
           "visibleContentLeafViews": 4,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 3898,
+          "processId": 4153,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "84849efd2933d5657ec9bff8d2938742",
-          "bootId": "af8ae784-9e40-49c1-95e2-84126a7d0a37",
-          "capturedAtEpochMs": 1784846064348,
-          "capturedAtMonotonicNs": 96152857117
+          "generation": "3835fca77fb6ba065ce8f4fc922920dd",
+          "bootId": "411d96e2-15a7-4511-bf32-8474c329fdcc",
+          "capturedAtEpochMs": 1784930376427,
+          "capturedAtMonotonicNs": 74450339286
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846064348"
+        "capturedAt": "1784930376427"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -7302,18 +7301,18 @@
           "laidOutViews": 263,
           "visibleContentLeafViews": 2,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 3833,
+          "processId": 4018,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "86a78fb7f0c1e000288eb68b5730349f",
-          "bootId": "268bf148-10b8-455e-b48e-741cc912598b",
-          "capturedAtEpochMs": 1784846066407,
-          "capturedAtMonotonicNs": 108176374642
+          "generation": "9c1642503bc1f002876c1b2e0b4b37b3",
+          "bootId": "b45ad9d5-e825-498e-9cf3-22442a33f81b",
+          "capturedAtEpochMs": 1784931570323,
+          "capturedAtMonotonicNs": 131732031349
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846066407"
+        "capturedAt": "1784931570323"
       },
       "currentMetadata": null,
       "status": "missing"
@@ -7381,18 +7380,18 @@
           "laidOutViews": 92,
           "visibleContentLeafViews": 0,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4159,
+          "processId": 3916,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "0a6636c5ed3860b8ddec436331882b11",
-          "bootId": "162d56ca-fbc1-45c7-af9f-484dac0a9b5a",
-          "capturedAtEpochMs": 1784846109004,
-          "capturedAtMonotonicNs": 129494610269
+          "generation": "d5e66d1a986d2347c2a9634625a7c431",
+          "bootId": "adf8b5b5-7b14-4637-a995-7ca34248157a",
+          "capturedAtEpochMs": 1784930458998,
+          "capturedAtMonotonicNs": 126081279166
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846109004"
+        "capturedAt": "1784930458998"
       },
       "currentMetadata": null,
       "status": "missing"
@@ -7451,7 +7450,7 @@
         },
         "diagnostics": {
           "displayWidthPx": 1170,
-          "displayHeightPx": 2342,
+          "displayHeightPx": 2460,
           "densityDpi": 480,
           "rootWidthPx": 1170,
           "rootHeightPx": 2532,
@@ -7460,18 +7459,18 @@
           "laidOutViews": 113,
           "visibleContentLeafViews": 0,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4061,
+          "processId": 3943,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "cfb775e7f0cad618f64b4b58da011069",
-          "bootId": "aa1bdc17-db77-4b22-afdf-34237677efed",
-          "capturedAtEpochMs": 1784846153840,
-          "capturedAtMonotonicNs": 169340514904
+          "generation": "81d8cb3f1e605da586c5e412cfe10670",
+          "bootId": "ee5aa321-2555-4f73-91e0-bf65c36ee709",
+          "capturedAtEpochMs": 1784930411424,
+          "capturedAtMonotonicNs": 130892228503
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846153840"
+        "capturedAt": "1784930411424"
       },
       "currentMetadata": null,
       "status": "missing"
@@ -7530,7 +7529,7 @@
         },
         "diagnostics": {
           "displayWidthPx": 1170,
-          "displayHeightPx": 2460,
+          "displayHeightPx": 2342,
           "densityDpi": 480,
           "rootWidthPx": 1170,
           "rootHeightPx": 2532,
@@ -7539,18 +7538,18 @@
           "laidOutViews": 135,
           "visibleContentLeafViews": 0,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 3982,
+          "processId": 4101,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "cd99ab87cf3d63a68b20e13378ad7d6b",
-          "bootId": "3304e976-da0c-4eaf-8ca5-ccf8ba656a10",
-          "capturedAtEpochMs": 1784846106585,
-          "capturedAtMonotonicNs": 136652080646
+          "generation": "a5b99be4e82bcc8368a6578fc472c007",
+          "bootId": "276f39ee-6a77-4018-bd60-10f264389906",
+          "capturedAtEpochMs": 1784930387159,
+          "capturedAtMonotonicNs": 143704402302
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846106585"
+        "capturedAt": "1784930387159"
       },
       "currentMetadata": null,
       "status": "missing"
@@ -7601,7 +7600,7 @@
           "fullscreen": true,
           "systemBars": "hidden",
           "validation": {
-            "uniqueColors": 345,
+            "uniqueColors": 341,
             "dominantRatio": 0.943769
           },
           "readyTokenObserved": false,
@@ -7618,18 +7617,18 @@
           "laidOutViews": 128,
           "visibleContentLeafViews": 4,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4207,
+          "processId": 4008,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "27ad3c53973b112b0876cafb71eb7725",
-          "bootId": "07c95fb0-7b52-4852-8464-e8652f786423",
-          "capturedAtEpochMs": 1784846052126,
-          "capturedAtMonotonicNs": 83887513620
+          "generation": "b14f097c0087ba710e77225b3c3609c4",
+          "bootId": "031eb5ca-2291-4b6f-ab3a-552add3893f3",
+          "capturedAtEpochMs": 1784930404661,
+          "capturedAtMonotonicNs": 146202172125
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846052126"
+        "capturedAt": "1784930404661"
       },
       "currentMetadata": null,
       "status": "missing"
@@ -7697,18 +7696,18 @@
           "laidOutViews": 76,
           "visibleContentLeafViews": 0,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4061,
+          "processId": 4156,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "cfb775e7f0cad618f64b4b58da011069",
-          "bootId": "aa1bdc17-db77-4b22-afdf-34237677efed",
-          "capturedAtEpochMs": 1784846116985,
-          "capturedAtMonotonicNs": 132485079348
+          "generation": "4b02918e717d191ee9478449c9b905a6",
+          "bootId": "a359ab8c-33ec-4689-b1c6-4c1c10a81449",
+          "capturedAtEpochMs": 1784930408623,
+          "capturedAtMonotonicNs": 129866157995
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846116985"
+        "capturedAt": "1784930408623"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -7804,7 +7803,7 @@
         },
         "diagnostics": {
           "displayWidthPx": 1170,
-          "displayHeightPx": 2460,
+          "displayHeightPx": 2342,
           "densityDpi": 480,
           "rootWidthPx": 1170,
           "rootHeightPx": 2532,
@@ -7813,18 +7812,18 @@
           "laidOutViews": 285,
           "visibleContentLeafViews": 2,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 3982,
+          "processId": 4101,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "cd99ab87cf3d63a68b20e13378ad7d6b",
-          "bootId": "3304e976-da0c-4eaf-8ca5-ccf8ba656a10",
-          "capturedAtEpochMs": 1784846069249,
-          "capturedAtMonotonicNs": 99316182358
+          "generation": "a5b99be4e82bcc8368a6578fc472c007",
+          "bootId": "276f39ee-6a77-4018-bd60-10f264389906",
+          "capturedAtEpochMs": 1784930346156,
+          "capturedAtMonotonicNs": 102701998139
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846069249"
+        "capturedAt": "1784930346156"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -7847,8 +7846,8 @@
         "systemBars": "status-hidden-home-indicator-visible"
       },
       "status": "different",
-      "baselineSha256": "94f7db5ba2b76e16047ad2fffc90c4a40f99d9ec55cca65bd88d838ade4e08f8",
-      "currentSha256": "9b134d11cb2228ad98db6bc74579af55d4bac89ea390d0659e77a0c13bb5cf30",
+      "baselineSha256": "57722faebfbcb3a359d1f5896598ee47ec71de8333b00bfeac9b72c3cb9df494",
+      "currentSha256": "5400c3e5aad046ef9c699ef07ed331b296b084aa4f811c1c2a99c4f8d63b047f",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/android__ios/components.members.agent-lifecycle-actions.side-by-side.png",
       "metrics": {
@@ -7858,7 +7857,7 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.9506127010829193,
+        "rgbSimilarity": 0.9505956046830515,
         "pixelPerfectSimilarity": 0.9073874913922307,
         "pixelMismatchRatio": 0.09261250860776926,
         "compositor": "sharp",
@@ -7930,18 +7929,18 @@
           "laidOutViews": 303,
           "visibleContentLeafViews": 2,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4332,
+          "processId": 4153,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "1f41104d6e5c0a39fc6f9381499ec0ef",
-          "bootId": "77be90ea-03a1-40b9-9a90-75597755fb31",
-          "capturedAtEpochMs": 1784846807165,
-          "capturedAtMonotonicNs": 123819832411
+          "generation": "3835fca77fb6ba065ce8f4fc922920dd",
+          "bootId": "411d96e2-15a7-4511-bf32-8474c329fdcc",
+          "capturedAtEpochMs": 1784930425759,
+          "capturedAtMonotonicNs": 123782911017
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846807165"
+        "capturedAt": "1784930425759"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -7965,7 +7964,7 @@
       },
       "status": "different",
       "baselineSha256": "d6d9fabe474b60865c99ed8d532791b82fd8c44cc9e7dea224a5e3ed52fb3ef5",
-      "currentSha256": "643eff113b8d5e135703d14edced2b57b67e93662207bb03ae8134231a2c6948",
+      "currentSha256": "982b5184b1ec9f8e74c9d8a44acacf3c57d7575d06b7f0e292dd1b4059bf0677",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/android__ios/components.members.avatar-management.side-by-side.png",
       "metrics": {
@@ -7975,7 +7974,7 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.9454155446671618,
+        "rgbSimilarity": 0.9454149922167128,
         "pixelPerfectSimilarity": 0.906703258125059,
         "pixelMismatchRatio": 0.09329674187494097,
         "compositor": "sharp",
@@ -8047,18 +8046,18 @@
           "laidOutViews": 84,
           "visibleContentLeafViews": 1,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4061,
+          "processId": 4156,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "cfb775e7f0cad618f64b4b58da011069",
-          "bootId": "aa1bdc17-db77-4b22-afdf-34237677efed",
-          "capturedAtEpochMs": 1784846083286,
-          "capturedAtMonotonicNs": 98786528096
+          "generation": "4b02918e717d191ee9478449c9b905a6",
+          "bootId": "a359ab8c-33ec-4689-b1c6-4c1c10a81449",
+          "capturedAtEpochMs": 1784930338451,
+          "capturedAtMonotonicNs": 59694442422
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846083286"
+        "capturedAt": "1784930338451"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -8164,18 +8163,18 @@
           "laidOutViews": 126,
           "visibleContentLeafViews": 8,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4061,
+          "processId": 4153,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "cfb775e7f0cad618f64b4b58da011069",
-          "bootId": "aa1bdc17-db77-4b22-afdf-34237677efed",
-          "capturedAtEpochMs": 1784846136967,
-          "capturedAtMonotonicNs": 152467268055
+          "generation": "3835fca77fb6ba065ce8f4fc922920dd",
+          "bootId": "411d96e2-15a7-4511-bf32-8474c329fdcc",
+          "capturedAtEpochMs": 1784930414800,
+          "capturedAtMonotonicNs": 112823447799
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846136967"
+        "capturedAt": "1784930414800"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -8280,18 +8279,18 @@
           "laidOutViews": 78,
           "visibleContentLeafViews": 2,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4332,
+          "processId": 4018,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "1f41104d6e5c0a39fc6f9381499ec0ef",
-          "bootId": "77be90ea-03a1-40b9-9a90-75597755fb31",
-          "capturedAtEpochMs": 1784846737687,
-          "capturedAtMonotonicNs": 54342491833
+          "generation": "9c1642503bc1f002876c1b2e0b4b37b3",
+          "bootId": "b45ad9d5-e825-498e-9cf3-22442a33f81b",
+          "capturedAtEpochMs": 1784931525064,
+          "capturedAtMonotonicNs": 86473785284
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846737687"
+        "capturedAt": "1784931525064"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -8398,18 +8397,18 @@
           "laidOutViews": 110,
           "visibleContentLeafViews": 2,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4332,
+          "processId": 4018,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "1f41104d6e5c0a39fc6f9381499ec0ef",
-          "bootId": "77be90ea-03a1-40b9-9a90-75597755fb31",
-          "capturedAtEpochMs": 1784846767845,
-          "capturedAtMonotonicNs": 84499708229
+          "generation": "9c1642503bc1f002876c1b2e0b4b37b3",
+          "bootId": "b45ad9d5-e825-498e-9cf3-22442a33f81b",
+          "capturedAtEpochMs": 1784931559444,
+          "capturedAtMonotonicNs": 120852995993
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846767845"
+        "capturedAt": "1784931559444"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -8531,18 +8530,18 @@
           "laidOutViews": 34,
           "visibleContentLeafViews": 0,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4207,
+          "processId": 4153,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "27ad3c53973b112b0876cafb71eb7725",
-          "bootId": "07c95fb0-7b52-4852-8464-e8652f786423",
-          "capturedAtEpochMs": 1784846065261,
-          "capturedAtMonotonicNs": 97022965135
+          "generation": "3835fca77fb6ba065ce8f4fc922920dd",
+          "bootId": "411d96e2-15a7-4511-bf32-8474c329fdcc",
+          "capturedAtEpochMs": 1784930402459,
+          "capturedAtMonotonicNs": 100482965352
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846065261"
+        "capturedAt": "1784930402459"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -8563,7 +8562,22 @@
           "density": 1
         },
         "device": "iPhone 14",
-        "systemBars": "status-hidden-home-indicator-visible"
+        "systemBars": "status-hidden-home-indicator-visible",
+        "richTextCapabilities": {
+          "inlineCodeChrome": true,
+          "slockRefChrome": true,
+          "reactionAtlas": true
+        },
+        "declaredDivergences": [
+          {
+            "id": "ios-chip-box-advance-approximate",
+            "description": "Chip fill/border paint past the glyphs without reserving the box width in layout, so the border-to-neighbor gap approximates React's inline-block advance (atomic box rewrite tracked as task #448)."
+          },
+          {
+            "id": "ios-inline-code-char-wrap-bridge",
+            "description": "Long inline code wraps via the shared zero-width-space bridge (slockInlineCodeCharWrapBridgeThreshold), not native char-level wrap (task #401 A-bridge)."
+          }
+        ]
       },
       "status": "different",
       "baselineSha256": "09a1c013b27959efced7ebbb0936e4523824137ed0e538c8c1452ad87d2b50be",
@@ -8649,18 +8663,18 @@
           "laidOutViews": 68,
           "visibleContentLeafViews": 0,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4159,
+          "processId": 4156,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "0a6636c5ed3860b8ddec436331882b11",
-          "bootId": "162d56ca-fbc1-45c7-af9f-484dac0a9b5a",
-          "capturedAtEpochMs": 1784846048178,
-          "capturedAtMonotonicNs": 68668268126
+          "generation": "4b02918e717d191ee9478449c9b905a6",
+          "bootId": "a359ab8c-33ec-4689-b1c6-4c1c10a81449",
+          "capturedAtEpochMs": 1784930342636,
+          "capturedAtMonotonicNs": 63879127455
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846048178"
+        "capturedAt": "1784930342636"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -8758,7 +8772,7 @@
         },
         "diagnostics": {
           "displayWidthPx": 1170,
-          "displayHeightPx": 2342,
+          "displayHeightPx": 2460,
           "densityDpi": 480,
           "rootWidthPx": 1170,
           "rootHeightPx": 2532,
@@ -8767,18 +8781,18 @@
           "laidOutViews": 30,
           "visibleContentLeafViews": 0,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 3833,
+          "processId": 3943,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "86a78fb7f0c1e000288eb68b5730349f",
-          "bootId": "268bf148-10b8-455e-b48e-741cc912598b",
-          "capturedAtEpochMs": 1784846073491,
-          "capturedAtMonotonicNs": 115259638820
+          "generation": "81d8cb3f1e605da586c5e412cfe10670",
+          "bootId": "ee5aa321-2555-4f73-91e0-bf65c36ee709",
+          "capturedAtEpochMs": 1784930391755,
+          "capturedAtMonotonicNs": 111223964261
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846073491"
+        "capturedAt": "1784930391755"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -8799,22 +8813,7 @@
           "density": 1
         },
         "device": "iPhone 14",
-        "systemBars": "status-hidden-home-indicator-visible",
-        "richTextCapabilities": {
-          "inlineCodeChrome": true,
-          "slockRefChrome": true,
-          "reactionAtlas": true
-        },
-        "declaredDivergences": [
-          {
-            "id": "ios-chip-box-advance-approximate",
-            "description": "Chip fill/border paint past the glyphs without reserving the box width in layout, so the border-to-neighbor gap approximates React's inline-block advance (atomic box rewrite tracked as task #448)."
-          },
-          {
-            "id": "ios-inline-code-char-wrap-bridge",
-            "description": "Long inline code wraps via the shared zero-width-space bridge (slockInlineCodeCharWrapBridgeThreshold), not native char-level wrap (task #401 A-bridge)."
-          }
-        ]
+        "systemBars": "status-hidden-home-indicator-visible"
       },
       "status": "different",
       "baselineSha256": "b6aa651834a90d383910c7e9937ce00aefd228252a13c22384d6c1a6ddc3d821",
@@ -8900,18 +8899,18 @@
           "laidOutViews": 34,
           "visibleContentLeafViews": 0,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4408,
+          "processId": 3916,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "e90ed809422219e52c37815a2a956f21",
-          "bootId": "69d80b55-ab02-4eb1-bdeb-bfc54da8f017",
-          "capturedAtEpochMs": 1784846048205,
-          "capturedAtMonotonicNs": 79919173182
+          "generation": "d5e66d1a986d2347c2a9634625a7c431",
+          "bootId": "adf8b5b5-7b14-4637-a995-7ca34248157a",
+          "capturedAtEpochMs": 1784930435827,
+          "capturedAtMonotonicNs": 102910355955
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846048205"
+        "capturedAt": "1784930435827"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -8932,7 +8931,22 @@
           "density": 1
         },
         "device": "iPhone 14",
-        "systemBars": "status-hidden-home-indicator-visible"
+        "systemBars": "status-hidden-home-indicator-visible",
+        "richTextCapabilities": {
+          "inlineCodeChrome": true,
+          "slockRefChrome": true,
+          "reactionAtlas": true
+        },
+        "declaredDivergences": [
+          {
+            "id": "ios-chip-box-advance-approximate",
+            "description": "Chip fill/border paint past the glyphs without reserving the box width in layout, so the border-to-neighbor gap approximates React's inline-block advance (atomic box rewrite tracked as task #448)."
+          },
+          {
+            "id": "ios-inline-code-char-wrap-bridge",
+            "description": "Long inline code wraps via the shared zero-width-space bridge (slockInlineCodeCharWrapBridgeThreshold), not native char-level wrap (task #401 A-bridge)."
+          }
+        ]
       },
       "status": "different",
       "baselineSha256": "eb42a5522884bddfaa2ab427bbd9b7fa7d4d2b0ba5bcbad4d188332cf552a50f",
@@ -9018,18 +9032,18 @@
           "laidOutViews": 32,
           "visibleContentLeafViews": 0,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 4061,
+          "processId": 4008,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "cfb775e7f0cad618f64b4b58da011069",
-          "bootId": "aa1bdc17-db77-4b22-afdf-34237677efed",
-          "capturedAtEpochMs": 1784846123956,
-          "capturedAtMonotonicNs": 139456589384
+          "generation": "b14f097c0087ba710e77225b3c3609c4",
+          "bootId": "031eb5ca-2291-4b6f-ab3a-552add3893f3",
+          "capturedAtEpochMs": 1784930398876,
+          "capturedAtMonotonicNs": 140417018616
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846123956"
+        "capturedAt": "1784930398876"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -9050,7 +9064,22 @@
           "density": 1
         },
         "device": "iPhone 14",
-        "systemBars": "status-hidden-home-indicator-visible"
+        "systemBars": "status-hidden-home-indicator-visible",
+        "richTextCapabilities": {
+          "inlineCodeChrome": true,
+          "slockRefChrome": true,
+          "reactionAtlas": true
+        },
+        "declaredDivergences": [
+          {
+            "id": "ios-chip-box-advance-approximate",
+            "description": "Chip fill/border paint past the glyphs without reserving the box width in layout, so the border-to-neighbor gap approximates React's inline-block advance (atomic box rewrite tracked as task #448)."
+          },
+          {
+            "id": "ios-inline-code-char-wrap-bridge",
+            "description": "Long inline code wraps via the shared zero-width-space bridge (slockInlineCodeCharWrapBridgeThreshold), not native char-level wrap (task #401 A-bridge)."
+          }
+        ]
       },
       "status": "different",
       "baselineSha256": "89d54c3537e52e11e14ec7544de63ecb7bf0603fd7caca4427de8899c9d35f9e",
@@ -9136,18 +9165,18 @@
           "laidOutViews": 30,
           "visibleContentLeafViews": 0,
           "targetPackage": "build.raft.app.connectedtest",
-          "processId": 3898,
+          "processId": 4101,
           "processUid": 10192
         },
         "captureIdentity": {
           "attempt": 1,
-          "generation": "84849efd2933d5657ec9bff8d2938742",
-          "bootId": "af8ae784-9e40-49c1-95e2-84126a7d0a37",
-          "capturedAtEpochMs": 1784846047057,
-          "capturedAtMonotonicNs": 78860924033
+          "generation": "a5b99be4e82bcc8368a6578fc472c007",
+          "bootId": "276f39ee-6a77-4018-bd60-10f264389906",
+          "capturedAtEpochMs": 1784930306599,
+          "capturedAtMonotonicNs": 63144938995
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1784846047057"
+        "capturedAt": "1784930306599"
       },
       "currentMetadata": {
         "provider": "ios",
@@ -9168,7 +9197,22 @@
           "density": 1
         },
         "device": "iPhone 14",
-        "systemBars": "status-hidden-home-indicator-visible"
+        "systemBars": "status-hidden-home-indicator-visible",
+        "richTextCapabilities": {
+          "inlineCodeChrome": true,
+          "slockRefChrome": true,
+          "reactionAtlas": true
+        },
+        "declaredDivergences": [
+          {
+            "id": "ios-chip-box-advance-approximate",
+            "description": "Chip fill/border paint past the glyphs without reserving the box width in layout, so the border-to-neighbor gap approximates React's inline-block advance (atomic box rewrite tracked as task #448)."
+          },
+          {
+            "id": "ios-inline-code-char-wrap-bridge",
+            "description": "Long inline code wraps via the shared zero-width-space bridge (slockInlineCodeCharWrapBridgeThreshold), not native char-level wrap (task #401 A-bridge)."
+          }
+        ]
       },
       "status": "different",
       "baselineSha256": "166a5b9cdafcee9c13cfcd08497acc6b69489dd686fecfba25de3dac5ec648c3",
@@ -9196,8 +9240,8 @@
     "total": 79,
     "same": 0,
     "pass": 14,
-    "basic-pass": 18,
-    "different": 42,
+    "basic-pass": 17,
+    "different": 43,
     "missing": 5
   }
 }
