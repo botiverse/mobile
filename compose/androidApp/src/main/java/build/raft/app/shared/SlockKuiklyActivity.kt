@@ -6408,12 +6408,12 @@ private fun AttachmentDownloadProgress.toAndroidBridgePayload(): Map<String, Any
             bytesPerSecond?.takeIf { it > 0L }?.let { put("bytesPerSecond", it) }
         }
 
-private fun AndroidSystemDownloadProgress.toAndroidBridgePayload(): Map<String, Any> =
+internal fun AndroidSystemDownloadProgress.toAndroidBridgePayload(): Map<String, Any> =
         buildMap {
             put("downloadId", logicalDownloadId)
             put("attemptToken", attemptToken)
             put("recordVersion", recordVersion)
-            put("sequence", recordVersion)
+            put("sequence", sequence)
             put("phase", phase)
             put("status", "progress")
             put("downloadedBytes", downloadedBytes)

@@ -40,6 +40,52 @@ class AndroidAttachmentSystemDownloadEngineTest {
     }
 
     @Test
+    fun progressSamplesUseTransferSequenceAndPreserveKnownTotal() {
+        val backend = FakeBackend()
+        val store = FakeStore()
+        val spec = spec(principalA)
+        backend.scriptedQueries +=
+            AndroidSystemDownloadRow(
+                systemDownloadId = 1L,
+                requestToken = "token-0",
+                localPath = null,
+                status = AndroidSystemDownloadStatus.Running,
+                downloadedBytes = 69_765L,
+                totalBytes = 48_535_109L
+            )
+        backend.scriptedQueries +=
+            AndroidSystemDownloadRow(
+                systemDownloadId = 1L,
+                requestToken = "token-0",
+                localPath = null,
+                status = AndroidSystemDownloadStatus.Running,
+                downloadedBytes = 24_267_554L,
+                totalBytes = 48_535_109L
+            )
+        backend.scriptedQueries +=
+            AndroidSystemDownloadRow(
+                systemDownloadId = 1L,
+                requestToken = "token-0",
+                localPath = null,
+                status = AndroidSystemDownloadStatus.Successful,
+                downloadedBytes = 48_535_109L,
+                totalBytes = 48_535_109L
+            )
+        val samples = mutableListOf<AndroidSystemDownloadProgress>()
+
+        val result = engine(backend, store).download(spec, observer = samples::add)
+
+        assertEquals("complete", result.status)
+        assertEquals(listOf(1L, 2L, 3L), samples.map { it.sequence })
+        assertEquals(listOf(48_535_109L, 48_535_109L, 48_535_109L), samples.map { it.totalBytes })
+        assertEquals(listOf(1, 49, 100), samples.map { it.percent })
+        assertEquals(1L, samples.first().toAndroidBridgePayload()["sequence"])
+        assertEquals(48_535_109L, samples.first().toAndroidBridgePayload()["totalBytes"])
+        assertEquals(1, samples.first().toAndroidBridgePayload()["percent"])
+        assertEquals(1, samples.map { it.recordVersion }.distinct().size)
+    }
+
+    @Test
     fun crashAfterSystemRowBeforeCommitAdoptsTokenWithoutDoubleEnqueue() {
         val backend = FakeBackend()
         val store = FakeStore()
@@ -358,6 +404,7 @@ private class FakeStore : AndroidSystemDownloadRecordStore {
 
 private class FakeBackend : AndroidSystemDownloadBackend {
     val rows = mutableListOf<AndroidSystemDownloadRow>()
+    val scriptedQueries = mutableListOf<AndroidSystemDownloadRow>()
     val removed = mutableListOf<Long>()
     val enqueueCount = AtomicInteger(0)
     var completeOnQuery = false
@@ -374,6 +421,7 @@ private class FakeBackend : AndroidSystemDownloadBackend {
     override fun taggedRows(): List<AndroidSystemDownloadRow> = synchronized(rows) { rows.toList() }
 
     override fun query(systemDownloadId: Long): AndroidSystemDownloadRow {
+        if (scriptedQueries.isNotEmpty()) return scriptedQueries.removeAt(0)
         val current = synchronized(rows) { rows.firstOrNull { it.systemDownloadId == systemDownloadId } }
             ?: return AndroidSystemDownloadRow(systemDownloadId, "", null, AndroidSystemDownloadStatus.Missing)
         return if (completeOnQuery) current.copy(status = AndroidSystemDownloadStatus.Successful) else current

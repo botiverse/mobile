@@ -71,6 +71,7 @@ internal data class AndroidSystemDownloadProgress(
     val logicalDownloadId: String,
     val attemptToken: String,
     val recordVersion: Long,
+    val sequence: Long,
     val phase: String,
     val downloadedBytes: Long,
     val totalBytes: Long,
@@ -161,13 +162,15 @@ internal class AndroidAttachmentSystemDownloadEngine(
         }
         val systemId = enqueued.systemDownloadId
             ?: return AndroidSystemDownloadResult(status = "failed", errorKind = "missing_system_id")
+        var progressSequence = 0L
         while (true) {
             if (!operationIsCurrent()) {
                 controlExisting(spec.principalKey, spec.logicalDownloadId, spec.operationId, "cancel")
                 return cancelledOperationResult(enqueued)
             }
             val row = backend.query(systemId)
-            observer?.invoke(row.toProgress(enqueued))
+            progressSequence += 1L
+            observer?.invoke(row.toProgress(enqueued, progressSequence))
             when (row.status) {
                 AndroidSystemDownloadStatus.Pending,
                 AndroidSystemDownloadStatus.Running,
@@ -479,12 +482,24 @@ internal class AndroidAttachmentSystemDownloadEngine(
             stagingPath = stagingPath
         )
 
-    private fun AndroidSystemDownloadRow.toProgress(record: AndroidSystemDownloadRecord): AndroidSystemDownloadProgress {
-        val percent = if (totalBytes > 0L) ((downloadedBytes * 100L) / totalBytes).toInt().coerceIn(0, 100) else null
+    private fun AndroidSystemDownloadRow.toProgress(
+        record: AndroidSystemDownloadRecord,
+        sequence: Long
+    ): AndroidSystemDownloadProgress {
+        val percent =
+            when {
+                totalBytes <= 0L || downloadedBytes <= 0L -> null
+                downloadedBytes >= totalBytes -> 100
+                else ->
+                    ((downloadedBytes.toDouble() * 100.0) / totalBytes.toDouble())
+                        .toInt()
+                        .coerceIn(1, 99)
+            }
         return AndroidSystemDownloadProgress(
             logicalDownloadId = record.logicalDownloadId,
             attemptToken = record.attemptToken,
             recordVersion = record.recordVersion,
+            sequence = sequence,
             phase = status.name.lowercase(),
             downloadedBytes = downloadedBytes,
             totalBytes = totalBytes,

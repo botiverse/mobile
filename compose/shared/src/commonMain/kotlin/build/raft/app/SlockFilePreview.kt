@@ -105,9 +105,11 @@ import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 import com.tencent.tmm.kmmresource.resource.desc.desc
 import com.tencent.tmm.kmmresource.resource.format
 import com.tencent.kuikly.core.views.VideoView
+import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -137,6 +139,71 @@ private const val SlockFilePreviewImageGalleryMaxInFlightRequests = 2
 private val SlockFilePreviewJson = Json { ignoreUnknownKeys = true }
 
 internal enum class SlockFilePreviewPhotosActionState { Hidden, Save, Saving, Retry, Busy }
+
+internal data class SlockFilePreviewProgressEvent(
+    val operation: AttachmentOperationToken,
+    val progress: BridgeAttachmentDownloadProgress
+)
+
+internal class SlockFilePreviewProgressMailbox {
+    private val events = Channel<SlockFilePreviewProgressEvent>(Channel.UNLIMITED)
+    private val firstPositiveDownloadId = atomic<String?>(null)
+
+    fun offer(
+        operation: AttachmentOperationToken,
+        progress: BridgeAttachmentDownloadProgress,
+        onFirstPositive: (BridgeAttachmentDownloadProgress) -> Unit = {}
+    ): Boolean {
+        val accepted = events.trySend(SlockFilePreviewProgressEvent(operation, progress)).isSuccess
+        if (accepted && progress.downloadedBytes > 0L && markFirstPositive(progress.downloadId)) {
+            onFirstPositive(progress)
+        }
+        return accepted
+    }
+
+    suspend fun nextOrNull(): SlockFilePreviewProgressEvent? = events.receiveCatching().getOrNull()
+
+    fun close() {
+        events.close()
+    }
+
+    private fun markFirstPositive(downloadId: String): Boolean {
+        while (true) {
+            val current = firstPositiveDownloadId.value
+            if (current == downloadId) return false
+            if (firstPositiveDownloadId.compareAndSet(expect = current, update = downloadId)) return true
+        }
+    }
+}
+
+internal data class SlockFilePreviewProgressState(
+    val progress: BridgeAttachmentDownloadProgress? = null,
+    val attemptToken: String? = null,
+    val recordVersion: Long? = null
+)
+
+internal fun reduceSlockFilePreviewProgressEvent(
+    current: SlockFilePreviewProgressState,
+    event: SlockFilePreviewProgressEvent,
+    currentOperationId: String,
+    expectedDownloadId: String?,
+    commitAllowed: (AttachmentOperationToken, String) -> Boolean = ::attachmentOperationCommitAllowed
+): SlockFilePreviewProgressState {
+    val downloadId = expectedDownloadId?.takeIf(String::isNotBlank) ?: return current
+    if (!commitAllowed(event.operation, currentOperationId)) return current
+    val reduced =
+        reduceAttachmentDownloadProgress(
+            current = current.progress,
+            incoming = event.progress,
+            expectedDownloadId = downloadId
+        )
+    if (reduced === current.progress) return current
+    return SlockFilePreviewProgressState(
+        progress = reduced,
+        attemptToken = reduced?.attemptToken?.takeIf(String::isNotBlank) ?: current.attemptToken,
+        recordVersion = reduced?.recordVersion ?: current.recordVersion
+    )
+}
 
 internal data class SlockFilePreviewExternalOperationIdentity(
     val source: String,
@@ -422,11 +489,13 @@ private fun SlockFilePreviewStandalonePageContent() {
     }
     var nextDownloadGeneration by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf(0L) }
     var activeDownloadStartedAt by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf<TimeMark?>(null) }
-    var firstBridgeDownloadId by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf<String?>(null) }
     var firstRenderedDownloadId by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf<String?>(null) }
     var attachmentCacheState by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf(false) }
     var attachmentCacheAttemptToken by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf<String?>(null) }
     var attachmentCacheRecordVersion by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf<Long?>(null) }
+    val downloadProgressMailbox = remember(payload.source, payload.attachmentId, payload.path) {
+        SlockFilePreviewProgressMailbox()
+    }
     val unableToSendComment = stringResource(MR.strings.file_preview_error_send_comment)
     val unableToResolveComment = stringResource(MR.strings.file_preview_error_resolve_comment)
     val attachmentFallback = stringResource(MR.strings.file_preview_fallback_attachment)
@@ -487,6 +556,32 @@ private fun SlockFilePreviewStandalonePageContent() {
             retiringJob?.cancel()
         }
     }
+    DisposableEffect(downloadProgressMailbox) {
+        onDispose { downloadProgressMailbox.close() }
+    }
+    LaunchedEffect(downloadProgressMailbox) {
+        while (true) {
+            val event = downloadProgressMailbox.nextOrNull() ?: break
+            val current =
+                SlockFilePreviewProgressState(
+                    progress = downloadProgress,
+                    attemptToken = attachmentCacheAttemptToken,
+                    recordVersion = attachmentCacheRecordVersion
+                )
+            val next =
+                reduceSlockFilePreviewProgressEvent(
+                    current = current,
+                    event = event,
+                    currentOperationId = activeAttachmentOperation?.operationId.orEmpty(),
+                    expectedDownloadId = activeDownloadId
+                )
+            if (next === current) continue
+            val progress = next.progress ?: continue
+            downloadProgress = progress
+            attachmentCacheAttemptToken = next.attemptToken
+            attachmentCacheRecordVersion = next.recordVersion
+        }
+    }
     LaunchedEffect(downloadProgress?.downloadId, downloadProgress?.downloadedBytes) {
         val progress = downloadProgress ?: return@LaunchedEffect
         if (progress.downloadedBytes <= 0L || firstRenderedDownloadId == progress.downloadId) return@LaunchedEffect
@@ -495,6 +590,7 @@ private fun SlockFilePreviewStandalonePageContent() {
         bridge.log(
             "file_preview_download phase=first_render downloadIdHash=${progress.downloadId.hashCode().toString(16)} " +
                 "sequence=${progress.sequence} downloadedBytes=${progress.downloadedBytes} " +
+                "totalBytes=${progress.totalBytes ?: -1L} percent=${progress.percent ?: -1} " +
                 "elapsedMs=${activeDownloadStartedAt?.elapsedNow()?.inWholeMilliseconds ?: -1L}"
         )
     }
@@ -752,6 +848,21 @@ private fun SlockFilePreviewStandalonePageContent() {
             operation = externalOperation,
             status = downloadStatus
         )
+    fun offerDownloadProgress(
+        operation: AttachmentOperationToken,
+        progress: BridgeAttachmentDownloadProgress,
+        startedAt: TimeMark?
+    ) {
+        downloadProgressMailbox.offer(operation, progress) { first ->
+            bridge.log(
+                "file_preview_download phase=first_bridge " +
+                    "downloadIdHash=${first.downloadId.hashCode().toString(16)} " +
+                    "sequence=${first.sequence} downloadedBytes=${first.downloadedBytes} " +
+                    "totalBytes=${first.totalBytes ?: -1L} percent=${first.percent ?: -1} " +
+                    "elapsedMs=${startedAt?.elapsedNow()?.inWholeMilliseconds ?: -1L}"
+            )
+        }
+    }
     LaunchedEffect(canOpenWith, attachmentCacheId, attachmentCacheFileName, payload.externalMimeType) {
         attachmentCacheState = false
         if (!canOpenWith) return@LaunchedEffect
@@ -789,8 +900,9 @@ private fun SlockFilePreviewStandalonePageContent() {
                 "file_preview_download phase=url_resolved downloadIdHash=${downloadId.orEmpty().hashCode().toString(16)} " +
                     "elapsedMs=${activeDownloadStartedAt?.elapsedNow()?.inWholeMilliseconds ?: -1L} " +
                     binaryDownloadUrlDiagnostics(externalUrl)
-            )
+                )
         }
+        val progressStartedAt = activeDownloadStartedAt
         val result =
             bridge.openAttachment(
                 url = externalUrl,
@@ -801,29 +913,7 @@ private fun SlockFilePreviewStandalonePageContent() {
                 downloadId = downloadId,
                 onProgress =
                     if (trackProgress) {
-                        { progress ->
-                            if (!attachmentOperationCommitAllowed(operation, activeAttachmentOperation?.operationId.orEmpty())) {
-                                return@openAttachment
-                            }
-                            activeDownloadId?.let { expectedDownloadId ->
-                                if (progress.downloadedBytes > 0L && firstBridgeDownloadId != expectedDownloadId) {
-                                    firstBridgeDownloadId = expectedDownloadId
-                                    bridge.log(
-                                        "file_preview_download phase=first_bridge downloadIdHash=${expectedDownloadId.hashCode().toString(16)} " +
-                                            "sequence=${progress.sequence} downloadedBytes=${progress.downloadedBytes} " +
-                                            "elapsedMs=${activeDownloadStartedAt?.elapsedNow()?.inWholeMilliseconds ?: -1L}"
-                                    )
-                                }
-                                downloadProgress =
-                                    reduceAttachmentDownloadProgress(
-                                        current = downloadProgress,
-                                        incoming = progress,
-                                        expectedDownloadId = expectedDownloadId
-                                    )
-                                attachmentCacheAttemptToken = progress.attemptToken.takeIf(String::isNotBlank)
-                                attachmentCacheRecordVersion = progress.recordVersion
-                            }
-                        }
+                        { progress -> offerDownloadProgress(operation, progress, progressStartedAt) }
                     } else {
                         null
                     }
@@ -866,33 +956,12 @@ private fun SlockFilePreviewStandalonePageContent() {
                 "file_preview_download phase=url_resolved downloadIdHash=${downloadId.orEmpty().hashCode().toString(16)} " +
                     "elapsedMs=${activeDownloadStartedAt?.elapsedNow()?.inWholeMilliseconds ?: -1L} " +
                     binaryDownloadUrlDiagnostics(externalUrl)
-            )
+                )
         }
+        val progressStartedAt = activeDownloadStartedAt
         val progressCallback: ((BridgeAttachmentDownloadProgress) -> Unit)? =
             if (trackProgress) {
-                progressCallback@ { progress ->
-                    if (!attachmentOperationCommitAllowed(operation, activeAttachmentOperation?.operationId.orEmpty())) {
-                        return@progressCallback
-                    }
-                    activeDownloadId?.let { expectedDownloadId ->
-                        if (progress.downloadedBytes > 0L && firstBridgeDownloadId != expectedDownloadId) {
-                            firstBridgeDownloadId = expectedDownloadId
-                            bridge.log(
-                                "file_preview_download phase=first_bridge downloadIdHash=${expectedDownloadId.hashCode().toString(16)} " +
-                                    "sequence=${progress.sequence} downloadedBytes=${progress.downloadedBytes} " +
-                                    "elapsedMs=${activeDownloadStartedAt?.elapsedNow()?.inWholeMilliseconds ?: -1L}"
-                            )
-                        }
-                        downloadProgress =
-                            reduceAttachmentDownloadProgress(
-                                current = downloadProgress,
-                                incoming = progress,
-                                expectedDownloadId = expectedDownloadId
-                            )
-                        attachmentCacheAttemptToken = progress.attemptToken.takeIf(String::isNotBlank)
-                        attachmentCacheRecordVersion = progress.recordVersion
-                    }
-                }
+                { progress -> offerDownloadProgress(operation, progress, progressStartedAt) }
             } else {
                 null
             }
@@ -966,7 +1035,6 @@ private fun SlockFilePreviewStandalonePageContent() {
                 downloadId = activeDownloadId.orEmpty()
             )
             activeDownloadStartedAt = TimeSource.Monotonic.markNow()
-            firstBridgeDownloadId = null
             firstRenderedDownloadId = null
             downloadProgress = SlockFilePreviewInitialDownloadProgress.copy(downloadId = activeDownloadId.orEmpty())
         } else {
@@ -1027,7 +1095,6 @@ private fun SlockFilePreviewStandalonePageContent() {
         downloadStatus = slockFilePreviewExternalOpenAdmissionStatus()
         activeDownloadStartedAt = TimeSource.Monotonic.markNow()
         if (trackProgress) {
-            firstBridgeDownloadId = null
             firstRenderedDownloadId = null
             downloadProgress = SlockFilePreviewInitialDownloadProgress.copy(downloadId = activeDownloadId.orEmpty())
         } else {
@@ -1329,7 +1396,7 @@ private fun SlockFilePreviewStandalonePageContent() {
                         },
                     downloadInProgress = downloadActive,
                     downloadPaused = downloadStatus == "paused",
-                    downloadProgressPercent = downloadProgress?.percent ?: if (downloadActive) 0 else null,
+                    downloadProgressPercent = downloadProgress?.percent,
                     downloadCached = attachmentCacheState,
                     onDownload =
                         if (canOpenWith) {
@@ -5091,11 +5158,11 @@ internal fun SlockFilePreviewGenericCard(
                 statusLabel =
                     statusLabel
                         ?: slockFilePreviewLocalizedActiveDownloadStatusLabel(
-                            progress = SlockFilePreviewInitialDownloadProgress.copy(percent = progressPercent ?: 0),
+                            progress = SlockFilePreviewInitialDownloadProgress.copy(percent = progressPercent),
                             status = if (downloadPaused) "paused" else "downloading"
                         ),
                 showProgress = true,
-                progressPercent = progressPercent ?: 0,
+                progressPercent = progressPercent,
                 downloadPaused = downloadPaused,
                 onToggleDownload = onToggleDownload,
                 onStopDownload = onStopDownload
