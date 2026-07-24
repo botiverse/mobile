@@ -1031,9 +1031,20 @@ jobs:
           hvigorw --mode module \
             -p module=entry@default -p product=default -p requiredDeviceType=phone \
             default@BuildNativeWithNinja --analyze=normal --no-daemon
+
+      # DevEco's Linux CLI has no previewer callback for GenerateUnitTestResult;
+      # compile the LocalUnit bundle here while Darwin/local covers execution.
+      - name: Compile OHOS LocalUnit sources
+        if: steps.ohos_native.outputs.required == 'true'
+        working-directory: compose/ohosApp
+        shell: bash
+        env:
+          OHOS_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk/default/openharmony
+          DEVECO_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk
+        run: |
           hvigorw --mode module \
             -p module=entry@default -p product=default -p requiredDeviceType=phone \
-            test --analyze=normal --no-daemon
+            default@UnitTestArkTS --analyze=normal --no-daemon
 
   # OHOS host (hvigor/ArkTS) gate — catches .ets compile errors that the
   # KMP-only ohos job cannot see. Runs in artin's harmonyos-ci-image, which
