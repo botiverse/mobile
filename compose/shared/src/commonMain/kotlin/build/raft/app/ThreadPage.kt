@@ -513,6 +513,90 @@ internal fun ThreadAccessResolution.shouldRenderThreadAccessRetry(): Boolean =
 internal fun threadRetryAction(canonicalAccessResolved: Boolean): String =
     if (canonicalAccessResolved) "retryThreadAccess" else "retryThreadLoad"
 
+internal fun threadEventRequiresWriteAccess(action: String): Boolean =
+    action in
+        setOf(
+            "followMessageThread",
+            "unfollowMessageThread",
+            "toggleMessageSaved",
+            "commitActionCard",
+            "toggleReaction",
+            "submitAddMember",
+            "removeMember",
+            "convertMessageToTask",
+            "setTaskStatus",
+            "markTaskDone",
+            "reopenTask",
+            "joinChannel",
+            "retryLocalSend",
+            "cancelLocalSend",
+            "deleteLocalFailedSend"
+        ) || (action == "settingsAction")
+
+internal fun threadComposerEventRequiresWriteAccess(action: String): Boolean =
+    action in
+        setOf(
+            "send",
+            "inviteMention",
+            "notifyMention",
+            "attachImage",
+            "attachFile",
+            "removeAttachment",
+            "retryAttachments"
+        )
+
+internal fun threadEventAllowed(writeActionsEnabled: Boolean, action: String): Boolean =
+    writeActionsEnabled || !threadEventRequiresWriteAccess(action)
+
+internal fun threadComposerEventAllowed(writeActionsEnabled: Boolean, action: String): Boolean =
+    writeActionsEnabled || !threadComposerEventRequiresWriteAccess(action)
+
+internal suspend fun <T> runThreadWriteActionIfEnabled(
+    writeActionsEnabled: () -> Boolean,
+    blockedCode: String,
+    action: suspend () -> DataResult<T>
+): DataResult<T> =
+    if (writeActionsEnabled()) {
+        action()
+    } else {
+        DataResult.Error(ScreenError(code = blockedCode, retryable = false))
+    }
+
+internal fun ThreadAttachmentCommentsDialogState?.retainForThreadWriteAuthority(
+    writeActionsEnabled: Boolean
+): ThreadAttachmentCommentsDialogState? = takeIf { writeActionsEnabled }
+
+internal fun KuiklyThreadScreenPayload.withThreadWriteActionsEnabled(
+    enabled: Boolean
+): KuiklyThreadScreenPayload =
+    if (enabled) {
+        this
+    } else {
+        copy(
+            canAddMembers = false,
+            members = members.map { member -> member.copy(canRemove = false) },
+            settingsActions = emptyList(),
+            showSettingsAction = false,
+            showMessageSaveAction = false,
+            showInlineSaveAction = false,
+            showReactionActions = false,
+            showTaskStatusActions = false
+        )
+    }
+
+internal fun ThreadTimelineSlice.withThreadWriteActionsEnabled(enabled: Boolean): ThreadTimelineSlice =
+    if (enabled) {
+        this
+    } else {
+        copy(
+            showMessageSaveAction = false,
+            showInlineSaveAction = false,
+            showReactionActions = false,
+            showTaskStatusActions = false,
+            canConvertMessagesToTasks = false
+        )
+    }
+
 internal fun handleThreadStoreRetryEvent(
     action: String,
     dispatch: (SharedThreadIntent) -> Unit,
@@ -2313,6 +2397,7 @@ private fun ThreadPageScreen(pageVisibleTick: Int = 0) {
             channelRepository,
             sharedHomeStore,
             sharedStores.threadMessageStore,
+            sharedStores.apiEnvironmentStore,
             createAgentCoordinator
         ) {
             SharedThreadDataSource(
@@ -2339,6 +2424,9 @@ private fun ThreadPageScreen(pageVisibleTick: Int = 0) {
                     )
                 },
                 messageStore = sharedStores.threadMessageStore,
+                cacheEnvironmentIdProvider = {
+                    sharedStores.apiEnvironmentStore.current().apiBaseUrl
+                },
                 payloadStore = sharedStores.threadPayloadStore,
                 agentsApiClient = SlockAgentsApiClient(
                     transport = SlockAgentsNetworkApi(networkClient),
@@ -4532,6 +4620,10 @@ internal fun SharedThreadRouteContent(
     var attachmentCommentsDialogState by remember(threadInstanceKey) {
         mutableStateOf<ThreadAttachmentCommentsDialogState?>(null)
     }
+    LaunchedEffect(renderSlice.writeActionsEnabled) {
+        attachmentCommentsDialogState =
+            attachmentCommentsDialogState.retainForThreadWriteAuthority(renderSlice.writeActionsEnabled)
+    }
     var firstContentLoggedThreadId by remember { mutableStateOf<String?>(null) }
     var performanceSnapshotLoggedThreadId by remember { mutableStateOf<String?>(null) }
 
@@ -4799,7 +4891,8 @@ internal fun SharedThreadRouteContent(
         remember(baseRenderedPayload, threadMembersProjection) {
             baseRenderedPayload.withThreadMembersProjection(threadMembersProjection)
         }
-    val renderedTimelineSlice = timelineSlice
+    val renderedThread = renderedPayload.withThreadWriteActionsEnabled(renderSlice.writeActionsEnabled)
+    val renderedTimelineSlice = timelineSlice.withThreadWriteActionsEnabled(renderSlice.writeActionsEnabled)
     val emptyMemberSuggestionSliceFlow = remember { MutableStateFlow(SharedMembersMemberSuggestionSlice()) }
     val memberSuggestionsFlow =
         remember(
@@ -5023,7 +5116,6 @@ internal fun SharedThreadRouteContent(
         remember(serverMembersStore, headerProjectionServerId) {
             slockScopedAgentStatusResolver(serverMembersStore, headerProjectionServerId?.value)
         }
-    val renderedThread = renderedPayload
     val messagePermalinkLabelResolver =
         remember(
             conversationIdentityProvider,
@@ -5051,6 +5143,7 @@ internal fun SharedThreadRouteContent(
             }
         }
     val attachmentCommentsEnabled = currentServerSlug.attachmentCommentsEnabledForThread()
+    fun threadWritesEnabledNow(): Boolean = threadViewModel.state.value.writeActionsEnabled
 
     fun setAttachmentCommentsState(next: ThreadAttachmentCommentsDialogState) {
         attachmentCommentsDialogState =
@@ -5101,7 +5194,7 @@ internal fun SharedThreadRouteContent(
     }
 
     fun openAttachmentComments(attachmentId: String) {
-        if (!attachmentCommentsEnabled) return
+        if (!threadWritesEnabledNow() || !attachmentCommentsEnabled) return
         val target = renderedTimelineSlice.findAttachmentCommentTarget(attachmentId)
         if (target == null) {
             bridge.toast(commentsUnavailableLabel)
@@ -5129,12 +5222,24 @@ internal fun SharedThreadRouteContent(
     }
 
     fun sendAttachmentComment() {
+        if (!threadWritesEnabledNow()) {
+            attachmentCommentsDialogState = null
+            return
+        }
         val current = attachmentCommentsDialogState ?: return
         val cleanDraft = current.draft.trim()
         if (cleanDraft.isBlank() || current.sending) return
         attachmentCommentsDialogState = current.copy(sending = true, errorCode = null)
         coroutineScope.launch {
-            when (val result = dataSource.sendAttachmentComment(current.attachment.id, cleanDraft)) {
+            when (
+                val result =
+                    runThreadWriteActionIfEnabled(
+                        writeActionsEnabled = ::threadWritesEnabledNow,
+                        blockedCode = "thread_attachment_comment_write_disabled"
+                    ) {
+                        dataSource.sendAttachmentComment(current.attachment.id, cleanDraft)
+                    }
+            ) {
                 is DataResult.Content -> {
                     val loadingState =
                         current.copy(
@@ -5149,6 +5254,10 @@ internal fun SharedThreadRouteContent(
                 }
                 is DataResult.Empty,
                 is DataResult.Error -> {
+                    if ((result as? DataResult.Error)?.error?.code == "thread_attachment_comment_write_disabled") {
+                        attachmentCommentsDialogState = null
+                        return@launch
+                    }
                     val code = (result as? DataResult.Error)?.error?.code ?: "thread_attachment_comment_send_failed"
                     attachmentCommentsDialogState =
                         attachmentCommentsDialogState
@@ -5169,13 +5278,25 @@ internal fun SharedThreadRouteContent(
     }
 
     fun resolveAttachmentComment(comment: ThreadAttachmentCommentItem) {
+        if (!threadWritesEnabledNow()) {
+            attachmentCommentsDialogState = null
+            return
+        }
         val current = attachmentCommentsDialogState ?: return
         if (comment.id.isBlank() || comment.isThreadAttachmentCommentResolved()) return
         if (comment.id in current.resolvingCommentIds) return
         attachmentCommentsDialogState =
             current.copy(resolvingCommentIds = current.resolvingCommentIds + comment.id, errorCode = null)
         coroutineScope.launch {
-            when (val result = dataSource.setMessageReaction(comment.id, "✅", selected = true)) {
+            when (
+                val result =
+                    runThreadWriteActionIfEnabled(
+                        writeActionsEnabled = ::threadWritesEnabledNow,
+                        blockedCode = "thread_attachment_comment_write_disabled"
+                    ) {
+                        dataSource.setMessageReaction(comment.id, "✅", selected = true)
+                    }
+            ) {
                 is DataResult.Content -> {
                     val loadingState =
                         attachmentCommentsDialogState
@@ -5187,6 +5308,10 @@ internal fun SharedThreadRouteContent(
                 }
                 is DataResult.Empty,
                 is DataResult.Error -> {
+                    if ((result as? DataResult.Error)?.error?.code == "thread_attachment_comment_write_disabled") {
+                        attachmentCommentsDialogState = null
+                        return@launch
+                    }
                     val code = (result as? DataResult.Error)?.error?.code ?: "thread_attachment_comment_resolve_failed"
                     attachmentCommentsDialogState =
                         attachmentCommentsDialogState
@@ -6116,6 +6241,7 @@ internal fun SharedThreadRouteContent(
             timelineSlice = renderedTimelineSlice,
             accessResolution = renderSlice.accessResolution,
             canonicalAccessResolved = renderSlice.canonicalAccessResolved,
+            writeActionsEnabled = renderSlice.writeActionsEnabled,
             channelProfileUpdateStatus = renderSlice.channelProfileUpdateStatus,
             channelProfileUpdateErrorCode = renderSlice.channelProfileUpdateErrorCode,
             replyMetadataByParentId = replyMetadataByParentId,
@@ -6135,9 +6261,9 @@ internal fun SharedThreadRouteContent(
             availableTabs = availableThreadTabs,
             onSelectedTabChanged = { selectedThreadTab = it },
             onSuggestionDemandChanged = { composerSuggestionDemand = it },
-            activityMuteState = activityMuteState,
+            activityMuteState = activityMuteState?.takeIf { renderSlice.writeActionsEnabled },
             onToggleActivityMute =
-                activityMuteState?.let { muteState ->
+                activityMuteState?.takeIf { renderSlice.writeActionsEnabled }?.let { muteState ->
                     {
                         sharedHomeStore?.dispatch(
                             SharedHomeIntent.SetChannelActivityMuted(
@@ -6150,7 +6276,14 @@ internal fun SharedThreadRouteContent(
             forwardServerId = headerProjectionServerId,
             forwardTargetRepository = forwardTargetRepository,
             contentExtrasVisible = true,
-            onTasksIntent = { intent -> tasksViewModel?.dispatch(intent) },
+            onTasksIntent = { intent ->
+                if (
+                    renderSlice.writeActionsEnabled ||
+                    (intent !is SharedTasksRouteIntent.UpdateStatus && intent !is SharedTasksRouteIntent.CreateTasks)
+                ) {
+                    tasksViewModel?.dispatch(intent)
+                }
+            },
             onFilesAuthRequired = { code -> routeAuthRequired(code) },
             onOpenFilesAttachment = { attachment, imageGroup ->
                 if (imageGroup != null) {
@@ -6184,7 +6317,7 @@ internal fun SharedThreadRouteContent(
             pendingActionCardIds = pendingActionCardIds,
             pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
             attachmentOpenStates = attachmentOpenStates,
-            attachmentCommentsEnabled = attachmentCommentsEnabled,
+            attachmentCommentsEnabled = attachmentCommentsEnabled && renderSlice.writeActionsEnabled,
             composerSendKeyEnabled = composerSendKeyEnabled,
             longMessageCollapseEnabled = longMessageCollapseEnabled,
             singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
@@ -6223,21 +6356,27 @@ internal fun SharedThreadRouteContent(
             },
             onBack = onBack,
             onUpdateChannelProfile = { channelId, originalName, originalDescription, name, description ->
-                threadViewModel.dispatch(
-                    SharedThreadIntent.UpdateChannelProfile(
-                        channelId = channelId,
-                        originalName = originalName,
-                        originalDescription = originalDescription,
-                        name = name,
-                        description = description
+                if (renderSlice.writeActionsEnabled) {
+                    threadViewModel.dispatch(
+                        SharedThreadIntent.UpdateChannelProfile(
+                            channelId = channelId,
+                            originalName = originalName,
+                            originalDescription = originalDescription,
+                            name = name,
+                            description = description
+                        )
                     )
-                )
+                }
             },
             onClearChannelProfileUpdateStatus = {
                 threadViewModel.dispatch(SharedThreadIntent.ClearChannelProfileUpdateStatus)
             },
             onThreadEvent = { action, itemId, attachmentId, tab ->
                 if (handleThreadStoreRetryEvent(action, threadViewModel::dispatch)) {
+                    return@ThreadPageContent
+                }
+                if (!threadEventAllowed(renderSlice.writeActionsEnabled, action)) {
+                    bridge.log("thread_write_action_blocked action=$action reason=read_only_access_fallback")
                     return@ThreadPageContent
                 }
                 when {
@@ -7184,6 +7323,10 @@ internal fun SharedThreadRouteContent(
                 }
             },
             onComposerEvent = { action, value, asTask, attachmentId ->
+                if (!threadComposerEventAllowed(renderSlice.writeActionsEnabled, action)) {
+                    bridge.log("thread_composer_action_blocked action=$action reason=read_only_access_fallback")
+                    return@ThreadPageContent
+                }
                 val currentComposer = currentComposerPayload()
                 val currentDraftState = composerDraftViewModel.state.value
                 val composerInstanceId = currentComposer.instanceId.ifBlank { payload.instanceId }
@@ -7545,7 +7688,9 @@ internal fun SharedThreadRouteContent(
                 onSelectIndex = ::selectImagePreviewIndex
             )
         }
-        attachmentCommentsDialogState?.let { dialogState ->
+        attachmentCommentsDialogState
+            .retainForThreadWriteAuthority(renderSlice.writeActionsEnabled)
+            ?.let { dialogState ->
             ThreadAttachmentCommentsDialog(
                 state = dialogState,
                 onDismiss = { attachmentCommentsDialogState = null },
@@ -7593,7 +7738,7 @@ internal fun SharedThreadRouteContent(
                     }
                 },
                 onSubmit = submitCreateAgent@{ request ->
-                    if (dialogState.submitting) {
+                    if (!renderSlice.writeActionsEnabled || dialogState.submitting) {
                         return@submitCreateAgent
                     }
                     val normalizedName = request.name.trim().removePrefix("@")
@@ -10539,6 +10684,7 @@ private fun ThreadPageContent(
     timelineSlice: ThreadTimelineSlice,
     accessResolution: ThreadAccessResolution,
     canonicalAccessResolved: Boolean,
+    writeActionsEnabled: Boolean,
     channelProfileUpdateStatus: ChannelProfileUpdateStatus = ChannelProfileUpdateStatus.Idle,
     channelProfileUpdateErrorCode: String? = null,
     replyMetadataByParentId: Map<String, ThreadReplyMetadata>,
@@ -11079,6 +11225,7 @@ private fun ThreadPageContent(
                         pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
                         attachmentOpenStates = attachmentOpenStates,
                         attachmentCommentsEnabled = attachmentCommentsEnabled,
+                        writeActionsEnabled = writeActionsEnabled,
                         currentServerSlug = currentServerSlug,
                         contentExtrasVisible = contentExtrasVisible,
                         longMessageCollapseEnabled = longMessageCollapseEnabled,
@@ -11259,6 +11406,8 @@ private fun ThreadPageContent(
                 // composer mount only with the same resolved render-slice emission
                 // that removes the loading UI, avoiding a second LazyColumn resize.
                 Unit
+            } else if (!writeActionsEnabled) {
+                Unit
             } else if (!payload.joined) {
                 ThreadJoinFooter(
                     label = localizedThreadJoinLabel(payload.joinLabel),
@@ -11301,6 +11450,7 @@ private fun ThreadPageContent(
                                 activeModal = "forwardTargets"
                             }
                         },
+                        forwardEnabled = writeActionsEnabled,
                         onExportImage = {
                             if (selectedShareMessages.isNotEmpty() && !sharePreviewLoading) {
                                 diagnosticsLogger(
@@ -11436,6 +11586,7 @@ private fun ThreadPageContent(
                     onNoteChange = { forwardNote = it },
                     onDismiss = { activeModal = "forwardTargets" },
                     onSend = {
+                        if (!writeActionsEnabled) return@ThreadForwardNoteDialog
                         val repository = forwardTargetRepository
                         val sourceServerId = forwardSourceServerId
                         val sourceChannelId = forwardSourceChannelId
@@ -12148,6 +12299,7 @@ private fun ThreadChatTab(
     pendingTaskConvertMessageIds: Set<String> = emptySet(),
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
     attachmentCommentsEnabled: Boolean = false,
+    writeActionsEnabled: Boolean = true,
     currentServerSlug: String? = null,
     contentExtrasVisible: Boolean = true,
     longMessageCollapseEnabled: Boolean = false,
@@ -12226,6 +12378,7 @@ private fun ThreadChatTab(
                     pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
                     attachmentOpenStates = attachmentOpenStates,
                     attachmentCommentsEnabled = attachmentCommentsEnabled,
+                    writeActionsEnabled = writeActionsEnabled,
                     currentServerSlug = currentServerSlug,
                     contentExtrasVisible = contentExtrasVisible,
                     longMessageCollapseEnabled = longMessageCollapseEnabled,
@@ -12291,6 +12444,7 @@ private fun ThreadChatTab(
                     pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
                     attachmentOpenStates = attachmentOpenStates,
                     attachmentCommentsEnabled = attachmentCommentsEnabled,
+                    writeActionsEnabled = writeActionsEnabled,
                     currentServerSlug = currentServerSlug,
                     contentExtrasVisible = contentExtrasVisible,
                     longMessageCollapseEnabled = longMessageCollapseEnabled,
@@ -12347,6 +12501,7 @@ private fun ThreadChatTab(
                 pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
                 attachmentOpenStates = attachmentOpenStates,
                 attachmentCommentsEnabled = attachmentCommentsEnabled,
+                writeActionsEnabled = writeActionsEnabled,
                 currentServerSlug = currentServerSlug,
                 contentExtrasVisible = contentExtrasVisible,
                 longMessageCollapseEnabled = longMessageCollapseEnabled,
@@ -12644,6 +12799,7 @@ private fun ThreadMessagesList(
     pendingTaskConvertMessageIds: Set<String> = emptySet(),
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
     attachmentCommentsEnabled: Boolean = false,
+    writeActionsEnabled: Boolean = true,
     currentServerSlug: String? = null,
     contentExtrasVisible: Boolean = true,
     longMessageCollapseEnabled: Boolean = false,
@@ -14336,6 +14492,7 @@ private fun ThreadMessagesList(
                                 },
                                 attachmentOpenStates = if (isRichContentEnabled) attachmentOpenStates else emptyMap(),
                                 pendingActionCardIds = if (isRichContentEnabled) pendingActionCardIds else emptySet(),
+                                writeActionsEnabled = writeActionsEnabled,
                                 onCommitActionCard = { onThreadEvent("commitActionCard", it, null, null) },
                                 currentServerSlug = currentServerSlug,
                                 onOpenMarkdownTag = onOpenMarkdownTag,
@@ -14513,6 +14670,7 @@ private fun ThreadMessagesList(
                     anchor = resolvedActionAnchor,
                     showReplyAction = renderPayload.showReplyActions && !message.hasLocalSendState(),
                     showSaveAction = renderPayload.showMessageSaveAction && !message.hasLocalSendState(),
+                    showFollowAction = writeActionsEnabled && !message.hasLocalSendState(),
                     showTaskStatusAction = renderPayload.showTaskStatusActions && !message.hasLocalSendState(),
                     showConvertToTaskAction =
                         renderPayload.canConvertMessagesToTasks && !message.hasLocalSendState() &&
@@ -14520,8 +14678,8 @@ private fun ThreadMessagesList(
                     showReactionActions = renderPayload.showReactionActions && !message.hasLocalSendState(),
                     showCopyLinkAction = !message.hasLocalSendState(),
                     showShareMessagesAction = !message.hasLocalSendState(),
-                    showCancelAction = isSendingLocalSend,
-                    showDeleteAction = isFailedLocalSend,
+                    showCancelAction = writeActionsEnabled && isSendingLocalSend,
+                    showDeleteAction = writeActionsEnabled && isFailedLocalSend,
                     showTranslateAction =
                         translationStore != null && message.isTranslationEligible(translationState.settings),
                     onDismiss = { actionMessageId = null },
@@ -16036,6 +16194,7 @@ private fun ThreadMessageCard(
     onCopyLocalSendFailureDetails: () -> Unit = {},
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
     pendingActionCardIds: Set<String> = emptySet(),
+    writeActionsEnabled: Boolean = true,
     onCommitActionCard: (String) -> Unit = {},
     currentServerSlug: String? = null,
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
@@ -16303,6 +16462,7 @@ private fun ThreadMessageCard(
                             ThreadActionCardView(
                                 card = actionCard,
                                 pending = message.id in pendingActionCardIds,
+                                commitEnabled = writeActionsEnabled,
                                 modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction),
                                 performanceKey = messagePerformanceKey,
                                 diagnosticsLogger = diagnosticsLogger,
@@ -16442,6 +16602,7 @@ private fun ThreadMessageCard(
                                 ThreadMessageLocalSendStatus(
                                     message = message,
                                     alignEnd = alignOwnMessageRight,
+                                    retryEnabled = writeActionsEnabled,
                                     onRetry = onRetryLocalSend,
                                     onCopyDetails = onCopyLocalSendFailureDetails
                                 )
@@ -16572,6 +16733,7 @@ private fun ThreadMessageSelectionToggle(
 private fun ThreadMessageLocalSendStatus(
     message: KuiklyThreadMessageItem,
     alignEnd: Boolean,
+    retryEnabled: Boolean = true,
     onRetry: () -> Unit,
     onCopyDetails: () -> Unit
 ) {
@@ -16615,7 +16777,7 @@ private fun ThreadMessageLocalSendStatus(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f, fill = false)
             )
-            if (isFailed) {
+            if (isFailed && retryEnabled) {
                 Button(
                     onClick = { if (message.canRetryLocalSend()) onRetry() },
                     enabled = message.canRetryLocalSend(),
@@ -16709,6 +16871,7 @@ private data class ThreadActionCardRenderCopy(
 private fun ThreadActionCardView(
     card: ThreadActionCard,
     pending: Boolean,
+    commitEnabled: Boolean = true,
     modifier: Modifier = Modifier,
     performanceKey: String? = null,
     diagnosticsLogger: (String) -> Unit = {},
@@ -16796,7 +16959,7 @@ private fun ThreadActionCardView(
                     color = SlockColor.TextMutedGray
                 )
             }
-        } else {
+        } else if (commitEnabled) {
             SlockBrutalActionButton(
                 label = if (pending) renderCopy.pendingLabel else renderCopy.verb,
                 onClick = onCommit,
@@ -18557,6 +18720,7 @@ internal fun threadMessageMenuActions(
     replyMetadata: ThreadReplyMetadata = message.toThreadReplyMetadata(),
     showReplyAction: Boolean,
     showSaveAction: Boolean,
+    showFollowAction: Boolean = true,
     showTaskStatusAction: Boolean,
     showConvertToTaskAction: Boolean,
     showCopyLinkAction: Boolean,
@@ -18630,7 +18794,7 @@ internal fun threadMessageMenuActions(
             )
         }
         val followThreadChannelId = replyMetadata.threadChannelId?.takeIf { it.isNotBlank() }
-        if (shouldShowThreadFollowAction(message, replyMetadata)) {
+        if (showFollowAction && shouldShowThreadFollowAction(message, replyMetadata)) {
             add(
                 ThreadMessageMenuAction(
                     label =
@@ -18706,6 +18870,7 @@ private fun ThreadMessageActionMenu(
     anchor: SlockPopoverAnchor,
     showReplyAction: Boolean,
     showSaveAction: Boolean,
+    showFollowAction: Boolean,
     showTaskStatusAction: Boolean,
     showConvertToTaskAction: Boolean,
     showReactionActions: Boolean,
@@ -18738,6 +18903,7 @@ private fun ThreadMessageActionMenu(
             replyMetadata,
             showReplyAction,
             showSaveAction,
+            showFollowAction,
             showTaskStatusAction,
             showConvertToTaskAction,
             showCopyLinkAction,
@@ -18764,6 +18930,7 @@ private fun ThreadMessageActionMenu(
                 replyMetadata = replyMetadata,
                 showReplyAction = showReplyAction,
                 showSaveAction = showSaveAction,
+                showFollowAction = showFollowAction,
                 showTaskStatusAction = showTaskStatusAction,
                 showConvertToTaskAction = showConvertToTaskAction,
                 showCopyLinkAction = showCopyLinkAction,
@@ -21569,6 +21736,7 @@ private fun ThreadShareSelectionToolbar(
     onCancel: () -> Unit,
     onSelectAll: () -> Unit,
     onForward: () -> Unit,
+    forwardEnabled: Boolean = true,
     onExportImage: () -> Unit,
     onCopyLinks: () -> Unit
 ) {
@@ -21622,7 +21790,7 @@ private fun ThreadShareSelectionToolbar(
                     label = stringResource(MR.strings.thread_action_forward),
                     icon = SlockLucideIconName.Send,
                     onClick = onForward,
-                    enabled = hasSelection
+                    enabled = hasSelection && forwardEnabled
                 )
                 SlockBrutalIconButton(
                     iconName = SlockLucideIconName.Copy,
