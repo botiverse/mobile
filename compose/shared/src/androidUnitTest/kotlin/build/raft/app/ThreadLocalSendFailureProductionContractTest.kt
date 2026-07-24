@@ -139,6 +139,22 @@ class ThreadLocalSendFailureProductionContractTest {
     }
 
     @Test
+    fun readyComposerImageAndFileTilesShareTheSamePreviewDispatch() {
+        val composer = threadComposerPageSource()
+        val previewChip = block(composer, "private fun ComposerAttachmentPreviewChip(", "private fun ComposerImageAttachmentPreview(")
+        val filePreview = block(composer, "private fun ComposerFileAttachmentPreview(", "private fun ComposerAttachmentUploadingOverlay(")
+        val threadPage = threadPageSource()
+        val settingsPage = settingsHomePageSource()
+
+        assertContains(previewChip, "val canPreview = attachment.canOpenComposerAttachmentPreview(previewEnabled)")
+        assertContains(previewChip, "previewEnabled = canPreview")
+        assertContains(previewChip, "onPreview = onPreview")
+        assertContains(filePreview, ".clickable(enabled = previewEnabled, onClick = onPreview)")
+        assertContains(threadPage, "attachmentPreviewEnabled = true")
+        assertContains(settingsPage, "attachmentPreviewEnabled = false")
+    }
+
+    @Test
     fun failureAndLateCompletionUseOneWayTerminalOrdering() {
         val source = threadPageSource()
         val uploadFlow = block(source, "    fun handleAttachmentUploadFailure(", "    fun openComposerImageAnnotation(")
@@ -185,6 +201,16 @@ class ThreadLocalSendFailureProductionContractTest {
                 ?: error("Could not locate shared commonMain Kotlin sources")
         val file = File(commonMain, "build/raft/app/ThreadComposerPage.kt")
         assertTrue(file.isFile, "Missing production ThreadComposerPage.kt")
+        return file.readText().replace("\r\n", "\n")
+    }
+
+    private fun settingsHomePageSource(): String {
+        val commonMain =
+            listOf(File("src/commonMain/kotlin"), File("shared/src/commonMain/kotlin"))
+                .firstOrNull(File::isDirectory)
+                ?: error("Could not locate shared commonMain Kotlin sources")
+        val file = File(commonMain, "build/raft/app/SettingsHomePage.kt")
+        assertTrue(file.isFile, "Missing production SettingsHomePage.kt")
         return file.readText().replace("\r\n", "\n")
     }
 
