@@ -17,7 +17,7 @@ internal actual fun slockNetworkTransportPlatformPolicy(): SlockNetworkTransport
         curlRequired = true,
         appOwnedTrustRequired = false,
         readyDetail =
-            "OHOS always uses curl. This setting controls whether new requests prefer HTTP/3; fallback remains HTTP/2 or HTTP/1.1."
+            "OHOS always uses curl. Remote transport policy controls whether new requests prefer HTTP/3; fallback remains HTTP/2 or HTTP/1.1."
     )
 
 internal actual fun slockApplyPlatformHttp3Preference(

@@ -6198,9 +6198,6 @@ private fun SettingsAppShellContent(
                             )
                         )
                     },
-                    onHttp3Change = { enabled ->
-                        onSettingsIntent(SharedSettingsIntent.SetHttp3Enabled(enabled))
-                    },
                     onCompactConsecutiveMessagesChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetCompactConsecutiveMessages(enabled))
                         onCompactConsecutiveMessagesSelected(enabled)
@@ -7368,7 +7365,6 @@ private fun SettingsMobileContent(
     bottomContentPadding: Dp,
     onAlignmentChange: (String?) -> Unit,
     onLinkOpenModeChange: (String?) -> Unit,
-    onHttp3Change: (Boolean) -> Unit,
     onCompactConsecutiveMessagesChange: (Boolean) -> Unit,
     onLongMessageCollapseChange: (Boolean) -> Unit,
     onSingleTapOpensThreadChange: (Boolean) -> Unit,
@@ -7389,13 +7385,6 @@ private fun SettingsMobileContent(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         if (snapshot != null) {
-            item {
-                SettingsHttp3Card(
-                    snapshot = snapshot,
-                    actionState = actionState,
-                    onHttp3Change = onHttp3Change
-                )
-            }
             item {
                 SettingsMessageAlignmentCard(
                     snapshot = snapshot,
@@ -7477,76 +7466,6 @@ private fun SettingsMobileContent(
             }
         }
         item { Spacer(Modifier.height(bottomContentPadding)) }
-    }
-}
-
-@Composable
-private fun SettingsHttp3Card(
-    snapshot: SettingsMobileSnapshot,
-    actionState: SharedSettingsActionState?,
-    onHttp3Change: (Boolean) -> Unit
-) {
-    val busy = actionState?.action == MOBILE_ACTION_HTTP3 && actionState.inProgress
-    val preference = snapshot.http3
-    SettingsFormSectionCard(
-        iconName = SlockLucideIconName.Globe,
-        title = stringResource(MR.strings.settings_mobile_http3_title)
-    ) {
-        SettingsFormDetailText(stringResource(MR.strings.settings_mobile_http3_detail))
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .clickable(enabled = (preference.canEnable || preference.requestedEnabled) && !busy) {
-                        onHttp3Change(!preference.requestedEnabled)
-                    }
-                    .padding(vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    text =
-                        if (preference.effectiveEnabled) {
-                            stringResource(MR.strings.settings_mobile_http3_preferred)
-                        } else if (preference.requestedEnabled) {
-                            stringResource(MR.strings.settings_mobile_http3_unavailable)
-                        } else {
-                            stringResource(MR.strings.settings_state_off)
-                        },
-                    style = SlockType.Button.copy(color = SlockColor.TextBlack),
-                    color = SlockColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text =
-                        if (preference.canEnable) {
-                            listOf(
-                                if (preference.effectiveEnabled) {
-                                    stringResource(MR.strings.settings_mobile_http3_enabled)
-                                } else {
-                                    stringResource(MR.strings.settings_mobile_http3_disabled)
-                                },
-                                preference.detail
-                            ).filter { it.isNotBlank() }.joinToString(" ")
-                        } else {
-                            preference.detail
-                        },
-                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            SlockSwitchButton(
-                checked = preference.requestedEnabled,
-                enabled = (preference.canEnable || preference.requestedEnabled) && !busy
-            )
-        }
-        if (actionState?.action == MOBILE_ACTION_HTTP3 && actionState.errorCode != null) {
-            SettingsFormErrorText(actionState.errorCode.orEmpty())
-        }
     }
 }
 

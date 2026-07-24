@@ -346,7 +346,7 @@ internal class SlockSharedStoreProvider private constructor(
     val authLossFunnel: SharedAuthLossFunnel,
     val authRuntimeCapabilityStore: SharedAuthRuntimeCapabilityStore,
     val networkClient: SlockNetworkClient,
-    val networkTransportPreferenceRepository: NetworkTransportPreferenceRepository,
+    val networkTransportPreferenceRepository: SlockNetworkTransportController,
     private val scopedNetworkClientFactory: (SlockAuthSessionStore) -> SlockNetworkClient,
     private val ownerScopedNetworkClientFactory: (SlockAuthSessionStore, String) -> SlockNetworkClient,
     val serverFeatureFlags: SharedServerFeatureFlags,
@@ -461,6 +461,8 @@ internal class SlockSharedStoreProvider private constructor(
                 "environment_update_failed reason=${error::class.simpleName ?: "unknown"}"
             )
         }
+        networkTransportPreferenceRepository.updateRemoteEnvironment(environmentId)
+            ?.let { sharedInfoLogger("SlockNetworkTransport", "remote_config")(it) }
         return environmentId
     }
 
@@ -567,6 +569,10 @@ internal class SlockSharedStoreProvider private constructor(
                             "active_selection_failed reason=${error::class.simpleName ?: "unknown"}"
                         )
                     }
+                    networkTransportPreferenceRepository.updateRemoteActiveSelection(
+                        scopeId = scope.shellInstanceId,
+                        serverId = serverId
+                    )?.let { sharedInfoLogger("SlockNetworkTransport", "remote_config")(it) }
                 }
             ).also { selectionStore ->
                 // Prefetch registered server feature flags whenever this shell selects a server, then
@@ -1172,9 +1178,7 @@ internal class SlockSharedStoreProvider private constructor(
                     "scope=${sharedPreferenceStoreBinding.scope}"
             )
             val networkTransportController =
-                SlockNetworkTransportController(
-                    KeyValueNetworkTransportPreferenceStore(sharedPreferenceStore)
-                )
+                SlockNetworkTransportController()
             installSlockNetworkTransportController(networkTransportController)
             networkTransportController.getPreferenceSync().let { snapshot ->
                 bridge.logSharedAuthDiagnostic(
@@ -1403,7 +1407,7 @@ internal class SlockSharedStoreProvider private constructor(
                 SharedServerFeatureFlags(
                     api = SlockFeatureFlagsNetworkApi(networkClient),
                     diagnosticsLogger = sharedInfoLogger("SlockFeatureFlags", "feature_flags"),
-                    onEvaluation = { serverId, key, enabled, reason, environmentId, evaluationGeneration ->
+                    onEvaluation = { serverId, key, enabled, reason, variant, environmentId, evaluationGeneration ->
                         if (key == ANDROID_REUSED_H2_RECOVERY_FEATURE_FLAG_KEY && environmentId != null) {
                             SlockNetworkKmmRecoveryRemoteFlagBridge
                                 .apply(
@@ -1414,6 +1418,15 @@ internal class SlockSharedStoreProvider private constructor(
                                     reason = reason,
                                 )
                                 ?.let(::logNetworkKmmRemoteConfig)
+                        }
+                        if (key == MOBILE_CURL_TRANSPORT_FEATURE_FLAG_KEY && environmentId != null) {
+                            networkTransportController.applyRemoteEvaluation(
+                                environmentId = environmentId,
+                                evaluationGeneration = evaluationGeneration,
+                                serverId = serverId.value,
+                                enabled = enabled,
+                                variant = variant
+                            )?.let { sharedInfoLogger("SlockNetworkTransport", "remote_config")(it) }
                         }
                     },
                 )

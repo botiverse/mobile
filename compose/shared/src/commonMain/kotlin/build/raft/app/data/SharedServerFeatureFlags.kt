@@ -36,6 +36,8 @@ const val MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY: String = "mobile_activi
  * transport-off latch. Operators must provision it with `enabled=true` and `defaultEnabled=true`.
  */
 const val ANDROID_REUSED_H2_RECOVERY_FEATURE_FLAG_KEY: String = "android_reused_h2_recovery_v0"
+/** Process-wide mobile transport variant. Missing/disabled/invalid evaluates to the product default curl_h3. */
+const val MOBILE_CURL_TRANSPORT_FEATURE_FLAG_KEY: String = "mobile_curl_transport_v1"
 
 /** Web-shared product flags plus mobile-only runtime safety flags evaluated in the same prefetch batch. */
 val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
@@ -47,6 +49,7 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     MOBILE_THREAD_PAGE_SIZE_FEATURE_FLAG_KEY,
     MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY,
     ANDROID_REUSED_H2_RECOVERY_FEATURE_FLAG_KEY,
+    MOBILE_CURL_TRANSPORT_FEATURE_FLAG_KEY,
 )
 
 /**
@@ -130,7 +133,7 @@ class SharedServerFeatureFlags(
     private val api: SlockFeatureFlagsApi,
     private val keys: List<String> = REGISTERED_SERVER_FEATURE_FLAG_KEYS,
     private val diagnosticsLogger: ((String) -> Unit)? = null,
-    private val onEvaluation: ((ServerId, String, Boolean, String?, String?, Long) -> Unit)? = null,
+    private val onEvaluation: ((ServerId, String, Boolean, String?, String?, String?, Long) -> Unit)? = null,
 ) {
     private val stateLock = SynchronizedObject()
     private val nextRequestGenerationByServer = mutableMapOf<String, Long>()
@@ -220,6 +223,7 @@ class SharedServerFeatureFlags(
                     evaluation.key,
                     evaluation.enabled,
                     evaluation.reason,
+                    evaluation.variant,
                     evaluationContext,
                     globalRequestGeneration
                 )

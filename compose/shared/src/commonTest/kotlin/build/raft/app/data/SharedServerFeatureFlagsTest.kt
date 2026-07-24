@@ -75,6 +75,27 @@ class SharedServerFeatureFlagsTest {
     }
 
     @Test
+    fun transportVariantIsForwardedToProcessObserver() = runBlocking {
+        var observedVariant: String? = null
+        val flags =
+            SharedServerFeatureFlags(
+                api =
+                    FakeApi(
+                        ok(
+                            """{"evaluations":[{"key":"$MOBILE_CURL_TRANSPORT_FEATURE_FLAG_KEY","enabled":true,"variant":"curl_h2"}]}"""
+                        )
+                    ),
+                onEvaluation = { _, key, _, _, variant, _, _ ->
+                    if (key == MOBILE_CURL_TRANSPORT_FEATURE_FLAG_KEY) observedVariant = variant
+                }
+            )
+
+        flags.prefetch(server, evaluationContext = "production-env")
+
+        assertEquals("curl_h2", observedVariant)
+    }
+
+    @Test
     fun disabledThreadPageSizeFlagDoesNotExposeItsVariant() = runBlocking {
         val api =
             FakeApi(
@@ -123,7 +144,7 @@ class SharedServerFeatureFlagsTest {
                 )
             )
         val flags =
-            SharedServerFeatureFlags(api) { serverId, key, enabled, reason, context, generation ->
+            SharedServerFeatureFlags(api) { serverId, key, enabled, reason, _, context, generation ->
                 observedGeneration = generation
                 evaluations += "${serverId.value}|$key|$enabled|$reason|$context"
             }
@@ -151,7 +172,7 @@ class SharedServerFeatureFlagsTest {
                         )
                     ),
                 diagnosticsLogger = diagnostics::add,
-                onEvaluation = { _, _, _, _, _, _ -> error("observer failed") }
+                onEvaluation = { _, _, _, _, _, _, _ -> error("observer failed") }
             )
 
         val snapshot = flags.prefetch(server)
@@ -192,7 +213,7 @@ class SharedServerFeatureFlagsTest {
             SharedServerFeatureFlags(
                 api = api,
                 diagnosticsLogger = diagnostics::add,
-                onEvaluation = { _, _, enabled, reason, _, generation ->
+                onEvaluation = { _, _, enabled, reason, _, _, generation ->
                     evaluations += Triple(enabled, reason, generation)
                 }
             )
@@ -234,7 +255,7 @@ class SharedServerFeatureFlagsTest {
             }
         val evaluations = mutableListOf<Triple<Boolean, String?, Long>>()
         val flags =
-            SharedServerFeatureFlags(api = api) { _, _, enabled, reason, _, generation ->
+            SharedServerFeatureFlags(api = api) { _, _, enabled, reason, _, _, generation ->
                 evaluations += Triple(enabled, reason, generation)
             }
 
@@ -269,7 +290,7 @@ class SharedServerFeatureFlagsTest {
             }
         val evaluations = mutableListOf<Triple<Boolean, String?, Long>>()
         val flags =
-            SharedServerFeatureFlags(api = api) { _, _, enabled, reason, _, generation ->
+            SharedServerFeatureFlags(api = api) { _, _, enabled, reason, _, _, generation ->
                 evaluations += Triple(enabled, reason, generation)
             }
 
