@@ -139,6 +139,18 @@ class ThreadLocalSendFailureProductionContractTest {
     }
 
     @Test
+    fun readyComposerImageAndFileTilesShareTheSamePreviewDispatch() {
+        val composer = threadComposerPageSource()
+        val previewChip = block(composer, "private fun ComposerAttachmentPreviewChip(", "private fun ComposerImageAttachmentPreview(")
+        val filePreview = block(composer, "private fun ComposerFileAttachmentPreview(", "private fun ComposerAttachmentUploadingOverlay(")
+
+        assertContains(previewChip, "val previewEnabled = attachment.canOpenComposerAttachmentPreview(enabled)")
+        assertContains(previewChip, "previewEnabled = previewEnabled")
+        assertContains(previewChip, "onPreview = onPreview")
+        assertContains(filePreview, ".clickable(enabled = previewEnabled, onClick = onPreview)")
+    }
+
+    @Test
     fun failureAndLateCompletionUseOneWayTerminalOrdering() {
         val source = threadPageSource()
         val uploadFlow = block(source, "    fun handleAttachmentUploadFailure(", "    fun openComposerImageAnnotation(")

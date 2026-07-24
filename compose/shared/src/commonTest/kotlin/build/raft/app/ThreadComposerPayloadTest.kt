@@ -335,6 +335,32 @@ class ThreadComposerPayloadTest {
     }
 
     @Test
+    fun composerPreviewOpensEveryReadyRemoteAttachmentAndRejectsUnreadyOrLocalItems() {
+        val readyVideo =
+            KuiklyPendingAttachmentItem(
+                id = "remote-video-1",
+                fileName = "clip.mp4",
+                mimeType = "video/mp4",
+                status = "ready"
+            )
+        val readyImageWithoutLocalThumbnail =
+            KuiklyPendingAttachmentItem(
+                id = "remote-image-1",
+                fileName = "photo.png",
+                mimeType = "image/png",
+                previewUri = null,
+                status = "ready"
+            )
+
+        assertTrue(readyVideo.canOpenComposerAttachmentPreview(composerEnabled = true))
+        assertTrue(readyImageWithoutLocalThumbnail.canOpenComposerAttachmentPreview(composerEnabled = true))
+        assertFalse(readyVideo.canOpenComposerAttachmentPreview(composerEnabled = false))
+        assertFalse(readyVideo.copy(status = "uploading").canOpenComposerAttachmentPreview(composerEnabled = true))
+        assertFalse(readyVideo.copy(status = "failed").canOpenComposerAttachmentPreview(composerEnabled = true))
+        assertFalse(readyVideo.copy(id = "picked-local-video").canOpenComposerAttachmentPreview(composerEnabled = true))
+    }
+
+    @Test
     fun failedAttachmentMustBeRetriedBeforeComposerSendCanQueue() {
         val attachments =
             listOf(

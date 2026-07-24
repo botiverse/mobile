@@ -1968,6 +1968,9 @@ internal fun List<KuiklyPendingAttachmentItem>.hasFailedThreadAttachmentUpload()
 internal fun KuiklyPendingAttachmentItem.isReadyThreadAttachmentForSend(): Boolean =
     id.isNotBlank() && status == "ready" && !id.startsWith("picked-")
 
+internal fun KuiklyPendingAttachmentItem.canOpenComposerAttachmentPreview(composerEnabled: Boolean): Boolean =
+    composerEnabled && isReadyThreadAttachmentForSend()
+
 internal fun KuiklyPendingMentionActionItem.supportsMentionAction(verb: String): Boolean =
     availableActions.any { action ->
         when (verb) {
@@ -2643,16 +2646,21 @@ private fun ComposerAttachmentPreviewChip(
     val isUploading = attachment.status != "ready" && !isFailed
     val isImage = attachment.isComposerImageAttachment()
     val imagePreviewUri = attachment.previewUri?.takeIf { it.isNotBlank() }
+    val previewEnabled = attachment.canOpenComposerAttachmentPreview(enabled)
     Box(modifier = Modifier.width(attachment.composerAttachmentPreviewWidthDp().dp).height(ThreadComposerAttachmentTileSize)) {
         if (isImage) {
             ComposerImageAttachmentPreview(
                 attachment = attachment,
                 imagePreviewUri = imagePreviewUri,
-                previewEnabled = enabled && imagePreviewUri != null && attachment.status == "ready",
+                previewEnabled = previewEnabled,
                 onPreview = onPreview
             )
         } else {
-            ComposerFileAttachmentPreview(attachment = attachment)
+            ComposerFileAttachmentPreview(
+                attachment = attachment,
+                previewEnabled = previewEnabled,
+                onPreview = onPreview
+            )
         }
         if (isUploading) {
             ComposerAttachmentUploadingOverlay(attachment = attachment)
@@ -2698,11 +2706,16 @@ private fun ComposerImageAttachmentPreview(
 }
 
 @Composable
-private fun ComposerFileAttachmentPreview(attachment: KuiklyPendingAttachmentItem) {
+private fun ComposerFileAttachmentPreview(
+    attachment: KuiklyPendingAttachmentItem,
+    previewEnabled: Boolean,
+    onPreview: () -> Unit
+) {
     Row(
         modifier =
             Modifier
                 .fillMaxSize()
+                .clickable(enabled = previewEnabled, onClick = onPreview)
                 .slockSquareCorners()
                 .background(SlockColor.SurfaceWhite)
                 .border(SlockStroke.Default, SlockColor.BorderBlack)
