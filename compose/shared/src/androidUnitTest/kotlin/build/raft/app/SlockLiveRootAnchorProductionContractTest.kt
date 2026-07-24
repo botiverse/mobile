@@ -41,7 +41,7 @@ class SlockLiveRootAnchorProductionContractTest {
     fun remainingPositionInRootSnapshotsAreNonPopoverMeasurements() {
         val allowedOccurrences =
             mapOf(
-                "build/raft/app/ReleaseNotesPage.kt" to
+                "build/raft/app/SettingsStandaloneWebViewHost.kt" to
                     listOf("positionY = coordinates.positionInRoot().y"),
                 "build/raft/app/SettingsHomePage.kt" to
                     listOf("coordinates.positionInRoot().y + coordinates.size.height"),

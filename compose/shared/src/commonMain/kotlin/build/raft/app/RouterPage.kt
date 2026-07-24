@@ -124,11 +124,15 @@ private val DeveloperRouteGroups =
                     DeveloperRouteItem("Settings Storage", SETTINGS_STORAGE_PAGE, "Storage settings page"),
                     DeveloperRouteItem(
                         title = "Settings Billing Preview",
-                        pageName = SETTINGS_BILLING_PAGE,
+                        pageName = "$SETTINGS_WEB_VIEW_PAGE&$SETTINGS_WEB_VIEW_SURFACE=billing",
                         detail = "Billing settings fixture",
                         payloadProvider = { routerPreviewJson.encodeToString(settingsBillingSmokePayload) }
                     ),
-                    DeveloperRouteItem("Settings Administration", SETTINGS_ADMINISTRATION_PAGE, "Administration webview page")
+                    DeveloperRouteItem(
+                        "Settings Administration",
+                        "$SETTINGS_WEB_VIEW_PAGE&$SETTINGS_WEB_VIEW_SURFACE=administration",
+                        "Administration webview page",
+                    )
                 )
         ),
         DeveloperRouteGroup(

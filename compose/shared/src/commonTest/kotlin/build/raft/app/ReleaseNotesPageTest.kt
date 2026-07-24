@@ -24,10 +24,10 @@ class ReleaseNotesPageTest {
     }
 
     @Test
-    fun releaseNotesWebViewWaitsForBodyFrameBelowHeader() {
-        assertFalse(releaseNotesWebViewFrameIsReady(positionY = 0f, width = 1080, height = 2200))
-        assertFalse(releaseNotesWebViewFrameIsReady(positionY = 180f, width = 0, height = 2200))
-        assertFalse(releaseNotesWebViewFrameIsReady(positionY = 180f, width = 1080, height = 0))
-        assertTrue(releaseNotesWebViewFrameIsReady(positionY = 180f, width = 1080, height = 2200))
+    fun sharedSettingsWebViewWaitsForBodyFrameBelowHeader() {
+        assertFalse(settingsWebViewFrameIsReady(positionY = 0f, width = 1080, height = 2200))
+        assertFalse(settingsWebViewFrameIsReady(positionY = 180f, width = 0, height = 2200))
+        assertFalse(settingsWebViewFrameIsReady(positionY = 180f, width = 1080, height = 0))
+        assertTrue(settingsWebViewFrameIsReady(positionY = 180f, width = 1080, height = 2200))
     }
 }

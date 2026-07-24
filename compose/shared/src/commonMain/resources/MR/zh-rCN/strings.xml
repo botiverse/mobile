@@ -3,6 +3,8 @@
     <string name="common_ok">确定</string>
     <string name="common_cancel">取消</string>
     <string name="common_retry">重试</string>
+    <string name="settings_webview_error_title">无法加载此页面</string>
+    <string name="settings_webview_error_body">请检查网络连接后重试。</string>
     <string name="tab_home">首页</string>
     <string name="tab_tasks">任务</string>
     <string name="tab_members">成员</string>
