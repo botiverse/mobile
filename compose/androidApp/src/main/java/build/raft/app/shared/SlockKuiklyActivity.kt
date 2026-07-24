@@ -5249,7 +5249,7 @@ internal class SlockKuiklyBridgeModule(
         cleanupAttachmentCache(cacheDir, owner.principalKey)
         val targetFile = attachmentCacheFile(attachmentId, requestedFileName, requestedMimeType, owner.principalKey)
         val wasCached = targetFile.isUsableAttachmentCacheFile()
-        val responseMimeType =
+        val directCompletion =
                 if (!wasCached) {
                     try {
                         downloadAttachmentToFile(
@@ -5272,15 +5272,35 @@ internal class SlockKuiklyBridgeModule(
                 } else {
                     null
                 }
-        return AttachmentPreparationResult.Ready(
-                downloadId = downloadId,
-                owner = owner,
-                attachmentId = attachmentId,
-                requestedFileName = requestedFileName,
-                targetFile = targetFile,
-                mimeType = guessAttachmentMimeType(requestedFileName, requestedMimeType ?: responseMimeType),
-                wasCached = wasCached
-        )
+        val buildReady = {
+            AttachmentPreparationResult.Ready(
+                    downloadId = downloadId,
+                    owner = owner,
+                    attachmentId = attachmentId,
+                    requestedFileName = requestedFileName,
+                    targetFile = targetFile,
+                    mimeType =
+                            guessAttachmentMimeType(
+                                    requestedFileName,
+                                    requestedMimeType ?: directCompletion?.contentType
+                            ),
+                    wasCached = wasCached
+            )
+        }
+        val ready =
+                if (directCompletion != null) {
+                    directCompletion.ownerOperation.finishIfCurrent(buildReady)
+                } else {
+                    ProcessAndroidAttachmentOwners.runIfCurrent(owner, buildReady)
+                }
+        return ready
+                ?: AttachmentPreparationResult.Terminal(
+                        mapOf(
+                                "status" to "cancelled",
+                                "message" to "Attachment scope retired",
+                                "cached" to false
+                        )
+                )
     }
 
     private fun downloadAndOpenAttachment(
@@ -5533,11 +5553,20 @@ internal class SlockKuiklyBridgeModule(
             downloadId: String,
             requestedMimeType: String?,
             progressCallback: ((Map<String, Any>) -> Unit)? = null
-    ): String? {
+    ): DirectAttachmentDownloadCompletion {
         val requestStartedAt = SystemClock.elapsedRealtime()
         val downloadKeyHash = downloadId.hashCode().toString(16)
         val resultRef = AtomicReference<AttachmentDownloadResult?>()
         val completed = CountDownLatch(1)
+        val ownerOperation =
+                AndroidAttachmentDirectDownloadOwnerOperation(
+                        registry = ProcessAndroidAttachmentOwners,
+                        owner = owner,
+                        operationId = "direct-download:$downloadId",
+                        cleanupAttempt = { attemptToken ->
+                            cleanupDirectAttachmentAttempt(targetFile, attemptToken)
+                        }
+                )
         val observer =
                 object : AttachmentDownloadObserver {
                     override fun onProgress(progress: AttachmentDownloadProgress) {
@@ -5564,25 +5593,59 @@ internal class SlockKuiklyBridgeModule(
                         completed.countDown()
                     }
                 }
-        AttachmentDownloadCoordinator.start(
-                downloadId = downloadId,
-                targetKey = targetFile.absolutePath,
-                url = urlText,
-                targetPath = targetFile.absolutePath,
-                observer = observer
-        )
+        if (!ownerOperation.start {
+                    AttachmentDownloadCoordinator.start(
+                            downloadId = downloadId,
+                            targetKey = targetFile.absolutePath,
+                            url = urlText,
+                            targetPath = targetFile.absolutePath,
+                            observer = observer
+                    )
+                }) {
+            throw AttachmentDownloadStoppedException()
+        }
         try {
             completed.await()
         } catch (interrupted: InterruptedException) {
             Thread.currentThread().interrupt()
-            AttachmentDownloadCoordinator.control(downloadId, action = "cancel")
+            ownerOperation.cancelAndCleanup()
             throw AttachmentDownloadStoppedException()
         }
-        val result = resultRef.get() ?: throw IllegalStateException("Attachment download ended without a result")
+        val result =
+                resultRef.get()
+                        ?: run {
+                            ownerOperation.cancelAndCleanup()
+                            throw IllegalStateException("Attachment download ended without a result")
+                        }
         return when (result.status) {
-            "complete" -> result.contentType ?: requestedMimeType
-            "cancelled" -> throw AttachmentDownloadStoppedException()
-            else -> throw IllegalStateException(result.message ?: result.errorKind ?: "Attachment download failed")
+            "complete" ->
+                    DirectAttachmentDownloadCompletion(
+                            contentType = result.contentType ?: requestedMimeType,
+                            ownerOperation = ownerOperation
+                    )
+            "cancelled" -> {
+                ownerOperation.close()
+                throw AttachmentDownloadStoppedException()
+            }
+            else -> {
+                ownerOperation.cancelAndCleanup()
+                throw IllegalStateException(result.message ?: result.errorKind ?: "Attachment download failed")
+            }
+        }
+    }
+
+    private fun cleanupDirectAttachmentAttempt(targetFile: File, attemptToken: String) {
+        val targetKey = targetFile.absolutePath
+        val reservation =
+                AttachmentDownloadCoordinator.beginTargetCleanup(
+                        targetKey = targetKey,
+                        expectedAttemptToken = attemptToken
+                )
+        if (reservation.status == "stale") return
+        try {
+            runCatching { targetFile.delete() }
+        } finally {
+            AttachmentDownloadCoordinator.finishTargetCleanup(targetKey, reservation.token)
         }
     }
 
@@ -5900,6 +5963,11 @@ internal class SlockKuiklyBridgeModule(
 }
 
 private class AttachmentDownloadStoppedException : RuntimeException()
+
+private data class DirectAttachmentDownloadCompletion(
+        val contentType: String?,
+        val ownerOperation: AndroidAttachmentDirectDownloadOwnerOperation
+)
 
 private fun AttachmentDownloadProgress.toAndroidBridgePayload(): Map<String, Any> =
         buildMap {

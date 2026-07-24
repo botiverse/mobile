@@ -92,8 +92,11 @@ object AttachmentDownloadCoordinator {
     fun control(downloadId: String, expectedAttemptToken: String? = null, action: String): String =
         engine.control(downloadId, expectedAttemptToken, action)
 
-    fun beginTargetCleanup(targetKey: String): AttachmentDownloadCleanupReservation =
-        engine.beginTargetCleanup(targetKey)
+    fun beginTargetCleanup(
+        targetKey: String,
+        expectedAttemptToken: String? = null
+    ): AttachmentDownloadCleanupReservation =
+        engine.beginTargetCleanup(targetKey, expectedAttemptToken)
 
     fun finishTargetCleanup(targetKey: String, token: String) = engine.finishTargetCleanup(targetKey, token)
 }
@@ -280,13 +283,27 @@ internal class AttachmentDownloadCoordinatorEngine(
         }
     }
 
-    fun beginTargetCleanup(targetKey: String): AttachmentDownloadCleanupReservation {
+    fun beginTargetCleanup(
+        targetKey: String,
+        expectedAttemptToken: String? = null
+    ): AttachmentDownloadCleanupReservation {
         val reservationToken = "cleanup-${nextCleanupReservation.incrementAndGet()}"
+        var staleAttempt = false
         val attempt =
             synchronized(lock) {
-                deletingTargetOwners.getOrPut(targetKey) { mutableSetOf() } += reservationToken
-                activeByTargetKey[targetKey]
+                val active = activeByTargetKey[targetKey]
+                if (!expectedAttemptToken.isNullOrBlank() &&
+                    active != null &&
+                    active.attemptToken != expectedAttemptToken
+                ) {
+                    staleAttempt = true
+                    null
+                } else {
+                    deletingTargetOwners.getOrPut(targetKey) { mutableSetOf() } += reservationToken
+                    active
+                }
             }
+        if (staleAttempt) return AttachmentDownloadCleanupReservation(token = "", status = "stale")
         val status =
             when {
                 attempt == null -> "missing"

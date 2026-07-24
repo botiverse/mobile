@@ -134,6 +134,7 @@ private const val SlockFilePreviewMarkdownMaxChars = 80_000
 private const val SlockFilePreviewTextMaxChars = 96_000
 private const val SlockFilePreviewVideoSeekProp = "seekToTimeMs"
 private const val SlockFilePreviewImageGalleryMaxInFlightRequests = 2
+private const val SlockScopedNavigationLogTag = "slock_scoped_navigation"
 
 private val SlockFilePreviewJson = Json { ignoreUnknownKeys = true }
 
@@ -2896,7 +2897,7 @@ internal fun Pager.openSlockFilePreviewPage(payload: SlockFilePreviewPayload) {
     val storeScope = pageData.params.slockShellStoreScopeOrNull()
     if (storeScope == null) {
         slockLogWarn(
-            tag = "SlockScopedNavigation",
+            tag = SlockScopedNavigationLogTag,
             message = "slock_scoped_navigation_rejected reason=missing_source_scope target=$SLOCK_FILE_PREVIEW_PAGE"
         )
         return
