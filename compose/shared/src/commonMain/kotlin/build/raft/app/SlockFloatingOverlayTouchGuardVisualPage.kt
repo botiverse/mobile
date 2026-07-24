@@ -31,6 +31,8 @@ import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.annotations.Page
 import build.raft.app.model.TaskStatus
 import kotlinx.coroutines.delay
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 
 const val SLOCK_FLOATING_OVERLAY_TOUCH_GUARD_VISUAL_PAGE = "compose_floating_overlay_touch_guard_visual"
 
@@ -116,11 +118,11 @@ data class SlockReleaseNotesSectionHeadingBounds(
     val bottom: Int
 )
 
-object SlockReleaseNotesSectionGapProbe {
+object SlockReleaseNotesSectionGapProbe : SynchronizedObject() {
     private var activeGeneration: String? = null
     private var latestBounds: SlockReleaseNotesSectionHeadingBounds? = null
 
-    fun begin(generation: String) {
+    fun begin(generation: String) = synchronized(this) {
         activeGeneration = generation
         latestBounds = null
     }
@@ -128,8 +130,8 @@ object SlockReleaseNotesSectionGapProbe {
     fun record(
         generation: String,
         bounds: com.tencent.kuikly.compose.ui.geometry.Rect
-    ) {
-        if (generation != activeGeneration) return
+    ) = synchronized(this) {
+        if (generation != activeGeneration) return@synchronized
         latestBounds =
             SlockReleaseNotesSectionHeadingBounds(
                 left = kotlin.math.floor(bounds.left).toInt(),
@@ -139,8 +141,9 @@ object SlockReleaseNotesSectionGapProbe {
             )
     }
 
-    fun snapshot(generation: String): SlockReleaseNotesSectionHeadingBounds? =
+    fun snapshot(generation: String): SlockReleaseNotesSectionHeadingBounds? = synchronized(this) {
         latestBounds.takeIf { generation == activeGeneration }
+    }
 }
 
 @Composable
