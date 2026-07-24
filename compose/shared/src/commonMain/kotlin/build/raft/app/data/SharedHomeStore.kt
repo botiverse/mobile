@@ -499,7 +499,7 @@ internal class SharedHomeStore(
             is SharedHomeIntent.SetSurfaceVisible ->
                 setHomeSurfaceVisible(intent.visible)
             is SharedHomeIntent.TogglePinned ->
-                togglePinned(intent.conversationId)
+                togglePinned(intent)
             is SharedHomeIntent.SetPinnedSortMode ->
                 setPinnedSortMode(intent.mode)
             is SharedHomeIntent.SetChannelSortMode ->
@@ -2153,7 +2153,7 @@ internal class SharedHomeStore(
             }
     }
 
-    private suspend fun togglePinned(conversationId: String) {
+    private suspend fun togglePinned(intent: SharedHomeIntent.TogglePinned) {
         val current = _state.value.content as? SharedHomeContentState.Content
         val serverId = current?.snapshot?.server?.id
         if (serverId == null) {
@@ -2165,7 +2165,7 @@ internal class SharedHomeStore(
             pinUpdateFailureCallback("Unable to update pinned channels: sidebar order not loaded")
             return
         }
-        val target = current.snapshot.pinnedToggleTarget(conversationId)
+        val target = current.snapshot.pinnedToggleTarget(intent)
         val next = previous.withToggledPinnedTarget(target)
         applySidebarOrderLocally(serverId = serverId, next = next)
         val request = SettingsServerSidebarOrderUpdateRequest(
@@ -3028,7 +3028,16 @@ private data class PinnedToggleTarget(
     val item: SettingsServerSidebarPinnedItem
 )
 
-private fun HomeSnapshot.pinnedToggleTarget(conversationId: String): PinnedToggleTarget {
+private fun HomeSnapshot.pinnedToggleTarget(intent: SharedHomeIntent.TogglePinned): PinnedToggleTarget {
+    val conversationId = intent.conversationId
+    val explicitKind = intent.pinnedKind?.trim()?.lowercase()
+    val explicitId = intent.pinnedId?.trim()?.takeIf { it.isNotBlank() }
+    if (explicitKind in setOf("channel", "agent", "human") && explicitId != null) {
+        return PinnedToggleTarget(
+            conversationId = conversationId,
+            item = SettingsServerSidebarPinnedItem(kind = explicitKind.orEmpty(), id = explicitId)
+        )
+    }
     val directMessage =
         directMessages.firstOrNull { row ->
             row.threadId.value == conversationId || row.channelId.value == conversationId
@@ -3054,7 +3063,7 @@ private fun SettingsServerSidebarOrderSnapshot.withToggledPinnedTarget(
     return withCanonicalTypedPinned(nextPinned)
 }
 
-private fun SettingsServerSidebarOrderSnapshot.typedPinnedOrLegacy(): List<SettingsServerSidebarPinnedItem> {
+internal fun SettingsServerSidebarOrderSnapshot.typedPinnedOrLegacy(): List<SettingsServerSidebarPinnedItem> {
     if (pinned.isNotEmpty()) return pinned
     val orderedIds =
         (pinnedOrder + pinnedChannelIds + pinnedAgentIds)
@@ -3765,7 +3774,11 @@ sealed interface SharedHomeIntent {
      * PATCH `/servers/:id/sidebar-order`. On failure the previous snapshot
      * is restored and a transient error is recorded.
      */
-    data class TogglePinned(val conversationId: String) : SharedHomeIntent
+    data class TogglePinned(
+        val conversationId: String,
+        val pinnedKind: String? = null,
+        val pinnedId: String? = null
+    ) : SharedHomeIntent
     /**
      * #211: change the Pinned section sort mode (Manual / Recent / A-Z).
      * Persists through the same sidebar-order PATCH as pin/unpin.

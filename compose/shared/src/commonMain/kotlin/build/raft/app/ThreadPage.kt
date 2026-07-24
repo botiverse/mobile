@@ -72,7 +72,9 @@ import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.SharedConversationIdentityProvider
 import build.raft.app.data.toSharedConversationDirectoryState
+import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedHomeIntent
+import build.raft.app.data.SharedHomeState
 import build.raft.app.data.SharedMembersIntent
 import build.raft.app.data.SharedMembersChannelSuggestionSlice
 import build.raft.app.data.SharedMembersLoadStatus
@@ -959,6 +961,11 @@ internal data class ThreadActivityMuteUiState(
     val muteFromSeq: Long?
 )
 
+internal data class ThreadChannelPinUiState(
+    val channelId: String,
+    val pinned: Boolean
+)
+
 internal fun KuiklyThreadScreenPayload.threadActivityMuteState(
     projection: SharedConversationDirectoryProjection?
 ): ThreadActivityMuteUiState? {
@@ -980,6 +987,15 @@ internal fun KuiklyThreadScreenPayload.threadActivityMuteState(
         supported = supported,
         muteFromSeq = projection?.muteFromSeq ?: muteFromSeq
     )
+}
+
+internal fun KuiklyThreadScreenPayload.threadChannelPinTargetId(
+    projection: SharedConversationDirectoryProjection?
+): String? {
+    if (surfaceKind != KuiklyThreadSurfaceKind.Channel) return null
+    return projection?.canonicalChannelId?.trim()?.takeIf { it.isNotBlank() }
+        ?: streamChannelId?.trim()?.takeIf { it.isNotBlank() }
+        ?: sourceThreadId?.trim()?.takeIf { it.isNotBlank() }
 }
 
 internal fun KuiklyThreadScreenPayload.joinChannelTargetId(): ChannelId? =
@@ -3618,13 +3634,15 @@ private fun ThreadReactionAtlasImagePreview() {
 }
 
 @Composable
-internal fun ChannelSettingsPanelVisualScreen() {
+internal fun ChannelSettingsPanelVisualScreen(pinned: Boolean = false) {
     Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         ThreadSettingsModal(
             channelName = "design",
             subtitle = stringResource(MR.strings.channel_description_design),
             actions = channelPanelVisualSettingsActions(),
+            channelPinState = ThreadChannelPinUiState(channelId = "thread_design", pinned = pinned),
             onDismiss = {},
+            onTogglePin = {},
             onOpenAction = {}
         )
     }
@@ -3898,6 +3916,8 @@ internal fun SharedThreadRouteContent(
     val foregroundReconciler = remember(sharedStores) { sharedStores.foregroundReconciler }
     val foregroundBannerCurrentServerStore = remember(sharedStores) { sharedStores.localDataStore }
     val sharedHomeStore = remember(sharedStores, storeScope) { sharedStores.sharedHomeStore(storeScope) }
+    val sharedHomeStateFlow = remember(sharedHomeStore) { sharedHomeStore?.state ?: flowOf(SharedHomeState()) }
+    val sharedHomeState by sharedHomeStateFlow.collectAsState(SharedHomeState())
     val realtimeEvents = remember(eventBus) { KuiklyRealtimeEvents(eventBus) }
     val realtimeEventMapper =
         remember(sharedStores) {
@@ -4173,6 +4193,23 @@ internal fun SharedThreadRouteContent(
         remember(payload, stableHeaderProjection, sharedHomeStore) {
             payload.threadActivityMuteState(stableHeaderProjection)
                 ?.takeIf { sharedHomeStore != null }
+        }
+    val channelPinTargetId = remember(payload, stableHeaderProjection) {
+        payload.threadChannelPinTargetId(stableHeaderProjection)
+    }
+    val pinnedChannelConversationIds =
+        remember(sharedHomeState.content) {
+            (sharedHomeState.content as? SharedHomeContentState.Content)
+                ?.snapshot
+                ?.sidebarOrder
+                .pinnedChannelConversationIds()
+        }
+    val channelPinState =
+        channelPinTargetId?.let { targetId ->
+            ThreadChannelPinUiState(
+                channelId = targetId,
+                pinned = targetId in pinnedChannelConversationIds
+            )
         }
     val routeMountPlan =
         payload.threadRouteMountPlan(
@@ -6292,6 +6329,13 @@ internal fun SharedThreadRouteContent(
                                 muted = !muteState.muted
                             )
                         )
+                    }
+                },
+            channelPinState = channelPinState,
+            onToggleChannelPin =
+                channelPinState?.let { pinState ->
+                    {
+                        sharedHomeStore?.dispatch(SharedHomeIntent.TogglePinned(pinState.channelId))
                     }
                 },
             forwardServerId = headerProjectionServerId,
@@ -10859,6 +10903,8 @@ private fun ThreadPageContent(
     onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit,
     activityMuteState: ThreadActivityMuteUiState? = null,
     onToggleActivityMute: (() -> Unit)? = null,
+    channelPinState: ThreadChannelPinUiState? = null,
+    onToggleChannelPin: (() -> Unit)? = null,
     forwardServerId: ServerId?,
     forwardTargetRepository: ForwardMessageTargetRepository?,
     contentExtrasVisible: Boolean,
@@ -11808,6 +11854,7 @@ private fun ThreadPageContent(
                     channelName = headerDisplay.title,
                     subtitle = headerDisplay.subtitle,
                     actions = payload.settingsActions,
+                    channelPinState = channelPinState,
                     updateStatus = channelProfileUpdateStatus,
                     updateErrorCode = channelProfileUpdateErrorCode,
                     onDismiss = {
@@ -11821,6 +11868,7 @@ private fun ThreadPageContent(
                             onUpdateChannelProfile(channelId, originalName, originalDescription, name, description)
                         }
                     },
+                    onTogglePin = onToggleChannelPin,
                     onOpenAction = { actionId ->
                         activeModal = null
                         onClearChannelProfileUpdateStatus()
@@ -22734,10 +22782,12 @@ private fun ThreadSettingsModal(
     channelName: String,
     subtitle: String?,
     actions: List<KuiklyThreadSettingsAction>,
+    channelPinState: ThreadChannelPinUiState? = null,
     updateStatus: ChannelProfileUpdateStatus = ChannelProfileUpdateStatus.Idle,
     updateErrorCode: String? = null,
     onDismiss: () -> Unit,
     onSave: (String, String, String, String) -> Unit = { _, _, _, _ -> },
+    onTogglePin: (() -> Unit)? = null,
     onOpenAction: (String) -> Unit
 ) {
     var name by remember(channelName) { mutableStateOf(channelName) }
@@ -22824,9 +22874,20 @@ private fun ThreadSettingsModal(
                         }
                     )
                 }
-                if (dangerActions.isNotEmpty()) {
+                if ((channelPinState != null && onTogglePin != null) || dangerActions.isNotEmpty()) {
                     Box(modifier = Modifier.fillMaxWidth().height(2.dp).background(SlockColor.BorderBlack))
                     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        channelPinState?.takeIf { onTogglePin != null }?.let { pinState ->
+                            SlockModalFullWidthActionButton(
+                                label =
+                                    stringResource(
+                                        if (pinState.pinned) MR.strings.home_action_unpin else MR.strings.home_action_pin
+                                    ),
+                                icon = if (pinState.pinned) SlockLucideIconName.PinOff else SlockLucideIconName.Pin,
+                                color = if (pinState.pinned) SlockColor.AccentPink else SlockColor.SurfaceWhite,
+                                onClick = { onTogglePin?.invoke() }
+                            )
+                        }
                         dangerActions.forEach { (danger, action) ->
                             SlockModalFullWidthActionButton(
                                 label = action.title,

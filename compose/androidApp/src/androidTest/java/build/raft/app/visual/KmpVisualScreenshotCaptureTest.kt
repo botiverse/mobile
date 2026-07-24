@@ -1754,6 +1754,118 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureHomeSearchChannelPinMenu() {
+        captureHomeSearchEntityPinMenu(
+            caseId = "components.home.search.channel-pin-menu",
+            pageName = "compose_home_search_channel_pin_visual",
+            entityLabel = "Channel"
+        )
+    }
+
+    @Test
+    fun captureHomeSearchDmPinMenu() {
+        captureHomeSearchEntityPinMenu(
+            caseId = "components.home.search.dm-pin-menu",
+            pageName = "compose_home_search_dm_pin_visual",
+            entityLabel = "DM"
+        )
+    }
+
+    @Test
+    fun captureHomeSearchAgentPinMenu() {
+        captureHomeSearchEntityPinMenu(
+            caseId = "components.home.search.agent-pin-menu",
+            pageName = "compose_home_search_agent_pin_visual",
+            entityLabel = "Agent"
+        )
+    }
+
+    @Test
+    fun captureHomeSearchHumanPinMenu() {
+        captureHomeSearchEntityPinMenu(
+            caseId = "components.home.search.human-pin-menu",
+            pageName = "compose_home_search_human_pin_visual",
+            entityLabel = "Human"
+        )
+    }
+
+    private fun captureHomeSearchEntityPinMenu(
+        caseId: String,
+        pageName: String,
+        entityLabel: String
+    ) {
+        captureKmpComponentCase(
+            caseId = caseId,
+            pageName = pageName,
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 4_500,
+            beforeScreenshot = {
+                var before: Bitmap? = null
+                var menuOpen: Bitmap? = null
+                var selected: Bitmap? = null
+                try {
+                    dismissCompatibilityDialog()
+                    waitForIdleBounded()
+                    val activePackage =
+                        InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow?.packageName
+                    require(activePackage == "build.raft.app.connectedtest") {
+                        "Search fixture is not the active input window: package=$activePackage"
+                    }
+                    before = captureActivityScreenshot("$caseId.before")
+                    val yellowBefore = before.countThreadOpenProbeYellowSamplesInTopBand()
+                    val cyanBefore = before.countThreadChildActionProbeSamples(0x00, 0xE5, 0xFF)
+                    val duplicateBefore = before.countThreadChildActionProbeSamples(0xFF, 0x00, 0x00)
+                    longPressDisplayDp(x = 180f, y = 220f)
+                    Thread.sleep(250)
+                    waitForIdleBounded()
+                    Thread.sleep(500)
+                    menuOpen = captureActivityScreenshot("$caseId.open")
+                    val yellowMenuOpen = menuOpen.countThreadOpenProbeYellowSamplesInTopBand()
+                    val changedRatio = before.fullBitmapChangedPixelRatio(menuOpen)
+                    assertTrue(
+                        "Long-pressing an active $entityLabel search result must render the Pin menu; changedRatio=$changedRatio",
+                        changedRatio >= SEARCH_PIN_MENU_MIN_CHANGED_RATIO
+                    )
+                    assertTrue(
+                        "Long-pressing a $entityLabel row must not open it; yellowBefore=$yellowBefore yellowMenuOpen=$yellowMenuOpen",
+                        yellowMenuOpen < yellowBefore + THREAD_TAP_PROBE_MIN_ADDED_YELLOW_SAMPLES
+                    )
+
+                    tapDisplayDp(x = 240f, y = 250f)
+                    waitForIdleBounded()
+                    Thread.sleep(300)
+                    selected = captureActivityScreenshot("$caseId.selected")
+                    val yellowSelected = selected.countThreadOpenProbeYellowSamplesInTopBand()
+                    val cyanSelected = selected.countThreadChildActionProbeSamples(0x00, 0xE5, 0xFF)
+                    val duplicateSelected = selected.countThreadChildActionProbeSamples(0xFF, 0x00, 0x00)
+                    assertTrue(
+                        "Selecting the real Pin menu item must not open the $entityLabel; yellowBefore=$yellowBefore yellowSelected=$yellowSelected",
+                        yellowSelected < yellowBefore + THREAD_TAP_PROBE_MIN_ADDED_YELLOW_SAMPLES
+                    )
+                    assertTrue(
+                        "Selecting the real Pin menu item must toggle exactly once; cyanBefore=$cyanBefore cyanSelected=$cyanSelected",
+                        cyanSelected >= cyanBefore + THREAD_CHILD_ACTION_PROBE_MIN_ADDED_SAMPLES
+                    )
+                    assertTrue(
+                        "Selecting the real Pin menu item must not toggle twice; duplicateBefore=$duplicateBefore duplicateSelected=$duplicateSelected",
+                        duplicateSelected < duplicateBefore + THREAD_CHILD_ACTION_PROBE_MIN_ADDED_SAMPLES
+                    )
+
+                    Thread.sleep(1_000)
+                    waitForIdleBounded()
+                    longPressDisplayDp(x = 180f, y = 220f)
+                    waitForIdleBounded()
+                    Thread.sleep(500)
+                } finally {
+                    before?.recycle()
+                    menuOpen?.recycle()
+                    selected?.recycle()
+                }
+            }
+        )
+    }
+
+    @Test
     fun captureHomeSearchChannelDropdown() {
         captureKmpComponentCase(
             caseId = "components.home.search.channel-dropdown",
@@ -2100,6 +2212,16 @@ class KmpVisualScreenshotCaptureTest {
         captureKmpComponentCase(
             caseId = "components.channel.settings.panel",
             pageName = "compose_channel_settings_panel_visual",
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_500
+        )
+    }
+
+    @Test
+    fun captureChannelSettingsPinnedPanel() {
+        captureKmpComponentCase(
+            caseId = "components.channel.settings.pinned-panel",
+            pageName = "compose_channel_settings_pinned_panel_visual",
             crop = FULL_VIEWPORT_CROP,
             settleMs = 2_500
         )
@@ -4431,6 +4553,7 @@ class KmpVisualScreenshotCaptureTest {
         private const val THREAD_CHILD_ACTION_PROBE_TOLERANCE = 12
         private const val THREAD_CHILD_ACTION_PROBE_MIN_ADDED_SAMPLES = 100
         private const val THREAD_LONG_PRESS_MIN_CHANGED_RATIO = 0.02f
+        private const val SEARCH_PIN_MENU_MIN_CHANGED_RATIO = 0.004f
         private const val THREAD_OPEN_PROBE_TOP_BAND_FRACTION = 0.15f
         private const val FORWARD_PROBE_SWIPE_STEPS = 12
         private const val FORWARD_PROBE_SWIPE_DURATION_MS = 360L
