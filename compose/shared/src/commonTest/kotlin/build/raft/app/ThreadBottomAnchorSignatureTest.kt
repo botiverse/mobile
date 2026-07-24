@@ -1547,11 +1547,27 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
-    fun initialBottomAnchor_keepsMessageListVisibleWhileAnchorIsPending() {
+    fun initialBottomAnchor_masksIntermediateRowsUntilFinalViewportIsReady() {
         assertEquals(
-            1f,
+            true,
+            shouldMaskThreadMessagesBeforeInitialAnchor(
+                initialBottomAnchorReady = false,
+                latestItemIndex = 49,
+                revealLatestLocalSendBeforeInitialAnchor = false
+            )
+        )
+        assertEquals(
+            0f,
             threadMessagesListAlpha(
                 initialBottomAnchorReady = false,
+                latestItemIndex = 49,
+                revealLatestLocalSendBeforeInitialAnchor = false
+            )
+        )
+        assertEquals(
+            false,
+            shouldMaskThreadMessagesBeforeInitialAnchor(
+                initialBottomAnchorReady = true,
                 latestItemIndex = 49,
                 revealLatestLocalSendBeforeInitialAnchor = false
             )
@@ -1570,6 +1586,86 @@ class ThreadBottomAnchorSignatureTest {
                 initialBottomAnchorReady = false,
                 latestItemIndex = 0,
                 revealLatestLocalSendBeforeInitialAnchor = true
+            )
+        )
+        assertEquals(
+            1f,
+            threadMessagesListAlpha(
+                initialBottomAnchorReady = false,
+                latestItemIndex = -1,
+                revealLatestLocalSendBeforeInitialAnchor = false
+            )
+        )
+    }
+
+    @Test
+    fun focusedInitialAnchor_userDragRevealsUserOwnedViewportAndRetiresBottomAutoAnchor() {
+        val before =
+            ThreadInitialAnchorUserDragHandoff(
+                initialBottomAnchorReady = false,
+                allowBottomAutoAnchor = true
+            )
+        assertEquals(
+            0f,
+            threadMessagesListAlpha(
+                initialBottomAnchorReady = before.initialBottomAnchorReady,
+                latestItemIndex = 49,
+                revealLatestLocalSendBeforeInitialAnchor = false
+            )
+        )
+
+        val after =
+            threadInitialAnchorUserDragHandoff(
+                initialBottomAnchorReady = before.initialBottomAnchorReady,
+                allowBottomAutoAnchor = before.allowBottomAutoAnchor,
+                pendingFocusedAnchorIdentity = "focused:m25:nonce-1"
+            )
+
+        assertEquals(true, after.initialBottomAnchorReady)
+        assertEquals(false, after.allowBottomAutoAnchor)
+        assertEquals(
+            1f,
+            threadMessagesListAlpha(
+                initialBottomAnchorReady = after.initialBottomAnchorReady,
+                latestItemIndex = 49,
+                revealLatestLocalSendBeforeInitialAnchor = false
+            )
+        )
+    }
+
+    @Test
+    fun initialAnchor_userDragHandoffLeavesUnrelatedStatesUnchanged() {
+        assertEquals(
+            ThreadInitialAnchorUserDragHandoff(
+                initialBottomAnchorReady = false,
+                allowBottomAutoAnchor = true
+            ),
+            threadInitialAnchorUserDragHandoff(
+                initialBottomAnchorReady = false,
+                allowBottomAutoAnchor = true,
+                pendingFocusedAnchorIdentity = null
+            )
+        )
+        assertEquals(
+            ThreadInitialAnchorUserDragHandoff(
+                initialBottomAnchorReady = true,
+                allowBottomAutoAnchor = false
+            ),
+            threadInitialAnchorUserDragHandoff(
+                initialBottomAnchorReady = true,
+                allowBottomAutoAnchor = false,
+                pendingFocusedAnchorIdentity = "focused:m25:nonce-1"
+            )
+        )
+        assertEquals(
+            ThreadInitialAnchorUserDragHandoff(
+                initialBottomAnchorReady = true,
+                allowBottomAutoAnchor = false
+            ),
+            threadInitialAnchorUserDragHandoff(
+                initialBottomAnchorReady = true,
+                allowBottomAutoAnchor = true,
+                pendingFocusedAnchorIdentity = "focused:m25:nonce-1"
             )
         )
     }

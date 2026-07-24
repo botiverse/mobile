@@ -13028,7 +13028,11 @@ private fun ThreadMessagesList(
             }
     }
     val initialBottomAnchorPending =
-        !initialBottomAnchorReady && latestItemIndex >= 0 && !revealLatestLocalSendBeforeInitialAnchor
+        shouldMaskThreadMessagesBeforeInitialAnchor(
+            initialBottomAnchorReady = initialBottomAnchorReady,
+            latestItemIndex = latestItemIndex,
+            revealLatestLocalSendBeforeInitialAnchor = revealLatestLocalSendBeforeInitialAnchor
+        )
     LaunchedEffect(
         threadInstanceKey,
         renderPayload.status,
@@ -13574,12 +13578,15 @@ private fun ThreadMessagesList(
         }
         activeFocusedMessageId = targetMessageId
         allowBottomAutoAnchor = false
-        initialBottomAnchorReady = true
         val didFocus =
             listState.scrollThreadItemToFocusedViewport(
                 itemIndex = targetIndex
             )
         if (!didFocus) {
+            // Fail open instead of leaving the timeline masked forever when
+            // the target never becomes measurable. Normal focused entries
+            // reveal only after the viewport owner has finished positioning.
+            initialBottomAnchorReady = true
             diagnosticsLogger(
                 "thread_focused_message_anchor result=scroll_skipped_unmeasured " +
                     "messageId=$targetMessageId targetIndex=$targetIndex"
@@ -13587,6 +13594,7 @@ private fun ThreadMessagesList(
             activeFocusedMessageId = null
             return@LaunchedEffect
         }
+        initialBottomAnchorReady = true
         focusedAnchorStartUserScrollGeneration = userScrollGeneration.value
         correctedFocusedOriginIdentity = null
         // task #567 first-principles invariant: once anchored, the target must
@@ -13726,8 +13734,8 @@ private fun ThreadMessagesList(
             return@LaunchedEffect
         }
         allowBottomAutoAnchor = false
-        initialBottomAnchorReady = true
         listState.scrollToItem(match.listItemIndex)
+        initialBottomAnchorReady = true
     }
     LaunchedEffect(threadInstanceKey, activeFocusedMessageId) {
         val highlightedMessageId = activeFocusedMessageId ?: return@LaunchedEffect
@@ -13958,6 +13966,14 @@ private fun ThreadMessagesList(
                             ) {
                                 scrollInterruptedFocusedMessageAnchorIdentity = pendingAnchorIdentity
                             }
+                            val userDragHandoff =
+                                threadInitialAnchorUserDragHandoff(
+                                    initialBottomAnchorReady = initialBottomAnchorReady,
+                                    allowBottomAutoAnchor = allowBottomAutoAnchor,
+                                    pendingFocusedAnchorIdentity = pendingAnchorIdentity
+                                )
+                            initialBottomAnchorReady = userDragHandoff.initialBottomAnchorReady
+                            allowBottomAutoAnchor = userDragHandoff.allowBottomAutoAnchor
                             if (latestLocalSendBottomAnchorActiveKey != null) {
                                 latestLocalSendBottomAnchorActiveKey = null
                                 allowBottomAutoAnchor = false
@@ -14387,6 +14403,19 @@ private fun ThreadMessagesList(
                 },
                 modifier = Modifier.align(Alignment.BottomCenter)
                     .zIndex(ThreadInlineSearchBarZIndex)
+            )
+        }
+        if (initialBottomAnchorPending) {
+            // The native ScrollView must mount at offset 0 before the
+            // viewport-sized scrollBy owner can reach the bottom (#1415).
+            // Keep that real native setup, but do not expose its intermediate
+            // message rows. A non-blank loading surface remains visible until
+            // the existing anchor readiness authority commits the final
+            // viewport; the first user-visible message frame is therefore the
+            // promised bottom/focused position.
+            ThreadStateMessage(
+                title = stringResource(MR.strings.thread_state_loading),
+                detail = null
             )
         }
         val shouldShowBackToBottomButton =
@@ -15326,7 +15355,56 @@ internal fun threadMessagesListAlpha(
     initialBottomAnchorReady: Boolean,
     latestItemIndex: Int,
     revealLatestLocalSendBeforeInitialAnchor: Boolean
-): Float = 1f
+): Float =
+    if (
+        shouldMaskThreadMessagesBeforeInitialAnchor(
+            initialBottomAnchorReady = initialBottomAnchorReady,
+            latestItemIndex = latestItemIndex,
+            revealLatestLocalSendBeforeInitialAnchor = revealLatestLocalSendBeforeInitialAnchor
+        )
+    ) {
+        0f
+    } else {
+        1f
+    }
+
+internal fun shouldMaskThreadMessagesBeforeInitialAnchor(
+    initialBottomAnchorReady: Boolean,
+    latestItemIndex: Int,
+    revealLatestLocalSendBeforeInitialAnchor: Boolean
+): Boolean =
+    (
+        !initialBottomAnchorReady &&
+        latestItemIndex >= 0 &&
+        !revealLatestLocalSendBeforeInitialAnchor
+    )
+
+internal data class ThreadInitialAnchorUserDragHandoff(
+    val initialBottomAnchorReady: Boolean,
+    val allowBottomAutoAnchor: Boolean
+)
+
+internal fun threadInitialAnchorUserDragHandoff(
+    initialBottomAnchorReady: Boolean,
+    allowBottomAutoAnchor: Boolean,
+    pendingFocusedAnchorIdentity: String?
+): ThreadInitialAnchorUserDragHandoff =
+    if (pendingFocusedAnchorIdentity != null) {
+        // alpha(0f) is draw-only in Kuikly Compose, so the masked LazyColumn
+        // still receives this direct user drag. Retire the focused request
+        // and reveal the viewport the user now owns. Also retire bottom auto
+        // anchoring for an already-visible focused entry; user drag remains
+        // the final viewport authority in both cases.
+        ThreadInitialAnchorUserDragHandoff(
+            initialBottomAnchorReady = true,
+            allowBottomAutoAnchor = false
+        )
+    } else {
+        ThreadInitialAnchorUserDragHandoff(
+            initialBottomAnchorReady = initialBottomAnchorReady,
+            allowBottomAutoAnchor = allowBottomAutoAnchor
+        )
+    }
 
 internal fun KuiklyThreadScreenPayload.hasSendingLocalSendAnchor(anchorKey: String?): Boolean {
     val messageId = anchorKey?.substringBefore(':')?.takeIf { it.isNotBlank() } ?: return false
