@@ -828,6 +828,12 @@ data class KuiklyMembersLabels(
     val addHuman: String = "Add human"
 )
 
+internal fun canonicalMembersDisplayText(
+    value: String,
+    canonicalDefault: String,
+    localizedDefault: String
+): String = if (value == canonicalDefault) localizedDefault else value
+
 private val membersSmokePayload = KuiklyMembersPayload(
     title = "Members",
     members = listOf(
@@ -3482,6 +3488,24 @@ internal fun MembersListContent(
     onListStateSnapshot: (AppShellMembersListState) -> Unit = {},
     onRefresh: () -> Unit = {}
 ) {
+    val displayTitle =
+        canonicalMembersDisplayText(
+            value = payload.title,
+            canonicalDefault = "Members",
+            localizedDefault = stringResource(MR.strings.members_page_title)
+        )
+    val displayAgentsLabel =
+        canonicalMembersDisplayText(
+            value = payload.labels.agents,
+            canonicalDefault = "AGENTS",
+            localizedDefault = stringResource(MR.strings.members_section_agents)
+        )
+    val displayHumansLabel =
+        canonicalMembersDisplayText(
+            value = payload.labels.humans,
+            canonicalDefault = "HUMANS",
+            localizedDefault = stringResource(MR.strings.members_section_humans)
+        )
     val groupedMembers = remember(payload.members) {
         payload.members.groupBy {
             when (it.kind) {
@@ -3561,7 +3585,7 @@ internal fun MembersListContent(
             .fillMaxSize()
             .background(SlockColor.SurfaceWhite)
     ) {
-        MembersPageHeader(title = payload.title, refreshing = refreshing, onBack = onBack)
+        MembersPageHeader(title = displayTitle, refreshing = refreshing, onBack = onBack)
         LazyColumn(
             state = listState,
             // React parity: the web members view pads the scroll container itself (Sidebar
@@ -3585,7 +3609,7 @@ internal fun MembersListContent(
             item { Spacer(Modifier.height(SlockSpacing.Md)) }
             item {
                 SlockCollapsibleSectionHeader(
-                    label = payload.labels.agents,
+                    label = displayAgentsLabel,
                     count = agents.size,
                     expanded = agentsExpanded,
                     onExpandedChange = { agentsExpanded = it },
@@ -3649,7 +3673,7 @@ internal fun MembersListContent(
             item {
                 Spacer(Modifier.height(SlockSpacing.Sm))
                 SlockCollapsibleSectionHeader(
-                    label = payload.labels.humans,
+                    label = displayHumansLabel,
                     count = humans.size,
                     expanded = humansExpanded,
                     onExpandedChange = { humansExpanded = it },

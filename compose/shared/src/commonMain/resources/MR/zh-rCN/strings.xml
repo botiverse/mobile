@@ -205,6 +205,7 @@
     <string name="settings_section_admins_title">管理员</string>
     <string name="settings_section_system_channels_title">系统频道</string>
     <string name="settings_section_billing_title">套餐与账单</string>
+    <string name="settings_billing_plans_title">套餐</string>
     <string name="settings_section_pending_invites_title">待处理邀请</string>
     <string name="settings_section_join_links_title">加入链接</string>
     <string name="settings_section_pre_join_agreement_title">加入前协议</string>
@@ -267,6 +268,8 @@
     <string name="thread_send_failure_details_copied">失败详情已复制</string>
     <string name="thread_state_original_unavailable">原消息不可用。</string>
     <string name="thread_reply_title">对话串</string>
+    <string name="thread_channel_title">频道</string>
+    <string name="thread_direct_message_title">私聊</string>
     <string name="thread_state_no_replies">暂无回复</string>
     <string name="thread_inline_reply_count_one">1 条回复</string>
     <string name="thread_inline_reply_count_many">%1$d 条回复</string>
@@ -1364,6 +1367,9 @@
     <string name="saved_state_no_preview">暂无预览</string>
     <string name="panel_error_no_permission">没有权限</string>
     <string name="panel_error_load">无法加载</string>
+    <string name="members_page_title">成员</string>
+    <string name="members_section_agents">智能体</string>
+    <string name="members_section_humans">用户</string>
     <string name="settings_state_unavailable">不可用</string>
     <string name="settings_state_permission_required">需要权限</string>
     <string name="settings_state_ready">就绪</string>

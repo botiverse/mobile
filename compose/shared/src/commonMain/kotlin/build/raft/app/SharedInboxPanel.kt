@@ -556,6 +556,7 @@ private fun SharedActivityBodyContent(
     modifier: Modifier = Modifier
 ) {
     val snapshot = state.snapshot
+    val userFacingErrorLabels = threadUserFacingErrorLabels()
     Box(modifier = modifier) {
         when {
             snapshot == null && state.loading ->
@@ -568,7 +569,9 @@ private fun SharedActivityBodyContent(
             snapshot == null && state.errorCode != null ->
                 SharedActivityRefreshableStateBody(
                     title = stringResource(MR.strings.inbox_error_load_activity),
-                    detail = state.errorCode,
+                    detail =
+                        userFacingErrorLabels.forErrorCode(state.errorCode)
+                            ?: userFacingErrorLabels.generic(),
                     actionLabel = if (state.refreshing || state.loading) "…" else stringResource(MR.strings.common_retry),
                     onAction = { onIntent(SharedActivityIntent.Refresh) },
                     refreshing = state.refreshing,

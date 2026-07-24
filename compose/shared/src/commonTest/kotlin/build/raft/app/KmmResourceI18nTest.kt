@@ -72,7 +72,13 @@ class KmmResourceI18nTest {
             MR.strings.settings_billing_action_compare_plans,
             MR.strings.settings_pwa_install_title,
             MR.strings.settings_pwa_install_native_detail,
-            MR.strings.channel_create_error_not_created
+            MR.strings.channel_create_error_not_created,
+            MR.strings.members_page_title,
+            MR.strings.members_section_agents,
+            MR.strings.members_section_humans,
+            MR.strings.settings_billing_plans_title,
+            MR.strings.thread_channel_title,
+            MR.strings.thread_direct_message_title
         ).forEach { resource ->
             assertTrue(
                 resource.desc() is ResourceStringDesc,
