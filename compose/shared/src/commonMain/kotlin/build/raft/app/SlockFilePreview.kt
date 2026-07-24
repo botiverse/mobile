@@ -2887,12 +2887,23 @@ internal fun slockFilePreviewResolveLaunchPayload(
 }
 
 internal fun Pager.openSlockFilePreviewPage(payload: SlockFilePreviewPayload) {
+    val storeScope = pageData.params.slockShellStoreScopeOrNull()
+    if (storeScope == null) {
+        slockLogWarn(
+            tag = "SlockScopedNavigation",
+            message = "slock_scoped_navigation_rejected reason=missing_source_scope target=$SLOCK_FILE_PREVIEW_PAGE"
+        )
+        return
+    }
     val previewId = SlockFilePreviewLaunchPayloadStore.put(payload)
-    val pageData = slockFilePreviewLaunchPageData(previewId)
-    acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(SLOCK_FILE_PREVIEW_PAGE, pageData)
+    val launchPageData = slockFilePreviewLaunchPageData(previewId, storeScope)
+    openSlockPage(SLOCK_FILE_PREVIEW_PAGE, launchPageData, storeScopeOverride = storeScope)
 }
 
-internal fun slockFilePreviewLaunchPageData(previewId: String): JSONObject =
+internal fun slockFilePreviewLaunchPageData(
+    previewId: String,
+    storeScope: SlockShellStoreScope
+): JSONObject =
     JSONObject().apply {
         put("pageName", SLOCK_FILE_PREVIEW_PAGE)
         put(
@@ -2902,7 +2913,7 @@ internal fun slockFilePreviewLaunchPageData(previewId: String): JSONObject =
                 WireSlockFilePreviewLaunchPayload(previewId = previewId)
             )
         )
-    }
+    }.withSlockShellStoreScope(storeScope)
 
 internal fun KuiklyThreadAttachmentItem.toThreadAttachmentLazyPreviewPayload(
     kind: String,
