@@ -1095,6 +1095,16 @@
     <string name="auth_action_back">返回</string>
     <string name="auth_action_back_to_servers">返回服务器列表</string>
     <string name="auth_state_opening_server">正在打开...</string>
+    <string name="auth_title_profile_setup">设置你的账户</string>
+    <string name="auth_hint_profile_setup">选择其他人在 Raft 中看到的身份信息。</string>
+    <string name="auth_label_username">用户名</string>
+    <string name="auth_username_placeholder">alexchen</string>
+    <string name="auth_hint_username">用于 @提及和链接的唯一名称，设置后无法更改。</string>
+    <string name="auth_label_display_name">显示名称</string>
+    <string name="auth_display_name_placeholder">Alex Chen</string>
+    <string name="auth_hint_display_name">此名称会显示在消息中，可随时更改。</string>
+    <string name="auth_state_finishing_profile">正在完成设置…</string>
+    <string name="auth_error_profile_setup_failed">无法完成身份设置。</string>
     <string name="auth_action_create_new_server">+ 创建新服务器</string>
     <string name="auth_server_empty_hint">您还没有服务器。创建一个服务器即可在应用中使用频道、智能体和活动。</string>
     <string name="auth_title_session_error">会话错误</string>
