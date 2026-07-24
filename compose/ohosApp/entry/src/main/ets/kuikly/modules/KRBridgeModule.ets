@@ -2,6 +2,7 @@ import { bundleManager, common } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { picker, fileUri } from '@kit.CoreFileKit';
 import { photoAccessHelper } from '@kit.MediaLibraryKit';
+import { image } from '@kit.ImageKit';
 import { notificationManager } from '@kit.NotificationKit';
 import { promptAction } from '@kit.ArkUI';
 import { KRAny } from '@kuikly-open/render';
@@ -68,6 +69,8 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   static readonly OPEN_URL = "openUrl";
   static readonly OPEN_ATTACHMENT = "openAttachment";
   static readonly SAVE_ATTACHMENT = "saveAttachment";
+  static readonly SAVE_IMAGE_TO_PHOTOS = "saveImageToPhotos";
+  static readonly CANCEL_ATTACHMENT_EXPORT = "cancelAttachmentExport";
   static readonly ATTACHMENT_DOWNLOAD_CONTROL = "attachmentDownloadControl";
   static readonly ATTACHMENT_DOWNLOAD_OWNER_CHANGED = "attachmentDownloadOwnerChanged";
   static readonly LOG = "log";
@@ -88,6 +91,10 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   static readonly ATTACHMENT_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
   static readonly QUIVER_FEEDBACK_MAX_ATTACHMENTS = 3;
   static readonly QUIVER_FEEDBACK_MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+  private activePhotoExportDownloadId: string = "";
+  private activePhotoExportOperationId: string = "";
+  private activePhotoExportGeneration: number = 0;
+  private nextPhotoExportGeneration: number = 0;
 
   syncMode(): boolean {
     return false;
@@ -125,6 +132,14 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       }
       case KRBridgeModule.SAVE_ATTACHMENT: {
         this.saveAttachment(params, callback);
+        break;
+      }
+      case KRBridgeModule.SAVE_IMAGE_TO_PHOTOS: {
+        this.saveImageToPhotos(params, callback);
+        break;
+      }
+      case KRBridgeModule.CANCEL_ATTACHMENT_EXPORT: {
+        this.cancelAttachmentExport(params);
         break;
       }
       case KRBridgeModule.ATTACHMENT_DOWNLOAD_CONTROL: {
@@ -381,6 +396,237 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         `attachmentId=${attachmentId.substring(0, 8)} status=failed code=${businessError.code ?? "unknown"}`
       );
       callback({ "status": "storage_failed", "message": "Unable to save attachment" });
+    }
+  }
+
+  private async saveImageToPhotos(params: KRAny, callback: KuiklyRenderCallback) {
+    const records = this.parseRecord(params);
+    const url = records["url"] as string | undefined;
+    const attachmentId = (records["attachmentId"] as string | undefined) ?? "attachment";
+    const requestedFileName = (records["fileName"] as string | undefined) ?? "image";
+    const claimedMimeType = ((records["mimeType"] as string | undefined) ?? "").split(";")[0].trim().toLowerCase();
+    const ownerKey = (records["ownerKey"] as string | undefined) ?? "";
+    const trackProgress = records["trackProgress"] === true || records["trackProgress"] === "true";
+    const downloadId = (records["downloadId"] as string | undefined) ?? `${attachmentId}:${requestedFileName}`;
+    const operationId = (records["operationId"] as string | undefined) ?? "";
+    if (url === undefined || url.length === 0) {
+      callback({ "status": "failed", "message": "Unable to download attachment" });
+      return;
+    }
+    if (ownerKey.length !== 64) {
+      callback({ "status": "failed", "message": "Authentication required" });
+      return;
+    }
+    if (operationId.length === 0) {
+      callback({ "status": "failed", "message": "Missing attachment export authority" });
+      return;
+    }
+    if (claimedMimeType.length > 0 && claimedMimeType !== "application/octet-stream" &&
+      claimedMimeType !== "binary/octet-stream" && !claimedMimeType.startsWith("image/")) {
+      callback({ "status": "unsupported_image", "message": "This attachment is not a supported image", "retryable": false });
+      return;
+    }
+    if (this.activePhotoExportDownloadId.length > 0) {
+      callback({ "status": "failed", "message": "Another photo save is already active" });
+      return;
+    }
+    this.nextPhotoExportGeneration += 1;
+    const exportGeneration = this.nextPhotoExportGeneration;
+    this.activePhotoExportDownloadId = downloadId;
+    this.activePhotoExportOperationId = operationId;
+    this.activePhotoExportGeneration = exportGeneration;
+    const context = getContext(this) as common.UIAbilityContext;
+    try {
+      const cacheDir = `${context.cacheDir}/slock-attachments`;
+      fs.mkdirSync(cacheDir, true);
+      this.cleanupAttachmentCache(cacheDir);
+      const path = `${cacheDir}/${ownerKey}-${this.safeAttachmentCacheFileName(attachmentId, requestedFileName, claimedMimeType)}`;
+      const cached = this.isUsableAttachmentCacheFile(path);
+      if (!cached) {
+        const progressCallback: KuiklyRenderCallback | undefined = trackProgress ?
+          (payload: KRAny): void => {
+            if (this.isCurrentPhotoExport(downloadId, operationId, exportGeneration)) callback(payload);
+          } : undefined;
+        const downloadResult = await slockOhosAttachmentDownloadSink.download(
+          url,
+          path,
+          downloadId,
+          path,
+          progressCallback
+        );
+        if (downloadResult["status"] !== "complete") {
+          if (this.isCurrentPhotoExport(downloadId, operationId, exportGeneration)) callback(downloadResult);
+          return;
+        }
+      }
+      if (!this.isCurrentPhotoExport(downloadId, operationId, exportGeneration)) return;
+      let width = 0;
+      let height = 0;
+      const extension = this.detectedImageExtension(path);
+      if (extension.length === 0 || !this.imageMetadataMatches(requestedFileName, claimedMimeType, extension)) {
+        callback({ "status": "unsupported_image", "message": "This attachment is not a supported image", "retryable": false });
+        return;
+      }
+      const sourceFile = fs.openSync(path, fs.OpenMode.READ_ONLY);
+      let imageSource: image.ImageSource | undefined = undefined;
+      try {
+        imageSource = image.createImageSource(sourceFile.fd);
+        if (imageSource === undefined) {
+          callback({ "status": "unsupported_image", "message": "This attachment is not a supported image", "retryable": false });
+          return;
+        }
+        const imageInfo = await imageSource.getImageInfo();
+        width = imageInfo.size.width;
+        height = imageInfo.size.height;
+      } finally {
+        try {
+          if (imageSource !== undefined) await imageSource.release();
+        } finally {
+          fs.closeSync(sourceFile);
+        }
+      }
+      if (width <= 0 || height <= 0 || !this.isCurrentPhotoExport(downloadId, operationId, exportGeneration)) {
+        if (this.isCurrentPhotoExport(downloadId, operationId, exportGeneration)) {
+          callback({ "status": "unsupported_image", "message": "This attachment is not a supported image", "retryable": false });
+        }
+        return;
+      }
+      const title = requestedFileName.split("/").pop()?.split("\\").pop()?.replace(/\.[^.]+$/, "") ?? "image";
+      const configs: Array<photoAccessHelper.PhotoCreationConfig> = [{
+        title: title,
+        fileNameExtension: extension,
+        photoType: photoAccessHelper.PhotoType.IMAGE,
+        subtype: photoAccessHelper.PhotoSubtype.DEFAULT
+      }];
+      const helper = photoAccessHelper.getPhotoAccessHelper(context);
+      const targetUris = await helper.showAssetsCreationDialog([fileUri.getUriFromPath(path)], configs);
+      const targetUri = targetUris.length > 0 ? targetUris[0] : undefined;
+      if (!this.isCurrentPhotoExport(downloadId, operationId, exportGeneration)) {
+        if (targetUri !== undefined && targetUri.length > 0) {
+          try {
+            fs.unlinkSync(targetUri);
+          } catch (ignoredError) {
+            SlockOhosAppDiagnostics.record("gallery", `Unable to remove cancelled photo asset: ${ignoredError}`);
+          }
+        }
+        return;
+      }
+      if (targetUri === undefined || targetUri.length === 0) {
+        callback({ "status": "cancelled" });
+        return;
+      }
+      fs.copyFileSync(path, targetUri);
+      callback({
+        "status": "saved",
+        "message": "Saved to Photos",
+        "uri": targetUri,
+        "fileName": requestedFileName,
+        "mimeType": this.imageMimeTypeForExtension(extension),
+        "pixelWidth": width,
+        "pixelHeight": height,
+        "cached": cached,
+        "sizeBytes": fs.statSync(path).size
+      });
+    } catch (error) {
+      if (!this.isCurrentPhotoExport(downloadId, operationId, exportGeneration)) return;
+      const businessError = error as BusinessError;
+      const message = businessError.message ?? `${error}`;
+      if (message.toLowerCase().includes("cancel")) {
+        callback({ "status": "cancelled" });
+      } else if (businessError.code === 201) {
+        callback({ "status": "permission_denied", "message": "Allow Photos access, then try again", "retryable": true });
+      } else {
+        callback({ "status": "photos_failed", "message": "Unable to save image to Photos", "retryable": true });
+      }
+    } finally {
+      if (this.isCurrentPhotoExport(downloadId, operationId, exportGeneration)) {
+        this.activePhotoExportDownloadId = "";
+        this.activePhotoExportOperationId = "";
+        this.activePhotoExportGeneration = 0;
+      }
+    }
+  }
+
+  private cancelAttachmentExport(params: KRAny): void {
+    const records = this.parseRecord(params);
+    const downloadId = records["downloadId"] as string | undefined;
+    const operationId = records["operationId"] as string | undefined;
+    const attemptToken = (records["attemptToken"] as string | undefined) ?? "";
+    if (downloadId === undefined || downloadId.length === 0 ||
+      operationId === undefined || operationId.length === 0 ||
+      this.activePhotoExportDownloadId !== downloadId ||
+      this.activePhotoExportOperationId !== operationId) return;
+    this.activePhotoExportDownloadId = "";
+    this.activePhotoExportOperationId = "";
+    this.activePhotoExportGeneration = 0;
+    slockOhosAttachmentDownloadSink.control(downloadId, attemptToken, "cancel");
+  }
+
+  private isCurrentPhotoExport(downloadId: string, operationId: string, exportGeneration: number): boolean {
+    return this.activePhotoExportDownloadId === downloadId &&
+      this.activePhotoExportOperationId === operationId &&
+      this.activePhotoExportGeneration === exportGeneration;
+  }
+
+  private imageMetadataMatches(fileName: string, mimeType: string, actualExtension: string): boolean {
+    const extension = fileName.split("?")[0].split("#")[0].split(".").pop()?.toLowerCase() ?? "";
+    const normalizedExtension = extension === "jpeg" ? "jpg" : extension;
+    const extensionMimeType = this.imageMimeTypeForExtension(normalizedExtension);
+    const normalizedClaimedMimeType = this.normalizedImageMimeType(mimeType);
+    const actualMimeType = this.normalizedImageMimeType(this.imageMimeTypeForExtension(actualExtension));
+    const hasSpecificClaim = mimeType.length > 0 && mimeType !== "application/octet-stream" &&
+      mimeType !== "binary/octet-stream";
+    if (actualMimeType.length === 0) return false;
+    if (hasSpecificClaim && normalizedClaimedMimeType !== actualMimeType) return false;
+    return extensionMimeType.length === 0 || this.normalizedImageMimeType(extensionMimeType) === actualMimeType;
+  }
+
+  private detectedImageExtension(path: string): string {
+    const file = fs.openSync(path, fs.OpenMode.READ_ONLY);
+    const header = new ArrayBuffer(32);
+    let readBytes = 0;
+    try {
+      readBytes = fs.readSync(file.fd, header, { length: 32 });
+    } finally {
+      fs.closeSync(file);
+    }
+    const bytes = new Uint8Array(header.slice(0, Math.max(0, readBytes)));
+    if (bytes.length >= 3 && bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF) return "jpg";
+    if (bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47 &&
+      bytes[4] === 0x0D && bytes[5] === 0x0A && bytes[6] === 0x1A && bytes[7] === 0x0A) return "png";
+    if (bytes.length >= 6 && bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 &&
+      bytes[3] === 0x38 && (bytes[4] === 0x37 || bytes[4] === 0x39) && bytes[5] === 0x61) return "gif";
+    if (bytes.length >= 12 && bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 &&
+      bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50) return "webp";
+    if (bytes.length >= 2 && bytes[0] === 0x42 && bytes[1] === 0x4D) return "bmp";
+    if (bytes.length >= 12 && bytes[4] === 0x66 && bytes[5] === 0x74 && bytes[6] === 0x79 && bytes[7] === 0x70) {
+      const brand = String.fromCharCode(bytes[8], bytes[9], bytes[10], bytes[11]);
+      if (["heic", "heix", "hevc", "hevx", "heim", "heis"].includes(brand)) return "heic";
+      if (["mif1", "msf1"].includes(brand)) return "heif";
+    }
+    return "";
+  }
+
+  private imageMimeTypeForExtension(extension: string): string {
+    switch (extension) {
+      case "jpg": return "image/jpeg";
+      case "png": return "image/png";
+      case "webp": return "image/webp";
+      case "gif": return "image/gif";
+      case "heic": return "image/heic";
+      case "heif": return "image/heif";
+      case "bmp": return "image/bmp";
+      default: return "";
+    }
+  }
+
+  private normalizedImageMimeType(mimeType: string): string {
+    switch (mimeType) {
+      case "image/jpg":
+      case "image/jpeg": return "image/jpeg";
+      case "image/heic":
+      case "image/heif": return "image/heif";
+      default: return mimeType;
     }
   }
 

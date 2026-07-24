@@ -163,6 +163,30 @@ class AttachmentDownloadsExportCoordinatorTest {
     }
 
     @Test
+    fun cancellationDeletesOnlyCurrentLegacyRowAndLeavesOlderSaveUntouched() = withSourceFile(1024) { source ->
+        val writeEntered = CountDownLatch(1)
+        val releaseWrite = CountDownLatch(1)
+        val backend = LegacyRowIsolationBackend(writeEntered, releaseWrite)
+        val coordinator = coordinator(stageTimeoutMs = 5_000L)
+        var result: AttachmentDownloadsExportResult? = null
+        val exportThread = thread {
+            result = coordinator.export(request(source, "download-legacy-cancel"), backend)
+        }
+        assertTrue(writeEntered.await(2, TimeUnit.SECONDS))
+
+        assertEquals("cancelled", coordinator.control("download-legacy-cancel", null, "cancel"))
+        exportThread.join(1_000L)
+        releaseWrite.countDown()
+        assertTrue(backend.awaitCurrentDelete())
+
+        assertFalse(exportThread.isAlive)
+        assertEquals("cancelled", result?.status)
+        assertEquals(AttachmentDownloadsRowState.Published, backend.rowState(LegacyRowIsolationBackend.OLDER_URI))
+        assertEquals(AttachmentDownloadsRowState.Missing, backend.rowState(LegacyRowIsolationBackend.CURRENT_URI))
+        assertEquals(listOf(LegacyRowIsolationBackend.CURRENT_URI), backend.deletedUris)
+    }
+
+    @Test
     fun publishFailureDeletesPendingRowAndKeepsCache() = withSourceFile(4096) { source ->
         val backend = FakeExportBackend(publishResult = false)
         val result = coordinator().export(request(source, "download-publish-fail"), backend)
@@ -950,6 +974,53 @@ private class FakeExportBackend(
     fun awaitOpenReturned(): Boolean = openReturned.await(2, TimeUnit.SECONDS)
     fun awaitWriteReturned(): Boolean = writeReturned.await(2, TimeUnit.SECONDS)
     fun awaitQueryBarrier(): Boolean = queryBarrier.await(2, TimeUnit.SECONDS)
+}
+
+private class LegacyRowIsolationBackend(
+    private val writeEntered: CountDownLatch,
+    private val releaseWrite: CountDownLatch
+) : AttachmentDownloadsExportBackend {
+    companion object {
+        const val OLDER_URI = "content://images/older"
+        const val CURRENT_URI = "content://images/current"
+    }
+
+    private val rows = java.util.concurrent.ConcurrentHashMap<String, AttachmentDownloadsRowState>().apply {
+        put(OLDER_URI, AttachmentDownloadsRowState.Published)
+    }
+    private val deleted = CountDownLatch(1)
+    val deletedUris = Collections.synchronizedList(mutableListOf<String>())
+
+    override fun insert(displayName: String, mimeType: String): String {
+        rows[CURRENT_URI] = AttachmentDownloadsRowState.Pending
+        return CURRENT_URI
+    }
+
+    override fun openOutput(uri: String): OutputStream = object : OutputStream() {
+        override fun write(value: Int) = write(byteArrayOf(value.toByte()), 0, 1)
+
+        override fun write(bytes: ByteArray, offset: Int, length: Int) {
+            writeEntered.countDown()
+            releaseWrite.awaitPossiblyIgnoringInterrupt(true)
+        }
+    }
+
+    override fun publish(uri: String): Boolean =
+        rows.replace(uri, AttachmentDownloadsRowState.Pending, AttachmentDownloadsRowState.Published)
+
+    override fun deletePending(uri: String): Boolean {
+        val removed = rows.remove(uri, AttachmentDownloadsRowState.Pending)
+        if (removed) {
+            deletedUris += uri
+            deleted.countDown()
+        }
+        return removed
+    }
+
+    override fun rowState(uri: String): AttachmentDownloadsRowState =
+        rows[uri] ?: AttachmentDownloadsRowState.Missing
+
+    fun awaitCurrentDelete(): Boolean = deleted.await(2, TimeUnit.SECONDS)
 }
 
 private fun CountDownLatch.awaitPossiblyIgnoringInterrupt(ignoreInterrupt: Boolean) {
