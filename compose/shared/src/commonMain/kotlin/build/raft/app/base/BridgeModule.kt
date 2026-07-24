@@ -352,7 +352,8 @@ internal class BridgeModule : Module() {
         onProgress: ((BridgeAttachmentDownloadProgress) -> Unit)? = null
     ): JSONObject? =
         suspendCancellableCoroutine { continuation ->
-            val resolvedDownloadId = attachmentDownloadId(owner, downloadId, attachmentId, fileName)
+            val downloadIdentity = attachmentDownloadIdentity(owner, downloadId, attachmentId, fileName)
+            val resolvedDownloadId = downloadIdentity.wireId
             var activeAttemptToken: String? = null
             val methodArgs = JSONObject()
             methodArgs.put("url", url)
@@ -374,7 +375,10 @@ internal class BridgeModule : Module() {
                             return@toNative
                         }
                         if (payload?.optString("status") == "progress") {
-                            val progress = payload.toBridgeAttachmentDownloadProgress()
+                            val progress =
+                                payload
+                                    .toBridgeAttachmentDownloadProgress()
+                                    .toLogicalDownloadProgress(downloadIdentity)
                             activeAttemptToken = progress.attemptToken.takeIf { it.isNotBlank() }
                             onProgress?.invoke(progress)
                             return@toNative
@@ -445,7 +449,8 @@ internal class BridgeModule : Module() {
         onProgress: ((BridgeAttachmentDownloadProgress) -> Unit)?
     ): JSONObject? =
         suspendCancellableCoroutine { continuation ->
-            val resolvedDownloadId = attachmentDownloadId(owner, downloadId, attachmentId, fileName)
+            val downloadIdentity = attachmentDownloadIdentity(owner, downloadId, attachmentId, fileName)
+            val resolvedDownloadId = downloadIdentity.wireId
             val exportOperationId = nextBridgeAttachmentExportOperationId(owner)
             var activeAttemptToken: String? = null
             val methodArgs = JSONObject()
@@ -469,7 +474,10 @@ internal class BridgeModule : Module() {
                             return@toNative
                         }
                         if (payload?.optString("status") == "progress") {
-                            val progress = payload.toBridgeAttachmentDownloadProgress()
+                            val progress =
+                                payload
+                                    .toBridgeAttachmentDownloadProgress()
+                                    .toLogicalDownloadProgress(downloadIdentity)
                             activeAttemptToken = progress.attemptToken.takeIf { it.isNotBlank() }
                             onProgress?.invoke(progress)
                             return@toNative
@@ -510,9 +518,10 @@ internal class BridgeModule : Module() {
         expectedRecordVersion: Long? = null,
         action: String
     ): JSONObject {
+        val resolvedDownloadId = bridgeAttachmentDownloadWireId(owner, downloadId)
         val commonStatus =
             AttachmentDownloadCoordinator.control(
-                downloadId = downloadId,
+                downloadId = resolvedDownloadId,
                 expectedAttemptToken = expectedAttemptToken,
                 action = action
             )
@@ -521,7 +530,7 @@ internal class BridgeModule : Module() {
             return JSONObject().apply { put("status", commonStatus) }
         }
         return suspendCoroutine { continuation ->
-            requestAttachmentDownloadControl(downloadId, owner, expectedAttemptToken, expectedRecordVersion, action) { payload ->
+            requestAttachmentDownloadControl(resolvedDownloadId, owner, expectedAttemptToken, expectedRecordVersion, action) { payload ->
                 val nativeStatus = payload?.optString("status").orEmpty()
                 continuation.resume(
                     when {
@@ -555,16 +564,19 @@ internal class BridgeModule : Module() {
         callNativeMethod(ATTACHMENT_DOWNLOAD_CONTROL, methodArgs, callback)
     }
 
-    private fun attachmentDownloadId(
+    private fun attachmentDownloadIdentity(
         owner: AttachmentOwnerLease,
         explicit: String?,
         attachmentId: String,
         fileName: String
-    ): String {
-        val base = explicit?.trim()?.takeIf { it.isNotBlank() }
+    ): BridgeAttachmentDownloadIdentity {
+        val logicalId = explicit?.trim()?.takeIf { it.isNotBlank() }
             ?: "bridge:${attachmentId.encodeToByteArray().toHexToken()}:" +
                 "${fileName.encodeToByteArray().toHexToken()}:${nextAttachmentDownloadId.incrementAndGet()}"
-        return "${owner.principalKey.value}:$base"
+        return BridgeAttachmentDownloadIdentity(
+            logicalId = logicalId,
+            wireId = bridgeAttachmentDownloadWireId(owner, logicalId)
+        )
     }
 
     suspend fun attachmentCacheStatus(
@@ -1158,6 +1170,24 @@ internal data class BridgeAttachmentDownloadProgress(
     val totalBytes: Long?,
     val bytesPerSecond: Long? = null
 )
+
+internal data class BridgeAttachmentDownloadIdentity(
+    val logicalId: String,
+    val wireId: String
+)
+
+internal fun bridgeAttachmentDownloadWireId(
+    owner: AttachmentOwnerLease,
+    logicalId: String
+): String {
+    val prefix = "${owner.principalKey.value}:"
+    return if (logicalId.startsWith(prefix)) logicalId else "$prefix$logicalId"
+}
+
+internal fun BridgeAttachmentDownloadProgress.toLogicalDownloadProgress(
+    identity: BridgeAttachmentDownloadIdentity
+): BridgeAttachmentDownloadProgress =
+    if (downloadId == identity.wireId) copy(downloadId = identity.logicalId) else this
 
 internal fun JSONObject.toBridgeAttachmentDownloadProgress(): BridgeAttachmentDownloadProgress {
     val totalBytes = optString("totalBytes").toLongOrNull()?.takeIf { it > 0L }

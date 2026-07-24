@@ -1,5 +1,7 @@
 package build.raft.app.base
 
+import build.raft.app.AttachmentOwnerLease
+import build.raft.app.AttachmentPrincipalKey
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -7,6 +9,35 @@ import kotlin.test.assertNull
 import kotlin.test.assertSame
 
 class BridgeAttachmentDownloadProgressTest {
+    @Test
+    fun explicitLogicalIdRoundTripsWhileWireIdRemainsPrincipalScoped() {
+        val owner =
+            AttachmentOwnerLease(
+                shellInstanceId = "shell-1",
+                scopeId = "scope-1",
+                authEpoch = 1L,
+                principalKey = AttachmentPrincipalKey("a".repeat(64)),
+                generation = 1L
+            )
+        val logicalId = "attempt-1:file-preview:attachment:file.apk"
+        val wireId = bridgeAttachmentDownloadWireId(owner, logicalId)
+        val identity = BridgeAttachmentDownloadIdentity(logicalId = logicalId, wireId = wireId)
+        val nativeProgress =
+            BridgeAttachmentDownloadProgress(
+                downloadId = wireId,
+                attemptToken = "android-system-attempt",
+                sequence = 2L,
+                phase = "running",
+                percent = 1,
+                downloadedBytes = 69_765L,
+                totalBytes = 48_535_109L
+            )
+
+        assertEquals("${"a".repeat(64)}:$logicalId", wireId)
+        assertEquals(wireId, bridgeAttachmentDownloadWireId(owner, wireId))
+        assertEquals(logicalId, nativeProgress.toLogicalDownloadProgress(identity).downloadId)
+    }
+
     @Test
     fun knownLengthResponseStartDoesNotInventZeroPercent() {
         val progress =

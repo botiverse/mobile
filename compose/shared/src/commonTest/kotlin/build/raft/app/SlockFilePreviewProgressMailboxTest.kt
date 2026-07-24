@@ -1,6 +1,9 @@
 package build.raft.app
 
 import build.raft.app.base.BridgeAttachmentDownloadProgress
+import build.raft.app.base.BridgeAttachmentDownloadIdentity
+import build.raft.app.base.bridgeAttachmentDownloadWireId
+import build.raft.app.base.toLogicalDownloadProgress
 import build.raft.app.base.toBridgeAttachmentDownloadProgress
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlinx.coroutines.Dispatchers
@@ -46,10 +49,15 @@ class SlockFilePreviewProgressMailboxTest {
     @Test
     fun knownDownloadManagerTotalSurvivesMailboxAndRendersDeterminatePercent() = runBlocking {
         val mailbox = SlockFilePreviewProgressMailbox()
+        val owner = progressEvent(progress(downloadedBytes = 0L, totalBytes = null)).operation.owner
+        val logicalDownloadId = "download-1"
+        val wireDownloadId = bridgeAttachmentDownloadWireId(owner, logicalDownloadId)
         val parsed =
             JSONObject(
-                """{"downloadId":"download-1","attemptToken":"attempt-1","recordVersion":2,"sequence":1,"phase":"running","downloadedBytes":69765,"totalBytes":48535109,"percent":1}"""
-            ).toBridgeAttachmentDownloadProgress()
+                """{"downloadId":"$wireDownloadId","attemptToken":"attempt-1","recordVersion":2,"sequence":1,"phase":"running","downloadedBytes":69765,"totalBytes":48535109,"percent":1}"""
+            ).toBridgeAttachmentDownloadProgress().toLogicalDownloadProgress(
+                BridgeAttachmentDownloadIdentity(logicalId = logicalDownloadId, wireId = wireDownloadId)
+            )
         val event = progressEvent(parsed)
         mailbox.offer(event.operation, event.progress)
 
@@ -58,15 +66,26 @@ class SlockFilePreviewProgressMailboxTest {
                 current = SlockFilePreviewProgressState(),
                 event = requireNotNull(mailbox.nextOrNull()),
                 currentOperationId = event.operation.operationId,
-                expectedDownloadId = parsed.downloadId,
+                expectedDownloadId = logicalDownloadId,
                 commitAllowed = { _, _ -> true }
             )
 
         assertEquals(48_535_109L, state.progress?.totalBytes)
         assertEquals(1, state.progress?.percent)
         assertEquals(
-            "Downloading 1%",
-            slockFilePreviewDownloadStatusLabel(requireNotNull(state.progress), englishDownloadTerms)
+            SlockFilePreviewDownloadPresentation(
+                statusLabel = "Downloading 1%",
+                inProgress = true,
+                paused = false,
+                progressPercent = 1
+            ),
+            slockFilePreviewDownloadPresentation(
+                status = "downloading",
+                failureMessage = "",
+                failureFallback = "Download failed",
+                progress = state.progress,
+                terms = englishDownloadTerms
+            )
         )
         val advancing =
             parsed.copy(
@@ -80,14 +99,25 @@ class SlockFilePreviewProgressMailboxTest {
                 current = state,
                 event = requireNotNull(mailbox.nextOrNull()),
                 currentOperationId = event.operation.operationId,
-                expectedDownloadId = parsed.downloadId,
+                expectedDownloadId = logicalDownloadId,
                 commitAllowed = { _, _ -> true }
             )
         assertEquals(24_267_554L, state.progress?.downloadedBytes)
         assertEquals(49, state.progress?.percent)
         assertEquals(
-            "Downloading 49%",
-            slockFilePreviewDownloadStatusLabel(requireNotNull(state.progress), englishDownloadTerms)
+            SlockFilePreviewDownloadPresentation(
+                statusLabel = "Downloading 49%",
+                inProgress = true,
+                paused = false,
+                progressPercent = 49
+            ),
+            slockFilePreviewDownloadPresentation(
+                status = "downloading",
+                failureMessage = "",
+                failureFallback = "Download failed",
+                progress = state.progress,
+                terms = englishDownloadTerms
+            )
         )
         mailbox.close()
     }

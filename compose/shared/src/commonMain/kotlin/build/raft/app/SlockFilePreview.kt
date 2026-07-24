@@ -1372,7 +1372,14 @@ private fun SlockFilePreviewStandalonePageContent() {
             }
         }
     ) {
-        val downloadActive = downloadStatus == "downloading" || downloadStatus == "paused"
+        val downloadPresentation =
+            slockFilePreviewDownloadPresentation(
+                status = downloadStatus,
+                failureMessage = downloadMessage,
+                failureFallback = downloadFailed,
+                progress = downloadProgress,
+                terms = slockFilePreviewLocalizedDownloadStatusTerms()
+            )
         if (composerImageEditMode) {
             SlockFilePreviewComposerImageEditor(
                 payload = payload,
@@ -1387,16 +1394,10 @@ private fun SlockFilePreviewStandalonePageContent() {
                 SlockFilePreviewPayloadContent(
                     payload = payload,
                     onOpenUrl = {},
-                    downloadStatusLabel =
-                        when (downloadStatus) {
-                            "downloading", "paused" ->
-                                slockFilePreviewLocalizedActiveDownloadStatusLabel(downloadProgress, downloadStatus)
-                            "failed" -> downloadMessage.ifBlank { downloadFailed }
-                            else -> null
-                        },
-                    downloadInProgress = downloadActive,
-                    downloadPaused = downloadStatus == "paused",
-                    downloadProgressPercent = downloadProgress?.percent,
+                    downloadStatusLabel = downloadPresentation.statusLabel,
+                    downloadInProgress = downloadPresentation.inProgress,
+                    downloadPaused = downloadPresentation.paused,
+                    downloadProgressPercent = downloadPresentation.progressPercent,
                     downloadCached = attachmentCacheState,
                     onDownload =
                         if (canOpenWith) {
@@ -1422,7 +1423,7 @@ private fun SlockFilePreviewStandalonePageContent() {
             }
             SlockFilePreviewComposerImageActionBar(
                 payload = payload,
-                enabled = !downloadActive,
+                enabled = !downloadPresentation.inProgress,
                 onEdit = { composerImageEditMode = true },
                 onComplete = ::postComposerImageSelection
             )
@@ -4725,6 +4726,34 @@ internal data class SlockFilePreviewDownloadStatusTerms(
     val saving: String
 )
 
+internal data class SlockFilePreviewDownloadPresentation(
+    val statusLabel: String?,
+    val inProgress: Boolean,
+    val paused: Boolean,
+    val progressPercent: Int?
+)
+
+internal fun slockFilePreviewDownloadPresentation(
+    status: String,
+    failureMessage: String,
+    failureFallback: String,
+    progress: BridgeAttachmentDownloadProgress?,
+    terms: SlockFilePreviewDownloadStatusTerms
+): SlockFilePreviewDownloadPresentation {
+    val inProgress = status == "downloading" || status == "paused"
+    return SlockFilePreviewDownloadPresentation(
+        statusLabel =
+            when {
+                inProgress -> slockFilePreviewActiveDownloadStatusLabel(progress, status, terms)
+                status == "failed" -> failureMessage.ifBlank { failureFallback }
+                else -> null
+            },
+        inProgress = inProgress,
+        paused = status == "paused",
+        progressPercent = progress?.percent
+    )
+}
+
 internal fun slockFilePreviewDownloadStatusLabel(
     progress: BridgeAttachmentDownloadProgress?,
     terms: SlockFilePreviewDownloadStatusTerms
@@ -4779,12 +4808,15 @@ internal fun slockFilePreviewLocalizedActiveDownloadStatusLabel(
     slockFilePreviewActiveDownloadStatusLabel(
         progress = progress,
         status = status,
-        terms =
-            SlockFilePreviewDownloadStatusTerms(
-                downloading = stringResource(MR.strings.file_preview_download_downloading),
-                paused = stringResource(MR.strings.file_preview_download_paused),
-                saving = stringResource(MR.strings.file_preview_download_saving)
-            )
+        terms = slockFilePreviewLocalizedDownloadStatusTerms()
+    )
+
+@Composable
+private fun slockFilePreviewLocalizedDownloadStatusTerms() =
+    SlockFilePreviewDownloadStatusTerms(
+        downloading = stringResource(MR.strings.file_preview_download_downloading),
+        paused = stringResource(MR.strings.file_preview_download_paused),
+        saving = stringResource(MR.strings.file_preview_download_saving)
     )
 
 internal val SlockFilePreviewInitialDownloadProgress =
