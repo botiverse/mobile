@@ -187,6 +187,12 @@ internal fun SharedHomeActivityScreen(
                 cacheEnvironmentIdProvider = {
                     sharedStores.apiEnvironmentStore.current().apiBaseUrl
                 },
+                replyCacheIdentityAuthority = {
+                    sharedStores.captureThreadReplyCacheIdentity(storeScope)
+                },
+                replyCacheIdentityTransitionWaiter = { transitionAnchor ->
+                    sharedStores.awaitThreadReplyCacheIdentityTransition(storeScope, transitionAnchor)
+                },
                 payloadStore = sharedStores.threadPayloadStore,
                 threadPageSizeProvider = { serverId ->
                     sharedStores.serverFeatureFlags.snapshotFor(serverId).mobileThreadPageSize()

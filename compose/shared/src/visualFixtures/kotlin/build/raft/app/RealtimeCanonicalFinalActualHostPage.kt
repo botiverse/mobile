@@ -1129,6 +1129,12 @@ private fun createActualThreadHost(
             conversationRepository = null,
             channelRepository = channelRepository,
             messageStore = provider.threadMessageStore,
+            replyCacheIdentityAuthority = {
+                provider.captureThreadReplyCacheIdentity(scope)
+            },
+            replyCacheIdentityTransitionWaiter = { transitionAnchor ->
+                provider.awaitThreadReplyCacheIdentityTransition(scope, transitionAnchor)
+            },
             payloadStore = provider.threadPayloadStore,
             agentsApiClient = SlockAgentsApiClient(SlockAgentsNetworkApi(networkClient)),
             diagnosticsLogger = { message -> bridge.log("actual_host_thread_api $message") },

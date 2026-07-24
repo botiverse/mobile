@@ -80,6 +80,7 @@ import build.raft.app.data.ThreadActionCardMetadataItem
 import build.raft.app.data.ThreadActionResult
 import build.raft.app.data.ThreadMessagesPage
 import build.raft.app.data.ThreadReplySummariesSnapshot
+import build.raft.app.data.ThreadReplyCacheIdentitySnapshot
 import build.raft.app.data.ThreadSnapshot
 import build.raft.app.data.ThreadListSnapshot
 import build.raft.app.data.WireMessage
@@ -2079,10 +2080,14 @@ class SharedThreadStoreTest {
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 messageStore = messageStore,
-                cacheEnvironmentIdProvider = { "https://prod.example.test" }
+                cacheEnvironmentIdProvider = { "https://prod.example.test" },
+                replyCacheIdentityAuthority = testReplyCacheIdentityAuthority(
+                    sessionProvider = { sampleSession() }
+                )
             )
-        dataSource.readSession()
+        val provenance = requireNotNull(dataSource.captureReplyCacheProducerContext()).provenance
         dataSource.rememberReplyParentCandidate(
+            provenance = provenance,
             serverId = "server-1",
             parentChannelId = "channel-1",
             parentMessage = contentPayload("stored parent body").messages.single(),
@@ -7476,7 +7481,10 @@ class SharedThreadStoreTest {
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 conversationRepository = repository,
                 messageStore = messageStore,
-                cacheEnvironmentIdProvider = { "https://prod.example.test" }
+                cacheEnvironmentIdProvider = { "https://prod.example.test" },
+                replyCacheIdentityAuthority = testReplyCacheIdentityAuthority(
+                    sessionProvider = { sampleSession() }
+                )
             )
         val route = focusedReplyRoute()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -7847,10 +7855,14 @@ class SharedThreadStoreTest {
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 messageStore = messageStore,
-                cacheEnvironmentIdProvider = { "https://prod.example.test" }
+                cacheEnvironmentIdProvider = { "https://prod.example.test" },
+                replyCacheIdentityAuthority = testReplyCacheIdentityAuthority(
+                    sessionProvider = { sampleSession() }
+                )
             )
-        seedDataSource.readSession()
+        val provenance = requireNotNull(seedDataSource.captureReplyCacheProducerContext()).provenance
         seedDataSource.rememberReplyParentCandidate(
+            provenance = provenance,
             serverId = "server-1",
             parentChannelId = "channel-1",
             parentMessage = parent,
@@ -7895,7 +7907,10 @@ class SharedThreadStoreTest {
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 conversationRepository = repository,
                 messageStore = messageStore,
-                cacheEnvironmentIdProvider = { "https://prod.example.test" }
+                cacheEnvironmentIdProvider = { "https://prod.example.test" },
+                replyCacheIdentityAuthority = testReplyCacheIdentityAuthority(
+                    sessionProvider = { sampleSession() }
+                )
             )
         val base =
             basePayload().copy(
@@ -7929,10 +7944,15 @@ class SharedThreadStoreTest {
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemorySlockAuthSessionStore(replyResolutionSession("account-1")),
                 messageStore = messageStore,
-                cacheEnvironmentIdProvider = { environmentId }
+                cacheEnvironmentIdProvider = { environmentId },
+                replyCacheIdentityAuthority = testReplyCacheIdentityAuthority(
+                    sessionProvider = { replyResolutionSession("account-1") },
+                    environmentProvider = { environmentId },
+                )
             )
-        accountOneDataSource.readSession()
+        val provenance = requireNotNull(accountOneDataSource.captureReplyCacheProducerContext()).provenance
         accountOneDataSource.rememberReplyParentCandidate(
+            provenance = provenance,
             serverId = "server-a",
             parentChannelId = "channel-1",
             parentMessage = contentPayload("account one parent").messages.single(),
@@ -7974,7 +7994,11 @@ class SharedThreadStoreTest {
                 sessionStore = InMemorySlockAuthSessionStore(replyResolutionSession("account-2")),
                 conversationRepository = accountTwoRepository,
                 messageStore = messageStore,
-                cacheEnvironmentIdProvider = { environmentId }
+                cacheEnvironmentIdProvider = { environmentId },
+                replyCacheIdentityAuthority = testReplyCacheIdentityAuthority(
+                    sessionProvider = { replyResolutionSession("account-2") },
+                    environmentProvider = { environmentId },
+                )
             )
         val route =
             activityReplyPayload(
@@ -8039,7 +8063,11 @@ class SharedThreadStoreTest {
                 sessionStore = authStore,
                 conversationRepository = repository,
                 messageStore = messageStore,
-                cacheEnvironmentIdProvider = { environmentId }
+                cacheEnvironmentIdProvider = { environmentId },
+                replyCacheIdentityAuthority = testReplyCacheIdentityAuthority(
+                    sessionProvider = authStore::readSession,
+                    environmentProvider = { environmentId },
+                )
             )
         val route =
             basePayload().copy(
@@ -8068,14 +8096,14 @@ class SharedThreadStoreTest {
         assertEquals(
             "account one parent",
             messageStore.getScoped(
-                "$environmentId\u001faccount-1\u001fserver-a",
+                "$environmentId\u001faccount-1\u001fserver-a\u001f1",
                 ChannelId("channel-1"),
                 parentMessageId
             )?.body
         )
         assertNull(
             messageStore.getScoped(
-                "$environmentId\u001faccount-2\u001fserver-b",
+                "$environmentId\u001faccount-2\u001fserver-b\u001f2",
                 ChannelId("channel-1"),
                 parentMessageId
             )
@@ -8083,7 +8111,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun replyParentCandidateCannotSplitScopeWhenIdentitySwitchesInsideCaptureWindow() = runBlocking {
+    fun replyParentCandidateRejectsStaleProducerAfterIdentityPublication() = runBlocking {
         val environmentId = "https://prod.example.test"
         val authStore = InMemorySlockAuthSessionStore(replyResolutionSession("account-1"))
         val messageStore = SharedThreadMessageStore()
@@ -8092,56 +8120,51 @@ class SharedThreadStoreTest {
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = authStore,
                 messageStore = messageStore,
-                cacheEnvironmentIdProvider = { environmentId }
+                cacheEnvironmentIdProvider = { environmentId },
+                replyCacheIdentityAuthority = testReplyCacheIdentityAuthority(
+                    sessionProvider = authStore::readSession,
+                    environmentProvider = { environmentId },
+                )
             )
+        val provenance = requireNotNull(dataSource.captureReplyCacheProducerContext()).provenance
+        authStore.saveSession(
+            replyResolutionSession("account-2").copy(selectedServerId = "server-b")
+        )
         dataSource.readSession()
-        var switched = false
-        dataSource.onReplyResolutionIdentityCapturedForTest = {
-            if (!switched) {
-                switched = true
-                runBlocking {
-                    authStore.saveSession(
-                        replyResolutionSession("account-2").copy(selectedServerId = "server-b")
-                    )
-                    dataSource.readSession()
-                }
-            }
-        }
 
-        dataSource.rememberReplyParentCandidate(
+        val accepted = dataSource.rememberReplyParentCandidate(
+            provenance = provenance,
             serverId = "server-a",
             parentChannelId = "channel-1",
             parentMessage = contentPayload("account one parent").messages.single(),
             threadChannelId = "thread-m1"
         )
-        dataSource.onReplyResolutionIdentityCapturedForTest = null
 
-        assertTrue(switched)
-        assertEquals(
-            "account one parent",
-            messageStore.getScoped(
-                "$environmentId\u001faccount-1\u001fserver-a",
-                ChannelId("channel-1"),
-                MessageId("m1")
-            )?.body
-        )
+        assertFalse(accepted)
         assertNull(
             messageStore.getScoped(
-                "$environmentId\u001faccount-2\u001fserver-b",
+                "$environmentId\u001faccount-1\u001fserver-a\u001f1",
                 ChannelId("channel-1"),
                 MessageId("m1")
             )
         )
         assertNull(
             messageStore.getScoped(
-                "$environmentId\u001faccount-1\u001fserver-b",
+                "$environmentId\u001faccount-2\u001fserver-b\u001f2",
                 ChannelId("channel-1"),
                 MessageId("m1")
             )
         )
         assertNull(
             messageStore.getScoped(
-                "$environmentId\u001faccount-2\u001fserver-a",
+                "$environmentId\u001faccount-1\u001fserver-b\u001f1",
+                ChannelId("channel-1"),
+                MessageId("m1")
+            )
+        )
+        assertNull(
+            messageStore.getScoped(
+                "$environmentId\u001faccount-2\u001fserver-a\u001f2",
                 ChannelId("channel-1"),
                 MessageId("m1")
             )
@@ -8221,7 +8244,12 @@ class SharedThreadStoreTest {
                 selectedServerStore = selectedServerStore,
                 conversationRepository = repository,
                 messageStore = messageStore,
-                cacheEnvironmentIdProvider = { environmentId }
+                cacheEnvironmentIdProvider = { environmentId },
+                replyCacheIdentityAuthority = testReplyCacheIdentityAuthority(
+                    sessionProvider = authStore::readSession,
+                    environmentProvider = { environmentId },
+                    serverIdProvider = { _ -> selectedServerStore.selectedServerId.value },
+                )
             )
 
         repository.configureReplyThread("thread-a", parent.id)
@@ -8254,7 +8282,12 @@ class SharedThreadStoreTest {
                 selectedServerStore = selectedServerStore,
                 conversationRepository = repository,
                 messageStore = messageStore,
-                cacheEnvironmentIdProvider = { environmentId }
+                cacheEnvironmentIdProvider = { environmentId },
+                replyCacheIdentityAuthority = testReplyCacheIdentityAuthority(
+                    sessionProvider = authStore::readSession,
+                    environmentProvider = { environmentId },
+                    serverIdProvider = { _ -> selectedServerStore.selectedServerId.value },
+                )
             )
         assertEquals(
             "thread-account-2",
@@ -8270,7 +8303,12 @@ class SharedThreadStoreTest {
                 selectedServerStore = selectedServerStore,
                 conversationRepository = repository,
                 messageStore = messageStore,
-                cacheEnvironmentIdProvider = { environmentId }
+                cacheEnvironmentIdProvider = { environmentId },
+                replyCacheIdentityAuthority = testReplyCacheIdentityAuthority(
+                    sessionProvider = authStore::readSession,
+                    environmentProvider = { environmentId },
+                    serverIdProvider = { _ -> selectedServerStore.selectedServerId.value },
+                )
             )
         assertEquals(
             "thread-staging",
@@ -8306,7 +8344,11 @@ class SharedThreadStoreTest {
                 selectedServerStore = selectedServerStore,
                 conversationRepository = repository,
                 messageStore = SharedThreadMessageStore(),
-                cacheEnvironmentIdProvider = { "https://prod.example.test" }
+                cacheEnvironmentIdProvider = { "https://prod.example.test" },
+                replyCacheIdentityAuthority = testReplyCacheIdentityAuthority(
+                    sessionProvider = authStore::readSession,
+                    serverIdProvider = { _ -> selectedServerStore.selectedServerId.value },
+                )
             )
         val base = contentPayload("parent body")
         val parent = base.messages.single()
@@ -11259,7 +11301,10 @@ class SharedThreadStoreTest {
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 conversationRepository = repository,
                 messageStore = messageStore,
-                cacheEnvironmentIdProvider = { "https://prod.example.test" }
+                cacheEnvironmentIdProvider = { "https://prod.example.test" },
+                replyCacheIdentityAuthority = testReplyCacheIdentityAuthority(
+                    sessionProvider = { sampleSession() }
+                )
             )
         val base =
             basePayload().copy(
@@ -11285,7 +11330,7 @@ class SharedThreadStoreTest {
         assertEquals(
             "parent body",
             messageStore.getScoped(
-                "https://prod.example.test\u001fu1\u001fserver-1",
+                "https://prod.example.test\u001fu1\u001fserver-1\u001f1",
                 ChannelId("channel-1"),
                 MessageId("m1")
             )?.body
@@ -11328,11 +11373,14 @@ class SharedThreadStoreTest {
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 conversationRepository = repository,
                 messageStore = messageStore,
-                cacheEnvironmentIdProvider = { "https://prod.example.test" }
+                cacheEnvironmentIdProvider = { "https://prod.example.test" },
+                replyCacheIdentityAuthority = testReplyCacheIdentityAuthority(
+                    sessionProvider = { sampleSession() }
+                )
             )
         dataSource.readSession()
         messageStore.upsertScoped(
-            "https://prod.example.test\u001fu1\u001fserver-1",
+            "https://prod.example.test\u001fu1\u001fserver-1\u001f1",
             ChannelId("channel-1"),
             canonicalParent
         )
@@ -13931,6 +13979,26 @@ class SharedThreadStoreTest {
                     StoredAuthServer(id = "server-b", name = "Server B", slug = "server-b")
                 )
         )
+
+    private fun testReplyCacheIdentityAuthority(
+        sessionProvider: suspend () -> StoredAuthSession?,
+        environmentProvider: () -> String = { "https://prod.example.test" },
+        serverIdProvider: (StoredAuthSession) -> String? = { it.currentServerId },
+    ): suspend () -> ThreadReplyCacheIdentitySnapshot? = {
+        sessionProvider()?.let { session ->
+            val environmentId = environmentProvider().trim().trimEnd('/')
+            val principalId = session.user.id.trim()
+            val serverId = serverIdProvider(session)?.trim().orEmpty()
+            ThreadReplyCacheIdentitySnapshot(
+                session = session.copy(selectedServerId = serverId),
+                environmentId = environmentId,
+                principalId = principalId,
+                serverId = serverId,
+                authGeneration = 0L,
+                selectionGeneration = 0L,
+            )
+        }
+    }
 
     private fun member(id: String, name: String): MemberProfile =
         MemberProfile(
