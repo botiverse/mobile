@@ -41,6 +41,7 @@ import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
+import com.tencent.kuikly.compose.ui.zIndex
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
@@ -264,7 +265,13 @@ internal fun SettingsWebViewPageScaffold(
     var bodyReady by remember { mutableStateOf(false) }
     val webViewController = rememberSlockWebViewController()
     var navigationState by remember { mutableStateOf(SlockWebViewNavigationState()) }
-    LaunchedEffect(Unit) { bodyReady = true }
+    LaunchedEffect(Unit) {
+        // LaunchedEffect itself does not establish a rendered-frame boundary. Without awaiting a
+        // frame, the heavy environment/WebView body can join the page's initial render transaction
+        // and briefly obscure the header while Android attaches the native view (task #88).
+        repeat(SETTINGS_WEB_VIEW_HEADER_SETTLE_FRAMES) { withFrameNanos { } }
+        bodyReady = true
+    }
 
     fun closePage() {
         pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
@@ -289,6 +296,10 @@ internal fun SettingsWebViewPageScaffold(
             title = title,
             iconName = iconName,
             backgroundColor = SlockColor.SurfaceWhite,
+            // Keep the already committed native header above the custom WebView throughout its
+            // attach/layout transaction. This changes draw order only; the Column layout and body
+            // geometry remain identical.
+            modifier = Modifier.zIndex(SETTINGS_WEB_VIEW_HEADER_Z_INDEX),
             leadingContent = {
                 SlockBrutalIconButton(
                     iconName = SlockLucideIconName.ArrowLeft,
@@ -568,6 +579,8 @@ internal fun settingsWebViewFrameIsReady(
     height: Int,
 ): Boolean = positionY > 0f && width > 0 && height > 0
 
+private const val SETTINGS_WEB_VIEW_HEADER_SETTLE_FRAMES = 1
+private const val SETTINGS_WEB_VIEW_HEADER_Z_INDEX = 1f
 private const val SETTINGS_WEB_VIEW_ATTACH_DELAY_FRAMES = 2
 
 @Composable
