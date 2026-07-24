@@ -215,6 +215,9 @@ const val MEMBERS_SMOKE_PAGE = "compose_members_smoke"
 private const val MEMBERS_PAGE_DATA_EVENT = "slockPageData"
 
 private val MembersPageInset = SlockSpacing.Md
+// React Sidebar members view: scroll container `px-2` (8px) + per-row/section `px-2` (8px) = 16px
+// total; the container half lives on the LazyColumn, the row half on each row/header.
+internal val MembersListContainerInset = 8.dp
 internal val MembersListHorizontalInset = 8.dp
 internal val MembersListAvatarSize = 18.dp
 internal val MembersListRowMinHeight = 34.dp
@@ -3546,7 +3549,11 @@ internal fun MembersListContent(
         MembersPageHeader(title = payload.title, refreshing = refreshing, onBack = onBack)
         LazyColumn(
             state = listState,
-            modifier = Modifier.fillMaxSize(),
+            // React parity: the web members view pads the scroll container itself (Sidebar
+            // sidebarScrollClassName `px-2`) on top of the per-row/section `px-2`, totalling 16px.
+            // Rows/headers here carry MembersListHorizontalInset (8dp), so the container level was
+            // the missing half — without it the list sits 8dp from the screen edge (task #140).
+            modifier = Modifier.fillMaxSize().padding(horizontal = MembersListContainerInset),
             verticalArrangement = Arrangement.spacedBy(MembersListRowSpacing),
             beyondBoundsItemCount = sharedListBeyondBoundsItemCount(lazyItemCount)
         ) {
