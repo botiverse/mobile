@@ -2625,10 +2625,11 @@ internal fun SlockAppShellContent(
             )
         }
     val conversationRepository =
-        remember(shellAuthStore, appShellNetworkClient) {
+        remember(shellAuthStore, appShellNetworkClient, selectedServerStore) {
             RealConversationRepository(
                 sessionStore = shellAuthStore,
                 networkClient = appShellNetworkClient,
+                routeServerIdProvider = { selectedServerStore.selectedServerId.value },
                 warningLogger = slockLogger("SlockConversationRepository", "shared_conversation_repository", SlockLogLevel.Warn)
             )
         }

@@ -16,6 +16,111 @@ import kotlin.test.assertTrue
 
 class ConversationRepositoryDataSourceTest {
     @Test
+    fun routeScopedServerOverridesMutableSessionSelectionForThreadReads() = runBlocking {
+        val authStore = routeScopedAuthStore()
+        val network =
+            FakeConversationNetworkClient(
+                responses =
+                    mapOf(
+                        "GET messages/channel/channel-1" to
+                            """{"historyLimited":false,"messages":[${messageJson("message-1", "channel-1")}] }""",
+                    ),
+            )
+        val repository = routeScopedRepository(authStore, network)
+
+        assertIs<DataResult.Content<ThreadSnapshot>>(repository.getThread(ThreadId("channel-1")))
+
+        assertTrue(network.serverOverrides.isNotEmpty())
+        assertTrue(network.serverOverrides.all { it == "server-b" })
+    }
+
+    @Test
+    fun routeScopedServerPinsInitialSummariesAndReplyCreateOpenToOneServer() = runBlocking {
+        val network =
+            FakeConversationNetworkClient(
+                responses =
+                    mapOf(
+                        "GET messages/channel/channel-1" to
+                            """{"historyLimited":false,"messages":[${messageJson("parent-1", "channel-1")}] }""",
+                        "GET channels/channel-1/threads" to "{}",
+                        "GET channels/threads/followed" to
+                            """{"threads":[],"totalCount":0,"hasMore":false,"nextOffset":null}""",
+                        "POST channels/channel-1/threads" to
+                            """{"threadChannelId":"thread-b","replyCount":1,"ok":true}""",
+                        "GET messages/channel/thread-b" to
+                            """{"historyLimited":false,"messages":[${messageJson("reply-1", "thread-b")}] }""",
+                    ),
+            )
+        val repository = routeScopedRepository(routeScopedAuthStore(), network)
+
+        assertIs<DataResult.Content<ThreadSnapshot>>(
+            repository.getThread(
+                threadId = ThreadId("channel-1"),
+                includeFollowedSummaries = true,
+                limit = 30,
+            ),
+        )
+        assertIs<DataResult.Content<ThreadSnapshot>>(
+            repository.getReplyThread(
+                parentChannelId = ChannelId("channel-1"),
+                parentMessageId = MessageId("parent-1"),
+                limit = 30,
+            ),
+        )
+
+        assertTrue(network.serverOverrides.size >= 5)
+        assertTrue(network.serverOverrides.all { it == "server-b" })
+        assertTrue(network.requests.any { it.method == "POST" && it.path == "channels/channel-1/threads" })
+        assertTrue(network.requests.any { it.path == "channels/threads/followed" })
+        assertTrue(network.requests.any { it.path == "channels/channel-1/threads" && it.method == "GET" })
+    }
+
+    @Test
+    fun routeScopedServerPinsParentContextAndDetailToRouteServer() = runBlocking {
+        val network =
+            FakeConversationNetworkClient(
+                responses =
+                    mapOf(
+                        "GET messages/context/message-1" to
+                            """{"channelId":"channel-1","targetMessageId":"message-1","messages":[${messageJson("message-1", "channel-1")}] }""",
+                        "GET channels/channel-1" to
+                            """{"id":"channel-1","name":"general","type":"channel"}""",
+                    ),
+            )
+        val repository = routeScopedRepository(routeScopedAuthStore(), network)
+
+        assertIs<DataResult.Content<ThreadSnapshot>>(
+            repository.getMessageContext(MessageId("message-1"), ChannelId("channel-1")),
+        )
+
+        assertEquals(
+            listOf("messages/context/message-1", "channels/channel-1"),
+            network.requests.map { it.path },
+        )
+        assertEquals(listOf<String?>("server-b", "server-b"), network.serverOverrides)
+    }
+
+    @Test
+    fun routeScopedServerPinsRealtimeGapSyncToRouteServer() = runBlocking {
+        val network =
+            FakeConversationNetworkClient(
+                responses =
+                    mapOf(
+                        "GET messages/sync" to
+                            """[${messageJson("message-2", "channel-1", seq = 2)}]""",
+                    ),
+            )
+        val repository = routeScopedRepository(routeScopedAuthStore(), network)
+
+        assertIs<DataResult.Content<ThreadSnapshot>>(
+            repository.syncNewerMessages(ThreadId("channel-1"), sinceSeq = 1, limit = 30),
+        )
+
+        assertEquals(listOf<String?>("server-b"), network.serverOverrides)
+        assertEquals("messages/sync", network.requests.single().path)
+    }
+
+    @Test
     fun messageContextHydratesDeletedAgentDmDetailByChannelId() = runBlocking {
         val network =
             FakeConversationNetworkClient(
@@ -668,12 +773,38 @@ class ConversationRepositoryDataSourceTest {
             )
         )
 
+    private fun routeScopedAuthStore(): InMemorySlockAuthSessionStore =
+        InMemorySlockAuthSessionStore(
+            StoredAuthSession(
+                user = StoredAuthUser(id = "user-1", email = "artin@slock.ai"),
+                accessToken = "token-a",
+                refreshToken = "token-r",
+                selectedServerId = "server-a",
+                servers =
+                    listOf(
+                        StoredAuthServer(id = "server-a", name = "Server A"),
+                        StoredAuthServer(id = "server-b", name = "Server B"),
+                    ),
+            ),
+        )
+
+    private fun routeScopedRepository(
+        authStore: InMemorySlockAuthSessionStore,
+        network: FakeConversationNetworkClient,
+    ): RealConversationRepository =
+        RealConversationRepository(
+            sessionStore = authStore,
+            networkClient = network,
+            routeServerIdProvider = { "server-b" },
+        )
+
     private class FakeConversationNetworkClient(
         private val responses: Map<String, String> = emptyMap(),
         private val failures: Map<String, String> = emptyMap(),
         private val uploadBody: String = """{"attachments":[]}"""
     ) : SlockNetworkClient {
         val requests = mutableListOf<RecordedConversationRequest>()
+        val serverOverrides = mutableListOf<String?>()
         val bodies = mutableListOf<String>()
         val uploadedFileNames = mutableListOf<String>()
 
@@ -687,6 +818,7 @@ class ConversationRepositoryDataSourceTest {
         ): HomeNetworkResponse {
             val normalized = path.trim('/')
             requests += RecordedConversationRequest(priority, method, normalized, query)
+            serverOverrides += serverIdOverride?.value
             bodyText?.let { bodies += it }
             failures["$method $normalized"]?.let { message ->
                 return HomeNetworkResponse(code = 0, bodyText = null, errorBodyText = message)
