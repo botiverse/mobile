@@ -188,7 +188,7 @@ fun buildCanonicalFinalTerminalPayload(
     return payload
 }
 
-private fun checkSuccessorRetained(
+private suspend fun checkSuccessorRetained(
     run: ActualHostRun,
     provider: SlockSharedStoreProvider,
     scopeKey: String,
@@ -196,10 +196,24 @@ private fun checkSuccessorRetained(
     forbiddenIdsBySlot: Map<String, String>,
     label: String,
 ) {
-    val trace = run.registrationTrace(provider, scopeKey)
+    // A live successor may legitimately re-register its own slot while async first-load state
+    // settles, and the production lifecycle is dispose-then-register, so the slot set can be
+    // transiently incomplete between frames (run 30076537436 attempt 1: ThreadFeature absent at a
+    // single sample while every other successor id stayed in place). Sample until the slot set
+    // settles; only a PERSISTENT gap is a real retention loss and still fails, with the actual
+    // trace in the error. The non-restoration assertion below is unaffected: old-generation ids
+    // can never legitimately reappear at any sample.
+    val expected = expectedSurfaces.sorted()
+    var trace = run.registrationTrace(provider, scopeKey)
+    var elapsed = 0L
+    while (registrationIdsBySlot(trace).keys.sorted() != expected && elapsed < 15_000L) {
+        delay(50)
+        elapsed += 50
+        trace = run.registrationTrace(provider, scopeKey)
+    }
     val currentIdsBySlot = registrationIdsBySlot(trace)
-    check(currentIdsBySlot.keys.sorted() == expectedSurfaces.sorted()) {
-        "$label; successor slots incomplete expected=${expectedSurfaces.sorted()} actual=$trace"
+    check(currentIdsBySlot.keys.sorted() == expected) {
+        "$label; successor slots incomplete after ${elapsed}ms settle expected=$expected actual=$trace"
     }
     currentIdsBySlot.forEach { (slot, registrationId) ->
         val forbidden = forbiddenIdsBySlot[slot] ?: return@forEach
