@@ -484,23 +484,50 @@ kotlin {
     }
 }
 
-configurations
-    .matching { it.name.contains("ConnectedTest", ignoreCase = true) }
-    .configureEach {
-        resolutionStrategy.eachDependency {
-            when {
-                requested.group == "androidx.lifecycle" -> {
-                    useVersion("2.9.4")
-                    because("Keep connectedTest on the lifecycle artifacts already used and cached by the app build.")
-                }
+// Keep the custom connectedTest target on the production dependency graph. Forcing newer
+// lifecycle/savedstate atomic groups here previously upgraded only its Compose runtime to 1.9.x,
+// while Kuikly 2.21 is compiled against the production BOM's 1.7.x CompositionObserver ABI.
+val verifyConnectedTestComposeRuntimeAlignment by tasks.registering {
+    group = "verification"
+    description =
+        "Fails when the connectedTest target resolves a different AndroidX Compose runtime than debug."
 
-                requested.group == "androidx.savedstate" -> {
-                    useVersion("1.3.3")
-                    because("Keep connectedTest on the savedstate artifacts already used and cached by the app build.")
-                }
-            }
+    doLast {
+        fun composeRuntimeVersions(configurationName: String): Set<String> =
+            configurations.getByName(configurationName)
+                .incoming
+                .resolutionResult
+                .allComponents
+                .mapNotNull { component -> component.id as? ModuleComponentIdentifier }
+                .filter { component -> component.group == "androidx.compose.runtime" }
+                .map { component -> component.version }
+                .toSet()
+
+        val debugVersions = composeRuntimeVersions("debugRuntimeClasspath")
+        val connectedTestVersions = composeRuntimeVersions("connectedTestRuntimeClasspath")
+        if (debugVersions.size != 1) {
+            throw GradleException(
+                "Expected one production Compose runtime version in debugRuntimeClasspath, " +
+                    "resolved=$debugVersions"
+            )
         }
+        if (connectedTestVersions != debugVersions) {
+            throw GradleException(
+                "connectedTest Compose runtime must match production debug runtime: " +
+                    "debug=$debugVersions connectedTest=$connectedTestVersions"
+            )
+        }
+        logger.lifecycle(
+            "connectedTest Compose runtime aligned with debug: ${debugVersions.single()}"
+        )
     }
+}
+
+tasks.matching {
+    it.name == "assembleConnectedTest" || it.name == "assembleConnectedTestAndroidTest"
+}.configureEach {
+    dependsOn(verifyConnectedTestComposeRuntimeAlignment)
+}
 
 dependencies {
     // Kuikly Compose shared module
@@ -516,6 +543,10 @@ dependencies {
     implementation(libs.androidx.metrics.performance)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
+    // Kuikly 2.21 still calls CompositionObserverKt.observe. Runtime 1.8.3 keeps that ABI
+    // and avoids the initial-layout StackOverflow reproduced with the BOM's runtime 1.7.6;
+    // runtime 1.9.x is incompatible because it replaces observe with setObserver.
+    implementation("androidx.compose.runtime:runtime:1.8.3")
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)

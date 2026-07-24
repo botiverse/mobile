@@ -84,13 +84,17 @@ class KuiklyProfilerRuntimeSmokeTest {
                 exportDiagnostics.profiler.actionFeedback.orEmpty().contains("profiler_report.json")
             )
 
-            val artifacts =
-                waitForArtifacts(context) {
-                    findProfilerArtifacts(context)
-                }
+            val artifacts = waitForCompleteProfilerArtifactSet(context)
+            val artifactSummary = artifacts.joinToString { artifact ->
+                "${artifact.name}:${artifact.length()}"
+            }
             assertTrue(
-                "Expected profiler_report.json or profiler_frames.jsonl under app sandbox cache/files roots, searched=${profilerSearchRoots(context).map(File::getAbsolutePath)}",
-                artifacts.isNotEmpty()
+                "Expected a non-empty profiler_report.json, artifacts=$artifactSummary",
+                artifacts.any { it.name == PROFILER_REPORT_FILE_NAME && it.length() > 0L }
+            )
+            assertTrue(
+                "Expected a non-empty profiler_frames.jsonl beside the report, artifacts=$artifactSummary",
+                artifacts.any { it.name == PROFILER_FRAMES_FILE_NAME && it.length() > 0L }
             )
         }
     }
@@ -126,16 +130,26 @@ class KuiklyProfilerRuntimeSmokeTest {
         throw AssertionError(message)
     }
 
-    private fun waitForArtifacts(
-        context: Context,
-        lookup: () -> List<File>
-    ): List<File> {
+    private fun waitForCompleteProfilerArtifactSet(context: Context): List<File> {
         var artifacts = emptyList<File>()
-        waitUntil("Profiler artifacts were not generated inside the app sandbox.") {
-            artifacts = lookup()
+        waitUntil(
+            "Expected non-empty profiler_report.json and profiler_frames.jsonl in the same " +
+                "app-sandbox directory, searched=${profilerSearchRoots(context).map(File::getAbsolutePath)}"
+        ) {
+            artifacts = findCompleteProfilerArtifactSet(context)
             artifacts.isNotEmpty()
         }
         return artifacts
+    }
+
+    private fun findCompleteProfilerArtifactSet(context: Context): List<File> {
+        val targetNames = setOf(PROFILER_REPORT_FILE_NAME, PROFILER_FRAMES_FILE_NAME)
+        return findProfilerArtifacts(context)
+            .filter { artifact -> artifact.length() > 0L }
+            .groupBy { artifact -> artifact.parentFile?.absolutePath.orEmpty() }
+            .values
+            .firstOrNull { artifacts -> artifacts.map(File::getName).toSet().containsAll(targetNames) }
+            .orEmpty()
     }
 
     private fun clearKnownProfilerArtifacts(context: Context) {

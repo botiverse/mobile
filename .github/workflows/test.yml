@@ -622,6 +622,8 @@ jobs:
             adb shell am instrument -w -r -e class build.raft.app.shared.SlockComposerFirstCharacterBaselineTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner > first-character-baseline-instrumentation.txt
             cat first-character-baseline-instrumentation.txt
             scripts/ci/assert-instrumentation-ok.sh first-character-baseline-instrumentation.txt 1
+            adb shell am instrument -w -r -e class build.raft.app.shared.KuiklyProfilerRuntimeSmokeTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner | tee kuikly-profiler-runtime-smoke-instrumentation.txt
+            scripts/ci/assert-instrumentation-ok.sh kuikly-profiler-runtime-smoke-instrumentation.txt 1
             adb install -r "$(find android-shared-atomic-sink-test-apk -type f -name '*.apk' | head -n 1)"
             adb shell pm list instrumentation | tee attachment-atomic-sink-instrumentation.txt
             grep -Fq 'instrumentation:build.raft.app.shared.test/androidx.test.runner.AndroidJUnitRunner' attachment-atomic-sink-instrumentation.txt
@@ -670,6 +672,7 @@ jobs:
           name: first-character-baseline-instrumentation
           path: |
             first-character-baseline-instrumentation.txt
+            kuikly-profiler-runtime-smoke-instrumentation.txt
             attachment-atomic-sink-instrumentation.txt
             attachment-download-runtime-instrumentation.txt
             performance-trace-feedback-instrumentation.txt
