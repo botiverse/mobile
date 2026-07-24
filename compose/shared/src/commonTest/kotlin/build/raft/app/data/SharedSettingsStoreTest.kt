@@ -8,6 +8,7 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.ServerNotificationPreferencesChanged
+import com.tencent.kuikly.compose.profiler.RecompositionProfilerFileOutputResult
 import com.tencent.kuikly.compose.profiler.RecompositionReport
 import com.tencent.tmm.kmmresource.resource.desc.desc
 import kotlinx.coroutines.CompletableDeferred
@@ -4050,14 +4051,22 @@ class SharedSettingsStoreTest {
             started = true
         }
 
-        override fun stop() {
+        override fun stop(completion: (RecompositionProfilerFileOutputResult) -> Unit) {
             started = false
+            completion(RecompositionProfilerFileOutputResult.Success("fake-profiler-session"))
         }
 
         override fun reset() = Unit
 
-        override fun getReport(saveToFile: Boolean): RecompositionReport =
+        override fun getReportSnapshot(): RecompositionReport =
             RecompositionReport.EMPTY
+
+        override fun exportReport(
+            completion: (RecompositionProfilerFileOutputResult) -> Unit
+        ): RecompositionReport =
+            RecompositionReport.EMPTY.also {
+                completion(RecompositionProfilerFileOutputResult.Success("fake-profiler-session"))
+            }
     }
 
     private class FakeProfilerDebugGate(
