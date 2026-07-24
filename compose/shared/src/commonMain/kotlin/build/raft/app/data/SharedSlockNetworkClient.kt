@@ -7,14 +7,33 @@ import build.raft.app.network.HEADER_AUTHORIZATION
 import build.raft.app.network.HEADER_SERVER_ID
 import build.raft.app.network.MultipartFile
 import build.raft.app.network.MultipartFileStreamOpener
+import build.raft.app.network.SLOCK_UPLOAD_TOTAL_TIMEOUT_MILLIS
 import build.raft.app.network.SlockHttpExecutor
 import build.raft.app.network.SlockHttpExecutorResponse
 import build.raft.app.network.SlockRequestPriority
 import build.raft.app.network.SlockRequestScheduler
+import build.raft.app.network.hasStreamingFileRefParts
 import build.raft.app.network.SlockRequestTimeoutException
 import build.raft.app.network.createPlatformSlockHttpExecutor
 import build.raft.app.network.toSafeDiagnosticsToken
 import kotlin.time.TimeSource
+
+internal const val SLOCK_UPLOAD_SCHEDULER_DISPATCH_MARGIN_MILLIS = 15_000L
+
+/**
+ * task #788: scheduler backstop for streaming fileRef uploads, checked-derived
+ * from the authoritative budgets of the real call chain
+ * `scheduler → authMiddleware(≤SLOCK_AUTH_MAX_REQUEST_ATTEMPTS upload attempts,
+ * ≤AUTH_REFRESH_MAX_ATTEMPTS refresh waits) → transport(180s per attempt)`.
+ * The NetworkKMM per-attempt 180s stays the single authoritative deadline
+ * (product ruling: per-attempt semantics); this bound only fires if the
+ * transport deadline machinery itself fails, so a Foreground semaphore permit
+ * can never leak on an unbounded upload. 2×180s + 2×4s + 15s = 383s.
+ */
+internal const val SLOCK_UPLOAD_SCHEDULER_BACKSTOP_MILLIS =
+    SLOCK_AUTH_MAX_REQUEST_ATTEMPTS * SLOCK_UPLOAD_TOTAL_TIMEOUT_MILLIS +
+        AUTH_REFRESH_MAX_ATTEMPTS * AUTH_REFRESH_ATTEMPT_TIMEOUT_MILLIS +
+        SLOCK_UPLOAD_SCHEDULER_DISPATCH_MARGIN_MILLIS
 
 internal class SharedSlockNetworkClient(
     private val sessionStore: SlockAuthSessionStore,
@@ -322,11 +341,18 @@ internal class SharedSlockNetworkClient(
         key: String
     ): HomeNetworkResponse {
         val startedAt = TimeSource.Monotonic.markNow()
+        // task #788: same files instance and same predicate the executor uses.
+        // The transport's per-attempt 180s budget is the single authoritative
+        // deadline; the scheduler carries only the strictly-higher derived
+        // backstop covering the full legal auth-retry chain.
+        val schedulerTimeoutMillis =
+            if (files.hasStreamingFileRefParts()) SLOCK_UPLOAD_SCHEDULER_BACKSTOP_MILLIS else null
         return try {
             requestScheduler.run(
                 priority = priority.toNetworkPriority(),
                 key = key,
-                reason = "multipart"
+                reason = "multipart",
+                timeoutMillis = schedulerTimeoutMillis
             ) {
                 val response =
                     authMiddleware().request(caller = "shared_network:$diagnosticPath") { auth ->

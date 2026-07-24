@@ -528,7 +528,19 @@ private fun StoredAuthSession.sameTokensAs(other: StoredAuthSession): Boolean =
 
 private const val PRESERVED_UNAUTHORIZED_BACKOFF_MILLIS = 30_000L
 private const val PRESERVED_AMBIGUOUS_REFRESH_MILLIS = 30L * 60L * 1_000L
-private const val AUTH_REFRESH_ATTEMPT_TIMEOUT_MILLIS = 4_000L
+// task #788: internal so the streaming-upload scheduler backstop can be
+// checked-derived from the authoritative refresh budget instead of a magic
+// number. Value unchanged.
+internal const val AUTH_REFRESH_ATTEMPT_TIMEOUT_MILLIS = 4_000L
+
+/**
+ * task #788: declared ceiling for refresh attempts a single middleware wait
+ * can consume — the first attempt plus at most one ambiguous-transport retry
+ * inside [AUTH_REFRESH_REPLAY_RETRY_WINDOW_MILLIS] (see
+ * refreshWithAmbiguousTimeoutRecovery: no loop exists). A behavior test pins
+ * the implementation to this constant.
+ */
+internal const val AUTH_REFRESH_MAX_ATTEMPTS = 2
 private const val AUTH_REFRESH_REPLAY_RETRY_WINDOW_MILLIS = 8_000L
 
 internal fun String?.authTokenDiagnosticsFingerprint(): String {
