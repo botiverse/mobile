@@ -12740,12 +12740,9 @@ private fun ThreadMessagesList(
             0
         }
     val listState = rememberLazyListState(
-        // Kuikly's native ScrollView always starts with contentOffset=0. If
-        // Compose starts at the synthetic latest/padding item, layoutInfo can
-        // report bottom rows as placed and visible while native pixels still
-        // show the empty offset-0 viewport. Establish the shared viewport at
-        // index 0 first; the existing initial-anchor effect owns the later
-        // bottom/focused move after the native scroller is mounted.
+        // Kuikly commits a non-top initial Compose viewport to native ScrollView
+        // before its first child placement. Start at the final latest viewport;
+        // the existing anchor owner only performs measured bottom correction.
         initialFirstVisibleItemIndex =
             threadInitialFirstVisibleItemIndex(latestItemIndex = latestItemIndex)
     )
@@ -14903,9 +14900,8 @@ private fun ThreadLazyWindowStats.toDiagnosticsString(result: String): String =
         "visibleMessageRange=$firstVisibleMessage..$lastVisibleMessage " +
         "visibleMessages=$visibleMessages"
 
-@Suppress("UNUSED_PARAMETER")
 internal fun threadInitialFirstVisibleItemIndex(latestItemIndex: Int): Int =
-    0
+    latestItemIndex.coerceAtLeast(0)
 
 internal fun threadInitialBottomAnchorTargetItemIndex(
     latestMessageItemIndex: Int,
