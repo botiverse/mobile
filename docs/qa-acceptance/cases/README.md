@@ -33,6 +33,27 @@ Key design principles:
 - **Asymmetric judgment**: fail if any M3 panelist is suspicious;
   pass requires 3/3 consensus + no hard-fail.
 
+## Android 1.7.0 Release Set
+
+`release-1.7.0-android.json` is the fail-closed source of truth for the 26
+canonical case IDs. The executable release subset contains 25 cases; each
+requires `auth_fixture: alpha-qa` and
+`launch_route: compose_slock_app_shell`, so Stamp freezes canonical bootstrap
+instead of the legacy credential-receipt path.
+
+`server-create` is the sole excluded case. It is manual-only provisioning with
+retained server side effects (`scheduled: false`, `auth_fixture: none`) and
+must never be added to an automated release plan merely to reach 26 cells.
+Run `python3 scripts/qa/check_release_acceptance_cases.py` before publishing
+case revisions. The check rejects missing/extra IDs, duplicate IDs, bootstrap
+drift, or accidental admission of manual provisioning.
+
+Automated plan creation must consume the same validated manifest through
+`python3 scripts/qa/check_release_acceptance_cases.py --emit-plan`. Do not
+construct a run by globbing all 26 YAML files: the emitted `case_ids` array is
+the fail-closed 25-cell input and `server-create` appears only in the explicit
+excluded list.
+
 ## Evidence Annotation
 
 See `annotation-spec.md` for the sharp-based red-box highlight spec.

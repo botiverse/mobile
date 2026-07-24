@@ -1,0 +1,48 @@
+id: presence-status-verification
+title: "Presence状态-Agent在线状态验证"
+goal: "验证presence状态正确，presence_write_dropped reason=not_ready次数为0"
+tier: L2
+max_retries: 1
+auth_fixture: alpha-qa
+launch_route: compose_slock_app_shell
+assertions:
+  - id: presence-not-ready-zero
+    goal: "logcat中presence_write_dropped reason=not_ready出现0次"
+    type: logcat_clean
+    params:
+      error_patterns: ["presence_write_dropped reason=not_ready"]
+    severity: critical
+  - id: agent-status-consistent
+    goal: "Members面板agent状态与实际一致"
+    type: visual_check
+    severity: major
+android:
+  device: { type: emulator, api_level: 34 }
+  steps:
+    - goal: "打开有agent的频道Members面板"
+      capture: [screenshot]
+    - goal: "观察agent在线状态"
+      capture: [screenshot]
+    - goal: "切到后台"
+      hint: "按HOME键"
+    - goal: "等待10秒"
+      hint: "wait 10s"
+    - goal: "切回前台"
+      capture: [screenshot]
+    - goal: "等待realtime重连"
+      hint: "wait 3s"
+    - goal: "截图验证状态"
+      capture: [screenshot]
+ios:
+  device: { type: ios-simulator, device_name: "iPhone 14" }
+  steps:
+    - goal: "打开有agent的频道Members面板"
+      capture: [screenshot]
+    - goal: "观察agent在线状态"
+      capture: [screenshot]
+    - goal: "切到后台"
+    - goal: "等待10秒"
+    - goal: "切回前台"
+      capture: [screenshot]
+    - goal: "截图验证状态"
+      capture: [screenshot]

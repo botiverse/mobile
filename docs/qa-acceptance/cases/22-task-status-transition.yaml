@@ -11,6 +11,8 @@ description: |
 tags: [tasks, status, regression]
 timeout_seconds: 120
 max_retries: 1
+auth_fixture: alpha-qa
+launch_route: compose_slock_app_shell
 verdict_before_cleanup: true
 
 device:

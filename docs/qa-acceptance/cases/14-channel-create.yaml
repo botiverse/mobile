@@ -11,6 +11,8 @@ tags: [channels, create, regression]
 timeout_seconds: 120
 verdict_before_cleanup: true
 max_retries: 1
+auth_fixture: alpha-qa
+launch_route: compose_slock_app_shell
 
 device:
   type: emulator
