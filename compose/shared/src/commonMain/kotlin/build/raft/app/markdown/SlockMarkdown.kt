@@ -2602,16 +2602,27 @@ private fun SlockRichTextChromeStyleToken.toInlineBoxSpanStyle(): InlineBoxSpanS
     return InlineBoxSpanStyle(
         backgroundColor = fill.toSlockMarkdownColor(),
         borderColor = SlockColor.BorderBlack,
-        borderWidth = 1.dp,
+        borderWidth = SlockRichTextInlineBoxBorderWidthDp.dp,
         paddingStart = 4.dp,
         paddingEnd = 4.dp,
-        paddingTop = 2.dp,
-        paddingBottom = 2.dp,
+        paddingTop = SlockRichTextInlineBoxVerticalPaddingDp.dp,
+        paddingBottom = SlockRichTextInlineBoxVerticalPaddingDp.dp,
         marginStart = 2.dp,
         marginEnd = 2.dp,
         cornerRadius = 0.dp
     )
 }
+
+private const val SlockRichTextInlineBoxBorderWidthDp = 1f
+private const val SlockRichTextInlineBoxVerticalPaddingDp = 2f
+
+/**
+ * Top-level Markdown nodes do not reserve space for inline-box paint outside
+ * the text line. A following heading must clear the box's bottom padding plus
+ * border; this keeps the document opt-in tied to the actual chrome geometry.
+ */
+internal fun slockMarkdownSectionHeadingGapClearsInlineCodeChrome(gap: Dp): Boolean =
+    gap.value >= SlockRichTextInlineBoxVerticalPaddingDp + SlockRichTextInlineBoxBorderWidthDp
 
 private fun SlockRichTextColorToken?.toSlockMarkdownColor(): Color =
     requireNotNull(this) { "Slock richtext color token is required for this chrome path" }
