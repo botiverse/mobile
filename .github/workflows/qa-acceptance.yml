@@ -446,6 +446,20 @@ jobs:
         if: ${{ inputs.stamp_run_case_id != '' }}
         run: printf '%s' ready_to_claim > "$RUNNER_TEMP/stamp-preclaim-phase"
 
+      # task #354 fixture seed (artin-approved option a): the image cases can
+      # never pass against an empty emulator gallery / imageless workspace.
+      # Emits the deterministic PNG for the in-emulator adb push below and
+      # idempotently ensures one image-bearing fixture message exists in the
+      # QA channel. Best-effort: seeding never fails the acceptance job.
+      - name: Seed media fixtures (image + workspace)
+        if: ${{ inputs.stamp_run_case_id == '' || steps.stamp-claim.outputs.bootstrap_required != 'true' }}
+        env:
+          QA_TEST_EMAIL: ${{ env.QA_TEST_EMAIL }}
+          QA_TEST_PASSWORD: ${{ env.QA_TEST_PASSWORD }}
+        run: |
+          node scripts/qa/seed_media_fixtures.mjs emit-image --out qa-fixture-image.png
+          node scripts/qa/seed_media_fixtures.mjs workspace || true
+
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -507,6 +521,8 @@ jobs:
             # under blacksmith pool contention (infra), not this script. Just
             # dismiss the keyguard.
             adb shell input keyevent 82 || true
+            # task #354 fixture seed: give the photo picker a real image.
+            if [ -s qa-fixture-image.png ]; then adb push qa-fixture-image.png /sdcard/Pictures/qa-fixture-image.png && { adb shell cmd media_scanner scan /sdcard/Pictures/qa-fixture-image.png || adb shell am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d file:///sdcard/Pictures/qa-fixture-image.png || true; }; fi
             # emulator-runner executes each script LINE as its own `sh -c`, so
             # shell vars do NOT survive to the next line (林舟: my earlier
             # `APK=$(...)` on one line + `adb install "$APK"` on the next gave an
