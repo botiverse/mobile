@@ -8,6 +8,7 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class SettingsComputersWebViewTest {
     @Test
@@ -68,6 +69,29 @@ class SettingsComputersWebViewTest {
         assertContains(script, "removeItem(\"slock_refresh_token\")")
         assertContains(script, "removeItem(\"slock_access_token\")")
         assertContains(script, "removeItem(\"slock_host_auth_binding\")")
+    }
+
+    @Test
+    fun computersBackConsumesWebHistoryBeforeClosingStandalonePage() {
+        assertTrue(settingsComputersWebViewSpec.consumeWebHistoryOnBack)
+        assertTrue(
+            standaloneSettingsShouldConsumeWebHistoryBack(
+                consumeWebHistoryOnBack = true,
+                canGoBack = true,
+            )
+        )
+        assertFalse(
+            standaloneSettingsShouldConsumeWebHistoryBack(
+                consumeWebHistoryOnBack = true,
+                canGoBack = false,
+            )
+        )
+        assertFalse(
+            standaloneSettingsShouldConsumeWebHistoryBack(
+                consumeWebHistoryOnBack = false,
+                canGoBack = true,
+            )
+        )
     }
 
 }

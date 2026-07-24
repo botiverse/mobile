@@ -57,12 +57,13 @@ private fun SettingsComputersScreen() {
  * selected server identity and auth bootstrap, while the Web MVI/data layer
  * loads and mutates the canonical computer state.
  */
-private val settingsComputersWebViewSpec =
+internal val settingsComputersWebViewSpec =
     StandaloneSettingsWebViewSpec(
         surface = SettingsWebViewSurface.Computers,
         destination = SharedSettingsDestination.Developer,
         backgroundColor = SlockColor.SurfaceCream,
         coverUntilContentCommit = true,
+        consumeWebHistoryOnBack = true,
         allowedNavigationSchemes = setOf("http", "https"),
         buildWebUrl = { webBaseUrl, session, _ -> settingsComputersWebViewUrl(webBaseUrl, session) },
     )

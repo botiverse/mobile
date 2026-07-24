@@ -43,6 +43,7 @@ internal data class StandaloneSettingsWebViewSpec(
     val backgroundColor: Color,
     val includeLocaleQuery: Boolean = false,
     val coverUntilContentCommit: Boolean = false,
+    val consumeWebHistoryOnBack: Boolean = false,
     val allowedNavigationSchemes: Set<String> = emptySet(),
     val bottomContentPadding: Dp = 0.dp,
     val buildWebUrl: (webBaseUrl: String?, session: StoredAuthSession?, localeTag: String) -> String,
@@ -63,7 +64,33 @@ internal fun StandaloneSettingsWebViewPage(
     loadingContent: @Composable () -> Unit,
 ) {
     var bodyReady by remember { mutableStateOf(false) }
+    val webViewController = rememberSlockWebViewController()
+    var navigationState by remember(spec.surface) { mutableStateOf(SlockWebViewNavigationState()) }
     LaunchedEffect(Unit) { bodyReady = true }
+
+    fun closePage() {
+        pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
+    }
+
+    fun goBackOrClose() {
+        if (
+            standaloneSettingsShouldConsumeWebHistoryBack(
+                consumeWebHistoryOnBack = spec.consumeWebHistoryOnBack,
+                canGoBack = navigationState.canGoBack,
+            )
+        ) {
+            webViewController.goBack()
+        } else {
+            closePage()
+        }
+    }
+
+    SlockBackHandler(
+        enabled = spec.consumeWebHistoryOnBack,
+        label = "standalone_settings_${spec.surface.diagnosticsName}",
+        onBack = ::goBackOrClose,
+    )
+
     Column(modifier = Modifier.fillMaxSize().background(spec.backgroundColor)) {
         SlockTopPageHeader(
             title = title,
@@ -72,7 +99,7 @@ internal fun StandaloneSettingsWebViewPage(
             leadingContent = {
                 SlockBrutalIconButton(
                     iconName = SlockLucideIconName.ArrowLeft,
-                    onClick = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() },
+                    onClick = ::goBackOrClose,
                     size = 30.dp,
                     shadowOffset = 2.dp,
                 )
@@ -89,6 +116,8 @@ internal fun StandaloneSettingsWebViewPage(
                 StandaloneSettingsWebViewBody(
                     pager = pager,
                     spec = spec,
+                    controller = webViewController,
+                    onNavigationStateChange = { navigationState = it },
                     loadingContent = loadingContent,
                 )
             } else {
@@ -102,6 +131,8 @@ internal fun StandaloneSettingsWebViewPage(
 private fun StandaloneSettingsWebViewBody(
     pager: Pager,
     spec: StandaloneSettingsWebViewSpec,
+    controller: SlockWebViewController,
+    onNavigationStateChange: (SlockWebViewNavigationState) -> Unit,
     loadingContent: @Composable () -> Unit,
 ) {
     val bridge = Utils.bridgeModule(pager.pagerId)
@@ -112,7 +143,6 @@ private fun StandaloneSettingsWebViewBody(
             sharedStores.authStore(environment.storeScope)
         }
     val authSnapshot = rememberSettingsWebViewAuthSnapshot(authStore, sharedStores.authStore)
-    val webViewController = rememberSlockWebViewController()
     val settingsViewModel: SharedSettingsViewModel =
         viewModel(key = "standalone-settings-${spec.surface.diagnosticsName}") {
             SharedSettingsViewModel(environment.dataSource)
@@ -127,7 +157,7 @@ private fun StandaloneSettingsWebViewBody(
         authSnapshot = authSnapshot,
         webBaseUrl = environment.webBaseUrl,
         spec = spec,
-        controller = webViewController,
+        controller = controller,
         accessTokenSyncLogger = bridge::log,
         onUrlChange = { url ->
             bridge.log("settings_${spec.surface.diagnosticsName}_webview_url_changed url=$url")
@@ -135,9 +165,15 @@ private fun StandaloneSettingsWebViewBody(
         onLoadFailure = { reason ->
             bridge.log("settings_${spec.surface.diagnosticsName}_webview_load_failure reason=$reason")
         },
+        onNavigationStateChange = onNavigationStateChange,
         loadingContent = loadingContent,
     )
 }
+
+internal fun standaloneSettingsShouldConsumeWebHistoryBack(
+    consumeWebHistoryOnBack: Boolean,
+    canGoBack: Boolean,
+): Boolean = consumeWebHistoryOnBack && canGoBack
 
 @Composable
 internal fun StandaloneSettingsWebViewContent(
