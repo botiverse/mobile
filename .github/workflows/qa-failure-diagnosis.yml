@@ -25,10 +25,11 @@ jobs:
           STAMP_RUN_CASE_ID: ${{ inputs.stamp_run_case_id }}
           STAMP_URL: ${{ secrets.STAMP_URL }}
           STAMP_REVIEW_TOKEN: ${{ secrets.STAMP_REVIEW_TOKEN }}
-          PI_API_KEY: ${{ secrets.QWEN_TOKEN_PLAN_CN_API_KEY }}
+          PI_API_KEY: ${{ secrets.PI_API_KEY }}
+          MINIMAX_API_KEY: ${{ secrets.PI_API_KEY }}
           QWEN_TOKEN_PLAN_CN_API_KEY: ${{ secrets.QWEN_TOKEN_PLAN_CN_API_KEY }}
-          PI_PROVIDER: ${{ vars.PI_REVIEW_PROVIDER || 'qwen-token-plan-cn' }}
-          PI_MODEL: ${{ vars.PI_REVIEW_MODEL || 'qwen3.8-max-preview' }}
+          PI_PROVIDER: ${{ vars.PI_REVIEW_PROVIDER || 'minimax' }}
+          PI_MODEL: ${{ vars.PI_REVIEW_MODEL || 'MiniMax-M3' }}
           SLOCK_PI_AI_MODULE: ${{ runner.temp }}/agent-review/node_modules/@earendil-works/pi-ai/dist/providers/all.js
         run: |
           mkdir -p "$RUNNER_TEMP/agent-review"
