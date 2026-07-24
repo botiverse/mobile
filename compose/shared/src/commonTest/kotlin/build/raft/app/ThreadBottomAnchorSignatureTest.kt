@@ -909,10 +909,10 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
-    fun initialFirstVisibleIndex_buildsNativeViewportAtTopBeforeAnchoring() {
+    fun initialFirstVisibleIndex_usesAtomicLatestViewport() {
         assertEquals(0, threadInitialFirstVisibleItemIndex(-1))
         assertEquals(0, threadInitialFirstVisibleItemIndex(0))
-        assertEquals(0, threadInitialFirstVisibleItemIndex(29))
+        assertEquals(29, threadInitialFirstVisibleItemIndex(29))
     }
 
     @Test
@@ -1028,7 +1028,7 @@ class ThreadBottomAnchorSignatureTest {
         val latestIndex = replyThreadPayload.latestMessageListItemIndexPublic()
 
         assertEquals(3, latestIndex)
-        assertEquals(0, threadInitialFirstVisibleItemIndex(latestIndex))
+        assertEquals(3, threadInitialFirstVisibleItemIndex(latestIndex))
         assertEquals(
             true,
             shouldAnchorLatestLocalSendToBottom(
