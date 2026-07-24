@@ -527,21 +527,25 @@ internal class ReleaseNotesViewModel(
     diagnosticsLogger: (String) -> Unit = {},
     warningLogger: (String) -> Unit = {}
 ) : ViewModel() {
-    private val store =
-        ReleaseNotesStore(
-            repository = repository,
-            scope = viewModelScope,
-            diagnosticsLogger = diagnosticsLogger,
-            warningLogger = warningLogger
-        )
-    val state: StateFlow<ReleaseNotesBodyState> = store.state
+    private val storeDelegate =
+        lazy {
+            ReleaseNotesStore(
+                repository = repository,
+                scope = viewModelScope,
+                diagnosticsLogger = diagnosticsLogger,
+                warningLogger = warningLogger
+            )
+        }
+    private val store: ReleaseNotesStore by storeDelegate
+    val state: StateFlow<ReleaseNotesBodyState>
+        get() = store.state
 
     fun dispatch(intent: ReleaseNotesIntent) {
         store.dispatch(intent)
     }
 
     override fun onCleared() {
-        store.clear()
+        if (storeDelegate.isInitialized()) store.clear()
         super.onCleared()
     }
 }
