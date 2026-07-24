@@ -1108,12 +1108,12 @@ private fun HomeSearchRouterContent(
             environment.sharedHomeStore?.state ?: flowOf(SharedHomeState())
         }
     val sharedHomeState by sharedHomeStateFlow.collectAsState(SharedHomeState())
-    val pinnedChannelConversationIds =
+    val pinnedItems =
         remember(sharedHomeState.content, homeState.content) {
             val sidebarOrder =
                 (sharedHomeState.content as? SharedHomeContentState.Content)?.snapshot?.sidebarOrder
                     ?: (homeState.content as? SharedHomeContentState.Content)?.snapshot?.sidebarOrder
-            sidebarOrder.pinnedChannelConversationIds()
+            sidebarOrder?.typedPinnedOrLegacy().orEmpty()
         }
     LaunchedEffect(homeViewModel) {
         homeViewModel.dispatch(SharedHomeIntent.Start)
@@ -1242,10 +1242,18 @@ private fun HomeSearchRouterContent(
                 storeScope = environment.storeScope
             )
         },
-        pinnedChannelConversationIds = pinnedChannelConversationIds,
+        pinnedItems = pinnedItems,
         onTogglePin =
             environment.sharedHomeStore?.let { store ->
-                { conversationId -> store.dispatch(SharedHomeIntent.TogglePinned(conversationId)) }
+                { target ->
+                    store.dispatch(
+                        SharedHomeIntent.TogglePinned(
+                            conversationId = target.conversationId,
+                            pinnedKind = target.kind,
+                            pinnedId = target.id
+                        )
+                    )
+                }
             },
         initialOpenFilterId = initialOpenFilterId,
         initialFocusInput = initialFocusInput,
@@ -16631,8 +16639,8 @@ private fun SharedHomeSearchPanel(
     initialFocusInput: Boolean = false,
     onOpenItem: (InboxItem) -> Unit,
     onOpenEntity: (SearchEntityResult) -> Unit,
-    pinnedChannelConversationIds: Set<String> = emptySet(),
-    onTogglePin: ((String) -> Unit)? = null,
+    pinnedItems: List<SettingsServerSidebarPinnedItem> = emptyList(),
+    onTogglePin: ((SearchEntityPinTarget) -> Unit)? = null,
     bottomContentPadding: Dp,
     timeContext: AppShellThreadTimeContext? = null,
     shellScope: SlockAppShellScope = rememberSlockAppShellScope(),
@@ -16823,18 +16831,18 @@ private fun SharedHomeSearchPanel(
                             query = state.query,
                             agentStatusResolver = agentStatusResolver,
                             memberAvatarResolver = memberAvatarResolver,
-                            isPinned = entityResults[index].threadId in pinnedChannelConversationIds,
+                            isPinned = entityResults[index].isPinnedBy(pinnedItems),
                             onOpen = { onOpenEntity(entityResults[index]) },
                             onContextMenu =
-                                searchEntityPinConversationId(entityResults[index])
+                                searchEntityPinTarget(entityResults[index])
                                     ?.takeIf { onTogglePin != null }
-                                    ?.let { conversationId ->
+                                    ?.let { target ->
                                         { anchor ->
                                             activePinMenu =
                                                 SharedHomeSearchPinMenuState(
                                                     resultKey = entityResults[index].key,
-                                                    conversationId = conversationId,
-                                                    isPinned = entityResults[index].threadId in pinnedChannelConversationIds,
+                                                    target = target,
+                                                    isPinned = entityResults[index].isPinnedBy(pinnedItems),
                                                     anchor = anchor
                                                 )
                                         }
@@ -17031,7 +17039,7 @@ private fun SharedHomeSearchPanel(
                     activePinMenu = null
                     dispatchSearchEntityPinMenuSelection(
                         actionId = actionId,
-                        conversationId = menu.conversationId,
+                        target = menu.target,
                         onTogglePin = onTogglePin
                     )
                 }
@@ -17044,18 +17052,18 @@ private const val SharedHomeSearchPinMenuActionToggle = "toggle-pin"
 
 private data class SharedHomeSearchPinMenuState(
     val resultKey: String,
-    val conversationId: String,
+    val target: SearchEntityPinTarget,
     val isPinned: Boolean,
     val anchor: SlockPopoverAnchor
 )
 
 internal fun dispatchSearchEntityPinMenuSelection(
     actionId: String,
-    conversationId: String,
-    onTogglePin: ((String) -> Unit)?
+    target: SearchEntityPinTarget,
+    onTogglePin: ((SearchEntityPinTarget) -> Unit)?
 ) {
     if (actionId == SharedHomeSearchPinMenuActionToggle) {
-        onTogglePin?.invoke(conversationId)
+        onTogglePin?.invoke(target)
     }
 }
 
@@ -18152,10 +18160,57 @@ private fun SharedHomeSearchEntityRow(
     }
 }
 
-internal fun searchEntityPinConversationId(result: SearchEntityResult): String? =
-    result.threadId
-        ?.trim()
-        ?.takeIf { it.isNotBlank() && result.type == SearchEntityType.Channel && !result.archived }
+internal data class SearchEntityPinTarget(
+    val conversationId: String,
+    val kind: String? = null,
+    val id: String? = null
+)
+
+internal fun searchEntityPinTarget(result: SearchEntityResult): SearchEntityPinTarget? {
+    if (result.archived) return null
+    val threadId = result.threadId?.trim()?.takeIf { it.isNotBlank() }
+    val memberId = result.memberId?.trim()?.takeIf { it.isNotBlank() }
+    return when (result.type) {
+        SearchEntityType.Channel ->
+            threadId?.let { SearchEntityPinTarget(conversationId = it, kind = "channel", id = it) }
+        SearchEntityType.DirectMessage ->
+            threadId?.let { SearchEntityPinTarget(conversationId = it) }
+        SearchEntityType.Human ->
+            memberId?.let {
+                SearchEntityPinTarget(
+                    conversationId = threadId ?: it,
+                    kind = "human",
+                    id = it
+                )
+            }
+        SearchEntityType.Agent ->
+            memberId?.let {
+                SearchEntityPinTarget(
+                    conversationId = threadId ?: it,
+                    kind = "agent",
+                    id = it
+                )
+            }
+    }
+}
+
+internal fun SearchEntityResult.isPinnedBy(items: List<SettingsServerSidebarPinnedItem>): Boolean {
+    val target = searchEntityPinTarget(this) ?: return false
+    return items.any { item ->
+        when {
+            target.kind != null && target.id != null ->
+                item.kind.equals(target.kind, ignoreCase = true) && item.id == target.id ||
+                    item.kind.equals("channel", ignoreCase = true) && item.id == target.conversationId
+            else ->
+                item.id == target.conversationId ||
+                    memberId?.let { member ->
+                        item.id == member &&
+                            (item.kind.equals("agent", ignoreCase = true) ||
+                                item.kind.equals("human", ignoreCase = true))
+                    } == true
+        }
+    }
+}
 
 internal fun SettingsServerSidebarOrderSnapshot?.pinnedChannelConversationIds(): Set<String> =
     this
@@ -21269,6 +21324,14 @@ private val homeSearchVisualSearchState = SharedHomeSearchPanelState(
                 avatarWireValue = AvatarReference.Random("android-developer").wireValue,
                 presence = Presence.Active,
                 agentStatus = AgentStatus.Working
+            ),
+            SearchSenderFilterItem(
+                id = "human_pin_fixture",
+                label = "Pin Human",
+                handle = "pin-human",
+                kind = MemberKind.Human,
+                avatarWireValue = AvatarReference.Random("pin-human").wireValue,
+                presence = Presence.Active
             )
         ),
     selectedChannelId = "ch_design",
@@ -21508,7 +21571,7 @@ internal fun HomeSearchVisualContent(initialOpenFilterId: String? = null) {
 }
 
 @Composable
-internal fun HomeSearchPinVisualContent() {
+internal fun HomeSearchPinVisualContent(query: String = "android") {
     var openedEntityCount by remember { mutableStateOf(0) }
     var togglePinCount by remember { mutableStateOf(0) }
     LaunchedEffect(togglePinCount) {
@@ -21519,7 +21582,7 @@ internal fun HomeSearchPinVisualContent() {
     }
     Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         SharedHomeSearchPanel(
-            state = homeSearchVisualSearchState,
+            state = homeSearchVisualSearchState.copy(query = query),
             homeState = homeSearchPinVisualHomeState,
             onIntent = {},
             onClose = {},
@@ -21528,12 +21591,13 @@ internal fun HomeSearchPinVisualContent() {
             showSenderFilter = true,
             onOpenItem = {},
             onOpenEntity = { openedEntityCount += 1 },
-            pinnedChannelConversationIds =
+            pinnedItems =
                 (homeSearchPinVisualHomeState.content as SharedHomeContentState.Content)
                     .snapshot
                     .sidebarOrder
-                    .pinnedChannelConversationIds(),
-            onTogglePin = { togglePinCount += 1 },
+                    ?.typedPinnedOrLegacy()
+                    .orEmpty(),
+            onTogglePin = { _ -> togglePinCount += 1 },
             bottomContentPadding = 12.dp,
             modifier = Modifier.fillMaxSize()
         )

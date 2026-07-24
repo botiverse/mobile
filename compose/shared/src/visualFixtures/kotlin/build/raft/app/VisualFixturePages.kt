@@ -274,6 +274,30 @@ internal class ComposeHomeSearchChannelPinVisualPage : BasePager() {
     }
 }
 
+@Page("compose_home_search_dm_pin_visual", supportInLocal = true)
+internal class ComposeHomeSearchDmPinVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { HomeSearchPinVisualContent(query = "reviewer") }
+    }
+}
+
+@Page("compose_home_search_agent_pin_visual", supportInLocal = true)
+internal class ComposeHomeSearchAgentPinVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { HomeSearchPinVisualContent(query = "developer") }
+    }
+}
+
+@Page("compose_home_search_human_pin_visual", supportInLocal = true)
+internal class ComposeHomeSearchHumanPinVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { HomeSearchPinVisualContent(query = "pin human") }
+    }
+}
+
 @Page("compose_home_search_channel_dropdown_visual", supportInLocal = true)
 internal class ComposeHomeSearchChannelDropdownVisualPage : BasePager() {
     override fun willInit() {

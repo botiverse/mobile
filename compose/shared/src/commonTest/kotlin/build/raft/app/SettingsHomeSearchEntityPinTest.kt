@@ -5,33 +5,54 @@ import build.raft.app.data.SettingsServerSidebarPinnedItem
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class SettingsHomeSearchEntityPinTest {
     @Test
-    fun onlyActiveChannelsExposePinConversationId() {
-        assertEquals("channel-1", entity(SearchEntityType.Channel).let(::searchEntityPinConversationId))
-        assertNull(entity(SearchEntityType.Channel, archived = true).let(::searchEntityPinConversationId))
-        assertNull(entity(SearchEntityType.Channel, threadId = " ").let(::searchEntityPinConversationId))
-        assertNull(entity(SearchEntityType.DirectMessage).let(::searchEntityPinConversationId))
-        assertNull(entity(SearchEntityType.Human).let(::searchEntityPinConversationId))
-        assertNull(entity(SearchEntityType.Agent).let(::searchEntityPinConversationId))
+    fun activeChannelDmHumanAndAgentExposeTypedPinTargets() {
+        assertEquals(
+            SearchEntityPinTarget("channel-1", "channel", "channel-1"),
+            entity(SearchEntityType.Channel).let(::searchEntityPinTarget)
+        )
+        assertEquals(
+            SearchEntityPinTarget("channel-1"),
+            entity(SearchEntityType.DirectMessage).let(::searchEntityPinTarget)
+        )
+        assertEquals(
+            SearchEntityPinTarget("channel-1", "human", "member-1"),
+            entity(SearchEntityType.Human).let(::searchEntityPinTarget)
+        )
+        assertEquals(
+            SearchEntityPinTarget("member-1", "agent", "member-1"),
+            entity(SearchEntityType.Agent, threadId = null).let(::searchEntityPinTarget)
+        )
+    }
+
+    @Test
+    fun archivedOrUnresolvedEntitiesDoNotExposePinTargets() {
+        assertNull(entity(SearchEntityType.Channel, archived = true).let(::searchEntityPinTarget))
+        assertNull(entity(SearchEntityType.Channel, threadId = " ").let(::searchEntityPinTarget))
+        assertNull(entity(SearchEntityType.DirectMessage, threadId = null).let(::searchEntityPinTarget))
+        assertNull(entity(SearchEntityType.Human, memberId = null).let(::searchEntityPinTarget))
+        assertNull(entity(SearchEntityType.Agent, memberId = " ").let(::searchEntityPinTarget))
     }
 
     @Test
     fun pinMenuSelectionDispatchesExactlyOneCanonicalToggle() {
         var pinCount = 0
-        var toggledId: String? = null
+        var toggledTarget: SearchEntityPinTarget? = null
+        val target = SearchEntityPinTarget("dm-1", "agent", "agent-1")
 
         dispatchSearchEntityPinMenuSelection(
             actionId = "toggle-pin",
-            conversationId = "channel-1",
+            target = target,
             onTogglePin = {
                 pinCount += 1
-                toggledId = it
+                toggledTarget = it
             }
         )
         assertEquals(1, pinCount)
-        assertEquals("channel-1", toggledId)
+        assertEquals(target, toggledTarget)
     }
 
     @Test
@@ -40,12 +61,12 @@ class SettingsHomeSearchEntityPinTest {
 
         dispatchSearchEntityPinMenuSelection(
             actionId = "other",
-            conversationId = "channel-1",
+            target = SearchEntityPinTarget("channel-1"),
             onTogglePin = { pinCount += 1 }
         )
         dispatchSearchEntityPinMenuSelection(
             actionId = "toggle-pin",
-            conversationId = "channel-1",
+            target = SearchEntityPinTarget("channel-1"),
             onTogglePin = null
         )
 
@@ -86,9 +107,25 @@ class SettingsHomeSearchEntityPinTest {
         assertEquals(setOf("channel-2", "channel-1"), order.pinnedChannelConversationIds())
     }
 
+    @Test
+    fun typedPinnedProjectionMatchesChannelDmHumanAndAgentRows() {
+        val pinned =
+            listOf(
+                SettingsServerSidebarPinnedItem("channel", "channel-1"),
+                SettingsServerSidebarPinnedItem("human", "human-1"),
+                SettingsServerSidebarPinnedItem("agent", "agent-1")
+            )
+
+        assertTrue(entity(SearchEntityType.Channel).isPinnedBy(pinned))
+        assertTrue(entity(SearchEntityType.DirectMessage, memberId = "human-1").isPinnedBy(pinned))
+        assertTrue(entity(SearchEntityType.Human, threadId = null, memberId = "human-1").isPinnedBy(pinned))
+        assertTrue(entity(SearchEntityType.Agent, threadId = null, memberId = "agent-1").isPinnedBy(pinned))
+    }
+
     private fun entity(
         type: SearchEntityType,
         threadId: String? = "channel-1",
+        memberId: String? = "member-1",
         archived: Boolean = false
     ): SearchEntityResult =
         SearchEntityResult(
@@ -97,7 +134,7 @@ class SettingsHomeSearchEntityPinTest {
             title = "Title",
             subtitle = "Subtitle",
             threadId = threadId,
-            memberId = null,
+            memberId = memberId,
             conversationIdentity = null,
             archived = archived
         )
