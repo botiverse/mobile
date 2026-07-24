@@ -3,12 +3,28 @@ import crypto from "node:crypto";
 const DIGEST = /^sha256:[a-f0-9]{64}$/;
 const REQUEST_ID = /^[A-Za-z0-9._-]{1,80}$/;
 const APK_SIGNER_SHA256 =
-  /^Signer(?: #[1-9][0-9]*)?(?: \(minSdkVersion=([0-9]+), maxSdkVersion=([0-9]+)\))? certificate SHA-256 digest:\s*([A-Fa-f0-9]{64})$/;
+  /^(?:V[0-9]+(?:\.[0-9]+)? )?Signer:?(?: #[1-9][0-9]*)?(?: \(minSdkVersion=([0-9]+), maxSdkVersion=([0-9]+)\))? certificate SHA-256 digest:\s*([A-Fa-f0-9]{64})$/;
+const APK_SIGNER_PREFIX = /^(?:V[0-9]+(?:\.[0-9]+)? )?Signer\b/;
 
-export function selectApkSigningCertificateSha256(apksignerOutput, deviceSdk) {
+function requireAndroidDeviceSdk(deviceSdk) {
   if (!Number.isInteger(deviceSdk) || deviceSdk < 1 || deviceSdk > 0x7fffffff) {
     throw new Error("Android device SDK is invalid");
   }
+}
+
+export function apksignerVerifyArgs(apk, deviceSdk) {
+  requireAndroidDeviceSdk(deviceSdk);
+  return [
+    "verify",
+    "--min-sdk-version", String(deviceSdk),
+    "--max-sdk-version", String(deviceSdk),
+    "--print-certs",
+    apk,
+  ];
+}
+
+export function selectApkSigningCertificateSha256(apksignerOutput, deviceSdk) {
+  requireAndroidDeviceSdk(deviceSdk);
   // apksigner renders a targeted v3.1 rotation as one certificate record per
   // SDK range. Android exposes only the certificate selected for the running
   // device through SigningInfo.apkContentsSigners, so the host must make the
@@ -18,7 +34,7 @@ export function selectApkSigningCertificateSha256(apksignerOutput, deviceSdk) {
     const line = rawLine.trim();
     const match = line.match(APK_SIGNER_SHA256);
     if (!match) {
-      if (line.startsWith("Signer") && line.includes("certificate SHA-256 digest:")) {
+      if (APK_SIGNER_PREFIX.test(line) && line.includes("certificate SHA-256 digest:")) {
         throw new Error("APK signer certificate record is invalid");
       }
       continue;
