@@ -45,6 +45,7 @@ import com.tencent.kuikly.core.pager.Pager
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.geometry.Rect
 import com.tencent.kuikly.compose.ui.graphics.Color
+import com.tencent.kuikly.compose.ui.layout.boundsInRoot
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.text.AnnotatedString
 import com.tencent.kuikly.compose.ui.text.InlineBoxSpanStyle
@@ -1870,6 +1871,7 @@ fun SlockMarkdownBody(
     inlineContentScope: String? = null,
     activeTagKey: String? = null,
     sectionHeadingTopPadding: Dp = 0.dp,
+    onSectionHeadingPositioned: ((Rect) -> Unit)? = null,
     performanceKey: String? = null,
     performanceLogger: (String) -> Unit = {}
 ) {
@@ -2091,7 +2093,19 @@ fun SlockMarkdownBody(
             blockQuoteBar = PaddingValues.Absolute(left = 0.dp, top = 0.dp, right = 0.dp, bottom = 0.dp)
         )
     }
-    val components = remember(sectionHeadingTopPadding) {
+    val components = remember(sectionHeadingTopPadding, onSectionHeadingPositioned) {
+        val sectionHeadingModifier =
+            Modifier
+                .padding(top = sectionHeadingTopPadding)
+                .let { modifier ->
+                    if (onSectionHeadingPositioned == null) {
+                        modifier
+                    } else {
+                        modifier.onGloballyPositioned { coordinates ->
+                            onSectionHeadingPositioned(coordinates.boundsInRoot())
+                        }
+                    }
+                }
         markdownComponents(
             // Kuikly's Markdown renderer stacks top-level nodes without a
             // spacer. Most message surfaces intentionally keep that dense
@@ -2103,7 +2117,7 @@ fun SlockMarkdownBody(
                     model.content,
                     model.node,
                     style = model.typography.h2,
-                    modifier = Modifier.padding(top = sectionHeadingTopPadding)
+                    modifier = sectionHeadingModifier
                 )
             },
             heading3 = { model ->
@@ -2111,7 +2125,7 @@ fun SlockMarkdownBody(
                     model.content,
                     model.node,
                     style = model.typography.h3,
-                    modifier = Modifier.padding(top = sectionHeadingTopPadding)
+                    modifier = sectionHeadingModifier
                 )
             },
             horizontalRule = {

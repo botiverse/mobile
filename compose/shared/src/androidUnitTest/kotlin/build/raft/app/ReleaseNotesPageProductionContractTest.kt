@@ -36,7 +36,8 @@ class ReleaseNotesPageProductionContractTest {
         assertContains(renderer, "remember(sectionHeadingTopPadding)")
         assertContains(renderer, "heading2 = { model ->")
         assertContains(renderer, "heading3 = { model ->")
-        assertContains(renderer, "Modifier.padding(top = sectionHeadingTopPadding)")
+        assertContains(renderer, ".padding(top = sectionHeadingTopPadding)")
+        assertContains(renderer, "onSectionHeadingPositioned(coordinates.boundsInRoot())")
     }
 
     @Test

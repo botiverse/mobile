@@ -39,6 +39,9 @@ internal class ComposeSlockFloatingOverlayTouchGuardVisualPage : build.raft.app.
     override fun willInit() {
         super.willInit()
         val fixture = pageData.params.optString("fixture")
+        if (fixture.startsWith("release-notes-section-gap-")) {
+            SlockReleaseNotesSectionGapProbe.reset()
+        }
         setContent {
             when (fixture) {
                 FloatingOverlayTouchGuardModalFixture -> SlockModalPointerBarrierVisualScreen()
@@ -72,11 +75,15 @@ private fun SlockReleaseNotesSectionGapVisualScreen(sectionGap: com.tencent.kuik
                 .padding(SlockSpacing.Md)
     ) {
         if (sectionGap == null) {
-            SlockMarkdownBody(body = ReleaseNotesSectionGapFixtureBody)
+            SlockMarkdownBody(
+                body = ReleaseNotesSectionGapFixtureBody,
+                onSectionHeadingPositioned = SlockReleaseNotesSectionGapProbe::record
+            )
         } else {
             SlockMarkdownBody(
                 body = ReleaseNotesSectionGapFixtureBody,
-                sectionHeadingTopPadding = sectionGap
+                sectionHeadingTopPadding = sectionGap,
+                onSectionHeadingPositioned = SlockReleaseNotesSectionGapProbe::record
             )
         }
     }
@@ -90,6 +97,33 @@ private val ReleaseNotesSectionGapFixtureBody =
 
     ## 本次内容
     """.trimIndent()
+
+data class SlockReleaseNotesSectionHeadingBounds(
+    val left: Int,
+    val top: Int,
+    val right: Int,
+    val bottom: Int
+)
+
+object SlockReleaseNotesSectionGapProbe {
+    private var latestBounds: SlockReleaseNotesSectionHeadingBounds? = null
+
+    fun reset() {
+        latestBounds = null
+    }
+
+    fun record(bounds: com.tencent.kuikly.compose.ui.geometry.Rect) {
+        latestBounds =
+            SlockReleaseNotesSectionHeadingBounds(
+                left = kotlin.math.floor(bounds.left).toInt(),
+                top = kotlin.math.floor(bounds.top).toInt(),
+                right = kotlin.math.ceil(bounds.right).toInt(),
+                bottom = kotlin.math.ceil(bounds.bottom).toInt()
+            )
+    }
+
+    fun snapshot(): SlockReleaseNotesSectionHeadingBounds? = latestBounds
+}
 
 @Composable
 internal fun SlockFloatingOverlayTouchGuardVisualScreen() {

@@ -10,6 +10,7 @@ import android.os.ParcelFileDescriptor
 import android.os.SystemClock
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
+import build.raft.app.SlockReleaseNotesSectionGapProbe
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -90,22 +91,19 @@ class SlockReleaseNotesSectionGapConnectedTest {
     private fun Instrumentation.waitForHeadingBounds(): Rect {
         repeat(HeadingPollAttempts) {
             waitForIdleSync()
-            val node =
-                uiAutomation.rootInActiveWindow
-                    ?.findAccessibilityNodeInfosByText(HeadingText)
-                    ?.firstOrNull { it.text?.toString() == HeadingText }
-            if (node != null) {
-                return Rect().also(node::getBoundsInScreen)
+            val bounds = SlockReleaseNotesSectionGapProbe.snapshot()
+            if (bounds != null) {
+                return Rect(bounds.left, bounds.top, bounds.right, bounds.bottom)
             }
             SystemClock.sleep(HeadingPollIntervalMs)
         }
-        error("Unable to find the '$HeadingText' accessibility node")
+        error("Unable to receive the section-heading onGloballyPositioned probe")
     }
 
     private fun captureActivityBitmap(scenario: ActivityScenario<SlockKuiklyActivity>): Bitmap {
         var bitmap: Bitmap? = null
         scenario.onActivity { activity ->
-            val root = activity.window.decorView.rootView
+            val root = activity.findViewById<android.view.View>(android.R.id.content)
             require(root.width > 0 && root.height > 0) {
                 "Activity root has invalid size ${root.width}x${root.height}"
             }
@@ -173,7 +171,6 @@ class SlockReleaseNotesSectionGapConnectedTest {
         private const val FixtureZeroGap = "release-notes-section-gap-zero"
         private const val FixtureEightDpGap = "release-notes-section-gap-eight"
         private const val FixtureDefaultGap = "release-notes-section-gap-default"
-        private const val HeadingText = "本次内容"
         private const val RenderSettleMs = 2_000L
         private const val ConfigurationSettleMs = 800L
         private const val HeadingPollAttempts = 20
