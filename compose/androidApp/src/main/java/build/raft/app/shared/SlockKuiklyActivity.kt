@@ -331,6 +331,8 @@ open class SlockKuiklyActivity :
     private var inputFontLayoutListener: ViewTreeObserver.OnGlobalLayoutListener? = null
     private var pendingThreadAttachmentUpload: PendingThreadAttachmentUpload? = null
     private var pendingAttachmentExport: PendingAttachmentExport? = null
+    private var pendingLegacyGalleryPermission: PendingLegacyGalleryPermission? = null
+    private var queuedLegacyGalleryPermission: PendingLegacyGalleryPermission? = null
     private var androidShellLaunchTarget: AndroidShellLaunchTarget? = null
     private val realtimeVisibilityOwnerId: String by lazy {
         androidShellLaunchTarget?.shellInstanceId
@@ -355,6 +357,19 @@ open class SlockKuiklyActivity :
     private val attachmentExportLauncher: ActivityResultLauncher<String> =
             registerForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
                 handleAttachmentExportResult(uri)
+            }
+    private val legacyGalleryPermissionLauncher: ActivityResultLauncher<String> =
+            registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+                val pending = pendingLegacyGalleryPermission ?: return@registerForActivityResult
+                pendingLegacyGalleryPermission = null
+                if (ProcessAndroidAttachmentExportAuthorities.isCurrent(
+                                pending.owner,
+                                pending.downloadId,
+                                pending.operationId
+                        )) {
+                    pending.onResult(granted)
+                }
+                promoteQueuedLegacyGalleryPermission()
             }
     private val screenshotFeedbackEventGate =
             ScreenshotFeedbackEventGate(SCREENSHOT_FEEDBACK_MINIMUM_INTERVAL_MILLIS)
@@ -1101,6 +1116,71 @@ open class SlockKuiklyActivity :
                             )
                     )
                 }
+    }
+
+    internal fun requestLegacyGalleryPermission(
+            downloadId: String,
+            operationId: String,
+            owner: AndroidAttachmentOwnerLease,
+            onResult: (Boolean) -> Unit
+    ): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            onResult(true)
+            return true
+        }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED) {
+            onResult(true)
+            return true
+        }
+        val pending = PendingLegacyGalleryPermission(downloadId, operationId, owner, onResult)
+        if (pendingLegacyGalleryPermission != null) {
+            if (queuedLegacyGalleryPermission != null) return false
+            queuedLegacyGalleryPermission = pending
+            return true
+        }
+        pendingLegacyGalleryPermission = pending
+        runCatching { legacyGalleryPermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE) }
+            .onFailure {
+                pendingLegacyGalleryPermission = null
+                if (ProcessAndroidAttachmentExportAuthorities.isCurrent(owner, downloadId, operationId)) {
+                    onResult(false)
+                }
+                promoteQueuedLegacyGalleryPermission()
+            }
+        return true
+    }
+
+    internal fun cancelLegacyGalleryPermission(
+            downloadId: String,
+            operationId: String,
+            owner: AndroidAttachmentOwnerLease
+    ) {
+        val pending = pendingLegacyGalleryPermission
+        if (pending?.downloadId == downloadId && pending.operationId == operationId && pending.owner == owner) {
+            // ActivityResult has no request token. Keep the in-flight slot as a tombstone until
+            // its result arrives, so it can never be delivered to a queued successor operation.
+            return
+        }
+        val queued = queuedLegacyGalleryPermission
+        if (queued?.downloadId == downloadId && queued.operationId == operationId && queued.owner == owner) {
+            queuedLegacyGalleryPermission = null
+        }
+    }
+
+    private fun promoteQueuedLegacyGalleryPermission() {
+        val queued = queuedLegacyGalleryPermission ?: return
+        queuedLegacyGalleryPermission = null
+        if (!ProcessAndroidAttachmentExportAuthorities.isCurrent(
+                        queued.owner,
+                        queued.downloadId,
+                        queued.operationId
+                )) return
+        requestLegacyGalleryPermission(
+                queued.downloadId,
+                queued.operationId,
+                queued.owner,
+                queued.onResult
+        )
     }
 
     internal fun requestGoogleNativeSocialAuth(callback: KuiklyRenderCallback?): Boolean {
@@ -2035,6 +2115,13 @@ private data class PendingAttachmentExport(
         val callback: KuiklyRenderCallback?
 )
 
+private data class PendingLegacyGalleryPermission(
+        val downloadId: String,
+        val operationId: String,
+        val owner: AndroidAttachmentOwnerLease,
+        val onResult: (Boolean) -> Unit
+)
+
 private data class PickedThreadAttachment(
         val fileRef: String,
         val fileName: String,
@@ -2800,6 +2887,14 @@ internal class SlockKuiklyBridgeModule(
             }
             "saveAttachment" -> {
                 saveAttachment(params, callback)
+                null
+            }
+            "saveImageToPhotos" -> {
+                saveImageToPhotos(params, callback)
+                null
+            }
+            "cancelAttachmentExport" -> {
+                cancelAttachmentExport(params)
                 null
             }
             "attachmentCacheStatus" -> {
@@ -5097,6 +5192,129 @@ internal class SlockKuiklyBridgeModule(
         }
     }
 
+    private fun saveImageToPhotos(params: String?, callback: KuiklyRenderCallback?) {
+        val request = JSONObject(params ?: "{}")
+        val downloadId = request.optString("downloadId").takeIf(String::isNotBlank)
+                ?: "${request.optString("attachmentId")}:${request.optString("fileName")}".take(160)
+        val operationId = request.optString("operationId").takeIf(String::isNotBlank)
+        val owner = request.attachmentOwnerLease()
+        if (operationId == null || owner == null ||
+                !ProcessAndroidAttachmentExportAuthorities.bind(owner, downloadId, operationId)) {
+            callback?.invoke(mapOf("status" to "failed", "message" to "Missing attachment export authority"))
+            return
+        }
+        val authorityProgressCallback: KuiklyRenderCallback? = callback?.let { downstream ->
+            { payload ->
+                if (ProcessAndroidAttachmentExportAuthorities.isCurrent(owner, downloadId, operationId)) {
+                    downstream(payload)
+                }
+            }
+        }
+        val authorityTerminalCallback: KuiklyRenderCallback? = callback?.let { downstream ->
+            { payload ->
+                if (ProcessAndroidAttachmentExportAuthorities.retireIfCurrent(owner, downloadId, operationId)) {
+                    downstream(payload)
+                }
+            }
+        }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q &&
+                ContextCompat.checkSelfPermission(appContext, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+            val hostActivity = activity as? SlockKuiklyActivity
+            if (hostActivity == null || !hostActivity.requestLegacyGalleryPermission(downloadId, operationId, owner) { granted ->
+                    if (granted) {
+                        saveImageToPhotos(params, callback)
+                    } else {
+                        authorityTerminalCallback?.invoke(
+                                mapOf(
+                                        "status" to "permission_denied",
+                                        "message" to "Allow Photos and media access in Settings, then try again",
+                                        "retryable" to true
+                                )
+                        )
+                    }
+                }) {
+                authorityTerminalCallback?.invoke(mapOf("status" to "failed", "message" to "Another photo permission request is active"))
+            }
+            return
+        }
+        SlockKuiklyThreadAdapter.execute("attachment-save-photos") {
+            val trackProgress = request.optBoolean("trackProgress", false)
+            val preparation =
+                    runCatching {
+                                prepareAttachment(
+                                        request = request,
+                                        progressCallback =
+                                                if (trackProgress) {
+                                                    { progress -> authorityProgressCallback?.invoke(progress) }
+                                                } else {
+                                                    null
+                                                }
+                                )
+                            }
+                            .getOrElse {
+                                authorityTerminalCallback?.invoke(mapOf("status" to "failed", "message" to "Unable to download attachment"))
+                                return@execute
+                            }
+            when (preparation) {
+                is AttachmentPreparationResult.Terminal -> authorityTerminalCallback?.invoke(preparation.payload)
+                is AttachmentPreparationResult.Ready -> {
+                    val validation =
+                            validateAndroidGalleryImage(
+                                    source = preparation.targetFile,
+                                    fileName = preparation.requestedFileName,
+                                    claimedMimeType = preparation.mimeType
+                            )
+                    if (validation == null) {
+                        authorityTerminalCallback?.invoke(
+                                mapOf(
+                                        "status" to "unsupported_image",
+                                        "message" to "This attachment is not a supported image",
+                                        "retryable" to false
+                                )
+                        )
+                        return@execute
+                    }
+                    val displayName =
+                            publicDownloadDisplayName(
+                                    requestedFileName = preparation.requestedFileName,
+                                    fallbackExtension = MimeTypeMap.getSingleton().getExtensionFromMimeType(validation.mimeType)
+                            )
+                    authorityTerminalCallback?.invoke(
+                            publishAttachmentToImages(
+                                    downloadId = preparation.downloadId,
+                                    owner = preparation.owner,
+                                    source = preparation.targetFile,
+                                    displayName = displayName,
+                                    mimeType = validation.mimeType,
+                                    width = validation.width,
+                                    height = validation.height,
+                                    cached = preparation.wasCached,
+                                    progressCallback =
+                                            if (trackProgress) {
+                                                { progress -> authorityProgressCallback?.invoke(progress) }
+                                            } else {
+                                                null
+                                            }
+                            )
+                    )
+                }
+            }
+        }
+    }
+
+    private fun cancelAttachmentExport(params: String?) {
+        val request = JSONObject(params ?: "{}")
+        val downloadId = request.optString("downloadId").takeIf(String::isNotBlank) ?: return
+        val operationId = request.optString("operationId").takeIf(String::isNotBlank) ?: return
+        val owner = request.attachmentOwnerLease() ?: return
+        val attemptToken = request.optString("attemptToken").takeIf(String::isNotBlank)
+        ProcessAndroidAttachmentExportAuthorities.cancelIfCurrent(owner, downloadId, operationId) {
+            (activity as? SlockKuiklyActivity)?.cancelLegacyGalleryPermission(downloadId, operationId, owner)
+            AttachmentDownloadCoordinator.control(downloadId, attemptToken, "cancel")
+            attachmentDownloadsExportCoordinator.control(downloadId, attemptToken, "cancel", owner)
+        }
+    }
+
     private fun attachmentDownloadOwnerChanged(params: String?) {
         val request = JSONObject(params ?: "{}")
         when (request.optString("action")) {
@@ -5456,6 +5674,138 @@ internal class SlockKuiklyBridgeModule(
             put("message", result.message)
             put("cached", true)
             put("sizeBytes", result.sizeBytes)
+            result.uri?.let { put("uri", it) }
+            result.fileName?.let { put("fileName", it) }
+            result.failurePhase?.let { put("phase", it) }
+        }
+    }
+
+    private fun publishAttachmentToImages(
+            downloadId: String,
+            owner: AndroidAttachmentOwnerLease,
+            source: File,
+            displayName: String,
+            mimeType: String,
+            width: Int,
+            height: Int,
+            cached: Boolean,
+            progressCallback: ((Map<String, Any>) -> Unit)?
+    ): Map<String, Any> {
+        val resolver = appContext.contentResolver
+        val mediaStoreRequestToken = UUID.randomUUID().toString().replace("-", "")
+        val result =
+                attachmentDownloadsExportCoordinator.export(
+                        request =
+                                AttachmentDownloadsExportRequest(
+                                        downloadId = downloadId,
+                                        source = source,
+                                        displayName = displayName,
+                                        mimeType = mimeType,
+                                        owner = owner
+                                ),
+                        backend =
+                                object : AttachmentDownloadsExportBackend {
+                                    override fun insert(displayName: String, mimeType: String): String? {
+                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                            val values = ContentValues()
+                                            values.put(
+                                                    MediaStore.MediaColumns.DISPLAY_NAME,
+                                                    pendingAttachmentMediaStoreDisplayName(mediaStoreRequestToken, displayName)
+                                            )
+                                            values.put(MediaStore.MediaColumns.RELATIVE_PATH, ANDROID_ATTACHMENT_IMAGES_RELATIVE_PATH)
+                                            values.put(MediaStore.MediaColumns.IS_PENDING, 1)
+                                            values.put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+                                            return resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)?.toString()
+                                        } else {
+                                            val directory =
+                                                    File(
+                                                            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
+                                                            "Raft"
+                                                    )
+                                            if (!directory.exists() && !directory.mkdirs()) return null
+                                            return insertLegacyAndroidGalleryImage(
+                                                    directory = directory,
+                                                    requestedDisplayName = displayName
+                                            ) { candidateName, candidatePath ->
+                                                val values = ContentValues().apply {
+                                                    put(MediaStore.MediaColumns.DISPLAY_NAME, candidateName)
+                                                    put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+                                                    @Suppress("DEPRECATION")
+                                                    put(MediaStore.Images.Media.DATA, candidatePath)
+                                                }
+                                                resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)?.toString()
+                                            }?.uri
+                                        }
+                                    }
+
+                                    override fun openOutput(uri: String) = resolver.openOutputStream(Uri.parse(uri), "w")
+
+                                    override fun publish(uri: String): Boolean {
+                                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return true
+                                        val values = ContentValues().apply {
+                                            put(MediaStore.MediaColumns.DISPLAY_NAME, displayName)
+                                            put(MediaStore.MediaColumns.IS_PENDING, 0)
+                                        }
+                                        return resolver.update(Uri.parse(uri), values, null, null) > 0
+                                    }
+
+                                    override fun deletePending(uri: String): Boolean {
+                                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+                                            return resolver.delete(Uri.parse(uri), null, null) > 0
+                                        }
+                                        return resolver.delete(
+                                                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                                                "${MediaStore.MediaColumns._ID} = ? AND " +
+                                                        "${MediaStore.MediaColumns.IS_PENDING} = ? AND " +
+                                                        "${MediaStore.MediaColumns.RELATIVE_PATH} IN (?, ?) AND " +
+                                                        "${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ?",
+                                                arrayOf(
+                                                        android.content.ContentUris.parseId(Uri.parse(uri)).toString(),
+                                                        "1",
+                                                        ANDROID_ATTACHMENT_IMAGES_RELATIVE_PATH,
+                                                        "$ANDROID_ATTACHMENT_IMAGES_RELATIVE_PATH/",
+                                                        "$ANDROID_ATTACHMENT_PENDING_NAME_PREFIX%"
+                                                )
+                                        ) > 0
+                                    }
+
+                                    override fun rowState(uri: String): AttachmentDownloadsRowState {
+                                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+                                            return runCatching {
+                                                        resolver.query(Uri.parse(uri), arrayOf(MediaStore.MediaColumns._ID), null, null, null)
+                                                            ?.use { if (it.moveToFirst()) AttachmentDownloadsRowState.Published else AttachmentDownloadsRowState.Missing }
+                                                            ?: AttachmentDownloadsRowState.Unknown
+                                                    }
+                                                    .getOrDefault(AttachmentDownloadsRowState.Unknown)
+                                        }
+                                        return runCatching {
+                                                    resolver.query(
+                                                            Uri.parse(uri),
+                                                            arrayOf(MediaStore.MediaColumns.IS_PENDING),
+                                                            null,
+                                                            null,
+                                                            null
+                                                    )?.use { cursor ->
+                                                        if (!cursor.moveToFirst()) return@use AttachmentDownloadsRowState.Missing
+                                                        val index = cursor.getColumnIndex(MediaStore.MediaColumns.IS_PENDING)
+                                                        if (index < 0) AttachmentDownloadsRowState.Unknown
+                                                        else if (cursor.getInt(index) == 1) AttachmentDownloadsRowState.Pending
+                                                        else AttachmentDownloadsRowState.Published
+                                                    } ?: AttachmentDownloadsRowState.Unknown
+                                                }
+                                                .getOrDefault(AttachmentDownloadsRowState.Unknown)
+                                    }
+                                },
+                        observer = { progress -> progressCallback?.invoke(progress.toAndroidBridgePayload()) }
+                )
+        return buildMap {
+            put("status", result.status)
+            put("message", if (result.status == "saved") "Saved to Photos" else result.message)
+            put("cached", cached)
+            put("sizeBytes", result.sizeBytes)
+            put("mimeType", mimeType)
+            put("pixelWidth", width)
+            put("pixelHeight", height)
             result.uri?.let { put("uri", it) }
             result.fileName?.let { put("fileName", it) }
             result.failurePhase?.let { put("phase", it) }

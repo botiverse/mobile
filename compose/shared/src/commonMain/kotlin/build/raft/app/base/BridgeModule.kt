@@ -41,6 +41,12 @@ internal enum class BridgeLogLevel(
 
 internal fun BridgeLogLevel.mirrorsToConsole(): Boolean = this != BridgeLogLevel.Debug
 
+private val bridgeAttachmentExportOperationSequence = atomic(0L)
+
+internal fun nextBridgeAttachmentExportOperationId(owner: AttachmentOwnerLease): String =
+    "${owner.principalKey.value}:${owner.scopeId}:${owner.generation}:" +
+        bridgeAttachmentExportOperationSequence.incrementAndGet()
+
 internal class BridgeModule : Module() {
     private val nextAttachmentDownloadId = atomic(0L)
 
@@ -440,6 +446,7 @@ internal class BridgeModule : Module() {
     ): JSONObject? =
         suspendCancellableCoroutine { continuation ->
             val resolvedDownloadId = attachmentDownloadId(owner, downloadId, attachmentId, fileName)
+            val exportOperationId = nextBridgeAttachmentExportOperationId(owner)
             var activeAttemptToken: String? = null
             val methodArgs = JSONObject()
             methodArgs.put("url", url)
@@ -447,6 +454,7 @@ internal class BridgeModule : Module() {
             methodArgs.put("fileName", fileName)
             methodArgs.put("trackProgress", onProgress != null)
             methodArgs.put("downloadId", resolvedDownloadId)
+            methodArgs.put("operationId", exportOperationId)
             methodArgs.putAttachmentOwner(owner)
             mimeType?.takeIf { it.isNotBlank() }?.let { methodArgs.put("mimeType", it) }
             var callbackRef: CallbackRef? = null
@@ -474,14 +482,21 @@ internal class BridgeModule : Module() {
                 )
             callbackRef = result.callbackRef
             continuation.invokeOnCancellation {
-                AttachmentDownloadCoordinator.control(
-                    downloadId = resolvedDownloadId,
-                    expectedAttemptToken = activeAttemptToken,
-                    action = "cancel"
-                )
+                activeAttemptToken?.takeIf(String::isNotBlank)?.let { attemptToken ->
+                    AttachmentDownloadCoordinator.control(
+                        downloadId = resolvedDownloadId,
+                        expectedAttemptToken = attemptToken,
+                        action = "cancel"
+                    )
+                }
                 callNativeMethod(
                     CANCEL_ATTACHMENT_EXPORT,
-                    JSONObject().apply { put("downloadId", resolvedDownloadId) },
+                    JSONObject().apply {
+                        put("downloadId", resolvedDownloadId)
+                        put("operationId", exportOperationId)
+                        putAttachmentOwner(owner)
+                        activeAttemptToken?.takeIf(String::isNotBlank)?.let { put("attemptToken", it) }
+                    },
                     null
                 )
                 callbackRef?.let { removeCallback(it) }
