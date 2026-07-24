@@ -16,11 +16,13 @@ import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
 import org.gradle.maven.MavenModule
 import org.gradle.maven.MavenPomArtifact
+import java.security.MessageDigest
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 import java.util.concurrent.TimeUnit
+import java.util.zip.ZipFile
 import javax.xml.parsers.DocumentBuilderFactory
 import org.w3c.dom.Element
 
@@ -30,7 +32,85 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
-val handsAndroidSdkVersion = "0.11.2"
+val handsAndroidSdkMetadataFile = layout.projectDirectory.file("../config/hands-android-sdk.json").asFile
+val handsAndroidSdkMetadata =
+    (JsonSlurper().parse(handsAndroidSdkMetadataFile) as? Map<*, *>)
+        ?: throw GradleException("Invalid Hands Android SDK metadata: $handsAndroidSdkMetadataFile")
+
+fun handsAndroidSdkMetadataString(key: String): String =
+    handsAndroidSdkMetadata[key]
+        ?.toString()
+        ?.trim()
+        ?.takeIf { it.isNotEmpty() }
+        ?: throw GradleException("Hands Android SDK metadata is missing '$key'")
+
+val handsAndroidSdkGroup = handsAndroidSdkMetadataString("group")
+val handsAndroidSdkArtifact = handsAndroidSdkMetadataString("artifact")
+val handsAndroidSdkVersion = handsAndroidSdkMetadataString("version")
+val handsAndroidSdkModule = "$handsAndroidSdkGroup:$handsAndroidSdkArtifact"
+val handsAndroidSdkCoordinate = "$handsAndroidSdkModule:$handsAndroidSdkVersion"
+val handsAndroidSdkSourceRepo = handsAndroidSdkMetadataString("sourceRepo")
+val handsAndroidSdkSourceCommit = handsAndroidSdkMetadataString("sourceCommit")
+val handsAndroidSdkSourceTag = handsAndroidSdkMetadataString("sourceTag")
+val handsAndroidSdkPublishRunId = handsAndroidSdkMetadataString("publishRunId")
+val handsAndroidSdkNativeSymbolsArtifactId = handsAndroidSdkMetadataString("nativeSymbolsArtifactId")
+val handsAndroidSdkAarSha256 = handsAndroidSdkMetadataString("aarSha256")
+val handsAndroidSdkNativeSymbolsSha256 = handsAndroidSdkMetadataString("nativeSymbolsSha256")
+
+if (handsAndroidSdkMetadata["schemaVersion"]?.toString() != "1") {
+    throw GradleException("Unsupported Hands Android SDK metadata schema")
+}
+if (handsAndroidSdkModule != "build.hands:hands-android-sdk") {
+    throw GradleException("Unsupported Hands Android SDK module: $handsAndroidSdkModule")
+}
+if (!handsAndroidSdkVersion.matches(Regex("[0-9]+\\.[0-9]+\\.[0-9]+"))) {
+    throw GradleException("Hands Android SDK version must be an exact SemVer release")
+}
+if (handsAndroidSdkSourceRepo != "https://github.com/botiverse/hands") {
+    throw GradleException("Unsupported Hands Android SDK source repository: $handsAndroidSdkSourceRepo")
+}
+if (!handsAndroidSdkSourceCommit.matches(Regex("[0-9a-f]{40}"))) {
+    throw GradleException("Hands Android SDK sourceCommit must be a full lowercase Git SHA")
+}
+if (handsAndroidSdkSourceTag != "android-sdk-v$handsAndroidSdkVersion") {
+    throw GradleException(
+        "Hands Android SDK sourceTag must match version: " +
+            "expected=android-sdk-v$handsAndroidSdkVersion actual=$handsAndroidSdkSourceTag"
+    )
+}
+if (!handsAndroidSdkPublishRunId.matches(Regex("[1-9][0-9]*")) ||
+    !handsAndroidSdkNativeSymbolsArtifactId.matches(Regex("[1-9][0-9]*"))
+) {
+    throw GradleException("Hands Android SDK publish run and symbols artifact IDs must be positive integers")
+}
+listOf(
+    "aarSha256" to handsAndroidSdkAarSha256,
+    "nativeSymbolsSha256" to handsAndroidSdkNativeSymbolsSha256
+).forEach { (key, value) ->
+    if (!value.matches(Regex("[0-9a-f]{64}"))) {
+        throw GradleException("Hands Android SDK $key must be a lowercase SHA-256")
+    }
+}
+
+fun java.io.File.sha256(): String {
+    val digest = MessageDigest.getInstance("SHA-256")
+    inputStream().buffered().use { input ->
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        while (true) {
+            val count = input.read(buffer)
+            if (count < 0) break
+            digest.update(buffer, 0, count)
+        }
+    }
+    return digest.digest().joinToString("") { byte -> "%02x".format(byte) }
+}
+
+val handsAndroidSdkAar by configurations.creating {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+    isTransitive = false
+}
+
 val handsNativeSymbols by configurations.creating {
     isCanBeConsumed = false
     isCanBeResolved = true
@@ -40,6 +120,65 @@ val handsNativeSymbols by configurations.creating {
 val copyHandsNativeSymbols by tasks.registering(Sync::class) {
     from(handsNativeSymbols)
     into(layout.buildDirectory.dir("outputs/hands-native-symbols"))
+    inputs.file(handsAndroidSdkMetadataFile).withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.files(handsAndroidSdkAar)
+
+    doLast {
+        val aars = handsAndroidSdkAar.files.filter { file -> file.isFile && file.extension == "aar" }
+        if (aars.size != 1) {
+            throw GradleException("Expected one Hands Android SDK AAR, found ${aars.map { it.name }}")
+        }
+        val actualAarSha256 = aars.single().sha256()
+        if (actualAarSha256 != handsAndroidSdkAarSha256) {
+            throw GradleException(
+                "Hands Android SDK AAR SHA-256 mismatch: " +
+                    "expected=$handsAndroidSdkAarSha256 actual=$actualAarSha256"
+            )
+        }
+
+        val archives = destinationDir.listFiles { file -> file.isFile && file.extension == "zip" }?.toList().orEmpty()
+        if (archives.size != 1) {
+            throw GradleException("Expected one Hands native-symbols ZIP, found ${archives.map { it.name }}")
+        }
+        val archive = archives.single()
+        val actualNativeSymbolsSha256 = archive.sha256()
+        if (actualNativeSymbolsSha256 != handsAndroidSdkNativeSymbolsSha256) {
+            throw GradleException(
+                "Hands native-symbols SHA-256 mismatch: " +
+                    "expected=$handsAndroidSdkNativeSymbolsSha256 actual=$actualNativeSymbolsSha256"
+            )
+        }
+
+        val manifest =
+            ZipFile(archive).use { zip ->
+                val entry = zip.getEntry("manifest.json")
+                    ?: throw GradleException("Hands native-symbols manifest.json is missing")
+                zip.getInputStream(entry).bufferedReader().use { reader ->
+                    JsonSlurper().parse(reader) as? Map<*, *>
+                }
+            } ?: throw GradleException("Hands native-symbols manifest.json is invalid")
+        val source = manifest["source"] as? Map<*, *>
+            ?: throw GradleException("Hands native-symbols source metadata is missing")
+        if (manifest["sdk_version"]?.toString() != handsAndroidSdkVersion) {
+            throw GradleException(
+                "Hands native-symbols SDK version mismatch: expected=$handsAndroidSdkVersion actual=${manifest["sdk_version"]}"
+            )
+        }
+        if (source["repo"]?.toString() != handsAndroidSdkSourceRepo ||
+            source["commit"]?.toString() != handsAndroidSdkSourceCommit
+        ) {
+            throw GradleException(
+                "Hands native-symbols source mismatch: expected=$handsAndroidSdkSourceRepo@$handsAndroidSdkSourceCommit " +
+                    "actual=${source["repo"]}@${source["commit"]}"
+            )
+        }
+        logger.lifecycle(
+            "Verified Hands Android SDK $handsAndroidSdkVersion native symbols: " +
+                "aar_sha256=$actualAarSha256 symbols_sha256=$actualNativeSymbolsSha256 " +
+                "source=$handsAndroidSdkSourceCommit publish_run=$handsAndroidSdkPublishRunId " +
+                "symbols_artifact=$handsAndroidSdkNativeSymbolsArtifactId"
+        )
+    }
 }
 
 val googleServicesConfigFiles =
@@ -463,7 +602,7 @@ val generateReleaseOssLicenses by tasks.registering(GenerateOssLicensesTask::cla
             "com.tencent.kuiklybase:resource-core-android",
             "com.tencent.kuikly-open:compose",
             "com.tencent.kuikly-open:compose-android",
-            "build.hands:hands-android-sdk"
+            handsAndroidSdkModule
         )
     )
     overridesFile.set(layout.projectDirectory.file("../config/oss-license-overrides.json"))
@@ -530,6 +669,8 @@ tasks.matching {
 }
 
 dependencies {
+    add(handsAndroidSdkAar.name, "$handsAndroidSdkCoordinate@aar")
+
     // Kuikly Compose shared module
     implementation(project(":shared"))
     runtimeOnly("com.tencent.kuiklybase:network-android-curl-runtime:0.1.0-raft.29")
@@ -558,8 +699,8 @@ dependencies {
     implementation(libs.googleid)
     implementation(libs.okhttp)
     implementation(libs.gson)
-    implementation("build.hands:hands-android-sdk:$handsAndroidSdkVersion")
-    add(handsNativeSymbols.name, "build.hands:hands-android-sdk:$handsAndroidSdkVersion:native-symbols@zip")
+    implementation(handsAndroidSdkCoordinate)
+    add(handsNativeSymbols.name, "$handsAndroidSdkCoordinate:native-symbols@zip")
     implementation(libs.socket.io.client)
     implementation(libs.androidsvg)
     implementation(libs.mmkv)
