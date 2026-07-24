@@ -59,17 +59,27 @@ class SlockRequestScheduler(
         priority: SlockRequestPriority,
         key: String? = null,
         reason: String? = null,
+        /**
+         * Per-request wall-clock override (task #788). Null keeps the ordinary
+         * [requestTimeoutMillis] bound. Streaming uploads pass a backstop that
+         * sits strictly above the transport's authoritative total budget so
+         * the two deadlines never race: the transport terminal always wins,
+         * and this bound only fires if the transport deadline machinery
+         * itself fails, guaranteeing the priority semaphore slot is
+         * reclaimed.
+         */
+        timeoutMillis: Long? = null,
         block: suspend () -> T
     ): T =
         if (!priorityGateEnabled) {
-            runDirect(priority, key, reason, block)
+            runDirect(priority, key, reason, timeoutMillis, block)
         } else {
             when (priority) {
                 SlockRequestPriority.Foreground ->
-                    runForegroundOrVisible(priority, key, reason, foregroundSemaphore, block)
+                    runForegroundOrVisible(priority, key, reason, foregroundSemaphore, timeoutMillis, block)
                 SlockRequestPriority.Visible ->
-                    runForegroundOrVisible(priority, key, reason, visibleSemaphore, block)
-                SlockRequestPriority.Background -> runBackground(priority, key, reason, block)
+                    runForegroundOrVisible(priority, key, reason, visibleSemaphore, timeoutMillis, block)
+                SlockRequestPriority.Background -> runBackground(priority, key, reason, timeoutMillis, block)
             }
         }
 
@@ -77,12 +87,13 @@ class SlockRequestScheduler(
         priority: SlockRequestPriority,
         key: String?,
         reason: String?,
+        timeoutMillis: Long?,
         block: suspend () -> T
     ): T {
         val startedAt = TimeSource.Monotonic.markNow()
         logStart(priority, key, reason, queuedMs = 0)
         try {
-            return runWithTimeout(priority, key, reason, block)
+            return runWithTimeout(priority, key, reason, timeoutMillis, block)
         } finally {
             logFinish(
                 priority = priority,
@@ -99,6 +110,7 @@ class SlockRequestScheduler(
         key: String?,
         reason: String?,
         semaphore: Semaphore,
+        timeoutMillis: Long?,
         block: suspend () -> T
     ): T {
         val queuedAt = TimeSource.Monotonic.markNow()
@@ -116,7 +128,7 @@ class SlockRequestScheduler(
             }
             startedAtMs = queuedAt.elapsedNow().inWholeMilliseconds
             logStart(priority, key, reason, startedAtMs)
-            return runWithTimeout(priority, key, reason, block)
+            return runWithTimeout(priority, key, reason, timeoutMillis, block)
         } finally {
             val finishedAtMs = queuedAt.elapsedNow().inWholeMilliseconds
             mutex.withLock {
@@ -143,6 +155,7 @@ class SlockRequestScheduler(
         priority: SlockRequestPriority,
         key: String?,
         reason: String?,
+        timeoutMillis: Long?,
         block: suspend () -> T
     ): T {
         val queuedAt = TimeSource.Monotonic.markNow()
@@ -157,7 +170,7 @@ class SlockRequestScheduler(
             startedAtMs = queuedAt.elapsedNow().inWholeMilliseconds
             logStart(priority, key, reason, startedAtMs)
             started = true
-            return runWithTimeout(priority, key, reason, block)
+            return runWithTimeout(priority, key, reason, timeoutMillis, block)
         } finally {
             val finishedAtMs = queuedAt.elapsedNow().inWholeMilliseconds
             if (started) {
@@ -179,16 +192,19 @@ class SlockRequestScheduler(
         priority: SlockRequestPriority,
         key: String?,
         reason: String?,
+        timeoutMillis: Long?,
         block: suspend () -> T
-    ): T =
-        try {
-            withTimeout(requestTimeoutMillis) { block() }
+    ): T {
+        val effectiveTimeoutMillis = timeoutMillis ?: requestTimeoutMillis
+        return try {
+            withTimeout(effectiveTimeoutMillis) { block() }
         } catch (timeout: TimeoutCancellationException) {
             throw SlockRequestTimeoutException(
-                "Raft request timed out after ${requestTimeoutMillis}ms " +
+                "Raft request timed out after ${effectiveTimeoutMillis}ms " +
                     "priority=$priority key=${key.orEmpty()} reason=${reason.orEmpty()}"
             )
         }
+    }
 
     private suspend fun waitForForegroundOrVisibleIdle(
         priority: SlockRequestPriority,

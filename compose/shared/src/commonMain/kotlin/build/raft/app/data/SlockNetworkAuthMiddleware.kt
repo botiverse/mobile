@@ -2,6 +2,14 @@ package build.raft.app.data
 
 import build.raft.app.model.ServerId
 
+/**
+ * task #788: declared ceiling for how many times [SlockNetworkAuthMiddleware]
+ * invokes the request block — the first attempt plus at most one retry after
+ * a 401 refresh (no loop exists in `request`). The streaming-upload scheduler
+ * backstop derives from this; a behavior test pins the implementation to it.
+ */
+internal const val SLOCK_AUTH_MAX_REQUEST_ATTEMPTS = 2
+
 internal class SlockNetworkAuthMiddleware(
     private val sessionStore: SlockAuthSessionStore,
     authApi: SlockAuthApi,
