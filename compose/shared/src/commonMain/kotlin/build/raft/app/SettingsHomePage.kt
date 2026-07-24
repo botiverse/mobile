@@ -11205,6 +11205,7 @@ private fun SharedQuiverFeedbackContent(
                     .background(SlockColor.SurfaceWhite)
         ) {
             ThreadComposerContent(
+                attachmentPreviewEnabled = false,
                 surface =
                     ThreadComposerSurface(
                         kind = KuiklyThreadSurfaceKind.Channel,

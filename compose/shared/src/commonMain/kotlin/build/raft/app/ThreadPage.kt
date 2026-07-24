@@ -11913,6 +11913,7 @@ private fun ThreadComposerContentWithSuggestions(
             )
         }
     ThreadComposerContent(
+        attachmentPreviewEnabled = true,
         surface = surface,
         state = renderedState,
         onEvent = onEvent,

@@ -602,6 +602,7 @@ internal fun ThreadComposerScreen() {
                 ) {
                     ThreadComposerContent(
                         payload = payload,
+                        attachmentPreviewEnabled = false,
                         onEvent = { action, _, _, attachmentId ->
                             bridge.log(
                                 "thread_composer_visual_event instanceId=${payload.instanceId} action=$action attachmentId=${attachmentId.orEmpty()}"
@@ -1032,6 +1033,7 @@ internal fun ThreadComposerContent(
     keyboardLiftBottomContentPadding: Dp? = null,
     composerSendKeyEnabled: Boolean = false,
     dismissKeyboardOnBlur: Boolean = false,
+    attachmentPreviewEnabled: Boolean,
     insertMentionRequest: ThreadComposerInsertMentionRequest? = null,
     onInsertMentionConsumed: (ThreadComposerInsertMentionRequest) -> Unit = {},
     onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit = {}
@@ -1051,6 +1053,7 @@ internal fun ThreadComposerContent(
         keyboardLiftBottomContentPadding = keyboardLiftBottomContentPadding,
         composerSendKeyEnabled = composerSendKeyEnabled,
         dismissKeyboardOnBlur = dismissKeyboardOnBlur,
+        attachmentPreviewEnabled = attachmentPreviewEnabled,
         insertMentionRequest = insertMentionRequest,
         onInsertMentionConsumed = onInsertMentionConsumed,
         onSuggestionDemandChanged = onSuggestionDemandChanged
@@ -1070,6 +1073,7 @@ internal fun ThreadComposerContent(
     keyboardLiftBottomContentPadding: Dp? = null,
     composerSendKeyEnabled: Boolean = false,
     dismissKeyboardOnBlur: Boolean = false,
+    attachmentPreviewEnabled: Boolean,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     insertMentionRequest: ThreadComposerInsertMentionRequest? = null,
     onInsertMentionConsumed: (ThreadComposerInsertMentionRequest) -> Unit = {},
@@ -1453,7 +1457,8 @@ internal fun ThreadComposerContent(
             if (state.pendingAttachments.isNotEmpty()) {
                 ComposerAttachmentTray(
                     attachments = state.pendingAttachments,
-                    enabled = state.enabled
+                    enabled = state.enabled,
+                    previewEnabled = state.enabled && attachmentPreviewEnabled
                 ) { action, attachmentId ->
                     onEvent(action, null, null, attachmentId)
                 }
@@ -2609,6 +2614,7 @@ private fun PendingMentionActionRow(
 private fun ComposerAttachmentTray(
     attachments: List<KuiklyPendingAttachmentItem>,
     enabled: Boolean,
+    previewEnabled: Boolean,
     onEvent: (action: String, attachmentId: String) -> Unit
 ) {
     Column(
@@ -2624,6 +2630,7 @@ private fun ComposerAttachmentTray(
                     ComposerAttachmentPreviewChip(
                         attachment = attachment,
                         enabled = enabled,
+                        previewEnabled = previewEnabled,
                         onPreview = { onEvent("previewAttachment", attachment.id) },
                         onRemove = { onEvent("removeAttachment", attachment.id) },
                         onRetry = { onEvent("retryAttachments", attachment.id) }
@@ -2638,6 +2645,7 @@ private fun ComposerAttachmentTray(
 private fun ComposerAttachmentPreviewChip(
     attachment: KuiklyPendingAttachmentItem,
     enabled: Boolean,
+    previewEnabled: Boolean,
     onPreview: () -> Unit,
     onRemove: () -> Unit,
     onRetry: () -> Unit
@@ -2646,19 +2654,19 @@ private fun ComposerAttachmentPreviewChip(
     val isUploading = attachment.status != "ready" && !isFailed
     val isImage = attachment.isComposerImageAttachment()
     val imagePreviewUri = attachment.previewUri?.takeIf { it.isNotBlank() }
-    val previewEnabled = attachment.canOpenComposerAttachmentPreview(enabled)
+    val canPreview = attachment.canOpenComposerAttachmentPreview(previewEnabled)
     Box(modifier = Modifier.width(attachment.composerAttachmentPreviewWidthDp().dp).height(ThreadComposerAttachmentTileSize)) {
         if (isImage) {
             ComposerImageAttachmentPreview(
                 attachment = attachment,
                 imagePreviewUri = imagePreviewUri,
-                previewEnabled = previewEnabled,
+                previewEnabled = canPreview,
                 onPreview = onPreview
             )
         } else {
             ComposerFileAttachmentPreview(
                 attachment = attachment,
-                previewEnabled = previewEnabled,
+                previewEnabled = canPreview,
                 onPreview = onPreview
             )
         }
