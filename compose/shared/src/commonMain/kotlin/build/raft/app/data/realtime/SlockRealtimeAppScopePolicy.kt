@@ -10,6 +10,17 @@ import build.raft.app.model.ServerId
 
 object SlockRealtimeNotifyContract {
     const val EventName = GeneratedRealtimeContract.Notify.EventName
+
+    /**
+     * task #354: raw server realtime events (the potentially multi-MiB
+     * fanout) travel on this dedicated topic to the single canonical
+     * AppShell/store ingest listener only. Page surfaces keep observing
+     * [EventName] for the small lifecycle/action signals, so a large event
+     * is decoded exactly once instead of once per open page (the Kuikly
+     * bridge parses per listener). Only the Android host publishes here;
+     * iOS/OHOS ingress keeps posting raw events on [EventName].
+     */
+    const val RawIngestEventName = GeneratedRealtimeContract.Notify.EventName + ".rawIngest"
     const val RoomsEventName = GeneratedRealtimeContract.Notify.RoomsEventName
     const val ActionJoinChannel = GeneratedRealtimeContract.RoomAction.JoinChannel
     const val ActionLeaveChannel = GeneratedRealtimeContract.RoomAction.LeaveChannel

@@ -97,8 +97,12 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
         eventName: String,
         rawPayload: String
     ) {
+        // task #354: raw server events (potentially multi-MiB) go to the
+        // dedicated ingest topic consumed only by the canonical AppShell
+        // store owner, so a large payload is decoded once instead of once
+        // per open page. Lifecycle/action signals keep the broadcast topic.
         postAndroidAppScopeEvent(
-            eventName = SlockRealtimeNotifyContract.EventName,
+            eventName = SlockRealtimeNotifyContract.RawIngestEventName,
             eventData = realtimeNotifyPayload(serverId, witness, eventName, rawPayload)
         )
     }
