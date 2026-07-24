@@ -8,7 +8,9 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import build.raft.app.base.Utils
+import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.data.AppLocale
 import build.raft.app.data.KeyValueLocalePreferenceStore
@@ -17,57 +19,177 @@ import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.data.SharedSettingsViewModel
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.slockSharedPreferenceStore
+import build.raft.app.resources.MR
 import com.tencent.kuikly.compose.foundation.background
+import com.tencent.kuikly.compose.foundation.border
+import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
+import com.tencent.kuikly.compose.foundation.layout.BoxWithConstraints
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
+import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.padding
+import com.tencent.kuikly.compose.foundation.layout.size
+import com.tencent.kuikly.compose.material3.Text
+import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.draw.alpha
-import com.tencent.kuikly.compose.ui.graphics.Color
+import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
+import com.tencent.kuikly.compose.ui.layout.positionInRoot
+import com.tencent.kuikly.compose.ui.Alignment
+import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
+import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.module.RouterModule
+import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.Pager
 import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
+import com.tencent.tmm.kmmresource.compose.stringResource
 
-/**
- * Product-specific parameters for a standalone Settings Web surface. Route/pageData continues to
- * carry only shell identity; canonical environment, auth, and product state are resolved by the
- * shared host from the shell stores.
- */
-internal data class StandaloneSettingsWebViewSpec(
-    val surface: SettingsWebViewSurface,
-    val destination: SharedSettingsDestination,
-    val backgroundColor: Color,
-    val includeLocaleQuery: Boolean = false,
-    val coverUntilContentCommit: Boolean = false,
-    val allowedNavigationSchemes: Set<String> = emptySet(),
-    val bottomContentPadding: Dp = 0.dp,
-    val buildWebUrl: (webBaseUrl: String?, session: StoredAuthSession?, localeTag: String) -> String,
-)
+const val SETTINGS_WEB_VIEW_PAGE = "compose_settings_webview"
+internal const val SETTINGS_WEB_VIEW_SURFACE = "settingsWebViewSurface"
+internal const val SETTINGS_WEB_VIEW_VERSION_CODE = "versionCode"
 
-/**
- * Shared native page shell for Computers, Billing, Marketplace, and Administration.
- *
- * The header is committed on the first frame and the heavier store/WebView body is attached on the
- * next frame. This keeps the native header stable while the native WebView is created.
- */
-@Composable
-internal fun StandaloneSettingsWebViewPage(
-    pager: Pager,
-    title: String,
-    iconName: SlockLucideIconName,
-    spec: StandaloneSettingsWebViewSpec,
-    loadingContent: @Composable () -> Unit,
+@Page(SETTINGS_WEB_VIEW_PAGE, supportInLocal = true)
+internal class ComposeSettingsWebViewPage : build.raft.app.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { SettingsWebViewScreen() }
+    }
+}
+
+internal fun settingsWebViewPageData(
+    surface: SettingsWebViewSurface,
+    storeScope: build.raft.app.data.SlockShellStoreScope,
+    versionCode: String = "",
+): JSONObject =
+    JSONObject().apply {
+        put("pageName", SETTINGS_WEB_VIEW_PAGE)
+        put(SETTINGS_WEB_VIEW_SURFACE, surface.diagnosticsName)
+        put(SLOCK_SHELL_INSTANCE_ID, storeScope.shellInstanceId)
+        storeScope.initialServerId?.let { put(SLOCK_SHELL_SERVER_ID, it) }
+        if (surface == SettingsWebViewSurface.ReleaseNotes) {
+            releaseNotesSanitizeVersionCode(versionCode).takeIf { it.isNotBlank() }?.let {
+                put(SETTINGS_WEB_VIEW_VERSION_CODE, it)
+            }
+        }
+    }
+
+internal fun settingsWebViewSurfaceFromPageData(params: JSONObject): SettingsWebViewSurface? {
+    val surfaceName = params.optString(SETTINGS_WEB_VIEW_SURFACE).trim()
+    return SettingsWebViewSurface.entries.firstOrNull { it.diagnosticsName == surfaceName }
+}
+
+internal fun Pager.openSettingsWebViewPage(
+    surface: SettingsWebViewSurface,
+    storeScope: build.raft.app.data.SlockShellStoreScope,
+    versionCode: String = "",
 ) {
-    var bodyReady by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { bodyReady = true }
-    Column(modifier = Modifier.fillMaxSize().background(spec.backgroundColor)) {
+    acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
+        SETTINGS_WEB_VIEW_PAGE,
+        settingsWebViewPageData(surface, storeScope, versionCode),
+    )
+}
+
+internal enum class SettingsWebViewBackAction {
+    NavigateWebHistory,
+    ClosePage,
+}
+
+internal fun settingsWebViewBackAction(canGoBack: Boolean): SettingsWebViewBackAction =
+    if (canGoBack) SettingsWebViewBackAction.NavigateWebHistory else SettingsWebViewBackAction.ClosePage
+
+internal fun performSettingsWebViewBack(
+    canGoBack: Boolean,
+    goBack: () -> Unit,
+    closePage: () -> Unit,
+): SettingsWebViewBackAction =
+    settingsWebViewBackAction(canGoBack).also { action ->
+        when (action) {
+            SettingsWebViewBackAction.NavigateWebHistory -> goBack()
+            SettingsWebViewBackAction.ClosePage -> closePage()
+        }
+    }
+
+internal enum class SettingsWebViewPresentation {
+    LoadingCover,
+    Error,
+    Content,
+}
+
+internal fun settingsWebViewPresentation(
+    contentVisible: Boolean,
+    hasLoadError: Boolean,
+): SettingsWebViewPresentation =
+    when {
+        hasLoadError -> SettingsWebViewPresentation.Error
+        contentVisible -> SettingsWebViewPresentation.Content
+        else -> SettingsWebViewPresentation.LoadingCover
+    }
+
+@Composable
+private fun SettingsWebViewScreen() {
+    RememberKmmResourceLocaleSeedFromLocalActivity()
+    val pager = LocalActivity.current.getPager() as Pager
+    val surface =
+        remember(pager.pageData.params) {
+            settingsWebViewSurfaceFromPageData(pager.pageData.params)
+        }
+    when (surface) {
+        SettingsWebViewSurface.Computers ->
+            StandaloneSettingsWebViewPage(
+                pager = pager,
+                title = stringResource(MR.strings.settings_computers_title),
+                iconName = SlockLucideIconName.Monitor,
+                spec = settingsComputersWebViewSpec,
+            )
+        SettingsWebViewSurface.Billing ->
+            StandaloneSettingsWebViewPage(
+                pager = pager,
+                title = stringResource(MR.strings.settings_billing_title),
+                iconName = SlockLucideIconName.CreditCard,
+                spec = settingsBillingWebViewSpec,
+            )
+        SettingsWebViewSurface.Marketplace ->
+            StandaloneSettingsWebViewPage(
+                pager = pager,
+                title = stringResource(MR.strings.settings_connected_apps_title),
+                iconName = SlockLucideIconName.Link2,
+                spec = settingsMarketplaceWebViewSpec,
+            )
+        SettingsWebViewSurface.Administration ->
+            StandaloneSettingsWebViewPage(
+                pager = pager,
+                title = stringResource(MR.strings.settings_server_administration_title),
+                iconName = SlockLucideIconName.Shield,
+                spec = settingsAdministrationWebViewSpec,
+            )
+        SettingsWebViewSurface.ReleaseNotes ->
+            SettingsWebViewPageScaffold(
+                pager = pager,
+                surface = SettingsWebViewSurface.ReleaseNotes,
+                title = stringResource(MR.strings.release_notes_title),
+                iconName = SlockLucideIconName.FileText,
+            ) { controller, onNavigationStateChange ->
+                ReleaseNotesSettingsWebViewBody(
+                    pager = pager,
+                    launchVersionCode = releaseNotesVersionCodeFromPageData(pager.pageData.params),
+                    controller = controller,
+                    onNavigationStateChange = onNavigationStateChange,
+                )
+            }
+        null -> SettingsWebViewInvalidRoute(pager)
+    }
+}
+
+@Composable
+private fun SettingsWebViewInvalidRoute(pager: Pager) {
+    Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceCream)) {
         SlockTopPageHeader(
-            title = title,
-            iconName = iconName,
+            title = stringResource(MR.strings.settings_title),
+            iconName = SlockLucideIconName.Settings,
             backgroundColor = SlockColor.SurfaceWhite,
             leadingContent = {
                 SlockBrutalIconButton(
@@ -78,21 +200,115 @@ internal fun StandaloneSettingsWebViewPage(
                 )
             },
         )
+        SettingsWebViewErrorContent(
+            actionLabel = stringResource(MR.strings.common_close),
+            actionIcon = SlockLucideIconName.X,
+            onAction = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() },
+        )
+    }
+}
+
+/**
+ * Product-specific parameters for a standalone Settings Web surface. Route/pageData continues to
+ * carry only shell identity; canonical environment, auth, and product state are resolved by the
+ * shared host from the shell stores.
+ */
+internal data class StandaloneSettingsWebViewSpec(
+    val surface: SettingsWebViewSurface,
+    val destination: SharedSettingsDestination,
+    val includeLocaleQuery: Boolean = false,
+    val allowedNavigationSchemes: Set<String> = setOf("http", "https"),
+    val bottomContentPadding: Dp = 0.dp,
+    val buildWebUrl: (webBaseUrl: String?, session: StoredAuthSession?, localeTag: String) -> String,
+)
+
+/**
+ * Shared native page shell for every Settings Web surface, including Release Notes.
+ *
+ * The header is committed on the first frame and the heavier store/WebView body is attached on the
+ * next frame. This keeps the native header stable while the native WebView is created.
+ */
+@Composable
+internal fun StandaloneSettingsWebViewPage(
+    pager: Pager,
+    title: String,
+    iconName: SlockLucideIconName,
+    spec: StandaloneSettingsWebViewSpec,
+) {
+    SettingsWebViewPageScaffold(
+        pager = pager,
+        surface = spec.surface,
+        title = title,
+        iconName = iconName,
+    ) { controller, onNavigationStateChange ->
+        StandaloneSettingsWebViewBody(
+            pager = pager,
+            spec = spec,
+            controller = controller,
+            onNavigationStateChange = onNavigationStateChange,
+        )
+    }
+}
+
+@Composable
+internal fun SettingsWebViewPageScaffold(
+    pager: Pager,
+    surface: SettingsWebViewSurface,
+    title: String,
+    iconName: SlockLucideIconName,
+    content: @Composable (
+        controller: SlockWebViewController,
+        onNavigationStateChange: (SlockWebViewNavigationState) -> Unit,
+    ) -> Unit,
+) {
+    var bodyReady by remember { mutableStateOf(false) }
+    val webViewController = rememberSlockWebViewController()
+    var navigationState by remember { mutableStateOf(SlockWebViewNavigationState()) }
+    LaunchedEffect(Unit) { bodyReady = true }
+
+    fun closePage() {
+        pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
+    }
+
+    fun goBackOrClose() {
+        performSettingsWebViewBack(
+            canGoBack = navigationState.canGoBack,
+            goBack = webViewController::goBack,
+            closePage = ::closePage,
+        )
+    }
+
+    SlockBackHandler(
+        enabled = true,
+        label = "settings_webview_${surface.diagnosticsName}",
+        onBack = ::goBackOrClose,
+    )
+
+    Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceCream)) {
+        SlockTopPageHeader(
+            title = title,
+            iconName = iconName,
+            backgroundColor = SlockColor.SurfaceWhite,
+            leadingContent = {
+                SlockBrutalIconButton(
+                    iconName = SlockLucideIconName.ArrowLeft,
+                    onClick = ::goBackOrClose,
+                    size = 30.dp,
+                    shadowOffset = 2.dp,
+                )
+            },
+        )
         Box(
             modifier =
                 Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .background(spec.backgroundColor),
+                    .background(SlockColor.SurfaceCream),
         ) {
             if (bodyReady) {
-                StandaloneSettingsWebViewBody(
-                    pager = pager,
-                    spec = spec,
-                    loadingContent = loadingContent,
-                )
+                content(webViewController) { navigationState = it }
             } else {
-                loadingContent()
+                SettingsWebViewLoadingCover()
             }
         }
     }
@@ -102,7 +318,8 @@ internal fun StandaloneSettingsWebViewPage(
 private fun StandaloneSettingsWebViewBody(
     pager: Pager,
     spec: StandaloneSettingsWebViewSpec,
-    loadingContent: @Composable () -> Unit,
+    controller: SlockWebViewController,
+    onNavigationStateChange: (SlockWebViewNavigationState) -> Unit,
 ) {
     val bridge = Utils.bridgeModule(pager.pagerId)
     val sharedStores = remember(bridge) { build.raft.app.data.SlockSharedStoreRegistry.get(bridge) }
@@ -112,7 +329,6 @@ private fun StandaloneSettingsWebViewBody(
             sharedStores.authStore(environment.storeScope)
         }
     val authSnapshot = rememberSettingsWebViewAuthSnapshot(authStore, sharedStores.authStore)
-    val webViewController = rememberSlockWebViewController()
     val settingsViewModel: SharedSettingsViewModel =
         viewModel(key = "standalone-settings-${spec.surface.diagnosticsName}") {
             SharedSettingsViewModel(environment.dataSource)
@@ -127,7 +343,7 @@ private fun StandaloneSettingsWebViewBody(
         authSnapshot = authSnapshot,
         webBaseUrl = environment.webBaseUrl,
         spec = spec,
-        controller = webViewController,
+        controller = controller,
         accessTokenSyncLogger = bridge::log,
         onUrlChange = { url ->
             bridge.log("settings_${spec.surface.diagnosticsName}_webview_url_changed url=$url")
@@ -135,7 +351,7 @@ private fun StandaloneSettingsWebViewBody(
         onLoadFailure = { reason ->
             bridge.log("settings_${spec.surface.diagnosticsName}_webview_load_failure reason=$reason")
         },
-        loadingContent = loadingContent,
+        onNavigationStateChange = onNavigationStateChange,
     )
 }
 
@@ -150,7 +366,6 @@ internal fun StandaloneSettingsWebViewContent(
     onLoadFailure: (String) -> Unit = {},
     onNavigationStateChange: (SlockWebViewNavigationState) -> Unit = {},
     accessTokenSyncLogger: (String) -> Unit = {},
-    loadingContent: @Composable () -> Unit,
 ) {
     val session = authSnapshot.session
     val localeTag = rememberStandaloneSettingsLocaleTag(spec.includeLocaleQuery)
@@ -163,46 +378,26 @@ internal fun StandaloneSettingsWebViewContent(
         remember(spec.surface, session, hostAuthBinding) {
             standaloneSettingsWebViewInjectedJavaScript(session, hostAuthBinding, spec.surface)
         }
-    var contentVisible by remember(webUrl, hostAuthBinding?.webViewGeneration) { mutableStateOf(false) }
-    var navigationState by
-        remember(webUrl, hostAuthBinding?.webViewGeneration) {
-            mutableStateOf(SlockWebViewNavigationState())
-        }
-    val documentReady = contentVisible && !navigationState.isLoading && navigationState.progress >= 100
+    var documentReady by remember(webUrl, hostAuthBinding?.webViewGeneration) { mutableStateOf(false) }
 
     if (session == null) {
-        loadingContent()
+        SettingsWebViewLoadingCover()
         return
     }
 
-    Box(modifier = modifier.fillMaxSize().background(spec.backgroundColor)) {
-        key(hostAuthBinding?.webViewGeneration) {
-            SlockWebView(
-                url = webUrl,
-                modifier =
-                    Modifier
-                        .fillMaxSize()
-                        .background(spec.backgroundColor)
-                        .padding(bottom = spec.bottomContentPadding)
-                        .alpha(if (!spec.coverUntilContentCommit || contentVisible) 1f else 0f),
-                allowNavigation = true,
-                allowedNavigationSchemes = spec.allowedNavigationSchemes,
-                domStorageEnabled = true,
-                cacheEnabled = true,
-                ephemeral = false,
-                injectedJavaScript = injectedJavaScript,
-                controller = controller,
-                onLoadSuccess = { contentVisible = true },
-                onUrlChange = onUrlChange,
-                onLoadFailure = onLoadFailure,
-                onNavigationStateChange = { state ->
-                    navigationState = state
-                    onNavigationStateChange(state)
-                },
-            )
-        }
-        if (spec.coverUntilContentCommit && !contentVisible) loadingContent()
-    }
+    SettingsWebViewContent(
+        url = webUrl,
+        modifier = modifier,
+        allowedNavigationSchemes = spec.allowedNavigationSchemes,
+        bottomContentPadding = spec.bottomContentPadding,
+        injectedJavaScript = injectedJavaScript,
+        controller = controller,
+        generationKey = hostAuthBinding?.webViewGeneration,
+        onUrlChange = onUrlChange,
+        onLoadFailure = onLoadFailure,
+        onNavigationStateChange = onNavigationStateChange,
+        onDocumentReadyChange = { documentReady = it },
+    )
 
     SettingsWebViewAccessTokenSyncEffect(
         snapshot = authSnapshot,
@@ -213,6 +408,167 @@ internal fun StandaloneSettingsWebViewContent(
         logger = accessTokenSyncLogger,
     )
 }
+
+/**
+ * The only production WebView renderer used by standalone Settings surfaces.
+ *
+ * It owns the measured native-view attach gate, opaque cream cover, commit-ready transition,
+ * failure/retry state, and navigation callbacks. Surface pages may provide identity/configuration,
+ * but cannot change this first-frame sequence.
+ */
+@Composable
+internal fun SettingsWebViewContent(
+    url: String,
+    modifier: Modifier = Modifier,
+    allowedNavigationSchemes: Set<String> = setOf("http", "https"),
+    bottomContentPadding: Dp = 0.dp,
+    injectedJavaScript: String = "",
+    controller: SlockWebViewController = rememberSlockWebViewController(),
+    generationKey: Any? = null,
+    onLoadSuccess: () -> Unit = {},
+    onUrlChange: (String) -> Unit = {},
+    onLoadFailure: (String) -> Unit = {},
+    onNavigationStateChange: (SlockWebViewNavigationState) -> Unit = {},
+    onDocumentReadyChange: (Boolean) -> Unit = {},
+) {
+    var reloadKey by remember(url, generationKey) { mutableStateOf(0) }
+    var contentVisible by remember(url, generationKey, reloadKey) { mutableStateOf(false) }
+    var loadError by remember(url, generationKey, reloadKey) { mutableStateOf<String?>(null) }
+    var navigationState by
+        remember(url, generationKey, reloadKey) {
+            mutableStateOf(SlockWebViewNavigationState(url = url, isLoading = true))
+        }
+    var bodyFrameReady by remember(url, generationKey, reloadKey) { mutableStateOf(false) }
+    var webViewAttachReady by remember(url, generationKey, reloadKey) { mutableStateOf(false) }
+    val documentReady = contentVisible && !navigationState.isLoading && navigationState.progress >= 100
+
+    LaunchedEffect(documentReady) { onDocumentReadyChange(documentReady) }
+    LaunchedEffect(bodyFrameReady, url, generationKey, reloadKey) {
+        if (!bodyFrameReady) {
+            webViewAttachReady = false
+            return@LaunchedEffect
+        }
+        repeat(SETTINGS_WEB_VIEW_ATTACH_DELAY_FRAMES) { withFrameNanos { } }
+        webViewAttachReady = true
+    }
+
+    BoxWithConstraints(
+        modifier =
+            modifier
+                .fillMaxSize()
+                .background(SlockColor.SurfaceCream)
+                .onGloballyPositioned { coordinates ->
+                    bodyFrameReady =
+                        settingsWebViewFrameIsReady(
+                            positionY = coordinates.positionInRoot().y,
+                            width = coordinates.size.width,
+                            height = coordinates.size.height,
+                        )
+                },
+    ) {
+        // Native WebViews apply their own bottom safe-area inset. Extend the shared frame so that
+        // inset falls outside the visible slot instead of exposing a second background strip.
+        val webViewHeight = maxHeight + slockBottomSafeAreaPadding()
+        if (webViewAttachReady) {
+            key(generationKey, reloadKey, url) {
+                SlockWebView(
+                    url = url,
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .height(webViewHeight)
+                            .background(SlockColor.SurfaceCream)
+                            .padding(bottom = bottomContentPadding)
+                            .alpha(if (contentVisible) 1f else 0f),
+                    allowNavigation = true,
+                    allowedNavigationSchemes = allowedNavigationSchemes,
+                    domStorageEnabled = true,
+                    cacheEnabled = true,
+                    ephemeral = false,
+                    injectedJavaScript = injectedJavaScript,
+                    controller = controller,
+                    onLoadSuccess = {
+                        loadError = null
+                        contentVisible = true
+                        onLoadSuccess()
+                    },
+                    onUrlChange = onUrlChange,
+                    onLoadFailure = { reason ->
+                        contentVisible = false
+                        loadError = reason
+                        onLoadFailure(reason)
+                    },
+                    onNavigationStateChange = { state ->
+                        navigationState = state
+                        onNavigationStateChange(state)
+                    },
+                )
+            }
+        }
+        when (settingsWebViewPresentation(contentVisible, loadError != null)) {
+            SettingsWebViewPresentation.Error ->
+                SettingsWebViewErrorContent(
+                    actionLabel = stringResource(MR.strings.common_retry),
+                    actionIcon = SlockLucideIconName.RefreshCw,
+                    onAction = { reloadKey += 1 },
+                )
+            SettingsWebViewPresentation.LoadingCover -> SettingsWebViewLoadingCover()
+            SettingsWebViewPresentation.Content -> Unit
+        }
+    }
+}
+
+@Composable
+internal fun SettingsWebViewLoadingCover() {
+    Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceCream))
+}
+
+@Composable
+private fun SettingsWebViewErrorContent(
+    actionLabel: String,
+    actionIcon: SlockLucideIconName,
+    onAction: () -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceCream).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .size(52.dp)
+                    .background(SlockColor.BrandYellow)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack),
+            contentAlignment = Alignment.Center,
+        ) {
+            SlockLucideIcon(SlockLucideIconName.TriangleAlert, modifier = Modifier.size(26.dp))
+        }
+        Text(
+            stringResource(MR.strings.settings_webview_error_title),
+            style = SlockType.PageTitle.copy(color = SlockColor.TextBlack),
+            color = SlockColor.TextBlack,
+        )
+        Text(
+            stringResource(MR.strings.settings_webview_error_body),
+            style = SlockType.Body.copy(color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray,
+        )
+        SlockBrutalActionButton(
+            label = actionLabel,
+            onClick = onAction,
+            leadingIcon = actionIcon,
+            backgroundColor = SlockColor.SurfaceWhite,
+        )
+    }
+}
+
+internal fun settingsWebViewFrameIsReady(
+    positionY: Float,
+    width: Int,
+    height: Int,
+): Boolean = positionY > 0f && width > 0 && height > 0
+
+private const val SETTINGS_WEB_VIEW_ATTACH_DELAY_FRAMES = 2
 
 @Composable
 private fun rememberStandaloneSettingsLocaleTag(enabled: Boolean): String =

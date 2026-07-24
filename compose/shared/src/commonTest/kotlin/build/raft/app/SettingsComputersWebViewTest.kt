@@ -52,7 +52,8 @@ class SettingsComputersWebViewTest {
                 )
             )
 
-        assertEquals(SETTINGS_COMPUTERS_PAGE, pageData.optString("pageName"))
+        assertEquals(SETTINGS_WEB_VIEW_PAGE, pageData.optString("pageName"))
+        assertEquals("computers", pageData.optString(SETTINGS_WEB_VIEW_SURFACE))
         assertEquals("shell-computers", pageData.optString(SLOCK_SHELL_INSTANCE_ID))
         assertEquals("server-1", pageData.optString(SLOCK_SHELL_SERVER_ID))
         assertFalse(pageData.has("payload"))

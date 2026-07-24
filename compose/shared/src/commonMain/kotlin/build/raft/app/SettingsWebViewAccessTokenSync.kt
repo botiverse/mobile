@@ -21,6 +21,7 @@ internal enum class SettingsWebViewSurface(val diagnosticsName: String) {
     Billing("billing"),
     Marketplace("marketplace"),
     Administration("administration"),
+    ReleaseNotes("release-notes"),
 }
 
 internal data class SettingsWebViewAuthSnapshot(
