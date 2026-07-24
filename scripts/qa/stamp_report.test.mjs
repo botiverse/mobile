@@ -6,7 +6,11 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 
 test("review agent fails closed on an invalid frozen timeout before any network call", () => {
-  const env = {
+  // Every spawn runs in (and writes its record to) a throwaway directory so
+  // the real agent entry can never leave artifacts in the repo tree.
+  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "review-agent-timeout-"));
+  const agentPath = new URL("./review_agent.mjs", import.meta.url).pathname;
+  const baseEnv = {
     ...process.env,
     STAMP_RUN_ID: "run-x",
     STAMP_REVIEWER: "agent-review-1",
@@ -16,31 +20,46 @@ test("review agent fails closed on an invalid frozen timeout before any network 
     PI_PROVIDER: "minimax",
     PI_MODEL: "MiniMax-M3",
   };
-  for (const bad of ["abc", "-1", "0", "59999", "1800001", "600000.5"]) {
-    let failed = false;
-    try {
-      execFileSync(process.execPath, [new URL("./review_agent.mjs", import.meta.url).pathname], {
-        env: { ...env, PI_REVIEW_TIMEOUT_MS: bad },
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "pipe"],
-      });
-    } catch (error) {
-      failed = true;
-      assert.match(String(error.stderr), /PI_REVIEW_TIMEOUT_MS must be an integer in \[60000, 1800000\]/);
-    }
-    assert.ok(failed, `PI_REVIEW_TIMEOUT_MS=${bad} must fail closed`);
-  }
-  // The valid default path must get PAST timeout validation (it then fails on
-  // the unreachable Stamp URL, not on the timeout gate).
-  let out = "";
-  try {
-    execFileSync(process.execPath, [new URL("./review_agent.mjs", import.meta.url).pathname], {
-      env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 30000,
+  const spawnAgent = (overrides, name) =>
+    execFileSync(process.execPath, [agentPath], {
+      cwd: scratch,
+      env: { ...baseEnv, STAMP_REVIEW_OUT: path.join(scratch, name), ...overrides },
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: 30000,
     });
-  } catch (error) {
-    out = String(error.stderr);
+  try {
+    for (const bad of ["abc", "-1", "0", "59999", "1800001", "600000.5"]) {
+      let failed = false;
+      try {
+        spawnAgent({ PI_REVIEW_TIMEOUT_MS: bad }, `bad-${bad}.json`);
+      } catch (error) {
+        failed = true;
+        assert.match(String(error.stderr), /PI_REVIEW_TIMEOUT_MS must be an integer in \[60000, 1800000\]/);
+      }
+      assert.ok(failed, `PI_REVIEW_TIMEOUT_MS=${bad} must fail closed`);
+    }
+    // The valid default path must get PAST timeout validation (it then fails
+    // on the unreachable Stamp URL, not on the timeout gate).
+    let out = "";
+    try {
+      spawnAgent({}, "control.json");
+    } catch (error) {
+      out = String(error.stderr);
+    }
+    assert.doesNotMatch(out, /PI_REVIEW_TIMEOUT_MS/);
+  } finally {
+    fs.rmSync(scratch, { recursive: true, force: true });
   }
-  assert.doesNotMatch(out, /PI_REVIEW_TIMEOUT_MS/);
+  // Repo tree must stay artifact-free after exercising the real agent entry.
+  const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "..");
+  for (const dir of [repoRoot, path.join(repoRoot, "scripts", "qa")]) {
+    assert.deepEqual(
+      fs.readdirSync(dir).filter((f) => /^panel-review-.*\.json$/.test(f)),
+      [],
+      `stray review records in ${dir}`,
+    );
+  }
 });
 
 test("pre-claim status freezes the GitHub run and reports the failing phase", () => {
@@ -446,6 +465,10 @@ test("iOS workflow terminalizes any post-claim failure and Qwen panel is the def
   assert.match(panel, /PANEL_PROVIDER: \$\{\{ needs\.freeze\.outputs\.provider \}\}/);
   assert.match(panel, /needs: \[freeze, review\]/);
   assert.equal((panel.match(/vars\.PI_REVIEW_/g) || []).length, 3, "mutable vars must be read only in the freeze job");
+  // Frozen outputs are single-line safe tokens: injection via a mutated repo
+  // var must fail the freeze job instead of forging extra outputs.
+  assert.match(panel, /PI_REVIEW_PROVIDER must match \[A-Za-z0-9\._-\]\+/);
+  assert.match(panel, /PI_REVIEW_MODEL must match \[A-Za-z0-9\._-\]\+/);
   assert.match(panel, /MINIMAX_API_KEY: \$\{\{ secrets\.PI_API_KEY \}\}/);
   assert.match(panel, /QWEN_TOKEN_PLAN_CN_API_KEY/);
   assert.match(panel, /\.provider == \$provider and \.model == \$model/);

@@ -32,6 +32,16 @@ jobs:
           PANEL_MODEL: ${{ vars.PI_REVIEW_MODEL || 'MiniMax-M3' }}
           PANEL_TIMEOUT_MS: ${{ vars.PI_REVIEW_TIMEOUT_MS || '600000' }}
         run: |
+          # Frozen values become GITHUB_OUTPUT lines consumed as the single
+          # authority by every later job: restrict them to single-line safe
+          # tokens so a mutated repo var can never inject or overwrite
+          # additional outputs.
+          case "$PANEL_PROVIDER" in
+            ''|*[!A-Za-z0-9._-]*) echo "PI_REVIEW_PROVIDER must match [A-Za-z0-9._-]+"; exit 1;;
+          esac
+          case "$PANEL_MODEL" in
+            ''|*[!A-Za-z0-9._-]*) echo "PI_REVIEW_MODEL must match [A-Za-z0-9._-]+"; exit 1;;
+          esac
           case "$PANEL_TIMEOUT_MS" in
             ''|*[!0-9]*) echo "PI_REVIEW_TIMEOUT_MS must be a positive integer, got: $PANEL_TIMEOUT_MS"; exit 1;;
           esac
@@ -39,7 +49,6 @@ jobs:
             echo "PI_REVIEW_TIMEOUT_MS must be within [60000, 1800000], got: $PANEL_TIMEOUT_MS"
             exit 1
           fi
-          test -n "$PANEL_PROVIDER" && test -n "$PANEL_MODEL"
           {
             echo "provider=$PANEL_PROVIDER"
             echo "model=$PANEL_MODEL"
