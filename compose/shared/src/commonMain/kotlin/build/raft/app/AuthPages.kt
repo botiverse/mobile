@@ -17,6 +17,8 @@ import build.raft.app.data.DEVELOPER_ACTION_API_ENVIRONMENT
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.SharedAuthResult
+import build.raft.app.data.SharedAuthRuntimeCapabilities
+import build.raft.app.data.SharedAuthRuntimeCapabilityStore
 import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.SharedSettingsApiEnvironmentRequest
 import build.raft.app.data.SharedSettingsAboutSnapshot
@@ -83,7 +85,7 @@ const val FORGOT_PASSWORD_PAGE = "compose_forgot_password"
 const val AUTH_LEGAL_ACCEPTANCE_PAGE = "compose_auth_legal_acceptance"
 const val AUTH_ABOUT_PAGE = "compose_auth_developer"
 private const val AUTH_REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
-private const val AUTH_SOCIAL_PROVIDERS_KEY = "slockSocialAuthProviders"
+internal const val AUTH_SOCIAL_PROVIDERS_KEY = "slockSocialAuthProviders"
 private const val AUTH_MESSAGE_KEY = "slockAuthMessage"
 private const val AUTH_LEGAL_PROVIDER_KEY = "slockAuthLegalProvider"
 private const val AUTH_LEGAL_PLATFORM_KEY = "slockAuthLegalPlatform"
@@ -184,6 +186,13 @@ internal class ComposeAuthAboutPage : build.raft.app.base.BasePager() {
 private fun LoginScreen() {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
+    val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
+    val paramsSignature = pager.pageData.params.toString()
+    val authRuntimeCapabilities =
+        rememberAuthRuntimeCapabilities(
+            store = sharedStores.authRuntimeCapabilityStore,
+            pageData = pager.pageData.params
+        )
     val linkNavigator =
         rememberSlockLinkNavigator(
             pager = pager,
@@ -196,8 +205,8 @@ private fun LoginScreen() {
     var pendingLogin by remember { mutableStateOf<PendingLogin?>(null) }
     var pendingSocialAuth by remember { mutableStateOf<PendingSocialAuth?>(null) }
     var socialSubmittingProvider by remember { mutableStateOf<AuthProvider?>(null) }
-    val socialProviders = remember(pager.pageData.params.toString()) { pager.socialAuthProviders() }
-    val routeMessage = remember(pager.pageData.params.toString()) {
+    val socialProviders = remember(authRuntimeCapabilities) { authRuntimeCapabilities.socialAuthProviders() }
+    val routeMessage = remember(paramsSignature) {
         pager.pageData.params.optString(AUTH_MESSAGE_KEY).takeIf { it.isNotBlank() }
     }
 
@@ -387,6 +396,11 @@ private data class PendingMobileOAuthLegalAcceptance(
 private fun AuthLegalAcceptanceScreen() {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
+    val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
+    rememberAuthRuntimeCapabilities(
+        store = sharedStores.authRuntimeCapabilityStore,
+        pageData = pager.pageData.params
+    )
     val linkNavigator =
         rememberSlockLinkNavigator(
             pager = pager,
@@ -415,7 +429,6 @@ private fun AuthLegalAcceptanceScreen() {
     }
     var pending by remember { mutableStateOf<PendingMobileOAuthLegalAcceptance?>(null) }
     val providerName = remember(providerId) { providerId.mobileOAuthProviderDisplayName() }
-    val socialProviders = remember(paramsSignature) { pager.pageData.params.authRouteSocialProviders() }
     val providerCancelledMessage =
         remember(providerName) {
             StringDesc.ResourceFormatted(
@@ -500,8 +513,7 @@ private fun AuthLegalAcceptanceScreen() {
                 LOGIN_PAGE,
                 loginPageData(
                     replaceCurrent = true,
-                    message = providerCancelledMessage,
-                    socialProviders = socialProviders
+                    message = providerCancelledMessage
                 )
             )
         },
@@ -1831,8 +1843,7 @@ private fun Pager.openAuthPage(pageName: String) {
     val pageData =
         authPageData(
             pageName = pageName,
-            replaceCurrent = pageName == SLOCK_APP_SHELL_PAGE,
-            socialProviders = this.pageData.params.authRouteSocialProviders()
+            replaceCurrent = pageName == SLOCK_APP_SHELL_PAGE
         )
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(pageName, pageData)
 }
@@ -1909,27 +1920,21 @@ private enum class PostAuthSessionReadback {
 
 internal fun loginPageData(
     replaceCurrent: Boolean = false,
-    message: String? = null,
-    socialProviders: String? = null
+    message: String? = null
 ): JSONObject =
     authPageData(
         pageName = LOGIN_PAGE,
         replaceCurrent = replaceCurrent,
-        message = message,
-        socialProviders = socialProviders
+        message = message
     )
 
 internal fun authPageData(
     pageName: String,
     replaceCurrent: Boolean = false,
-    message: String? = null,
-    socialProviders: String? = null
+    message: String? = null
 ): JSONObject =
     JSONObject().apply {
         put("pageName", pageName)
-        socialProviders
-            ?.takeIf { it.isNotBlank() }
-            ?.let { put(AUTH_SOCIAL_PROVIDERS_KEY, it) }
         message
             ?.takeIf { it.isNotBlank() }
             ?.let { put(AUTH_MESSAGE_KEY, it) }
@@ -1941,16 +1946,36 @@ internal fun authPageData(
 internal fun JSONObject.authRouteMessage(): String? =
     optString(AUTH_MESSAGE_KEY).takeIf { it.isNotBlank() }
 
-internal fun JSONObject.authRouteSocialProviders(): String? =
-    optString(AUTH_SOCIAL_PROVIDERS_KEY).takeIf { it.isNotBlank() }
+internal fun SharedAuthRuntimeCapabilityStore.seedFromAuthPageData(
+    pageData: JSONObject
+): SharedAuthRuntimeCapabilities =
+    seedSocialProviders(
+        if (pageData.has(AUTH_SOCIAL_PROVIDERS_KEY)) {
+            pageData.optString(AUTH_SOCIAL_PROVIDERS_KEY)
+        } else {
+            null
+        }
+    )
+
+@Composable
+internal fun rememberAuthRuntimeCapabilities(
+    store: SharedAuthRuntimeCapabilityStore,
+    pageData: JSONObject
+): SharedAuthRuntimeCapabilities {
+    val pageDataSignature = pageData.toString()
+    // Seed synchronously: AppShell can replace itself with Login from its first composition, so a
+    // LaunchedEffect write would race that navigation and briefly recreate the original bug.
+    return remember(store, pageDataSignature) {
+        store.seedFromAuthPageData(pageData)
+    }
+}
 
 private fun Pager.closeAuthSubPage() {
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
 }
 
-private fun Pager.socialAuthProviders(): Set<AuthProvider> =
-    pageData.params.optString(AUTH_SOCIAL_PROVIDERS_KEY)
-        .split(',')
+private fun SharedAuthRuntimeCapabilities.socialAuthProviders(): Set<AuthProvider> =
+    socialProviderIds
         .mapNotNull { raw ->
             when (raw.trim().lowercase()) {
                 AuthProvider.Google.providerId() -> AuthProvider.Google

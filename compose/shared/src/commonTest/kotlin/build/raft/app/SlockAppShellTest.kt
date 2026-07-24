@@ -3685,14 +3685,13 @@ class SlockAppShellTest {
         val pageData =
             loginPageData(
                 replaceCurrent = true,
-                message = "Sign in to continue.",
-                socialProviders = "google,github"
+                message = "Sign in to continue."
             )
 
         assertEquals(LOGIN_PAGE, pageData.optString("pageName"))
         assertEquals(true, pageData.optBoolean("slockReplaceCurrentPage", false))
         assertEquals("Sign in to continue.", pageData.authRouteMessage())
-        assertEquals("google,github", pageData.authRouteSocialProviders())
+        assertEquals(false, pageData.has(AUTH_SOCIAL_PROVIDERS_KEY))
     }
 
     @Test

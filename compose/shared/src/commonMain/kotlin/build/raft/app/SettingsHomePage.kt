@@ -2301,6 +2301,10 @@ internal fun SlockAppShellContent(
         pager.pageData.params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
     }
     val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
+    rememberAuthRuntimeCapabilities(
+        store = sharedStores.authRuntimeCapabilityStore,
+        pageData = pager.pageData.params
+    )
     val visibleAppearanceGeneration =
         appShellAppearanceGeneration(pageVisibleTick, initialAuthRestoreTick)
     val windowNavigationCoordinator =
@@ -14151,6 +14155,10 @@ private fun AuthChooseServerPageContent() {
         { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() }
     }
     val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
+    rememberAuthRuntimeCapabilities(
+        store = sharedStores.authRuntimeCapabilityStore,
+        pageData = pager.pageData.params
+    )
     val authDataSource = sharedStores.authDataSource
     var session by remember { mutableStateOf<StoredAuthSession?>(null) }
     var errorPresentation by remember { mutableStateOf<AuthGateMessage?>(null) }
@@ -14437,8 +14445,7 @@ private fun Pager.openLoginReplacingCurrentPage(message: String? = null) {
             LOGIN_PAGE,
             loginPageData(
                 replaceCurrent = true,
-                message = message,
-                socialProviders = pageData.params.authRouteSocialProviders()
+                message = message
             )
         )
 }
