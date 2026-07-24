@@ -102,6 +102,80 @@ class RealtimeCanonicalFinalActualHostConnectedTest {
         assertTrue(json.getString("registrations").startsWith("capture-failed:"))
     }
 
+    @Test
+    fun successorRetentionFailsImmediatelyOnRestoredOldIdEvenWhileIncomplete() {
+        val error = assertRetentionThrows(
+            samples = listOf(
+                // First sample: slot set incomplete AND AppShellDomain carries the old-generation
+                // id. Must fail on this very sample — a later fresh id must not launder it.
+                "AppShellDomain,lease-1,server-a,registration-7,ref-1",
+                "AppShellDomain,lease-1,server-a,registration-12,ref-2;AppShellHomeUnread,lease-1,server-b,registration-13,ref-3",
+            ),
+        )
+        assertTrue(error.contains("restored old-generation registration registration-7"))
+    }
+
+    @Test
+    fun successorRetentionSettlesFromIncompleteToComplete() {
+        val settled = kotlinx.coroutines.runBlocking {
+            build.raft.app.awaitCanonicalFinalSuccessorRetention(
+                expectedSurfaces = RETENTION_EXPECTED,
+                forbiddenIdsBySlot = RETENTION_FORBIDDEN,
+                label = "tooth",
+                timeoutMs = 500,
+                delayMs = 1,
+                sample = scriptedSampler(
+                    "AppShellDomain,lease-1,server-a,registration-12,ref-2",
+                    "AppShellDomain,lease-1,server-a,registration-12,ref-2;AppShellHomeUnread,lease-1,server-b,registration-13,ref-3",
+                ),
+            )
+        }
+        assertTrue(settled.contains("registration-13"))
+    }
+
+    @Test
+    fun successorRetentionTimesOutOnPersistentGap() {
+        val error = assertRetentionThrows(
+            samples = listOf("AppShellDomain,lease-1,server-a,registration-12,ref-2"),
+            timeoutMs = 100,
+        )
+        assertTrue(error.contains("successor slots incomplete after"))
+    }
+
+    @Test
+    fun successorRetentionFailsOnRestoredOldIdInCompleteSet() {
+        val error = assertRetentionThrows(
+            samples = listOf(
+                "AppShellDomain,lease-1,server-a,registration-12,ref-2;AppShellHomeUnread,lease-1,server-b,registration-8,ref-3",
+            ),
+        )
+        assertTrue(error.contains("restored old-generation registration registration-8"))
+    }
+
+    private fun assertRetentionThrows(samples: List<String>, timeoutMs: Long = 500): String {
+        try {
+            kotlinx.coroutines.runBlocking {
+                build.raft.app.awaitCanonicalFinalSuccessorRetention(
+                    expectedSurfaces = RETENTION_EXPECTED,
+                    forbiddenIdsBySlot = RETENTION_FORBIDDEN,
+                    label = "tooth",
+                    timeoutMs = timeoutMs,
+                    delayMs = 1,
+                    sample = scriptedSampler(*samples.toTypedArray()),
+                )
+            }
+        } catch (error: IllegalStateException) {
+            return error.message.orEmpty()
+        }
+        fail("expected retention failure")
+        error("unreachable")
+    }
+
+    private fun scriptedSampler(vararg samples: String): suspend () -> String {
+        val index = AtomicInteger(0)
+        return { samples[minOf(index.getAndIncrement(), samples.size - 1)] }
+    }
+
     private fun verifyEvidence(evidence: TraceEvidence, nonce: String) {
         val entries = evidence.entries
         assertTrue("Expected non-terminal trace phases.", entries.size > 2)
@@ -533,5 +607,10 @@ class RealtimeCanonicalFinalActualHostConnectedTest {
         const val TraceMarker = "canonical_final_actual_host_trace"
         const val ServerA = "host-server-a"
         const val ServerB = "host-server-b"
+        val RETENTION_EXPECTED = listOf("AppShellDomain@server-a", "AppShellHomeUnread@server-b")
+        val RETENTION_FORBIDDEN = mapOf(
+            "AppShellDomain@server-a" to "registration-7",
+            "AppShellHomeUnread@server-b" to "registration-8",
+        )
     }
 }
