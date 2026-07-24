@@ -31,6 +31,9 @@ import com.tencent.kuiklybase.markdown.compose.LocalImageTransformer
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownAnimations
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownColors
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownExtendedSpans
+import com.tencent.kuiklybase.markdown.compose.LocalSlockMarkdownAnnotationRevision
+import com.tencent.kuiklybase.markdown.compose.slockMarkdownAnnotatedStringMemoKeys
+import com.tencent.kuiklybase.markdown.compose.LocalSlockMarkdownRenderTiming
 import com.tencent.kuiklybase.markdown.compose.slockMarkdownLogSubTrace
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownTypography
 import com.tencent.kuiklybase.markdown.compose.elements.material.MarkdownBasicText
@@ -64,15 +67,38 @@ fun MarkdownText(
     annotatorSettings: AnnotatorSettings = annotatorSettings(),
 ) {
     val childNode = contentChildType?.run(node::findChildOfType) ?: node
-    val styledText = buildAnnotatedString {
-        pushStyle(style.toSpanStyle())
-        buildMarkdownAnnotatedString(
-            content = content,
-            node = childNode,
-            annotatorSettings = annotatorSettings
-        )
-        pop()
+    // Memoization is OPT-IN via the host annotation revision — same contract
+    // and same reasoning as MarkdownParagraph: no revision = legacy
+    // rebuild-every-recomposition (identity-stable annotators may be
+    // dynamic); revision provided = remember by actual inputs + revision.
+    // Parse-tree identity is stable per content, so node works as a key.
+    val nodeTiming = LocalSlockMarkdownRenderTiming.current
+    val memoKeys = slockMarkdownAnnotatedStringMemoKeys(
+        content, childNode, style, annotatorSettings, LocalSlockMarkdownAnnotationRevision.current
+    )
+    val buildStyledText = {
+        buildAnnotatedString {
+            pushStyle(style.toSpanStyle())
+            buildMarkdownAnnotatedString(
+                content = content,
+                node = childNode,
+                annotatorSettings = annotatorSettings
+            )
+            pop()
+        }
     }
+    val styledText =
+        if (memoKeys == null) {
+            buildStyledText()
+        } else {
+            var rebuilt = false
+            val remembered = remember(*memoKeys) {
+                rebuilt = true
+                buildStyledText()
+            }
+            if (rebuilt) nodeTiming?.recordAnnotatedStringRebuild() else nodeTiming?.recordAnnotatedStringHit()
+            remembered
+        }
 
     MarkdownText(styledText, modifier = modifier, style = style, annotatorSettings = annotatorSettings)
 }

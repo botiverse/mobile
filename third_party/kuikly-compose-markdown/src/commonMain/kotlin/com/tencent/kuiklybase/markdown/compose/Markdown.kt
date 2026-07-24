@@ -81,7 +81,7 @@ fun Markdown(
     extendedSpans: MarkdownExtendedSpans = markdownExtendedSpans(),
     components: MarkdownComponents = markdownComponents(),
     animations: MarkdownAnimations = markdownAnimations(),
-    referenceLinkHandler: ReferenceLinkHandler = ReferenceLinkHandlerImpl(),
+    referenceLinkHandler: ReferenceLinkHandler? = null,
     loading: @Composable (modifier: Modifier) -> Unit = { Box(modifier = modifier) },
     success: @Composable (state: MarkdownState, components: MarkdownComponents, modifier: Modifier) -> Unit = { state, components, modifier ->
         MarkdownSuccess(state = state, components = components, modifier = modifier)
@@ -129,7 +129,7 @@ fun Markdown(
     extendedSpans: MarkdownExtendedSpans = markdownExtendedSpans(),
     components: MarkdownComponents = markdownComponents(),
     animations: MarkdownAnimations = markdownAnimations(),
-    referenceLinkHandler: ReferenceLinkHandler = ReferenceLinkHandlerImpl(),
+    referenceLinkHandler: ReferenceLinkHandler? = null,
     loading: @Composable (modifier: Modifier) -> Unit = { Box(modifier = modifier) },
     success: @Composable (state: MarkdownState, components: MarkdownComponents, modifier: Modifier) -> Unit = { state, components, modifier ->
         MarkdownSuccess(state = state, components = components, modifier = modifier)
@@ -210,15 +210,24 @@ fun Markdown(
     extendedSpans: MarkdownExtendedSpans = markdownExtendedSpans(),
     components: MarkdownComponents = markdownComponents(),
     animations: MarkdownAnimations = markdownAnimations(),
-    referenceLinkHandler: ReferenceLinkHandler = ReferenceLinkHandlerImpl(),
+    referenceLinkHandler: ReferenceLinkHandler? = null,
     loading: @Composable (modifier: Modifier) -> Unit = { Box(modifier = modifier) },
     success: @Composable (state: MarkdownState, components: MarkdownComponents, modifier: Modifier) -> Unit = { state, components, modifier ->
         MarkdownSuccess(state = state, components = components, modifier = modifier)
     },
     error: @Composable (modifier: Modifier) -> Unit = { Box(modifier = modifier) },
 ) {
+    // Document-scoped default handler. The old default allocated a fresh
+    // ReferenceLinkHandlerImpl() on every recomposition, which made every
+    // downstream AnnotatorSettings identity-unequal and defeated skipping.
+    // It must NOT be hoisted globally either: the impl carries a mutable
+    // stored map with no clear, so a shared instance would leak reference
+    // definitions across documents. remember(state) resets it per document
+    // (rememberMarkdownParserState is keyed on content, so a document switch
+    // produces a new state) while pure recompositions reuse one instance.
+    val resolvedReferenceLinkHandler = referenceLinkHandler ?: remember(state) { ReferenceLinkHandlerImpl() }
     CompositionLocalProvider(
-        LocalReferenceLinkHandler provides referenceLinkHandler,
+        LocalReferenceLinkHandler provides resolvedReferenceLinkHandler,
         LocalMarkdownPadding provides padding,
         LocalMarkdownDimens provides dimens,
         LocalMarkdownColors provides colors,

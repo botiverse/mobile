@@ -3,6 +3,7 @@ package com.tencent.kuiklybase.markdown.annotator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import com.tencent.kuikly.compose.ui.text.LinkAnnotation
 import com.tencent.kuikly.compose.ui.text.LinkInteractionListener
@@ -52,22 +53,30 @@ fun annotatorSettings(
     referenceLinkHandler: ReferenceLinkHandler? = LocalReferenceLinkHandler.current,
     uriHandler: UriHandler = LocalUriHandler.current,
     scope: CoroutineScope = rememberCoroutineScope(),
-    linkInteractionListener: LinkInteractionListener? = LinkInteractionListener { link ->
-        val annotationUrl = (link as? LinkAnnotation.Url)?.url
-        if (annotationUrl != null) {
-            val foundReference = referenceLinkHandler?.find(annotationUrl)?.takeIf { it.isNotEmpty() } ?: annotationUrl
-            // wait for finger up to navigate to the link
-            try {
-                scope.launch { uriHandler.openUri(foundReference) }
-            } catch (t: Throwable) {
-                println("Could not open the provided url: $foundReference // ${t.message}")
+    // Remembered: the listener default used to allocate a fresh lambda every
+    // composition, which made every AnnotatorSettings instance identity-unequal
+    // and forced full re-runs of MarkdownText/MarkdownParagraph for unchanged
+    // rows (same instability class as the #192 colors fix).
+    linkInteractionListener: LinkInteractionListener? = remember(referenceLinkHandler, uriHandler, scope) {
+        LinkInteractionListener { link ->
+            val annotationUrl = (link as? LinkAnnotation.Url)?.url
+            if (annotationUrl != null) {
+                val foundReference = referenceLinkHandler?.find(annotationUrl)?.takeIf { it.isNotEmpty() } ?: annotationUrl
+                // wait for finger up to navigate to the link
+                try {
+                    scope.launch { uriHandler.openUri(foundReference) }
+                } catch (t: Throwable) {
+                    println("Could not open the provided url: $foundReference // ${t.message}")
+                }
             }
         }
     },
-): AnnotatorSettings = DefaultAnnotatorSettings(
-    linkTextSpanStyle = linkTextSpanStyle,
-    codeSpanStyle = codeSpanStyle,
-    annotator = annotator,
-    referenceLinkHandler = referenceLinkHandler,
-    linkInteractionListener = linkInteractionListener,
-)
+): AnnotatorSettings = remember(linkTextSpanStyle, codeSpanStyle, annotator, referenceLinkHandler, linkInteractionListener) {
+    DefaultAnnotatorSettings(
+        linkTextSpanStyle = linkTextSpanStyle,
+        codeSpanStyle = codeSpanStyle,
+        annotator = annotator,
+        referenceLinkHandler = referenceLinkHandler,
+        linkInteractionListener = linkInteractionListener,
+    )
+}
