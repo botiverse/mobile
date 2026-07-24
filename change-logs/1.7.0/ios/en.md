@@ -4,6 +4,7 @@
 - Added a Show Message Previews setting; when supported by the server, notification details can be hidden on the lock screen and in banners
 - Agent DM headers can now show live activity and a concise description of what the agent is working on
 - Registration now includes a dedicated identity setup step for choosing a username and display name after email verification
+- Sent-image previews can now save images to Photos, including valid images whose filenames have no extension
 
 🔧 **Improved**
 

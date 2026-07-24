@@ -2308,9 +2308,20 @@ static NSString *SlockPickedAttachmentDisplayName(NSString *suggestedName,
         });
         return;
     }
+    if (savesToPhotos && mimeType.length > 0 && !genericBinaryMime) {
+        UTType *mimeClaimType = [UTType typeWithMIMEType:mimeType];
+        if (!mimeClaimType || ![mimeClaimType conformsToType:UTTypeImage]) {
+            callback(@{
+                @"status" : @"unsupported_image",
+                @"message" : @"This attachment is not a supported image.",
+                @"retryable" : @NO
+            });
+            return;
+        }
+    }
     if (savesToPhotos && fileName.pathExtension.length > 0) {
         UTType *extensionType = [UTType typeWithFilenameExtension:fileName.pathExtension];
-        if (extensionType && ![extensionType conformsToType:UTTypeImage]) {
+        if (!extensionType || ![extensionType conformsToType:UTTypeImage]) {
             callback(@{
                 @"status" : @"unsupported_image",
                 @"message" : @"This attachment is not a supported image.",
@@ -2531,15 +2542,18 @@ static NSString *SlockPickedAttachmentDisplayName(NSString *suggestedName,
     }
 
     NSString *expectedMimeType = self.slock_attachmentExportMimeType ?: @"";
-    UTType *mimeType = expectedMimeType.length > 0 ? [UTType typeWithMIMEType:expectedMimeType] : nil;
-    UTType *extensionType = self.slock_attachmentExportFileName.pathExtension.length > 0
-        ? [UTType typeWithFilenameExtension:self.slock_attachmentExportFileName.pathExtension]
+    BOOL hasMimeClaim = expectedMimeType.length > 0;
+    NSString *claimedExtension = self.slock_attachmentExportFileName.pathExtension ?: @"";
+    BOOL hasExtensionClaim = claimedExtension.length > 0;
+    UTType *mimeType = hasMimeClaim ? [UTType typeWithMIMEType:expectedMimeType] : nil;
+    UTType *extensionType = hasExtensionClaim
+        ? [UTType typeWithFilenameExtension:claimedExtension]
         : nil;
-    BOOL mimeMatches = !mimeType ||
-        ([mimeType conformsToType:UTTypeImage] &&
+    BOOL mimeMatches = !hasMimeClaim ||
+        (mimeType && [mimeType conformsToType:UTTypeImage] &&
          ([actualType conformsToType:mimeType] || [mimeType conformsToType:actualType]));
-    BOOL extensionMatches = !extensionType ||
-        ([extensionType conformsToType:UTTypeImage] &&
+    BOOL extensionMatches = !hasExtensionClaim ||
+        (extensionType && [extensionType conformsToType:UTTypeImage] &&
          ([actualType conformsToType:extensionType] || [extensionType conformsToType:actualType]));
     if (!mimeMatches || !extensionMatches) {
         [self slock_finishAttachmentExport:@{
@@ -2551,6 +2565,30 @@ static NSString *SlockPickedAttachmentDisplayName(NSString *suggestedName,
     }
 
     NSString *fileName = self.slock_attachmentExportFileName ?: @"image";
+    NSURL *photoResourceURL = targetURL;
+    if (fileName.pathExtension.length == 0) {
+        NSString *preferredExtension = actualType.preferredFilenameExtension ?: @"";
+        if (preferredExtension.length == 0) {
+            [self slock_finishAttachmentExport:@{
+                @"status" : @"unsupported_image",
+                @"message" : @"This image type cannot be saved to Photos.",
+                @"retryable" : @NO
+            }];
+            return;
+        }
+        fileName = [fileName stringByAppendingPathExtension:preferredExtension];
+        photoResourceURL = [[targetURL URLByDeletingLastPathComponent]
+            URLByAppendingPathComponent:fileName isDirectory:NO];
+        NSError *stagingError = nil;
+        if (![NSFileManager.defaultManager copyItemAtURL:targetURL toURL:photoResourceURL error:&stagingError]) {
+            [self slock_finishAttachmentExport:@{
+                @"status" : @"storage_failed",
+                @"message" : @"Unable to prepare image for Photos.",
+                @"retryable" : @YES
+            }];
+            return;
+        }
+    }
     NSString *permissionStatus = self.slock_attachmentExportPermissionStatus ?: @"authorized";
     NSString *actualMimeType = actualType.preferredMIMEType ?: @"";
     NSNumber *sizeBytes = self.slock_attachmentExportSizeBytes ?: @0;
@@ -2561,7 +2599,7 @@ static NSString *SlockPickedAttachmentDisplayName(NSString *suggestedName,
             PHAssetCreationRequest *creationRequest = [PHAssetCreationRequest creationRequestForAsset];
             PHAssetResourceCreationOptions *options = [[PHAssetResourceCreationOptions alloc] init];
             options.originalFilename = fileName;
-            [creationRequest addResourceWithType:PHAssetResourceTypePhoto fileURL:targetURL options:options];
+            [creationRequest addResourceWithType:PHAssetResourceTypePhoto fileURL:photoResourceURL options:options];
             assetIdentifier = creationRequest.placeholderForCreatedAsset.localIdentifier ?: @"";
         }
         completionHandler:^(BOOL success, NSError *error) {
