@@ -6,6 +6,8 @@ on:
       - ".github/workflows/qa-acceptance.yml"
       - ".github/workflows/qa-acceptance-ios.yml"
       - ".github/workflows/qa-infra-test.yml"
+      - "docs/qa-acceptance/case-schema.md"
+      - "docs/qa-acceptance/cases/**"
       - "scripts/qa/**"
   push:
     branches: [main]
@@ -13,6 +15,8 @@ on:
       - ".github/workflows/qa-acceptance.yml"
       - ".github/workflows/qa-acceptance-ios.yml"
       - ".github/workflows/qa-infra-test.yml"
+      - "docs/qa-acceptance/case-schema.md"
+      - "docs/qa-acceptance/cases/**"
       - "scripts/qa/**"
 
 permissions:
@@ -32,6 +36,8 @@ jobs:
           node-version: "22"
       - name: Run QA contract tests
         run: node --test scripts/qa/*.test.mjs
+      - name: Check canonical release acceptance cases
+        run: python3 scripts/qa/check_release_acceptance_cases.py
       - name: Check shell syntax
         run: bash -n scripts/qa/stamp_report.sh scripts/qa/prepare_pinned_ios_app.sh
       - name: Check patch whitespace

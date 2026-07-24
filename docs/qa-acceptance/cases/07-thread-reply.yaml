@@ -12,6 +12,8 @@ description: |
 tags: [messaging, thread, reply, regression]
 timeout_seconds: 120
 max_retries: 1
+auth_fixture: alpha-qa
+launch_route: compose_slock_app_shell
 
 device:
   type: emulator
