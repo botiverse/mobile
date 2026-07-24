@@ -443,6 +443,7 @@ internal fun SharedHomeActivityPanel(
     onClose: (() -> Unit)? = null,
     bottomContentPadding: Dp = SlockSpacing.Lg,
     includeTopSafeArea: Boolean = false,
+    pullRefreshing: Boolean = false,
     timeContext: SlockTimeContext? = null,
     shellScope: SlockAppShellScope = rememberSlockAppShellScope(),
     listState: LazyListState = rememberLazyListState(),
@@ -461,7 +462,13 @@ internal fun SharedHomeActivityPanel(
     // inner List measure which we'd add separately if this shows hot).
     traceMarkdownSection(SlockInboxTraceNames.PANEL_RENDER, snapshot.items.size) {
         SharedActivityPanelContent(
-            state = SharedActivityState(selectedFilter = selectedFilter, snapshot = snapshot, loaded = true),
+            state =
+                SharedActivityState(
+                    selectedFilter = selectedFilter,
+                    snapshot = snapshot,
+                    loaded = true,
+                    pullRefreshing = pullRefreshing,
+                ),
             onOpenItem = onOpenItem,
             onClose = onClose,
             onIntent = {},
@@ -638,54 +645,26 @@ private fun SharedActivityHeader(
     refreshing: Boolean,
     onTitleClick: (() -> Unit)? = null
 ) {
-    Column(
-        modifier = Modifier.fillMaxWidth().height(SlockSize.PageHeaderHeight + topSafeAreaPadding).background(SlockColor.SurfaceWhite)
-    ) {
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(SlockSize.PageHeaderContentHeight + topSafeAreaPadding)
-                    .padding(start = 20.dp, top = topSafeAreaPadding + 10.dp, end = 20.dp, bottom = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            if (onClose != null) {
-                SlockBrutalIconButton(iconName = SlockLucideIconName.ArrowLeft, onClick = onClose, size = 32.dp, shadowOffset = 2.dp)
-            }
-            Column(
-                modifier =
-                    Modifier
-                        .weight(1f)
-                        .clickable(enabled = onTitleClick != null) { onTitleClick?.invoke() },
-                verticalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
-                Text(
-                    text = stringResource(MR.strings.home_nav_activity),
-                    style = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 20.sp),
-                    color = SlockColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text =
-                        if (totalUnreadCount > 0) {
-                            stringResource(MR.strings.activity_header_active_unread_count, totalCount, totalUnreadCount)
-                        } else {
-                            stringResource(MR.strings.activity_header_active_count, totalCount)
-                        },
-                    style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
-                    color = SlockColor.TextBlack.copy(alpha = 0.52f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            if (refreshing) {
-                SlockHeaderRefreshIndicator()
-            }
-        }
-        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
-    }
+    SlockTopPageHeader(
+        title = stringResource(MR.strings.home_nav_activity),
+        subtitle =
+            if (totalUnreadCount > 0) {
+                stringResource(MR.strings.activity_header_active_unread_count, totalCount, totalUnreadCount)
+            } else {
+                stringResource(MR.strings.activity_header_active_count, totalCount)
+            },
+        backgroundColor = SlockColor.SurfaceWhite,
+        topSafeAreaOverride = topSafeAreaPadding,
+        refreshing = refreshing,
+        leadingContent =
+            onClose?.let { close ->
+                {
+                    SlockTopPageHeaderAction(icon = SlockLucideIconName.ArrowLeft, onClick = close)
+                }
+            },
+        onTitleClick = onTitleClick,
+        showBodyTopBanner = false,
+    )
 }
 
 @Composable

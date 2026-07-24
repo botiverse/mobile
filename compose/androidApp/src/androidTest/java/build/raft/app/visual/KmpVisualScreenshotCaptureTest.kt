@@ -1661,6 +1661,26 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureTask797ThreadHeaderSafeArea0() {
+        captureTask797HeaderEvidence(
+            caseId = "evidence.task797.thread.safe-area-0",
+            pageName = "compose_task797_thread_header_visual",
+            safeAreaDp = 0,
+            crop = THREAD_HEADER_COMPONENT_CROP,
+        )
+    }
+
+    @Test
+    fun captureTask797ThreadHeaderSafeArea24() {
+        captureTask797HeaderEvidence(
+            caseId = "evidence.task797.thread.safe-area-24",
+            pageName = "compose_task797_thread_header_visual",
+            safeAreaDp = 24,
+            crop = THREAD_HEADER_COMPONENT_CROP,
+        )
+    }
+
+    @Test
     fun captureThreadDmAgentActivityHeader() {
         captureKmpComponentCase(
             caseId = "components.thread.dm-agent-header.activity",
@@ -1906,12 +1926,52 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureTask797SavedHeaderSafeArea0() {
+        captureTask797HeaderEvidence(
+            caseId = "evidence.task797.saved.safe-area-0",
+            pageName = "compose_home_saved_visual",
+            safeAreaDp = 0,
+            crop = HOME_SAVED_RESULTS_CROP,
+        )
+    }
+
+    @Test
+    fun captureTask797SavedHeaderSafeArea24() {
+        captureTask797HeaderEvidence(
+            caseId = "evidence.task797.saved.safe-area-24",
+            pageName = "compose_home_saved_visual",
+            safeAreaDp = 24,
+            crop = HOME_SAVED_RESULTS_CROP,
+        )
+    }
+
+    @Test
     fun captureHomeActivityResults() {
         captureKmpComponentCase(
             caseId = "components.home.activity.results",
             pageName = "compose_home_activity_visual",
             crop = HOME_ACTIVITY_RESULTS_CROP,
             settleMs = 4_500
+        )
+    }
+
+    @Test
+    fun captureTask797ActivityHeaderSafeArea0() {
+        captureTask797HeaderEvidence(
+            caseId = "evidence.task797.activity.safe-area-0",
+            pageName = "compose_home_activity_visual",
+            safeAreaDp = 0,
+            crop = HOME_ACTIVITY_RESULTS_CROP,
+        )
+    }
+
+    @Test
+    fun captureTask797ActivityHeaderSafeArea24() {
+        captureTask797HeaderEvidence(
+            caseId = "evidence.task797.activity.safe-area-24",
+            pageName = "compose_home_activity_visual",
+            safeAreaDp = 24,
+            crop = HOME_ACTIVITY_RESULTS_CROP,
         )
     }
 
@@ -2504,7 +2564,33 @@ class KmpVisualScreenshotCaptureTest {
     // React baselines have no device status bar, so captures must not inherit
     // the host/native top inset. Read by slockTopSafeAreaPadding().
     private fun withVisualCaptureParams(pageData: JSONObject?): JSONObject =
-        (pageData ?: JSONObject()).put("slockVisualZeroSafeArea", true)
+        (pageData ?: JSONObject()).apply {
+            if (!has("slockVisualZeroSafeArea")) {
+                put("slockVisualZeroSafeArea", true)
+            }
+        }
+
+    private fun captureTask797HeaderEvidence(
+        caseId: String,
+        pageName: String,
+        safeAreaDp: Int,
+        crop: VisualCrop,
+    ) {
+        val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
+        captureKmpComponentCase(
+            caseId = caseId,
+            pageName = pageName,
+            pageData =
+                JSONObject()
+                    .put("slockVisualZeroSafeArea", safeAreaDp == 0)
+                    .put("slockNativeSafeAreaInsetsArePixels", true)
+                    .put("safeAreaTop", safeAreaDp * density)
+                    .put("task797IncludeTopSafeArea", safeAreaDp > 0)
+                    .put("task797Refreshing", true),
+            crop = crop,
+            settleMs = 2_500,
+        )
+    }
 
     /**
      * Idle-sync with a hard wall-clock ceiling (task #362). Plain
