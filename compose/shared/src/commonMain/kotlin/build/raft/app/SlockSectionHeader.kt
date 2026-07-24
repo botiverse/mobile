@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import com.tencent.kuikly.compose.foundation.clickable
@@ -36,6 +37,7 @@ import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
+import com.tencent.tmm.kmmresource.compose.stringResource
 
 private val SectionChevronSize = 12.dp
 private val LoadingSpinnerSize = 14.dp
@@ -282,9 +284,10 @@ internal fun slockPullRefreshIndicatorRotationDegrees(pullProgress: Float, isRef
 
 @Composable
 internal fun SlockCenteredLoading(
-    message: String = "Loading...",
+    message: String? = null,
     modifier: Modifier = Modifier.fillMaxSize()
 ) {
+    val resolvedMessage = message ?: stringResource(MR.strings.common_loading)
     Box(
         modifier = modifier.background(SlockColor.SurfaceWhite),
         contentAlignment = Alignment.Center
@@ -300,7 +303,7 @@ internal fun SlockCenteredLoading(
                 spinning = true
             )
             Text(
-                text = message,
+                text = resolvedMessage,
                 style = SlockType.Caption
                     .copy(
                         fontFamily = slockMonoFamilyForWeight(FontWeight.SemiBold),

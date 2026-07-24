@@ -924,10 +924,12 @@ private fun rememberHomeSecondaryRouteEnvironment(
     val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
     val bridgeCallScope = rememberCoroutineScope()
     val linkNavigator = rememberSlockLinkNavigator(pager, bridge)
+    val copiedMessage = stringResource(MR.strings.common_copied)
     val settingsCapabilities =
-        remember(bridge, bridgeCallScope, linkNavigator) {
+        remember(bridge, bridgeCallScope, linkNavigator, copiedMessage) {
             BridgeSettingsPlatformCapabilities(
                 bridge = bridge,
+                copiedMessage = copiedMessage,
                 bridgeCallContext = bridgeCallScope.kuiklyBridgeCallContext(),
                 openUrlHandler = { url -> linkNavigator.open(url) }
             )
@@ -1032,7 +1034,7 @@ private fun HomeSecondaryRouterContent(
                 initialFocusInput = initialSearchFocusInput
             )
         HomeDestinationSaved -> HomeSavedRouterContent(environment, routeVisibleTick)
-        else -> SlockCenteredLoading(message = "Opening...")
+        else -> SlockCenteredLoading(message = stringResource(MR.strings.auth_state_opening_server))
     }
 }
 
@@ -1079,6 +1081,7 @@ private fun HomeSearchRouterContent(
     initialOpenFilterId: String? = null,
     initialFocusInput: Boolean = false
 ) {
+    val conversationNotReadyMessage = stringResource(MR.strings.home_error_conversation_not_ready)
     val homeDataSource =
         remember(environment.authStore, environment.networkClient) {
             SharedHomeDataSource(
@@ -1213,7 +1216,7 @@ private fun HomeSearchRouterContent(
                     environment.bridge.logWarn(
                         "search_open_request_pending reason=${resolution.reason} itemKey=${item.key}"
                     )
-                    environment.bridge.toast("Conversation isn't ready yet — try again")
+                    environment.bridge.toast(conversationNotReadyMessage)
                 }
             }
         },
@@ -1242,6 +1245,9 @@ private fun HomeSavedRouterContent(
     environment: HomeSecondaryRouteEnvironment,
     routeVisibleTick: Int = 0
 ) {
+    val conversationNotReadyMessage = stringResource(MR.strings.home_error_conversation_not_ready)
+    val copiedMessage = stringResource(MR.strings.common_copied)
+    val copyLinkFailedMessage = stringResource(MR.strings.thread_error_copy_link)
     val searchSavedViewModel = rememberHomeSearchSavedViewModel(environment, key = "home-secondary-saved")
     val searchSavedState by searchSavedViewModel.state.collectAsState()
     LaunchedEffect(routeVisibleTick) {
@@ -1332,7 +1338,7 @@ private fun HomeSavedRouterContent(
                     environment.bridge.logWarn(
                         "saved_open_request_pending reason=${resolution.reason} itemKey=${item.key}"
                     )
-                    environment.bridge.toast("Conversation isn't ready yet — try again")
+                    environment.bridge.toast(conversationNotReadyMessage)
                 }
             }
         },
@@ -1352,15 +1358,15 @@ private fun HomeSavedRouterContent(
                 val permalink = serverSlug?.let { sharedHomeSavedPermalink(item, it, webBaseUrl) }
                 if (permalink != null) {
                     environment.bridge.copyToPasteboard(permalink)
-                    environment.bridge.toast("Copied")
+                    environment.bridge.toast(copiedMessage)
                 } else {
-                    environment.bridge.toast("Unable to copy link")
+                    environment.bridge.toast(copyLinkFailedMessage)
                 }
             }
         },
         onCopyMarkdown = { item ->
             environment.bridge.copyToPasteboard(item.sharedHomeSavedMarkdownContent())
-            environment.bridge.toast("Copied")
+            environment.bridge.toast(copiedMessage)
         }
     )
 }
@@ -2259,6 +2265,12 @@ internal fun SlockAppShellContent(
     // in the app shell lifecycle, so shared `StringDesc` lookups resolve
     // against the user's last selection rather than the OS default.
     RememberKmmResourceLocaleSeedFromLocalActivity(pageVisibleTick)
+    val conversationNotReadyMessage = stringResource(MR.strings.home_error_conversation_not_ready)
+    val notificationServerUnavailableMessage = stringResource(MR.strings.home_error_notification_server_unavailable)
+    val notificationSignInMessage = stringResource(MR.strings.home_error_notification_sign_in)
+    val channelCreatedMessage = stringResource(MR.strings.thread_action_card_success_channel)
+    val channelNotCreatedMessage = stringResource(MR.strings.channel_create_error_not_created)
+    val conversationUnavailableMessage = stringResource(MR.strings.home_error_conversation_unavailable)
     val pager = LocalActivity.current.getPager() as Pager
     val launchSelection = remember(pager.pageData.params.toString()) {
         pager.pageData.params.appShellLaunchSelection()
@@ -2572,10 +2584,12 @@ internal fun SlockAppShellContent(
     }
     val appShellNetworkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
     val linkNavigator = rememberSlockLinkNavigator(pager, bridge)
+    val copiedMessage = stringResource(MR.strings.common_copied)
     val settingsCapabilities =
-        remember(bridge, appShellCoroutineScope, linkNavigator) {
+        remember(bridge, appShellCoroutineScope, linkNavigator, copiedMessage) {
             BridgeSettingsPlatformCapabilities(
                 bridge = bridge,
+                copiedMessage = copiedMessage,
                 bridgeCallContext = appShellCoroutineScope.kuiklyBridgeCallContext(),
                 openUrlHandler = { url -> linkNavigator.open(url) }
             )
@@ -3545,7 +3559,7 @@ internal fun SlockAppShellContent(
                     }
                 if (launchPayload == null) {
                     bridge.logWarn("app_shell_auth_pending_open_rejected reason=identity_unresolved serverId=$serverId")
-                    bridge.toast("Conversation isn't ready yet — try again")
+                    bridge.toast(conversationNotReadyMessage)
                 } else {
                     pager.openStandaloneThreadLaunchPayload(launchPayload, navigationStoreScope)
                 }
@@ -3646,14 +3660,14 @@ internal fun SlockAppShellContent(
                         windowNavigationCoordinator.rejectActivation(action.intent.key, result.code.name)
                             ?.let { rejection ->
                                 bridge.logWarn("window_navigation_drop reason=${rejection.reason}")
-                                bridge.toast("Notification server unavailable")
+                                bridge.toast(notificationServerUnavailableMessage)
                             }
                     }
                     SharedAuthResult.Unauthenticated -> {
                         windowNavigationCoordinator.rejectActivation(action.intent.key, "unauthenticated")
                             ?.let { rejection ->
                                 bridge.logWarn("window_navigation_drop reason=${rejection.reason}")
-                                bridge.toast("Sign in to open this notification")
+                                bridge.toast(notificationSignInMessage)
                             }
                     }
                 }
@@ -4018,10 +4032,10 @@ internal fun SlockAppShellContent(
                         homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.Refresh))
                         createChannelDialogOpen = false
                         createChannelError = null
-                        bridge.toast("Channel created")
+                        bridge.toast(channelCreatedMessage)
                     }
                     is DataResult.Empty -> {
-                        createChannelError = "Channel was not created."
+                        createChannelError = channelNotCreatedMessage
                     }
                     is DataResult.Error -> {
                         createChannelError = result.error.code
@@ -4548,7 +4562,7 @@ internal fun SlockAppShellContent(
                     "server_drawer_open_rejected serverId=$normalizedServerId " +
                         "conversationId=$normalizedConversationId reason=stale_projection"
                 )
-                bridge.toast("Conversation is no longer available")
+                bridge.toast(conversationUnavailableMessage)
                 return@launch
             }
             if (selectedServerStore.selectedServerId.value != normalizedServerId) {
@@ -8189,8 +8203,8 @@ private fun SettingsNotificationsContent(
 
 @Composable
 private fun SettingsPwaInstallCard() {
-    SettingsFormSectionCard(iconName = SlockLucideIconName.AppWindow, title = "Install app") {
-        SettingsFormDetailText("Install prompts are managed by web PWA APIs outside native builds. Native Android and OHOS builds use their platform app install flow.")
+    SettingsFormSectionCard(iconName = SlockLucideIconName.AppWindow, title = stringResource(MR.strings.settings_pwa_install_title)) {
+        SettingsFormDetailText(stringResource(MR.strings.settings_pwa_install_native_detail))
         SettingsFormEmptyText(stringResource(MR.strings.settings_connected_apps_no_install_prompt))
     }
 }
@@ -14940,6 +14954,11 @@ private fun SharedMembersScreen(
     onListStateSnapshot: (AppShellMembersListState) -> Unit = {},
     onForegroundActivity: (String) -> Unit = {}
 ) {
+    val membersTitle = stringResource(MR.strings.tab_members)
+    val membersLoadFailedMessage = stringResource(MR.strings.thread_composer_load_members_failed)
+    val invitePermissionMessage = stringResource(MR.strings.member_error_manage_invites_forbidden)
+    val joinLinkLoadFailedPrefix = stringResource(MR.strings.settings_error_join_link_load_prefix)
+    val openProfileFailedMessage = stringResource(MR.strings.member_error_open_profile)
     val currentServerId = session?.currentServerId?.trim()?.takeIf { it.isNotBlank() }
     var state by remember(currentServerId) {
         mutableStateOf<SharedMembersUiState>(initialContent ?: SharedMembersUiState.Loading)
@@ -15042,12 +15061,12 @@ private fun SharedMembersScreen(
     when (val current = state) {
         SharedMembersUiState.Loading ->
             Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-                MembersPageHeader(title = "Members")
+                MembersPageHeader(title = membersTitle)
                 SlockCenteredLoading()
         }
         is SharedMembersUiState.Error ->
             MembersPageErrorContent(
-                message = "Could not load members",
+                message = membersLoadFailedMessage,
                 code = current.code,
                 onRetry = onRetry
             )
@@ -15136,9 +15155,9 @@ private fun SharedMembersScreen(
                     when (result) {
                         is DataResult.Content -> inviteJoinLinkUrl = result.data.url
                         is DataResult.NoPermission ->
-                            bridge.toast("You do not have permission to manage invites.")
+                            bridge.toast(invitePermissionMessage)
                         is DataResult.Error ->
-                            bridge.toast("Failed to load join link: ${result.error.settingsUserFacingMessage()}")
+                            bridge.toast(joinLinkLoadFailedPrefix + result.error.settingsUserFacingMessage())
                         is DataResult.Empty -> Unit
                     }
                 }
@@ -15248,7 +15267,7 @@ private fun SharedMembersScreen(
                                 identity
                             )
                         if (pageData == null) {
-                            bridge.toast("Unable to open profile")
+                            bridge.toast(openProfileFailedMessage)
                             bridge.log("members_detail_open_skip reason=missing_member_id source=app_shell")
                         } else {
                             val seedMember =
@@ -15263,7 +15282,7 @@ private fun SharedMembersScreen(
                                 pageData = pageData,
                                 storeScopeOverride = storeScope,
                                 onMissingScope = {
-                                    bridge.toast("Unable to open profile")
+                                    bridge.toast(openProfileFailedMessage)
                                     bridge.log("members_detail_open_skip reason=missing_shell_scope source=app_shell")
                                 }
                             )
@@ -15568,6 +15587,11 @@ private fun SharedHomeScreen(
     onListPositionSnapshot: (String?, AppShellLazyListPosition) -> Unit = { _, _ -> },
     onContentComposeCommitted: (String) -> Unit = {}
 ) {
+    val conversationUnavailableMessage = stringResource(MR.strings.home_error_conversation_unavailable)
+    val directMessageUnavailableMessage = stringResource(MR.strings.home_error_direct_message_unavailable)
+    val openDirectMessageFailedMessage = stringResource(MR.strings.home_error_open_direct_message)
+    val openDirectMessageFailedPrefix = stringResource(MR.strings.home_error_open_direct_message_failed_prefix)
+    val openDirectMessagePermissionMessage = stringResource(MR.strings.home_error_open_direct_message_permission)
     val pinnedMemberOpenScope = rememberCoroutineScope()
     val homeContentSummary = sharedHomeContentRenderSummary(state.content)
     val shouldStartHome = sharedHomeShouldStartOnActive(active, sessionReady, state)
@@ -15916,7 +15940,7 @@ private fun SharedHomeScreen(
                 onChannelClick = { threadId ->
                     val conversation = conversationsByThreadId[threadId]
                     if (conversation == null) {
-                        bridge.toast("Conversation is no longer available")
+                        bridge.toast(conversationUnavailableMessage)
                     } else {
                         onOpenConversation(conversation.toThreadLaunchConversationIdentity())
                         onIntent(SharedHomeIntent.SelectConversation(threadId))
@@ -15925,7 +15949,7 @@ private fun SharedHomeScreen(
                 onPinnedMemberClick = { identity ->
                     val repository = channelRepository
                     if (repository == null) {
-                        bridge.toast("Direct message is unavailable")
+                        bridge.toast(directMessageUnavailableMessage)
                     } else {
                         pinnedMemberOpenScope.launch {
                             when (val result = repository.openPinnedMemberDirectMessage(identity)) {
@@ -15935,9 +15959,10 @@ private fun SharedHomeScreen(
                                     onIntent(SharedHomeIntent.SelectConversation(conversation.threadId.value))
                                     onIntent(SharedHomeIntent.Refresh)
                                 }
-                                is DataResult.Empty -> bridge.toast("Unable to open direct message")
-                                is DataResult.Error -> bridge.toast("Failed to open direct message: ${result.error.code}")
-                                is DataResult.NoPermission -> bridge.toast("You do not have permission to open this direct message.")
+                                is DataResult.Empty -> bridge.toast(openDirectMessageFailedMessage)
+                                is DataResult.Error ->
+                                    bridge.toast(openDirectMessageFailedPrefix + result.error.code)
+                                is DataResult.NoPermission -> bridge.toast(openDirectMessagePermissionMessage)
                             }
                         }
                     }
@@ -19968,11 +19993,11 @@ private fun MembersPageErrorContent(
         modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        MembersPageHeader(title = "Members")
+        MembersPageHeader(title = stringResource(MR.strings.tab_members))
         PageErrorBody(
             message = message,
             code = code,
-            retryLabel = "Retry",
+            retryLabel = stringResource(MR.strings.common_retry),
             onRetry = onRetry
         )
     }
@@ -21625,10 +21650,12 @@ private fun SettingsRouteVisualScreen() {
         remember(route.fixtureKey) {
             settingsQuiverFeedbackVisualFixture(route.fixtureKey)
         }
+    val copiedMessage = stringResource(MR.strings.common_copied)
     val settingsCapabilities =
-        remember(bridge, quiverFeedbackVisualFixture) {
+        remember(bridge, quiverFeedbackVisualFixture, copiedMessage) {
             BridgeSettingsPlatformCapabilities(
                 bridge = bridge,
+                copiedMessage = copiedMessage,
                 feedbackVisualSubmission = quiverFeedbackVisualFixture?.let {
                     SettingsQuiverFeedbackSubmission(
                         ticketId = "visual-feedback-ticket-139",

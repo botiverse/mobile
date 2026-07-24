@@ -500,7 +500,7 @@ private fun BillingActions(
         BillingActionButton(
             KuiklySettingsBillingAction(
                 key = "comparePlans",
-                label = "See all features and compare plans",
+                label = stringResource(MR.strings.settings_billing_action_compare_plans),
                 enabled = payload.comparePlansUrl.isNotBlank()
             )
         ) { onEvent("comparePlans", payload.comparePlansUrl.takeIf { it.isNotBlank() }) }

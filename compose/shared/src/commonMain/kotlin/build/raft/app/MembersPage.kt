@@ -1183,10 +1183,12 @@ internal fun MembersPageContent() {
     }
     val bridgeCallScope = rememberCoroutineScope()
     val linkNavigator = rememberSlockLinkNavigator(pager, bridge)
+    val copiedMessage = stringResource(MR.strings.common_copied)
     val settingsCapabilities =
-        remember(bridge, bridgeCallScope, linkNavigator) {
+        remember(bridge, bridgeCallScope, linkNavigator, copiedMessage) {
             BridgeSettingsPlatformCapabilities(
                 bridge = bridge,
+                copiedMessage = copiedMessage,
                 bridgeCallContext = bridgeCallScope.kuiklyBridgeCallContext(),
                 openUrlHandler = { url -> linkNavigator.open(url) }
             )
@@ -1768,6 +1770,7 @@ internal fun seedRemoteAgentProfile(
 
 private class MemberDetailRouteProvider(
     val bridge: BridgeModule,
+    val reportIssueFailedMessage: String,
     val authStore: SlockAuthSessionStore,
     val memberRepository: MemberRepository,
     val channelRepository: ChannelRepository,
@@ -2213,7 +2216,7 @@ private class MemberDetailRouteProvider(
             )
         )
         if (result !is DataResult.Content) {
-            bridge.toast("Unable to report agent issue")
+            bridge.toast(reportIssueFailedMessage)
         }
         return result
     }
@@ -2224,6 +2227,7 @@ private fun rememberMemberDetailRouteProvider(
     pager: Pager,
     bridge: BridgeModule
 ): MemberDetailRouteProvider {
+    val reportIssueFailedMessage = stringResource(MR.strings.member_error_report_issue)
     val sharedStores = remember { build.raft.app.data.SlockSharedStoreRegistry.get(bridge) }
     val storeScope = remember(pager.pageData.params.toString(), pager.pagerId) {
         pager.pageData.params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
@@ -2296,6 +2300,7 @@ private fun rememberMemberDetailRouteProvider(
     }
     return remember(
         bridge,
+        reportIssueFailedMessage,
         authStore,
         memberRepository,
         channelRepository,
@@ -2313,6 +2318,7 @@ private fun rememberMemberDetailRouteProvider(
     ) {
         MemberDetailRouteProvider(
             bridge = bridge,
+            reportIssueFailedMessage = reportIssueFailedMessage,
             authStore = authStore,
             memberRepository = memberRepository,
             channelRepository = channelRepository,
