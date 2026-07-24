@@ -1,3 +1,5 @@
+import build.raft.app.network.updateSlockProcessNetworkVisibility
+
 /**
  * Minimal C ABI consumed by the OHOS NAPI host.
  *
@@ -6,3 +8,7 @@
  * declarations for every public UI, model, and repository type.
  */
 fun raftInitKuikly(): Int = initKuikly()
+
+/** Process-level lifecycle signal; page and UIAbility visibility must never call this directly. */
+fun raftUpdateProcessNetworkVisibility(foreground: Boolean): Int =
+    updateSlockProcessNetworkVisibility(foreground)
