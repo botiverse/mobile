@@ -79,6 +79,7 @@ import com.tencent.kuiklybase.markdown.model.DefaultMarkdownColors
 import com.tencent.kuiklybase.markdown.model.DefaultMarkdownTypography
 import com.tencent.kuiklybase.markdown.model.MarkdownAnnotator
 import com.tencent.kuiklybase.markdown.compose.LocalSlockMarkdownAnnotationRevision
+import com.tencent.kuiklybase.markdown.compose.LocalSlockMarkdownRowRenderCostSink
 import com.tencent.kuiklybase.markdown.compose.SlockMarkdownNodeTrace
 import com.tencent.kuiklybase.markdown.compose.SlockMarkdownNodeTraceSink
 import com.tencent.kuiklybase.markdown.compose.SlockMarkdownSubTrace
@@ -1910,6 +1911,31 @@ fun SlockMarkdownBody(
         }
         prepared
     }
+    // Option B P1 v3 reconnaissance census token (task #20, reviewed):
+    // gate-before-scan — with diagnostics OFF even the session Local read is
+    // skipped, so neither the predicate's per-char scan nor any token work
+    // executes and the vendor cost-sink Local carries null (zero work). The
+    // session instance exists only inside the Thread page subtree (null
+    // elsewhere — non-Thread markdown surfaces such as file preview never
+    // participate). The token commits to its session ONLY when this
+    // composition commits AND a valid render cost arrived; abandoned passes
+    // and rows without a valid render leave zero trace, and the session's
+    // seen-key set keeps lazy re-entries counted once per open.
+    val rowCensusSession =
+        if (slockTraceDiagnosticsEnabled()) LocalSlockMarkdownPlainCandidateSession.current else null
+    val rowCensusToken =
+        if (rowCensusSession != null && performanceKey != null) {
+            remember(rowCensusSession, performanceKey, content) {
+                SlockMarkdownRowCensusToken(
+                    session = rowCensusSession,
+                    rowKey = performanceKey,
+                    candidate = SlockMarkdownPlainCandidatePredicate.isConservativePlainCandidate(content),
+                    chars = content.length
+                )
+            }
+        } else {
+            null
+        }
     val markdownModifier =
         if (DEBUG_SLOCK_MARKDOWN_PERF_LOG && performanceKey != null) {
             val key = performanceKey
@@ -2096,12 +2122,20 @@ fun SlockMarkdownBody(
                 }
             }
         }
-    CompositionLocalProvider(
-        LocalTextProvider provides SlockMarkdownTextProvider,
-        LocalUriHandler provides uriHandler,
-        LocalSlockMarkdownBodyClick provides onClick,
-        LocalSlockMarkdownAnnotationRevision provides annotationRevision
-    ) {
+    // OFF-zero-work provider set (reviewed round 4): with diagnostics OFF the
+    // census Local is NOT part of the vararg at all — the base array is used
+    // by identity, so the production provider scope is unchanged by P1.
+    val markdownProvidedValues = slockMarkdownProvidedValuesWith(
+        arrayOf(
+            LocalTextProvider provides SlockMarkdownTextProvider,
+            LocalUriHandler provides uriHandler,
+            LocalSlockMarkdownBodyClick provides onClick,
+            LocalSlockMarkdownAnnotationRevision provides annotationRevision
+        ),
+        LocalSlockMarkdownRowRenderCostSink,
+        rowCensusToken
+    )
+    CompositionLocalProvider(*markdownProvidedValues) {
         traceMarkdownSection(SlockMarkdownTraceNames.LAYOUT, body.length) {
             // #192 long-body sub-trace: split layout phase into pre-block setup
             // vs the third-party `Markdown()` call so 5-10ms spikes can be
