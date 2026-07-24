@@ -19925,7 +19925,6 @@ private fun ThreadAttachmentChip(
         ThreadInlineVideoAttachmentCard(
             attachment = attachment,
             commentsEnabled = commentsEnabled,
-            onOpenPreview = onOpen,
             onOpenComments = onOpenComments
         )
         return
