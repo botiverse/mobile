@@ -28,7 +28,9 @@ def check_workflows(paths):
             policy_seen = False
             for index, step in enumerate(steps):
                 uses = step.get("uses") or ""
-                if uses.startswith(POLICY_ACTION):
+                # Exact match: a lookalike path (e.g. .../gradle-cache-policy-broken) must not
+                # count as wiring.
+                if uses == POLICY_ACTION:
                     policy_seen = True
                 if uses.startswith(SETUP_GRADLE) and not policy_seen:
                     errors.append(
@@ -41,15 +43,17 @@ def check_workflows(paths):
 def check_policy_files(epoch_path, quarantine_path):
     errors = []
     try:
-        epoch_lines = open(epoch_path).read().split("\n")
+        epoch_lines = open(epoch_path, newline="").read().split("\n")
     except OSError as error:
         return [f"{epoch_path}: unreadable ({error})"]
+    # Byte contract shared with apply.sh (mapfile): the final newline is optional, exactly one
+    # logical line, and CR never matches EPOCH_RE.
     non_trailing = epoch_lines[:-1] if epoch_lines and epoch_lines[-1] == "" else epoch_lines
     if len(non_trailing) != 1 or not EPOCH_RE.match(non_trailing[0] if non_trailing else ""):
-        errors.append(f"{epoch_path}: must be exactly one [A-Za-z0-9_.-]{{1,32}} line")
+        errors.append(f"{epoch_path}: must be exactly one [A-Za-z0-9_.-]{{1,32}} logical line")
     try:
         seen = set()
-        for line in open(quarantine_path):
+        for line in open(quarantine_path, newline=""):
             stripped = line.strip()
             if not stripped or stripped.startswith("#"):
                 continue
@@ -90,6 +94,26 @@ def self_test():
         open(epoch, "w").write("ok\n")
         open(quarantine, "w").write("not-allowed\n")
         assert check_policy_files(epoch, quarantine), "non-allowlisted bundle must fail"
+
+        # Byte-contract parity with apply.sh: final LF optional, CRLF rejected.
+        open(epoch, "w").write("7")
+        open(quarantine, "w").write("# c\ndependencies")
+        assert not check_policy_files(epoch, quarantine), "no-final-LF epoch and trailing quarantine entry must pass"
+        open(epoch, "w").write("1\r\n")
+        open(quarantine, "w").write("# c\n")
+        assert check_policy_files(epoch, quarantine), "CRLF epoch must fail"
+        open(epoch, "w").write("1\n")
+        open(quarantine, "w").write("dependencies\r\n")
+        assert check_policy_files(epoch, quarantine), "CRLF quarantine must fail"
+
+        # Lookalike policy path must not count as wiring; .yaml workflows must be scanned.
+        lookalike = {"jobs": {"a": {"steps": [
+            {"uses": POLICY_ACTION + "-broken"},
+            {"uses": "gradle/actions/setup-gradle@v5"},
+        ]}}}
+        lookalike_path = os.path.join(tmp, "lookalike.yaml")
+        yaml.safe_dump(lookalike, open(lookalike_path, "w"))
+        assert check_workflows([lookalike_path]), "lookalike policy path must not satisfy the invariant"
     print("check_gradle_cache_policy_wiring self-test: OK")
 
 
@@ -97,7 +121,8 @@ def main():
     if "--self-test" in sys.argv:
         self_test()
         return
-    errors = check_workflows(glob.glob(".github/workflows/*.yml"))
+    workflow_paths = glob.glob(".github/workflows/*.yml") + glob.glob(".github/workflows/*.yaml")
+    errors = check_workflows(workflow_paths)
     errors += check_policy_files(".github/gradle-cache-epoch", ".github/gradle-cache-quarantine")
     if errors:
         print("\n".join(errors), file=sys.stderr)

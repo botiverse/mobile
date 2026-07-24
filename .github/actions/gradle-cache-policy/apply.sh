@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 # Fail-closed reader for the repository Gradle cache policy.
 #
-#   .github/gradle-cache-epoch       exactly one line matching [A-Za-z0-9_.-]{1,32}; no comments.
+#   .github/gradle-cache-epoch       exactly one logical line matching [A-Za-z0-9_.-]{1,32}; no
+#                                    comments. The final newline is optional; CR is rejected.
 #   .github/gradle-cache-quarantine  blank/# lines ignored; each other line must be an
-#                                    allowlisted gradle/actions bundle name.
+#                                    allowlisted gradle/actions bundle name. The final newline is
+#                                    optional (a trailing active entry without LF MUST still be
+#                                    honored); CR is rejected. Byte contract must stay identical
+#                                    to scripts/ci/check_gradle_cache_policy_wiring.py.
 #
 # Exports for the following gradle/actions/setup-gradle step:
 #   GRADLE_BUILD_ACTION_CACHE_KEY_PREFIX=<epoch>-   (rotates the top-level Gradle User Home key;
@@ -24,14 +28,17 @@ fail() { echo "gradle-cache-policy: $*" >&2; exit 1; }
 [[ -f "${epoch_file}" ]] || fail "missing ${epoch_file}"
 [[ -f "${quarantine_file}" ]] || fail "missing ${quarantine_file}"
 
-epoch_line_count="$(wc -l < "${epoch_file}")"
-epoch="$(head -n 1 "${epoch_file}")"
-[[ "${epoch_line_count}" -eq 1 ]] || fail "epoch file must contain exactly one line, found ${epoch_line_count}"
+# mapfile keeps a final line that lacks LF, so the logical-line count matches the checker.
+mapfile -t epoch_lines < "${epoch_file}"
+[[ "${#epoch_lines[@]}" -eq 1 ]] || fail "epoch file must contain exactly one logical line, found ${#epoch_lines[@]}"
+epoch="${epoch_lines[0]}"
 [[ "${epoch}" =~ ^[A-Za-z0-9_.-]{1,32}$ ]] || fail "epoch value is not a single [A-Za-z0-9_.-]{1,32} token"
 
 allowlist=(dependencies transforms)
 bundles=()
-while IFS= read -r line; do
+# The `|| [[ -n $line ]]` keeps a final active entry that lacks LF: dropping it would silently
+# ignore a requested quarantine (fail-open) while the lint checker stays green.
+while IFS= read -r line || [[ -n "${line}" ]]; do
   trimmed="${line//[[:space:]]/}"
   [[ -z "${trimmed}" || "${trimmed}" == \#* ]] && continue
   [[ "${trimmed}" == "${line}" ]] || fail "quarantine line contains whitespace: '${line}'"

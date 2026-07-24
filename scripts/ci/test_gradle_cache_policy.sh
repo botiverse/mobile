@@ -38,6 +38,17 @@ grep -q '^GRADLE_BUILD_ACTION_CACHE_KEY_PREFIX=epoch_2026-07.24-$' "$LAST_ENV_FI
 run_case quarantine-both-bundles pass '3\n' '# incident\ndependencies\ntransforms\n'
 grep -q '^GRADLE_BUILD_ACTION_SKIP_RESTORE=dependencies,transforms$' "$LAST_ENV_FILE"
 
+# Byte-contract paths (shared with the Python checker): final LF optional, CR rejected.
+run_case epoch-no-final-lf pass '7' '# only comments\n'
+grep -q '^GRADLE_BUILD_ACTION_CACHE_KEY_PREFIX=7-$' "$LAST_ENV_FILE"
+
+run_case quarantine-trailing-entry-no-final-lf pass '3\n' '# incident\ndependencies'
+grep -q '^GRADLE_BUILD_ACTION_SKIP_RESTORE=dependencies$' "$LAST_ENV_FILE"
+
+run_case epoch-crlf fail '1\r\n' '\n'
+run_case quarantine-crlf fail '1\n' 'dependencies\r\n'
+run_case epoch-extra-blank-line fail '1\n\n' '\n'
+
 # Fail-closed paths.
 run_case missing-epoch fail ABSENT 'dependencies\n'
 run_case missing-quarantine fail '1\n' ABSENT
