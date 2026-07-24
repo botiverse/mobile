@@ -64,7 +64,6 @@ final class SlockIosOAuthRouteStore: ObservableObject {
                         "slockAuthLegalPlatform": "ios",
                         "slockAuthLegalCode": handoffCode,
                         "slockAuthLegalCodeVerifier": codeVerifier,
-                        "slockSocialAuthProviders": slockIosOAuthProviders,
                         "slockReplaceCurrentPage": true,
                     ]
                 )
@@ -106,7 +105,6 @@ final class SlockIosOAuthRouteStore: ObservableObject {
             pageData: [
                 "pageName": slockIosOAuthLoginPage,
                 "slockAuthMessage": message,
-                "slockSocialAuthProviders": slockIosOAuthProviders,
                 "slockReplaceCurrentPage": true,
             ]
         )
