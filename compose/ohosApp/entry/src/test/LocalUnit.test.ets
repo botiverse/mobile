@@ -1,4 +1,5 @@
 import { describe, beforeAll, beforeEach, afterEach, afterAll, it, expect } from '@ohos/hypium';
+import { ApplicationStateChangeCallback } from '@kit.AbilityKit';
 import { decodeOhosSocketIoFrame } from '../main/ets/kuikly/OhosSocketIoClient';
 import {
   admitSlockOhosPreparedBatch,
@@ -35,6 +36,7 @@ import {
   SlockOhosPlatformFileReader,
   SLOCK_OHOS_PLATFORM_FILE_MAX_STREAM_CHUNK_BYTES,
 } from '../main/ets/entryability/SlockOhosPlatformFileReader';
+import { SlockOhosProcessNetworkLifecycle } from '../main/ets/entryability/SlockOhosProcessNetworkLifecycle';
 
 class FakePlatformFileHandle {
   readonly fileRef: string;
@@ -42,6 +44,10 @@ class FakePlatformFileHandle {
   constructor(fileRef: string) {
     this.fileRef = fileRef;
   }
+}
+
+class FakeNonErrorReason {
+  readonly reason: string = 'offline';
 }
 
 class FakePlatformFileBackend implements SlockOhosPlatformFileBackend {
@@ -275,6 +281,35 @@ export default function localUnitTest() {
       expect(duplicateHidden).assertEqual(1);
       expect(second).assertEqual(2);
     });
+    it('processNetworkLifecycleRegistersOnceAndPublishesOnlyApplicationEdges', 0, () => {
+      const transitions: Array<boolean> = [];
+      let registrationCount = 0;
+      let callback: ApplicationStateChangeCallback | undefined;
+      const lifecycle = new SlockOhosProcessNetworkLifecycle((foreground: boolean): number => {
+        transitions.push(foreground);
+        return 0;
+      });
+      const register = (candidate: ApplicationStateChangeCallback): void => {
+        registrationCount += 1;
+        callback = candidate;
+      };
+
+      expect(lifecycle.installWithRegistrar(register)).assertTrue();
+      expect(lifecycle.installWithRegistrar(register)).assertFalse();
+      expect(registrationCount).assertEqual(1);
+
+      const applicationCallback = callback as ApplicationStateChangeCallback;
+      applicationCallback.onApplicationForeground();
+      applicationCallback.onApplicationForeground();
+      applicationCallback.onApplicationBackground();
+      applicationCallback.onApplicationBackground();
+      applicationCallback.onApplicationForeground();
+
+      expect(transitions.length).assertEqual(3);
+      expect(transitions[0]).assertTrue();
+      expect(transitions[1]).assertFalse();
+      expect(transitions[2]).assertTrue();
+    });
     it('activityUnreadWidgetAcceptsOnlyFiniteLiveCounts', 0, () => {
       expect(activityUnreadCountOrNull(4)).assertEqual(4);
       expect(activityUnreadCountOrNull(-2)).assertEqual(0);
@@ -295,7 +330,7 @@ export default function localUnitTest() {
     it('activityUnreadWidgetCreatesTypedErrorWhenNoFallbackExists', 0, () => {
       const original = new Error('offline');
       const normalized = createActivityUnreadWidgetRefreshError(original);
-      const nonError = createActivityUnreadWidgetRefreshError({ reason: 'offline' });
+      const nonError = createActivityUnreadWidgetRefreshError(new FakeNonErrorReason());
 
       expect(normalized instanceof Error).assertTrue();
       expect(normalized.message).assertContain('offline');

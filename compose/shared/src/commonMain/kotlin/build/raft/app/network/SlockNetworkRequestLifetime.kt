@@ -295,7 +295,7 @@ internal object SlockProcessNetworkRequestLifetime {
     val coordinator = SlockNetworkRequestLifetimeCoordinator()
 }
 
-/** Android calls this only from its process-level activity visibility owner. */
+/** Platform hosts call this only from their process/application-level visibility owner. */
 fun updateSlockProcessNetworkVisibility(foreground: Boolean): Int =
     SlockProcessNetworkRequestLifetime.coordinator
         .onProcessVisibilityChanged(foreground)

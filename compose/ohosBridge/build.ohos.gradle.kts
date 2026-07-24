@@ -75,11 +75,23 @@ kotlin {
 }
 
 fun verifyOhosBridgeNativeContracts(outputDirectory: String) {
-    val library = layout.buildDirectory
-        .file("bin/ohosArm64/$outputDirectory/libshared.so")
-        .get()
-        .asFile
+    val output = layout.buildDirectory.dir("bin/ohosArm64/$outputDirectory").get().asFile
+    val library = output.resolve("libshared.so")
+    val apiHeader = output.resolve("libshared_api.h")
     check(library.isFile) { "Missing linked OHOS bridge library: $library" }
+    check(apiHeader.isFile) { "Missing generated OHOS bridge header: $apiHeader" }
+
+    val apiHeaderText = apiHeader.readText()
+    val apiHeaderLineCount = apiHeader.useLines { lines -> lines.count() }
+    check("raftInitKuikly" in apiHeaderText) {
+        "OHOS bridge header does not expose raftInitKuikly"
+    }
+    check("raftUpdateProcessNetworkVisibility" in apiHeaderText) {
+        "OHOS bridge header does not expose raftUpdateProcessNetworkVisibility"
+    }
+    check(apiHeaderLineCount <= 500) {
+        "OHOS bridge C API unexpectedly expanded to $apiHeaderLineCount lines"
+    }
 
     val readelf = ohosLlvmReadelf().absolutePath
     val symbols = runAndCapture(readelf, "-s", "--wide", library.absolutePath)

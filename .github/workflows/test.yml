@@ -860,10 +860,13 @@ jobs:
 
   ohos:
     name: OHOS shared compile
-    # Runs on Linux, not macOS (#469): this job only consumes ohosArm64 klibs,
+    # Runs on Linux, not macOS (#469): this job consumes ohosArm64 klibs,
     # all built on Linux by the prebuilds and shared through Blacksmith's
     # colocated cache, which macOS runners do not participate in (the sibling
-    # ohos-host container hits it). On top of that it runs in artin's
+    # ohos-host container hits it). Native-bridge changes additionally link the
+    # debug K/N library here and compile the NAPI C++ boundary against its generated
+    # header; the 8-vCPU runner has the headroom the 4-vCPU ArkTS job lacks.
+    # On top of that it runs in artin's
     # harmonyos-ci-image (task #240), which presets the full OHOS toolchain
     # (OHOS_SDK_HOME/LLVM from command-line-tools 6.1.1.280) — no per-run
     # setup-ohos-sdk download, and the SDK version matches ohos-host and the
@@ -884,6 +887,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - name: Set up JDK
         uses: actions/setup-java@v5
@@ -947,6 +952,25 @@ jobs:
             exit 1
           }
 
+      - name: Detect OHOS native-bridge changes
+        id: ohos_native
+        shell: bash
+        run: |
+          if [ "$GITHUB_EVENT_NAME" != "pull_request" ]; then
+            echo "required=true" >> "$GITHUB_OUTPUT"
+          elif git diff --quiet "${{ github.event.pull_request.base.sha }}" HEAD -- \
+            .github/workflows/test.yml \
+            compose/ohosBridge \
+            compose/ohosApp/entry/src/main/cpp \
+            compose/ohosApp/entry/src/main/ets/entryability \
+            compose/ohosApp/scripts \
+            compose/shared/src/commonMain/kotlin/build/raft/app/network/SlockNetworkRequestLifetime.kt \
+            compose/shared/src/commonTest/kotlin/build/raft/app/network/SlockNetworkRequestLifetimeCoordinatorTest.kt; then
+            echo "required=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "required=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Compile shared OHOS target and unit tests
         working-directory: compose
         env:
@@ -959,6 +983,47 @@ jobs:
             :ohosBridge:compileKotlinOhosArm64 \
             --no-daemon \
             --console=plain
+
+      - name: Link and stage the generated OHOS Kotlin Native bridge
+        if: steps.ohos_native.outputs.required == 'true'
+        working-directory: compose
+        env:
+          SLOCK_SKIP_OHOS_LOCAL_DEP_PREP: "true"
+        run: |
+          ./gradlew \
+            -c settings.ohos.gradle.kts \
+            copyNetworkOhosRuntimeLibs \
+            :ohosBridge:linkDebugSharedOhosArm64 \
+            --no-daemon \
+            --console=plain
+
+          shared_output="ohosBridge/build/bin/ohosArm64/debugShared"
+          test -s "$shared_output/libshared.so"
+          test -s "$shared_output/libshared_api.h"
+          grep -q 'raftUpdateProcessNetworkVisibility' "$shared_output/libshared_api.h"
+          test "$(wc -l < "$shared_output/libshared_api.h")" -le 500
+
+          mkdir -p ohosApp/entry/libs/arm64-v8a ohosApp/entry/src/main/cpp
+          install -m 755 "$shared_output/libshared.so" ohosApp/entry/libs/arm64-v8a/libshared.so
+          install -m 644 "$shared_output/libshared_api.h" ohosApp/entry/src/main/cpp/libshared_api.h
+          node ohosApp/scripts/test_process_network_lifecycle_source_contract.mjs
+
+      - name: Compile OHOS NAPI against the generated Kotlin Native bridge
+        if: steps.ohos_native.outputs.required == 'true'
+        working-directory: compose/ohosApp
+        shell: bash
+        env:
+          OHOS_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk/default/openharmony
+          DEVECO_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk
+        run: |
+          ohpm install --all
+          hvigorw --sync -p product=default --analyze=normal --no-daemon
+          hvigorw --mode module \
+            -p module=entry@default -p product=default -p requiredDeviceType=phone \
+            default@BuildNativeWithNinja --analyze=normal --no-daemon
+          hvigorw --mode module \
+            -p module=entry@default -p product=default -p requiredDeviceType=phone \
+            test --analyze=normal --no-daemon
 
   # OHOS host (hvigor/ArkTS) gate — catches .ets compile errors that the
   # KMP-only ohos job cannot see. Runs in artin's harmonyos-ci-image, which

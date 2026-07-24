@@ -54,6 +54,50 @@ class SlockNetworkRequestLifetimeCoordinatorTest {
     }
 
     @Test
+    fun hostVisibilitySequenceDeduplicatesSignalsAndRetiresPendingRequestOnce() = runBlocking {
+        val coordinator = SlockNetworkRequestLifetimeCoordinator(nowMillis = { 1_000L })
+        val transitions = mutableListOf<SlockNetworkLifecycleTransition>()
+        transitions += coordinator.onProcessVisibilityChanged(foreground = true)
+        transitions += coordinator.onProcessVisibilityChanged(foreground = true)
+
+        val callbackReady = CompletableDeferred<(String) -> Unit>()
+        val startCount = atomic(0)
+        val cancelCount = atomic(0)
+        val pending =
+            async {
+                coordinator.execute(
+                    methodClass = SlockNetworkMethodClass.Read,
+                    timeoutMillis = 30_000L
+                ) { callback ->
+                    startCount.incrementAndGet()
+                    callbackReady.complete(callback)
+                    SlockNetworkRequestCancelHandle { cancelCount.incrementAndGet() }
+                }
+            }
+        val lateCallback = callbackReady.await()
+
+        transitions += coordinator.onProcessVisibilityChanged(foreground = false)
+        transitions += coordinator.onProcessVisibilityChanged(foreground = false)
+        transitions += coordinator.onProcessVisibilityChanged(foreground = true)
+        val outcome = pending.await()
+
+        assertEquals(listOf(false, false, true, false, true), transitions.map { it.changed })
+        assertEquals(listOf(1L, 1L, 2L, 2L, 3L), transitions.map { it.generation })
+        assertEquals(listOf(0, 0, 1, 0, 0), transitions.map { it.retiredRequestCount })
+        val retired = assertIs<SlockNetworkRequestLifetimeOutcome.Retired>(outcome)
+        assertEquals(1L, retired.descriptor.generation)
+        assertEquals(2L, retired.replacementGeneration)
+        assertFalse(retired.processForeground)
+        assertEquals(1, startCount.value)
+        assertEquals(1, cancelCount.value)
+        assertEquals(0, coordinator.activeRequestCountForTest())
+
+        lateCallback("late-after-deduplicated-host-sequence")
+        assertEquals(1, cancelCount.value)
+        assertEquals(0, coordinator.activeRequestCountForTest())
+    }
+
+    @Test
     fun lifecycleRetirementBeforeHandleAttachmentCancelsOnceAndFencesLateCallback() = runBlocking {
         val coordinator = SlockNetworkRequestLifetimeCoordinator(nowMillis = { 2_000L })
         coordinator.onProcessVisibilityChanged(foreground = true)

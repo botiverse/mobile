@@ -356,10 +356,19 @@ private extension String {
 }
 
 final class SlockIosAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
+    private let networkRequestLifetimeAdapter = SlockIosNetworkRequestLifetimeAdapter(
+        notificationCenter: .default,
+        applicationState: { UIApplication.shared.applicationState },
+        visibilitySink: { foreground in
+            _ = SlockNetworkRequestLifetimeKt.updateSlockProcessNetworkVisibility(foreground: foreground)
+        }
+    )
+
     func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
+        networkRequestLifetimeAdapter.install()
         UNUserNotificationCenter.current().delegate = self
         if let userInfo = launchOptions?[.remoteNotification] as? [AnyHashable: Any] {
             SlockIosPushHost.acceptSystemNotificationOpen(
