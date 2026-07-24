@@ -20,6 +20,24 @@ import process from "node:process";
 export const QWEN_TOKEN_PLAN_CN_BASE =
   "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1";
 
+// Credentialed requests may ONLY go to authorities frozen in this reviewed
+// allowlist. The dispatcher picks a NAME; the origin/path mapping ships in
+// the repo and changes only through a reviewed PR (e.g. adding "cf-proxy"
+// once the worker origin exists). A free-form URL input would let any
+// dispatcher point the Authorization header at an arbitrary authority.
+export const PROBE_TARGETS = Object.freeze({
+  "direct-qwen": QWEN_TOKEN_PLAN_CN_BASE,
+});
+
+export function resolveProbeTarget(name) {
+  const key = String(name || "").trim();
+  if (!Object.prototype.hasOwnProperty.call(PROBE_TARGETS, key)) {
+    throw new Error(`unknown probe target: ${key || "<empty>"}; allowed: ${Object.keys(PROBE_TARGETS).join(", ")}`);
+  }
+  // Defense in depth: the frozen value must itself survive URL hardening.
+  return normalizeBaseUrl(PROBE_TARGETS[key]);
+}
+
 const KEY_ENV_ORDER = ["QWEN_TOKEN_PLAN_CN_API_KEY", "PI_API_KEY"];
 
 // Hard timeout bounds: below the 10-minute job cap with margin, and never a
@@ -55,20 +73,23 @@ export function normalizeBaseUrl(raw) {
   if (url.protocol !== "https:") throw new Error("base URL must use https");
   if (url.username || url.password) throw new Error("base URL must not carry credentials");
   if (url.search || url.hash) throw new Error("base URL must not carry query or fragment");
-  const host = url.hostname.toLowerCase();
+  // Canonicalize the DNS terminal dot BEFORE the name checks so
+  // "localhost." / "api.localhost." cannot bypass the comparisons below while
+  // still resolving to the same host.
+  const host = url.hostname.toLowerCase().replace(/\.$/, "");
   if (host === "localhost" || host.endsWith(".localhost")) {
     throw new Error("base URL host must not be localhost");
   }
-  if (!/[a-z]/.test(host)) {
+  if (!/[a-z]/.test(host) || host.startsWith("[")) {
     throw new Error("base URL host must be a DNS name, not an IP literal");
   }
-  if (host.startsWith("[")) {
-    throw new Error("base URL host must be a DNS name, not an IP literal");
+  if (!host.includes(".")) {
+    throw new Error("base URL host must not be a single-label/internal name");
   }
   if (!SAFE_PATH.test(url.pathname) || url.pathname.split("/").includes("..")) {
     throw new Error("base URL path contains unsupported characters");
   }
-  return `${url.origin}${url.pathname}`.replace(/\/+$/, "");
+  return `https://${host}${url.port ? `:${url.port}` : ""}${url.pathname}`.replace(/\/+$/, "");
 }
 
 export function requireCompletionTimeoutMs(raw) {
@@ -183,7 +204,8 @@ async function main() {
     const index = args.indexOf(flag);
     return index >= 0 ? args[index + 1] : fallback;
   };
-  const baseUrl = normalizeBaseUrl(arg("--base-url", QWEN_TOKEN_PLAN_CN_BASE));
+  const targetName = String(arg("--target", "direct-qwen"));
+  const baseUrl = resolveProbeTarget(targetName);
   const model = String(arg("--model", "qwen3.8-max-preview"));
   const outPath = String(arg("--out", "provider-probe.json"));
   const withCompletion = !args.includes("--no-completion");
@@ -195,6 +217,7 @@ async function main() {
   const apiKey = KEY_ENV_ORDER.map((name) => process.env[name] || "").find(Boolean) || "";
 
   const report = {
+    target: targetName,
     base_url: baseUrl,
     model,
     reachability: [],

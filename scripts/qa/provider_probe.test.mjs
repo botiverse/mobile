@@ -7,10 +7,30 @@ import {
   COMPLETION_TIMEOUT_MIN_MS,
   normalizeBaseUrl,
   parseCurlTiming,
+  PROBE_TARGETS,
   QWEN_TOKEN_PLAN_CN_BASE,
   redactSecrets,
   requireCompletionTimeoutMs,
+  resolveProbeTarget,
 } from "./provider_probe.mjs";
+
+test("credentialed authorities come only from the frozen reviewed allowlist", () => {
+  assert.equal(resolveProbeTarget("direct-qwen"), QWEN_TOKEN_PLAN_CN_BASE);
+  // Every allowlist value must itself survive URL hardening.
+  for (const [name, value] of Object.entries(PROBE_TARGETS)) {
+    assert.equal(resolveProbeTarget(name), normalizeBaseUrl(value));
+  }
+  // Arbitrary hosts, URLs, and unknown names are not dispatchable.
+  for (const bad of ["https://evil.example/v1", "cf-proxy", "", "direct-qwen ", "DIRECT-QWEN"]) {
+    if (bad === "direct-qwen ") {
+      // trimmed name is allowed
+      assert.equal(resolveProbeTarget(bad), QWEN_TOKEN_PLAN_CN_BASE);
+      continue;
+    }
+    assert.throws(() => resolveProbeTarget(bad), /unknown probe target/, JSON.stringify(bad));
+  }
+  assert.ok(Object.isFrozen(PROBE_TARGETS));
+});
 
 test("base URL normalization accepts https provider hosts and strips trailing slashes", () => {
   assert.equal(normalizeBaseUrl("https://example.com/v1/"), "https://example.com/v1");
@@ -48,6 +68,13 @@ test("base URL validation rejects localhost and every IP-literal host class", ()
   ]) {
     assert.throws(() => normalizeBaseUrl(bad), /localhost|IP literal/, bad);
   }
+  // DNS terminal dot must not bypass the name checks, and single-label
+  // internal names are rejected outright.
+  assert.throws(() => normalizeBaseUrl("https://localhost./v1"), /localhost/);
+  assert.throws(() => normalizeBaseUrl("https://api.localhost./v1"), /localhost/);
+  assert.throws(() => normalizeBaseUrl("https://intranet/v1"), /single-label/);
+  assert.throws(() => normalizeBaseUrl("https://intranet./v1"), /single-label/);
+  assert.equal(normalizeBaseUrl("https://example.com./v1"), "https://example.com/v1");
 });
 
 test("secret redaction removes keys of any non-empty length and bearer tokens", () => {
