@@ -56,6 +56,9 @@ jobs:
         shell: bash
         run: sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
+      - name: Apply Gradle cache policy
+        uses: ./.github/actions/gradle-cache-policy
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
 

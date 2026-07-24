@@ -106,6 +106,9 @@ jobs:
           tail -200 "$RUNNER_TEMP/visual-testbox-emulator.log" >&2
           exit 1
 
+      - name: Apply Gradle cache policy
+        uses: ./.github/actions/gradle-cache-policy
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
 
