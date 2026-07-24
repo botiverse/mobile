@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-24T22:24:50.566Z",
+  "generatedAt": "2026-07-24T22:28:30.037Z",
   "baseline": "android",
   "current": "ios",
   "comparison": "android__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 79,
-    "ready": 73,
-    "pending": 6
+    "ready": 74,
+    "pending": 5
   },
   "cases": [
     {
@@ -1635,15 +1635,30 @@
     },
     {
       "id": "components.channel.settings.panel",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:ffffffff00000000000000000000000000000000000000007ffe7ffc7ffc7ffc7ffe7ffc7ffc7ffc7ffc7ffc7ffe7ffc7ffc7ffc7ffc7ffc7ffe7ffc7ffe7ffc7ffe7ffc7ffe7ffc7ffc7ffc7ffc7ffc60004000699c6004600040006004400440004000000400040000000000000000000000000000000080018001ffffffff",
-      "generatedAt": "2026-07-24T22:24:50.009Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-24T22:26:44.907Z",
+      "severity": "low",
+      "summary": [
+        "Typography weight differs: iOS labels and button text appear slightly bolder/heavier than Android (NAME, DESCRIPTION, Cancel, Save Changes, Make Private, Archive Channel, Delete Channel all look thicker on iOS).",
+        "Required indicator asterisk on iOS is rendered in a softer pink/red compared to a more saturated magenta/pink on Android."
+      ],
+      "likelyCauses": [
+        "Platform-specific font fallback or font-weight mapping (iOS SF vs Android Roboto) producing different perceived weight at the same logical weight.",
+        "Different resolution/DPR between renders (1170x2532 iOS vs 390x844 Android) scaling typography differently after the comparison canvas normalized them."
+      ],
+      "suggestedOwner": "kuikly-render / typography",
+      "suggestedFixes": [
+        "Normalize font-family and font-weight across both platforms or pick platform-appropriate system fonts explicitly in the Kuikly theme.",
+        "Audit the required-field asterisk color token so the same shade is used on Android and iOS.",
+        "Re-render at matching DPR or compare at matched logical DP to rule out scaling artifacts before adjusting styles."
+      ],
+      "intentional": [
+        "Layout structure, spacing, alignment, component bounds, and color of action buttons (orange/red) are visually consistent across both renders."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.04180405341542781
     },
     {
@@ -1936,7 +1951,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-24T22:24:50.108Z",
+      "generatedAt": "2026-07-24T22:28:29.456Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1949,7 +1964,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-24T22:24:50.108Z",
+      "generatedAt": "2026-07-24T22:28:29.456Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1962,7 +1977,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-24T22:24:50.108Z",
+      "generatedAt": "2026-07-24T22:28:29.456Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1975,7 +1990,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-24T22:24:50.108Z",
+      "generatedAt": "2026-07-24T22:28:29.456Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1988,7 +2003,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-24T22:24:50.108Z",
+      "generatedAt": "2026-07-24T22:28:29.456Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

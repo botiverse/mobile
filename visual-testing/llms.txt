@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-07-24 22:24:52 UTC
+Generated: 2026-07-24 22:28:31 UTC
 Latest run: 91f78973-20260724222236
 Latest commit: 91f78973-20260724222236
 Commit subject: fix(qa): bootstrap canonical release cases (#1563)
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 79, same 0, pass 0, basic-pass 0, different 78, missing 1
-AI analysis: ready 75 / total 79, pending 4
+AI analysis: ready 78 / total 79, pending 1
 Visual coverage matrix: active 88 / total 107, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 

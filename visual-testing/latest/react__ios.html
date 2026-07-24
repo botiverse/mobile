@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>91f78973-20260724222236</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-07-24T22:24:52.458Z" data-timestamp="2026-07-24T22:24:52.458Z" title="2026-07-24T22:24:52.458Z">2026-07-24 22:24:52 UTC</time></p>
+    <p class="runMeta"><code>91f78973-20260724222236</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-07-24T22:28:31.741Z" data-timestamp="2026-07-24T22:28:31.741Z" title="2026-07-24T22:28:31.741Z">2026-07-24 22:28:31 UTC</time></p>
     <p class="runMeta">Comparisons: <a href="index.html">React vs Android</a> · <strong>React vs iOS</strong> · <a href="android__ios.html">Android vs iOS</a></p>
     <div class="summary">
       <span class="pill">Total 79</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 10</span>
       <span class="pill">Different 50</span>
       <span class="pill">Missing 6</span>
-      <span class="pill">AI 71/79 ready</span>
+      <span class="pill">AI 73/79 ready</span>
       <span class="pill">Matrix 88/107 active</span>
       <span class="pill">Components Parity 77/81 active</span><span class="pill">Screens Parity 11/26 active</span>
     </div>
@@ -4022,7 +4022,12 @@
       <p><code>RGB 84.2%</code><br/><code>Pixel 72.21%</code><br/><code>Mismatch 27.79%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop modal-viewport 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · design-system / cross-platform parity team</summary>
+    <ul><li>Save Changes button on iOS is disabled (greyed out) while React shows it active in pink, indicating state/validation divergence between platforms.</li><li>iOS adds a Pin button with a pin icon between the Save Changes row and Make Private button, which is missing on the React baseline.</li><li>iOS shows the modal positioned lower in the viewport (starts further down) versus React where the modal starts higher, indicating different vertical positioning/anchoring.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Sync the enabled/disabled state of Save Changes across React and iOS based on actual form change detection and validation logic.</li><li>Decide whether Pin is platform-specific or cross-platform; if cross-platform, add it to the React component; if iOS-only, document the divergence.</li><li>Align modal anchoring rules so both platforms position the modal consistently relative to viewport (e.g., centered vs bottom-sheet).</li><li>Add or remove the divider consistently — confirm with design intent and apply to both codebases.</li><li>Adopt a shared button order/layout convention or explicitly document per-platform differences (e.g., iOS right-aligned action buttons).</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.channel.settings.panel.png" data-current-src="ios/components.channel.settings.panel.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -4148,7 +4153,12 @@
       <p><code>RGB 97.3%</code><br/><code>Pixel 96.02%</code><br/><code>Mismatch 3.98%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       <p class="cropInfo">basic pass: pixel perfect 96.02% &gt; 96% · raw different</p>
       <p class="cropInfo"><code>Crop component-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · design-systems</summary>
+    <ul><li>iOS header contains a settings gear icon to the left of the 'Settings' title that is absent on the React baseline.</li><li>iOS PERSONAL section includes 'Mobile' and 'Storage' rows that are missing from the React baseline; React PERSONAL order is slightly different (Language &amp; Region, Appearance, Notifications) vs iOS (Account, Language &amp; Region, Appearance, Notifications, Mobile, Storage).</li><li>iOS labels 'Plan &amp; Billing' as simply 'Billing' and 'Applications' as 'Connected Apps'.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Unify the settings row registry across platforms so Personal/Workspace/About sections share the same items and labels (rename 'Billing' to 'Plan &amp; Billing', 'Connected Apps' to 'Applications').</li><li>Add MCP Servers row to the iOS settings and remove Send feedback or align its presence on both platforms.</li><li>Add the gear header icon to the React Settings header to match iOS (or remove from iOS if intentional).</li><li>Standardize row height and section header spacing to a shared token to remove the tighter iOS spacing.</li><li>Re-run slock comparison at component-bounds for header and each section to catch enumeration and spacing regressions.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.settings.root.page.png" data-current-src="ios/components.settings.root.page.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">

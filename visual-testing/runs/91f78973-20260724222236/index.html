@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>91f78973-20260724222236</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-07-24T22:24:52.458Z" data-timestamp="2026-07-24T22:24:52.458Z" title="2026-07-24T22:24:52.458Z">2026-07-24 22:24:52 UTC</time></p>
+    <p class="runMeta"><code>91f78973-20260724222236</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-07-24T22:28:31.741Z" data-timestamp="2026-07-24T22:28:31.741Z" title="2026-07-24T22:28:31.741Z">2026-07-24 22:28:31 UTC</time></p>
     <p class="runMeta">Comparisons: <strong>React vs Android</strong> · <a href="react__ios.html">React vs iOS</a> · <a href="android__ios.html">Android vs iOS</a></p>
     <div class="summary">
       <span class="pill">Total 79</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 0</span>
       <span class="pill">Different 78</span>
       <span class="pill">Missing 1</span>
-      <span class="pill">AI 75/79 ready</span>
+      <span class="pill">AI 78/79 ready</span>
       <span class="pill">Matrix 88/107 active</span>
       <span class="pill">Components Parity 77/81 active</span><span class="pill">Screens Parity 11/26 active</span>
     </div>
@@ -2573,7 +2573,12 @@
       <p><code>RGB 88.6%</code><br/><code>Pixel 74.98%</code><br/><code>Mismatch 25.02%</code><br/><code>Raw 1026×1176 / 1026×1182</code><br/><code>Canvas 1026×1182</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 342×392 / component-bounds 342×394</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · mobile-android</summary>
+    <ul><li>Right edge content is clipped in the Android capture: avatar area shows orange dot in React vs green dot in Android, and body text/timestamp right edges are truncated</li><li>Header layout shifts: React shows 'Cindy Ke...' with full timestamp '06/22 03:30 PM'; Android shows longer 'Keeps visual testing …' preview with clipped timestamp '06/22 23'</li><li>Username text styling differs: React name appears bolder/heavier weight than Android's lighter weight</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Unify message row max-width and text-wrapping rules so body lines break at the same offsets on both platforms</li><li>Align filename ellipsis strategy — pick one truncation algorithm and apply it consistently (or truncate to N chars uniformly)</li><li>Standardize attachment card metadata layout: render 'type · size' on a single line (or two lines) the same way across React and Android</li><li>Reconcile font-weight tokens for username/author between design systems</li><li>Move the '+' compose button to a consistent position (either always inline-right of the action row, or always on a new row below)</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.thread.message-row.rich-content.png" data-current-src="android/components.thread.message-row.rich-content.png" data-overlay-width="1026" data-overlay-height="1182">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -4017,7 +4022,12 @@
       <p><code>RGB 84.3%</code><br/><code>Pixel 72.50%</code><br/><code>Mismatch 27.50%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop modal-viewport 390×844 / viewport-bounds 390×844</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · android-channel-settings</summary>
+    <ul><li>Android render shows an extra 'Pin' action with pin icon between the divider and 'Make Private', which is absent in the React baseline.</li><li>Android 'Save Changes' button appears disabled (greyed/faint text) while React baseline shows it enabled with pink fill — indicating a divergent state indicator.</li><li>Panel vertical position differs: React panel sits lower in the viewport; Android panel is positioned higher (closer to the top).</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Confirm whether the 'Pin' action is intentional; if not, remove it from the Android settings panel to match React.</li><li>Verify Save Changes enabled state: ensure dirty-detection logic mirrors React (or align both implementations on the same contract).</li><li>Align modal vertical positioning — pin the panel to a consistent top/center offset on both platforms.</li><li>Match label/title font weight to the React baseline (reduce weight on Android if needed).</li><li>Standardize Cancel/Save button row spacing and alignment (gap, right-anchor) using shared design tokens.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.channel.settings.panel.png" data-current-src="android/components.channel.settings.panel.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -4143,7 +4153,12 @@
       <p><code>RGB 97.2%</code><br/><code>Pixel 95.90%</code><br/><code>Mismatch 4.10%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×844 / viewport-bounds 390×844</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · android-settings</summary>
+    <ul><li>Android header includes a settings gear icon next to the 'Settings' title; React version has no icon.</li><li>React header title 'Settings' is left-aligned and larger; Android title is smaller and positioned to the right of the gear icon, with reduced left padding to accommodate it.</li><li>Android lists additional/different items vs React: 'Mobile' and 'Storage' added under PERSONAL; React has 'Applications' and 'MCP Servers' under WORKSPACE while Android replaces them with 'Connected Apps' under WORKSPACE; Android lacks 'Plan &amp; Billing' (shows 'Billing' only) and lacks 'Documentation'; Android adds 'Send feedback' under ABOUT.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Remove the gear icon from the Android header or align it with React by hiding it so only the 'Settings' title is shown, left-aligned with consistent padding.</li><li>Update Android title typography size/weight to match React header (larger, bolder).</li><li>Reconcile menu items across platforms: either remove Android-only items (Mobile, Storage, Send feedback) or add the React-only items (Applications, MCP Servers, Documentation, Plan &amp; Billing) to Android; align WORKSPACE naming (Plan &amp; Billing vs Billing).</li><li>Adjust Android list item vertical spacing to match React's looser row height.</li><li>Verify section header positions/spacing tokens against the shared design spec.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.settings.root.page.png" data-current-src="android/components.settings.root.page.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">

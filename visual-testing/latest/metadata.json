@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-24T22:24:52.458Z",
+  "generatedAt": "2026-07-24T22:28:31.741Z",
   "runId": "91f78973-20260724222236",
   "commit": "91f78973-20260724222236",
   "commitSubject": "fix(qa): bootstrap canonical release cases (#1563)",
@@ -27,8 +27,8 @@
       },
       "analysisSummary": {
         "total": 79,
-        "ready": 75,
-        "pending": 4
+        "ready": 78,
+        "pending": 1
       }
     },
     {
@@ -51,8 +51,8 @@
       },
       "analysisSummary": {
         "total": 79,
-        "ready": 71,
-        "pending": 8
+        "ready": 73,
+        "pending": 6
       }
     },
     {
@@ -75,8 +75,8 @@
       },
       "analysisSummary": {
         "total": 79,
-        "ready": 73,
-        "pending": 6
+        "ready": 74,
+        "pending": 5
       }
     }
   ],
@@ -90,8 +90,8 @@
   },
   "analysisSummary": {
     "total": 79,
-    "ready": 75,
-    "pending": 4
+    "ready": 78,
+    "pending": 1
   },
   "componentMatrixSummary": {
     "total": 107,

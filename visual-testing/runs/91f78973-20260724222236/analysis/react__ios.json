@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-24T22:24:47.043Z",
+  "generatedAt": "2026-07-24T22:28:24.989Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 79,
-    "ready": 71,
-    "pending": 8
+    "ready": 73,
+    "pending": 6
   },
   "cases": [
     {
@@ -1661,7 +1661,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-24T22:24:46.159Z",
+      "generatedAt": "2026-07-24T22:28:23.933Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1706,15 +1706,39 @@
     },
     {
       "id": "components.channel.settings.panel",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:ffffffff000000000000000000000000000000000000000000007ffc7ffe7ffc7ffe7ffc7ffe7ffc7ffe7ffc7ffe7ffc7ffe7ffc7ffe7ffc7ffe7ffc7ffe7ffc7f867ffc7f827ffc7ffe7ffc7c3e7ffc40025838781e783440025818400240047ffe4000000000040000000000000000000000000000000080018001ffffffff",
-      "generatedAt": "2026-07-24T22:24:46.419Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-24T22:26:38.067Z",
+      "severity": "high",
+      "summary": [
+        "Save Changes button on iOS is disabled (greyed out) while React shows it active in pink, indicating state/validation divergence between platforms.",
+        "iOS adds a Pin button with a pin icon between the Save Changes row and Make Private button, which is missing on the React baseline.",
+        "iOS shows the modal positioned lower in the viewport (starts further down) versus React where the modal starts higher, indicating different vertical positioning/anchoring.",
+        "React modal has a thin divider line below the Save Changes row that is absent on the iOS variant.",
+        "Cancel and Save Changes buttons are right-aligned on iOS but left-of-center aligned on React, reflecting platform-specific button placement conventions."
+      ],
+      "likelyCauses": [
+        "Validation state not synced across platforms — iOS likely treats the form as unchanged or invalid, disabling Save Changes.",
+        "Pin action present in iOS component API but not yet implemented or rendered on the React side.",
+        "Different modal anchor/centering logic between React (modal top-aligned higher) and iOS (modal bottom-sheet style positioning).",
+        "Platform-specific button order convention (iOS typically right-aligns Cancel/Save).",
+        "Missing divider element on the iOS variant could be a regression or intentional removal for native iOS styling."
+      ],
+      "suggestedOwner": "design-system / cross-platform parity team",
+      "suggestedFixes": [
+        "Sync the enabled/disabled state of Save Changes across React and iOS based on actual form change detection and validation logic.",
+        "Decide whether Pin is platform-specific or cross-platform; if cross-platform, add it to the React component; if iOS-only, document the divergence.",
+        "Align modal anchoring rules so both platforms position the modal consistently relative to viewport (e.g., centered vs bottom-sheet).",
+        "Add or remove the divider consistently — confirm with design intent and apply to both codebases.",
+        "Adopt a shared button order/layout convention or explicitly document per-platform differences (e.g., iOS right-aligned action buttons)."
+      ],
+      "intentional": [
+        "Right-aligned Cancel/Save buttons on iOS may follow iOS HIG conventions for modal action placement.",
+        "Pin button could be an iOS-only feature pending cross-platform rollout."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.2778523784447955
     },
     {
@@ -1755,15 +1779,38 @@
     },
     {
       "id": "components.settings.root.page",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ffc1ffc0000000000000000000000008ffe1ffecffe03fe81fe01fec7fe07fec7fe07fe83fe07fedffe0ffe87fe0ffe83fe5ffe87fe03fe83fe1ffe83fe03fec7fe43fe87fe03fe87fe07fe87fe7ffe87fe1ffebffe07fe8ffe03fe83fe03fe83fe7ffe83fe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
-      "generatedAt": "2026-07-24T22:24:46.532Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-24T22:26:38.130Z",
+      "severity": "medium",
+      "summary": [
+        "iOS header contains a settings gear icon to the left of the 'Settings' title that is absent on the React baseline.",
+        "iOS PERSONAL section includes 'Mobile' and 'Storage' rows that are missing from the React baseline; React PERSONAL order is slightly different (Language & Region, Appearance, Notifications) vs iOS (Account, Language & Region, Appearance, Notifications, Mobile, Storage).",
+        "iOS labels 'Plan & Billing' as simply 'Billing' and 'Applications' as 'Connected Apps'.",
+        "iOS contains an extra 'Send feedback' row in the ABOUT section that is absent from React baseline.",
+        "iOS does not render an 'MCP Servers' row that exists in the React WORKSPACE section."
+      ],
+      "likelyCauses": [
+        "iOS settings list source data differs from React (different row definitions, labels, and order).",
+        "iOS adds a header leading icon component not implemented on React.",
+        "iOS omits items (e.g., MCP Servers) and renames others (Billing, Connected Apps) relative to the React spec.",
+        "Missing visual parity test for header icon and row enumeration across platforms."
+      ],
+      "suggestedOwner": "design-systems",
+      "suggestedFixes": [
+        "Unify the settings row registry across platforms so Personal/Workspace/About sections share the same items and labels (rename 'Billing' to 'Plan & Billing', 'Connected Apps' to 'Applications').",
+        "Add MCP Servers row to the iOS settings and remove Send feedback or align its presence on both platforms.",
+        "Add the gear header icon to the React Settings header to match iOS (or remove from iOS if intentional).",
+        "Standardize row height and section header spacing to a shared token to remove the tighter iOS spacing.",
+        "Re-run slock comparison at component-bounds for header and each section to catch enumeration and spacing regressions."
+      ],
+      "intentional": [
+        "Possible intentional platform-specific labels (Billing vs Plan & Billing) and Send feedback placement.",
+        "Possible intentional iOS-only header gear icon."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.03978747248889425
     },
     {
@@ -2014,7 +2061,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-24T22:24:46.549Z",
+      "generatedAt": "2026-07-24T22:28:24.359Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2027,7 +2074,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-24T22:24:46.549Z",
+      "generatedAt": "2026-07-24T22:28:24.359Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2040,7 +2087,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-24T22:24:46.549Z",
+      "generatedAt": "2026-07-24T22:28:24.359Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2053,7 +2100,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-24T22:24:46.549Z",
+      "generatedAt": "2026-07-24T22:28:24.359Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2066,7 +2113,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-24T22:24:46.549Z",
+      "generatedAt": "2026-07-24T22:28:24.359Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

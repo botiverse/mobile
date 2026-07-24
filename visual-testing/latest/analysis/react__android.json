@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-24T22:24:43.727Z",
+  "generatedAt": "2026-07-24T22:28:20.511Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 79,
-    "ready": 75,
-    "pending": 4
+    "ready": 78,
+    "pending": 1
   },
   "cases": [
     {
@@ -1679,7 +1679,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-24T22:24:42.939Z",
+      "generatedAt": "2026-07-24T22:28:19.832Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1727,15 +1727,40 @@
     },
     {
       "id": "components.channel.settings.panel",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:ffffffff000000000000000000000000000000000000000000007ffc7ffe7ffc7ffe7ffc7ffe7ffc7ffe7ffc7ffe7ffc7ffe7ffc7ffe7ffc7ffe7ffc7ffe7ffc7f867ffc7f827ffc7ffe7ffc7c3e7ffc40024000781e7ffc40024000400260047ffe4000000020040000000000000000000000000000000080018001ffffffff",
-      "generatedAt": "2026-07-24T22:24:43.122Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-24T22:26:28.937Z",
+      "severity": "medium",
+      "summary": [
+        "Android render shows an extra 'Pin' action with pin icon between the divider and 'Make Private', which is absent in the React baseline.",
+        "Android 'Save Changes' button appears disabled (greyed/faint text) while React baseline shows it enabled with pink fill — indicating a divergent state indicator.",
+        "Panel vertical position differs: React panel sits lower in the viewport; Android panel is positioned higher (closer to the top).",
+        "Typography weight on the 'EDIT CHANNEL' title and labels appears heavier/bolder on Android vs. React.",
+        "Cancel/Save button group horizontal alignment differs: React has tighter spacing with Save flush right; Android buttons are right-aligned with wider gap and Cancel sits further left."
+      ],
+      "likelyCauses": [
+        "Android implementation includes an additional 'Pin channel' feature not yet present in the React component.",
+        "Form dirty/touched state logic differs between platforms — Android has not marked the form as changed, leaving Save disabled.",
+        "Modal anchoring/positioning logic differs (Android centers higher; React anchors lower).",
+        "Font weight token mapping diverges — Android may be applying a bolder variant of the design system font.",
+        "Button row layout uses different spacing tokens or flex configuration per platform."
+      ],
+      "suggestedOwner": "android-channel-settings",
+      "suggestedFixes": [
+        "Confirm whether the 'Pin' action is intentional; if not, remove it from the Android settings panel to match React.",
+        "Verify Save Changes enabled state: ensure dirty-detection logic mirrors React (or align both implementations on the same contract).",
+        "Align modal vertical positioning — pin the panel to a consistent top/center offset on both platforms.",
+        "Match label/title font weight to the React baseline (reduce weight on Android if needed).",
+        "Standardize Cancel/Save button row spacing and alignment (gap, right-anchor) using shared design tokens."
+      ],
+      "intentional": [
+        "Destructive button colors (orange Make Private/Archive, red Delete) are consistent across both renders — intentional design.",
+        "Required-field asterisk on 'NAME' is consistent — intentional.",
+        "Close (X) button placement in top-right of panel — consistent."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.27497907130608557
     },
     {
@@ -1776,15 +1801,38 @@
     },
     {
       "id": "components.settings.root.page",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ffc1ffc0000000000000000000000008ffe1ffecffe01fe81fe01fec7fe07fec7fe07fe83fe0ffedffe0ffe87fe0ffe83fe5ffe87fe03fe83fe0ffe83fe03fec7fe03fe87fe03fe87fe07fe87fe7ffe87fe1ffebffe03fe8ffe03fe83fe03fe83fe7ffe83fe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
-      "generatedAt": "2026-07-24T22:24:43.152Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-24T22:26:29.013Z",
+      "severity": "medium",
+      "summary": [
+        "Android header includes a settings gear icon next to the 'Settings' title; React version has no icon.",
+        "React header title 'Settings' is left-aligned and larger; Android title is smaller and positioned to the right of the gear icon, with reduced left padding to accommodate it.",
+        "Android lists additional/different items vs React: 'Mobile' and 'Storage' added under PERSONAL; React has 'Applications' and 'MCP Servers' under WORKSPACE while Android replaces them with 'Connected Apps' under WORKSPACE; Android lacks 'Plan & Billing' (shows 'Billing' only) and lacks 'Documentation'; Android adds 'Send feedback' under ABOUT.",
+        "Vertical item spacing is tighter in Android list items compared to React, making the list visually denser.",
+        "Section headers (PERSONAL/WORKSPACE/ABOUT) appear at slightly different vertical positions and spacing between groups in Android vs React."
+      ],
+      "likelyCauses": [
+        "Android implementation diverged from the React reference by introducing its own iconography and re-grouping menu items.",
+        "Different platform-specific navigation pattern applied on Android (back button + title row) altered header layout.",
+        "Item list curation differs between platforms, possibly due to platform-specific feature availability (Mobile, Storage, Send feedback).",
+        "Spacing token mapping not aligned between React and Android design systems."
+      ],
+      "suggestedOwner": "android-settings",
+      "suggestedFixes": [
+        "Remove the gear icon from the Android header or align it with React by hiding it so only the 'Settings' title is shown, left-aligned with consistent padding.",
+        "Update Android title typography size/weight to match React header (larger, bolder).",
+        "Reconcile menu items across platforms: either remove Android-only items (Mobile, Storage, Send feedback) or add the React-only items (Applications, MCP Servers, Documentation, Plan & Billing) to Android; align WORKSPACE naming (Plan & Billing vs Billing).",
+        "Adjust Android list item vertical spacing to match React's looser row height.",
+        "Verify section header positions/spacing tokens against the shared design spec."
+      ],
+      "intentional": [
+        "Platform-specific menu items (Mobile, Storage, Send feedback) may be intentionally Android-only due to OS-level capabilities.",
+        "Back-arrow style header on Android may be intentional platform convention."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.040966230539690285
     },
     {
@@ -2372,15 +2420,36 @@
     },
     {
       "id": "components.thread.message-row.rich-content",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:07fc0ffc03fe07fcfffefffe07fefffe160287fe00028702e0028000e002f000e003e000e002e006e002e002e003e000e03ee000fffef3fee03ee3fef1befffefffef03ee0fefffefffefffefffef0fee03efffef3befffefffef01efffefffefffefffee002f3fee002fbfeeffee000fffee00200000e00fff81fffffffffff",
-      "generatedAt": "2026-07-24T22:24:43.561Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-24T22:26:29.352Z",
+      "severity": "high",
+      "summary": [
+        "Right edge content is clipped in the Android capture: avatar area shows orange dot in React vs green dot in Android, and body text/timestamp right edges are truncated",
+        "Header layout shifts: React shows 'Cindy Ke...' with full timestamp '06/22 03:30 PM'; Android shows longer 'Keeps visual testing …' preview with clipped timestamp '06/22 23'",
+        "Username text styling differs: React name appears bolder/heavier weight than Android's lighter weight",
+        "Attachment cards differ: React shows two-line meta ('application/pdf · 184 KB' and 'HTML preview · 32 KB'); Android collapses to single line ('184 KB', 'HTML preview · 32 KB') and adds 'Text preview' row replacing the eye icon area for the second card",
+        "Second attachment filename truncation differs: React shows 'thread-screen-preview…' (with ellipsis); Android shows 'thread-screen-preview.h…' with different truncation point and no trailing ellipsis on first card"
+      ],
+      "likelyCauses": [
+        "Android renderer applies different text-wrapping/ellipsis rules than React (different max-width or different default font metrics)",
+        "Filename truncation uses platform-specific API (e.g., TextUtils.ellipsize vs CSS text-overflow) producing different cut points",
+        "Attachment metadata layout differs: React uses a two-line flex row with type on left and size on right; Android uses a single line",
+        "Bottom toolbar composes children differently — '+' button is wrapped to a new row in React but kept inline in Android",
+        "Username font weight token differs between design systems (e.g., 'semibold' vs 'medium')"
+      ],
+      "suggestedOwner": "mobile-android",
+      "suggestedFixes": [
+        "Unify message row max-width and text-wrapping rules so body lines break at the same offsets on both platforms",
+        "Align filename ellipsis strategy — pick one truncation algorithm and apply it consistently (or truncate to N chars uniformly)",
+        "Standardize attachment card metadata layout: render 'type · size' on a single line (or two lines) the same way across React and Android",
+        "Reconcile font-weight tokens for username/author between design systems",
+        "Move the '+' compose button to a consistent position (either always inline-right of the action row, or always on a new row below)"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.25023335741120045
     },
     {

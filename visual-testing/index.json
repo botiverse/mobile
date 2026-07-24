@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-07-24T22:24:52.458Z",
+  "generatedAt": "2026-07-24T22:28:31.741Z",
   "latestRunId": "91f78973-20260724222236",
   "latest": {
     "runId": "91f78973-20260724222236",
     "commit": "91f78973-20260724222236",
     "commitSubject": "fix(qa): bootstrap canonical release cases (#1563)",
-    "generatedAt": "2026-07-24T22:24:52.458Z",
+    "generatedAt": "2026-07-24T22:28:31.741Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -20,8 +20,8 @@
     },
     "analysisSummary": {
       "total": 79,
-      "ready": 75,
-      "pending": 4
+      "ready": 78,
+      "pending": 1
     },
     "comparisons": [
       "react__android",
@@ -129,7 +129,7 @@
       "runId": "91f78973-20260724222236",
       "commit": "91f78973-20260724222236",
       "commitSubject": "fix(qa): bootstrap canonical release cases (#1563)",
-      "generatedAt": "2026-07-24T22:24:52.458Z",
+      "generatedAt": "2026-07-24T22:28:31.741Z",
       "baseline": "react",
       "current": "android",
       "summary": {
@@ -142,8 +142,8 @@
       },
       "analysisSummary": {
         "total": 79,
-        "ready": 75,
-        "pending": 4
+        "ready": 78,
+        "pending": 1
       },
       "comparisons": [
         "react__android",
