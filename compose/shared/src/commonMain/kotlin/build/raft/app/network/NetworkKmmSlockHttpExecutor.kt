@@ -82,7 +82,11 @@ internal fun createNetworkKmmLog(warningLogger: (String) -> Unit): IVBPBLog =
 internal class NetworkKmmSlockHttpExecutor(
     private val warningLogger: (String) -> Unit = {},
     /** Test seam only: production always routes through [client]. */
-    private val multipartTransportOverride: (suspend (NetworkRequest) -> NetworkResponse)? = null
+    private val multipartTransportOverride: (suspend (NetworkRequest) -> NetworkResponse)? = null,
+    private val requestLifetimeCoordinator: SlockNetworkRequestLifetimeCoordinator =
+        SlockProcessNetworkRequestLifetime.coordinator,
+    /** Test seam only: production uses the callback API on [client]. */
+    private val requestStarterOverride: SlockNetworkRequestStarter? = null
 ) : SlockHttpExecutor {
 
     private val client: NetworkClient by lazy {
@@ -131,7 +135,12 @@ internal class NetworkKmmSlockHttpExecutor(
                         )
                 )
             traceHeaders.forEach { (name, value) -> request.setHeader(name, value) }
-            val response = client.execute(request).toExecutorResponse()
+            val response =
+                executeNetworkRequest(
+                    request = request,
+                    methodClass = method.toSlockNetworkMethodClass(),
+                    timeoutMillis = SLOCK_REQUEST_TIMEOUT_MILLIS
+                )
             warningLogger(
                 "slock_networkkmm_execute_finish path=$path method=${method.uppercase()} " +
                     "priority=$priority jsonBody=$jsonBody requestBytes=$requestBytes " +
@@ -203,8 +212,14 @@ internal class NetworkKmmSlockHttpExecutor(
                 )
             traceHeaders.forEach { (name, value) -> request.setHeader(name, value) }
             val response =
-                (multipartTransportOverride?.invoke(request) ?: client.execute(request))
-                    .toExecutorResponse()
+                multipartTransportOverride
+                    ?.invoke(request)
+                    ?.toExecutorResponse()
+                    ?: executeNetworkRequest(
+                        request = request,
+                        methodClass = SlockNetworkMethodClass.Mutation,
+                        timeoutMillis = totalTimeoutMillis
+                    )
             warningLogger(
                 "slock_networkkmm_multipart_finish path=$path method=POST priority=$priority " +
                     "fields=${fields.size} files=${files.size} requestBytes=$requestBytes " +
@@ -224,6 +239,27 @@ internal class NetworkKmmSlockHttpExecutor(
                     "durationMs=${startedAt.elapsedNow().inWholeMilliseconds} ${error.safeDiagnosticsSummary()}"
             )
             SlockHttpExecutorResponse(code = 0, bodyText = null, errorBodyText = error.message)
+        }
+    }
+
+    private suspend fun executeNetworkRequest(
+        request: NetworkRequest,
+        methodClass: SlockNetworkMethodClass,
+        timeoutMillis: Long
+    ): SlockHttpExecutorResponse {
+        val outcome =
+            requestLifetimeCoordinator.execute<NetworkResponse>(
+                methodClass = methodClass,
+                timeoutMillis = timeoutMillis
+            ) { onComplete ->
+                requestStarterOverride?.start(request, onComplete)
+                    ?: client.execute(request, onComplete).let { call ->
+                        SlockNetworkRequestCancelHandle(call::cancel)
+                    }
+            }
+        return when (outcome) {
+            is SlockNetworkRequestLifetimeOutcome.Completed -> outcome.value.toExecutorResponse()
+            is SlockNetworkRequestLifetimeOutcome.Retired -> outcome.toExecutorResponse()
         }
     }
 }
@@ -365,6 +401,22 @@ private fun NetworkResponse.toExecutorResponse(): SlockHttpExecutorResponse {
             responseHeaders = headers
         )
     }
+}
+
+private fun SlockNetworkRequestLifetimeOutcome.Retired.toExecutorResponse(): SlockHttpExecutorResponse {
+    val outcome = if (mutationOutcomeUnknown) "unknown" else "cancelled"
+    val detail = if (mutationOutcomeUnknown) "mutation_outcome_unknown" else "lifecycle_retired"
+    return SlockHttpExecutorResponse(
+        code = 0,
+        bodyText = null,
+        errorBodyText = "network_request_$detail",
+        transportDiagnostics =
+            "engine=networkkmm status=none kind=CANCELLED rawCode=CANCELED detail=$detail " +
+                "requestGeneration=${descriptor.generation} " +
+                "lifecycleGeneration=$replacementGeneration " +
+                "methodClass=${descriptor.methodClass.name.lowercase()} " +
+                "outcome=$outcome replay=false"
+    )
 }
 
 internal fun NetworkResponse.networkKmmDiagnostics(): String {

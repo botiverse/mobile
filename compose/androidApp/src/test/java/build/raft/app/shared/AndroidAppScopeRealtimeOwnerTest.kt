@@ -32,6 +32,32 @@ import org.junit.Test
 
 class AndroidAppScopeRealtimeOwnerTest {
     @Test
+    fun processVisibilityTracksStartedActivitiesAndIgnoresPageDuplicates() {
+        val transitions = mutableListOf<Boolean>()
+        val tracker = AndroidProcessVisibilityTracker(transitions::add)
+
+        tracker.onActivityStarted()
+        tracker.onActivityStarted()
+        tracker.onActivityStopped(changingConfigurations = false)
+        tracker.onActivityStopped(changingConfigurations = false)
+
+        assertEquals(listOf(true, false), transitions)
+    }
+
+    @Test
+    fun configurationReplacementDoesNotCreateFalseProcessLifecycleEdges() {
+        val transitions = mutableListOf<Boolean>()
+        val tracker = AndroidProcessVisibilityTracker(transitions::add)
+
+        tracker.onActivityStarted()
+        tracker.onActivityStopped(changingConfigurations = true)
+        tracker.onActivityStarted()
+        tracker.onActivityStopped(changingConfigurations = false)
+
+        assertEquals(listOf(true, false), transitions)
+    }
+
+    @Test
     fun foregroundEpochAdvancesOnlyOnBackgroundToVisibleTransition() {
         val first =
             nextAndroidForegroundEpoch(
