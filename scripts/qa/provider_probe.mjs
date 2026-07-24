@@ -22,21 +22,63 @@ export const QWEN_TOKEN_PLAN_CN_BASE =
 
 const KEY_ENV_ORDER = ["QWEN_TOKEN_PLAN_CN_API_KEY", "PI_API_KEY"];
 
+// Hard timeout bounds: below the 10-minute job cap with margin, and never a
+// value that setTimeout would coerce into an instant abort.
+export const COMPLETION_TIMEOUT_MIN_MS = 1000;
+export const COMPLETION_TIMEOUT_MAX_MS = 300000;
+
 export function redactSecrets(text, secrets) {
   let out = String(text);
+  // Any non-empty secret is redacted — a short key is still a key.
   for (const secret of secrets) {
-    if (secret && secret.length >= 8) out = out.split(secret).join("<redacted>");
+    if (secret) out = out.split(secret).join("<redacted>");
   }
   // Belt-and-braces for bearer-ish tokens that slip through error messages.
   return out.replace(/(Bearer\s+)[A-Za-z0-9._-]{8,}/g, "$1<redacted>");
 }
 
+// Probe targets are provider domains or CF proxy hostnames — never raw IP
+// literals, credentials, queries, or fragments. Rejecting every hostname
+// without a letter kills the whole loopback/private/link-local literal class
+// (127.0.0.1, 10.x, [::1], 169.254.x, ...) in one rule; localhost names are
+// rejected explicitly.
+const SAFE_PATH = /^[A-Za-z0-9._~/-]*$/;
+
 export function normalizeBaseUrl(raw) {
-  const base = String(raw || "").trim().replace(/\/+$/, "");
-  if (!/^https:\/\/[^\s]+$/.test(base)) {
-    throw new Error("base URL must be a single https:// URL");
+  const trimmed = String(raw || "").trim();
+  let url;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    throw new Error("base URL must be a valid https:// URL");
   }
-  return base;
+  if (url.protocol !== "https:") throw new Error("base URL must use https");
+  if (url.username || url.password) throw new Error("base URL must not carry credentials");
+  if (url.search || url.hash) throw new Error("base URL must not carry query or fragment");
+  const host = url.hostname.toLowerCase();
+  if (host === "localhost" || host.endsWith(".localhost")) {
+    throw new Error("base URL host must not be localhost");
+  }
+  if (!/[a-z]/.test(host)) {
+    throw new Error("base URL host must be a DNS name, not an IP literal");
+  }
+  if (host.startsWith("[")) {
+    throw new Error("base URL host must be a DNS name, not an IP literal");
+  }
+  if (!SAFE_PATH.test(url.pathname) || url.pathname.split("/").includes("..")) {
+    throw new Error("base URL path contains unsupported characters");
+  }
+  return `${url.origin}${url.pathname}`.replace(/\/+$/, "");
+}
+
+export function requireCompletionTimeoutMs(raw) {
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < COMPLETION_TIMEOUT_MIN_MS || value > COMPLETION_TIMEOUT_MAX_MS) {
+    throw new Error(
+      `completion timeout must be an integer in [${COMPLETION_TIMEOUT_MIN_MS}, ${COMPLETION_TIMEOUT_MAX_MS}] ms, got: ${raw}`,
+    );
+  }
+  return value;
 }
 
 export function classifyError(error) {
@@ -45,6 +87,17 @@ export function classifyError(error) {
   if (/ENOTFOUND|EAI_AGAIN/.test(message)) return "dns";
   if (/ECONNREFUSED|ECONNRESET|EHOSTUNREACH|ENETUNREACH|ETIMEDOUT/.test(message)) return "connect";
   if (/certificate|TLS|SSL/i.test(message)) return "tls";
+  if (/redirect/i.test(message)) return "redirect";
+  return "other";
+}
+
+// curl(1) exit codes — the layers this probe exists to distinguish must not
+// collapse into one bucket.
+export function classifyCurlExit(code) {
+  if (code === 5 || code === 6) return "dns";
+  if (code === 7) return "connect";
+  if (code === 28) return "timeout";
+  if ([35, 51, 53, 54, 58, 59, 60, 77, 82, 83, 90, 91].includes(code)) return "tls";
   return "other";
 }
 
@@ -65,8 +118,16 @@ function curlProbe(url, maxTimeSeconds) {
     ["-o", "/dev/null", "-sS", "-w", format, "--max-time", String(maxTimeSeconds), url],
     { encoding: "utf8", timeout: (maxTimeSeconds + 10) * 1000 },
   );
+  if (result.error) {
+    return { ok: false, error_class: "spawn", error: String(result.error.message || result.error).slice(0, 200) };
+  }
   if (result.status !== 0) {
-    return { ok: false, error_class: "connect", error: String(result.stderr || "").slice(0, 200) };
+    return {
+      ok: false,
+      curl_exit: result.status,
+      error_class: classifyCurlExit(result.status),
+      error: String(result.stderr || "").slice(0, 200),
+    };
   }
   return { ok: true, ...parseCurlTiming(result.stdout) };
 }
@@ -79,6 +140,7 @@ async function completionProbe(baseUrl, model, apiKey, timeoutMs) {
     const response = await fetch(`${baseUrl}/chat/completions`, {
       method: "POST",
       signal: controller.signal,
+      redirect: "error",
       headers: {
         authorization: `Bearer ${apiKey}`,
         "content-type": "application/json",
@@ -86,7 +148,7 @@ async function completionProbe(baseUrl, model, apiKey, timeoutMs) {
       body: JSON.stringify({
         model,
         messages: [{ role: "user", content: "Reply with the single word: pong" }],
-        max_tokens: 8,
+        max_tokens: 1,
         stream: false,
       }),
     });
@@ -124,8 +186,12 @@ async function main() {
   const baseUrl = normalizeBaseUrl(arg("--base-url", QWEN_TOKEN_PLAN_CN_BASE));
   const model = String(arg("--model", "qwen3.8-max-preview"));
   const outPath = String(arg("--out", "provider-probe.json"));
-  const timeoutMs = Number(arg("--completion-timeout-ms", "90000"));
   const withCompletion = !args.includes("--no-completion");
+  // Validate before any network activity so an invalid budget can never turn
+  // into a misleading instant-abort measurement.
+  const timeoutMs = withCompletion
+    ? requireCompletionTimeoutMs(arg("--completion-timeout-ms", "90000"))
+    : null;
   const apiKey = KEY_ENV_ORDER.map((name) => process.env[name] || "").find(Boolean) || "";
 
   const report = {
