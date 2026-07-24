@@ -1770,8 +1770,8 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun threadOriginContentInitializesAtNativeViewportStart() {
-        assertEquals(0, threadInitialFirstVisibleItemIndex(latestItemIndex = 8))
+    fun threadOriginContentInitializesAtLatestNativeViewportItem() {
+        assertEquals(8, threadInitialFirstVisibleItemIndex(latestItemIndex = 8))
     }
 
     @Test
