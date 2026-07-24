@@ -1,14 +1,14 @@
 package build.raft.app.data
 
+import build.raft.app.runPortableCoroutineTest
 import build.raft.app.model.ServerId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
-import kotlinx.coroutines.test.runTest
 
 class ComputersApiTest {
     @Test
-    fun typedComputersApiAcceptsCanonicalUpstreamShapes() = runTest {
+    fun typedComputersApiAcceptsCanonicalUpstreamShapes() = runPortableCoroutineTest {
         val transport = RecordingComputersApi()
         val client = SlockComputersApiClient(transport)
         val serverId = ServerId("server-1")
@@ -102,7 +102,7 @@ class ComputersApiTest {
     }
 
     @Test
-    fun typedComputersApiAcceptsRawRowShapeForRename() = runTest {
+    fun typedComputersApiAcceptsRawRowShapeForRename() = runPortableCoroutineTest {
         // Server returns the raw machines DB row for PATCH (no status / statusVersion
         // enrichment). The typed API must accept this shape, NOT flag it as contract
         // mismatch, and still produce a ComputerSummary with name + id propagated.
@@ -122,7 +122,7 @@ class ComputersApiTest {
     }
 
     @Test
-    fun typedComputersApiMapsHttpErrorsToStructuredCodes() = runTest {
+    fun typedComputersApiMapsHttpErrorsToStructuredCodes() = runPortableCoroutineTest {
         // 307 fly-replay, 400 bad request, 409 has-agents, 503 machine offline each
         // produce a specific structured error code so the Settings page can show
         // human-readable copy instead of "http_307".
@@ -142,7 +142,7 @@ class ComputersApiTest {
     }
 
     @Test
-    fun typedComputersApiRejectsGuessedWrappersAndAliases() = runTest {
+    fun typedComputersApiRejectsGuessedWrappersAndAliases() = runPortableCoroutineTest {
         val client =
             SlockComputersApiClient(
                 RecordingComputersApi(
@@ -168,7 +168,7 @@ class ComputersApiTest {
     }
 
     @Test
-    fun runtimeFormContractFailsClosedOnUnknownOrMismatchedIdentity() = runTest {
+    fun runtimeFormContractFailsClosedOnUnknownOrMismatchedIdentity() = runPortableCoroutineTest {
         val serverId = ServerId("server-1")
         val unknownProtocol =
             SlockComputersApiClient(
@@ -213,7 +213,7 @@ class ComputersApiTest {
     }
 
     @Test
-    fun runtimeFormContractRejectsSelectionAndPointerMutations() = runTest {
+    fun runtimeFormContractRejectsSelectionAndPointerMutations() = runPortableCoroutineTest {
         val serverId = ServerId("server-1")
         val expectedRef = SharedRuntimeFormDefinitionRef(1, "builtin", "builtin-pi.create.v2")
 
