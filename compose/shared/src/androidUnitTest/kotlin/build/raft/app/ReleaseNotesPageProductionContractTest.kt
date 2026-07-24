@@ -33,7 +33,7 @@ class ReleaseNotesPageProductionContractTest {
 
         val renderer = markdownSource()
         assertContains(renderer, "sectionHeadingTopPadding: Dp = 0.dp")
-        assertContains(renderer, "remember(sectionHeadingTopPadding)")
+        assertContains(renderer, "remember(sectionHeadingTopPadding, onSectionHeadingPositioned)")
         assertContains(renderer, "heading2 = { model ->")
         assertContains(renderer, "heading3 = { model ->")
         assertContains(renderer, ".padding(top = sectionHeadingTopPadding)")
