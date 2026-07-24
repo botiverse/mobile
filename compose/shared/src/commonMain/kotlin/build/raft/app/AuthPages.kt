@@ -801,10 +801,12 @@ private fun AuthAboutScreen(initialDestination: AuthAboutDestination = AuthAbout
         )
     val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
     val bridgeCallScope = rememberCoroutineScope()
+    val copiedMessage = stringResource(MR.strings.common_copied)
     val settingsCapabilities =
-        remember(bridge, bridgeCallScope, linkNavigator) {
+        remember(bridge, bridgeCallScope, linkNavigator, copiedMessage) {
             BridgeSettingsPlatformCapabilities(
                 bridge = bridge,
+                copiedMessage = copiedMessage,
                 bridgeCallContext = bridgeCallScope.kuiklyBridgeCallContext(),
                 openUrlHandler = { url -> linkNavigator.open(url) }
             )
@@ -899,6 +901,9 @@ private fun AuthAboutScreen(initialDestination: AuthAboutDestination = AuthAbout
                 )
             }
         )
+        val sourceLicensesSignInMessage = stringResource(MR.strings.auth_notice_source_licenses_sign_in)
+        val reportSubmittedPrefix = stringResource(MR.strings.auth_notice_report_submitted_prefix)
+        val reportFailedDiagnosticsCopiedMessage = stringResource(MR.strings.auth_notice_report_failed_diagnostics_copied)
         when (destination) {
             AuthAboutDestination.About ->
                 SharedSettingsAboutContent(
@@ -922,7 +927,7 @@ private fun AuthAboutScreen(initialDestination: AuthAboutDestination = AuthAbout
                                 }
                         }
                     },
-                    onOpenSourceLicenses = { bridge.toast("Open source licenses are available after sign in") },
+                    onOpenSourceLicenses = { bridge.toast(sourceLicensesSignInMessage) },
                     onCopyEnvironmentInfo = {
                         val about = (aboutState as? ScreenLoadState.Content<SharedSettingsAboutSnapshot>)?.data
                         settingsCapabilities.bridgeCopyToClipboard(
@@ -999,11 +1004,11 @@ private fun AuthAboutScreen(initialDestination: AuthAboutDestination = AuthAbout
                                     attachments = emptyList()
                                 )
                             ) {
-                                is DataResult.Content -> bridge.toast("Report submitted: ${result.data.ticketId}")
+                                is DataResult.Content -> bridge.toast(reportSubmittedPrefix + result.data.ticketId)
                                 else -> {
                                     settingsCapabilities.copyDiagnostics()
                                     settingsCapabilities.shareDiagnostics()
-                                    bridge.toast("Report failed; diagnostics copied")
+                                    bridge.toast(reportFailedDiagnosticsCopiedMessage)
                                 }
                             }
                         }

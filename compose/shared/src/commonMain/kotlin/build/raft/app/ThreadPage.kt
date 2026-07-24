@@ -12842,7 +12842,7 @@ private fun ThreadMessagesList(
             onThreadContentReady()
         }
         if (timelineSlice.status == "loading") {
-            ThreadStateMessage("Loading...", null)
+            ThreadStateMessage(stringResource(MR.strings.thread_state_loading), null)
         } else {
             ThreadStateMessage(
                 localizedThreadStateTitle(timelineSlice.emptyTitle),
@@ -14253,7 +14253,7 @@ private fun ThreadMessagesList(
             }
             if (showReplyLoadingSkeleton) {
                 item(key = ThreadReplyLoadingListItemKey) {
-                    ThreadStateMessage("Loading...", null)
+                    ThreadStateMessage(stringResource(MR.strings.thread_state_loading), null)
                 }
             }
             items(
