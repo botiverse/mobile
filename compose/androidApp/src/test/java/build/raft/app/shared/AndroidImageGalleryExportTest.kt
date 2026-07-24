@@ -42,15 +42,21 @@ class AndroidImageGalleryExportTest {
     }
 
     @Test
-    fun genericClaimAllowsDecodedImageButNonImageClaimDoesNot() {
+    fun existingUnknownOrNonImageMimeClaimFailsClosed() {
         assertEquals(
-            true,
+            false,
             androidGalleryImageMetadataMatches("photo.heic", "application/octet-stream", "image/heif")
         )
         assertEquals(
             false,
             androidGalleryImageMetadataMatches("photo.heic", "application/pdf", "image/heif")
         )
+    }
+
+    @Test
+    fun existingUnknownExtensionFailsClosedWhileMissingExtensionUsesDetectedType() {
+        assertEquals(false, androidGalleryImageMetadataMatches("photo.unknown", null, "image/png"))
+        assertEquals(true, androidGalleryImageMetadataMatches("photo", null, "image/png"))
     }
 
     @Test

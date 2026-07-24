@@ -79,16 +79,13 @@ internal fun androidGalleryImageMetadataMatches(
 ): Boolean {
     val actual = normalizeAndroidImageMimeType(actualMimeType) ?: return false
     val claimed = claimedMimeType?.substringBefore(';')?.trim()?.lowercase(Locale.US).orEmpty()
-    if (
-        claimed.isNotBlank() &&
-        claimed !in setOf("application/octet-stream", "binary/octet-stream") &&
-        normalizeAndroidImageMimeType(claimed) != actual
-    ) return false
+    if (claimed.isNotBlank() && normalizeAndroidImageMimeType(claimed) != actual) return false
 
     val extension = fileName.substringBefore('?').substringBefore('#').substringAfterLast('.', "")
         .trim().lowercase(Locale.US)
+    if (extension.isBlank()) return true
     val extensionMime = androidGalleryImageMimeTypeForExtension(extension)
-    return extensionMime == null || extensionMime == actual
+    return extensionMime == actual
 }
 
 internal fun androidGalleryImageMimeTypeForExtension(extension: String): String? =

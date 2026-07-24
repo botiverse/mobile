@@ -59,6 +59,19 @@ export class SlockOhosAttachmentDownloadObserver {
     }
   }
 
+  controlExisting(downloadId: string, expectedAttemptToken: string, action: string): string {
+    try {
+      return invoke<string>(
+        'slockAttachmentDownloadControlExisting',
+        downloadId,
+        expectedAttemptToken,
+        action
+      );
+    } catch (_) {
+      return 'failed';
+    }
+  }
+
   onProgress(payload: Record<string, Object>): void {
     const key = payload["hostRequestKey"] as string | undefined;
     if (key === undefined) return;

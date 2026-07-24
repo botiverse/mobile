@@ -483,7 +483,7 @@ internal class BridgeModule : Module() {
             callbackRef = result.callbackRef
             continuation.invokeOnCancellation {
                 activeAttemptToken?.takeIf(String::isNotBlank)?.let { attemptToken ->
-                    AttachmentDownloadCoordinator.control(
+                    AttachmentDownloadCoordinator.controlExisting(
                         downloadId = resolvedDownloadId,
                         expectedAttemptToken = attemptToken,
                         action = "cancel"

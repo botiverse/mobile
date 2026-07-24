@@ -92,6 +92,16 @@ object AttachmentDownloadCoordinator {
     fun control(downloadId: String, expectedAttemptToken: String? = null, action: String): String =
         engine.control(downloadId, expectedAttemptToken, action)
 
+    /**
+     * Controls only work that already belongs to the current export operation.
+     *
+     * Unlike [control], a missing pre-start attempt never creates a cancellation receipt for a
+     * future operation that happens to reuse the same download id. Export cancellation also waits
+     * for the attempt's sink cleanup before returning so the successor can safely start.
+     */
+    fun controlExisting(downloadId: String, expectedAttemptToken: String? = null, action: String): String =
+        engine.controlExisting(downloadId, expectedAttemptToken, action)
+
     fun beginTargetCleanup(targetKey: String): AttachmentDownloadCleanupReservation =
         engine.beginTargetCleanup(targetKey)
 
@@ -246,14 +256,39 @@ internal class AttachmentDownloadCoordinatorEngine(
         return attemptToken
     }
 
-    fun control(downloadId: String, expectedAttemptToken: String?, action: String): String {
+    fun control(downloadId: String, expectedAttemptToken: String?, action: String): String =
+        control(
+            downloadId = downloadId,
+            expectedAttemptToken = expectedAttemptToken,
+            action = action,
+            recordPreStartCancel = true,
+            synchronousCancelCleanup = false
+        )
+
+    fun controlExisting(downloadId: String, expectedAttemptToken: String?, action: String): String =
+        control(
+            downloadId = downloadId,
+            expectedAttemptToken = expectedAttemptToken,
+            action = action,
+            recordPreStartCancel = false,
+            synchronousCancelCleanup = true
+        )
+
+    private fun control(
+        downloadId: String,
+        expectedAttemptToken: String?,
+        action: String,
+        recordPreStartCancel: Boolean,
+        synchronousCancelCleanup: Boolean
+    ): String {
         if (downloadId.isBlank()) return "missing"
         beforeMissingControlAdmission(downloadId)
         val attemptOrReceipt =
             synchronized(lock) {
                 val active = activeByDownloadId[downloadId]
                 if (active != null) return@synchronized ControlAdmission.Active(active)
-                if ((action.equals("stop", ignoreCase = true) || action.equals("cancel", ignoreCase = true)) &&
+                if (recordPreStartCancel &&
+                    (action.equals("stop", ignoreCase = true) || action.equals("cancel", ignoreCase = true)) &&
                     expectedAttemptToken.isNullOrBlank()
                 ) {
                     val now = nowMillis()
@@ -275,7 +310,12 @@ internal class AttachmentDownloadCoordinatorEngine(
         return when (action.lowercase()) {
             "pause" -> if (attempt.pause()) "paused" else "finishing"
             "resume" -> if (attempt.resume()) "resumed" else "finishing"
-            "stop", "cancel" -> if (attempt.cancel("cancelled")) "cancelled" else "finishing"
+            "stop", "cancel" ->
+                if (attempt.cancel("cancelled", synchronousCleanup = synchronousCancelCleanup)) {
+                    "cancelled"
+                } else {
+                    "finishing"
+                }
             else -> "failed"
         }
     }

@@ -421,8 +421,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       callback({ "status": "failed", "message": "Missing attachment export authority" });
       return;
     }
-    if (claimedMimeType.length > 0 && claimedMimeType !== "application/octet-stream" &&
-      claimedMimeType !== "binary/octet-stream" && !claimedMimeType.startsWith("image/")) {
+    if (claimedMimeType.length > 0 && this.normalizedImageMimeType(claimedMimeType).length === 0) {
       callback({ "status": "unsupported_image", "message": "This attachment is not a supported image", "retryable": false });
       return;
     }
@@ -556,10 +555,13 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       operationId === undefined || operationId.length === 0 ||
       this.activePhotoExportDownloadId !== downloadId ||
       this.activePhotoExportOperationId !== operationId) return;
-    this.activePhotoExportDownloadId = "";
-    this.activePhotoExportOperationId = "";
-    this.activePhotoExportGeneration = 0;
-    slockOhosAttachmentDownloadSink.control(downloadId, attemptToken, "cancel");
+    slockOhosAttachmentDownloadSink.controlExisting(downloadId, attemptToken, "cancel");
+    if (this.activePhotoExportDownloadId === downloadId &&
+      this.activePhotoExportOperationId === operationId) {
+      this.activePhotoExportDownloadId = "";
+      this.activePhotoExportOperationId = "";
+      this.activePhotoExportGeneration = 0;
+    }
   }
 
   private isCurrentPhotoExport(downloadId: string, operationId: string, exportGeneration: number): boolean {
@@ -569,16 +571,18 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   }
 
   private imageMetadataMatches(fileName: string, mimeType: string, actualExtension: string): boolean {
-    const extension = fileName.split("?")[0].split("#")[0].split(".").pop()?.toLowerCase() ?? "";
+    const cleanName = fileName.split("?")[0].split("#")[0].split("/").pop()?.split("\\").pop() ?? "";
+    const dotIndex = cleanName.lastIndexOf(".");
+    const extension = dotIndex > 0 && dotIndex < cleanName.length - 1 ?
+      cleanName.substring(dotIndex + 1).toLowerCase() : "";
     const normalizedExtension = extension === "jpeg" ? "jpg" : extension;
     const extensionMimeType = this.imageMimeTypeForExtension(normalizedExtension);
     const normalizedClaimedMimeType = this.normalizedImageMimeType(mimeType);
     const actualMimeType = this.normalizedImageMimeType(this.imageMimeTypeForExtension(actualExtension));
-    const hasSpecificClaim = mimeType.length > 0 && mimeType !== "application/octet-stream" &&
-      mimeType !== "binary/octet-stream";
     if (actualMimeType.length === 0) return false;
-    if (hasSpecificClaim && normalizedClaimedMimeType !== actualMimeType) return false;
-    return extensionMimeType.length === 0 || this.normalizedImageMimeType(extensionMimeType) === actualMimeType;
+    if (mimeType.length > 0 && normalizedClaimedMimeType !== actualMimeType) return false;
+    if (extension.length === 0) return true;
+    return extensionMimeType.length > 0 && this.normalizedImageMimeType(extensionMimeType) === actualMimeType;
   }
 
   private detectedImageExtension(path: string): string {

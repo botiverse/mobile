@@ -2274,9 +2274,9 @@ static NSString *SlockPickedAttachmentDisplayName(NSString *suggestedName,
         : ([self.slock_attachmentExportRequestId isEqualToString:@"pending"]
             ? @""
             : (self.slock_attachmentExportRequestId ?: @""));
-    [SharedAttachmentDownloadCoordinator.shared controlDownloadId:downloadId
-                                              expectedAttemptToken:attemptToken
-                                                            action:@"cancel"];
+    [SharedAttachmentDownloadCoordinator.shared controlExistingDownloadId:downloadId
+                                                      expectedAttemptToken:attemptToken
+                                                                    action:@"cancel"];
     [self slock_finishAttachmentExport:@{ @"status" : @"cancelled" }];
 }
 
@@ -2315,7 +2315,7 @@ static NSString *SlockPickedAttachmentDisplayName(NSString *suggestedName,
     BOOL genericBinaryMime =
         [mimeType isEqualToString:@"application/octet-stream"] || [mimeType isEqualToString:@"binary/octet-stream"];
     BOOL savesToPhotos = [destination isEqualToString:SlockAttachmentExportDestinationPhotos];
-    if (savesToPhotos && mimeType.length > 0 && !genericBinaryMime && ![mimeType hasPrefix:@"image/"]) {
+    if (savesToPhotos && mimeType.length > 0 && ![mimeType hasPrefix:@"image/"]) {
         callback(@{
             @"status" : @"unsupported_image",
             @"message" : @"This attachment is not a supported image.",
@@ -2323,7 +2323,7 @@ static NSString *SlockPickedAttachmentDisplayName(NSString *suggestedName,
         });
         return;
     }
-    if (savesToPhotos && mimeType.length > 0 && !genericBinaryMime) {
+    if (savesToPhotos && mimeType.length > 0) {
         UTType *mimeClaimType = [UTType typeWithMIMEType:mimeType];
         if (!mimeClaimType || ![mimeClaimType conformsToType:UTTypeImage]) {
             callback(@{
@@ -2349,7 +2349,7 @@ static NSString *SlockPickedAttachmentDisplayName(NSString *suggestedName,
     self.slock_attachmentExportDownloadId = SlockBridgeString(params[@"downloadId"]);
     self.slock_attachmentExportOperationId = operationId;
     self.slock_attachmentExportDestination = destination;
-    self.slock_attachmentExportMimeType = genericBinaryMime ? @"" : mimeType;
+    self.slock_attachmentExportMimeType = genericBinaryMime && !savesToPhotos ? @"" : mimeType;
     self.slock_attachmentExportFileName = fileName;
     self.slock_attachmentExportTrackProgress = SlockBridgeBool(params[@"trackProgress"]);
 

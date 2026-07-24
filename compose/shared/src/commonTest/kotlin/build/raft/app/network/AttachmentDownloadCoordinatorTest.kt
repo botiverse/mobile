@@ -396,6 +396,45 @@ class AttachmentDownloadCoordinatorTest {
     }
 
     @Test
+    fun existingOnlyCancelWithoutAttemptDoesNotPoisonSameIdSuccessor() {
+        val transport = FakeTransport()
+        val sinks = FakeSinkFactory()
+        val observer = RecordingObserver()
+        val engine = AttachmentDownloadCoordinatorEngine(transport, sinks, nowMillis = { 1_000L })
+
+        assertEquals("missing", engine.controlExisting("download-prestart", null, "cancel"))
+        engine.start(request().copy(downloadId = "download-prestart"), observer)
+
+        assertEquals(1, sinks.created.single().beginCount)
+        assertEquals(1, transport.calls.size)
+        assertTrue(observer.results.isEmpty())
+    }
+
+    @Test
+    fun existingOnlyCancelReturnsAfterSinkCleanup() {
+        val transport = FakeTransport()
+        val abortEntered = java.util.concurrent.CountDownLatch(1)
+        val releaseAbort = java.util.concurrent.CountDownLatch(1)
+        val sinks = FakeSinkFactory(abortEntered = abortEntered, releaseAbort = releaseAbort)
+        val engine = AttachmentDownloadCoordinatorEngine(transport, sinks, nowMillis = { 1_000L })
+        val attemptToken = engine.start(request(), RecordingObserver())
+        var status: String? = null
+
+        val controlThread = kotlin.concurrent.thread {
+            status = engine.controlExisting("download-1", attemptToken, "cancel")
+        }
+        assertTrue(abortEntered.await(2, java.util.concurrent.TimeUnit.SECONDS))
+        assertTrue(controlThread.isAlive)
+
+        releaseAbort.countDown()
+        controlThread.join(2_000L)
+
+        assertFalse(controlThread.isAlive)
+        assertEquals("cancelled", status)
+        assertEquals(1, sinks.created.single().abortCount)
+    }
+
+    @Test
     fun targetCleanupReservationRejectsNewStartsUntilHostDeletionFinishes() {
         val transport = FakeTransport()
         val sinks = FakeSinkFactory()
@@ -682,19 +721,30 @@ private class FakeTransportCall(
 private class FakeSinkFactory(
     private val beginSucceeds: Boolean = true,
     private val writeSucceeds: Boolean = true,
-    private val commitSucceeds: Boolean = true
+    private val commitSucceeds: Boolean = true,
+    private val abortEntered: java.util.concurrent.CountDownLatch? = null,
+    private val releaseAbort: java.util.concurrent.CountDownLatch? = null
 ) : AttachmentDownloadSinkFactory {
     val created = mutableListOf<FakeSink>()
 
     override fun create(targetPath: String, attemptToken: String): AttachmentDownloadAtomicSink =
-        FakeSink(attemptToken, beginSucceeds, writeSucceeds, commitSucceeds).also(created::add)
+        FakeSink(
+            attemptToken,
+            beginSucceeds,
+            writeSucceeds,
+            commitSucceeds,
+            abortEntered,
+            releaseAbort
+        ).also(created::add)
 }
 
 private class FakeSink(
     val attemptToken: String,
     private val beginSucceeds: Boolean,
     private val writeSucceeds: Boolean,
-    private val commitSucceeds: Boolean
+    private val commitSucceeds: Boolean,
+    private val abortEntered: java.util.concurrent.CountDownLatch?,
+    private val releaseAbort: java.util.concurrent.CountDownLatch?
 ) : AttachmentDownloadAtomicSink {
     var bytes = ByteArray(0)
     var commitCount = 0
@@ -719,6 +769,8 @@ private class FakeSink(
     }
 
     override fun abort() {
+        abortEntered?.countDown()
+        releaseAbort?.await()
         abortCount += 1
     }
 }

@@ -306,6 +306,133 @@ class AttachmentDownloadsExportCoordinatorTest {
     }
 
     @Test
+    fun operationExistingOnlyCancelDoesNotCreateFutureReceipt() = withSourceFile(4096) { source ->
+        val backend = FakeExportBackend()
+        val coordinator = coordinator()
+
+        assertEquals(
+            "missing",
+            coordinator.controlExisting(
+                downloadId = "same-download",
+                operationId = "operation-a",
+                expectedAttemptToken = null,
+                action = "cancel"
+            )
+        )
+        val result = coordinator.export(request(source, "same-download", "operation-b"), backend)
+
+        assertEquals("saved", result.status)
+        assertEquals(1, backend.insertCount.get())
+        assertEquals(1, backend.publishCount.get())
+    }
+
+    @Test
+    fun retiredOperationCannotReserveOrInsertAfterCancelMissedPreStart() = withSourceFile(4096) { source ->
+        val backend = FakeExportBackend()
+        val current = java.util.concurrent.atomic.AtomicBoolean(true)
+        val result =
+            coordinator(beforeOwnerRegistration = { current.set(false) }).exportIfCurrent(
+                request(source, "same-download", "operation-a"),
+                backend,
+                operationIsCurrent = current::get
+            )
+
+        assertEquals("cancelled", result.status)
+        assertEquals(0, backend.insertCount.get())
+        assertEquals(0, backend.publishCount.get())
+    }
+
+    @Test
+    fun repeatedSaveUsesFreshOperationInsteadOfFinishedTerminal() = withSourceFile(4096) { source ->
+        val coordinator = coordinator()
+        val firstBackend = FakeExportBackend()
+        val secondBackend = FakeExportBackend()
+
+        val first = coordinator.export(request(source, "same-download", "operation-a"), firstBackend)
+        val second = coordinator.export(request(source, "same-download", "operation-b"), secondBackend)
+
+        assertEquals("saved", first.status)
+        assertEquals("saved", second.status)
+        assertEquals(1, firstBackend.insertCount.get())
+        assertEquals(1, secondBackend.insertCount.get())
+        assertEquals(1, firstBackend.publishCount.get())
+        assertEquals(1, secondBackend.publishCount.get())
+    }
+
+    @Test
+    fun queuedSuccessorDoesNotBlockOwnerRetirementGate() = withSourceFile(1024 * 1024) { source ->
+        val registry = AndroidAttachmentOwnerRegistry()
+        val owner = ownerLease("queued-owner", 1L)
+        registry.bind(owner)
+        val writeEntered = CountDownLatch(1)
+        val releaseWrite = CountDownLatch(1)
+        val terminalGate = BlockedExecutorService()
+        val successorQueued = CountDownLatch(1)
+        val firstBackend =
+            FakeExportBackend(
+                writeEntered = writeEntered,
+                writeBlock = releaseWrite,
+                ignoreWriteInterrupt = true
+            )
+        val coordinator =
+            coordinator(
+                ownerRegistry = registry,
+                terminalWorker = terminalGate,
+                afterQueuedReservation = successorQueued::countDown
+            )
+        val firstResult = AtomicReference<AttachmentDownloadsExportResult>()
+        val firstRequest = request(source, "same-download", "operation-a").copy(owner = owner)
+        val firstThread = thread {
+            firstResult.set(coordinator.export(firstRequest, firstBackend))
+        }
+        assertTrue(writeEntered.await(2, TimeUnit.SECONDS))
+        assertEquals(
+            "cancelled",
+            coordinator.controlExisting(
+                downloadId = "same-download",
+                operationId = "operation-a",
+                expectedAttemptToken = null,
+                action = "cancel",
+                owner = owner
+            )
+        )
+
+        val secondBackend = FakeExportBackend()
+        val secondResult = AtomicReference<AttachmentDownloadsExportResult>()
+        val secondThread = thread {
+            secondResult.set(
+                coordinator.export(
+                    request(source, "same-download", "operation-b").copy(owner = owner),
+                    secondBackend
+                )
+            )
+        }
+        assertTrue(successorQueued.await(2, TimeUnit.SECONDS))
+
+        val retired = CountDownLatch(1)
+        val retireThread = thread {
+            registry.retireShell(owner.shellInstanceId)
+            retired.countDown()
+        }
+        assertTrue(retired.await(1, TimeUnit.SECONDS))
+        retireThread.join(1_000L)
+        assertFalse(retireThread.isAlive)
+
+        terminalGate.release.countDown()
+        releaseWrite.countDown()
+        firstThread.join(2_000L)
+        secondThread.join(2_000L)
+
+        assertFalse(firstThread.isAlive)
+        assertFalse(secondThread.isAlive)
+        assertEquals("cancelled", firstResult.get()?.status)
+        assertEquals("cancelled", secondResult.get()?.status)
+        assertEquals(0, secondBackend.insertCount.get())
+        assertEquals(0, secondBackend.publishCount.get())
+        terminalGate.shutdownNow()
+    }
+
+    @Test
     fun registeredCancelSeesFutureBeforeWorkerCanExecute() = withSourceFile(4096) { source ->
         val worker = GatedExecutorService()
         val backend = FakeExportBackend()
@@ -709,6 +836,7 @@ class AttachmentDownloadsExportCoordinatorTest {
         },
         afterInsertOwnerAcquired: () -> Unit = {},
         beforeOwnerRegistration: () -> Unit = {},
+        afterQueuedReservation: () -> Unit = {},
         ownerRegistry: AndroidAttachmentOwnerRegistry = ProcessAndroidAttachmentOwners
     ) =
         AttachmentDownloadsExportCoordinator(
@@ -723,12 +851,14 @@ class AttachmentDownloadsExportCoordinatorTest {
             deferredCleanupDelayMs = deferredCleanupDelayMs,
             afterInsertOwnerAcquired = afterInsertOwnerAcquired,
             beforeOwnerRegistration = beforeOwnerRegistration,
+            afterQueuedReservation = afterQueuedReservation,
             ownerRegistry = ownerRegistry
         )
 
-    private fun request(source: File, downloadId: String) =
+    private fun request(source: File, downloadId: String, operationId: String = "") =
         AttachmentDownloadsExportRequest(
             downloadId = downloadId,
+            operationId = operationId,
             source = source,
             displayName = "fixture.bin",
             mimeType = "application/octet-stream"
