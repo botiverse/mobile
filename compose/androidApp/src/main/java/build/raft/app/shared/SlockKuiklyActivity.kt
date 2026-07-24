@@ -3589,6 +3589,7 @@ internal class SlockKuiklyBridgeModule(
                             // the channel picker in the shared settings UI.
                             mapOf("status" to "unsupported")
                         }
+                        "getNotificationPermissionStatus" -> getNotificationPermissionStatusCapability()
                         "requestNotificationPermission" -> requestNotificationPermissionCapability()
                         "openNotificationSettings" -> {
                             openNotificationSettingsCapability()
@@ -3841,6 +3842,28 @@ internal class SlockKuiklyBridgeModule(
         }
     }
 
+    // The shared Settings > Notifications banner polls this on every load.
+    // Codes must stay within the set systemNotificationPermissionSnapshot maps
+    // (permission_authorized / permission_not_determined / permission_denied)
+    // or the shared side falls back to a permanent "needs permission" banner.
+    private fun getNotificationPermissionStatusCapability(): Map<String, Any> {
+        val runtimeGranted = hasNotificationPermission()
+        val notificationsEnabled = NotificationManagerCompat.from(appContext).areNotificationsEnabled()
+        val code =
+                when {
+                    runtimeGranted && notificationsEnabled -> "permission_authorized"
+                    !runtimeGranted -> "permission_not_determined"
+                    else -> "permission_denied"
+                }
+        val message =
+                when (code) {
+                    "permission_authorized" -> "System notifications are enabled for Raft."
+                    "permission_not_determined" -> "Notification permission has not been requested yet."
+                    else -> "System notifications are disabled for Raft in system settings."
+                }
+        return mapOf("status" to "ok", "code" to code, "message" to message)
+    }
+
     private fun sendTestNotificationCapability(): Map<String, Any> {
         if (!hasNotificationPermission()) {
             return requestNotificationPermissionCapability()
@@ -3849,7 +3872,7 @@ internal class SlockKuiklyBridgeModule(
         if (!NotificationManagerCompat.from(appContext).areNotificationsEnabled()) {
             return mapOf("status" to "error", "code" to "notifications_disabled")
         }
-        if (AndroidUnreadNotificationPoster.isNotificationChannelBlocked(appContext, AndroidUnreadNotificationPoster.SHARED_NOTIFICATION_CHANNEL_ID)) {
+        if (AndroidUnreadNotificationPoster.isNotificationChannelBlocked(appContext, AndroidUnreadNotificationPoster.UNREAD_MENTION_NOTIFICATION_CHANNEL_ID)) {
             return mapOf("status" to "error", "code" to "channel_blocked")
         }
         val notificationId = ((System.currentTimeMillis() % Int.MAX_VALUE).toInt()).coerceAtLeast(1)
@@ -3869,7 +3892,12 @@ internal class SlockKuiklyBridgeModule(
                     NotificationManagerCompat.from(appContext)
                             .notify(
                                     notificationId,
-                                    NotificationCompat.Builder(appContext, AndroidUnreadNotificationPoster.SHARED_NOTIFICATION_CHANNEL_ID)
+                                    // The HIGH-importance mention channel is the one that
+                                    // heads-up pops on real devices; a test that lands
+                                    // silently in the shade reads as "nothing happened".
+                                    // It also makes channel_blocked feedback meaningful for
+                                    // the channel users actually care about.
+                                    NotificationCompat.Builder(appContext, AndroidUnreadNotificationPoster.UNREAD_MENTION_NOTIFICATION_CHANNEL_ID)
                                             .setSmallIcon(android.R.drawable.ic_dialog_info)
                                             .setContentTitle(appContext.getString(R.string.settings_notification_test_title))
                                             .setContentText(appContext.getString(R.string.settings_notification_test_text))
@@ -3877,8 +3905,8 @@ internal class SlockKuiklyBridgeModule(
                                                     NotificationCompat.BigTextStyle()
                                                             .bigText(appContext.getString(R.string.settings_notification_test_text))
                                             )
-                                            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-                                            .setCategory(NotificationCompat.CATEGORY_STATUS)
+                                            .setPriority(NotificationCompat.PRIORITY_HIGH)
+                                            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
                                             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                                             .setWhen(System.currentTimeMillis())
                                             .setShowWhen(true)
