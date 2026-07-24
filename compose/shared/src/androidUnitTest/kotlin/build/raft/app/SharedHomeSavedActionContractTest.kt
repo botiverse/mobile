@@ -32,6 +32,22 @@ class SharedHomeSavedActionContractTest {
         assertTrue(".slockButtonAccessibility(enabled = true) { currentOnClick() }" in unsaveButton)
     }
 
+    @Test
+    fun savedMutationIdentityUsesCanonicalSavedKeyBeforeNavigationAnchor() {
+        val source = commonMainSource("build/raft/app/data/SharedHomeSearchSavedStore.kt")
+        val resolver =
+            source.substringAfter("fun InboxItem.savedMessageIdOrNull(): MessageId? =")
+                .substringBefore("enum class SearchTimeRange")
+
+        assertTrue("it.startsWith(SavedInboxItemKeyPrefix)" in resolver)
+        assertTrue("?.removePrefix(SavedInboxItemKeyPrefix)" in resolver)
+        assertTrue("?: resolveInboxAnchorMessageId()" in resolver)
+        assertTrue(
+            resolver.indexOf("removePrefix(SavedInboxItemKeyPrefix)") <
+                resolver.indexOf("resolveInboxAnchorMessageId()")
+        )
+    }
+
     private fun commonMainSource(path: String): String {
         val commonMain =
             listOf(File("src/commonMain/kotlin"), File("shared/src/commonMain/kotlin"))

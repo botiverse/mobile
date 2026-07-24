@@ -1,9 +1,11 @@
 package build.raft.app.data
 
+import build.raft.app.resolveInboxAnchorMessageId
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MemberKind
+import build.raft.app.model.MessageId
 import build.raft.app.model.ServerId
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
@@ -255,6 +257,50 @@ class InboxSavedSearchRepositoryDataSourceTest {
         assertEquals("Search hit", search.data.items.single().lastMessagePreview)
         assertEquals("user-1", search.data.items.single().lastMessageSenderId)
         assertEquals(MemberKind.Human, search.data.items.single().lastMessageSenderKind)
+    }
+
+    @Test
+    fun savedReplyProjectionKeepsDeleteIdentityInCanonicalSavedKey() = runBlocking {
+        val network =
+            FakeInboxNetworkClient(
+                savedJson =
+                    """
+                    {
+                      "saved": [{
+                        "messageId": "reply-message-1",
+                        "channelId": "thread-channel-1",
+                        "channelName": "thread-stream",
+                        "channelType": "thread",
+                        "content": "Saved reply",
+                        "senderType": "user",
+                        "senderId": "user-1",
+                        "senderName": "Artin",
+                        "createdAt": "2026-05-01T00:00:00Z",
+                        "savedAt": "2026-05-02T00:00:00Z",
+                        "parentChannelId": "channel-1",
+                        "parentChannelName": "general",
+                        "parentChannelType": "channel",
+                        "parentMessageId": "parent-message-1"
+                      }],
+                      "hasMore": false
+                    }
+                    """.trimIndent(),
+                searchJson = """{"results":[],"hasMore":false}"""
+            )
+        val repository = RealSavedRepository(sampleStore(), network)
+
+        val loaded = repository.loadInitial(ServerId("server-1"))
+
+        assertTrue(loaded is DataResult.Content)
+        val reply = loaded.data.items.single()
+        assertEquals(InboxItemKind.Thread, reply.kind)
+        assertEquals("saved:reply-message-1", reply.key)
+        assertEquals(null, reply.resolveInboxAnchorMessageId())
+        assertEquals(MessageId("reply-message-1"), reply.savedMessageIdOrNull())
+
+        repository.unsaveMessage(ServerId("server-1"), assertNotNull(reply.savedMessageIdOrNull()))
+
+        assertEquals(listOf("reply-message-1"), network.unsavedMessageIds)
     }
 
     @Test

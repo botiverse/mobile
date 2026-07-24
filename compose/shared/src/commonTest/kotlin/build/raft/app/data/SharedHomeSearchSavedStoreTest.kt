@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.resolveInboxAnchorMessageId
 import build.raft.app.model.ChannelId
 import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MemberKind
@@ -84,6 +85,42 @@ class SharedHomeSearchSavedStoreTest {
 
         assertEquals(emptyList(), store.state.value.saved.items)
         assertEquals(MessageId("message-1"), saved.unsavedMessageId)
+        scope.cancel()
+    }
+
+    @Test
+    fun savedReplyUnsaveUsesCanonicalSavedKeyWhenOpenAnchorIsAbsent() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val reply =
+            InboxItem(
+                key = "saved:reply-message-1",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("thread-channel-1"),
+                channelName = "thread-stream",
+                threadChannelId = ChannelId("thread-channel-1"),
+                parentChannelId = ChannelId("channel-1"),
+                parentChannelName = "general",
+                parentMessageId = MessageId("parent-message-1"),
+                lastMessageId = MessageId("reply-message-1")
+            )
+        val saved = FakeSavedRepository(items = listOf(reply))
+        val store =
+            SharedHomeSearchSavedStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                savedRepository = saved,
+                searchRepository = FakeSearchRepository(),
+                scope = scope
+            )
+
+        store.dispatch(SharedHomeSearchSavedIntent.OpenSaved)
+
+        assertEquals(null, reply.resolveInboxAnchorMessageId())
+        assertEquals(MessageId("reply-message-1"), reply.savedMessageIdOrNull())
+
+        store.dispatch(SharedHomeSearchSavedIntent.Unsave(store.state.value.saved.items.single()))
+
+        assertEquals(emptyList(), store.state.value.saved.items)
+        assertEquals(MessageId("reply-message-1"), saved.unsavedMessageId)
         scope.cancel()
     }
 
