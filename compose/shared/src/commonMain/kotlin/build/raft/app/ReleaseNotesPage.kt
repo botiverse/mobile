@@ -13,6 +13,7 @@ import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.components.SlockRaftUiEmptyState
 import build.raft.app.data.ScreenLoadState
+import build.raft.app.data.SharedPreferenceStore
 import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.data.SharedSettingsViewModel
@@ -40,10 +41,17 @@ import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.module.NetworkModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.Pager
+import com.tencent.kuikly.lifecycle.ViewModel
+import com.tencent.kuikly.lifecycle.viewModelScope
 import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlin.coroutines.resume
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 
 const val RELEASE_NOTES_PAGE = "compose_release_notes"
@@ -180,7 +188,7 @@ internal data class ReleaseNotesDocument(
     val languageTag: String
 )
 
-private sealed interface ReleaseNotesBodyState {
+internal sealed interface ReleaseNotesBodyState {
     data object Loading : ReleaseNotesBodyState
 
     data class Content(
@@ -191,7 +199,7 @@ private sealed interface ReleaseNotesBodyState {
     data class Error(val reason: String) : ReleaseNotesBodyState
 }
 
-private data class ReleaseNotesNetworkResult(
+internal data class ReleaseNotesNetworkResult(
     val data: JSONObject,
     val success: Boolean,
     val errorMessage: String,
@@ -207,61 +215,35 @@ internal fun ReleaseNotesNativeBody(versionCode: String) {
     val errorTitle = stringResource(MR.strings.release_notes_error_title)
     val errorBody = stringResource(MR.strings.release_notes_error_body)
     val retryLabel = stringResource(MR.strings.common_retry)
-    var reloadKey by remember { mutableStateOf(0) }
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
     val linkNavigator = rememberSlockLinkNavigator(pager, bridge)
-    val requestLocaleTag = remember { releaseNotesRequestLocaleTag() }
-    val cacheKey = remember(versionCode, requestLocaleTag) {
-        releaseNotesCacheKey(versionCode, requestLocaleTag)
-    }
-    val preferenceStore = remember { slockSharedPreferenceStore() }
-    var state by remember(versionCode, requestLocaleTag) {
-        mutableStateOf(
-            releaseNotesCachedDocument(preferenceStore.getString(cacheKey))
-                ?.let { ReleaseNotesBodyState.Content(it, cached = true) }
-                ?: ReleaseNotesBodyState.Loading
-        )
+    val resolvedResourceLocaleTag = stringResource(MR.strings.app_locale_request_tag)
+    val requestLocaleTag = remember(resolvedResourceLocaleTag) {
+        releaseNotesRequestLocaleTag(resolvedResourceLocaleTag)
     }
     val networkModule = remember(pager) {
         pager.acquireModule<NetworkModule>(NetworkModule.MODULE_NAME)
     }
-    LaunchedEffect(versionCode, requestLocaleTag, reloadKey) {
-        val result = networkModule.fetchReleaseNotes(versionCode, requestLocaleTag)
-        val document =
-            if (result.success) {
-                releaseNotesDocumentFromResponse(
-                    payload = result.data,
-                    requestedVersionCode = versionCode,
-                    requestedLanguageTag = requestLocaleTag
-                )
-            } else {
-                null
-            }
-        if (document != null) {
-            preferenceStore.putString(cacheKey, releaseNotesCachedDocumentJson(document))
-            state = ReleaseNotesBodyState.Content(document, cached = false)
-            bridge.log(
-                "release_notes_load_success renderer=native versionCode=$versionCode " +
-                    "lang=${document.languageTag} cached=false"
-            )
-        } else if (state !is ReleaseNotesBodyState.Content) {
-            val reason =
-                if (result.success) {
-                    "missing_exact_release_notes"
-                } else {
-                    "http_${result.statusCode ?: 0}:${result.errorMessage.take(80)}"
-                }
-            state = ReleaseNotesBodyState.Error(reason)
-            bridge.logWarn(
-                "release_notes_load_failure renderer=native versionCode=$versionCode reason=$reason"
-            )
-        } else {
-            bridge.logWarn(
-                "release_notes_load_stale renderer=native versionCode=$versionCode " +
-                    "status=${result.statusCode ?: 0}"
+    val repository = remember(networkModule) {
+        ReleaseNotesRepository(
+            remoteDataSource = NetworkReleaseNotesRemoteDataSource(networkModule),
+            preferenceStore = slockSharedPreferenceStore()
+        )
+    }
+    val releaseNotesViewModel: ReleaseNotesViewModel =
+        viewModel(key = "release-notes-${releaseNotesRequestIdentity(versionCode, requestLocaleTag)}") {
+            ReleaseNotesViewModel(
+                repository = repository,
+                diagnosticsLogger = bridge::log,
+                warningLogger = bridge::logWarn
             )
         }
+    val state by releaseNotesViewModel.state.collectAsState()
+    LaunchedEffect(versionCode, requestLocaleTag) {
+        releaseNotesViewModel.dispatch(
+            ReleaseNotesIntent.Load(versionCode, requestLocaleTag)
+        )
     }
 
     when (val current = state) {
@@ -299,8 +281,7 @@ internal fun ReleaseNotesNativeBody(versionCode: String) {
                         SlockBrutalActionButton(
                             label = retryLabel,
                             onClick = {
-                                state = ReleaseNotesBodyState.Loading
-                                reloadKey += 1
+                                releaseNotesViewModel.dispatch(ReleaseNotesIntent.Retry)
                             },
                             leadingIcon = SlockLucideIconName.RefreshCw,
                             backgroundColor = SlockColor.SurfaceWhite
@@ -316,10 +297,12 @@ private const val ReleaseNotesApiUrl =
 private const val RELEASE_NOTES_HEADER_Z_INDEX = 1f
 private const val RELEASE_NOTES_BODY_Z_INDEX = 0f
 
-internal fun releaseNotesRequestLocaleTag(): String? =
+internal fun releaseNotesRequestLocaleTag(
+    resolvedSystemLanguageTag: String = requireNotNull(AppLocale.Default.kmmResourceLocaleTag)
+): String? =
     try {
         when (val locale = KeyValueLocalePreferenceStore(slockSharedPreferenceStore()).readLocaleSync()) {
-            AppLocale.System -> null
+            AppLocale.System -> releaseNotesNormalizeLanguageTag(resolvedSystemLanguageTag)
             else -> locale.kmmResourceLocaleTag
         }
     } catch (cancellation: CancellationException) {
@@ -327,6 +310,32 @@ internal fun releaseNotesRequestLocaleTag(): String? =
     } catch (_: Throwable) {
         AppLocale.Default.kmmResourceLocaleTag
     }
+
+internal fun releaseNotesNormalizeLanguageTag(value: String?): String =
+    value
+        ?.trim()
+        ?.substringBefore('.')
+        ?.substringBefore('@')
+        ?.replace('_', '-')
+        ?.takeIf {
+            it.isNotBlank() &&
+                !it.equals("C", ignoreCase = true) &&
+                !it.equals("POSIX", ignoreCase = true)
+        }
+        ?: requireNotNull(AppLocale.Default.kmmResourceLocaleTag)
+
+internal interface ReleaseNotesRemoteDataSource {
+    suspend fun fetch(versionCode: String, languageTag: String?): ReleaseNotesNetworkResult
+}
+
+internal class NetworkReleaseNotesRemoteDataSource(
+    private val networkModule: NetworkModule
+) : ReleaseNotesRemoteDataSource {
+    override suspend fun fetch(
+        versionCode: String,
+        languageTag: String?
+    ): ReleaseNotesNetworkResult = networkModule.fetchReleaseNotes(versionCode, languageTag)
+}
 
 private suspend fun NetworkModule.fetchReleaseNotes(
     versionCode: String,
@@ -353,6 +362,194 @@ private suspend fun NetworkModule.fetchReleaseNotes(
         }
     }
 
+internal sealed interface ReleaseNotesRepositoryResult {
+    data class Success(val document: ReleaseNotesDocument) : ReleaseNotesRepositoryResult
+
+    data class Failure(val reason: String, val statusCode: Int?) : ReleaseNotesRepositoryResult
+}
+
+internal class ReleaseNotesRepository(
+    private val remoteDataSource: ReleaseNotesRemoteDataSource,
+    private val preferenceStore: SharedPreferenceStore
+) {
+    fun cachedDocument(versionCode: String, languageTag: String?): ReleaseNotesDocument? {
+        val identity = releaseNotesRequestIdentity(versionCode, languageTag)
+        if (identity == null) return null
+        return releaseNotesCachedDocument(
+            raw = preferenceStore.getString(releaseNotesCacheKey(identity.versionCode, identity.languageTag)),
+            requestedVersionCode = identity.versionCode,
+            requestedLanguageTag = identity.languageTag
+        )
+    }
+
+    suspend fun refresh(
+        versionCode: String,
+        languageTag: String?
+    ): ReleaseNotesRepositoryResult {
+        val identity =
+            releaseNotesRequestIdentity(versionCode, languageTag)
+                ?: return ReleaseNotesRepositoryResult.Failure("invalid_version_code", null)
+        val result = remoteDataSource.fetch(identity.versionCode, identity.languageTag)
+        val document =
+            if (result.success) {
+                releaseNotesDocumentFromResponse(
+                    payload = result.data,
+                    requestedVersionCode = identity.versionCode,
+                    requestedLanguageTag = identity.languageTag
+                )
+            } else {
+                null
+            }
+        if (document == null) {
+            val reason =
+                if (result.success) {
+                    "missing_exact_release_notes"
+                } else {
+                    "http_${result.statusCode ?: 0}:${result.errorMessage.take(80)}"
+                }
+            return ReleaseNotesRepositoryResult.Failure(reason, result.statusCode)
+        }
+        preferenceStore.putString(
+            releaseNotesCacheKey(identity.versionCode, identity.languageTag),
+            releaseNotesCachedDocumentJson(
+                document = document,
+                requestedVersionCode = identity.versionCode,
+                requestedLanguageTag = identity.languageTag
+            )
+        )
+        return ReleaseNotesRepositoryResult.Success(document)
+    }
+}
+
+internal sealed interface ReleaseNotesIntent {
+    data class Load(val versionCode: String, val languageTag: String?) : ReleaseNotesIntent
+
+    data object Retry : ReleaseNotesIntent
+}
+
+internal class ReleaseNotesStore(
+    private val repository: ReleaseNotesRepository,
+    private val scope: CoroutineScope,
+    private val diagnosticsLogger: (String) -> Unit = {},
+    private val warningLogger: (String) -> Unit = {}
+) {
+    private val _state = MutableStateFlow<ReleaseNotesBodyState>(ReleaseNotesBodyState.Loading)
+    val state: StateFlow<ReleaseNotesBodyState> = _state
+
+    private var activeRequest: ReleaseNotesRequestIdentity? = null
+    private var requestGeneration = 0L
+    private var requestJob: Job? = null
+
+    fun dispatch(intent: ReleaseNotesIntent) {
+        when (intent) {
+            is ReleaseNotesIntent.Load -> load(intent.versionCode, intent.languageTag, force = false)
+            ReleaseNotesIntent.Retry -> {
+                val request = activeRequest ?: return
+                load(request.versionCode, request.languageTag, force = true)
+            }
+        }
+    }
+
+    fun clear() {
+        requestGeneration += 1
+        requestJob?.cancel()
+        requestJob = null
+    }
+
+    private fun load(versionCode: String, languageTag: String?, force: Boolean) {
+        val request = releaseNotesRequestIdentity(versionCode, languageTag)
+        if (request == null) {
+            clear()
+            activeRequest = null
+            _state.value = ReleaseNotesBodyState.Error("invalid_version_code")
+            warningLogger("release_notes_load_failure renderer=native reason=invalid_version_code")
+            return
+        }
+        if (!force && request == activeRequest && requestJob?.isActive == true) return
+
+        activeRequest = request
+        requestGeneration += 1
+        val generation = requestGeneration
+        requestJob?.cancel()
+        val cached = repository.cachedDocument(request.versionCode, request.languageTag)
+        _state.value =
+            cached?.let { ReleaseNotesBodyState.Content(it, cached = true) }
+                ?: ReleaseNotesBodyState.Loading
+        requestJob =
+            scope.launch {
+                when (val result = repository.refresh(request.versionCode, request.languageTag)) {
+                    is ReleaseNotesRepositoryResult.Success -> {
+                        if (!isCurrent(request, generation)) return@launch
+                        _state.value = ReleaseNotesBodyState.Content(result.document, cached = false)
+                        diagnosticsLogger(
+                            "release_notes_load_success renderer=native " +
+                                "versionCode=${request.versionCode} lang=${result.document.languageTag} cached=false"
+                        )
+                    }
+                    is ReleaseNotesRepositoryResult.Failure -> {
+                        if (!isCurrent(request, generation)) return@launch
+                        if (_state.value !is ReleaseNotesBodyState.Content) {
+                            _state.value = ReleaseNotesBodyState.Error(result.reason)
+                            warningLogger(
+                                "release_notes_load_failure renderer=native " +
+                                    "versionCode=${request.versionCode} reason=${result.reason}"
+                            )
+                        } else {
+                            warningLogger(
+                                "release_notes_load_stale renderer=native " +
+                                    "versionCode=${request.versionCode} status=${result.statusCode ?: 0}"
+                            )
+                        }
+                    }
+                }
+            }
+    }
+
+    private fun isCurrent(request: ReleaseNotesRequestIdentity, generation: Long): Boolean =
+        activeRequest == request && requestGeneration == generation
+}
+
+internal class ReleaseNotesViewModel(
+    repository: ReleaseNotesRepository,
+    diagnosticsLogger: (String) -> Unit = {},
+    warningLogger: (String) -> Unit = {}
+) : ViewModel() {
+    private val store =
+        ReleaseNotesStore(
+            repository = repository,
+            scope = viewModelScope,
+            diagnosticsLogger = diagnosticsLogger,
+            warningLogger = warningLogger
+        )
+    val state: StateFlow<ReleaseNotesBodyState> = store.state
+
+    fun dispatch(intent: ReleaseNotesIntent) {
+        store.dispatch(intent)
+    }
+
+    override fun onCleared() {
+        store.clear()
+        super.onCleared()
+    }
+}
+
+internal data class ReleaseNotesRequestIdentity(
+    val versionCode: String,
+    val languageTag: String
+)
+
+internal fun releaseNotesRequestIdentity(
+    versionCode: String,
+    languageTag: String?
+): ReleaseNotesRequestIdentity? {
+    val exactVersionCode = releaseNotesSanitizeVersionCode(versionCode)
+    if (exactVersionCode.isBlank()) return null
+    return ReleaseNotesRequestIdentity(
+        versionCode = exactVersionCode,
+        languageTag = releaseNotesNormalizeLanguageTag(languageTag)
+    )
+}
+
 internal fun releaseNotesApiRequestParams(
     versionCode: String,
     languageTag: String?
@@ -361,7 +558,7 @@ internal fun releaseNotesApiRequestParams(
         releaseNotesSanitizeVersionCode(versionCode).takeIf { it.isNotBlank() }?.let {
             put("version_code", it)
         }
-        languageTag?.trim()?.takeIf { it.isNotBlank() }?.let { put("lang", it) }
+        put("lang", releaseNotesNormalizeLanguageTag(languageTag))
     }
 
 internal fun releaseNotesDocumentFromResponse(
@@ -403,23 +600,46 @@ internal fun releaseNotesDocumentFromResponse(
 }
 
 internal fun releaseNotesCacheKey(versionCode: String, languageTag: String?): String =
-    "releaseNotes.native.v1:${releaseNotesSanitizeVersionCode(versionCode)}:${languageTag ?: "system"}"
+    "releaseNotes.native.v2:${releaseNotesSanitizeVersionCode(versionCode)}:" +
+        releaseNotesNormalizeLanguageTag(languageTag)
 
-internal fun releaseNotesCachedDocumentJson(document: ReleaseNotesDocument): String =
+internal fun releaseNotesCachedDocumentJson(
+    document: ReleaseNotesDocument,
+    requestedVersionCode: String = document.versionCode.toString(),
+    requestedLanguageTag: String? = document.languageTag
+): String =
     JSONObject()
         .put("versionCode", document.versionCode)
         .put("versionName", document.versionName)
         .put("markdown", document.markdown)
         .put("languageTag", document.languageTag)
+        .put("requestedVersionCode", releaseNotesSanitizeVersionCode(requestedVersionCode))
+        .put("requestedLanguageTag", releaseNotesNormalizeLanguageTag(requestedLanguageTag))
         .toString()
 
-internal fun releaseNotesCachedDocument(raw: String?): ReleaseNotesDocument? =
+internal fun releaseNotesCachedDocument(
+    raw: String?,
+    requestedVersionCode: String? = null,
+    requestedLanguageTag: String? = null
+): ReleaseNotesDocument? =
     raw?.takeIf { it.isNotBlank() }?.let { value ->
         try {
             val payload = JSONObject(value)
             val versionCode = payload.optLong("versionCode")
             val markdown = payload.optString("markdown").trim()
             if (versionCode <= 0 || markdown.isBlank()) return@let null
+            requestedVersionCode?.let { requested ->
+                val exactRequestedVersion = releaseNotesSanitizeVersionCode(requested)
+                if (
+                    exactRequestedVersion.isBlank() ||
+                    versionCode.toString() != exactRequestedVersion ||
+                    payload.optString("requestedVersionCode") != exactRequestedVersion
+                ) {
+                    return@let null
+                }
+                val expectedLanguage = releaseNotesNormalizeLanguageTag(requestedLanguageTag)
+                if (payload.optString("requestedLanguageTag") != expectedLanguage) return@let null
+            }
             ReleaseNotesDocument(
                 versionCode = versionCode,
                 versionName = payload.optString("versionName"),

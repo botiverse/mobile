@@ -1242,6 +1242,7 @@
     <string name="home_notification_app_update_body">Current version %1$s. Latest version %2$s.</string>
     <string name="app_update_view">View</string>
     <string name="app_update_retry">Retry</string>
+    <string name="app_locale_request_tag">en</string>
     <string name="app_update_working">Working...</string>
     <string name="app_update_download">Download</string>
     <string name="app_update_downloading">Downloading</string>
