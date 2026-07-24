@@ -9,6 +9,9 @@ import kotlin.test.assertEquals
 class MembersListRowVisualContractTest {
     @Test
     fun membersListRowMatchesReactMobileMasterDensityAndTypography() {
+        // Web pads the scroll container (`px-2`) AND each row/section (`px-2`): 16px total edge
+        // inset. Both halves are asserted so neither level can silently drop again (task #140).
+        assertEquals(8.dp, MembersListContainerInset)
         assertEquals(8.dp, MembersListHorizontalInset)
         assertEquals(18.dp, MembersListAvatarSize)
         assertEquals(34.dp, MembersListRowMinHeight)
