@@ -37,7 +37,7 @@
     <string name="common_no">No</string>
     <string name="common_loading">Loading…</string>
     <string name="common_copied">Copied</string>
-    <string name="home_error_conversation_not_ready">Conversation isn't ready yet — try again</string>
+    <string name="home_error_conversation_not_ready">Conversation isn\'t ready yet — try again</string>
     <string name="home_error_notification_server_unavailable">Notification server unavailable</string>
     <string name="home_error_notification_sign_in">Sign in to open this notification</string>
     <string name="home_error_conversation_unavailable">Conversation is no longer available</string>
