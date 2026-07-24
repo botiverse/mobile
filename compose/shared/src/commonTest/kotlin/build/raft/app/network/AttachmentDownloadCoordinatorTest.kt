@@ -413,24 +413,15 @@ class AttachmentDownloadCoordinatorTest {
     @Test
     fun existingOnlyCancelReturnsAfterSinkCleanup() {
         val transport = FakeTransport()
-        val abortEntered = java.util.concurrent.CountDownLatch(1)
-        val releaseAbort = java.util.concurrent.CountDownLatch(1)
-        val sinks = FakeSinkFactory(abortEntered = abortEntered, releaseAbort = releaseAbort)
+        var abortCompleted = false
+        val sinks = FakeSinkFactory(onAbort = { abortCompleted = true })
         val engine = AttachmentDownloadCoordinatorEngine(transport, sinks, nowMillis = { 1_000L })
         val attemptToken = engine.start(request(), RecordingObserver())
-        var status: String? = null
 
-        val controlThread = kotlin.concurrent.thread {
-            status = engine.controlExisting("download-1", attemptToken, "cancel")
-        }
-        assertTrue(abortEntered.await(2, java.util.concurrent.TimeUnit.SECONDS))
-        assertTrue(controlThread.isAlive)
+        val status = engine.controlExisting("download-1", attemptToken, "cancel")
 
-        releaseAbort.countDown()
-        controlThread.join(2_000L)
-
-        assertFalse(controlThread.isAlive)
         assertEquals("cancelled", status)
+        assertTrue(abortCompleted)
         assertEquals(1, sinks.created.single().abortCount)
     }
 
@@ -722,8 +713,7 @@ private class FakeSinkFactory(
     private val beginSucceeds: Boolean = true,
     private val writeSucceeds: Boolean = true,
     private val commitSucceeds: Boolean = true,
-    private val abortEntered: java.util.concurrent.CountDownLatch? = null,
-    private val releaseAbort: java.util.concurrent.CountDownLatch? = null
+    private val onAbort: () -> Unit = {}
 ) : AttachmentDownloadSinkFactory {
     val created = mutableListOf<FakeSink>()
 
@@ -733,8 +723,7 @@ private class FakeSinkFactory(
             beginSucceeds,
             writeSucceeds,
             commitSucceeds,
-            abortEntered,
-            releaseAbort
+            onAbort
         ).also(created::add)
 }
 
@@ -743,8 +732,7 @@ private class FakeSink(
     private val beginSucceeds: Boolean,
     private val writeSucceeds: Boolean,
     private val commitSucceeds: Boolean,
-    private val abortEntered: java.util.concurrent.CountDownLatch?,
-    private val releaseAbort: java.util.concurrent.CountDownLatch?
+    private val onAbort: () -> Unit
 ) : AttachmentDownloadAtomicSink {
     var bytes = ByteArray(0)
     var commitCount = 0
@@ -769,8 +757,7 @@ private class FakeSink(
     }
 
     override fun abort() {
-        abortEntered?.countDown()
-        releaseAbort?.await()
+        onAbort()
         abortCount += 1
     }
 }
