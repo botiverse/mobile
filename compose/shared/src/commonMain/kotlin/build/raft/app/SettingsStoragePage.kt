@@ -43,10 +43,10 @@ import kotlinx.serialization.Serializable
 const val SETTINGS_STORAGE_PAGE = "compose_settings_storage"
 
 @Page(SETTINGS_STORAGE_PAGE, supportInLocal = true)
-internal class ComposeSettingsStoragePage : build.raft.app.base.BasePager() {
+internal class ComposeSettingsStoragePage : AuthenticatedProductPager(AuthenticatedProductRoute.SettingsStorage) {
     override fun willInit() {
         super.willInit()
-        setContent { SettingsStorageScreen() }
+        setAuthenticatedContent { SettingsStorageScreen() }
     }
 }
 

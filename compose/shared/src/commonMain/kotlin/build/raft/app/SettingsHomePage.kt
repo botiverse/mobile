@@ -524,14 +524,14 @@ const val SETTINGS_ROUTE_VISUAL_PAGE = "compose_settings_route_visual"
 const val SETTINGS_TAB_BAR_SMOKE_PAGE = "compose_settings_tabbar_smoke"
 const val BOTTOM_TAB_BAR_SMOKE_PAGE = "compose_bottom_tabbar_smoke"
 const val HOME_SEARCH_PAGE = "compose_home_search"
-private const val HOME_SAVED_PAGE = "compose_home_saved"
-private const val HOME_ACTIVITY_PAGE = "compose_home_activity"
+internal const val HOME_SAVED_PAGE = "compose_home_saved"
+internal const val HOME_ACTIVITY_PAGE = "compose_home_activity"
 const val HOME_SEARCH_SELECTED_CHANNEL_ID = "selectedChannelId"
 const val HOME_SEARCH_INITIAL_OPEN_FILTER_ID = "initialOpenFilterId"
 const val HOME_SEARCH_FOCUS_INPUT = "focusSearchInput"
 const val AUTH_CHOOSE_SERVER_PAGE = "compose_auth_choose_server"
 const val SLOCK_APP_SHELL_PAGE = "compose_slock_app_shell"
-private const val SLOCK_APP_SHELL_CHILD_TAB_PAGE = "compose_app_shell_child_tab"
+internal const val SLOCK_APP_SHELL_CHILD_TAB_PAGE = "compose_app_shell_child_tab"
 private const val AUTH_REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
 private const val AUTH_CHOOSE_SERVER_FROM_SHELL = "slockChooseServerFromShell"
 private const val AUTH_CHOOSE_SERVER_SKIP_INITIAL_LOAD = "slockAuthChooseServerSkipInitialLoad"
@@ -864,10 +864,10 @@ internal class ComposeBottomTabBarSmokePage : build.raft.app.base.BasePager() {
 }
 
 @Page(HOME_SEARCH_PAGE, supportInLocal = true)
-internal class ComposeHomeSearchPage : build.raft.app.base.BasePager() {
+internal class ComposeHomeSearchPage : AuthenticatedProductPager(AuthenticatedProductRoute.HomeSearch) {
     override fun willInit() {
         super.willInit()
-        setContent {
+        setAuthenticatedContent {
             HomeSecondaryRouterContent(
                 HomeDestinationSearch,
                 slockPageVisibleResumeTick,
@@ -880,18 +880,18 @@ internal class ComposeHomeSearchPage : build.raft.app.base.BasePager() {
 }
 
 @Page(HOME_SAVED_PAGE, supportInLocal = true)
-internal class ComposeHomeSavedPage : build.raft.app.base.BasePager() {
+internal class ComposeHomeSavedPage : AuthenticatedProductPager(AuthenticatedProductRoute.HomeSaved) {
     override fun willInit() {
         super.willInit()
-        setContent { HomeSecondaryRouterContent(HomeDestinationSaved, slockPageVisibleResumeTick) }
+        setAuthenticatedContent { HomeSecondaryRouterContent(HomeDestinationSaved, slockPageVisibleResumeTick) }
     }
 }
 
 @Page(HOME_ACTIVITY_PAGE, supportInLocal = true)
-internal class ComposeHomeActivityPage : build.raft.app.base.BasePager() {
+internal class ComposeHomeActivityPage : AuthenticatedProductPager(AuthenticatedProductRoute.HomeActivity) {
     override fun willInit() {
         super.willInit()
-        setContent { HomeSecondaryRouterContent(HomeDestinationActivity, slockPageVisibleResumeTick) }
+        setAuthenticatedContent { HomeSecondaryRouterContent(HomeDestinationActivity, slockPageVisibleResumeTick) }
     }
 }
 
@@ -912,6 +912,7 @@ private data class HomeSecondaryRouteEnvironment(
     val activitySenderAvatarsEnabled: Boolean,
     val threadRowAffordances: Set<ThreadRowAffordancePreference>,
     val storeScope: SlockShellStoreScope,
+    val hasExplicitShellScope: Boolean,
     val shellScope: SlockAppShellScope,
     val conversationIdentityProvider: SharedConversationIdentityProvider?,
     val sharedHomeStore: SharedHomeStore?,
@@ -928,6 +929,9 @@ private fun rememberHomeSecondaryRouteEnvironment(
     val bridge = remember(pager) { Utils.bridgeModule(pager.pagerId) }
     val storeScope = remember(pager.pageData.params.toString(), pager.pagerId) {
         pager.pageData.params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
+    }
+    val hasExplicitShellScope = remember(pager.pageData.params.toString()) {
+        pager.pageData.params.slockShellStoreScopeOrNull() != null
     }
     val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
     val bridgeCallScope = rememberCoroutineScope()
@@ -988,6 +992,7 @@ private fun rememberHomeSecondaryRouteEnvironment(
         activitySenderAvatarsEnabled,
         threadRowAffordances,
         storeScope,
+        hasExplicitShellScope,
         shellScope
     ) {
         HomeSecondaryRouteEnvironment(
@@ -1007,6 +1012,7 @@ private fun rememberHomeSecondaryRouteEnvironment(
             activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
             threadRowAffordances = threadRowAffordances,
             storeScope = storeScope,
+            hasExplicitShellScope = hasExplicitShellScope,
             shellScope = shellScope,
             conversationIdentityProvider = sharedStores.conversationIdentityProvider(storeScope),
             sharedHomeStore = sharedStores.sharedHomeStore(storeScope),
@@ -14542,7 +14548,7 @@ private fun Pager.openAppShellReplacingCurrentPage(pageData: JSONObject) {
         .openPage(SLOCK_APP_SHELL_PAGE, pageData)
 }
 
-private fun Pager.openLoginReplacingCurrentPage(message: String? = null) {
+internal fun Pager.openLoginReplacingCurrentPage(message: String? = null) {
     acquireModule<RouterModule>(RouterModule.MODULE_NAME)
         .openPage(
             LOGIN_PAGE,

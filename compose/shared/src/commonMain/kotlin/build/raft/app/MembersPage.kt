@@ -852,18 +852,18 @@ internal class ComposeMembersSmokePage : build.raft.app.base.BasePager() {
 }
 
 @Page(MEMBERS_PAGE, supportInLocal = true)
-internal class ComposeMembersPage : build.raft.app.base.BasePager() {
+internal class ComposeMembersPage : AuthenticatedProductPager(AuthenticatedProductRoute.Members) {
     override fun willInit() {
         super.willInit()
-        setContent { MembersPageContent() }
+        setAuthenticatedContent { MembersPageContent() }
     }
 }
 
 @Page(MEMBER_DETAIL_PAGE, supportInLocal = true)
-internal class ComposeMemberDetailPage : build.raft.app.base.BasePager() {
+internal class ComposeMemberDetailPage : AuthenticatedProductPager(AuthenticatedProductRoute.MemberDetail) {
     override fun willInit() {
         super.willInit()
-        setContent { MemberDetailPageContent() }
+        setAuthenticatedContent { MemberDetailPageContent() }
     }
 }
 

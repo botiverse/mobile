@@ -58,10 +58,10 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 const val RELEASE_NOTES_PAGE = "compose_release_notes"
 
 @Page(RELEASE_NOTES_PAGE, supportInLocal = true)
-internal class ComposeReleaseNotesPage : build.raft.app.base.BasePager() {
+internal class ComposeReleaseNotesPage : AuthenticatedProductPager(AuthenticatedProductRoute.ReleaseNotes) {
     override fun willInit() {
         super.willInit()
-        setContent { ReleaseNotesScreen() }
+        setAuthenticatedContent { ReleaseNotesScreen() }
     }
 }
 

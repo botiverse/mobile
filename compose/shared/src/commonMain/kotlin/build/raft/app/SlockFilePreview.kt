@@ -280,10 +280,10 @@ internal data class SlockFilePreviewGalleryImage(
 )
 
 @Page(SLOCK_FILE_PREVIEW_PAGE, supportInLocal = true)
-internal class ComposeSlockFilePreviewPage : build.raft.app.base.BasePager() {
+internal class ComposeSlockFilePreviewPage : AuthenticatedProductPager(AuthenticatedProductRoute.FilePreview) {
     override fun willInit() {
         super.willInit()
-        setContent { SlockFilePreviewStandalonePageContent() }
+        setAuthenticatedContent { SlockFilePreviewStandalonePageContent() }
     }
 }
 

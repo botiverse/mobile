@@ -5,6 +5,7 @@ import build.raft.app.SharedThreadComposerDraftPersistSlice
 import build.raft.app.SharedThreadComposerDraftPersistence
 import build.raft.app.CoroutineThreadComposerDraftPersistenceScheduler
 import build.raft.app.KeyValuePixelAvatarStore
+import build.raft.app.ProcessAttachmentAuthScopes
 import build.raft.app.SharedThreadMessageStore
 import build.raft.app.SharedThreadPayloadStore
 import build.raft.app.SlockPixelAvatarRuntime
@@ -76,6 +77,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onSubscription
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -494,6 +496,22 @@ internal class SlockSharedStoreProvider private constructor(
      * read back, and atomically publish before the unchanged legacy continuation runs.
      */
     init {
+        val processAuthTerminalGate = AuthSessionTerminalRouteGate()
+        val processAuthTerminalSource =
+            requireNotNull(authStore.authSessionTerminalSourceOrNull()) {
+                "Production auth store must expose terminal revision authority"
+            }
+        suspend fun commitProcessAuthTerminalCleanup(expectedGeneration: Long) {
+            val selectionReceipts = selectedServerStores.captureActiveServerSelectionReceipts()
+            val committed =
+                processAuthTerminalSource.runIfAuthSessionTerminalRevision(expectedGeneration) {
+                    ProcessAttachmentAuthScopes.retireAccount()
+                    homeSavedStateCache.clear()
+                }
+            if (committed) {
+                clearActiveServerSelectionsIfUnchanged(selectionReceipts)
+            }
+        }
         updateNetworkKmmRecoveryEnvironment()
         // Attach canonical/reaction shadow mutation to the dedicated process
         // owner. Shell owners are projection-only and never repeat this work.
@@ -511,8 +529,29 @@ internal class SlockSharedStoreProvider private constructor(
         }
         threadSendScope.launch {
             authStore.sessionInvalidations.collect {
-                clearActiveShellServerSelections()
+                val receipts = selectedServerStores.captureActiveServerSelectionReceipts()
+                val snapshot = processAuthTerminalSource.readAuthSessionTerminalSnapshot()
+                val stillCurrent =
+                    processAuthTerminalSource.runIfAuthSessionTerminalRevision(snapshot.generation) {}
+                if (stillCurrent) {
+                    clearActiveServerSelectionsIfUnchanged(receipts)
+                }
                 updateNetworkKmmRecoveryEnvironment()
+            }
+        }
+        threadSendScope.launch {
+            processAuthTerminalSource.authSessionTerminalEvents
+                .onSubscription {
+                    val snapshot = processAuthTerminalSource.readAuthSessionTerminalSnapshot()
+                    if (processAuthTerminalGate.reconcile(snapshot)) {
+                        commitProcessAuthTerminalCleanup(snapshot.generation)
+                    }
+                }
+                .collect { event ->
+                if (processAuthTerminalGate.admit(event) == null) {
+                    return@collect
+                }
+                commitProcessAuthTerminalCleanup(event.generation)
             }
         }
     }

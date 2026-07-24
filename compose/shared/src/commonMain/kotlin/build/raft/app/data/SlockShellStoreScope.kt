@@ -108,6 +108,7 @@ internal class SelectedServerStore internal constructor(
     private val mutex: Mutex = Mutex(),
     private val onSelectionChanged: (String?) -> Unit = {}
 ) {
+    private var mutationRevision: Long = 0L
     private val requestedInitialServerId = scope.initialServerId
     private var ownerUserId: String? = null
     private var selectedServerSlug: String? = null
@@ -134,6 +135,7 @@ internal class SelectedServerStore internal constructor(
     internal suspend fun select(serverId: String?, serverSlug: String?): SelectedServerSelection =
         mutex.withLock {
             val before = authorityState()
+            mutationRevision += 1L
             val normalizedServerId = serverId?.trim()?.takeIf { it.isNotBlank() }
             selectionInitialized = true
             setSelectedServerId(normalizedServerId)
@@ -153,6 +155,7 @@ internal class SelectedServerStore internal constructor(
             }
             val before = authorityState()
             val previous = selection()
+            mutationRevision += 1L
             ownerUserId = expectedAccountId
             val normalizedServerId = serverId?.trim()?.takeIf { it.isNotBlank() }
             selectionInitialized = true
@@ -168,6 +171,7 @@ internal class SelectedServerStore internal constructor(
 
     internal suspend fun reconcile(session: StoredAuthSession): SelectedServerSelection =
         mutex.withLock {
+            mutationRevision += 1L
             reconcileLocked(session)
         }
 
@@ -190,6 +194,7 @@ internal class SelectedServerStore internal constructor(
             ) {
                 return@withLock null
             }
+            mutationRevision += 1L
             reconcileLocked(session)
         }
 
@@ -214,17 +219,17 @@ internal class SelectedServerStore internal constructor(
             }
             val serverId = selectedServerId.value?.trim()?.takeIf { it.isNotBlank() }
             if (serverId == null) {
-                advanceAuthorityIfChanged(before)
+                advanceAuthorityAndMutationIfChanged(before)
                 return@withLock null
             }
             if (session.servers.isNotEmpty() && session.servers.none { it.id == serverId }) {
-                advanceAuthorityIfChanged(before)
+                advanceAuthorityAndMutationIfChanged(before)
                 return@withLock null
             }
             if (selectedServerSlug == null) {
                 selectedServerSlug = session.servers.firstOrNull { it.id == serverId }?.slug
             }
-            advanceAuthorityIfChanged(before)
+            advanceAuthorityAndMutationIfChanged(before)
             SelectedServerAuthoritySnapshot(
                 ownerUserId = principalId,
                 selection = selection(),
@@ -245,6 +250,7 @@ internal class SelectedServerStore internal constructor(
     internal suspend fun clearSelection() {
         mutex.withLock {
             val before = authorityState()
+            mutationRevision += 1L
             ownerUserId = null
             setSelectedServerId(requestedInitialServerId)
             selectedServerSlug = null
@@ -256,6 +262,7 @@ internal class SelectedServerStore internal constructor(
     internal suspend fun clearActiveSelection() {
         mutex.withLock {
             val before = authorityState()
+            mutationRevision += 1L
             ownerUserId = null
             setSelectedServerId(null)
             selectedServerSlug = null
@@ -282,6 +289,27 @@ internal class SelectedServerStore internal constructor(
     private fun advanceAuthorityIfChanged(before: SelectionAuthorityState) {
         if (authorityState() != before) authorityGeneration += 1L
     }
+
+    private fun advanceAuthorityAndMutationIfChanged(before: SelectionAuthorityState) {
+        if (authorityState() == before) return
+        authorityGeneration += 1L
+        mutationRevision += 1L
+    }
+
+    internal suspend fun captureMutationRevision(): Long = mutex.withLock { mutationRevision }
+
+    internal suspend fun clearActiveSelectionIfRevision(expectedRevision: Long): Boolean =
+        mutex.withLock {
+            if (mutationRevision != expectedRevision) return@withLock false
+            val before = authorityState()
+            mutationRevision += 1L
+            ownerUserId = null
+            setSelectedServerId(null)
+            selectedServerSlug = null
+            selectionInitialized = false
+            advanceAuthorityIfChanged(before)
+            true
+        }
 
     private fun selection(): SelectedServerSelection =
         SelectedServerSelection(
@@ -381,6 +409,25 @@ internal suspend fun SlockShellScopedStoreCache<SelectedServerStore>.clearActive
     entries().forEach { (_, runtime) -> runtime.clearActiveSelection() }
 }
 
+internal data class SelectedServerMutationReceipt(
+    val store: SelectedServerStore,
+    val revision: Long,
+)
+
+internal suspend fun SlockShellScopedStoreCache<SelectedServerStore>.captureActiveServerSelectionReceipts():
+    List<SelectedServerMutationReceipt> =
+    entries().map { (_, store) ->
+        SelectedServerMutationReceipt(store, store.captureMutationRevision())
+    }
+
+internal suspend fun clearActiveServerSelectionsIfUnchanged(
+    receipts: List<SelectedServerMutationReceipt>,
+) {
+    receipts.forEach { receipt ->
+        receipt.store.clearActiveSelectionIfRevision(receipt.revision)
+    }
+}
+
 /**
  * Per-shell view over the process-owned authenticated session.
  *
@@ -400,6 +447,9 @@ internal class SlockShellAuthSessionStore(
     private var eventGeneration = 0L
 
     override val authSessionEvents: SharedFlow<AuthSessionEvent> = events.asSharedFlow()
+
+    internal fun processTerminalSourceOrNull(): SlockAuthSessionTerminalSource? =
+        delegate.authSessionTerminalSourceOrNull()
 
     init {
         (delegate as? SlockAuthSessionEventSource)?.let { source ->
@@ -573,3 +623,10 @@ internal class SlockShellAuthSessionStore(
             is AuthSessionEvent.Cleared -> AuthSessionEvent.Cleared(generation, reason)
         }
 }
+
+internal fun SlockAuthSessionStore.authSessionTerminalSourceOrNull(): SlockAuthSessionTerminalSource? =
+    when (this) {
+        is SlockAuthSessionTerminalSource -> this
+        is SlockShellAuthSessionStore -> processTerminalSourceOrNull()
+        else -> null
+    }

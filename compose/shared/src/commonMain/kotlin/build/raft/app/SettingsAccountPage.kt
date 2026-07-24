@@ -77,10 +77,10 @@ internal fun settingsAccountInputTextStyle(
     )
 
 @Page(SETTINGS_ACCOUNT_PAGE, supportInLocal = true)
-internal class ComposeSettingsAccountPage : build.raft.app.base.BasePager() {
+internal class ComposeSettingsAccountPage : AuthenticatedProductPager(AuthenticatedProductRoute.SettingsAccount) {
     override fun willInit() {
         super.willInit()
-        setContent { SettingsAccountScreen() }
+        setAuthenticatedContent { SettingsAccountScreen() }
     }
 }
 

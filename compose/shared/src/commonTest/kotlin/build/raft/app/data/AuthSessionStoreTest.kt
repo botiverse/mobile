@@ -508,6 +508,28 @@ class AuthSessionStoreTest {
         assertNull(qaCredentialIdentityDiagnostic(sampleSession().copy(user = sampleSession().user.copy(id = "bad id")), 2))
     }
 
+    @Test
+    fun terminalCleanupCommitRejectsSuccessorLoginAfterOldClearAdmission() = runBlocking {
+        val store = KeyValueAuthSessionStore(InMemorySlockKeyValueStore())
+        store.replaceAuthenticatedSession(sampleSession())
+        store.clearSession("refresh_http_401", "test")
+        val admittedClear = store.readAuthSessionTerminalSnapshot()
+        assertNull(admittedClear.session)
+
+        store.replaceAuthenticatedSession(
+            sampleSession().copy(accessToken = "successor-access", refreshToken = "successor-refresh")
+        )
+        var cleanupRan = false
+        val committed =
+            store.runIfAuthSessionTerminalRevision(admittedClear.generation) {
+                cleanupRan = true
+            }
+
+        assertFalse(committed)
+        assertFalse(cleanupRan)
+        assertEquals("successor-access", store.readSession()?.accessToken)
+    }
+
     private class CountingSlockKeyValueStore : SlockKeyValueStore {
         private val delegate = InMemorySlockKeyValueStore()
         var readCount: Int = 0
