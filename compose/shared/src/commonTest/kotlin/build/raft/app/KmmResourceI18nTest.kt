@@ -68,7 +68,8 @@ class KmmResourceI18nTest {
             MR.strings.auth_notice_report_submitted_prefix,
             MR.strings.auth_notice_report_failed_diagnostics_copied,
             MR.strings.member_error_report_issue,
-            MR.strings.settings_error_join_link_load_prefix
+            MR.strings.settings_error_join_link_load_prefix,
+            MR.strings.settings_billing_action_compare_plans
         ).forEach { resource ->
             assertTrue(
                 resource.desc() is ResourceStringDesc,

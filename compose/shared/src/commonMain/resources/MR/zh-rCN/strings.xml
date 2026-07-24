@@ -48,6 +48,7 @@
     <string name="auth_notice_report_failed_diagnostics_copied">报告提交失败，诊断信息已复制</string>
     <string name="member_error_report_issue">无法报告智能体问题</string>
     <string name="settings_error_join_link_load_prefix">无法加载加入链接：</string>
+    <string name="settings_billing_action_compare_plans">查看全部功能并比较方案</string>
     <string name="common_error">出错了</string>
     <string name="common_empty">暂无内容</string>
     <string name="common_no_matches">无匹配项</string>

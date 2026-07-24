@@ -48,6 +48,7 @@
     <string name="auth_notice_report_failed_diagnostics_copied">Report failed; diagnostics copied</string>
     <string name="member_error_report_issue">Unable to report agent issue</string>
     <string name="settings_error_join_link_load_prefix">Failed to load join link: </string>
+    <string name="settings_billing_action_compare_plans">See all features and compare plans</string>
     <string name="common_error">Error</string>
     <string name="common_empty">Empty</string>
     <string name="common_no_matches">No matches</string>
