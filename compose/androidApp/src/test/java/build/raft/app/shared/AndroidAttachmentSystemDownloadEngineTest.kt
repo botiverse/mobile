@@ -113,6 +113,32 @@ class AndroidAttachmentSystemDownloadEngineTest {
     }
 
     @Test
+    fun directFallbackRetiresSystemRowsAndLedgerWithoutDeletingPrivateCache() {
+        val backend = FakeBackend()
+        val store = FakeStore()
+        val spec = spec(principalA)
+        val record = prepared(spec, "owned-token").copy(
+            phase = AndroidSystemDownloadPhase.Enqueued,
+            systemDownloadId = 7L,
+            recordVersion = 2L
+        )
+        store.putIfAbsent(record)
+        spec.targetFile.apply { parentFile?.mkdirs(); writeText("private-cache") }
+        File(record.stagingPath).apply { parentFile?.mkdirs(); writeText("staging") }
+        backend.rows += row(7L, "owned-token", AndroidSystemDownloadStatus.Running, record.stagingPath)
+        val orphan = File(root, "orphan-direct-fallback.part").apply { writeText("orphan") }
+        backend.rows += row(8L, "orphan-token", AndroidSystemDownloadStatus.Running, orphan.absolutePath)
+
+        engine(backend, store).retireAllForDirectFallback()
+
+        assertEquals(listOf(7L, 8L), backend.removed)
+        assertTrue(store.records().isEmpty())
+        assertFalse(File(record.stagingPath).exists())
+        assertFalse(orphan.exists())
+        assertEquals("private-cache", spec.targetFile.readText())
+    }
+
+    @Test
     fun foreignPrincipalCannotObserveOrControlRecord() {
         val backend = FakeBackend()
         val store = FakeStore()
