@@ -4,12 +4,20 @@ import {
   canonicalJson,
   parseReadyLine,
   readyPayload,
+  selectApkSigningCertificateSha256,
   sha256Digest,
   validateLoginResponse,
 } from "./mobile_login_bootstrap_lib.mjs";
 
 const digestA = `sha256:${"a".repeat(64)}`;
 const digestB = `sha256:${"b".repeat(64)}`;
+const rotatedLegacyDigest = "sha256:b4919381d8f9cede4f8eb8f6d132f6dfe0d6d15bf6d1f63057d5eba045161a45";
+const rotatedCurrentDigest = "sha256:5f08bbe82a27ccdad26c13523a60b5670d3aa7633e8ed2fd71fa6b5751f9b0b1";
+
+const rotatedSignerOutput = [
+  `Signer (minSdkVersion=33, maxSdkVersion=2147483647) certificate SHA-256 digest: ${rotatedCurrentDigest.slice(7)}`,
+  `Signer (minSdkVersion=24, maxSdkVersion=32) certificate SHA-256 digest: ${rotatedLegacyDigest.slice(7)}`,
+].join("\n");
 
 function loginResponse() {
   const envelope = {
@@ -38,12 +46,58 @@ const expected = {
   bootGeneration: digestB,
 };
 
+test("APK signer selection matches the platform signer for each rotated SDK range", () => {
+  assert.equal(selectApkSigningCertificateSha256(rotatedSignerOutput, 24), rotatedLegacyDigest);
+  assert.equal(selectApkSigningCertificateSha256(rotatedSignerOutput, 32), rotatedLegacyDigest);
+  assert.equal(selectApkSigningCertificateSha256(rotatedSignerOutput, 33), rotatedCurrentDigest);
+  assert.equal(selectApkSigningCertificateSha256(rotatedSignerOutput, 36), rotatedCurrentDigest);
+  assert.equal(
+    selectApkSigningCertificateSha256(
+      `Signer #1 certificate SHA-256 digest: ${"a".repeat(64)}`,
+      34,
+    ),
+    digestA,
+  );
+});
+
+test("APK signer selection fails closed for no match, overlap, and extra signers", () => {
+  assert.throws(
+    () => selectApkSigningCertificateSha256(rotatedSignerOutput, 23),
+    /exactly one signing certificate for the Android device SDK/,
+  );
+  assert.throws(
+    () => selectApkSigningCertificateSha256([
+      rotatedSignerOutput,
+      `Signer (minSdkVersion=30, maxSdkVersion=40) certificate SHA-256 digest: ${"c".repeat(64)}`,
+    ].join("\n"), 34),
+    /exactly one signing certificate for the Android device SDK/,
+  );
+  assert.throws(
+    () => selectApkSigningCertificateSha256([
+      `Signer #1 certificate SHA-256 digest: ${"a".repeat(64)}`,
+      `Signer #2 certificate SHA-256 digest: ${"b".repeat(64)}`,
+    ].join("\n"), 34),
+    /exactly one signing certificate for the Android device SDK/,
+  );
+  assert.throws(
+    () => selectApkSigningCertificateSha256([
+      `Signer (minSdkVersion=33) certificate SHA-256 digest: ${"a".repeat(64)}`,
+      `Signer #1 certificate SHA-256 digest: ${"b".repeat(64)}`,
+    ].join("\n"), 34),
+    /signer certificate record is invalid/,
+  );
+});
+
 test("canonical login envelope validates exact keys, digest and frozen binding", () => {
   const result = validateLoginResponse(loginResponse(), expected);
   assert.equal(result.envelope.access_token, "access-secret");
   result.bytes.fill(0);
   assert.throws(() => validateLoginResponse({ ...loginResponse(), envelope_digest: digestA }, expected), /digest mismatch/);
   assert.throws(() => validateLoginResponse({ ...loginResponse(), envelope: { ...loginResponse().envelope, extra: true } }, expected), /keys/);
+  assert.throws(
+    () => validateLoginResponse(loginResponse(), { ...expected, signingCertSha256: digestB }),
+    /binding is invalid/,
+  );
 });
 
 test("READY parser rejects another attempt and emits token-free Stamp payload", () => {
