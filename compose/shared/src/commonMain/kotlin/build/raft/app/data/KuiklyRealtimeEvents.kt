@@ -11,6 +11,16 @@ internal class KuiklyRealtimeEvents(
             data?.let(onEvent)
         }
 
+    /**
+     * task #354: the canonical AppShell/store ingest additionally observes
+     * the Android raw-ingest topic; other platforms never publish on it, so
+     * this is a no-op there. Page surfaces must not subscribe here.
+     */
+    fun addRawIngestListener(onEvent: (JSONObject) -> Unit): RealtimeSubscription =
+        eventBus.observe(SlockRealtimeNotifyContract.RawIngestEventName, crossProcess = true) { data ->
+            data?.let(onEvent)
+        }
+
     fun removeListener(subscription: RealtimeSubscription) {
         subscription.close()
     }
