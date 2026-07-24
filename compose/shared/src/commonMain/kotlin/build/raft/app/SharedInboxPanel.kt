@@ -175,7 +175,8 @@ internal fun SharedHomeActivityScreen(
             networkClient,
             conversationRepository,
             sharedStores.threadMessageStore,
-            sharedStores.threadPayloadStore
+            sharedStores.threadPayloadStore,
+            sharedStores.apiEnvironmentStore
         ) {
             SharedThreadDataSource(
                 networkApi = NetworkSlockThreadApi(networkClient),
@@ -183,6 +184,9 @@ internal fun SharedHomeActivityScreen(
                 selectedServerStore = selectedServerStore,
                 conversationRepository = conversationRepository,
                 messageStore = sharedStores.threadMessageStore,
+                cacheEnvironmentIdProvider = {
+                    sharedStores.apiEnvironmentStore.current().apiBaseUrl
+                },
                 payloadStore = sharedStores.threadPayloadStore,
                 threadPageSizeProvider = { serverId ->
                     sharedStores.serverFeatureFlags.snapshotFor(serverId).mobileThreadPageSize()
