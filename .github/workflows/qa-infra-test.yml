@@ -34,10 +34,18 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: "22"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install strict YAML parser
+        run: python3 -m pip install --disable-pip-version-check PyYAML==6.0.2
       - name: Run QA contract tests
         run: node --test scripts/qa/*.test.mjs
       - name: Check canonical release acceptance cases
-        run: python3 scripts/qa/check_release_acceptance_cases.py
+        run: |
+          python3 scripts/qa/test_release_acceptance_contract.py
+          python3 scripts/qa/check_release_acceptance_cases.py
+          python3 scripts/qa/check_release_acceptance_cases.py --emit-plan > /tmp/release-acceptance-plan.json
       - name: Check shell syntax
         run: bash -n scripts/qa/stamp_report.sh scripts/qa/prepare_pinned_ios_app.sh
       - name: Check patch whitespace

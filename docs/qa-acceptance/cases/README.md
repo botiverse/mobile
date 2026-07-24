@@ -48,6 +48,12 @@ Run `python3 scripts/qa/check_release_acceptance_cases.py` before publishing
 case revisions. The check rejects missing/extra IDs, duplicate IDs, bootstrap
 drift, or accidental admission of manual provisioning.
 
+Automated plan creation must consume the same validated manifest through
+`python3 scripts/qa/check_release_acceptance_cases.py --emit-plan`. Do not
+construct a run by globbing all 26 YAML files: the emitted `case_ids` array is
+the fail-closed 25-cell input and `server-create` appears only in the explicit
+excluded list.
+
 ## Evidence Annotation
 
 See `annotation-spec.md` for the sharp-based red-box highlight spec.
