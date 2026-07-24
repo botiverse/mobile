@@ -39,15 +39,28 @@ class ReleaseNotesPageProductionContractTest {
         assertContains(renderer, "Modifier.padding(top = sectionHeadingTopPadding)")
     }
 
+    @Test
+    fun ordinaryMarkdownSurfacesKeepDefaultZeroSectionGap() {
+        assertFalse(
+            "sectionHeadingTopPadding" in commonMainSource("build/raft/app/ThreadPage.kt"),
+            "Thread message Markdown must keep the renderer's default-zero section gap"
+        )
+        assertFalse(
+            "sectionHeadingTopPadding" in commonMainSource("build/raft/app/SlockFilePreview.kt"),
+            "File-preview Markdown must keep the renderer's default-zero section gap"
+        )
+    }
+
     private fun source(): String =
         File(commonMainRoot(), "build/raft/app/ReleaseNotesPage.kt")
             .readText()
             .replace("\r\n", "\n")
 
     private fun markdownSource(): String =
-        File(commonMainRoot(), "build/raft/app/markdown/SlockMarkdown.kt")
-            .readText()
-            .replace("\r\n", "\n")
+        commonMainSource("build/raft/app/markdown/SlockMarkdown.kt")
+
+    private fun commonMainSource(relativePath: String): String =
+        File(commonMainRoot(), relativePath).readText().replace("\r\n", "\n")
 
     private fun commonMainRoot(): File =
         listOf(File("src/commonMain/kotlin"), File("shared/src/commonMain/kotlin"))

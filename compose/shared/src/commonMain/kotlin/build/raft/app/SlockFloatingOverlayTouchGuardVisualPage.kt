@@ -45,6 +45,9 @@ internal class ComposeSlockFloatingOverlayTouchGuardVisualPage : build.raft.app.
                 FloatingOverlayTouchGuardModalTextFieldFixture -> SlockModalTextFieldPointerVisualScreen()
                 FloatingOverlayTouchGuardTaskStatusFixture -> SlockTaskStatusMenuTouchVisualScreen()
                 FloatingOverlayTouchGuardAnchorLeaseFixture -> SlockAnchorLeaseLazyReuseVisualScreen()
+                ReleaseNotesSectionGapZeroFixture -> SlockReleaseNotesSectionGapVisualScreen(0.dp)
+                ReleaseNotesSectionGapEightFixture -> SlockReleaseNotesSectionGapVisualScreen(SlockSpacing.Sm)
+                ReleaseNotesSectionGapDefaultFixture -> SlockReleaseNotesSectionGapVisualScreen(null)
                 else -> SlockFloatingOverlayTouchGuardVisualScreen()
             }
         }
@@ -55,6 +58,38 @@ private const val FloatingOverlayTouchGuardModalFixture = "modal"
 private const val FloatingOverlayTouchGuardModalTextFieldFixture = "modal-text-field"
 private const val FloatingOverlayTouchGuardTaskStatusFixture = "task-status-menu"
 private const val FloatingOverlayTouchGuardAnchorLeaseFixture = "anchor-lease-lazy"
+private const val ReleaseNotesSectionGapZeroFixture = "release-notes-section-gap-zero"
+private const val ReleaseNotesSectionGapEightFixture = "release-notes-section-gap-eight"
+private const val ReleaseNotesSectionGapDefaultFixture = "release-notes-section-gap-default"
+
+@Composable
+private fun SlockReleaseNotesSectionGapVisualScreen(sectionGap: com.tencent.kuikly.compose.ui.unit.Dp?) {
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .background(SlockColor.SurfaceCream)
+                .padding(SlockSpacing.Md)
+    ) {
+        if (sectionGap == null) {
+            SlockMarkdownBody(body = ReleaseNotesSectionGapFixtureBody)
+        } else {
+            SlockMarkdownBody(
+                body = ReleaseNotesSectionGapFixtureBody,
+                sectionHeadingTopPadding = sectionGap
+            )
+        }
+    }
+}
+
+private val ReleaseNotesSectionGapFixtureBody =
+    """
+    # Raft Alpha 1.0.0
+
+    这份精确版本文档用于验证 build **1000002** 的原生 Release Notes 体验，并与消息和文件预览共同复用 `SlockMarkdownBody` 渲染器。
+
+    ## 本次内容
+    """.trimIndent()
 
 @Composable
 internal fun SlockFloatingOverlayTouchGuardVisualScreen() {

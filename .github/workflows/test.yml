@@ -649,6 +649,8 @@ jobs:
             scripts/ci/assert-instrumentation-ok.sh child-page-visibility-instrumentation.txt 1
             adb shell am instrument -w -r -e class build.raft.app.shared.SlockPagerScrollProbeConnectedTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner | tee pager-scroll-probe-instrumentation.txt
             scripts/ci/assert-instrumentation-ok.sh pager-scroll-probe-instrumentation.txt 1
+            adb shell am instrument -w -r -e class build.raft.app.shared.SlockReleaseNotesSectionGapConnectedTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner | tee release-notes-section-gap-instrumentation.txt
+            scripts/ci/assert-instrumentation-ok.sh release-notes-section-gap-instrumentation.txt 1
             adb shell am instrument -w -r -e class build.raft.app.core.data.diagnostics.DiagnosticsCallerPipelineConnectedTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner | tee diagnostics-caller-pipeline-instrumentation.txt
             scripts/ci/assert-instrumentation-ok.sh diagnostics-caller-pipeline-instrumentation.txt 1
             adb shell am instrument -w -r -e class build.raft.app.data.DurablePartitionAndroidDriverMigrationTest build.raft.app.shared.test/androidx.test.runner.AndroidJUnitRunner | tee durable-partition-migration-instrumentation.txt
@@ -678,6 +680,7 @@ jobs:
             performance-trace-feedback-instrumentation.txt
             child-page-visibility-instrumentation.txt
             pager-scroll-probe-instrumentation.txt
+            release-notes-section-gap-instrumentation.txt
             diagnostics-caller-pipeline-instrumentation.txt
             durable-partition-migration-instrumentation.txt
             thread-newer-auto-pagination-instrumentation.txt
