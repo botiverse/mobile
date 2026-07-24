@@ -12,13 +12,14 @@ import build.raft.app.base.Utils
 import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.components.SlockRaftUiEmptyState
+import build.raft.app.data.AppLocale
+import build.raft.app.data.KeyValueLocalePreferenceStore
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SharedPreferenceStore
+import build.raft.app.data.SharedSettingsAboutSnapshot
 import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.data.SharedSettingsViewModel
-import build.raft.app.data.AppLocale
-import build.raft.app.data.KeyValueLocalePreferenceStore
 import build.raft.app.data.kmmResourceLocaleTag
 import build.raft.app.data.slockSharedPreferenceStore
 import build.raft.app.markdown.SlockMarkdownBody
@@ -168,10 +169,42 @@ private fun ReleaseNotesScreenBody(pager: Pager) {
     }
     StandaloneSettingsEffectHandler(pager, environment, settingsState, settingsViewModel::dispatch)
 
-    val versionCode =
-        (settingsState.about as? ScreenLoadState.Content)?.data?.buildLabel.orEmpty()
-    ReleaseNotesNativeBody(versionCode)
+    when (val resolution = releaseNotesAboutResolution(settingsState.about)) {
+        ReleaseNotesAboutResolution.Loading -> ReleaseNotesLoadingCover()
+        is ReleaseNotesAboutResolution.Ready -> ReleaseNotesNativeBody(resolution.versionCode)
+        ReleaseNotesAboutResolution.Failure ->
+            ReleaseNotesErrorState(
+                onRetry = {
+                    settingsViewModel.dispatch(
+                        SharedSettingsIntent.OpenDestination(SharedSettingsDestination.About)
+                    )
+                }
+            )
+    }
 }
+
+internal sealed interface ReleaseNotesAboutResolution {
+    data object Loading : ReleaseNotesAboutResolution
+
+    data class Ready(val versionCode: String) : ReleaseNotesAboutResolution
+
+    data object Failure : ReleaseNotesAboutResolution
+}
+
+internal fun releaseNotesAboutResolution(
+    state: ScreenLoadState<SharedSettingsAboutSnapshot>
+): ReleaseNotesAboutResolution =
+    when (state) {
+        ScreenLoadState.Loading -> ReleaseNotesAboutResolution.Loading
+        is ScreenLoadState.Content ->
+            releaseNotesSanitizeVersionCode(state.data.buildLabel)
+                .takeIf { it.isNotBlank() }
+                ?.let(ReleaseNotesAboutResolution::Ready)
+                ?: ReleaseNotesAboutResolution.Failure
+        is ScreenLoadState.Empty,
+        is ScreenLoadState.Error,
+        is ScreenLoadState.NoPermission -> ReleaseNotesAboutResolution.Failure
+    }
 
 internal fun releaseNotesVersionCodeFromPageData(
     params: com.tencent.kuikly.core.nvi.serialization.json.JSONObject
@@ -212,9 +245,6 @@ internal fun ReleaseNotesNativeBody(versionCode: String) {
         ReleaseNotesLoadingCover()
         return
     }
-    val errorTitle = stringResource(MR.strings.release_notes_error_title)
-    val errorBody = stringResource(MR.strings.release_notes_error_body)
-    val retryLabel = stringResource(MR.strings.common_retry)
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
     val linkNavigator = rememberSlockLinkNavigator(pager, bridge)
@@ -268,32 +298,12 @@ internal fun ReleaseNotesNativeBody(versionCode: String) {
                 }
             }
         is ReleaseNotesBodyState.Error ->
-            Box(
-                modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceCream),
-                contentAlignment = Alignment.Center
-            ) {
-                SlockRaftUiEmptyState(
-                    title = errorTitle,
-                    description = errorBody,
-                    iconText = "!",
-                    modifier = Modifier.fillMaxSize(),
-                    action = {
-                        SlockBrutalActionButton(
-                            label = retryLabel,
-                            onClick = {
-                                releaseNotesViewModel.dispatch(ReleaseNotesIntent.Retry)
-                            },
-                            leadingIcon = SlockLucideIconName.RefreshCw,
-                            backgroundColor = SlockColor.SurfaceWhite
-                        )
-                    }
-                )
-            }
+            ReleaseNotesErrorState(
+                onRetry = { releaseNotesViewModel.dispatch(ReleaseNotesIntent.Retry) }
+            )
     }
 }
 
-private const val ReleaseNotesApiUrl =
-    "https://hands.build/public/v2/apps/raft-android/release-notes"
 private const val RELEASE_NOTES_HEADER_Z_INDEX = 1f
 private const val RELEASE_NOTES_BODY_Z_INDEX = 0f
 
@@ -343,7 +353,7 @@ private suspend fun NetworkModule.fetchReleaseNotes(
 ): ReleaseNotesNetworkResult =
     suspendCancellableCoroutine { continuation ->
         httpRequest(
-            url = ReleaseNotesApiUrl,
+            url = releaseNotesApiUrl(slockReleaseNotesAppSlug()),
             isPost = false,
             param = releaseNotesApiRequestParams(versionCode, languageTag),
             headers = JSONObject().put("Accept", "application/json"),
@@ -361,6 +371,9 @@ private suspend fun NetworkModule.fetchReleaseNotes(
             }
         }
     }
+
+internal fun releaseNotesApiUrl(appSlug: String): String =
+    "https://hands.build/public/v2/apps/${appSlug.trim()}/release-notes"
 
 internal sealed interface ReleaseNotesRepositoryResult {
     data class Success(val document: ReleaseNotesDocument) : ReleaseNotesRepositoryResult
@@ -654,4 +667,26 @@ internal fun releaseNotesCachedDocument(
 @Composable
 internal fun ReleaseNotesLoadingCover() {
     Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceCream))
+}
+
+@Composable
+private fun ReleaseNotesErrorState(onRetry: () -> Unit) {
+    Box(
+        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceCream),
+        contentAlignment = Alignment.Center
+    ) {
+        SlockRaftUiEmptyState(
+            title = stringResource(MR.strings.release_notes_error_title),
+            description = stringResource(MR.strings.release_notes_error_body),
+            modifier = Modifier.fillMaxSize(),
+            action = {
+                SlockBrutalActionButton(
+                    label = stringResource(MR.strings.common_retry),
+                    onClick = onRetry,
+                    leadingIcon = SlockLucideIconName.RefreshCw,
+                    backgroundColor = SlockColor.SurfaceWhite
+                )
+            }
+        )
+    }
 }

@@ -1,6 +1,9 @@
 package build.raft.app
 
+import build.raft.app.data.ScreenError
+import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SharedPreferenceStore
+import build.raft.app.data.SharedSettingsAboutSnapshot
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
@@ -11,6 +14,48 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ReleaseNotesPageTest {
+    @Test
+    fun releaseNotesApiUrlBindsPlatformAppSlug() {
+        assertEquals(
+            "https://hands.build/public/v2/apps/raft-android/release-notes",
+            releaseNotesApiUrl("raft-android")
+        )
+        assertEquals(
+            "https://hands.build/public/v2/apps/raft-ios/release-notes",
+            releaseNotesApiUrl("raft-ios")
+        )
+        assertEquals(
+            "https://hands.build/public/v2/apps/raft-ohos/release-notes",
+            releaseNotesApiUrl("raft-ohos")
+        )
+    }
+
+    @Test
+    fun releaseNotesAboutTerminalFailureMapsToRetryableError() {
+        assertEquals(
+            ReleaseNotesAboutResolution.Loading,
+            releaseNotesAboutResolution(ScreenLoadState.Loading)
+        )
+        assertEquals(
+            ReleaseNotesAboutResolution.Ready("1070001"),
+            releaseNotesAboutResolution(
+                ScreenLoadState.Content(SharedSettingsAboutSnapshot(buildLabel = "1070001"))
+            )
+        )
+        assertEquals(
+            ReleaseNotesAboutResolution.Failure,
+            releaseNotesAboutResolution(
+                ScreenLoadState.Content(SharedSettingsAboutSnapshot(buildLabel = "1.7.0"))
+            )
+        )
+        assertEquals(
+            ReleaseNotesAboutResolution.Failure,
+            releaseNotesAboutResolution(
+                ScreenLoadState.Error(ScreenError(code = "network_error"))
+            )
+        )
+    }
+
     @Test
     fun releaseNotesVersionCodeFromPageDataAcceptsOnlyDigits() {
         assertEquals(
