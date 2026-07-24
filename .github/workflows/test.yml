@@ -6,6 +6,7 @@ on:
       - ".github/workflows/test.yml"
       - "compose/**"
       - "scripts/check_commonmain_map_compat.sh"
+      - "scripts/check_markdown_spike_println_gate.sh"
       - "scripts/check_auth_session_writes.sh"
       - "scripts/check_attachment_mapper_formatting.sh"
       - "scripts/check_canonical_message_v2_reaction_vector.sh"
@@ -28,6 +29,7 @@ on:
       - ".github/workflows/test.yml"
       - "compose/**"
       - "scripts/check_commonmain_map_compat.sh"
+      - "scripts/check_markdown_spike_println_gate.sh"
       - "scripts/check_auth_session_writes.sh"
       - "scripts/check_attachment_mapper_formatting.sh"
       - "scripts/check_canonical_message_v2_reaction_vector.sh"
@@ -393,6 +395,12 @@ jobs:
         run: |
           scripts/check_commonmain_map_compat.sh --self-test
           scripts/check_commonmain_map_compat.sh
+
+      - name: Guard SlockMarkdownSpike println gate (task #20)
+        shell: bash
+        run: |
+          scripts/check_markdown_spike_println_gate.sh --self-test
+          scripts/check_markdown_spike_println_gate.sh
 
       - name: Guard atomic auth-session writes (#466 no-bypass)
         shell: bash

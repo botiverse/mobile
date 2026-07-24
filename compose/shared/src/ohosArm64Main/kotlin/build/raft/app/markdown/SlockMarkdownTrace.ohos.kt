@@ -25,7 +25,7 @@ internal actual fun logMarkdownSpike(
     phase: String,
     durationUs: Long,
     bodyLength: Int,
-    extra: String
+    extra: () -> String
 ) {
     // No-op: OHOS spike debug log is out of scope for #192 phase attribution.
 }

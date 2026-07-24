@@ -5,6 +5,7 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshots.SnapshotStateList
+import com.tencent.kuiklybase.markdown.compose.slockMarkdownLogSubTrace
 import com.tencent.kuiklybase.markdown.utils.lookupLinkDefinition
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -62,16 +63,16 @@ internal fun rememberMarkdownParserState(
             )
         ).also { state ->
             if (initialParserContent != null) {
-                println(
-                    "SlockMarkdownSpike phase=markdown.state.initial_sync_start " +
+                slockMarkdownLogSubTrace {
+                    "phase=markdown.state.initial_sync_start " +
                         "hash=${initialParserContent.hashCode().toString(16)} length=${initialParserContent.length}"
-                )
+                }
                 val cacheHit = state.applyInitialContentSynchronously(initialParserContent)
-                println(
-                    "SlockMarkdownSpike phase=markdown.state.initial_sync_end " +
+                slockMarkdownLogSubTrace {
+                    "phase=markdown.state.initial_sync_end " +
                         "hash=${initialParserContent.hashCode().toString(16)} length=${initialParserContent.length} " +
                         "cacheHit=$cacheHit nodeListSize=${state.nodeListState.size}"
-                )
+                }
             }
         }
     }
@@ -86,17 +87,17 @@ suspend fun prepareMarkdownContent(content: MarkdownParserContent, lookupLinks: 
     val parserContent = content.parserContent
     val cacheKey = MarkdownParseResultCacheKey(parserContent, lookupLinks)
     MarkdownParseResultCache.get(cacheKey)?.let {
-        println(
-            "SlockMarkdownSpike phase=markdown.preparse.cache_hit " +
+        slockMarkdownLogSubTrace {
+            "phase=markdown.preparse.cache_hit " +
                 "hash=${parserContent.hashCode().toString(16)} length=${parserContent.length} " +
                 "nodeCount=${it.nodes.size} lookupLinks=$lookupLinks"
-        )
+        }
         return true
     }
-    println(
-        "SlockMarkdownSpike phase=markdown.preparse.parse_start " +
+    slockMarkdownLogSubTrace {
+        "phase=markdown.preparse.parse_start " +
             "hash=${parserContent.hashCode().toString(16)} length=${parserContent.length} lookupLinks=$lookupLinks"
-    )
+    }
     val parsed =
         withContext(SlockMarkdownParseDispatcher) {
             val flavour = SlockGFMFlavourDescriptor()
@@ -107,11 +108,11 @@ suspend fun prepareMarkdownContent(content: MarkdownParserContent, lookupLinks: 
             )
         }
     val (cached, cacheHit) = MarkdownParseResultCache.putIfAbsent(cacheKey, parsed)
-    println(
-        "SlockMarkdownSpike phase=markdown.preparse.parse_end " +
+    slockMarkdownLogSubTrace {
+        "phase=markdown.preparse.parse_end " +
             "hash=${parserContent.hashCode().toString(16)} length=${parserContent.length} " +
             "cacheHit=$cacheHit nodeCount=${cached.nodes.size} lookupLinks=$lookupLinks"
-    )
+    }
     return cacheHit
 }
 
@@ -162,22 +163,22 @@ class MarkdownState internal constructor(
             } catch (error: Throwable) {
                 return false
             }
-        println(
-            "SlockMarkdownSpike phase=markdown.state.initial_apply " +
+        slockMarkdownLogSubTrace {
+            "phase=markdown.state.initial_apply " +
                 "hash=${content.hashCode().toString(16)} length=${content.length} " +
                 "cacheHit=$cacheHit nodeCount=${cached.nodes.size} before=${nodeListState.size}"
-        )
+        }
         applyParseResult(cached)
         return cacheHit
     }
 
     suspend fun parse(content: String, immediate: Boolean): Boolean {
-        println(
-            "SlockMarkdownSpike phase=markdown.state.parse_request " +
+        slockMarkdownLogSubTrace {
+            "phase=markdown.state.parse_request " +
                 "hash=${content.hashCode().toString(16)} length=${content.length} " +
                 "immediate=$immediate currentHash=${input.content.hashCode().toString(16)} " +
                 "currentLength=${input.content.length} nodeListSize=${nodeListState.size}"
-        )
+        }
         if (content.length < input.content.length) {
             nodeListState.clear()
         }
@@ -207,17 +208,17 @@ class MarkdownState internal constructor(
         val content = input.content
         val cacheKey = currentCacheKey()
         MarkdownParseResultCache.get(cacheKey)?.let { cached ->
-            println(
-                "SlockMarkdownSpike phase=markdown.state.async_cache_hit " +
+            slockMarkdownLogSubTrace {
+                "phase=markdown.state.async_cache_hit " +
                     "hash=${content.hashCode().toString(16)} length=${content.length} nodeCount=${cached.nodes.size}"
-            )
+            }
             applyParseResult(cached)
             return true
         }
-        println(
-            "SlockMarkdownSpike phase=markdown.state.async_parse_start " +
+        slockMarkdownLogSubTrace {
+            "phase=markdown.state.async_parse_start " +
                 "hash=${content.hashCode().toString(16)} length=${content.length}"
-        )
+        }
         val parsed =
             try {
                 withContext(SlockMarkdownParseDispatcher) {
@@ -230,11 +231,11 @@ class MarkdownState internal constructor(
                 null
             } ?: return false
         val (cached, cacheHit) = MarkdownParseResultCache.putIfAbsent(cacheKey, parsed)
-        println(
-            "SlockMarkdownSpike phase=markdown.state.async_parse_end " +
+        slockMarkdownLogSubTrace {
+            "phase=markdown.state.async_parse_end " +
                 "hash=${content.hashCode().toString(16)} length=${content.length} " +
                 "cacheHit=$cacheHit nodeCount=${cached.nodes.size}"
-        )
+        }
         applyParseResult(cached)
         return cacheHit
     }
@@ -296,11 +297,11 @@ class MarkdownState internal constructor(
         if (cached.nodes.size < nodeListState.size) {
             nodeListState.removeRange(cached.nodes.size, nodeListState.size)
         }
-        println(
-            "SlockMarkdownSpike phase=markdown.state.apply_result " +
+        slockMarkdownLogSubTrace {
+            "phase=markdown.state.apply_result " +
                 "hash=${input.content.hashCode().toString(16)} length=${input.content.length} " +
                 "before=$beforeSize after=${nodeListState.size} nodeCount=${cached.nodes.size} links=${cached.links.size}"
-        )
+        }
     }
 }
 

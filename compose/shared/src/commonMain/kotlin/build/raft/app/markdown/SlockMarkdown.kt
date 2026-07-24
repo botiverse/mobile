@@ -80,6 +80,7 @@ import com.tencent.kuiklybase.markdown.model.DefaultMarkdownTypography
 import com.tencent.kuiklybase.markdown.model.MarkdownAnnotator
 import com.tencent.kuiklybase.markdown.compose.SlockMarkdownNodeTrace
 import com.tencent.kuiklybase.markdown.compose.SlockMarkdownNodeTraceSink
+import com.tencent.kuiklybase.markdown.compose.SlockMarkdownSubTrace
 import com.tencent.kuiklybase.markdown.model.MarkdownParserContent
 import com.tencent.kuiklybase.markdown.model.TextProvider
 import com.tencent.kuiklybase.markdown.model.markdownAnnotator
@@ -1296,7 +1297,7 @@ private object SlockMarkdownTextProvider : TextProvider {
             phase = "markdown.diagnostics.rich_text",
             durationUs = 0L,
             bodyLength = resolvedText.length,
-            extra =
+            extra = {
                 "textLength=${resolvedText.text.length} " +
                     "spanStyles=${resolvedText.spanStyles.size} " +
                     "stringAnnotations=${resolvedText.getStringAnnotations(0, resolvedText.length).size} " +
@@ -1304,6 +1305,7 @@ private object SlockMarkdownTextProvider : TextProvider {
                     "incomingInlineContent=${inlineContent.size} " +
                     "resolvedInlineContent=${resolvedInlineContent.size} " +
                     "inlineIds=${resolvedText.slockMarkdownInlineContentIds().size}"
+            }
         )
         var lastLayoutSignature by remember { mutableStateOf<SlockMarkdownTextLayoutSignature?>(null) }
         val resolvedOnTextLayout: (TextLayoutResult) -> Unit =
@@ -1313,10 +1315,11 @@ private object SlockMarkdownTextProvider : TextProvider {
                         phase = "markdown.diagnostics.rich_text_layout",
                         durationUs = 0L,
                         bodyLength = resolvedText.length,
-                        extra =
+                        extra = {
                             "size=${result.size.width}x${result.size.height} " +
                                 "placeholderRects=${result.placeholderRects.size} " +
                                 "inlineContent=0"
+                        }
                     )
                     onTextLayout(result)
                 }
@@ -1333,11 +1336,12 @@ private object SlockMarkdownTextProvider : TextProvider {
                             phase = "markdown.diagnostics.rich_text_layout",
                             durationUs = 0L,
                             bodyLength = resolvedText.length,
-                            extra =
+                            extra = {
                                 "size=${result.size.width}x${result.size.height} " +
                                     "placeholderRects=${result.placeholderRects.size} " +
                                     "nullPlaceholderRects=${result.placeholderRects.count { it == null }} " +
                                     "inlineContent=${resolvedInlineContent.size}"
+                            }
                         )
                         onTextLayout(result)
                     }
@@ -1879,6 +1883,10 @@ fun SlockMarkdownBody(
     // OFF the vendor stays on its untimed path (executable counterfactual:
     // sink == null before any clock read; see SlockMarkdownNodeTiming.kt).
     SlockMarkdownNodeTrace.sink = slockMarkdownNodeSinkFor(slockTraceDiagnosticsEnabled())
+    // Same gate for the vendor SlockMarkdownSpike println channel: it used to
+    // be an unconditional println, so production paid string building +
+    // annotation scans + a logcat round-trip per text composition.
+    SlockMarkdownSubTrace.enabled = slockTraceDiagnosticsEnabled()
     val content = remember(body, performanceKey) {
         val startedAt = performanceKey?.let { TimeSource.Monotonic.markNow() }
         val (prepared, cacheHit) =
@@ -1978,12 +1986,13 @@ fun SlockMarkdownBody(
             phase = "markdown.diagnostics.body",
             durationUs = 0L,
             bodyLength = content.length,
-            extra =
+            extra = {
                 "key=$performanceKey " +
                     "tokens=${richTextDocument.inlineTokens.size} " +
                     "tagTokens=${richTextDocument.actions.size} " +
                     "inlineCode=${richTextDocument.inlineTokens.count { it.kind == SlockRichTextInlineKind.InlineCode }} " +
                     "scope=${inlineContentScope.orEmpty()}"
+            }
         )
     }
     val annotator: MarkdownAnnotator = remember(richTextDocument, performanceKey) {

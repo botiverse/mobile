@@ -17,7 +17,7 @@ internal actual fun logMarkdownSpike(
     phase: String,
     durationUs: Long,
     bodyLength: Int,
-    extra: String
+    extra: () -> String
 ) {
     // No-op
 }

@@ -146,11 +146,11 @@ fun Markdown(
         val cacheHit = state.parse(parserContent, false)
         val parseDurationUs = slockMarkdownMonotonicNanosSince(parseStartMark) / 1_000L
         if (parseDurationUs >= SlockMarkdownVendorTraceThresholdUs) {
-            slockMarkdownLogSubTrace(
+            slockMarkdownLogSubTrace {
                 "phase=markdown.layout.parse_tree durationUs=$parseDurationUs " +
                     "bodyLength=${content.sourceContent.length} parserLength=${parserContent.length} cacheHit=$cacheHit " +
                     "dispatcher=$SLOCK_MARKDOWN_PARSE_DISPATCHER_LABEL"
-            )
+            }
         }
     }
 
@@ -257,10 +257,10 @@ fun MarkdownSuccess(
     // null check is the only added work — no clock read, no allocation).
     val nodeTiming = slockMarkdownRenderTimingOrNull()
     val renderStartMark = TimeSource.Monotonic.markNow()
-    slockMarkdownLogSubTrace(
+    slockMarkdownLogSubTrace {
         "phase=markdown.success.compose contentHash=${content().hashCode().toString(16)} " +
             "contentLength=${content().length} nodeListSize=${state.nodeListState.size}"
-    )
+    }
     CompositionLocalProvider(LocalSlockMarkdownRenderTiming provides nodeTiming) {
         Column(modifier = modifier) {
             state.nodeListState.forEachIndexed { index, result ->
@@ -276,9 +276,9 @@ fun MarkdownSuccess(
     }
     val renderDurationUs = slockMarkdownMonotonicNanosSince(renderStartMark) / 1_000L
     if (renderDurationUs >= SlockMarkdownVendorTraceThresholdUs) {
-        slockMarkdownLogSubTrace(
+        slockMarkdownLogSubTrace {
             "phase=markdown.layout.render_nodes durationUs=$renderDurationUs nodeCount=${state.nodeListState.size}"
-        )
+        }
     }
     nodeTiming?.finishRender(renderDurationUs)
 }
@@ -288,6 +288,19 @@ internal const val SlockMarkdownVendorTraceThresholdUs: Long = 200L
 internal fun slockMarkdownMonotonicNanosSince(mark: TimeMark): Long =
     mark.elapsedNow().inWholeNanoseconds
 
-internal fun slockMarkdownLogSubTrace(message: String) {
-    println("SlockMarkdownSpike $message")
+/**
+ * Injectable diagnostics gate for the SlockMarkdownSpike println channel. This
+ * channel used to be an unconditional raw println, so every text composition
+ * paid message interpolation + annotation scans + a System.out logcat
+ * round-trip even in production. The host app assigns this alongside the node
+ * timing sink (see SlockMarkdownNodeTrace); default OFF so a bare vendor
+ * consumer pays nothing until diagnostics are explicitly enabled.
+ */
+object SlockMarkdownSubTrace {
+    var enabled: Boolean = false
+}
+
+internal inline fun slockMarkdownLogSubTrace(message: () -> String) {
+    if (!SlockMarkdownSubTrace.enabled) return
+    println("SlockMarkdownSpike ${message()}")
 }

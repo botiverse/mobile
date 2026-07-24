@@ -78,12 +78,16 @@ internal inline fun <T> traceMarkdownSectionNonComposable(
  * On Android logs at INFO level via `android.util.Log`; on OHOS / js / native this
  * is a no-op (we only run smoke on Android). Pure expect/actual keeps commonMain
  * portable without forcing OHOS / native to know about the logger.
+ *
+ * `extra` is a lambda so call sites do not pay string interpolation (or the
+ * annotation scans some sites embed in it) when diagnostics are disabled — the
+ * Android actual checks the gate before invoking it.
  */
 internal expect fun logMarkdownSpike(
     phase: String,
     durationUs: Long,
     bodyLength: Int,
-    extra: String = ""
+    extra: () -> String = { "" }
 )
 
 @androidx.compose.runtime.Composable

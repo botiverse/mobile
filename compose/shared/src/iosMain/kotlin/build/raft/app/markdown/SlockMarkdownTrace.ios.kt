@@ -16,7 +16,7 @@ internal actual fun logMarkdownSpike(
     phase: String,
     durationUs: Long,
     bodyLength: Int,
-    extra: String
+    extra: () -> String
 ) {
     // No-op: iOS spike logging is out of scope for the framework build restore.
 }

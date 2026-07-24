@@ -43,12 +43,12 @@ fun MarkdownParagraph(
                 pop()
             }
         }
-    slockMarkdownLogSubTrace(
+    slockMarkdownLogSubTrace {
         "phase=markdown.paragraph.annotated contentHash=${content.hashCode().toString(16)} " +
             "nodeStart=${node.startOffset} nodeEnd=${node.endOffset} textLength=${styledText.text.length} " +
             "spanStyles=${styledText.spanStyles.size} stringAnnotations=${styledText.getStringAnnotations(0, styledText.length).size} " +
             "linkAnnotations=${styledText.getLinkAnnotations(0, styledText.length).size}"
-    )
+    }
 
     // 套个娃，解决placeholder span位置不对的问题
     Column(modifier = Modifier.fillMaxWidth()) {
