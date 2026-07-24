@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.runPortableCoroutineTest
 import build.raft.app.model.MemberId
 import build.raft.app.model.RuntimeConfig
 import build.raft.app.model.RuntimeHostUserState
@@ -9,7 +10,6 @@ import build.raft.app.model.buildRuntimeConfig
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
-import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.jsonObject
@@ -17,7 +17,7 @@ import kotlinx.serialization.json.jsonPrimitive
 
 class AgentsApiTest {
     @Test
-    fun typedAgentsApiAcceptsCanonicalUpstreamShapes() = runTest {
+    fun typedAgentsApiAcceptsCanonicalUpstreamShapes() = runPortableCoroutineTest {
         val transport = RecordingAgentsApi()
         val client = SlockAgentsApiClient(transport)
         val agentId = MemberId("agent-1")
@@ -86,7 +86,7 @@ class AgentsApiTest {
     }
 
     @Test
-    fun publicAgentDetailLoadsOnlyTheJointAuthorizedAgentProfile() = runTest {
+    fun publicAgentDetailLoadsOnlyTheJointAuthorizedAgentProfile() = runPortableCoroutineTest {
         val transport = RecordingAgentsApi()
         val detail =
             assertIs<DataResult.Content<AgentDetailSnapshot>>(
@@ -210,7 +210,7 @@ class AgentsApiTest {
     }
 
     @Test
-    fun repeatedAgentReadsNeverRetainRuntimeProviderSecrets() = runTest {
+    fun repeatedAgentReadsNeverRetainRuntimeProviderSecrets() = runPortableCoroutineTest {
         val sentinel = "sentinel-provider-secret"
         val client = SlockAgentsApiClient(
             RecordingAgentsApi(
@@ -228,7 +228,7 @@ class AgentsApiTest {
     }
 
     @Test
-    fun typedAgentsApiPreservesCustomRuntimeModelKind() = runTest {
+    fun typedAgentsApiPreservesCustomRuntimeModelKind() = runPortableCoroutineTest {
         val client =
             SlockAgentsApiClient(
                 RecordingAgentsApi(
@@ -245,7 +245,7 @@ class AgentsApiTest {
     }
 
     @Test
-    fun typedAgentsApiRejectsGuessedWrappersAndAliases() = runTest {
+    fun typedAgentsApiRejectsGuessedWrappersAndAliases() = runPortableCoroutineTest {
         val client =
             SlockAgentsApiClient(
                 RecordingAgentsApi(

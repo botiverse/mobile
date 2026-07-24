@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.runPortableCoroutineTest
 import build.raft.app.model.ServerId
 import build.raft.app.model.RuntimeHostUserState
 import build.raft.app.model.RuntimeModelConfig
@@ -11,11 +12,10 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.test.runTest
 
 class SharedCreateAgentFormStoreTest {
     @Test
-    fun exactFormLoadsAreSingleFlightAndCachedByExactRef() = runTest {
+    fun exactFormLoadsAreSingleFlightAndCachedByExactRef() = runPortableCoroutineTest {
         val api = SequencedFormComputersApi()
         val store = SharedCreateAgentFormStore(SlockComputersApiClient(api), this)
         val first = async { store.loadExactForm("server-1", "machine-1", supportedRef) }
@@ -35,7 +35,7 @@ class SharedCreateAgentFormStoreTest {
     }
 
     @Test
-    fun staleForcedCompletionCannotReplaceNewerExactFormGeneration() = runTest {
+    fun staleForcedCompletionCannotReplaceNewerExactFormGeneration() = runPortableCoroutineTest {
         val api = SequencedFormComputersApi()
         val store = SharedCreateAgentFormStore(SlockComputersApiClient(api), this)
         val older = async { store.loadExactForm("server-1", "machine-1", supportedRef, force = true) }
@@ -54,7 +54,7 @@ class SharedCreateAgentFormStoreTest {
     }
 
     @Test
-    fun supportedBuiltInLoaderFailsClosedWithoutExactSelectableRef() = runTest {
+    fun supportedBuiltInLoaderFailsClosedWithoutExactSelectableRef() = runPortableCoroutineTest {
         val unavailableApi = SequencedFormComputersApi(
             runtimeOptionsBody = canonicalRuntimeOptionsBody.replace(
                 "\"canSelectInThisContext\":true",
@@ -73,7 +73,7 @@ class SharedCreateAgentFormStoreTest {
     }
 
     @Test
-    fun resolvedSourcesBuildPresetAndGatewayWithoutClientCatalogs() = runTest {
+    fun resolvedSourcesBuildPresetAndGatewayWithoutClientCatalogs() = runPortableCoroutineTest {
         val api = SequencedFormComputersApi()
         val store = SharedCreateAgentFormStore(SlockComputersApiClient(api), this)
         val load = async { store.loadExactForm("server-1", "machine-1", supportedRef) }
@@ -139,7 +139,7 @@ class SharedCreateAgentFormStoreTest {
     }
 
     @Test
-    fun storeStateAndDiagnosticsNeverContainWriteOnlySecret() = runTest {
+    fun storeStateAndDiagnosticsNeverContainWriteOnlySecret() = runPortableCoroutineTest {
         val logs = mutableListOf<String>()
         val api = SequencedFormComputersApi()
         val store = SharedCreateAgentFormStore(SlockComputersApiClient(api), this, logs::add)
@@ -163,7 +163,7 @@ class SharedCreateAgentFormStoreTest {
     }
 
     @Test
-    fun resolvedFormRejectsProviderModelPolicyDrift() = runTest {
+    fun resolvedFormRejectsProviderModelPolicyDrift() = runPortableCoroutineTest {
         val api = SequencedFormComputersApi(
             sourceBodies = mapOf(
                 "provider" to canonicalProviderSourceBody,
@@ -185,7 +185,7 @@ class SharedCreateAgentFormStoreTest {
     }
 
     @Test
-    fun accountEnvironmentGenerationChangeClearsCacheAndRejectsStaleCompletion() = runTest {
+    fun accountEnvironmentGenerationChangeClearsCacheAndRejectsStaleCompletion() = runPortableCoroutineTest {
         var owner = SharedCreateAgentFormOwner("https://api-a.example.test", "account-a", "session-a")
         val api = SequencedFormComputersApi()
         val store = SharedCreateAgentFormStore(
