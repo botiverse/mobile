@@ -7,7 +7,7 @@ import kotlin.test.assertTrue
 
 class SharedHomeSavedActionContractTest {
     @Test
-    fun unsaveActionUsesAStableItemKeyAndLatestCallback() {
+    fun savedRowUsesOneCoordinateOwnerForOpenUnsaveAndContextMenu() {
         val pageSource = commonMainSource("build/raft/app/SettingsHomePage.kt")
         val resultCard =
             pageSource.substringAfter("private fun SharedHomeSavedResultCard(")
@@ -16,12 +16,17 @@ class SharedHomeSavedActionContractTest {
             pageSource.substringAfter("private fun SharedHomeSavedUnsaveButton(")
                 .substringBefore("private fun SharedHomeSavedSenderMeta(")
 
-        assertTrue("interactionIdentity = \"saved-unsave:${'$'}{item.key}\"" in resultCard)
-        assertTrue("val currentOnClick by rememberUpdatedState(onClick)" in unsaveButton)
+        assertTrue(".pointerInput(openGestureKey)" in resultCard)
+        assertTrue("sharedHomeSavedGestureOwner(" in resultCard)
+        assertTrue("dispatchSavedGesture(" in resultCard)
+        assertTrue("source = \"tap\"" in resultCard)
+        assertTrue("owner=${'$'}{owner.name.lowercase()}" in resultCard)
+        assertTrue("source=long_press" in resultCard)
+        assertTrue("generation=${'$'}generation" in resultCard)
+        assertTrue("messageId=${'$'}{savedMessageId.take(80)}" in resultCard)
+        assertFalse(".pointerInput(" in unsaveButton)
+        assertFalse(".clickable(" in unsaveButton)
         assertTrue(".slockButtonAccessibility(enabled = true) { currentOnClick() }" in unsaveButton)
-        assertTrue(".pointerInput(interactionIdentity)" in unsaveButton)
-        assertTrue("detectTapGestures(onTap = { currentOnClick() })" in unsaveButton)
-        assertFalse(".clickable(onClick = onClick)" in unsaveButton)
     }
 
     private fun commonMainSource(path: String): String {

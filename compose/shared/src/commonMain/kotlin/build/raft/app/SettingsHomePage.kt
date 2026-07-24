@@ -628,6 +628,7 @@ private val SearchControlsHorizontalPadding = 16.dp
 private val SearchMessagesHorizontalPadding = 16.dp
 private val SearchControlShadowOffset = 2.dp
 private val SavedSelectedRowShadowOffset = 2.dp
+private val SavedUnsaveHitTargetSize = 44.dp
 private val SearchPopoverBorderColor = SlockColor.BorderBlack
 private val SearchPopoverShadowColor = SlockColor.ShadowBlack
 private val SearchLightRowBorderColor = SlockColor.TextBlack.copy(alpha = 0.3f)
@@ -17223,6 +17224,25 @@ private const val SharedHomeSavedMenuActionCopyLink = "copy-link"
 private const val SharedHomeSavedMenuActionCopyMarkdown = "copy-markdown"
 private const val SharedHomeSavedMenuActionRemove = "remove"
 
+internal enum class SharedHomeSavedGestureOwner {
+    Open,
+    Unsave
+}
+
+internal fun sharedHomeSavedGestureOwner(
+    tapX: Float,
+    rowWidthPx: Float,
+    trailingActionWidthPx: Float
+): SharedHomeSavedGestureOwner {
+    if (rowWidthPx <= 0f || trailingActionWidthPx <= 0f) return SharedHomeSavedGestureOwner.Open
+    val actionWidth = trailingActionWidthPx.coerceAtMost(rowWidthPx)
+    return if (tapX >= rowWidthPx - actionWidth) {
+        SharedHomeSavedGestureOwner.Unsave
+    } else {
+        SharedHomeSavedGestureOwner.Open
+    }
+}
+
 private data class SharedHomeSavedContextMenuState(
     val item: InboxItem,
     val anchor: SlockPopoverAnchor
@@ -17711,7 +17731,11 @@ private fun SharedHomeSavedResultCard(
     val time = item.latestActivityAt ?: item.lastMessageAt
     val openGestureKey = remember(item) { item.inboxItemOpenGestureKey() }
     val currentOnOpen by rememberUpdatedState(onOpen)
+    val currentOnUnsave by rememberUpdatedState(onUnsave)
     val currentOnContextMenu by rememberUpdatedState(onContextMenu)
+    val gestureGeneration = remember(item.key) { mutableStateOf(0L) }
+    val gestureLogger = remember { slockLogger("SlockHomeSaved", "home_saved_gesture") }
+    val savedMessageId = item.savedMessageIdOrNull()?.value.orEmpty()
     val source =
         when {
             item.kind == InboxItemKind.DirectMessage -> item.channelName.takeIf { it.isNotBlank() }?.let { "@$it" }
@@ -17719,6 +17743,18 @@ private fun SharedHomeSavedResultCard(
             else -> item.channelName.takeIf { it.isNotBlank() }?.let { "#$it" }
         }
     val contentAnchor = remember(openGestureKey) { SlockLiveRootAnchorRef(identity = openGestureKey) }
+    fun dispatchSavedGesture(owner: SharedHomeSavedGestureOwner, source: String) {
+        val generation = gestureGeneration.value + 1L
+        gestureGeneration.value = generation
+        gestureLogger(
+            "owner=${owner.name.lowercase()} source=$source generation=$generation " +
+                "itemKey=${item.key.take(80)} messageId=${savedMessageId.take(80)}"
+        )
+        when (owner) {
+            SharedHomeSavedGestureOwner.Open -> currentOnOpen()
+            SharedHomeSavedGestureOwner.Unsave -> currentOnUnsave()
+        }
+    }
     SharedHomeSavedSelectedSurface(
         selected = selected,
         modifier =
@@ -17729,6 +17765,40 @@ private fun SharedHomeSavedResultCard(
         Row(
             modifier =
                 surfaceModifier
+                    .slockCaptureLiveRootAnchor(contentAnchor)
+                    .pointerInput(openGestureKey) {
+                        val trailingActionWidthPx = SavedUnsaveHitTargetSize.toPx()
+                        detectTapGestures(
+                            onTap = { localOffset ->
+                                dispatchSavedGesture(
+                                    owner =
+                                        sharedHomeSavedGestureOwner(
+                                            tapX = localOffset.x,
+                                            rowWidthPx = size.width.toFloat(),
+                                            trailingActionWidthPx = trailingActionWidthPx
+                                        ),
+                                    source = "tap"
+                                )
+                            },
+                            onLongPress = { localOffset ->
+                                val owner =
+                                    sharedHomeSavedGestureOwner(
+                                        tapX = localOffset.x,
+                                        rowWidthPx = size.width.toFloat(),
+                                        trailingActionWidthPx = trailingActionWidthPx
+                                    )
+                                val generation = gestureGeneration.value + 1L
+                                gestureGeneration.value = generation
+                                gestureLogger(
+                                    "owner=${if (owner == SharedHomeSavedGestureOwner.Open) "context_menu" else "unsave"} " +
+                                        "source=long_press generation=$generation itemKey=${item.key.take(80)} " +
+                                        "messageId=${savedMessageId.take(80)}"
+                                )
+                                if (owner == SharedHomeSavedGestureOwner.Open) {
+                                    contentAnchor.resolve(SlockPopoverLocalPoint.Exact(localOffset))?.let(currentOnContextMenu)
+                                }
+                            }
+                        }
                     .padding(horizontal = 12.dp, vertical = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.Top
@@ -17737,15 +17807,7 @@ private fun SharedHomeSavedResultCard(
                 modifier =
                     Modifier
                         .weight(1f)
-                        .slockCaptureLiveRootAnchor(contentAnchor)
-                        .pointerInput(openGestureKey) {
-                            detectTapGestures(
-                                onTap = { currentOnOpen() },
-                                onLongPress = { localOffset ->
-                                    contentAnchor.resolve(SlockPopoverLocalPoint.Exact(localOffset))?.let(currentOnContextMenu)
-                                }
-                            )
-                        },
+                        .fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(5.dp)
             ) {
                 Row(
@@ -17807,8 +17869,7 @@ private fun SharedHomeSavedResultCard(
                 )
             }
             SharedHomeSavedUnsaveButton(
-                interactionIdentity = "saved-unsave:${item.key}",
-                onClick = onUnsave
+                onClick = { dispatchSavedGesture(SharedHomeSavedGestureOwner.Unsave, source = "accessibility") }
             )
         }
     }
@@ -17816,7 +17877,6 @@ private fun SharedHomeSavedResultCard(
 
 @Composable
 private fun SharedHomeSavedUnsaveButton(
-    interactionIdentity: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -17826,32 +17886,36 @@ private fun SharedHomeSavedUnsaveButton(
     Box(
         modifier =
             modifier
-                .size(size + shadowOffset)
+                .size(SavedUnsaveHitTargetSize)
                 .zIndex(1f)
+                .slockButtonAccessibility(enabled = true) { currentOnClick() },
+        contentAlignment = Alignment.Center
     ) {
         Box(
             modifier =
                 Modifier
-                    .size(size)
-                    .offset(x = shadowOffset, y = shadowOffset)
-                    .background(SlockColor.ShadowBlack)
-        )
-        Box(
-            modifier =
-                Modifier
-                    .size(size)
-                    .background(SlockColor.SurfaceWhite)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .slockButtonAccessibility(enabled = true) { currentOnClick() }
-                    .pointerInput(interactionIdentity) {
-                        detectTapGestures(onTap = { currentOnClick() })
-                    },
-            contentAlignment = Alignment.Center
+                    .size(size + shadowOffset)
         ) {
-            // React's saved card renders a lucide bookmark-minus (BookmarkMinus) for the
-            // unsave affordance; android previously drew a plain Bookmark with a hand-drawn
-            // overlay bar. Use the generated BookmarkMinus glyph to match react (#370).
-            SlockLucideIcon(SlockLucideIconName.BookmarkMinus, color = SlockColor.TextBlackArgb, modifier = Modifier.size(16.dp))
+            Box(
+                modifier =
+                    Modifier
+                        .size(size)
+                        .offset(x = shadowOffset, y = shadowOffset)
+                        .background(SlockColor.ShadowBlack)
+            )
+            Box(
+                modifier =
+                    Modifier
+                        .size(size)
+                        .background(SlockColor.SurfaceWhite)
+                        .border(SlockStroke.Default, SlockColor.BorderBlack),
+                contentAlignment = Alignment.Center
+            ) {
+                // React's saved card renders a lucide bookmark-minus (BookmarkMinus) for the
+                // unsave affordance; android previously drew a plain Bookmark with a hand-drawn
+                // overlay bar. Use the generated BookmarkMinus glyph to match react (#370).
+                SlockLucideIcon(SlockLucideIconName.BookmarkMinus, color = SlockColor.TextBlackArgb, modifier = Modifier.size(16.dp))
+            }
         }
     }
 }
