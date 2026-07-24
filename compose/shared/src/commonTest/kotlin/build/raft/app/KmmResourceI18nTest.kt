@@ -71,7 +71,8 @@ class KmmResourceI18nTest {
             MR.strings.settings_error_join_link_load_prefix,
             MR.strings.settings_billing_action_compare_plans,
             MR.strings.settings_pwa_install_title,
-            MR.strings.settings_pwa_install_native_detail
+            MR.strings.settings_pwa_install_native_detail,
+            MR.strings.channel_create_error_not_created
         ).forEach { resource ->
             assertTrue(
                 resource.desc() is ResourceStringDesc,

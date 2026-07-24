@@ -2269,6 +2269,7 @@ internal fun SlockAppShellContent(
     val notificationServerUnavailableMessage = stringResource(MR.strings.home_error_notification_server_unavailable)
     val notificationSignInMessage = stringResource(MR.strings.home_error_notification_sign_in)
     val channelCreatedMessage = stringResource(MR.strings.thread_action_card_success_channel)
+    val channelNotCreatedMessage = stringResource(MR.strings.channel_create_error_not_created)
     val conversationUnavailableMessage = stringResource(MR.strings.home_error_conversation_unavailable)
     val pager = LocalActivity.current.getPager() as Pager
     val launchSelection = remember(pager.pageData.params.toString()) {
@@ -4034,7 +4035,7 @@ internal fun SlockAppShellContent(
                         bridge.toast(channelCreatedMessage)
                     }
                     is DataResult.Empty -> {
-                        createChannelError = "Channel was not created."
+                        createChannelError = channelNotCreatedMessage
                     }
                     is DataResult.Error -> {
                         createChannelError = result.error.code
