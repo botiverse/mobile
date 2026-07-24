@@ -90,6 +90,7 @@ import com.tencent.kuiklybase.markdown.model.markdownAnnotatorConfig
 import com.tencent.kuiklybase.markdown.compose.elements.MarkdownCode
 import com.tencent.kuiklybase.markdown.compose.elements.MarkdownCodeBlock
 import com.tencent.kuiklybase.markdown.compose.elements.MarkdownCodeFence
+import com.tencent.kuiklybase.markdown.compose.elements.MarkdownHeader
 import com.tencent.kuiklybase.markdown.model.MarkdownDimens
 import com.tencent.kuiklybase.markdown.model.markdownPadding
 import com.tencent.kuiklybase.markdown.model.prepareMarkdownContent
@@ -1868,6 +1869,7 @@ fun SlockMarkdownBody(
     resolveTagLabel: ((ThreadMarkdownTag) -> String)? = null,
     inlineContentScope: String? = null,
     activeTagKey: String? = null,
+    sectionHeadingTopPadding: Dp = 0.dp,
     performanceKey: String? = null,
     performanceLogger: (String) -> Unit = {}
 ) {
@@ -2089,8 +2091,29 @@ fun SlockMarkdownBody(
             blockQuoteBar = PaddingValues.Absolute(left = 0.dp, top = 0.dp, right = 0.dp, bottom = 0.dp)
         )
     }
-    val components = remember {
+    val components = remember(sectionHeadingTopPadding) {
         markdownComponents(
+            // Kuikly's Markdown renderer stacks top-level nodes without a
+            // spacer. Most message surfaces intentionally keep that dense
+            // layout, but document surfaces can opt into a section gap. This
+            // also reserves the paint overflow of an inline-code box before
+            // the following heading at large system font scales.
+            heading2 = { model ->
+                MarkdownHeader(
+                    model.content,
+                    model.node,
+                    style = model.typography.h2,
+                    modifier = Modifier.padding(top = sectionHeadingTopPadding)
+                )
+            },
+            heading3 = { model ->
+                MarkdownHeader(
+                    model.content,
+                    model.node,
+                    style = model.typography.h3,
+                    modifier = Modifier.padding(top = sectionHeadingTopPadding)
+                )
+            },
             horizontalRule = {
                 SlockMarkdownHorizontalRule()
             },

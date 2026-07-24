@@ -293,6 +293,11 @@ internal fun ReleaseNotesNativeBody(versionCode: String) {
                     SlockMarkdownBody(
                         body = current.document.markdown,
                         modifier = Modifier.fillMaxWidth(),
+                        // Top-level Kuikly Markdown nodes are otherwise
+                        // adjacent. Keep a document-style section gap so an
+                        // inline-code box cannot paint into the next H2/H3 at
+                        // enlarged system font scales (notably zh-CN 1.3x).
+                        sectionHeadingTopPadding = SlockSpacing.Sm,
                         onOpenUrl = { url -> linkNavigator.open(url) }
                     )
                 }

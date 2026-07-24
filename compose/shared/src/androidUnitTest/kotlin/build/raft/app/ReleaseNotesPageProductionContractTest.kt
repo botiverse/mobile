@@ -27,8 +27,25 @@ class ReleaseNotesPageProductionContractTest {
         )
     }
 
+    @Test
+    fun nativeBodyReservesSectionGapForLargeFontInlineCode() {
+        assertContains(source(), "sectionHeadingTopPadding = SlockSpacing.Sm")
+
+        val renderer = markdownSource()
+        assertContains(renderer, "sectionHeadingTopPadding: Dp = 0.dp")
+        assertContains(renderer, "remember(sectionHeadingTopPadding)")
+        assertContains(renderer, "heading2 = { model ->")
+        assertContains(renderer, "heading3 = { model ->")
+        assertContains(renderer, "Modifier.padding(top = sectionHeadingTopPadding)")
+    }
+
     private fun source(): String =
         File(commonMainRoot(), "build/raft/app/ReleaseNotesPage.kt")
+            .readText()
+            .replace("\r\n", "\n")
+
+    private fun markdownSource(): String =
+        File(commonMainRoot(), "build/raft/app/markdown/SlockMarkdown.kt")
             .readText()
             .replace("\r\n", "\n")
 
