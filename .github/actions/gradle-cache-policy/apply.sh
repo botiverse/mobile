@@ -28,8 +28,12 @@ fail() { echo "gradle-cache-policy: $*" >&2; exit 1; }
 [[ -f "${epoch_file}" ]] || fail "missing ${epoch_file}"
 [[ -f "${quarantine_file}" ]] || fail "missing ${quarantine_file}"
 
-# mapfile keeps a final line that lacks LF, so the logical-line count matches the checker.
-mapfile -t epoch_lines < "${epoch_file}"
+# Portable logical-line read (Bash 3.2 on the macOS runners has no mapfile/readarray); the
+# `|| [[ -n $line ]]` keeps a final line that lacks LF, so the count matches the checker.
+epoch_lines=()
+while IFS= read -r line || [[ -n "${line}" ]]; do
+  epoch_lines+=("${line}")
+done < "${epoch_file}"
 [[ "${#epoch_lines[@]}" -eq 1 ]] || fail "epoch file must contain exactly one logical line, found ${#epoch_lines[@]}"
 epoch="${epoch_lines[0]}"
 [[ "${epoch}" =~ ^[A-Za-z0-9_.-]{1,32}$ ]] || fail "epoch value is not a single [A-Za-z0-9_.-]{1,32} token"
