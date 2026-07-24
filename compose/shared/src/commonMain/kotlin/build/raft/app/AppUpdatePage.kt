@@ -142,9 +142,9 @@ private fun AppUpdateScreen() {
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             val versionCode = snapshot?.latestVersionCode?.takeIf { it > 0L }?.toString().orEmpty()
             if (versionCode.isNotBlank()) {
-                ReleaseNotesWebViewBody(versionCode)
+                ReleaseNotesNativeBody(versionCode)
             } else {
-                ReleaseNotesCenteredNotice(stringResource(MR.strings.release_notes_loading))
+                ReleaseNotesLoadingCover()
             }
         }
     }

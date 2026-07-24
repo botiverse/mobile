@@ -6305,9 +6305,6 @@ private fun SettingsAppShellContent(
                     onCheckQuiverUpdate = {
                         onSettingsIntent(SharedSettingsIntent.CheckQuiverUpdate)
                     },
-                    onPrefetchReleaseNotes = { url ->
-                        settingsCapabilities.prefetchReleaseNotes(url)
-                    },
                     onOpenSourceLicenses = { onDestinationChange(SettingsDestinationOpenSourceLicenses) },
                     onCopyEnvironmentInfo = { onSettingsIntent(SharedSettingsIntent.CopyDiagnostics) },
                     onOpenApiEnvironment = { onDestinationChange(SettingsDestinationApiEnvironment) },
@@ -10480,7 +10477,6 @@ internal fun SharedSettingsAboutContent(
     webUrl: String = SharedSettingsDefaultWebBaseUrl,
     onOpenSlock: (String) -> Unit,
     onCheckQuiverUpdate: () -> Unit,
-    onPrefetchReleaseNotes: suspend (String) -> Unit = {},
     onOpenSourceLicenses: () -> Unit,
     onCopyEnvironmentInfo: () -> Unit,
     onOpenApiEnvironment: () -> Unit,
@@ -10491,14 +10487,6 @@ internal fun SharedSettingsAboutContent(
             is ScreenLoadState.Content -> state.data
             else -> fallback
         }
-    val releaseNotesVersionCode = releaseNotesSanitizeVersionCode(snapshot.buildLabel)
-    val releaseNotesUrl =
-        remember(releaseNotesVersionCode) {
-            releaseNotesVersionCode.takeIf { it.isNotBlank() }?.let(::sharedSettingsReleaseNotesUrl).orEmpty()
-        }
-    LaunchedEffect(releaseNotesUrl) {
-        releaseNotesUrl.takeIf { it.isNotBlank() }?.let { onPrefetchReleaseNotes(it) }
-    }
     val aboutPayload = snapshot.toAboutPayload(webUrl, updateCheck, actionState, settingsAboutPayloadCopy(sharedSettingsResolvedWebBaseUrl(webUrl)))
     val developer = (developerState as? ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>)?.data
     val environmentStatus =
@@ -10568,29 +10556,6 @@ private fun SharedSettingsOpenSourceLicensesContent(
                 value.orEmpty().takeIf { it.isNotBlank() }?.let(onOpenUrl)
         }
     }
-}
-
-internal fun sharedSettingsReleaseNotesUrl(versionCode: String): String {
-    val localeTag =
-        try {
-            KeyValueLocalePreferenceStore(slockSharedPreferenceStore()).readLocaleSync().kmmResourceLocaleTag
-        } catch (cancellation: kotlinx.coroutines.CancellationException) {
-            throw cancellation
-        } catch (_: Throwable) {
-            AppLocale.Default.kmmResourceLocaleTag
-        }
-    return sharedSettingsReleaseNotesUrlForLocale(
-        versionCode = versionCode,
-        localeTag = localeTag
-    )
-}
-
-internal fun sharedSettingsReleaseNotesUrlForLocale(
-    versionCode: String,
-    localeTag: String?
-): String {
-    val baseUrl = "https://quiver.oranix.io/notes/${slockReleaseNotesAppSlug()}?version_code=$versionCode"
-    return localeTag?.takeIf { it.isNotBlank() }?.let { "$baseUrl&lang=$it" } ?: baseUrl
 }
 
 @Composable
