@@ -148,6 +148,7 @@ import com.tencent.kuikly.core.render.android.expand.component.KRTextFieldView
 import com.caverock.androidsvg.SVG
 import build.hands.update.HandsDeviceId
 import build.hands.update.HandsFeedback
+import build.hands.update.UpdateChecker
 import build.hands.update.internal.HandsClient
 import build.hands.update.models.UpdateCheckResponse
 import java.io.ByteArrayInputStream
@@ -4027,6 +4028,9 @@ internal class SlockKuiklyBridgeModule(
 
     private fun loadSettingsDeveloper(feedback: String? = null): Map<String, Any> {
         val current = AndroidApiServerEnvironmentStore(appContext).current()
+        val alphaDeltaEnabled = handsDeltaUpdateAllowedForRuntime()
+        val updateChannel =
+                if (alphaDeltaEnabled) BuildConfig.HANDS_DELTA_CHANNEL else BuildConfig.QUIVER_CHANNEL
         val options =
                 JSONArray().also { array ->
                     AndroidApiServerEnvironmentStore.predefined.forEach { environment ->
@@ -4049,7 +4053,7 @@ internal class SlockKuiklyBridgeModule(
                 "webUrl" to current.webUrl,
                 "updateCheckSupported" to true,
                 "updateCheckStatusLabel" to "Ready",
-                "updateCheckDetail" to "Check Hands channel ${BuildConfig.QUIVER_CHANNEL} for a newer Android APK. If an update is available, Raft downloads it and opens the Android installer.",
+                "updateCheckDetail" to "Check Hands channel $updateChannel for a newer Android APK.",
                 // Serialized like entriesJson (#484): options cross the render
                 // bridge as a primitive string, independent of container
                 // marshal support. OHOS/iOS hosts still send structured
@@ -4061,26 +4065,65 @@ internal class SlockKuiklyBridgeModule(
 
     private suspend fun checkQuiverUpdate(install: Boolean = true): Map<String, Any> {
         val arch = Build.SUPPORTED_ABIS.firstOrNull { it.isNotBlank() }
+        val alphaDeltaEnabled = handsDeltaUpdateAllowedForRuntime()
+        val appSlug =
+                if (alphaDeltaEnabled) BuildConfig.HANDS_DELTA_APP_SLUG else BuildConfig.QUIVER_APP_SLUG
+        val channel =
+                if (alphaDeltaEnabled) BuildConfig.HANDS_DELTA_CHANNEL else BuildConfig.QUIVER_CHANNEL
+        var alphaInstallStartedThisCall = false
+        val ownedResponse =
+                alphaHandsUpdateCallOwner.runIfEligible(
+                        eligible = alphaDeltaEnabled && install
+                ) {
+                    UpdateChecker(
+                            context = appContext,
+                            baseUrl = BuildConfig.QUIVER_BASE_URL,
+                            appSlug = appSlug,
+                            installedVersionCode = BuildConfig.VERSION_CODE.toLong(),
+                            channel = channel,
+                            productType = "android-apk",
+                            platform = "android",
+                            arch = arch,
+                            deviceId = HandsDeviceId.get(appContext),
+                            deltaApplyEnabled = true
+                    ).checkAndInstall()
+                }
         val response =
-                HandsClient(BuildConfig.QUIVER_BASE_URL)
-                        .checkForUpdate(
-                                slug = BuildConfig.QUIVER_APP_SLUG,
-                                channel = BuildConfig.QUIVER_CHANNEL,
-                                currentVersionCode = BuildConfig.VERSION_CODE.toLong(),
-                                productType = "android-apk",
-                                platform = "android",
-                                arch = arch,
-                                filetype = "apk",
-                                deviceId = HandsDeviceId.get(appContext)
-                        )
+                if (ownedResponse != null) {
+                    alphaInstallStartedThisCall = true
+                    ownedResponse
+                } else {
+                    HandsClient(BuildConfig.QUIVER_BASE_URL)
+                            .checkForUpdate(
+                                    slug = appSlug,
+                                    channel = channel,
+                                    currentVersionCode = BuildConfig.VERSION_CODE.toLong(),
+                                    productType = "android-apk",
+                                    platform = "android",
+                                    arch = arch,
+                                    filetype = "apk",
+                                    deviceId = HandsDeviceId.get(appContext)
+                            )
+                }
+        val updateAvailable = response.requireUpdate() != null
         SlockAppLog.record(
                 "SlockQuiverUpdate",
-                "check status=ok slug=${BuildConfig.QUIVER_APP_SLUG} channel=${BuildConfig.QUIVER_CHANNEL} " +
-                        "current=${BuildConfig.VERSION_CODE} latest=${response.latest?.version_code ?: response.latest_version_code ?: 0} available=${response.requireUpdate() != null}"
+                "check status=ok mode=${if (alphaDeltaEnabled) "alpha_delta" else "full_apk"} " +
+                        "action=${if (install) "install" else "status"} started=$alphaInstallStartedThisCall " +
+                        "slug=$appSlug channel=$channel current=${BuildConfig.VERSION_CODE} " +
+                        "latest=${response.latest?.version_code ?: response.latest_version_code ?: 0} available=$updateAvailable"
         )
-        val updateAvailable = response.requireUpdate() != null
         val installResult =
                 when {
+                    alphaDeltaEnabled &&
+                        updateAvailable &&
+                        (alphaInstallStartedThisCall || alphaHandsUpdateCallOwner.isRunning()) ->
+                            QuiverInstallResult(
+                                    statusLabel = "Installing",
+                                    detail = "Android is preparing the update. Follow the installer or download notification.",
+                                    actionLabel = "Installing"
+                            )
+                    alphaDeltaEnabled -> QuiverInstallResult()
                     install && updateAvailable -> installQuiverUpdate(response, arch)
                     updateAvailable -> currentQuiverDownloadResult(response, arch)
                     else -> QuiverInstallResult()
@@ -4090,7 +4133,7 @@ internal class SlockKuiklyBridgeModule(
         val feedback =
                 when {
                     updateAvailable -> "Update available: ${response.latest?.version?.ifBlank { null } ?: "version code ${response.latest?.version_code ?: 0L}"}."
-                    else -> "No Hands update available on ${BuildConfig.QUIVER_CHANNEL}."
+                    else -> "No Hands update available on $channel."
                 }
         return loadSettingsDeveloper(feedback = feedback) +
                 mapOf(
@@ -4107,6 +4150,25 @@ internal class SlockKuiklyBridgeModule(
                         "updateCheckedAtLabel" to System.currentTimeMillis().toString(),
                         "updateCheckErrorCode" to installResult.errorCode.orEmpty()
                 )
+    }
+
+    private fun handsDeltaUpdateAllowedForRuntime(): Boolean {
+        val allowed =
+                handsDeltaUpdateAllowed(
+                        configuredEnabled = BuildConfig.HANDS_DELTA_UPDATE_ENABLED,
+                        buildApplicationId = BuildConfig.APPLICATION_ID,
+                        runtimePackageName = appContext.packageName,
+                        appSlug = BuildConfig.HANDS_DELTA_APP_SLUG,
+                        channel = BuildConfig.HANDS_DELTA_CHANNEL
+                )
+        if (BuildConfig.HANDS_DELTA_UPDATE_ENABLED && !allowed) {
+            SlockAppLog.record(
+                    "SlockQuiverUpdate",
+                    "alpha_delta_gate_denied buildApplicationId=${BuildConfig.APPLICATION_ID} " +
+                            "runtimePackageName=${appContext.packageName}"
+            )
+        }
+        return allowed
     }
 
     private suspend fun installQuiverUpdate(
@@ -6199,6 +6261,7 @@ internal class SlockKuiklyBridgeModule(
         const val MODULE_NAME = "HRBridgeModule"
         private val quiverUpdateDownloads = ConcurrentHashMap<String, QuiverUpdateDownload>()
         private val quiverUpdateDownloadLock = Any()
+        private val alphaHandsUpdateCallOwner = HandsDeltaUpdateCallOwner()
         @Volatile private var pendingQuiverAutoInstallKey: String? = null
         private const val REQUEST_NOTIFICATIONS_CODE = 4207
         private const val ATTACHMENT_CACHE_MAX_FILES = 80

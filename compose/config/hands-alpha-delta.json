@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "enabledBuildType": "alpha",
+  "expectedApplicationId": "build.raft.app.alpha",
+  "handsAppId": "98b90005-90a7-4eee-9fd1-1569a1f5d18b",
+  "handsAppSlug": "raft-android-alpha-delta",
+  "handsChannelId": "b733ba01-9d8d-476a-b1eb-896851b19a52",
+  "handsChannelSlug": "alpha-delta",
+  "handsDeviceGroupId": "0b667c0d-d9fc-4650-87a0-3b88ea990014",
+  "handsDeviceGroupName": "Artin test devices"
+}

@@ -47,6 +47,13 @@ class AppUpdatePageTest {
                 actionRunning = false
             )
         )
+        assertEquals(
+            "Installing",
+            appUpdatePrimaryActionLabel(
+                SharedSettingsUpdateCheckSnapshot(statusLabel = "installing"),
+                actionRunning = false
+            )
+        )
         assertEquals("Working...", appUpdatePrimaryActionLabel(null, actionRunning = true))
     }
 
@@ -71,6 +78,14 @@ class AppUpdatePageTest {
         assertFalse(
             appUpdatePrimaryActionEnabled(
                 snapshot = SharedSettingsUpdateCheckSnapshot(supported = true, updateAvailable = true, statusLabel = "downloading"),
+                loading = false,
+                actionRunning = false,
+                errorCode = null
+            )
+        )
+        assertFalse(
+            appUpdatePrimaryActionEnabled(
+                snapshot = SharedSettingsUpdateCheckSnapshot(supported = true, updateAvailable = true, statusLabel = "installing"),
                 loading = false,
                 actionRunning = false,
                 errorCode = null
