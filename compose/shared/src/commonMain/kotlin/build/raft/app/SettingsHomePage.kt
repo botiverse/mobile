@@ -17747,7 +17747,7 @@ private fun SharedHomeSavedResultCard(
         val generation = gestureGeneration.value + 1L
         gestureGeneration.value = generation
         gestureLogger(
-            "owner=${owner.name.lowercase()} source=$source generation=$generation " +
+            "owner=${owner.name.lowercase()} action=${owner.name.lowercase()} source=$source generation=$generation " +
                 "itemKey=${item.key.take(80)} messageId=${savedMessageId.take(80)}"
         )
         when (owner) {
@@ -17790,13 +17790,18 @@ private fun SharedHomeSavedResultCard(
                                     )
                                 val generation = gestureGeneration.value + 1L
                                 gestureGeneration.value = generation
-                                gestureLogger(
-                                    "owner=${if (owner == SharedHomeSavedGestureOwner.Open) "context_menu" else "unsave"} " +
-                                        "source=long_press generation=$generation itemKey=${item.key.take(80)} " +
-                                        "messageId=${savedMessageId.take(80)}"
-                                )
                                 if (owner == SharedHomeSavedGestureOwner.Open) {
+                                    gestureLogger(
+                                        "owner=context_menu action=context_menu source=long_press generation=$generation " +
+                                            "itemKey=${item.key.take(80)} messageId=${savedMessageId.take(80)}"
+                                    )
                                     contentAnchor.resolve(SlockPopoverLocalPoint.Exact(localOffset))?.let(currentOnContextMenu)
+                                } else {
+                                    gestureLogger(
+                                        "owner=ignored action=none source=long_press generation=$generation " +
+                                            "reason=unsave_zone_long_press itemKey=${item.key.take(80)} " +
+                                            "messageId=${savedMessageId.take(80)}"
+                                    )
                                 }
                             }
                         )
