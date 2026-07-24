@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { spawnSync } from "node:child_process";
 import test from "node:test";
 import {
+  apksignerVerifyArgs,
   canonicalJson,
   parseReadyLine,
   readyPayload,
@@ -15,9 +20,67 @@ const rotatedLegacyDigest = "sha256:b4919381d8f9cede4f8eb8f6d132f6dfe0d6d15bf6d1
 const rotatedCurrentDigest = "sha256:5f08bbe82a27ccdad26c13523a60b5670d3aa7633e8ed2fd71fa6b5751f9b0b1";
 
 const rotatedSignerOutput = [
-  `Signer (minSdkVersion=33, maxSdkVersion=2147483647) certificate SHA-256 digest: ${rotatedCurrentDigest.slice(7)}`,
-  `Signer (minSdkVersion=24, maxSdkVersion=32) certificate SHA-256 digest: ${rotatedLegacyDigest.slice(7)}`,
+  `V3.1 Signer: (minSdkVersion=33, maxSdkVersion=2147483647) certificate SHA-256 digest: ${rotatedCurrentDigest.slice(7)}`,
+  `V3.0 Signer: (minSdkVersion=24, maxSdkVersion=32) certificate SHA-256 digest: ${rotatedLegacyDigest.slice(7)}`,
 ].join("\n");
+
+function writeExecutable(file, body) {
+  fs.writeFileSync(file, `#!/bin/sh\nset -eu\n${body}\n`);
+  fs.chmodSync(file, 0o755);
+}
+
+function runBindingWithBuildTools37(deviceSdk, signerOutput) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "qa-bootstrap-binding-"));
+  const buildTools = path.join(root, "android-sdk", "build-tools", "37.0.0");
+  const bin = path.join(root, "bin");
+  fs.mkdirSync(buildTools, { recursive: true });
+  fs.mkdirSync(bin, { recursive: true });
+  const apk = path.join(root, "app.apk");
+  const output = path.join(root, "binding.json");
+  fs.writeFileSync(apk, "fixture");
+  writeExecutable(
+    path.join(buildTools, "aapt"),
+    "printf \"package: name='build.raft.app' versionCode='1' versionName='1.0'\\n\"",
+  );
+  writeExecutable(
+    path.join(buildTools, "apksigner"),
+    [
+      `test \"$*\" = \"verify --min-sdk-version ${deviceSdk} --max-sdk-version ${deviceSdk} --print-certs ${apk}\"`,
+      `printf '%b\\n' ${JSON.stringify(signerOutput)}`,
+    ].join("\n"),
+  );
+  writeExecutable(
+    path.join(bin, "adb"),
+    [
+      `if [ \"$*\" = \"shell getprop ro.build.version.sdk\" ]; then printf '%s\\n' ${deviceSdk}; exit 0; fi`,
+      "if [ \"$*\" = \"shell cat /proc/sys/kernel/random/boot_id\" ]; then printf '%s\\n' 12345678-1234-1234-1234-123456789abc; exit 0; fi",
+      "exit 9",
+    ].join("\n"),
+  );
+  const result = spawnSync(
+    process.execPath,
+    [
+      path.resolve("scripts/qa/mobile_login_bootstrap.mjs"),
+      "binding", "--apk", apk, "--output", output,
+    ],
+    {
+      cwd: path.resolve("."),
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        ANDROID_HOME: path.join(root, "android-sdk"),
+        PATH: `${bin}:${process.env.PATH ?? ""}`,
+      },
+    },
+  );
+  try {
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(fs.statSync(output).mode & 0o777, 0o600);
+    return JSON.parse(fs.readFileSync(output, "utf8"));
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
 
 function loginResponse() {
   const envelope = {
@@ -51,6 +114,10 @@ test("APK signer selection matches the platform signer for each rotated SDK rang
   assert.equal(selectApkSigningCertificateSha256(rotatedSignerOutput, 32), rotatedLegacyDigest);
   assert.equal(selectApkSigningCertificateSha256(rotatedSignerOutput, 33), rotatedCurrentDigest);
   assert.equal(selectApkSigningCertificateSha256(rotatedSignerOutput, 36), rotatedCurrentDigest);
+  assert.deepEqual(
+    apksignerVerifyArgs("app.apk", 34),
+    ["verify", "--min-sdk-version", "34", "--max-sdk-version", "34", "--print-certs", "app.apk"],
+  );
   assert.equal(
     selectApkSigningCertificateSha256(
       `Signer #1 certificate SHA-256 digest: ${"a".repeat(64)}`,
@@ -58,6 +125,24 @@ test("APK signer selection matches the platform signer for each rotated SDK rang
     ),
     digestA,
   );
+  assert.equal(
+    selectApkSigningCertificateSha256(
+      `V3.0 Signer: certificate SHA-256 digest: ${rotatedLegacyDigest.slice(7)}`,
+      31,
+    ),
+    rotatedLegacyDigest,
+  );
+});
+
+test("binding command matches build-tools 37 targeted signer output on API 31 and 34", () => {
+  const api31 = runBindingWithBuildTools37(
+    31,
+    `V3.0 Signer: certificate SHA-256 digest: ${rotatedLegacyDigest.slice(7)}`,
+  );
+  assert.equal(api31.signing_cert_sha256, rotatedLegacyDigest);
+
+  const api34 = runBindingWithBuildTools37(34, rotatedSignerOutput);
+  assert.equal(api34.signing_cert_sha256, rotatedCurrentDigest);
 });
 
 test("APK signer selection fails closed for no match, overlap, and extra signers", () => {
@@ -81,8 +166,22 @@ test("APK signer selection fails closed for no match, overlap, and extra signers
   );
   assert.throws(
     () => selectApkSigningCertificateSha256([
-      `Signer (minSdkVersion=33) certificate SHA-256 digest: ${"a".repeat(64)}`,
+      `V3.1 Signer: (minSdkVersion=33) certificate SHA-256 digest: ${"a".repeat(64)}`,
       `Signer #1 certificate SHA-256 digest: ${"b".repeat(64)}`,
+    ].join("\n"), 34),
+    /signer certificate record is invalid/,
+  );
+  assert.throws(
+    () => selectApkSigningCertificateSha256([
+      `Signer certificate SHA-256 digest: ${"a".repeat(63)}`,
+      `Signer #1 certificate SHA-256 digest: ${"b".repeat(64)}`,
+    ].join("\n"), 34),
+    /signer certificate record is invalid/,
+  );
+  assert.throws(
+    () => selectApkSigningCertificateSha256([
+      `V3.1 Signer certificate SHA-256 digest: ${"a".repeat(63)}`,
+      `V3.0 Signer: certificate SHA-256 digest: ${"b".repeat(64)}`,
     ].join("\n"), 34),
     /signer certificate record is invalid/,
   );

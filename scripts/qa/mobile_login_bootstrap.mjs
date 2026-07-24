@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import {
+  apksignerVerifyArgs,
   parseReadyLine,
   readyPayload,
   selectApkSigningCertificateSha256,
@@ -57,10 +58,11 @@ function binding() {
   const badging = run(buildTool("aapt"), ["dump", "badging", apk]).stdout;
   const applicationId = badging.match(/package: name='([^']+)'/)?.[1];
   if (!applicationId) throw new Error("APK package id is unavailable");
-  const signer = run(buildTool("apksigner"), ["verify", "--print-certs", apk]).stdout;
   const deviceSdkText = run("adb", ["shell", "getprop", "ro.build.version.sdk"]).stdout.trim();
   if (!/^[1-9][0-9]*$/.test(deviceSdkText)) throw new Error("Android device SDK is unavailable");
-  const signingCertSha256 = selectApkSigningCertificateSha256(signer, Number(deviceSdkText));
+  const deviceSdk = Number(deviceSdkText);
+  const signer = run(buildTool("apksigner"), apksignerVerifyArgs(apk, deviceSdk)).stdout;
+  const signingCertSha256 = selectApkSigningCertificateSha256(signer, deviceSdk);
   const bootId = run("adb", ["shell", "cat", "/proc/sys/kernel/random/boot_id"]).stdout.trim();
   if (!/^[a-f0-9-]{36}$/i.test(bootId)) throw new Error("device boot id is unavailable");
   writePrivateJson(output, {
