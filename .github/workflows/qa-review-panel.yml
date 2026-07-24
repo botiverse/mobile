@@ -18,8 +18,9 @@ jobs:
     timeout-minutes: 30
     strategy:
       fail-fast: false
-      # Token Plan capacity is shared.  Keep the three contexts independent but
-      # serialize their requests so they do not starve each other until timeout.
+      # Provider capacity is shared with the acceptance lanes.  Keep the three
+      # contexts independent but serialize their requests so they do not starve
+      # each other until timeout.
       max-parallel: 1
       matrix:
         slot: [1, 2, 3]
@@ -41,10 +42,11 @@ jobs:
           STAMP_TOKEN: ${{ secrets.STAMP_TOKEN }}
           STAMP_RUN_ID: ${{ inputs.run_id }}
           STAMP_REVIEWER: agent-review-${{ matrix.slot }}
-          PI_API_KEY: ${{ secrets.QWEN_TOKEN_PLAN_CN_API_KEY }}
+          PI_API_KEY: ${{ secrets.PI_API_KEY }}
+          MINIMAX_API_KEY: ${{ secrets.PI_API_KEY }}
           QWEN_TOKEN_PLAN_CN_API_KEY: ${{ secrets.QWEN_TOKEN_PLAN_CN_API_KEY }}
-          PI_PROVIDER: ${{ vars.PI_REVIEW_PROVIDER || 'qwen-token-plan-cn' }}
-          PI_MODEL: ${{ vars.PI_REVIEW_MODEL || 'qwen3.8-max-preview' }}
+          PI_PROVIDER: ${{ vars.PI_REVIEW_PROVIDER || 'minimax' }}
+          PI_MODEL: ${{ vars.PI_REVIEW_MODEL || 'MiniMax-M3' }}
           SLOCK_PI_AI_MODULE: ${{ runner.temp }}/stamp-review-agent/node_modules/@earendil-works/pi-ai/dist/providers/all.js
           SLOCK_YAML_MODULE: ${{ runner.temp }}/stamp-review-agent/node_modules/yaml/dist/index.js
           STAMP_REVIEW_OUT: panel-review-${{ matrix.slot }}.json
@@ -77,6 +79,8 @@ jobs:
           STAMP_URL: ${{ secrets.STAMP_URL }}
           STAMP_TOKEN: ${{ secrets.STAMP_TOKEN }}
           RUN_ID: ${{ inputs.run_id }}
+          PANEL_PROVIDER: ${{ vars.PI_REVIEW_PROVIDER || 'minimax' }}
+          PANEL_MODEL: ${{ vars.PI_REVIEW_MODEL || 'MiniMax-M3' }}
         run: |
           test "${{ needs.review.result }}" = success || {
             echo "review matrix result: ${{ needs.review.result }}"
@@ -84,7 +88,7 @@ jobs:
           }
           records=$(find panel-records -name 'panel-review-*.json' -type f | sort)
           test "$(wc -w <<<"$records")" -eq 3
-          jq -es '
+          jq -es --arg provider "$PANEL_PROVIDER" --arg model "$PANEL_MODEL" '
             length == 3 and
             ([.[].reviewer] | sort) == ["agent-review-1","agent-review-2","agent-review-3"] and
             ([.[].run_id] | unique) == [env.RUN_ID] and
@@ -92,7 +96,7 @@ jobs:
             ([.[] | select(.stage == "submitted")] | length) >= 1 and
             ([.[].evidence_manifest_sha256] | unique | length) == 1 and
             ([.[].review_input_sha256] | unique | length) == 1 and
-            all(.[]; .provider == "qwen-token-plan-cn" and .model == "qwen3.8-max-preview") and
+            all(.[]; .provider == $provider and .model == $model) and
             all(.[];
               (.parsed_vote.verdict == "passed" or .parsed_vote.verdict == "failed") and
               (if .stage == "submitted" then .post_receipt.ok == true
@@ -104,10 +108,10 @@ jobs:
           local_passed=$(jq -rs '[.[].parsed_vote.verdict | select(. == "passed")] | length' $records)
           local_failed=$(jq -rs '[.[].parsed_vote.verdict | select(. == "failed")] | length' $records)
           json=$(curl -fsS -H "Authorization: Bearer $STAMP_TOKEN" "$STAMP_URL/api/runs/$RUN_ID")
-          jq -e --arg sha "$input_sha" --argjson passed "$local_passed" --argjson failed "$local_failed" '
+          jq -e --arg sha "$input_sha" --arg provider "$PANEL_PROVIDER" --arg model "$PANEL_MODEL" --argjson passed "$local_passed" --argjson failed "$local_failed" '
             ([.reviews[] | select(.role == "panel") | .reviewer] | sort) == ["agent-review-1","agent-review-2","agent-review-3"] and
             ([.reviews[] | select(.role == "panel") | .detail_json | (if type == "string" then fromjson else . end) | .review_input_sha256] | unique) == [$sha] and
-            all(.reviews[] | select(.role == "panel"); (.detail_json | (if type == "string" then fromjson else . end) | .provider == "qwen-token-plan-cn" and .model == "qwen3.8-max-preview")) and
+            all(.reviews[] | select(.role == "panel"); (.detail_json | (if type == "string" then fromjson else . end) | .provider == $provider and .model == $model)) and
             ([.reviews[] | select(.role == "panel" and .verdict == "passed")] | length) == $passed and
             ([.reviews[] | select(.role == "panel" and .verdict == "failed")] | length) == $failed and
             (if $passed >= 2 and .run.human_final_required == 1 then

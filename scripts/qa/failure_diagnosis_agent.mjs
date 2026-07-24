@@ -17,9 +17,14 @@ const arg = (name, fallback = "") => { const i = argv.indexOf(name); return i >=
 const runCaseId = arg("--run-case-id", process.env.STAMP_RUN_CASE_ID || "");
 const stampUrl = (process.env.STAMP_URL || "https://stamp.build").replace(/\/$/, "");
 const stampToken = process.env.STAMP_REVIEW_TOKEN || "";
-const piKey = process.env.QWEN_TOKEN_PLAN_CN_API_KEY || process.env.PI_API_KEY || process.env.MINIMAX_API_KEY || "";
-const providerName = String(process.env.PI_PROVIDER || "qwen-token-plan-cn");
-const modelName = String(process.env.PI_MODEL || "qwen3.8-max-preview");
+const providerName = String(process.env.PI_PROVIDER || "minimax");
+// Key must follow the ACTIVE provider (workflow carries keys for several so a
+// vars flip can switch back without a code change).
+const keyOrder = providerName.startsWith("qwen")
+  ? ["QWEN_TOKEN_PLAN_CN_API_KEY", "PI_API_KEY"]
+  : ["MINIMAX_API_KEY", "PI_API_KEY"];
+const piKey = keyOrder.map((name) => process.env[name] || "").find(Boolean) || "";
+const modelName = String(process.env.PI_MODEL || "MiniMax-M3");
 const ciJobRef = process.env.GITHUB_SERVER_URL && process.env.GITHUB_REPOSITORY && process.env.GITHUB_RUN_ID
   ? `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}` : "";
 const out = arg("--out", "failure-diagnosis.json");

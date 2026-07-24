@@ -18,14 +18,23 @@ const reviewer = arg("--reviewer", process.env.STAMP_REVIEWER || "");
 const outPath = arg("--out", process.env.STAMP_REVIEW_OUT || `panel-review-${reviewer || "unknown"}.json`);
 const stampUrl = (process.env.STAMP_URL || "https://stamp.build").replace(/\/$/, "");
 const stampToken = process.env.STAMP_TOKEN || "";
-const piKey = process.env.QWEN_TOKEN_PLAN_CN_API_KEY || process.env.PI_API_KEY || process.env.MINIMAX_API_KEY || "";
-const providerName = String(process.env.PI_PROVIDER || "qwen-token-plan-cn");
-const modelName = String(process.env.PI_MODEL || "qwen3.8-max-preview");
+const providerName = String(process.env.PI_PROVIDER || "minimax");
+// The workflow carries keys for more than one provider so a vars flip can
+// switch back; the key must follow the ACTIVE provider or auth fails.
+const keyOrder = providerName.startsWith("qwen")
+  ? ["QWEN_TOKEN_PLAN_CN_API_KEY", "PI_API_KEY"]
+  : ["MINIMAX_API_KEY", "PI_API_KEY"];
+const piKey = keyOrder.map((name) => process.env[name] || "").find(Boolean) || "";
+const modelName = String(process.env.PI_MODEL || "MiniMax-M3");
+// Panel run 30102844933: three opaque 600s waits, 0/3 votes. Keep the budget
+// but expose it as a dispatch-time knob so capacity incidents tune it without
+// a code change.
+const modelTimeoutMs = Number(process.env.PI_REVIEW_TIMEOUT_MS || 600000);
 const record = { run_id: runId, reviewer, provider: providerName, model: modelName, stage: "init" };
 
 if (!runId || !reviewer) throw new Error("--run-id and --reviewer are required");
 if (!stampToken) throw new Error("STAMP_TOKEN is required");
-if (!piKey) throw new Error("QWEN_TOKEN_PLAN_CN_API_KEY/PI_API_KEY is required");
+if (!piKey) throw new Error(`an API key for provider ${providerName} is required (${keyOrder.join("/")})`);
 
 function saveRecord(patch = {}) {
   Object.assign(record, patch);
@@ -303,7 +312,7 @@ async function main() {
   let lastError;
   for (let attempt = 1; attempt <= 2; attempt++) {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 600000);
+    const timer = setTimeout(() => controller.abort(), modelTimeoutMs);
     let attemptText = "";
     let attemptResponse;
     try {
@@ -313,7 +322,7 @@ async function main() {
       ];
       attemptResponse = await models.complete(model,
         { messages: [{ role: "user", content: attemptContent, timestamp: Date.now() }] },
-        { apiKey: piKey, maxTokens: 8000, reasoningEffort: "low", signal: controller.signal, timeoutMs: 600000 });
+        { apiKey: piKey, maxTokens: 8000, reasoningEffort: "low", signal: controller.signal, timeoutMs: modelTimeoutMs });
       if (attemptResponse.stopReason === "error" || attemptResponse.stopReason === "aborted") {
         throw new Error(attemptResponse.errorMessage || attemptResponse.stopReason);
       }
