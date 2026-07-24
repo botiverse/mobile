@@ -1233,6 +1233,7 @@
     <string name="app_update_working">Working...</string>
     <string name="app_update_download">Download</string>
     <string name="app_update_downloading">Downloading</string>
+    <string name="app_update_installing">Installing</string>
     <string name="app_update_install">Install</string>
     <string name="app_update_unavailable">Update information is temporarily unavailable.</string>
     <string name="app_update_version_summary">%1$s → %2$s</string>

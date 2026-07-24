@@ -1223,6 +1223,7 @@
     <string name="app_update_working">处理中...</string>
     <string name="app_update_download">下载</string>
     <string name="app_update_downloading">下载中</string>
+    <string name="app_update_installing">安装中</string>
     <string name="app_update_install">安装</string>
     <string name="app_update_unavailable">暂时无法获取更新信息。</string>
     <string name="app_update_version_summary">%1$s → %2$s</string>

@@ -57,6 +57,59 @@ val handsAndroidSdkNativeSymbolsArtifactId = handsAndroidSdkMetadataString("nati
 val handsAndroidSdkAarSha256 = handsAndroidSdkMetadataString("aarSha256")
 val handsAndroidSdkNativeSymbolsSha256 = handsAndroidSdkMetadataString("nativeSymbolsSha256")
 
+val handsAlphaDeltaMetadataFile = layout.projectDirectory.file("../config/hands-alpha-delta.json").asFile
+val handsAlphaDeltaMetadata =
+    (JsonSlurper().parse(handsAlphaDeltaMetadataFile) as? Map<*, *>)
+        ?: throw GradleException("Invalid Hands Alpha delta metadata: $handsAlphaDeltaMetadataFile")
+
+fun handsAlphaDeltaMetadataString(key: String): String =
+    handsAlphaDeltaMetadata[key]
+        ?.toString()
+        ?.trim()
+        ?.takeIf { it.isNotEmpty() }
+        ?: throw GradleException("Hands Alpha delta metadata is missing '$key'")
+
+val handsAlphaDeltaBuildType = handsAlphaDeltaMetadataString("enabledBuildType")
+val handsAlphaDeltaApplicationId = handsAlphaDeltaMetadataString("expectedApplicationId")
+val handsAlphaDeltaAppId = handsAlphaDeltaMetadataString("handsAppId")
+val handsAlphaDeltaAppSlug = handsAlphaDeltaMetadataString("handsAppSlug")
+val handsAlphaDeltaChannelId = handsAlphaDeltaMetadataString("handsChannelId")
+val handsAlphaDeltaChannelSlug = handsAlphaDeltaMetadataString("handsChannelSlug")
+val handsAlphaDeltaDeviceGroupId = handsAlphaDeltaMetadataString("handsDeviceGroupId")
+val handsAlphaDeltaDeviceGroupName = handsAlphaDeltaMetadataString("handsDeviceGroupName")
+val slockAndroidApplicationId = "build.raft.app"
+val handsAlphaDeltaApplicationIdSuffix = ".alpha"
+
+if (handsAlphaDeltaMetadata["schemaVersion"]?.toString() != "1") {
+    throw GradleException("Unsupported Hands Alpha delta metadata schema")
+}
+if (handsAlphaDeltaBuildType != "alpha") {
+    throw GradleException("Hands delta updates must be bound only to the alpha build type")
+}
+if (handsAlphaDeltaApplicationId != "$slockAndroidApplicationId$handsAlphaDeltaApplicationIdSuffix") {
+    throw GradleException(
+        "Hands delta applicationId must be exactly build.raft.app.alpha: $handsAlphaDeltaApplicationId"
+    )
+}
+if (handsAlphaDeltaAppSlug == "raft-android" || handsAlphaDeltaChannelSlug in setOf("main", "debug")) {
+    throw GradleException("Hands Alpha delta must use a dedicated non-production app and channel")
+}
+listOf(
+    "handsAppId" to handsAlphaDeltaAppId,
+    "handsChannelId" to handsAlphaDeltaChannelId,
+    "handsDeviceGroupId" to handsAlphaDeltaDeviceGroupId
+).forEach { (key, value) ->
+    if (!value.matches(Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"))) {
+        throw GradleException("Hands Alpha delta $key must be a lowercase UUID")
+    }
+}
+if (!handsAlphaDeltaAppSlug.matches(Regex("[a-z0-9]+(?:-[a-z0-9]+)*")) ||
+    !handsAlphaDeltaChannelSlug.matches(Regex("[a-z0-9]+(?:-[a-z0-9]+)*")) ||
+    handsAlphaDeltaDeviceGroupName != "Artin test devices"
+) {
+    throw GradleException("Invalid Hands Alpha delta app/channel/device-group binding")
+}
+
 if (handsAndroidSdkMetadata["schemaVersion"]?.toString() != "1") {
     throw GradleException("Unsupported Hands Android SDK metadata schema")
 }
@@ -496,7 +549,7 @@ android {
     testBuildType = "connectedTest"
 
     defaultConfig {
-        applicationId = "build.raft.app"
+        applicationId = slockAndroidApplicationId
         minSdk = 24
         targetSdk = 36
         versionCode = slockAndroidVersionCode
@@ -516,6 +569,9 @@ android {
         buildConfigField("Boolean", "READ_STATE_DIAGNOSTIC_OVERRIDE_ENABLED", "false")
         buildConfigField("Boolean", "QA_SESSION_BOOTSTRAP_ENABLED", "false")
         buildConfigField("Boolean", "SCREENSHOT_FEEDBACK_ENABLED", "false")
+        buildConfigField("Boolean", "HANDS_DELTA_UPDATE_ENABLED", "false")
+        buildConfigField("String", "HANDS_DELTA_APP_SLUG", "\"\"")
+        buildConfigField("String", "HANDS_DELTA_CHANNEL", "\"\"")
         buildConfigField("String", "GOOGLE_SERVER_CLIENT_ID", "\"$googleServerClientId\"")
         buildConfigField("String", "BUILD_TIME", "\"${slockBuildTime()}\"")
         buildConfigField("String", "GIT_COMMIT", "\"${slockGitCommit()}\"")
@@ -532,13 +588,16 @@ android {
         }
         create("alpha") {
             initWith(getByName("debug"))
-            applicationIdSuffix = ".alpha"
+            applicationIdSuffix = handsAlphaDeltaApplicationIdSuffix
             buildConfigField("Boolean", "SHOW_TEST_BUILD_BADGE", "true")
             buildConfigField("Boolean", "PERFORMANCE_TRACE_RING_ENABLED", "true")
             buildConfigField("Boolean", "READ_STATE_DIAGNOSTIC_OVERRIDE_ENABLED", "true")
             buildConfigField("Boolean", "QA_SESSION_BOOTSTRAP_ENABLED", "true")
             buildConfigField("Boolean", "SCREENSHOT_FEEDBACK_ENABLED", "true")
             buildConfigField("String", "QUIVER_CHANNEL", "\"debug\"")
+            buildConfigField("Boolean", "HANDS_DELTA_UPDATE_ENABLED", "true")
+            buildConfigField("String", "HANDS_DELTA_APP_SLUG", "\"$handsAlphaDeltaAppSlug\"")
+            buildConfigField("String", "HANDS_DELTA_CHANNEL", "\"$handsAlphaDeltaChannelSlug\"")
             matchingFallbacks += listOf("debug")
         }
         create("connectedTest") {
