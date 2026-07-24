@@ -86,6 +86,7 @@ jobs:
           ./gradlew \
             :shared:generateSqlDelightInterface \
             :androidApp:assembleAlpha \
+            :androidApp:copyHandsNativeSymbols \
             -PversionSuffix=alpha \
             --no-daemon --max-workers=${{ env.GRADLE_MAX_WORKERS }} --console=plain
 
@@ -185,6 +186,29 @@ jobs:
           echo "legacy_signer_sha256=${LEGACY_SIGNER_SHA256}" >> "$GITHUB_OUTPUT"
           echo "rotated_signer_sha256=${ROTATED_SIGNER_SHA256}" >> "$GITHUB_OUTPUT"
 
+      - name: Verify exact Hands native symbols
+        id: native-symbols
+        shell: bash
+        run: |
+          set -euo pipefail
+          SYMBOLS_DIR="compose/androidApp/build/outputs/hands-native-symbols"
+          if [ ! -d "${SYMBOLS_DIR}" ]; then
+            echo "Hands native symbols output directory was not created" >&2
+            exit 1
+          fi
+          mapfile -t ARCHIVES < <(find "${SYMBOLS_DIR}" -maxdepth 1 -type f -name '*-native-symbols.zip' | sort)
+          if [ "${#ARCHIVES[@]}" -ne 1 ]; then
+            echo "Expected exactly one Hands native symbols classifier, found ${#ARCHIVES[@]}" >&2
+            printf '  %s\n' "${ARCHIVES[@]}" >&2
+            exit 1
+          fi
+          ARCHIVE="${ARCHIVES[0]}"
+          scripts/verify_android_native_symbols.sh \
+            --apk "${{ steps.verify.outputs.apk }}" \
+            --symbols "${ARCHIVE}"
+          echo "archive=${ARCHIVE}" >> "$GITHUB_OUTPUT"
+          echo "sha256=$(sha256sum "${ARCHIVE}" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
       - name: Upload alpha APK
         uses: actions/upload-artifact@v4
         with:
@@ -193,6 +217,14 @@ jobs:
             ${{ steps.verify.outputs.apk }}
             aapt-badging.log
             apksigner-verify.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload exact Hands native symbols
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-alpha-native-symbols-${{ github.event.pull_request.number || github.run_number }}-${{ steps.source.outputs.sha }}
+          path: ${{ steps.native-symbols.outputs.archive }}
           if-no-files-found: error
           retention-days: 7
 
@@ -206,5 +238,6 @@ jobs:
             echo "- API 24-32 signer SHA-256: \`${{ steps.verify.outputs.legacy_signer_sha256 }}\`"
             echo "- API 33+ signer SHA-256: \`${{ steps.verify.outputs.rotated_signer_sha256 }}\`"
             echo "- APK SHA-256: \`${{ steps.verify.outputs.sha256 }}\`"
+            echo "- Hands native symbols SHA-256: \`${{ steps.native-symbols.outputs.sha256 }}\`"
             echo "- Artifact retention: 7 days"
           } >> "$GITHUB_STEP_SUMMARY"
