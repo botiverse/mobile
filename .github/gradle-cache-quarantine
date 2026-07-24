@@ -9,3 +9,4 @@
 # quarantine, not a purge: the poisoned entry itself remains in the backend until eviction.
 # Epoch rotation lives in .github/gradle-cache-epoch (single line, no comments).
 # Operating procedure: docs/ci-gradle-cache-epoch-runbook.md
+dependencies
