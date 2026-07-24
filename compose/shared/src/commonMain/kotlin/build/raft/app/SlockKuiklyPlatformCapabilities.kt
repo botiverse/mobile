@@ -27,6 +27,10 @@ internal expect fun slockPlatformUsesNativeVideoController(): Boolean
 
 internal expect fun slockPlatformSupportsPushPreviewPrivacySetting(): Boolean
 
+// iOS exposes a PhotoKit add-only host capability for sent image attachments. Android/OHOS keep
+// their existing Downloads/Files action and must not show an inert "Save to Photos" entry.
+internal expect fun slockPlatformSupportsSaveImageToPhotos(): Boolean
+
 // task #90: each platform is a separate Quiver app with its own release
 // stream, so the release-notes slug must be injected per platform (like the
 // build version), not hardcoded in commonMain. These MUST stay in sync with

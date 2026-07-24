@@ -464,6 +464,14 @@
     <string name="thread_action_card_error_load_computers">无法加载设备：%1$s</string>
     <string name="thread_image_preview_title">图片预览</string>
     <string name="thread_image_preview_open_with">打开方式…</string>
+    <string name="thread_image_preview_save_to_photos">存储到照片</string>
+    <string name="thread_image_preview_saving_to_photos">正在存储到照片…</string>
+    <string name="thread_image_preview_retry_save_to_photos">重试存储到照片</string>
+    <string name="thread_image_preview_saved_to_photos">已存储到照片</string>
+    <string name="thread_image_preview_photos_permission_denied">请在“设置”中允许访问照片，然后重试。</string>
+    <string name="thread_image_preview_photos_permission_restricted">此设备限制了照片访问。</string>
+    <string name="thread_image_preview_photos_unsupported">此附件不是支持的图片格式。</string>
+    <string name="thread_image_preview_photos_save_failed">无法存储到照片，请重试。</string>
     <string name="thread_image_preview_loading_full">正在加载完整图片…</string>
     <string name="thread_image_preview_unavailable">图片不可用</string>
     <string name="thread_image_preview_loading">正在加载图片…</string>

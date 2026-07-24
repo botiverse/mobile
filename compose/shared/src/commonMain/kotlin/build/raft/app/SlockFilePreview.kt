@@ -123,6 +123,7 @@ import kotlin.time.TimeSource
 internal const val SLOCK_FILE_PREVIEW_PAGE = "compose_file_preview"
 private const val SLOCK_FILE_PREVIEW_EDITOR_VISUAL_PAGE = "compose_file_preview_editor_visual"
 internal const val SLOCK_COMPOSER_IMAGE_EDIT_EVENT = "slock.composerImageEdit"
+private const val SlockFilePreviewSaveToPhotosActionId = "save-to-photos"
 private const val SlockFilePreviewOpenWithActionId = "open-with"
 private const val SlockFilePreviewDeleteDownloadActionId = "delete-download"
 private const val SlockFilePreviewCommentsActionId = "comments"
@@ -134,6 +135,35 @@ private const val SlockFilePreviewVideoSeekProp = "seekToTimeMs"
 private const val SlockFilePreviewImageGalleryMaxInFlightRequests = 2
 
 private val SlockFilePreviewJson = Json { ignoreUnknownKeys = true }
+
+internal enum class SlockFilePreviewPhotosActionState { Hidden, Save, Saving, Retry, Busy }
+
+internal data class SlockFilePreviewExternalOperationIdentity(
+    val source: String,
+    val attachmentId: String,
+    val path: String,
+    val owner: AttachmentOwnerLease
+)
+
+internal fun slockFilePreviewShouldRetireExternalOperation(
+    active: SlockFilePreviewExternalOperationIdentity?,
+    visible: SlockFilePreviewExternalOperationIdentity?
+): Boolean = active != null && active != visible
+
+internal fun slockFilePreviewPhotosActionState(
+    supported: Boolean,
+    eligible: Boolean,
+    operation: String?,
+    status: String
+): SlockFilePreviewPhotosActionState =
+    when {
+        !supported || !eligible -> SlockFilePreviewPhotosActionState.Hidden
+        status in setOf("downloading", "paused") && operation == "save_photos" ->
+            SlockFilePreviewPhotosActionState.Saving
+        status in setOf("downloading", "paused") -> SlockFilePreviewPhotosActionState.Busy
+        status == "failed" && operation == "save_photos" -> SlockFilePreviewPhotosActionState.Retry
+        else -> SlockFilePreviewPhotosActionState.Save
+    }
 
 internal data class SlockFilePreviewVideoSeekRequest(
     val id: Int,
@@ -381,9 +411,14 @@ private fun SlockFilePreviewStandalonePageContent() {
     var downloadStatus by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf("idle") }
     var downloadMessage by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf("") }
     var downloadProgress by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf<BridgeAttachmentDownloadProgress?>(null) }
+    var externalOperation by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf<String?>(null) }
     var activeDownloadId by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf<String?>(null) }
-    var activeAttachmentOperation by remember(payload.source, payload.attachmentId, payload.path) {
+    var activeAttachmentOperation by remember {
         mutableStateOf<AttachmentOperationToken?>(null)
+    }
+    val activeExternalOperationJob = remember { mutableStateOf<Job?>(null) }
+    var activeExternalOperationIdentity by remember {
+        mutableStateOf<SlockFilePreviewExternalOperationIdentity?>(null)
     }
     var nextDownloadGeneration by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf(0L) }
     var activeDownloadStartedAt by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf<TimeMark?>(null) }
@@ -407,17 +442,49 @@ private fun SlockFilePreviewStandalonePageContent() {
     val unableToDeleteDownload = stringResource(MR.strings.file_preview_error_delete_download)
     val imageEditorLoading = stringResource(MR.strings.file_preview_error_editor_loading)
     val imageEditorExportFailed = stringResource(MR.strings.file_preview_error_editor_export)
+    val imageSavedToPhotos = stringResource(MR.strings.thread_image_preview_saved_to_photos)
+    val imagePhotosPermissionDenied = stringResource(MR.strings.thread_image_preview_photos_permission_denied)
+    val imagePhotosPermissionRestricted = stringResource(MR.strings.thread_image_preview_photos_permission_restricted)
+    val imagePhotosUnsupported = stringResource(MR.strings.thread_image_preview_photos_unsupported)
+    val imagePhotosSaveFailed = stringResource(MR.strings.thread_image_preview_photos_save_failed)
     val truncatedPreviewHint = stringResource(MR.strings.file_preview_truncated_open_with_hint)
     val attachmentCacheId = payload.attachmentCacheId()
     val attachmentCacheFileName = payload.attachmentCacheFileName()
-    LaunchedEffect(attachmentOwner?.scopeId, attachmentOwner?.generation) {
-        val token = activeAttachmentOperation
-        if (token != null && attachmentOwner != token.owner) {
+    val visibleExternalOperationIdentity =
+        attachmentOwner?.let { owner ->
+            SlockFilePreviewExternalOperationIdentity(
+                source = payload.source,
+                attachmentId = payload.attachmentId,
+                path = payload.path,
+                owner = owner
+            )
+        }
+    LaunchedEffect(visibleExternalOperationIdentity) {
+        if (
+            slockFilePreviewShouldRetireExternalOperation(
+                active = activeExternalOperationIdentity,
+                visible = visibleExternalOperationIdentity
+            )
+        ) {
+            val retiringJob = activeExternalOperationJob.value
             activeAttachmentOperation = null
+            activeExternalOperationIdentity = null
+            activeExternalOperationJob.value = null
             activeDownloadId = null
             downloadProgress = null
             downloadStatus = "idle"
             downloadMessage = ""
+            externalOperation = null
+            retiringJob?.cancel()
+        }
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            val retiringJob = activeExternalOperationJob.value
+            activeAttachmentOperation = null
+            activeExternalOperationIdentity = null
+            activeExternalOperationJob.value = null
+            retiringJob?.cancel()
         }
     }
     LaunchedEffect(downloadProgress?.downloadId, downloadProgress?.downloadedBytes) {
@@ -678,6 +745,13 @@ private fun SlockFilePreviewStandalonePageContent() {
     }
     val canOpenWith = canOpenPayloadWithExternalViewer(payload)
     val canOpenComments = payload.supportsAttachmentComments()
+    val photosActionState =
+        slockFilePreviewPhotosActionState(
+            supported = slockPlatformSupportsSaveImageToPhotos(),
+            eligible = payload.supportsSaveToPhotos(),
+            operation = externalOperation,
+            status = downloadStatus
+        )
     LaunchedEffect(canOpenWith, attachmentCacheId, attachmentCacheFileName, payload.externalMimeType) {
         attachmentCacheState = false
         if (!canOpenWith) return@LaunchedEffect
@@ -773,7 +847,8 @@ private fun SlockFilePreviewStandalonePageContent() {
     suspend fun savePayloadExternally(
         currentPayload: SlockFilePreviewPayload,
         trackProgress: Boolean,
-        operation: AttachmentOperationToken
+        operation: AttachmentOperationToken,
+        toPhotos: Boolean
     ): String? {
         val externalUrl =
             currentPayload.externalUrl?.takeIf { it.isNotBlank() }
@@ -793,49 +868,68 @@ private fun SlockFilePreviewStandalonePageContent() {
                     binaryDownloadUrlDiagnostics(externalUrl)
             )
         }
-        val result =
-            bridge.saveAttachment(
-                url = externalUrl,
-                attachmentId = currentPayload.attachmentCacheId(),
-                fileName = currentPayload.attachmentCacheFileName(),
-                owner = operation.owner,
-                mimeType = currentPayload.externalMimeType,
-                downloadId = downloadId,
-                onProgress =
-                    if (trackProgress) {
-                        { progress ->
-                            if (!attachmentOperationCommitAllowed(operation, activeAttachmentOperation?.operationId.orEmpty())) {
-                                return@saveAttachment
-                            }
-                            activeDownloadId?.let { expectedDownloadId ->
-                                if (progress.downloadedBytes > 0L && firstBridgeDownloadId != expectedDownloadId) {
-                                    firstBridgeDownloadId = expectedDownloadId
-                                    bridge.log(
-                                        "file_preview_download phase=first_bridge downloadIdHash=${expectedDownloadId.hashCode().toString(16)} " +
-                                            "sequence=${progress.sequence} downloadedBytes=${progress.downloadedBytes} " +
-                                            "elapsedMs=${activeDownloadStartedAt?.elapsedNow()?.inWholeMilliseconds ?: -1L}"
-                                    )
-                                }
-                                downloadProgress =
-                                    reduceAttachmentDownloadProgress(
-                                        current = downloadProgress,
-                                        incoming = progress,
-                                        expectedDownloadId = expectedDownloadId
-                                    )
-                                attachmentCacheAttemptToken = progress.attemptToken.takeIf(String::isNotBlank)
-                                attachmentCacheRecordVersion = progress.recordVersion
-                            }
-                        }
-                    } else {
-                        null
+        val progressCallback: ((BridgeAttachmentDownloadProgress) -> Unit)? =
+            if (trackProgress) {
+                progressCallback@ { progress ->
+                    if (!attachmentOperationCommitAllowed(operation, activeAttachmentOperation?.operationId.orEmpty())) {
+                        return@progressCallback
                     }
-            )
+                    activeDownloadId?.let { expectedDownloadId ->
+                        if (progress.downloadedBytes > 0L && firstBridgeDownloadId != expectedDownloadId) {
+                            firstBridgeDownloadId = expectedDownloadId
+                            bridge.log(
+                                "file_preview_download phase=first_bridge downloadIdHash=${expectedDownloadId.hashCode().toString(16)} " +
+                                    "sequence=${progress.sequence} downloadedBytes=${progress.downloadedBytes} " +
+                                    "elapsedMs=${activeDownloadStartedAt?.elapsedNow()?.inWholeMilliseconds ?: -1L}"
+                            )
+                        }
+                        downloadProgress =
+                            reduceAttachmentDownloadProgress(
+                                current = downloadProgress,
+                                incoming = progress,
+                                expectedDownloadId = expectedDownloadId
+                            )
+                        attachmentCacheAttemptToken = progress.attemptToken.takeIf(String::isNotBlank)
+                        attachmentCacheRecordVersion = progress.recordVersion
+                    }
+                }
+            } else {
+                null
+            }
+        val result =
+            if (toPhotos) {
+                bridge.saveImageToPhotos(
+                    url = externalUrl,
+                    attachmentId = currentPayload.attachmentCacheId(),
+                    fileName = currentPayload.attachmentCacheFileName(),
+                    owner = operation.owner,
+                    mimeType = currentPayload.externalMimeType,
+                    downloadId = downloadId,
+                    onProgress = progressCallback
+                )
+            } else {
+                bridge.saveAttachment(
+                    url = externalUrl,
+                    attachmentId = currentPayload.attachmentCacheId(),
+                    fileName = currentPayload.attachmentCacheFileName(),
+                    owner = operation.owner,
+                    mimeType = currentPayload.externalMimeType,
+                    downloadId = downloadId,
+                    onProgress = progressCallback
+                )
+            }
         if (!attachmentOperationCommitAllowed(operation, activeAttachmentOperation?.operationId.orEmpty())) return null
         return when (result?.optString("status").orEmpty()) {
             "saved" -> {
-                attachmentCacheState = result?.optBoolean("cached", attachmentCacheState) ?: attachmentCacheState
+                if (!toPhotos) {
+                    attachmentCacheState = result?.optBoolean("cached", attachmentCacheState) ?: attachmentCacheState
+                }
                 activeDownloadId = null
-                bridge.toast(result?.optString("message").orEmpty().ifBlank { downloadSaved })
+                bridge.toast(
+                    result?.optString("message").orEmpty().ifBlank {
+                        if (toPhotos) imageSavedToPhotos else downloadSaved
+                    }
+                )
                 null
             }
             "cancelled" -> {
@@ -843,15 +937,24 @@ private fun SlockFilePreviewStandalonePageContent() {
                 downloadStopped
             }
             "storage_failed" -> result?.optString("message").orEmpty().ifBlank { storageUnavailable }
-            else -> result?.optString("message").orEmpty().ifBlank { unableToDownloadAttachment }
+            "permission_denied" -> imagePhotosPermissionDenied
+            "permission_restricted" -> imagePhotosPermissionRestricted
+            "unsupported_image" -> imagePhotosUnsupported
+            "photos_failed" -> imagePhotosSaveFailed
+            else ->
+                result?.optString("message").orEmpty().ifBlank {
+                    if (toPhotos) imagePhotosSaveFailed else unableToDownloadAttachment
+                }
         }
     }
-    fun requestExternalSave() {
+    fun requestExternalSave(toPhotos: Boolean = false) {
         if (!canOpenWith || !slockFilePreviewCanStartExternalOperation(downloadStatus)) return
+        if (toPhotos && !payload.supportsSaveToPhotos()) return
         val owner = attachmentOwner ?: return
         // Saving a cached file still performs a potentially slow MediaStore export. Keep the
         // request observable so cache hits show Saving progress and remain cancellable/bounded.
         val trackProgress = true
+        externalOperation = if (toPhotos) "save_photos" else "save_files"
         downloadMessage = ""
         if (trackProgress) {
             nextDownloadGeneration += 1L
@@ -871,31 +974,44 @@ private fun SlockFilePreviewStandalonePageContent() {
             activeDownloadId = null
             downloadProgress = null
         }
-        coroutineScope.launch {
-            val operation = activeAttachmentOperation ?: return@launch
-            val error = savePayloadExternally(payload, trackProgress, operation)
-            if (!attachmentOperationCommitAllowed(operation, activeAttachmentOperation?.operationId.orEmpty())) return@launch
-            if (error == null) {
-                downloadStatus = "idle"
-                downloadMessage = ""
-                downloadProgress = null
-                activeDownloadId = null
-                activeAttachmentOperation = null
-            } else {
-                downloadStatus = if (error == downloadStopped) "idle" else "failed"
-                downloadMessage = error
-                downloadProgress = null
-                activeDownloadId = null
-                activeAttachmentOperation = null
-                if (error != downloadStopped) {
-                    bridge.toast(error)
+        val operation = activeAttachmentOperation ?: return
+        val requestPayload = payload
+        activeExternalOperationIdentity = visibleExternalOperationIdentity
+        val operationJob =
+            coroutineScope.launch(start = CoroutineStart.LAZY) {
+                try {
+                    val error = savePayloadExternally(requestPayload, trackProgress, operation, toPhotos)
+                    if (!attachmentOperationCommitAllowed(operation, activeAttachmentOperation?.operationId.orEmpty())) return@launch
+                    if (error == null) {
+                        downloadStatus = "idle"
+                        downloadMessage = ""
+                        downloadProgress = null
+                        activeDownloadId = null
+                        activeAttachmentOperation = null
+                    } else {
+                        downloadStatus = if (error == downloadStopped) "idle" else "failed"
+                        downloadMessage = error
+                        downloadProgress = null
+                        activeDownloadId = null
+                        activeAttachmentOperation = null
+                        if (error != downloadStopped) {
+                            bridge.toast(error)
+                        }
+                    }
+                } finally {
+                    if (activeExternalOperationJob.value == currentCoroutineContext()[Job]) {
+                        activeExternalOperationJob.value = null
+                        activeExternalOperationIdentity = null
+                    }
                 }
             }
-        }
+        activeExternalOperationJob.value = operationJob
+        operationJob.start()
     }
     fun requestExternalOpen() {
         if (!canOpenWith || !slockFilePreviewCanStartExternalOperation(downloadStatus)) return
         val owner = attachmentOwner ?: return
+        externalOperation = "open"
         val trackProgress = slockFilePreviewShouldTrackOpenProgress(attachmentCacheState)
         downloadMessage = ""
         nextDownloadGeneration += 1L
@@ -917,25 +1033,37 @@ private fun SlockFilePreviewStandalonePageContent() {
         } else {
             downloadProgress = null
         }
-        coroutineScope.launch {
-            val operation = activeAttachmentOperation ?: return@launch
-            val error = openPayloadExternally(payload, trackProgress, operation)
-            if (!attachmentOperationCommitAllowed(operation, activeAttachmentOperation?.operationId.orEmpty())) return@launch
-            if (error == null) {
-                downloadStatus = "idle"
-                downloadMessage = ""
-                downloadProgress = null
-                activeDownloadId = null
-                activeAttachmentOperation = null
-            } else {
-                downloadStatus = if (error == downloadStopped) "idle" else "failed"
-                downloadMessage = error
-                downloadProgress = null
-                activeDownloadId = null
-                activeAttachmentOperation = null
-                bridge.toast(error)
+        val operation = activeAttachmentOperation ?: return
+        val requestPayload = payload
+        activeExternalOperationIdentity = visibleExternalOperationIdentity
+        val operationJob =
+            coroutineScope.launch(start = CoroutineStart.LAZY) {
+                try {
+                    val error = openPayloadExternally(requestPayload, trackProgress, operation)
+                    if (!attachmentOperationCommitAllowed(operation, activeAttachmentOperation?.operationId.orEmpty())) return@launch
+                    if (error == null) {
+                        downloadStatus = "idle"
+                        downloadMessage = ""
+                        downloadProgress = null
+                        activeDownloadId = null
+                        activeAttachmentOperation = null
+                    } else {
+                        downloadStatus = if (error == downloadStopped) "idle" else "failed"
+                        downloadMessage = error
+                        downloadProgress = null
+                        activeDownloadId = null
+                        activeAttachmentOperation = null
+                        bridge.toast(error)
+                    }
+                } finally {
+                    if (activeExternalOperationJob.value == currentCoroutineContext()[Job]) {
+                        activeExternalOperationJob.value = null
+                        activeExternalOperationIdentity = null
+                    }
+                }
             }
-        }
+        activeExternalOperationJob.value = operationJob
+        operationJob.start()
     }
     fun requestDownloadControl(action: String) {
         val downloadId = activeDownloadId ?: return
@@ -994,9 +1122,15 @@ private fun SlockFilePreviewStandalonePageContent() {
     }
     fun selectImageGalleryIndex(index: Int) {
         payload.withImageGalleryIndex(index, imageGalleryResolutionState.resolvedPayloadByAttachmentId)?.let { nextPayload ->
+            val retiringJob = activeExternalOperationJob.value
+            activeAttachmentOperation = null
+            activeExternalOperationIdentity = null
+            activeExternalOperationJob.value = null
+            retiringJob?.cancel()
             payload = nextPayload
             downloadStatus = "idle"
             downloadMessage = ""
+            externalOperation = null
             downloadProgress = null
             activeDownloadId = null
         }
@@ -1107,6 +1241,32 @@ private fun SlockFilePreviewStandalonePageContent() {
             if (composerImageEditMode) {
                 emptyList()
             } else listOfNotNull(
+                if (photosActionState != SlockFilePreviewPhotosActionState.Hidden) {
+                    SlockRaftUiMenuItem(
+                        id = SlockFilePreviewSaveToPhotosActionId,
+                        label =
+                            stringResource(
+                                when (photosActionState) {
+                                    SlockFilePreviewPhotosActionState.Saving ->
+                                        MR.strings.thread_image_preview_saving_to_photos
+                                    SlockFilePreviewPhotosActionState.Retry ->
+                                        MR.strings.thread_image_preview_retry_save_to_photos
+                                    else -> MR.strings.thread_image_preview_save_to_photos
+                                }
+                            ),
+                        icon =
+                            if (photosActionState == SlockFilePreviewPhotosActionState.Saving) {
+                                SlockLucideIconName.LoaderCircle
+                            } else {
+                                SlockLucideIconName.Save
+                            },
+                        enabled =
+                            photosActionState == SlockFilePreviewPhotosActionState.Save ||
+                                photosActionState == SlockFilePreviewPhotosActionState.Retry
+                    )
+                } else {
+                    null
+                },
                 if (canOpenComments) {
                     SlockRaftUiMenuItem(
                         id = SlockFilePreviewCommentsActionId,
@@ -1120,7 +1280,8 @@ private fun SlockFilePreviewStandalonePageContent() {
                     SlockRaftUiMenuItem(
                         id = SlockFilePreviewOpenWithActionId,
                         label = slockFilePreviewOverflowActionLabel(payload, attachmentCacheState, actionTerms),
-                        icon = SlockLucideIconName.ExternalLink
+                        icon = SlockLucideIconName.ExternalLink,
+                        enabled = slockFilePreviewCanStartExternalOperation(downloadStatus)
                     )
                 } else {
                     null
@@ -1137,6 +1298,7 @@ private fun SlockFilePreviewStandalonePageContent() {
             ),
         onOverflowMenuSelect = { id ->
             when (id) {
+                SlockFilePreviewSaveToPhotosActionId -> requestExternalSave(toPhotos = true)
                 SlockFilePreviewCommentsActionId -> openAttachmentComments()
                 SlockFilePreviewOpenWithActionId -> requestExternalOpen()
                 SlockFilePreviewDeleteDownloadActionId -> requestDeleteDownload()
@@ -1172,7 +1334,7 @@ private fun SlockFilePreviewStandalonePageContent() {
                     onDownload =
                         if (canOpenWith) {
                             when (slockFilePreviewPrimaryAction(attachmentCacheState)) {
-                                SlockFilePreviewPrimaryAction.Save -> ::requestExternalSave
+                                SlockFilePreviewPrimaryAction.Save -> ({ requestExternalSave() })
                                 SlockFilePreviewPrimaryAction.Open -> ::requestExternalOpen
                             }
                         } else {
@@ -2801,6 +2963,11 @@ internal fun SlockFilePreviewPayload.supportsAttachmentComments(): Boolean =
         attachmentId.isNotBlank() &&
         attachmentCommentsEnabled &&
         !slockFilePreviewIsMp4VideoAttachment(externalFileName, externalMimeType)
+
+private fun SlockFilePreviewPayload.supportsSaveToPhotos(): Boolean =
+    source == SlockFilePreviewSourceThreadAttachment &&
+        attachmentId.isNotBlank() &&
+        (requestedKind == "image" || kind == "image")
 
 internal fun agentWorkspaceLazyPreviewPayload(agentId: String, path: String): SlockFilePreviewPayload =
     SlockFilePreviewPayload(
