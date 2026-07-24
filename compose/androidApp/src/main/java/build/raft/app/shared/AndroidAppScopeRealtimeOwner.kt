@@ -1,10 +1,13 @@
 package build.raft.app.shared
 
+import android.app.Activity
+import android.app.Application
 import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
+import android.os.Bundle
 import build.raft.app.core.data.auth.AndroidAuthApiFactory
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
 import build.raft.app.core.data.diagnostics.SlockAppLog
@@ -29,6 +32,7 @@ import build.raft.app.data.realtime.realtimeRuntimeCursorAdvanceDecision
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.Message
 import build.raft.app.model.ServerId
+import build.raft.app.network.updateSlockProcessNetworkVisibility
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -57,7 +61,16 @@ internal object AndroidAppScopeRealtimeOwner {
     private var lastHiddenAtMillis: Long? = null
     private var backgroundKeepAliveEnabled = false
     private var networkCallbackInstalled = false
+    private var processLifecycleInstalled = false
     private var hostNetworkOnline: Boolean? = null
+    private val processVisibilityTracker =
+        AndroidProcessVisibilityTracker { foreground ->
+            val retired = updateSlockProcessNetworkVisibility(foreground)
+            SlockAppLog.d(
+                LOG_TAG,
+                "app_scope_network_lifecycle foreground=$foreground retiredRequests=$retired"
+            )
+        }
 
     fun onHostVisibilityChanged(
         context: Context,
@@ -84,6 +97,7 @@ internal object AndroidAppScopeRealtimeOwner {
 
     fun install(context: Context) {
         val appContext = context.applicationContext
+        installProcessLifecycle(appContext)
         if (networkCallbackInstalled) return
         val connectivityManager =
             appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
@@ -118,6 +132,36 @@ internal object AndroidAppScopeRealtimeOwner {
                     "app_scope_lifecycle event=network_callback_install_failed message=${error.message.orEmpty()}"
                 )
             }
+        }
+    }
+
+    private fun installProcessLifecycle(context: Context) {
+        val application = context as? Application ?: return
+        synchronized(this) {
+            if (processLifecycleInstalled) return
+            application.registerActivityLifecycleCallbacks(
+                object : Application.ActivityLifecycleCallbacks {
+                    override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
+
+                    override fun onActivityStarted(activity: Activity) {
+                        processVisibilityTracker.onActivityStarted()
+                    }
+
+                    override fun onActivityResumed(activity: Activity) = Unit
+
+                    override fun onActivityPaused(activity: Activity) = Unit
+
+                    override fun onActivityStopped(activity: Activity) {
+                        processVisibilityTracker.onActivityStopped(activity.isChangingConfigurations)
+                    }
+
+                    override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
+
+                    override fun onActivityDestroyed(activity: Activity) = Unit
+                }
+            )
+            processLifecycleInstalled = true
+            SlockAppLog.d(LOG_TAG, "app_scope_lifecycle event=process_lifecycle_installed")
         }
     }
 
@@ -1011,6 +1055,32 @@ internal fun applyAndroidHostVisibilityTransition(
         AndroidHostVisibility.Hidden -> {
             publishVisibility()
             applyRuntimeVisibility()
+        }
+    }
+}
+
+/** Started-activity accounting is process visibility, not a page/pager lifecycle signal. */
+internal class AndroidProcessVisibilityTracker(
+    private val onVisibilityChanged: (foreground: Boolean) -> Unit
+) {
+    private var startedActivityCount = 0
+    private var foreground = false
+
+    @Synchronized
+    fun onActivityStarted() {
+        startedActivityCount += 1
+        if (!foreground) {
+            foreground = true
+            onVisibilityChanged(true)
+        }
+    }
+
+    @Synchronized
+    fun onActivityStopped(changingConfigurations: Boolean) {
+        if (startedActivityCount > 0) startedActivityCount -= 1
+        if (startedActivityCount == 0 && foreground && !changingConfigurations) {
+            foreground = false
+            onVisibilityChanged(false)
         }
     }
 }

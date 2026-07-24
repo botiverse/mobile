@@ -568,7 +568,9 @@ internal class SharedThreadPayloadStore(
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob()),
     maxConcurrentPrewarms: Int = SharedThreadPrewarmMaxConcurrency,
     private val prewarmStartIntervalMillis: Long = SharedThreadPrewarmStartIntervalMillis,
-    internal val freshnessLedger: SharedThreadFreshnessLedger = SharedThreadFreshnessLedger()
+    internal val freshnessLedger: SharedThreadFreshnessLedger = SharedThreadFreshnessLedger(),
+    private val replyThreadAccessFlights: SharedReplyThreadAccessFlightStore<ThreadSnapshot> =
+        SharedReplyThreadAccessFlightStore(scope)
 ) {
     private val payloads = MutableStateFlow<Map<SharedThreadPayloadCacheKey, SharedThreadPayloadEntry>>(emptyMap())
     private val prewarmMutex = Mutex()
@@ -593,6 +595,20 @@ internal class SharedThreadPayloadStore(
     private val failedPrewarmTakeoverResultGenerations =
         mutableMapOf<SharedThreadPayloadCacheKey, SharedThreadFreshnessGeneration>()
     private var lastPrewarmStartedAt: TimeMark? = null
+
+    suspend fun joinOrStartReplyThreadAccessFlight(
+        key: SharedReplyThreadAccessFlightKey,
+        replaceFailure: Boolean = false,
+        fetch: suspend () -> DataResult<ThreadSnapshot>
+    ): DataResult<ThreadSnapshot> =
+        replyThreadAccessFlights.joinOrStart(key, replaceFailure, fetch)
+
+    suspend fun replyThreadAccessFailure(key: SharedReplyThreadAccessFlightKey): ScreenError? =
+        replyThreadAccessFlights.failure(key)
+
+    suspend fun clearReplyThreadAccessFailure(key: SharedReplyThreadAccessFlightKey) {
+        replyThreadAccessFlights.clearFailure(key)
+    }
 
     fun get(serverId: String, threadId: String, principalId: String = ""): KuiklyThreadScreenPayload? {
         val generation = freshnessLedger.capture(serverId, threadId)
@@ -1197,6 +1213,50 @@ internal class SharedThreadDataSource(
     fun cachedPayload(threadId: String): KuiklyThreadScreenPayload? =
         payloadCache.get(cacheServerId.value, threadId, cachePrincipalId.value)
 
+    suspend fun rememberedReplyThreadAccessFailure(
+        basePayload: KuiklyThreadScreenPayload
+    ): ScreenError? {
+        val session = readSession() ?: return null
+        val key = replyThreadAccessFlightKey(session, basePayload) ?: return null
+        return payloadCache.replyThreadAccessFailure(key)
+    }
+
+    suspend fun clearRememberedReplyThreadAccessFailure(
+        basePayload: KuiklyThreadScreenPayload
+    ) {
+        val session = readSession() ?: return
+        val key = replyThreadAccessFlightKey(session, basePayload) ?: return
+        payloadCache.clearReplyThreadAccessFailure(key)
+    }
+
+    private fun replyThreadAccessFlightKey(
+        session: StoredAuthSession,
+        basePayload: KuiklyThreadScreenPayload
+    ): SharedReplyThreadAccessFlightKey? {
+        if (basePayload.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread) return null
+        val parentChannelId = basePayload.parentChannelId?.takeIf { it.isNotBlank() } ?: return null
+        val parentMessageId =
+            basePayload.parentMessageId?.takeIf { it.isNotBlank() }
+                ?: basePayload.originParentMessageId?.takeIf { it.isNotBlank() }
+                ?: return null
+        return sharedReplyThreadAccessFlightKey(
+            environmentId = cacheEnvironmentId.value,
+            principalId = session.user.id,
+            serverId = cacheServerId.value,
+            authBinding = session.accessToken,
+            parentChannelId = parentChannelId,
+            parentMessageId = parentMessageId
+        )
+    }
+
+    private suspend fun replyThreadAccessAuthorityStillCurrent(
+        expected: SharedReplyThreadAccessFlightKey,
+        basePayload: KuiklyThreadScreenPayload
+    ): Boolean {
+        val currentSession = readSession() ?: return false
+        return replyThreadAccessFlightKey(currentSession, basePayload) == expected
+    }
+
     // Reserved for UNRECOVERABLE scenarios only (task #562 boundary):
     // permission/visibility loss, epoch/server switches, identity proof
     // failures. Ordinary realtime traffic warms the cache with the live
@@ -1789,20 +1849,23 @@ internal class SharedThreadDataSource(
     suspend fun fetchThreadPayload(
         basePayload: KuiklyThreadScreenPayload,
         persistResult: Boolean = true,
-        reusePrewarm: Boolean = false
+        reusePrewarm: Boolean = false,
+        replaceReplyAccessFailure: Boolean = false
     ): DataResult<KuiklyThreadScreenPayload> =
         fetchThreadPayloadWithResolutionScope(
             basePayload = basePayload,
             persistResult = persistResult,
             reusePrewarm = reusePrewarm,
-            replyResolutionScope = null
+            replyResolutionScope = null,
+            replaceReplyAccessFailure = replaceReplyAccessFailure
         )
 
     private suspend fun fetchThreadPayloadWithResolutionScope(
         basePayload: KuiklyThreadScreenPayload,
         persistResult: Boolean,
         reusePrewarm: Boolean,
-        replyResolutionScope: ReplyResolutionScope?
+        replyResolutionScope: ReplyResolutionScope?,
+        replaceReplyAccessFailure: Boolean = false
     ): DataResult<KuiklyThreadScreenPayload> {
         val session =
             readSession()
@@ -1853,7 +1916,8 @@ internal class SharedThreadDataSource(
                 if (shouldFetchReplyByParent) {
                     fetchInitialReplyThreadPayloadFromRepository(
                         session = session,
-                        basePayload = resolvedBasePayload
+                        basePayload = resolvedBasePayload,
+                        replaceReplyAccessFailure = replaceReplyAccessFailure
                     )
                 } else {
                     val resolvedThreadId =
@@ -3236,7 +3300,8 @@ internal class SharedThreadDataSource(
         session: StoredAuthSession,
         basePayload: KuiklyThreadScreenPayload,
         includeFollowedSummaries: Boolean = false,
-        requestPriority: DataRequestPriority = DataRequestPriority.Foreground
+        requestPriority: DataRequestPriority = DataRequestPriority.Foreground,
+        replaceReplyAccessFailure: Boolean = false
     ): DataResult<KuiklyThreadScreenPayload> = coroutineScope {
         val parentChannelId = basePayload.parentChannelId?.takeIf { it.isNotBlank() }
             ?: return@coroutineScope DataResult.Error(ScreenError(code = "thread_parent_channel_missing", retryable = false))
@@ -3268,19 +3333,49 @@ internal class SharedThreadDataSource(
                     requestPriority = requestPriority
                 )
             }
-        val initialResult =
-            fetchThreadSnapshotFromRepository("thread_network_reply") { repository ->
-                val pageSize = threadPageSize(session.currentServerId)
-                diagnosticsLogger(
-                    "thread_page_size source=initial_reply server=${session.currentServerId.orEmpty()} " +
-                        "pageSize=$pageSize"
+        val accessFlightKey = replyThreadAccessFlightKey(session, basePayload)
+        suspend fun fetchInitialSnapshot(): DataResult<ThreadSnapshot> {
+            if (
+                accessFlightKey != null &&
+                !replyThreadAccessAuthorityStillCurrent(accessFlightKey, basePayload)
+            ) {
+                return DataResult.Error(
+                    ScreenError(code = "thread_reply_access_authority_changed", retryable = true)
                 )
-                repository.getReplyThread(
-                    parentChannelId = ChannelId(parentChannelId),
-                    parentMessageId = MessageId(parentMessageId),
-                    includeFollowedSummaries = includeFollowedSummaries,
-                    limit = pageSize,
-                    priority = requestPriority
+            }
+            val result =
+                fetchThreadSnapshotFromRepository("thread_network_reply") { repository ->
+                    val pageSize = threadPageSize(session.currentServerId)
+                    diagnosticsLogger(
+                        "thread_page_size source=initial_reply server=${session.currentServerId.orEmpty()} " +
+                            "pageSize=$pageSize"
+                    )
+                    repository.getReplyThread(
+                        parentChannelId = ChannelId(parentChannelId),
+                        parentMessageId = MessageId(parentMessageId),
+                        includeFollowedSummaries = includeFollowedSummaries,
+                        limit = pageSize,
+                        priority = requestPriority
+                    )
+                }
+            if (
+                accessFlightKey != null &&
+                !replyThreadAccessAuthorityStillCurrent(accessFlightKey, basePayload)
+            ) {
+                return DataResult.Error(
+                    ScreenError(code = "thread_reply_access_authority_changed", retryable = true)
+                )
+            }
+            return result
+        }
+        val initialResult =
+            if (accessFlightKey == null) {
+                fetchInitialSnapshot()
+            } else {
+                payloadCache.joinOrStartReplyThreadAccessFlight(
+                    key = accessFlightKey,
+                    replaceFailure = replaceReplyAccessFailure,
+                    fetch = ::fetchInitialSnapshot
                 )
             }
         return@coroutineScope when (initialResult) {
@@ -4102,7 +4197,12 @@ internal class SharedThreadStore(
         when (intent) {
             is SharedThreadIntent.Start -> start(intent.payload)
             is SharedThreadIntent.ApplyRouteIntent -> applyRouteIntent(intent.payload)
-            SharedThreadIntent.Refresh -> refresh(lastRoutePayload ?: _state.value.payload, advanceRouteStaleToken())
+            SharedThreadIntent.Refresh ->
+                refresh(
+                    lastRoutePayload ?: _state.value.payload,
+                    advanceRouteStaleToken(),
+                    explicitRetry = true
+                )
             SharedThreadIntent.RetryAccessResolution -> retryAccessResolution()
             is SharedThreadIntent.AppendSentPage -> appendSentPage(intent.page)
             is SharedThreadIntent.ApplyLocalSendStarted -> applyLocalSendStarted(intent.message)
@@ -4190,6 +4290,8 @@ internal class SharedThreadStore(
             dataSource
                 .withCachedReplyParentCandidate(routeCandidatePayload)
                 .withoutTransientLocalSendingMessages()
+        val rememberedAccessFailure =
+            dataSource.rememberedReplyThreadAccessFailure(routeContextPayload)
         val staleToken = advanceRouteStaleToken()
         lastRoutePayload = routeContextPayload
         firstContentReadyRouteKey = null
@@ -4216,13 +4318,16 @@ internal class SharedThreadStore(
                 routeContextPayload.originDiagnostics()
         )
         val visiblePayload =
-            cached
+            (cached
                 ?: current
                 ?: if (threadId == null) {
                     routeContextPayload
                 } else {
                     routeContextPayload.copy(status = "loading", errorCode = null)
-                }
+                }).let { candidate ->
+                rememberedAccessFailure?.let { failure -> candidate.asRefreshFailed(failure.code) }
+                    ?: candidate
+            }
         diagnosticsLogger?.invoke(
             "thread_visible_payload threadId=${threadId.orEmpty()} status=${visiblePayload.status} " +
                 "messages=${visiblePayload.messages.size} " + visiblePayload.originDiagnostics()
@@ -4232,7 +4337,12 @@ internal class SharedThreadStore(
                 SharedThreadState(
                     payload = visiblePayload,
                     highlightedMentions = emptySet(),
-                    accessResolution = ThreadAccessResolution.Loading,
+                    accessResolution =
+                        if (rememberedAccessFailure == null) {
+                            ThreadAccessResolution.Loading
+                        } else {
+                            ThreadAccessResolution.Error
+                        },
                     canonicalAccessResolved = false,
                     initialHomeAccessLookupComplete = false,
                     initialHomeAccessCandidate = null
@@ -4245,6 +4355,13 @@ internal class SharedThreadStore(
             (threadId == null || _state.value.payload.sourceThreadId == threadId)
         ) {
             reduceState(_state.value.copy(highlightedMentions = session.threadSelfMentionNames()))
+        }
+        if (rememberedAccessFailure != null) {
+            diagnosticsLogger?.invoke(
+                "thread_start_access_failure_reused route=${routeIdentity.instanceKey} " +
+                    "code=${rememberedAccessFailure.code}"
+            )
+            return
         }
         refresh(routeContextPayload, staleToken, reusePrewarm = true)
     }
@@ -4277,9 +4394,13 @@ internal class SharedThreadStore(
     private suspend fun refresh(
         basePayload: KuiklyThreadScreenPayload,
         staleToken: MviStaleToken = routeStaleToken,
-        reusePrewarm: Boolean = false
+        reusePrewarm: Boolean = false,
+        explicitRetry: Boolean = false
     ) {
         val refreshStartedAt = TimeSource.Monotonic.markNow()
+        if (explicitRetry) {
+            dataSource.clearRememberedReplyThreadAccessFailure(basePayload)
+        }
         var refreshStartState = _state.value
         val resolvingInitialAccessAtStart =
             refreshStartState.accessResolution != ThreadAccessResolution.Resolved
@@ -4332,7 +4453,8 @@ internal class SharedThreadStore(
             dataSource.fetchThreadPayload(
                 basePayload = basePayload,
                 persistResult = true,
-                reusePrewarm = reusePrewarm
+                reusePrewarm = reusePrewarm,
+                replaceReplyAccessFailure = explicitRetry
             )
         val latest = _state.value.payload
         if (

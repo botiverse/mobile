@@ -2300,10 +2300,13 @@ private fun ThreadPageScreen(pageVisibleTick: Int = 0) {
                 logger = { message -> bridge.log("thread_$message") }
             )
         }
+    val selectedServerStore =
+        remember(sharedStores, storeScope) { sharedStores.selectedServerStore(storeScope) }
     val dataSource =
         remember(
             networkClient,
             authStore,
+            selectedServerStore,
             memberRepository,
             serverMembersStore,
             channelRepository,
@@ -2314,13 +2317,14 @@ private fun ThreadPageScreen(pageVisibleTick: Int = 0) {
             SharedThreadDataSource(
                 networkApi = NetworkSlockThreadApi(networkClient),
                 sessionStore = authStore,
-                selectedServerStore = sharedStores.selectedServerStore(storeScope),
+                selectedServerStore = selectedServerStore,
                 memberRepository = memberRepository,
                 serverMembersStore = serverMembersStore,
                 conversationRepository =
                     RealConversationRepository(
                         sessionStore = authStore,
                         networkClient = networkClient,
+                        routeServerIdProvider = { selectedServerStore.selectedServerId.value },
                         warningLogger = { message -> bridge.log("thread_conversation_repository $message") }
                     ),
                 channelRepository = channelRepository,
@@ -2336,6 +2340,9 @@ private fun ThreadPageScreen(pageVisibleTick: Int = 0) {
                 },
                 messageStore = sharedStores.threadMessageStore,
                 payloadStore = sharedStores.threadPayloadStore,
+                cacheEnvironmentIdProvider = {
+                    sharedStores.apiEnvironmentStore.current().apiBaseUrl
+                },
                 agentsApiClient = SlockAgentsApiClient(
                     transport = SlockAgentsNetworkApi(networkClient),
                     diagnosticsLogger = { message -> bridge.log("thread_agents_api $message") }
