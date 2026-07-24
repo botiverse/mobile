@@ -4190,8 +4190,7 @@ internal fun SlockAppShellContent(
         settingsViewModel,
         realtimeCallbackGate,
     ) {
-        val callbackRef =
-            realtimeEvents.addListener { rawEventData ->
+        val onRealtimeEvent: (JSONObject) -> Unit = { rawEventData ->
                 val eventDataSnapshot = rawEventData.toString()
                 val appearanceGenerationAtDelivery = latestVisibleAppearanceGeneration
                 appShellCoroutineScope.launch {
@@ -4424,7 +4423,16 @@ internal fun SlockAppShellContent(
                     }
                 }
             }
-        onDispose { realtimeEvents.removeListener(callbackRef) }
+        val callbackRef = realtimeEvents.addListener(onRealtimeEvent)
+        // task #354: the canonical AppShell ingest also consumes the Android
+        // raw-ingest topic — large raw server events are routed only there so
+        // they are decoded exactly once. Other platforms never publish on it,
+        // and page surfaces must not subscribe to it.
+        val rawIngestRef = realtimeEvents.addRawIngestListener(onRealtimeEvent)
+        onDispose {
+            realtimeEvents.removeListener(callbackRef)
+            realtimeEvents.removeListener(rawIngestRef)
+        }
     }
 
     val showAppShellBottomTabs =

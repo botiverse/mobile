@@ -94,6 +94,7 @@ import build.raft.app.core.data.storage.StorageManagementRepository
 import build.raft.app.core.data.storage.StorageManagementSnapshot
 import build.raft.app.widget.SlockActivityWidgetProvider
 import build.raft.app.widget.SlockAgentStatusWidgetProvider
+import build.raft.app.data.SlockInProcessNotifyModule
 import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.SLOCK_APP_UPDATE_EVENT
@@ -959,6 +960,12 @@ open class SlockKuiklyActivity :
         super.registerExternalModule(kuiklyRenderExport)
         kuiklyRenderExport.moduleExport(SlockKuiklyBridgeModule.MODULE_NAME) {
             SlockKuiklyBridgeModule(applicationContext)
+        }
+        // task #354: replace the built-in KRNotifyModule (external module
+        // registration is last-wins) so notify events travel in-process via
+        // SlockKuiklyEventHub instead of a Binder-limited system broadcast.
+        kuiklyRenderExport.moduleExport(SlockInProcessNotifyModule.MODULE_NAME) {
+            SlockInProcessNotifyModule()
         }
     }
 
