@@ -464,6 +464,14 @@
     <string name="thread_action_card_error_load_computers">Failed to load computers: %1$s</string>
     <string name="thread_image_preview_title">Image preview</string>
     <string name="thread_image_preview_open_with">Open with…</string>
+    <string name="thread_image_preview_save_to_photos">Save to Photos</string>
+    <string name="thread_image_preview_saving_to_photos">Saving to Photos…</string>
+    <string name="thread_image_preview_retry_save_to_photos">Retry Save to Photos</string>
+    <string name="thread_image_preview_saved_to_photos">Saved to Photos</string>
+    <string name="thread_image_preview_photos_permission_denied">Allow Photos access in Settings, then try again.</string>
+    <string name="thread_image_preview_photos_permission_restricted">Photos access is restricted on this device.</string>
+    <string name="thread_image_preview_photos_unsupported">This attachment is not a supported image.</string>
+    <string name="thread_image_preview_photos_save_failed">Couldn’t save this image to Photos. Try again.</string>
     <string name="thread_image_preview_loading_full">Loading full image…</string>
     <string name="thread_image_preview_unavailable">Image unavailable</string>
     <string name="thread_image_preview_loading">Loading image…</string>

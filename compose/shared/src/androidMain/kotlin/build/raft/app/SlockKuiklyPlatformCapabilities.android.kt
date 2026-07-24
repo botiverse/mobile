@@ -16,6 +16,8 @@ internal actual fun slockPlatformUsesNativeVideoController(): Boolean = true
 
 internal actual fun slockPlatformSupportsPushPreviewPrivacySetting(): Boolean = false
 
+internal actual fun slockPlatformSupportsSaveImageToPhotos(): Boolean = false
+
 internal actual fun slockReleaseNotesAppSlug(): String = "raft-android"
 
 // Android's core-render-android draws the chip and char-wraps natively.

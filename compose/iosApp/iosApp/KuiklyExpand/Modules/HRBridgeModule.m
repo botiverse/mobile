@@ -3,6 +3,7 @@
 
 #import "KuiklyRenderViewController.h"
 #import <Hands/Hands.h>
+#import <ImageIO/ImageIO.h>
 #import <shared/shared.h>
 #import "iosApp-Swift.h"
 #import <MMKV/MMKV.h>
@@ -31,6 +32,8 @@
 #endif
 
 static NSString *const SlockBridgeDefaultLogTag = @"SlockKuikly";
+static NSString *const SlockAttachmentExportDestinationFiles = @"files";
+static NSString *const SlockAttachmentExportDestinationPhotos = @"photos";
 static NSString *const SlockBridgeReplaceCurrentPageKey = @"slockReplaceCurrentPage";
 static NSString *const SlockDiagnosticsLogDirName = @"raft_diagnostics_logs";
 static NSString *const SlockDiagnosticsLogFileName = @"raft-diagnostics.jsonl";
@@ -1894,14 +1897,21 @@ static NSString *SlockPickedAttachmentDisplayName(NSString *suggestedName,
 
 @property(nonatomic, copy, nullable) KuiklyRenderCallback slock_attachmentExportCallback;
 @property(nonatomic, copy, nullable) NSString *slock_attachmentExportRequestId;
+@property(nonatomic, copy, nullable) NSString *slock_attachmentExportDownloadId;
 @property(nonatomic, strong, nullable) NSURL *slock_attachmentExportURL;
 @property(nonatomic, copy, nullable) NSString *slock_attachmentExportFileName;
 @property(nonatomic, strong, nullable) NSNumber *slock_attachmentExportSizeBytes;
 @property(nonatomic) BOOL slock_attachmentExportTrackProgress;
+@property(nonatomic, copy, nullable) NSString *slock_attachmentExportDestination;
+@property(nonatomic, copy, nullable) NSString *slock_attachmentExportMimeType;
+@property(nonatomic, copy, nullable) NSString *slock_attachmentExportPermissionStatus;
 @property(nonatomic, copy, nullable) KuiklyRenderCallback slock_attachmentPickerCallback;
 @property(nonatomic, copy, nullable) NSString *slock_attachmentPickerChannelId;
 
 - (void)slock_finishAttachmentExport:(NSDictionary *)result;
+- (void)slock_startAttachmentExport:(NSDictionary *)args destination:(NSString *)destination;
+- (void)slock_beginAttachmentExportDownloadWithParams:(NSDictionary *)params;
+- (void)slock_saveAttachmentExportToPhotos;
 - (void)slock_finishAttachmentPicker:(NSDictionary *)result;
 - (void)slock_presentPhotoPicker;
 - (void)slock_presentDocumentPicker;
@@ -2240,6 +2250,30 @@ static NSString *SlockPickedAttachmentDisplayName(NSString *suggestedName,
 }
 
 - (void)saveAttachment:(NSDictionary *)args {
+    [self slock_startAttachmentExport:args destination:SlockAttachmentExportDestinationFiles];
+}
+
+- (void)saveImageToPhotos:(NSDictionary *)args {
+    [self slock_startAttachmentExport:args destination:SlockAttachmentExportDestinationPhotos];
+}
+
+- (void)cancelAttachmentExport:(NSDictionary *)args {
+    NSDictionary *params = SlockBridgeParams(args);
+    NSString *downloadId = SlockBridgeString(params[@"downloadId"]);
+    if (!self.slock_attachmentExportCallback || downloadId.length == 0 ||
+        ![self.slock_attachmentExportDownloadId isEqualToString:downloadId]) {
+        return;
+    }
+    NSString *attemptToken = [self.slock_attachmentExportRequestId isEqualToString:@"pending"]
+        ? @""
+        : (self.slock_attachmentExportRequestId ?: @"");
+    [SharedAttachmentDownloadCoordinator.shared controlDownloadId:downloadId
+                                              expectedAttemptToken:attemptToken
+                                                            action:@"cancel"];
+    [self slock_finishAttachmentExport:@{ @"status" : @"cancelled" }];
+}
+
+- (void)slock_startAttachmentExport:(NSDictionary *)args destination:(NSString *)destination {
     KuiklyRenderCallback callback = args[KR_CALLBACK_KEY];
     if (!callback) {
         return;
@@ -2262,13 +2296,97 @@ static NSString *SlockPickedAttachmentDisplayName(NSString *suggestedName,
         return;
     }
     NSString *fileName = SlockAttachmentExportFileName(SlockBridgeString(params[@"fileName"]));
+    NSString *mimeType = [SlockBridgeString(params[@"mimeType"]) lowercaseString];
+    BOOL genericBinaryMime =
+        [mimeType isEqualToString:@"application/octet-stream"] || [mimeType isEqualToString:@"binary/octet-stream"];
+    BOOL savesToPhotos = [destination isEqualToString:SlockAttachmentExportDestinationPhotos];
+    if (savesToPhotos && mimeType.length > 0 && !genericBinaryMime && ![mimeType hasPrefix:@"image/"]) {
+        callback(@{
+            @"status" : @"unsupported_image",
+            @"message" : @"This attachment is not a supported image.",
+            @"retryable" : @NO
+        });
+        return;
+    }
+    if (savesToPhotos && fileName.pathExtension.length > 0) {
+        UTType *extensionType = [UTType typeWithFilenameExtension:fileName.pathExtension];
+        if (extensionType && ![extensionType conformsToType:UTTypeImage]) {
+            callback(@{
+                @"status" : @"unsupported_image",
+                @"message" : @"This attachment is not a supported image.",
+                @"retryable" : @NO
+            });
+            return;
+        }
+    }
+    self.slock_attachmentExportCallback = callback;
+    self.slock_attachmentExportDownloadId = SlockBridgeString(params[@"downloadId"]);
+    self.slock_attachmentExportDestination = destination;
+    self.slock_attachmentExportMimeType = genericBinaryMime ? @"" : mimeType;
+    self.slock_attachmentExportFileName = fileName;
+    self.slock_attachmentExportTrackProgress = SlockBridgeBool(params[@"trackProgress"]);
+
+    if (!savesToPhotos) {
+        [self slock_beginAttachmentExportDownloadWithParams:params];
+        return;
+    }
+
+    PHAuthorizationStatus status = [PHPhotoLibrary authorizationStatusForAccessLevel:PHAccessLevelAddOnly];
+    if (status == PHAuthorizationStatusAuthorized || status == PHAuthorizationStatusLimited) {
+        self.slock_attachmentExportPermissionStatus =
+            status == PHAuthorizationStatusLimited ? @"limited" : @"authorized";
+        [self slock_beginAttachmentExportDownloadWithParams:params];
+        return;
+    }
+    if (status == PHAuthorizationStatusDenied || status == PHAuthorizationStatusRestricted) {
+        [self slock_finishAttachmentExport:@{
+            @"status" : status == PHAuthorizationStatusRestricted ? @"permission_restricted" : @"permission_denied",
+            @"permissionStatus" : status == PHAuthorizationStatusRestricted ? @"restricted" : @"denied",
+            @"message" : status == PHAuthorizationStatusRestricted
+                ? @"Photos access is restricted on this device."
+                : @"Allow Photos access in Settings, then try again.",
+            @"retryable" : @(status == PHAuthorizationStatusDenied)
+        }];
+        return;
+    }
+
+    __weak typeof(self) weakSelf = self;
+    NSDictionary *capturedParams = [params copy];
+    NSString *capturedDownloadId = self.slock_attachmentExportDownloadId ?: @"";
+    [PHPhotoLibrary requestAuthorizationForAccessLevel:PHAccessLevelAddOnly handler:^(PHAuthorizationStatus authorizationStatus) {
+        SlockBridgeRunOnMain(^{
+            __strong typeof(weakSelf) strongSelf = weakSelf;
+            if (!strongSelf || !strongSelf.slock_attachmentExportCallback ||
+                ![strongSelf.slock_attachmentExportDestination isEqualToString:SlockAttachmentExportDestinationPhotos] ||
+                ![strongSelf.slock_attachmentExportDownloadId isEqualToString:capturedDownloadId]) {
+                return;
+            }
+            if (authorizationStatus == PHAuthorizationStatusAuthorized || authorizationStatus == PHAuthorizationStatusLimited) {
+                strongSelf.slock_attachmentExportPermissionStatus =
+                    authorizationStatus == PHAuthorizationStatusLimited ? @"limited" : @"authorized";
+                [strongSelf slock_beginAttachmentExportDownloadWithParams:capturedParams];
+                return;
+            }
+            BOOL restricted = authorizationStatus == PHAuthorizationStatusRestricted;
+            [strongSelf slock_finishAttachmentExport:@{
+                @"status" : restricted ? @"permission_restricted" : @"permission_denied",
+                @"permissionStatus" : restricted ? @"restricted" : @"denied",
+                @"message" : restricted
+                    ? @"Photos access is restricted on this device."
+                    : @"Allow Photos access in Settings, then try again.",
+                @"retryable" : @(!restricted)
+            }];
+        });
+    }];
+}
+
+- (void)slock_beginAttachmentExportDownloadWithParams:(NSDictionary *)params {
+    NSString *urlText = SlockBridgeString(params[@"url"]);
+    NSString *fileName = self.slock_attachmentExportFileName ?: @"attachment";
     NSString *requestId = NSUUID.UUID.UUIDString;
     NSString *downloadId = SlockBridgeString(params[@"downloadId"]);
     if (downloadId.length == 0) downloadId = requestId;
-    self.slock_attachmentExportCallback = callback;
     self.slock_attachmentExportRequestId = @"pending";
-    self.slock_attachmentExportFileName = fileName;
-    self.slock_attachmentExportTrackProgress = SlockBridgeBool(params[@"trackProgress"]);
     NSFileManager *fileManager = NSFileManager.defaultManager;
     NSURL *root = [NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:@"SlockAttachmentExports"] isDirectory:YES];
     NSURL *directory = [root URLByAppendingPathComponent:requestId isDirectory:YES];
@@ -2350,6 +2468,11 @@ static NSString *SlockPickedAttachmentDisplayName(NSString *suggestedName,
             }];
             return;
         }
+        strongSelf.slock_attachmentExportSizeBytes = @(result.downloadedBytes);
+        if ([strongSelf.slock_attachmentExportDestination isEqualToString:SlockAttachmentExportDestinationPhotos]) {
+            [strongSelf slock_saveAttachmentExportToPhotos];
+            return;
+        }
         UIViewController *controller = [strongSelf slock_currentViewController];
         if (!controller) {
             [strongSelf slock_finishAttachmentExport:@{
@@ -2358,12 +2481,120 @@ static NSString *SlockPickedAttachmentDisplayName(NSString *suggestedName,
             }];
             return;
         }
-        strongSelf.slock_attachmentExportSizeBytes = @(result.downloadedBytes);
         UIDocumentPickerViewController *pickerController =
             [[UIDocumentPickerViewController alloc] initForExportingURLs:@[targetURL] asCopy:YES];
         pickerController.delegate = strongSelf;
         [controller presentViewController:pickerController animated:YES completion:nil];
     });
+}
+
+- (void)slock_saveAttachmentExportToPhotos {
+    NSURL *targetURL = self.slock_attachmentExportURL;
+    if (!targetURL) {
+        [self slock_finishAttachmentExport:@{
+            @"status" : @"storage_failed",
+            @"message" : @"Unable to prepare image for Photos.",
+            @"retryable" : @YES
+        }];
+        return;
+    }
+
+    CGImageSourceRef source = CGImageSourceCreateWithURL((__bridge CFURLRef)targetURL, NULL);
+    if (!source || CGImageSourceGetCount(source) == 0) {
+        if (source) CFRelease(source);
+        [self slock_finishAttachmentExport:@{
+            @"status" : @"unsupported_image",
+            @"message" : @"This attachment is not a supported image.",
+            @"retryable" : @NO
+        }];
+        return;
+    }
+
+    CFStringRef typeIdentifier = CGImageSourceGetType(source);
+    NSString *typeIdentifierString = typeIdentifier ? (__bridge NSString *)typeIdentifier : @"";
+    UTType *actualType = typeIdentifierString.length > 0 ? [UTType typeWithIdentifier:typeIdentifierString] : nil;
+    NSDictionary *properties = CFBridgingRelease(CGImageSourceCopyPropertiesAtIndex(source, 0, NULL));
+    CFRelease(source);
+
+    NSNumber *pixelWidth = properties[(NSString *)kCGImagePropertyPixelWidth];
+    NSNumber *pixelHeight = properties[(NSString *)kCGImagePropertyPixelHeight];
+    NSNumber *orientation = properties[(NSString *)kCGImagePropertyOrientation];
+    BOOL validDimensions = pixelWidth.longLongValue > 0 && pixelHeight.longLongValue > 0;
+    BOOL validOrientation = !orientation || (orientation.integerValue >= 1 && orientation.integerValue <= 8);
+    if (!actualType || ![actualType conformsToType:UTTypeImage] || !validDimensions || !validOrientation) {
+        [self slock_finishAttachmentExport:@{
+            @"status" : @"unsupported_image",
+            @"message" : @"This attachment is not a supported image.",
+            @"retryable" : @NO
+        }];
+        return;
+    }
+
+    NSString *expectedMimeType = self.slock_attachmentExportMimeType ?: @"";
+    UTType *mimeType = expectedMimeType.length > 0 ? [UTType typeWithMIMEType:expectedMimeType] : nil;
+    UTType *extensionType = self.slock_attachmentExportFileName.pathExtension.length > 0
+        ? [UTType typeWithFilenameExtension:self.slock_attachmentExportFileName.pathExtension]
+        : nil;
+    BOOL mimeMatches = !mimeType ||
+        ([mimeType conformsToType:UTTypeImage] &&
+         ([actualType conformsToType:mimeType] || [mimeType conformsToType:actualType]));
+    BOOL extensionMatches = !extensionType ||
+        ([extensionType conformsToType:UTTypeImage] &&
+         ([actualType conformsToType:extensionType] || [extensionType conformsToType:actualType]));
+    if (!mimeMatches || !extensionMatches) {
+        [self slock_finishAttachmentExport:@{
+            @"status" : @"unsupported_image",
+            @"message" : @"The downloaded image does not match its attachment type.",
+            @"retryable" : @NO
+        }];
+        return;
+    }
+
+    NSString *fileName = self.slock_attachmentExportFileName ?: @"image";
+    NSString *permissionStatus = self.slock_attachmentExportPermissionStatus ?: @"authorized";
+    NSString *actualMimeType = actualType.preferredMIMEType ?: @"";
+    NSNumber *sizeBytes = self.slock_attachmentExportSizeBytes ?: @0;
+    __block NSString *assetIdentifier = @"";
+    __weak typeof(self) weakSelf = self;
+    [[PHPhotoLibrary sharedPhotoLibrary]
+        performChanges:^{
+            PHAssetCreationRequest *creationRequest = [PHAssetCreationRequest creationRequestForAsset];
+            PHAssetResourceCreationOptions *options = [[PHAssetResourceCreationOptions alloc] init];
+            options.originalFilename = fileName;
+            [creationRequest addResourceWithType:PHAssetResourceTypePhoto fileURL:targetURL options:options];
+            assetIdentifier = creationRequest.placeholderForCreatedAsset.localIdentifier ?: @"";
+        }
+        completionHandler:^(BOOL success, NSError *error) {
+            SlockBridgeRunOnMain(^{
+                __strong typeof(weakSelf) strongSelf = weakSelf;
+                if (!strongSelf || !strongSelf.slock_attachmentExportCallback ||
+                    ![strongSelf.slock_attachmentExportURL isEqual:targetURL]) {
+                    return;
+                }
+                if (!success || error) {
+                    [strongSelf slock_finishAttachmentExport:@{
+                        @"status" : @"photos_failed",
+                        @"message" : @"Couldn’t save this image to Photos. Try again.",
+                        @"permissionStatus" : permissionStatus,
+                        @"retryable" : @YES
+                    }];
+                    return;
+                }
+                [strongSelf slock_finishAttachmentExport:@{
+                    @"status" : @"saved",
+                    @"message" : @"Saved to Photos",
+                    @"permissionStatus" : permissionStatus,
+                    @"assetIdentifier" : assetIdentifier,
+                    @"fileName" : fileName,
+                    @"mimeType" : actualMimeType,
+                    @"pixelWidth" : pixelWidth,
+                    @"pixelHeight" : pixelHeight,
+                    @"sizeBytes" : sizeBytes,
+                    @"cached" : @NO,
+                    @"retryable" : @NO
+                }];
+            });
+        }];
 }
 
 - (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
@@ -2634,10 +2865,14 @@ static NSString *SlockPickedAttachmentDisplayName(NSString *suggestedName,
     NSURL *exportURL = self.slock_attachmentExportURL;
     self.slock_attachmentExportCallback = nil;
     self.slock_attachmentExportRequestId = nil;
+    self.slock_attachmentExportDownloadId = nil;
     self.slock_attachmentExportURL = nil;
     self.slock_attachmentExportFileName = nil;
     self.slock_attachmentExportSizeBytes = nil;
     self.slock_attachmentExportTrackProgress = NO;
+    self.slock_attachmentExportDestination = nil;
+    self.slock_attachmentExportMimeType = nil;
+    self.slock_attachmentExportPermissionStatus = nil;
     if (exportURL) {
         [NSFileManager.defaultManager removeItemAtURL:[exportURL URLByDeletingLastPathComponent] error:nil];
     }

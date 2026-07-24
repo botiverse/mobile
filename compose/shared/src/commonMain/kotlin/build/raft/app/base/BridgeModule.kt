@@ -398,6 +398,45 @@ internal class BridgeModule : Module() {
         mimeType: String? = null,
         downloadId: String? = null,
         onProgress: ((BridgeAttachmentDownloadProgress) -> Unit)? = null
+    ): JSONObject? = saveAttachmentWithNativeMethod(
+        methodName = SAVE_ATTACHMENT,
+        url = url,
+        attachmentId = attachmentId,
+        fileName = fileName,
+        owner = owner,
+        mimeType = mimeType,
+        downloadId = downloadId,
+        onProgress = onProgress
+    )
+
+    suspend fun saveImageToPhotos(
+        url: String,
+        attachmentId: String,
+        fileName: String,
+        owner: AttachmentOwnerLease,
+        mimeType: String? = null,
+        downloadId: String? = null,
+        onProgress: ((BridgeAttachmentDownloadProgress) -> Unit)? = null
+    ): JSONObject? = saveAttachmentWithNativeMethod(
+        methodName = SAVE_IMAGE_TO_PHOTOS,
+        url = url,
+        attachmentId = attachmentId,
+        fileName = fileName,
+        owner = owner,
+        mimeType = mimeType,
+        downloadId = downloadId,
+        onProgress = onProgress
+    )
+
+    private suspend fun saveAttachmentWithNativeMethod(
+        methodName: String,
+        url: String,
+        attachmentId: String,
+        fileName: String,
+        owner: AttachmentOwnerLease,
+        mimeType: String?,
+        downloadId: String?,
+        onProgress: ((BridgeAttachmentDownloadProgress) -> Unit)?
     ): JSONObject? =
         suspendCancellableCoroutine { continuation ->
             val resolvedDownloadId = attachmentDownloadId(owner, downloadId, attachmentId, fileName)
@@ -415,7 +454,7 @@ internal class BridgeModule : Module() {
             val result =
                 toNative(
                     keepCallbackAlive = onProgress != null,
-                    methodName = SAVE_ATTACHMENT,
+                    methodName = methodName,
                     param = methodArgs.toString(),
                     callback = { payload ->
                         if (!continuation.isActive || completed) {
@@ -439,6 +478,11 @@ internal class BridgeModule : Module() {
                     downloadId = resolvedDownloadId,
                     expectedAttemptToken = activeAttemptToken,
                     action = "cancel"
+                )
+                callNativeMethod(
+                    CANCEL_ATTACHMENT_EXPORT,
+                    JSONObject().apply { put("downloadId", resolvedDownloadId) },
+                    null
                 )
                 callbackRef?.let { removeCallback(it) }
             }
@@ -1057,6 +1101,8 @@ internal class BridgeModule : Module() {
         const val PERFORMANCE_MARKER = "performanceMarker"
         const val OPEN_ATTACHMENT = "openAttachment"
         const val SAVE_ATTACHMENT = "saveAttachment"
+        const val SAVE_IMAGE_TO_PHOTOS = "saveImageToPhotos"
+        const val CANCEL_ATTACHMENT_EXPORT = "cancelAttachmentExport"
         const val ATTACHMENT_CACHE_STATUS = "attachmentCacheStatus"
         const val DELETE_ATTACHMENT_CACHE = "deleteAttachmentCache"
         const val ATTACHMENT_DOWNLOAD_CONTROL = "attachmentDownloadControl"
