@@ -49,6 +49,8 @@
     <string name="member_error_report_issue">无法报告智能体问题</string>
     <string name="settings_error_join_link_load_prefix">无法加载加入链接：</string>
     <string name="settings_billing_action_compare_plans">查看全部功能并比较方案</string>
+    <string name="settings_pwa_install_title">安装应用</string>
+    <string name="settings_pwa_install_native_detail">安装提示由网页端 PWA API 管理；Android 和鸿蒙原生版本使用各自平台的应用安装流程。</string>
     <string name="common_error">出错了</string>
     <string name="common_empty">暂无内容</string>
     <string name="common_no_matches">无匹配项</string>

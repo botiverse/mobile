@@ -8202,8 +8202,8 @@ private fun SettingsNotificationsContent(
 
 @Composable
 private fun SettingsPwaInstallCard() {
-    SettingsFormSectionCard(iconName = SlockLucideIconName.AppWindow, title = "Install app") {
-        SettingsFormDetailText("Install prompts are managed by web PWA APIs outside native builds. Native Android and OHOS builds use their platform app install flow.")
+    SettingsFormSectionCard(iconName = SlockLucideIconName.AppWindow, title = stringResource(MR.strings.settings_pwa_install_title)) {
+        SettingsFormDetailText(stringResource(MR.strings.settings_pwa_install_native_detail))
         SettingsFormEmptyText(stringResource(MR.strings.settings_connected_apps_no_install_prompt))
     }
 }
@@ -19992,11 +19992,11 @@ private fun MembersPageErrorContent(
         modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        MembersPageHeader(title = "Members")
+        MembersPageHeader(title = stringResource(MR.strings.tab_members))
         PageErrorBody(
             message = message,
             code = code,
-            retryLabel = "Retry",
+            retryLabel = stringResource(MR.strings.common_retry),
             onRetry = onRetry
         )
     }

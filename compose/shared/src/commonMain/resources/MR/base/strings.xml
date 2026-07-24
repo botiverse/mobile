@@ -49,6 +49,8 @@
     <string name="member_error_report_issue">Unable to report agent issue</string>
     <string name="settings_error_join_link_load_prefix">Failed to load join link: </string>
     <string name="settings_billing_action_compare_plans">See all features and compare plans</string>
+    <string name="settings_pwa_install_title">Install app</string>
+    <string name="settings_pwa_install_native_detail">Install prompts are managed by web PWA APIs outside native builds. Native Android and OHOS builds use their platform app install flow.</string>
     <string name="common_error">Error</string>
     <string name="common_empty">Empty</string>
     <string name="common_no_matches">No matches</string>
