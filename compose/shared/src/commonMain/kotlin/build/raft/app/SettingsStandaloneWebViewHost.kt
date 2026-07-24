@@ -292,28 +292,29 @@ internal fun SettingsWebViewPageScaffold(
     )
 
     Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceCream)) {
-        SlockTopPageHeader(
-            title = title,
-            iconName = iconName,
-            backgroundColor = SlockColor.SurfaceWhite,
-            // Keep the already committed native header above the custom WebView throughout its
-            // attach/layout transaction. This changes draw order only; the Column layout and body
-            // geometry remain identical.
-            modifier = Modifier.zIndex(SETTINGS_WEB_VIEW_HEADER_Z_INDEX),
-            leadingContent = {
-                SlockBrutalIconButton(
-                    iconName = SlockLucideIconName.ArrowLeft,
-                    onClick = ::goBackOrClose,
-                    size = 30.dp,
-                    shadowOffset = 2.dp,
-                )
-            },
-        )
+        // This wrapper, rather than SlockTopPageHeader's inner content Box, is the sibling of the
+        // WebView body. The layer must live here so it can order those two layout siblings.
+        Box(modifier = Modifier.fillMaxWidth().zIndex(SETTINGS_WEB_VIEW_HEADER_Z_INDEX)) {
+            SlockTopPageHeader(
+                title = title,
+                iconName = iconName,
+                backgroundColor = SlockColor.SurfaceWhite,
+                leadingContent = {
+                    SlockBrutalIconButton(
+                        iconName = SlockLucideIconName.ArrowLeft,
+                        onClick = ::goBackOrClose,
+                        size = 30.dp,
+                        shadowOffset = 2.dp,
+                    )
+                },
+            )
+        }
         Box(
             modifier =
                 Modifier
                     .weight(1f)
                     .fillMaxWidth()
+                    .zIndex(SETTINGS_WEB_VIEW_BODY_Z_INDEX)
                     .background(SlockColor.SurfaceCream),
         ) {
             if (bodyReady) {
@@ -580,7 +581,8 @@ internal fun settingsWebViewFrameIsReady(
 ): Boolean = positionY > 0f && width > 0 && height > 0
 
 private const val SETTINGS_WEB_VIEW_HEADER_SETTLE_FRAMES = 1
-private const val SETTINGS_WEB_VIEW_HEADER_Z_INDEX = 1f
+internal const val SETTINGS_WEB_VIEW_HEADER_Z_INDEX = 1f
+internal const val SETTINGS_WEB_VIEW_BODY_Z_INDEX = 0f
 private const val SETTINGS_WEB_VIEW_ATTACH_DELAY_FRAMES = 2
 
 @Composable

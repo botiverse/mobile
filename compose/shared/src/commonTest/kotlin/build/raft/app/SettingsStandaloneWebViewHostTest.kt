@@ -5,6 +5,7 @@ import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class SettingsStandaloneWebViewHostTest {
     @Test
@@ -109,5 +110,10 @@ class SettingsStandaloneWebViewHostTest {
             SettingsWebViewPresentation.Content,
             settingsWebViewPresentation(contentVisible = true, hasLoadError = false),
         )
+    }
+
+    @Test
+    fun headerLayerIsAboveTheNativeWebViewBodySibling() {
+        assertTrue(SETTINGS_WEB_VIEW_HEADER_Z_INDEX > SETTINGS_WEB_VIEW_BODY_Z_INDEX)
     }
 }
