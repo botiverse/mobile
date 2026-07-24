@@ -1223,13 +1223,12 @@ class SharedSettingsDataSource(
             } else {
                 recompositionProfilerController.stop()
             }
+        // The persisted switch describes a future auto-start request, not the live engine state.
+        // Clear it even when stop has already disabled the engine but its native file commit fails.
+        recompositionProfilerPreferenceRepository?.setEnabled(false)
         result.errorCode?.let { code ->
-            if (enabled) {
-                recompositionProfilerPreferenceRepository?.setEnabled(false)
-            }
             return DataResult.Error(ScreenError(code, retryable = false))
         }
-        recompositionProfilerPreferenceRepository?.setEnabled(false)
         return loadDiagnosticsSnapshot(feedback = result.feedback)
     }
 
@@ -1485,7 +1484,7 @@ class SharedSettingsDataSource(
     }
 
     private suspend fun performProfilerAction(
-        action: () -> SharedSettingsRecompositionProfilerActionResult
+        action: suspend () -> SharedSettingsRecompositionProfilerActionResult
     ): DataResult<SharedSettingsDiagnosticsSnapshot> {
         val actionResult = action()
         actionResult.errorCode?.let { code ->

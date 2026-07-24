@@ -2,8 +2,11 @@ package build.raft.app.data
 
 import com.tencent.kuikly.compose.profiler.RecompositionConfigBuilder
 import com.tencent.kuikly.compose.profiler.RecompositionProfiler
+import com.tencent.kuikly.compose.profiler.RecompositionProfilerFileOutputResult
 import com.tencent.kuikly.compose.profiler.RecompositionReport
+import kotlin.coroutines.resume
 import kotlin.math.roundToInt
+import kotlinx.coroutines.suspendCancellableCoroutine
 
 data class SharedSettingsDiagnosticsHostSnapshot(
     val entries: List<SharedSettingsDiagnosticsEntry> = emptyList(),
@@ -46,11 +49,13 @@ internal interface SharedSettingsRecompositionProfilerEngine {
 
     fun start()
 
-    fun stop()
+    fun stop(completion: (RecompositionProfilerFileOutputResult) -> Unit)
 
     fun reset()
 
-    fun getReport(saveToFile: Boolean = true): RecompositionReport
+    fun getReportSnapshot(): RecompositionReport
+
+    fun exportReport(completion: (RecompositionProfilerFileOutputResult) -> Unit): RecompositionReport
 }
 
 internal object KuiklySharedSettingsRecompositionProfilerEngine : SharedSettingsRecompositionProfilerEngine {
@@ -69,16 +74,21 @@ internal object KuiklySharedSettingsRecompositionProfilerEngine : SharedSettings
         RecompositionProfiler.start()
     }
 
-    override fun stop() {
-        RecompositionProfiler.stop()
+    override fun stop(completion: (RecompositionProfilerFileOutputResult) -> Unit) {
+        RecompositionProfiler.stop(completion)
     }
 
     override fun reset() {
         RecompositionProfiler.reset()
     }
 
-    override fun getReport(saveToFile: Boolean): RecompositionReport =
-        RecompositionProfiler.getReport(saveToFile = saveToFile)
+    override fun getReportSnapshot(): RecompositionReport =
+        RecompositionProfiler.getReport(saveToFile = false)
+
+    override fun exportReport(
+        completion: (RecompositionProfilerFileOutputResult) -> Unit
+    ): RecompositionReport =
+        RecompositionProfiler.getReport(saveToFile = true, completion = completion)
 }
 
 internal data class SharedSettingsRecompositionProfilerActionResult(
@@ -104,7 +114,7 @@ class SharedSettingsRecompositionProfilerController internal constructor(
         enabled: Boolean = isRunning,
         feedback: String? = null
     ): SharedSettingsRecompositionProfilerSnapshot {
-        val report = engine.getReport(saveToFile = false)
+        val report = engine.getReportSnapshot()
         val supported = debugGate.supported
         val reportAvailable = report.totalFrames > 0L || report.totalRecompositions > 0 || lastSavedArtifactHintAvailable
         val statusLabel =
@@ -210,7 +220,7 @@ class SharedSettingsRecompositionProfilerController internal constructor(
         }
     }
 
-    internal fun stop(): SharedSettingsRecompositionProfilerActionResult {
+    internal suspend fun stop(): SharedSettingsRecompositionProfilerActionResult {
         if (!debugGate.supported) {
             return unsupported()
         }
@@ -219,11 +229,19 @@ class SharedSettingsRecompositionProfilerController internal constructor(
                 feedback = "Profiler is not running. The latest exported report remains available."
             )
         }
-        engine.stop()
-        lastSavedArtifactHintAvailable = true
-        return SharedSettingsRecompositionProfilerActionResult(
-            feedback = "Profiler stopped. Kuikly writes profiler_report.json automatically; keep profiler_frames.jsonl beside it for analyzer input."
-        )
+        return when (val outputResult = awaitFileOutput { completion -> engine.stop(completion) }) {
+            is RecompositionProfilerFileOutputResult.Success -> {
+                lastSavedArtifactHintAvailable = true
+                SharedSettingsRecompositionProfilerActionResult(
+                    feedback = "Profiler stopped after profiler_report.json and profiler_frames.jsonl were committed for analyzer input."
+                )
+            }
+
+            is RecompositionProfilerFileOutputResult.Failure ->
+                fileOutputFailure(
+                    feedback = "Profiler stopped, but its files were not committed: ${outputResult.reason}."
+                )
+        }
     }
 
     internal fun reset(): SharedSettingsRecompositionProfilerActionResult {
@@ -245,7 +263,7 @@ class SharedSettingsRecompositionProfilerController internal constructor(
         if (!debugGate.supported) {
             return unsupported()
         }
-        val report = engine.getReport(saveToFile = false)
+        val report = engine.getReportSnapshot()
         return if (report.totalFrames > 0L) {
             SharedSettingsRecompositionProfilerActionResult(
                 feedback = "Report summary refreshed without rewriting files."
@@ -257,24 +275,54 @@ class SharedSettingsRecompositionProfilerController internal constructor(
         }
     }
 
-    internal fun exportReport(): SharedSettingsRecompositionProfilerActionResult {
+    internal suspend fun exportReport(): SharedSettingsRecompositionProfilerActionResult {
         if (!debugGate.supported) {
             return unsupported()
         }
-        val report = engine.getReport(saveToFile = true)
-        lastSavedArtifactHintAvailable = true
-        return when {
-            report.totalFrames > 0L || report.totalRecompositions > 0 || lastSavedArtifactHintAvailable ->
+        return when (val outputResult = awaitFileOutput { completion -> engine.exportReport(completion) }) {
+            is RecompositionProfilerFileOutputResult.Success -> {
+                lastSavedArtifactHintAvailable = true
                 SharedSettingsRecompositionProfilerActionResult(
-                    feedback = "Report exported with Kuikly default file names: profiler_report.json and profiler_frames.jsonl."
+                    feedback = "Report exported after Kuikly committed profiler_report.json and profiler_frames.jsonl."
                 )
+            }
 
-            else ->
-                SharedSettingsRecompositionProfilerActionResult(
-                    feedback = "An empty report is currently loaded. Capture a scenario first if you need meaningful analyzer input."
+            is RecompositionProfilerFileOutputResult.Failure ->
+                fileOutputFailure(
+                    feedback = "Report export failed before the native file commit: ${outputResult.reason}."
                 )
         }
     }
+
+    private suspend fun awaitFileOutput(
+        operation: ((RecompositionProfilerFileOutputResult) -> Unit) -> Unit
+    ): RecompositionProfilerFileOutputResult =
+        suspendCancellableCoroutine { continuation ->
+            try {
+                operation { result ->
+                    if (continuation.isActive) {
+                        continuation.resume(result)
+                    }
+                }
+            } catch (throwable: Throwable) {
+                if (continuation.isActive) {
+                    continuation.resume(
+                        RecompositionProfilerFileOutputResult.Failure(
+                            sessionId = "",
+                            reason = throwable.profilerFailureLabel()
+                        )
+                    )
+                }
+            }
+        }
+
+    private fun fileOutputFailure(
+        feedback: String
+    ): SharedSettingsRecompositionProfilerActionResult =
+        SharedSettingsRecompositionProfilerActionResult(
+            feedback = feedback,
+            errorCode = PROFILER_FILE_OUTPUT_FAILURE_CODE
+        )
 
     private fun unsupported(): SharedSettingsRecompositionProfilerActionResult =
         SharedSettingsRecompositionProfilerActionResult(
@@ -305,6 +353,7 @@ class SharedSettingsRecompositionProfilerController internal constructor(
         private const val DEFAULT_ENABLE_FILE = true
         private const val DEFAULT_ENABLE_LOG = true
         private const val DEFAULT_ENABLE_OVERLAY = true
+        private const val PROFILER_FILE_OUTPUT_FAILURE_CODE = "settings_profiler_file_output_failed"
         private const val PROFILER_REPORT_FILE_NAME = "profiler_report.json"
         private const val PROFILER_FRAMES_FILE_NAME = "profiler_frames.jsonl"
 
