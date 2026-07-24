@@ -2766,7 +2766,8 @@ internal fun SlockAppShellContent(
             appShellNetworkClient,
             conversationRepository,
             sharedStores.threadMessageStore,
-            sharedStores.threadPayloadStore
+            sharedStores.threadPayloadStore,
+            sharedStores.apiEnvironmentStore
         ) {
             SharedThreadDataSource(
                 networkApi = NetworkSlockThreadApi(appShellNetworkClient),
@@ -2774,6 +2775,9 @@ internal fun SlockAppShellContent(
                 selectedServerStore = selectedServerStore,
                 conversationRepository = conversationRepository,
                 messageStore = sharedStores.threadMessageStore,
+                cacheEnvironmentIdProvider = {
+                    sharedStores.apiEnvironmentStore.current().apiBaseUrl
+                },
                 payloadStore = sharedStores.threadPayloadStore,
                 readReceiptCoordinator = sharedStores.processReadReceiptCoordinator(),
                 readReceiptOwnerFactory = sharedStores::readReceiptOwner,

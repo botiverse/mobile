@@ -73,6 +73,7 @@ import build.raft.app.data.SlockComputersApiClient
 import build.raft.app.data.SlockIntegrationsActionsPushApi
 import build.raft.app.data.SlockIntegrationsActionsPushApiClient
 import build.raft.app.data.StoredAuthSession
+import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthUser
 import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.ThreadActionCardMetadataItem
@@ -7532,11 +7533,15 @@ class SharedThreadStoreTest {
     fun visibleReplyMetadataSeedsSharedStoreForDirectReplyThreadFetch() = runBlocking {
         val messageStore = SharedThreadMessageStore()
         val parent = contentPayload("parent body").messages.single()
-        SharedThreadDataSource(
-            networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
-            sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-            messageStore = messageStore
-        ).rememberReplyParentCandidate(
+        val seedDataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                messageStore = messageStore,
+                cacheEnvironmentIdProvider = { "https://prod.example.test" }
+            )
+        seedDataSource.readSession()
+        seedDataSource.rememberReplyParentCandidate(
             serverId = "server-1",
             parentChannelId = "channel-1",
             parentMessage = parent,
@@ -7580,7 +7585,8 @@ class SharedThreadStoreTest {
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 conversationRepository = repository,
-                messageStore = messageStore
+                messageStore = messageStore,
+                cacheEnvironmentIdProvider = { "https://prod.example.test" }
             )
         val base =
             basePayload().copy(
@@ -7635,7 +7641,8 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                conversationRepository = repository
+                conversationRepository = repository,
+                cacheEnvironmentIdProvider = { "https://prod.example.test" }
             )
         val parent = contentPayload("parent body").messages.single()
         val unresolvedBase =
@@ -7653,6 +7660,141 @@ class SharedThreadStoreTest {
         )
         assertEquals(listOf(false), repository.getReplyThreadIncludeFollowedSummaries)
         assertEquals(listOf(ThreadId("thread-m1")), repository.getThreadRequests)
+    }
+
+    @Test
+    fun replyThreadResolutionCacheIsScopedByEnvironmentPrincipalAndRouteServer() = runBlocking {
+        val messageStore = SharedThreadMessageStore()
+        val parent = contentPayload("parent body").messages.single()
+        val base = contentPayload("parent body")
+        var environmentId = " https://prod.example.test/ "
+        val authStore = InMemorySlockAuthSessionStore(replyResolutionSession("account-1"))
+        val selectedServerStore =
+            SelectedServerStore(
+                SlockShellStoreScope.create(
+                    shellInstanceId = "reply-resolution-namespace",
+                    initialServerId = "server-a"
+                )
+            )
+        val repository = FakeConversationRepository()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+                sessionStore = authStore,
+                selectedServerStore = selectedServerStore,
+                conversationRepository = repository,
+                messageStore = messageStore,
+                cacheEnvironmentIdProvider = { environmentId }
+            )
+
+        repository.configureReplyThread("thread-a", parent.id)
+        assertEquals(
+            "thread-a",
+            (dataSource.createOrOpenReplyThread(base, parent) as DataResult.Content).data.streamChannelId
+        )
+
+        environmentId = ""
+        repository.configureReplyThread("thread-missing-environment", parent.id)
+        assertEquals(
+            "thread-missing-environment",
+            (dataSource.createOrOpenReplyThread(base, parent) as DataResult.Content).data.streamChannelId
+        )
+
+        environmentId = "https://prod.example.test"
+        selectedServerStore.select("server-b", "server-b")
+        repository.configureReplyThread("thread-b", parent.id)
+        assertEquals(
+            "thread-b",
+            (dataSource.createOrOpenReplyThread(base, parent) as DataResult.Content).data.streamChannelId
+        )
+
+        authStore.saveSession(replyResolutionSession("account-2"))
+        repository.configureReplyThread("thread-account-2", parent.id)
+        val accountTwoDataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+                sessionStore = authStore,
+                selectedServerStore = selectedServerStore,
+                conversationRepository = repository,
+                messageStore = messageStore,
+                cacheEnvironmentIdProvider = { environmentId }
+            )
+        assertEquals(
+            "thread-account-2",
+            (accountTwoDataSource.createOrOpenReplyThread(base, parent) as DataResult.Content).data.streamChannelId
+        )
+
+        environmentId = "https://staging.example.test/"
+        repository.configureReplyThread("thread-staging", parent.id)
+        val stagingDataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+                sessionStore = authStore,
+                selectedServerStore = selectedServerStore,
+                conversationRepository = repository,
+                messageStore = messageStore,
+                cacheEnvironmentIdProvider = { environmentId }
+            )
+        assertEquals(
+            "thread-staging",
+            (stagingDataSource.createOrOpenReplyThread(base, parent) as DataResult.Content).data.streamChannelId
+        )
+
+        assertEquals(
+            List(5) { ChannelId("channel-1") to MessageId(parent.id) },
+            repository.createOrOpenRequests
+        )
+    }
+
+    @Test
+    fun replyThreadResolutionUsesIdentityCapturedBeforeCreateOrOpenSuspends() = runBlocking {
+        val authStore = InMemorySlockAuthSessionStore(replyResolutionSession("account-1"))
+        val selectedServerStore =
+            SelectedServerStore(
+                SlockShellStoreScope.create(
+                    shellInstanceId = "reply-resolution-in-flight-identity",
+                    initialServerId = "server-a"
+                )
+            )
+        val repository = FakeConversationRepository()
+        val createStarted = CompletableDeferred<Unit>()
+        val releaseCreate = CompletableDeferred<Unit>()
+        repository.configureReplyThread("thread-a", "m1")
+        repository.createOrOpenStarted = createStarted
+        repository.releaseCreateOrOpen = releaseCreate
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+                sessionStore = authStore,
+                selectedServerStore = selectedServerStore,
+                conversationRepository = repository,
+                messageStore = SharedThreadMessageStore(),
+                cacheEnvironmentIdProvider = { "https://prod.example.test" }
+            )
+        val base = contentPayload("parent body")
+        val parent = base.messages.single()
+
+        val serverAResult = async { dataSource.createOrOpenReplyThread(base, parent) }
+        createStarted.await()
+        selectedServerStore.select("server-b", "server-b")
+        dataSource.readSession()
+        releaseCreate.complete(Unit)
+        assertEquals(
+            "thread-a",
+            (serverAResult.await() as DataResult.Content).data.streamChannelId
+        )
+
+        repository.createOrOpenStarted = null
+        repository.releaseCreateOrOpen = null
+        repository.configureReplyThread("thread-b", parent.id)
+        assertEquals(
+            "thread-b",
+            (dataSource.createOrOpenReplyThread(base, parent) as DataResult.Content).data.streamChannelId
+        )
+        assertEquals(
+            List(2) { ChannelId("channel-1") to MessageId(parent.id) },
+            repository.createOrOpenRequests
+        )
     }
 
     @Test
@@ -10240,7 +10382,8 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                conversationRepository = repository
+                conversationRepository = repository,
+                cacheEnvironmentIdProvider = { "https://prod.example.test" }
             )
         val base = contentPayload("parent body")
         val parent = base.messages.single()
@@ -10675,7 +10818,8 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                conversationRepository = repository
+                conversationRepository = repository,
+                cacheEnvironmentIdProvider = { "https://prod.example.test" }
             )
         val base = contentPayload("parent body")
         val parent = base.messages.single()
@@ -12422,6 +12566,8 @@ class SharedThreadStoreTest {
         var releaseThreadReplySummaries: CompletableDeferred<Unit>? = null
         var getReplyThreadStarted: CompletableDeferred<Unit>? = null
         var releaseGetReplyThread: CompletableDeferred<Unit>? = null
+        var createOrOpenStarted: CompletableDeferred<Unit>? = null
+        var releaseCreateOrOpen: CompletableDeferred<Unit>? = null
         val messageContextStartedById: MutableMap<MessageId, CompletableDeferred<Unit>> = mutableMapOf()
         val releaseMessageContextById: MutableMap<MessageId, CompletableDeferred<Unit>> = mutableMapOf()
         val getThreadRequests: MutableList<ThreadId> = mutableListOf()
@@ -12576,7 +12722,10 @@ class SharedThreadStoreTest {
 
         override suspend fun createOrOpenThread(channelId: ChannelId, parentMessageId: MessageId): DataResult<ThreadActionResult> {
             createOrOpenRequests += channelId to parentMessageId
-            return createThreadResult
+            val result = createThreadResult
+            createOrOpenStarted?.complete(Unit)
+            releaseCreateOrOpen?.await()
+            return result
         }
 
         override suspend fun followThread(parentMessageId: MessageId): DataResult<ThreadActionResult> = error("unused")
@@ -12597,6 +12746,41 @@ class SharedThreadStoreTest {
             limit: Int,
             cursor: String?
         ): DataResult<ChannelFilesSnapshot> = error("unused")
+
+        fun configureReplyThread(threadChannelId: String, parentMessageId: String) {
+            val threadId = ThreadId(threadChannelId)
+            createThreadResult =
+                DataResult.Content(
+                    ThreadActionResult(
+                        threadChannelId = ChannelId(threadChannelId),
+                        changed = true,
+                        parentMessageId = MessageId(parentMessageId),
+                        replyCount = 1
+                    )
+                )
+            threadResultsById =
+                mapOf(
+                    threadId to
+                        DataResult.Content(
+                            threadSnapshot(
+                                threadId = threadChannelId,
+                                body = "$threadChannelId body",
+                                id = "$threadChannelId-reply",
+                                conversation =
+                                    conversationSummary(threadChannelId).copy(
+                                        kind = ConversationKind.Thread,
+                                        channelId = ChannelId(threadChannelId),
+                                        thread =
+                                            ThreadConversation(
+                                                parentChannelId = ChannelId("channel-1"),
+                                                parentMessageId = MessageId(parentMessageId),
+                                                streamChannelId = ChannelId(threadChannelId)
+                                            )
+                                    )
+                            )
+                        )
+                )
+        }
 
         override suspend fun sendMessage(
             channelId: ChannelId,
@@ -13151,6 +13335,19 @@ class SharedThreadStoreTest {
             accessToken = "access",
             refreshToken = "refresh",
             selectedServerId = "server-1"
+        )
+
+    private fun replyResolutionSession(userId: String): StoredAuthSession =
+        StoredAuthSession(
+            user = StoredAuthUser(id = userId, email = "$userId@example.test", displayName = userId),
+            accessToken = "access-$userId",
+            refreshToken = "refresh-$userId",
+            selectedServerId = "server-a",
+            servers =
+                listOf(
+                    StoredAuthServer(id = "server-a", name = "Server A", slug = "server-a"),
+                    StoredAuthServer(id = "server-b", name = "Server B", slug = "server-b")
+                )
         )
 
     private fun member(id: String, name: String): MemberProfile =
