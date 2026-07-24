@@ -252,6 +252,11 @@
     <string name="thread_state_original_unavailable">Original message is unavailable.</string>
     <string name="thread_reply_title">Thread</string>
     <string name="thread_state_no_replies">No replies yet</string>
+    <string name="thread_inline_reply_count_one">1 reply</string>
+    <string name="thread_inline_reply_count_many">%1$d replies</string>
+    <string name="thread_inline_earlier_replies">View %1$d earlier replies</string>
+    <string name="thread_inline_new_replies">%1$d new</string>
+    <string name="thread_inline_draft">Draft</string>
     <string name="thread_state_no_messages">No messages yet</string>
     <string name="thread_state_no_messages_detail">This conversation has no messages yet.</string>
     <string name="thread_action_join_channel">Join channel</string>

@@ -36,6 +36,8 @@ class SharedServerFeatureFlagsTest {
         assertTrue(flags.isEnabled(server, SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY))
         assertFalse(flags.isEnabled(server, READ_RECEIPTS_FEATURE_FLAG_KEY)) // absent from evaluations -> off
         assertFalse(flags.isEnabled(server, SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY))
+        assertFalse(flags.isEnabled(server, INLINE_THREAD_REPLIES_FEATURE_FLAG_KEY))
+        assertTrue(INLINE_THREAD_REPLIES_FEATURE_FLAG_KEY in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
         assertEquals(REGISTERED_SERVER_FEATURE_FLAG_KEYS, api.lastKeys) // batch: all registered keys
     }
 

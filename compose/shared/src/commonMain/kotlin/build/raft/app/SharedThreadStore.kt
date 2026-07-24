@@ -102,6 +102,10 @@ import build.raft.app.model.ThreadUpdated
 import build.raft.app.model.SyncResumeResponse
 import build.raft.app.model.avatarWireValueForAvatarSlot
 import build.raft.app.model.formatSlockTimestampLabel
+import build.raft.app.network.sync.InlineThreadReplyPreviewLimit
+import build.raft.app.network.sync.ThreadRepliesReadModel
+import build.raft.app.network.sync.applyReplyFrame
+import build.raft.app.network.sync.initialThreadRepliesReadModel
 import build.raft.app.model.messageStreamChannelId
 import build.raft.app.model.resolveAvatarSlot
 import build.raft.app.model.safeDisplayNameOrNull
@@ -7328,12 +7332,20 @@ private fun KuiklyThreadMessageItem.withReplySummary(
     val nextUnreadReplyCount = maxOf(unreadReplyCount, summary.unreadCount)
     val nextFirstUnreadReplyMessageId = firstUnreadReplyMessageId ?: summary.firstUnreadMessageId?.value
     val nextFollowed = isThreadFollowed || summary.key in followedThreadKeys
+    val incomingInlineReplies =
+        initialThreadRepliesReadModel(
+            replies = summary.latestReplies,
+            replyCount = summary.replyCount,
+            limit = InlineThreadReplyPreviewLimit,
+        )
+    val nextInlineReplies = inlineReplies.adoptNewerSnapshot(incomingInlineReplies)
     if (
         nextThreadChannelId == threadChannelId &&
         nextReplyCount == replyCount &&
         nextUnreadReplyCount == unreadReplyCount &&
         nextFirstUnreadReplyMessageId == firstUnreadReplyMessageId &&
-        nextFollowed == isThreadFollowed
+        nextFollowed == isThreadFollowed &&
+        nextInlineReplies == inlineReplies
     ) {
         return this
     }
@@ -7342,8 +7354,20 @@ private fun KuiklyThreadMessageItem.withReplySummary(
         replyCount = nextReplyCount,
         unreadReplyCount = nextUnreadReplyCount,
         firstUnreadReplyMessageId = nextFirstUnreadReplyMessageId,
-        isThreadFollowed = nextFollowed
+        isThreadFollowed = nextFollowed,
+        inlineReplies = nextInlineReplies,
     )
+}
+
+internal fun ThreadRepliesReadModel?.adoptNewerSnapshot(
+    incoming: ThreadRepliesReadModel,
+): ThreadRepliesReadModel {
+    val current = this ?: return incoming
+    val currentVisibleHighWater = current.replies.maxOfOrNull { it.seq } ?: 0L
+    if (current.replyCount > incoming.replyCount || currentVisibleHighWater > incoming.snapshotSeq) {
+        return current
+    }
+    return incoming
 }
 
 private fun KuiklyThreadFilesPayload?.orEmptyFilesPayload(basePayload: KuiklyThreadScreenPayload): KuiklyThreadFilesPayload =
@@ -7757,6 +7781,13 @@ private fun KuiklyThreadScreenPayload.applyRealtimeMessageUpdate(
 private fun KuiklyThreadScreenPayload.applyThreadUpdated(event: ThreadUpdated): KuiklyThreadScreenPayload {
     fun KuiklyThreadMessageItem.updateIfMatches(): KuiklyThreadMessageItem =
         if (id == event.parentMessageId.value) {
+            val currentInlineReplies =
+                inlineReplies
+                    ?: initialThreadRepliesReadModel(
+                        replies = emptyList(),
+                        replyCount = replyCount,
+                        limit = InlineThreadReplyPreviewLimit,
+                    )
             copy(
                 threadChannelId = event.threadChannelId.value,
                 replyCount = event.replyCount,
@@ -7766,7 +7797,15 @@ private fun KuiklyThreadScreenPayload.applyThreadUpdated(event: ThreadUpdated): 
                         event.unreadCount == 0 -> null
                         event.firstUnreadMessageId != null -> event.firstUnreadMessageId.value
                         else -> firstUnreadReplyMessageId
-                    }
+                    },
+                inlineReplies =
+                    event.latestReply?.let { reply ->
+                        currentInlineReplies.applyReplyFrame(
+                            reply = reply,
+                            frameReplyCount = event.replyCount,
+                            limit = InlineThreadReplyPreviewLimit,
+                        )
+                    } ?: inlineReplies,
             )
         } else {
             this

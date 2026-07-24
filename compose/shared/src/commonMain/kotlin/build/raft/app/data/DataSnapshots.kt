@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.model.*
+import build.raft.app.network.sync.ReplyPreview
 import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
@@ -39,6 +40,8 @@ data class InboxItem(
     val latestActivitySenderKind: MemberKind? = null,
     val latestActivitySenderAvatarWireValue: String? = null,
     val replyCount: Int = 0,
+    /** Bounded server-derived latest replies; never a second message authority. */
+    val latestReplies: List<ReplyPreview> = emptyList(),
     val participantIds: List<MemberId> = emptyList(),
     val taskNumber: Int? = null,
     val taskStatus: TaskStatus? = null,

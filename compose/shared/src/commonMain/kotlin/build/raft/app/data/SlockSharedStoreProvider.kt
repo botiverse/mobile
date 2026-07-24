@@ -2470,7 +2470,9 @@ private fun RealtimeEvent.realtimeDomainKey(serverId: String): String? =
         is DirectMessageCreated ->
             "dm:new:$serverId:${channelId.value}"
         is ThreadUpdated ->
-            "thread:updated:$serverId:${threadChannelId.value}:${parentMessageId.value}:$replyCount:${unreadCount ?: -1}:${firstUnreadMessageId?.value.orEmpty()}:${lastReplyAt.orEmpty()}"
+            "thread:updated:$serverId:${threadChannelId.value}:${parentMessageId.value}:$replyCount:${unreadCount ?: -1}:" +
+                "${firstUnreadMessageId?.value.orEmpty()}:${lastReplyAt.orEmpty()}:" +
+                "${latestReply?.messageId.orEmpty()}:${latestReply?.seq ?: -1L}"
         is TaskCreated ->
             "task:created:$serverId:${tasks.joinToString("|") { it.taskDomainKey() }}"
         is TaskUpdated ->
