@@ -5362,15 +5362,41 @@ internal class SlockKuiklyBridgeModule(
                     }
                 },
                 cleanup = {
-                    AttachmentDownloadCoordinator.controlExisting(downloadId, attemptToken, "cancel")
-                    attachmentSystemDownloads.controlExisting(owner.principalKey, downloadId, operationId, "cancel")
-                    attachmentDownloadsExportCoordinator.controlExisting(
-                            downloadId = downloadId,
-                            operationId = operationId,
-                            expectedAttemptToken = attemptToken,
-                            action = "cancel",
-                            owner = owner
-                    )
+                    runCatching {
+                        AttachmentDownloadCoordinator.controlExisting(downloadId, attemptToken, "cancel")
+                    }.onFailure { throwable ->
+                        SlockAppLog.record(
+                                "SlockAttachmentExport",
+                                "phase=cancel_common status=failed type=${throwable::class.java.simpleName}"
+                        )
+                    }
+                    runCatching {
+                        attachmentSystemDownloads.controlExisting(
+                                owner.principalKey,
+                                downloadId,
+                                operationId,
+                                "cancel"
+                        )
+                    }.onFailure { throwable ->
+                        SlockAppLog.record(
+                                "SlockAttachmentExport",
+                                "phase=cancel_system status=failed type=${throwable::class.java.simpleName}"
+                        )
+                    }
+                    runCatching {
+                        attachmentDownloadsExportCoordinator.controlExisting(
+                                downloadId = downloadId,
+                                operationId = operationId,
+                                expectedAttemptToken = attemptToken,
+                                action = "cancel",
+                                owner = owner
+                        )
+                    }.onFailure { throwable ->
+                        SlockAppLog.record(
+                                "SlockAttachmentExport",
+                                "phase=cancel_gallery status=failed type=${throwable::class.java.simpleName}"
+                        )
+                    }
                 }
         )
     }

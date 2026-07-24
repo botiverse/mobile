@@ -2,6 +2,7 @@ package build.raft.app.shared
 
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 internal class AndroidAttachmentExportAuthorityRegistry {
     private enum class Status { Active, Cancelling }
@@ -66,7 +67,9 @@ internal class AndroidAttachmentExportAuthorityRegistry {
                 }
                 Entry(operationId, Status.Cancelling).also { operationByKey[key] = it }
             }
-        val cleanupAndRelease = {
+        val cleanupStarted = AtomicBoolean(false)
+        val cleanupAndRelease = cleanupAndRelease@ {
+            if (!cleanupStarted.compareAndSet(false, true)) return@cleanupAndRelease
             try {
                 cleanup()
             } finally {
