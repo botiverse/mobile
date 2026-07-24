@@ -3406,7 +3406,9 @@ internal class SlockKuiklyBridgeModule(
                                     mapOf(
                                             "status" to "error",
                                             "code" to "settings_quiver_update_check_failed",
-                                            "message" to (throwable.message ?: "Quiver update check failed")
+                                            "message" to
+                                                    (throwable.message
+                                                        ?: appContext.getString(R.string.settings_update_check_failed))
                                     )
                                 }
                 callback?.invoke(result)
@@ -3953,8 +3955,8 @@ internal class SlockKuiklyBridgeModule(
                 "socketBaseUrl" to current.socketBaseUrl,
                 "webUrl" to current.webUrl,
                 "updateCheckSupported" to true,
-                "updateCheckStatusLabel" to "Ready",
-                "updateCheckDetail" to "Check Hands channel ${BuildConfig.QUIVER_CHANNEL} for a newer Android APK. If an update is available, Raft downloads it and opens the Android installer.",
+                "updateCheckStatusLabel" to appContext.getString(R.string.settings_update_ready_status),
+                "updateCheckDetail" to appContext.getString(R.string.settings_update_ready_detail),
                 // Serialized like entriesJson (#484): options cross the render
                 // bridge as a primitive string, independent of container
                 // marshal support. OHOS/iOS hosts still send structured
@@ -3994,8 +3996,16 @@ internal class SlockKuiklyBridgeModule(
         val updateDetail = installResult.detail.ifBlank { response.quiverDetail() }
         val feedback =
                 when {
-                    updateAvailable -> "Update available: ${response.latest?.version?.ifBlank { null } ?: "version code ${response.latest?.version_code ?: 0L}"}."
-                    else -> "No Hands update available on ${BuildConfig.QUIVER_CHANNEL}."
+                    updateAvailable ->
+                            appContext.getString(
+                                    R.string.settings_update_feedback_available,
+                                    response.latest?.version?.ifBlank { null }
+                                            ?: appContext.getString(
+                                                    R.string.settings_update_version_code,
+                                                    response.latest?.version_code ?: 0L
+                                            )
+                            )
+                    else -> appContext.getString(R.string.settings_update_feedback_none)
                 }
         return loadSettingsDeveloper(feedback = feedback) +
                 mapOf(
@@ -4032,9 +4042,9 @@ internal class SlockKuiklyBridgeModule(
                                 DownloadManager.STATUS_RUNNING,
                                 DownloadManager.STATUS_PAUSED -> {
                                     QuiverInstallResult(
-                                            statusLabel = "Downloading",
-                                            detail = "Raft is downloading the update APK. The button will change to Install when the download is ready.",
-                                            actionLabel = "Downloading"
+                                            statusLabel = appContext.getString(R.string.settings_update_status_downloading),
+                                            detail = appContext.getString(R.string.settings_update_detail_downloading),
+                                            actionLabel = appContext.getString(R.string.settings_update_status_downloading)
                                     )
                                 }
                                 else -> {
@@ -4053,25 +4063,25 @@ internal class SlockKuiklyBridgeModule(
                             "install_failed slug=${BuildConfig.QUIVER_APP_SLUG} latest=${response.latest?.version_code ?: 0} error=${error.javaClass.simpleName}"
                     )
                     QuiverInstallResult(
-                            statusLabel = "Install failed",
-                            detail = error.message ?: "Unable to download or install the Quiver APK.",
-                            actionLabel = "Download",
+                            statusLabel = appContext.getString(R.string.settings_update_status_install_failed),
+                            detail = error.message ?: appContext.getString(R.string.settings_update_detail_install_failed),
+                            actionLabel = appContext.getString(R.string.settings_update_action_download),
                             errorCode = error.javaClass.simpleName
                     )
                 }
     }
 
     private fun enqueueQuiverApkInstall(response: UpdateCheckResponse, arch: String?): QuiverUpdateDownload {
-        val latest = response.latest ?: error("Quiver response did not include a latest release.")
-        val asset = response.asset ?: error("Quiver response did not include an APK asset.")
+        val latest = response.latest ?: error(appContext.getString(R.string.settings_update_error_missing_release))
+        val asset = response.asset ?: error(appContext.getString(R.string.settings_update_error_missing_asset))
         val downloadUrl = asset.download_url
         require(downloadUrl.startsWith("http://") || downloadUrl.startsWith("https://")) {
             "Can only download HTTP/HTTPS URIs: $downloadUrl"
         }
         val downloadManager =
                 ContextCompat.getSystemService(appContext, DownloadManager::class.java)
-                        ?: error("DownloadManager not available")
-        val fileName = "raft-quiver-${latest.version_code}.apk"
+                        ?: error(appContext.getString(R.string.settings_update_error_download_manager_unavailable))
+        val fileName = "raft-update-${latest.version_code}.apk"
         val key = response.quiverDownloadKey(arch)
         val title =
                 buildString {
@@ -4081,7 +4091,7 @@ internal class SlockKuiklyBridgeModule(
         val request =
                 DownloadManager.Request(Uri.parse(downloadUrl))
                         .setTitle(title)
-                        .setDescription("Downloading latest version...")
+                        .setDescription(appContext.getString(R.string.settings_update_download_description))
                         .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
                         .setAllowedOverMetered(true)
                         .setAllowedOverRoaming(true)
@@ -4149,18 +4159,18 @@ internal class SlockKuiklyBridgeModule(
             DownloadManager.STATUS_SUCCESSFUL -> {
                 tracked.completed = true
                 QuiverInstallResult(
-                        statusLabel = "Install",
-                        detail = "Raft update downloaded. Tap Install to open Android installer.",
-                        actionLabel = "Install"
+                        statusLabel = appContext.getString(R.string.settings_update_status_install),
+                        detail = appContext.getString(R.string.settings_update_detail_downloaded),
+                        actionLabel = appContext.getString(R.string.settings_update_status_install)
                 )
             }
             DownloadManager.STATUS_PENDING,
             DownloadManager.STATUS_RUNNING,
             DownloadManager.STATUS_PAUSED ->
                 QuiverInstallResult(
-                        statusLabel = "Downloading",
-                        detail = "Raft is downloading the update APK. The button will change to Install when the download is ready.",
-                        actionLabel = "Downloading"
+                        statusLabel = appContext.getString(R.string.settings_update_status_downloading),
+                        detail = appContext.getString(R.string.settings_update_detail_downloading),
+                        actionLabel = appContext.getString(R.string.settings_update_status_downloading)
                 )
             else -> {
                 quiverUpdateDownloads.remove(tracked.key)
@@ -4196,9 +4206,9 @@ internal class SlockKuiklyBridgeModule(
         )
         emitQuiverUpdateStatusEvent()
         return QuiverInstallResult(
-                statusLabel = "Downloading",
-                detail = "Raft update download started. The button will change to Install when the APK is ready.",
-                actionLabel = "Downloading"
+                statusLabel = appContext.getString(R.string.settings_update_status_downloading),
+                detail = appContext.getString(R.string.settings_update_detail_download_started),
+                actionLabel = appContext.getString(R.string.settings_update_status_downloading)
         )
     }
 
@@ -4221,22 +4231,22 @@ internal class SlockKuiklyBridgeModule(
             when (openQuiverDownloadedApkOrRequestPermission(context, this, source)) {
                 QUIVER_INSTALL_OPENED ->
                     QuiverInstallResult(
-                            statusLabel = "Install",
-                            detail = "Android installer opened for the downloaded Raft update.",
-                            actionLabel = "Install"
+                            statusLabel = appContext.getString(R.string.settings_update_status_install),
+                            detail = appContext.getString(R.string.settings_update_detail_installer_opened),
+                            actionLabel = appContext.getString(R.string.settings_update_status_install)
                     )
                 QUIVER_INSTALL_PERMISSION_REQUIRED ->
                     QuiverInstallResult(
-                            statusLabel = "Permission required",
-                            detail = "Raft update is downloaded. Allow Raft to install unknown apps, then return to continue installation.",
-                            actionLabel = "Install",
+                            statusLabel = appContext.getString(R.string.settings_update_status_permission_required),
+                            detail = appContext.getString(R.string.settings_update_detail_permission_required),
+                            actionLabel = appContext.getString(R.string.settings_update_status_install),
                             errorCode = "install_permission_required"
                     )
                 else ->
                     QuiverInstallResult(
-                            statusLabel = "Install failed",
-                            detail = "Raft update is downloaded, but Android installer could not be opened.",
-                            actionLabel = "Install",
+                            statusLabel = appContext.getString(R.string.settings_update_status_install_failed),
+                            detail = appContext.getString(R.string.settings_update_detail_installer_failed),
+                            actionLabel = appContext.getString(R.string.settings_update_status_install),
                             errorCode = "install_intent_failed"
                     )
             }
@@ -4258,21 +4268,37 @@ internal class SlockKuiklyBridgeModule(
     )
 
     private fun UpdateCheckResponse.quiverStatusLabel(): String =
-            if (requireUpdate() != null) "Update available" else "Current"
+            appContext.getString(
+                    if (requireUpdate() != null) {
+                        R.string.settings_update_status_available
+                    } else {
+                        R.string.settings_update_status_current
+                    }
+            )
 
     private fun UpdateCheckResponse.quiverDetail(): String =
             if (requireUpdate() != null) {
-                val version = latest?.version?.takeIf { it.isNotBlank() } ?: "version code ${latest?.version_code ?: 0L}"
+                val version =
+                        latest?.version?.takeIf { it.isNotBlank() }
+                                ?: appContext.getString(
+                                        R.string.settings_update_version_code,
+                                        latest?.version_code ?: 0L
+                                )
                 val size = asset?.size_bytes?.takeIf { it > 0L }?.formatStorageSizeLabel()
-                buildString {
-                    append("Quiver has ")
-                    append(version)
-                    append(" on ")
-                    append(channel)
-                    size?.let { append(" (").append(it).append(" APK).") } ?: append(".")
+                if (size == null) {
+                    appContext.getString(R.string.settings_update_detail_available, version)
+                } else {
+                    appContext.getString(
+                            R.string.settings_update_detail_available_with_size,
+                            version,
+                            size
+                    )
                 }
             } else {
-                "No Quiver update is available on $channel for version code $current_version_code."
+                appContext.getString(
+                        R.string.settings_update_detail_current,
+                        current_version_code
+                )
             }
 
     private fun setApiEnvironment(request: JSONObject): Map<String, Any> {

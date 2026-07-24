@@ -762,7 +762,7 @@ class SettingsHomePageDiagnosticsTest {
     }
 
     @Test
-    fun aboutPayloadShowsManualUpdateCheckAction() {
+    fun aboutPayloadPreservesLocalizedRaftUpdateCopy() {
         val payload =
             SharedSettingsAboutSnapshot(
                 appName = "Raft",
@@ -773,8 +773,8 @@ class SettingsHomePageDiagnosticsTest {
                 updateCheck =
                     SharedSettingsUpdateCheckSnapshot(
                         supported = true,
-                        statusLabel = "Current",
-                        detail = "No app update is available on main."
+                        statusLabel = "已是最新版本",
+                        detail = "当前已是 Raft 最新版本，版本代码为 1000000。"
                     ),
                 actionState = null
             )
@@ -783,10 +783,13 @@ class SettingsHomePageDiagnosticsTest {
         val updateRow = rows.first { it.key == DEVELOPER_ACTION_QUIVER_UPDATE_CHECK }
 
         assertEquals("Check for update", updateRow.title)
-        assertEquals("Current", updateRow.status)
+        assertEquals("已是最新版本", updateRow.status)
         assertTrue(updateRow.enabled)
         assertFalse(updateRow.detail.contains("Quiver"))
-        assertTrue(updateRow.detail.contains("app update"))
+        assertTrue(updateRow.detail.contains("Raft"))
+        assertFalse(updateRow.detail.contains("main"))
+        assertFalse(updateRow.detail.contains("渠道"))
+        assertTrue(updateRow.detail.contains("最新版本"))
 
         val copyEnvironmentRow = rows.first { it.key == "copyEnvironmentInfo" }
         assertEquals("Copy environment info", copyEnvironmentRow.title)
