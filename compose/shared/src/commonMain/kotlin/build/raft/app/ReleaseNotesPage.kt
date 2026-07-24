@@ -527,8 +527,8 @@ internal class ReleaseNotesViewModel(
     diagnosticsLogger: (String) -> Unit = {},
     warningLogger: (String) -> Unit = {}
 ) : ViewModel() {
-    private val storeDelegate =
-        lazy {
+    private val storeLifecycle =
+        ReleaseNotesStoreLifecycle {
             ReleaseNotesStore(
                 repository = repository,
                 scope = viewModelScope,
@@ -536,7 +536,8 @@ internal class ReleaseNotesViewModel(
                 warningLogger = warningLogger
             )
         }
-    private val store: ReleaseNotesStore by storeDelegate
+    private val store: ReleaseNotesStore
+        get() = storeLifecycle.value
     val state: StateFlow<ReleaseNotesBodyState>
         get() = store.state
 
@@ -545,8 +546,20 @@ internal class ReleaseNotesViewModel(
     }
 
     override fun onCleared() {
-        if (storeDelegate.isInitialized()) store.clear()
+        storeLifecycle.clearIfInitialized()
         super.onCleared()
+    }
+}
+
+internal class ReleaseNotesStoreLifecycle(
+    factory: () -> ReleaseNotesStore
+) {
+    private val delegate = lazy(factory)
+    val value: ReleaseNotesStore
+        get() = delegate.value
+
+    fun clearIfInitialized() {
+        if (delegate.isInitialized()) delegate.value.clear()
     }
 }
 

@@ -13,12 +13,14 @@ class ReleaseNotesPageProductionContractTest {
                 .substringAfter("internal class ReleaseNotesViewModel(")
                 .substringBefore("internal data class ReleaseNotesRequestIdentity")
 
-        assertContains(viewModel, "private val storeDelegate =")
-        assertContains(viewModel, "lazy {")
+        assertContains(viewModel, "private val storeLifecycle =")
+        assertContains(viewModel, "ReleaseNotesStoreLifecycle {")
         assertContains(viewModel, "scope = viewModelScope")
-        assertContains(viewModel, "private val store: ReleaseNotesStore by storeDelegate")
+        assertContains(viewModel, "get() = storeLifecycle.value")
         assertContains(viewModel, "get() = store.state")
-        assertContains(viewModel, "if (storeDelegate.isInitialized()) store.clear()")
+        assertContains(viewModel, "storeLifecycle.clearIfInitialized()")
+        assertContains(viewModel, "private val delegate = lazy(factory)")
+        assertContains(viewModel, "if (delegate.isInitialized()) delegate.value.clear()")
         assertFalse(
             "private val store =\n        ReleaseNotesStore(" in viewModel,
             "ViewModel construction must not read pager-bound viewModelScope before attachment"

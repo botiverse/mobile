@@ -265,6 +265,54 @@ class ReleaseNotesPageTest {
         store.clear()
     }
 
+    @Test
+    fun releaseNotesViewModelConstructionDoesNotReadPagerBoundScope() {
+        val viewModel = ReleaseNotesViewModel(repository = idleReleaseNotesRepository())
+
+        assertTrue(viewModel is ReleaseNotesViewModel)
+    }
+
+    @Test
+    fun releaseNotesStoreLifecycleIsLazySingletonAndClearsOnlyAfterInitialization() = runBlocking {
+        val pending = CompletableDeferred<ReleaseNotesNetworkResult>()
+        var creations = 0
+        val lifecycle =
+            ReleaseNotesStoreLifecycle {
+                creations += 1
+                ReleaseNotesStore(
+                    repository =
+                        ReleaseNotesRepository(
+                            remoteDataSource =
+                                object : ReleaseNotesRemoteDataSource {
+                                    override suspend fun fetch(
+                                        versionCode: String,
+                                        languageTag: String?
+                                    ): ReleaseNotesNetworkResult = pending.await()
+                                },
+                            preferenceStore = MemoryPreferenceStore()
+                        ),
+                    scope = this
+                )
+            }
+
+        lifecycle.clearIfInitialized()
+        assertEquals(0, creations)
+
+        val first = lifecycle.value
+        val second = lifecycle.value
+        assertTrue(first === second)
+        assertEquals(1, creations)
+
+        first.dispatch(ReleaseNotesIntent.Load("1070001", "en"))
+        yield()
+        lifecycle.clearIfInitialized()
+        pending.complete(successfulReleaseNotesResult(1_070_001L, "en", "late"))
+        yield()
+
+        assertEquals(ReleaseNotesBodyState.Loading, first.state.value)
+        assertEquals(1, creations)
+    }
+
     private fun successfulReleaseNotesResult(
         versionCode: Long,
         languageTag: String,
@@ -285,6 +333,18 @@ class ReleaseNotesPageTest {
             success = true,
             errorMessage = "",
             statusCode = 200
+        )
+
+    private fun idleReleaseNotesRepository(): ReleaseNotesRepository =
+        ReleaseNotesRepository(
+            remoteDataSource =
+                object : ReleaseNotesRemoteDataSource {
+                    override suspend fun fetch(
+                        versionCode: String,
+                        languageTag: String?
+                    ): ReleaseNotesNetworkResult = error("constructor must not start release notes I/O")
+                },
+            preferenceStore = MemoryPreferenceStore()
         )
 
     private class MemoryPreferenceStore : SharedPreferenceStore {
