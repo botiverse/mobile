@@ -17765,6 +17765,7 @@ private fun SharedHomeSavedResultCard(
         Row(
             modifier =
                 surfaceModifier
+                    .padding(horizontal = 12.dp, vertical = 12.dp)
                     .slockCaptureLiveRootAnchor(contentAnchor)
                     .pointerInput(openGestureKey) {
                         val trailingActionWidthPx = SavedUnsaveHitTargetSize.toPx()
@@ -17798,8 +17799,8 @@ private fun SharedHomeSavedResultCard(
                                     contentAnchor.resolve(SlockPopoverLocalPoint.Exact(localOffset))?.let(currentOnContextMenu)
                                 }
                             }
-                        }
-                    .padding(horizontal = 12.dp, vertical = 12.dp),
+                        )
+                    },
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.Top
         ) {
