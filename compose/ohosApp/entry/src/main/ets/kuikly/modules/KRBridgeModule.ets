@@ -627,10 +627,17 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   private normalizedImageMimeType(mimeType: string): string {
     switch (mimeType) {
       case "image/jpg":
-      case "image/jpeg": return "image/jpeg";
+      case "image/jpeg":
+      case "image/pjpeg": return "image/jpeg";
+      case "image/png":
+      case "image/x-png": return "image/png";
+      case "image/webp": return "image/webp";
+      case "image/gif": return "image/gif";
       case "image/heic":
       case "image/heif": return "image/heif";
-      default: return mimeType;
+      case "image/bmp":
+      case "image/x-ms-bmp": return "image/bmp";
+      default: return "";
     }
   }
 

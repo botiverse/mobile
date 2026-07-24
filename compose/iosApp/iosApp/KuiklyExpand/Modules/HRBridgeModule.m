@@ -2303,7 +2303,10 @@ static NSString *SlockPickedAttachmentDisplayName(NSString *suggestedName,
         return;
     }
     NSString *fileName = SlockAttachmentExportFileName(SlockBridgeString(params[@"fileName"]));
-    NSString *mimeType = [SlockBridgeString(params[@"mimeType"]) lowercaseString];
+    NSString *mimeType = [[[[SlockBridgeString(params[@"mimeType"])
+        componentsSeparatedByString:@";"] firstObject]
+        stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet]
+        lowercaseString];
     NSString *operationId = SlockBridgeString(params[@"operationId"]);
     if (operationId.length == 0) {
         callback(@{

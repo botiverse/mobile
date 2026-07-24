@@ -174,7 +174,12 @@ internal class AttachmentDownloadsExportCoordinator(
                         message = "Save stopped after account changed"
                     )
                 }
-            val immediate = ownerRegistration?.first ?: registerState()
+            val immediate =
+                if (request.owner == null) {
+                    registerState()
+                } else {
+                    checkNotNull(ownerRegistration).first
+                }
             if (immediate != null) {
                 ownerRegistration?.second?.close()
                 return immediate
