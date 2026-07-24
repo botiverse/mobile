@@ -7,25 +7,6 @@ import kotlin.test.assertTrue
 
 class LocalPreferencesTest {
     @Test
-    fun networkTransportPreferenceUsesPlatformDefaultUntilExplicitlyPersisted() {
-        val values = InMemorySlockKeyValueStore()
-        val store = KeyValueNetworkTransportPreferenceStore(values)
-
-        assertEquals(false, store.readHttp3EnabledSync(defaultValue = false))
-        assertEquals(true, store.readHttp3EnabledSync(defaultValue = true))
-
-        store.writeHttp3EnabledSync(false)
-        assertEquals(false, store.readHttp3EnabledSync(defaultValue = true))
-
-        store.writeHttp3EnabledSync(true)
-        assertEquals(true, store.readHttp3EnabledSync(defaultValue = false))
-        assertEquals(
-            "true",
-            values.getString(KeyValueNetworkTransportPreferenceStore.KEY_HTTP3_ENABLED)
-        )
-    }
-
-    @Test
     fun localeDefaultsToEnglishWhenNoPreferenceExists() = runBlocking {
         val repository = PersistentLocaleRepository(
             KeyValueLocalePreferenceStore(InMemorySlockKeyValueStore())

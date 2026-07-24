@@ -1,10 +1,7 @@
 package build.raft.app.network
 
 import build.raft.app.data.NetworkTransportPreferenceAvailability
-import build.raft.app.data.NetworkTransportPreferenceMutationResult
-import build.raft.app.data.NetworkTransportPreferenceRepository
 import build.raft.app.data.NetworkTransportPreferenceSnapshot
-import build.raft.app.data.NetworkTransportPreferenceStore
 import com.tencent.kmm.network.export.NetworkCurlConfigurationFailureReason
 import com.tencent.kmm.network.export.NetworkCurlNativeStatus
 import com.tencent.kmm.network.export.NetworkRequest
@@ -18,8 +15,6 @@ import com.tencent.kmm.network.service.NetworkTransportEngine
 import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 
 internal data class SlockNetworkTransportPlatformPolicy(
     val platformLabel: String,
@@ -32,19 +27,28 @@ internal data class SlockNetworkTransportPlatformPolicy(
 
 internal expect fun slockNetworkTransportPlatformPolicy(): SlockNetworkTransportPlatformPolicy
 
-/** Mirrors the app-global preference into non-NetworkClient platform consumers. */
+/** Mirrors the process-global remote policy into non-NetworkClient platform consumers. */
 internal expect fun slockApplyPlatformHttp3Preference(
     enabled: Boolean,
     generation: Long
 ): Boolean
 
+internal enum class SlockRemoteTransportVariant(val wireValue: String) {
+    Ktor("ktor"),
+    CurlH2("curl_h2"),
+    CurlH3("curl_h3");
+
+    companion object {
+        fun fromWire(value: String?): SlockRemoteTransportVariant? =
+            entries.firstOrNull { it.wireValue == value?.trim()?.lowercase() }
+    }
+}
+
 /**
- * Process-owned transport policy. The durable value initializes a committed
- * in-memory snapshot; each new request reads that snapshot, so Settings can
- * switch transport policy without reconstructing NetworkClient instances.
+ * Process-owned transport policy. Remote variants are reconciled across every active server selection;
+ * each new request reads the committed snapshot without reconstructing NetworkClient instances.
  */
 internal class SlockNetworkTransportController(
-    private val preferenceStore: NetworkTransportPreferenceStore,
     private val platformPolicy: SlockNetworkTransportPlatformPolicy = slockNetworkTransportPlatformPolicy(),
     private val nativeStatusProvider: () -> NetworkCurlNativeStatus = { VBTransportCurl.nativeStatus },
     private val curlConfiguredProvider: () -> Boolean = { VBTransportCurl.configured },
@@ -53,78 +57,49 @@ internal class SlockNetworkTransportController(
     },
     private val platformPreferencePublisher: (Boolean, Long) -> Boolean =
         ::slockApplyPlatformHttp3Preference
-) : NetworkTransportPreferenceRepository {
-    private val mutationMutex = Mutex()
+) {
     private val platformPolicyPublicationLock = SynchronizedObject()
-    private val committedPreference = atomic<CommittedTransportPreference?>(null)
+    private val policyGeneration = atomic(0L)
     private val publishedPlatformPolicy = atomic<PublishedPlatformPolicy?>(null)
+    private var remoteState = RemoteTransportState()
 
-    override fun getPreferenceSync(): NetworkTransportPreferenceSnapshot =
+    fun getPreferenceSync(): NetworkTransportPreferenceSnapshot =
         synchronized(platformPolicyPublicationLock) {
             committedSnapshotLocked().also { publishPlatformPolicyLocked(it) }
         }
 
-    override suspend fun setHttp3Enabled(
-        enabled: Boolean
-    ): NetworkTransportPreferenceMutationResult = mutationMutex.withLock {
-        synchronized(platformPolicyPublicationLock) {
-            val committed = committedPreferenceLocked()
-            val current = snapshot(committed.requestedHttp3Enabled, committed.generation)
-            publishPlatformPolicyLocked(current)
-            if (enabled == current.requestedHttp3Enabled) {
-                return@synchronized NetworkTransportPreferenceMutationResult.Applied(current)
-            }
-            if (enabled && !current.available) {
-                return@synchronized NetworkTransportPreferenceMutationResult.Rejected(
-                    errorCode = current.availability.settingsErrorCode(),
-                    snapshot = current
-                )
-            }
-
-            val nextGeneration = committed.generation + 1L
-            val target = snapshot(enabled, generationValue = nextGeneration)
-            val persisted = runCatching { preferenceStore.writeHttp3EnabledSync(enabled) }.isSuccess
-            if (!persisted) {
-                // No consumer can observe the target: request selection is
-                // serialized by this lock and the host policy is not published
-                // until the durable write succeeds.
-                return@synchronized NetworkTransportPreferenceMutationResult.Rejected(
-                    errorCode = "settings_network_preference_write_failed",
-                    snapshot = current
-                )
-            }
-
-            if (!publishPlatformPolicyLocked(target)) {
-                val preferenceRolledBack =
-                    runCatching {
-                        preferenceStore.writeHttp3EnabledSync(current.requestedHttp3Enabled)
-                    }.isSuccess
-                val platformRolledBack = publishPlatformPolicyLocked(current, force = true)
-                if (!platformRolledBack) {
-                    // The publisher may have applied the target before
-                    // reporting failure. Forget the optimistic publication so
-                    // the next committed read retries the old policy instead
-                    // of being suppressed by generation/equality checks.
-                    publishedPlatformPolicy.value = null
-                }
-                return@synchronized NetworkTransportPreferenceMutationResult.Rejected(
-                    errorCode =
-                        if (preferenceRolledBack) {
-                            "settings_network_platform_bridge_unavailable"
-                        } else {
-                            "settings_network_preference_rollback_failed"
-                        },
-                    snapshot = current
-                )
-            }
-
-            committedPreference.value =
-                CommittedTransportPreference(
-                    requestedHttp3Enabled = enabled,
-                    generation = nextGeneration
-                )
-            NetworkTransportPreferenceMutationResult.Applied(target)
+    fun updateRemoteEnvironment(environmentId: String): String? =
+        mutateRemoteState("environment") { state ->
+            val normalized = environmentId.trim().trimEnd('/')
+            if (state.currentEnvironmentId == normalized) state else state.copy(currentEnvironmentId = normalized)
         }
+
+    fun updateRemoteActiveSelection(scopeId: String, serverId: String?): String? =
+        mutateRemoteState("selection") { state ->
+            val normalizedScope = scopeId.trim().ifBlank { "legacy" }
+            val normalizedServer = serverId?.trim()?.takeIf(String::isNotBlank)
+            val next = state.activeServerByScope.toMutableMap()
+            if (normalizedServer == null) next.remove(normalizedScope) else next[normalizedScope] = normalizedServer
+            if (next == state.activeServerByScope) state else state.copy(activeServerByScope = next.toMap())
+        }
+
+    fun applyRemoteEvaluation(
+        environmentId: String,
+        evaluationGeneration: Long,
+        serverId: String,
+        enabled: Boolean,
+        variant: String?
+    ): String? = mutateRemoteState("evaluation") { state ->
+        val normalizedEnvironment = environmentId.trim().trimEnd('/')
+        val normalizedServer = serverId.trim()
+        if (normalizedEnvironment.isBlank() || normalizedServer.isBlank()) return@mutateRemoteState state
+        val key = RemoteEvaluationKey(normalizedEnvironment, normalizedServer)
+        val current = state.evaluations[key]
+        if (current != null && evaluationGeneration <= current.generation) return@mutateRemoteState state
+        state.copy(
+            evaluations = state.evaluations +
+                (key to RemoteTransportEvaluation(evaluationGeneration, enabled, variant?.trim()?.lowercase()))
+        )
     }
 
     fun selectionFor(request: NetworkRequest): NetworkEngineSelection {
@@ -145,21 +120,19 @@ internal class SlockNetworkTransportController(
                 } else {
                     NetworkTransportEngine.entries.toSet()
                 },
-            hostSelectionTag = "settings-generation-${snapshot.generation}"
+            hostSelectionTag = "remote-generation-${snapshot.generation}"
         )
     }
 
-    private fun snapshot(
-        requested: Boolean,
-        generationValue: Long
-    ): NetworkTransportPreferenceSnapshot {
+    private fun snapshot(intent: TransportIntent, generationValue: Long): NetworkTransportPreferenceSnapshot {
         val readiness = currentReadiness()
-        val effective = requested && readiness.availability == NetworkTransportPreferenceAvailability.Ready
+        val ready = readiness.availability == NetworkTransportPreferenceAvailability.Ready
+        val effective = intent.http3Requested && ready
         return NetworkTransportPreferenceSnapshot(
-            requestedHttp3Enabled = requested,
+            requestedHttp3Enabled = intent.http3Requested,
             effectiveHttp3Enabled = effective,
-            curlRequestedForNewCalls = platformPolicy.curlRequired || effective,
-            available = readiness.availability == NetworkTransportPreferenceAvailability.Ready,
+            curlRequestedForNewCalls = platformPolicy.curlRequired || (intent.curlRequested && ready),
+            available = ready,
             availability = readiness.availability,
             detail = readiness.detail,
             generation = generationValue
@@ -167,19 +140,64 @@ internal class SlockNetworkTransportController(
     }
 
     private fun committedSnapshotLocked(): NetworkTransportPreferenceSnapshot {
-        val committed = committedPreferenceLocked()
-        return snapshot(committed.requestedHttp3Enabled, committed.generation)
+        return snapshot(transportIntent(remotePolicyLocked()), policyGeneration.value)
     }
 
-    private fun committedPreferenceLocked(): CommittedTransportPreference =
-        committedPreference.value
-            ?: CommittedTransportPreference(
-                requestedHttp3Enabled =
-                    preferenceStore.readHttp3EnabledSync(
-                        defaultValue = platformPolicy.defaultHttp3Enabled
-                    ),
-                generation = 0L
-            ).also { committedPreference.value = it }
+    private fun mutateRemoteState(
+        source: String,
+        transform: (RemoteTransportState) -> RemoteTransportState
+    ): String? = synchronized(platformPolicyPublicationLock) {
+        val currentState = remoteState
+        val targetState = transform(currentState)
+        if (targetState == currentState) return@synchronized null
+        val currentGeneration = policyGeneration.value
+        val currentSnapshot = snapshot(transportIntent(remotePolicyLocked(currentState)), currentGeneration)
+        publishPlatformPolicyLocked(currentSnapshot)
+        val nextGeneration = currentGeneration + 1L
+        val targetPolicy = remotePolicyLocked(targetState)
+        val targetSnapshot = snapshot(transportIntent(targetPolicy), nextGeneration)
+        if (!publishPlatformPolicyLocked(targetSnapshot)) {
+            if (!publishPlatformPolicyLocked(currentSnapshot, force = true)) {
+                publishedPlatformPolicy.value = null
+            }
+            return@synchronized "network_transport_remote source=$source applied=false"
+        }
+        remoteState = targetState
+        policyGeneration.value = nextGeneration
+        "network_transport_remote source=$source applied=true variant=${targetPolicy.variant.wireValue} " +
+            "resolved=${targetPolicy.resolved} conflict=${targetPolicy.conflicting} generation=$nextGeneration"
+    }
+
+    private fun remotePolicyLocked(state: RemoteTransportState = remoteState): RemoteTransportPolicy {
+        val environmentId = state.currentEnvironmentId
+        val activeServers = state.activeServerByScope.values.toSet()
+        if (environmentId.isBlank() || activeServers.isEmpty()) return RemoteTransportPolicy.Default
+        val evaluations = activeServers.map { serverId ->
+            state.evaluations[RemoteEvaluationKey(environmentId, serverId)] ?: return RemoteTransportPolicy.Default
+        }
+        val variants = evaluations.map { evaluation ->
+            if (!evaluation.enabled) {
+                SlockRemoteTransportVariant.CurlH3
+            } else {
+                SlockRemoteTransportVariant.fromWire(evaluation.variant) ?: SlockRemoteTransportVariant.CurlH3
+            }
+        }.toSet()
+        return if (variants.size == 1) {
+            RemoteTransportPolicy(resolved = true, variant = variants.single(), conflicting = false)
+        } else {
+            RemoteTransportPolicy(resolved = true, variant = SlockRemoteTransportVariant.Ktor, conflicting = true)
+        }
+    }
+
+    private fun transportIntent(policy: RemoteTransportPolicy): TransportIntent =
+        when (policy.variant) {
+            SlockRemoteTransportVariant.Ktor ->
+                TransportIntent(curlRequested = platformPolicy.curlRequired, http3Requested = false)
+            SlockRemoteTransportVariant.CurlH2 ->
+                TransportIntent(curlRequested = true, http3Requested = false)
+            SlockRemoteTransportVariant.CurlH3 ->
+                TransportIntent(curlRequested = true, http3Requested = true)
+        }
 
     private fun publishPlatformPolicyLocked(
         snapshot: NetworkTransportPreferenceSnapshot,
@@ -187,8 +205,8 @@ internal class SlockNetworkTransportController(
     ): Boolean {
         val current = publishedPlatformPolicy.value
         if (!force && current != null && snapshot.generation < current.generation) {
-            // A request that read the old persisted preference while a mutation
-            // was committing must not overwrite the newer host policy.
+            // A request that read the old remote generation while a mutation was committing must not
+            // overwrite the newer host policy.
             return true
         }
         if (!force &&
@@ -255,20 +273,41 @@ private data class PublishedPlatformPolicy(
     val enabled: Boolean
 )
 
-private data class CommittedTransportPreference(
-    val requestedHttp3Enabled: Boolean,
-    val generation: Long
+private data class RemoteEvaluationKey(
+    val environmentId: String,
+    val serverId: String
 )
 
-private fun NetworkTransportPreferenceAvailability.settingsErrorCode(): String =
-    when (this) {
-        NetworkTransportPreferenceAvailability.Ready -> "settings_network_transport_unavailable"
-        NetworkTransportPreferenceAvailability.NativeUnavailable -> "settings_network_native_unavailable"
-        NetworkTransportPreferenceAvailability.Http3Unsupported -> "settings_network_http3_unsupported"
-        NetworkTransportPreferenceAvailability.TrustUnavailable -> "settings_network_trust_unavailable"
-        NetworkTransportPreferenceAvailability.ProxyUnavailable -> "settings_network_proxy_unavailable"
-        NetworkTransportPreferenceAvailability.RuntimeUnavailable -> "settings_network_transport_unavailable"
+private data class RemoteTransportEvaluation(
+    val generation: Long,
+    val enabled: Boolean,
+    val variant: String?
+)
+
+private data class RemoteTransportState(
+    val currentEnvironmentId: String = "",
+    val activeServerByScope: Map<String, String> = emptyMap(),
+    val evaluations: Map<RemoteEvaluationKey, RemoteTransportEvaluation> = emptyMap()
+)
+
+private data class RemoteTransportPolicy(
+    val resolved: Boolean,
+    val variant: SlockRemoteTransportVariant,
+    val conflicting: Boolean
+) {
+    companion object {
+        val Default = RemoteTransportPolicy(
+            resolved = false,
+            variant = SlockRemoteTransportVariant.CurlH3,
+            conflicting = false
+        )
     }
+}
+
+private data class TransportIntent(
+    val curlRequested: Boolean,
+    val http3Requested: Boolean
+)
 
 private object SlockNetworkTransportRegistry {
     private val controller = atomic<SlockNetworkTransportController?>(null)
@@ -306,7 +345,7 @@ internal fun slockNetworkClientConfig(
                 request.setCurlHttp3Enabled(policy.defaultHttp3Enabled)
                 NetworkEngineSelection(
                     requestedEngine =
-                        if (policy.curlRequired) {
+                        if (policy.curlRequired || policy.defaultHttp3Enabled) {
                             NetworkTransportEngine.CURL
                         } else {
                             NetworkTransportEngine.KTOR
@@ -330,7 +369,7 @@ internal fun slockNetworkClientConfig(
                             "selectedEngine=${diagnostics.selectedEngine.externalValue} " +
                             "platformDefaultEngine=${diagnostics.platformDefaultEngine.externalValue} " +
                             "selectionReason=${diagnostics.reason} " +
-                            "configGeneration=${diagnostics.hostSelectionTag?.removePrefix("settings-generation-") ?: "none"} " +
+                            "configGeneration=${diagnostics.hostSelectionTag?.removePrefix("remote-generation-") ?: "none"} " +
                             "unavailableReason=${diagnostics.unavailableReason ?: "none"} " +
                             "unavailableDetail=${diagnostics.unavailableDetail.toSafeNetworkTransportToken()} " +
                             "nativeLinked=${native.linked} " +
@@ -346,7 +385,7 @@ internal fun slockNetworkClientConfig(
                             "requestedEngine=${diagnostics.selection.requestedEngine?.externalValue ?: "none"} " +
                             "selectedEngine=${diagnostics.selection.selectedEngine.externalValue} " +
                             "selectionReason=${diagnostics.selection.reason} " +
-                            "configGeneration=${diagnostics.selection.hostSelectionTag?.removePrefix("settings-generation-") ?: "none"} " +
+                            "configGeneration=${diagnostics.selection.hostSelectionTag?.removePrefix("remote-generation-") ?: "none"} " +
                             "unavailableReason=${diagnostics.selection.unavailableReason ?: "none"} " +
                             "unavailableDetail=${diagnostics.selection.unavailableDetail.toSafeNetworkTransportToken()} " +
                             "nativeLinked=${native.linked} " +

@@ -428,7 +428,6 @@ sealed interface SharedSettingsIntent {
     data class SetLocale(val localeTag: String) : SharedSettingsIntent
     data class SetMessageAlignment(val alignment: String) : SharedSettingsIntent
     data class SetLinkOpenMode(val mode: String) : SharedSettingsIntent
-    data class SetHttp3Enabled(val enabled: Boolean) : SharedSettingsIntent
     data class SetCompactConsecutiveMessages(val enabled: Boolean) : SharedSettingsIntent
     data class SetLongMessageCollapseEnabled(val enabled: Boolean) : SharedSettingsIntent
     data class SetSingleTapOpensThreadEnabled(val enabled: Boolean) : SharedSettingsIntent
@@ -554,8 +553,7 @@ class SharedSettingsDataSource(
     private val diagnosticsLogger: ((String) -> Unit)? = null,
     private val recompositionProfilerController: SharedSettingsRecompositionProfilerController =
         SharedSettingsRecompositionProfilerController(),
-    private val linkOpenPreferenceRepository: LinkOpenPreferenceRepository? = null,
-    private val networkTransportPreferenceRepository: NetworkTransportPreferenceRepository? = null
+    private val linkOpenPreferenceRepository: LinkOpenPreferenceRepository? = null
 ) {
     val authSessionEvents: SharedFlow<AuthSessionEvent>?
         get() = (sessionStore as? SlockAuthSessionEventSource)?.authSessionEvents
@@ -1006,19 +1004,6 @@ class SharedSettingsDataSource(
         return loadMobilePreferences()
     }
 
-    suspend fun setHttp3Enabled(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
-        val repository =
-            networkTransportPreferenceRepository
-                ?: return DataResult.Error(
-                    ScreenError("settings_network_transport_unavailable", retryable = false)
-                )
-        return when (val result = repository.setHttp3Enabled(enabled)) {
-            is NetworkTransportPreferenceMutationResult.Applied -> loadMobilePreferences()
-            is NetworkTransportPreferenceMutationResult.Rejected ->
-                DataResult.Error(ScreenError(result.errorCode, retryable = false))
-        }
-    }
-
     suspend fun setCompactConsecutiveMessages(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
         val repository =
             chatLayoutPreferenceRepository
@@ -1274,7 +1259,6 @@ class SharedSettingsDataSource(
         val locale = localeRepository?.getLocale()
         val chatLayout = chatLayoutPreferenceRepository?.getChatLayoutPreference()
         val linkOpenMode = linkOpenPreferenceRepository?.getLinkOpenMode()
-        val networkTransport = networkTransportPreferenceRepository?.getPreference()
         return copy(
             pushNotifications =
                 pushNotifications.copy(
@@ -1338,16 +1322,6 @@ class SharedSettingsDataSource(
                         available = false,
                         statusLabel = "Unsupported",
                         detail = "Link opening preference is not available on this platform."
-                    ),
-            http3 =
-                networkTransport?.toSettingsMobileHttp3Snapshot()
-                    ?: SettingsHttp3Snapshot(
-                        requestedEnabled = false,
-                        effectiveEnabled = false,
-                        curlRequestedForNewCalls = false,
-                        canEnable = false,
-                        statusLabel = "Unavailable",
-                        detail = "The curl/HTTP/3 runtime is not available on this platform."
                     ),
             compactConsecutiveMessages =
                 chatLayout?.toSettingsMobileCompactMessagesSnapshot()
@@ -2097,24 +2071,6 @@ class SharedSettingsStore(
                     )
                 dataSource.setLinkOpenMode(intent.mode)
                     .applyMobileActionResult(MOBILE_ACTION_LINK_OPEN_MODE)
-            }
-            is SharedSettingsIntent.SetHttp3Enabled -> {
-                _state.value =
-                    _state.value.copy(
-                        actionState = SharedSettingsActionState(MOBILE_ACTION_HTTP3, inProgress = true)
-                    )
-                val result = dataSource.setHttp3Enabled(intent.enabled)
-                if (result is DataResult.Error) {
-                    // A rejection carries the controller's current readiness.
-                    // Refresh the local snapshot so a stale-ready row cannot
-                    // keep offering an action the runtime now rejects.
-                    dataSource.loadMobilePreferences().applyMobileActionResult(
-                        action = MOBILE_ACTION_HTTP3,
-                        errorCodeOverride = result.error.code
-                    )
-                } else {
-                    result.applyMobileActionResult(MOBILE_ACTION_HTTP3)
-                }
             }
             is SharedSettingsIntent.SetCompactConsecutiveMessages -> {
                 _state.value =
@@ -3396,7 +3352,6 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.SetLocale,
             is SharedSettingsIntent.SetMessageAlignment,
             is SharedSettingsIntent.SetLinkOpenMode,
-            is SharedSettingsIntent.SetHttp3Enabled,
             is SharedSettingsIntent.SetCompactConsecutiveMessages,
             is SharedSettingsIntent.SetLongMessageCollapseEnabled,
             is SharedSettingsIntent.SetSingleTapOpensThreadEnabled,
@@ -3570,7 +3525,6 @@ internal const val MOBILE_ACTION_TEST_NOTIFICATION = "sendTestNotification"
 internal const val MOBILE_ACTION_LANGUAGE = "language"
 internal const val MOBILE_ACTION_MESSAGE_ALIGNMENT = "messageAlignment"
 internal const val MOBILE_ACTION_LINK_OPEN_MODE = "linkOpenMode"
-internal const val MOBILE_ACTION_HTTP3 = "http3"
 internal const val MOBILE_ACTION_COMPACT_MESSAGES = "compactMessages"
 internal const val MOBILE_ACTION_LONG_MESSAGE_COLLAPSE = "longMessageCollapse"
 internal const val MOBILE_ACTION_SINGLE_TAP_OPENS_THREAD = "singleTapOpensThread"
@@ -3769,24 +3723,6 @@ private fun LinkOpenMode.mobileLabel(): String =
         LinkOpenMode.SystemBrowser -> "Default browser"
         LinkOpenMode.InAppBrowser -> "In-app browser"
     }
-
-private fun NetworkTransportPreferenceSnapshot.toSettingsMobileHttp3Snapshot(): SettingsHttp3Snapshot =
-    SettingsHttp3Snapshot(
-        requestedEnabled = requestedHttp3Enabled,
-        effectiveEnabled = effectiveHttp3Enabled,
-        curlRequestedForNewCalls = curlRequestedForNewCalls,
-        canEnable = available,
-        statusLabel =
-            when {
-                requestedHttp3Enabled && effectiveHttp3Enabled -> "Preferred"
-                requestedHttp3Enabled -> "Unavailable"
-                available -> "Off"
-                availability == NetworkTransportPreferenceAvailability.Http3Unsupported -> "Unsupported"
-                else -> "Unavailable"
-            },
-        detail = detail,
-        generation = generation
-    )
 
 private fun ChatLayoutPreferenceSnapshot.toSettingsMobileCompactMessagesSnapshot(): SettingsMobileToggleSnapshot =
     SettingsMobileToggleSnapshot(
