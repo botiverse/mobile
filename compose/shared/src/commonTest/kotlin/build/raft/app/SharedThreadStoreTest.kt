@@ -112,6 +112,7 @@ import build.raft.app.model.TaskSummary
 import build.raft.app.model.TaskUpdated
 import build.raft.app.model.ThreadConversation
 import build.raft.app.model.ThreadUpdated
+import build.raft.app.network.sync.ReplyPreview
 import build.raft.app.model.ThreadId
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CancellationException
@@ -6746,7 +6747,21 @@ class SharedThreadStoreTest {
                                         parentMessageId = MessageId("m1"),
                                         replyCount = 7,
                                         unreadCount = 2,
-                                        firstUnreadMessageId = MessageId("reply-6")
+                                        firstUnreadMessageId = MessageId("reply-6"),
+                                        latestReplies =
+                                            listOf(
+                                                ReplyPreview(
+                                                    messageId = "reply-6",
+                                                    seq = 6,
+                                                    content = "first unread",
+                                                    senderId = "u2",
+                                                    senderType = "human",
+                                                    senderName = "cindy",
+                                                    senderAvatarUrl = null,
+                                                    createdAt = "2026-05-19T16:06:00Z",
+                                                    senderDisplayName = "Cindy",
+                                                )
+                                            )
                                     )
                                 ),
                             followedThreadKeys = setOf("thread:m1")
@@ -6777,6 +6792,8 @@ class SharedThreadStoreTest {
         assertEquals(7, message.replyCount)
         assertEquals(2, message.unreadReplyCount)
         assertEquals("reply-6", message.firstUnreadReplyMessageId)
+        assertEquals(listOf("reply-6"), message.inlineReplies?.replies?.map { it.messageId })
+        assertEquals("Cindy", message.inlineReplies?.replies?.single()?.senderDisplayName)
         assertTrue(message.isThreadFollowed)
         assertEquals(0, api.channelMessageCalls)
         scope.cancel()
@@ -10123,7 +10140,19 @@ class SharedThreadStoreTest {
                     lastReplyAt = "2026-05-19T16:10:00Z",
                     participantIds = emptyList(),
                     unreadCount = 2,
-                    firstUnreadMessageId = MessageId("reply-2")
+                    firstUnreadMessageId = MessageId("reply-2"),
+                    latestReply =
+                        ReplyPreview(
+                            messageId = "reply-2",
+                            seq = 2,
+                            content = "latest reply",
+                            senderId = "agent-1",
+                            senderType = "agent",
+                            senderName = "MingQi",
+                            senderAvatarUrl = null,
+                            createdAt = "2026-05-19T16:10:00Z",
+                            senderDisplayName = "明启",
+                        )
                 )
             )
         )
@@ -10146,6 +10175,8 @@ class SharedThreadStoreTest {
         assertEquals(3, message.replyCount)
         assertEquals(2, message.unreadReplyCount)
         assertEquals("reply-2", message.firstUnreadReplyMessageId)
+        assertEquals(listOf("reply-2"), message.inlineReplies?.replies?.map { it.messageId })
+        assertEquals("明启", message.inlineReplies?.replies?.single()?.senderDisplayName)
         assertEquals("Todo", message.taskStatus)
         assertEquals("Old task", store.state.value.payload.tasks.single().title)
         assertEquals("Todo", store.state.value.payload.tasks.single().status)
@@ -10285,6 +10316,22 @@ class SharedThreadStoreTest {
         assertEquals(listOf("channel-1" to 10L), api.readSeqRequests)
         assertTrue(api.readAllChannels.isEmpty())
         scope.cancel()
+    }
+
+    @Test
+    fun inlineReplyScopeOpenReadUsesCanonicalReadAllWhenPreviewIsBounded() = runBlocking {
+        val api = FakeThreadApi(failChannelMessages = true).also { it.failReadAll = false }
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+            )
+
+        val result = dataSource.markVisibleChannelRead("reply-thread", latestSeq = null)
+
+        assertTrue(result is DataResult.Content)
+        assertEquals(listOf("reply-thread"), api.readAllChannels)
+        assertTrue(api.readSeqRequests.isEmpty())
     }
 
     @Test

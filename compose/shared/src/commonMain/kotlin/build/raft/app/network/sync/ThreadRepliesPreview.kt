@@ -1,5 +1,7 @@
 package build.raft.app.network.sync
 
+import kotlinx.serialization.Serializable
+
 /**
  * Message reply-preview window (RFC 043 App B `Message × Replies` preview), KMP side of the dual-end
  * `getLatestNReplies` / `listenLatestNReplies` SDK contract.
@@ -24,6 +26,7 @@ package build.raft.app.network.sync
  *  4. No-op on no-change — the same window + replyCount returns the SAME instance (reference equality) so a
  *     reply landing on one thread re-renders only that thread, never the whole timeline.
  */
+@Serializable
 data class ReplyPreview(
     val messageId: String,
     val seq: Long,
@@ -33,14 +36,18 @@ data class ReplyPreview(
     val senderName: String,
     val senderAvatarUrl: String? = null,
     val createdAt: String,
+    val senderDisplayName: String? = null,
 )
 
 /** The maintained latest-N reply-preview window pushed by `listenLatestNReplies`. */
+@Serializable
 data class ThreadRepliesReadModel(
     val replies: List<ReplyPreview>,
     val replyCount: Int,
     val snapshotSeq: Long,
 )
+
+const val InlineThreadReplyPreviewLimit: Int = 3
 
 /**
  * Build the read model from the initial `getLatestNReplies(messageId, N)` snapshot. `snapshotSeq` is fixed
@@ -51,11 +58,14 @@ fun initialThreadRepliesReadModel(
     replyCount: Int,
     limit: Int,
 ): ThreadRepliesReadModel {
-    val window = replies.dedupByMessageIdKeepingHigherSeq().sortedBy { it.seq }.takeLast(limit)
+    val orderedSnapshot = replies.dedupByMessageIdKeepingHigherSeq().sortedBy { it.seq }
+    val window = orderedSnapshot.filterNot(ReplyPreview::isSystemReply).takeLast(limit)
     return ThreadRepliesReadModel(
         replies = window,
         replyCount = replyCount,
-        snapshotSeq = window.maxOfOrNull { it.seq } ?: 0L,
+        // System events remain part of the authoritative history/count and must
+        // advance the fixed snapshot seam even though they never consume a UI slot.
+        snapshotSeq = orderedSnapshot.maxOfOrNull { it.seq } ?: 0L,
     )
 }
 
@@ -93,12 +103,15 @@ fun ThreadRepliesReadModel.applyReplyFrame(
         // Gate 1 — a genuinely new reply lands in its seq position; keep the latest N. A reply already EVICTED
         // (seq below the window min) is simply re-evicted here, so the window is unchanged and — with the
         // authoritative count above — a replay of it is a true no-op (not a spurious +1).
+        reply.isSystemReply() -> replies
         else -> (replies + reply).sortedBy { it.seq }.takeLast(limit)
     }
     // Gate 4 — no semantic change (same window values AND same count) ⇒ SAME instance (render isolation).
     return if (newWindow == replies && mergedCount == replyCount) this
     else copy(replies = newWindow, replyCount = mergedCount)
 }
+
+private fun ReplyPreview.isSystemReply(): Boolean = senderType.equals("system", ignoreCase = true)
 
 /** Collapse duplicate messageIds in an initial batch, keeping the higher-seq copy (later state wins). */
 private fun List<ReplyPreview>.dedupByMessageIdKeepingHigherSeq(): List<ReplyPreview> {

@@ -118,6 +118,7 @@ import build.raft.app.data.canonicalServerMembersMentionHandle
 import build.raft.app.data.convertMessageToCanonicalTask
 import build.raft.app.data.isSupportedCommitAction
 import build.raft.app.data.isSubmittableChannelName
+import build.raft.app.data.INLINE_THREAD_REPLIES_FEATURE_FLAG_KEY
 import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.AvatarReference
@@ -157,6 +158,7 @@ import build.raft.app.model.TaskSummary
 import build.raft.app.model.TaskUpdated
 import build.raft.app.model.formatSlockTimestampEpochMillis
 import build.raft.app.model.formatSlockTimestampLabel
+import build.raft.app.network.sync.ThreadRepliesReadModel
 import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
 import build.raft.app.model.resolveAvatarSlot
 import build.raft.app.model.slockEpochMillisUtcIso
@@ -288,6 +290,7 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -1342,6 +1345,13 @@ internal data class KuiklyThreadMessageItem(
     val unreadReplyCount: Int = 0,
     val firstUnreadReplyMessageId: String? = null,
     val isThreadFollowed: Boolean = false,
+    /**
+     * Bounded derived latest-replies projection. It is deliberately transient:
+     * production route/pageData remains identity+intent only, and canonical
+     * summary loading rehydrates this projection after restore.
+     */
+    @Transient
+    val inlineReplies: ThreadRepliesReadModel? = null,
     val isSaved: Boolean = false,
     val taskId: String? = null,
     val taskNumber: Int? = null,
@@ -3218,6 +3228,10 @@ private fun ThreadMessageVisualScreenContent() {
                     message = message,
                     replyMetadata = visualReplyMetadataByParentId.threadReplyMetadataFor(message),
                     highlightedMentions = highlightedMentions,
+                    inlineThreadRepliesEnabled = visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_REPLIES,
+                    inlineReplyParticipantsById = payload.members.associateBy(KuiklyThreadMemberItem::id),
+                    replyTimeContext = payload.toSlockTimeContext(),
+                    hasReplyDraft = visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_REPLIES,
                     alignOwnMessageRight = payload.alignOwnMessagesRight && message.isOwn,
                     showReplyAction = payload.showReplyActions,
                     singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
@@ -4030,6 +4044,11 @@ internal fun SharedThreadRouteContent(
                 serverId = headerProjectionServerId?.value
             )
         }
+    val inlineThreadRepliesEnabled =
+        sharedStores.serverFeatureFlags.isEnabled(
+            headerProjectionServerId,
+            INLINE_THREAD_REPLIES_FEATURE_FLAG_KEY,
+        )
     val initialDirectoryConversationProjections =
         remember(
             conversationIdentityProvider,
@@ -6297,6 +6316,7 @@ internal fun SharedThreadRouteContent(
             highlightedMentions = highlightedMentions,
             agentStatusResolver = agentStatusResolver,
             memberAvatarResolver = memberAvatarResolver,
+            inlineThreadRepliesEnabled = inlineThreadRepliesEnabled,
             diagnosticsLogger = { bridge.log(it) },
             onLayoutGeneration = { width, height ->
                 performanceGenerationCounter.nextLayout(width, height)?.let { generation ->
@@ -6530,6 +6550,20 @@ internal fun SharedThreadRouteContent(
                             threadChannelId = parentReplyMetadata.threadChannelId
                         )
                     )
+                    parentReplyMetadata.threadChannelId
+                        ?.takeIf { it.isNotBlank() }
+                        ?.let { threadChannelId ->
+                            coroutineScope.launch {
+                                // Opening the whole reply scope clears the whole inline unread projection.
+                                // The bounded preview cannot prove the authoritative latest seq (newer system
+                                // rows may be intentionally hidden), so dispatch the canonical read-all intent.
+                                val result = dataSource.markVisibleChannelRead(threadChannelId, latestSeq = null)
+                                bridge.log(
+                                    "thread_inline_reply_read_dispatch channelId=$threadChannelId " +
+                                        "target=all result=${result::class.simpleName.orEmpty()}"
+                                )
+                            }
+                        }
                     bridge.log(
                         "thread_reply_open action=message_chip parentChannelId=${loadingPayload.parentChannelId.orEmpty()} " +
                             "parentMessageId=${parentMessage.id} replyCount=${parentReplyMetadata.replyCount} " +
@@ -8859,6 +8893,7 @@ private const val THREAD_MESSAGE_VISUAL_FIXTURE_MARKDOWN_MENTION_CHILD = "markdo
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_SAVED = "saved"
 private const val THREAD_MESSAGE_VISUAL_FIXTURE_DELETED_HUMAN = "deleted_human"
 private const val THREAD_MESSAGE_VISUAL_FIXTURE_RICH_CONTENT = "rich_content"
+private const val THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_REPLIES = "inline_replies"
 private const val THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_SELECTION = "share_selection"
 private const val THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_PREVIEW = "share_preview"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_LONG_INLINE_CODE = "long_inline_code"
@@ -9172,6 +9207,118 @@ internal fun threadVisualFixture(
                         instanceId = resolvedInstanceId,
                         enabled = false
                     )
+            )
+        THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_REPLIES ->
+            KuiklyThreadScreenPayload(
+                instanceId = resolvedInstanceId,
+                title = "#mobile",
+                subtitle = "Inline replies visual fixture",
+                status = "content",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                streamChannelId = "channel-mobile",
+                sourceThreadId = "channel-mobile",
+                selectedTab = "chat",
+                showModeTabs = false,
+                showReplyActions = true,
+                alignOwnMessagesRight = false,
+                localOffsetMinutes = 480,
+                nowEpochMillis = 1_784_888_400_000L,
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "msg-inline-replies",
+                            authorId = "agent-mahua",
+                            authorName = "Mahua",
+                            authorKind = "agent",
+                            avatarLabel = "MH",
+                            timestampLabel = "07/24 18:20",
+                            messageType = "Chat",
+                            body = "Native/KMP inline reply previews are ready for review.",
+                            threadChannelId = "thread-msg-inline-replies",
+                            replyCount = 8,
+                            unreadReplyCount = 2,
+                            firstUnreadReplyMessageId = "reply-inline-7",
+                            inlineReplies =
+                                build.raft.app.network.sync.initialThreadRepliesReadModel(
+                                    replies =
+                                        listOf(
+                                            build.raft.app.network.sync.ReplyPreview(
+                                                messageId = "reply-inline-6",
+                                                seq = 6,
+                                                content = "Android capture matches the shared component.",
+                                                senderId = "user-artin",
+                                                senderType = "user",
+                                                senderName = "artin",
+                                                senderAvatarUrl = null,
+                                                createdAt = "2026-07-24T10:16:00Z",
+                                                senderDisplayName = "Artin",
+                                            ),
+                                            build.raft.app.network.sync.ReplyPreview(
+                                                messageId = "reply-inline-7",
+                                                seq = 7,
+                                                content = "Display name and avatar resolve from channel profiles.",
+                                                senderId = "agent-cindy",
+                                                senderType = "agent",
+                                                senderName = "Cindy",
+                                                senderAvatarUrl = null,
+                                                createdAt = "2026-07-24T10:18:00Z",
+                                                senderDisplayName = "Cindy",
+                                            ),
+                                            build.raft.app.network.sync.ReplyPreview(
+                                                messageId = "reply-inline-8",
+                                                seq = 8,
+                                                content = "Opening dispatches canonical read state.",
+                                                senderId = "agent-nathan",
+                                                senderType = "agent",
+                                                senderName = "Nathan",
+                                                senderAvatarUrl = null,
+                                                createdAt = "2026-07-24T10:20:00Z",
+                                                senderDisplayName = "Nathan",
+                                            ),
+                                        ),
+                                    replyCount = 8,
+                                    limit = build.raft.app.network.sync.InlineThreadReplyPreviewLimit,
+                                ),
+                        )
+                    ),
+                members =
+                    listOf(
+                        KuiklyThreadMemberItem(
+                            id = "agent-mahua",
+                            displayName = "Mahua",
+                            handle = "Mahua",
+                            kind = "agent",
+                            avatarLabel = "MH",
+                        ),
+                        KuiklyThreadMemberItem(
+                            id = "user-artin",
+                            displayName = "Artin",
+                            handle = "artin",
+                            kind = "human",
+                            avatarLabel = "AR",
+                        ),
+                        KuiklyThreadMemberItem(
+                            id = "agent-cindy",
+                            displayName = "Cindy",
+                            handle = "Cindy",
+                            kind = "agent",
+                            avatarLabel = "CI",
+                        ),
+                        KuiklyThreadMemberItem(
+                            id = "agent-nathan",
+                            displayName = "Nathan",
+                            handle = "Nathan",
+                            kind = "agent",
+                            avatarLabel = "NA",
+                        ),
+                    ),
+                showComposer = false,
+                joined = true,
+                composer =
+                    KuiklyThreadComposerPayload(
+                        instanceId = resolvedInstanceId,
+                        enabled = false,
+                    ),
             )
         THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_SELECTION,
         THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_PREVIEW ->
@@ -10717,6 +10864,7 @@ private fun ThreadPageContent(
     highlightedMentions: Set<String>,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    inlineThreadRepliesEnabled: Boolean = false,
     diagnosticsLogger: (String) -> Unit = {},
     onLayoutGeneration: (width: Int, height: Int) -> Unit = { _, _ -> },
     pendingActionCardIds: Set<String> = emptySet(),
@@ -10739,6 +10887,12 @@ private fun ThreadPageContent(
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
     onComposerEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit
 ) {
+    val inlineReplyParticipantsById =
+        remember(payload.members, payload.memberCandidates) {
+            (payload.members + payload.memberCandidates)
+                .distinctBy(KuiklyThreadMemberItem::id)
+                .associateBy(KuiklyThreadMemberItem::id)
+        }
     val renderEarlyLoadingShell =
         payload.shouldRenderThreadLoadingShell(
             timelineSlice = timelineSlice,
@@ -11221,6 +11375,8 @@ private fun ThreadPageContent(
                         highlightedMentions = highlightedMentions,
                         agentStatusResolver = agentStatusResolver,
                         memberAvatarResolver = memberAvatarResolver,
+                        inlineThreadRepliesEnabled = inlineThreadRepliesEnabled,
+                        inlineReplyParticipantsById = inlineReplyParticipantsById,
                         pendingActionCardIds = pendingActionCardIds,
                         pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
                         attachmentOpenStates = attachmentOpenStates,
@@ -12295,6 +12451,8 @@ private fun ThreadChatTab(
     highlightedMentions: Set<String>,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    inlineThreadRepliesEnabled: Boolean = false,
+    inlineReplyParticipantsById: Map<String, KuiklyThreadMemberItem> = emptyMap(),
     pendingActionCardIds: Set<String> = emptySet(),
     pendingTaskConvertMessageIds: Set<String> = emptySet(),
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
@@ -12374,6 +12532,8 @@ private fun ThreadChatTab(
                     highlightedMentions = highlightedMentions,
                     agentStatusResolver = agentStatusResolver,
                     memberAvatarResolver = memberAvatarResolver,
+                    inlineThreadRepliesEnabled = inlineThreadRepliesEnabled,
+                    inlineReplyParticipantsById = inlineReplyParticipantsById,
                     pendingActionCardIds = pendingActionCardIds,
                     pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
                     attachmentOpenStates = attachmentOpenStates,
@@ -12440,6 +12600,8 @@ private fun ThreadChatTab(
                     highlightedMentions = highlightedMentions,
                     agentStatusResolver = agentStatusResolver,
                     memberAvatarResolver = memberAvatarResolver,
+                    inlineThreadRepliesEnabled = inlineThreadRepliesEnabled,
+                    inlineReplyParticipantsById = inlineReplyParticipantsById,
                     pendingActionCardIds = pendingActionCardIds,
                     pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
                     attachmentOpenStates = attachmentOpenStates,
@@ -12497,6 +12659,8 @@ private fun ThreadChatTab(
                 highlightedMentions = highlightedMentions,
                 agentStatusResolver = agentStatusResolver,
                 memberAvatarResolver = memberAvatarResolver,
+                inlineThreadRepliesEnabled = inlineThreadRepliesEnabled,
+                inlineReplyParticipantsById = inlineReplyParticipantsById,
                 pendingActionCardIds = pendingActionCardIds,
                 pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
                 attachmentOpenStates = attachmentOpenStates,
@@ -12795,6 +12959,8 @@ private fun ThreadMessagesList(
     highlightedMentions: Set<String>,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    inlineThreadRepliesEnabled: Boolean = false,
+    inlineReplyParticipantsById: Map<String, KuiklyThreadMemberItem> = emptyMap(),
     pendingActionCardIds: Set<String> = emptySet(),
     pendingTaskConvertMessageIds: Set<String> = emptySet(),
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
@@ -14431,6 +14597,9 @@ private fun ThreadMessagesList(
                                 highlightedMentions = highlightedMentions,
                                 agentStatusResolver = agentStatusResolver,
                                 memberAvatarResolver = memberAvatarResolver,
+                                inlineThreadRepliesEnabled = inlineThreadRepliesEnabled,
+                                inlineReplyParticipantsById = inlineReplyParticipantsById,
+                                replyTimeContext = renderConfig.timeContext,
                                 focused = activeFocusedMessageId == message.id || activeInlineSearchMessageId == message.id,
                                 shareSelectionActive = shareSelectionActive,
                                 selectedForShare = message.id in selectedShareMessageIds,
@@ -16204,6 +16373,9 @@ private fun ThreadMessageCard(
     focused: Boolean = false,
     isMessageListScrolling: () -> Boolean = { false },
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    inlineThreadRepliesEnabled: Boolean = false,
+    inlineReplyParticipantsById: Map<String, KuiklyThreadMemberItem> = emptyMap(),
+    replyTimeContext: SlockTimeContext? = null,
     captureLongPressAnchor: () -> Boolean = { true },
     shareSelectionActive: Boolean = false,
     selectedForShare: Boolean = false,
@@ -16286,6 +16458,14 @@ private fun ThreadMessageCard(
             isSaved = message.isSaved
         )
     val reserveInlineTrailingSpace = richContentEnabled && message.isSendingLocalSend()
+    val inlineReplyPresentation =
+        remember(message.inlineReplies, replyMetadata, hasReplyDraft, inlineThreadRepliesEnabled, showReplyAction) {
+            if (inlineThreadRepliesEnabled && showReplyAction) {
+                threadInlineReplyPresentation(message.inlineReplies, replyMetadata, hasReplyDraft)
+            } else {
+                null
+            }
+        }
     val hasFooterMeta =
         richContentEnabled &&
             !message.hasLocalSendState() &&
@@ -16608,6 +16788,17 @@ private fun ThreadMessageCard(
                                 )
                             }
                         }
+                        inlineReplyPresentation?.let { presentation ->
+                            Box(modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)) {
+                                ThreadInlineRepliesSurface(
+                                    presentation = presentation,
+                                    participantsById = inlineReplyParticipantsById,
+                                    memberAvatarResolver = memberAvatarResolver,
+                                    timeContext = replyTimeContext,
+                                    onOpenThread = { onOpenThread(message.id) }
+                                )
+                            }
+                        }
                         if (hasFooterMeta) {
                             Box(modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)) {
                                 ThreadMessageFooterMeta(
@@ -16626,6 +16817,7 @@ private fun ThreadMessageCard(
                                     onOpenTaskStatusMenu = onOpenTaskStatusMenu,
                                     showSavedBadge = showSavedBadge,
                                     showReactionAddAction = showReactionAddAction,
+                                    showReplyMetaChip = inlineReplyPresentation == null,
                                     onToggleReaction = onToggleReaction,
                                     onShowReactionDetails = onShowReactionDetails
                                 )
@@ -18325,6 +18517,156 @@ private const val ThreadMillisPerMinute = 60_000L
 private const val ThreadMillisPerDay = 86_400_000L
 private const val ThreadCompactContinuationWindowMillis = 30L * ThreadMillisPerMinute
 
+internal data class ThreadInlineReplyPresentation(
+    val replies: List<build.raft.app.network.sync.ReplyPreview>,
+    val replyCount: Int,
+    val unreadCount: Int,
+    val hasDraft: Boolean,
+) {
+    val undisplayedReplyCount: Int
+        get() = (replyCount - replies.size).coerceAtLeast(0)
+}
+
+internal fun threadInlineReplyPresentation(
+    model: ThreadRepliesReadModel?,
+    replyMetadata: ThreadReplyMetadata,
+    hasDraft: Boolean,
+): ThreadInlineReplyPresentation? {
+    val replies = model?.replies.orEmpty().filterNot { it.senderType.equals("system", ignoreCase = true) }
+    val authoritativeReplyCount = maxOf(replyMetadata.replyCount, model?.replyCount ?: 0)
+    if (authoritativeReplyCount <= 0 || replies.isEmpty()) return null
+    return ThreadInlineReplyPresentation(
+        replies = replies.takeLast(build.raft.app.network.sync.InlineThreadReplyPreviewLimit),
+        replyCount = authoritativeReplyCount,
+        unreadCount = replyMetadata.unreadReplyCount.coerceAtLeast(0),
+        hasDraft = hasDraft,
+    )
+}
+
+@Composable
+private fun ThreadInlineRepliesSurface(
+    presentation: ThreadInlineReplyPresentation,
+    participantsById: Map<String, KuiklyThreadMemberItem>,
+    memberAvatarResolver: SlockMemberAvatarResolver,
+    timeContext: SlockTimeContext?,
+    onOpenThread: () -> Unit,
+) {
+    val countLabel =
+        if (presentation.replyCount > build.raft.app.network.sync.InlineThreadReplyPreviewLimit) {
+            stringResource(
+                MR.strings.thread_inline_earlier_replies,
+                presentation.undisplayedReplyCount,
+            )
+        } else if (presentation.replyCount == 1) {
+            stringResource(MR.strings.thread_inline_reply_count_one)
+        } else {
+            stringResource(MR.strings.thread_inline_reply_count_many, presentation.replyCount)
+        }
+    val unreadLabel =
+        presentation.unreadCount.takeIf { it > 0 }?.let { count ->
+            stringResource(MR.strings.thread_inline_new_replies, count)
+        }
+    val draftLabel = stringResource(MR.strings.thread_inline_draft)
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(top = 6.dp)
+                .background(SlockColor.TextBlack.copy(alpha = 0.04f))
+                .clickable(onClick = onOpenThread)
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = buildString {
+                    append(countLabel)
+                    unreadLabel?.let { append(" · ").append(it) }
+                    if (presentation.hasDraft) append(" · ✎ ").append(draftLabel)
+                    append(" ›")
+                },
+                modifier = Modifier.weight(1f),
+                style =
+                    SlockType.Caption
+                        .copy(fontSize = 12.5.sp, lineHeight = 16.sp, color = SlockColor.TextBlack.copy(alpha = 0.58f))
+                        .withSlockFontWeight(FontWeight.Bold),
+                color = SlockColor.TextBlack.copy(alpha = 0.58f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        presentation.replies.forEach { reply ->
+            key("inline-reply:${reply.messageId}") {
+                ThreadInlineReplyRow(
+                    reply = reply,
+                    participant = participantsById[reply.senderId],
+                    memberAvatarResolver = memberAvatarResolver,
+                    timeContext = timeContext,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ThreadInlineReplyRow(
+    reply: build.raft.app.network.sync.ReplyPreview,
+    participant: KuiklyThreadMemberItem?,
+    memberAvatarResolver: SlockMemberAvatarResolver,
+    timeContext: SlockTimeContext?,
+) {
+    val resolvedAvatar = rememberSlockMemberAvatarWireValue(memberAvatarResolver, reply.senderId)
+    val displayName =
+        reply.senderDisplayName?.trim()?.takeIf { it.isNotBlank() }
+            ?: participant?.displayName?.trim()?.takeIf { it.isNotBlank() }
+            ?: reply.senderName.trim().ifBlank { reply.senderId }
+    val avatarWireValue =
+        resolvedAvatar
+            ?: participant?.avatarUrl?.takeIf { it.isNotBlank() }
+            ?: reply.senderAvatarUrl?.takeIf { it.isNotBlank() }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        SlockAvatar(
+            avatarWireValue = avatarWireValue,
+            label = displayName.take(1).uppercase(),
+            avatarSize = 20.dp,
+            borderWidth = SlockStroke.Thin,
+        )
+        Text(
+            text = displayName,
+            style =
+                SlockType.Caption
+                    .copy(fontSize = 12.5.sp, lineHeight = 16.sp, color = SlockColor.TextBlack.copy(alpha = 0.72f))
+                    .withSlockFontWeight(FontWeight.Bold),
+            color = SlockColor.TextBlack.copy(alpha = 0.72f),
+            maxLines = 1,
+        )
+        Text(
+            text = reply.content,
+            modifier = Modifier.weight(1f),
+            style = SlockType.Caption.copy(fontSize = 12.5.sp, lineHeight = 16.sp),
+            color = SlockColor.TextBlack.copy(alpha = 0.62f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        val timeLabel = formatSlockTimestampLabel(reply.createdAt, timeContext)
+        if (timeLabel.isNotBlank()) {
+            Text(
+                text = timeLabel,
+                style = SlockType.Caption.copy(fontSize = 11.5.sp, lineHeight = 15.sp),
+                color = SlockColor.TextBlack.copy(alpha = 0.42f),
+                maxLines = 1,
+            )
+        }
+    }
+}
+
 @Composable
 private fun ThreadMessageFooterMeta(
     message: KuiklyThreadMessageItem,
@@ -18342,11 +18684,12 @@ private fun ThreadMessageFooterMeta(
     onOpenTaskStatusMenu: (SlockPopoverAnchor) -> Unit,
     showSavedBadge: Boolean = false,
     showReactionAddAction: Boolean = false,
+    showReplyMetaChip: Boolean = true,
     onToggleReaction: ((String) -> Unit)? = null,
     onShowReactionDetails: ((KuiklyThreadReactionItem, SlockPopoverAnchor) -> Unit)? = null
 ) {
     val hasTask = message.hasThreadTaskFooterMeta()
-    val hasReplies = replyMetadata.replyCount > 0 || hasReplyDraft
+    val hasReplies = showReplyMetaChip && (replyMetadata.replyCount > 0 || hasReplyDraft)
     val visibleReactions = message.reactions.filter { it.count > 0 }
     val hasReactions = visibleReactions.isNotEmpty()
     val showReactionAddChip = showReactionAddAction && hasReactions

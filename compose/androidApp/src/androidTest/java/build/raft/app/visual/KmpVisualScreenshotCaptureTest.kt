@@ -1364,6 +1364,19 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureThreadMessageRowInlineReplies() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.inline-replies",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-inline-replies")
+                    .put("visualFixture", "inline_replies"),
+            crop = FULL_VIEWPORT_CROP
+        )
+    }
+
+    @Test
     fun captureThreadMessageRowLongInlineCode() {
         captureKmpComponentCase(
             caseId = "components.thread.message-row.long-inline-code",

@@ -11,6 +11,7 @@ import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MessageId
+import build.raft.app.network.sync.ReplyPreview
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -64,6 +65,7 @@ private data class WireInboxItem(
     val lastActivityAt: String? = null,
     val lastReplyAt: String? = null,
     val replyCount: Int = 0,
+    val latestReplies: List<WireThreadReplyPreview> = emptyList(),
     val participantIds: List<String> = emptyList(),
     val taskNumber: Int? = null,
     val taskStatus: String? = null,
@@ -76,6 +78,19 @@ private data class WireInboxItem(
     // common
     val unreadCount: Int = 0,
     val hasMention: Boolean = false,
+)
+
+@Serializable
+private data class WireThreadReplyPreview(
+    val messageId: String = "",
+    val seq: Long = 0L,
+    val preview: String = "",
+    val senderId: String = "",
+    val senderType: String = "user",
+    val senderName: String = "",
+    val senderDisplayName: String? = null,
+    val senderAvatarUrl: String? = null,
+    val createdAt: String = "",
 )
 
 @Serializable
@@ -275,12 +290,30 @@ private fun WireInboxItem.toThreadDomain(diagnostics: (String) -> Unit): InboxIt
                 contract = MemberKindWireContract.InboxActor,
             ),
         replyCount = replyCount,
+        latestReplies = latestReplies.mapNotNull(WireThreadReplyPreview::toDomain),
         participantIds = participantIds.mapNotNull { id -> id.takeIf { it.isNotBlank() }?.let(::MemberId) },
         taskNumber = taskNumber,
         taskStatus =
             taskStatus?.takeIf { it.isNotBlank() }
                 ?.strictTaskStatusOrNull("inbox_task", diagnostics),
         taskClaimedByName = taskClaimedByName,
+    )
+}
+
+private fun WireThreadReplyPreview.toDomain(): ReplyPreview? {
+    val cleanMessageId = messageId.trim().takeIf { it.isNotBlank() } ?: return null
+    val cleanSenderType = senderType.trim().lowercase()
+    if (cleanSenderType !in setOf("user", "agent", "system")) return null
+    return ReplyPreview(
+        messageId = cleanMessageId,
+        seq = seq,
+        content = preview,
+        senderId = senderId.trim(),
+        senderType = cleanSenderType,
+        senderName = senderName.trim(),
+        senderAvatarUrl = senderAvatarUrl?.trim()?.takeIf { it.isNotBlank() },
+        createdAt = createdAt.trim(),
+        senderDisplayName = senderDisplayName?.trim()?.takeIf { it.isNotBlank() },
     )
 }
 
