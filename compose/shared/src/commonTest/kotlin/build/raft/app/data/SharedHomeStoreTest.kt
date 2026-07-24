@@ -4972,10 +4972,7 @@ class SharedHomeStoreTest {
             )
         )
 
-        awaitCondition {
-            val snapshot = (store.state.value.content as? SharedHomeContentState.Content)?.snapshot
-            snapshot?.channels?.singleOrNull()?.unreadCount == 3
-        }
+        store.awaitRealtimeSettled()
         val rewoundSnapshot = (store.state.value.content as SharedHomeContentState.Content).snapshot
         assertEquals(3, rewoundSnapshot.channels.single().unreadCount)
         assertEquals(2, rewoundSnapshot.channels.single().mentionCount)
