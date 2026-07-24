@@ -133,6 +133,10 @@ import build.raft.app.model.Presence
 import build.raft.app.markdown.LocalSlockMessagePermalinkLabelResolver
 import build.raft.app.markdown.LocalSlockMarkdownRenderConfig
 import build.raft.app.markdown.SlockMarkdownBody
+import build.raft.app.markdown.LocalSlockMarkdownPlainCandidateSession
+import build.raft.app.markdown.SlockMarkdownPlainCandidateSession
+import build.raft.app.markdown.slockMarkdownProvidedValuesWith
+import build.raft.app.markdown.slockTraceDiagnosticsEnabled
 import build.raft.app.markdown.SlockMarkdownRenderConfig
 import build.raft.app.markdown.ThreadMarkdownTag
 import build.raft.app.markdown.ThreadMarkdownTagKind
@@ -4545,10 +4549,29 @@ internal fun SharedThreadRouteContent(
         }
         true
     }
+    // Option B P1 v3 census session (task #20, diagnostics only, reviewed):
+    // one INSTANCE per thread open — construction is the reset, so there is
+    // no global collector state and no callback-order dependency; an
+    // abandoned pass discards the instance together with its rows. Provided
+    // to the content subtree via LocalSlockMarkdownPlainCandidateSession
+    // (below), so non-Thread markdown surfaces never participate, and two
+    // interleaved opens hold independent instances. Flushed by the latched
+    // LaunchedEffect (effects run after the apply's observer callbacks).
+    val plainCandidateCensusSession =
+        if (slockTraceDiagnosticsEnabled() && payload.isReadyForThreadPerformanceGate()) {
+            remember(threadInstanceKey) { SlockMarkdownPlainCandidateSession() }
+        } else {
+            null
+        }
 
     LaunchedEffect(threadInstanceKey, threadTimelineKey, timelineSlice.status, timelineSlice.messages.size) {
         if (payload.isReadyForThreadPerformanceGate() && firstContentLoggedThreadId != threadInstanceKey) {
             firstContentLoggedThreadId = threadInstanceKey
+            // Census open-level aggregate flush (task #20 Option B P1 v3):
+            // effects run after the apply pass's RememberObserver callbacks,
+            // so every committed row of this first content batch has already
+            // submitted to this open's session instance.
+            plainCandidateCensusSession?.flush()
             val payloadReadyMs = threadOpenStartedAt?.elapsedNow()?.inWholeMilliseconds
             val payloadReadyBudget =
                 evaluateThreadFirstContentPerformanceBudget(payloadReadyMs = payloadReadyMs)
@@ -6064,20 +6087,29 @@ internal fun SharedThreadRouteContent(
         },
         onBannerDismiss = { target -> foregroundBannerStore.dismiss(target.id) }
     ) {
-        CompositionLocalProvider(
-            LocalThreadInlineVideoPreviewHost provides
-                ThreadInlineVideoPreviewHost(
-                    states = inlineVideoPreviewStates,
-                    requestPreview = ::requestInlineVideoPreview
-                ),
-            LocalThreadInlineImageFallbackHost provides
-                ThreadInlineImageFallbackHost(
-                    state = inlineImageFallbackState,
-                    requestFallback = ::requestInlineImageFallback
-                ),
-            LocalSlockMessagePermalinkLabelResolver provides messagePermalinkLabelResolver,
-            LocalThreadMessagePointerSessionKey provides threadPointerSessionKey
-        ) {
+        // OFF-zero-work provider set (task #20 P1, reviewed round 4): with
+        // diagnostics OFF the census session Local is NOT part of the vararg
+        // at all — the base array is used by identity, so the production
+        // provider scope is unchanged by P1.
+        val threadProvidedValues = slockMarkdownProvidedValuesWith(
+            arrayOf(
+                LocalThreadInlineVideoPreviewHost provides
+                    ThreadInlineVideoPreviewHost(
+                        states = inlineVideoPreviewStates,
+                        requestPreview = ::requestInlineVideoPreview
+                    ),
+                LocalThreadInlineImageFallbackHost provides
+                    ThreadInlineImageFallbackHost(
+                        state = inlineImageFallbackState,
+                        requestFallback = ::requestInlineImageFallback
+                    ),
+                LocalSlockMessagePermalinkLabelResolver provides messagePermalinkLabelResolver,
+                LocalThreadMessagePointerSessionKey provides threadPointerSessionKey
+            ),
+            LocalSlockMarkdownPlainCandidateSession,
+            plainCandidateCensusSession
+        )
+        CompositionLocalProvider(*threadProvidedValues) {
             ThreadPageContent(
             threadInstanceKey = threadInstanceKey,
             payload = renderedThread,

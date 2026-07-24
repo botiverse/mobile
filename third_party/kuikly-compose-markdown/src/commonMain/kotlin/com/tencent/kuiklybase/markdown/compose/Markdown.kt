@@ -265,6 +265,11 @@ fun MarkdownSuccess(
     // the host installed a sink; null keeps the pre-existing untimed path (the
     // null check is the only added work — no clock read, no allocation).
     val nodeTiming = slockMarkdownRenderTimingOrNull()
+    // Row census cost sink: read the Local ONLY when node timing is active —
+    // with diagnostics OFF generic vendor consumers perform no tracked Local
+    // read here at all (reviewed OFF-path requirement).
+    val rowRenderCostSink =
+        if (nodeTiming != null) LocalSlockMarkdownRowRenderCostSink.current else null
     val renderStartMark = TimeSource.Monotonic.markNow()
     slockMarkdownLogSubTrace {
         "phase=markdown.success.compose contentHash=${content().hashCode().toString(16)} " +
@@ -289,7 +294,13 @@ fun MarkdownSuccess(
             "phase=markdown.layout.render_nodes durationUs=$renderDurationUs nodeCount=${state.nodeListState.size}"
         }
     }
-    nodeTiming?.finishRender(renderDurationUs)
+    val renderValid = nodeTiming?.finishRender(renderDurationUs)
+    // Row census cost forwarding (task #20 Option B P1 v2): STRICTLY on the
+    // valid path — aborted renders forward nothing. The host token buffers
+    // this as pending until the composition itself commits.
+    if (renderValid == true) {
+        rowRenderCostSink?.recordValidRender(renderDurationUs)
+    }
 }
 
 internal const val SlockMarkdownVendorTraceThresholdUs: Long = 200L
