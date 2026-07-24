@@ -1200,6 +1200,7 @@ internal fun MembersPageContent() {
     val networkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
     val serverMembersStore = remember(sharedStores, storeScope) { sharedStores.serverMembersStore(storeScope) }
     val agentDetailStore = remember(sharedStores, storeScope) { sharedStores.agentDetailStore(storeScope) }
+    val createAgentFormStore = remember(sharedStores, storeScope) { sharedStores.createAgentFormStore(storeScope) }
     val agentsApiClient = remember(networkClient) {
         build.raft.app.data.SlockAgentsApiClient(
             transport = build.raft.app.data.SlockAgentsNetworkApi(networkClient),
@@ -1583,6 +1584,8 @@ internal fun MembersPageContent() {
         createAgentRuntimeModelsByMachineAndRuntime = createAgentRuntimeModels,
         createAgentRuntimeModelLoadsInFlight = createAgentRuntimeModelLoadsInFlight,
         createAgentLoadRuntimeModels = loadRuntimeModels,
+        createAgentFormStore = createAgentFormStore,
+        createAgentServerId = serverId,
         inviteHumanSubmit = inviteHumanSubmit,
         inviteHumanJoinLinkLoading = inviteJoinLinkLoading,
         inviteHumanJoinLinkUrl = inviteJoinLinkUrl,
@@ -3380,6 +3383,8 @@ internal fun MembersRouteContent(
     createAgentRuntimeModelsByMachineAndRuntime: Map<Pair<String, String>, SharedCreateAgentRuntimeModelCatalog> = emptyMap(),
     createAgentRuntimeModelLoadsInFlight: Set<Pair<String, String>> = emptySet(),
     createAgentLoadRuntimeModels: (machineId: String, runtime: String, force: Boolean) -> Unit = { _, _, _ -> },
+    createAgentFormStore: build.raft.app.data.SharedCreateAgentFormStore? = null,
+    createAgentServerId: String? = null,
     /**
      * Permission gate for showing the agents "+". Defaults to false (no create).
      * When true, the agents "+" is rendered. When false, the "+" is hidden.
@@ -3422,6 +3427,8 @@ internal fun MembersRouteContent(
         createAgentRuntimeModelsByMachineAndRuntime = createAgentRuntimeModelsByMachineAndRuntime,
         createAgentRuntimeModelLoadsInFlight = createAgentRuntimeModelLoadsInFlight,
         createAgentLoadRuntimeModels = createAgentLoadRuntimeModels,
+        createAgentFormStore = createAgentFormStore,
+        createAgentServerId = createAgentServerId,
         inviteHumanSubmit = inviteHumanSubmit,
         inviteHumanJoinLinkLoading = inviteHumanJoinLinkLoading,
         inviteHumanJoinLinkUrl = inviteHumanJoinLinkUrl,
@@ -3454,6 +3461,8 @@ internal fun MembersListContent(
     createAgentRuntimeModelsByMachineAndRuntime: Map<Pair<String, String>, SharedCreateAgentRuntimeModelCatalog> = emptyMap(),
     createAgentRuntimeModelLoadsInFlight: Set<Pair<String, String>> = emptySet(),
     createAgentLoadRuntimeModels: (machineId: String, runtime: String, force: Boolean) -> Unit = { _, _, _ -> },
+    createAgentFormStore: build.raft.app.data.SharedCreateAgentFormStore? = null,
+    createAgentServerId: String? = null,
     inviteHumanSubmit: (suspend (emails: List<String>) -> DataResult<Unit>)? = null,
     inviteHumanJoinLinkLoading: Boolean = false,
     inviteHumanJoinLinkUrl: String? = null,
@@ -3679,6 +3688,8 @@ internal fun MembersListContent(
             runtimeModelsByMachineAndRuntime = createAgentRuntimeModelsByMachineAndRuntime,
             runtimeModelLoadsInFlight = createAgentRuntimeModelLoadsInFlight,
             onRuntimeModelsRequest = createAgentLoadRuntimeModels,
+            createAgentFormStore = createAgentFormStore,
+            createAgentServerId = createAgentServerId,
             currentAgentCount = createAgentCurrentAgentCount,
             maxAgents = createAgentMaxAgents,
             onDismiss = {

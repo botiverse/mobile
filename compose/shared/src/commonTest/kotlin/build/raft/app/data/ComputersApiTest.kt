@@ -4,11 +4,11 @@ import build.raft.app.model.ServerId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runTest
 
 class ComputersApiTest {
     @Test
-    fun typedComputersApiAcceptsCanonicalUpstreamShapes() = runBlocking {
+    fun typedComputersApiAcceptsCanonicalUpstreamShapes() = runTest {
         val transport = RecordingComputersApi()
         val client = SlockComputersApiClient(transport)
         val serverId = ServerId("server-1")
@@ -43,6 +43,42 @@ class ComputersApiTest {
         assertEquals(listOf("sonnet", "opus"), runtimeModels.models.map { it.id })
         assertEquals(listOf("Claude Sonnet", "Claude Opus"), runtimeModels.models.map { it.label })
         assertEquals(listOf("launchable", null), runtimeModels.models.map { it.verified })
+        val runtimeCatalog =
+            assertIs<DataResult.Content<SharedCreateAgentRuntimeCatalog>>(
+                client.runtimeOptions(serverId, "machine-1")
+            ).data
+        val builtIn = runtimeCatalog.options.single { it.runtimeId == "builtin" }
+        val formRef = requireNotNull(builtIn.formDefinitionRef)
+        assertEquals("1:builtin:builtin-pi.create.v2", formRef.identityKey)
+        assertEquals(true, builtIn.selectable)
+        val definition =
+            assertIs<DataResult.Content<SharedAgentCreateFormDefinition>>(
+                client.runtimeFormDefinition(serverId, "machine-1", formRef)
+            ).data
+        assertEquals(
+            listOf("providerId", "apiKey", "baseUrl", "supportsImageInput", "model", "envVars"),
+            definition.uiSchema.order
+        )
+        assertEquals(setOf("/apiKey"), definition.capabilities.writeOnlyPointers)
+        val providerSourceRef = requireNotNull(definition.optionSources["provider"])
+        val providerSource =
+            assertIs<SharedAgentCreateFormOptionSource.Select>(
+                assertIs<DataResult.Content<SharedAgentCreateFormOptionSource>>(
+                    client.runtimeFormOptionSource(serverId, "machine-1", formRef, providerSourceRef)
+                ).data
+            )
+        assertEquals(
+            listOf("deepseek", "openai-compatible", "anthropic-compatible"),
+            providerSource.options.map { it.value }
+        )
+        val modelSourceRef = requireNotNull(definition.optionSources["model"])
+        val modelSource =
+            assertIs<SharedAgentCreateFormOptionSource.DependentSelect>(
+                assertIs<DataResult.Content<SharedAgentCreateFormOptionSource>>(
+                    client.runtimeFormOptionSource(serverId, "machine-1", formRef, modelSourceRef)
+                ).data
+            )
+        assertEquals(true, modelSource.customValueAllowedByValue["openai-compatible"])
         assertEquals(true, assertIs<DataResult.Content<ComputerCommandResult>>(client.deleteMachineWorkspace(serverId, "machine-1", "agent-old")).data.ok)
 
         assertEquals(
@@ -55,6 +91,10 @@ class ComputersApiTest {
                 "POST servers/server-1/machines/machine-1/rotate-key",
                 "GET servers/server-1/machines/machine-1/workspaces",
                 "GET servers/server-1/machines/machine-1/runtime-models/claude",
+                "GET servers/server-1/machines/machine-1/runtime-options",
+                "GET servers/server-1/machines/machine-1/runtime-form-definitions/builtin?schemaVersion=builtin-pi.create.v2",
+                "GET servers/server-1/machines/machine-1/runtime-form-definitions/builtin/option-sources/provider?schemaVersion=builtin-pi.create.v2",
+                "GET servers/server-1/machines/machine-1/runtime-form-definitions/builtin/option-sources/model?schemaVersion=builtin-pi.create.v2",
                 "DELETE servers/server-1/machines/machine-1/workspaces/agent-old"
             ),
             transport.calls
@@ -62,7 +102,7 @@ class ComputersApiTest {
     }
 
     @Test
-    fun typedComputersApiAcceptsRawRowShapeForRename() = runBlocking {
+    fun typedComputersApiAcceptsRawRowShapeForRename() = runTest {
         // Server returns the raw machines DB row for PATCH (no status / statusVersion
         // enrichment). The typed API must accept this shape, NOT flag it as contract
         // mismatch, and still produce a ComputerSummary with name + id propagated.
@@ -82,7 +122,7 @@ class ComputersApiTest {
     }
 
     @Test
-    fun typedComputersApiMapsHttpErrorsToStructuredCodes() = runBlocking {
+    fun typedComputersApiMapsHttpErrorsToStructuredCodes() = runTest {
         // 307 fly-replay, 400 bad request, 409 has-agents, 503 machine offline each
         // produce a specific structured error code so the Settings page can show
         // human-readable copy instead of "http_307".
@@ -102,7 +142,7 @@ class ComputersApiTest {
     }
 
     @Test
-    fun typedComputersApiRejectsGuessedWrappersAndAliases() = runBlocking {
+    fun typedComputersApiRejectsGuessedWrappersAndAliases() = runTest {
         val client =
             SlockComputersApiClient(
                 RecordingComputersApi(
@@ -127,6 +167,136 @@ class ComputersApiTest {
         assertEquals("computer_runtime_models_contract_mismatch", assertIs<DataResult.Error>(client.runtimeModels(serverId, "machine-1", "claude")).error.code)
     }
 
+    @Test
+    fun runtimeFormContractFailsClosedOnUnknownOrMismatchedIdentity() = runTest {
+        val serverId = ServerId("server-1")
+        val unknownProtocol =
+            SlockComputersApiClient(
+                RecordingComputersApi(
+                    runtimeOptionsBody = canonicalRuntimeOptionsBody.replace("\"protocolVersion\":1", "\"protocolVersion\":2")
+                )
+            )
+        val catalog = assertIs<DataResult.Content<SharedCreateAgentRuntimeCatalog>>(unknownProtocol.runtimeOptions(serverId, "machine-1")).data
+        val unknownRef = requireNotNull(catalog.options.single { it.runtimeId == "builtin" }.formDefinitionRef)
+        assertEquals("runtime_form_ref_unsupported", assertIs<DataResult.Error>(unknownProtocol.runtimeFormDefinition(serverId, "machine-1", unknownRef)).error.code)
+
+        val expectedRef = SharedRuntimeFormDefinitionRef(1, "builtin", "builtin-pi.create.v2")
+        val mismatchedDefinition =
+            SlockComputersApiClient(
+                RecordingComputersApi(
+                    runtimeFormDefinitionBody = canonicalRuntimeFormDefinitionBody.replace("builtin-pi.create.v2", "builtin-pi.create.v3")
+                )
+            )
+        assertEquals(
+            "runtime_form_definition_contract_mismatch",
+            assertIs<DataResult.Error>(mismatchedDefinition.runtimeFormDefinition(serverId, "machine-1", expectedRef)).error.code
+        )
+
+        val validClient = SlockComputersApiClient(RecordingComputersApi())
+        val definition = assertIs<DataResult.Content<SharedAgentCreateFormDefinition>>(
+            validClient.runtimeFormDefinition(serverId, "machine-1", expectedRef)
+        ).data
+        val sourceRef = requireNotNull(definition.optionSources["provider"])
+        val mismatchedSource =
+            SlockComputersApiClient(
+                RecordingComputersApi(
+                    runtimeFormOptionSourceBodies =
+                        mapOf(
+                            "provider" to canonicalProviderSourceBody.replace("\"sourceId\":\"provider\"", "\"sourceId\":\"other\"")
+                        )
+                )
+            )
+        assertEquals(
+            "runtime_form_option_source_contract_mismatch",
+            assertIs<DataResult.Error>(mismatchedSource.runtimeFormOptionSource(serverId, "machine-1", expectedRef, sourceRef)).error.code
+        )
+    }
+
+    @Test
+    fun runtimeFormContractRejectsSelectionAndPointerMutations() = runTest {
+        val serverId = ServerId("server-1")
+        val expectedRef = SharedRuntimeFormDefinitionRef(1, "builtin", "builtin-pi.create.v2")
+
+        listOf(
+            canonicalRuntimeOptionsBody.replace(
+                "\"capabilityStatus\":\"available\",\"admissionStatus\":\"available_for_new\"",
+                "\"capabilityStatus\":\"not_installed\",\"admissionStatus\":\"available_for_new\""
+            ),
+            canonicalRuntimeOptionsBody.replace(
+                "\"protocolVersion\":1,\"runtimeId\":\"builtin\"",
+                "\"protocolVersion\":1,\"runtimeId\":\"codex\""
+            )
+        ).forEach { body ->
+            val result = SlockComputersApiClient(RecordingComputersApi(runtimeOptionsBody = body))
+                .runtimeOptions(serverId, "machine-1")
+            assertEquals("computer_runtime_options_contract_mismatch", assertIs<DataResult.Error>(result).error.code)
+        }
+
+        listOf(
+            canonicalRuntimeFormDefinitionBody.replace(
+                "\"writeOnlyPointers\":[\"/apiKey\"]",
+                "\"writeOnlyPointers\":[\"apiKey\"]"
+            ),
+            canonicalRuntimeFormDefinitionBody.replace(
+                "\"forbiddenPointers\":[\"/hostUserState\"]",
+                "\"forbiddenPointers\":[\"/hostState\"]"
+            ),
+            canonicalRuntimeFormDefinitionBody.replace(
+                "\"providerKinds\":[\"preset\",\"gateway\"]",
+                "\"providerKinds\":[\"preset\"]"
+            ),
+            canonicalRuntimeFormDefinitionBody.replace(
+                "\"required\":[\"providerId\",\"apiKey\",\"model\"]",
+                "\"required\":[\"providerId\",\"apiKey\",\"model\",\"baseUrl\"]"
+            ),
+            canonicalRuntimeFormDefinitionBody.replace(
+                "\"advanced\":[\"/envVars\"]",
+                "\"advanced\":[\"/envVars\",\"/model\"]"
+            ),
+            canonicalRuntimeFormDefinitionBody.replace(
+                "\"pointer\":\"/supportsImageInput\"",
+                "\"pointer\":\"/model\""
+            ),
+            canonicalRuntimeFormDefinitionBody.replace(
+                "\"supportsImageInput\":{\"type\":\"boolean\",\"title\":\"Image input\"}",
+                "\"supportsImageInput\":{\"type\":\"string\",\"title\":\"Image input\"}"
+            ),
+            canonicalRuntimeFormDefinitionBody.replace(
+                "\"properties\":{",
+                "\"unknownTopology\":true,\"properties\":{"
+            )
+        ).forEach { body ->
+            val result = SlockComputersApiClient(RecordingComputersApi(runtimeFormDefinitionBody = body))
+                .runtimeFormDefinition(serverId, "machine-1", expectedRef)
+            assertEquals("runtime_form_definition_contract_mismatch", assertIs<DataResult.Error>(result).error.code)
+        }
+
+        val validClient = SlockComputersApiClient(RecordingComputersApi())
+        val definition = assertIs<DataResult.Content<SharedAgentCreateFormDefinition>>(
+            validClient.runtimeFormDefinition(serverId, "machine-1", expectedRef)
+        ).data
+        val providerRef = requireNotNull(definition.optionSources["provider"])
+        val mismatchedPointer = canonicalProviderSourceBody.replace(
+            "\"pointer\":\"/providerId\"",
+            "\"pointer\":\"/model\""
+        )
+        val sourceResult = SlockComputersApiClient(
+            RecordingComputersApi(runtimeFormOptionSourceBodies = mapOf("provider" to mismatchedPointer))
+        ).runtimeFormOptionSource(serverId, "machine-1", expectedRef, providerRef)
+        assertEquals(
+            "runtime_form_option_source_contract_mismatch",
+            assertIs<DataResult.Error>(sourceResult).error.code
+        )
+
+        val unsupportedSchema = expectedRef.copy(schemaVersion = "builtin-pi.create.v3")
+        assertEquals(
+            "runtime_form_ref_unsupported",
+            assertIs<DataResult.Error>(
+                validClient.runtimeFormDefinition(serverId, "machine-1", unsupportedSchema)
+            ).error.code
+        )
+    }
+
     private class RecordingComputersApi(
         private val machinesBody: String =
             """{"machines":[{"id":"machine-1","name":"Maria Laptop","status":"online","statusVersion":7,"apiKeyPrefix":"sk_machine_abc","runtimes":["claude","codex"],"daemonVersion":"0.53.0","computerVersion":"0.0.61","isComputer":true,"hostname":"maria.local","os":"darwin","description":"Runs production agents","lastHeartbeat":"2026-06-14T02:00:00.000Z","createdAt":"2026-05-01T00:00:00.000Z"}],"latestDaemonVersion":"0.53.0","latestComputerVersion":"0.0.62"}""",
@@ -139,7 +309,11 @@ class ComputersApiTest {
         private val workspacesBody: String =
             """[{"directoryName":"agent-live","totalSizeBytes":2048,"lastModified":"2026-05-26T00:00:00.000Z","fileCount":12,"status":"active","agentName":"Noel","agentStatus":"active"},{"directoryName":"agent-old","totalSizeBytes":1,"lastModified":"2026-05-25T00:00:00.000Z","fileCount":1,"status":"orphan","agentName":null,"agentStatus":null}]""",
         private val runtimeModelsBody: String =
-            """{"models":[{"id":"sonnet","label":"Claude Sonnet","verified":"launchable"},{"id":"opus","label":"Claude Opus"}],"default":"sonnet"}"""
+            """{"models":[{"id":"sonnet","label":"Claude Sonnet","verified":"launchable"},{"id":"opus","label":"Claude Opus"}],"default":"sonnet"}""",
+        private val runtimeOptionsBody: String = canonicalRuntimeOptionsBody,
+        private val runtimeFormDefinitionBody: String = canonicalRuntimeFormDefinitionBody,
+        private val runtimeFormOptionSourceBodies: Map<String, String> =
+            mapOf("provider" to canonicalProviderSourceBody, "model" to canonicalModelSourceBody)
     ) : SlockComputersApi {
         var respond: ((Int) -> HomeNetworkResponse)? = null
         val calls = mutableListOf<String>()
@@ -179,6 +353,34 @@ class ComputersApiTest {
             return respond?.invoke(503) ?: ok(runtimeModelsBody)
         }
 
+        override suspend fun runtimeOptions(serverId: ServerId, machineId: String): HomeNetworkResponse {
+            calls += "GET servers/${serverId.value}/machines/$machineId/runtime-options"
+            return ok(runtimeOptionsBody)
+        }
+
+        override suspend fun runtimeFormDefinition(
+            serverId: ServerId,
+            machineId: String,
+            ref: SharedRuntimeFormDefinitionRef
+        ): HomeNetworkResponse {
+            calls +=
+                "GET servers/${serverId.value}/machines/$machineId/runtime-form-definitions/${ref.runtimeId}" +
+                    "?schemaVersion=${ref.schemaVersion}"
+            return ok(runtimeFormDefinitionBody)
+        }
+
+        override suspend fun runtimeFormOptionSource(
+            serverId: ServerId,
+            machineId: String,
+            ref: SharedRuntimeFormDefinitionRef,
+            sourceId: String
+        ): HomeNetworkResponse {
+            calls +=
+                "GET servers/${serverId.value}/machines/$machineId/runtime-form-definitions/${ref.runtimeId}" +
+                    "/option-sources/$sourceId?schemaVersion=${ref.schemaVersion}"
+            return ok(runtimeFormOptionSourceBodies[sourceId] ?: "{}")
+        }
+
         override suspend fun deleteMachineWorkspace(serverId: ServerId, machineId: String, directoryName: String): HomeNetworkResponse {
             calls += "DELETE servers/${serverId.value}/machines/$machineId/workspaces/$directoryName"
             return ok(commandBody)
@@ -186,5 +388,19 @@ class ComputersApiTest {
 
         private fun ok(body: String): HomeNetworkResponse =
             HomeNetworkResponse(code = 200, bodyText = body)
+    }
+
+    private companion object {
+        val canonicalRuntimeOptionsBody =
+            """{"context":"new_agent","machineId":"machine-1","options":[{"runtimeId":"codex","capabilityStatus":"available","admissionStatus":"available_for_new","admissionReason":null,"current":false,"availableForNew":true,"manageableForCurrentAgent":true,"canSelectInThisContext":true},{"runtimeId":"builtin","capabilityStatus":"available","admissionStatus":"available_for_new","admissionReason":null,"current":false,"availableForNew":true,"manageableForCurrentAgent":true,"canSelectInThisContext":true,"formDefinitionRef":{"protocolVersion":1,"runtimeId":"builtin","schemaVersion":"builtin-pi.create.v2"}}]}"""
+
+        val canonicalRuntimeFormDefinitionBody =
+            """{"protocolVersion":1,"runtimeId":"builtin","schemaVersion":"builtin-pi.create.v2","dataSchema":{"type":"object","additionalProperties":false,"required":["providerId","apiKey","model"],"properties":{"providerId":{"type":"string","title":"Provider","minLength":1},"apiKey":{"type":"string","title":"API Key","minLength":1,"writeOnly":true},"baseUrl":{"type":"string","title":"Base URL","minLength":1,"format":"uri"},"supportsImageInput":{"type":"boolean","title":"Image input"},"model":{"type":"string","title":"Model","minLength":1},"envVars":{"type":"object","title":"Environment Variables","additionalProperties":{"type":"string"}}}},"uiSchema":{"order":["providerId","apiKey","baseUrl","supportsImageInput","model","envVars"],"layout":{"advanced":["/envVars"]},"visibility":[{"pointer":"/baseUrl","when":{"pointer":"/providerId","in":["openai-compatible","anthropic-compatible"]}},{"pointer":"/supportsImageInput","when":{"pointer":"/providerId","in":["openai-compatible","anthropic-compatible"]}}],"localization":{"providerId":{"label":"Provider","hint":"Choose provider"},"apiKey":{"label":"API Key","placeholder":"sk-..."},"baseUrl":{"label":"Base URL","placeholder":"https://gateway.example.com/v1"},"supportsImageInput":{"label":"Supports image input","hint":"Enable only when this gateway endpoint and model accept images."},"model":{"label":"Model","placeholder":"Model ID"},"envVars":{"label":"Environment Variables","hint":"Injected into runtime"}}},"capabilities":{"providerKinds":["preset","gateway"],"writeOnlyPointers":["/apiKey"],"forbiddenPointers":["/hostUserState"]},"optionSources":{"provider":{"protocolVersion":1,"runtimeId":"builtin","schemaVersion":"builtin-pi.create.v2","sourceId":"provider","kind":"select","pointer":"/providerId"},"model":{"protocolVersion":1,"runtimeId":"builtin","schemaVersion":"builtin-pi.create.v2","sourceId":"model","kind":"dependent_select","pointer":"/model","dependsOn":"/providerId"}}}"""
+
+        val canonicalProviderSourceBody =
+            """{"protocolVersion":1,"runtimeId":"builtin","schemaVersion":"builtin-pi.create.v2","sourceId":"provider","kind":"select","pointer":"/providerId","options":[{"value":"deepseek","label":"DeepSeek","providerKind":"preset"},{"value":"openai-compatible","label":"OpenAI Compatible","providerKind":"gateway"},{"value":"anthropic-compatible","label":"Anthropic Compatible","providerKind":"gateway"}],"defaultValue":"deepseek"}"""
+
+        val canonicalModelSourceBody =
+            """{"protocolVersion":1,"runtimeId":"builtin","schemaVersion":"builtin-pi.create.v2","sourceId":"model","kind":"dependent_select","pointer":"/model","dependsOn":"/providerId","optionsByValue":{"deepseek":[{"value":"deepseek/deepseek-v4-pro","label":"DeepSeek V4 Pro"}],"openai-compatible":[],"anthropic-compatible":[]},"defaultValueByValue":{"deepseek":"deepseek/deepseek-v4-pro"},"customValueAllowedByValue":{"deepseek":false,"openai-compatible":true,"anthropic-compatible":true}}"""
     }
 }

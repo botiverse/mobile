@@ -67,6 +67,7 @@ import build.raft.app.data.SharedComputersIntent
 import build.raft.app.data.SharedComputersLoadStatus
 import build.raft.app.data.SharedComputersPickerSlice
 import build.raft.app.data.SharedComputersStore
+import build.raft.app.data.SharedCreateAgentFormStore
 import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.SharedConversationIdentityProvider
@@ -3854,6 +3855,7 @@ internal fun SharedThreadRouteContent(
     val pager = LocalActivity.current.getPager() as Pager
     val linkNavigator = rememberSlockLinkNavigator(pager, bridge)
     val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
+    val createAgentFormStore = remember(sharedStores, storeScope) { sharedStores.createAgentFormStore(storeScope) }
     val attachmentOwnerVersion by ProcessAttachmentAuthScopes.version.collectAsState()
     val attachmentOwner = remember(attachmentOwnerVersion, storeScope.shellInstanceId) {
         currentAttachmentOwnerLease(storeScope)
@@ -7729,6 +7731,7 @@ internal fun SharedThreadRouteContent(
             ThreadCreateAgentActionDialogHost(
                 dialogState = dialogState,
                 computersStore = computersStore,
+                createAgentFormStore = createAgentFormStore,
                 computerServerId = createAgentComputerServerId,
                 computerServerResolved = createAgentComputerServerResolved,
                 onAuthRequired = ::routeAuthRequired,
@@ -7992,6 +7995,7 @@ private fun threadMarkdownTaskCandidateListHeight(count: Int): Dp =
 private fun ThreadCreateAgentActionDialogHost(
     dialogState: ThreadCreateAgentActionDialogState,
     computersStore: SharedComputersStore?,
+    createAgentFormStore: SharedCreateAgentFormStore?,
     computerServerId: String?,
     computerServerResolved: Boolean,
     onAuthRequired: (String?) -> Boolean,
@@ -8042,6 +8046,8 @@ private fun ThreadCreateAgentActionDialogHost(
                 (!computerServerResolved ||
                     computerPickerSlice.status == SharedComputersLoadStatus.InFlight),
         machinesErrorMessage = machinesErrorCode?.let { threadCreateAgentMachinesErrorCopy(it) },
+        createAgentFormStore = createAgentFormStore,
+        createAgentServerId = computerServerId,
         onDismiss = onDismiss,
         onSubmit = onSubmit
     )

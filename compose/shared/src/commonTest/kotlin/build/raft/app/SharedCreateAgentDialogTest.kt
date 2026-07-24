@@ -57,6 +57,48 @@ class SharedCreateAgentDialogTest {
     }
 
     @Test
+    fun builtInRuntimeRequiresResolvedExactForm() {
+        assertTrue(
+            canEnableBuiltInRuntime(
+                hasFormOverride = true,
+                hasSupportedExactRef = false,
+                hasResolvedExactForm = false
+            )
+        )
+        assertFalse(
+            canEnableBuiltInRuntime(
+                hasFormOverride = false,
+                hasSupportedExactRef = false,
+                hasResolvedExactForm = false
+            ),
+            "selectable runtime row with null ref must stay disabled"
+        )
+        assertFalse(
+            canEnableBuiltInRuntime(
+                hasFormOverride = false,
+                hasSupportedExactRef = false,
+                hasResolvedExactForm = false
+            ),
+            "selectable runtime row with unsupported ref must stay disabled"
+        )
+        assertFalse(
+            canEnableBuiltInRuntime(
+                hasFormOverride = false,
+                hasSupportedExactRef = true,
+                hasResolvedExactForm = false
+            ),
+            "supported ref with failed definition or source resolution must stay disabled"
+        )
+        assertTrue(
+            canEnableBuiltInRuntime(
+                hasFormOverride = false,
+                hasSupportedExactRef = true,
+                hasResolvedExactForm = true
+            )
+        )
+    }
+
+    @Test
     fun selectedMachineWithoutRuntimeDataProducesBlockingError() {
         assertEquals(
             CREATE_AGENT_NO_MACHINE_RUNTIMES_ERROR,

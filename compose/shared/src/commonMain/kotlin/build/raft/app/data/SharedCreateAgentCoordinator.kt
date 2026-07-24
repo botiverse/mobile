@@ -37,6 +37,7 @@ internal data class CreateAgentRequest(
     val description: String?,
     val machineId: String?,
     val runtimeConfig: RuntimeConfig?,
+    val formDefinitionRef: SharedRuntimeFormDefinitionRef? = null,
     val external: Boolean,
     val avatarUrl: String? = null
 )
@@ -58,6 +59,7 @@ internal class SharedCreateAgentCoordinator(
                 envVars = request.runtimeConfig?.envVars,
                 avatarUrl = request.avatarUrl,
                 runtimeConfig = request.runtimeConfig,
+                formDefinitionRef = request.formDefinitionRef,
                 external = request.external.takeIf { it }
             )
         )

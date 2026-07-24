@@ -38,6 +38,25 @@ sealed class RuntimeProviderConfig {
     @Serializable
     @SerialName("custom")
     data class Custom(val apiUrl: String, val apiKey: String) : RuntimeProviderConfig()
+
+    @Serializable
+    @SerialName("preset")
+    data class Preset(val providerId: String, val apiKey: String) : RuntimeProviderConfig()
+
+    @Serializable
+    @SerialName("gateway")
+    data class Gateway(
+        val providerId: String,
+        val baseUrl: String,
+        val apiKey: String,
+        val supportsImageInput: Boolean = false
+    ) : RuntimeProviderConfig()
+}
+
+@Serializable
+enum class RuntimeHostUserState {
+    @SerialName("forbidden")
+    Forbidden
 }
 
 @OptIn(ExperimentalSerializationApi::class)
@@ -75,7 +94,8 @@ data class RuntimeConfig(
     val mode: RuntimeModeConfig = RuntimeModeConfig.Default,
     val reasoningEffort: String? = null,
     val envVars: Map<String, String>? = null,
-    val command: String? = null
+    val command: String? = null,
+    val hostUserState: RuntimeHostUserState? = null
 )
 
 // ── Runtimes ──

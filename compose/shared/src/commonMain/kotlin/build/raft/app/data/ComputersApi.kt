@@ -20,6 +20,11 @@ private val computersApiJson = Json {
     encodeDefaults = true
     coerceInputValues = true
 }
+private val runtimeFormApiJson = Json {
+    ignoreUnknownKeys = false
+    encodeDefaults = true
+    coerceInputValues = false
+}
 
 /**
  * Typed Computers/Machines boundary.
@@ -35,6 +40,19 @@ interface SlockComputersApi {
     suspend fun deleteMachine(serverId: ServerId, machineId: String): HomeNetworkResponse
     suspend fun rotateMachineKey(serverId: ServerId, machineId: String): HomeNetworkResponse
     suspend fun machineWorkspaces(serverId: ServerId, machineId: String): HomeNetworkResponse
+    suspend fun runtimeOptions(serverId: ServerId, machineId: String): HomeNetworkResponse =
+        error("runtimeOptions is not implemented")
+    suspend fun runtimeFormDefinition(
+        serverId: ServerId,
+        machineId: String,
+        ref: SharedRuntimeFormDefinitionRef
+    ): HomeNetworkResponse = error("runtimeFormDefinition is not implemented")
+    suspend fun runtimeFormOptionSource(
+        serverId: ServerId,
+        machineId: String,
+        ref: SharedRuntimeFormDefinitionRef,
+        sourceId: String
+    ): HomeNetworkResponse = error("runtimeFormOptionSource is not implemented")
     suspend fun runtimeModels(serverId: ServerId, machineId: String, runtime: String): HomeNetworkResponse
     suspend fun deleteMachineWorkspace(serverId: ServerId, machineId: String, directoryName: String): HomeNetworkResponse
 }
@@ -87,6 +105,40 @@ internal class SlockComputersNetworkApi(
         networkClient.request(
             priority = DataRequestPriority.Visible,
             path = "servers/${serverId.value}/machines/${machineId.trim()}/workspaces",
+            serverIdOverride = serverId
+        )
+
+    override suspend fun runtimeOptions(serverId: ServerId, machineId: String): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "servers/${serverId.value}/machines/${machineId.trim()}/runtime-options",
+            serverIdOverride = serverId
+        )
+
+    override suspend fun runtimeFormDefinition(
+        serverId: ServerId,
+        machineId: String,
+        ref: SharedRuntimeFormDefinitionRef
+    ): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "servers/${serverId.value}/machines/${machineId.trim()}/runtime-form-definitions/${ref.runtimeId}",
+            query = listOf("schemaVersion" to ref.schemaVersion),
+            serverIdOverride = serverId
+        )
+
+    override suspend fun runtimeFormOptionSource(
+        serverId: ServerId,
+        machineId: String,
+        ref: SharedRuntimeFormDefinitionRef,
+        sourceId: String
+    ): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path =
+                "servers/${serverId.value}/machines/${machineId.trim()}/runtime-form-definitions/" +
+                    "${ref.runtimeId}/option-sources/${sourceId.trim()}",
+            query = listOf("schemaVersion" to ref.schemaVersion),
             serverIdOverride = serverId
         )
 
@@ -183,6 +235,67 @@ internal class SlockComputersApiClient(
             )
         }
 
+    suspend fun runtimeOptions(
+        serverId: ServerId,
+        machineId: String
+    ): DataResult<SharedCreateAgentRuntimeCatalog> {
+        val normalizedMachineId = machineId.trim()
+        if (normalizedMachineId.isBlank()) return runtimeFormContractError("runtime_options_machine_required")
+        return transport.runtimeOptions(serverId, normalizedMachineId).mapComputersBody(
+            "computer_runtime_options_contract_mismatch",
+            ComputerRuntimeSelectionCatalogDto.serializer(),
+            runtimeFormApiJson
+        ) { wire -> wire.toDomain(normalizedMachineId) }
+    }
+
+    suspend fun runtimeFormDefinition(
+        serverId: ServerId,
+        machineId: String,
+        ref: SharedRuntimeFormDefinitionRef
+    ): DataResult<SharedAgentCreateFormDefinition> {
+        val normalizedMachineId = machineId.trim()
+        if (normalizedMachineId.isBlank() || !ref.isSupportedBuiltInPi) {
+            return runtimeFormContractError("runtime_form_ref_unsupported")
+        }
+        val response = transport.runtimeFormDefinition(serverId, normalizedMachineId, ref)
+        if (!response.isSuccessful) return response.toRuntimeFormDataError()
+        return response.mapComputersBody(
+            "runtime_form_definition_contract_mismatch",
+            AgentCreateFormDefinitionDto.serializer(),
+            runtimeFormApiJson
+        ) { wire -> wire.toDomain(ref) }
+    }
+
+    suspend fun runtimeFormOptionSource(
+        serverId: ServerId,
+        machineId: String,
+        ref: SharedRuntimeFormDefinitionRef,
+        sourceRef: SharedAgentCreateFormOptionSourceRef
+    ): DataResult<SharedAgentCreateFormOptionSource> {
+        val normalizedMachineId = machineId.trim()
+        if (
+            normalizedMachineId.isBlank() ||
+            !ref.isSupportedBuiltInPi ||
+            sourceRef.ref != ref ||
+            sourceRef.sourceId.isBlank()
+        ) {
+            return runtimeFormContractError("runtime_form_source_ref_unsupported")
+        }
+        val response =
+            transport.runtimeFormOptionSource(
+                serverId = serverId,
+                machineId = normalizedMachineId,
+                ref = ref,
+                sourceId = sourceRef.sourceId
+            )
+        if (!response.isSuccessful) return response.toRuntimeFormDataError()
+        return response.mapComputersBody(
+            "runtime_form_option_source_contract_mismatch",
+            AgentCreateFormOptionSourceDto.serializer(),
+            runtimeFormApiJson
+        ) { wire -> wire.toDomain(ref, sourceRef) }
+    }
+
     suspend fun deleteMachineWorkspace(
         serverId: ServerId,
         machineId: String,
@@ -242,9 +355,13 @@ internal data class ComputerRuntimeModelsSummary(
 )
 internal data class ComputerCommandResult(val ok: Boolean)
 
+private fun <T> runtimeFormContractError(code: String): DataResult<T> =
+    DataResult.Error(ScreenError(code = code, retryable = false))
+
 private inline fun <Wire, T> HomeNetworkResponse.mapComputersBody(
     contractCode: String,
     serializer: KSerializer<Wire>,
+    json: Json = computersApiJson,
     crossinline transform: (Wire) -> T?,
 ): DataResult<T> {
     if (!isSuccessful) {
@@ -253,7 +370,7 @@ private inline fun <Wire, T> HomeNetworkResponse.mapComputersBody(
     val body = bodyText?.takeIf { it.isNotBlank() }
         ?: return DataResult.Error(ScreenError(code = contractCode, retryable = false))
     val wire = try {
-        computersApiJson.decodeFromString(serializer, body)
+        json.decodeFromString(serializer, body)
     } catch (_: SerializationException) {
         return DataResult.Error(ScreenError(code = contractCode, retryable = false))
     }
@@ -272,6 +389,16 @@ private fun <T> HomeNetworkResponse.toComputersDataError(): DataResult<T> =
         503 -> DataResult.Error(ScreenError(code = "machine_offline", retryable = true))
         in 500..599 -> DataResult.Error(ScreenError(code = "server_unavailable", retryable = true))
         else -> DataResult.Error(ScreenError(code = "http_$code", retryable = code != 404))
+    }
+
+private fun <T> HomeNetworkResponse.toRuntimeFormDataError(): DataResult<T> =
+    when (code) {
+        401 -> DataResult.NoPermission(PermissionBlocker(code = "auth_required", requiredCapability = "auth_session"))
+        403 -> DataResult.NoPermission(PermissionBlocker(code = "server_forbidden", requiredCapability = "manage_agents"))
+        404 -> DataResult.Error(ScreenError(code = "runtime_form_not_found", retryable = false))
+        409 -> DataResult.Error(ScreenError(code = "runtime_form_stale", retryable = false))
+        in 500..599 -> DataResult.Error(ScreenError(code = "server_unavailable", retryable = true))
+        else -> DataResult.Error(ScreenError(code = "http_$code", retryable = false))
     }
 
 private fun HomeNetworkResponse.mapComputersCommand(contractCode: String): DataResult<ComputerCommandResult> =
@@ -436,6 +563,404 @@ private fun JsonElement.toRuntimeModelInfo(): RuntimeModelInfo? {
     val verified = obj["verified"]?.jsonPrimitive?.contentOrNull?.trim()?.takeIf { it.isNotBlank() }
     return RuntimeModelInfo(id = id, label = label, verified = verified)
 }
+
+@Serializable
+private data class RuntimeFormDefinitionRefDto(
+    val protocolVersion: Int,
+    val runtimeId: String,
+    val schemaVersion: String
+)
+
+private fun RuntimeFormDefinitionRefDto.toDomain(): SharedRuntimeFormDefinitionRef? {
+    val ref =
+        SharedRuntimeFormDefinitionRef(
+            protocolVersion = protocolVersion,
+            runtimeId = runtimeId.trim(),
+            schemaVersion = schemaVersion.trim()
+        )
+    return ref.takeIf { it.runtimeId.isNotBlank() && it.schemaVersion.isNotBlank() }
+}
+
+@Serializable
+private data class ComputerRuntimeSelectionCatalogDto(
+    val context: String,
+    val machineId: String,
+    val options: List<ComputerRuntimeSelectionOptionDto>
+)
+
+@Serializable
+private data class ComputerRuntimeSelectionOptionDto(
+    val runtimeId: String,
+    val capabilityStatus: String,
+    val admissionStatus: String,
+    val admissionReason: String? = null,
+    val current: Boolean,
+    val availableForNew: Boolean,
+    val manageableForCurrentAgent: Boolean,
+    val canSelectInThisContext: Boolean,
+    val formDefinitionRef: RuntimeFormDefinitionRefDto? = null
+)
+
+private fun ComputerRuntimeSelectionCatalogDto.toDomain(
+    expectedMachineId: String
+): SharedCreateAgentRuntimeCatalog? {
+    if (context != "new_agent" || machineId.trim() != expectedMachineId) return null
+    val mapped = options.mapNotNull { it.toDomain() }
+    if (mapped.size != options.size || mapped.map { it.runtimeId }.distinct().size != mapped.size) return null
+    return SharedCreateAgentRuntimeCatalog(machineId = expectedMachineId, options = mapped)
+}
+
+private fun ComputerRuntimeSelectionOptionDto.toDomain(): SharedCreateAgentRuntimeOption? {
+    val cleanRuntimeId = runtimeId.trim()
+    if (
+        cleanRuntimeId.isBlank() ||
+        capabilityStatus !in setOf("available", "not_installed", "update_required") ||
+        admissionStatus !in setOf("available_for_new", "grandfathered_current") ||
+        admissionReason !in setOf(null, "feature_flag_off", "deprecated")
+    ) {
+        return null
+    }
+    val ref = formDefinitionRef?.toDomain()
+    if (formDefinitionRef != null && (ref == null || ref.runtimeId != cleanRuntimeId)) return null
+    val expectedSelectable =
+        capabilityStatus == "available" &&
+            admissionStatus == "available_for_new" &&
+            admissionReason == null &&
+            availableForNew &&
+            !current
+    if (canSelectInThisContext != expectedSelectable) return null
+    return SharedCreateAgentRuntimeOption(
+        runtimeId = cleanRuntimeId,
+        capabilityStatus = capabilityStatus,
+        admissionStatus = admissionStatus,
+        admissionReason = admissionReason,
+        current = current,
+        availableForNew = availableForNew,
+        manageableForCurrentAgent = manageableForCurrentAgent,
+        canSelectInThisContext = canSelectInThisContext,
+        formDefinitionRef = ref
+    )
+}
+
+@Serializable
+private data class AgentCreateStringMapAdditionalPropertiesDto(val type: String)
+
+@Serializable
+private data class AgentCreateFieldSchemaDto(
+    val type: String,
+    val title: String,
+    val minLength: Int? = null,
+    val format: String? = null,
+    val writeOnly: Boolean = false,
+    val additionalProperties: AgentCreateStringMapAdditionalPropertiesDto? = null
+)
+
+private fun AgentCreateFieldSchemaDto.toDomain(): SharedAgentCreateFieldSchema? {
+    val cleanTitle = title.trim()
+    if (cleanTitle.isBlank()) return null
+    return when (type) {
+        "string" -> {
+            if (minLength != null && minLength < 0) return null
+            if (format !in setOf(null, "uri")) return null
+            if (additionalProperties != null) return null
+            SharedAgentCreateFieldSchema.StringField(
+                title = cleanTitle,
+                minLength = minLength,
+                format = format,
+                writeOnly = writeOnly
+            )
+        }
+        "object" -> {
+            if (additionalProperties?.type != "string" || writeOnly || minLength != null || format != null) return null
+            SharedAgentCreateFieldSchema.StringMapField(title = cleanTitle)
+        }
+        "boolean" -> {
+            if (additionalProperties != null || writeOnly || minLength != null || format != null) return null
+            SharedAgentCreateFieldSchema.BooleanField(title = cleanTitle)
+        }
+        else -> null
+    }
+}
+
+@Serializable
+private data class AgentCreateDataSchemaDto(
+    val type: String,
+    val additionalProperties: Boolean,
+    val required: List<String>,
+    val properties: Map<String, AgentCreateFieldSchemaDto>
+)
+
+@Serializable
+private data class AgentCreateUiLayoutDto(val advanced: List<String>)
+
+@Serializable
+private data class AgentCreateVisibilityWhenDto(
+    val pointer: String,
+    @SerialName("in") val allowedValues: List<String>
+)
+
+@Serializable
+private data class AgentCreateVisibilityDto(
+    val pointer: String,
+    @SerialName("when") val condition: AgentCreateVisibilityWhenDto
+)
+
+@Serializable
+private data class AgentCreateFieldCopyDto(
+    val label: String,
+    val hint: String? = null,
+    val placeholder: String? = null
+)
+
+@Serializable
+private data class AgentCreateUiSchemaDto(
+    val order: List<String>,
+    val layout: AgentCreateUiLayoutDto,
+    val visibility: List<AgentCreateVisibilityDto>,
+    val localization: Map<String, AgentCreateFieldCopyDto>
+)
+
+@Serializable
+private data class AgentCreateFormCapabilitiesDto(
+    val providerKinds: List<String>,
+    val writeOnlyPointers: List<String>,
+    val forbiddenPointers: List<String>
+)
+
+@Serializable
+private data class AgentCreateFormOptionSourceRefDto(
+    val protocolVersion: Int,
+    val runtimeId: String,
+    val schemaVersion: String,
+    val sourceId: String,
+    val pointer: String,
+    val kind: String,
+    val dependsOn: String? = null
+)
+
+@Serializable
+private data class AgentCreateFormDefinitionDto(
+    val protocolVersion: Int,
+    val runtimeId: String,
+    val schemaVersion: String,
+    val dataSchema: AgentCreateDataSchemaDto,
+    val uiSchema: AgentCreateUiSchemaDto,
+    val capabilities: AgentCreateFormCapabilitiesDto,
+    val optionSources: Map<String, AgentCreateFormOptionSourceRefDto>
+)
+
+private fun AgentCreateFormDefinitionDto.toDomain(
+    expectedRef: SharedRuntimeFormDefinitionRef
+): SharedAgentCreateFormDefinition? {
+    val actualRef = RuntimeFormDefinitionRefDto(protocolVersion, runtimeId, schemaVersion).toDomain()
+    if (actualRef != expectedRef) return null
+    if (dataSchema.type != "object" || dataSchema.additionalProperties) return null
+    val properties = dataSchema.properties.mapValues { (_, field) -> field.toDomain() ?: return null }
+    if (properties.keys != setOf("providerId", "apiKey", "baseUrl", "supportsImageInput", "model", "envVars")) return null
+    if (properties["providerId"] != SharedAgentCreateFieldSchema.StringField("Provider", 1, null, false)) return null
+    if (properties["apiKey"] != SharedAgentCreateFieldSchema.StringField("API Key", 1, null, true)) return null
+    if (properties["baseUrl"] != SharedAgentCreateFieldSchema.StringField("Base URL", 1, "uri", false)) return null
+    if (properties["supportsImageInput"] != SharedAgentCreateFieldSchema.BooleanField("Image input")) return null
+    if (properties["model"] != SharedAgentCreateFieldSchema.StringField("Model", 1, null, false)) return null
+    if (properties["envVars"] != SharedAgentCreateFieldSchema.StringMapField("Environment Variables")) return null
+    val required = dataSchema.required.map { it.trim() }
+    if (required.any { it.isBlank() || it !in properties } || required.distinct().size != required.size) return null
+    if (required.toSet() != setOf("providerId", "apiKey", "model")) return null
+    val order = uiSchema.order.map { it.trim() }
+    if (order.any { it.isBlank() } || order.distinct().size != order.size || order.toSet() != properties.keys) return null
+    if (order != listOf("providerId", "apiKey", "baseUrl", "supportsImageInput", "model", "envVars")) return null
+    val advancedPointers = uiSchema.layout.advanced.map { it.trim() }
+    if (advancedPointers.any { !it.isPropertyPointerTo(properties.keys) }) return null
+    if (advancedPointers != listOf("/envVars")) return null
+    val visibility =
+        uiSchema.visibility.map { rule ->
+            val pointer = rule.pointer.trim()
+            val dependsOn = rule.condition.pointer.trim()
+            val values = rule.condition.allowedValues.map { it.trim() }.toSet()
+            if (
+                !pointer.isPropertyPointerTo(properties.keys) ||
+                !dependsOn.isPropertyPointerTo(properties.keys) ||
+                values.isEmpty() ||
+                values.any { it.isBlank() }
+            ) {
+                return null
+            }
+            SharedAgentCreateVisibilityRule(pointer, dependsOn, values)
+        }
+    if (uiSchema.localization.keys != properties.keys) return null
+    val localization =
+        uiSchema.localization.mapValues { (_, copy) ->
+            val label = copy.label.trim()
+            if (label.isBlank()) return null
+            SharedAgentCreateFieldCopy(
+                label = label,
+                hint = copy.hint?.takeIf { it.isNotBlank() },
+                placeholder = copy.placeholder?.takeIf { it.isNotBlank() }
+            )
+        }
+    val providerKinds = capabilities.providerKinds.map { it.trim() }.toSet()
+    if (providerKinds != setOf("preset", "gateway")) return null
+    val writeOnlyPointers = capabilities.writeOnlyPointers.map { it.trim() }.toSet()
+    val forbiddenPointers = capabilities.forbiddenPointers.map { it.trim() }.toSet()
+    if (
+        writeOnlyPointers.any { !it.isPropertyPointerTo(properties.keys) } ||
+        forbiddenPointers != setOf("/hostUserState") ||
+        writeOnlyPointers.intersect(forbiddenPointers).isNotEmpty()
+    ) {
+        return null
+    }
+    val schemaWriteOnlyPointers =
+        properties.mapNotNull { (name, field) ->
+            name.takeIf { (field as? SharedAgentCreateFieldSchema.StringField)?.writeOnly == true }?.let { "/$it" }
+        }.toSet()
+    if (schemaWriteOnlyPointers != writeOnlyPointers) return null
+    val optionSources =
+        optionSources.mapValues { (key, source) ->
+            source.toDomain(expectedRef)?.takeIf { it.sourceId == key } ?: return null
+        }
+    if (optionSources.keys != setOf("provider", "model") || optionSources.values.any { !it.pointer.isPropertyPointerTo(properties.keys) }) return null
+    if (optionSources["provider"] != SharedAgentCreateFormOptionSourceRef.Select(expectedRef, "provider", "/providerId")) return null
+    if (optionSources["model"] != SharedAgentCreateFormOptionSourceRef.DependentSelect(expectedRef, "model", "/model", "/providerId")) return null
+    val expectedGatewayVisibility = setOf("openai-compatible", "anthropic-compatible")
+    if (
+        visibility.toSet() != setOf(
+            SharedAgentCreateVisibilityRule("/baseUrl", "/providerId", expectedGatewayVisibility),
+            SharedAgentCreateVisibilityRule("/supportsImageInput", "/providerId", expectedGatewayVisibility)
+        )
+    ) return null
+    return SharedAgentCreateFormDefinition(
+        ref = expectedRef,
+        dataSchema = SharedAgentCreateDataSchema(required.toSet(), properties),
+        uiSchema = SharedAgentCreateUiSchema(order, advancedPointers.toSet(), visibility, localization),
+        capabilities = SharedAgentCreateFormCapabilities(providerKinds, writeOnlyPointers, forbiddenPointers),
+        optionSources = optionSources
+    )
+}
+
+private fun AgentCreateFormOptionSourceRefDto.toDomain(
+    expectedRef: SharedRuntimeFormDefinitionRef
+): SharedAgentCreateFormOptionSourceRef? {
+    val actualRef = RuntimeFormDefinitionRefDto(protocolVersion, runtimeId, schemaVersion).toDomain()
+    if (actualRef != expectedRef || sourceId.isBlank() || pointer.isBlank()) return null
+    return when (kind) {
+        "select" -> {
+            if (dependsOn != null) null
+            else SharedAgentCreateFormOptionSourceRef.Select(expectedRef, sourceId.trim(), pointer.trim())
+        }
+        "dependent_select" -> {
+            val cleanDependsOn = dependsOn?.trim().orEmpty()
+            if (cleanDependsOn.isBlank()) null
+            else SharedAgentCreateFormOptionSourceRef.DependentSelect(
+                expectedRef,
+                sourceId.trim(),
+                pointer.trim(),
+                cleanDependsOn
+            )
+        }
+        else -> null
+    }
+}
+
+@Serializable
+private data class AgentCreateFormOptionDto(
+    val value: String,
+    val label: String,
+    val providerKind: String? = null
+)
+
+private fun AgentCreateFormOptionDto.toDomain(): SharedAgentCreateFormOption? {
+    val cleanValue = value.trim()
+    val cleanLabel = label.trim()
+    if (cleanValue.isBlank() || cleanLabel.isBlank() || providerKind !in setOf(null, "preset", "gateway")) return null
+    return SharedAgentCreateFormOption(cleanValue, cleanLabel, providerKind)
+}
+
+@Serializable
+private data class AgentCreateFormOptionSourceDto(
+    val protocolVersion: Int,
+    val runtimeId: String,
+    val schemaVersion: String,
+    val sourceId: String,
+    val pointer: String,
+    val kind: String,
+    val dependsOn: String? = null,
+    val options: List<AgentCreateFormOptionDto> = emptyList(),
+    val defaultValue: String? = null,
+    val optionsByValue: Map<String, List<AgentCreateFormOptionDto>> = emptyMap(),
+    val defaultValueByValue: Map<String, String> = emptyMap(),
+    val customValueAllowedByValue: Map<String, Boolean> = emptyMap()
+)
+
+private fun AgentCreateFormOptionSourceDto.toDomain(
+    expectedRef: SharedRuntimeFormDefinitionRef,
+    sourceRef: SharedAgentCreateFormOptionSourceRef
+): SharedAgentCreateFormOptionSource? {
+    val actualRef = RuntimeFormDefinitionRefDto(protocolVersion, runtimeId, schemaVersion).toDomain()
+    if (
+        actualRef != expectedRef ||
+        sourceId.trim() != sourceRef.sourceId ||
+        pointer.trim() != sourceRef.pointer
+    ) {
+        return null
+    }
+    return when {
+        kind == "select" && sourceRef is SharedAgentCreateFormOptionSourceRef.Select -> {
+            if (
+                dependsOn != null ||
+                optionsByValue.isNotEmpty() ||
+                defaultValueByValue.isNotEmpty() ||
+                customValueAllowedByValue.isNotEmpty()
+            ) {
+                return null
+            }
+            val mapped = options.mapNotNull { it.toDomain() }
+            val cleanDefault = defaultValue?.trim().orEmpty()
+            if (
+                mapped.size != options.size ||
+                mapped.map { it.value }.distinct().size != mapped.size ||
+                cleanDefault !in mapped.map { it.value }
+            ) {
+                return null
+            }
+            SharedAgentCreateFormOptionSource.Select(expectedRef, sourceId.trim(), pointer.trim(), mapped, cleanDefault)
+        }
+        kind == "dependent_select" && sourceRef is SharedAgentCreateFormOptionSourceRef.DependentSelect -> {
+            if (dependsOn?.trim() != sourceRef.dependsOn || options.isNotEmpty() || defaultValue != null) return null
+            val mapped =
+                optionsByValue.mapValues { (_, value) ->
+                    val optionsForValue = value.mapNotNull { it.toDomain() }
+                    if (
+                        optionsForValue.size != value.size ||
+                        optionsForValue.map { it.value }.distinct().size != optionsForValue.size
+                    ) {
+                        return null
+                    }
+                    optionsForValue
+                }
+            val providerValues = mapped.keys
+            if (
+                defaultValueByValue.keys.any { it !in providerValues } ||
+                customValueAllowedByValue.keys != providerValues ||
+                defaultValueByValue.any { (provider, value) -> value !in mapped[provider].orEmpty().map { it.value } }
+            ) {
+                return null
+            }
+            SharedAgentCreateFormOptionSource.DependentSelect(
+                expectedRef,
+                sourceId.trim(),
+                pointer.trim(),
+                sourceRef.dependsOn,
+                mapped,
+                defaultValueByValue.mapValues { it.value.trim() },
+                customValueAllowedByValue
+            )
+        }
+        else -> null
+    }
+}
+
+private fun String.isPropertyPointerTo(properties: Set<String>): Boolean =
+    startsWith("/") && substring(1) in properties && drop(1).contains('/').not()
 
 @Serializable
 private data class ComputerCommandResponseDto(val ok: Boolean)
