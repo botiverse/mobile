@@ -5,6 +5,44 @@ import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 
+test("review agent fails closed on an invalid frozen timeout before any network call", () => {
+  const env = {
+    ...process.env,
+    STAMP_RUN_ID: "run-x",
+    STAMP_REVIEWER: "agent-review-1",
+    STAMP_URL: "https://stamp.invalid",
+    STAMP_TOKEN: "token-x",
+    MINIMAX_API_KEY: "key-x",
+    PI_PROVIDER: "minimax",
+    PI_MODEL: "MiniMax-M3",
+  };
+  for (const bad of ["abc", "-1", "0", "59999", "1800001", "600000.5"]) {
+    let failed = false;
+    try {
+      execFileSync(process.execPath, [new URL("./review_agent.mjs", import.meta.url).pathname], {
+        env: { ...env, PI_REVIEW_TIMEOUT_MS: bad },
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+    } catch (error) {
+      failed = true;
+      assert.match(String(error.stderr), /PI_REVIEW_TIMEOUT_MS must be an integer in \[60000, 1800000\]/);
+    }
+    assert.ok(failed, `PI_REVIEW_TIMEOUT_MS=${bad} must fail closed`);
+  }
+  // The valid default path must get PAST timeout validation (it then fails on
+  // the unreachable Stamp URL, not on the timeout gate).
+  let out = "";
+  try {
+    execFileSync(process.execPath, [new URL("./review_agent.mjs", import.meta.url).pathname], {
+      env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 30000,
+    });
+  } catch (error) {
+    out = String(error.stderr);
+  }
+  assert.doesNotMatch(out, /PI_REVIEW_TIMEOUT_MS/);
+});
+
 test("pre-claim status freezes the GitHub run and reports the failing phase", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "stamp-dispatch-"));
   const bin = path.join(root, "bin");
@@ -397,8 +435,17 @@ test("iOS workflow terminalizes any post-claim failure and Qwen panel is the def
   assert.match(ios, /stamp_report\.sh workflow-error qa-evidence/);
   const panel = fs.readFileSync(new URL("../../.github/workflows/qa-review-panel.yml", import.meta.url), "utf8");
   assert.match(panel, /@earendil-works\/pi-ai@0\.81\.1/);
-  assert.match(panel, /PI_PROVIDER:.*minimax/);
-  assert.match(panel, /PI_MODEL:.*MiniMax-M3/);
+  // Single-execution freeze: only the freeze job reads mutable repo vars;
+  // reviewers and the verify gate consume the frozen outputs.
+  assert.match(panel, /PANEL_PROVIDER: \$\{\{ vars\.PI_REVIEW_PROVIDER \|\| 'minimax' \}\}/);
+  assert.match(panel, /PANEL_MODEL: \$\{\{ vars\.PI_REVIEW_MODEL \|\| 'MiniMax-M3' \}\}/);
+  assert.match(panel, /PANEL_TIMEOUT_MS: \$\{\{ vars\.PI_REVIEW_TIMEOUT_MS \|\| '600000' \}\}/);
+  assert.match(panel, /PI_PROVIDER: \$\{\{ needs\.freeze\.outputs\.provider \}\}/);
+  assert.match(panel, /PI_MODEL: \$\{\{ needs\.freeze\.outputs\.model \}\}/);
+  assert.match(panel, /PI_REVIEW_TIMEOUT_MS: \$\{\{ needs\.freeze\.outputs\.timeout_ms \}\}/);
+  assert.match(panel, /PANEL_PROVIDER: \$\{\{ needs\.freeze\.outputs\.provider \}\}/);
+  assert.match(panel, /needs: \[freeze, review\]/);
+  assert.equal((panel.match(/vars\.PI_REVIEW_/g) || []).length, 3, "mutable vars must be read only in the freeze job");
   assert.match(panel, /MINIMAX_API_KEY: \$\{\{ secrets\.PI_API_KEY \}\}/);
   assert.match(panel, /QWEN_TOKEN_PLAN_CN_API_KEY/);
   assert.match(panel, /\.provider == \$provider and \.model == \$model/);
@@ -409,6 +456,7 @@ test("iOS workflow terminalizes any post-claim failure and Qwen panel is the def
   assert.match(reviewer, /attempt <= 2/);
   assert.match(reviewer, /PI_REVIEW_TIMEOUT_MS \|\| 600000/);
   assert.match(reviewer, /timeoutMs: modelTimeoutMs/);
+  assert.match(reviewer, /Number\.isInteger\(modelTimeoutMs\)/);
   assert.match(reviewer, /maxTokens: 8000/);
   assert.match(reviewer, /reasoningEffort: "low"/);
   assert.match(reviewer, /for \(const ev of reviewedEvidence\) await bytesFor\(ev\)/);

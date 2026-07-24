@@ -1,0 +1,8 @@
+{
+  "run_id": "run-x",
+  "reviewer": "agent-review-1",
+  "provider": "minimax",
+  "model": "MiniMax-M3",
+  "stage": "error",
+  "error": "TypeError: fetch failed\n    at node:internal/deps/undici/undici:15141:13\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async stamp (file:///home/exedev/work/wt/panel-m3/scripts/qa/review_agent.mjs:50:15)\n    at async main (file:///home/exedev/work/wt/panel-m3/scripts/qa/review_agent.mjs:153:16)"
+}

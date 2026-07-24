@@ -28,8 +28,13 @@ const piKey = keyOrder.map((name) => process.env[name] || "").find(Boolean) || "
 const modelName = String(process.env.PI_MODEL || "MiniMax-M3");
 // Panel run 30102844933: three opaque 600s waits, 0/3 votes. Keep the budget
 // but expose it as a dispatch-time knob so capacity incidents tune it without
-// a code change.
+// a code change. The workflow freezes the value once per execution; anything
+// non-integer or outside sane bounds fails closed here rather than becoming a
+// 0/NaN instant-abort budget.
 const modelTimeoutMs = Number(process.env.PI_REVIEW_TIMEOUT_MS || 600000);
+if (!Number.isInteger(modelTimeoutMs) || modelTimeoutMs < 60000 || modelTimeoutMs > 1800000) {
+  throw new Error(`PI_REVIEW_TIMEOUT_MS must be an integer in [60000, 1800000], got: ${process.env.PI_REVIEW_TIMEOUT_MS}`);
+}
 const record = { run_id: runId, reviewer, provider: providerName, model: modelName, stage: "init" };
 
 if (!runId || !reviewer) throw new Error("--run-id and --reviewer are required");

@@ -12,8 +12,44 @@ permissions:
   contents: read
 
 jobs:
+  # Repo vars are mutable while the serial 3-slot matrix runs (up to ~30min);
+  # resolve provider/model/timeout ONCE here so every reviewer and the verify
+  # gate consume the same frozen values — a mid-run vars flip must not drift
+  # generated records away from verification expectations.
+  freeze:
+    name: Freeze panel parameters
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 5
+    outputs:
+      provider: ${{ steps.freeze.outputs.provider }}
+      model: ${{ steps.freeze.outputs.model }}
+      timeout_ms: ${{ steps.freeze.outputs.timeout_ms }}
+    steps:
+      - name: Resolve and validate panel parameters
+        id: freeze
+        env:
+          PANEL_PROVIDER: ${{ vars.PI_REVIEW_PROVIDER || 'minimax' }}
+          PANEL_MODEL: ${{ vars.PI_REVIEW_MODEL || 'MiniMax-M3' }}
+          PANEL_TIMEOUT_MS: ${{ vars.PI_REVIEW_TIMEOUT_MS || '600000' }}
+        run: |
+          case "$PANEL_TIMEOUT_MS" in
+            ''|*[!0-9]*) echo "PI_REVIEW_TIMEOUT_MS must be a positive integer, got: $PANEL_TIMEOUT_MS"; exit 1;;
+          esac
+          if [ "$PANEL_TIMEOUT_MS" -lt 60000 ] || [ "$PANEL_TIMEOUT_MS" -gt 1800000 ]; then
+            echo "PI_REVIEW_TIMEOUT_MS must be within [60000, 1800000], got: $PANEL_TIMEOUT_MS"
+            exit 1
+          fi
+          test -n "$PANEL_PROVIDER" && test -n "$PANEL_MODEL"
+          {
+            echo "provider=$PANEL_PROVIDER"
+            echo "model=$PANEL_MODEL"
+            echo "timeout_ms=$PANEL_TIMEOUT_MS"
+          } >> "$GITHUB_OUTPUT"
+          echo "frozen provider=$PANEL_PROVIDER model=$PANEL_MODEL timeout_ms=$PANEL_TIMEOUT_MS"
+
   review:
     name: Independent reviewer ${{ matrix.slot }}
+    needs: freeze
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 30
     strategy:
@@ -45,8 +81,9 @@ jobs:
           PI_API_KEY: ${{ secrets.PI_API_KEY }}
           MINIMAX_API_KEY: ${{ secrets.PI_API_KEY }}
           QWEN_TOKEN_PLAN_CN_API_KEY: ${{ secrets.QWEN_TOKEN_PLAN_CN_API_KEY }}
-          PI_PROVIDER: ${{ vars.PI_REVIEW_PROVIDER || 'minimax' }}
-          PI_MODEL: ${{ vars.PI_REVIEW_MODEL || 'MiniMax-M3' }}
+          PI_PROVIDER: ${{ needs.freeze.outputs.provider }}
+          PI_MODEL: ${{ needs.freeze.outputs.model }}
+          PI_REVIEW_TIMEOUT_MS: ${{ needs.freeze.outputs.timeout_ms }}
           SLOCK_PI_AI_MODULE: ${{ runner.temp }}/stamp-review-agent/node_modules/@earendil-works/pi-ai/dist/providers/all.js
           SLOCK_YAML_MODULE: ${{ runner.temp }}/stamp-review-agent/node_modules/yaml/dist/index.js
           STAMP_REVIEW_OUT: panel-review-${{ matrix.slot }}.json
@@ -62,7 +99,7 @@ jobs:
 
   verify-panel:
     name: Verify three independent votes
-    needs: review
+    needs: [freeze, review]
     if: ${{ always() }}
     runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 5
@@ -79,8 +116,8 @@ jobs:
           STAMP_URL: ${{ secrets.STAMP_URL }}
           STAMP_TOKEN: ${{ secrets.STAMP_TOKEN }}
           RUN_ID: ${{ inputs.run_id }}
-          PANEL_PROVIDER: ${{ vars.PI_REVIEW_PROVIDER || 'minimax' }}
-          PANEL_MODEL: ${{ vars.PI_REVIEW_MODEL || 'MiniMax-M3' }}
+          PANEL_PROVIDER: ${{ needs.freeze.outputs.provider }}
+          PANEL_MODEL: ${{ needs.freeze.outputs.model }}
         run: |
           test "${{ needs.review.result }}" = success || {
             echo "review matrix result: ${{ needs.review.result }}"
