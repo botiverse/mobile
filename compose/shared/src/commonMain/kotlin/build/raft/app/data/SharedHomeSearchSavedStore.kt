@@ -995,7 +995,25 @@ sealed interface SharedHomeSearchSavedIntent {
     data object ClearSearchFilters : SharedHomeSearchSavedIntent
 }
 
-fun InboxItem.savedMessageIdOrNull(): MessageId? = resolveInboxAnchorMessageId()
+private const val SavedInboxItemKeyPrefix = "saved:"
+
+/**
+ * Mutation identity for a row returned by GET /channels/saved.
+ *
+ * Saved projection keys are `saved:<messageId>` for every conversation kind. Thread open
+ * anchors deliberately do not fall back to `lastMessageId`, because that field can describe
+ * the parent/origin in general inbox projections. Unsave must not reuse that navigation rule:
+ * the Saved key already carries the exact message that the server returned and DELETE expects.
+ * The anchor fallback keeps compatibility with synthetic/legacy callers that do not yet use a
+ * canonical Saved key.
+ */
+fun InboxItem.savedMessageIdOrNull(): MessageId? =
+    key
+        .takeIf { it.startsWith(SavedInboxItemKeyPrefix) }
+        ?.removePrefix(SavedInboxItemKeyPrefix)
+        ?.takeIf { it.isNotBlank() }
+        ?.let(::MessageId)
+        ?: resolveInboxAnchorMessageId()
 
 enum class SearchTimeRange(val key: String, val label: String) {
     Any("any", "ANY TIME"),
