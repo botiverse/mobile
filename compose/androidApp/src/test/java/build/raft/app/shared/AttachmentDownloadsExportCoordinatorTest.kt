@@ -163,6 +163,30 @@ class AttachmentDownloadsExportCoordinatorTest {
     }
 
     @Test
+    fun cancellationDeletesOnlyCurrentLegacyRowAndLeavesOlderSaveUntouched() = withSourceFile(1024) { source ->
+        val writeEntered = CountDownLatch(1)
+        val releaseWrite = CountDownLatch(1)
+        val backend = LegacyRowIsolationBackend(writeEntered, releaseWrite)
+        val coordinator = coordinator(stageTimeoutMs = 5_000L)
+        var result: AttachmentDownloadsExportResult? = null
+        val exportThread = thread {
+            result = coordinator.export(request(source, "download-legacy-cancel"), backend)
+        }
+        assertTrue(writeEntered.await(2, TimeUnit.SECONDS))
+
+        assertEquals("cancelled", coordinator.control("download-legacy-cancel", null, "cancel"))
+        exportThread.join(1_000L)
+        releaseWrite.countDown()
+        assertTrue(backend.awaitCurrentDelete())
+
+        assertFalse(exportThread.isAlive)
+        assertEquals("cancelled", result?.status)
+        assertEquals(AttachmentDownloadsRowState.Published, backend.rowState(LegacyRowIsolationBackend.OLDER_URI))
+        assertEquals(AttachmentDownloadsRowState.Missing, backend.rowState(LegacyRowIsolationBackend.CURRENT_URI))
+        assertEquals(listOf(LegacyRowIsolationBackend.CURRENT_URI), backend.deletedUris)
+    }
+
+    @Test
     fun publishFailureDeletesPendingRowAndKeepsCache() = withSourceFile(4096) { source ->
         val backend = FakeExportBackend(publishResult = false)
         val result = coordinator().export(request(source, "download-publish-fail"), backend)
@@ -279,6 +303,133 @@ class AttachmentDownloadsExportCoordinatorTest {
         assertEquals("cancelled", result.status)
         assertEquals(0, backend.insertCount.get())
         assertEquals(AttachmentDownloadsRowState.Missing, backend.rowState("content://downloads/1"))
+    }
+
+    @Test
+    fun operationExistingOnlyCancelDoesNotCreateFutureReceipt() = withSourceFile(4096) { source ->
+        val backend = FakeExportBackend()
+        val coordinator = coordinator()
+
+        assertEquals(
+            "missing",
+            coordinator.controlExisting(
+                downloadId = "same-download",
+                operationId = "operation-a",
+                expectedAttemptToken = null,
+                action = "cancel"
+            )
+        )
+        val result = coordinator.export(request(source, "same-download", "operation-b"), backend)
+
+        assertEquals("saved", result.status)
+        assertEquals(1, backend.insertCount.get())
+        assertEquals(1, backend.publishCount.get())
+    }
+
+    @Test
+    fun retiredOperationCannotReserveOrInsertAfterCancelMissedPreStart() = withSourceFile(4096) { source ->
+        val backend = FakeExportBackend()
+        val current = java.util.concurrent.atomic.AtomicBoolean(true)
+        val result =
+            coordinator(beforeOwnerRegistration = { current.set(false) }).exportIfCurrent(
+                request(source, "same-download", "operation-a"),
+                backend,
+                operationIsCurrent = current::get
+            )
+
+        assertEquals("cancelled", result.status)
+        assertEquals(0, backend.insertCount.get())
+        assertEquals(0, backend.publishCount.get())
+    }
+
+    @Test
+    fun repeatedSaveUsesFreshOperationInsteadOfFinishedTerminal() = withSourceFile(4096) { source ->
+        val coordinator = coordinator()
+        val firstBackend = FakeExportBackend()
+        val secondBackend = FakeExportBackend()
+
+        val first = coordinator.export(request(source, "same-download", "operation-a"), firstBackend)
+        val second = coordinator.export(request(source, "same-download", "operation-b"), secondBackend)
+
+        assertEquals("saved", first.status)
+        assertEquals("saved", second.status)
+        assertEquals(1, firstBackend.insertCount.get())
+        assertEquals(1, secondBackend.insertCount.get())
+        assertEquals(1, firstBackend.publishCount.get())
+        assertEquals(1, secondBackend.publishCount.get())
+    }
+
+    @Test
+    fun queuedSuccessorDoesNotBlockOwnerRetirementGate() = withSourceFile(1024 * 1024) { source ->
+        val registry = AndroidAttachmentOwnerRegistry()
+        val owner = ownerLease("queued-owner", 1L)
+        registry.bind(owner)
+        val writeEntered = CountDownLatch(1)
+        val releaseWrite = CountDownLatch(1)
+        val terminalGate = BlockedExecutorService()
+        val successorQueued = CountDownLatch(1)
+        val firstBackend =
+            FakeExportBackend(
+                writeEntered = writeEntered,
+                writeBlock = releaseWrite,
+                ignoreWriteInterrupt = true
+            )
+        val coordinator =
+            coordinator(
+                ownerRegistry = registry,
+                terminalWorker = terminalGate,
+                afterQueuedReservation = successorQueued::countDown
+            )
+        val firstResult = AtomicReference<AttachmentDownloadsExportResult>()
+        val firstRequest = request(source, "same-download", "operation-a").copy(owner = owner)
+        val firstThread = thread {
+            firstResult.set(coordinator.export(firstRequest, firstBackend))
+        }
+        assertTrue(writeEntered.await(2, TimeUnit.SECONDS))
+        assertEquals(
+            "cancelled",
+            coordinator.controlExisting(
+                downloadId = "same-download",
+                operationId = "operation-a",
+                expectedAttemptToken = null,
+                action = "cancel",
+                owner = owner
+            )
+        )
+
+        val secondBackend = FakeExportBackend()
+        val secondResult = AtomicReference<AttachmentDownloadsExportResult>()
+        val secondThread = thread {
+            secondResult.set(
+                coordinator.export(
+                    request(source, "same-download", "operation-b").copy(owner = owner),
+                    secondBackend
+                )
+            )
+        }
+        assertTrue(successorQueued.await(2, TimeUnit.SECONDS))
+
+        val retired = CountDownLatch(1)
+        val retireThread = thread {
+            registry.retireShell(owner.shellInstanceId)
+            retired.countDown()
+        }
+        assertTrue(retired.await(1, TimeUnit.SECONDS))
+        retireThread.join(1_000L)
+        assertFalse(retireThread.isAlive)
+
+        terminalGate.release.countDown()
+        releaseWrite.countDown()
+        firstThread.join(2_000L)
+        secondThread.join(2_000L)
+
+        assertFalse(firstThread.isAlive)
+        assertFalse(secondThread.isAlive)
+        assertEquals("cancelled", firstResult.get()?.status)
+        assertEquals("cancelled", secondResult.get()?.status)
+        assertEquals(0, secondBackend.insertCount.get())
+        assertEquals(0, secondBackend.publishCount.get())
+        terminalGate.shutdownNow()
     }
 
     @Test
@@ -685,6 +836,7 @@ class AttachmentDownloadsExportCoordinatorTest {
         },
         afterInsertOwnerAcquired: () -> Unit = {},
         beforeOwnerRegistration: () -> Unit = {},
+        afterQueuedReservation: () -> Unit = {},
         ownerRegistry: AndroidAttachmentOwnerRegistry = ProcessAndroidAttachmentOwners
     ) =
         AttachmentDownloadsExportCoordinator(
@@ -699,12 +851,14 @@ class AttachmentDownloadsExportCoordinatorTest {
             deferredCleanupDelayMs = deferredCleanupDelayMs,
             afterInsertOwnerAcquired = afterInsertOwnerAcquired,
             beforeOwnerRegistration = beforeOwnerRegistration,
+            afterQueuedReservation = afterQueuedReservation,
             ownerRegistry = ownerRegistry
         )
 
-    private fun request(source: File, downloadId: String) =
+    private fun request(source: File, downloadId: String, operationId: String = "") =
         AttachmentDownloadsExportRequest(
             downloadId = downloadId,
+            operationId = operationId,
             source = source,
             displayName = "fixture.bin",
             mimeType = "application/octet-stream"
@@ -950,6 +1104,53 @@ private class FakeExportBackend(
     fun awaitOpenReturned(): Boolean = openReturned.await(2, TimeUnit.SECONDS)
     fun awaitWriteReturned(): Boolean = writeReturned.await(2, TimeUnit.SECONDS)
     fun awaitQueryBarrier(): Boolean = queryBarrier.await(2, TimeUnit.SECONDS)
+}
+
+private class LegacyRowIsolationBackend(
+    private val writeEntered: CountDownLatch,
+    private val releaseWrite: CountDownLatch
+) : AttachmentDownloadsExportBackend {
+    companion object {
+        const val OLDER_URI = "content://images/older"
+        const val CURRENT_URI = "content://images/current"
+    }
+
+    private val rows = java.util.concurrent.ConcurrentHashMap<String, AttachmentDownloadsRowState>().apply {
+        put(OLDER_URI, AttachmentDownloadsRowState.Published)
+    }
+    private val deleted = CountDownLatch(1)
+    val deletedUris = Collections.synchronizedList(mutableListOf<String>())
+
+    override fun insert(displayName: String, mimeType: String): String {
+        rows[CURRENT_URI] = AttachmentDownloadsRowState.Pending
+        return CURRENT_URI
+    }
+
+    override fun openOutput(uri: String): OutputStream = object : OutputStream() {
+        override fun write(value: Int) = write(byteArrayOf(value.toByte()), 0, 1)
+
+        override fun write(bytes: ByteArray, offset: Int, length: Int) {
+            writeEntered.countDown()
+            releaseWrite.awaitPossiblyIgnoringInterrupt(true)
+        }
+    }
+
+    override fun publish(uri: String): Boolean =
+        rows.replace(uri, AttachmentDownloadsRowState.Pending, AttachmentDownloadsRowState.Published)
+
+    override fun deletePending(uri: String): Boolean {
+        val removed = rows.remove(uri, AttachmentDownloadsRowState.Pending)
+        if (removed) {
+            deletedUris += uri
+            deleted.countDown()
+        }
+        return removed
+    }
+
+    override fun rowState(uri: String): AttachmentDownloadsRowState =
+        rows[uri] ?: AttachmentDownloadsRowState.Missing
+
+    fun awaitCurrentDelete(): Boolean = deleted.await(2, TimeUnit.SECONDS)
 }
 
 private fun CountDownLatch.awaitPossiblyIgnoringInterrupt(ignoreInterrupt: Boolean) {

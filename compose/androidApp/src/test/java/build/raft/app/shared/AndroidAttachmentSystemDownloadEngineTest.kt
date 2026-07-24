@@ -243,6 +243,60 @@ class AndroidAttachmentSystemDownloadEngineTest {
         assertTrue(spec.targetFile.isFile)
     }
 
+    @Test
+    fun operationExactPreProgressCancelCannotPoisonSameIdentitySuccessor() {
+        val backend = FakeBackend()
+        val store = FakeStore()
+        val operationA = spec(principalA, operationId = "operation-a")
+        val preparedA = prepared(operationA, "operation-a-token")
+        store.putIfAbsent(preparedA)
+        val engine = engine(backend, store)
+
+        assertEquals(
+            "cancelled",
+            engine.controlExisting(principalA, operationA.logicalDownloadId, "operation-a", "cancel")
+        )
+        assertEquals(null, store.read(operationA.targetFile.absolutePath))
+
+        backend.completeOnQuery = true
+        val operationB = operationA.copy(operationId = "operation-b")
+        val successor = engine.download(operationB)
+
+        assertEquals("complete", successor.status)
+        assertEquals("operation-b", store.read(operationB.targetFile.absolutePath)?.operationId)
+        assertEquals(
+            "missing",
+            engine.controlExisting(principalA, operationA.logicalDownloadId, "operation-a", "cancel")
+        )
+        assertTrue(operationB.targetFile.isFile)
+    }
+
+    @Test
+    fun persistedForeignOperationIsCleanedBeforeSuccessorReservation() {
+        val backend = FakeBackend().apply { completeOnQuery = true }
+        val store = FakeStore()
+        val operationA = spec(principalA, operationId = "operation-a")
+        val enqueuedA =
+            prepared(operationA, "operation-a-token").copy(
+                phase = AndroidSystemDownloadPhase.Enqueued,
+                systemDownloadId = 41L,
+                recordVersion = 2L
+            )
+        File(enqueuedA.stagingPath).apply { parentFile?.mkdirs(); writeText("stale") }
+        store.putIfAbsent(enqueuedA)
+        backend.rows +=
+            row(41L, enqueuedA.requestToken, AndroidSystemDownloadStatus.Running, enqueuedA.stagingPath)
+
+        val operationB = operationA.copy(operationId = "operation-b")
+        val result = engine(backend, store).download(operationB)
+
+        assertEquals("complete", result.status)
+        assertEquals(listOf(41L, 1L), backend.removed)
+        assertFalse(File(enqueuedA.stagingPath).exists())
+        assertEquals("operation-b", store.read(operationB.targetFile.absolutePath)?.operationId)
+        assertTrue(operationB.targetFile.isFile)
+    }
+
     private fun engine(
         backend: FakeBackend,
         store: FakeStore,
@@ -260,9 +314,10 @@ class AndroidAttachmentSystemDownloadEngineTest {
         beforePublishCommit = beforePublish
     )
 
-    private fun spec(principal: String) = AndroidSystemDownloadSpec(
+    private fun spec(principal: String, operationId: String = "") = AndroidSystemDownloadSpec(
         principalKey = principal,
         logicalDownloadId = "download",
+        operationId = operationId,
         targetFile = File(root, "$principal/target.bin"),
         stagingDirectory = File(root, "system-staging"),
         url = "https://example.test/file",
@@ -274,6 +329,7 @@ class AndroidAttachmentSystemDownloadEngineTest {
         targetKey = spec.targetFile.absolutePath,
         principalKey = spec.principalKey,
         logicalDownloadId = spec.logicalDownloadId,
+        operationId = spec.operationId,
         requestToken = token,
         attemptToken = "android-system-$token",
         recordVersion = 1L,

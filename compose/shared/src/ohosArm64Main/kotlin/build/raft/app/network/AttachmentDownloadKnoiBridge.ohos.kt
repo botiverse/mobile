@@ -33,6 +33,13 @@ fun slockAttachmentDownloadStart(
 fun slockAttachmentDownloadControl(downloadId: String, expectedAttemptToken: String, action: String): String =
     AttachmentDownloadCoordinator.control(downloadId, expectedAttemptToken, action)
 
+@KNExport
+fun slockAttachmentDownloadControlExisting(
+    downloadId: String,
+    expectedAttemptToken: String,
+    action: String
+): String = AttachmentDownloadCoordinator.controlExisting(downloadId, expectedAttemptToken, action)
+
 private class OhosKnoiAttachmentDownloadObserver(
     private val hostRequestKey: String
 ) : AttachmentDownloadObserver {

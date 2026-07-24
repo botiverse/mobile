@@ -19,6 +19,7 @@ internal data class AndroidSystemDownloadRecord(
     val targetKey: String,
     val principalKey: String,
     val logicalDownloadId: String,
+    val operationId: String = "",
     val requestToken: String,
     val attemptToken: String,
     val recordVersion: Long,
@@ -88,6 +89,7 @@ internal data class AndroidSystemDownloadResult(
 internal data class AndroidSystemDownloadSpec(
     val principalKey: String,
     val logicalDownloadId: String,
+    val operationId: String = "",
     val targetFile: File,
     val stagingDirectory: File,
     val url: String,
@@ -119,9 +121,23 @@ internal class AndroidAttachmentSystemDownloadEngine(
 
     fun download(
         spec: AndroidSystemDownloadSpec,
-        observer: ((AndroidSystemDownloadProgress) -> Unit)? = null
+        observer: ((AndroidSystemDownloadProgress) -> Unit)? = null,
+        operationIsCurrent: () -> Boolean = { true }
     ): AndroidSystemDownloadResult {
-        val record = ensureRecord(spec)
+        if (!operationIsCurrent()) return cancelledOperationResult()
+        var record = ensureRecord(spec)
+        while (
+            record.phase != AndroidSystemDownloadPhase.Complete &&
+                record.operationId != spec.operationId
+        ) {
+            if (!operationIsCurrent()) return cancelledOperationResult()
+            // A persisted or late foreign operation has no authority to publish into this
+            // operation's cache target. Remove only that exact record/DownloadManager row, then
+            // reserve a fresh record for the current operation after cleanup completes.
+            cancelExactRecord(record)
+            if (!operationIsCurrent()) return cancelledOperationResult()
+            record = recordStore.read(spec.targetFile.absolutePath) ?: ensureRecord(spec)
+        }
         if (record.principalKey != spec.principalKey) {
             return AndroidSystemDownloadResult(status = "owner_mismatch", errorKind = "owner_mismatch")
         }
@@ -134,10 +150,22 @@ internal class AndroidAttachmentSystemDownloadEngine(
                 sizeBytes = spec.targetFile.length()
             )
         }
+        if (!operationIsCurrent()) {
+            controlExisting(spec.principalKey, spec.logicalDownloadId, spec.operationId, "cancel")
+            return cancelledOperationResult(record)
+        }
         val enqueued = reconcile(record)
+        if (!operationIsCurrent()) {
+            controlExisting(spec.principalKey, spec.logicalDownloadId, spec.operationId, "cancel")
+            return cancelledOperationResult(enqueued)
+        }
         val systemId = enqueued.systemDownloadId
             ?: return AndroidSystemDownloadResult(status = "failed", errorKind = "missing_system_id")
         while (true) {
+            if (!operationIsCurrent()) {
+                controlExisting(spec.principalKey, spec.logicalDownloadId, spec.operationId, "cancel")
+                return cancelledOperationResult(enqueued)
+            }
             val row = backend.query(systemId)
             observer?.invoke(row.toProgress(enqueued))
             when (row.status) {
@@ -182,6 +210,13 @@ internal class AndroidAttachmentSystemDownloadEngine(
                 recordVersion = existing.recordVersion,
                 cached = cached,
                 sizeBytes = if (cached) spec.targetFile.length() else 0L
+            )
+        }
+        if (spec.operationId.isNotBlank() && existing.operationId != spec.operationId) {
+            return AndroidSystemDownloadResult(
+                status = "ok",
+                cached = false,
+                errorKind = "foreign_operation"
             )
         }
         val active = reconcile(existing)
@@ -230,6 +265,24 @@ internal class AndroidAttachmentSystemDownloadEngine(
                 "pause", "resume" -> "unsupported"
                 else -> "failed"
             }
+        }
+    }
+
+    fun controlExisting(
+        principalKey: String,
+        logicalDownloadId: String,
+        operationId: String,
+        action: String
+    ): String {
+        if (operationId.isBlank()) return "missing"
+        val record = recordStore.records().firstOrNull {
+            it.principalKey == principalKey &&
+                it.logicalDownloadId == logicalDownloadId &&
+                it.operationId == operationId
+        } ?: return "missing"
+        return when (action.lowercase()) {
+            "cancel", "stop" -> if (cancelExactRecord(record)) "cancelled" else "missing"
+            else -> "failed"
         }
     }
 
@@ -292,6 +345,7 @@ internal class AndroidAttachmentSystemDownloadEngine(
                     targetKey = spec.targetFile.absolutePath,
                     principalKey = spec.principalKey,
                     logicalDownloadId = spec.logicalDownloadId,
+                    operationId = spec.operationId,
                     requestToken = token,
                     attemptToken = "android-system-$token",
                     recordVersion = 1L,
@@ -307,6 +361,15 @@ internal class AndroidAttachmentSystemDownloadEngine(
                 spec.stagingDirectory.mkdirs()
                 recordStore.putIfAbsent(record).also(afterPreparedPersisted)
             }
+        }
+
+    private fun cancelExactRecord(record: AndroidSystemDownloadRecord): Boolean =
+        synchronized(targetLock(record.targetKey)) {
+            val current = recordStore.read(record.targetKey) ?: return@synchronized false
+            if (current != record) return@synchronized false
+            current.systemDownloadId?.let(backend::remove)
+            File(current.stagingPath).delete()
+            recordStore.removeIfExact(current)
         }
 
     private fun reconcile(record: AndroidSystemDownloadRecord): AndroidSystemDownloadRecord =
@@ -437,6 +500,14 @@ internal class AndroidAttachmentSystemDownloadEngine(
 
     private fun File.isUsable(maxAgeMillis: Long): Boolean =
         isFile && length() > 0L && nowMillis() - lastModified() <= maxAgeMillis
+
+    private fun cancelledOperationResult(record: AndroidSystemDownloadRecord? = null) =
+        AndroidSystemDownloadResult(
+            status = "cancelled",
+            attemptToken = record?.attemptToken,
+            recordVersion = record?.recordVersion,
+            errorKind = "operation_cancelled"
+        )
 }
 
 internal class AndroidAttachmentSystemDownloads(context: Context) {
@@ -452,8 +523,11 @@ internal class AndroidAttachmentSystemDownloads(context: Context) {
         engine.recoverAll()
     }
 
-    fun download(spec: AndroidSystemDownloadSpec, observer: ((AndroidSystemDownloadProgress) -> Unit)? = null) =
-        engine.download(spec, observer)
+    fun download(
+        spec: AndroidSystemDownloadSpec,
+        observer: ((AndroidSystemDownloadProgress) -> Unit)? = null,
+        operationIsCurrent: () -> Boolean = { true }
+    ) = engine.download(spec, observer, operationIsCurrent)
 
     fun cacheState(spec: AndroidSystemDownloadSpec) = engine.cacheState(spec)
 
@@ -464,6 +538,13 @@ internal class AndroidAttachmentSystemDownloads(context: Context) {
         expectedRecordVersion: Long?,
         action: String
     ) = engine.control(principalKey, logicalDownloadId, expectedAttemptToken, expectedRecordVersion, action)
+
+    fun controlExisting(
+        principalKey: String,
+        logicalDownloadId: String,
+        operationId: String,
+        action: String
+    ) = engine.controlExisting(principalKey, logicalDownloadId, operationId, action)
 
     fun deleteTarget(
         principalKey: String,
@@ -611,6 +692,7 @@ private class AtomicAndroidSystemDownloadRecordStore(file: File) : AndroidSystem
         .put("targetKey", targetKey)
         .put("principalKey", principalKey)
         .put("logicalDownloadId", logicalDownloadId)
+        .put("operationId", operationId)
         .put("requestToken", requestToken)
         .put("attemptToken", attemptToken)
         .put("recordVersion", recordVersion)
@@ -626,6 +708,7 @@ private class AtomicAndroidSystemDownloadRecordStore(file: File) : AndroidSystem
         targetKey = getString("targetKey"),
         principalKey = getString("principalKey"),
         logicalDownloadId = getString("logicalDownloadId"),
+        operationId = optString("operationId"),
         requestToken = getString("requestToken"),
         attemptToken = getString("attemptToken"),
         recordVersion = getLong("recordVersion"),
