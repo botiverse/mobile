@@ -11,11 +11,11 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runTest
 
 class SharedCreateAgentFormStoreTest {
     @Test
-    fun exactFormLoadsAreSingleFlightAndCachedByExactRef() = runBlocking {
+    fun exactFormLoadsAreSingleFlightAndCachedByExactRef() = runTest {
         val api = SequencedFormComputersApi()
         val store = SharedCreateAgentFormStore(SlockComputersApiClient(api), this)
         val first = async { store.loadExactForm("server-1", "machine-1", supportedRef) }
@@ -35,7 +35,7 @@ class SharedCreateAgentFormStoreTest {
     }
 
     @Test
-    fun staleForcedCompletionCannotReplaceNewerExactFormGeneration() = runBlocking {
+    fun staleForcedCompletionCannotReplaceNewerExactFormGeneration() = runTest {
         val api = SequencedFormComputersApi()
         val store = SharedCreateAgentFormStore(SlockComputersApiClient(api), this)
         val older = async { store.loadExactForm("server-1", "machine-1", supportedRef, force = true) }
@@ -54,7 +54,7 @@ class SharedCreateAgentFormStoreTest {
     }
 
     @Test
-    fun supportedBuiltInLoaderFailsClosedWithoutExactSelectableRef() = runBlocking {
+    fun supportedBuiltInLoaderFailsClosedWithoutExactSelectableRef() = runTest {
         val unavailableApi = SequencedFormComputersApi(
             runtimeOptionsBody = canonicalRuntimeOptionsBody.replace(
                 "\"canSelectInThisContext\":true",
@@ -73,7 +73,7 @@ class SharedCreateAgentFormStoreTest {
     }
 
     @Test
-    fun resolvedSourcesBuildPresetAndGatewayWithoutClientCatalogs() = runBlocking {
+    fun resolvedSourcesBuildPresetAndGatewayWithoutClientCatalogs() = runTest {
         val api = SequencedFormComputersApi()
         val store = SharedCreateAgentFormStore(SlockComputersApiClient(api), this)
         val load = async { store.loadExactForm("server-1", "machine-1", supportedRef) }
@@ -99,11 +99,12 @@ class SharedCreateAgentFormStoreTest {
                 apiKey = "secret-gateway",
                 baseUrl = "https://gateway.example.com/v1",
                 model = "vendor/model-v2",
-                envVars = null
+                envVars = null,
+                supportsImageInput = true
             )
         )
         assertEquals(
-            RuntimeProviderConfig.Gateway("openai-compatible", "https://gateway.example.com/v1", "secret-gateway"),
+            RuntimeProviderConfig.Gateway("openai-compatible", "https://gateway.example.com/v1", "secret-gateway", true),
             gateway.provider
         )
         assertEquals(RuntimeModelConfig.Custom("vendor/model-v2"), gateway.model)
@@ -114,6 +115,10 @@ class SharedCreateAgentFormStoreTest {
     @Test
     fun writeOnlySecretClearsOnEveryContractIdentityChange() {
         val base = SharedBuiltInWriteOnlyIdentity(
+            environmentId = "https://api.example.test",
+            accountId = "account-1",
+            sessionGeneration = "generation-1",
+            serverId = "server-1",
             machineId = "machine-1",
             runtimeId = "builtin",
             ref = supportedRef,
@@ -122,6 +127,10 @@ class SharedCreateAgentFormStoreTest {
         )
         assertEquals(false, shouldClearBuiltInWriteOnlySecret(null, base))
         assertEquals(false, shouldClearBuiltInWriteOnlySecret(base, base))
+        assertEquals(true, shouldClearBuiltInWriteOnlySecret(base, base.copy(environmentId = "https://other.example.test")))
+        assertEquals(true, shouldClearBuiltInWriteOnlySecret(base, base.copy(accountId = "account-2")))
+        assertEquals(true, shouldClearBuiltInWriteOnlySecret(base, base.copy(sessionGeneration = "generation-2")))
+        assertEquals(true, shouldClearBuiltInWriteOnlySecret(base, base.copy(serverId = "server-2")))
         assertEquals(true, shouldClearBuiltInWriteOnlySecret(base, base.copy(machineId = "machine-2")))
         assertEquals(true, shouldClearBuiltInWriteOnlySecret(base, base.copy(runtimeId = "codex")))
         assertEquals(true, shouldClearBuiltInWriteOnlySecret(base, base.copy(ref = supportedRef.copy(schemaVersion = "v2"))))
@@ -130,7 +139,7 @@ class SharedCreateAgentFormStoreTest {
     }
 
     @Test
-    fun storeStateAndDiagnosticsNeverContainWriteOnlySecret() = runBlocking {
+    fun storeStateAndDiagnosticsNeverContainWriteOnlySecret() = runTest {
         val logs = mutableListOf<String>()
         val api = SequencedFormComputersApi()
         val store = SharedCreateAgentFormStore(SlockComputersApiClient(api), this, logs::add)
@@ -154,7 +163,7 @@ class SharedCreateAgentFormStoreTest {
     }
 
     @Test
-    fun resolvedFormRejectsProviderModelPolicyDrift() = runBlocking {
+    fun resolvedFormRejectsProviderModelPolicyDrift() = runTest {
         val api = SequencedFormComputersApi(
             sourceBodies = mapOf(
                 "provider" to canonicalProviderSourceBody,
@@ -173,6 +182,31 @@ class SharedCreateAgentFormStoreTest {
             assertIs<DataResult.Error>(load.await()).error.code
         )
         assertTrue(store.state.value.resolvedForms.isEmpty())
+    }
+
+    @Test
+    fun accountEnvironmentGenerationChangeClearsCacheAndRejectsStaleCompletion() = runTest {
+        var owner = SharedCreateAgentFormOwner("https://api-a.example.test", "account-a", "session-a")
+        val api = SequencedFormComputersApi()
+        val store = SharedCreateAgentFormStore(
+            computersApiClient = SlockComputersApiClient(api),
+            scope = this,
+            ownerProvider = { owner }
+        )
+        val stale = async { store.loadExactForm("server-1", "machine-1", supportedRef, force = true) }
+        val staleResponse = api.definitionResponses.receive()
+
+        owner = SharedCreateAgentFormOwner("https://api-b.example.test", "account-b", "session-b")
+        val current = async { store.loadExactForm("server-1", "machine-1", supportedRef, force = true) }
+        val currentResponse = api.definitionResponses.receive()
+        currentResponse.complete(ok(canonicalDefinitionBody.replace("Choose provider", "Current owner")))
+        assertIs<DataResult.Content<SharedResolvedAgentCreateForm>>(current.await())
+        staleResponse.complete(ok(canonicalDefinitionBody.replace("Choose provider", "Stale owner")))
+        assertIs<DataResult.Content<SharedResolvedAgentCreateForm>>(stale.await())
+
+        val key = SharedCreateAgentExactFormKey("server-1", "machine-1", supportedRef)
+        assertEquals(owner, store.state.value.owner)
+        assertEquals("Current owner", store.state.value.resolvedForms.getValue(key).definition.uiSchema.localization.getValue("providerId").hint)
     }
 
     private class SequencedFormComputersApi(
@@ -217,15 +251,15 @@ class SharedCreateAgentFormStoreTest {
     }
 
     private companion object {
-        val supportedRef = SharedRuntimeFormDefinitionRef(1, "builtin", "builtin-pi.create.v1")
+        val supportedRef = SharedRuntimeFormDefinitionRef(1, "builtin", "builtin-pi.create.v2")
         val canonicalRuntimeOptionsBody =
-            """{"context":"new_agent","machineId":"machine-1","options":[{"runtimeId":"builtin","capabilityStatus":"available","admissionStatus":"available_for_new","admissionReason":null,"current":false,"availableForNew":true,"manageableForCurrentAgent":true,"canSelectInThisContext":true,"formDefinitionRef":{"protocolVersion":1,"runtimeId":"builtin","schemaVersion":"builtin-pi.create.v1"}}]}"""
+            """{"context":"new_agent","machineId":"machine-1","options":[{"runtimeId":"builtin","capabilityStatus":"available","admissionStatus":"available_for_new","admissionReason":null,"current":false,"availableForNew":true,"manageableForCurrentAgent":true,"canSelectInThisContext":true,"formDefinitionRef":{"protocolVersion":1,"runtimeId":"builtin","schemaVersion":"builtin-pi.create.v2"}}]}"""
         val canonicalDefinitionBody =
-            """{"protocolVersion":1,"runtimeId":"builtin","schemaVersion":"builtin-pi.create.v1","dataSchema":{"type":"object","additionalProperties":false,"required":["providerId","apiKey","model"],"properties":{"providerId":{"type":"string","title":"Provider","minLength":1},"apiKey":{"type":"string","title":"API Key","minLength":1,"writeOnly":true},"baseUrl":{"type":"string","title":"Base URL","minLength":1,"format":"uri"},"model":{"type":"string","title":"Model","minLength":1},"envVars":{"type":"object","title":"Environment Variables","additionalProperties":{"type":"string"}}}},"uiSchema":{"order":["providerId","apiKey","baseUrl","model","envVars"],"layout":{"advanced":["/envVars"]},"visibility":[{"pointer":"/baseUrl","when":{"pointer":"/providerId","in":["openai-compatible"]}}],"localization":{"providerId":{"label":"Provider","hint":"Choose provider"},"apiKey":{"label":"API Key","placeholder":"sk-..."},"baseUrl":{"label":"Base URL","placeholder":"https://gateway.example.com/v1"},"model":{"label":"Model","placeholder":"Model ID"},"envVars":{"label":"Environment Variables","hint":"Injected into runtime"}}},"capabilities":{"providerKinds":["preset","gateway"],"writeOnlyPointers":["/apiKey"],"forbiddenPointers":["/hostUserState"]},"optionSources":{"provider":{"protocolVersion":1,"runtimeId":"builtin","schemaVersion":"builtin-pi.create.v1","sourceId":"provider","kind":"select","pointer":"/providerId"},"model":{"protocolVersion":1,"runtimeId":"builtin","schemaVersion":"builtin-pi.create.v1","sourceId":"model","kind":"dependent_select","pointer":"/model","dependsOn":"/providerId"}}}"""
+            """{"protocolVersion":1,"runtimeId":"builtin","schemaVersion":"builtin-pi.create.v2","dataSchema":{"type":"object","additionalProperties":false,"required":["providerId","apiKey","model"],"properties":{"providerId":{"type":"string","title":"Provider","minLength":1},"apiKey":{"type":"string","title":"API Key","minLength":1,"writeOnly":true},"baseUrl":{"type":"string","title":"Base URL","minLength":1,"format":"uri"},"supportsImageInput":{"type":"boolean","title":"Image input"},"model":{"type":"string","title":"Model","minLength":1},"envVars":{"type":"object","title":"Environment Variables","additionalProperties":{"type":"string"}}}},"uiSchema":{"order":["providerId","apiKey","baseUrl","supportsImageInput","model","envVars"],"layout":{"advanced":["/envVars"]},"visibility":[{"pointer":"/baseUrl","when":{"pointer":"/providerId","in":["openai-compatible","anthropic-compatible"]}},{"pointer":"/supportsImageInput","when":{"pointer":"/providerId","in":["openai-compatible","anthropic-compatible"]}}],"localization":{"providerId":{"label":"Provider","hint":"Choose provider"},"apiKey":{"label":"API Key","placeholder":"sk-..."},"baseUrl":{"label":"Base URL","placeholder":"https://gateway.example.com/v1"},"supportsImageInput":{"label":"Supports image input","hint":"Enable only when this gateway endpoint and model accept images."},"model":{"label":"Model","placeholder":"Model ID"},"envVars":{"label":"Environment Variables","hint":"Injected into runtime"}}},"capabilities":{"providerKinds":["preset","gateway"],"writeOnlyPointers":["/apiKey"],"forbiddenPointers":["/hostUserState"]},"optionSources":{"provider":{"protocolVersion":1,"runtimeId":"builtin","schemaVersion":"builtin-pi.create.v2","sourceId":"provider","kind":"select","pointer":"/providerId"},"model":{"protocolVersion":1,"runtimeId":"builtin","schemaVersion":"builtin-pi.create.v2","sourceId":"model","kind":"dependent_select","pointer":"/model","dependsOn":"/providerId"}}}"""
         val canonicalProviderSourceBody =
-            """{"protocolVersion":1,"runtimeId":"builtin","schemaVersion":"builtin-pi.create.v1","sourceId":"provider","kind":"select","pointer":"/providerId","options":[{"value":"deepseek","label":"DeepSeek","providerKind":"preset"},{"value":"openai-compatible","label":"OpenAI Compatible","providerKind":"gateway"}],"defaultValue":"deepseek"}"""
+            """{"protocolVersion":1,"runtimeId":"builtin","schemaVersion":"builtin-pi.create.v2","sourceId":"provider","kind":"select","pointer":"/providerId","options":[{"value":"deepseek","label":"DeepSeek","providerKind":"preset"},{"value":"openai-compatible","label":"OpenAI Compatible","providerKind":"gateway"},{"value":"anthropic-compatible","label":"Anthropic Compatible","providerKind":"gateway"}],"defaultValue":"deepseek"}"""
         val canonicalModelSourceBody =
-            """{"protocolVersion":1,"runtimeId":"builtin","schemaVersion":"builtin-pi.create.v1","sourceId":"model","kind":"dependent_select","pointer":"/model","dependsOn":"/providerId","optionsByValue":{"deepseek":[{"value":"deepseek/deepseek-v4-pro","label":"DeepSeek V4 Pro"}],"openai-compatible":[]},"defaultValueByValue":{"deepseek":"deepseek/deepseek-v4-pro"},"customValueAllowedByValue":{"deepseek":false,"openai-compatible":true}}"""
+            """{"protocolVersion":1,"runtimeId":"builtin","schemaVersion":"builtin-pi.create.v2","sourceId":"model","kind":"dependent_select","pointer":"/model","dependsOn":"/providerId","optionsByValue":{"deepseek":[{"value":"deepseek/deepseek-v4-pro","label":"DeepSeek V4 Pro"}],"openai-compatible":[],"anthropic-compatible":[]},"defaultValueByValue":{"deepseek":"deepseek/deepseek-v4-pro"},"customValueAllowedByValue":{"deepseek":false,"openai-compatible":true,"anthropic-compatible":true}}"""
 
         fun ok(body: String) = HomeNetworkResponse(code = 200, bodyText = body)
     }

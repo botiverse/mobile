@@ -426,7 +426,7 @@ internal class ComposeCreateAgentBuiltInDialogVisualPage : BasePager() {
 }
 
 private fun createAgentBuiltInVisualForm(): SharedResolvedAgentCreateForm {
-    val ref = SharedRuntimeFormDefinitionRef(1, "builtin", "builtin-pi.create.v1")
+    val ref = SharedRuntimeFormDefinitionRef(1, "builtin", "builtin-pi.create.v2")
     val providerRef = SharedAgentCreateFormOptionSourceRef.Select(ref, "provider", "/providerId")
     val modelRef = SharedAgentCreateFormOptionSourceRef.DependentSelect(ref, "model", "/model", "/providerId")
     return SharedResolvedAgentCreateForm(
@@ -438,18 +438,27 @@ private fun createAgentBuiltInVisualForm(): SharedResolvedAgentCreateForm {
                     "providerId" to SharedAgentCreateFieldSchema.StringField("Provider", 1, null, false),
                     "apiKey" to SharedAgentCreateFieldSchema.StringField("API Key", 1, null, true),
                     "baseUrl" to SharedAgentCreateFieldSchema.StringField("Base URL", 1, "uri", false),
+                    "supportsImageInput" to SharedAgentCreateFieldSchema.BooleanField("Image input"),
                     "model" to SharedAgentCreateFieldSchema.StringField("Model", 1, null, false),
                     "envVars" to SharedAgentCreateFieldSchema.StringMapField("Environment Variables")
                 )
             ),
             uiSchema = SharedAgentCreateUiSchema(
-                order = listOf("providerId", "apiKey", "baseUrl", "model", "envVars"),
+                order = listOf("providerId", "apiKey", "baseUrl", "supportsImageInput", "model", "envVars"),
                 advancedPointers = setOf("/envVars"),
-                visibility = listOf(SharedAgentCreateVisibilityRule("/baseUrl", "/providerId", setOf("openai-compatible"))),
+                visibility = listOf(
+                    SharedAgentCreateVisibilityRule("/baseUrl", "/providerId", setOf("openai-compatible", "anthropic-compatible")),
+                    SharedAgentCreateVisibilityRule("/supportsImageInput", "/providerId", setOf("openai-compatible", "anthropic-compatible"))
+                ),
                 localization = mapOf(
                     "providerId" to SharedAgentCreateFieldCopy("Provider", "Built-in Pi uses the provider key entered here.", null),
                     "apiKey" to SharedAgentCreateFieldCopy("API Key", null, "sk-..."),
                     "baseUrl" to SharedAgentCreateFieldCopy("Base URL", null, "https://gateway.example.com/v1"),
+                    "supportsImageInput" to SharedAgentCreateFieldCopy(
+                        "Supports image input",
+                        "Enable only when this gateway endpoint and model accept images.",
+                        null
+                    ),
                     "model" to SharedAgentCreateFieldCopy("Model", null, "Model ID"),
                     "envVars" to SharedAgentCreateFieldCopy("Environment Variables", "Injected into the runtime environment.", null)
                 )
@@ -468,9 +477,10 @@ private fun createAgentBuiltInVisualForm(): SharedResolvedAgentCreateForm {
                 pointer = "/providerId",
                 options = listOf(
                     SharedAgentCreateFormOption("deepseek", "DeepSeek", "preset"),
-                    SharedAgentCreateFormOption("openai-compatible", "OpenAI Compatible", "gateway")
+                    SharedAgentCreateFormOption("openai-compatible", "OpenAI Compatible", "gateway"),
+                    SharedAgentCreateFormOption("anthropic-compatible", "Anthropic Compatible", "gateway")
                 ),
-                defaultValue = "deepseek"
+                defaultValue = "openai-compatible"
             ),
             "model" to SharedAgentCreateFormOptionSource.DependentSelect(
                 ref = ref,
@@ -479,10 +489,15 @@ private fun createAgentBuiltInVisualForm(): SharedResolvedAgentCreateForm {
                 dependsOn = "/providerId",
                 optionsByValue = mapOf(
                     "deepseek" to listOf(SharedAgentCreateFormOption("deepseek/deepseek-v4-pro", "DeepSeek V4 Pro", null)),
-                    "openai-compatible" to emptyList()
+                    "openai-compatible" to emptyList(),
+                    "anthropic-compatible" to emptyList()
                 ),
                 defaultValueByValue = mapOf("deepseek" to "deepseek/deepseek-v4-pro"),
-                customValueAllowedByValue = mapOf("deepseek" to false, "openai-compatible" to true)
+                customValueAllowedByValue = mapOf(
+                    "deepseek" to false,
+                    "openai-compatible" to true,
+                    "anthropic-compatible" to true
+                )
             )
         )
     )

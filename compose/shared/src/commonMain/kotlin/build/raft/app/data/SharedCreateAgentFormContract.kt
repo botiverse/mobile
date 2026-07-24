@@ -9,7 +9,7 @@ import kotlinx.serialization.Serializable
 
 internal const val CREATE_AGENT_FORM_PROTOCOL_VERSION = 1
 internal const val CREATE_AGENT_BUILTIN_RUNTIME_ID = "builtin"
-internal const val CREATE_AGENT_BUILTIN_PI_SCHEMA_VERSION = "builtin-pi.create.v1"
+internal const val CREATE_AGENT_BUILTIN_PI_SCHEMA_VERSION = "builtin-pi.create.v2"
 
 @Serializable
 data class SharedRuntimeFormDefinitionRef(
@@ -64,6 +64,10 @@ internal sealed interface SharedAgentCreateFieldSchema {
     ) : SharedAgentCreateFieldSchema
 
     data class StringMapField(
+        override val title: String
+    ) : SharedAgentCreateFieldSchema
+
+    data class BooleanField(
         override val title: String
     ) : SharedAgentCreateFieldSchema
 }
@@ -185,6 +189,10 @@ internal fun SharedResolvedAgentCreateForm.hasConsistentBuiltInSources(): Boolea
 }
 
 internal data class SharedBuiltInWriteOnlyIdentity(
+    val environmentId: String = "",
+    val accountId: String = "",
+    val sessionGeneration: String = "",
+    val serverId: String = "",
     val machineId: String,
     val runtimeId: String,
     val ref: SharedRuntimeFormDefinitionRef?,
@@ -202,7 +210,8 @@ internal fun SharedResolvedAgentCreateForm.buildBuiltInRuntimeConfig(
     apiKey: String,
     baseUrl: String,
     model: String,
-    envVars: Map<String, String>?
+    envVars: Map<String, String>?,
+    supportsImageInput: Boolean = false
 ): RuntimeConfig? {
     if (!hasConsistentBuiltInSources()) return null
     val cleanProviderId = providerId.trim()
@@ -224,7 +233,12 @@ internal fun SharedResolvedAgentCreateForm.buildBuiltInRuntimeConfig(
         }
         "gateway" -> {
             if (modelSource.customValueAllowedByValue[cleanProviderId] != true || cleanBaseUrl.isBlank()) return null
-            providerConfig = RuntimeProviderConfig.Gateway(cleanProviderId, cleanBaseUrl, cleanApiKey)
+            providerConfig = RuntimeProviderConfig.Gateway(
+                providerId = cleanProviderId,
+                baseUrl = cleanBaseUrl,
+                apiKey = cleanApiKey,
+                supportsImageInput = supportsImageInput
+            )
             modelConfig = RuntimeModelConfig.Custom(cleanModel)
         }
         else -> return null

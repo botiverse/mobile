@@ -45,7 +45,12 @@ sealed class RuntimeProviderConfig {
 
     @Serializable
     @SerialName("gateway")
-    data class Gateway(val providerId: String, val baseUrl: String, val apiKey: String) : RuntimeProviderConfig()
+    data class Gateway(
+        val providerId: String,
+        val baseUrl: String,
+        val apiKey: String,
+        val supportsImageInput: Boolean = false
+    ) : RuntimeProviderConfig()
 }
 
 @Serializable

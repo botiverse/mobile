@@ -20,6 +20,11 @@ private val computersApiJson = Json {
     encodeDefaults = true
     coerceInputValues = true
 }
+private val runtimeFormApiJson = Json {
+    ignoreUnknownKeys = false
+    encodeDefaults = true
+    coerceInputValues = false
+}
 
 /**
  * Typed Computers/Machines boundary.
@@ -238,7 +243,8 @@ internal class SlockComputersApiClient(
         if (normalizedMachineId.isBlank()) return runtimeFormContractError("runtime_options_machine_required")
         return transport.runtimeOptions(serverId, normalizedMachineId).mapComputersBody(
             "computer_runtime_options_contract_mismatch",
-            ComputerRuntimeSelectionCatalogDto.serializer()
+            ComputerRuntimeSelectionCatalogDto.serializer(),
+            runtimeFormApiJson
         ) { wire -> wire.toDomain(normalizedMachineId) }
     }
 
@@ -255,7 +261,8 @@ internal class SlockComputersApiClient(
         if (!response.isSuccessful) return response.toRuntimeFormDataError()
         return response.mapComputersBody(
             "runtime_form_definition_contract_mismatch",
-            AgentCreateFormDefinitionDto.serializer()
+            AgentCreateFormDefinitionDto.serializer(),
+            runtimeFormApiJson
         ) { wire -> wire.toDomain(ref) }
     }
 
@@ -284,7 +291,8 @@ internal class SlockComputersApiClient(
         if (!response.isSuccessful) return response.toRuntimeFormDataError()
         return response.mapComputersBody(
             "runtime_form_option_source_contract_mismatch",
-            AgentCreateFormOptionSourceDto.serializer()
+            AgentCreateFormOptionSourceDto.serializer(),
+            runtimeFormApiJson
         ) { wire -> wire.toDomain(ref, sourceRef) }
     }
 
@@ -353,6 +361,7 @@ private fun <T> runtimeFormContractError(code: String): DataResult<T> =
 private inline fun <Wire, T> HomeNetworkResponse.mapComputersBody(
     contractCode: String,
     serializer: KSerializer<Wire>,
+    json: Json = computersApiJson,
     crossinline transform: (Wire) -> T?,
 ): DataResult<T> {
     if (!isSuccessful) {
@@ -361,7 +370,7 @@ private inline fun <Wire, T> HomeNetworkResponse.mapComputersBody(
     val body = bodyText?.takeIf { it.isNotBlank() }
         ?: return DataResult.Error(ScreenError(code = contractCode, retryable = false))
     val wire = try {
-        computersApiJson.decodeFromString(serializer, body)
+        json.decodeFromString(serializer, body)
     } catch (_: SerializationException) {
         return DataResult.Error(ScreenError(code = contractCode, retryable = false))
     }
@@ -665,6 +674,10 @@ private fun AgentCreateFieldSchemaDto.toDomain(): SharedAgentCreateFieldSchema? 
             if (additionalProperties?.type != "string" || writeOnly || minLength != null || format != null) return null
             SharedAgentCreateFieldSchema.StringMapField(title = cleanTitle)
         }
+        "boolean" -> {
+            if (additionalProperties != null || writeOnly || minLength != null || format != null) return null
+            SharedAgentCreateFieldSchema.BooleanField(title = cleanTitle)
+        }
         else -> null
     }
 }
@@ -743,13 +756,22 @@ private fun AgentCreateFormDefinitionDto.toDomain(
     if (actualRef != expectedRef) return null
     if (dataSchema.type != "object" || dataSchema.additionalProperties) return null
     val properties = dataSchema.properties.mapValues { (_, field) -> field.toDomain() ?: return null }
-    if (properties.isEmpty()) return null
+    if (properties.keys != setOf("providerId", "apiKey", "baseUrl", "supportsImageInput", "model", "envVars")) return null
+    if (properties["providerId"] != SharedAgentCreateFieldSchema.StringField("Provider", 1, null, false)) return null
+    if (properties["apiKey"] != SharedAgentCreateFieldSchema.StringField("API Key", 1, null, true)) return null
+    if (properties["baseUrl"] != SharedAgentCreateFieldSchema.StringField("Base URL", 1, "uri", false)) return null
+    if (properties["supportsImageInput"] != SharedAgentCreateFieldSchema.BooleanField("Image input")) return null
+    if (properties["model"] != SharedAgentCreateFieldSchema.StringField("Model", 1, null, false)) return null
+    if (properties["envVars"] != SharedAgentCreateFieldSchema.StringMapField("Environment Variables")) return null
     val required = dataSchema.required.map { it.trim() }
     if (required.any { it.isBlank() || it !in properties } || required.distinct().size != required.size) return null
+    if (required.toSet() != setOf("providerId", "apiKey", "model")) return null
     val order = uiSchema.order.map { it.trim() }
     if (order.any { it.isBlank() } || order.distinct().size != order.size || order.toSet() != properties.keys) return null
+    if (order != listOf("providerId", "apiKey", "baseUrl", "supportsImageInput", "model", "envVars")) return null
     val advancedPointers = uiSchema.layout.advanced.map { it.trim() }
     if (advancedPointers.any { !it.isPropertyPointerTo(properties.keys) }) return null
+    if (advancedPointers != listOf("/envVars")) return null
     val visibility =
         uiSchema.visibility.map { rule ->
             val pointer = rule.pointer.trim()
@@ -796,7 +818,16 @@ private fun AgentCreateFormDefinitionDto.toDomain(
         optionSources.mapValues { (key, source) ->
             source.toDomain(expectedRef)?.takeIf { it.sourceId == key } ?: return null
         }
-    if (optionSources.isEmpty() || optionSources.values.any { !it.pointer.isPropertyPointerTo(properties.keys) }) return null
+    if (optionSources.keys != setOf("provider", "model") || optionSources.values.any { !it.pointer.isPropertyPointerTo(properties.keys) }) return null
+    if (optionSources["provider"] != SharedAgentCreateFormOptionSourceRef.Select(expectedRef, "provider", "/providerId")) return null
+    if (optionSources["model"] != SharedAgentCreateFormOptionSourceRef.DependentSelect(expectedRef, "model", "/model", "/providerId")) return null
+    val expectedGatewayVisibility = setOf("openai-compatible", "anthropic-compatible")
+    if (
+        visibility.toSet() != setOf(
+            SharedAgentCreateVisibilityRule("/baseUrl", "/providerId", expectedGatewayVisibility),
+            SharedAgentCreateVisibilityRule("/supportsImageInput", "/providerId", expectedGatewayVisibility)
+        )
+    ) return null
     return SharedAgentCreateFormDefinition(
         ref = expectedRef,
         dataSchema = SharedAgentCreateDataSchema(required.toSet(), properties),

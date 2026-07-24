@@ -9,14 +9,15 @@ import build.raft.app.model.buildRuntimeConfig
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 class AgentsApiTest {
     @Test
-    fun typedAgentsApiAcceptsCanonicalUpstreamShapes() = runBlocking {
+    fun typedAgentsApiAcceptsCanonicalUpstreamShapes() = runTest {
         val transport = RecordingAgentsApi()
         val client = SlockAgentsApiClient(transport)
         val agentId = MemberId("agent-1")
@@ -85,7 +86,7 @@ class AgentsApiTest {
     }
 
     @Test
-    fun publicAgentDetailLoadsOnlyTheJointAuthorizedAgentProfile() = runBlocking {
+    fun publicAgentDetailLoadsOnlyTheJointAuthorizedAgentProfile() = runTest {
         val transport = RecordingAgentsApi()
         val detail =
             assertIs<DataResult.Content<AgentDetailSnapshot>>(
@@ -159,7 +160,7 @@ class AgentsApiTest {
                     model = RuntimeModelConfig.Preset("deepseek/deepseek-v4-pro"),
                     hostUserState = RuntimeHostUserState.Forbidden
                 ),
-                formDefinitionRef = SharedRuntimeFormDefinitionRef(1, "builtin", "builtin-pi.create.v1")
+                formDefinitionRef = SharedRuntimeFormDefinitionRef(1, "builtin", "builtin-pi.create.v2")
             )
         )
         val json = Json.parseToJsonElement(body).jsonObject
@@ -173,7 +174,7 @@ class AgentsApiTest {
         val ref = json.getValue("formDefinitionRef").jsonObject
         assertEquals(1, ref.getValue("protocolVersion").jsonPrimitive.content.toInt())
         assertEquals("builtin", ref.getValue("runtimeId").jsonPrimitive.content)
-        assertEquals("builtin-pi.create.v1", ref.getValue("schemaVersion").jsonPrimitive.content)
+        assertEquals("builtin-pi.create.v2", ref.getValue("schemaVersion").jsonPrimitive.content)
     }
 
     @Test
@@ -187,12 +188,13 @@ class AgentsApiTest {
                     provider = RuntimeProviderConfig.Gateway(
                         providerId = "openai-compatible",
                         baseUrl = "https://gateway.example.com/v1",
-                        apiKey = "secret-gateway"
+                        apiKey = "secret-gateway",
+                        supportsImageInput = true
                     ),
                     model = RuntimeModelConfig.Custom("vendor/model-v2"),
                     hostUserState = RuntimeHostUserState.Forbidden
                 ),
-                formDefinitionRef = SharedRuntimeFormDefinitionRef(1, "builtin", "builtin-pi.create.v1")
+                formDefinitionRef = SharedRuntimeFormDefinitionRef(1, "builtin", "builtin-pi.create.v2")
             )
         )
         val runtimeConfig = Json.parseToJsonElement(body).jsonObject.getValue("runtimeConfig").jsonObject
@@ -201,13 +203,14 @@ class AgentsApiTest {
         assertEquals("openai-compatible", provider.getValue("providerId").jsonPrimitive.content)
         assertEquals("https://gateway.example.com/v1", provider.getValue("baseUrl").jsonPrimitive.content)
         assertEquals("secret-gateway", provider.getValue("apiKey").jsonPrimitive.content)
+        assertEquals(true, provider.getValue("supportsImageInput").jsonPrimitive.boolean)
         val model = runtimeConfig.getValue("model").jsonObject
         assertEquals("custom", model.getValue("kind").jsonPrimitive.content)
         assertEquals("vendor/model-v2", model.getValue("name").jsonPrimitive.content)
     }
 
     @Test
-    fun repeatedAgentReadsNeverRetainRuntimeProviderSecrets() = runBlocking {
+    fun repeatedAgentReadsNeverRetainRuntimeProviderSecrets() = runTest {
         val sentinel = "sentinel-provider-secret"
         val client = SlockAgentsApiClient(
             RecordingAgentsApi(
@@ -225,7 +228,7 @@ class AgentsApiTest {
     }
 
     @Test
-    fun typedAgentsApiPreservesCustomRuntimeModelKind() = runBlocking {
+    fun typedAgentsApiPreservesCustomRuntimeModelKind() = runTest {
         val client =
             SlockAgentsApiClient(
                 RecordingAgentsApi(
@@ -242,7 +245,7 @@ class AgentsApiTest {
     }
 
     @Test
-    fun typedAgentsApiRejectsGuessedWrappersAndAliases() = runBlocking {
+    fun typedAgentsApiRejectsGuessedWrappersAndAliases() = runTest {
         val client =
             SlockAgentsApiClient(
                 RecordingAgentsApi(

@@ -22,16 +22,26 @@ internal data class SharedCreateAgentExactFormKey(
 )
 
 internal data class SharedCreateAgentFormStoreState(
+    val owner: SharedCreateAgentFormOwner? = null,
     val runtimeCatalogs: Map<SharedCreateAgentMachineFormKey, SharedCreateAgentRuntimeCatalog> = emptyMap(),
     val resolvedForms: Map<SharedCreateAgentExactFormKey, SharedResolvedAgentCreateForm> = emptyMap(),
     val loadingRuntimeCatalogs: Set<SharedCreateAgentMachineFormKey> = emptySet(),
     val loadingForms: Set<SharedCreateAgentExactFormKey> = emptySet()
 )
 
+internal data class SharedCreateAgentFormOwner(
+    val environmentId: String,
+    val accountId: String,
+    val sessionGeneration: String
+)
+
 internal class SharedCreateAgentFormStore(
     private val computersApiClient: SlockComputersApiClient,
     private val scope: CoroutineScope,
-    private val logger: (String) -> Unit = {}
+    private val logger: (String) -> Unit = {},
+    private val ownerProvider: suspend () -> SharedCreateAgentFormOwner? = {
+        SharedCreateAgentFormOwner("test-environment", "test-account", "test-session")
+    }
 ) {
     private val mutex = Mutex()
     private val _state = MutableStateFlow(SharedCreateAgentFormStoreState())
@@ -41,15 +51,26 @@ internal class SharedCreateAgentFormStore(
     private val runtimeCatalogGenerations = mutableMapOf<SharedCreateAgentMachineFormKey, Long>()
     private val formLoads = mutableMapOf<SharedCreateAgentExactFormKey, Deferred<DataResult<SharedResolvedAgentCreateForm>>>()
     private val formGenerations = mutableMapOf<SharedCreateAgentExactFormKey, Long>()
+    private var currentOwner: SharedCreateAgentFormOwner? = null
+
+    suspend fun reconcileOwner() {
+        val owner = ownerProvider()
+        mutex.withLock {
+            if (owner == null) clearOwnerLocked() else installOwner(owner)
+        }
+    }
 
     suspend fun loadRuntimeCatalog(
         serverId: String,
         machineId: String,
         force: Boolean = false
     ): DataResult<SharedCreateAgentRuntimeCatalog> {
+        val owner = ownerProvider()
+            ?: return clearForMissingOwner("runtime_options_owner_required")
         val key = normalizedMachineKey(serverId, machineId)
             ?: return DataResult.Error(ScreenError("runtime_options_identity_required", retryable = false))
         val deferred = mutex.withLock {
+            installOwner(owner)
             if (!force) {
                 _state.value.runtimeCatalogs[key]?.let { return DataResult.Content(it) }
                 runtimeCatalogLoads[key]?.let { return@withLock it }
@@ -63,7 +84,7 @@ internal class SharedCreateAgentFormStore(
                 }.getOrElse {
                     DataResult.Error(ScreenError("runtime_options_load_failed", retryable = true))
                 }
-                publishRuntimeCatalog(key, generation, result)
+                publishRuntimeCatalog(owner, key, generation, result)
                 result
             }.also { runtimeCatalogLoads[key] = it }
         }
@@ -76,6 +97,8 @@ internal class SharedCreateAgentFormStore(
         ref: SharedRuntimeFormDefinitionRef,
         force: Boolean = false
     ): DataResult<SharedResolvedAgentCreateForm> {
+        val owner = ownerProvider()
+            ?: return clearForMissingOwner("runtime_form_owner_required")
         val machineKey = normalizedMachineKey(serverId, machineId)
             ?: return DataResult.Error(ScreenError("runtime_form_identity_required", retryable = false))
         if (!ref.isSupportedBuiltInPi) {
@@ -83,6 +106,7 @@ internal class SharedCreateAgentFormStore(
         }
         val key = SharedCreateAgentExactFormKey(machineKey.serverId, machineKey.machineId, ref)
         val deferred = mutex.withLock {
+            installOwner(owner)
             if (!force) {
                 _state.value.resolvedForms[key]?.let { return DataResult.Content(it) }
                 formLoads[key]?.let { return@withLock it }
@@ -96,7 +120,7 @@ internal class SharedCreateAgentFormStore(
                 }.getOrElse {
                     DataResult.Error(ScreenError("runtime_form_load_failed", retryable = true))
                 }
-                publishExactForm(key, generation, result)
+                publishExactForm(owner, key, generation, result)
                 result
             }.also { formLoads[key] = it }
         }
@@ -145,12 +169,13 @@ internal class SharedCreateAgentFormStore(
     }
 
     private suspend fun publishRuntimeCatalog(
+        owner: SharedCreateAgentFormOwner,
         key: SharedCreateAgentMachineFormKey,
         generation: Long,
         result: DataResult<SharedCreateAgentRuntimeCatalog>
     ) {
         mutex.withLock {
-            if (runtimeCatalogGenerations[key] == generation) {
+            if (currentOwner == owner && runtimeCatalogGenerations[key] == generation) {
                 runtimeCatalogLoads.remove(key)
                 _state.value = _state.value.copy(loadingRuntimeCatalogs = _state.value.loadingRuntimeCatalogs - key)
                 if (result is DataResult.Content) {
@@ -164,12 +189,13 @@ internal class SharedCreateAgentFormStore(
     }
 
     private suspend fun publishExactForm(
+        owner: SharedCreateAgentFormOwner,
         key: SharedCreateAgentExactFormKey,
         generation: Long,
         result: DataResult<SharedResolvedAgentCreateForm>
     ) {
         mutex.withLock {
-            if (formGenerations[key] == generation) {
+            if (currentOwner == owner && formGenerations[key] == generation) {
                 formLoads.remove(key)
                 _state.value = _state.value.copy(loadingForms = _state.value.loadingForms - key)
                 if (result is DataResult.Content) {
@@ -180,6 +206,32 @@ internal class SharedCreateAgentFormStore(
             }
         }
         logResult("runtime_form", key.serverId, key.machineId, result)
+    }
+
+    private fun installOwner(owner: SharedCreateAgentFormOwner) {
+        if (currentOwner == owner) return
+        currentOwner = owner
+        runtimeCatalogLoads.clear()
+        runtimeCatalogGenerations.clear()
+        formLoads.clear()
+        formGenerations.clear()
+        _state.value = SharedCreateAgentFormStoreState(owner = owner)
+    }
+
+    private fun clearOwnerLocked() {
+        currentOwner = null
+        runtimeCatalogLoads.clear()
+        runtimeCatalogGenerations.clear()
+        formLoads.clear()
+        formGenerations.clear()
+        _state.value = SharedCreateAgentFormStoreState()
+    }
+
+    private suspend fun <T> clearForMissingOwner(code: String): DataResult<T> {
+        mutex.withLock {
+            clearOwnerLocked()
+        }
+        return DataResult.Error(ScreenError(code, retryable = false))
     }
 
     private fun logResult(domain: String, serverId: String, machineId: String, result: DataResult<*>) {

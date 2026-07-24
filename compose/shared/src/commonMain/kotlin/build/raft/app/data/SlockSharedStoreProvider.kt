@@ -78,6 +78,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.SupervisorJob
@@ -388,6 +389,7 @@ internal class SlockSharedStoreProvider private constructor(
     private val realtimeAuthorityRegistrations = SlockShellScopedStoreCache<String>()
     private val shellAgentDetailStores = SlockShellScopedStoreCache<SharedAgentDetailStore>()
     private val shellCreateAgentFormStores = SlockShellScopedStoreCache<SharedCreateAgentFormStore>()
+    private val shellCreateAgentFormOwnerJobs = SlockShellScopedStoreCache<Job>()
     private val shellNavigationCoordinators = SlockShellScopedStoreCache<SharedWindowNavigationCoordinator>()
     private val shellForegroundBannerStores = SlockShellScopedStoreCache<SharedForegroundBannerStore>()
     private val processReadReceiptLock = SynchronizedObject()
@@ -733,11 +735,32 @@ internal class SlockSharedStoreProvider private constructor(
 
     fun createAgentFormStore(scope: SlockShellStoreScope): SharedCreateAgentFormStore =
         shellCreateAgentFormStores.getOrPut(scope) {
+            val shellAuthStore = authStore(scope)
             SharedCreateAgentFormStore(
                 computersApiClient = SlockComputersApiClient(SlockComputersNetworkApi(networkClient(scope))),
                 scope = threadSendScope,
+                ownerProvider = {
+                    shellAuthStore.readSession()?.let { session ->
+                        val environmentId = apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/')
+                        val accountId = session.user.id.trim()
+                        if (environmentId.isBlank() || accountId.isBlank()) null
+                        else SharedCreateAgentFormOwner(
+                            environmentId = environmentId,
+                            accountId = accountId,
+                            sessionGeneration = session.accessToken.hashCode().toUInt().toString(16)
+                        )
+                    }
+                },
                 logger = sharedInfoLogger("SlockCreateAgentForm", "shared_create_agent_form_store")
-            )
+            ).also { store ->
+                (shellAuthStore as? SlockAuthSessionEventSource)?.let { events ->
+                    shellCreateAgentFormOwnerJobs.getOrPut(scope) {
+                        threadSendScope.launch {
+                            events.authSessionEvents.collect { store.reconcileOwner() }
+                        }
+                    }
+                }
+            }
         }
 
     /**
@@ -1099,6 +1122,7 @@ internal class SlockSharedStoreProvider private constructor(
         shellServerMembersStores.remove(scope)
         shellRealtimeDomainEventOwners.remove(scope)
         shellAgentDetailStores.remove(scope)
+        shellCreateAgentFormOwnerJobs.remove(scope)?.cancel()
         shellCreateAgentFormStores.remove(scope)
         shellNavigationCoordinators.remove(scope)?.clear()
         shellForegroundBannerStores.remove(scope)?.clear()

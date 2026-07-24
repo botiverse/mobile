@@ -5,7 +5,7 @@
               "caseId": "components.members.create-agent.builtin-dialog",
               "route": {"pageName":"compose_create_agent_builtin_dialog_visual","realProductRoute":false},
               "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.members.create-agent.builtin-dialog.png",
-              "viewport": { "width": 1024, "height": 2216, "density": 1 },
+              "viewport": { "width": 1170, "height": 2532, "density": 1 },
               "systemBars": "hidden",
               "crop": {
                 "mode": "manual-rect",
@@ -13,37 +13,37 @@
                 "rect": { "x": 0, "y": 0, "width": 390, "height": 844 }
               },
               "capture": {
-                "method": "ui-automation-take-screenshot-viewport-crop",
+                "method": "app-window-root-draw-viewport-density-resize",
                 "fullscreen": true,
                 "systemBars": "hidden",
                 "validation": {
-                  "uniqueColors": 272,
-                  "dominantRatio": 0.8559219
+                  "uniqueColors": 330,
+                  "dominantRatio": 0.7624985
                 },
                 "readyTokenObserved": false,
                 "stableFrameCount": 1
               },
               "diagnostics": {
-    "displayWidthPx": 1080,
-    "displayHeightPx": 2424,
-    "densityDpi": 420,
-    "rootWidthPx": 1080,
-    "rootHeightPx": 2424,
+    "displayWidthPx": 1170,
+    "displayHeightPx": 2532,
+    "densityDpi": 480,
+    "rootWidthPx": 1170,
+    "rootHeightPx": 2532,
     "hardwareAccelerated": true,
-    "totalViews": 130,
-    "laidOutViews": 127,
-    "visibleContentLeafViews": 3,
+    "totalViews": 148,
+    "laidOutViews": 145,
+    "visibleContentLeafViews": 5,
     "targetPackage": "build.raft.app.connectedtest",
-    "processId": 6474,
-    "processUid": 10228
+    "processId": 17480,
+    "processUid": 10255
 },
               "captureIdentity": {
-                "attempt": 0,
-                "generation": "",
-                "bootId": "",
-                "capturedAtEpochMs": 1784799781745,
-                "capturedAtMonotonicNs": 489430865690
+                "attempt": 1,
+                "generation": "7aa867b93052f06455bed6052a719681",
+                "bootId": "7461660d-dd94-4b98-8bcf-c64dddcf3636",
+                "capturedAtEpochMs": 1784892185152,
+                "capturedAtMonotonicNs": 55528464174851
               },
               "clampedToShortWindow": false,
-              "capturedAt": "1784799781745"
+              "capturedAt": "1784892185152"
             }
