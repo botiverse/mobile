@@ -7,7 +7,10 @@ import com.tencent.kuikly.compose.ui.unit.IntSize
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.core.views.PlayState
 import com.tencent.tmm.kmmresource.resource.desc.desc
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -37,6 +40,45 @@ class SlockFilePreviewDownloadStatusTest {
             playbackFailed = "Playback failed",
             ready = "Ready"
         )
+
+    @Test
+    fun nativeProgressMailboxDefersUiMutationToItsSingleConsumer() = runBlocking {
+        val owner =
+            AttachmentOwnerLease(
+                shellInstanceId = "shell-1",
+                scopeId = "scope-1",
+                authEpoch = 1L,
+                principalKey = AttachmentPrincipalKey("a".repeat(64)),
+                generation = 1L
+            )
+        val operation = AttachmentOperationToken(owner, "operation-1", "download-1")
+        val progress =
+            BridgeAttachmentDownloadProgress(
+                downloadId = "download-1",
+                attemptToken = "attempt-1",
+                sequence = 2L,
+                phase = "receiving",
+                status = "progress",
+                percent = 12,
+                downloadedBytes = 69_765L,
+                totalBytes = 581_375L
+            )
+        val mailbox = SlockFilePreviewProgressMailbox()
+        var renderedBytes = 0L
+
+        withContext(Dispatchers.Default) {
+            assertTrue(mailbox.offer(operation, progress))
+        }
+        assertEquals(0L, renderedBytes)
+
+        val delivered = mailbox.nextOrNull()
+        assertEquals(operation, delivered?.operation)
+        renderedBytes = delivered?.progress?.downloadedBytes ?: 0L
+        assertEquals(69_765L, renderedBytes)
+
+        mailbox.close()
+        assertNull(mailbox.nextOrNull())
+    }
 
     @Test
     fun cachedOpenHoldsAdmissionUntilNativeTerminal() {

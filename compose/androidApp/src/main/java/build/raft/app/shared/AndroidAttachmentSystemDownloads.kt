@@ -272,6 +272,21 @@ internal class AndroidAttachmentSystemDownloadEngine(
             }
     }
 
+    fun retireAllForDirectFallback() {
+        recordStore.records().forEach { record ->
+            synchronized(targetLock(record.targetKey)) {
+                val current = recordStore.read(record.targetKey) ?: return@synchronized
+                current.systemDownloadId?.let(backend::remove)
+                File(current.stagingPath).delete()
+                recordStore.removeIfExact(current)
+            }
+        }
+        backend.taggedRows().forEach { row ->
+            backend.remove(row.systemDownloadId)
+            row.localPath?.let { File(it).delete() }
+        }
+    }
+
     private fun ensureRecord(spec: AndroidSystemDownloadSpec): AndroidSystemDownloadRecord =
         synchronized(recoveryLock(spec.targetFile.absolutePath)) {
             synchronized(targetLock(spec.targetFile.absolutePath)) {
@@ -449,7 +464,7 @@ internal class AndroidAttachmentSystemDownloads(context: Context) {
     )
 
     init {
-        engine.recoverAll()
+        engine.retireAllForDirectFallback()
     }
 
     fun download(spec: AndroidSystemDownloadSpec, observer: ((AndroidSystemDownloadProgress) -> Unit)? = null) =

@@ -5149,15 +5149,14 @@ internal class SlockKuiklyBridgeModule(
             return mapOf("status" to "cancelled", "cached" to false, "message" to "Attachment scope retired")
         }
         val targetFile = attachmentCacheFile(request, owner.principalKey)
-        val spec = request.toSystemDownloadSpec(owner, targetFile)
-        val state = attachmentSystemDownloads.cacheState(spec)
+        val cached = targetFile.isUsableAttachmentCacheFile()
         return mapOf(
                 "status" to "ok",
-                "cached" to state.cached,
-                "active" to (state.attemptToken != null && !state.cached),
-                "attemptToken" to state.attemptToken.orEmpty(),
-                "recordVersion" to (state.recordVersion ?: -1L),
-                "sizeBytes" to state.sizeBytes
+                "cached" to cached,
+                "active" to false,
+                "attemptToken" to "",
+                "recordVersion" to -1L,
+                "sizeBytes" to if (cached) targetFile.length() else 0L
         )
     }
 
@@ -5249,12 +5248,18 @@ internal class SlockKuiklyBridgeModule(
         }
         cleanupAttachmentCache(cacheDir, owner.principalKey)
         val targetFile = attachmentCacheFile(attachmentId, requestedFileName, requestedMimeType, owner.principalKey)
-        val cacheState = attachmentSystemDownloads.cacheState(request.toSystemDownloadSpec(owner, targetFile))
-        val wasCached = cacheState.cached || targetFile.isUsableAttachmentCacheFile()
+        val wasCached = targetFile.isUsableAttachmentCacheFile()
         val responseMimeType =
                 if (!wasCached) {
                     try {
-                        downloadAttachmentToFile(request, owner, urlText, targetFile, downloadId, requestedFileName, requestedMimeType, progressCallback)
+                        downloadAttachmentToFile(
+                                owner,
+                                urlText,
+                                targetFile,
+                                downloadId,
+                                requestedMimeType,
+                                progressCallback
+                        )
                     } catch (ignored: AttachmentDownloadStoppedException) {
                         return AttachmentPreparationResult.Terminal(
                                 mapOf(
@@ -5497,11 +5502,6 @@ internal class SlockKuiklyBridgeModule(
 
     private fun attachmentCacheDir(): File = File(appContext.cacheDir, ATTACHMENT_CACHE_DIR_NAME)
 
-    private fun attachmentSystemDownloadStagingDir(): File? =
-            appContext.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)?.let {
-                File(it, "RaftAttachmentStaging")
-            } ?: appContext.externalCacheDir?.let { File(it, "RaftAttachmentStaging") }
-
     private fun attachmentCacheFile(request: JSONObject, principalKey: String): File =
             attachmentCacheFile(
                     attachmentId = request.optString("attachmentId").takeIf { it.isNotBlank() } ?: "attachment",
@@ -5527,31 +5527,62 @@ internal class SlockKuiklyBridgeModule(
                     System.currentTimeMillis() - lastModified() <= ATTACHMENT_CACHE_MAX_AGE_MS
 
     private fun downloadAttachmentToFile(
-            request: JSONObject,
             owner: AndroidAttachmentOwnerLease,
             urlText: String,
             targetFile: File,
             downloadId: String,
-            displayName: String,
             requestedMimeType: String?,
             progressCallback: ((Map<String, Any>) -> Unit)? = null
     ): String? {
-        val result = attachmentSystemDownloads.download(
-                AndroidSystemDownloadSpec(
-                        principalKey = owner.principalKey,
-                        logicalDownloadId = downloadId,
-                        targetFile = targetFile,
-                        stagingDirectory = attachmentSystemDownloadStagingDir()
-                                ?: throw IllegalStateException("System download staging unavailable"),
-                        url = urlText,
-                        displayName = displayName,
-                        mimeType = requestedMimeType ?: "application/octet-stream"
-                )
-        ) { progress -> progressCallback?.invoke(progress.toAndroidBridgePayload()) }
+        val requestStartedAt = SystemClock.elapsedRealtime()
+        val downloadKeyHash = downloadId.hashCode().toString(16)
+        val resultRef = AtomicReference<AttachmentDownloadResult?>()
+        val completed = CountDownLatch(1)
+        val observer =
+                object : AttachmentDownloadObserver {
+                    override fun onProgress(progress: AttachmentDownloadProgress) {
+                        if (!ProcessAndroidAttachmentOwners.admit(owner)) {
+                            AttachmentDownloadCoordinator.control(
+                                    downloadId = downloadId,
+                                    expectedAttemptToken = progress.attemptToken,
+                                    action = "cancel"
+                            )
+                            return
+                        }
+                        SlockAppLog.record(
+                                "SlockAttachmentDownload",
+                                "engine=direct phase=${progress.phase} keyHash=$downloadKeyHash " +
+                                        "downloadedBytes=${progress.downloadedBytes} " +
+                                        "expectedBytes=${progress.totalBytes ?: -1L} " +
+                                        "elapsedMs=${SystemClock.elapsedRealtime() - requestStartedAt}"
+                        )
+                        progressCallback?.invoke(progress.toAndroidBridgePayload())
+                    }
+
+                    override fun onComplete(result: AttachmentDownloadResult) {
+                        resultRef.set(result)
+                        completed.countDown()
+                    }
+                }
+        AttachmentDownloadCoordinator.start(
+                downloadId = downloadId,
+                targetKey = targetFile.absolutePath,
+                url = urlText,
+                targetPath = targetFile.absolutePath,
+                observer = observer
+        )
+        try {
+            completed.await()
+        } catch (interrupted: InterruptedException) {
+            Thread.currentThread().interrupt()
+            AttachmentDownloadCoordinator.control(downloadId, action = "cancel")
+            throw AttachmentDownloadStoppedException()
+        }
+        val result = resultRef.get() ?: throw IllegalStateException("Attachment download ended without a result")
         return when (result.status) {
-            "complete" -> requestedMimeType
+            "complete" -> result.contentType ?: requestedMimeType
             "cancelled" -> throw AttachmentDownloadStoppedException()
-            else -> throw IllegalStateException(result.errorKind ?: "Attachment download failed")
+            else -> throw IllegalStateException(result.message ?: result.errorKind ?: "Attachment download failed")
         }
     }
 
@@ -5599,26 +5630,6 @@ internal class SlockKuiklyBridgeModule(
                 }
         return "$principalKey-$safeId-$withExtension"
     }
-
-    private fun JSONObject.attachmentLogicalDownloadId(): String =
-            optString("downloadId").takeIf(String::isNotBlank)
-                    ?: "attachment:${optString("attachmentId")}:${optString("fileName")}"
-
-    private fun JSONObject.toSystemDownloadSpec(
-            owner: AndroidAttachmentOwnerLease,
-            targetFile: File
-    ): AndroidSystemDownloadSpec =
-            AndroidSystemDownloadSpec(
-                    principalKey = owner.principalKey,
-                    logicalDownloadId = attachmentLogicalDownloadId(),
-                    targetFile = targetFile,
-                    // A no-record status probe never enqueues. Active records carry their own
-                    // external staging path, so this private fallback is not used for recovery.
-                    stagingDirectory = attachmentSystemDownloadStagingDir() ?: targetFile.parentFile,
-                    url = optString("url"),
-                    displayName = optString("fileName").ifBlank { "attachment" },
-                    mimeType = optString("mimeType").ifBlank { "application/octet-stream" }
-            )
 
     private fun guessAttachmentMimeType(fileName: String, mimeType: String?): String {
         if (fileName.substringAfterLast('.', missingDelimiterValue = "").equals("apk", ignoreCase = true)) {
@@ -5901,19 +5912,6 @@ private fun AttachmentDownloadProgress.toAndroidBridgePayload(): Map<String, Any
             totalBytes?.let { put("totalBytes", it) }
             percent?.let { put("percent", it.coerceIn(0, 100)) }
             bytesPerSecond?.takeIf { it > 0L }?.let { put("bytesPerSecond", it) }
-        }
-
-private fun AndroidSystemDownloadProgress.toAndroidBridgePayload(): Map<String, Any> =
-        buildMap {
-            put("downloadId", logicalDownloadId)
-            put("attemptToken", attemptToken)
-            put("recordVersion", recordVersion)
-            put("sequence", recordVersion)
-            put("phase", phase)
-            put("status", "progress")
-            put("downloadedBytes", downloadedBytes)
-            put("totalBytes", totalBytes)
-            percent?.let { put("percent", it.coerceIn(0, 100)) }
         }
 
 internal fun attachmentDownloadPartFiles(targetFile: File): List<File> {
