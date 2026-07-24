@@ -5577,7 +5577,7 @@ internal class SlockKuiklyBridgeModule(
             progressCallback: ((Map<String, Any>) -> Unit)? = null
     ): Map<String, Any> {
         val prepared =
-                when (val preparation = prepareAttachment(request, progressCallback)) {
+                when (val preparation = prepareAttachment(request, progressCallback = progressCallback)) {
                     is AttachmentPreparationResult.Ready -> preparation
                     is AttachmentPreparationResult.Terminal -> return preparation.payload
                 }
