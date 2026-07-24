@@ -1,15 +1,12 @@
 package build.raft.app.network
 
-import build.raft.app.data.NetworkTransportPreferenceMutationResult
 import com.tencent.kmm.network.export.NetworkCurlConfigurationFailureReason
 import com.tencent.kmm.network.export.NetworkCurlNativeStatus
 import com.tencent.kmm.network.export.NetworkRequest
 import com.tencent.kmm.network.service.NetworkTransportEngine
-import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class SlockNetworkTransportControllerTest {
@@ -87,17 +84,6 @@ class SlockNetworkTransportControllerTest {
 
         controller.applyRemoteEvaluation("production", 2L, "server-a", true, "not-a-transport")
         assertSelection(controller, NetworkTransportEngine.CURL, http3 = true)
-    }
-
-    @Test
-    fun removedSettingsMutationCannotCreateLocalOverride() = runBlocking {
-        val controller = readyController(curlRequired = false)
-
-        val result = controller.setHttp3Enabled(false)
-
-        val rejected = assertIs<NetworkTransportPreferenceMutationResult.Rejected>(result)
-        assertEquals("settings_network_transport_managed_remotely", rejected.errorCode)
-        assertTrue(rejected.snapshot.requestedHttp3Enabled)
     }
 
     @Test

@@ -346,7 +346,7 @@ internal class SlockSharedStoreProvider private constructor(
     val authLossFunnel: SharedAuthLossFunnel,
     val authRuntimeCapabilityStore: SharedAuthRuntimeCapabilityStore,
     val networkClient: SlockNetworkClient,
-    val networkTransportPreferenceRepository: SlockNetworkTransportController,
+    val networkTransportController: SlockNetworkTransportController,
     private val scopedNetworkClientFactory: (SlockAuthSessionStore) -> SlockNetworkClient,
     private val ownerScopedNetworkClientFactory: (SlockAuthSessionStore, String) -> SlockNetworkClient,
     val serverFeatureFlags: SharedServerFeatureFlags,
@@ -461,7 +461,7 @@ internal class SlockSharedStoreProvider private constructor(
                 "environment_update_failed reason=${error::class.simpleName ?: "unknown"}"
             )
         }
-        networkTransportPreferenceRepository.updateRemoteEnvironment(environmentId)
+        networkTransportController.updateRemoteEnvironment(environmentId)
             ?.let { sharedInfoLogger("SlockNetworkTransport", "remote_config")(it) }
         return environmentId
     }
@@ -569,7 +569,7 @@ internal class SlockSharedStoreProvider private constructor(
                             "active_selection_failed reason=${error::class.simpleName ?: "unknown"}"
                         )
                     }
-                    networkTransportPreferenceRepository.updateRemoteActiveSelection(
+                    networkTransportController.updateRemoteActiveSelection(
                         scopeId = scope.shellInstanceId,
                         serverId = serverId
                     )?.let { sharedInfoLogger("SlockNetworkTransport", "remote_config")(it) }
@@ -1596,7 +1596,7 @@ internal class SlockSharedStoreProvider private constructor(
                 authLossFunnel = authLossFunnel,
                 authRuntimeCapabilityStore = SharedAuthRuntimeCapabilityStore(),
                 networkClient = networkClient,
-                networkTransportPreferenceRepository = networkTransportController,
+                networkTransportController = networkTransportController,
                 scopedNetworkClientFactory = scopedNetworkClientFactory,
                 ownerScopedNetworkClientFactory = ownerScopedNetworkClientFactory,
                 serverFeatureFlags = serverFeatureFlags,

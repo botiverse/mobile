@@ -23,24 +23,3 @@ data class NetworkTransportPreferenceSnapshot(
     val detail: String,
     val generation: Long
 )
-
-sealed interface NetworkTransportPreferenceMutationResult {
-    val snapshot: NetworkTransportPreferenceSnapshot
-
-    data class Applied(
-        override val snapshot: NetworkTransportPreferenceSnapshot
-    ) : NetworkTransportPreferenceMutationResult
-
-    data class Rejected(
-        val errorCode: String,
-        override val snapshot: NetworkTransportPreferenceSnapshot
-    ) : NetworkTransportPreferenceMutationResult
-}
-
-interface NetworkTransportPreferenceRepository {
-    fun getPreferenceSync(): NetworkTransportPreferenceSnapshot
-
-    suspend fun getPreference(): NetworkTransportPreferenceSnapshot = getPreferenceSync()
-
-    suspend fun setHttp3Enabled(enabled: Boolean): NetworkTransportPreferenceMutationResult
-}

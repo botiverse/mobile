@@ -51,7 +51,6 @@ import build.raft.app.data.MOBILE_ACTION_SINGLE_TAP_OPENS_THREAD
 import build.raft.app.data.MOBILE_ACTION_COMPOSER_SEND_KEY
 import build.raft.app.data.MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS
 import build.raft.app.data.MOBILE_ACTION_IMAGE_ANNOTATION
-import build.raft.app.data.MOBILE_ACTION_HTTP3
 import build.raft.app.data.MOBILE_ACTION_LINK_OPEN_MODE
 import build.raft.app.data.MOBILE_ACTION_MESSAGE_ALIGNMENT
 import build.raft.app.data.MOBILE_ACTION_MULTI_SHELL_HOST
@@ -2831,8 +2830,7 @@ internal fun SlockAppShellContent(
         remember(
             shellAuthStore,
             appShellComputersStore,
-            linkOpenPreferenceRepository,
-            sharedStores.networkTransportPreferenceRepository
+            linkOpenPreferenceRepository
         ) {
             SharedSettingsDataSource(
                 sessionStore = shellAuthStore,
@@ -2843,7 +2841,6 @@ internal fun SlockAppShellContent(
                 localeRepository = localeRepository,
                 chatLayoutPreferenceRepository = chatLayoutPreferenceRepository,
                 linkOpenPreferenceRepository = linkOpenPreferenceRepository,
-                networkTransportPreferenceRepository = sharedStores.networkTransportPreferenceRepository,
                 recompositionProfilerPreferenceRepository = recompositionProfilerPreferenceRepository,
                 apiEnvironmentStore = sharedStores.apiEnvironmentStore,
                 platformCapabilities = settingsCapabilities,
@@ -12551,28 +12548,6 @@ internal fun ScreenLoadState<SettingsMobileSnapshot>.toMobilePayload(
         sections =
             listOf(
                 KuiklySharedSettingsSection(
-                    title = "Network",
-                    rows =
-                        listOf(
-                            KuiklySharedSettingsRow(
-                                key = MOBILE_ACTION_HTTP3,
-                                iconName = SlockLucideIconName.Globe,
-                                title = "Enable HTTP/3",
-                                detail = mobile.http3.detail,
-                                value = (!mobile.http3.requestedEnabled).toString(),
-                                status =
-                                    actionState.statusFor(
-                                        MOBILE_ACTION_HTTP3,
-                                        mobile.http3.statusLabel
-                                    ),
-                                enabled =
-                                    (mobile.http3.canEnable || mobile.http3.requestedEnabled) &&
-                                        actionState?.inProgress != true,
-                                toggleValue = mobile.http3.requestedEnabled
-                            )
-                        )
-                ),
-                KuiklySharedSettingsSection(
                     title = "Conversation display",
                     rows =
                         listOf(
@@ -20767,15 +20742,6 @@ private fun settingsVisualAppearanceSnapshot(): SettingsAppearanceSnapshot =
 
 private fun settingsVisualMobileSnapshot(): SettingsMobileSnapshot =
     SettingsMobileSnapshot(
-        http3 =
-            build.raft.app.data.SettingsHttp3Snapshot(
-                requestedEnabled = false,
-                effectiveEnabled = false,
-                curlRequestedForNewCalls = false,
-                canEnable = true,
-                statusLabel = "Off",
-                detail = "Curl and the pinned CA bundle are ready."
-            ),
         pushNotifications =
             build.raft.app.data.SettingsMobileToggleSnapshot(
                 enabled = true,

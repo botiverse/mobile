@@ -133,7 +133,6 @@ class SharedSettingsStoreContract(
                 is SharedSettingsIntent.SetLocale -> MviActionKey(MOBILE_ACTION_LANGUAGE)
                 is SharedSettingsIntent.SetMessageAlignment -> MviActionKey(MOBILE_ACTION_MESSAGE_ALIGNMENT)
                 is SharedSettingsIntent.SetLinkOpenMode -> MviActionKey(MOBILE_ACTION_LINK_OPEN_MODE)
-                is SharedSettingsIntent.SetHttp3Enabled -> MviActionKey(MOBILE_ACTION_HTTP3)
                 is SharedSettingsIntent.SetCompactConsecutiveMessages -> MviActionKey(MOBILE_ACTION_COMPACT_MESSAGES)
                 is SharedSettingsIntent.SetLongMessageCollapseEnabled -> MviActionKey(MOBILE_ACTION_LONG_MESSAGE_COLLAPSE)
                 is SharedSettingsIntent.SetSingleTapOpensThreadEnabled -> MviActionKey(MOBILE_ACTION_SINGLE_TAP_OPENS_THREAD)

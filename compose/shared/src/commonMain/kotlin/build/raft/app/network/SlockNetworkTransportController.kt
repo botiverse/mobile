@@ -1,8 +1,6 @@
 package build.raft.app.network
 
 import build.raft.app.data.NetworkTransportPreferenceAvailability
-import build.raft.app.data.NetworkTransportPreferenceMutationResult
-import build.raft.app.data.NetworkTransportPreferenceRepository
 import build.raft.app.data.NetworkTransportPreferenceSnapshot
 import com.tencent.kmm.network.export.NetworkCurlConfigurationFailureReason
 import com.tencent.kmm.network.export.NetworkCurlNativeStatus
@@ -17,8 +15,6 @@ import com.tencent.kmm.network.service.NetworkTransportEngine
 import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 
 internal data class SlockNetworkTransportPlatformPolicy(
     val platformLabel: String,
@@ -61,28 +57,16 @@ internal class SlockNetworkTransportController(
     },
     private val platformPreferencePublisher: (Boolean, Long) -> Boolean =
         ::slockApplyPlatformHttp3Preference
-) : NetworkTransportPreferenceRepository {
-    private val mutationMutex = Mutex()
+) {
     private val platformPolicyPublicationLock = SynchronizedObject()
     private val policyGeneration = atomic(0L)
     private val publishedPlatformPolicy = atomic<PublishedPlatformPolicy?>(null)
     private var remoteState = RemoteTransportState()
 
-    override fun getPreferenceSync(): NetworkTransportPreferenceSnapshot =
+    fun getPreferenceSync(): NetworkTransportPreferenceSnapshot =
         synchronized(platformPolicyPublicationLock) {
             committedSnapshotLocked().also { publishPlatformPolicyLocked(it) }
         }
-
-    override suspend fun setHttp3Enabled(
-        enabled: Boolean
-    ): NetworkTransportPreferenceMutationResult = mutationMutex.withLock {
-        synchronized(platformPolicyPublicationLock) {
-            NetworkTransportPreferenceMutationResult.Rejected(
-                errorCode = "settings_network_transport_managed_remotely",
-                snapshot = committedSnapshotLocked()
-            )
-        }
-    }
 
     fun updateRemoteEnvironment(environmentId: String): String? =
         mutateRemoteState("environment") { state ->
