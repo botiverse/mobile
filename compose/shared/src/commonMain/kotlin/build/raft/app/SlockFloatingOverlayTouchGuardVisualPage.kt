@@ -39,8 +39,9 @@ internal class ComposeSlockFloatingOverlayTouchGuardVisualPage : build.raft.app.
     override fun willInit() {
         super.willInit()
         val fixture = pageData.params.optString("fixture")
+        val probeGeneration = pageData.params.optString("instanceId")
         if (fixture.startsWith("release-notes-section-gap-")) {
-            SlockReleaseNotesSectionGapProbe.reset()
+            SlockReleaseNotesSectionGapProbe.begin(probeGeneration)
         }
         setContent {
             when (fixture) {
@@ -48,9 +49,12 @@ internal class ComposeSlockFloatingOverlayTouchGuardVisualPage : build.raft.app.
                 FloatingOverlayTouchGuardModalTextFieldFixture -> SlockModalTextFieldPointerVisualScreen()
                 FloatingOverlayTouchGuardTaskStatusFixture -> SlockTaskStatusMenuTouchVisualScreen()
                 FloatingOverlayTouchGuardAnchorLeaseFixture -> SlockAnchorLeaseLazyReuseVisualScreen()
-                ReleaseNotesSectionGapZeroFixture -> SlockReleaseNotesSectionGapVisualScreen(0.dp)
-                ReleaseNotesSectionGapEightFixture -> SlockReleaseNotesSectionGapVisualScreen(SlockSpacing.Sm)
-                ReleaseNotesSectionGapDefaultFixture -> SlockReleaseNotesSectionGapVisualScreen(null)
+                ReleaseNotesSectionGapZeroFixture ->
+                    SlockReleaseNotesSectionGapVisualScreen(0.dp, probeGeneration)
+                ReleaseNotesSectionGapEightFixture ->
+                    SlockReleaseNotesSectionGapVisualScreen(SlockSpacing.Sm, probeGeneration)
+                ReleaseNotesSectionGapDefaultFixture ->
+                    SlockReleaseNotesSectionGapVisualScreen(null, probeGeneration)
                 else -> SlockFloatingOverlayTouchGuardVisualScreen()
             }
         }
@@ -66,7 +70,10 @@ private const val ReleaseNotesSectionGapEightFixture = "release-notes-section-ga
 private const val ReleaseNotesSectionGapDefaultFixture = "release-notes-section-gap-default"
 
 @Composable
-private fun SlockReleaseNotesSectionGapVisualScreen(sectionGap: com.tencent.kuikly.compose.ui.unit.Dp?) {
+private fun SlockReleaseNotesSectionGapVisualScreen(
+    sectionGap: com.tencent.kuikly.compose.ui.unit.Dp?,
+    probeGeneration: String
+) {
     Box(
         modifier =
             Modifier
@@ -77,13 +84,17 @@ private fun SlockReleaseNotesSectionGapVisualScreen(sectionGap: com.tencent.kuik
         if (sectionGap == null) {
             SlockMarkdownBody(
                 body = ReleaseNotesSectionGapFixtureBody,
-                onSectionHeadingPositioned = SlockReleaseNotesSectionGapProbe::record
+                onSectionHeadingPositioned = { bounds ->
+                    SlockReleaseNotesSectionGapProbe.record(probeGeneration, bounds)
+                }
             )
         } else {
             SlockMarkdownBody(
                 body = ReleaseNotesSectionGapFixtureBody,
                 sectionHeadingTopPadding = sectionGap,
-                onSectionHeadingPositioned = SlockReleaseNotesSectionGapProbe::record
+                onSectionHeadingPositioned = { bounds ->
+                    SlockReleaseNotesSectionGapProbe.record(probeGeneration, bounds)
+                }
             )
         }
     }
@@ -106,13 +117,19 @@ data class SlockReleaseNotesSectionHeadingBounds(
 )
 
 object SlockReleaseNotesSectionGapProbe {
+    private var activeGeneration: String? = null
     private var latestBounds: SlockReleaseNotesSectionHeadingBounds? = null
 
-    fun reset() {
+    fun begin(generation: String) {
+        activeGeneration = generation
         latestBounds = null
     }
 
-    fun record(bounds: com.tencent.kuikly.compose.ui.geometry.Rect) {
+    fun record(
+        generation: String,
+        bounds: com.tencent.kuikly.compose.ui.geometry.Rect
+    ) {
+        if (generation != activeGeneration) return
         latestBounds =
             SlockReleaseNotesSectionHeadingBounds(
                 left = kotlin.math.floor(bounds.left).toInt(),
@@ -122,7 +139,8 @@ object SlockReleaseNotesSectionGapProbe {
             )
     }
 
-    fun snapshot(): SlockReleaseNotesSectionHeadingBounds? = latestBounds
+    fun snapshot(generation: String): SlockReleaseNotesSectionHeadingBounds? =
+        latestBounds.takeIf { generation == activeGeneration }
 }
 
 @Composable

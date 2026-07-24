@@ -58,6 +58,7 @@ class SlockReleaseNotesSectionGapConnectedTest {
         fixture: String
     ): SectionGapCapture {
         val context = instrumentation.targetContext
+        val probeGeneration = "release-notes-section-gap-$fixture-${System.nanoTime()}"
         val intent =
             Intent(context, SlockKuiklyActivity::class.java)
                 .putExtra("pageName", SlockKuiklyPages.FLOATING_OVERLAY_TOUCH_GUARD_VISUAL)
@@ -65,7 +66,7 @@ class SlockReleaseNotesSectionGapConnectedTest {
                     "pageData",
                     JSONObject()
                         .put("fixture", fixture)
-                        .put("instanceId", "release-notes-section-gap-$fixture")
+                        .put("instanceId", probeGeneration)
                         .toString()
                 )
                 .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
@@ -74,7 +75,7 @@ class SlockReleaseNotesSectionGapConnectedTest {
             instrumentation.waitForIdleSync()
             SystemClock.sleep(RenderSettleMs)
 
-            val headingBounds = instrumentation.waitForHeadingBounds()
+            val headingBounds = instrumentation.waitForHeadingBounds(probeGeneration)
             val screenshot = captureActivityBitmap(scenario)
             try {
                 SectionGapCapture(
@@ -88,10 +89,10 @@ class SlockReleaseNotesSectionGapConnectedTest {
         }
     }
 
-    private fun Instrumentation.waitForHeadingBounds(): Rect {
+    private fun Instrumentation.waitForHeadingBounds(probeGeneration: String): Rect {
         repeat(HeadingPollAttempts) {
             waitForIdleSync()
-            val bounds = SlockReleaseNotesSectionGapProbe.snapshot()
+            val bounds = SlockReleaseNotesSectionGapProbe.snapshot(probeGeneration)
             if (bounds != null) {
                 return Rect(bounds.left, bounds.top, bounds.right, bounds.bottom)
             }
