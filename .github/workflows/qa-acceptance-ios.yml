@@ -191,7 +191,7 @@ jobs:
 
       - name: Generate shared framework placeholder
         working-directory: compose
-        run: ./gradlew :shared:generateDummyFramework --no-daemon --console=plain
+        run: ./gradlew :shared:generateDummyFramework --no-daemon --console=plain --stacktrace
 
       - name: Pod install
         working-directory: compose/iosApp
@@ -550,3 +550,7 @@ jobs:
           STAMP_POSTCLAIM_ERROR_PHASE: ios_workflow
           STAMP_POSTCLAIM_ERROR_REASON: iOS workflow failed after Stamp dispatch or claim
         run: bash scripts/qa/stamp_report.sh workflow-error qa-evidence
+
+      - name: Gradle failure diagnostics
+        if: failure()
+        uses: ./.github/actions/gradle-failure-diagnostics

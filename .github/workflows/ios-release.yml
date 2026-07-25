@@ -200,7 +200,7 @@ jobs:
       - name: Ensure shared framework placeholder
         working-directory: compose
         shell: bash
-        run: ./gradlew :shared:generateDummyFramework --no-daemon --console=plain --max-workers=${{ env.GRADLE_MAX_WORKERS }}
+        run: ./gradlew :shared:generateDummyFramework --no-daemon --console=plain --max-workers=${{ env.GRADLE_MAX_WORKERS }} --stacktrace
 
       - name: Pod install
         working-directory: compose/iosApp
@@ -436,6 +436,10 @@ jobs:
             echo "| **Hands channel target** | \`${{ needs.resolve.outputs.hands_channel }}\` |"
             echo "| **Publish to Hands** | \`${{ needs.resolve.outputs.publish_hands }}\` |"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Gradle failure diagnostics
+        if: failure()
+        uses: ./.github/actions/gradle-failure-diagnostics
 
   publish_hands:
     name: Publish to Hands

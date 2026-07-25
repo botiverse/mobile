@@ -193,6 +193,7 @@ jobs:
         working-directory: ./compose
         run: |
           ./gradlew --no-daemon --console=plain -PslockVisualFixtures=true \
+            --stacktrace \
             :androidApp:assembleConnectedTest :androidApp:assembleConnectedTestAndroidTest
 
       - name: Sign connected test APKs with rotated release identity
@@ -309,6 +310,10 @@ jobs:
             compose/androidApp/build/outputs/apk/androidTest/connectedTest/*.apk
             connectedtest-signers.log
           if-no-files-found: error
+
+      - name: Gradle failure diagnostics
+        if: failure()
+        uses: ./.github/actions/gradle-failure-diagnostics
 
   android-capture:
     name: Android capture (shard ${{ matrix.shard }}/8)
@@ -522,7 +527,7 @@ jobs:
 
       - name: Generate shared framework placeholder
         working-directory: compose
-        run: ./gradlew :shared:generateDummyFramework --no-daemon --console=plain -PslockVisualFixtures=true
+        run: ./gradlew :shared:generateDummyFramework --no-daemon --console=plain -PslockVisualFixtures=true --stacktrace
 
       - name: Pod install
         working-directory: compose/iosApp
@@ -715,6 +720,10 @@ jobs:
           name: visual-testing-results-ios
           path: visual-testing-results/
           if-no-files-found: warn
+
+      - name: Gradle failure diagnostics
+        if: failure()
+        uses: ./.github/actions/gradle-failure-diagnostics
 
   report:
     name: Diff, report, site, publish
