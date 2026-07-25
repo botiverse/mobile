@@ -1240,6 +1240,7 @@ private fun SharedTaskCard(
                     iconName = null,
                     color = task.status.color,
                     onClick = if (updating) null else onStatusBadgeClick,
+                    loading = updating,
                     clickIdentity = tasksStatusChipClickIdentity(task.id.value, task.status),
                     anchorOwnerIdentity = tasksStatusMenuOwnerIdentity(task.id.value),
                     modifier = Modifier.widthIn(min = SharedTaskCardStatusChipMinWidth),
@@ -1563,6 +1564,7 @@ private fun TasksCreateDialog(
                         iconName = SlockLucideIconName.Check,
                         active = true,
                         enabled = anyNonBlank && !refreshing,
+                        loading = refreshing,
                         onClick = { onSubmit(titles) }
                     )
                 }
