@@ -103,6 +103,10 @@ class ThreadAlignRightContractTest {
             )
         assertContains(oracle, "exactBandsBetweenMarkers(expectedMarkers = 6)")
         assertContains(oracle, "assertEquals(\"exactly five fixture bands between six markers\", 5, bands.size)")
+        // The measured bounds must be auditable: emitted into the
+        // instrumentation stream, grepped per band by CI, and uploaded.
+        assertContains(oracle, "instrumentation.sendStatus(")
+        assertContains(oracle, "ALIGN_RIGHT_GEOMETRY_long")
         assertFalse(
             oracle.contains("isBackground"),
             "the oracle must never scan whole-card non-background extremes again"
@@ -117,6 +121,12 @@ class ThreadAlignRightContractTest {
             "build.raft.app.shared.SlockThreadAlignRightBoundsConnectedTest",
             false,
             "the rendering-evidence connected test must stay in the emulator CI gate"
+        )
+        assertContains(workflow, "grep -Fq \"ALIGN_RIGHT_GEOMETRY_\${band}\"")
+        assertTrue(
+            workflow.split("Upload instrumentation output")[1]
+                .contains("thread-align-right-bounds-instrumentation.txt"),
+            "the dedicated bounds file must be uploaded as an artifact"
         )
     }
 

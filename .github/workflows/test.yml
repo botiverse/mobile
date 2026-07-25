@@ -653,6 +653,11 @@ jobs:
             scripts/ci/assert-instrumentation-ok.sh release-notes-section-gap-instrumentation.txt 1
             adb shell am instrument -w -r -e class build.raft.app.shared.SlockThreadAlignRightBoundsConnectedTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner | tee thread-align-right-bounds-instrumentation.txt
             scripts/ci/assert-instrumentation-ok.sh thread-align-right-bounds-instrumentation.txt 1
+            # task #800: the five measured geometry lines are the auditable
+            # rendering evidence — a green test without them is not evidence.
+            for band in long sent sending failed retry; do
+              grep -Fq "ALIGN_RIGHT_GEOMETRY_${band}" thread-align-right-bounds-instrumentation.txt
+            done
             adb shell am instrument -w -r -e class build.raft.app.core.data.diagnostics.DiagnosticsCallerPipelineConnectedTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner | tee diagnostics-caller-pipeline-instrumentation.txt
             scripts/ci/assert-instrumentation-ok.sh diagnostics-caller-pipeline-instrumentation.txt 1
             adb shell am instrument -w -r -e class build.raft.app.data.DurablePartitionAndroidDriverMigrationTest build.raft.app.shared.test/androidx.test.runner.AndroidJUnitRunner | tee durable-partition-migration-instrumentation.txt
@@ -683,6 +688,7 @@ jobs:
             child-page-visibility-instrumentation.txt
             pager-scroll-probe-instrumentation.txt
             release-notes-section-gap-instrumentation.txt
+            thread-align-right-bounds-instrumentation.txt
             diagnostics-caller-pipeline-instrumentation.txt
             durable-partition-migration-instrumentation.txt
             thread-newer-auto-pagination-instrumentation.txt

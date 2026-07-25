@@ -3,6 +3,7 @@ package build.raft.app.shared
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.os.Bundle
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
@@ -50,11 +51,20 @@ class SlockThreadAlignRightBoundsConnectedTest {
                 val sending = screenshot.bandGeometry(bands[2])
                 val failed = screenshot.bandGeometry(bands[3])
                 val retry = screenshot.bandGeometry(bands[4])
-                println("ALIGN_RIGHT_GEOMETRY long=$long")
-                println("ALIGN_RIGHT_GEOMETRY sent=$sent")
-                println("ALIGN_RIGHT_GEOMETRY sending=$sending")
-                println("ALIGN_RIGHT_GEOMETRY failed=$failed")
-                println("ALIGN_RIGHT_GEOMETRY retry=$retry")
+                // The measured geometry must be AUDITABLE, not just asserted:
+                // sendStatus lands these in the `am instrument -r` stream that
+                // CI tees, greps per band, and uploads as an artifact.
+                instrumentation.sendStatus(
+                    2,
+                    Bundle().apply {
+                        putString("ALIGN_RIGHT_GEOMETRY_long", long.toString())
+                        putString("ALIGN_RIGHT_GEOMETRY_sent", sent.toString())
+                        putString("ALIGN_RIGHT_GEOMETRY_sending", sending.toString())
+                        putString("ALIGN_RIGHT_GEOMETRY_failed", failed.toString())
+                        putString("ALIGN_RIGHT_GEOMETRY_retry", retry.toString())
+                    }
+                )
+                println("ALIGN_RIGHT_GEOMETRY long=$long sent=$sent sending=$sending failed=$failed retry=$retry")
 
                 // --- cap, measured independently from the green container ---
                 val longCap = requireNotNull(long.cap) { "long band lost its cap tint" }
