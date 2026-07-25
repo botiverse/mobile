@@ -51,6 +51,11 @@ data class AttachmentDownloadCleanupReservation(
     val status: String
 )
 
+data class AttachmentDownloadDirectoryCleanupReservation(
+    val token: String,
+    val targetKeys: Set<String>
+)
+
 /**
  * Host callback for the common coordinator. Implementations must return quickly; callback failures
  * are contained and converted into a failed attempt instead of escaping into NetworkKMM.
@@ -109,6 +114,12 @@ object AttachmentDownloadCoordinator {
         engine.beginTargetCleanup(targetKey, expectedAttemptToken)
 
     fun finishTargetCleanup(targetKey: String, token: String) = engine.finishTargetCleanup(targetKey, token)
+
+    fun beginDirectoryCleanup(targetPrefix: String): AttachmentDownloadDirectoryCleanupReservation =
+        engine.beginDirectoryCleanup(targetPrefix)
+
+    fun finishDirectoryCleanup(targetPrefix: String, token: String) =
+        engine.finishDirectoryCleanup(targetPrefix, token)
 }
 
 internal data class AttachmentDownloadRequest(
@@ -176,6 +187,7 @@ internal class AttachmentDownloadCoordinatorEngine(
     private val activeByDownloadId = mutableMapOf<String, AttachmentDownloadAttempt>()
     private val activeByTargetKey = mutableMapOf<String, AttachmentDownloadAttempt>()
     private val deletingTargetOwners = mutableMapOf<String, MutableSet<String>>()
+    private val deletingDirectoryOwners = mutableMapOf<String, MutableSet<String>>()
     private val pendingPreStartCancels = linkedMapOf<String, Long>()
     private val nextAttempt = atomic(0L)
     private val nextCleanupReservation = atomic(0L)
@@ -237,6 +249,10 @@ internal class AttachmentDownloadCoordinatorEngine(
                 when {
                     deletingTargetOwners[request.targetKey].orEmpty().isNotEmpty() ->
                         "target_deleted"
+                    deletingDirectoryOwners.any { (prefix, owners) ->
+                        owners.isNotEmpty() && request.targetKey.startsWith(prefix)
+                    } ->
+                        "target_directory_deleted"
                     pendingPreStartCancels.remove(request.downloadId) != null ->
                         "cancelled_before_start"
                     activeByTargetKey[request.targetKey]?.isPublishing() == true ->
@@ -359,6 +375,25 @@ internal class AttachmentDownloadCoordinatorEngine(
             val owners = deletingTargetOwners[targetKey] ?: return@synchronized
             owners.remove(token)
             if (owners.isEmpty()) deletingTargetOwners.remove(targetKey)
+        }
+    }
+
+    fun beginDirectoryCleanup(targetPrefix: String): AttachmentDownloadDirectoryCleanupReservation {
+        require(targetPrefix.isNotBlank())
+        val reservationToken = "directory-cleanup-${nextCleanupReservation.incrementAndGet()}"
+        val targetKeys =
+            synchronized(lock) {
+                deletingDirectoryOwners.getOrPut(targetPrefix) { mutableSetOf() } += reservationToken
+                activeByTargetKey.keys.filterTo(linkedSetOf()) { it.startsWith(targetPrefix) }
+            }
+        return AttachmentDownloadDirectoryCleanupReservation(reservationToken, targetKeys)
+    }
+
+    fun finishDirectoryCleanup(targetPrefix: String, token: String) {
+        synchronized(lock) {
+            val owners = deletingDirectoryOwners[targetPrefix] ?: return@synchronized
+            owners.remove(token)
+            if (owners.isEmpty()) deletingDirectoryOwners.remove(targetPrefix)
         }
     }
 

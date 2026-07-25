@@ -9,6 +9,8 @@ import build.raft.app.core.data.auth.installAndroidAppScopeSharedKeyValueStores
 import build.raft.app.core.data.diagnostics.SlockAndroidLocalDiagnostics
 import build.hands.update.HandsCrash
 import build.raft.app.shared.AndroidAppScopeRealtimeOwner
+import build.raft.app.shared.ProcessAndroidAttachmentMediaStoreCleanup
+import build.raft.app.shared.ProcessAndroidAttachmentPublicDownloads
 import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.data.SharedApiEnvironmentStore
 import build.raft.app.data.installAndroidAppScopeEventBus
@@ -19,6 +21,8 @@ import kotlinx.coroutines.runBlocking
 class SlockApplication : Application() {
     override fun onCreate() {
         super.onCreate()
+        ProcessAndroidAttachmentPublicDownloads.start(this)
+        ProcessAndroidAttachmentMediaStoreCleanup.start(this)
         SlockAndroidLocalDiagnostics.init(this)
         runCatching {
             installAndroidSlockNetworkTransportAtStartup(this)

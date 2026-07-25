@@ -99,6 +99,7 @@ internal class AttachmentDownloadsExportCoordinator(
     private val lock = Any()
     private val activeByKey = mutableMapOf<String, ExportState>()
     private val activeByDownloadId = mutableMapOf<String, ExportState>()
+    private val sourceDirectoryCleanupOwners = mutableMapOf<String, MutableSet<String>>()
     private val cancelReceipts = linkedMapOf<String, Long>()
 
     fun export(
@@ -130,6 +131,15 @@ internal class AttachmentDownloadsExportCoordinator(
             val registerState = {
                 synchronized(lock) {
                     if (!operationIsCurrent()) return@synchronized cancelledOperationResult()
+                    if (sourceDirectoryCleanupOwners.any { (prefix, owners) ->
+                            owners.isNotEmpty() && request.source.absolutePath.startsWith(prefix)
+                        }) {
+                        return@synchronized AttachmentDownloadsExportResult(
+                            status = "storage_failed",
+                            message = "Attachment staging is being cleared",
+                            failurePhase = "private_cleanup"
+                        )
+                    }
                     pruneCancelReceiptsLocked()
                     val controlKey = controlKey(request.downloadId, request.owner, request.operationId)
                     if (request.operationId.isBlank() && cancelReceipts.remove(controlKey) != null) {
@@ -306,6 +316,48 @@ internal class AttachmentDownloadsExportCoordinator(
     internal fun releaseKeyReservationOwnerForTesting(owner: Any) {
         (owner as? ExportState)?.let(::releaseKeyReservation)
     }
+
+    fun runWithSourceDirectoryCleanup(targetPrefix: String, cleanup: () -> Boolean): Boolean {
+        require(targetPrefix.isNotBlank())
+        val token = UUID.randomUUID().toString()
+        val states =
+            synchronized(lock) {
+                sourceDirectoryCleanupOwners.getOrPut(targetPrefix) { mutableSetOf() } += token
+                activeByKey.values
+                    .filter { state -> state.request.source.absolutePath.startsWith(targetPrefix) }
+                    .distinct()
+            }
+        return try {
+            states.forEach { state ->
+                finish(
+                    state,
+                    AttachmentDownloadsExportResult(
+                        status = "cancelled",
+                        message = "Attachment staging cleared",
+                        failurePhase = state.phase.get()
+                    ),
+                    abortPending = true
+                )
+            }
+            val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(wholeTimeoutMs)
+            val released =
+                states.all { state ->
+                    val remainingNanos = deadline - System.nanoTime()
+                    remainingNanos > 0L &&
+                        state.keyReservationReleased.await(remainingNanos, TimeUnit.NANOSECONDS)
+                }
+            released && cleanup()
+        } finally {
+            synchronized(lock) {
+                val owners = sourceDirectoryCleanupOwners[targetPrefix]
+                owners?.remove(token)
+                if (owners?.isEmpty() == true) sourceDirectoryCleanupOwners.remove(targetPrefix)
+            }
+        }
+    }
+
+    internal fun sourceDirectoryCleanupActiveForTesting(targetPrefix: String): Boolean =
+        synchronized(lock) { sourceDirectoryCleanupOwners[targetPrefix].orEmpty().isNotEmpty() }
 
     private fun pruneCancelReceiptsLocked() {
         val cutoff = nowMillis() - cancelReceiptTtlMs

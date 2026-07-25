@@ -105,8 +105,16 @@ class StorageManagementRepositoryTest {
                                     )
                     )
 
-            val snapshot = repository.clear(StorageClearTarget.AttachmentDownloads)
+            val cleanedDirectories = mutableListOf<File>()
+            val snapshot =
+                    checkNotNull(
+                            repository.clearAttachmentStaging { directory ->
+                                cleanedDirectories += directory
+                                directory.listFiles().orEmpty().all { it.delete() || !it.exists() }
+                            }
+                    )
 
+            assertEquals(listOf(attachmentCache), cleanedDirectories)
             assertEquals(10L, snapshot.localDatabaseBytes)
             assertEquals(8L, snapshot.imageCacheBytes)
             assertEquals(0L, snapshot.attachmentDownloadBytes)
@@ -115,6 +123,35 @@ class StorageManagementRepositoryTest {
             assertTrue(image.exists())
             assertFalse(attachment.exists())
             assertTrue(log.exists())
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun attachmentStagingCannotBypassFencedCleaner() {
+        val root = Files.createTempDirectory("slock-storage-attachment-fence-test").toFile()
+        try {
+            val attachmentCache = root.resolve("slock-attachments").also { it.mkdirs() }
+            val attachment = attachmentCache.resolve("draft.apk").writeBytesOfSize(12)
+            val repository =
+                    StorageManagementRepository(
+                            roots =
+                                    StorageManagementRoots(
+                                            databaseFiles = emptyList(),
+                                            imageCacheDirs = emptyList(),
+                                            attachmentDownloadCacheDirs = listOf(attachmentCache),
+                                            temporaryAndLogDirs = emptyList()
+                                    )
+                    )
+
+            val bypass = runCatching { repository.clear(StorageClearTarget.AttachmentDownloads) }
+            val failedFencedClear = repository.clearAttachmentStaging { false }
+
+            assertTrue(bypass.isFailure)
+            assertEquals(null, failedFencedClear)
+            assertTrue(attachment.exists())
+            assertEquals(12L, repository.snapshot().attachmentDownloadBytes)
         } finally {
             root.deleteRecursively()
         }

@@ -163,6 +163,57 @@ class AttachmentDownloadsExportCoordinatorTest {
     }
 
     @Test
+    fun stagingDirectoryCleanupCancelsActiveExportAndRejectsNewSourceUsersUntilDeletionFinishes() =
+        withSourceFile(1024 * 1024) { source ->
+            val writeEntered = CountDownLatch(1)
+            val releaseWrite = CountDownLatch(1)
+            val backend =
+                FakeExportBackend(
+                    writeEntered = writeEntered,
+                    writeBlock = releaseWrite,
+                    ignoreWriteInterrupt = true
+                )
+            val coordinator = coordinator(stageTimeoutMs = 5_000L)
+            val activeResult = AtomicReference<AttachmentDownloadsExportResult>()
+            val activeExport = thread {
+                activeResult.set(coordinator.export(request(source, "download-active-cleanup"), backend))
+            }
+            assertTrue(writeEntered.await(2, TimeUnit.SECONDS))
+            val prefix = checkNotNull(source.parentFile).absolutePath + File.separator
+            val cleanupResult = AtomicReference<Boolean>()
+            val cleanupThread = thread {
+                cleanupResult.set(
+                    coordinator.runWithSourceDirectoryCleanup(prefix) {
+                        source.delete() || !source.exists()
+                    }
+                )
+            }
+            val cleanupDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2)
+            while (!coordinator.sourceDirectoryCleanupActiveForTesting(prefix) &&
+                System.nanoTime() < cleanupDeadline
+            ) {
+                Thread.yield()
+            }
+            assertTrue(coordinator.sourceDirectoryCleanupActiveForTesting(prefix))
+
+            val rejectedBackend = FakeExportBackend()
+            val rejected = coordinator.export(request(source, "download-rejected-cleanup"), rejectedBackend)
+            assertEquals("storage_failed", rejected.status)
+            assertEquals("private_cleanup", rejected.failurePhase)
+            assertEquals(0, rejectedBackend.insertCount.get())
+
+            releaseWrite.countDown()
+            activeExport.join(2_000L)
+            cleanupThread.join(2_000L)
+            assertFalse(activeExport.isAlive)
+            assertFalse(cleanupThread.isAlive)
+            assertEquals("cancelled", activeResult.get()?.status)
+            assertEquals(true, cleanupResult.get())
+            assertFalse(source.exists())
+            assertTrue(backend.awaitDelete())
+        }
+
+    @Test
     fun cancellationDeletesOnlyCurrentLegacyRowAndLeavesOlderSaveUntouched() = withSourceFile(1024) { source ->
         val writeEntered = CountDownLatch(1)
         val releaseWrite = CountDownLatch(1)

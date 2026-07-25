@@ -38,10 +38,15 @@ class StorageManagementRepository(private val roots: StorageManagementRoots) {
         when (target) {
             StorageClearTarget.ImageCache -> roots.imageCacheDirs.forEach { it.deleteContents() }
             StorageClearTarget.AttachmentDownloads ->
-                    roots.attachmentDownloadCacheDirs.forEach { it.deleteContents() }
+                    error("Attachment staging requires target-fenced cleanup")
             StorageClearTarget.TemporaryAndLogs ->
                     roots.temporaryAndLogDirs.forEach { it.deleteContents() }
         }
+        return snapshot()
+    }
+
+    fun clearAttachmentStaging(cleaner: (File) -> Boolean): StorageManagementSnapshot? {
+        if (!roots.attachmentDownloadCacheDirs.all(cleaner)) return null
         return snapshot()
     }
 }
