@@ -588,6 +588,20 @@ class SlockMarkdownTest {
     }
 
     @Test
+    fun inlineCodeEdgeBoxesPreserveExtendedGraphemeClusters() {
+        assertInlineCodeEdgeGraphemes(
+            code = "👩‍💻tool e\u0301",
+            expectedLeading = "👩‍💻",
+            expectedTrailing = "e\u0301",
+        )
+        assertInlineCodeEdgeGraphemes(
+            code = "e\u0301tool 👩‍💻",
+            expectedLeading = "e\u0301",
+            expectedTrailing = "👩‍💻",
+        )
+    }
+
+    @Test
     fun userMentionsRenderAsClickableTags() {
         val body = "Ping @Android-App-Integrator in #markdown专修 for #15"
         val annotated =
@@ -1093,8 +1107,8 @@ class SlockMarkdownTest {
         assertEquals(0.dp, leadingEdge.paddingEnd)
         assertEquals(0.dp, trailingEdge.paddingStart)
         assertEquals(4.dp, trailingEdge.paddingEnd)
-        assertEquals(SlockColor.TextBlack.copy(alpha = 0.05f), leadingEdge.backgroundColor)
-        assertEquals(SlockColor.TextBlack.copy(alpha = 0.05f), trailingEdge.backgroundColor)
+        assertEquals(Color.Transparent, leadingEdge.backgroundColor)
+        assertEquals(Color.Transparent, trailingEdge.backgroundColor)
     }
 
     @Test
@@ -2038,6 +2052,32 @@ class SlockMarkdownTest {
         getStringAnnotations(slockInlineCodeTrailingMarginAnnotationTag, start = 0, end = length).map { range ->
             text.substring(range.start, range.end)
         }
+
+    private fun assertInlineCodeEdgeGraphemes(
+        code: String,
+        expectedLeading: String,
+        expectedTrailing: String,
+    ) {
+        val annotated = buildSlockMarkdownParagraphAnnotatedString("`$code`")
+        val boxRanges =
+            annotated.spanStyles.filter { range ->
+                range.item.inlineBoxStyle?.let { box ->
+                    box.paddingStart > 0.dp || box.paddingEnd > 0.dp
+                } == true
+            }
+        val firstClusterBoundary = code.indexOf(expectedLeading) + expectedLeading.length
+        val splitRange =
+            annotated.spanStyles.first { range ->
+                range.start == 0 && range.end == firstClusterBoundary && range.item.inlineBoxStyle == null
+            }
+
+        assertEquals(code, annotated.text)
+        assertEquals(1, boxRanges.size)
+        assertEquals(code, annotated.text.substring(boxRanges.single().start, boxRanges.single().end))
+        assertEquals(expectedLeading, annotated.text.substring(splitRange.start, splitRange.end))
+        assertTrue(annotated.text.endsWith(expectedTrailing))
+        assertEquals(Color.Transparent, boxRanges.single().item.inlineBoxStyle?.backgroundColor)
+    }
 
     // Mirrors the CODE_SPAN emission (AnnotatedStringKtx): edge-only boxes
     // provide horizontal chrome without making the code run atomic.

@@ -38,6 +38,7 @@ import build.raft.app.markdown.SLOCK_RICHTEXT_INLINE_CODE_TRAILING_MARGIN_ANNOTA
 import build.raft.app.markdown.slockMarkdownInlineCodeEdgeStyle
 import build.raft.app.slockInlineCodeCharWrapBridgeThreshold
 import build.raft.app.slockInlineCodeUsesEdgePaddingBridge
+import kotlin.text.CharCategory
 
 // task #401 A-bridge: interleave zero-width spaces into non-whitespace runs
 // longer than [threshold] so renders without native inline-code atomization
@@ -646,29 +647,127 @@ fun AnnotatedString.Builder.buildMarkdownAnnotatedString(
 
 private fun AnnotatedString.Builder.appendSlockInlineCodeWithEdgeBoxes(codeText: String) {
     if (codeText.isEmpty()) return
-    val firstEnd =
-        if (codeText.length > 1 && codeText[0].isHighSurrogate() && codeText[1].isLowSurrogate()) 2 else 1
-    val lastStart =
-        if (codeText.length > 1 && codeText.last().isLowSurrogate() && codeText[codeText.lastIndex - 1].isHighSurrogate()) {
-            codeText.length - 2
-        } else {
-            codeText.length - 1
-        }
-    if (firstEnd > lastStart) {
-        pushStyle(
-            SpanStyle(
-                inlineBoxStyle = slockMarkdownInlineCodeEdgeStyle(leading = true, trailing = true)
-            )
-        )
+    val firstEnd = codeText.slockExtendedGraphemeEnd(0)
+    if (firstEnd == codeText.length) {
+        // A one-child InlineBoxGroup lowers to an atomic ReplacementSpan whose
+        // background is line-height tall. Prefer clean, exact single-glyph
+        // rendering over reintroducing that taller gray layer.
         append(codeText)
-        pop()
         return
     }
-    pushStyle(SpanStyle(inlineBoxStyle = slockMarkdownInlineCodeEdgeStyle(leading = true)))
+
+    // One transparent group reserves both 4dp edges. The empty style boundary
+    // produces two native TextSpan children without splitting the first
+    // extended grapheme, keeping the group non-atomic so its ordinary black/5
+    // child backgrounds retain the same height as the rest of inline code.
+    pushStyle(slockInlineCodeEdgeSpanStyle(leading = true, trailing = true))
+    pushStyle(SpanStyle())
     append(codeText.substring(0, firstEnd))
     pop()
-    append(codeText.substring(firstEnd, lastStart))
-    pushStyle(SpanStyle(inlineBoxStyle = slockMarkdownInlineCodeEdgeStyle(leading = false)))
-    append(codeText.substring(lastStart))
+    append(codeText.substring(firstEnd))
     pop()
 }
+
+private fun slockInlineCodeEdgeSpanStyle(
+    leading: Boolean,
+    trailing: Boolean = !leading,
+): SpanStyle =
+    SpanStyle(
+        // The edge box only reserves the Web-aligned 4dp advance. Its native
+        // fill stays transparent so the ordinary code span remains the sole
+        // black/5 painter and cannot produce an offset outer gray step.
+        inlineBoxStyle = slockMarkdownInlineCodeEdgeStyle(leading, trailing),
+    )
+
+private data class SlockCodePoint(
+    val value: Int,
+    val end: Int,
+)
+
+private fun String.slockCodePointAt(index: Int): SlockCodePoint {
+    val first = this[index]
+    if (first.isHighSurrogate() && index + 1 < length && this[index + 1].isLowSurrogate()) {
+        val value =
+            0x10000 +
+                ((first.code - 0xD800) shl 10) +
+                (this[index + 1].code - 0xDC00)
+        return SlockCodePoint(value = value, end = index + 2)
+    }
+    return SlockCodePoint(value = first.code, end = index + 1)
+}
+
+private fun String.slockExtendedGraphemeEnd(start: Int): Int {
+    var current = slockCodePointAt(start)
+    var end = current.end
+    var regionalIndicatorCount = if (current.value.isSlockRegionalIndicator()) 1 else 0
+    while (end < length) {
+        val next = slockCodePointAt(end)
+        val joins =
+            (current.value == SLOCK_CARRIAGE_RETURN && next.value == SLOCK_LINE_FEED) ||
+                current.value.isSlockHangulL() && next.value.isSlockHangulLvtFollower() ||
+                current.value.isSlockHangulLvOrV() && next.value.isSlockHangulVtFollower() ||
+                current.value.isSlockHangulLvtOrT() && next.value.isSlockHangulT() ||
+                current.value.isSlockGraphemePrepend() ||
+                next.value.isSlockGraphemeExtend() ||
+                next.value.isSlockSpacingMark() ||
+                current.value == SLOCK_ZERO_WIDTH_JOINER ||
+                (current.value.isSlockRegionalIndicator() &&
+                    next.value.isSlockRegionalIndicator() &&
+                    regionalIndicatorCount % 2 == 1)
+        if (!joins) break
+        end = next.end
+        current = next
+        regionalIndicatorCount =
+            if (next.value.isSlockRegionalIndicator()) regionalIndicatorCount + 1 else 0
+    }
+    return end
+}
+
+private fun Int.isSlockGraphemeExtend(): Boolean =
+    this == SLOCK_ZERO_WIDTH_JOINER ||
+        this in 0xFE00..0xFE0F ||
+        this in 0xE0100..0xE01EF ||
+        this in 0x1F3FB..0x1F3FF ||
+        this in 0xE0020..0xE007F ||
+        (this <= Char.MAX_VALUE.code &&
+            when (toChar().category) {
+                CharCategory.NON_SPACING_MARK,
+                CharCategory.ENCLOSING_MARK -> true
+                else -> false
+            })
+
+private fun Int.isSlockSpacingMark(): Boolean =
+    this <= Char.MAX_VALUE.code && toChar().category == CharCategory.COMBINING_SPACING_MARK
+
+private fun Int.isSlockRegionalIndicator(): Boolean = this in 0x1F1E6..0x1F1FF
+
+private fun Int.isSlockHangulL(): Boolean = this in 0x1100..0x115F || this in 0xA960..0xA97C
+
+private fun Int.isSlockHangulV(): Boolean = this in 0x1160..0x11A7 || this in 0xD7B0..0xD7C6
+
+private fun Int.isSlockHangulT(): Boolean = this in 0x11A8..0x11FF || this in 0xD7CB..0xD7FB
+
+private fun Int.isSlockHangulLv(): Boolean = this in 0xAC00..0xD7A3 && (this - 0xAC00) % 28 == 0
+
+private fun Int.isSlockHangulLvt(): Boolean = this in 0xAC00..0xD7A3 && !isSlockHangulLv()
+
+private fun Int.isSlockHangulLvtFollower(): Boolean =
+    isSlockHangulL() || isSlockHangulV() || isSlockHangulLv() || isSlockHangulLvt()
+
+private fun Int.isSlockHangulLvOrV(): Boolean = isSlockHangulLv() || isSlockHangulV()
+
+private fun Int.isSlockHangulVtFollower(): Boolean = isSlockHangulV() || isSlockHangulT()
+
+private fun Int.isSlockHangulLvtOrT(): Boolean = isSlockHangulLvt() || isSlockHangulT()
+
+private fun Int.isSlockGraphemePrepend(): Boolean =
+    this in 0x0600..0x0605 ||
+        this == 0x06DD ||
+        this == 0x070F ||
+        this == 0x08E2 ||
+        this == 0x110BD ||
+        this == 0x110CD
+
+private const val SLOCK_CARRIAGE_RETURN = 0x000D
+private const val SLOCK_LINE_FEED = 0x000A
+private const val SLOCK_ZERO_WIDTH_JOINER = 0x200D
