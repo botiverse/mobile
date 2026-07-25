@@ -476,4 +476,18 @@
     <string name="thread_tab_chat">聊天</string>
     <string name="thread_tab_files">文件</string>
     <string name="thread_tab_tasks">任务</string>
+    <string name="browser_unavailable_toast">没有可用于打开此链接的浏览器</string>
+    <string name="email_verified_toast">邮箱已验证</string>
+    <string name="email_verified_sign_in_toast">邮箱已验证。请登录以继续。</string>
+    <string name="provider_unavailable_toast">该登录方式暂不支持 Android</string>
+    <string name="google_sign_in_no_code_toast">Google 登录未返回授权码</string>
+    <string name="google_sign_in_failed_toast">Google 登录失败，请重试。</string>
+    <string name="oauth_request_expired_toast">登录请求已过期，请重试。</string>
+    <string name="provider_no_handoff_code_toast">%1$s 未返回交接码</string>
+    <string name="provider_linked_toast">已关联 %1$s 账号。</string>
+    <string name="provider_link_sign_in_again_toast">请重新登录以关联 %1$s。</string>
+    <string name="provider_sign_in_failed_toast">%1$s 登录失败，请重试。</string>
+    <string name="attachment_no_app_toast">没有应用可以打开此附件</string>
+    <string name="attachment_open_failed_toast">无法打开附件</string>
+    <string name="attachment_open_with_chooser_title">打开方式</string>
 </resources>

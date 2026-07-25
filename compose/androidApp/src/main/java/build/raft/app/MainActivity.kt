@@ -86,7 +86,7 @@ class MainActivity : ComponentActivity() {
                 "app_web_link_external_fallback result=no_external_handler " +
                     "target=${uri.safeWebLinkTarget()}"
             )
-            Toast.makeText(this, "No browser is available to open this link", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.browser_unavailable_toast), Toast.LENGTH_SHORT).show()
         } else {
             SlockAppLog.d(
                 "SlockBoot",
@@ -154,7 +154,7 @@ class MainActivity : ComponentActivity() {
             }
             when (result) {
                 is SharedEmailVerificationResult.Verified -> {
-                    Toast.makeText(this@MainActivity, "Email verified", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@MainActivity, getString(R.string.email_verified_toast), Toast.LENGTH_SHORT).show()
                     when (emailVerificationNavigation(hasLiveShellInTask, EmailVerificationOutcome.Verified)) {
                         EmailVerificationNavigation.FinishTrampoline -> finish()
                         EmailVerificationNavigation.OpenPostLoginDestination -> openPostLoginDestination(result.session)
@@ -184,7 +184,7 @@ class MainActivity : ComponentActivity() {
                 SharedEmailVerificationResult.LoginRequired -> {
                     Toast.makeText(
                         this@MainActivity,
-                        "Email verified. Sign in to continue.",
+                        getString(R.string.email_verified_sign_in_toast),
                         Toast.LENGTH_LONG
                     ).show()
                     when (emailVerificationNavigation(hasLiveShellInTask, EmailVerificationOutcome.LoginRequired)) {
@@ -206,7 +206,7 @@ class MainActivity : ComponentActivity() {
         setIntent(Intent(this, MainActivity::class.java))
         val provider = uri.getQueryParameter("provider").orEmpty().lowercase()
         if (provider != "google") {
-            Toast.makeText(this, "This sign-in provider is not available on Android yet", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.provider_unavailable_toast), Toast.LENGTH_SHORT).show()
             return true
         }
         val error = uri.getQueryParameter("error") ?: uri.getQueryParameter("error_description")
@@ -216,7 +216,7 @@ class MainActivity : ComponentActivity() {
         }
         val code = uri.getQueryParameter("code")
         if (code.isNullOrBlank()) {
-            Toast.makeText(this, "Google sign-in did not return an authorization code", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.google_sign_in_no_code_toast), Toast.LENGTH_SHORT).show()
             return true
         }
         lifecycleScope.launch {
@@ -234,7 +234,7 @@ class MainActivity : ComponentActivity() {
                 is SharedAuthResult.Failure ->
                     Toast.makeText(this@MainActivity, result.message, Toast.LENGTH_SHORT).show()
                 SharedAuthResult.Unauthenticated ->
-                    Toast.makeText(this@MainActivity, "Google sign-in failed. Try again.", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@MainActivity, getString(R.string.google_sign_in_failed_toast), Toast.LENGTH_SHORT).show()
             }
         }
         return true
@@ -248,7 +248,7 @@ class MainActivity : ComponentActivity() {
         val pending = pendingStore.read()
         if (pending == null) {
             pendingStore.clear()
-            openAfterMobileOAuthError("Sign-in request expired. Try again.", AndroidMobileOAuth.ModeLogin)
+            openAfterMobileOAuthError(getString(R.string.oauth_request_expired_toast), AndroidMobileOAuth.ModeLogin)
             return true
         }
         val providerName = pending.provider.socialProviderDisplayName()
@@ -261,7 +261,7 @@ class MainActivity : ComponentActivity() {
         val handoffCode = uri.getQueryParameter("code")
         if (handoffCode.isNullOrBlank()) {
             pendingStore.clear()
-            openAfterMobileOAuthError("$providerName did not return a handoff code", pending.mode)
+            openAfterMobileOAuthError(getString(R.string.provider_no_handoff_code_toast, providerName), pending.mode)
             return true
         }
         if (pending.mode == AndroidMobileOAuth.ModeLink) {
@@ -281,7 +281,7 @@ class MainActivity : ComponentActivity() {
                 pendingStore.clear()
                 when (result) {
                     is SharedAuthResult.Success -> {
-                        Toast.makeText(this@MainActivity, "$providerName account linked.", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this@MainActivity, getString(R.string.provider_linked_toast, providerName), Toast.LENGTH_SHORT).show()
                         openSettingsAccountAfterMobileOAuthLink()
                     }
                     is SharedAuthResult.Failure -> {
@@ -289,7 +289,7 @@ class MainActivity : ComponentActivity() {
                         openSettingsAccountAfterMobileOAuthLink()
                     }
                     SharedAuthResult.Unauthenticated -> {
-                        Toast.makeText(this@MainActivity, "Sign in again to link $providerName.", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this@MainActivity, getString(R.string.provider_link_sign_in_again_toast, providerName), Toast.LENGTH_SHORT).show()
                         openSettingsAccountAfterMobileOAuthLink()
                     }
                 }
@@ -333,7 +333,7 @@ class MainActivity : ComponentActivity() {
                 }
                 SharedAuthResult.Unauthenticated -> {
                     pendingStore.clear()
-                    Toast.makeText(this@MainActivity, "$providerName sign-in failed. Try again.", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@MainActivity, getString(R.string.provider_sign_in_failed_toast, providerName), Toast.LENGTH_SHORT).show()
                 }
             }
         }

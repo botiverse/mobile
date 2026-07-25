@@ -476,4 +476,18 @@
     <string name="settings_update_error_missing_release">The Raft update response did not include a latest release.</string>
     <string name="settings_update_error_missing_asset">The Raft update response did not include an APK asset.</string>
     <string name="settings_update_error_download_manager_unavailable">Android Download Manager is unavailable.</string>
+    <string name="browser_unavailable_toast">No browser is available to open this link</string>
+    <string name="email_verified_toast">Email verified</string>
+    <string name="email_verified_sign_in_toast">Email verified. Sign in to continue.</string>
+    <string name="provider_unavailable_toast">This sign-in provider is not available on Android yet</string>
+    <string name="google_sign_in_no_code_toast">Google sign-in did not return an authorization code</string>
+    <string name="google_sign_in_failed_toast">Google sign-in failed. Try again.</string>
+    <string name="oauth_request_expired_toast">Sign-in request expired. Try again.</string>
+    <string name="provider_no_handoff_code_toast">%1$s did not return a handoff code</string>
+    <string name="provider_linked_toast">%1$s account linked.</string>
+    <string name="provider_link_sign_in_again_toast">Sign in again to link %1$s.</string>
+    <string name="provider_sign_in_failed_toast">%1$s sign-in failed. Try again.</string>
+    <string name="attachment_no_app_toast">No app can open this attachment</string>
+    <string name="attachment_open_failed_toast">Unable to open attachment</string>
+    <string name="attachment_open_with_chooser_title">Open with</string>
 </resources>
