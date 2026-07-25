@@ -1,5 +1,7 @@
 package build.raft.app.data
 
+import build.raft.app.model.Attachment
+import build.raft.app.model.AttachmentId
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ServerId
@@ -107,6 +109,110 @@ class ExternalShareStoreTest {
         assertEquals("new", state.query)
         assertEquals(listOf("new"), state.targets.map { it.id })
         store.clear()
+    }
+
+    @Test
+    fun blankDirectoryUsesCanonicalCursorAndAppendsWithoutDuplication() = runBlocking {
+        val first = target("one")
+        val second = target("two")
+        val repository =
+            object : StubTargetRepository(emptyList()) {
+                override suspend fun directoryTargets(
+                    serverId: ServerId,
+                    sessionId: String,
+                    cursor: ForwardMessageTargetDirectoryCursor,
+                    pageSize: Int
+                ): DataResult<ForwardMessageTargetDirectoryPage> =
+                    if (cursor.snapshotId == null) {
+                        DataResult.Content(
+                            ForwardMessageTargetDirectoryPage(
+                                listOf(first),
+                                nextCursor = this@ExternalShareStoreTest.cursorFor(sessionId)
+                            )
+                        )
+                    } else {
+                        DataResult.Content(ForwardMessageTargetDirectoryPage(listOf(first, second), nextCursor = null))
+                    }
+            }
+        val store = store(scope = this, targetRepository = repository)
+
+        store.dispatch(ExternalShareIntent.Load("share-1", Server.value))
+        yield()
+        val firstPage = assertIs<ExternalShareState.SelectingTargets>(store.state.value)
+        assertEquals(listOf("one"), firstPage.targets.map { it.id })
+        assertTrue(firstPage.nextCursor != null)
+
+        store.dispatch(ExternalShareIntent.LoadMore)
+        yield()
+        val secondPage = assertIs<ExternalShareState.SelectingTargets>(store.state.value)
+        assertEquals(listOf("one", "two"), secondPage.targets.map { it.id })
+        assertEquals(null, secondPage.nextCursor)
+        store.clear()
+    }
+
+    @Test
+    fun realSenderResolvesUploadsAndBindsStableDeliveryIdToNormalMessageRandomId() = runBlocking {
+        val destination = target("destination")
+        var uploaded: AttachmentUploadRequest? = null
+        var sentChannel: ChannelId? = null
+        var sentBody: String? = null
+        var sentAttachments: List<AttachmentId>? = null
+        var sentRandomId: String? = null
+        val sender =
+            RealExternalShareSender(
+                targetRepository = StubTargetRepository(listOf(destination)),
+                uploadAttachments = { request ->
+                    uploaded = request
+                    DataResult.Content(
+                        AttachmentUploadResult(
+                            listOf(
+                                Attachment(
+                                    id = AttachmentId("attachment-1"),
+                                    name = "photo.png",
+                                    mimeType = "image/png",
+                                    sizeLabel = "4 B",
+                                    sizeBytes = 4L
+                                )
+                            )
+                        )
+                    )
+                },
+                sendMessage = { channelId, body, attachmentIds, randomId ->
+                    sentChannel = channelId
+                    sentBody = body
+                    sentAttachments = attachmentIds
+                    sentRandomId = randomId
+                    DataResult.Error(ScreenError("send_probe", retryable = true))
+                }
+            )
+
+        val result =
+            sender.send(
+                ExternalShareSendRequest(
+                    attemptId = 1,
+                    deliveryId = "delivery-stable",
+                    sourceServerId = Server.value,
+                    envelope =
+                        ExternalShareEnvelope(
+                            token = "share-1",
+                            createdAtEpochMillis = 1L,
+                            sourcePlatform = "android",
+                            text = "Shared body",
+                            subject = "Subject",
+                            items = listOf(ExternalShareItem("private/photo", "photo.png", "image/png", 4L))
+                        ),
+                    target = destination,
+                    comment = "Comment"
+                )
+            )
+
+        assertEquals("send_probe", assertIs<DataResult.Error>(result).error.code)
+        assertEquals(ChannelId("channel-destination"), uploaded?.channelId)
+        assertEquals("private/photo", uploaded?.files?.single()?.fileRef)
+        assertEquals(ChannelId("channel-destination"), sentChannel)
+        assertEquals("Comment\n\nSubject\n\nShared body", sentBody)
+        assertEquals(listOf(AttachmentId("attachment-1")), sentAttachments)
+        assertEquals("delivery-stable", sentRandomId)
     }
 
     @Test
@@ -305,6 +411,14 @@ class ExternalShareStoreTest {
             title = id,
             channelId = ChannelId("channel-$id"),
             channelKind = ConversationKind.Channel
+        )
+
+    private fun cursorFor(sessionId: String): ForwardMessageTargetDirectoryCursor =
+        ForwardMessageTargetDirectoryCursor(
+            snapshotId = "snapshot",
+            sessionId = sessionId,
+            normalizedQuery = "",
+            authorityRevision = "revision"
         )
 
     private open class StubTargetRepository(

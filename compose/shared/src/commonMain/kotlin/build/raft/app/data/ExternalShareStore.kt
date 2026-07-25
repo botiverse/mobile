@@ -1,5 +1,8 @@
 package build.raft.app.data
 
+import build.raft.app.model.AttachmentId
+import build.raft.app.model.ChannelId
+import build.raft.app.model.ServerId
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -61,6 +64,7 @@ internal interface ExternalShareDraftRepository {
 internal data class ExternalShareSendRequest(
     val attemptId: Long,
     val deliveryId: String,
+    val sourceServerId: String,
     val envelope: ExternalShareEnvelope,
     val target: ForwardMessageTarget,
     val comment: String
@@ -69,6 +73,94 @@ internal data class ExternalShareSendRequest(
 internal interface ExternalShareSender {
     suspend fun send(request: ExternalShareSendRequest): DataResult<Unit>
 }
+
+/**
+ * Production adapter for the normal composer upload/send path. Target resolution remains owned by
+ * [ForwardMessageTargetRepository]; no directory or routing logic is duplicated here.
+ */
+internal class RealExternalShareSender(
+    private val targetRepository: ForwardMessageTargetRepository,
+    private val uploadAttachments: suspend (AttachmentUploadRequest) -> DataResult<AttachmentUploadResult>,
+    private val sendMessage: suspend (ChannelId, String, List<AttachmentId>, String) -> DataResult<SendMessageResult>
+) : ExternalShareSender {
+    constructor(
+        targetRepository: ForwardMessageTargetRepository,
+        threadRepository: ThreadRepository
+    ) : this(
+        targetRepository = targetRepository,
+        uploadAttachments = threadRepository::uploadAttachments,
+        sendMessage = { channelId, body, attachmentIds, randomId ->
+            threadRepository.sendMessage(
+                channelId = channelId,
+                body = body,
+                attachmentIds = attachmentIds,
+                randomId = randomId
+            )
+        }
+    )
+
+    override suspend fun send(request: ExternalShareSendRequest): DataResult<Unit> {
+        val sourceServerId = request.sourceServerId.trim().takeIf { it.isNotBlank() }
+            ?: return DataResult.Error(ScreenError("external_share_source_server_invalid", retryable = false))
+        val resolved =
+            targetRepository.resolveTargetChannel(
+                sourceServerId = ServerId(sourceServerId),
+                target = request.target,
+                allowJoin = false
+            )
+        val destination =
+            when (resolved) {
+                is DataResult.Content -> resolved.data
+                is DataResult.Empty -> return DataResult.Empty(resolved.reason)
+                is DataResult.Error -> return DataResult.Error(resolved.error)
+                is DataResult.NoPermission -> return DataResult.NoPermission(resolved.blocker)
+            }
+        val attachmentIds =
+            if (request.envelope.items.isEmpty()) {
+                emptyList()
+            } else {
+                when (
+                    val uploaded =
+                        uploadAttachments(
+                            AttachmentUploadRequest(
+                                channelId = destination.channelId,
+                                files = request.envelope.items.mapIndexed { index, item ->
+                                    item.toExternalSharePlatformFile(request.deliveryId, index)
+                                }
+                            )
+                        )
+                ) {
+                    is DataResult.Content -> uploaded.data.attachmentIds
+                    is DataResult.Empty -> return DataResult.Empty(uploaded.reason)
+                    is DataResult.Error -> return DataResult.Error(uploaded.error)
+                    is DataResult.NoPermission -> return DataResult.NoPermission(uploaded.blocker)
+                }
+            }
+        return sendMessage(
+            destination.channelId,
+            request.externalShareMessageBody(),
+            attachmentIds,
+            request.deliveryId
+        ).mapContent { Unit }
+    }
+}
+
+private fun ExternalShareItem.toExternalSharePlatformFile(deliveryId: String, index: Int): PlatformFile =
+    PlatformFile(
+        id = "external-share-$deliveryId-$index",
+        fileName = displayName,
+        mimeType = mimeType,
+        sizeBytes = sizeBytes,
+        fileRef = localRef,
+        source = "external_share"
+    )
+
+internal fun ExternalShareSendRequest.externalShareMessageBody(): String =
+    listOf(comment, envelope.subject, envelope.text)
+        .map(String::trim)
+        .filter(String::isNotBlank)
+        .distinct()
+        .joinToString("\n\n")
 
 internal enum class ExternalShareDeliveryStatus {
     Pending,
@@ -96,6 +188,9 @@ internal sealed interface ExternalShareState {
         val targets: List<ForwardMessageTarget> = emptyList(),
         val selectedTargets: List<ForwardMessageTarget> = emptyList(),
         val loading: Boolean = false,
+        val appending: Boolean = false,
+        val requestGeneration: Int = 0,
+        val nextCursor: ForwardMessageTargetDirectoryCursor? = null,
         val errorCode: String? = null,
         val selectionErrorCode: String? = null
     ) : ExternalShareState
@@ -142,6 +237,8 @@ internal sealed interface ExternalShareIntent {
 
     data class Search(val query: String) : ExternalShareIntent
 
+    data object LoadMore : ExternalShareIntent
+
     data class ToggleTarget(val target: ForwardMessageTarget) : ExternalShareIntent
 
     data object Continue : ExternalShareIntent
@@ -186,6 +283,7 @@ internal class ExternalShareStore(
         when (intent) {
             is ExternalShareIntent.Load -> load(intent.token, intent.serverId)
             is ExternalShareIntent.Search -> search(intent.query)
+            ExternalShareIntent.LoadMore -> loadMore()
             is ExternalShareIntent.ToggleTarget -> toggleTarget(intent.target)
             ExternalShareIntent.Continue -> continueToConfirmation()
             is ExternalShareIntent.RemoveTarget -> removeTarget(intent.targetKey)
@@ -198,6 +296,9 @@ internal class ExternalShareStore(
     }
 
     fun clear() {
+        (_state.value as? ExternalShareState.SelectingTargets)?.let { selecting ->
+            targetRepository.releaseDirectorySnapshot(selecting.externalShareDirectorySessionId())
+        }
         loadGeneration += 1
         targetGeneration += 1
         sendAttemptId += 1
@@ -439,20 +540,40 @@ internal class ExternalShareStore(
             }
     }
 
-    private fun search(rawQuery: String) {
+    private fun search(rawQuery: String, append: Boolean = false) {
         val current = _state.value as? ExternalShareState.SelectingTargets ?: return
         val query = rawQuery.trimStart()
+        if (append && (query.isNotBlank() || current.nextCursor == null || current.loading)) return
+        if (!append && current.query != query && current.query.isBlank()) {
+            targetRepository.releaseDirectorySnapshot(current.externalShareDirectorySessionId())
+        }
         targetGeneration += 1
         val generation = targetGeneration
         targetJob?.cancel()
-        _state.value = current.copy(query = query, loading = true, errorCode = null, selectionErrorCode = null)
+        _state.value =
+            current.copy(
+                query = query,
+                loading = true,
+                appending = append,
+                requestGeneration = current.requestGeneration + 1,
+                nextCursor = if (append) current.nextCursor else null,
+                errorCode = null,
+                selectionErrorCode = null
+            )
         targetJob =
             scope.launch {
                 val result =
                     if (query.isBlank()) {
-                        targetRepository.recentTargets(build.raft.app.model.ServerId(current.serverId), 40)
+                        targetRepository.directoryTargets(
+                            serverId = ServerId(current.serverId),
+                            sessionId = current.externalShareDirectorySessionId(),
+                            cursor = if (append) current.nextCursor ?: ForwardMessageTargetDirectoryCursor() else ForwardMessageTargetDirectoryCursor(),
+                            pageSize = 40
+                        )
                     } else {
-                        targetRepository.searchTargets(build.raft.app.model.ServerId(current.serverId), query, 40)
+                        targetRepository.searchTargets(ServerId(current.serverId), query, 40).mapContent { targets ->
+                            ForwardMessageTargetDirectoryPage(items = targets)
+                        }
                     }
                 if (generation != targetGeneration) return@launch
                 val latest = _state.value as? ExternalShareState.SelectingTargets ?: return@launch
@@ -461,15 +582,27 @@ internal class ExternalShareStore(
                     when (result) {
                         is DataResult.Content ->
                             latest.copy(
-                                targets = result.data.distinctBy { it.externalShareSelectionKey() },
+                                targets =
+                                    if (append && !result.data.reset) {
+                                        (latest.targets + result.data.items).distinctBy { it.externalShareSelectionKey() }
+                                    } else {
+                                        result.data.items.distinctBy { it.externalShareSelectionKey() }
+                                    },
                                 loading = false,
+                                appending = false,
+                                nextCursor = result.data.nextCursor,
                                 errorCode = null
                             )
-                        is DataResult.Empty -> latest.copy(targets = emptyList(), loading = false, errorCode = null)
-                        is DataResult.Error -> latest.copy(targets = emptyList(), loading = false, errorCode = result.error.code)
-                        is DataResult.NoPermission -> latest.copy(targets = emptyList(), loading = false, errorCode = result.blocker.code)
+                        is DataResult.Empty -> latest.copy(targets = if (append) latest.targets else emptyList(), loading = false, appending = false, nextCursor = null, errorCode = null)
+                        is DataResult.Error -> latest.copy(loading = false, appending = false, errorCode = result.error.code)
+                        is DataResult.NoPermission -> latest.copy(loading = false, appending = false, errorCode = result.blocker.code)
                     }
             }
+    }
+
+    private fun loadMore() {
+        val current = _state.value as? ExternalShareState.SelectingTargets ?: return
+        search(current.query, append = true)
     }
 
     private fun toggleTarget(target: ForwardMessageTarget) {
@@ -502,6 +635,7 @@ internal class ExternalShareStore(
         }
         targetGeneration += 1
         targetJob?.cancel()
+        targetRepository.releaseDirectorySnapshot(current.externalShareDirectorySessionId())
         _state.value =
             ExternalShareState.Confirming(
                 envelope = current.envelope,
@@ -630,6 +764,7 @@ internal class ExternalShareStore(
                                 ExternalShareSendRequest(
                                     attemptId = attemptId,
                                     deliveryId = delivery.deliveryId,
+                                    sourceServerId = serverId,
                                     envelope = envelope,
                                     target = delivery.target,
                                     comment = comment
@@ -756,6 +891,9 @@ internal class ExternalShareStore(
 
 internal fun ForwardMessageTarget.externalShareSelectionKey(): String =
     "${serverId.value}:${kind.name}:$id"
+
+internal fun ExternalShareState.SelectingTargets.externalShareDirectorySessionId(): String =
+    "external-share:${envelope.token}:$serverId"
 
 private fun List<ExternalShareDelivery>.replaceDelivery(
     targetKey: String,

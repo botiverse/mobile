@@ -158,6 +158,7 @@ data class SlockForwardTargetPickerUiState<T>(
     val query: String = "",
     val items: List<SlockForwardTargetPickerItem<T>> = emptyList(),
     val selectedKey: String? = null,
+    val selectedItems: List<SlockForwardTargetPickerItem<T>> = emptyList(),
     val loadState: SlockForwardPickerLoadState = SlockForwardPickerLoadState.Idle,
     val errorCode: String? = null,
     val canLoadMore: Boolean = false,
@@ -165,13 +166,18 @@ data class SlockForwardTargetPickerUiState<T>(
     val interactive: Boolean = true,
     val dismissEnabled: Boolean = true,
     val requestGeneration: Int = 0
-)
+) {
+    val selectedKeys: Set<String>
+        get() = selectedItems.mapTo(linkedSetOf()) { it.stableKey } + listOfNotNull(selectedKey)
+}
 
 sealed interface SlockForwardTargetPickerIntent<out T> {
     data class QueryChanged(val query: String) : SlockForwardTargetPickerIntent<Nothing>
     data object Retry : SlockForwardTargetPickerIntent<Nothing>
     data object LoadMore : SlockForwardTargetPickerIntent<Nothing>
     data object Dismiss : SlockForwardTargetPickerIntent<Nothing>
+    data object Continue : SlockForwardTargetPickerIntent<Nothing>
+    data class RemoveSelection(val stableKey: String) : SlockForwardTargetPickerIntent<Nothing>
     data class TargetSelected<T>(
         val item: SlockForwardTargetPickerItem<T>,
         val renderGeneration: Int
