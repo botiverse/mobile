@@ -1431,6 +1431,10 @@ class ThreadPayloadTest {
             threadVisualFixtureHighlightedMentions(THREAD_MESSAGE_VISUAL_FIXTURE_LONG_INLINE_CODE)
         )
         assertEquals(
+            setOf("artin"),
+            threadVisualFixtureHighlightedMentions(THREAD_MESSAGE_VISUAL_FIXTURE_MD_LINK_REF)
+        )
+        assertEquals(
             emptySet(),
             threadVisualFixtureHighlightedMentions(THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT)
         )
