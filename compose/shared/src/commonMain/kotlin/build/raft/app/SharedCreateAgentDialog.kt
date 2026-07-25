@@ -1341,7 +1341,7 @@ private fun BuiltInRuntimeSection(
                             )
                             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                 Text(
-                                    text = copy?.label ?: "Supports image input",
+                                    text = copy?.label ?: stringResource(MR.strings.agent_create_label_supports_image_input),
                                     style = SlockType.Caption,
                                     color = SlockColor.TextBlack
                                 )

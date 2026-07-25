@@ -1596,7 +1596,7 @@ private fun TasksCreateDialog(
             ) {
                 Text(text = stringResource(MR.strings.tasks_label_new_tasks), style = SlockType.PageTitle, color = SlockColor.TextBlack)
                 Text(
-                    text = "Add one or more task titles. Empty rows are ignored.",
+                    text = stringResource(MR.strings.tasks_create_multiple_hint),
                     style = SlockType.Caption,
                     color = SlockColor.TextMutedGray
                 )

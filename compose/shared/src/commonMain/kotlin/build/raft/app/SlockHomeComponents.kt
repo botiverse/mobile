@@ -3773,7 +3773,7 @@ private fun HomeServerDrawerPanel(
                 horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
             ) {
                 Text(
-                    text = "SERVERS",
+                    text = stringResource(MR.strings.home_section_servers),
                     style = SlockType.ButtonBold,
                     color = SlockColor.TextBlack,
                     modifier = Modifier.weight(1f),
@@ -4147,7 +4147,7 @@ private fun HomeServerDrawerErrorRow(
     ) {
         SlockLucideIcon(SlockLucideIconName.RefreshCw, Modifier.size(14.dp), color = SlockColor.AccentRedArgb)
         Text(
-            text = "Retry · ${row.code}",
+            text = stringResource(MR.strings.home_retry_with_code, row.code),
             style = SlockType.Caption,
             color = SlockColor.AccentRed,
             modifier = Modifier.weight(1f),
