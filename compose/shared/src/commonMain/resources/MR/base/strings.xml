@@ -1856,6 +1856,7 @@
     <string name="settings_channels_loading">Loading channels…</string>
     <string name="settings_channels_empty">No sendable channels found.</string>
     <string name="settings_channels_empty_detail">You need a joined channel with message and attachment permission.</string>
+    <string name="settings_app_language_japanese">日本語</string>
     <string name="settings_notifications_show_previews_title">Show message previews</string>
     <string name="settings_notifications_show_previews_detail">Include message details in iOS push notifications. Turn this off for private alerts.</string>
 </resources>
