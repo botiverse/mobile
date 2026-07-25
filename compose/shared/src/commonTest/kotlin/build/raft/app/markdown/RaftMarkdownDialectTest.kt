@@ -13,8 +13,14 @@ class RaftMarkdownDialectTest {
     @Test
     fun recognizesRaftRefsInOrdinaryGfmText() {
         assertEquals(
-            listOf("#1487", "@artin", "#visual-testing", "#visual-testing:c5c60593"),
-            "Review #1487 with @artin in #visual-testing and #visual-testing:c5c60593."
+            listOf(
+                "#1487",
+                "@artin",
+                "#visual-testing",
+                "#visual_testing:c5c60593",
+                "@release_bot",
+            ),
+            "Review #1487 with @artin in #visual-testing, #visual_testing:c5c60593, and @release_bot now."
                 .raftRefs(),
         )
     }

@@ -135,7 +135,14 @@ private fun List<SlockLexerSegment>.withRaftReferenceTokens(
 }
 
 private val RaftReferenceSourceTokenTypes: Set<IElementType> =
-    setOf(MarkdownTokenTypes.TEXT, MarkdownTokenTypes.COLON)
+    setOf(
+        MarkdownTokenTypes.TEXT,
+        MarkdownTokenTypes.COLON,
+        // `_` is legal inside Raft channel/member names. GFM lexes it as an
+        // emphasis delimiter, but within a complete ref it belongs to the ref
+        // token and must not reach the emphasis parser independently.
+        MarkdownTokenTypes.EMPH,
+    )
 
 private class SlockCodeSpanShieldingLexer : GeneratedLexer {
     private val delegate = _GFMLexer()
