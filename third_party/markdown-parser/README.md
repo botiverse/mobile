@@ -7,18 +7,24 @@ This directory vendors the common Kotlin sources of JetBrains Markdown
 
 - Repository: <https://github.com/JetBrains/markdown>
 - Upstream commit: `52368fb17e1d0faf58e2f954c8d57d034a1f2f98`
+- Botiverse fork: <https://github.com/botiverse/jetbrains-markdown>
+- Fork branch: `raft/0.7.5-mobile`
+- Fork commit: `c194082a50c6a790a2feda4af8c405d204158d61`
 - Maven coordinate: `org.jetbrains:markdown:0.7.5`
 - Source archive: `markdown-0.7.5-sources.jar`
 - Source archive SHA-256:
   `dcd211f56ed9cc0ce28ead126ee9ebecb0e311b3adb968e9538add45b7f76e46`
-- Imported payload: 102 `.kt` files: 99 common sources from the archive's
-  `org/intellij/markdown` tree, plus the frozen upstream commit's one JVM and
-  two Kotlin/Native actual implementations
+- Imported payload: 106 files: 99 common `.kt` sources, three `.flex` lexer
+  definitions, and one Ruby entity generator from the source archive, plus
+  the frozen upstream commit's one JVM and two Kotlin/Native `.kt` actual
+  implementations
 - License: Apache License 2.0; see [LICENSE](LICENSE)
 
-The 99 imported common sources are byte-identical between the source archive
-and the frozen upstream commit. The three platform actual files are copied
-byte-for-byte from that same commit.
+The 103 imported common source and generator files are byte-identical between
+the source archive and the frozen upstream commit before applying the five
+declared fork changes below. The three platform actual files are copied
+byte-for-byte from that same commit. The complete vendored source payload
+matches the corresponding paths at the Botiverse fork commit above.
 
 ## Local divergence
 
@@ -44,14 +50,18 @@ not change the parser grammar or lexer state machine.
 
 1. Download the `org.jetbrains:markdown:0.7.5` sources archive from Maven
    Central and verify the SHA-256 above.
-2. Extract only `commonMain/org/intellij/markdown/**/*.kt` into
-   `src/commonMain/kotlin` and verify that exactly 99 Kotlin files exist.
+2. Extract `commonMain/org/intellij/markdown/**/*.kt`, the three lexer inputs
+   `flavours/gfm/lexer/gfm.flex`, `flavours/space/lexer/sfm.flex`, and
+   `lexer/markdown.flex`, plus `html/entities/gen_entities.rb`, into
+   `src/commonMain/kotlin`. Verify 103 common files: 99 Kotlin and four
+   generator inputs.
 3. Copy the commit's `jvmMain` actual file and two `nativeMain` actual files
-   into the matching vendor source-set directories; verify 102 total files.
+   into the matching vendor source-set directories; verify 106 total files.
 4. Compare all imported files with upstream commit
    `52368fb17e1d0faf58e2f954c8d57d034a1f2f98`.
 5. Reapply and independently review the five local-divergence files listed
-   above.
+   above, or copy those files from Botiverse fork commit
+   `c194082a50c6a790a2feda4af8c405d204158d61`.
 
 Build wiring lives in `compose/shared/build.gradle.kts` and
 `compose/shared/build.ohos.gradle.kts`. Neither build may also depend on a
