@@ -46,6 +46,7 @@ import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
 import com.tencent.kuikly.compose.foundation.layout.aspectRatio
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
+import com.tencent.kuikly.compose.foundation.layout.BoxWithConstraints
 import com.tencent.kuikly.compose.foundation.layout.BoxScope
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.ColumnScope
@@ -58,6 +59,7 @@ import com.tencent.kuikly.compose.foundation.layout.offset
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.size
+import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.foundation.layout.widthIn
 import com.tencent.kuikly.compose.extension.nativeRef
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
@@ -1707,12 +1709,24 @@ private fun SlockFilePreviewImageEditorHistoryActions(
     }
 }
 
+internal fun slockComposerImageEditorCaptureSize(
+    imageWidth: Int,
+    imageHeight: Int,
+    maxWidth: Float,
+    maxHeight: Float,
+): Size? {
+    if (imageWidth <= 0 || imageHeight <= 0 || maxWidth <= 0f || maxHeight <= 0f) return null
+    val scale = min(maxWidth / imageWidth.toFloat(), maxHeight / imageHeight.toFloat())
+    if (!scale.isFinite() || scale <= 0f) return null
+    return Size(width = imageWidth * scale, height = imageHeight * scale)
+}
+
 @Composable
 private fun SlockFilePreviewComposerImageEditor(
     payload: SlockFilePreviewPayload,
     state: SlockComposerImageEditorState,
     saving: Boolean,
-    onCaptureRef: (ViewRef<DeclarativeBaseView<*, *>>) -> Unit,
+    onCaptureRef: (ViewRef<DeclarativeBaseView<*, *>>?) -> Unit,
     onDone: () -> Unit,
     initialTool: SlockComposerImageEditorTool = SlockComposerImageEditorTool.Pencil,
     initialPencilOptionsExpanded: Boolean = false,
@@ -1743,6 +1757,9 @@ private fun SlockFilePreviewComposerImageEditor(
     val focusManager = LocalFocusManager.current
     val editorDensity = LocalDensity.current
     val coroutineScope = rememberCoroutineScope()
+    LaunchedEffect(payload.imageUrl) {
+        onCaptureRef(null)
+    }
     fun selectTool(nextTool: SlockComposerImageEditorTool) {
         if (tool == SlockComposerImageEditorTool.Text && nextTool != SlockComposerImageEditorTool.Text) {
             focusManager.clearFocus(force = true)
@@ -1844,16 +1861,35 @@ private fun SlockFilePreviewComposerImageEditor(
             keyboardInsetExcludesBottomSafeArea = keyboardInsetExcludesBottomSafeArea,
         )
     Column(modifier = modifier.fillMaxSize()) {
-        Box(
+        // The black stage may letterbox for editing, but nativeRef must cover only source-ratio
+        // pixels. Otherwise toImage bakes the stage's black bars into the uploaded attachment.
+        BoxWithConstraints(
             modifier =
                 Modifier
                     .fillMaxWidth()
                     .weight(1f)
                     .background(Color(0xFF000000))
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .onGloballyPositioned { coordinates -> editorCanvasSize = coordinates.size }
-                    .nativeRef { ref -> onCaptureRef(ref) }
-                    .pointerInput(payload.imageUrl, tool, pencilMode, selectedPenColor) {
+                    .border(SlockStroke.Default, SlockColor.BorderBlack),
+            contentAlignment = Alignment.Center
+        ) {
+            val captureSize =
+                mosaicImage?.let { image ->
+                    slockComposerImageEditorCaptureSize(
+                        imageWidth = image.width,
+                        imageHeight = image.height,
+                        maxWidth = maxWidth.value,
+                        maxHeight = maxHeight.value,
+                    )
+                }
+            if (captureSize != null) {
+                Box(
+                    modifier =
+                        Modifier
+                            .width(captureSize.width.dp)
+                            .height(captureSize.height.dp)
+                            .onGloballyPositioned { coordinates -> editorCanvasSize = coordinates.size }
+                            .nativeRef { ref -> onCaptureRef(ref) }
+                            .pointerInput(payload.imageUrl, tool, pencilMode, selectedPenColor) {
                         detectTapGestures { position ->
                             when (tool) {
                                 SlockComposerImageEditorTool.Pencil ->
@@ -1990,9 +2026,9 @@ private fun SlockFilePreviewComposerImageEditor(
                                     }
                             }
                         }
-                    },
-            contentAlignment = Alignment.Center
-        ) {
+                            },
+                    contentAlignment = Alignment.Center
+                ) {
             payload.imageUrl?.let { source ->
                 SlockAspectFitImagePreviewSurface(
                     source = source,
@@ -2058,7 +2094,7 @@ private fun SlockFilePreviewComposerImageEditor(
                     }
                 }
             }
-            state.history.content.textAnnotations.forEach { annotation ->
+                    state.history.content.textAnnotations.forEach { annotation ->
                 Box(
                     modifier =
                         Modifier
@@ -2149,6 +2185,8 @@ private fun SlockFilePreviewComposerImageEditor(
                         maxLines = 3,
                         overflow = TextOverflow.Ellipsis
                     )
+                }
+                    }
                 }
             }
         }

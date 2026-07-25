@@ -2,6 +2,61 @@ import crypto from "node:crypto";
 
 const DIGEST = /^sha256:[a-f0-9]{64}$/;
 const REQUEST_ID = /^[A-Za-z0-9._-]{1,80}$/;
+const APK_SIGNER_SHA256 =
+  /^(?:V[0-9]+(?:\.[0-9]+)? )?Signer:?(?: #[1-9][0-9]*)?(?: \(minSdkVersion=([0-9]+), maxSdkVersion=([0-9]+)\))? certificate SHA-256 digest:\s*([A-Fa-f0-9]{64})$/;
+const APK_SIGNER_PREFIX = /^(?:V[0-9]+(?:\.[0-9]+)? )?Signer\b/;
+
+function requireAndroidDeviceSdk(deviceSdk) {
+  if (!Number.isInteger(deviceSdk) || deviceSdk < 1 || deviceSdk > 0x7fffffff) {
+    throw new Error("Android device SDK is invalid");
+  }
+}
+
+export function apksignerVerifyArgs(apk, deviceSdk) {
+  requireAndroidDeviceSdk(deviceSdk);
+  return [
+    "verify",
+    "--min-sdk-version", String(deviceSdk),
+    "--max-sdk-version", String(deviceSdk),
+    "--print-certs",
+    apk,
+  ];
+}
+
+export function selectApkSigningCertificateSha256(apksignerOutput, deviceSdk) {
+  requireAndroidDeviceSdk(deviceSdk);
+  // apksigner renders a targeted v3.1 rotation as one certificate record per
+  // SDK range. Android exposes only the certificate selected for the running
+  // device through SigningInfo.apkContentsSigners, so the host must make the
+  // same SDK-bound choice before requesting the exact-bound login envelope.
+  const certificates = [];
+  for (const rawLine of String(apksignerOutput).split(/\r?\n/)) {
+    const line = rawLine.trim();
+    const match = line.match(APK_SIGNER_SHA256);
+    if (!match) {
+      if (APK_SIGNER_PREFIX.test(line) && line.includes("certificate SHA-256 digest:")) {
+        throw new Error("APK signer certificate record is invalid");
+      }
+      continue;
+    }
+    const scoped = match[1] !== undefined || match[2] !== undefined;
+    if (scoped && (match[1] === undefined || match[2] === undefined)) {
+      throw new Error("APK signer SDK range is invalid");
+    }
+    const minSdk = scoped ? Number(match[1]) : 1;
+    const maxSdk = scoped ? Number(match[2]) : 0x7fffffff;
+    if (
+      !Number.isInteger(minSdk) || !Number.isInteger(maxSdk) ||
+      minSdk < 1 || maxSdk < minSdk || maxSdk > 0x7fffffff
+    ) throw new Error("APK signer SDK range is invalid");
+    certificates.push({ minSdk, maxSdk, digest: match[3].toLowerCase() });
+  }
+  const applicable = certificates.filter(({ minSdk, maxSdk }) => deviceSdk >= minSdk && deviceSdk <= maxSdk);
+  if (applicable.length !== 1) {
+    throw new Error("APK must have exactly one signing certificate for the Android device SDK");
+  }
+  return `sha256:${applicable[0].digest}`;
+}
 
 export function canonicalJson(value) {
   if (value === null || typeof value === "boolean" || typeof value === "number" || typeof value === "string") {

@@ -19,18 +19,6 @@ class AppUpdatePageTest {
     }
 
     @Test
-    fun `release notes url requests target Hands version in selected language`() {
-        assertEquals(
-            "https://quiver.oranix.io/notes/raft-android?version_code=1060000&lang=en",
-            sharedSettingsReleaseNotesUrlForLocale("1060000", "en")
-        )
-        assertEquals(
-            "https://quiver.oranix.io/notes/raft-android?version_code=1060000&lang=zh-CN",
-            sharedSettingsReleaseNotesUrlForLocale("1060000", "zh-CN")
-        )
-    }
-
-    @Test
     fun appUpdateActionReflectsHostStatus() {
         assertEquals("Retry", appUpdatePrimaryActionLabel(null, actionRunning = false))
         assertEquals(
@@ -47,7 +35,34 @@ class AppUpdatePageTest {
                 actionRunning = false
             )
         )
+        assertEquals(
+            "Installing",
+            appUpdatePrimaryActionLabel(
+                SharedSettingsUpdateCheckSnapshot(statusLabel = "installing"),
+                actionRunning = false
+            )
+        )
         assertEquals("Working...", appUpdatePrimaryActionLabel(null, actionRunning = true))
+        assertEquals(
+            "Downloading",
+            appUpdatePrimaryActionLabel(
+                SharedSettingsUpdateCheckSnapshot(
+                    statusLabel = "download",
+                    actionLabel = "download"
+                ),
+                actionRunning = true
+            )
+        )
+        assertEquals(
+            "Working...",
+            appUpdatePrimaryActionLabel(
+                SharedSettingsUpdateCheckSnapshot(
+                    statusLabel = "install",
+                    actionLabel = "install"
+                ),
+                actionRunning = true
+            )
+        )
     }
 
     @Test
@@ -62,6 +77,34 @@ class AppUpdatePageTest {
         )
         assertFalse(
             appUpdatePrimaryActionEnabled(
+                snapshot =
+                    SharedSettingsUpdateCheckSnapshot(
+                        supported = true,
+                        updateAvailable = true,
+                        statusLabel = "download",
+                        actionLabel = "download"
+                    ),
+                loading = false,
+                actionRunning = true,
+                errorCode = null
+            )
+        )
+        assertTrue(
+            appUpdatePrimaryActionEnabled(
+                snapshot =
+                    SharedSettingsUpdateCheckSnapshot(
+                        supported = true,
+                        updateAvailable = true,
+                        statusLabel = "download",
+                        actionLabel = "download"
+                    ),
+                loading = false,
+                actionRunning = false,
+                errorCode = "download_canceled"
+            )
+        )
+        assertFalse(
+            appUpdatePrimaryActionEnabled(
                 snapshot = SharedSettingsUpdateCheckSnapshot(supported = false, updateAvailable = true),
                 loading = false,
                 actionRunning = false,
@@ -71,6 +114,14 @@ class AppUpdatePageTest {
         assertFalse(
             appUpdatePrimaryActionEnabled(
                 snapshot = SharedSettingsUpdateCheckSnapshot(supported = true, updateAvailable = true, statusLabel = "downloading"),
+                loading = false,
+                actionRunning = false,
+                errorCode = null
+            )
+        )
+        assertFalse(
+            appUpdatePrimaryActionEnabled(
+                snapshot = SharedSettingsUpdateCheckSnapshot(supported = true, updateAvailable = true, statusLabel = "installing"),
                 loading = false,
                 actionRunning = false,
                 errorCode = null

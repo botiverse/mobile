@@ -8,6 +8,11 @@ on:
         required: false
         type: string
         default: ""
+      version_build:
+        description: "Alpha build component (0-99); use a strictly increasing value for update testing"
+        required: false
+        type: string
+        default: "1"
   pull_request:
     types: [labeled, synchronize]
 
@@ -56,6 +61,9 @@ jobs:
         shell: bash
         run: sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
+      - name: Apply Gradle cache policy
+        uses: ./.github/actions/gradle-cache-policy
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
 
@@ -78,11 +86,18 @@ jobs:
         working-directory: compose
         env:
           SLOCK_QUIVER_CHANNEL: debug
+          ALPHA_VERSION_BUILD: ${{ github.event_name == 'workflow_dispatch' && inputs.version_build || '0' }}
         shell: bash
         run: |
+          if ! [[ "${ALPHA_VERSION_BUILD}" =~ ^[0-9]{1,2}$ ]]; then
+            echo "version_build must be an integer from 0 to 99" >&2
+            exit 1
+          fi
           ./gradlew \
             :shared:generateSqlDelightInterface \
             :androidApp:assembleAlpha \
+            :androidApp:copyHandsNativeSymbols \
+            "-PversionBuild=${ALPHA_VERSION_BUILD}" \
             -PversionSuffix=alpha \
             --no-daemon --max-workers=${{ env.GRADLE_MAX_WORKERS }} --console=plain
 
@@ -175,12 +190,41 @@ jobs:
           grep -q "package: name='build.raft.app.alpha'" aapt-badging.log
           grep -q "application-label:'Raft Alpha'" aapt-badging.log
           grep -q "versionName='[^']*-alpha'" aapt-badging.log
+          VERSION_CODE="$(sed -n "s/^package: .* versionCode='\([^']*\)'.*/\1/p" aapt-badging.log | head -n 1)"
+          VERSION_NAME="$(sed -n "s/^package: .* versionName='\([^']*\)'.*/\1/p" aapt-badging.log | head -n 1)"
+          test -n "${VERSION_CODE}"
+          test -n "${VERSION_NAME}"
           SOURCE_SHA="${{ steps.source.outputs.sha }}"
           cp "$APK" androidApp-alpha-${SOURCE_SHA::9}.apk
           echo "apk=androidApp-alpha-${SOURCE_SHA::9}.apk" >> "$GITHUB_OUTPUT"
           echo "sha256=$(sha256sum "androidApp-alpha-${SOURCE_SHA::9}.apk" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "version_code=${VERSION_CODE}" >> "$GITHUB_OUTPUT"
+          echo "version_name=${VERSION_NAME}" >> "$GITHUB_OUTPUT"
           echo "legacy_signer_sha256=${LEGACY_SIGNER_SHA256}" >> "$GITHUB_OUTPUT"
           echo "rotated_signer_sha256=${ROTATED_SIGNER_SHA256}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify exact Hands native symbols
+        id: native-symbols
+        shell: bash
+        run: |
+          set -euo pipefail
+          SYMBOLS_DIR="compose/androidApp/build/outputs/hands-native-symbols"
+          if [ ! -d "${SYMBOLS_DIR}" ]; then
+            echo "Hands native symbols output directory was not created" >&2
+            exit 1
+          fi
+          mapfile -t ARCHIVES < <(find "${SYMBOLS_DIR}" -maxdepth 1 -type f -name '*-native-symbols.zip' | sort)
+          if [ "${#ARCHIVES[@]}" -ne 1 ]; then
+            echo "Expected exactly one Hands native symbols classifier, found ${#ARCHIVES[@]}" >&2
+            printf '  %s\n' "${ARCHIVES[@]}" >&2
+            exit 1
+          fi
+          ARCHIVE="${ARCHIVES[0]}"
+          scripts/verify_android_native_symbols.sh \
+            --apk "${{ steps.verify.outputs.apk }}" \
+            --symbols "${ARCHIVE}"
+          echo "archive=${ARCHIVE}" >> "$GITHUB_OUTPUT"
+          echo "sha256=$(sha256sum "${ARCHIVE}" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
 
       - name: Upload alpha APK
         uses: actions/upload-artifact@v4
@@ -193,6 +237,14 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      - name: Upload exact Hands native symbols
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-alpha-native-symbols-${{ github.event.pull_request.number || github.run_number }}-${{ steps.source.outputs.sha }}
+          path: ${{ steps.native-symbols.outputs.archive }}
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Summary
         shell: bash
         run: |
@@ -200,8 +252,10 @@ jobs:
             echo "## Android .alpha validation package"
             echo "- Ref: \`${{ steps.source.outputs.sha }}\`"
             echo "- Package: \`build.raft.app.alpha\`"
+            echo "- Version: \`${{ steps.verify.outputs.version_name }} (${{ steps.verify.outputs.version_code }})\`"
             echo "- API 24-32 signer SHA-256: \`${{ steps.verify.outputs.legacy_signer_sha256 }}\`"
             echo "- API 33+ signer SHA-256: \`${{ steps.verify.outputs.rotated_signer_sha256 }}\`"
             echo "- APK SHA-256: \`${{ steps.verify.outputs.sha256 }}\`"
+            echo "- Hands native symbols SHA-256: \`${{ steps.native-symbols.outputs.sha256 }}\`"
             echo "- Artifact retention: 7 days"
           } >> "$GITHUB_STEP_SUMMARY"

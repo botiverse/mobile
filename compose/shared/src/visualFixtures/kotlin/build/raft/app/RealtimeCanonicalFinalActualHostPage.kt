@@ -188,7 +188,54 @@ fun buildCanonicalFinalTerminalPayload(
     return payload
 }
 
-private fun checkSuccessorRetained(
+/**
+ * Successor-retention barrier. A live successor may legitimately re-register its own slot while
+ * async first-load state settles, and the production lifecycle is dispose-then-register, so the
+ * slot set can be transiently INCOMPLETE between frames (run 30076537436 attempt 1: ThreadFeature
+ * absent at a single sample while every other successor id stayed in place). Slot completeness is
+ * therefore sampled until it settles, bounded by [timeoutMs]; a persistent gap is a real
+ * retention loss and fails with the actual trace.
+ *
+ * The non-restoration contract is NOT deferred: every sample — initial and each resample — must
+ * be free of old-generation ids. A slot that transiently restores a forbidden id fails
+ * immediately even if a fresh id would have replaced it later. Public so the connected suite can
+ * prove all three behaviors deterministically with a scripted sampler.
+ */
+suspend fun awaitCanonicalFinalSuccessorRetention(
+    expectedSurfaces: List<String>,
+    forbiddenIdsBySlot: Map<String, String>,
+    label: String,
+    timeoutMs: Long = 15_000L,
+    delayMs: Long = 50L,
+    sample: suspend () -> String,
+): String {
+    val expected = expectedSurfaces.sorted()
+
+    fun assertNoRestoration(trace: String) {
+        registrationIdsBySlot(trace).forEach { (slot, registrationId) ->
+            val forbidden = forbiddenIdsBySlot[slot] ?: return@forEach
+            check(registrationId != forbidden) {
+                "$label; slot $slot restored old-generation registration $forbidden actual=$trace"
+            }
+        }
+    }
+
+    var trace = sample()
+    assertNoRestoration(trace)
+    var elapsed = 0L
+    while (registrationIdsBySlot(trace).keys.sorted() != expected && elapsed < timeoutMs) {
+        delay(delayMs)
+        elapsed += delayMs
+        trace = sample()
+        assertNoRestoration(trace)
+    }
+    check(registrationIdsBySlot(trace).keys.sorted() == expected) {
+        "$label; successor slots incomplete after ${elapsed}ms settle expected=$expected actual=$trace"
+    }
+    return trace
+}
+
+private suspend fun checkSuccessorRetained(
     run: ActualHostRun,
     provider: SlockSharedStoreProvider,
     scopeKey: String,
@@ -196,16 +243,12 @@ private fun checkSuccessorRetained(
     forbiddenIdsBySlot: Map<String, String>,
     label: String,
 ) {
-    val trace = run.registrationTrace(provider, scopeKey)
-    val currentIdsBySlot = registrationIdsBySlot(trace)
-    check(currentIdsBySlot.keys.sorted() == expectedSurfaces.sorted()) {
-        "$label; successor slots incomplete expected=${expectedSurfaces.sorted()} actual=$trace"
-    }
-    currentIdsBySlot.forEach { (slot, registrationId) ->
-        val forbidden = forbiddenIdsBySlot[slot] ?: return@forEach
-        check(registrationId != forbidden) {
-            "$label; slot $slot restored old-generation registration $forbidden actual=$trace"
-        }
+    awaitCanonicalFinalSuccessorRetention(
+        expectedSurfaces = expectedSurfaces,
+        forbiddenIdsBySlot = forbiddenIdsBySlot,
+        label = label,
+    ) {
+        run.registrationTrace(provider, scopeKey)
     }
 }
 
@@ -1086,6 +1129,12 @@ private fun createActualThreadHost(
             conversationRepository = null,
             channelRepository = channelRepository,
             messageStore = provider.threadMessageStore,
+            replyCacheIdentityAuthority = {
+                provider.captureThreadReplyCacheIdentity(scope)
+            },
+            replyCacheIdentityTransitionWaiter = { transitionAnchor ->
+                provider.awaitThreadReplyCacheIdentityTransition(scope, transitionAnchor)
+            },
             payloadStore = provider.threadPayloadStore,
             agentsApiClient = SlockAgentsApiClient(SlockAgentsNetworkApi(networkClient)),
             diagnosticsLogger = { message -> bridge.log("actual_host_thread_api $message") },

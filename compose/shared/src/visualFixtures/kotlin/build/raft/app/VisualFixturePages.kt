@@ -5,6 +5,18 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import build.raft.app.base.BasePager
 import build.raft.app.data.AppLocale
+import build.raft.app.data.SharedAgentCreateDataSchema
+import build.raft.app.data.SharedAgentCreateFieldCopy
+import build.raft.app.data.SharedAgentCreateFieldSchema
+import build.raft.app.data.SharedAgentCreateFormCapabilities
+import build.raft.app.data.SharedAgentCreateFormDefinition
+import build.raft.app.data.SharedAgentCreateFormOption
+import build.raft.app.data.SharedAgentCreateFormOptionSource
+import build.raft.app.data.SharedAgentCreateFormOptionSourceRef
+import build.raft.app.data.SharedAgentCreateUiSchema
+import build.raft.app.data.SharedAgentCreateVisibilityRule
+import build.raft.app.data.SharedResolvedAgentCreateForm
+import build.raft.app.data.SharedRuntimeFormDefinitionRef
 import build.raft.app.data.stringDescLocaleType
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.unit.dp
@@ -130,6 +142,14 @@ internal class ComposeThreadHeaderVisualPage : BasePager() {
     }
 }
 
+@Page("compose_task797_thread_header_visual", supportInLocal = true)
+internal class ComposeTask797ThreadHeaderVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { Task797ThreadHeaderVisualScreen() }
+    }
+}
+
 @Page("compose_thread_dm_agent_activity_header_visual", supportInLocal = true)
 internal class ComposeThreadDmAgentActivityHeaderVisualPage : BasePager() {
     override fun willInit() {
@@ -159,6 +179,14 @@ internal class ComposeChannelSettingsPanelVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
         setContent { ChannelSettingsPanelVisualScreen() }
+    }
+}
+
+@Page("compose_channel_settings_pinned_panel_visual", supportInLocal = true)
+internal class ComposeChannelSettingsPinnedPanelVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { ChannelSettingsPanelVisualScreen(pinned = true) }
     }
 }
 
@@ -243,6 +271,38 @@ internal class ComposeHomeSearchVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
         setContent { HomeSearchVisualContent() }
+    }
+}
+
+@Page("compose_home_search_channel_pin_visual", supportInLocal = true)
+internal class ComposeHomeSearchChannelPinVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { HomeSearchPinVisualContent() }
+    }
+}
+
+@Page("compose_home_search_dm_pin_visual", supportInLocal = true)
+internal class ComposeHomeSearchDmPinVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { HomeSearchPinVisualContent(query = "reviewer") }
+    }
+}
+
+@Page("compose_home_search_agent_pin_visual", supportInLocal = true)
+internal class ComposeHomeSearchAgentPinVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { HomeSearchPinVisualContent(query = "developer") }
+    }
+}
+
+@Page("compose_home_search_human_pin_visual", supportInLocal = true)
+internal class ComposeHomeSearchHumanPinVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { HomeSearchPinVisualContent(query = "pin human") }
     }
 }
 
@@ -384,6 +444,111 @@ internal class ComposeCreateAgentDialogVisualPage : BasePager() {
         super.willInit()
         setContent { CreateAgentDialogVisualContent() }
     }
+}
+
+@Page("compose_create_agent_builtin_dialog_visual", supportInLocal = true)
+internal class ComposeCreateAgentBuiltInDialogVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent {
+            SharedCreateAgentDialog(
+                submitting = false,
+                errorMessage = null,
+                initialName = "Product-QA-Bot",
+                initialDescription = "Checks release screenshots before merge.",
+                initialRuntime = "builtin",
+                machines = listOf(
+                    SharedCreateAgentMachineOption(
+                        id = "computer-mbp",
+                        name = "Jiachengs-MacBook-Pro",
+                        status = "online",
+                        runtimes = listOf("codex")
+                    )
+                ),
+                builtInFormOverride = createAgentBuiltInVisualForm(),
+                onDismiss = {},
+                onSubmit = {}
+            )
+        }
+    }
+}
+
+private fun createAgentBuiltInVisualForm(): SharedResolvedAgentCreateForm {
+    val ref = SharedRuntimeFormDefinitionRef(1, "builtin", "builtin-pi.create.v2")
+    val providerRef = SharedAgentCreateFormOptionSourceRef.Select(ref, "provider", "/providerId")
+    val modelRef = SharedAgentCreateFormOptionSourceRef.DependentSelect(ref, "model", "/model", "/providerId")
+    return SharedResolvedAgentCreateForm(
+        definition = SharedAgentCreateFormDefinition(
+            ref = ref,
+            dataSchema = SharedAgentCreateDataSchema(
+                required = setOf("providerId", "apiKey", "model"),
+                properties = mapOf(
+                    "providerId" to SharedAgentCreateFieldSchema.StringField("Provider", 1, null, false),
+                    "apiKey" to SharedAgentCreateFieldSchema.StringField("API Key", 1, null, true),
+                    "baseUrl" to SharedAgentCreateFieldSchema.StringField("Base URL", 1, "uri", false),
+                    "supportsImageInput" to SharedAgentCreateFieldSchema.BooleanField("Image input"),
+                    "model" to SharedAgentCreateFieldSchema.StringField("Model", 1, null, false),
+                    "envVars" to SharedAgentCreateFieldSchema.StringMapField("Environment Variables")
+                )
+            ),
+            uiSchema = SharedAgentCreateUiSchema(
+                order = listOf("providerId", "apiKey", "baseUrl", "supportsImageInput", "model", "envVars"),
+                advancedPointers = setOf("/envVars"),
+                visibility = listOf(
+                    SharedAgentCreateVisibilityRule("/baseUrl", "/providerId", setOf("openai-compatible", "anthropic-compatible")),
+                    SharedAgentCreateVisibilityRule("/supportsImageInput", "/providerId", setOf("openai-compatible", "anthropic-compatible"))
+                ),
+                localization = mapOf(
+                    "providerId" to SharedAgentCreateFieldCopy("Provider", "Built-in Pi uses the provider key entered here.", null),
+                    "apiKey" to SharedAgentCreateFieldCopy("API Key", null, "sk-..."),
+                    "baseUrl" to SharedAgentCreateFieldCopy("Base URL", null, "https://gateway.example.com/v1"),
+                    "supportsImageInput" to SharedAgentCreateFieldCopy(
+                        "Supports image input",
+                        "Enable only when this gateway endpoint and model accept images.",
+                        null
+                    ),
+                    "model" to SharedAgentCreateFieldCopy("Model", null, "Model ID"),
+                    "envVars" to SharedAgentCreateFieldCopy("Environment Variables", "Injected into the runtime environment.", null)
+                )
+            ),
+            capabilities = SharedAgentCreateFormCapabilities(
+                providerKinds = setOf("preset", "gateway"),
+                writeOnlyPointers = setOf("/apiKey"),
+                forbiddenPointers = setOf("/hostUserState")
+            ),
+            optionSources = mapOf("provider" to providerRef, "model" to modelRef)
+        ),
+        optionSources = mapOf(
+            "provider" to SharedAgentCreateFormOptionSource.Select(
+                ref = ref,
+                sourceId = "provider",
+                pointer = "/providerId",
+                options = listOf(
+                    SharedAgentCreateFormOption("deepseek", "DeepSeek", "preset"),
+                    SharedAgentCreateFormOption("openai-compatible", "OpenAI Compatible", "gateway"),
+                    SharedAgentCreateFormOption("anthropic-compatible", "Anthropic Compatible", "gateway")
+                ),
+                defaultValue = "openai-compatible"
+            ),
+            "model" to SharedAgentCreateFormOptionSource.DependentSelect(
+                ref = ref,
+                sourceId = "model",
+                pointer = "/model",
+                dependsOn = "/providerId",
+                optionsByValue = mapOf(
+                    "deepseek" to listOf(SharedAgentCreateFormOption("deepseek/deepseek-v4-pro", "DeepSeek V4 Pro", null)),
+                    "openai-compatible" to emptyList(),
+                    "anthropic-compatible" to emptyList()
+                ),
+                defaultValueByValue = mapOf("deepseek" to "deepseek/deepseek-v4-pro"),
+                customValueAllowedByValue = mapOf(
+                    "deepseek" to false,
+                    "openai-compatible" to true,
+                    "anthropic-compatible" to true
+                )
+            )
+        )
+    )
 }
 
 @Page("compose_tokens_palette_visual", supportInLocal = true)

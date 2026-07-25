@@ -78,12 +78,13 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.atomicfu.locks.SynchronizedObject
@@ -363,6 +364,7 @@ internal class SlockSharedStoreProvider private constructor(
     private val presenceOwnerResolver: (String) -> ProcessServerMembersOwner?,
     private val presenceOwnerFlowResolver: (String) -> Flow<ProcessServerMembersOwner?>,
     private val presenceWriteResolver: (String) -> ProcessPresenceWrite?,
+    private val replyCacheAuthContext: StateFlow<ProcessPresenceAuthContext?>,
     private val memberPresenceRealtimeSink: (RealtimePresenceAdmission, MemberPresenceUpdated) -> Unit,
     val composerDraftPersistSlice: SharedThreadComposerDraftPersistSlice,
     private val activityPersistSlice: MviPersistSlice<SharedActivityState, SharedActivityIntent>,
@@ -387,6 +389,8 @@ internal class SlockSharedStoreProvider private constructor(
     private val shellRealtimeDomainEventOwners = SlockShellScopedStoreCache<SharedRealtimeDomainEventOwner>()
     private val realtimeAuthorityRegistrations = SlockShellScopedStoreCache<String>()
     private val shellAgentDetailStores = SlockShellScopedStoreCache<SharedAgentDetailStore>()
+    private val shellCreateAgentFormStores = SlockShellScopedStoreCache<SharedCreateAgentFormStore>()
+    private val shellCreateAgentFormOwnerJobs = SlockShellScopedStoreCache<Job>()
     private val shellNavigationCoordinators = SlockShellScopedStoreCache<SharedWindowNavigationCoordinator>()
     private val shellForegroundBannerStores = SlockShellScopedStoreCache<SharedForegroundBannerStore>()
     private val processReadReceiptLock = SynchronizedObject()
@@ -627,6 +631,40 @@ internal class SlockSharedStoreProvider private constructor(
             )
         }
 
+    internal suspend fun captureThreadReplyCacheIdentity(
+        scope: SlockShellStoreScope,
+    ): ThreadReplyCacheIdentitySnapshot? {
+        // start() is UNDISTPATCHED, but an actual host can ask Thread for its first payload before
+        // the SharedFlow subscription finishes its initial suspend reconciliation. Only repair the
+        // genuinely uninitialized/null binding here: a non-null mismatched environment/session must
+        // remain fail-closed throughout the settings environment-change gap.
+        if (replyCacheAuthContext.value == null && !realtimeAuthorityProvider.ensureCurrentAuthBinding()) {
+            return null
+        }
+        return ThreadReplyCacheIdentityAuthority(
+            sessionStore = authStore,
+            selectedServerStore = selectedServerStore(scope),
+            authContextProvider = { replyCacheAuthContext.value },
+            environmentIdProvider = {
+                apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/')
+            },
+        ).capture()
+    }
+
+    internal suspend fun awaitThreadReplyCacheIdentityTransition(
+        scope: SlockShellStoreScope,
+        transitionAnchor: ThreadReplyCacheIdentityTransitionAnchor?,
+    ): Boolean =
+        awaitThreadReplyCacheIdentityTransition(
+            authContext = replyCacheAuthContext,
+            sessionStore = authStore,
+            selectedServerStore = selectedServerStore(scope),
+            transitionAnchor = transitionAnchor,
+            environmentIdProvider = {
+                apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/')
+            },
+        )
+
     fun networkClient(scope: SlockShellStoreScope): SlockNetworkClient =
         if (scope == SlockShellStoreScope.Legacy) {
             networkClient
@@ -727,6 +765,36 @@ internal class SlockSharedStoreProvider private constructor(
                 SharedAgentDetailStore(
                     logger = sharedInfoLogger("SlockAgentDetail", "shell_agent_detail_store")
                 )
+            }
+        }
+
+    fun createAgentFormStore(scope: SlockShellStoreScope): SharedCreateAgentFormStore =
+        shellCreateAgentFormStores.getOrPut(scope) {
+            val shellAuthStore = authStore(scope)
+            SharedCreateAgentFormStore(
+                computersApiClient = SlockComputersApiClient(SlockComputersNetworkApi(networkClient(scope))),
+                scope = threadSendScope,
+                ownerProvider = {
+                    shellAuthStore.readSession()?.let { session ->
+                        val environmentId = apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/')
+                        val accountId = session.user.id.trim()
+                        if (environmentId.isBlank() || accountId.isBlank()) null
+                        else SharedCreateAgentFormOwner(
+                            environmentId = environmentId,
+                            accountId = accountId,
+                            sessionGeneration = session.accessToken.hashCode().toUInt().toString(16)
+                        )
+                    }
+                },
+                logger = sharedInfoLogger("SlockCreateAgentForm", "shared_create_agent_form_store")
+            ).also { store ->
+                (shellAuthStore as? SlockAuthSessionEventSource)?.let { events ->
+                    shellCreateAgentFormOwnerJobs.getOrPut(scope) {
+                        threadSendScope.launch {
+                            events.authSessionEvents.collect { store.reconcileOwner() }
+                        }
+                    }
+                }
             }
         }
 
@@ -1057,19 +1125,10 @@ internal class SlockSharedStoreProvider private constructor(
         )
 
     private suspend fun clearActiveShellServerSelections() {
-        // A queued invalidation can resume after a new login. In that case the
-        // process session is authoritative and the stale logout must not clear
-        // the newly reconciled shell selections.
-        if (authStore.readSession() != null) return
-        selectedServerStores.clearActiveServerSelections()
-        // Close the remaining check/clear race: if login completed while the
-        // fan-out was clearing stores, immediately reconcile every live shell
-        // from the new process session.
-        authStore.readSession()?.let { restoredSession ->
-            selectedServerStores.entries().forEach { (_, selectionStore) ->
-                selectionStore.reconcile(restoredSession)
-            }
-        }
+        reconcileOrClearActiveShellServerSelections(
+            authStore = authStore,
+            selectedServerStores = selectedServerStores,
+        )
     }
 
     fun releaseShellStoreScope(scope: SlockShellStoreScope) {
@@ -1089,6 +1148,8 @@ internal class SlockSharedStoreProvider private constructor(
         shellServerMembersStores.remove(scope)
         shellRealtimeDomainEventOwners.remove(scope)
         shellAgentDetailStores.remove(scope)
+        shellCreateAgentFormOwnerJobs.remove(scope)?.cancel()
+        shellCreateAgentFormStores.remove(scope)
         shellNavigationCoordinators.remove(scope)?.clear()
         shellForegroundBannerStores.remove(scope)?.clear()
         selectedServerStores.remove(scope)
@@ -1615,6 +1676,7 @@ internal class SlockSharedStoreProvider private constructor(
                 presenceOwnerResolver = resolvePresenceOwner,
                 presenceOwnerFlowResolver = resolvePresenceOwnerFlow,
                 presenceWriteResolver = resolvePresenceWrite,
+                replyCacheAuthContext = presenceAuthContext,
                 memberPresenceRealtimeSink = memberPresenceRealtimeSink,
                 composerDraftPersistSlice =
                     SharedThreadComposerDraftPersistSlice(
@@ -1699,6 +1761,93 @@ internal class SlockSharedStoreProvider private constructor(
                         ),
                 )
             }
+        }
+    }
+}
+
+/**
+ * Converges the legitimate same-environment authority transition where durable principal B is
+ * already committed while either the provider-owned immutable context or this shell's selected
+ * server owner still names A. The caller must retire any previously published producer token before
+ * invoking this waiter. Environment mismatches, missing sessions, missing contexts, disposed routes,
+ * and sessions without a valid selected server are not repaired here and remain fail-closed.
+ */
+internal suspend fun awaitThreadReplyCacheIdentityTransition(
+    authContext: StateFlow<ProcessPresenceAuthContext?>,
+    sessionStore: SlockAuthSessionStore,
+    selectedServerStore: SelectedServerStore,
+    transitionAnchor: ThreadReplyCacheIdentityTransitionAnchor?,
+    environmentIdProvider: () -> String,
+    beforeSelectedServerReconcile: suspend () -> Unit = {},
+): Boolean {
+    while (true) {
+        val environmentId = environmentIdProvider().trim().trimEnd('/')
+        val session = sessionStore.readSession() ?: return false
+        val principalId = session.user.id.trim().takeIf { it.isNotBlank() } ?: return false
+        val observedContext = authContext.value ?: return false
+        if (environmentId.isBlank() || observedContext.environmentId != environmentId) return false
+        if (observedContext.accountId != principalId) {
+            authContext.first { current -> current != observedContext }
+            continue
+        }
+        if (selectedServerStore.disposed.value) return false
+
+        val anchor = transitionAnchor ?: return false
+        if (
+            anchor.environmentId != environmentId ||
+            anchor.principalId == principalId ||
+            observedContext.authorityGeneration <= anchor.authGeneration
+        ) {
+            return false
+        }
+
+        // Capture remains strictly fail-closed on an A-owned route. Only after the old producer
+        // token has been retired, session/context agree on B, and the retired A anchor proves this
+        // exact account transition may the provider-owned readiness transition move the route to B.
+        beforeSelectedServerReconcile()
+        val selection =
+            selectedServerStore.convergeReplyCacheAuthorityTransition(
+                expectedPreviousOwner = anchor.principalId,
+                session = session,
+            ) ?: return false
+        if (selection.serverId.isNullOrBlank() || selectedServerStore.disposed.value) return false
+
+        val confirmedEnvironmentId = environmentIdProvider().trim().trimEnd('/')
+        val confirmedSession = sessionStore.readSession()
+        val confirmedContext = authContext.value
+        if (
+            confirmedEnvironmentId == environmentId &&
+            confirmedSession == session &&
+            confirmedContext == observedContext
+        ) {
+            return true
+        }
+        // A concurrent environment/session/context transition invalidated the reconciliation.
+        // Resample the whole provider-owned tuple; the next iteration preserves all fail-close gates.
+    }
+}
+
+/**
+ * Handles a possibly queued process-session invalidation without letting an older Cleared delivery
+ * strand live shells on the departed principal. A non-null process session is authoritative: every
+ * live shell is reconciled to it. Only a still-null session authorizes clearing active selections.
+ */
+internal suspend fun reconcileOrClearActiveShellServerSelections(
+    authStore: SlockAuthSessionStore,
+    selectedServerStores: SlockShellScopedStoreCache<SelectedServerStore>,
+) {
+    authStore.readSession()?.let { currentSession ->
+        selectedServerStores.entries().forEach { (_, selectionStore) ->
+            selectionStore.reconcile(currentSession)
+        }
+        return
+    }
+    selectedServerStores.clearActiveServerSelections()
+    // Close the remaining check/clear race: if login completed while the fan-out was clearing
+    // stores, immediately reconcile every live shell from the new process session.
+    authStore.readSession()?.let { restoredSession ->
+        selectedServerStores.entries().forEach { (_, selectionStore) ->
+            selectionStore.reconcile(restoredSession)
         }
     }
 }
@@ -2435,7 +2584,9 @@ private fun RealtimeEvent.realtimeDomainKey(serverId: String): String? =
         is DirectMessageCreated ->
             "dm:new:$serverId:${channelId.value}"
         is ThreadUpdated ->
-            "thread:updated:$serverId:${threadChannelId.value}:${parentMessageId.value}:$replyCount:${unreadCount ?: -1}:${firstUnreadMessageId?.value.orEmpty()}:${lastReplyAt.orEmpty()}"
+            "thread:updated:$serverId:${threadChannelId.value}:${parentMessageId.value}:$replyCount:${unreadCount ?: -1}:" +
+                "${firstUnreadMessageId?.value.orEmpty()}:${lastReplyAt.orEmpty()}:" +
+                "${latestReply?.messageId.orEmpty()}:${latestReply?.seq ?: -1L}"
         is TaskCreated ->
             "task:created:$serverId:${tasks.joinToString("|") { it.taskDomainKey() }}"
         is TaskUpdated ->

@@ -45,6 +45,7 @@ import com.tencent.kuikly.core.pager.Pager
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.geometry.Rect
 import com.tencent.kuikly.compose.ui.graphics.Color
+import com.tencent.kuikly.compose.ui.layout.boundsInRoot
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.text.AnnotatedString
 import com.tencent.kuikly.compose.ui.text.InlineBoxSpanStyle
@@ -79,6 +80,7 @@ import com.tencent.kuiklybase.markdown.model.DefaultMarkdownColors
 import com.tencent.kuiklybase.markdown.model.DefaultMarkdownTypography
 import com.tencent.kuiklybase.markdown.model.MarkdownAnnotator
 import com.tencent.kuiklybase.markdown.compose.LocalSlockMarkdownAnnotationRevision
+import com.tencent.kuiklybase.markdown.compose.LocalSlockMarkdownRowRenderCostSink
 import com.tencent.kuiklybase.markdown.compose.SlockMarkdownNodeTrace
 import com.tencent.kuiklybase.markdown.compose.SlockMarkdownNodeTraceSink
 import com.tencent.kuiklybase.markdown.compose.SlockMarkdownSubTrace
@@ -89,6 +91,7 @@ import com.tencent.kuiklybase.markdown.model.markdownAnnotatorConfig
 import com.tencent.kuiklybase.markdown.compose.elements.MarkdownCode
 import com.tencent.kuiklybase.markdown.compose.elements.MarkdownCodeBlock
 import com.tencent.kuiklybase.markdown.compose.elements.MarkdownCodeFence
+import com.tencent.kuiklybase.markdown.compose.elements.MarkdownHeader
 import com.tencent.kuiklybase.markdown.model.MarkdownDimens
 import com.tencent.kuiklybase.markdown.model.markdownPadding
 import com.tencent.kuiklybase.markdown.model.prepareMarkdownContent
@@ -1867,6 +1870,8 @@ fun SlockMarkdownBody(
     resolveTagLabel: ((ThreadMarkdownTag) -> String)? = null,
     inlineContentScope: String? = null,
     activeTagKey: String? = null,
+    sectionHeadingTopPadding: Dp = 0.dp,
+    onSectionHeadingPositioned: ((Rect) -> Unit)? = null,
     performanceKey: String? = null,
     performanceLogger: (String) -> Unit = {}
 ) {
@@ -1910,6 +1915,31 @@ fun SlockMarkdownBody(
         }
         prepared
     }
+    // Option B P1 v3 reconnaissance census token (task #20, reviewed):
+    // gate-before-scan — with diagnostics OFF even the session Local read is
+    // skipped, so neither the predicate's per-char scan nor any token work
+    // executes and the vendor cost-sink Local carries null (zero work). The
+    // session instance exists only inside the Thread page subtree (null
+    // elsewhere — non-Thread markdown surfaces such as file preview never
+    // participate). The token commits to its session ONLY when this
+    // composition commits AND a valid render cost arrived; abandoned passes
+    // and rows without a valid render leave zero trace, and the session's
+    // seen-key set keeps lazy re-entries counted once per open.
+    val rowCensusSession =
+        if (slockTraceDiagnosticsEnabled()) LocalSlockMarkdownPlainCandidateSession.current else null
+    val rowCensusToken =
+        if (rowCensusSession != null && performanceKey != null) {
+            remember(rowCensusSession, performanceKey, content) {
+                SlockMarkdownRowCensusToken(
+                    session = rowCensusSession,
+                    rowKey = performanceKey,
+                    candidate = SlockMarkdownPlainCandidatePredicate.isConservativePlainCandidate(content),
+                    chars = content.length
+                )
+            }
+        } else {
+            null
+        }
     val markdownModifier =
         if (DEBUG_SLOCK_MARKDOWN_PERF_LOG && performanceKey != null) {
             val key = performanceKey
@@ -2063,8 +2093,41 @@ fun SlockMarkdownBody(
             blockQuoteBar = PaddingValues.Absolute(left = 0.dp, top = 0.dp, right = 0.dp, bottom = 0.dp)
         )
     }
-    val components = remember {
+    val components = remember(sectionHeadingTopPadding, onSectionHeadingPositioned) {
+        val sectionHeadingModifier =
+            Modifier
+                .padding(top = sectionHeadingTopPadding)
+                .let { modifier ->
+                    if (onSectionHeadingPositioned == null) {
+                        modifier
+                    } else {
+                        modifier.onGloballyPositioned { coordinates ->
+                            onSectionHeadingPositioned(coordinates.boundsInRoot())
+                        }
+                    }
+                }
         markdownComponents(
+            // Kuikly's Markdown renderer stacks top-level nodes without a
+            // spacer. Most message surfaces intentionally keep that dense
+            // layout, but document surfaces can opt into a section gap. This
+            // also reserves the paint overflow of an inline-code box before
+            // the following heading at large system font scales.
+            heading2 = { model ->
+                MarkdownHeader(
+                    model.content,
+                    model.node,
+                    style = model.typography.h2,
+                    modifier = sectionHeadingModifier
+                )
+            },
+            heading3 = { model ->
+                MarkdownHeader(
+                    model.content,
+                    model.node,
+                    style = model.typography.h3,
+                    modifier = sectionHeadingModifier
+                )
+            },
             horizontalRule = {
                 SlockMarkdownHorizontalRule()
             },
@@ -2096,12 +2159,20 @@ fun SlockMarkdownBody(
                 }
             }
         }
-    CompositionLocalProvider(
-        LocalTextProvider provides SlockMarkdownTextProvider,
-        LocalUriHandler provides uriHandler,
-        LocalSlockMarkdownBodyClick provides onClick,
-        LocalSlockMarkdownAnnotationRevision provides annotationRevision
-    ) {
+    // OFF-zero-work provider set (reviewed round 4): with diagnostics OFF the
+    // census Local is NOT part of the vararg at all — the base array is used
+    // by identity, so the production provider scope is unchanged by P1.
+    val markdownProvidedValues = slockMarkdownProvidedValuesWith(
+        arrayOf(
+            LocalTextProvider provides SlockMarkdownTextProvider,
+            LocalUriHandler provides uriHandler,
+            LocalSlockMarkdownBodyClick provides onClick,
+            LocalSlockMarkdownAnnotationRevision provides annotationRevision
+        ),
+        LocalSlockMarkdownRowRenderCostSink,
+        rowCensusToken
+    )
+    CompositionLocalProvider(*markdownProvidedValues) {
         traceMarkdownSection(SlockMarkdownTraceNames.LAYOUT, body.length) {
             // #192 long-body sub-trace: split layout phase into pre-block setup
             // vs the third-party `Markdown()` call so 5-10ms spikes can be
@@ -2545,16 +2616,27 @@ private fun SlockRichTextChromeStyleToken.toInlineBoxSpanStyle(): InlineBoxSpanS
     return InlineBoxSpanStyle(
         backgroundColor = fill.toSlockMarkdownColor(),
         borderColor = SlockColor.BorderBlack,
-        borderWidth = 1.dp,
+        borderWidth = SlockRichTextInlineBoxBorderWidthDp.dp,
         paddingStart = 4.dp,
         paddingEnd = 4.dp,
-        paddingTop = 2.dp,
-        paddingBottom = 2.dp,
+        paddingTop = SlockRichTextInlineBoxVerticalPaddingDp.dp,
+        paddingBottom = SlockRichTextInlineBoxVerticalPaddingDp.dp,
         marginStart = 2.dp,
         marginEnd = 2.dp,
         cornerRadius = 0.dp
     )
 }
+
+private const val SlockRichTextInlineBoxBorderWidthDp = 1f
+private const val SlockRichTextInlineBoxVerticalPaddingDp = 2f
+
+/**
+ * Top-level Markdown nodes do not reserve space for inline-box paint outside
+ * the text line. A following heading must clear the box's bottom padding plus
+ * border; this keeps the document opt-in tied to the actual chrome geometry.
+ */
+internal fun slockMarkdownSectionHeadingGapClearsInlineCodeChrome(gap: Dp): Boolean =
+    gap.value >= SlockRichTextInlineBoxVerticalPaddingDp + SlockRichTextInlineBoxBorderWidthDp
 
 private fun SlockRichTextColorToken?.toSlockMarkdownColor(): Color =
     requireNotNull(this) { "Slock richtext color token is required for this chrome path" }

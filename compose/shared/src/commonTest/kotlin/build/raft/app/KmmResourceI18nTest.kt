@@ -54,6 +54,40 @@ class KmmResourceI18nTest {
     }
 
     @Test
+    fun userVisibleLoadingAndToastFallbackResourcesAreGenerated() {
+        listOf(
+            MR.strings.common_loading,
+            MR.strings.common_copied,
+            MR.strings.home_error_conversation_not_ready,
+            MR.strings.home_error_notification_server_unavailable,
+            MR.strings.home_error_notification_sign_in,
+            MR.strings.home_error_conversation_unavailable,
+            MR.strings.home_error_direct_message_unavailable,
+            MR.strings.home_error_open_direct_message_failed_prefix,
+            MR.strings.auth_notice_source_licenses_sign_in,
+            MR.strings.auth_notice_report_submitted_prefix,
+            MR.strings.auth_notice_report_failed_diagnostics_copied,
+            MR.strings.member_error_report_issue,
+            MR.strings.settings_error_join_link_load_prefix,
+            MR.strings.settings_billing_action_compare_plans,
+            MR.strings.settings_pwa_install_title,
+            MR.strings.settings_pwa_install_native_detail,
+            MR.strings.channel_create_error_not_created,
+            MR.strings.members_page_title,
+            MR.strings.members_section_agents,
+            MR.strings.members_section_humans,
+            MR.strings.settings_billing_plans_title,
+            MR.strings.thread_channel_title,
+            MR.strings.thread_direct_message_title
+        ).forEach { resource ->
+            assertTrue(
+                resource.desc() is ResourceStringDesc,
+                "user-visible loading/toast fallback copy must use generated resources"
+            )
+        }
+    }
+
+    @Test
     fun bottomTabStringResourcesAreGenerated() {
         val tabResources = listOf(
             MR.strings.tab_home,

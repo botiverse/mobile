@@ -16,11 +16,13 @@ import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
 import org.gradle.maven.MavenModule
 import org.gradle.maven.MavenPomArtifact
+import java.security.MessageDigest
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 import java.util.concurrent.TimeUnit
+import java.util.zip.ZipFile
 import javax.xml.parsers.DocumentBuilderFactory
 import org.w3c.dom.Element
 
@@ -30,7 +32,138 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
-val handsAndroidSdkVersion = "0.11.2"
+val handsAndroidSdkMetadataFile = layout.projectDirectory.file("../config/hands-android-sdk.json").asFile
+val handsAndroidSdkMetadata =
+    (JsonSlurper().parse(handsAndroidSdkMetadataFile) as? Map<*, *>)
+        ?: throw GradleException("Invalid Hands Android SDK metadata: $handsAndroidSdkMetadataFile")
+
+fun handsAndroidSdkMetadataString(key: String): String =
+    handsAndroidSdkMetadata[key]
+        ?.toString()
+        ?.trim()
+        ?.takeIf { it.isNotEmpty() }
+        ?: throw GradleException("Hands Android SDK metadata is missing '$key'")
+
+val handsAndroidSdkGroup = handsAndroidSdkMetadataString("group")
+val handsAndroidSdkArtifact = handsAndroidSdkMetadataString("artifact")
+val handsAndroidSdkVersion = handsAndroidSdkMetadataString("version")
+val handsAndroidSdkModule = "$handsAndroidSdkGroup:$handsAndroidSdkArtifact"
+val handsAndroidSdkCoordinate = "$handsAndroidSdkModule:$handsAndroidSdkVersion"
+val handsAndroidSdkSourceRepo = handsAndroidSdkMetadataString("sourceRepo")
+val handsAndroidSdkSourceCommit = handsAndroidSdkMetadataString("sourceCommit")
+val handsAndroidSdkSourceTag = handsAndroidSdkMetadataString("sourceTag")
+val handsAndroidSdkPublishRunId = handsAndroidSdkMetadataString("publishRunId")
+val handsAndroidSdkNativeSymbolsArtifactId = handsAndroidSdkMetadataString("nativeSymbolsArtifactId")
+val handsAndroidSdkAarSha256 = handsAndroidSdkMetadataString("aarSha256")
+val handsAndroidSdkNativeSymbolsSha256 = handsAndroidSdkMetadataString("nativeSymbolsSha256")
+
+val handsAlphaDeltaMetadataFile = layout.projectDirectory.file("../config/hands-alpha-delta.json").asFile
+val handsAlphaDeltaMetadata =
+    (JsonSlurper().parse(handsAlphaDeltaMetadataFile) as? Map<*, *>)
+        ?: throw GradleException("Invalid Hands Alpha delta metadata: $handsAlphaDeltaMetadataFile")
+
+fun handsAlphaDeltaMetadataString(key: String): String =
+    handsAlphaDeltaMetadata[key]
+        ?.toString()
+        ?.trim()
+        ?.takeIf { it.isNotEmpty() }
+        ?: throw GradleException("Hands Alpha delta metadata is missing '$key'")
+
+val handsAlphaDeltaBuildType = handsAlphaDeltaMetadataString("enabledBuildType")
+val handsAlphaDeltaApplicationId = handsAlphaDeltaMetadataString("expectedApplicationId")
+val handsAlphaDeltaAppId = handsAlphaDeltaMetadataString("handsAppId")
+val handsAlphaDeltaAppSlug = handsAlphaDeltaMetadataString("handsAppSlug")
+val handsAlphaDeltaChannelId = handsAlphaDeltaMetadataString("handsChannelId")
+val handsAlphaDeltaChannelSlug = handsAlphaDeltaMetadataString("handsChannelSlug")
+val handsAlphaDeltaDeviceGroupId = handsAlphaDeltaMetadataString("handsDeviceGroupId")
+val handsAlphaDeltaDeviceGroupName = handsAlphaDeltaMetadataString("handsDeviceGroupName")
+val slockAndroidApplicationId = "build.raft.app"
+val handsAlphaDeltaApplicationIdSuffix = ".alpha"
+
+if (handsAlphaDeltaMetadata["schemaVersion"]?.toString() != "1") {
+    throw GradleException("Unsupported Hands Alpha delta metadata schema")
+}
+if (handsAlphaDeltaBuildType != "alpha") {
+    throw GradleException("Hands delta updates must be bound only to the alpha build type")
+}
+if (handsAlphaDeltaApplicationId != "$slockAndroidApplicationId$handsAlphaDeltaApplicationIdSuffix") {
+    throw GradleException(
+        "Hands delta applicationId must be exactly build.raft.app.alpha: $handsAlphaDeltaApplicationId"
+    )
+}
+if (handsAlphaDeltaAppSlug == "raft-android" || handsAlphaDeltaChannelSlug in setOf("main", "debug")) {
+    throw GradleException("Hands Alpha delta must use a dedicated non-production app and channel")
+}
+listOf(
+    "handsAppId" to handsAlphaDeltaAppId,
+    "handsChannelId" to handsAlphaDeltaChannelId,
+    "handsDeviceGroupId" to handsAlphaDeltaDeviceGroupId
+).forEach { (key, value) ->
+    if (!value.matches(Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"))) {
+        throw GradleException("Hands Alpha delta $key must be a lowercase UUID")
+    }
+}
+if (!handsAlphaDeltaAppSlug.matches(Regex("[a-z0-9]+(?:-[a-z0-9]+)*")) ||
+    !handsAlphaDeltaChannelSlug.matches(Regex("[a-z0-9]+(?:-[a-z0-9]+)*")) ||
+    handsAlphaDeltaDeviceGroupName != "Artin test devices"
+) {
+    throw GradleException("Invalid Hands Alpha delta app/channel/device-group binding")
+}
+
+if (handsAndroidSdkMetadata["schemaVersion"]?.toString() != "1") {
+    throw GradleException("Unsupported Hands Android SDK metadata schema")
+}
+if (handsAndroidSdkModule != "build.hands:hands-android-sdk") {
+    throw GradleException("Unsupported Hands Android SDK module: $handsAndroidSdkModule")
+}
+if (!handsAndroidSdkVersion.matches(Regex("[0-9]+\\.[0-9]+\\.[0-9]+"))) {
+    throw GradleException("Hands Android SDK version must be an exact SemVer release")
+}
+if (handsAndroidSdkSourceRepo != "https://github.com/botiverse/hands") {
+    throw GradleException("Unsupported Hands Android SDK source repository: $handsAndroidSdkSourceRepo")
+}
+if (!handsAndroidSdkSourceCommit.matches(Regex("[0-9a-f]{40}"))) {
+    throw GradleException("Hands Android SDK sourceCommit must be a full lowercase Git SHA")
+}
+if (handsAndroidSdkSourceTag != "android-sdk-v$handsAndroidSdkVersion") {
+    throw GradleException(
+        "Hands Android SDK sourceTag must match version: " +
+            "expected=android-sdk-v$handsAndroidSdkVersion actual=$handsAndroidSdkSourceTag"
+    )
+}
+if (!handsAndroidSdkPublishRunId.matches(Regex("[1-9][0-9]*")) ||
+    !handsAndroidSdkNativeSymbolsArtifactId.matches(Regex("[1-9][0-9]*"))
+) {
+    throw GradleException("Hands Android SDK publish run and symbols artifact IDs must be positive integers")
+}
+listOf(
+    "aarSha256" to handsAndroidSdkAarSha256,
+    "nativeSymbolsSha256" to handsAndroidSdkNativeSymbolsSha256
+).forEach { (key, value) ->
+    if (!value.matches(Regex("[0-9a-f]{64}"))) {
+        throw GradleException("Hands Android SDK $key must be a lowercase SHA-256")
+    }
+}
+
+fun java.io.File.sha256(): String {
+    val digest = MessageDigest.getInstance("SHA-256")
+    inputStream().buffered().use { input ->
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        while (true) {
+            val count = input.read(buffer)
+            if (count < 0) break
+            digest.update(buffer, 0, count)
+        }
+    }
+    return digest.digest().joinToString("") { byte -> "%02x".format(byte) }
+}
+
+val handsAndroidSdkAar by configurations.creating {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+    isTransitive = false
+}
+
 val handsNativeSymbols by configurations.creating {
     isCanBeConsumed = false
     isCanBeResolved = true
@@ -40,6 +173,65 @@ val handsNativeSymbols by configurations.creating {
 val copyHandsNativeSymbols by tasks.registering(Sync::class) {
     from(handsNativeSymbols)
     into(layout.buildDirectory.dir("outputs/hands-native-symbols"))
+    inputs.file(handsAndroidSdkMetadataFile).withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.files(handsAndroidSdkAar)
+
+    doLast {
+        val aars = handsAndroidSdkAar.files.filter { file -> file.isFile && file.extension == "aar" }
+        if (aars.size != 1) {
+            throw GradleException("Expected one Hands Android SDK AAR, found ${aars.map { it.name }}")
+        }
+        val actualAarSha256 = aars.single().sha256()
+        if (actualAarSha256 != handsAndroidSdkAarSha256) {
+            throw GradleException(
+                "Hands Android SDK AAR SHA-256 mismatch: " +
+                    "expected=$handsAndroidSdkAarSha256 actual=$actualAarSha256"
+            )
+        }
+
+        val archives = destinationDir.listFiles { file -> file.isFile && file.extension == "zip" }?.toList().orEmpty()
+        if (archives.size != 1) {
+            throw GradleException("Expected one Hands native-symbols ZIP, found ${archives.map { it.name }}")
+        }
+        val archive = archives.single()
+        val actualNativeSymbolsSha256 = archive.sha256()
+        if (actualNativeSymbolsSha256 != handsAndroidSdkNativeSymbolsSha256) {
+            throw GradleException(
+                "Hands native-symbols SHA-256 mismatch: " +
+                    "expected=$handsAndroidSdkNativeSymbolsSha256 actual=$actualNativeSymbolsSha256"
+            )
+        }
+
+        val manifest =
+            ZipFile(archive).use { zip ->
+                val entry = zip.getEntry("manifest.json")
+                    ?: throw GradleException("Hands native-symbols manifest.json is missing")
+                zip.getInputStream(entry).bufferedReader().use { reader ->
+                    JsonSlurper().parse(reader) as? Map<*, *>
+                }
+            } ?: throw GradleException("Hands native-symbols manifest.json is invalid")
+        val source = manifest["source"] as? Map<*, *>
+            ?: throw GradleException("Hands native-symbols source metadata is missing")
+        if (manifest["sdk_version"]?.toString() != handsAndroidSdkVersion) {
+            throw GradleException(
+                "Hands native-symbols SDK version mismatch: expected=$handsAndroidSdkVersion actual=${manifest["sdk_version"]}"
+            )
+        }
+        if (source["repo"]?.toString() != handsAndroidSdkSourceRepo ||
+            source["commit"]?.toString() != handsAndroidSdkSourceCommit
+        ) {
+            throw GradleException(
+                "Hands native-symbols source mismatch: expected=$handsAndroidSdkSourceRepo@$handsAndroidSdkSourceCommit " +
+                    "actual=${source["repo"]}@${source["commit"]}"
+            )
+        }
+        logger.lifecycle(
+            "Verified Hands Android SDK $handsAndroidSdkVersion native symbols: " +
+                "aar_sha256=$actualAarSha256 symbols_sha256=$actualNativeSymbolsSha256 " +
+                "source=$handsAndroidSdkSourceCommit publish_run=$handsAndroidSdkPublishRunId " +
+                "symbols_artifact=$handsAndroidSdkNativeSymbolsArtifactId"
+        )
+    }
 }
 
 val googleServicesConfigFiles =
@@ -357,7 +549,7 @@ android {
     testBuildType = "connectedTest"
 
     defaultConfig {
-        applicationId = "build.raft.app"
+        applicationId = slockAndroidApplicationId
         minSdk = 24
         targetSdk = 36
         versionCode = slockAndroidVersionCode
@@ -377,6 +569,9 @@ android {
         buildConfigField("Boolean", "READ_STATE_DIAGNOSTIC_OVERRIDE_ENABLED", "false")
         buildConfigField("Boolean", "QA_SESSION_BOOTSTRAP_ENABLED", "false")
         buildConfigField("Boolean", "SCREENSHOT_FEEDBACK_ENABLED", "false")
+        buildConfigField("Boolean", "HANDS_DELTA_UPDATE_ENABLED", "false")
+        buildConfigField("String", "HANDS_DELTA_APP_SLUG", "\"\"")
+        buildConfigField("String", "HANDS_DELTA_CHANNEL", "\"\"")
         buildConfigField("String", "GOOGLE_SERVER_CLIENT_ID", "\"$googleServerClientId\"")
         buildConfigField("String", "BUILD_TIME", "\"${slockBuildTime()}\"")
         buildConfigField("String", "GIT_COMMIT", "\"${slockGitCommit()}\"")
@@ -393,13 +588,16 @@ android {
         }
         create("alpha") {
             initWith(getByName("debug"))
-            applicationIdSuffix = ".alpha"
+            applicationIdSuffix = handsAlphaDeltaApplicationIdSuffix
             buildConfigField("Boolean", "SHOW_TEST_BUILD_BADGE", "true")
             buildConfigField("Boolean", "PERFORMANCE_TRACE_RING_ENABLED", "true")
             buildConfigField("Boolean", "READ_STATE_DIAGNOSTIC_OVERRIDE_ENABLED", "true")
             buildConfigField("Boolean", "QA_SESSION_BOOTSTRAP_ENABLED", "true")
             buildConfigField("Boolean", "SCREENSHOT_FEEDBACK_ENABLED", "true")
             buildConfigField("String", "QUIVER_CHANNEL", "\"debug\"")
+            buildConfigField("Boolean", "HANDS_DELTA_UPDATE_ENABLED", "true")
+            buildConfigField("String", "HANDS_DELTA_APP_SLUG", "\"$handsAlphaDeltaAppSlug\"")
+            buildConfigField("String", "HANDS_DELTA_CHANNEL", "\"$handsAlphaDeltaChannelSlug\"")
             matchingFallbacks += listOf("debug")
         }
         create("connectedTest") {
@@ -463,7 +661,7 @@ val generateReleaseOssLicenses by tasks.registering(GenerateOssLicensesTask::cla
             "com.tencent.kuiklybase:resource-core-android",
             "com.tencent.kuikly-open:compose",
             "com.tencent.kuikly-open:compose-android",
-            "build.hands:hands-android-sdk"
+            handsAndroidSdkModule
         )
     )
     overridesFile.set(layout.projectDirectory.file("../config/oss-license-overrides.json"))
@@ -484,25 +682,54 @@ kotlin {
     }
 }
 
-configurations
-    .matching { it.name.contains("ConnectedTest", ignoreCase = true) }
-    .configureEach {
-        resolutionStrategy.eachDependency {
-            when {
-                requested.group == "androidx.lifecycle" -> {
-                    useVersion("2.9.4")
-                    because("Keep connectedTest on the lifecycle artifacts already used and cached by the app build.")
-                }
+// Keep the custom connectedTest target on the production dependency graph. Forcing newer
+// lifecycle/savedstate atomic groups here previously upgraded only its Compose runtime to 1.9.x,
+// while Kuikly 2.21 is compiled against the production BOM's 1.7.x CompositionObserver ABI.
+val verifyConnectedTestComposeRuntimeAlignment by tasks.registering {
+    group = "verification"
+    description =
+        "Fails when the connectedTest target resolves a different AndroidX Compose runtime than debug."
 
-                requested.group == "androidx.savedstate" -> {
-                    useVersion("1.3.3")
-                    because("Keep connectedTest on the savedstate artifacts already used and cached by the app build.")
-                }
-            }
+    doLast {
+        fun composeRuntimeVersions(configurationName: String): Set<String> =
+            configurations.getByName(configurationName)
+                .incoming
+                .resolutionResult
+                .allComponents
+                .mapNotNull { component -> component.id as? ModuleComponentIdentifier }
+                .filter { component -> component.group == "androidx.compose.runtime" }
+                .map { component -> component.version }
+                .toSet()
+
+        val debugVersions = composeRuntimeVersions("debugRuntimeClasspath")
+        val connectedTestVersions = composeRuntimeVersions("connectedTestRuntimeClasspath")
+        if (debugVersions.size != 1) {
+            throw GradleException(
+                "Expected one production Compose runtime version in debugRuntimeClasspath, " +
+                    "resolved=$debugVersions"
+            )
         }
+        if (connectedTestVersions != debugVersions) {
+            throw GradleException(
+                "connectedTest Compose runtime must match production debug runtime: " +
+                    "debug=$debugVersions connectedTest=$connectedTestVersions"
+            )
+        }
+        logger.lifecycle(
+            "connectedTest Compose runtime aligned with debug: ${debugVersions.single()}"
+        )
     }
+}
+
+tasks.matching {
+    it.name == "assembleConnectedTest" || it.name == "assembleConnectedTestAndroidTest"
+}.configureEach {
+    dependsOn(verifyConnectedTestComposeRuntimeAlignment)
+}
 
 dependencies {
+    add(handsAndroidSdkAar.name, "$handsAndroidSdkCoordinate@aar")
+
     // Kuikly Compose shared module
     implementation(project(":shared"))
     runtimeOnly("com.tencent.kuiklybase:network-android-curl-runtime:0.1.0-raft.29")
@@ -516,6 +743,10 @@ dependencies {
     implementation(libs.androidx.metrics.performance)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
+    // Kuikly 2.21 still calls CompositionObserverKt.observe. Runtime 1.8.3 keeps that ABI
+    // and avoids the initial-layout StackOverflow reproduced with the BOM's runtime 1.7.6;
+    // runtime 1.9.x is incompatible because it replaces observe with setObserver.
+    implementation("androidx.compose.runtime:runtime:1.8.3")
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
@@ -527,8 +758,8 @@ dependencies {
     implementation(libs.googleid)
     implementation(libs.okhttp)
     implementation(libs.gson)
-    implementation("build.hands:hands-android-sdk:$handsAndroidSdkVersion")
-    add(handsNativeSymbols.name, "build.hands:hands-android-sdk:$handsAndroidSdkVersion:native-symbols@zip")
+    implementation(handsAndroidSdkCoordinate)
+    add(handsNativeSymbols.name, "$handsAndroidSdkCoordinate:native-symbols@zip")
     implementation(libs.socket.io.client)
     implementation(libs.androidsvg)
     implementation(libs.mmkv)

@@ -22,6 +22,8 @@ tags: [string]                # Tags for filtering (e.g. login, messaging, regre
 baseline_ref: string          # Visual baseline key for screenshot assertions
 timeout_seconds: int          # Max execution time (default: 120)
 max_retries: int              # Retry on flaky failure (default: 2)
+auth_fixture: string          # Canonical bootstrap fixture; `none` disables bootstrap
+launch_route: string          # Route Stamp verifies after canonical bootstrap
 
 # Device requirements
 device:

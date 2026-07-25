@@ -85,6 +85,7 @@ class ThreadFailureReasonTest {
             "thread_send_timeout" to ThreadUserFacingErrorReason.RequestTimedOut,
             "thread_network" to ThreadUserFacingErrorReason.NetworkFailed,
             "http_503" to ThreadUserFacingErrorReason.ServerUnavailable,
+            "server_missing" to ThreadUserFacingErrorReason.ServerUnavailable,
             "message_not_found" to ThreadUserFacingErrorReason.ItemNotFound,
             "attachment_too_large" to ThreadUserFacingErrorReason.AttachmentTooLarge,
             "rate_limited" to ThreadUserFacingErrorReason.RateLimited,

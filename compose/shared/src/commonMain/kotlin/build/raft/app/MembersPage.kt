@@ -828,6 +828,12 @@ data class KuiklyMembersLabels(
     val addHuman: String = "Add human"
 )
 
+internal fun canonicalMembersDisplayText(
+    value: String,
+    canonicalDefault: String,
+    localizedDefault: String
+): String = if (value == canonicalDefault) localizedDefault else value
+
 private val membersSmokePayload = KuiklyMembersPayload(
     title = "Members",
     members = listOf(
@@ -1183,10 +1189,12 @@ internal fun MembersPageContent() {
     }
     val bridgeCallScope = rememberCoroutineScope()
     val linkNavigator = rememberSlockLinkNavigator(pager, bridge)
+    val copiedMessage = stringResource(MR.strings.common_copied)
     val settingsCapabilities =
-        remember(bridge, bridgeCallScope, linkNavigator) {
+        remember(bridge, bridgeCallScope, linkNavigator, copiedMessage) {
             BridgeSettingsPlatformCapabilities(
                 bridge = bridge,
+                copiedMessage = copiedMessage,
                 bridgeCallContext = bridgeCallScope.kuiklyBridgeCallContext(),
                 openUrlHandler = { url -> linkNavigator.open(url) }
             )
@@ -1200,6 +1208,7 @@ internal fun MembersPageContent() {
     val networkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
     val serverMembersStore = remember(sharedStores, storeScope) { sharedStores.serverMembersStore(storeScope) }
     val agentDetailStore = remember(sharedStores, storeScope) { sharedStores.agentDetailStore(storeScope) }
+    val createAgentFormStore = remember(sharedStores, storeScope) { sharedStores.createAgentFormStore(storeScope) }
     val agentsApiClient = remember(networkClient) {
         build.raft.app.data.SlockAgentsApiClient(
             transport = build.raft.app.data.SlockAgentsNetworkApi(networkClient),
@@ -1583,6 +1592,8 @@ internal fun MembersPageContent() {
         createAgentRuntimeModelsByMachineAndRuntime = createAgentRuntimeModels,
         createAgentRuntimeModelLoadsInFlight = createAgentRuntimeModelLoadsInFlight,
         createAgentLoadRuntimeModels = loadRuntimeModels,
+        createAgentFormStore = createAgentFormStore,
+        createAgentServerId = serverId,
         inviteHumanSubmit = inviteHumanSubmit,
         inviteHumanJoinLinkLoading = inviteJoinLinkLoading,
         inviteHumanJoinLinkUrl = inviteJoinLinkUrl,
@@ -1765,6 +1776,7 @@ internal fun seedRemoteAgentProfile(
 
 private class MemberDetailRouteProvider(
     val bridge: BridgeModule,
+    val reportIssueFailedMessage: String,
     val authStore: SlockAuthSessionStore,
     val memberRepository: MemberRepository,
     val channelRepository: ChannelRepository,
@@ -2210,7 +2222,7 @@ private class MemberDetailRouteProvider(
             )
         )
         if (result !is DataResult.Content) {
-            bridge.toast("Unable to report agent issue")
+            bridge.toast(reportIssueFailedMessage)
         }
         return result
     }
@@ -2221,6 +2233,7 @@ private fun rememberMemberDetailRouteProvider(
     pager: Pager,
     bridge: BridgeModule
 ): MemberDetailRouteProvider {
+    val reportIssueFailedMessage = stringResource(MR.strings.member_error_report_issue)
     val sharedStores = remember { build.raft.app.data.SlockSharedStoreRegistry.get(bridge) }
     val storeScope = remember(pager.pageData.params.toString(), pager.pagerId) {
         pager.pageData.params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
@@ -2293,6 +2306,7 @@ private fun rememberMemberDetailRouteProvider(
     }
     return remember(
         bridge,
+        reportIssueFailedMessage,
         authStore,
         memberRepository,
         channelRepository,
@@ -2310,6 +2324,7 @@ private fun rememberMemberDetailRouteProvider(
     ) {
         MemberDetailRouteProvider(
             bridge = bridge,
+            reportIssueFailedMessage = reportIssueFailedMessage,
             authStore = authStore,
             memberRepository = memberRepository,
             channelRepository = channelRepository,
@@ -3380,6 +3395,8 @@ internal fun MembersRouteContent(
     createAgentRuntimeModelsByMachineAndRuntime: Map<Pair<String, String>, SharedCreateAgentRuntimeModelCatalog> = emptyMap(),
     createAgentRuntimeModelLoadsInFlight: Set<Pair<String, String>> = emptySet(),
     createAgentLoadRuntimeModels: (machineId: String, runtime: String, force: Boolean) -> Unit = { _, _, _ -> },
+    createAgentFormStore: build.raft.app.data.SharedCreateAgentFormStore? = null,
+    createAgentServerId: String? = null,
     /**
      * Permission gate for showing the agents "+". Defaults to false (no create).
      * When true, the agents "+" is rendered. When false, the "+" is hidden.
@@ -3422,6 +3439,8 @@ internal fun MembersRouteContent(
         createAgentRuntimeModelsByMachineAndRuntime = createAgentRuntimeModelsByMachineAndRuntime,
         createAgentRuntimeModelLoadsInFlight = createAgentRuntimeModelLoadsInFlight,
         createAgentLoadRuntimeModels = createAgentLoadRuntimeModels,
+        createAgentFormStore = createAgentFormStore,
+        createAgentServerId = createAgentServerId,
         inviteHumanSubmit = inviteHumanSubmit,
         inviteHumanJoinLinkLoading = inviteHumanJoinLinkLoading,
         inviteHumanJoinLinkUrl = inviteHumanJoinLinkUrl,
@@ -3454,6 +3473,8 @@ internal fun MembersListContent(
     createAgentRuntimeModelsByMachineAndRuntime: Map<Pair<String, String>, SharedCreateAgentRuntimeModelCatalog> = emptyMap(),
     createAgentRuntimeModelLoadsInFlight: Set<Pair<String, String>> = emptySet(),
     createAgentLoadRuntimeModels: (machineId: String, runtime: String, force: Boolean) -> Unit = { _, _, _ -> },
+    createAgentFormStore: build.raft.app.data.SharedCreateAgentFormStore? = null,
+    createAgentServerId: String? = null,
     inviteHumanSubmit: (suspend (emails: List<String>) -> DataResult<Unit>)? = null,
     inviteHumanJoinLinkLoading: Boolean = false,
     inviteHumanJoinLinkUrl: String? = null,
@@ -3467,6 +3488,24 @@ internal fun MembersListContent(
     onListStateSnapshot: (AppShellMembersListState) -> Unit = {},
     onRefresh: () -> Unit = {}
 ) {
+    val displayTitle =
+        canonicalMembersDisplayText(
+            value = payload.title,
+            canonicalDefault = "Members",
+            localizedDefault = stringResource(MR.strings.members_page_title)
+        )
+    val displayAgentsLabel =
+        canonicalMembersDisplayText(
+            value = payload.labels.agents,
+            canonicalDefault = "AGENTS",
+            localizedDefault = stringResource(MR.strings.members_section_agents)
+        )
+    val displayHumansLabel =
+        canonicalMembersDisplayText(
+            value = payload.labels.humans,
+            canonicalDefault = "HUMANS",
+            localizedDefault = stringResource(MR.strings.members_section_humans)
+        )
     val groupedMembers = remember(payload.members) {
         payload.members.groupBy {
             when (it.kind) {
@@ -3546,7 +3585,7 @@ internal fun MembersListContent(
             .fillMaxSize()
             .background(SlockColor.SurfaceWhite)
     ) {
-        MembersPageHeader(title = payload.title, refreshing = refreshing, onBack = onBack)
+        MembersPageHeader(title = displayTitle, refreshing = refreshing, onBack = onBack)
         LazyColumn(
             state = listState,
             // React parity: the web members view pads the scroll container itself (Sidebar
@@ -3570,7 +3609,7 @@ internal fun MembersListContent(
             item { Spacer(Modifier.height(SlockSpacing.Md)) }
             item {
                 SlockCollapsibleSectionHeader(
-                    label = payload.labels.agents,
+                    label = displayAgentsLabel,
                     count = agents.size,
                     expanded = agentsExpanded,
                     onExpandedChange = { agentsExpanded = it },
@@ -3634,7 +3673,7 @@ internal fun MembersListContent(
             item {
                 Spacer(Modifier.height(SlockSpacing.Sm))
                 SlockCollapsibleSectionHeader(
-                    label = payload.labels.humans,
+                    label = displayHumansLabel,
                     count = humans.size,
                     expanded = humansExpanded,
                     onExpandedChange = { humansExpanded = it },
@@ -3679,6 +3718,8 @@ internal fun MembersListContent(
             runtimeModelsByMachineAndRuntime = createAgentRuntimeModelsByMachineAndRuntime,
             runtimeModelLoadsInFlight = createAgentRuntimeModelLoadsInFlight,
             onRuntimeModelsRequest = createAgentLoadRuntimeModels,
+            createAgentFormStore = createAgentFormStore,
+            createAgentServerId = createAgentServerId,
             currentAgentCount = createAgentCurrentAgentCount,
             maxAgents = createAgentMaxAgents,
             onDismiss = {

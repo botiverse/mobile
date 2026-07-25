@@ -142,6 +142,61 @@ class InboxSavedSearchRepositoryDataSourceTest {
     }
 
     @Test
+    fun inboxRepositoryMapsBoundedReplyPreviewIdentityWithoutChangingAuthoritativeCount() = runBlocking {
+        val repository =
+            RealInboxRepository(
+                sampleStore(),
+                FakeInboxNetworkClient(
+                    inboxJson =
+                        """
+                        {
+                          "items": [
+                            {
+                              "kind": "thread",
+                              "threadChannelId": "thread-1",
+                              "parentMessageId": "parent-1",
+                              "parentChannelId": "channel-1",
+                              "replyCount": 8,
+                              "latestReplies": [
+                                {
+                                  "messageId": "reply-7",
+                                  "seq": 7,
+                                  "preview": "hello",
+                                  "senderId": "agent-1",
+                                  "senderType": "agent",
+                                  "senderName": "MingQi",
+                                  "senderDisplayName": "明启",
+                                  "senderAvatarUrl": "/avatar.webp",
+                                  "createdAt": "2026-07-24T08:00:00Z"
+                                },
+                                {
+                                  "messageId": "reply-8",
+                                  "seq": 8,
+                                  "preview": "joined",
+                                  "senderId": "system",
+                                  "senderType": "system",
+                                  "senderName": "System",
+                                  "createdAt": "2026-07-24T08:01:00Z"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                        """.trimIndent()
+                )
+            )
+
+        val result = repository.loadInitial(ServerId("server-1"))
+
+        assertTrue(result is DataResult.Content)
+        val item = result.data.items.single()
+        assertEquals(8, item.replyCount)
+        assertEquals(listOf("reply-7", "reply-8"), item.latestReplies.map { it.messageId })
+        assertEquals("MingQi", item.latestReplies.first().senderName)
+        assertEquals("明启", item.latestReplies.first().senderDisplayName)
+    }
+
+    @Test
     fun inboxRepositoryMapsMentionsFilterAndHasMentionFlag() = runBlocking {
         val network =
             FakeInboxNetworkClient(

@@ -1,0 +1,11 @@
+# Gradle cache quarantine policy (incident response only — keep EMPTY in steady state).
+#
+# Each non-comment line names one gradle/actions extracted-entry bundle whose cache RESTORE is
+# skipped fleet-wide (GRADLE_BUILD_ACTION_SKIP_RESTORE). Allowlisted bundle names only:
+#   dependencies
+#   transforms
+# A quarantine line must stay until the poisoned bundle key rotates naturally (its file-set
+# changes) — removing it earlier lets the poisoned entry restore again. This is a targeted
+# quarantine, not a purge: the poisoned entry itself remains in the backend until eviction.
+# Epoch rotation lives in .github/gradle-cache-epoch (single line, no comments).
+# Operating procedure: docs/ci-gradle-cache-epoch-runbook.md

@@ -142,9 +142,9 @@ private fun AppUpdateScreen() {
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             val versionCode = snapshot?.latestVersionCode?.takeIf { it > 0L }?.toString().orEmpty()
             if (versionCode.isNotBlank()) {
-                ReleaseNotesWebViewBody(versionCode)
+                ReleaseNotesNativeBody(versionCode)
             } else {
-                ReleaseNotesCenteredNotice(stringResource(MR.strings.release_notes_loading))
+                ReleaseNotesLoadingCover()
             }
         }
     }
@@ -170,6 +170,7 @@ internal fun AppUpdateSummary(
             workingLabel = stringResource(MR.strings.app_update_working),
             downloadLabel = stringResource(MR.strings.app_update_download),
             downloadingLabel = stringResource(MR.strings.app_update_downloading),
+            installingLabel = stringResource(MR.strings.app_update_installing),
             installLabel = stringResource(MR.strings.app_update_install)
         )
     Column(
@@ -340,19 +341,30 @@ internal fun appUpdatePrimaryActionLabel(
     workingLabel: String = "Working...",
     downloadLabel: String = "Download",
     downloadingLabel: String = "Downloading",
+    installingLabel: String = "Installing",
     installLabel: String = "Install"
 ): String =
     when {
+        actionRunning && snapshot.isDownloadAction() -> downloadingLabel
         actionRunning -> workingLabel
         snapshot == null -> retryLabel
         snapshot.actionLabel.equals("download", ignoreCase = true) -> downloadLabel
         snapshot.actionLabel.equals("downloading", ignoreCase = true) -> downloadingLabel
+        snapshot.actionLabel.equals("installing", ignoreCase = true) -> installingLabel
         snapshot.actionLabel.equals("install", ignoreCase = true) -> installLabel
         snapshot.actionLabel.isNotBlank() -> snapshot.actionLabel
         snapshot.statusLabel.equals("install", ignoreCase = true) -> installLabel
         snapshot.statusLabel.equals("downloading", ignoreCase = true) -> downloadingLabel
+        snapshot.statusLabel.equals("installing", ignoreCase = true) -> installingLabel
         else -> downloadLabel
     }
+
+private fun SharedSettingsUpdateCheckSnapshot?.isDownloadAction(): Boolean =
+    this != null &&
+        (
+            actionLabel.equals("download", ignoreCase = true) ||
+                (actionLabel.isBlank() && statusLabel.equals("download", ignoreCase = true))
+        )
 
 internal fun appUpdatePrimaryActionEnabled(
     snapshot: SharedSettingsUpdateCheckSnapshot?,
@@ -364,6 +376,7 @@ internal fun appUpdatePrimaryActionEnabled(
         loading || actionRunning -> false
         snapshot == null -> errorCode != null
         !snapshot.supported || !snapshot.updateAvailable -> false
-        snapshot.statusLabel.equals("downloading", ignoreCase = true) -> false
+        snapshot.statusLabel.equals("downloading", ignoreCase = true) ||
+            snapshot.statusLabel.equals("installing", ignoreCase = true) -> false
         else -> true
     }

@@ -46,8 +46,13 @@ class SharedHomeSearchSavedStore(
     private var searchJob: Job? = null
     private var searchDebounceJob: Job? = null
     private var senderFiltersJob: Job? = null
+    private var savedRequestToken: Long = 0L
     private var searchRequestToken: Long = 0L
     private var readPredictionRevisions: Map<ChannelId, Long> = emptyMap()
+    private var savedOwner: SavedStateOwner? = null
+    private val pendingSavedUnsaves = mutableMapOf<MessageId, PendingSavedUnsave>()
+    private val savedOrderRanks = mutableMapOf<MessageId, Long>()
+    private var nextSavedOrderRank = 0L
 
     init {
         readReceiptCoordinator?.let { coordinator ->
@@ -206,6 +211,12 @@ class SharedHomeSearchSavedStore(
     }
 
     private fun clearSavedSummary() {
+        savedJob?.cancel()
+        savedJob = null
+        savedRequestToken++
+        pendingSavedUnsaves.clear()
+        clearSavedOrderRanks()
+        savedOwner = null
         _state.value = _state.value.copy(saved = SharedHomeSavedPanelState())
     }
 
@@ -218,7 +229,11 @@ class SharedHomeSearchSavedStore(
         searchJob = null
         searchDebounceJob = null
         senderFiltersJob = null
+        savedRequestToken++
         searchRequestToken++
+        pendingSavedUnsaves.clear()
+        clearSavedOrderRanks()
+        savedOwner = null
     }
 
     private suspend fun applyReadReceiptPrediction(prediction: ReadReceiptPrediction) {
@@ -316,6 +331,8 @@ class SharedHomeSearchSavedStore(
         if (refresh && (current.loading || current.refreshing)) return
         if (!refresh && (current.loadingMore || !current.hasMore)) return
         savedJob?.cancel()
+        val requestToken = ++savedRequestToken
+        val excludedMessageIds = pendingSavedUnsaves.keys.toSet()
         savedJob =
             scope.launch {
                 val startedAt = TimeSource.Monotonic.markNow()
@@ -337,14 +354,22 @@ class SharedHomeSearchSavedStore(
                             }
                     )
                 try {
-                    val session = authStore.readSession() ?: return@launch setSavedError("unauthenticated")
-                    val serverId = session.currentServerId?.let(::ServerId) ?: return@launch setSavedError("server_missing")
+                    val session = authStore.readSession() ?: return@launch setSavedErrorIfActive(requestToken, "unauthenticated")
+                    val serverId = session.currentServerId?.let(::ServerId)
+                        ?: return@launch setSavedErrorIfActive(requestToken, "server_missing")
+                    val owner = SavedStateOwner(serverId, session.user.id)
+                    if (!isActiveSavedRequest(requestToken)) return@launch
+                    adoptSavedOwner(owner)
                     if (refresh && !previous.loaded && previous.items.isEmpty()) {
                         savedStateCache?.read(serverId.value, session.user.id)?.let { cached ->
+                            if (!isActiveSavedRequest(requestToken)) return@let
+                            synchronizeSavedOrderRanks(cached.items, replace = true)
                             _state.value =
                                 _state.value.copy(
                                     saved =
                                         cached.copy(
+                                            items = cached.items.withoutSavedMessages(excludedMessageIds),
+                                            totalCount = cached.totalCount.withExcludedSavedCount(cached.items, excludedMessageIds),
                                             loading = false,
                                             refreshing = true,
                                             pullRefreshing = false,
@@ -361,20 +386,27 @@ class SharedHomeSearchSavedStore(
                         } else {
                             savedRepository.loadMore(serverId, previous.nextOffset ?: previous.items.size, HomeSavedPageSize)
                         }
-                    applySavedResult(
-                        result = result,
-                        append = !refresh,
-                        serverId = serverId,
-                        userId = session.user.id
-                    )
-                    diagnosticsLogger(
-                        "store_load domain=saved refresh=$refresh append=${!refresh} " +
-                            "result=${result.savedDiagnosticsResult()} durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
-                    )
+                    if (isActiveSavedRequest(requestToken)) {
+                        applySavedResult(
+                            result = result,
+                            append = !refresh,
+                            owner = owner,
+                            excludedMessageIds = excludedMessageIds
+                        )
+                        diagnosticsLogger(
+                            "store_load domain=saved refresh=$refresh append=${!refresh} " +
+                                "result=${result.savedDiagnosticsResult()} durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+                        )
+                    } else {
+                        diagnosticsLogger(
+                            "store_load domain=saved refresh=$refresh append=${!refresh} result=stale_request " +
+                                "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+                        )
+                    }
                 } catch (cancellation: CancellationException) {
                     throw cancellation
                 } catch (_: Throwable) {
-                    setSavedError("saved_network")
+                    setSavedErrorIfActive(requestToken, "saved_network")
                     diagnosticsLogger(
                         "store_load domain=saved refresh=$refresh append=${!refresh} result=exception code=saved_network " +
                             "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
@@ -521,37 +553,53 @@ class SharedHomeSearchSavedStore(
     private fun isActiveSearchRequest(requestToken: Long): Boolean =
         requestToken == searchRequestToken
 
+    private fun isActiveSavedRequest(requestToken: Long): Boolean =
+        requestToken == savedRequestToken
+
     private fun unsave(item: InboxItem) {
         val messageId = item.savedMessageIdOrNull() ?: return
+        if (messageId in pendingSavedUnsaves) return
+        val owner = savedOwner ?: return
+        savedJob?.cancel()
+        savedJob = null
+        savedRequestToken++
         val previous = _state.value.saved
+        val removedIndex = previous.items.indexOfFirst { it.savedMessageIdOrNull() == messageId }
+        if (removedIndex < 0) return
+        val canonicalItem = previous.items[removedIndex]
+        synchronizeSavedOrderRanks(previous.items, replace = false)
+        pendingSavedUnsaves[messageId] = PendingSavedUnsave(canonicalItem, owner)
         _state.value =
             _state.value.copy(
                 saved =
                     previous.copy(
                         items = previous.items.filterNot { it.savedMessageIdOrNull() == messageId },
                         totalCount = (previous.totalCount - 1).coerceAtLeast(0),
+                        empty = previous.items.size == 1,
+                        loading = false,
+                        refreshing = false,
+                        pullRefreshing = false,
+                        loadingMore = false,
                         errorCode = null,
                         noPermissionCode = null
                     )
             )
+        writeSavedStateCache()
         scope.launch {
             try {
-                val serverId = currentServerId() ?: return@launch restoreSaved(previous, "server_missing")
-                when (savedRepository.unsaveMessage(serverId, messageId)) {
-                    is DataResult.Content -> Unit
-                    is DataResult.Empty -> restoreSaved(previous, "saved_unsave_empty")
-                    is DataResult.Error -> restoreSaved(previous, "saved_unsave_failed")
-                    is DataResult.NoPermission -> restoreSaved(previous, "saved_unsave_no_permission")
+                when (savedRepository.unsaveMessage(owner.serverId, messageId)) {
+                    is DataResult.Content -> completeSavedUnsave(messageId)
+                    is DataResult.Empty -> rollbackSavedUnsave(messageId, "saved_unsave_empty")
+                    is DataResult.Error -> rollbackSavedUnsave(messageId, "saved_unsave_failed")
+                    is DataResult.NoPermission -> rollbackSavedUnsave(messageId, "saved_unsave_no_permission")
                 }
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (_: Throwable) {
-                restoreSaved(previous, "saved_unsave_network")
+                rollbackSavedUnsave(messageId, "saved_unsave_network")
             }
         }
     }
-
-    private suspend fun currentServerId(): ServerId? = authStore.readSession()?.currentServerId?.let(::ServerId)
 
     private suspend fun loadSearchSenderFilters(
         serverId: ServerId,
@@ -580,9 +628,10 @@ class SharedHomeSearchSavedStore(
     private fun applySavedResult(
         result: DataResult<SavedSnapshot>,
         append: Boolean,
-        serverId: ServerId,
-        userId: String
+        owner: SavedStateOwner,
+        excludedMessageIds: Set<MessageId>
     ) {
+        adoptSavedOwner(owner)
         val current = _state.value.saved
         _state.value =
             _state.value.copy(
@@ -590,16 +639,18 @@ class SharedHomeSearchSavedStore(
                     when (result) {
                         is DataResult.Content -> {
                             val pageItems: List<InboxItem> = result.data.items
+                            synchronizeSavedOrderRanks(pageItems, replace = !append)
+                            val visiblePageItems = pageItems.withoutSavedMessages(excludedMessageIds)
                             val items =
                                 if (append) {
-                                    (current.items + pageItems).distinctBy { item: InboxItem -> item.key }
+                                    (current.items + visiblePageItems).distinctBy { item: InboxItem -> item.key }
                                 } else {
-                                    pageItems
+                                    visiblePageItems
                                 }
                             val nextState =
                                 current.copy(
                                     items = items,
-                                    totalCount = result.data.totalCount,
+                                    totalCount = result.data.totalCount.withExcludedSavedCount(pageItems, excludedMessageIds),
                                     hasMore = result.data.hasMore,
                                     nextOffset = result.data.nextOffset,
                                     loaded = true,
@@ -611,7 +662,7 @@ class SharedHomeSearchSavedStore(
                                     errorCode = null,
                                     noPermissionCode = null
                                 )
-                            savedStateCache?.write(result.data.server.id.value, userId, nextState)
+                            savedStateCache?.write(owner.serverId.value, owner.userId, nextState)
                             nextState
                         }
                         is DataResult.Empty ->
@@ -628,7 +679,8 @@ class SharedHomeSearchSavedStore(
                                 errorCode = null,
                                 noPermissionCode = null
                             ).also { nextState ->
-                                savedStateCache?.write(serverId.value, userId, nextState)
+                                if (!append && pendingSavedUnsaves.isEmpty()) clearSavedOrderRanks()
+                                savedStateCache?.write(owner.serverId.value, owner.userId, nextState)
                             }
                         is DataResult.Error ->
                             current.copy(
@@ -648,7 +700,7 @@ class SharedHomeSearchSavedStore(
                                 errorCode = null,
                                 noPermissionCode = result.blocker.code
                             ).also {
-                                savedStateCache?.clear(serverId.value, userId)
+                                savedStateCache?.clear(owner.serverId.value, owner.userId)
                             }
                     }
             )
@@ -731,6 +783,15 @@ class SharedHomeSearchSavedStore(
             )
     }
 
+    private fun setSavedErrorIfActive(
+        requestToken: Long,
+        code: String
+    ) {
+        if (isActiveSavedRequest(requestToken)) {
+            setSavedError(code)
+        }
+    }
+
     private fun setSearchError(code: String) {
         _state.value =
             _state.value.copy(
@@ -766,9 +827,114 @@ class SharedHomeSearchSavedStore(
             )
     }
 
-    private fun restoreSaved(previous: SharedHomeSavedPanelState, code: String) {
-        _state.value = _state.value.copy(saved = previous.copy(errorCode = code, loading = false, refreshing = false, pullRefreshing = false, loadingMore = false))
+    private fun adoptSavedOwner(owner: SavedStateOwner) {
+        if (savedOwner != owner) {
+            pendingSavedUnsaves.clear()
+            clearSavedOrderRanks()
+            savedOwner = owner
+        }
     }
+
+    private fun completeSavedUnsave(messageId: MessageId) {
+        pendingSavedUnsaves.remove(messageId) ?: return
+        savedOrderRanks.remove(messageId)
+        normalizeSavedOrderRanksIfSettled()
+        writeSavedStateCache()
+    }
+
+    private fun rollbackSavedUnsave(messageId: MessageId, code: String) {
+        val mutation = pendingSavedUnsaves.remove(messageId) ?: return
+        if (savedOwner != mutation.owner) return
+        savedRequestToken++
+        savedJob?.cancel()
+        savedJob = null
+        val current = _state.value.saved
+        val restored = current.items.none { it.savedMessageIdOrNull() == messageId }
+        val items =
+            if (restored) {
+                (current.items + mutation.item).sortedBySavedOrderRank()
+            } else {
+                current.items
+            }
+        _state.value =
+            _state.value.copy(
+                saved =
+                    current.copy(
+                        items = items,
+                        totalCount = if (restored) current.totalCount + 1 else current.totalCount,
+                        empty = items.isEmpty(),
+                        loading = false,
+                        refreshing = false,
+                        pullRefreshing = false,
+                        loadingMore = false,
+                        errorCode = code,
+                        noPermissionCode = null
+                    )
+            )
+        writeSavedStateCache()
+        normalizeSavedOrderRanksIfSettled()
+    }
+
+    private fun synchronizeSavedOrderRanks(
+        items: List<InboxItem>,
+        replace: Boolean
+    ) {
+        if (replace && pendingSavedUnsaves.isEmpty()) clearSavedOrderRanks()
+        items.forEach { item ->
+            val messageId = item.savedMessageIdOrNull() ?: return@forEach
+            if (messageId !in savedOrderRanks) {
+                savedOrderRanks[messageId] = nextSavedOrderRank++
+            }
+        }
+    }
+
+    private fun List<InboxItem>.sortedBySavedOrderRank(): List<InboxItem> =
+        withIndex()
+            .sortedWith(
+                compareBy<IndexedValue<InboxItem>> {
+                    it.value.savedMessageIdOrNull()?.let(savedOrderRanks::get) ?: Long.MAX_VALUE
+                }.thenBy { it.index }
+            ).map { it.value }
+
+    private fun normalizeSavedOrderRanksIfSettled() {
+        if (pendingSavedUnsaves.isEmpty()) {
+            val items = _state.value.saved.items
+            clearSavedOrderRanks()
+            synchronizeSavedOrderRanks(items, replace = false)
+        }
+    }
+
+    private fun clearSavedOrderRanks() {
+        savedOrderRanks.clear()
+        nextSavedOrderRank = 0L
+    }
+
+    private fun writeSavedStateCache() {
+        val owner = savedOwner ?: return
+        savedStateCache?.write(owner.serverId.value, owner.userId, _state.value.saved)
+    }
+}
+
+private data class SavedStateOwner(
+    val serverId: ServerId,
+    val userId: String
+)
+
+private data class PendingSavedUnsave(
+    val item: InboxItem,
+    val owner: SavedStateOwner
+)
+
+private fun List<InboxItem>.withoutSavedMessages(messageIds: Set<MessageId>): List<InboxItem> =
+    if (messageIds.isEmpty()) this else filterNot { it.savedMessageIdOrNull() in messageIds }
+
+private fun Int.withExcludedSavedCount(
+    items: List<InboxItem>,
+    messageIds: Set<MessageId>
+): Int {
+    if (messageIds.isEmpty()) return this
+    val excludedCount = items.mapNotNull { it.savedMessageIdOrNull() }.toSet().count { it in messageIds }
+    return (this - excludedCount).coerceAtLeast(0)
 }
 
 class SharedHomeSavedStateCache {
@@ -997,16 +1163,6 @@ sealed interface SharedHomeSearchSavedIntent {
 
 private const val SavedInboxItemKeyPrefix = "saved:"
 
-/**
- * Mutation identity for a row returned by GET /channels/saved.
- *
- * Saved projection keys are `saved:<messageId>` for every conversation kind. Thread open
- * anchors deliberately do not fall back to `lastMessageId`, because that field can describe
- * the parent/origin in general inbox projections. Unsave must not reuse that navigation rule:
- * the Saved key already carries the exact message that the server returned and DELETE expects.
- * The anchor fallback keeps compatibility with synthetic/legacy callers that do not yet use a
- * canonical Saved key.
- */
 fun InboxItem.savedMessageIdOrNull(): MessageId? =
     key
         .takeIf { it.startsWith(SavedInboxItemKeyPrefix) }

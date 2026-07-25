@@ -3,8 +3,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import {
+  apksignerVerifyArgs,
   parseReadyLine,
   readyPayload,
+  selectApkSigningCertificateSha256,
   sha256Digest,
   validateLoginResponse,
 } from "./mobile_login_bootstrap_lib.mjs";
@@ -56,13 +58,15 @@ function binding() {
   const badging = run(buildTool("aapt"), ["dump", "badging", apk]).stdout;
   const applicationId = badging.match(/package: name='([^']+)'/)?.[1];
   if (!applicationId) throw new Error("APK package id is unavailable");
-  const signer = run(buildTool("apksigner"), ["verify", "--print-certs", apk]).stdout;
-  const signingHex = signer.match(/Signer #1 certificate SHA-256 digest:\s*([A-Fa-f0-9]{64})/)?.[1]?.toLowerCase();
-  if (!signingHex || /Signer #2 certificate/.test(signer)) throw new Error("APK must have exactly one signing certificate");
+  const deviceSdkText = run("adb", ["shell", "getprop", "ro.build.version.sdk"]).stdout.trim();
+  if (!/^[1-9][0-9]*$/.test(deviceSdkText)) throw new Error("Android device SDK is unavailable");
+  const deviceSdk = Number(deviceSdkText);
+  const signer = run(buildTool("apksigner"), apksignerVerifyArgs(apk, deviceSdk)).stdout;
+  const signingCertSha256 = selectApkSigningCertificateSha256(signer, deviceSdk);
   const bootId = run("adb", ["shell", "cat", "/proc/sys/kernel/random/boot_id"]).stdout.trim();
   if (!/^[a-f0-9-]{36}$/i.test(bootId)) throw new Error("device boot id is unavailable");
   writePrivateJson(output, {
-    signing_cert_sha256: `sha256:${signingHex}`,
+    signing_cert_sha256: signingCertSha256,
     boot_generation: sha256Digest(Buffer.from(bootId, "utf8")),
   });
   console.log(`qa-login-bootstrap: device binding ready package=${applicationId}`);

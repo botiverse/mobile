@@ -2,6 +2,7 @@ package build.raft.app.model
 
 import build.raft.app.canonical.message.CanonicalMessageCarry
 import build.raft.app.data.SettingsServerSidebarPinnedItem
+import build.raft.app.network.sync.ReplyPreview
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
@@ -517,7 +518,9 @@ data class ThreadUpdated(
     val lastReplyAt: String?,
     val participantIds: List<MemberId>,
     val unreadCount: Int? = null,
-    val firstUnreadMessageId: MessageId? = null
+    val firstUnreadMessageId: MessageId? = null,
+    /** Server-derived bounded reply-window delta; not canonical message authority. */
+    val latestReply: ReplyPreview? = null,
 ) : RealtimeEvent
 
 @Serializable

@@ -1387,8 +1387,8 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun inlineVideoPreviewWaitsForExplicitUserRequestBeforeCreatingVideoSource() {
-        assertEquals(ThreadInlineVideoRenderMode.AwaitingUser, null.renderMode())
+    fun inlineVideoPreviewTreatsMissingStateAsLoadingUntilTheAutomaticSourceArrives() {
+        assertEquals(ThreadInlineVideoRenderMode.Loading, null.renderMode())
         assertEquals(
             ThreadInlineVideoRenderMode.Loading,
             ThreadInlineVideoPreviewUiState(status = ThreadInlineVideoPreviewStatus.Loading).renderMode()

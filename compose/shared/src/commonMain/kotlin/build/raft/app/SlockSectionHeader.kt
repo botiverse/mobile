@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import com.tencent.kuikly.compose.foundation.clickable
@@ -10,6 +11,7 @@ import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.BoxScope
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.Row
+import com.tencent.kuikly.compose.foundation.layout.RowScope
 import com.tencent.kuikly.compose.foundation.layout.Spacer
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
@@ -36,6 +38,7 @@ import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
+import com.tencent.tmm.kmmresource.compose.stringResource
 
 private val SectionChevronSize = 12.dp
 private val LoadingSpinnerSize = 14.dp
@@ -63,6 +66,23 @@ internal object SlockCollapsibleSectionTokens {
     const val AnimationDurationSeconds: Float = AnimationDurationMillis / 1000f
 }
 
+internal data class SlockTopPageHeaderFrameMetrics(
+    val totalHeight: Dp,
+    val contentHeight: Dp,
+)
+
+internal fun slockTopPageHeaderFrameMetrics(
+    topSafeArea: Dp,
+    headerHeight: Dp = SlockSize.PageHeaderHeight,
+): SlockTopPageHeaderFrameMetrics {
+    val boundedHeaderHeight = headerHeight.coerceAtLeast(0.dp)
+    val contentHeight = (boundedHeaderHeight - SlockStroke.Default).coerceAtLeast(0.dp)
+    return SlockTopPageHeaderFrameMetrics(
+        totalHeight = topSafeArea.coerceAtLeast(0.dp) + boundedHeaderHeight,
+        contentHeight = topSafeArea.coerceAtLeast(0.dp) + contentHeight,
+    )
+}
+
 @Composable
 internal fun SlockTopPageHeader(
     title: String,
@@ -72,57 +92,61 @@ internal fun SlockTopPageHeader(
     backgroundColor: Color = SlockColor.BrandYellow,
     modifier: Modifier = Modifier,
     applyTopSafeArea: Boolean = true,
+    topSafeAreaOverride: Dp? = null,
     headerHeight: Dp = SlockSize.PageHeaderHeight,
     contentStartPadding: Dp = 20.dp,
     titleStyle: TextStyle = SlockType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp),
     refreshing: Boolean = false,
     leadingContent: (@Composable BoxScope.() -> Unit)? = null,
-    trailingContent: (@Composable BoxScope.() -> Unit)? = null
+    titleLeadingContent: (@Composable RowScope.() -> Unit)? = null,
+    titleContent: (@Composable RowScope.() -> Unit)? = null,
+    trailingContent: (@Composable BoxScope.() -> Unit)? = null,
+    onTitleClick: (() -> Unit)? = null,
+    showBodyTopBanner: Boolean = true,
 ) {
-    val topSafeArea = if (applyTopSafeArea) slockTopSafeAreaPadding() else 0.dp
-    val contentHeight = if (headerHeight >= SlockStroke.Default) headerHeight - SlockStroke.Default else 0.dp
+    val topSafeArea =
+        (topSafeAreaOverride ?: if (applyTopSafeArea) slockTopSafeAreaPadding() else 0.dp)
+            .coerceAtLeast(0.dp)
     Column(modifier = Modifier.fillMaxWidth()) {
-        Box(
-            modifier =
-                modifier
-                    .fillMaxWidth()
-                    .height(topSafeArea + headerHeight)
-                    .background(backgroundColor)
+        SlockTopPageHeaderFrame(
+            modifier = modifier,
+            backgroundColor = backgroundColor,
+            topSafeArea = topSafeArea,
+            headerHeight = headerHeight,
+            contentStartPadding = contentStartPadding,
         ) {
-            Row(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .height(topSafeArea + contentHeight)
-                        .padding(start = contentStartPadding, top = topSafeArea, end = 16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                when {
-                    leadingContent != null ->
-                        Box(
-                            modifier = Modifier.size(SlockSize.HeaderIcon),
-                            contentAlignment = Alignment.Center,
-                            content = leadingContent
+            when {
+                leadingContent != null ->
+                    Box(
+                        modifier = Modifier.size(SlockSize.HeaderIcon),
+                        contentAlignment = Alignment.Center,
+                        content = leadingContent
+                    )
+                iconName != null ->
+                    Box(
+                        modifier =
+                            Modifier
+                                .size(SlockSize.HeaderIcon)
+                                .background(iconBackground)
+                                .border(SlockStroke.Default, SlockColor.BorderBlack),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        SlockLucideIcon(
+                            iconName,
+                            modifier = Modifier.size(18.dp),
+                            color = "#FF000000",
+                            spinning = iconName == SlockLucideIconName.Loader || iconName == SlockLucideIconName.LoaderCircle
                         )
-                    iconName != null ->
-                        Box(
-                            modifier =
-                                Modifier
-                                    .size(SlockSize.HeaderIcon)
-                                    .background(iconBackground)
-                                    .border(SlockStroke.Default, SlockColor.BorderBlack),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            SlockLucideIcon(
-                                iconName,
-                                modifier = Modifier.size(18.dp),
-                                color = "#FF000000",
-                                spinning = iconName == SlockLucideIconName.Loader || iconName == SlockLucideIconName.LoaderCircle
-                            )
-                        }
-                }
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    }
+            }
+            titleLeadingContent?.invoke(this)
+            if (titleContent != null) {
+                titleContent.invoke(this)
+            } else {
+                Column(
+                    modifier = Modifier.weight(1f).clickable(enabled = onTitleClick != null) { onTitleClick?.invoke() },
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
                     Text(
                         text = title,
                         style = titleStyle,
@@ -140,22 +164,56 @@ internal fun SlockTopPageHeader(
                         )
                     }
                 }
-                if (refreshing) {
-                    SlockHeaderRefreshIndicator()
-                }
-                if (trailingContent != null) {
-                    Box(content = trailingContent)
-                }
             }
-            Box(
-                modifier = Modifier
+            if (refreshing) {
+                SlockHeaderRefreshIndicator()
+            }
+            if (trailingContent != null) {
+                Box(content = trailingContent)
+            }
+        }
+        if (showBodyTopBanner) {
+            SlockAppShellBodyTopBanner()
+        }
+    }
+}
+
+@Composable
+internal fun SlockTopPageHeaderFrame(
+    modifier: Modifier = Modifier,
+    backgroundColor: Color = SlockColor.SurfaceWhite,
+    topSafeArea: Dp = 0.dp,
+    headerHeight: Dp = SlockSize.PageHeaderHeight,
+    contentStartPadding: Dp = 20.dp,
+    contentEndPadding: Dp = 16.dp,
+    content: @Composable RowScope.() -> Unit,
+) {
+    val metrics = slockTopPageHeaderFrameMetrics(topSafeArea = topSafeArea, headerHeight = headerHeight)
+    Box(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .height(metrics.totalHeight)
+                .background(backgroundColor)
+    ) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(metrics.contentHeight)
+                    .padding(start = contentStartPadding, top = topSafeArea, end = contentEndPadding),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            content = content,
+        )
+        Box(
+            modifier =
+                Modifier
                     .fillMaxWidth()
                     .height(SlockStroke.Default)
                     .background(SlockColor.BorderBlack)
                     .align(Alignment.BottomCenter)
-            )
-        }
-        SlockAppShellBodyTopBanner()
+        )
     }
 }
 
@@ -282,9 +340,10 @@ internal fun slockPullRefreshIndicatorRotationDegrees(pullProgress: Float, isRef
 
 @Composable
 internal fun SlockCenteredLoading(
-    message: String = "Loading...",
+    message: String? = null,
     modifier: Modifier = Modifier.fillMaxSize()
 ) {
+    val resolvedMessage = message ?: stringResource(MR.strings.common_loading)
     Box(
         modifier = modifier.background(SlockColor.SurfaceWhite),
         contentAlignment = Alignment.Center
@@ -300,7 +359,7 @@ internal fun SlockCenteredLoading(
                 spinning = true
             )
             Text(
-                text = message,
+                text = resolvedMessage,
                 style = SlockType.Caption
                     .copy(
                         fontFamily = slockMonoFamilyForWeight(FontWeight.SemiBold),

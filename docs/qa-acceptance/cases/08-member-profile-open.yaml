@@ -11,6 +11,8 @@ description: |
 tags: [members, profile, regression, avatar]
 timeout_seconds: 90
 max_retries: 1
+auth_fixture: alpha-qa
+launch_route: compose_slock_app_shell
 
 device:
   type: emulator

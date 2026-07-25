@@ -148,6 +148,7 @@ import com.tencent.kuikly.core.render.android.expand.component.KRTextFieldView
 import com.caverock.androidsvg.SVG
 import build.hands.update.HandsDeviceId
 import build.hands.update.HandsFeedback
+import build.hands.update.UpdateChecker
 import build.hands.update.internal.HandsClient
 import build.hands.update.models.UpdateCheckResponse
 import java.io.ByteArrayInputStream
@@ -332,6 +333,8 @@ open class SlockKuiklyActivity :
     private var inputFontLayoutListener: ViewTreeObserver.OnGlobalLayoutListener? = null
     private var pendingThreadAttachmentUpload: PendingThreadAttachmentUpload? = null
     private var pendingAttachmentExport: PendingAttachmentExport? = null
+    private var pendingLegacyGalleryPermission: PendingLegacyGalleryPermission? = null
+    private var queuedLegacyGalleryPermission: PendingLegacyGalleryPermission? = null
     private var androidShellLaunchTarget: AndroidShellLaunchTarget? = null
     private val realtimeVisibilityOwnerId: String by lazy {
         androidShellLaunchTarget?.shellInstanceId
@@ -356,6 +359,19 @@ open class SlockKuiklyActivity :
     private val attachmentExportLauncher: ActivityResultLauncher<String> =
             registerForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
                 handleAttachmentExportResult(uri)
+            }
+    private val legacyGalleryPermissionLauncher: ActivityResultLauncher<String> =
+            registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+                val pending = pendingLegacyGalleryPermission ?: return@registerForActivityResult
+                pendingLegacyGalleryPermission = null
+                if (ProcessAndroidAttachmentExportAuthorities.isCurrent(
+                                pending.owner,
+                                pending.downloadId,
+                                pending.operationId
+                        )) {
+                    pending.onResult(granted)
+                }
+                promoteQueuedLegacyGalleryPermission()
             }
     private val screenshotFeedbackEventGate =
             ScreenshotFeedbackEventGate(SCREENSHOT_FEEDBACK_MINIMUM_INTERVAL_MILLIS)
@@ -1108,6 +1124,71 @@ open class SlockKuiklyActivity :
                             )
                     )
                 }
+    }
+
+    internal fun requestLegacyGalleryPermission(
+            downloadId: String,
+            operationId: String,
+            owner: AndroidAttachmentOwnerLease,
+            onResult: (Boolean) -> Unit
+    ): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            onResult(true)
+            return true
+        }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED) {
+            onResult(true)
+            return true
+        }
+        val pending = PendingLegacyGalleryPermission(downloadId, operationId, owner, onResult)
+        if (pendingLegacyGalleryPermission != null) {
+            if (queuedLegacyGalleryPermission != null) return false
+            queuedLegacyGalleryPermission = pending
+            return true
+        }
+        pendingLegacyGalleryPermission = pending
+        runCatching { legacyGalleryPermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE) }
+            .onFailure {
+                pendingLegacyGalleryPermission = null
+                if (ProcessAndroidAttachmentExportAuthorities.isCurrent(owner, downloadId, operationId)) {
+                    onResult(false)
+                }
+                promoteQueuedLegacyGalleryPermission()
+            }
+        return true
+    }
+
+    internal fun cancelLegacyGalleryPermission(
+            downloadId: String,
+            operationId: String,
+            owner: AndroidAttachmentOwnerLease
+    ) {
+        val pending = pendingLegacyGalleryPermission
+        if (pending?.downloadId == downloadId && pending.operationId == operationId && pending.owner == owner) {
+            // ActivityResult has no request token. Keep the in-flight slot as a tombstone until
+            // its result arrives, so it can never be delivered to a queued successor operation.
+            return
+        }
+        val queued = queuedLegacyGalleryPermission
+        if (queued?.downloadId == downloadId && queued.operationId == operationId && queued.owner == owner) {
+            queuedLegacyGalleryPermission = null
+        }
+    }
+
+    private fun promoteQueuedLegacyGalleryPermission() {
+        val queued = queuedLegacyGalleryPermission ?: return
+        queuedLegacyGalleryPermission = null
+        if (!ProcessAndroidAttachmentExportAuthorities.isCurrent(
+                        queued.owner,
+                        queued.downloadId,
+                        queued.operationId
+                )) return
+        requestLegacyGalleryPermission(
+                queued.downloadId,
+                queued.operationId,
+                queued.owner,
+                queued.onResult
+        )
     }
 
     internal fun requestGoogleNativeSocialAuth(callback: KuiklyRenderCallback?): Boolean {
@@ -2042,6 +2123,13 @@ private data class PendingAttachmentExport(
         val callback: KuiklyRenderCallback?
 )
 
+private data class PendingLegacyGalleryPermission(
+        val downloadId: String,
+        val operationId: String,
+        val owner: AndroidAttachmentOwnerLease,
+        val onResult: (Boolean) -> Unit
+)
+
 private data class PickedThreadAttachment(
         val fileRef: String,
         val fileName: String,
@@ -2809,6 +2897,14 @@ internal class SlockKuiklyBridgeModule(
                 saveAttachment(params, callback)
                 null
             }
+            "saveImageToPhotos" -> {
+                saveImageToPhotos(params, callback)
+                null
+            }
+            "cancelAttachmentExport" -> {
+                cancelAttachmentExport(params)
+                null
+            }
             "attachmentCacheStatus" -> {
                 callback?.invoke(attachmentCacheStatus(params))
                 null
@@ -3406,9 +3502,7 @@ internal class SlockKuiklyBridgeModule(
                                     mapOf(
                                             "status" to "error",
                                             "code" to "settings_quiver_update_check_failed",
-                                            "message" to
-                                                    (throwable.message
-                                                        ?: appContext.getString(R.string.settings_update_check_failed))
+                                            "message" to (throwable.message ?: "Quiver update check failed")
                                     )
                                 }
                 callback?.invoke(result)
@@ -3495,6 +3589,7 @@ internal class SlockKuiklyBridgeModule(
                             // the channel picker in the shared settings UI.
                             mapOf("status" to "unsupported")
                         }
+                        "getNotificationPermissionStatus" -> getNotificationPermissionStatusCapability()
                         "requestNotificationPermission" -> requestNotificationPermissionCapability()
                         "openNotificationSettings" -> {
                             openNotificationSettingsCapability()
@@ -3747,6 +3842,28 @@ internal class SlockKuiklyBridgeModule(
         }
     }
 
+    // The shared Settings > Notifications banner polls this on every load.
+    // Codes must stay within the set systemNotificationPermissionSnapshot maps
+    // (permission_authorized / permission_not_determined / permission_denied)
+    // or the shared side falls back to a permanent "needs permission" banner.
+    private fun getNotificationPermissionStatusCapability(): Map<String, Any> {
+        val runtimeGranted = hasNotificationPermission()
+        val notificationsEnabled = NotificationManagerCompat.from(appContext).areNotificationsEnabled()
+        val code =
+                when {
+                    runtimeGranted && notificationsEnabled -> "permission_authorized"
+                    !runtimeGranted -> "permission_not_determined"
+                    else -> "permission_denied"
+                }
+        val message =
+                when (code) {
+                    "permission_authorized" -> "System notifications are enabled for Raft."
+                    "permission_not_determined" -> "Notification permission has not been requested yet."
+                    else -> "System notifications are disabled for Raft in system settings."
+                }
+        return mapOf("status" to "ok", "code" to code, "message" to message)
+    }
+
     private fun sendTestNotificationCapability(): Map<String, Any> {
         if (!hasNotificationPermission()) {
             return requestNotificationPermissionCapability()
@@ -3755,7 +3872,7 @@ internal class SlockKuiklyBridgeModule(
         if (!NotificationManagerCompat.from(appContext).areNotificationsEnabled()) {
             return mapOf("status" to "error", "code" to "notifications_disabled")
         }
-        if (AndroidUnreadNotificationPoster.isNotificationChannelBlocked(appContext, AndroidUnreadNotificationPoster.SHARED_NOTIFICATION_CHANNEL_ID)) {
+        if (AndroidUnreadNotificationPoster.isNotificationChannelBlocked(appContext, AndroidUnreadNotificationPoster.UNREAD_MENTION_NOTIFICATION_CHANNEL_ID)) {
             return mapOf("status" to "error", "code" to "channel_blocked")
         }
         val notificationId = ((System.currentTimeMillis() % Int.MAX_VALUE).toInt()).coerceAtLeast(1)
@@ -3775,7 +3892,12 @@ internal class SlockKuiklyBridgeModule(
                     NotificationManagerCompat.from(appContext)
                             .notify(
                                     notificationId,
-                                    NotificationCompat.Builder(appContext, AndroidUnreadNotificationPoster.SHARED_NOTIFICATION_CHANNEL_ID)
+                                    // The HIGH-importance mention channel is the one that
+                                    // heads-up pops on real devices; a test that lands
+                                    // silently in the shade reads as "nothing happened".
+                                    // It also makes channel_blocked feedback meaningful for
+                                    // the channel users actually care about.
+                                    NotificationCompat.Builder(appContext, AndroidUnreadNotificationPoster.UNREAD_MENTION_NOTIFICATION_CHANNEL_ID)
                                             .setSmallIcon(android.R.drawable.ic_dialog_info)
                                             .setContentTitle(appContext.getString(R.string.settings_notification_test_title))
                                             .setContentText(appContext.getString(R.string.settings_notification_test_text))
@@ -3783,8 +3905,8 @@ internal class SlockKuiklyBridgeModule(
                                                     NotificationCompat.BigTextStyle()
                                                             .bigText(appContext.getString(R.string.settings_notification_test_text))
                                             )
-                                            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-                                            .setCategory(NotificationCompat.CATEGORY_STATUS)
+                                            .setPriority(NotificationCompat.PRIORITY_HIGH)
+                                            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
                                             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                                             .setWhen(System.currentTimeMillis())
                                             .setShowWhen(true)
@@ -3934,6 +4056,9 @@ internal class SlockKuiklyBridgeModule(
 
     private fun loadSettingsDeveloper(feedback: String? = null): Map<String, Any> {
         val current = AndroidApiServerEnvironmentStore(appContext).current()
+        val alphaDeltaEnabled = handsDeltaUpdateAllowedForRuntime()
+        val updateChannel =
+                if (alphaDeltaEnabled) BuildConfig.HANDS_DELTA_CHANNEL else BuildConfig.QUIVER_CHANNEL
         val options =
                 JSONArray().also { array ->
                     AndroidApiServerEnvironmentStore.predefined.forEach { environment ->
@@ -3955,8 +4080,8 @@ internal class SlockKuiklyBridgeModule(
                 "socketBaseUrl" to current.socketBaseUrl,
                 "webUrl" to current.webUrl,
                 "updateCheckSupported" to true,
-                "updateCheckStatusLabel" to appContext.getString(R.string.settings_update_ready_status),
-                "updateCheckDetail" to appContext.getString(R.string.settings_update_ready_detail),
+                "updateCheckStatusLabel" to "Ready",
+                "updateCheckDetail" to "Check Hands channel $updateChannel for a newer Android APK.",
                 // Serialized like entriesJson (#484): options cross the render
                 // bridge as a primitive string, independent of container
                 // marshal support. OHOS/iOS hosts still send structured
@@ -3968,26 +4093,65 @@ internal class SlockKuiklyBridgeModule(
 
     private suspend fun checkQuiverUpdate(install: Boolean = true): Map<String, Any> {
         val arch = Build.SUPPORTED_ABIS.firstOrNull { it.isNotBlank() }
+        val alphaDeltaEnabled = handsDeltaUpdateAllowedForRuntime()
+        val appSlug =
+                if (alphaDeltaEnabled) BuildConfig.HANDS_DELTA_APP_SLUG else BuildConfig.QUIVER_APP_SLUG
+        val channel =
+                if (alphaDeltaEnabled) BuildConfig.HANDS_DELTA_CHANNEL else BuildConfig.QUIVER_CHANNEL
+        var alphaInstallStartedThisCall = false
+        val ownedResponse =
+                alphaHandsUpdateCallOwner.runIfEligible(
+                        eligible = alphaDeltaEnabled && install
+                ) {
+                    UpdateChecker(
+                            context = appContext,
+                            baseUrl = BuildConfig.QUIVER_BASE_URL,
+                            appSlug = appSlug,
+                            installedVersionCode = BuildConfig.VERSION_CODE.toLong(),
+                            channel = channel,
+                            productType = "android-apk",
+                            platform = "android",
+                            arch = arch,
+                            deviceId = HandsDeviceId.get(appContext),
+                            deltaApplyEnabled = true
+                    ).checkAndInstall()
+                }
         val response =
-                HandsClient(BuildConfig.QUIVER_BASE_URL)
-                        .checkForUpdate(
-                                slug = BuildConfig.QUIVER_APP_SLUG,
-                                channel = BuildConfig.QUIVER_CHANNEL,
-                                currentVersionCode = BuildConfig.VERSION_CODE.toLong(),
-                                productType = "android-apk",
-                                platform = "android",
-                                arch = arch,
-                                filetype = "apk",
-                                deviceId = HandsDeviceId.get(appContext)
-                        )
+                if (ownedResponse != null) {
+                    alphaInstallStartedThisCall = true
+                    ownedResponse
+                } else {
+                    HandsClient(BuildConfig.QUIVER_BASE_URL)
+                            .checkForUpdate(
+                                    slug = appSlug,
+                                    channel = channel,
+                                    currentVersionCode = BuildConfig.VERSION_CODE.toLong(),
+                                    productType = "android-apk",
+                                    platform = "android",
+                                    arch = arch,
+                                    filetype = "apk",
+                                    deviceId = HandsDeviceId.get(appContext)
+                            )
+                }
+        val updateAvailable = response.requireUpdate() != null
         SlockAppLog.record(
                 "SlockQuiverUpdate",
-                "check status=ok slug=${BuildConfig.QUIVER_APP_SLUG} channel=${BuildConfig.QUIVER_CHANNEL} " +
-                        "current=${BuildConfig.VERSION_CODE} latest=${response.latest?.version_code ?: response.latest_version_code ?: 0} available=${response.requireUpdate() != null}"
+                "check status=ok mode=${if (alphaDeltaEnabled) "alpha_delta" else "full_apk"} " +
+                        "action=${if (install) "install" else "status"} started=$alphaInstallStartedThisCall " +
+                        "slug=$appSlug channel=$channel current=${BuildConfig.VERSION_CODE} " +
+                        "latest=${response.latest?.version_code ?: response.latest_version_code ?: 0} available=$updateAvailable"
         )
-        val updateAvailable = response.requireUpdate() != null
         val installResult =
                 when {
+                    alphaDeltaEnabled &&
+                        updateAvailable &&
+                        (alphaInstallStartedThisCall || alphaHandsUpdateCallOwner.isRunning()) ->
+                            QuiverInstallResult(
+                                    statusLabel = "Installing",
+                                    detail = "Android is preparing the update. Follow the installer or download notification.",
+                                    actionLabel = "Installing"
+                            )
+                    alphaDeltaEnabled -> QuiverInstallResult()
                     install && updateAvailable -> installQuiverUpdate(response, arch)
                     updateAvailable -> currentQuiverDownloadResult(response, arch)
                     else -> QuiverInstallResult()
@@ -3996,16 +4160,8 @@ internal class SlockKuiklyBridgeModule(
         val updateDetail = installResult.detail.ifBlank { response.quiverDetail() }
         val feedback =
                 when {
-                    updateAvailable ->
-                            appContext.getString(
-                                    R.string.settings_update_feedback_available,
-                                    response.latest?.version?.ifBlank { null }
-                                            ?: appContext.getString(
-                                                    R.string.settings_update_version_code,
-                                                    response.latest?.version_code ?: 0L
-                                            )
-                            )
-                    else -> appContext.getString(R.string.settings_update_feedback_none)
+                    updateAvailable -> "Update available: ${response.latest?.version?.ifBlank { null } ?: "version code ${response.latest?.version_code ?: 0L}"}."
+                    else -> "No Hands update available on $channel."
                 }
         return loadSettingsDeveloper(feedback = feedback) +
                 mapOf(
@@ -4022,6 +4178,25 @@ internal class SlockKuiklyBridgeModule(
                         "updateCheckedAtLabel" to System.currentTimeMillis().toString(),
                         "updateCheckErrorCode" to installResult.errorCode.orEmpty()
                 )
+    }
+
+    private fun handsDeltaUpdateAllowedForRuntime(): Boolean {
+        val allowed =
+                handsDeltaUpdateAllowed(
+                        configuredEnabled = BuildConfig.HANDS_DELTA_UPDATE_ENABLED,
+                        buildApplicationId = BuildConfig.APPLICATION_ID,
+                        runtimePackageName = appContext.packageName,
+                        appSlug = BuildConfig.HANDS_DELTA_APP_SLUG,
+                        channel = BuildConfig.HANDS_DELTA_CHANNEL
+                )
+        if (BuildConfig.HANDS_DELTA_UPDATE_ENABLED && !allowed) {
+            SlockAppLog.record(
+                    "SlockQuiverUpdate",
+                    "alpha_delta_gate_denied buildApplicationId=${BuildConfig.APPLICATION_ID} " +
+                            "runtimePackageName=${appContext.packageName}"
+            )
+        }
+        return allowed
     }
 
     private suspend fun installQuiverUpdate(
@@ -4042,9 +4217,9 @@ internal class SlockKuiklyBridgeModule(
                                 DownloadManager.STATUS_RUNNING,
                                 DownloadManager.STATUS_PAUSED -> {
                                     QuiverInstallResult(
-                                            statusLabel = appContext.getString(R.string.settings_update_status_downloading),
-                                            detail = appContext.getString(R.string.settings_update_detail_downloading),
-                                            actionLabel = appContext.getString(R.string.settings_update_status_downloading)
+                                            statusLabel = "Downloading",
+                                            detail = "Raft is downloading the update APK. The button will change to Install when the download is ready.",
+                                            actionLabel = "Downloading"
                                     )
                                 }
                                 else -> {
@@ -4063,25 +4238,25 @@ internal class SlockKuiklyBridgeModule(
                             "install_failed slug=${BuildConfig.QUIVER_APP_SLUG} latest=${response.latest?.version_code ?: 0} error=${error.javaClass.simpleName}"
                     )
                     QuiverInstallResult(
-                            statusLabel = appContext.getString(R.string.settings_update_status_install_failed),
-                            detail = error.message ?: appContext.getString(R.string.settings_update_detail_install_failed),
-                            actionLabel = appContext.getString(R.string.settings_update_action_download),
+                            statusLabel = "Install failed",
+                            detail = error.message ?: "Unable to download or install the Quiver APK.",
+                            actionLabel = "Download",
                             errorCode = error.javaClass.simpleName
                     )
                 }
     }
 
     private fun enqueueQuiverApkInstall(response: UpdateCheckResponse, arch: String?): QuiverUpdateDownload {
-        val latest = response.latest ?: error(appContext.getString(R.string.settings_update_error_missing_release))
-        val asset = response.asset ?: error(appContext.getString(R.string.settings_update_error_missing_asset))
+        val latest = response.latest ?: error("Quiver response did not include a latest release.")
+        val asset = response.asset ?: error("Quiver response did not include an APK asset.")
         val downloadUrl = asset.download_url
         require(downloadUrl.startsWith("http://") || downloadUrl.startsWith("https://")) {
             "Can only download HTTP/HTTPS URIs: $downloadUrl"
         }
         val downloadManager =
                 ContextCompat.getSystemService(appContext, DownloadManager::class.java)
-                        ?: error(appContext.getString(R.string.settings_update_error_download_manager_unavailable))
-        val fileName = "raft-update-${latest.version_code}.apk"
+                        ?: error("DownloadManager not available")
+        val fileName = "raft-quiver-${latest.version_code}.apk"
         val key = response.quiverDownloadKey(arch)
         val title =
                 buildString {
@@ -4091,7 +4266,7 @@ internal class SlockKuiklyBridgeModule(
         val request =
                 DownloadManager.Request(Uri.parse(downloadUrl))
                         .setTitle(title)
-                        .setDescription(appContext.getString(R.string.settings_update_download_description))
+                        .setDescription("Downloading latest version...")
                         .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
                         .setAllowedOverMetered(true)
                         .setAllowedOverRoaming(true)
@@ -4159,18 +4334,18 @@ internal class SlockKuiklyBridgeModule(
             DownloadManager.STATUS_SUCCESSFUL -> {
                 tracked.completed = true
                 QuiverInstallResult(
-                        statusLabel = appContext.getString(R.string.settings_update_status_install),
-                        detail = appContext.getString(R.string.settings_update_detail_downloaded),
-                        actionLabel = appContext.getString(R.string.settings_update_status_install)
+                        statusLabel = "Install",
+                        detail = "Raft update downloaded. Tap Install to open Android installer.",
+                        actionLabel = "Install"
                 )
             }
             DownloadManager.STATUS_PENDING,
             DownloadManager.STATUS_RUNNING,
             DownloadManager.STATUS_PAUSED ->
                 QuiverInstallResult(
-                        statusLabel = appContext.getString(R.string.settings_update_status_downloading),
-                        detail = appContext.getString(R.string.settings_update_detail_downloading),
-                        actionLabel = appContext.getString(R.string.settings_update_status_downloading)
+                        statusLabel = "Downloading",
+                        detail = "Raft is downloading the update APK. The button will change to Install when the download is ready.",
+                        actionLabel = "Downloading"
                 )
             else -> {
                 quiverUpdateDownloads.remove(tracked.key)
@@ -4206,9 +4381,9 @@ internal class SlockKuiklyBridgeModule(
         )
         emitQuiverUpdateStatusEvent()
         return QuiverInstallResult(
-                statusLabel = appContext.getString(R.string.settings_update_status_downloading),
-                detail = appContext.getString(R.string.settings_update_detail_download_started),
-                actionLabel = appContext.getString(R.string.settings_update_status_downloading)
+                statusLabel = "Downloading",
+                detail = "Raft update download started. The button will change to Install when the APK is ready.",
+                actionLabel = "Downloading"
         )
     }
 
@@ -4231,22 +4406,22 @@ internal class SlockKuiklyBridgeModule(
             when (openQuiverDownloadedApkOrRequestPermission(context, this, source)) {
                 QUIVER_INSTALL_OPENED ->
                     QuiverInstallResult(
-                            statusLabel = appContext.getString(R.string.settings_update_status_install),
-                            detail = appContext.getString(R.string.settings_update_detail_installer_opened),
-                            actionLabel = appContext.getString(R.string.settings_update_status_install)
+                            statusLabel = "Install",
+                            detail = "Android installer opened for the downloaded Raft update.",
+                            actionLabel = "Install"
                     )
                 QUIVER_INSTALL_PERMISSION_REQUIRED ->
                     QuiverInstallResult(
-                            statusLabel = appContext.getString(R.string.settings_update_status_permission_required),
-                            detail = appContext.getString(R.string.settings_update_detail_permission_required),
-                            actionLabel = appContext.getString(R.string.settings_update_status_install),
+                            statusLabel = "Permission required",
+                            detail = "Raft update is downloaded. Allow Raft to install unknown apps, then return to continue installation.",
+                            actionLabel = "Install",
                             errorCode = "install_permission_required"
                     )
                 else ->
                     QuiverInstallResult(
-                            statusLabel = appContext.getString(R.string.settings_update_status_install_failed),
-                            detail = appContext.getString(R.string.settings_update_detail_installer_failed),
-                            actionLabel = appContext.getString(R.string.settings_update_status_install),
+                            statusLabel = "Install failed",
+                            detail = "Raft update is downloaded, but Android installer could not be opened.",
+                            actionLabel = "Install",
                             errorCode = "install_intent_failed"
                     )
             }
@@ -4268,37 +4443,21 @@ internal class SlockKuiklyBridgeModule(
     )
 
     private fun UpdateCheckResponse.quiverStatusLabel(): String =
-            appContext.getString(
-                    if (requireUpdate() != null) {
-                        R.string.settings_update_status_available
-                    } else {
-                        R.string.settings_update_status_current
-                    }
-            )
+            if (requireUpdate() != null) "Update available" else "Current"
 
     private fun UpdateCheckResponse.quiverDetail(): String =
             if (requireUpdate() != null) {
-                val version =
-                        latest?.version?.takeIf { it.isNotBlank() }
-                                ?: appContext.getString(
-                                        R.string.settings_update_version_code,
-                                        latest?.version_code ?: 0L
-                                )
+                val version = latest?.version?.takeIf { it.isNotBlank() } ?: "version code ${latest?.version_code ?: 0L}"
                 val size = asset?.size_bytes?.takeIf { it > 0L }?.formatStorageSizeLabel()
-                if (size == null) {
-                    appContext.getString(R.string.settings_update_detail_available, version)
-                } else {
-                    appContext.getString(
-                            R.string.settings_update_detail_available_with_size,
-                            version,
-                            size
-                    )
+                buildString {
+                    append("Quiver has ")
+                    append(version)
+                    append(" on ")
+                    append(channel)
+                    size?.let { append(" (").append(it).append(" APK).") } ?: append(".")
                 }
             } else {
-                appContext.getString(
-                        R.string.settings_update_detail_current,
-                        current_version_code
-                )
+                "No Quiver update is available on $channel for version code $current_version_code."
             }
 
     private fun setApiEnvironment(request: JSONObject): Map<String, Any> {
@@ -5130,6 +5289,208 @@ internal class SlockKuiklyBridgeModule(
         }
     }
 
+    private fun saveImageToPhotos(params: String?, callback: KuiklyRenderCallback?) {
+        val request = JSONObject(params ?: "{}")
+        val downloadId = request.optString("downloadId").takeIf(String::isNotBlank)
+                ?: "${request.optString("attachmentId")}:${request.optString("fileName")}".take(160)
+        val operationId = request.optString("operationId").takeIf(String::isNotBlank)
+        val owner = request.attachmentOwnerLease()
+        if (operationId == null || owner == null) {
+            callback?.invoke(mapOf("status" to "failed", "message" to "Missing attachment export authority"))
+            return
+        }
+        SlockKuiklyThreadAdapter.execute("attachment-save-photos") {
+            if (!ProcessAndroidAttachmentExportAuthorities.bind(owner, downloadId, operationId)) {
+                callback?.invoke(mapOf("status" to "failed", "message" to "Missing attachment export authority"))
+                return@execute
+            }
+            val authorityProgressCallback: KuiklyRenderCallback? = callback?.let { downstream ->
+                { payload ->
+                    if (ProcessAndroidAttachmentExportAuthorities.isCurrent(owner, downloadId, operationId)) {
+                        downstream(payload)
+                    }
+                }
+            }
+            val authorityTerminalCallback: KuiklyRenderCallback? = callback?.let { downstream ->
+                { payload ->
+                    if (ProcessAndroidAttachmentExportAuthorities.retireIfCurrent(owner, downloadId, operationId)) {
+                        downstream(payload)
+                    }
+                }
+            }
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q &&
+                    ContextCompat.checkSelfPermission(appContext, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+                val hostActivity = activity as? SlockKuiklyActivity
+                if (hostActivity == null) {
+                    authorityTerminalCallback?.invoke(
+                            mapOf("status" to "failed", "message" to "Another photo permission request is active")
+                    )
+                    return@execute
+                }
+                hostActivity.runOnUiThread {
+                    if (!ProcessAndroidAttachmentExportAuthorities.isCurrent(owner, downloadId, operationId)) {
+                        return@runOnUiThread
+                    }
+                    if (!hostActivity.requestLegacyGalleryPermission(downloadId, operationId, owner) { granted ->
+                            if (granted) {
+                                saveImageToPhotos(params, callback)
+                            } else {
+                                authorityTerminalCallback?.invoke(
+                                        mapOf(
+                                                "status" to "permission_denied",
+                                                "message" to "Allow Photos and media access in Settings, then try again",
+                                                "retryable" to true
+                                        )
+                                )
+                            }
+                        }) {
+                        authorityTerminalCallback?.invoke(
+                                mapOf("status" to "failed", "message" to "Another photo permission request is active")
+                        )
+                    }
+                }
+                return@execute
+            }
+            val trackProgress = request.optBoolean("trackProgress", false)
+            val preparation =
+                    runCatching {
+                                prepareAttachment(
+                                        request = request,
+                                        operationId = operationId,
+                                        operationIsCurrent = {
+                                            ProcessAndroidAttachmentExportAuthorities.isCurrent(
+                                                    owner,
+                                                    downloadId,
+                                                    operationId
+                                            )
+                                        },
+                                        progressCallback =
+                                                if (trackProgress) {
+                                                    { progress -> authorityProgressCallback?.invoke(progress) }
+                                                } else {
+                                                    null
+                                                }
+                                )
+                            }
+                            .getOrElse {
+                                authorityTerminalCallback?.invoke(mapOf("status" to "failed", "message" to "Unable to download attachment"))
+                                return@execute
+                            }
+            when (preparation) {
+                is AttachmentPreparationResult.Terminal -> authorityTerminalCallback?.invoke(preparation.payload)
+                is AttachmentPreparationResult.Ready -> {
+                    if (!ProcessAndroidAttachmentExportAuthorities.isCurrent(owner, downloadId, operationId)) {
+                        return@execute
+                    }
+                    val validation =
+                            validateAndroidGalleryImage(
+                                    source = preparation.targetFile,
+                                    fileName = preparation.requestedFileName,
+                                    claimedMimeType = preparation.mimeType
+                            )
+                    if (validation == null) {
+                        authorityTerminalCallback?.invoke(
+                                mapOf(
+                                        "status" to "unsupported_image",
+                                        "message" to "This attachment is not a supported image",
+                                        "retryable" to false
+                                )
+                        )
+                        return@execute
+                    }
+                    val displayName =
+                            publicDownloadDisplayName(
+                                    requestedFileName = preparation.requestedFileName,
+                                    fallbackExtension = MimeTypeMap.getSingleton().getExtensionFromMimeType(validation.mimeType)
+                            )
+                    authorityTerminalCallback?.invoke(
+                            publishAttachmentToImages(
+                                    downloadId = preparation.downloadId,
+                                    operationId = operationId,
+                                    owner = preparation.owner,
+                                    source = preparation.targetFile,
+                                    displayName = displayName,
+                                    mimeType = validation.mimeType,
+                                    width = validation.width,
+                                    height = validation.height,
+                                    cached = preparation.wasCached,
+                                    progressCallback =
+                                            if (trackProgress) {
+                                                { progress -> authorityProgressCallback?.invoke(progress) }
+                                            } else {
+                                                null
+                                            }
+                            )
+                    )
+                }
+            }
+        }
+    }
+
+    private fun cancelAttachmentExport(params: String?) {
+        val request = JSONObject(params ?: "{}")
+        val downloadId = request.optString("downloadId").takeIf(String::isNotBlank) ?: return
+        val operationId = request.optString("operationId").takeIf(String::isNotBlank) ?: return
+        val owner = request.attachmentOwnerLease() ?: return
+        val attemptToken = request.optString("attemptToken").takeIf(String::isNotBlank)
+        val hostActivity = activity as? SlockKuiklyActivity
+        ProcessAndroidAttachmentExportAuthorities.cancelIfCurrent(
+                owner = owner,
+                downloadId = downloadId,
+                operationId = operationId,
+                dispatch = { cleanup ->
+                    val dispatchCleanup = {
+                        SlockKuiklyThreadAdapter.execute("attachment-save-photos-cancel", cleanup)
+                    }
+                    if (hostActivity == null) {
+                        dispatchCleanup()
+                    } else {
+                        hostActivity.runOnUiThread {
+                            hostActivity.cancelLegacyGalleryPermission(downloadId, operationId, owner)
+                            dispatchCleanup()
+                        }
+                    }
+                },
+                cleanup = {
+                    runCatching {
+                        AttachmentDownloadCoordinator.controlExisting(downloadId, attemptToken, "cancel")
+                    }.onFailure { throwable ->
+                        SlockAppLog.record(
+                                "SlockAttachmentExport",
+                                "phase=cancel_common status=failed type=${throwable::class.java.simpleName}"
+                        )
+                    }
+                    runCatching {
+                        attachmentSystemDownloads.controlExisting(
+                                owner.principalKey,
+                                downloadId,
+                                operationId,
+                                "cancel"
+                        )
+                    }.onFailure { throwable ->
+                        SlockAppLog.record(
+                                "SlockAttachmentExport",
+                                "phase=cancel_system status=failed type=${throwable::class.java.simpleName}"
+                        )
+                    }
+                    runCatching {
+                        attachmentDownloadsExportCoordinator.controlExisting(
+                                downloadId = downloadId,
+                                operationId = operationId,
+                                expectedAttemptToken = attemptToken,
+                                action = "cancel",
+                                owner = owner
+                        )
+                    }.onFailure { throwable ->
+                        SlockAppLog.record(
+                                "SlockAttachmentExport",
+                                "phase=cancel_gallery status=failed type=${throwable::class.java.simpleName}"
+                        )
+                    }
+                }
+        )
+    }
+
     private fun attachmentDownloadOwnerChanged(params: String?) {
         val request = JSONObject(params ?: "{}")
         when (request.optString("action")) {
@@ -5220,8 +5581,15 @@ internal class SlockKuiklyBridgeModule(
 
     private fun prepareAttachment(
             request: JSONObject,
+            operationId: String = "",
+            operationIsCurrent: () -> Boolean = { true },
             progressCallback: ((Map<String, Any>) -> Unit)? = null
     ): AttachmentPreparationResult {
+        if (!operationIsCurrent()) {
+            return AttachmentPreparationResult.Terminal(
+                    mapOf("status" to "cancelled", "message" to "Save stopped")
+            )
+        }
         val urlText = request.optString("url").takeIf { it.isNotBlank() }
                 ?: return AttachmentPreparationResult.Terminal(
                         mapOf("status" to "failed", "message" to "Unable to download attachment")
@@ -5258,6 +5626,8 @@ internal class SlockKuiklyBridgeModule(
                                 targetFile,
                                 downloadId,
                                 requestedMimeType,
+                                operationId,
+                                operationIsCurrent,
                                 progressCallback
                         )
                     } catch (ignored: AttachmentDownloadStoppedException) {
@@ -5289,9 +5659,16 @@ internal class SlockKuiklyBridgeModule(
         }
         val ready =
                 if (directCompletion != null) {
-                    directCompletion.ownerOperation.finishIfCurrent(buildReady)
-                } else {
+                    if (operationIsCurrent()) {
+                        directCompletion.ownerOperation.finishIfCurrent(buildReady)
+                    } else {
+                        directCompletion.ownerOperation.cancelAndCleanup()
+                        null
+                    }
+                } else if (operationIsCurrent()) {
                     ProcessAndroidAttachmentOwners.runIfCurrent(owner, buildReady)
+                } else {
+                    null
                 }
         return ready
                 ?: AttachmentPreparationResult.Terminal(
@@ -5308,7 +5685,7 @@ internal class SlockKuiklyBridgeModule(
             progressCallback: ((Map<String, Any>) -> Unit)? = null
     ): Map<String, Any> {
         val prepared =
-                when (val preparation = prepareAttachment(request, progressCallback)) {
+                when (val preparation = prepareAttachment(request, progressCallback = progressCallback)) {
                     is AttachmentPreparationResult.Ready -> preparation
                     is AttachmentPreparationResult.Terminal -> return preparation.payload
                 }
@@ -5520,6 +5897,147 @@ internal class SlockKuiklyBridgeModule(
         }
     }
 
+    private fun publishAttachmentToImages(
+            downloadId: String,
+            operationId: String,
+            owner: AndroidAttachmentOwnerLease,
+            source: File,
+            displayName: String,
+            mimeType: String,
+            width: Int,
+            height: Int,
+            cached: Boolean,
+            progressCallback: ((Map<String, Any>) -> Unit)?
+    ): Map<String, Any> {
+        val resolver = appContext.contentResolver
+        val mediaStoreRequestToken = UUID.randomUUID().toString().replace("-", "")
+        val result =
+                attachmentDownloadsExportCoordinator.exportIfCurrent(
+                        request =
+                                AttachmentDownloadsExportRequest(
+                                        downloadId = downloadId,
+                                        operationId = operationId,
+                                        source = source,
+                                        displayName = displayName,
+                                        mimeType = mimeType,
+                                        owner = owner
+                                ),
+                        backend =
+                                object : AttachmentDownloadsExportBackend {
+                                    override fun insert(displayName: String, mimeType: String): String? {
+                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                            val values = ContentValues()
+                                            values.put(
+                                                    MediaStore.MediaColumns.DISPLAY_NAME,
+                                                    pendingAttachmentMediaStoreDisplayName(mediaStoreRequestToken, displayName)
+                                            )
+                                            values.put(MediaStore.MediaColumns.RELATIVE_PATH, ANDROID_ATTACHMENT_IMAGES_RELATIVE_PATH)
+                                            values.put(MediaStore.MediaColumns.IS_PENDING, 1)
+                                            values.put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+                                            return resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)?.toString()
+                                        } else {
+                                            val directory =
+                                                    File(
+                                                            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
+                                                            "Raft"
+                                                    )
+                                            if (!directory.exists() && !directory.mkdirs()) return null
+                                            return insertLegacyAndroidGalleryImage(
+                                                    directory = directory,
+                                                    requestedDisplayName = displayName
+                                            ) { candidateName, candidatePath ->
+                                                val values = ContentValues().apply {
+                                                    put(MediaStore.MediaColumns.DISPLAY_NAME, candidateName)
+                                                    put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+                                                    @Suppress("DEPRECATION")
+                                                    put(MediaStore.Images.Media.DATA, candidatePath)
+                                                }
+                                                resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)?.toString()
+                                            }?.uri
+                                        }
+                                    }
+
+                                    override fun openOutput(uri: String) = resolver.openOutputStream(Uri.parse(uri), "w")
+
+                                    override fun publish(uri: String): Boolean {
+                                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return true
+                                        val values = ContentValues().apply {
+                                            put(MediaStore.MediaColumns.DISPLAY_NAME, displayName)
+                                            put(MediaStore.MediaColumns.IS_PENDING, 0)
+                                        }
+                                        return resolver.update(Uri.parse(uri), values, null, null) > 0
+                                    }
+
+                                    override fun deletePending(uri: String): Boolean {
+                                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+                                            return resolver.delete(Uri.parse(uri), null, null) > 0
+                                        }
+                                        return resolver.delete(
+                                                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                                                "${MediaStore.MediaColumns._ID} = ? AND " +
+                                                        "${MediaStore.MediaColumns.IS_PENDING} = ? AND " +
+                                                        "${MediaStore.MediaColumns.RELATIVE_PATH} IN (?, ?) AND " +
+                                                        "${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ?",
+                                                arrayOf(
+                                                        android.content.ContentUris.parseId(Uri.parse(uri)).toString(),
+                                                        "1",
+                                                        ANDROID_ATTACHMENT_IMAGES_RELATIVE_PATH,
+                                                        "$ANDROID_ATTACHMENT_IMAGES_RELATIVE_PATH/",
+                                                        "$ANDROID_ATTACHMENT_PENDING_NAME_PREFIX%"
+                                                )
+                                        ) > 0
+                                    }
+
+                                    override fun rowState(uri: String): AttachmentDownloadsRowState {
+                                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+                                            return runCatching {
+                                                        resolver.query(Uri.parse(uri), arrayOf(MediaStore.MediaColumns._ID), null, null, null)
+                                                            ?.use { if (it.moveToFirst()) AttachmentDownloadsRowState.Published else AttachmentDownloadsRowState.Missing }
+                                                            ?: AttachmentDownloadsRowState.Unknown
+                                                    }
+                                                    .getOrDefault(AttachmentDownloadsRowState.Unknown)
+                                        }
+                                        return runCatching {
+                                                    resolver.query(
+                                                            Uri.parse(uri),
+                                                            arrayOf(MediaStore.MediaColumns.IS_PENDING),
+                                                            null,
+                                                            null,
+                                                            null
+                                                    )?.use { cursor ->
+                                                        if (!cursor.moveToFirst()) return@use AttachmentDownloadsRowState.Missing
+                                                        val index = cursor.getColumnIndex(MediaStore.MediaColumns.IS_PENDING)
+                                                        if (index < 0) AttachmentDownloadsRowState.Unknown
+                                                        else if (cursor.getInt(index) == 1) AttachmentDownloadsRowState.Pending
+                                                        else AttachmentDownloadsRowState.Published
+                                                    } ?: AttachmentDownloadsRowState.Unknown
+                                                }
+                                                .getOrDefault(AttachmentDownloadsRowState.Unknown)
+                                    }
+                                },
+                        operationIsCurrent = {
+                            ProcessAndroidAttachmentExportAuthorities.isCurrent(
+                                    owner,
+                                    downloadId,
+                                    operationId
+                            )
+                        },
+                        observer = { progress -> progressCallback?.invoke(progress.toAndroidBridgePayload()) }
+                )
+        return buildMap {
+            put("status", result.status)
+            put("message", if (result.status == "saved") "Saved to Photos" else result.message)
+            put("cached", cached)
+            put("sizeBytes", result.sizeBytes)
+            put("mimeType", mimeType)
+            put("pixelWidth", width)
+            put("pixelHeight", height)
+            result.uri?.let { put("uri", it) }
+            result.fileName?.let { put("fileName", it) }
+            result.failurePhase?.let { put("phase", it) }
+        }
+    }
+
     private fun attachmentCacheDir(): File = File(appContext.cacheDir, ATTACHMENT_CACHE_DIR_NAME)
 
     private fun attachmentCacheFile(request: JSONObject, principalKey: String): File =
@@ -5552,6 +6070,8 @@ internal class SlockKuiklyBridgeModule(
             targetFile: File,
             downloadId: String,
             requestedMimeType: String?,
+            operationId: String = "",
+            operationIsCurrent: () -> Boolean = { true },
             progressCallback: ((Map<String, Any>) -> Unit)? = null
     ): DirectAttachmentDownloadCompletion {
         val requestStartedAt = SystemClock.elapsedRealtime()
@@ -5562,7 +6082,7 @@ internal class SlockKuiklyBridgeModule(
                 AndroidAttachmentDirectDownloadOwnerOperation(
                         registry = ProcessAndroidAttachmentOwners,
                         owner = owner,
-                        operationId = "direct-download:$downloadId",
+                        operationId = "direct-download:$downloadId:${operationId.ifBlank { "default" }}",
                         cleanupAttempt = { attemptToken ->
                             cleanupDirectAttachmentAttempt(targetFile, attemptToken)
                         }
@@ -5570,7 +6090,7 @@ internal class SlockKuiklyBridgeModule(
         val observer =
                 object : AttachmentDownloadObserver {
                     override fun onProgress(progress: AttachmentDownloadProgress) {
-                        if (!ProcessAndroidAttachmentOwners.admit(owner)) {
+                        if (!ProcessAndroidAttachmentOwners.admit(owner) || !operationIsCurrent()) {
                             AttachmentDownloadCoordinator.control(
                                     downloadId = downloadId,
                                     expectedAttemptToken = progress.attemptToken,
@@ -5593,7 +6113,8 @@ internal class SlockKuiklyBridgeModule(
                         completed.countDown()
                     }
                 }
-        if (!ownerOperation.start {
+        if (!operationIsCurrent() ||
+                !ownerOperation.start {
                     AttachmentDownloadCoordinator.start(
                             downloadId = downloadId,
                             targetKey = targetFile.absolutePath,
@@ -5617,6 +6138,10 @@ internal class SlockKuiklyBridgeModule(
                             ownerOperation.cancelAndCleanup()
                             throw IllegalStateException("Attachment download ended without a result")
                         }
+        if (!operationIsCurrent()) {
+            ownerOperation.cancelAndCleanup()
+            throw AttachmentDownloadStoppedException()
+        }
         return when (result.status) {
             "complete" ->
                     DirectAttachmentDownloadCompletion(
@@ -5831,6 +6356,7 @@ internal class SlockKuiklyBridgeModule(
         const val MODULE_NAME = "HRBridgeModule"
         private val quiverUpdateDownloads = ConcurrentHashMap<String, QuiverUpdateDownload>()
         private val quiverUpdateDownloadLock = Any()
+        private val alphaHandsUpdateCallOwner = HandsDeltaUpdateCallOwner()
         @Volatile private var pendingQuiverAutoInstallKey: String? = null
         private const val REQUEST_NOTIFICATIONS_CODE = 4207
         private const val ATTACHMENT_CACHE_MAX_FILES = 80

@@ -4181,6 +4181,39 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun togglePinnedSearchMemberWithoutDirectMessageUsesExplicitTypedIdentity() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val initial = SettingsServerSidebarOrderSnapshot(pinnedSortMode = "manual")
+        val updateCalls = mutableListOf<SettingsServerSidebarOrderUpdateRequest>()
+        val expectedPinned = listOf(SettingsServerSidebarPinnedItem(kind = "agent", id = "agent-no-dm"))
+        val updatedSnapshot = initial.copy(pinned = expectedPinned, pinnedOrder = listOf("agent-no-dm"))
+        val home = sampleHome(ServerId("server-1")).copy(directMessages = emptyList(), sidebarOrder = initial)
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource = sourceWithSnapshot(home),
+            scope = scope,
+            loadSidebarOrder = { _ -> DataResult.Content(initial) },
+            updateSidebarOrder = { request ->
+                updateCalls += request
+                DataResult.Content(updatedSnapshot)
+            }
+        )
+
+        store.accept(SharedHomeIntent.Start)
+        store.accept(
+            SharedHomeIntent.TogglePinned(
+                conversationId = "agent-no-dm",
+                pinnedKind = "agent",
+                pinnedId = "agent-no-dm"
+            )
+        )
+
+        assertEquals(expectedPinned, updateCalls.single().pinned)
+        assertEquals(expectedPinned, (store.state.value.content as SharedHomeContentState.Content).snapshot.sidebarOrder?.pinned)
+        scope.cancel()
+    }
+
+    @Test
     fun togglePinnedWritesSidebarOrderToHomeIdentityPersist() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val storage = InMemorySlockKeyValueStore()
@@ -4972,10 +5005,7 @@ class SharedHomeStoreTest {
             )
         )
 
-        awaitCondition {
-            val snapshot = (store.state.value.content as? SharedHomeContentState.Content)?.snapshot
-            snapshot?.channels?.singleOrNull()?.unreadCount == 3
-        }
+        store.awaitRealtimeSettled()
         val rewoundSnapshot = (store.state.value.content as SharedHomeContentState.Content).snapshot
         assertEquals(3, rewoundSnapshot.channels.single().unreadCount)
         assertEquals(2, rewoundSnapshot.channels.single().mentionCount)

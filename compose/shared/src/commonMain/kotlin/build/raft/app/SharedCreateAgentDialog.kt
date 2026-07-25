@@ -27,8 +27,18 @@ import build.raft.app.model.supportsRuntimeFastMode
 import build.raft.app.model.supportsRuntimeCustomModelName
 import build.raft.app.model.supportsRuntimeReasoningEffort
 import build.raft.app.model.validateAgentName
+import build.raft.app.data.SharedAgentCreateFormOptionSource
+import build.raft.app.data.SharedBuiltInWriteOnlyIdentity
+import build.raft.app.data.SharedCreateAgentExactFormKey
+import build.raft.app.data.SharedCreateAgentFormStore
+import build.raft.app.data.SharedCreateAgentFormStoreState
+import build.raft.app.data.SharedCreateAgentMachineFormKey
+import build.raft.app.data.SharedResolvedAgentCreateForm
+import build.raft.app.data.buildBuiltInRuntimeConfig
+import build.raft.app.data.shouldClearBuiltInWriteOnlySecret
 import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -66,6 +76,7 @@ import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.tmm.kmmresource.compose.localized
 import com.tencent.tmm.kmmresource.resource.format
 import com.tencent.kuikly.core.pager.Pager
+import kotlinx.coroutines.flow.MutableStateFlow
 
 // #55 visual parity: the legacy `CREATE_AGENT_DIALOG_BODY_MAX_HEIGHT = 430.dp`
 // cap has been removed. The dialog body now fills the viewport via
@@ -80,6 +91,7 @@ internal data class SharedCreateAgentDialogSubmit(
     val description: String?,
     val machineId: String?,
     val runtimeConfig: RuntimeConfig? = null,
+    val formDefinitionRef: build.raft.app.data.SharedRuntimeFormDefinitionRef? = null,
     val external: Boolean = false
 )
 
@@ -167,6 +179,7 @@ internal fun SharedCreateAgentDialogSubmit.toCreateAgentRequest(): build.raft.ap
         description = description,
         machineId = machineId,
         runtimeConfig = runtimeConfig,
+        formDefinitionRef = formDefinitionRef,
         external = external,
         avatarUrl = randomCreateAgentAvatarWireValue()
     )
@@ -187,7 +200,13 @@ internal fun buildSharedCreateAgentDialogSubmit(
     fastMode: Boolean,
     reasoningEffort: String?,
     envVarEntries: List<Pair<String, String>>,
-    command: String
+    command: String,
+    builtInForm: SharedResolvedAgentCreateForm? = null,
+    builtInProviderId: String = "",
+    builtInApiKey: String = "",
+    builtInBaseUrl: String = "",
+    builtInSupportsImageInput: Boolean = false,
+    builtInModel: String = ""
 ): SharedCreateAgentDialogSubmit {
     val finalMachineId =
         if (external) null
@@ -195,6 +214,15 @@ internal fun buildSharedCreateAgentDialogSubmit(
     val runtimeConfig =
         if (external) {
             null
+        } else if (runtime == "builtin") {
+            builtInForm?.buildBuiltInRuntimeConfig(
+                providerId = builtInProviderId,
+                apiKey = builtInApiKey,
+                baseUrl = builtInBaseUrl,
+                supportsImageInput = builtInSupportsImageInput,
+                model = builtInModel,
+                envVars = createAgentRuntimeEnvVars(envVarEntries)
+            )
         } else {
             buildRuntimeConfig(
                 runtime = runtime,
@@ -215,6 +243,7 @@ internal fun buildSharedCreateAgentDialogSubmit(
         description = description.trim().takeIf { it.isNotBlank() },
         machineId = finalMachineId,
         runtimeConfig = runtimeConfig,
+        formDefinitionRef = builtInForm?.definition?.ref.takeIf { runtime == "builtin" },
         external = external
     )
 }
@@ -296,7 +325,7 @@ internal fun createAgentRuntimeDropdownItems(
         }
     }
     val available = machineRuntimeIdsNormalized.toSet()
-    return RUNTIMES.map { runtime ->
+    val legacyItems = RUNTIMES.map { runtime ->
         val selectable = runtime.supported && runtime.id in available
         val unavailableSuffix =
             when {
@@ -310,7 +339,19 @@ internal fun createAgentRuntimeDropdownItems(
             enabled = selectable
         )
     }
+    return legacyItems +
+        if ("builtin" in available) {
+            listOf(CreateAgentDropdownItem(id = "builtin", label = "Built-in (Pi)"))
+        } else {
+            emptyList()
+        }
 }
+
+internal fun canEnableBuiltInRuntime(
+    hasFormOverride: Boolean,
+    hasSupportedExactRef: Boolean,
+    hasResolvedExactForm: Boolean
+): Boolean = hasFormOverride || (hasSupportedExactRef && hasResolvedExactForm)
 
 internal fun createAgentRuntimeAvailabilityError(
     selectedMachineId: String?,
@@ -496,6 +537,9 @@ internal fun SharedCreateAgentDialog(
     runtimeModelsByMachineAndRuntime: Map<Pair<String, String>, SharedCreateAgentRuntimeModelCatalog> = emptyMap(),
     runtimeModelLoadsInFlight: Set<Pair<String, String>> = emptySet(),
     onRuntimeModelsRequest: (machineId: String, runtime: String, force: Boolean) -> Unit = { _, _, _ -> },
+    createAgentFormStore: SharedCreateAgentFormStore? = null,
+    createAgentServerId: String? = null,
+    builtInFormOverride: SharedResolvedAgentCreateForm? = null,
     currentAgentCount: Int = 0,
     maxAgents: Int = -1,
     limitPlanLabel: String? = null,
@@ -516,6 +560,12 @@ internal fun SharedCreateAgentDialog(
     var fastMode by remember(initialFastMode) { mutableStateOf(initialFastMode) }
     var reasoningEffort by remember(initialReasoningEffort) { mutableStateOf(initialReasoningEffort) }
     var command by remember(initialCommand) { mutableStateOf(initialCommand) }
+    var builtInProviderId by remember { mutableStateOf("") }
+    var builtInApiKey by remember { mutableStateOf("") }
+    var builtInBaseUrl by remember { mutableStateOf("") }
+    var builtInSupportsImageInput by remember { mutableStateOf(false) }
+    var builtInModel by remember { mutableStateOf("") }
+    var builtInSecretIdentity by remember { mutableStateOf<SharedBuiltInWriteOnlyIdentity?>(null) }
     var envVarEntries by remember {
         mutableStateOf(listOf<Pair<String, String>>())
     }
@@ -535,11 +585,54 @@ internal fun SharedCreateAgentDialog(
     val runtimeModelsCatalog = runtimeModelKey?.let { runtimeModelsByMachineAndRuntime[it] }
     val runtimeModelsOverride = runtimeModelsCatalog?.models.orEmpty()
     val runtimeModelsLoading = runtimeModelKey?.let { it in runtimeModelLoadsInFlight } ?: false
+    val emptyFormStoreState = remember { MutableStateFlow(SharedCreateAgentFormStoreState()) }
+    val createAgentFormState by remember(createAgentFormStore) {
+        createAgentFormStore?.state ?: emptyFormStoreState
+    }.collectAsState()
+    val cleanCreateAgentServerId = createAgentServerId?.trim().orEmpty()
+    val createAgentMachineKey = selectedMachineId?.let { machineId ->
+        SharedCreateAgentMachineFormKey(cleanCreateAgentServerId, machineId)
+    }
+    val builtInCatalog = createAgentMachineKey?.let(createAgentFormState.runtimeCatalogs::get)
+    val builtInRef = builtInCatalog?.options
+        ?.singleOrNull { it.runtimeId == "builtin" && it.selectable }
+        ?.formDefinitionRef
+        ?.takeIf { it.isSupportedBuiltInPi }
+        ?: builtInFormOverride?.definition?.ref
+    val builtInExactKey = builtInRef?.let { ref ->
+        selectedMachineId?.let { machineId -> SharedCreateAgentExactFormKey(cleanCreateAgentServerId, machineId, ref) }
+    }
+    val builtInForm = builtInFormOverride ?: builtInExactKey?.let(createAgentFormState.resolvedForms::get)
+    val builtInRuntimeEnabled = canEnableBuiltInRuntime(
+        hasFormOverride = builtInFormOverride != null,
+        hasSupportedExactRef = builtInRef != null,
+        hasResolvedExactForm = builtInForm != null
+    )
+    val builtInFormLoading =
+        createAgentMachineKey?.let { it in createAgentFormState.loadingRuntimeCatalogs } == true ||
+            builtInExactKey?.let { it in createAgentFormState.loadingForms } == true
+    val builtInOwner = createAgentFormState.owner
+    val builtInWriteOnlyIdentity = SharedBuiltInWriteOnlyIdentity(
+        environmentId = builtInOwner?.environmentId.orEmpty(),
+        accountId = builtInOwner?.accountId.orEmpty(),
+        sessionGeneration = builtInOwner?.sessionGeneration.orEmpty(),
+        serverId = cleanCreateAgentServerId,
+        machineId = selectedMachineId.orEmpty(),
+        runtimeId = runtime,
+        ref = builtInRef,
+        providerId = builtInProviderId,
+        baseUrl = builtInBaseUrl.trim()
+    )
+    val effectiveBuiltInApiKey = builtInApiKey.takeIf { builtInSecretIdentity == builtInWriteOnlyIdentity }.orEmpty()
 
     fun resetRuntimeForMachine(machineId: String) {
         val machine = machines.firstOrNull { it.id == machineId }
-        val newRuntime = machine?.runtimes?.firstOrNull { it in supportedRuntimeIds }
-            ?: machine?.runtimes?.firstOrNull()
+        val authoritativeRuntimeIds = machine?.runtimes.orEmpty().filterNot { it == "builtin" } +
+            if (builtInRuntimeEnabled) {
+                listOf("builtin")
+            } else emptyList()
+        val newRuntime = authoritativeRuntimeIds.firstOrNull { it in supportedRuntimeIds || it == "builtin" }
+            ?: authoritativeRuntimeIds.firstOrNull()
             ?: runtime
         if (newRuntime != runtime) {
             runtime = newRuntime
@@ -551,6 +644,9 @@ internal fun SharedCreateAgentDialog(
         providerMode = RUNTIME_PROVIDER_MODE_DEFAULT
         providerApiUrl = ""
         providerApiKey = ""
+        builtInApiKey = ""
+        builtInSecretIdentity = null
+        builtInSupportsImageInput = false
         fastMode = false
         command = ""
         reasoningEffort = null
@@ -577,6 +673,36 @@ internal fun SharedCreateAgentDialog(
         }
     }
 
+    LaunchedEffect(createAgentFormStore, cleanCreateAgentServerId, selectedMachineId, external) {
+        val machineId = selectedMachineId ?: return@LaunchedEffect
+        if (!external && builtInFormOverride == null && cleanCreateAgentServerId.isNotBlank()) {
+            createAgentFormStore?.loadSupportedBuiltInForm(cleanCreateAgentServerId, machineId)
+        }
+    }
+
+    LaunchedEffect(builtInForm) {
+        val providerSource = builtInForm?.optionSources?.get("provider") as? SharedAgentCreateFormOptionSource.Select
+            ?: return@LaunchedEffect
+        val nextProvider = providerSource.defaultValue
+        val modelSource = builtInForm.optionSources["model"] as? SharedAgentCreateFormOptionSource.DependentSelect
+            ?: return@LaunchedEffect
+        builtInProviderId = nextProvider
+        builtInModel = modelSource.defaultValueByValue[nextProvider]
+            ?: modelSource.optionsByValue[nextProvider]?.firstOrNull()?.value.orEmpty()
+        builtInBaseUrl = ""
+        builtInApiKey = ""
+        builtInSupportsImageInput = false
+        builtInSecretIdentity = null
+    }
+
+    LaunchedEffect(builtInOwner, cleanCreateAgentServerId, selectedMachineId, runtime, builtInRef, builtInProviderId, builtInBaseUrl) {
+        val previousIdentity = builtInSecretIdentity
+        if (shouldClearBuiltInWriteOnlySecret(previousIdentity, builtInWriteOnlyIdentity)) {
+            builtInApiKey = ""
+        }
+        builtInSecretIdentity = builtInWriteOnlyIdentity
+    }
+
     // Reset model when runtime changes or machine-specific model data arrives if current model is not available.
     LaunchedEffect(runtime, runtimeModelsOverride) {
         if (!customModelMode) {
@@ -600,7 +726,14 @@ internal fun SharedCreateAgentDialog(
     val customModelMissing = !external && customModelMode && customModelName.trim().isBlank()
     val selectedMachine = machines.firstOrNull { it.id == selectedMachineId }
     val selectedMachineRuntimeIds =
-        normalizeCreateAgentRuntimeIds(selectedMachine?.runtimes.orEmpty())
+        normalizeCreateAgentRuntimeIds(
+            selectedMachine?.runtimes.orEmpty().filterNot { it == "builtin" } +
+                if (builtInRuntimeEnabled) {
+                    listOf("builtin")
+                } else {
+                    emptyList()
+                }
+        )
     val runtimeAvailabilityError =
         createAgentRuntimeAvailabilityError(
             selectedMachineId = selectedMachine?.id,
@@ -611,6 +744,19 @@ internal fun SharedCreateAgentDialog(
         (selectedMachine == null ||
             selectedMachine.status != "online" ||
             (!requiredComputer.isNullOrBlank() && selectedMachine.id != requiredComputer))
+    val builtInRuntimeConfig =
+        if (!external && runtime == "builtin") {
+            builtInForm?.buildBuiltInRuntimeConfig(
+                providerId = builtInProviderId,
+                apiKey = effectiveBuiltInApiKey,
+                baseUrl = builtInBaseUrl,
+                supportsImageInput = builtInSupportsImageInput,
+                model = builtInModel,
+                envVars = createAgentRuntimeEnvVars(envVarEntries)
+            )
+        } else {
+            null
+        }
     val canSubmit = trimmedName.isNotBlank() &&
         inlineNameError == null &&
         !descriptionTooLong &&
@@ -618,7 +764,8 @@ internal fun SharedCreateAgentDialog(
         !atLimit &&
         !submitting &&
         !selectedMachineBlocked &&
-        runtimeAvailabilityError == null
+        runtimeAvailabilityError == null &&
+        (external || runtime != "builtin" || builtInRuntimeConfig != null)
     val showMachinePicker = !external
 
     LaunchedEffect(selectedMachineId, selectedMachineRuntimeIds, runtime) {
@@ -781,7 +928,48 @@ internal fun SharedCreateAgentDialog(
                 }
                 if (!external) {
                     item(key = "runtime") {
-                        AdvancedRuntimeSection(
+                        if (runtime == "builtin") {
+                            BuiltInRuntimeSection(
+                                runtime = runtime,
+                                onRuntimeChange = {
+                                    if (it != runtime) {
+                                        builtInApiKey = ""
+                                        builtInSupportsImageInput = false
+                                    }
+                                    runtime = it
+                                },
+                                machineRuntimeIds = selectedMachineRuntimeIds,
+                                runtimeAvailabilityError = runtimeAvailabilityError,
+                                form = builtInForm,
+                                loading = builtInFormLoading,
+                                providerId = builtInProviderId,
+                                onProviderIdChange = {
+                                    if (it != builtInProviderId) builtInApiKey = ""
+                                    builtInProviderId = it
+                                    builtInSupportsImageInput = false
+                                },
+                                apiKey = effectiveBuiltInApiKey,
+                                onApiKeyChange = {
+                                    builtInSecretIdentity = builtInWriteOnlyIdentity
+                                    builtInApiKey = it
+                                },
+                                baseUrl = builtInBaseUrl,
+                                onBaseUrlChange = {
+                                    if (it.trim() != builtInBaseUrl.trim()) builtInApiKey = ""
+                                    builtInBaseUrl = it
+                                },
+                                supportsImageInput = builtInSupportsImageInput,
+                                onSupportsImageInputChange = { builtInSupportsImageInput = it },
+                                model = builtInModel,
+                                onModelChange = { builtInModel = it },
+                                envVarEntries = envVarEntries,
+                                onEnvVarEntriesChange = { envVarEntries = it },
+                                advancedOpen = advancedOpen,
+                                onAdvancedOpenChange = { advancedOpen = it },
+                                enabled = !submitting
+                            )
+                        } else {
+                            AdvancedRuntimeSection(
                             runtime = runtime,
                             onRuntimeChange = { newRuntime ->
                                 runtime = newRuntime
@@ -826,7 +1014,8 @@ internal fun SharedCreateAgentDialog(
                             onCommandChange = { command = it },
                             advancedOpen = advancedOpen,
                             onAdvancedOpenChange = { advancedOpen = it }
-                        )
+                            )
+                        }
                     }
                 }
             }
@@ -870,7 +1059,13 @@ internal fun SharedCreateAgentDialog(
                                 fastMode = fastMode,
                                 reasoningEffort = reasoningEffort,
                                 envVarEntries = envVarEntries,
-                                command = command
+                                command = command,
+                                builtInForm = builtInForm,
+                                builtInProviderId = builtInProviderId,
+                                builtInApiKey = effectiveBuiltInApiKey,
+                                builtInBaseUrl = builtInBaseUrl,
+                                builtInSupportsImageInput = builtInSupportsImageInput,
+                                builtInModel = builtInModel
                             )
                         )
                     }
@@ -1021,6 +1216,175 @@ private fun MachinePicker(
                 style = SlockType.Caption,
                 color = SlockColor.TextMutedGray
             )
+        }
+    }
+}
+
+@Composable
+private fun BuiltInRuntimeSection(
+    runtime: String,
+    onRuntimeChange: (String) -> Unit,
+    machineRuntimeIds: List<String>,
+    runtimeAvailabilityError: String?,
+    form: SharedResolvedAgentCreateForm?,
+    loading: Boolean,
+    providerId: String,
+    onProviderIdChange: (String) -> Unit,
+    apiKey: String,
+    onApiKeyChange: (String) -> Unit,
+    baseUrl: String,
+    onBaseUrlChange: (String) -> Unit,
+    supportsImageInput: Boolean,
+    onSupportsImageInputChange: (Boolean) -> Unit,
+    model: String,
+    onModelChange: (String) -> Unit,
+    envVarEntries: List<Pair<String, String>>,
+    onEnvVarEntriesChange: (List<Pair<String, String>>) -> Unit,
+    advancedOpen: Boolean,
+    onAdvancedOpenChange: (Boolean) -> Unit,
+    enabled: Boolean
+) {
+    val focusManager = LocalFocusManager.current
+    val runtimeOptions = createAgentRuntimeDropdownItems(
+        machineRuntimeIds = machineRuntimeIds,
+        allowStaticFallback = false,
+        comingSoonSuffix = stringResource(MR.strings.agent_create_suffix_coming_soon),
+        notInstalledSuffix = stringResource(MR.strings.agent_create_suffix_not_installed)
+    )
+    val providerSource = form?.optionSources?.get("provider") as? SharedAgentCreateFormOptionSource.Select
+    val modelSource = form?.optionSources?.get("model") as? SharedAgentCreateFormOptionSource.DependentSelect
+    val providerOptions = providerSource?.options.orEmpty()
+    val modelOptions = modelSource?.optionsByValue?.get(providerId).orEmpty()
+    val customModelAllowed = modelSource?.customValueAllowedByValue?.get(providerId) == true
+    val visiblePointers = form?.definition?.uiSchema?.visibility.orEmpty().filter { rule ->
+        rule.dependsOnPointer != "/providerId" || providerId in rule.allowedValues
+    }.mapTo(mutableSetOf()) { it.pointer }
+    val orderedFields = form?.definition?.uiSchema?.order.orEmpty()
+    val fieldCopy = form?.definition?.uiSchema?.localization.orEmpty()
+
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        SlockBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_runtime))
+        SlockBrutalSelectField(
+            options = runtimeOptions.toBrutalSelectOptions(),
+            selectedId = runtime,
+            selectedLabel = runtimeOptions.firstOrNull { it.id == runtime }?.label ?: "Built-in (Pi)",
+            placeholder = stringResource(MR.strings.agent_create_placeholder_select_runtime),
+            enabled = enabled && runtimeAvailabilityError == null,
+            rowHeight = 36.dp,
+            onSelect = { option ->
+                focusManager.clearFocus(force = true)
+                onRuntimeChange(option.id)
+            }
+        )
+        if (loading && form == null) {
+            Text(
+                text = stringResource(MR.strings.agent_create_state_computers_loading),
+                style = SlockType.Caption,
+                color = SlockColor.TextMutedGray
+            )
+        }
+        if (form != null) {
+            orderedFields.filterNot { "/$it" in form.definition.uiSchema.advancedPointers }.forEach { field ->
+                val copy = fieldCopy[field]
+                when (field) {
+                    "providerId" -> {
+                        SlockBrutalSectionLabel(label = copy?.label ?: "Provider", required = true)
+                        SlockBrutalSelectField(
+                            options = providerOptions.map { SlockBrutalSelectOption(it.value, it.label) },
+                            selectedId = providerId,
+                            selectedLabel = providerOptions.firstOrNull { it.value == providerId }?.label.orEmpty(),
+                            placeholder = copy?.placeholder ?: "Provider",
+                            enabled = enabled,
+                            rowHeight = 36.dp,
+                            onSelect = { option ->
+                                focusManager.clearFocus(force = true)
+                                onProviderIdChange(option.id)
+                                val nextModel = modelSource?.defaultValueByValue?.get(option.id)
+                                    ?: modelSource?.optionsByValue?.get(option.id)?.firstOrNull()?.value.orEmpty()
+                                onModelChange(nextModel)
+                                onBaseUrlChange("")
+                            }
+                        )
+                        copy?.hint?.let { Text(it, style = SlockType.Caption, color = SlockColor.TextMutedGray) }
+                    }
+                    "apiKey" -> {
+                        SlockBrutalTextField(
+                            label = copy?.label ?: "API Key",
+                            required = true,
+                            value = apiKey,
+                            onValueChange = onApiKeyChange,
+                            placeholder = copy?.placeholder.orEmpty(),
+                            password = true,
+                            enabled = enabled
+                        )
+                    }
+                    "baseUrl" -> if ("/baseUrl" in visiblePointers) {
+                        SlockBrutalTextField(
+                            label = copy?.label ?: "Base URL",
+                            required = true,
+                            value = baseUrl,
+                            onValueChange = onBaseUrlChange,
+                            placeholder = copy?.placeholder.orEmpty(),
+                            enabled = enabled
+                        )
+                    }
+                    "supportsImageInput" -> if ("/supportsImageInput" in visiblePointers) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            SlockCheckbox(
+                                checked = supportsImageInput,
+                                onCheckedChange = onSupportsImageInputChange,
+                                enabled = enabled
+                            )
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(
+                                    text = copy?.label ?: "Supports image input",
+                                    style = SlockType.Caption,
+                                    color = SlockColor.TextBlack
+                                )
+                                copy?.hint?.let {
+                                    Text(it, style = SlockType.Caption, color = SlockColor.TextMutedGray)
+                                }
+                            }
+                        }
+                    }
+                    "model" -> {
+                        if (customModelAllowed) {
+                            SlockBrutalTextField(
+                                label = copy?.label ?: "Model",
+                                required = true,
+                                value = model,
+                                onValueChange = onModelChange,
+                                placeholder = copy?.placeholder.orEmpty(),
+                                enabled = enabled
+                            )
+                        } else {
+                            SlockBrutalSectionLabel(label = copy?.label ?: "Model", required = true)
+                            SlockBrutalSelectField(
+                                options = modelOptions.map { SlockBrutalSelectOption(it.value, it.label) },
+                                selectedId = model,
+                                selectedLabel = modelOptions.firstOrNull { it.value == model }?.label.orEmpty(),
+                                placeholder = copy?.placeholder ?: "Model",
+                                enabled = enabled,
+                                rowHeight = 36.dp,
+                                onSelect = { onModelChange(it.id) }
+                            )
+                        }
+                    }
+                }
+            }
+            if (form.definition.uiSchema.advancedPointers.isNotEmpty()) {
+                AdvancedToggleButton(advancedOpen) {
+                    focusManager.clearFocus(force = true)
+                    onAdvancedOpenChange(!advancedOpen)
+                }
+                if (advancedOpen && "/envVars" in form.definition.uiSchema.advancedPointers) {
+                    EnvVarsEditor(envVarEntries, onEnvVarEntriesChange, enabled)
+                }
+            }
         }
     }
 }

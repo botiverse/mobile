@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.base.BridgeAttachmentDownloadProgress
 import build.raft.app.resources.MR
 import com.tencent.kuikly.compose.ui.geometry.Offset
+import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.unit.IntSize
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.core.views.PlayState
@@ -184,6 +185,40 @@ class SlockFilePreviewDownloadStatusTest {
             )
         )
         assertEquals(9, tiles.size)
+    }
+
+    @Test
+    fun composerImageCaptureFitsLandscapePixelsWithoutExportingViewportLetterbox() {
+        assertEquals(
+            Size(width = 390f, height = 195f),
+            slockComposerImageEditorCaptureSize(
+                imageWidth = 4000,
+                imageHeight = 2000,
+                maxWidth = 390f,
+                maxHeight = 600f,
+            ),
+        )
+    }
+
+    @Test
+    fun composerImageCaptureFitsPortraitPixelsWithoutChangingTheirAspect() {
+        assertEquals(
+            Size(width = 300f, height = 600f),
+            slockComposerImageEditorCaptureSize(
+                imageWidth = 2000,
+                imageHeight = 4000,
+                maxWidth = 390f,
+                maxHeight = 600f,
+            ),
+        )
+        assertNull(
+            slockComposerImageEditorCaptureSize(
+                imageWidth = 0,
+                imageHeight = 4000,
+                maxWidth = 390f,
+                maxHeight = 600f,
+            )
+        )
     }
 
     @Test

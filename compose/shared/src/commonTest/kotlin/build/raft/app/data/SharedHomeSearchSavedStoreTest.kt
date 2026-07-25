@@ -1,6 +1,5 @@
 package build.raft.app.data
 
-import build.raft.app.resolveInboxAnchorMessageId
 import build.raft.app.model.ChannelId
 import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MemberKind
@@ -89,21 +88,9 @@ class SharedHomeSearchSavedStoreTest {
     }
 
     @Test
-    fun savedReplyUnsaveUsesCanonicalSavedKeyWhenOpenAnchorIsAbsent() = runBlocking {
+    fun staleRefreshCompletionCannotRestoreSuccessfullyUnsavedItem() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val reply =
-            InboxItem(
-                key = "saved:reply-message-1",
-                kind = InboxItemKind.Thread,
-                channelId = ChannelId("thread-channel-1"),
-                channelName = "thread-stream",
-                threadChannelId = ChannelId("thread-channel-1"),
-                parentChannelId = ChannelId("channel-1"),
-                parentChannelName = "general",
-                parentMessageId = MessageId("parent-message-1"),
-                lastMessageId = MessageId("reply-message-1")
-            )
-        val saved = FakeSavedRepository(items = listOf(reply))
+        val saved = DeferredSavedRepository()
         val store =
             SharedHomeSearchSavedStore(
                 authStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -113,15 +100,176 @@ class SharedHomeSearchSavedStoreTest {
             )
 
         store.dispatch(SharedHomeSearchSavedIntent.OpenSaved)
-
-        assertEquals(null, reply.resolveInboxAnchorMessageId())
-        assertEquals(MessageId("reply-message-1"), reply.savedMessageIdOrNull())
-
+        saved.completeNext("message-1")
+        store.dispatch(SharedHomeSearchSavedIntent.RefreshSaved)
         store.dispatch(SharedHomeSearchSavedIntent.Unsave(store.state.value.saved.items.single()))
 
+        saved.completeNext("message-1")
+
         assertEquals(emptyList(), store.state.value.saved.items)
-        assertEquals(MessageId("reply-message-1"), saved.unsavedMessageId)
+        assertEquals(0, store.state.value.saved.totalCount)
         scope.cancel()
+    }
+
+    @Test
+    fun refreshStartedWhileUnsavePendingCannotRestoreItem() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val saved = DeferredMutationSavedRepository(items = listOf(inboxItem("message-1")))
+        val store =
+            SharedHomeSearchSavedStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                savedRepository = saved,
+                searchRepository = FakeSearchRepository(),
+                scope = scope
+            )
+
+        store.dispatch(SharedHomeSearchSavedIntent.OpenSaved)
+        store.dispatch(SharedHomeSearchSavedIntent.Unsave(store.state.value.saved.items.single()))
+        saved.awaitUnsave("message-1")
+        store.dispatch(SharedHomeSearchSavedIntent.RefreshSaved)
+
+        assertEquals(emptyList(), store.state.value.saved.items)
+        saved.completeUnsave("message-1", DataResult.Content(SavedMessageMutationResult(MessageId("message-1"))))
+        assertEquals(emptyList(), store.state.value.saved.items)
+        scope.cancel()
+    }
+
+    @Test
+    fun failedConcurrentUnsaveRestoresOnlyItsOwnItem() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val saved =
+            DeferredMutationSavedRepository(
+                items = listOf(inboxItem("message-1"), inboxItem("message-2"))
+            )
+        val store =
+            SharedHomeSearchSavedStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                savedRepository = saved,
+                searchRepository = FakeSearchRepository(),
+                scope = scope
+            )
+
+        store.dispatch(SharedHomeSearchSavedIntent.OpenSaved)
+        val message1 = store.state.value.saved.items.first()
+        val message2 = store.state.value.saved.items.last()
+        store.dispatch(SharedHomeSearchSavedIntent.Unsave(message1))
+        store.dispatch(SharedHomeSearchSavedIntent.Unsave(message2))
+        saved.awaitUnsave("message-1")
+        saved.awaitUnsave("message-2")
+
+        saved.completeUnsave("message-1", DataResult.Content(SavedMessageMutationResult(MessageId("message-1"))))
+        saved.completeUnsave("message-2", DataResult.Error(ScreenError("delete_failed")))
+
+        assertEquals(listOf("message-2"), store.state.value.saved.items.map { it.key })
+        assertEquals(1, store.state.value.saved.totalCount)
+        assertEquals("saved_unsave_failed", store.state.value.saved.errorCode)
+        scope.cancel()
+    }
+
+    @Test
+    fun failedUnsaveRestoresCanonicalRowInsteadOfProjectedIntent() = runBlocking {
+        val cache = SharedHomeSavedStateCache()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val canonicalItem = inboxItem("message-1").copy(latestActivityPreview = "Canonical preview")
+        val saved = DeferredMutationSavedRepository(items = listOf(canonicalItem))
+        val store =
+            SharedHomeSearchSavedStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                savedRepository = saved,
+                searchRepository = FakeSearchRepository(),
+                savedStateCache = cache,
+                scope = scope
+            )
+
+        store.dispatch(SharedHomeSearchSavedIntent.OpenSaved)
+        val projectedIntent = canonicalItem.copy(latestActivityPreview = "Projected draft preview")
+        store.dispatch(SharedHomeSearchSavedIntent.Unsave(projectedIntent))
+        saved.awaitUnsave("message-1")
+        saved.completeUnsave("message-1", DataResult.Error(ScreenError("delete_failed")))
+
+        assertEquals(listOf(canonicalItem), store.state.value.saved.items)
+        assertEquals(
+            listOf(canonicalItem),
+            cache.read("server-1", "user-1")?.items
+        )
+        scope.cancel()
+    }
+
+    @Test
+    fun failedConcurrentUnsavesRestoreCanonicalOrderRegardlessOfCompletionOrder() = runBlocking {
+        val canonicalItems =
+            listOf(
+                inboxItem("message-1"),
+                inboxItem("message-2"),
+                inboxItem("message-3")
+            )
+
+        listOf(
+            listOf("message-1", "message-2"),
+            listOf("message-2", "message-1")
+        ).forEach { completionOrder ->
+            val cache = SharedHomeSavedStateCache()
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+            val saved = DeferredMutationSavedRepository(items = canonicalItems)
+            val store =
+                SharedHomeSearchSavedStore(
+                    authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    savedRepository = saved,
+                    searchRepository = FakeSearchRepository(),
+                    savedStateCache = cache,
+                    scope = scope
+                )
+
+            store.dispatch(SharedHomeSearchSavedIntent.OpenSaved)
+            store.dispatch(SharedHomeSearchSavedIntent.Unsave(canonicalItems[0]))
+            store.dispatch(SharedHomeSearchSavedIntent.Unsave(canonicalItems[1]))
+            saved.awaitUnsave("message-1")
+            saved.awaitUnsave("message-2")
+
+            completionOrder.forEach { messageId ->
+                saved.completeUnsave(messageId, DataResult.Error(ScreenError("delete_failed")))
+            }
+
+            assertEquals(canonicalItems, store.state.value.saved.items)
+            assertEquals(
+                canonicalItems,
+                cache.read("server-1", "user-1")?.items
+            )
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun optimisticUnsaveUpdatesSharedSavedCache() = runBlocking {
+        val cache = SharedHomeSavedStateCache()
+        val primaryScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val primaryStore =
+            SharedHomeSearchSavedStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                savedRepository = FakeSavedRepository(items = listOf(inboxItem("message-1"))),
+                searchRepository = FakeSearchRepository(),
+                savedStateCache = cache,
+                scope = primaryScope
+            )
+        primaryStore.dispatch(SharedHomeSearchSavedIntent.OpenSaved)
+        primaryStore.dispatch(SharedHomeSearchSavedIntent.Unsave(primaryStore.state.value.saved.items.single()))
+
+        val secondaryScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val secondaryRepository = DeferredSavedRepository()
+        val secondaryStore =
+            SharedHomeSearchSavedStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                savedRepository = secondaryRepository,
+                searchRepository = FakeSearchRepository(),
+                savedStateCache = cache,
+                scope = secondaryScope
+            )
+        secondaryStore.dispatch(SharedHomeSearchSavedIntent.OpenSaved)
+
+        assertEquals(emptyList(), secondaryStore.state.value.saved.items)
+        assertEquals(0, secondaryStore.state.value.saved.totalCount)
+        primaryScope.cancel()
+        secondaryScope.cancel()
     }
 
     @Test
@@ -832,6 +980,36 @@ class SharedHomeSearchSavedStoreTest {
         }
     }
 
+    private inner class DeferredMutationSavedRepository(
+        var items: List<InboxItem>
+    ) : SavedRepository {
+        private val unsaveStarted = mutableMapOf<String, CompletableDeferred<Unit>>()
+        private val unsaveResults = mutableMapOf<String, CompletableDeferred<DataResult<SavedMessageMutationResult>>>()
+
+        override suspend fun loadInitial(serverId: ServerId, limit: Int): DataResult<SavedSnapshot> =
+            DataResult.Content(SavedSnapshot(server = testServer(serverId), items = items))
+
+        override suspend fun loadMore(serverId: ServerId, offset: Int, limit: Int): DataResult<SavedSnapshot> =
+            DataResult.Empty(EmptyReason.NoInboxItems)
+
+        override suspend fun saveMessage(serverId: ServerId, messageId: MessageId): DataResult<SavedMessageMutationResult> =
+            DataResult.Content(SavedMessageMutationResult(messageId))
+
+        override suspend fun unsaveMessage(serverId: ServerId, messageId: MessageId): DataResult<SavedMessageMutationResult> {
+            unsaveStarted.getOrPut(messageId.value) { CompletableDeferred() }.complete(Unit)
+            val result = unsaveResults.getOrPut(messageId.value) { CompletableDeferred() }
+            return withContext(NonCancellable) { result.await() }
+        }
+
+        suspend fun awaitUnsave(messageId: String) {
+            unsaveStarted.getOrPut(messageId) { CompletableDeferred() }.await()
+        }
+
+        fun completeUnsave(messageId: String, result: DataResult<SavedMessageMutationResult>) {
+            unsaveResults.getOrPut(messageId) { CompletableDeferred() }.complete(result)
+        }
+    }
+
     private inner class QueuedSearchRepository : SearchRepository {
         private val pending = mutableListOf<Pair<ServerId, CompletableDeferred<DataResult<SearchSnapshot>>>>()
 
@@ -967,6 +1145,20 @@ class SharedHomeSearchSavedStoreTest {
             )
         // Critical: parentMessageId must NOT appear in the saved anchor chain.
         assertEquals(null, threadNoneButParent.savedMessageIdOrNull())
+    }
+
+    @Test
+    fun savedMutationUsesCanonicalSavedKeyBeforeNavigationAnchor() {
+        val savedReply =
+            InboxItem(
+                key = "saved:canonical-reply",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("thread-channel-1"),
+                channelName = "thread-stream",
+                latestActivityMessageId = MessageId("newer-reply")
+            )
+
+        assertEquals(MessageId("canonical-reply"), savedReply.savedMessageIdOrNull())
     }
 }
 

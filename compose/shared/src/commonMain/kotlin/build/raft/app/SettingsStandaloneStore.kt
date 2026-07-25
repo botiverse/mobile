@@ -25,12 +25,14 @@ import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.data.kuiklyBridgeCallContext
 import build.raft.app.data.slockSharedPreferenceStore
 import build.raft.app.data.runCatchingPreservingCancellation
+import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.pager.Pager
+import com.tencent.tmm.kmmresource.compose.stringResource
 
 internal data class StandaloneSettingsEnvironment(
     val dataSource: SharedSettingsDataSource,
@@ -69,10 +71,12 @@ internal fun rememberStandaloneSettingsEnvironment(
     }
     val scope = rememberCoroutineScope()
     val linkNavigator = rememberSlockLinkNavigator(pager, bridge)
+    val copiedMessage = stringResource(MR.strings.common_copied)
     val settingsCapabilities =
-        remember(bridge, scope, linkNavigator) {
+        remember(bridge, scope, linkNavigator, copiedMessage) {
             BridgeSettingsPlatformCapabilities(
                 bridge = bridge,
+                copiedMessage = copiedMessage,
                 bridgeCallContext = scope.kuiklyBridgeCallContext(),
                 openUrlHandler = { url -> linkNavigator.open(url) }
             )

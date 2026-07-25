@@ -523,7 +523,18 @@ class RealtimeEventMapperTest {
                   "replyCount": 1,
                   "unreadCount": 1,
                   "firstUnreadMessageId": "dm-reply-1",
-                  "participantIds": ["u1", "agent-1"]
+                  "participantIds": ["u1", "agent-1"],
+                  "latestReply": {
+                    "id": "dm-reply-1",
+                    "seq": 8,
+                    "content": "hello",
+                    "senderId": "agent-1",
+                    "senderType": "agent",
+                    "senderName": "MingQi",
+                    "senderDisplayName": "明启",
+                    "senderAvatarUrl": "/agent.webp",
+                    "createdAt": "2026-07-24T08:00:00Z"
+                  }
                 }
                 """.trimIndent()
             )
@@ -534,6 +545,37 @@ class RealtimeEventMapperTest {
         assertEquals(1, updated.replyCount)
         assertEquals(1, updated.unreadCount)
         assertEquals("dm-reply-1", updated.firstUnreadMessageId?.value)
+        assertEquals("dm-reply-1", updated.latestReply?.messageId)
+        assertEquals("MingQi", updated.latestReply?.senderName)
+        assertEquals("明启", updated.latestReply?.senderDisplayName)
+    }
+
+    @Test
+    fun threadUpdatedDoesNotPromoteStableHandleIntoDisplayNameProjection() {
+        val event =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.ThreadUpdated,
+                """
+                {
+                  "parentMessageId": "parent-1",
+                  "threadChannelId": "thread-1",
+                  "replyCount": 1,
+                  "latestReply": {
+                    "id": "reply-1",
+                    "seq": 1,
+                    "content": "hello",
+                    "senderId": "agent-1",
+                    "senderType": "agent",
+                    "senderName": "MingQi",
+                    "createdAt": "2026-07-24T08:00:00Z"
+                  }
+                }
+                """.trimIndent()
+            )
+
+        val updated = assertIs<ThreadUpdated>(event)
+        assertEquals("MingQi", updated.latestReply?.senderName)
+        assertNull(updated.latestReply?.senderDisplayName)
     }
 
     @Test

@@ -1,0 +1,139 @@
+id: server-create
+title: "Provision or reuse the retained multi-server QA fixture"
+app: mobile
+tier: L1
+version: "1.0"
+description: "Manual-only provisioning contract: on the exact QA account used by server-switch, idempotently create or reuse one retained server B and prove the account/server receipt needed by the shared Android+iOS switch case."
+tags: [manual-only, provisioning, multi-server, retained-fixture]
+platforms: [android, ios]
+timeout_seconds: 420
+max_retries: 0
+verdict_before_cleanup: true
+auth_fixture: none
+launch_route: compose_slock_app_shell
+
+execution_policy:
+  scheduled: false
+  retain_authorized_by: artin
+  retain_authorized_at: "2026-07-23"
+  exact_fixture_name: "Stamp QA Fixture B"
+  exact_fixture_channel: "stamp-fixture-b"
+  one_coordinate_per_provision: true
+  no_blind_retry_after_submit: true
+
+environment:
+  server: oranix-test
+  credentials_ref: qa-test
+
+fixture:
+  readiness:
+    - id: account-subject-observable
+      goal: "Before mutation, capture a stable non-secret authenticated account/user subject from app-scoped session or authority logs; a display label alone is insufficient."
+    - id: server-a-observable
+      goal: "Record the existing OranixSlockTest server identity as A."
+  retain:
+    authorized: true
+    goal: "Retain exactly one healthy server named Stamp QA Fixture B and one B-only channel named stamp-fixture-b for future server-switch runs."
+  notes: "This case is manual-only and must never enter a recurring acceptance plan. The provision receipt binds environment, credential binding, stable account subject, B server ID, and retained channel ID."
+
+preconditions:
+  - type: app_installed
+  - type: logged_in
+  - type: fixture_ready
+    params: { fixture_id: server-create-manual }
+
+cleanup:
+  - action: restore_server
+    params: { target: A }
+  - action: terminate_app
+  - action: retain_fixture
+    params: { server: "Stamp QA Fixture B", channel: "stamp-fixture-b", authorized: true }
+
+steps:
+  - id: freeze-account-subject
+    goal: "Capture the authenticated stable account/user subject from app-scoped session or authority evidence, plus environment oranix-test and the qa-test credential binding. Do not expose username or password."
+    action_category: verify
+    capture: [screenshot, logs]
+
+  - id: record-server-a
+    goal: "Record current server A identity and verify it is OranixSlockTest."
+    action_category: verify
+    capture: [screenshot, logs]
+
+  - id: reconcile-existing-server-b
+    goal: "Before any mutation, freeze a timestamped existence snapshot for exact name Stamp QA Fixture B. If exactly one healthy matching server already exists, reuse it but finish as fixture-ready harness/incomplete rather than claiming this create action passed. If more than one exists, stop as harness."
+    action_category: verify
+    capture: [screenshot, logs]
+
+  - id: create-server-b-once
+    goal: "Only when no exact match exists, create server Stamp QA Fixture B and submit exactly once. If the response is lost or ambiguous, return to the server list and reconcile by exact name/account subject before any retry; never submit a second create blindly."
+    action_category: interact
+    capture: [screenshot, logs]
+
+  - id: freeze-server-b-receipt
+    goal: "Verify server B is selected and freeze its stable server ID, membership under the same account subject, and creation/reuse outcome. A create PASS requires pre-snapshot absent, exactly one submit, and a success response; response-loss reconciliation additionally requires a new post-snapshot B uniquely attributable to this attempt."
+    action_category: verify
+    capture: [screenshot, logs]
+
+  - id: provision-b-only-channel
+    goal: "Create the B-only channel stamp-fixture-b only if absent; if present reuse it. Freeze its stable channel ID and verify it belongs to B."
+    action_category: interact
+    capture: [screenshot, logs]
+
+  - id: verify-a-and-b-selectable
+    goal: "Switch back to A, reopen the server switcher, and prove exactly one A and exactly one retained B are selectable by the same account."
+    action_category: verify
+    capture: [screenshot, logs]
+
+assertions:
+  - id: account-subject-bound
+    goal: "Receipt contains a stable non-secret account/user subject (or irreversible digest), environment oranix-test, and qa-test binding; no credential value is exposed."
+    type: log_check
+    after_step: freeze-account-subject
+    severity: critical
+
+  - id: server-b-idempotent
+    goal: "There is exactly one healthy server named Stamp QA Fixture B; an existing fixture is reused without claiming create PASS, and an ambiguous response is reconciled without a second blind create."
+    type: log_and_visual_check
+    after_step: freeze-server-b-receipt
+    severity: critical
+
+  - id: server-b-subject-match
+    goal: "B membership is owned by the exact same stable account subject frozen before mutation."
+    type: log_check
+    after_step: freeze-server-b-receipt
+    severity: critical
+
+  - id: server-b-stable-identity
+    goal: "Receipt contains stable non-empty B server ID and distinguishes it from A server ID."
+    type: log_and_visual_check
+    after_step: freeze-server-b-receipt
+    severity: critical
+
+  - id: b-only-channel-ready
+    goal: "Exactly one stamp-fixture-b channel exists under B and its stable channel ID is frozen."
+    type: log_and_visual_check
+    after_step: provision-b-only-channel
+    severity: critical
+
+  - id: two-servers-ready
+    goal: "The same account can select A and retained B after provisioning."
+    type: visual_check
+    after_step: verify-a-and-b-selectable
+    severity: critical
+
+  - id: retain-receipt-complete
+    goal: "Final receipt records retain authorization, timestamped pre/post existence snapshots, account subject, A/B server IDs, B-only channel ID, submit count, response state, and whether B was created or reused."
+    type: log_check
+    after_step: verify-a-and-b-selectable
+    severity: critical
+
+  - id: no-crash-or-auth-drift
+    goal: "App-scoped logs contain zero crash, logout, auth-generation mismatch, or account-subject drift."
+    type: log_check
+    after_step: verify-a-and-b-selectable
+    severity: critical
+
+expected:
+  result: pass
+  notes: "PRODUCT PASS requires pre-snapshot absent plus one uniquely attributable successful create (or response-loss reconciliation proving a new B from this attempt). A preexisting healthy B is fixture-ready/reused but this create case remains harness/incomplete. Missing stable subject/server receipts, duplicate matches, or uncertain causality are harness, never product FAIL and never permission to retry creation blindly."

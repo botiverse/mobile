@@ -1898,6 +1898,7 @@ static NSString *SlockPickedAttachmentDisplayName(NSString *suggestedName,
 @property(nonatomic, copy, nullable) KuiklyRenderCallback slock_attachmentExportCallback;
 @property(nonatomic, copy, nullable) NSString *slock_attachmentExportRequestId;
 @property(nonatomic, copy, nullable) NSString *slock_attachmentExportDownloadId;
+@property(nonatomic, copy, nullable) NSString *slock_attachmentExportOperationId;
 @property(nonatomic, strong, nullable) NSURL *slock_attachmentExportURL;
 @property(nonatomic, copy, nullable) NSString *slock_attachmentExportFileName;
 @property(nonatomic, strong, nullable) NSNumber *slock_attachmentExportSizeBytes;
@@ -2260,16 +2261,22 @@ static NSString *SlockPickedAttachmentDisplayName(NSString *suggestedName,
 - (void)cancelAttachmentExport:(NSDictionary *)args {
     NSDictionary *params = SlockBridgeParams(args);
     NSString *downloadId = SlockBridgeString(params[@"downloadId"]);
+    NSString *operationId = SlockBridgeString(params[@"operationId"]);
     if (!self.slock_attachmentExportCallback || downloadId.length == 0 ||
-        ![self.slock_attachmentExportDownloadId isEqualToString:downloadId]) {
+        operationId.length == 0 ||
+        ![self.slock_attachmentExportDownloadId isEqualToString:downloadId] ||
+        ![self.slock_attachmentExportOperationId isEqualToString:operationId]) {
         return;
     }
-    NSString *attemptToken = [self.slock_attachmentExportRequestId isEqualToString:@"pending"]
-        ? @""
-        : (self.slock_attachmentExportRequestId ?: @"");
-    [SharedAttachmentDownloadCoordinator.shared controlDownloadId:downloadId
-                                              expectedAttemptToken:attemptToken
-                                                            action:@"cancel"];
+    NSString *expectedAttemptToken = SlockBridgeString(params[@"attemptToken"]);
+    NSString *attemptToken = expectedAttemptToken.length > 0
+        ? expectedAttemptToken
+        : ([self.slock_attachmentExportRequestId isEqualToString:@"pending"]
+            ? @""
+            : (self.slock_attachmentExportRequestId ?: @""));
+    [SharedAttachmentDownloadCoordinator.shared controlExistingDownloadId:downloadId
+                                                      expectedAttemptToken:attemptToken
+                                                                    action:@"cancel"];
     [self slock_finishAttachmentExport:@{ @"status" : @"cancelled" }];
 }
 
@@ -2296,11 +2303,22 @@ static NSString *SlockPickedAttachmentDisplayName(NSString *suggestedName,
         return;
     }
     NSString *fileName = SlockAttachmentExportFileName(SlockBridgeString(params[@"fileName"]));
-    NSString *mimeType = [SlockBridgeString(params[@"mimeType"]) lowercaseString];
+    NSString *mimeType = [[[[SlockBridgeString(params[@"mimeType"])
+        componentsSeparatedByString:@";"] firstObject]
+        stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet]
+        lowercaseString];
+    NSString *operationId = SlockBridgeString(params[@"operationId"]);
+    if (operationId.length == 0) {
+        callback(@{
+            @"status" : @"failed",
+            @"message" : @"Missing attachment export authority"
+        });
+        return;
+    }
     BOOL genericBinaryMime =
         [mimeType isEqualToString:@"application/octet-stream"] || [mimeType isEqualToString:@"binary/octet-stream"];
     BOOL savesToPhotos = [destination isEqualToString:SlockAttachmentExportDestinationPhotos];
-    if (savesToPhotos && mimeType.length > 0 && !genericBinaryMime && ![mimeType hasPrefix:@"image/"]) {
+    if (savesToPhotos && mimeType.length > 0 && ![mimeType hasPrefix:@"image/"]) {
         callback(@{
             @"status" : @"unsupported_image",
             @"message" : @"This attachment is not a supported image.",
@@ -2308,7 +2326,7 @@ static NSString *SlockPickedAttachmentDisplayName(NSString *suggestedName,
         });
         return;
     }
-    if (savesToPhotos && mimeType.length > 0 && !genericBinaryMime) {
+    if (savesToPhotos && mimeType.length > 0) {
         UTType *mimeClaimType = [UTType typeWithMIMEType:mimeType];
         if (!mimeClaimType || ![mimeClaimType conformsToType:UTTypeImage]) {
             callback(@{
@@ -2332,8 +2350,9 @@ static NSString *SlockPickedAttachmentDisplayName(NSString *suggestedName,
     }
     self.slock_attachmentExportCallback = callback;
     self.slock_attachmentExportDownloadId = SlockBridgeString(params[@"downloadId"]);
+    self.slock_attachmentExportOperationId = operationId;
     self.slock_attachmentExportDestination = destination;
-    self.slock_attachmentExportMimeType = genericBinaryMime ? @"" : mimeType;
+    self.slock_attachmentExportMimeType = genericBinaryMime && !savesToPhotos ? @"" : mimeType;
     self.slock_attachmentExportFileName = fileName;
     self.slock_attachmentExportTrackProgress = SlockBridgeBool(params[@"trackProgress"]);
 
@@ -2364,12 +2383,14 @@ static NSString *SlockPickedAttachmentDisplayName(NSString *suggestedName,
     __weak typeof(self) weakSelf = self;
     NSDictionary *capturedParams = [params copy];
     NSString *capturedDownloadId = self.slock_attachmentExportDownloadId ?: @"";
+    NSString *capturedOperationId = self.slock_attachmentExportOperationId ?: @"";
     [PHPhotoLibrary requestAuthorizationForAccessLevel:PHAccessLevelAddOnly handler:^(PHAuthorizationStatus authorizationStatus) {
         SlockBridgeRunOnMain(^{
             __strong typeof(weakSelf) strongSelf = weakSelf;
             if (!strongSelf || !strongSelf.slock_attachmentExportCallback ||
                 ![strongSelf.slock_attachmentExportDestination isEqualToString:SlockAttachmentExportDestinationPhotos] ||
-                ![strongSelf.slock_attachmentExportDownloadId isEqualToString:capturedDownloadId]) {
+                ![strongSelf.slock_attachmentExportDownloadId isEqualToString:capturedDownloadId] ||
+                ![strongSelf.slock_attachmentExportOperationId isEqualToString:capturedOperationId]) {
                 return;
             }
             if (authorizationStatus == PHAuthorizationStatusAuthorized || authorizationStatus == PHAuthorizationStatusLimited) {
@@ -2904,6 +2925,7 @@ static NSString *SlockPickedAttachmentDisplayName(NSString *suggestedName,
     self.slock_attachmentExportCallback = nil;
     self.slock_attachmentExportRequestId = nil;
     self.slock_attachmentExportDownloadId = nil;
+    self.slock_attachmentExportOperationId = nil;
     self.slock_attachmentExportURL = nil;
     self.slock_attachmentExportFileName = nil;
     self.slock_attachmentExportSizeBytes = nil;

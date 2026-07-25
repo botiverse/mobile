@@ -61,6 +61,8 @@ import build.raft.app.data.ThreadSnapshot
 import build.raft.app.data.ThreadApiResult
 import build.raft.app.data.ThreadAttachmentOpenTarget
 import build.raft.app.data.ThreadMessagesPage
+import build.raft.app.data.ThreadReplyCacheIdentitySnapshot
+import build.raft.app.data.ThreadReplyCacheIdentityTransitionAnchor
 import build.raft.app.data.authSessionRequiredResult
 import build.raft.app.data.map
 import build.raft.app.data.toSharedConversationDirectoryState
@@ -102,12 +104,17 @@ import build.raft.app.model.ThreadUpdated
 import build.raft.app.model.SyncResumeResponse
 import build.raft.app.model.avatarWireValueForAvatarSlot
 import build.raft.app.model.formatSlockTimestampLabel
+import build.raft.app.network.sync.InlineThreadReplyPreviewLimit
+import build.raft.app.network.sync.ThreadRepliesReadModel
+import build.raft.app.network.sync.applyReplyFrame
+import build.raft.app.network.sync.initialThreadRepliesReadModel
 import build.raft.app.model.messageStreamChannelId
 import build.raft.app.model.resolveAvatarSlot
 import build.raft.app.model.safeDisplayNameOrNull
 import build.raft.app.model.threadIdentity
 import com.tencent.kuikly.lifecycle.ViewModel
 import com.tencent.kuikly.lifecycle.viewModelScope
+import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
@@ -145,8 +152,40 @@ private data class ReplyThreadResolveKey(
     val parentMessageId: String
 )
 
-private data class ReplyResolutionScope(
+internal data class ReplyCacheProvenance(
+    val environmentId: String,
+    val principalId: String,
+    val serverId: String,
+    val generation: Long,
+    val authGeneration: Long = 0L,
+    val selectionGeneration: Long = 0L,
+) {
     val namespaceId: String?
+        get() =
+            takeIf { environmentId.isNotBlank() && principalId.isNotBlank() && serverId.isNotBlank() }
+                ?.let { identity ->
+                    listOf(identity.environmentId, identity.principalId, identity.serverId).joinToString("\u001f")
+                }
+
+    val messageStoreScopeId: String?
+        get() = namespaceId?.let { namespace -> "$namespace\u001f$generation" }
+}
+
+private data class ReplyResolutionScope(
+    val session: StoredAuthSession,
+    val provenance: ReplyCacheProvenance,
+    val sharedMessageStore: Boolean
+) {
+    val namespaceId: String? get() = provenance.namespaceId
+    val messageStoreScopeId: String?
+        get() =
+            provenance.messageStoreScopeId
+                ?: provenance.serverId.takeIf { !sharedMessageStore && it.isNotBlank() }
+}
+
+internal data class ReplyCacheProducerContext(
+    val session: StoredAuthSession,
+    val provenance: ReplyCacheProvenance
 )
 
 internal data class SharedThreadPayloadCacheKey(
@@ -160,6 +199,10 @@ private const val SharedThreadZeroReplyOriginHydrationGraceMillis = 300L
 private const val SharedThreadFreshnessMessageFactLimit = 512
 private const val SharedThreadReplyCountFactLimit = 2_048
 private const val SharedThreadPrewarmGenerationSupersededCode = "thread_prewarm_generation_superseded"
+private const val ReplyCacheProvenanceStaleCode = "thread_reply_cache_provenance_stale"
+
+private fun <T> staleReplyCacheProvenanceResult(): DataResult<T> =
+    DataResult.Error(ScreenError(code = ReplyCacheProvenanceStaleCode, retryable = false))
 
 class SharedThreadFreshnessGeneration internal constructor(
     internal val key: SharedThreadPayloadCacheKey
@@ -397,7 +440,7 @@ private data class PendingReactionRealtimeGuard(
 )
 
 internal data class SharedThreadMessageKey(
-    val serverId: ServerId,
+    val scopeId: String,
     val channelId: ChannelId,
     val messageId: MessageId
 )
@@ -425,17 +468,23 @@ internal class SharedThreadMessageStore(
     private val inFlightMutex = Mutex()
 
     fun get(serverId: ServerId, channelId: ChannelId, messageId: MessageId): Message? =
+        getScoped(serverId.value, channelId, messageId)
+
+    fun getScoped(scopeId: String, channelId: ChannelId, messageId: MessageId): Message? =
         synchronized(messageLock) {
-            messages[SharedThreadMessageKey(serverId, channelId, messageId)]
+            messages[SharedThreadMessageKey(scopeId, channelId, messageId)]
         }
 
     fun upsert(serverId: ServerId, channelId: ChannelId, message: Message): Message =
+        upsertScoped(serverId.value, channelId, message)
+
+    fun upsertScoped(scopeId: String, channelId: ChannelId, message: Message): Message =
         synchronized(messageLock) {
-            upsertLocked(serverId, channelId, message)
+            upsertLocked(scopeId, channelId, message)
         }
 
-    private fun upsertLocked(serverId: ServerId, channelId: ChannelId, message: Message): Message {
-        val key = SharedThreadMessageKey(serverId, channelId, message.id)
+    private fun upsertLocked(scopeId: String, channelId: ChannelId, message: Message): Message {
+        val key = SharedThreadMessageKey(scopeId, channelId, message.id)
         val existing = messages[key]
         val selected =
             if (existing != null && !existing.needsSharedThreadMessageStoreHydration() && message.needsSharedThreadMessageStoreHydration()) {
@@ -488,21 +537,29 @@ internal class SharedThreadMessageStore(
         channelId: ChannelId,
         messageId: MessageId,
         fetch: suspend () -> SharedThreadMessageResolution
+    ): SharedThreadMessageResolution =
+        resolveScoped(serverId.value, channelId, messageId, fetch)
+
+    suspend fun resolveScoped(
+        scopeId: String,
+        channelId: ChannelId,
+        messageId: MessageId,
+        fetch: suspend () -> SharedThreadMessageResolution
     ): SharedThreadMessageResolution {
-        get(serverId, channelId, messageId)
+        getScoped(scopeId, channelId, messageId)
             ?.takeIf { message -> message.matchesSharedThreadMessageStoreKey(channelId, messageId) }
             ?.let { message -> return SharedThreadMessageResolution.Loaded(message) }
-        val key = SharedThreadMessageKey(serverId, channelId, messageId)
+        val key = SharedThreadMessageKey(scopeId, channelId, messageId)
         val deferred =
             inFlightMutex.withLock {
-                get(serverId, channelId, messageId)
+                getScoped(scopeId, channelId, messageId)
                     ?.takeIf { message -> message.matchesSharedThreadMessageStoreKey(channelId, messageId) }
                     ?.let { message -> return SharedThreadMessageResolution.Loaded(message) }
                 inFlight[key] ?: scope.async {
                     val fetched = fetch()
                     synchronized(messageLock) {
                         val current =
-                            messages[SharedThreadMessageKey(serverId, channelId, messageId)]
+                            messages[SharedThreadMessageKey(scopeId, channelId, messageId)]
                                 ?.takeIf { message -> message.matchesSharedThreadMessageStoreKey(channelId, messageId) }
                         if (current != null) {
                             SharedThreadMessageResolution.Loaded(current)
@@ -516,7 +573,7 @@ internal class SharedThreadMessageStore(
                                     if (message == null) {
                                         SharedThreadMessageResolution.Error("thread_parent_context_identity_mismatch")
                                     } else {
-                                        SharedThreadMessageResolution.Loaded(upsertLocked(serverId, channelId, message))
+                                        SharedThreadMessageResolution.Loaded(upsertLocked(scopeId, channelId, message))
                                     }
                                 }
                                 SharedThreadMessageResolution.Missing -> fetched
@@ -1051,6 +1108,9 @@ internal class SharedThreadDataSource(
     private val channelProfileUpdateSink: suspend (ChannelProfileUpdateResult) -> Unit = {},
     private val messageStore: SharedThreadMessageStore? = null,
     private val cacheEnvironmentIdProvider: () -> String = { "" },
+    private val replyCacheIdentityAuthority: (suspend () -> ThreadReplyCacheIdentitySnapshot?)? = null,
+    private val replyCacheIdentityTransitionWaiter:
+        (suspend (ThreadReplyCacheIdentityTransitionAnchor?) -> Boolean)? = null,
     payloadStore: SharedThreadPayloadStore? = null,
     private val agentsApiClient: SlockAgentsApiClient? = null,
     private val actionCardsApiClient: SlockIntegrationsActionsPushApiClient? = null,
@@ -1092,6 +1152,9 @@ internal class SharedThreadDataSource(
         channelProfileUpdateSink: suspend (ChannelProfileUpdateResult) -> Unit = {},
         messageStore: SharedThreadMessageStore? = null,
         cacheEnvironmentIdProvider: () -> String = { "" },
+        replyCacheIdentityAuthority: (suspend () -> ThreadReplyCacheIdentitySnapshot?)? = null,
+        replyCacheIdentityTransitionWaiter:
+            (suspend (ThreadReplyCacheIdentityTransitionAnchor?) -> Boolean)? = null,
         payloadStore: SharedThreadPayloadStore? = null,
         agentsApiClient: SlockAgentsApiClient? = null,
         actionCardsApiClient: SlockIntegrationsActionsPushApiClient? = null,
@@ -1113,6 +1176,8 @@ internal class SharedThreadDataSource(
         channelProfileUpdateSink = channelProfileUpdateSink,
         messageStore = messageStore,
         cacheEnvironmentIdProvider = cacheEnvironmentIdProvider,
+        replyCacheIdentityAuthority = replyCacheIdentityAuthority,
+        replyCacheIdentityTransitionWaiter = replyCacheIdentityTransitionWaiter,
         payloadStore = payloadStore,
         agentsApiClient = agentsApiClient,
         actionCardsApiClient = actionCardsApiClient,
@@ -1130,20 +1195,83 @@ internal class SharedThreadDataSource(
     private val cacheEnvironmentId = MutableStateFlow("")
     private val cacheServerId = MutableStateFlow("")
     private val cachePrincipalId = MutableStateFlow("")
+    private val replyCacheProvenanceLock = SynchronizedObject()
+    private val replyCacheCaptureSequence = atomic(0L)
+    private val replyCacheProvenance = MutableStateFlow<ReplyCacheProvenance?>(null)
+    private var latestPublishedReplyCacheCapture = 0L
+    internal var onReplyCacheIdentitySourceCapturedForTest: (suspend () -> Unit)? = null
+    internal var onMarkdownReplyCacheScopeCapturedForTest: (suspend () -> Unit)? = null
 
     private fun threadPageSize(serverId: String?): Int =
         SharedThreadPaging.resolve(
             threadPageSizeProvider(serverId?.trim()?.takeIf { it.isNotEmpty() }?.let(::ServerId))
         )
 
-    suspend fun readSession(): StoredAuthSession? {
-        val session = sessionStore.readSession()
-        if (session == null) {
-            cacheEnvironmentId.value = ""
-            cacheServerId.value = ""
-            cachePrincipalId.value = ""
-            return null
+    suspend fun readSession(): StoredAuthSession? = readReplyResolutionScope()?.session
+
+    internal suspend fun captureReplyCacheProducerContext(): ReplyCacheProducerContext? =
+        readReplyResolutionScope()?.let { scope ->
+            ReplyCacheProducerContext(scope.session, scope.provenance)
         }
+
+    private suspend fun readReplyResolutionScope(): ReplyResolutionScope? {
+        val captureSequence = replyCacheCaptureSequence.incrementAndGet()
+        var transitionAttempts = 0
+        while (true) {
+            var source: ThreadReplyCacheIdentitySnapshot? = null
+            var sampleAttempts = 0
+            while (source == null && sampleAttempts < 4) {
+                sampleAttempts += 1
+                val candidate = readReplyCacheIdentitySource()
+                onReplyCacheIdentitySourceCapturedForTest?.invoke()
+                val confirmed = readReplyCacheIdentitySource()
+                if (candidate == confirmed) {
+                    source = confirmed
+                    break
+                }
+            }
+            if (source != null) {
+                val provenance = publishReplyCacheProvenance(source, captureSequence)
+                cacheEnvironmentId.value = provenance.environmentId
+                cacheServerId.value = provenance.serverId
+                cachePrincipalId.value = provenance.principalId
+                return ReplyResolutionScope(
+                    session = source.session,
+                    provenance = provenance,
+                    sharedMessageStore = messageStore != null
+                )
+            }
+
+            // A durable session can become visible before the provider-owned auth-revision collector
+            // publishes its matching immutable context or before this shell's selected-server owner
+            // converges. Retire the old token before waiting so stale page producers stay zero-write,
+            // then pass that retired authority as the only license for an A→B owner transition. Stable
+            // hybrids, environment mismatches, and missing authority remain fail-closed.
+            val transitionAnchor =
+                replyCacheProvenance.value?.let { current ->
+                    ThreadReplyCacheIdentityTransitionAnchor(
+                        environmentId = current.environmentId,
+                        principalId = current.principalId,
+                        authGeneration = current.authGeneration,
+                        selectionGeneration = current.selectionGeneration,
+                    )
+                }
+            clearReplyCacheProvenance(captureSequence)
+            val shouldRetry =
+                transitionAttempts < 4 &&
+                    replyCacheIdentityTransitionWaiter?.invoke(transitionAnchor) == true
+            if (!shouldRetry) return null
+            transitionAttempts += 1
+        }
+    }
+
+    private suspend fun readReplyCacheIdentitySource(): ThreadReplyCacheIdentitySnapshot? {
+        replyCacheIdentityAuthority?.let { authority -> return authority() }
+        // A process-shared message store must never mint cache ownership from independently sampled
+        // live fields. Production supplies the provider-owned authority above; missing authority is
+        // a hard fail-closed boundary. The fallback exists only for this data source's private resolver.
+        if (messageStore != null) return null
+        val session = sessionStore.readSession() ?: return null
         val selectedServerId =
             selectedServerStore?.selectedServerId?.value
                 ?.trim()
@@ -1156,18 +1284,68 @@ internal class SharedThreadDataSource(
                         (session.servers.isEmpty() || session.servers.any { it.id == candidate })
                 }
                 .orEmpty()
-        cacheEnvironmentId.value = cacheEnvironmentIdProvider().trim().trimEnd('/')
-        cacheServerId.value = serverId
-        cachePrincipalId.value = session.user.id.trim()
-        return session
+        return ThreadReplyCacheIdentitySnapshot(
+            session = session,
+            environmentId = cacheEnvironmentIdProvider().trim().trimEnd('/'),
+            principalId = session.user.id.trim(),
+            serverId = serverId,
+            authGeneration = 0L,
+            selectionGeneration = 0L,
+        )
     }
 
-    private fun replyResolutionNamespaceId(): String? {
-        val environmentId = cacheEnvironmentId.value.takeIf { it.isNotBlank() } ?: return null
-        val principalId = cachePrincipalId.value.takeIf { it.isNotBlank() } ?: return null
-        val serverId = cacheServerId.value.takeIf { it.isNotBlank() } ?: return null
-        return listOf(environmentId, principalId, serverId).joinToString("\u001f")
+    private fun publishReplyCacheProvenance(
+        source: ThreadReplyCacheIdentitySnapshot,
+        captureSequence: Long
+    ): ReplyCacheProvenance =
+        synchronized(replyCacheProvenanceLock) {
+            val current = replyCacheProvenance.value
+            val sameIdentity =
+                current != null &&
+                current.environmentId == source.environmentId &&
+                current.principalId == source.principalId &&
+                current.serverId == source.serverId
+            if (sameIdentity) {
+                if (captureSequence > latestPublishedReplyCacheCapture) {
+                    latestPublishedReplyCacheCapture = captureSequence
+                }
+                current
+            } else if (captureSequence < latestPublishedReplyCacheCapture) {
+                ReplyCacheProvenance(
+                    environmentId = source.environmentId,
+                    principalId = source.principalId,
+                    serverId = source.serverId,
+                    generation = captureSequence,
+                    authGeneration = source.authGeneration,
+                    selectionGeneration = source.selectionGeneration,
+                )
+            } else {
+                latestPublishedReplyCacheCapture = captureSequence
+                ReplyCacheProvenance(
+                    environmentId = source.environmentId,
+                    principalId = source.principalId,
+                    serverId = source.serverId,
+                    generation = captureSequence,
+                    authGeneration = source.authGeneration,
+                    selectionGeneration = source.selectionGeneration,
+                ).also { replyCacheProvenance.value = it }
+            }
+        }
+
+    private fun clearReplyCacheProvenance(captureSequence: Long) {
+        synchronized(replyCacheProvenanceLock) {
+            if (captureSequence >= latestPublishedReplyCacheCapture) {
+                latestPublishedReplyCacheCapture = captureSequence
+                replyCacheProvenance.value = null
+            }
+        }
+        cacheEnvironmentId.value = ""
+        cacheServerId.value = ""
+        cachePrincipalId.value = ""
     }
+
+    private fun isCurrentReplyCacheProvenance(expected: ReplyCacheProvenance): Boolean =
+        replyCacheProvenance.value == expected
 
     fun cachePayload(
         payload: KuiklyThreadScreenPayload,
@@ -1216,21 +1394,21 @@ internal class SharedThreadDataSource(
     suspend fun rememberedReplyThreadAccessFailure(
         basePayload: KuiklyThreadScreenPayload
     ): ScreenError? {
-        val session = readSession() ?: return null
-        val key = replyThreadAccessFlightKey(session, basePayload) ?: return null
+        val resolutionScope = readReplyResolutionScope() ?: return null
+        val key = replyThreadAccessFlightKey(resolutionScope, basePayload) ?: return null
         return payloadCache.replyThreadAccessFailure(key)
     }
 
     suspend fun clearRememberedReplyThreadAccessFailure(
         basePayload: KuiklyThreadScreenPayload
     ) {
-        val session = readSession() ?: return
-        val key = replyThreadAccessFlightKey(session, basePayload) ?: return
+        val resolutionScope = readReplyResolutionScope() ?: return
+        val key = replyThreadAccessFlightKey(resolutionScope, basePayload) ?: return
         payloadCache.clearReplyThreadAccessFailure(key)
     }
 
     private fun replyThreadAccessFlightKey(
-        session: StoredAuthSession,
+        resolutionScope: ReplyResolutionScope,
         basePayload: KuiklyThreadScreenPayload
     ): SharedReplyThreadAccessFlightKey? {
         if (basePayload.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread) return null
@@ -1239,22 +1417,32 @@ internal class SharedThreadDataSource(
             basePayload.parentMessageId?.takeIf { it.isNotBlank() }
                 ?: basePayload.originParentMessageId?.takeIf { it.isNotBlank() }
                 ?: return null
+        val provenance = resolutionScope.provenance
+        val authBinding =
+            listOf(
+                provenance.generation.toString(),
+                provenance.authGeneration.toString(),
+                provenance.selectionGeneration.toString(),
+                resolutionScope.session.accessToken
+            ).joinToString("\u001f")
         return sharedReplyThreadAccessFlightKey(
-            environmentId = cacheEnvironmentId.value,
-            principalId = session.user.id,
-            serverId = cacheServerId.value,
-            authBinding = session.accessToken,
+            environmentId = provenance.environmentId,
+            principalId = provenance.principalId,
+            serverId = provenance.serverId,
+            authBinding = authBinding,
             parentChannelId = parentChannelId,
             parentMessageId = parentMessageId
         )
     }
 
     private suspend fun replyThreadAccessAuthorityStillCurrent(
-        expected: SharedReplyThreadAccessFlightKey,
+        expectedKey: SharedReplyThreadAccessFlightKey,
+        expectedProvenance: ReplyCacheProvenance,
         basePayload: KuiklyThreadScreenPayload
     ): Boolean {
-        val currentSession = readSession() ?: return false
-        return replyThreadAccessFlightKey(currentSession, basePayload) == expected
+        val currentScope = readReplyResolutionScope() ?: return false
+        return currentScope.provenance == expectedProvenance &&
+            replyThreadAccessFlightKey(currentScope, basePayload) == expectedKey
     }
 
     // Reserved for UNRECOVERABLE scenarios only (task #562 boundary):
@@ -1276,11 +1464,12 @@ internal class SharedThreadDataSource(
             basePayload.parentMessageId?.takeIf { it.isNotBlank() }
                 ?: basePayload.originParentMessageId?.takeIf { it.isNotBlank() }
                 ?: return basePayload
-        val session = readSession() ?: return basePayload
-        val serverId = session.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId) ?: return basePayload
+        val replyResolutionScope = readReplyResolutionScope() ?: return basePayload
+        val session = replyResolutionScope.session
+        val messageStoreScopeId = replyResolutionScope.messageStoreScopeId ?: return basePayload
         val parent =
             getCachedReplyParentMessage(
-                serverId = serverId,
+                messageStoreScopeId = messageStoreScopeId,
                 parentChannelId = parentChannelId,
                 parentMessageId = parentMessageId
             ) ?: return basePayload
@@ -1305,12 +1494,15 @@ internal class SharedThreadDataSource(
             basePayload.parentMessageId?.takeIf { it.isNotBlank() }
                 ?: basePayload.originParentMessageId?.takeIf { it.isNotBlank() }
                 ?: return SharedThreadOriginResolution.Error("thread_parent_message_missing")
-        val session = readSession()
-            ?: return SharedThreadOriginResolution.Error("thread_parent_context_session_missing")
+        val replyResolutionScope =
+            readReplyResolutionScope()
+                ?: return SharedThreadOriginResolution.Error("thread_parent_context_session_missing")
+        val session = replyResolutionScope.session
         return when (
             val resolution = resolveReplyParentMessageFromStore(
                 parentChannelId = parentChannelId,
-                parentMessageId = parentMessageId
+                parentMessageId = parentMessageId,
+                messageStoreScopeId = replyResolutionScope.messageStoreScopeId
             )
         ) {
             is SharedThreadMessageResolution.Loaded ->
@@ -1323,37 +1515,52 @@ internal class SharedThreadDataSource(
     }
 
     fun rememberReplyParentCandidate(
+        provenance: ReplyCacheProvenance,
         serverId: String?,
         parentChannelId: String?,
         parentMessage: KuiklyThreadMessageItem,
         threadChannelId: String?
-    ) {
-        val channelId = parentChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId) ?: return
-        if (parentMessage.id.isBlank()) return
-        threadChannelId?.takeIf { it.isNotBlank() }?.let { resolvedThreadChannelId ->
-            cacheReplyThreadResolution(
-                namespaceId = replyResolutionNamespaceId(),
-                parentChannelId = channelId.value,
-                parentMessageId = parentMessage.id,
-                threadChannelId = resolvedThreadChannelId
-            )
-        }
-        if (parentMessage.needsReplyOriginContextHydration()) return
+    ): Boolean {
+        val channelId = parentChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId) ?: return false
+        if (parentMessage.id.isBlank()) return false
+        val exactServerId = serverId?.takeIf { it.isNotBlank() } ?: provenance.serverId.takeIf { it.isNotBlank() }
+        if (exactServerId == null || exactServerId != provenance.serverId) return false
         val projectedParent =
-            parentMessage.toMessage(
+            if (parentMessage.needsReplyOriginContextHydration()) {
+                null
+            } else {
+                parentMessage.toMessage(
                     threadId = ThreadId(channelId.value),
                     channelId = channelId,
                     diagnostics = diagnosticsLogger,
-                ) ?: return
-        val exactServerId =
-            serverId?.takeIf { it.isNotBlank() }?.let(::ServerId)
-                ?: cacheServerId.value.takeIf { it.isNotBlank() }?.let(::ServerId)
-                ?: return
-        messageResolver.upsert(serverId = exactServerId, channelId = channelId, message = projectedParent)
+                ) ?: return false
+            }
+        val accepted =
+            synchronized(replyCacheProvenanceLock) {
+                if (replyCacheProvenance.value != provenance) return@synchronized false
+                threadChannelId?.takeIf { it.isNotBlank() }?.let { resolvedThreadChannelId ->
+                    cacheReplyThreadResolution(
+                        namespaceId = provenance.namespaceId,
+                        parentChannelId = channelId.value,
+                        parentMessageId = parentMessage.id,
+                        threadChannelId = resolvedThreadChannelId
+                    )
+                }
+                projectedParent?.let { parent ->
+                    val scopeId =
+                        provenance.messageStoreScopeId
+                            ?: provenance.serverId.takeIf { messageStore == null && it.isNotBlank() }
+                            ?: return@synchronized false
+                    messageResolver.upsertScoped(scopeId = scopeId, channelId = channelId, message = parent)
+                }
+                true
+            }
+        if (!accepted) return false
         diagnosticsLogger(
             "thread_parent_context_store_seed parentChannelId=${channelId.value} " +
                 "parentMessageId=${parentMessage.id} threadChannelId=${threadChannelId.orEmpty()}"
         )
+        return true
     }
 
     suspend fun withConversationAccessFallback(basePayload: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
@@ -1410,11 +1617,15 @@ internal class SharedThreadDataSource(
         return cachedReplyThreadStreamId(namespaceId, parentChannel, parentMessage) == routeStream
     }
 
-    private fun cachedMarkdownThreadRefTarget(parentChannelId: String, threadShortId: String): MarkdownThreadRefTarget? {
+    private fun cachedMarkdownThreadRefTarget(
+        serverId: String,
+        parentChannelId: String,
+        threadShortId: String
+    ): MarkdownThreadRefTarget? {
         val shortId = threadShortId.trim().lowercase()
         if (parentChannelId.isBlank() || shortId.isBlank()) return null
         val matches =
-            payloadCache.values(cacheServerId.value)
+            payloadCache.values(serverId)
                 .mapNotNull { payload ->
                     val parentMessageId =
                         payload.parentMessageId?.takeIf { it.isNotBlank() }
@@ -1436,6 +1647,23 @@ internal class SharedThreadDataSource(
                 .distinctBy { it.parentMessageId }
         return matches.singleOrNull()
     }
+
+    private fun cacheReplyThreadResolution(
+        provenance: ReplyCacheProvenance,
+        parentChannelId: String,
+        parentMessageId: String,
+        threadChannelId: String
+    ): Boolean =
+        synchronized(replyCacheProvenanceLock) {
+            if (replyCacheProvenance.value != provenance) return@synchronized false
+            cacheReplyThreadResolution(
+                provenance.namespaceId,
+                parentChannelId,
+                parentMessageId,
+                threadChannelId
+            )
+            true
+        }
 
     private fun cacheReplyThreadResolution(
         namespaceId: String?,
@@ -1867,10 +2095,8 @@ internal class SharedThreadDataSource(
         replyResolutionScope: ReplyResolutionScope?,
         replaceReplyAccessFailure: Boolean = false
     ): DataResult<KuiklyThreadScreenPayload> {
-        val session =
-            readSession()
-                ?: return authSessionRequiredResult()
-        val resolutionScope = replyResolutionScope ?: ReplyResolutionScope(replyResolutionNamespaceId())
+        val resolutionScope = replyResolutionScope ?: readReplyResolutionScope() ?: return authSessionRequiredResult()
+        val session = resolutionScope.session
         val replyResolutionNamespaceId = resolutionScope.namespaceId
         val shouldFetchReplyByParent =
             conversationRepository != null &&
@@ -1917,6 +2143,7 @@ internal class SharedThreadDataSource(
                     fetchInitialReplyThreadPayloadFromRepository(
                         session = session,
                         basePayload = resolvedBasePayload,
+                        replyResolutionScope = resolutionScope,
                         replaceReplyAccessFailure = replaceReplyAccessFailure
                     )
                 } else {
@@ -1927,7 +2154,7 @@ internal class SharedThreadDataSource(
                         session = session,
                         basePayload = resolvedBasePayload,
                         threadId = ThreadId(resolvedThreadId),
-                        replyResolutionNamespaceId = replyResolutionNamespaceId
+                        replyResolutionScope = resolutionScope
                     )
                 }
             } else {
@@ -2035,8 +2262,9 @@ internal class SharedThreadDataSource(
         ) {
             return DataResult.Error(ScreenError(code = "thread_prewarm_identity_missing", retryable = false))
         }
-        val session = readSession() ?: return authSessionRequiredResult()
-        val replyResolutionNamespaceId = replyResolutionNamespaceId()
+        val replyResolutionScope = readReplyResolutionScope() ?: return authSessionRequiredResult()
+        val session = replyResolutionScope.session
+        val replyResolutionNamespaceId = replyResolutionScope.namespaceId
         val selection = selectedServerStore
             ?: return DataResult.Error(ScreenError(code = "thread_prewarm_selection_unavailable", retryable = false))
         if (!selection.isSelected(key.serverId)) {
@@ -2062,7 +2290,8 @@ internal class SharedThreadDataSource(
                     fetchInitialReplyThreadPayloadFromRepository(
                         session = session,
                         basePayload = basePayload,
-                        requestPriority = DataRequestPriority.Background
+                        requestPriority = DataRequestPriority.Background,
+                        replyResolutionScope = replyResolutionScope
                     )
                 val payload =
                     when (fetched) {
@@ -2361,6 +2590,7 @@ internal class SharedThreadDataSource(
     }
 
     suspend fun markdownThreadRefLaunchPayload(
+        provenance: ReplyCacheProvenance,
         currentPayload: KuiklyThreadScreenPayload,
         channelLabel: String,
         threadShortId: String?
@@ -2370,10 +2600,14 @@ internal class SharedThreadDataSource(
                 ?.trim()
                 ?.takeIf { it.isNotBlank() }
                 ?: return DataResult.Empty(EmptyReason.NoMessages)
-        val session =
-            readSession()
+        val resolutionScope =
+            readReplyResolutionScope()
                 ?: return authSessionRequiredResult()
-        val replyResolutionNamespaceId = replyResolutionNamespaceId()
+        if (resolutionScope.provenance != provenance || !isCurrentReplyCacheProvenance(provenance)) {
+            return staleReplyCacheProvenanceResult()
+        }
+        onMarkdownReplyCacheScopeCapturedForTest?.invoke()
+        val session = resolutionScope.session
         val home =
             currentHomeSnapshot(session)
                 ?: return DataResult.Empty(EmptyReason.NoChannels)
@@ -2386,7 +2620,7 @@ internal class SharedThreadDataSource(
                 ?: return DataResult.Empty(EmptyReason.NoChannels)
         val localTarget =
             currentPayload.markdownThreadRefTarget(parentChannelId, shortId)
-                ?: cachedMarkdownThreadRefTarget(parentChannelId, shortId)
+                ?: cachedMarkdownThreadRefTarget(provenance.serverId, parentChannelId, shortId)
         val target =
             localTarget
                 ?: when (
@@ -2404,6 +2638,9 @@ internal class SharedThreadDataSource(
                     is DataResult.NoPermission -> return result
                 }
                 ?: return DataResult.Empty(EmptyReason.NoMessages)
+        if (!isCurrentReplyCacheProvenance(provenance)) {
+            return staleReplyCacheProvenanceResult()
+        }
         val payload =
             buildMarkdownThreadRefLaunchPayload(
                 currentPayload = currentPayload,
@@ -2419,12 +2656,15 @@ internal class SharedThreadDataSource(
             ?.takeIf { it.isNotBlank() }
             ?.let {
                 cacheReplyThreadResolution(
-                    replyResolutionNamespaceId,
+                    provenance,
                     parentChannelId,
                     target.parentMessageId,
                     it
                 )
             }
+        if (!isCurrentReplyCacheProvenance(provenance)) {
+            return staleReplyCacheProvenanceResult()
+        }
         return DataResult.Content(payload)
     }
 
@@ -2780,8 +3020,7 @@ internal class SharedThreadDataSource(
         basePayload: KuiklyThreadScreenPayload,
         parentMessage: KuiklyThreadMessageItem
     ): DataResult<KuiklyThreadScreenPayload> {
-        readSession() ?: return authSessionRequiredResult()
-        val replyResolutionScope = ReplyResolutionScope(replyResolutionNamespaceId())
+        val replyResolutionScope = readReplyResolutionScope() ?: return authSessionRequiredResult()
         val replyResolutionNamespaceId = replyResolutionScope.namespaceId
         val parentChannelId =
             basePayload.sourceThreadId?.takeIf { it.isNotBlank() }
@@ -3124,7 +3363,7 @@ internal class SharedThreadDataSource(
         session: StoredAuthSession,
         basePayload: KuiklyThreadScreenPayload,
         threadId: ThreadId,
-        replyResolutionNamespaceId: String?,
+        replyResolutionScope: ReplyResolutionScope,
         includeFollowedSummaries: Boolean = false
     ): DataResult<KuiklyThreadScreenPayload> {
         val focusedContext =
@@ -3135,7 +3374,8 @@ internal class SharedThreadDataSource(
                     session = session,
                     basePayload = basePayload,
                     routeThreadId = threadId,
-                    accessFallback = null
+                    accessFallback = null,
+                    replyResolutionScope = replyResolutionScope
                 )
             }
         if (focusedContext != null) {
@@ -3168,17 +3408,17 @@ internal class SharedThreadDataSource(
                 fetchResolvedReplyThreadSnapshot(
                     session = session,
                     basePayload = basePayload,
-                    replyResolutionNamespaceId = replyResolutionNamespaceId
+                    replyResolutionNamespaceId = replyResolutionScope.namespaceId
                 ).map { (resolvedBase, snapshot) ->
                     snapshot
-                        ?.withReplyParentMessageFromContext(resolvedBase)
+                        ?.withReplyParentMessageFromContext(resolvedBase, replyResolutionScope = replyResolutionScope)
                         ?.toKuiklyThreadPayload(resolvedBase, session.user.id)
                         ?: resolvedBase.toEmptyReplyThreadPayload()
                 }
             initialData != null ->
                 DataResult.Content(
                     initialData.data
-                        .withReplyParentMessageFromContext(basePayload)
+                        .withReplyParentMessageFromContext(basePayload, replyResolutionScope = replyResolutionScope)
                         .toKuiklyThreadPayload(basePayload, session.user.id)
                 )
             else -> initialResult as DataResult<KuiklyThreadScreenPayload>
@@ -3189,7 +3429,8 @@ internal class SharedThreadDataSource(
         session: StoredAuthSession,
         basePayload: KuiklyThreadScreenPayload,
         routeThreadId: ThreadId,
-        accessFallback: ConversationAccessCandidate?
+        accessFallback: ConversationAccessCandidate?,
+        replyResolutionScope: ReplyResolutionScope
     ): DataResult<KuiklyThreadScreenPayload>? {
         val focusedMessageId = basePayload.focusedMessageId?.takeIf { it.isNotBlank() } ?: return null
         val focusedContextChannelId = basePayload.focusedMessageContextChannelIdOrNull()
@@ -3205,7 +3446,7 @@ internal class SharedThreadDataSource(
             context
                 .withCachedReplyParentMessage(
                     basePayload = basePayload,
-                    serverId = session.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
+                    messageStoreScopeId = replyResolutionScope.messageStoreScopeId
                 )
                 .withConversationAccessFallback(accessFallback)
                 .toKuiklyThreadPayload(basePayload, session.user.id)
@@ -3214,7 +3455,7 @@ internal class SharedThreadDataSource(
 
     private fun ThreadSnapshot.withCachedReplyParentMessage(
         basePayload: KuiklyThreadScreenPayload,
-        serverId: ServerId?
+        messageStoreScopeId: String?
     ): ThreadSnapshot {
         val isReplyThread =
             basePayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread ||
@@ -3232,7 +3473,7 @@ internal class SharedThreadDataSource(
                 ?: return this
         val parent =
             getCachedReplyParentMessage(
-                serverId = serverId ?: return this,
+                messageStoreScopeId = messageStoreScopeId ?: return this,
                 parentChannelId = parentChannelId,
                 parentMessageId = parentMessageId
             ) ?: return this
@@ -3241,7 +3482,8 @@ internal class SharedThreadDataSource(
 
     private suspend fun ThreadSnapshot.withReplyParentMessageFromContext(
         basePayload: KuiklyThreadScreenPayload,
-        allowNetworkHydration: Boolean = true
+        allowNetworkHydration: Boolean = true,
+        replyResolutionScope: ReplyResolutionScope
     ): ThreadSnapshot {
         val isReplyThread =
             basePayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread ||
@@ -3290,7 +3532,8 @@ internal class SharedThreadDataSource(
         val parent =
             getReplyParentMessageFromStore(
                 parentChannelId = resolvedParentChannelId,
-                parentMessageId = parentMessageId
+                parentMessageId = parentMessageId,
+                messageStoreScopeId = replyResolutionScope.messageStoreScopeId
             )
                 ?: return this
         return copy(parentMessage = parent)
@@ -3301,6 +3544,7 @@ internal class SharedThreadDataSource(
         basePayload: KuiklyThreadScreenPayload,
         includeFollowedSummaries: Boolean = false,
         requestPriority: DataRequestPriority = DataRequestPriority.Foreground,
+        replyResolutionScope: ReplyResolutionScope,
         replaceReplyAccessFailure: Boolean = false
     ): DataResult<KuiklyThreadScreenPayload> = coroutineScope {
         val parentChannelId = basePayload.parentChannelId?.takeIf { it.isNotBlank() }
@@ -3319,7 +3563,8 @@ internal class SharedThreadDataSource(
                     session = session,
                     basePayload = basePayload,
                     routeThreadId = routeThreadId,
-                    accessFallback = null
+                    accessFallback = null,
+                    replyResolutionScope = replyResolutionScope
                 )
             }
         if (focusedContext != null) {
@@ -3330,14 +3575,18 @@ internal class SharedThreadDataSource(
                 getReplyParentMessageFromStore(
                     parentChannelId = parentChannelId,
                     parentMessageId = parentMessageId,
-                    requestPriority = requestPriority
+                    requestPriority = requestPriority,
+                    messageStoreScopeId = replyResolutionScope.messageStoreScopeId
                 )
             }
-        val accessFlightKey = replyThreadAccessFlightKey(session, basePayload)
+        val accessFlightKey = replyThreadAccessFlightKey(replyResolutionScope, basePayload)
         suspend fun fetchInitialSnapshot(): DataResult<ThreadSnapshot> {
-            if (
-                accessFlightKey != null &&
-                !replyThreadAccessAuthorityStillCurrent(accessFlightKey, basePayload)
+            if (accessFlightKey != null &&
+                !replyThreadAccessAuthorityStillCurrent(
+                    expectedKey = accessFlightKey,
+                    expectedProvenance = replyResolutionScope.provenance,
+                    basePayload = basePayload
+                )
             ) {
                 return DataResult.Error(
                     ScreenError(code = "thread_reply_access_authority_changed", retryable = true)
@@ -3358,9 +3607,12 @@ internal class SharedThreadDataSource(
                         priority = requestPriority
                     )
                 }
-            if (
-                accessFlightKey != null &&
-                !replyThreadAccessAuthorityStillCurrent(accessFlightKey, basePayload)
+            if (accessFlightKey != null &&
+                !replyThreadAccessAuthorityStillCurrent(
+                    expectedKey = accessFlightKey,
+                    expectedProvenance = replyResolutionScope.provenance,
+                    basePayload = basePayload
+                )
             ) {
                 return DataResult.Error(
                     ScreenError(code = "thread_reply_access_authority_changed", retryable = true)
@@ -3425,10 +3677,15 @@ internal class SharedThreadDataSource(
                 val payload =
                     initialResult.data
                         .withReplyParentMessage(parentChannelId, parentMessageId, parentMessage)
-                        .rememberReplyParentMessage(parentChannelId, parentMessageId)
+                        .rememberReplyParentMessage(
+                            parentChannelId,
+                            parentMessageId,
+                            replyResolutionScope.messageStoreScopeId
+                        )
                         .withReplyParentMessageFromContext(
                             basePayload = originResolvedBase,
-                            allowNetworkHydration = false
+                            allowNetworkHydration = false,
+                            replyResolutionScope = replyResolutionScope
                         )
                         .toKuiklyThreadPayload(originResolvedBase, session.user.id)
                 DataResult.Content(
@@ -3457,13 +3714,15 @@ internal class SharedThreadDataSource(
     private suspend fun getReplyParentMessageFromStore(
         parentChannelId: String,
         parentMessageId: String,
-        requestPriority: DataRequestPriority = DataRequestPriority.Foreground
+        requestPriority: DataRequestPriority = DataRequestPriority.Foreground,
+        messageStoreScopeId: String?
     ): Message? =
         when (
             val resolution = resolveReplyParentMessageFromStore(
                 parentChannelId = parentChannelId,
                 parentMessageId = parentMessageId,
-                requestPriority = requestPriority
+                requestPriority = requestPriority,
+                messageStoreScopeId = messageStoreScopeId
             )
         ) {
             is SharedThreadMessageResolution.Loaded -> resolution.message
@@ -3474,41 +3733,45 @@ internal class SharedThreadDataSource(
     private suspend fun resolveReplyParentMessageFromStore(
         parentChannelId: String,
         parentMessageId: String,
-        requestPriority: DataRequestPriority = DataRequestPriority.Foreground
+        requestPriority: DataRequestPriority = DataRequestPriority.Foreground,
+        messageStoreScopeId: String?
     ): SharedThreadMessageResolution {
-        val session = readSession()
-            ?: return SharedThreadMessageResolution.Error("thread_parent_context_session_missing")
-        val serverId = session.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
-            ?: return SharedThreadMessageResolution.Error("thread_parent_context_server_missing")
         val parentChannel = ChannelId(parentChannelId)
         val parentMessage = MessageId(parentMessageId)
-        val cachedParent = messageResolver.get(serverId, parentChannel, parentMessage)
+        val cachedParent = messageStoreScopeId?.let { scopeId ->
+            messageResolver.getScoped(scopeId, parentChannel, parentMessage)
+        }
             ?.takeIf { message -> message.matchesReplyOriginParent(parentChannel, parentMessage) }
-        val parent =
-            messageResolver.resolve(serverId, parentChannel, parentMessage) {
-                val startedAt = TimeSource.Monotonic.markNow()
-                val contextResult =
-                    fetchThreadSnapshotFromRepository("thread_parent_context") { repository ->
-                        repository.getMessageContext(parentMessage, parentChannel, requestPriority)
-                    }
-                diagnosticsLogger(
-                    "thread_parent_context_parallel_result parentChannelId=$parentChannelId " +
-                        "parentMessageId=$parentMessageId result=${contextResult.threadDiagnosticsResult()} " +
-                        "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
-                )
-                when (contextResult) {
-                    is DataResult.Content -> {
-                        val message =
-                            contextResult.data.parentMessage?.takeIf { message -> message.id == parentMessage }
-                                ?: contextResult.data.messages.firstOrNull { message -> message.id == parentMessage }
-                        message
-                            ?.let { resolved -> SharedThreadMessageResolution.Loaded(resolved) }
-                            ?: SharedThreadMessageResolution.Missing
-                    }
-                    is DataResult.Empty -> SharedThreadMessageResolution.Missing
-                    is DataResult.Error -> SharedThreadMessageResolution.Error(contextResult.error.code)
-                    is DataResult.NoPermission -> SharedThreadMessageResolution.Error(contextResult.blocker.code)
+        suspend fun fetchParent(): SharedThreadMessageResolution {
+            val startedAt = TimeSource.Monotonic.markNow()
+            val contextResult =
+                fetchThreadSnapshotFromRepository("thread_parent_context") { repository ->
+                    repository.getMessageContext(parentMessage, parentChannel, requestPriority)
                 }
+            diagnosticsLogger(
+                "thread_parent_context_parallel_result parentChannelId=$parentChannelId " +
+                    "parentMessageId=$parentMessageId result=${contextResult.threadDiagnosticsResult()} " +
+                    "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+            )
+            return when (contextResult) {
+                is DataResult.Content -> {
+                    val message =
+                        contextResult.data.parentMessage?.takeIf { message -> message.id == parentMessage }
+                            ?: contextResult.data.messages.firstOrNull { message -> message.id == parentMessage }
+                    message
+                        ?.let { resolved -> SharedThreadMessageResolution.Loaded(resolved) }
+                        ?: SharedThreadMessageResolution.Missing
+                }
+                is DataResult.Empty -> SharedThreadMessageResolution.Missing
+                is DataResult.Error -> SharedThreadMessageResolution.Error(contextResult.error.code)
+                is DataResult.NoPermission -> SharedThreadMessageResolution.Error(contextResult.blocker.code)
+            }
+        }
+        val parent =
+            if (messageStoreScopeId == null) {
+                fetchParent()
+            } else {
+                messageResolver.resolveScoped(messageStoreScopeId, parentChannel, parentMessage, ::fetchParent)
             }
         if (cachedParent != null && parent is SharedThreadMessageResolution.Loaded && parent.message == cachedParent) {
             diagnosticsLogger(
@@ -3528,13 +3791,13 @@ internal class SharedThreadDataSource(
     }
 
     private fun getCachedReplyParentMessage(
-        serverId: ServerId,
+        messageStoreScopeId: String,
         parentChannelId: String,
         parentMessageId: String
     ): Message? {
         val parentChannel = ChannelId(parentChannelId)
         val parentMessage = MessageId(parentMessageId)
-        return messageResolver.get(serverId, parentChannel, parentMessage)
+        return messageResolver.getScoped(messageStoreScopeId, parentChannel, parentMessage)
             ?.takeIf { message -> message.matchesReplyOriginParent(parentChannel, parentMessage) }
     }
 
@@ -3559,7 +3822,8 @@ internal class SharedThreadDataSource(
 
     private fun ThreadSnapshot.rememberReplyParentMessage(
         parentChannelId: String,
-        parentMessageId: String
+        parentMessageId: String,
+        messageStoreScopeId: String?
     ): ThreadSnapshot {
         val parentChannel = ChannelId(parentChannelId)
         val targetMessageId = MessageId(parentMessageId)
@@ -3568,8 +3832,8 @@ internal class SharedThreadDataSource(
                 ?: messages.firstOrNull { message -> message.id == targetMessageId }
                 ?: return this
         if (candidate.matchesReplyOriginParent(parentChannel, targetMessageId)) {
-            val serverId = cacheServerId.value.takeIf { it.isNotBlank() }?.let(::ServerId) ?: return this
-            messageResolver.upsert(serverId, parentChannel, candidate)
+            val scopeId = messageStoreScopeId ?: return this
+            messageResolver.upsertScoped(scopeId, parentChannel, candidate)
         }
         return this
     }
@@ -3844,6 +4108,7 @@ internal data class SharedThreadState(
     val canonicalAccessResolved: Boolean = false,
     val initialHomeAccessLookupComplete: Boolean = false,
     val initialHomeAccessCandidate: ConversationAccessCandidate? = null,
+    val writeActionsEnabled: Boolean = true,
     val channelProfileUpdateStatus: ChannelProfileUpdateStatus = ChannelProfileUpdateStatus.Idle,
     val channelProfileUpdateErrorCode: String? = null,
     val membersLoadStatus: LoadMembersStatus = LoadMembersStatus.Idle,
@@ -3887,6 +4152,7 @@ internal data class SharedThreadRenderSlice(
     val highlightedMentions: Set<String>,
     val accessResolution: ThreadAccessResolution,
     val canonicalAccessResolved: Boolean,
+    val writeActionsEnabled: Boolean,
     val channelProfileUpdateStatus: ChannelProfileUpdateStatus,
     val channelProfileUpdateErrorCode: String?
 )
@@ -3899,6 +4165,7 @@ private fun SharedThreadState.toRenderSlice(): SharedThreadRenderSlice =
         highlightedMentions = highlightedMentions,
         accessResolution = accessResolution,
         canonicalAccessResolved = canonicalAccessResolved,
+        writeActionsEnabled = writeActionsEnabled,
         channelProfileUpdateStatus = channelProfileUpdateStatus,
         channelProfileUpdateErrorCode = channelProfileUpdateErrorCode
     )
@@ -4327,7 +4594,7 @@ internal class SharedThreadStore(
                 }).let { candidate ->
                 rememberedAccessFailure?.let { failure -> candidate.asRefreshFailed(failure.code) }
                     ?: candidate
-            }
+                }
         diagnosticsLogger?.invoke(
             "thread_visible_payload threadId=${threadId.orEmpty()} status=${visiblePayload.status} " +
                 "messages=${visiblePayload.messages.size} " + visiblePayload.originDiagnostics()
@@ -4403,7 +4670,8 @@ internal class SharedThreadStore(
         }
         var refreshStartState = _state.value
         val resolvingInitialAccessAtStart =
-            refreshStartState.accessResolution != ThreadAccessResolution.Resolved
+            refreshStartState.accessResolution != ThreadAccessResolution.Resolved ||
+                !refreshStartState.writeActionsEnabled
         if (resolvingInitialAccessAtStart) {
             initialAccessStateMutex.withLock {
                 val latest = _state.value
@@ -4528,6 +4796,10 @@ internal class SharedThreadStore(
                             }
                         }
                         .withInitialHomeConversationAccessFallback(currentState.initialHomeAccessCandidate)
+                        .withReadOnlyReplyAccessWhenHomeCandidateUnavailable(
+                            homeLookupComplete = currentState.initialHomeAccessLookupComplete,
+                            homeAccessCandidate = currentState.initialHomeAccessCandidate
+                        )
                 val canonicalAccessResolved =
                     currentState.canonicalAccessResolved ||
                         (resolvingInitialAccess && result.resolvesCanonicalConversationAccess())
@@ -4538,14 +4810,20 @@ internal class SharedThreadStore(
                         homeLookupComplete = currentState.initialHomeAccessLookupComplete,
                         homeAccessCandidate = currentState.initialHomeAccessCandidate,
                         requiresParentAccessCandidate =
-                            projectedPayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
+                            projectedPayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread,
+                        hasReadableReplyParentContext = projectedPayload.hasReadableReplyParentContext()
                     )
                 val didEmit =
                     reduceState(
                         currentState.copy(
                             payload = projectedPayload,
                             accessResolution = projectedAccessResolution,
-                            canonicalAccessResolved = canonicalAccessResolved
+                            canonicalAccessResolved = canonicalAccessResolved,
+                            writeActionsEnabled =
+                                !projectedPayload.isReadOnlyReplyAccessFallback(
+                                    homeLookupComplete = currentState.initialHomeAccessLookupComplete,
+                                    homeAccessCandidate = currentState.initialHomeAccessCandidate
+                                )
                         )
                     )
                 if (didEmit && visiblePayload != null) {
@@ -4791,6 +5069,10 @@ internal class SharedThreadStore(
                                 } ?: payload
                             }
                             .withInitialHomeConversationAccessFallback(candidate)
+                            .withReadOnlyReplyAccessWhenHomeCandidateUnavailable(
+                                homeLookupComplete = true,
+                                homeAccessCandidate = candidate
+                            )
                     val nextResolution =
                         when {
                             currentState.accessResolution == ThreadAccessResolution.NoPermission ->
@@ -4799,7 +5081,7 @@ internal class SharedThreadStore(
                                 ThreadAccessResolution.Error
                             projectedPayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
                                 currentState.canonicalAccessResolved &&
-                                candidate != null ->
+                                (candidate != null || projectedPayload.hasReadableReplyParentContext()) ->
                                 ThreadAccessResolution.Resolved
                             projectedPayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
                                 currentState.canonicalAccessResolved ->
@@ -4819,7 +5101,12 @@ internal class SharedThreadStore(
                             payload = projectedPayload,
                             accessResolution = nextResolution,
                             initialHomeAccessLookupComplete = true,
-                            initialHomeAccessCandidate = candidate
+                            initialHomeAccessCandidate = candidate,
+                            writeActionsEnabled =
+                                !projectedPayload.isReadOnlyReplyAccessFallback(
+                                    homeLookupComplete = true,
+                                    homeAccessCandidate = candidate
+                                )
                         )
                     )
                 }
@@ -7354,12 +7641,20 @@ private fun KuiklyThreadMessageItem.withReplySummary(
     val nextUnreadReplyCount = maxOf(unreadReplyCount, summary.unreadCount)
     val nextFirstUnreadReplyMessageId = firstUnreadReplyMessageId ?: summary.firstUnreadMessageId?.value
     val nextFollowed = isThreadFollowed || summary.key in followedThreadKeys
+    val incomingInlineReplies =
+        initialThreadRepliesReadModel(
+            replies = summary.latestReplies,
+            replyCount = summary.replyCount,
+            limit = InlineThreadReplyPreviewLimit,
+        )
+    val nextInlineReplies = inlineReplies.adoptNewerSnapshot(incomingInlineReplies)
     if (
         nextThreadChannelId == threadChannelId &&
         nextReplyCount == replyCount &&
         nextUnreadReplyCount == unreadReplyCount &&
         nextFirstUnreadReplyMessageId == firstUnreadReplyMessageId &&
-        nextFollowed == isThreadFollowed
+        nextFollowed == isThreadFollowed &&
+        nextInlineReplies == inlineReplies
     ) {
         return this
     }
@@ -7368,8 +7663,20 @@ private fun KuiklyThreadMessageItem.withReplySummary(
         replyCount = nextReplyCount,
         unreadReplyCount = nextUnreadReplyCount,
         firstUnreadReplyMessageId = nextFirstUnreadReplyMessageId,
-        isThreadFollowed = nextFollowed
+        isThreadFollowed = nextFollowed,
+        inlineReplies = nextInlineReplies,
     )
+}
+
+internal fun ThreadRepliesReadModel?.adoptNewerSnapshot(
+    incoming: ThreadRepliesReadModel,
+): ThreadRepliesReadModel {
+    val current = this ?: return incoming
+    val currentVisibleHighWater = current.replies.maxOfOrNull { it.seq } ?: 0L
+    if (current.replyCount > incoming.replyCount || currentVisibleHighWater > incoming.snapshotSeq) {
+        return current
+    }
+    return incoming
 }
 
 private fun KuiklyThreadFilesPayload?.orEmptyFilesPayload(basePayload: KuiklyThreadScreenPayload): KuiklyThreadFilesPayload =
@@ -7783,6 +8090,13 @@ private fun KuiklyThreadScreenPayload.applyRealtimeMessageUpdate(
 private fun KuiklyThreadScreenPayload.applyThreadUpdated(event: ThreadUpdated): KuiklyThreadScreenPayload {
     fun KuiklyThreadMessageItem.updateIfMatches(): KuiklyThreadMessageItem =
         if (id == event.parentMessageId.value) {
+            val currentInlineReplies =
+                inlineReplies
+                    ?: initialThreadRepliesReadModel(
+                        replies = emptyList(),
+                        replyCount = replyCount,
+                        limit = InlineThreadReplyPreviewLimit,
+                    )
             copy(
                 threadChannelId = event.threadChannelId.value,
                 replyCount = event.replyCount,
@@ -7792,7 +8106,15 @@ private fun KuiklyThreadScreenPayload.applyThreadUpdated(event: ThreadUpdated): 
                         event.unreadCount == 0 -> null
                         event.firstUnreadMessageId != null -> event.firstUnreadMessageId.value
                         else -> firstUnreadReplyMessageId
-                    }
+                    },
+                inlineReplies =
+                    event.latestReply?.let { reply ->
+                        currentInlineReplies.applyReplyFrame(
+                            reply = reply,
+                            frameReplyCount = event.replyCount,
+                            limit = InlineThreadReplyPreviewLimit,
+                        )
+                    } ?: inlineReplies,
             )
         } else {
             this
@@ -7893,14 +8215,18 @@ private fun ThreadAccessResolution.afterRefreshResult(
     canonicalAccessResolved: Boolean,
     homeLookupComplete: Boolean,
     homeAccessCandidate: ConversationAccessCandidate?,
-    requiresParentAccessCandidate: Boolean
+    requiresParentAccessCandidate: Boolean,
+    hasReadableReplyParentContext: Boolean
 ): ThreadAccessResolution =
     when (result) {
         is DataResult.Content ->
             when {
                 this == ThreadAccessResolution.Resolved -> ThreadAccessResolution.Resolved
                 !canonicalAccessResolved || !homeLookupComplete -> ThreadAccessResolution.Loading
-                requiresParentAccessCandidate && homeAccessCandidate == null -> ThreadAccessResolution.Error
+                requiresParentAccessCandidate &&
+                    homeAccessCandidate == null &&
+                    !hasReadableReplyParentContext ->
+                    ThreadAccessResolution.Error
                 else -> ThreadAccessResolution.Resolved
             }
         is DataResult.Empty ->
@@ -7925,6 +8251,43 @@ private fun ThreadAccessResolution.afterRefreshResult(
         is DataResult.NoPermission -> ThreadAccessResolution.NoPermission
         is DataResult.Error -> if (this == ThreadAccessResolution.Resolved) this else ThreadAccessResolution.Error
     }
+
+// Canonical reply content plus its exact loaded origin proves read access even
+// when the independent Home bootstrap cannot supply composer capabilities.
+private fun KuiklyThreadScreenPayload.hasReadableReplyParentContext(): Boolean {
+    if (surfaceKind != KuiklyThreadSurfaceKind.ReplyThread || status != "content" || messages.isEmpty()) return false
+    val parentChannel = parentChannelId?.takeIf { it.isNotBlank() } ?: return false
+    val parentMessage =
+        parentMessageId?.takeIf { it.isNotBlank() }
+            ?: originParentMessageId?.takeIf { it.isNotBlank() }
+            ?: return false
+    val routeIdentity = resolveThreadRouteIdentity()
+    if (!routeIdentity.hasCompleteReplyIdentity || routeIdentity.parentKey != "$parentChannel:$parentMessage") {
+        return false
+    }
+    val origin = originMessage ?: return false
+    return originStatus == "loaded" &&
+        origin.id == parentMessage &&
+        (origin.body.isNotBlank() || origin.attachments.isNotEmpty())
+}
+
+private fun KuiklyThreadScreenPayload.withReadOnlyReplyAccessWhenHomeCandidateUnavailable(
+    homeLookupComplete: Boolean,
+    homeAccessCandidate: ConversationAccessCandidate?
+): KuiklyThreadScreenPayload {
+    if (!isReadOnlyReplyAccessFallback(homeLookupComplete, homeAccessCandidate)) return this
+    return copy(
+        joined = false,
+        canSend = false,
+        composer = composer.copy(enabled = false)
+    )
+}
+
+private fun KuiklyThreadScreenPayload.isReadOnlyReplyAccessFallback(
+    homeLookupComplete: Boolean,
+    homeAccessCandidate: ConversationAccessCandidate?
+): Boolean =
+    homeLookupComplete && homeAccessCandidate == null && hasReadableReplyParentContext()
 
 private fun DataResult<*>.resolvesCanonicalConversationAccess(): Boolean =
     this is DataResult.Content || (this is DataResult.Empty && reason == EmptyReason.NoMessages)

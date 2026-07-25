@@ -20,7 +20,7 @@ internal actual fun slockPlatformUsesNativeVideoController(): Boolean = true
 
 internal actual fun slockPlatformSupportsPushPreviewPrivacySetting(): Boolean = false
 
-internal actual fun slockPlatformSupportsSaveImageToPhotos(): Boolean = false
+internal actual fun slockPlatformSupportsSaveImageToPhotos(): Boolean = true
 
 internal actual fun slockReleaseNotesAppSlug(): String = "raft-ohos"
 

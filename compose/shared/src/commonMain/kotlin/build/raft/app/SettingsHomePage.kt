@@ -244,12 +244,14 @@ import build.raft.app.data.SearchScope
 import build.raft.app.data.SearchSort
 import build.raft.app.data.SearchSenderFilterItem
 import build.raft.app.data.SearchTimeRange
+import build.raft.app.data.SettingsServerSidebarPinnedItem
 import build.raft.app.data.SlockAgentsApiClient
 import build.raft.app.data.SlockAgentsNetworkApi
 import build.raft.app.data.SlockComputersApiClient
 import build.raft.app.data.SlockComputersNetworkApi
 import build.raft.app.data.SlockNetworkClient
 import build.raft.app.data.SharedCreateAgentCoordinator
+import build.raft.app.data.SharedCreateAgentFormStore
 import build.raft.app.data.SharedActivityIntent
 import build.raft.app.data.SharedAgentDetailActions
 import build.raft.app.data.SharedAgentDetailIntent
@@ -262,6 +264,7 @@ import build.raft.app.data.SharedConversationIdentitySupplementSource
 import build.raft.app.data.SharedHomeStore
 import build.raft.app.data.mergedSharedConversationDirectoryState
 import build.raft.app.data.toSharedConversationDirectoryState
+import build.raft.app.data.typedPinnedOrLegacy
 import build.raft.app.data.SharedHomeSavedPanelState
 import build.raft.app.data.SharedHomeSavedStateCache
 import build.raft.app.data.SharedHomeSearchPanelState
@@ -924,10 +927,12 @@ private fun rememberHomeSecondaryRouteEnvironment(
     val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
     val bridgeCallScope = rememberCoroutineScope()
     val linkNavigator = rememberSlockLinkNavigator(pager, bridge)
+    val copiedMessage = stringResource(MR.strings.common_copied)
     val settingsCapabilities =
-        remember(bridge, bridgeCallScope, linkNavigator) {
+        remember(bridge, bridgeCallScope, linkNavigator, copiedMessage) {
             BridgeSettingsPlatformCapabilities(
                 bridge = bridge,
+                copiedMessage = copiedMessage,
                 bridgeCallContext = bridgeCallScope.kuiklyBridgeCallContext(),
                 openUrlHandler = { url -> linkNavigator.open(url) }
             )
@@ -1032,7 +1037,7 @@ private fun HomeSecondaryRouterContent(
                 initialFocusInput = initialSearchFocusInput
             )
         HomeDestinationSaved -> HomeSavedRouterContent(environment, routeVisibleTick)
-        else -> SlockCenteredLoading(message = "Opening...")
+        else -> SlockCenteredLoading(message = stringResource(MR.strings.auth_state_opening_server))
     }
 }
 
@@ -1079,6 +1084,7 @@ private fun HomeSearchRouterContent(
     initialOpenFilterId: String? = null,
     initialFocusInput: Boolean = false
 ) {
+    val conversationNotReadyMessage = stringResource(MR.strings.home_error_conversation_not_ready)
     val homeDataSource =
         remember(environment.authStore, environment.networkClient) {
             SharedHomeDataSource(
@@ -1101,6 +1107,18 @@ private fun HomeSearchRouterContent(
             )
         }
     val homeState by homeViewModel.state.collectAsState()
+    val sharedHomeStateFlow =
+        remember(environment.sharedHomeStore) {
+            environment.sharedHomeStore?.state ?: flowOf(SharedHomeState())
+        }
+    val sharedHomeState by sharedHomeStateFlow.collectAsState(SharedHomeState())
+    val pinnedItems =
+        remember(sharedHomeState.content, homeState.content) {
+            val sidebarOrder =
+                (sharedHomeState.content as? SharedHomeContentState.Content)?.snapshot?.sidebarOrder
+                    ?: (homeState.content as? SharedHomeContentState.Content)?.snapshot?.sidebarOrder
+            sidebarOrder?.typedPinnedOrLegacy().orEmpty()
+        }
     LaunchedEffect(homeViewModel) {
         homeViewModel.dispatch(SharedHomeIntent.Start)
     }
@@ -1213,7 +1231,7 @@ private fun HomeSearchRouterContent(
                     environment.bridge.logWarn(
                         "search_open_request_pending reason=${resolution.reason} itemKey=${item.key}"
                     )
-                    environment.bridge.toast("Conversation isn't ready yet — try again")
+                    environment.bridge.toast(conversationNotReadyMessage)
                 }
             }
         },
@@ -1228,6 +1246,19 @@ private fun HomeSearchRouterContent(
                 storeScope = environment.storeScope
             )
         },
+        pinnedItems = pinnedItems,
+        onTogglePin =
+            environment.sharedHomeStore?.let { store ->
+                { target ->
+                    store.dispatch(
+                        SharedHomeIntent.TogglePinned(
+                            conversationId = target.conversationId,
+                            pinnedKind = target.kind,
+                            pinnedId = target.id
+                        )
+                    )
+                }
+            },
         initialOpenFilterId = initialOpenFilterId,
         initialFocusInput = initialFocusInput,
         bottomContentPadding = environment.shellScope.bottomInset(includeBottomTabBar = false),
@@ -1242,6 +1273,9 @@ private fun HomeSavedRouterContent(
     environment: HomeSecondaryRouteEnvironment,
     routeVisibleTick: Int = 0
 ) {
+    val conversationNotReadyMessage = stringResource(MR.strings.home_error_conversation_not_ready)
+    val copiedMessage = stringResource(MR.strings.common_copied)
+    val copyLinkFailedMessage = stringResource(MR.strings.thread_error_copy_link)
     val searchSavedViewModel = rememberHomeSearchSavedViewModel(environment, key = "home-secondary-saved")
     val searchSavedState by searchSavedViewModel.state.collectAsState()
     LaunchedEffect(routeVisibleTick) {
@@ -1332,7 +1366,7 @@ private fun HomeSavedRouterContent(
                     environment.bridge.logWarn(
                         "saved_open_request_pending reason=${resolution.reason} itemKey=${item.key}"
                     )
-                    environment.bridge.toast("Conversation isn't ready yet — try again")
+                    environment.bridge.toast(conversationNotReadyMessage)
                 }
             }
         },
@@ -1352,15 +1386,15 @@ private fun HomeSavedRouterContent(
                 val permalink = serverSlug?.let { sharedHomeSavedPermalink(item, it, webBaseUrl) }
                 if (permalink != null) {
                     environment.bridge.copyToPasteboard(permalink)
-                    environment.bridge.toast("Copied")
+                    environment.bridge.toast(copiedMessage)
                 } else {
-                    environment.bridge.toast("Unable to copy link")
+                    environment.bridge.toast(copyLinkFailedMessage)
                 }
             }
         },
         onCopyMarkdown = { item ->
             environment.bridge.copyToPasteboard(item.sharedHomeSavedMarkdownContent())
-            environment.bridge.toast("Copied")
+            environment.bridge.toast(copiedMessage)
         }
     )
 }
@@ -2259,6 +2293,12 @@ internal fun SlockAppShellContent(
     // in the app shell lifecycle, so shared `StringDesc` lookups resolve
     // against the user's last selection rather than the OS default.
     RememberKmmResourceLocaleSeedFromLocalActivity(pageVisibleTick)
+    val conversationNotReadyMessage = stringResource(MR.strings.home_error_conversation_not_ready)
+    val notificationServerUnavailableMessage = stringResource(MR.strings.home_error_notification_server_unavailable)
+    val notificationSignInMessage = stringResource(MR.strings.home_error_notification_sign_in)
+    val channelCreatedMessage = stringResource(MR.strings.thread_action_card_success_channel)
+    val channelNotCreatedMessage = stringResource(MR.strings.channel_create_error_not_created)
+    val conversationUnavailableMessage = stringResource(MR.strings.home_error_conversation_unavailable)
     val pager = LocalActivity.current.getPager() as Pager
     val launchSelection = remember(pager.pageData.params.toString()) {
         pager.pageData.params.appShellLaunchSelection()
@@ -2572,10 +2612,12 @@ internal fun SlockAppShellContent(
     }
     val appShellNetworkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
     val linkNavigator = rememberSlockLinkNavigator(pager, bridge)
+    val copiedMessage = stringResource(MR.strings.common_copied)
     val settingsCapabilities =
-        remember(bridge, appShellCoroutineScope, linkNavigator) {
+        remember(bridge, appShellCoroutineScope, linkNavigator, copiedMessage) {
             BridgeSettingsPlatformCapabilities(
                 bridge = bridge,
+                copiedMessage = copiedMessage,
                 bridgeCallContext = appShellCoroutineScope.kuiklyBridgeCallContext(),
                 openUrlHandler = { url -> linkNavigator.open(url) }
             )
@@ -2648,6 +2690,8 @@ internal fun SlockAppShellContent(
         remember(appShellNetworkClient) {
             SlockComputersApiClient(SlockComputersNetworkApi(appShellNetworkClient))
         }
+    val createAgentFormStore =
+        remember(sharedStores, storeScope) { sharedStores.createAgentFormStore(storeScope) }
     val createAgentCoordinator =
         remember(agentsApiClient, computersApiClient) {
             SharedCreateAgentCoordinator(
@@ -2777,6 +2821,12 @@ internal fun SlockAppShellContent(
                 messageStore = sharedStores.threadMessageStore,
                 cacheEnvironmentIdProvider = {
                     sharedStores.apiEnvironmentStore.current().apiBaseUrl
+                },
+                replyCacheIdentityAuthority = {
+                    sharedStores.captureThreadReplyCacheIdentity(storeScope)
+                },
+                replyCacheIdentityTransitionWaiter = { transitionAnchor ->
+                    sharedStores.awaitThreadReplyCacheIdentityTransition(storeScope, transitionAnchor)
                 },
                 payloadStore = sharedStores.threadPayloadStore,
                 readReceiptCoordinator = sharedStores.processReadReceiptCoordinator(),
@@ -3543,7 +3593,7 @@ internal fun SlockAppShellContent(
                     }
                 if (launchPayload == null) {
                     bridge.logWarn("app_shell_auth_pending_open_rejected reason=identity_unresolved serverId=$serverId")
-                    bridge.toast("Conversation isn't ready yet — try again")
+                    bridge.toast(conversationNotReadyMessage)
                 } else {
                     pager.openStandaloneThreadLaunchPayload(launchPayload, navigationStoreScope)
                 }
@@ -3644,14 +3694,14 @@ internal fun SlockAppShellContent(
                         windowNavigationCoordinator.rejectActivation(action.intent.key, result.code.name)
                             ?.let { rejection ->
                                 bridge.logWarn("window_navigation_drop reason=${rejection.reason}")
-                                bridge.toast("Notification server unavailable")
+                                bridge.toast(notificationServerUnavailableMessage)
                             }
                     }
                     SharedAuthResult.Unauthenticated -> {
                         windowNavigationCoordinator.rejectActivation(action.intent.key, "unauthenticated")
                             ?.let { rejection ->
                                 bridge.logWarn("window_navigation_drop reason=${rejection.reason}")
-                                bridge.toast("Sign in to open this notification")
+                                bridge.toast(notificationSignInMessage)
                             }
                     }
                 }
@@ -4016,10 +4066,10 @@ internal fun SlockAppShellContent(
                         homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.Refresh))
                         createChannelDialogOpen = false
                         createChannelError = null
-                        bridge.toast("Channel created")
+                        bridge.toast(channelCreatedMessage)
                     }
                     is DataResult.Empty -> {
-                        createChannelError = "Channel was not created."
+                        createChannelError = channelNotCreatedMessage
                     }
                     is DataResult.Error -> {
                         createChannelError = result.error.code
@@ -4546,7 +4596,7 @@ internal fun SlockAppShellContent(
                     "server_drawer_open_rejected serverId=$normalizedServerId " +
                         "conversationId=$normalizedConversationId reason=stale_projection"
                 )
-                bridge.toast("Conversation is no longer available")
+                bridge.toast(conversationUnavailableMessage)
                 return@launch
             }
             if (selectedServerStore.selectedServerId.value != normalizedServerId) {
@@ -4801,6 +4851,7 @@ internal fun SlockAppShellContent(
                             memberRepository = memberRepository,
                             settingsRepository = settingsRepository,
                             createAgentCoordinator = createAgentCoordinator,
+                            createAgentFormStore = createAgentFormStore,
                             computersStore = appShellComputersStore,
                             agentDetailStore = appShellAgentDetailStore,
                             agentPanelTabOrderStore = sharedStores.agentPanelTabOrderStore,
@@ -6260,9 +6311,6 @@ private fun SettingsAppShellContent(
                     onOpenSlock = { url -> settingsCapabilities.openUrl(url) },
                     onCheckQuiverUpdate = {
                         onSettingsIntent(SharedSettingsIntent.CheckQuiverUpdate)
-                    },
-                    onPrefetchReleaseNotes = { url ->
-                        settingsCapabilities.prefetchReleaseNotes(url)
                     },
                     onOpenSourceLicenses = { onDestinationChange(SettingsDestinationOpenSourceLicenses) },
                     onCopyEnvironmentInfo = { onSettingsIntent(SharedSettingsIntent.CopyDiagnostics) },
@@ -8186,8 +8234,8 @@ private fun SettingsNotificationsContent(
 
 @Composable
 private fun SettingsPwaInstallCard() {
-    SettingsFormSectionCard(iconName = SlockLucideIconName.AppWindow, title = "Install app") {
-        SettingsFormDetailText("Install prompts are managed by web PWA APIs outside native builds. Native Android and OHOS builds use their platform app install flow.")
+    SettingsFormSectionCard(iconName = SlockLucideIconName.AppWindow, title = stringResource(MR.strings.settings_pwa_install_title)) {
+        SettingsFormDetailText(stringResource(MR.strings.settings_pwa_install_native_detail))
         SettingsFormEmptyText(stringResource(MR.strings.settings_connected_apps_no_install_prompt))
     }
 }
@@ -10436,7 +10484,6 @@ internal fun SharedSettingsAboutContent(
     webUrl: String = SharedSettingsDefaultWebBaseUrl,
     onOpenSlock: (String) -> Unit,
     onCheckQuiverUpdate: () -> Unit,
-    onPrefetchReleaseNotes: suspend (String) -> Unit = {},
     onOpenSourceLicenses: () -> Unit,
     onCopyEnvironmentInfo: () -> Unit,
     onOpenApiEnvironment: () -> Unit,
@@ -10447,14 +10494,6 @@ internal fun SharedSettingsAboutContent(
             is ScreenLoadState.Content -> state.data
             else -> fallback
         }
-    val releaseNotesVersionCode = releaseNotesSanitizeVersionCode(snapshot.buildLabel)
-    val releaseNotesUrl =
-        remember(releaseNotesVersionCode) {
-            releaseNotesVersionCode.takeIf { it.isNotBlank() }?.let(::sharedSettingsReleaseNotesUrl).orEmpty()
-        }
-    LaunchedEffect(releaseNotesUrl) {
-        releaseNotesUrl.takeIf { it.isNotBlank() }?.let { onPrefetchReleaseNotes(it) }
-    }
     val aboutPayload = snapshot.toAboutPayload(webUrl, updateCheck, actionState, settingsAboutPayloadCopy(sharedSettingsResolvedWebBaseUrl(webUrl)))
     val developer = (developerState as? ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>)?.data
     val environmentStatus =
@@ -10524,29 +10563,6 @@ private fun SharedSettingsOpenSourceLicensesContent(
                 value.orEmpty().takeIf { it.isNotBlank() }?.let(onOpenUrl)
         }
     }
-}
-
-internal fun sharedSettingsReleaseNotesUrl(versionCode: String): String {
-    val localeTag =
-        try {
-            KeyValueLocalePreferenceStore(slockSharedPreferenceStore()).readLocaleSync().kmmResourceLocaleTag
-        } catch (cancellation: kotlinx.coroutines.CancellationException) {
-            throw cancellation
-        } catch (_: Throwable) {
-            AppLocale.Default.kmmResourceLocaleTag
-        }
-    return sharedSettingsReleaseNotesUrlForLocale(
-        versionCode = versionCode,
-        localeTag = localeTag
-    )
-}
-
-internal fun sharedSettingsReleaseNotesUrlForLocale(
-    versionCode: String,
-    localeTag: String?
-): String {
-    val baseUrl = "https://quiver.oranix.io/notes/${slockReleaseNotesAppSlug()}?version_code=$versionCode"
-    return localeTag?.takeIf { it.isNotBlank() }?.let { "$baseUrl&lang=$it" } ?: baseUrl
 }
 
 @Composable
@@ -11206,6 +11222,7 @@ private fun SharedQuiverFeedbackContent(
                     .background(SlockColor.SurfaceWhite)
         ) {
             ThreadComposerContent(
+                attachmentPreviewEnabled = false,
                 surface =
                     ThreadComposerSurface(
                         kind = KuiklyThreadSurfaceKind.Channel,
@@ -14920,6 +14937,7 @@ private fun SharedMembersScreen(
     memberRepository: MemberRepository,
     settingsRepository: SettingsRepository,
     createAgentCoordinator: SharedCreateAgentCoordinator,
+    createAgentFormStore: SharedCreateAgentFormStore,
     computersStore: SharedComputersStore,
     agentDetailStore: SharedAgentDetailStore,
     agentPanelTabOrderStore: SharedAgentPanelTabOrderStore,
@@ -14935,6 +14953,11 @@ private fun SharedMembersScreen(
     onListStateSnapshot: (AppShellMembersListState) -> Unit = {},
     onForegroundActivity: (String) -> Unit = {}
 ) {
+    val membersTitle = stringResource(MR.strings.tab_members)
+    val membersLoadFailedMessage = stringResource(MR.strings.thread_composer_load_members_failed)
+    val invitePermissionMessage = stringResource(MR.strings.member_error_manage_invites_forbidden)
+    val joinLinkLoadFailedPrefix = stringResource(MR.strings.settings_error_join_link_load_prefix)
+    val openProfileFailedMessage = stringResource(MR.strings.member_error_open_profile)
     val currentServerId = session?.currentServerId?.trim()?.takeIf { it.isNotBlank() }
     var state by remember(currentServerId) {
         mutableStateOf<SharedMembersUiState>(initialContent ?: SharedMembersUiState.Loading)
@@ -15037,12 +15060,12 @@ private fun SharedMembersScreen(
     when (val current = state) {
         SharedMembersUiState.Loading ->
             Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-                MembersPageHeader(title = "Members")
+                MembersPageHeader(title = membersTitle)
                 SlockCenteredLoading()
         }
         is SharedMembersUiState.Error ->
             MembersPageErrorContent(
-                message = "Could not load members",
+                message = membersLoadFailedMessage,
                 code = current.code,
                 onRetry = onRetry
             )
@@ -15131,9 +15154,9 @@ private fun SharedMembersScreen(
                     when (result) {
                         is DataResult.Content -> inviteJoinLinkUrl = result.data.url
                         is DataResult.NoPermission ->
-                            bridge.toast("You do not have permission to manage invites.")
+                            bridge.toast(invitePermissionMessage)
                         is DataResult.Error ->
-                            bridge.toast("Failed to load join link: ${result.error.settingsUserFacingMessage()}")
+                            bridge.toast(joinLinkLoadFailedPrefix + result.error.settingsUserFacingMessage())
                         is DataResult.Empty -> Unit
                     }
                 }
@@ -15243,7 +15266,7 @@ private fun SharedMembersScreen(
                                 identity
                             )
                         if (pageData == null) {
-                            bridge.toast("Unable to open profile")
+                            bridge.toast(openProfileFailedMessage)
                             bridge.log("members_detail_open_skip reason=missing_member_id source=app_shell")
                         } else {
                             val seedMember =
@@ -15258,7 +15281,7 @@ private fun SharedMembersScreen(
                                 pageData = pageData,
                                 storeScopeOverride = storeScope,
                                 onMissingScope = {
-                                    bridge.toast("Unable to open profile")
+                                    bridge.toast(openProfileFailedMessage)
                                     bridge.log("members_detail_open_skip reason=missing_shell_scope source=app_shell")
                                 }
                             )
@@ -15274,6 +15297,8 @@ private fun SharedMembersScreen(
                 createAgentRuntimeModelsByMachineAndRuntime = createAgentRuntimeModels,
                 createAgentRuntimeModelLoadsInFlight = createAgentRuntimeModelLoadsInFlight,
                 createAgentLoadRuntimeModels = loadRuntimeModels,
+                createAgentFormStore = createAgentFormStore,
+                createAgentServerId = serverId,
                 inviteHumanSubmit = inviteHumanSubmit,
                 inviteHumanJoinLinkLoading = inviteJoinLinkLoading,
                 inviteHumanJoinLinkUrl = inviteJoinLinkUrl,
@@ -15561,6 +15586,11 @@ private fun SharedHomeScreen(
     onListPositionSnapshot: (String?, AppShellLazyListPosition) -> Unit = { _, _ -> },
     onContentComposeCommitted: (String) -> Unit = {}
 ) {
+    val conversationUnavailableMessage = stringResource(MR.strings.home_error_conversation_unavailable)
+    val directMessageUnavailableMessage = stringResource(MR.strings.home_error_direct_message_unavailable)
+    val openDirectMessageFailedMessage = stringResource(MR.strings.home_error_open_direct_message)
+    val openDirectMessageFailedPrefix = stringResource(MR.strings.home_error_open_direct_message_failed_prefix)
+    val openDirectMessagePermissionMessage = stringResource(MR.strings.home_error_open_direct_message_permission)
     val pinnedMemberOpenScope = rememberCoroutineScope()
     val homeContentSummary = sharedHomeContentRenderSummary(state.content)
     val shouldStartHome = sharedHomeShouldStartOnActive(active, sessionReady, state)
@@ -15909,7 +15939,7 @@ private fun SharedHomeScreen(
                 onChannelClick = { threadId ->
                     val conversation = conversationsByThreadId[threadId]
                     if (conversation == null) {
-                        bridge.toast("Conversation is no longer available")
+                        bridge.toast(conversationUnavailableMessage)
                     } else {
                         onOpenConversation(conversation.toThreadLaunchConversationIdentity())
                         onIntent(SharedHomeIntent.SelectConversation(threadId))
@@ -15918,7 +15948,7 @@ private fun SharedHomeScreen(
                 onPinnedMemberClick = { identity ->
                     val repository = channelRepository
                     if (repository == null) {
-                        bridge.toast("Direct message is unavailable")
+                        bridge.toast(directMessageUnavailableMessage)
                     } else {
                         pinnedMemberOpenScope.launch {
                             when (val result = repository.openPinnedMemberDirectMessage(identity)) {
@@ -15928,9 +15958,10 @@ private fun SharedHomeScreen(
                                     onIntent(SharedHomeIntent.SelectConversation(conversation.threadId.value))
                                     onIntent(SharedHomeIntent.Refresh)
                                 }
-                                is DataResult.Empty -> bridge.toast("Unable to open direct message")
-                                is DataResult.Error -> bridge.toast("Failed to open direct message: ${result.error.code}")
-                                is DataResult.NoPermission -> bridge.toast("You do not have permission to open this direct message.")
+                                is DataResult.Empty -> bridge.toast(openDirectMessageFailedMessage)
+                                is DataResult.Error ->
+                                    bridge.toast(openDirectMessageFailedPrefix + result.error.code)
+                                is DataResult.NoPermission -> bridge.toast(openDirectMessagePermissionMessage)
                             }
                         }
                     }
@@ -16605,6 +16636,8 @@ private fun SharedHomeSearchPanel(
     initialFocusInput: Boolean = false,
     onOpenItem: (InboxItem) -> Unit,
     onOpenEntity: (SearchEntityResult) -> Unit,
+    pinnedItems: List<SettingsServerSidebarPinnedItem> = emptyList(),
+    onTogglePin: ((SearchEntityPinTarget) -> Unit)? = null,
     bottomContentPadding: Dp,
     timeContext: AppShellThreadTimeContext? = null,
     shellScope: SlockAppShellScope = rememberSlockAppShellScope(),
@@ -16658,8 +16691,17 @@ private fun SharedHomeSearchPanel(
     var channelAnchorResolver by remember { mutableStateOf<SlockPopoverAnchorResolver?>(null) }
     var timeAnchorResolver by remember { mutableStateOf<SlockPopoverAnchorResolver?>(null) }
     var sortAnchorResolver by remember { mutableStateOf<SlockPopoverAnchorResolver?>(null) }
+    var activePinMenu by remember { mutableStateOf<SharedHomeSearchPinMenuState?>(null) }
     var senderSearch by remember { mutableStateOf("") }
     var channelSearch by remember { mutableStateOf("") }
+    val pinLabel = stringResource(MR.strings.home_action_pin)
+    val unpinLabel = stringResource(MR.strings.home_action_unpin)
+    LaunchedEffect(entityResults) {
+        val activeKey = activePinMenu?.resultKey
+        if (activeKey != null && entityResults.none { it.key == activeKey }) {
+            activePinMenu = null
+        }
+    }
     LaunchedEffect(Unit) {
         onIntent(SharedHomeSearchSavedIntent.OpenSearch)
     }
@@ -16686,9 +16728,10 @@ private fun SharedHomeSearchPanel(
             pendingInitialOpenFilterId = null
         }
     }
-    SlockBackHandler(enabled = openFilterId != null) {
+    SlockBackHandler(enabled = openFilterId != null || activePinMenu != null) {
         openFilterId = null
         pendingInitialOpenFilterId = null
+        activePinMenu = null
     }
     Box(
         modifier =
@@ -16785,7 +16828,22 @@ private fun SharedHomeSearchPanel(
                             query = state.query,
                             agentStatusResolver = agentStatusResolver,
                             memberAvatarResolver = memberAvatarResolver,
-                            onOpen = { onOpenEntity(entityResults[index]) }
+                            isPinned = entityResults[index].isPinnedBy(pinnedItems),
+                            onOpen = { onOpenEntity(entityResults[index]) },
+                            onContextMenu =
+                                searchEntityPinTarget(entityResults[index])
+                                    ?.takeIf { onTogglePin != null }
+                                    ?.let { target ->
+                                        { anchor ->
+                                            activePinMenu =
+                                                SharedHomeSearchPinMenuState(
+                                                    resultKey = entityResults[index].key,
+                                                    target = target,
+                                                    isPinned = entityResults[index].isPinnedBy(pinnedItems),
+                                                    anchor = anchor
+                                                )
+                                        }
+                                    }
                         )
                     }
                 }
@@ -16960,6 +17018,49 @@ private fun SharedHomeSearchPanel(
                 )
             else -> Unit
         }
+        activePinMenu?.let { menu ->
+            SlockBaseMenuOverlay(
+                anchor = menu.anchor,
+                items =
+                    listOf(
+                        SlockBaseMenuItem(
+                            id = SharedHomeSearchPinMenuActionToggle,
+                            label = if (menu.isPinned) unpinLabel else pinLabel,
+                            icon = if (menu.isPinned) SlockLucideIconName.PinOff else SlockLucideIconName.Pin
+                        )
+                    ),
+                selectedId = "",
+                uppercaseLabels = false,
+                onDismiss = { activePinMenu = null },
+                onSelect = { actionId ->
+                    activePinMenu = null
+                    dispatchSearchEntityPinMenuSelection(
+                        actionId = actionId,
+                        target = menu.target,
+                        onTogglePin = onTogglePin
+                    )
+                }
+            )
+        }
+    }
+}
+
+private const val SharedHomeSearchPinMenuActionToggle = "toggle-pin"
+
+private data class SharedHomeSearchPinMenuState(
+    val resultKey: String,
+    val target: SearchEntityPinTarget,
+    val isPinned: Boolean,
+    val anchor: SlockPopoverAnchor
+)
+
+internal fun dispatchSearchEntityPinMenuSelection(
+    actionId: String,
+    target: SearchEntityPinTarget,
+    onTogglePin: ((SearchEntityPinTarget) -> Unit)?
+) {
+    if (actionId == SharedHomeSearchPinMenuActionToggle) {
+        onTogglePin?.invoke(target)
     }
 }
 
@@ -17302,56 +17403,21 @@ private fun SharedHomeSavedHeader(
     topSafeAreaPadding: Dp = 0.dp,
     onTitleClick: (() -> Unit)? = null
 ) {
-    Column(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .background(SlockColor.SurfaceWhite)
-    ) {
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(start = 16.dp, top = topSafeAreaPadding + 12.dp, end = 16.dp, bottom = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (onClose != null) {
-                SlockBrutalIconButton(
-                    iconName = SlockLucideIconName.ArrowLeft,
-                    onClick = onClose,
-                    size = 34.dp,
-                    shadowOffset = 3.dp
-                )
-            }
-            Column(
-                modifier =
-                    Modifier
-                        .weight(1f)
-                        .clickable(enabled = onTitleClick != null) { onTitleClick?.invoke() },
-                verticalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
-                Text(
-                    stringResource(MR.strings.saved_title),
-                    style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 18.sp, lineHeight = 22.sp, letterSpacing = 0.sp),
-                    color = SlockColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    stringResource(MR.strings.saved_count, count),
-                    style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, letterSpacing = 0.sp),
-                    color = SlockColor.TextMutedGray,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            if (refreshing) {
-                SlockHeaderRefreshIndicator()
-            }
-        }
-        SharedHomeSearchDivider()
-    }
+    SlockTopPageHeader(
+        title = stringResource(MR.strings.saved_title),
+        subtitle = stringResource(MR.strings.saved_count, count),
+        backgroundColor = SlockColor.SurfaceWhite,
+        topSafeAreaOverride = topSafeAreaPadding,
+        refreshing = refreshing,
+        leadingContent =
+            onClose?.let { close ->
+                {
+                    SlockTopPageHeaderAction(icon = SlockLucideIconName.ArrowLeft, onClick = close)
+                }
+            },
+        onTitleClick = onTitleClick,
+        showBodyTopBanner = false,
+    )
 }
 
 @Composable
@@ -17614,11 +17680,14 @@ private fun SharedHomePanelStatus(
     emptyDetail: String,
     onRetry: () -> Unit
 ) {
+    val userFacingErrorLabels = threadUserFacingErrorLabels()
     when {
         noPermissionCode != null ->
             SharedHomePanelMessage(
                 title = stringResource(MR.strings.panel_error_no_permission),
-                detail = noPermissionCode,
+                detail =
+                    userFacingErrorLabels.forErrorCode(noPermissionCode)
+                        ?: userFacingErrorLabels.generic(),
                 tone = SlockColor.AccentRed,
                 actionLabel = stringResource(MR.strings.common_retry),
                 onAction = onRetry
@@ -17626,7 +17695,9 @@ private fun SharedHomePanelStatus(
         errorCode != null ->
             SharedHomePanelMessage(
                 title = stringResource(MR.strings.panel_error_load),
-                detail = errorCode,
+                detail =
+                    userFacingErrorLabels.forErrorCode(errorCode)
+                        ?: userFacingErrorLabels.generic(),
                 tone = SlockColor.AccentRed,
                 actionLabel = stringResource(MR.strings.common_retry),
                 onAction = onRetry
@@ -18060,8 +18131,14 @@ private fun SharedHomeSearchEntityRow(
     query: String,
     agentStatusResolver: SlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
-    onOpen: () -> Unit
+    isPinned: Boolean = false,
+    onOpen: () -> Unit,
+    onContextMenu: ((SlockPopoverAnchor) -> Unit)? = null
 ) {
+    val gestureKey = remember(result.key, isPinned, onContextMenu != null) { "search-entity:${result.key}:$isPinned" }
+    val currentOnOpen by rememberUpdatedState(onOpen)
+    val currentOnContextMenu by rememberUpdatedState(onContextMenu)
+    val contentAnchor = remember(gestureKey) { SlockLiveRootAnchorRef(identity = gestureKey) }
     Row(
         modifier =
             Modifier
@@ -18069,36 +18146,117 @@ private fun SharedHomeSearchEntityRow(
                 .fillMaxWidth()
                 .background(SlockColor.SurfaceWhite)
                 .border(SlockStroke.Default, SearchLightRowBorderColor)
-                .clickable(onClick = onOpen)
                 .padding(horizontal = 13.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        SharedHomeSearchEntityLeadingAvatar(result, agentStatusResolver, memberAvatarResolver)
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            modifier =
+                Modifier
+                    .weight(1f)
+                    .slockCaptureLiveRootAnchor(contentAnchor)
+                    .pointerInput(gestureKey) {
+                        detectTapGestures(
+                            onTap = { currentOnOpen() },
+                            onLongPress = { localOffset ->
+                                currentOnContextMenu
+                                    ?.let { callback ->
+                                        contentAnchor.resolve(SlockPopoverLocalPoint.Exact(localOffset))?.let(callback)
+                                    }
+                            }
+                        )
+                    },
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SharedHomeSearchEntityLeadingAvatar(result, agentStatusResolver, memberAvatarResolver)
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    HomeSearchHighlightedText(
+                        text = result.title,
+                        query = query,
+                        style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp),
+                        color = SlockColor.TextBlack,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    SharedHomeEntityTypeBadge(result.type)
+                }
                 HomeSearchHighlightedText(
-                    text = result.title,
+                    text = result.subtitle,
                     query = query,
-                    style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp),
-                    color = SlockColor.TextBlack,
+                    style = SlockType.Caption,
+                    color = SlockColor.TextMutedGray,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
+                    overflow = TextOverflow.Ellipsis
                 )
-                SharedHomeEntityTypeBadge(result.type)
             }
-            HomeSearchHighlightedText(
-                text = result.subtitle,
-                query = query,
-                style = SlockType.Caption,
-                color = SlockColor.TextMutedGray,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
         }
     }
 }
+
+internal data class SearchEntityPinTarget(
+    val conversationId: String,
+    val kind: String? = null,
+    val id: String? = null
+)
+
+internal fun searchEntityPinTarget(result: SearchEntityResult): SearchEntityPinTarget? {
+    if (result.archived) return null
+    val threadId = result.threadId?.trim()?.takeIf { it.isNotBlank() }
+    val memberId = result.memberId?.trim()?.takeIf { it.isNotBlank() }
+    return when (result.type) {
+        SearchEntityType.Channel ->
+            threadId?.let { SearchEntityPinTarget(conversationId = it, kind = "channel", id = it) }
+        SearchEntityType.DirectMessage ->
+            threadId?.let { SearchEntityPinTarget(conversationId = it) }
+        SearchEntityType.Human ->
+            memberId?.let {
+                SearchEntityPinTarget(
+                    conversationId = threadId ?: it,
+                    kind = "human",
+                    id = it
+                )
+            }
+        SearchEntityType.Agent ->
+            memberId?.let {
+                SearchEntityPinTarget(
+                    conversationId = threadId ?: it,
+                    kind = "agent",
+                    id = it
+                )
+            }
+    }
+}
+
+internal fun SearchEntityResult.isPinnedBy(items: List<SettingsServerSidebarPinnedItem>): Boolean {
+    val target = searchEntityPinTarget(this) ?: return false
+    return items.any { item ->
+        when {
+            target.kind != null && target.id != null ->
+                item.kind.equals(target.kind, ignoreCase = true) && item.id == target.id ||
+                    item.kind.equals("channel", ignoreCase = true) && item.id == target.conversationId
+            else ->
+                item.id == target.conversationId ||
+                    memberId?.let { member ->
+                        item.id == member &&
+                            (item.kind.equals("agent", ignoreCase = true) ||
+                                item.kind.equals("human", ignoreCase = true))
+                    } == true
+        }
+    }
+}
+
+internal fun SettingsServerSidebarOrderSnapshot?.pinnedChannelConversationIds(): Set<String> =
+    this
+        ?.typedPinnedOrLegacy()
+        .orEmpty()
+        .asSequence()
+        .filter { it.kind.trim().equals("channel", ignoreCase = true) }
+        .map { it.id.trim() }
+        .filter { it.isNotBlank() }
+        .toSet()
 
 @Composable
 private fun SharedHomeEntityTypeBadge(type: SearchEntityType) {
@@ -18665,14 +18823,14 @@ private fun homeSearchChannelFilters(state: SharedHomeState): List<SearchChannel
         .distinctBy { it.id }
 }
 
-private enum class SearchEntityType {
+internal enum class SearchEntityType {
     Channel,
     DirectMessage,
     Human,
     Agent
 }
 
-private data class SearchEntityResult(
+internal data class SearchEntityResult(
     val key: String,
     val type: SearchEntityType,
     val title: String,
@@ -18681,7 +18839,8 @@ private data class SearchEntityResult(
     val memberId: String?,
     val conversationIdentity: ThreadLaunchConversationIdentity?,
     val avatarWireValue: String? = null,
-    val showPresence: Boolean = false
+    val showPresence: Boolean = false,
+    val archived: Boolean = false
 )
 
 private sealed interface HomeSearchResultGroup {
@@ -18786,7 +18945,8 @@ private fun homeSearchEntityResults(
                 memberId = conversation.presenceMemberId?.value,
                 conversationIdentity = conversation.toThreadLaunchConversationIdentity(),
                 avatarWireValue = null,
-                showPresence = conversation.isAgentDirectMessage()
+                showPresence = conversation.isAgentDirectMessage(),
+                archived = conversation.archived
             )
         }
     val memberResults =
@@ -20030,11 +20190,11 @@ private fun MembersPageErrorContent(
         modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        MembersPageHeader(title = "Members")
+        MembersPageHeader(title = stringResource(MR.strings.tab_members))
         PageErrorBody(
             message = message,
             code = code,
-            retryLabel = "Retry",
+            retryLabel = stringResource(MR.strings.common_retry),
             onRetry = onRetry
         )
     }
@@ -21081,6 +21241,59 @@ private val homeSearchVisualHomeState = SharedHomeState(
     selectedTopAction = SharedHomeTopAction.Search
 )
 
+private val homeSearchPinVisualHomeState =
+    homeSearchVisualHomeState.copy(
+        content =
+            (homeSearchVisualHomeState.content as SharedHomeContentState.Content).let { content ->
+                content.copy(
+                    snapshot =
+                        content.snapshot.copy(
+                            channels =
+                                content.snapshot.channels +
+                                    listOf(
+                                        ConversationSummary(
+                                            threadId = ThreadId("thread_android_pinned"),
+                                            channelId = ChannelId("ch_android_pinned"),
+                                            kind = ConversationKind.Channel,
+                                            name = "android-pinned",
+                                            subtitle = "Pinned release coordination",
+                                            memberCount = 12
+                                        ).toHomeChannelRow(),
+                                        ConversationSummary(
+                                            threadId = ThreadId("thread_android_archived"),
+                                            channelId = ChannelId("ch_android_archived"),
+                                            kind = ConversationKind.Channel,
+                                            name = "android-archive",
+                                            subtitle = "Archived build history",
+                                            archived = true,
+                                            memberCount = 5
+                                        ).toHomeChannelRow()
+                                    ),
+                            directMessages =
+                                content.snapshot.directMessages +
+                                    ConversationSummary(
+                                        threadId = ThreadId("dm_android_reviewer"),
+                                        channelId = ChannelId("dm_android_reviewer"),
+                                        kind = ConversationKind.DirectMessage,
+                                        name = "Android Reviewer",
+                                        subtitle = "Mobile release review",
+                                        presenceMemberId = MemberId("user_android_reviewer")
+                                    ).toHomeDirectMessageRow(),
+                            sidebarOrder =
+                                SettingsServerSidebarOrderSnapshot(
+                                    pinned =
+                                        listOf(
+                                            SettingsServerSidebarPinnedItem(
+                                                kind = "channel",
+                                                id = "thread_android_pinned"
+                                            )
+                                        )
+                                )
+                        )
+                )
+            }
+    )
+
 // Canonical create-channel roster (task #370): mirrors the react render host
 // priming in packages/web/visual-testing/VisualTestingCases.tsx
 // (primeCreateChannelStores) — agents Cindy (selected) + Visual QA, human
@@ -21147,6 +21360,14 @@ private val homeSearchVisualSearchState = SharedHomeSearchPanelState(
                 avatarWireValue = AvatarReference.Random("android-developer").wireValue,
                 presence = Presence.Active,
                 agentStatus = AgentStatus.Working
+            ),
+            SearchSenderFilterItem(
+                id = "human_pin_fixture",
+                label = "Pin Human",
+                handle = "pin-human",
+                kind = MemberKind.Human,
+                avatarWireValue = AvatarReference.Random("pin-human").wireValue,
+                presence = Presence.Active
             )
         ),
     selectedChannelId = "ch_design",
@@ -21386,6 +21607,60 @@ internal fun HomeSearchVisualContent(initialOpenFilterId: String? = null) {
 }
 
 @Composable
+internal fun HomeSearchPinVisualContent(query: String = "android") {
+    var openedEntityCount by remember { mutableStateOf(0) }
+    var togglePinCount by remember { mutableStateOf(0) }
+    LaunchedEffect(togglePinCount) {
+        if (togglePinCount > 0) {
+            delay(HomeSearchPinVisualProbeDurationMs)
+            togglePinCount = 0
+        }
+    }
+    Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+        SharedHomeSearchPanel(
+            state = homeSearchVisualSearchState.copy(query = query),
+            homeState = homeSearchPinVisualHomeState,
+            onIntent = {},
+            onClose = {},
+            interactiveSearchField = false,
+            includeTopSafeArea = false,
+            showSenderFilter = true,
+            onOpenItem = {},
+            onOpenEntity = { openedEntityCount += 1 },
+            pinnedItems =
+                (homeSearchPinVisualHomeState.content as SharedHomeContentState.Content)
+                    .snapshot
+                    .sidebarOrder
+                    ?.typedPinnedOrLegacy()
+                    .orEmpty(),
+            onTogglePin = { _ -> togglePinCount += 1 },
+            bottomContentPadding = 12.dp,
+            modifier = Modifier.fillMaxSize()
+        )
+        if (openedEntityCount > 0) {
+            Box(modifier = Modifier.size(24.dp).background(SlockColor.BrandYellow))
+        }
+        if (togglePinCount > 0) {
+            Box(
+                modifier =
+                    Modifier
+                        .offset(x = 24.dp)
+                        .size(24.dp)
+                        .background(
+                            if (togglePinCount == 1) {
+                                Color(0xFF00E5FF)
+                            } else {
+                                Color(0xFFFF0000)
+                            }
+                        )
+            )
+        }
+    }
+}
+
+private const val HomeSearchPinVisualProbeDurationMs = 900L
+
+@Composable
 internal fun HomeSearchErrorVisualContent() {
     Box(modifier = Modifier.width(342.dp).height(620.dp)) {
         SharedHomeSearchPanel(
@@ -21424,25 +21699,31 @@ internal fun HomeSearchErrorVisualContent() {
 
 @Composable
 internal fun HomeSavedVisualContent() {
+    val pager = LocalActivity.current.getPager() as Pager
+    val params = pager.pageData.params
     Box(modifier = Modifier.width(342.dp).height(620.dp)) {
         SharedHomeSavedPanel(
-            state = homeSavedVisualState,
+            state = homeSavedVisualState.copy(refreshing = params.optBoolean("task797Refreshing", false)),
             onIntent = {},
             onClose = {},
             onOpenItem = {},
             bottomContentPadding = 12.dp,
-            includeTopSafeArea = false
+            includeTopSafeArea = params.optBoolean("task797IncludeTopSafeArea", false)
         )
     }
 }
 
 @Composable
 internal fun HomeActivityVisualContent() {
+    val pager = LocalActivity.current.getPager() as Pager
+    val params = pager.pageData.params
     Box(modifier = Modifier.width(342.dp).height(620.dp)) {
         SharedHomeActivityPanel(
             snapshot = homeActivityVisualSnapshot,
             onOpenItem = {},
             onClose = {},
+            includeTopSafeArea = params.optBoolean("task797IncludeTopSafeArea", false),
+            pullRefreshing = params.optBoolean("task797Refreshing", false),
             activityTaskStatusBadgesEnabled = true,
             draftProjection = homeActivityVisualDraftProjection,
             modifier = Modifier.fillMaxSize()
@@ -21687,10 +21968,12 @@ private fun SettingsRouteVisualScreen() {
         remember(route.fixtureKey) {
             settingsQuiverFeedbackVisualFixture(route.fixtureKey)
         }
+    val copiedMessage = stringResource(MR.strings.common_copied)
     val settingsCapabilities =
-        remember(bridge, quiverFeedbackVisualFixture) {
+        remember(bridge, quiverFeedbackVisualFixture, copiedMessage) {
             BridgeSettingsPlatformCapabilities(
                 bridge = bridge,
+                copiedMessage = copiedMessage,
                 feedbackVisualSubmission = quiverFeedbackVisualFixture?.let {
                     SettingsQuiverFeedbackSubmission(
                         ticketId = "visual-feedback-ticket-139",

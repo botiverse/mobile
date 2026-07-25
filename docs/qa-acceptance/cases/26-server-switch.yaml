@@ -1,0 +1,118 @@
+id: server-switch
+title: "Server switch changes the active workspace and survives relaunch"
+app: mobile
+tier: L1
+version: "1.0"
+description: "One logical acceptance contract for Android and iOS: switch between two authenticated servers and prove selected identity, content authority, and persistence change together."
+tags: [release, navigation, multi-server, regression]
+platforms: [android, ios]
+timeout_seconds: 300
+max_retries: 1
+verdict_before_cleanup: true
+auth_fixture: alpha-qa
+launch_route: compose_slock_app_shell
+
+matrix:
+  required_coordinates:
+    - { platform: android, device_spec: emulator }
+    - { platform: ios, device_spec: simulator }
+  physical_release_followup:
+    - android-cloud-or-physical
+    - ios-physical
+
+environment:
+  server: staging
+  credentials_ref: qa-account:multi-server
+
+fixture:
+  readiness:
+    - id: two-server-membership
+      goal: "The QA principal is authenticated and is a member of two distinct servers A and B."
+    - id: distinguishable-content
+      goal: "Servers A and B expose visibly distinct names and channel directories."
+  notes: "Do not run with a single-server account. Record non-secret A/B identities before switching. Automated coordinates are Android emulator and iOS simulator; release packages replay the same contract on physical devices."
+
+preconditions:
+  - type: app_installed
+  - type: logged_in
+  - type: fixture_ready
+    params: { fixture_id: multi-server }
+
+cleanup:
+  - action: restore_server
+    params: { target: A }
+  - action: terminate_app
+
+steps:
+  - id: record-server-a
+    goal: "Open Home and record current server A identity, header, and visible directory."
+    action_category: verify
+    capture: [screenshot, logs]
+
+  - id: open-server-switcher-a
+    goal: "Open the server switcher and verify distinct A and B rows are selectable."
+    action_category: interact
+    capture: [screenshot]
+
+  - id: select-server-b
+    goal: "Tap server B exactly once."
+    action_category: interact
+    capture: [screenshot, logs]
+
+  - id: verify-server-b
+    goal: "Wait for Home to settle; prove header/server identity and directory belong to B and no stale A projection remains."
+    action_category: verify
+    params: { timeout_ms: 15000 }
+    capture: [screenshot, logs]
+
+  - id: relaunch-on-b
+    goal: "Terminate and relaunch without clearing data; verify B and B content are restored."
+    action_category: interact
+    capture: [screenshot, logs]
+
+  - id: switch-back-to-a
+    goal: "Select A and prove identity/content return to A without stale B projection."
+    action_category: verify
+    params: { timeout_ms: 15000 }
+    capture: [screenshot, logs]
+
+assertions:
+  - id: two-servers-selectable
+    goal: "Distinct A and B server rows are selectable."
+    type: visual_check
+    after_step: open-server-switcher-a
+    severity: critical
+
+  - id: switch-to-b-effective
+    goal: "After tapping B, selected identity, header, directory, session owner, and realtime owner all belong to B."
+    type: log_and_visual_check
+    after_step: verify-server-b
+    severity: critical
+
+  - id: old-a-isolated
+    goal: "No A content or wrong-server request remains current after B settles."
+    type: log_and_visual_check
+    after_step: verify-server-b
+    severity: critical
+
+  - id: b-persists-relaunch
+    goal: "A data-preserving relaunch restores B instead of reverting or reporting selected_server_missing."
+    type: log_and_visual_check
+    after_step: relaunch-on-b
+    severity: critical
+
+  - id: switch-back-to-a-effective
+    goal: "B to A restores A identity/content with no stale B projection."
+    type: log_and_visual_check
+    after_step: switch-back-to-a
+    severity: critical
+
+  - id: no-cross-authority-errors
+    goal: "App-scoped logs contain zero wrong-server request, selected_server_missing, auth-generation mismatch, or crash."
+    type: log_check
+    after_step: switch-back-to-a
+    severity: critical
+
+expected:
+  result: pass
+  notes: "The logical verdict requires every required Android and iOS coordinate to pass; changing only a label or passing one platform is incomplete."

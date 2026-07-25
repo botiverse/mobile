@@ -167,20 +167,9 @@ private fun SettingsWebViewScreen() {
                 iconName = SlockLucideIconName.Shield,
                 spec = settingsAdministrationWebViewSpec,
             )
-        SettingsWebViewSurface.ReleaseNotes ->
-            SettingsWebViewPageScaffold(
-                pager = pager,
-                surface = SettingsWebViewSurface.ReleaseNotes,
-                title = stringResource(MR.strings.release_notes_title),
-                iconName = SlockLucideIconName.FileText,
-            ) { controller, onNavigationStateChange ->
-                ReleaseNotesSettingsWebViewBody(
-                    pager = pager,
-                    launchVersionCode = releaseNotesVersionCodeFromPageData(pager.pageData.params),
-                    controller = controller,
-                    onNavigationStateChange = onNavigationStateChange,
-                )
-            }
+        // Keep old settings-webview route payloads compatible while rendering
+        // the native Release Notes page introduced on main.
+        SettingsWebViewSurface.ReleaseNotes -> ReleaseNotesScreen()
         null -> SettingsWebViewInvalidRoute(pager)
     }
 }

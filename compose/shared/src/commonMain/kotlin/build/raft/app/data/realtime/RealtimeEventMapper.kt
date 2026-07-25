@@ -61,6 +61,7 @@ import build.raft.app.model.TaskSummary
 import build.raft.app.model.TaskUpdated
 import build.raft.app.model.ThreadId
 import build.raft.app.model.ThreadUpdated
+import build.raft.app.network.sync.ReplyPreview
 import build.raft.app.canonical.message.CanonicalMessageCarry
 import build.raft.app.data.WireActionCardMetadata
 import build.raft.app.data.WireForwardMessageBundle
@@ -452,6 +453,21 @@ private data class ThreadUpdatedDto(
     val participantIds: List<String> = emptyList(),
     val unreadCount: Int? = null,
     val firstUnreadMessageId: String? = null,
+    val latestReply: ThreadLatestReplyDto? = null,
+)
+
+@Serializable
+private data class ThreadLatestReplyDto(
+    val id: String = "",
+    val seq: Long? = null,
+    val content: String = "",
+    val senderId: String = "",
+    val senderType: String = "user",
+    val senderName: String = "",
+    val senderDisplayName: String? = null,
+    val senderAvatarUrl: String? = null,
+    val createdAt: String = "",
+    val messageType: String? = null,
 )
 
 @Serializable
@@ -760,7 +776,32 @@ private fun ThreadUpdatedDto.toDomain(): ThreadUpdated? {
         lastReplyAt = lastReplyAt,
         participantIds = participantIds.map(::MemberId),
         unreadCount = unreadCount,
-        firstUnreadMessageId = firstUnreadMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId)
+        firstUnreadMessageId = firstUnreadMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
+        latestReply = latestReply?.toReplyPreview(),
+    )
+}
+
+private fun ThreadLatestReplyDto.toReplyPreview(): ReplyPreview? {
+    val cleanMessageId = id.trim().takeIf { it.isNotBlank() } ?: return null
+    val orderedSeq = seq?.takeIf { it > 0L } ?: return null
+    val projectedSenderType =
+        if (messageType.equals("system", ignoreCase = true)) {
+            "system"
+        } else {
+            senderType.trim().lowercase()
+        }
+    if (projectedSenderType !in setOf("user", "agent", "system")) return null
+    val cleanSenderName = senderName.trim()
+    return ReplyPreview(
+        messageId = cleanMessageId,
+        seq = orderedSeq,
+        content = content,
+        senderId = senderId.trim(),
+        senderType = projectedSenderType,
+        senderName = cleanSenderName,
+        senderAvatarUrl = senderAvatarUrl?.trim()?.takeIf { it.isNotBlank() },
+        createdAt = createdAt.trim(),
+        senderDisplayName = senderDisplayName?.trim()?.takeIf { it.isNotBlank() },
     )
 }
 

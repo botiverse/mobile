@@ -67,11 +67,14 @@ import build.raft.app.data.SharedComputersIntent
 import build.raft.app.data.SharedComputersLoadStatus
 import build.raft.app.data.SharedComputersPickerSlice
 import build.raft.app.data.SharedComputersStore
+import build.raft.app.data.SharedCreateAgentFormStore
 import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.SharedConversationIdentityProvider
 import build.raft.app.data.toSharedConversationDirectoryState
+import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedHomeIntent
+import build.raft.app.data.SharedHomeState
 import build.raft.app.data.SharedMembersIntent
 import build.raft.app.data.SharedMembersChannelSuggestionSlice
 import build.raft.app.data.SharedMembersLoadStatus
@@ -118,6 +121,7 @@ import build.raft.app.data.canonicalServerMembersMentionHandle
 import build.raft.app.data.convertMessageToCanonicalTask
 import build.raft.app.data.isSupportedCommitAction
 import build.raft.app.data.isSubmittableChannelName
+import build.raft.app.data.INLINE_THREAD_REPLIES_FEATURE_FLAG_KEY
 import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.AvatarReference
@@ -133,6 +137,10 @@ import build.raft.app.model.Presence
 import build.raft.app.markdown.LocalSlockMessagePermalinkLabelResolver
 import build.raft.app.markdown.LocalSlockMarkdownRenderConfig
 import build.raft.app.markdown.SlockMarkdownBody
+import build.raft.app.markdown.LocalSlockMarkdownPlainCandidateSession
+import build.raft.app.markdown.SlockMarkdownPlainCandidateSession
+import build.raft.app.markdown.slockMarkdownProvidedValuesWith
+import build.raft.app.markdown.slockTraceDiagnosticsEnabled
 import build.raft.app.markdown.SlockMarkdownRenderConfig
 import build.raft.app.markdown.ThreadMarkdownTag
 import build.raft.app.markdown.ThreadMarkdownTagKind
@@ -153,6 +161,7 @@ import build.raft.app.model.TaskSummary
 import build.raft.app.model.TaskUpdated
 import build.raft.app.model.formatSlockTimestampEpochMillis
 import build.raft.app.model.formatSlockTimestampLabel
+import build.raft.app.network.sync.ThreadRepliesReadModel
 import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
 import build.raft.app.model.resolveAvatarSlot
 import build.raft.app.model.slockEpochMillisUtcIso
@@ -284,6 +293,7 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -509,6 +519,90 @@ internal fun ThreadAccessResolution.shouldRenderThreadAccessRetry(): Boolean =
 internal fun threadRetryAction(canonicalAccessResolved: Boolean): String =
     if (canonicalAccessResolved) "retryThreadAccess" else "retryThreadLoad"
 
+internal fun threadEventRequiresWriteAccess(action: String): Boolean =
+    action in
+        setOf(
+            "followMessageThread",
+            "unfollowMessageThread",
+            "toggleMessageSaved",
+            "commitActionCard",
+            "toggleReaction",
+            "submitAddMember",
+            "removeMember",
+            "convertMessageToTask",
+            "setTaskStatus",
+            "markTaskDone",
+            "reopenTask",
+            "joinChannel",
+            "retryLocalSend",
+            "cancelLocalSend",
+            "deleteLocalFailedSend"
+        ) || (action == "settingsAction")
+
+internal fun threadComposerEventRequiresWriteAccess(action: String): Boolean =
+    action in
+        setOf(
+            "send",
+            "inviteMention",
+            "notifyMention",
+            "attachImage",
+            "attachFile",
+            "removeAttachment",
+            "retryAttachments"
+        )
+
+internal fun threadEventAllowed(writeActionsEnabled: Boolean, action: String): Boolean =
+    writeActionsEnabled || !threadEventRequiresWriteAccess(action)
+
+internal fun threadComposerEventAllowed(writeActionsEnabled: Boolean, action: String): Boolean =
+    writeActionsEnabled || !threadComposerEventRequiresWriteAccess(action)
+
+internal suspend fun <T> runThreadWriteActionIfEnabled(
+    writeActionsEnabled: () -> Boolean,
+    blockedCode: String,
+    action: suspend () -> DataResult<T>
+): DataResult<T> =
+    if (writeActionsEnabled()) {
+        action()
+    } else {
+        DataResult.Error(ScreenError(code = blockedCode, retryable = false))
+    }
+
+internal fun ThreadAttachmentCommentsDialogState?.retainForThreadWriteAuthority(
+    writeActionsEnabled: Boolean
+): ThreadAttachmentCommentsDialogState? = takeIf { writeActionsEnabled }
+
+internal fun KuiklyThreadScreenPayload.withThreadWriteActionsEnabled(
+    enabled: Boolean
+): KuiklyThreadScreenPayload =
+    if (enabled) {
+        this
+    } else {
+        copy(
+            canAddMembers = false,
+            members = members.map { member -> member.copy(canRemove = false) },
+            settingsActions = emptyList(),
+            showSettingsAction = false,
+            showMessageSaveAction = false,
+            showInlineSaveAction = false,
+            showReactionActions = false,
+            showTaskStatusActions = false
+        )
+    }
+
+internal fun ThreadTimelineSlice.withThreadWriteActionsEnabled(enabled: Boolean): ThreadTimelineSlice =
+    if (enabled) {
+        this
+    } else {
+        copy(
+            showMessageSaveAction = false,
+            showInlineSaveAction = false,
+            showReactionActions = false,
+            showTaskStatusActions = false,
+            canConvertMessagesToTasks = false
+        )
+    }
+
 internal fun handleThreadStoreRetryEvent(
     action: String,
     dispatch: (SharedThreadIntent) -> Unit,
@@ -645,7 +739,7 @@ private val ThreadComposerKeyboardVisibleGap = 8.dp
 private val ThreadHeaderActionSize = 30.dp
 private val ThreadHeaderActionShadowOffset = 2.dp
 private val ThreadHeaderActionGroupSpacing = 4.dp
-private val ThreadHeaderActionIconSize = 15.dp
+private val ThreadHeaderActionIconSize = 16.dp
 private val ThreadHeaderActionLabelMinWidth = 46.dp
 private val ThreadHeaderDmAgentActivityMaxWidth = 150.dp
 private val ThreadHeaderDmAgentActivityLeadingGap = SlockSpacing.Sm
@@ -867,6 +961,11 @@ internal data class ThreadActivityMuteUiState(
     val muteFromSeq: Long?
 )
 
+internal data class ThreadChannelPinUiState(
+    val channelId: String,
+    val pinned: Boolean
+)
+
 internal fun KuiklyThreadScreenPayload.threadActivityMuteState(
     projection: SharedConversationDirectoryProjection?
 ): ThreadActivityMuteUiState? {
@@ -888,6 +987,15 @@ internal fun KuiklyThreadScreenPayload.threadActivityMuteState(
         supported = supported,
         muteFromSeq = projection?.muteFromSeq ?: muteFromSeq
     )
+}
+
+internal fun KuiklyThreadScreenPayload.threadChannelPinTargetId(
+    projection: SharedConversationDirectoryProjection?
+): String? {
+    if (surfaceKind != KuiklyThreadSurfaceKind.Channel) return null
+    return projection?.canonicalChannelId?.trim()?.takeIf { it.isNotBlank() }
+        ?: streamChannelId?.trim()?.takeIf { it.isNotBlank() }
+        ?: sourceThreadId?.trim()?.takeIf { it.isNotBlank() }
 }
 
 internal fun KuiklyThreadScreenPayload.joinChannelTargetId(): ChannelId? =
@@ -1254,6 +1362,13 @@ internal data class KuiklyThreadMessageItem(
     val unreadReplyCount: Int = 0,
     val firstUnreadReplyMessageId: String? = null,
     val isThreadFollowed: Boolean = false,
+    /**
+     * Bounded derived latest-replies projection. It is deliberately transient:
+     * production route/pageData remains identity+intent only, and canonical
+     * summary loading rehydrates this projection after restore.
+     */
+    @Transient
+    val inlineReplies: ThreadRepliesReadModel? = null,
     val isSaved: Boolean = false,
     val taskId: String? = null,
     val taskNumber: Int? = null,
@@ -2312,6 +2427,7 @@ private fun ThreadPageScreen(pageVisibleTick: Int = 0) {
             channelRepository,
             sharedHomeStore,
             sharedStores.threadMessageStore,
+            sharedStores.apiEnvironmentStore,
             createAgentCoordinator
         ) {
             SharedThreadDataSource(
@@ -2339,10 +2455,16 @@ private fun ThreadPageScreen(pageVisibleTick: Int = 0) {
                     )
                 },
                 messageStore = sharedStores.threadMessageStore,
-                payloadStore = sharedStores.threadPayloadStore,
                 cacheEnvironmentIdProvider = {
                     sharedStores.apiEnvironmentStore.current().apiBaseUrl
                 },
+                replyCacheIdentityAuthority = {
+                    sharedStores.captureThreadReplyCacheIdentity(storeScope)
+                },
+                replyCacheIdentityTransitionWaiter = { transitionAnchor ->
+                    sharedStores.awaitThreadReplyCacheIdentityTransition(storeScope, transitionAnchor)
+                },
+                payloadStore = sharedStores.threadPayloadStore,
                 agentsApiClient = SlockAgentsApiClient(
                     transport = SlockAgentsNetworkApi(networkClient),
                     diagnosticsLogger = { message -> bridge.log("thread_agents_api $message") }
@@ -3133,6 +3255,10 @@ private fun ThreadMessageVisualScreenContent() {
                     message = message,
                     replyMetadata = visualReplyMetadataByParentId.threadReplyMetadataFor(message),
                     highlightedMentions = highlightedMentions,
+                    inlineThreadRepliesEnabled = visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_REPLIES,
+                    inlineReplyParticipantsById = payload.members.associateBy(KuiklyThreadMemberItem::id),
+                    replyTimeContext = payload.toSlockTimeContext(),
+                    hasReplyDraft = visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_REPLIES,
                     alignOwnMessageRight = payload.alignOwnMessagesRight && message.isOwn,
                     showReplyAction = payload.showReplyActions,
                     singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
@@ -3261,6 +3387,77 @@ internal fun ThreadHeaderVisualScreen() {
             selectedKey = KuiklyThreadTab.Chat.toString(),
             onSelectedKeyChange = {},
             itemKeyPrefix = "thread-tab"
+        )
+    }
+}
+
+@Composable
+internal fun Task797ThreadHeaderVisualScreen() {
+    val pager = LocalActivity.current.getPager() as Pager
+    val applyTopSafeArea = pager.pageData.params.optBoolean("task797IncludeTopSafeArea", false)
+    val agentIdentity =
+        remember {
+            MemberDetailIdentity(
+                memberId = MemberId("agent-task797-pixel"),
+                kind = MemberKind.Agent,
+                sourceServerId = ServerId("server-task797"),
+            )
+        }
+    val payload =
+        remember(agentIdentity) {
+            KuiklyThreadScreenPayload(
+                instanceId = "task797-thread-header-evidence",
+                title = "Pixel visual verification for the unified secondary page header",
+                subtitle = "Working - measuring safe-area alignment and action centerlines",
+                status = "content",
+                surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+                streamChannelId = "dm-task797-pixel",
+                selectedTab = "chat",
+                showModeTabs = false,
+                showSettingsAction = false,
+                showMembersAction = false,
+                showOpenInChannelAction = false,
+                dmPeerIdentity = agentIdentity,
+                dmPeerName = "Pixel visual verification",
+                dmPeerAvatarLabel = "PX",
+                activityMuted = false,
+                activityMuteSupported = true,
+            )
+        }
+    val headerDisplay =
+        remember(agentIdentity) {
+            ThreadHeaderDisplayModel(
+                title = "Pixel visual verification for the unified secondary page header",
+                subtitle = "Working - measuring safe-area alignment and action centerlines",
+                surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+                channelKind = KuiklyThreadSurfaceKind.DirectMessage,
+                dmPeerAvatarLabel = "PX",
+                dmPeerIdentity = agentIdentity,
+            )
+        }
+    val activityState =
+        remember {
+            slockAgentStatusIndicatorState(
+                status = AgentStatus.Working,
+                presence = Presence.Active,
+                statusLabel = "Measuring safe-area alignment and action centerlines",
+            )
+        }
+    val activityResolver: SlockAgentStatusResolver = remember(activityState) { { flowOf(activityState) } }
+    Column(modifier = Modifier.width(390.dp).height(120.dp).background(SlockColor.SurfaceWhite)) {
+        ThreadPageHeader(
+            payload = payload,
+            headerDisplay = headerDisplay,
+            agentStatusResolver = activityResolver,
+            applyTopSafeArea = applyTopSafeArea,
+            activityMuteState = payload.threadActivityMuteState(null),
+            onBack = {},
+            onOpenInChannel = {},
+            onOpenMemberProfile = {},
+            onOpenSearch = {},
+            onShowMembers = {},
+            onShowSettings = {},
+            onToggleActivityMute = {},
         )
     }
 }
@@ -3518,13 +3715,15 @@ private fun ThreadReactionAtlasImagePreview() {
 }
 
 @Composable
-internal fun ChannelSettingsPanelVisualScreen() {
+internal fun ChannelSettingsPanelVisualScreen(pinned: Boolean = false) {
     Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         ThreadSettingsModal(
             channelName = "design",
             subtitle = stringResource(MR.strings.channel_description_design),
             actions = channelPanelVisualSettingsActions(),
+            channelPinState = ThreadChannelPinUiState(channelId = "thread_design", pinned = pinned),
             onDismiss = {},
+            onTogglePin = {},
             onOpenAction = {}
         )
     }
@@ -3769,6 +3968,7 @@ internal fun SharedThreadRouteContent(
     val pager = LocalActivity.current.getPager() as Pager
     val linkNavigator = rememberSlockLinkNavigator(pager, bridge)
     val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
+    val createAgentFormStore = remember(sharedStores, storeScope) { sharedStores.createAgentFormStore(storeScope) }
     val attachmentOwnerVersion by ProcessAttachmentAuthScopes.version.collectAsState()
     val attachmentOwner = remember(attachmentOwnerVersion, storeScope.shellInstanceId) {
         currentAttachmentOwnerLease(storeScope)
@@ -3797,6 +3997,8 @@ internal fun SharedThreadRouteContent(
     val foregroundReconciler = remember(sharedStores) { sharedStores.foregroundReconciler }
     val foregroundBannerCurrentServerStore = remember(sharedStores) { sharedStores.localDataStore }
     val sharedHomeStore = remember(sharedStores, storeScope) { sharedStores.sharedHomeStore(storeScope) }
+    val sharedHomeStateFlow = remember(sharedHomeStore) { sharedHomeStore?.state ?: flowOf(SharedHomeState()) }
+    val sharedHomeState by sharedHomeStateFlow.collectAsState(SharedHomeState())
     val realtimeEvents = remember(eventBus) { KuiklyRealtimeEvents(eventBus) }
     val realtimeEventMapper =
         remember(sharedStores) {
@@ -3848,6 +4050,9 @@ internal fun SharedThreadRouteContent(
     var currentSession by remember(initialThreadInstanceKey) {
         mutableStateOf<StoredAuthSession?>(null)
     }
+    var replyCacheProvenance by remember(initialThreadInstanceKey) {
+        mutableStateOf<ReplyCacheProvenance?>(null)
+    }
     var currentServerSlug by remember(initialThreadInstanceKey) {
         mutableStateOf<String?>(null)
     }
@@ -3858,10 +4063,11 @@ internal fun SharedThreadRouteContent(
         mutableStateOf<TimeMark?>(null)
     }
     var firstRenderLoggedThreadId by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(authStore, initialThreadInstanceKey) {
-        val session = authStore.readSession()
-        currentSession = session
-        currentServerSlug = session?.currentServerSlug()
+    LaunchedEffect(dataSource, initialThreadInstanceKey) {
+        val producerContext = dataSource.captureReplyCacheProducerContext()
+        currentSession = producerContext?.session
+        replyCacheProvenance = producerContext?.provenance
+        currentServerSlug = producerContext?.session?.currentServerSlug()
     }
     LaunchedEffect(initialPayload, initialThreadInstanceKey) {
         if (!initialRouteIdentity.canRetainThreadPageFor(incomingRouteIdentity)) {
@@ -3945,6 +4151,11 @@ internal fun SharedThreadRouteContent(
                 serverId = headerProjectionServerId?.value
             )
         }
+    val inlineThreadRepliesEnabled =
+        sharedStores.serverFeatureFlags.isEnabled(
+            headerProjectionServerId,
+            INLINE_THREAD_REPLIES_FEATURE_FLAG_KEY,
+        )
     val initialDirectoryConversationProjections =
         remember(
             conversationIdentityProvider,
@@ -4067,6 +4278,23 @@ internal fun SharedThreadRouteContent(
         remember(payload, stableHeaderProjection, sharedHomeStore) {
             payload.threadActivityMuteState(stableHeaderProjection)
                 ?.takeIf { sharedHomeStore != null }
+        }
+    val channelPinTargetId = remember(payload, stableHeaderProjection) {
+        payload.threadChannelPinTargetId(stableHeaderProjection)
+    }
+    val pinnedChannelConversationIds =
+        remember(sharedHomeState.content) {
+            (sharedHomeState.content as? SharedHomeContentState.Content)
+                ?.snapshot
+                ?.sidebarOrder
+                .pinnedChannelConversationIds()
+        }
+    val channelPinState =
+        channelPinTargetId?.let { targetId ->
+            ThreadChannelPinUiState(
+                channelId = targetId,
+                pinned = targetId in pinnedChannelConversationIds
+            )
         }
     val routeMountPlan =
         payload.threadRouteMountPlan(
@@ -4535,6 +4763,10 @@ internal fun SharedThreadRouteContent(
     var attachmentCommentsDialogState by remember(threadInstanceKey) {
         mutableStateOf<ThreadAttachmentCommentsDialogState?>(null)
     }
+    LaunchedEffect(renderSlice.writeActionsEnabled) {
+        attachmentCommentsDialogState =
+            attachmentCommentsDialogState.retainForThreadWriteAuthority(renderSlice.writeActionsEnabled)
+    }
     var firstContentLoggedThreadId by remember { mutableStateOf<String?>(null) }
     var performanceSnapshotLoggedThreadId by remember { mutableStateOf<String?>(null) }
 
@@ -4552,10 +4784,29 @@ internal fun SharedThreadRouteContent(
         }
         true
     }
+    // Option B P1 v3 census session (task #20, diagnostics only, reviewed):
+    // one INSTANCE per thread open — construction is the reset, so there is
+    // no global collector state and no callback-order dependency; an
+    // abandoned pass discards the instance together with its rows. Provided
+    // to the content subtree via LocalSlockMarkdownPlainCandidateSession
+    // (below), so non-Thread markdown surfaces never participate, and two
+    // interleaved opens hold independent instances. Flushed by the latched
+    // LaunchedEffect (effects run after the apply's observer callbacks).
+    val plainCandidateCensusSession =
+        if (slockTraceDiagnosticsEnabled() && payload.isReadyForThreadPerformanceGate()) {
+            remember(threadInstanceKey) { SlockMarkdownPlainCandidateSession() }
+        } else {
+            null
+        }
 
     LaunchedEffect(threadInstanceKey, threadTimelineKey, timelineSlice.status, timelineSlice.messages.size) {
         if (payload.isReadyForThreadPerformanceGate() && firstContentLoggedThreadId != threadInstanceKey) {
             firstContentLoggedThreadId = threadInstanceKey
+            // Census open-level aggregate flush (task #20 Option B P1 v3):
+            // effects run after the apply pass's RememberObserver callbacks,
+            // so every committed row of this first content batch has already
+            // submitted to this open's session instance.
+            plainCandidateCensusSession?.flush()
             val payloadReadyMs = threadOpenStartedAt?.elapsedNow()?.inWholeMilliseconds
             val payloadReadyBudget =
                 evaluateThreadFirstContentPerformanceBudget(payloadReadyMs = payloadReadyMs)
@@ -4783,7 +5034,8 @@ internal fun SharedThreadRouteContent(
         remember(baseRenderedPayload, threadMembersProjection) {
             baseRenderedPayload.withThreadMembersProjection(threadMembersProjection)
         }
-    val renderedTimelineSlice = timelineSlice
+    val renderedThread = renderedPayload.withThreadWriteActionsEnabled(renderSlice.writeActionsEnabled)
+    val renderedTimelineSlice = timelineSlice.withThreadWriteActionsEnabled(renderSlice.writeActionsEnabled)
     val emptyMemberSuggestionSliceFlow = remember { MutableStateFlow(SharedMembersMemberSuggestionSlice()) }
     val memberSuggestionsFlow =
         remember(
@@ -5007,7 +5259,6 @@ internal fun SharedThreadRouteContent(
         remember(serverMembersStore, headerProjectionServerId) {
             slockScopedAgentStatusResolver(serverMembersStore, headerProjectionServerId?.value)
         }
-    val renderedThread = renderedPayload
     val messagePermalinkLabelResolver =
         remember(
             conversationIdentityProvider,
@@ -5035,6 +5286,7 @@ internal fun SharedThreadRouteContent(
             }
         }
     val attachmentCommentsEnabled = currentServerSlug.attachmentCommentsEnabledForThread()
+    fun threadWritesEnabledNow(): Boolean = threadViewModel.state.value.writeActionsEnabled
 
     fun setAttachmentCommentsState(next: ThreadAttachmentCommentsDialogState) {
         attachmentCommentsDialogState =
@@ -5085,7 +5337,7 @@ internal fun SharedThreadRouteContent(
     }
 
     fun openAttachmentComments(attachmentId: String) {
-        if (!attachmentCommentsEnabled) return
+        if (!threadWritesEnabledNow() || !attachmentCommentsEnabled) return
         val target = renderedTimelineSlice.findAttachmentCommentTarget(attachmentId)
         if (target == null) {
             bridge.toast(commentsUnavailableLabel)
@@ -5113,12 +5365,24 @@ internal fun SharedThreadRouteContent(
     }
 
     fun sendAttachmentComment() {
+        if (!threadWritesEnabledNow()) {
+            attachmentCommentsDialogState = null
+            return
+        }
         val current = attachmentCommentsDialogState ?: return
         val cleanDraft = current.draft.trim()
         if (cleanDraft.isBlank() || current.sending) return
         attachmentCommentsDialogState = current.copy(sending = true, errorCode = null)
         coroutineScope.launch {
-            when (val result = dataSource.sendAttachmentComment(current.attachment.id, cleanDraft)) {
+            when (
+                val result =
+                    runThreadWriteActionIfEnabled(
+                        writeActionsEnabled = ::threadWritesEnabledNow,
+                        blockedCode = "thread_attachment_comment_write_disabled"
+                    ) {
+                        dataSource.sendAttachmentComment(current.attachment.id, cleanDraft)
+                    }
+            ) {
                 is DataResult.Content -> {
                     val loadingState =
                         current.copy(
@@ -5133,6 +5397,10 @@ internal fun SharedThreadRouteContent(
                 }
                 is DataResult.Empty,
                 is DataResult.Error -> {
+                    if ((result as? DataResult.Error)?.error?.code == "thread_attachment_comment_write_disabled") {
+                        attachmentCommentsDialogState = null
+                        return@launch
+                    }
                     val code = (result as? DataResult.Error)?.error?.code ?: "thread_attachment_comment_send_failed"
                     attachmentCommentsDialogState =
                         attachmentCommentsDialogState
@@ -5153,13 +5421,25 @@ internal fun SharedThreadRouteContent(
     }
 
     fun resolveAttachmentComment(comment: ThreadAttachmentCommentItem) {
+        if (!threadWritesEnabledNow()) {
+            attachmentCommentsDialogState = null
+            return
+        }
         val current = attachmentCommentsDialogState ?: return
         if (comment.id.isBlank() || comment.isThreadAttachmentCommentResolved()) return
         if (comment.id in current.resolvingCommentIds) return
         attachmentCommentsDialogState =
             current.copy(resolvingCommentIds = current.resolvingCommentIds + comment.id, errorCode = null)
         coroutineScope.launch {
-            when (val result = dataSource.setMessageReaction(comment.id, "✅", selected = true)) {
+            when (
+                val result =
+                    runThreadWriteActionIfEnabled(
+                        writeActionsEnabled = ::threadWritesEnabledNow,
+                        blockedCode = "thread_attachment_comment_write_disabled"
+                    ) {
+                        dataSource.setMessageReaction(comment.id, "✅", selected = true)
+                    }
+            ) {
                 is DataResult.Content -> {
                     val loadingState =
                         attachmentCommentsDialogState
@@ -5171,6 +5451,10 @@ internal fun SharedThreadRouteContent(
                 }
                 is DataResult.Empty,
                 is DataResult.Error -> {
+                    if ((result as? DataResult.Error)?.error?.code == "thread_attachment_comment_write_disabled") {
+                        attachmentCommentsDialogState = null
+                        return@launch
+                    }
                     val code = (result as? DataResult.Error)?.error?.code ?: "thread_attachment_comment_resolve_failed"
                     attachmentCommentsDialogState =
                         attachmentCommentsDialogState
@@ -6071,26 +6355,36 @@ internal fun SharedThreadRouteContent(
         },
         onBannerDismiss = { target -> foregroundBannerStore.dismiss(target.id) }
     ) {
-        CompositionLocalProvider(
-            LocalThreadInlineVideoPreviewHost provides
-                ThreadInlineVideoPreviewHost(
-                    states = inlineVideoPreviewStates,
-                    requestPreview = ::requestInlineVideoPreview
-                ),
-            LocalThreadInlineImageFallbackHost provides
-                ThreadInlineImageFallbackHost(
-                    state = inlineImageFallbackState,
-                    requestFallback = ::requestInlineImageFallback
-                ),
-            LocalSlockMessagePermalinkLabelResolver provides messagePermalinkLabelResolver,
-            LocalThreadMessagePointerSessionKey provides threadPointerSessionKey
-        ) {
+        // OFF-zero-work provider set (task #20 P1, reviewed round 4): with
+        // diagnostics OFF the census session Local is NOT part of the vararg
+        // at all — the base array is used by identity, so the production
+        // provider scope is unchanged by P1.
+        val threadProvidedValues = slockMarkdownProvidedValuesWith(
+            arrayOf(
+                LocalThreadInlineVideoPreviewHost provides
+                    ThreadInlineVideoPreviewHost(
+                        states = inlineVideoPreviewStates,
+                        requestPreview = ::requestInlineVideoPreview
+                    ),
+                LocalThreadInlineImageFallbackHost provides
+                    ThreadInlineImageFallbackHost(
+                        state = inlineImageFallbackState,
+                        requestFallback = ::requestInlineImageFallback
+                    ),
+                LocalSlockMessagePermalinkLabelResolver provides messagePermalinkLabelResolver,
+                LocalThreadMessagePointerSessionKey provides threadPointerSessionKey
+            ),
+            LocalSlockMarkdownPlainCandidateSession,
+            plainCandidateCensusSession
+        )
+        CompositionLocalProvider(*threadProvidedValues) {
             ThreadPageContent(
             threadInstanceKey = threadInstanceKey,
             payload = renderedThread,
             timelineSlice = renderedTimelineSlice,
             accessResolution = renderSlice.accessResolution,
             canonicalAccessResolved = renderSlice.canonicalAccessResolved,
+            writeActionsEnabled = renderSlice.writeActionsEnabled,
             channelProfileUpdateStatus = renderSlice.channelProfileUpdateStatus,
             channelProfileUpdateErrorCode = renderSlice.channelProfileUpdateErrorCode,
             replyMetadataByParentId = replyMetadataByParentId,
@@ -6110,9 +6404,9 @@ internal fun SharedThreadRouteContent(
             availableTabs = availableThreadTabs,
             onSelectedTabChanged = { selectedThreadTab = it },
             onSuggestionDemandChanged = { composerSuggestionDemand = it },
-            activityMuteState = activityMuteState,
+            activityMuteState = activityMuteState?.takeIf { renderSlice.writeActionsEnabled },
             onToggleActivityMute =
-                activityMuteState?.let { muteState ->
+                activityMuteState?.takeIf { renderSlice.writeActionsEnabled }?.let { muteState ->
                     {
                         sharedHomeStore?.dispatch(
                             SharedHomeIntent.SetChannelActivityMuted(
@@ -6122,10 +6416,24 @@ internal fun SharedThreadRouteContent(
                         )
                     }
                 },
+            channelPinState = channelPinState,
+            onToggleChannelPin =
+                channelPinState?.let { pinState ->
+                    {
+                        sharedHomeStore?.dispatch(SharedHomeIntent.TogglePinned(pinState.channelId))
+                    }
+                },
             forwardServerId = headerProjectionServerId,
             forwardTargetRepository = forwardTargetRepository,
             contentExtrasVisible = true,
-            onTasksIntent = { intent -> tasksViewModel?.dispatch(intent) },
+            onTasksIntent = { intent ->
+                if (
+                    renderSlice.writeActionsEnabled ||
+                    (intent !is SharedTasksRouteIntent.UpdateStatus && intent !is SharedTasksRouteIntent.CreateTasks)
+                ) {
+                    tasksViewModel?.dispatch(intent)
+                }
+            },
             onFilesAuthRequired = { code -> routeAuthRequired(code) },
             onOpenFilesAttachment = { attachment, imageGroup ->
                 if (imageGroup != null) {
@@ -6139,6 +6447,7 @@ internal fun SharedThreadRouteContent(
             highlightedMentions = highlightedMentions,
             agentStatusResolver = agentStatusResolver,
             memberAvatarResolver = memberAvatarResolver,
+            inlineThreadRepliesEnabled = inlineThreadRepliesEnabled,
             diagnosticsLogger = { bridge.log(it) },
             onLayoutGeneration = { width, height ->
                 performanceGenerationCounter.nextLayout(width, height)?.let { generation ->
@@ -6159,7 +6468,7 @@ internal fun SharedThreadRouteContent(
             pendingActionCardIds = pendingActionCardIds,
             pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
             attachmentOpenStates = attachmentOpenStates,
-            attachmentCommentsEnabled = attachmentCommentsEnabled,
+            attachmentCommentsEnabled = attachmentCommentsEnabled && renderSlice.writeActionsEnabled,
             composerSendKeyEnabled = composerSendKeyEnabled,
             longMessageCollapseEnabled = longMessageCollapseEnabled,
             singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
@@ -6198,21 +6507,27 @@ internal fun SharedThreadRouteContent(
             },
             onBack = onBack,
             onUpdateChannelProfile = { channelId, originalName, originalDescription, name, description ->
-                threadViewModel.dispatch(
-                    SharedThreadIntent.UpdateChannelProfile(
-                        channelId = channelId,
-                        originalName = originalName,
-                        originalDescription = originalDescription,
-                        name = name,
-                        description = description
+                if (renderSlice.writeActionsEnabled) {
+                    threadViewModel.dispatch(
+                        SharedThreadIntent.UpdateChannelProfile(
+                            channelId = channelId,
+                            originalName = originalName,
+                            originalDescription = originalDescription,
+                            name = name,
+                            description = description
+                        )
                     )
-                )
+                }
             },
             onClearChannelProfileUpdateStatus = {
                 threadViewModel.dispatch(SharedThreadIntent.ClearChannelProfileUpdateStatus)
             },
             onThreadEvent = { action, itemId, attachmentId, tab ->
                 if (handleThreadStoreRetryEvent(action, threadViewModel::dispatch)) {
+                    return@ThreadPageContent
+                }
+                if (!threadEventAllowed(renderSlice.writeActionsEnabled, action)) {
+                    bridge.log("thread_write_action_blocked action=$action reason=read_only_access_fallback")
                     return@ThreadPageContent
                 }
                 when {
@@ -6347,12 +6662,21 @@ internal fun SharedThreadRouteContent(
                     }
                     val parentReplyMetadata = replyMetadataByParentId.threadReplyMetadataFor(parentMessage)
                     val parentChannelId = renderedThread.replyParentChannelIdForNestedOpen()
-                    dataSource.rememberReplyParentCandidate(
-                        serverId = currentServerId,
-                        parentChannelId = parentChannelId,
-                        parentMessage = parentMessage,
-                        threadChannelId = parentReplyMetadata.threadChannelId
-                    )
+                    val provenance = replyCacheProvenance
+                    if (
+                        provenance == null ||
+                        !dataSource.rememberReplyParentCandidate(
+                            provenance = provenance,
+                            serverId = currentServerId,
+                            parentChannelId = parentChannelId,
+                            parentMessage = parentMessage,
+                            threadChannelId = parentReplyMetadata.threadChannelId
+                        )
+                    ) {
+                        bridge.logWarn("thread_reply_parent_seed_rejected reason=stale_provenance")
+                        bridge.toast(unableToOpenRepliesLabel)
+                        return@ThreadPageContent
+                    }
                     val loadingPayload =
                         renderedThread.replyThreadLoadingPayload(
                             parentMessageId = parentMessage.id,
@@ -6366,6 +6690,20 @@ internal fun SharedThreadRouteContent(
                             threadChannelId = parentReplyMetadata.threadChannelId
                         )
                     )
+                    parentReplyMetadata.threadChannelId
+                        ?.takeIf { it.isNotBlank() }
+                        ?.let { threadChannelId ->
+                            coroutineScope.launch {
+                                // Opening the whole reply scope clears the whole inline unread projection.
+                                // The bounded preview cannot prove the authoritative latest seq (newer system
+                                // rows may be intentionally hidden), so dispatch the canonical read-all intent.
+                                val result = dataSource.markVisibleChannelRead(threadChannelId, latestSeq = null)
+                                bridge.log(
+                                    "thread_inline_reply_read_dispatch channelId=$threadChannelId " +
+                                        "target=all result=${result::class.simpleName.orEmpty()}"
+                                )
+                            }
+                        }
                     bridge.log(
                         "thread_reply_open action=message_chip parentChannelId=${loadingPayload.parentChannelId.orEmpty()} " +
                             "parentMessageId=${parentMessage.id} replyCount=${parentReplyMetadata.replyCount} " +
@@ -6593,12 +6931,21 @@ internal fun SharedThreadRouteContent(
                     }
                     val parentReplyMetadata = replyMetadataByParentId.threadReplyMetadataFor(parentMessage)
                     val parentChannelId = renderedThread.replyParentChannelIdForNestedOpen()
-                    dataSource.rememberReplyParentCandidate(
-                        serverId = currentServerId,
-                        parentChannelId = parentChannelId,
-                        parentMessage = parentMessage,
-                        threadChannelId = parentReplyMetadata.threadChannelId
-                    )
+                    val provenance = replyCacheProvenance
+                    if (
+                        provenance == null ||
+                        !dataSource.rememberReplyParentCandidate(
+                            provenance = provenance,
+                            serverId = currentServerId,
+                            parentChannelId = parentChannelId,
+                            parentMessage = parentMessage,
+                            threadChannelId = parentReplyMetadata.threadChannelId
+                        )
+                    ) {
+                        bridge.logWarn("thread_task_parent_seed_rejected reason=stale_provenance")
+                        bridge.toast(unableToOpenTaskLabel)
+                        return@ThreadPageContent
+                    }
                     val loadingPayload =
                         renderedThread.replyThreadLoadingPayload(
                             parentMessageId = parentMessage.id,
@@ -6838,9 +7185,15 @@ internal fun SharedThreadRouteContent(
                 }
                 action == "openMarkdownThreadRef" && !itemId.isNullOrBlank() -> {
                     coroutineScope.launch {
+                        val provenance = replyCacheProvenance
+                        if (provenance == null) {
+                            bridge.toast(localizedUnableToOpenTarget(itemId.take(32)))
+                            return@launch
+                        }
                         when (
                             val result =
                                 dataSource.markdownThreadRefLaunchPayload(
+                                    provenance = provenance,
                                     currentPayload = renderedThread,
                                     channelLabel = itemId,
                                     threadShortId = tab
@@ -7159,6 +7512,10 @@ internal fun SharedThreadRouteContent(
                 }
             },
             onComposerEvent = { action, value, asTask, attachmentId ->
+                if (!threadComposerEventAllowed(renderSlice.writeActionsEnabled, action)) {
+                    bridge.log("thread_composer_action_blocked action=$action reason=read_only_access_fallback")
+                    return@ThreadPageContent
+                }
                 val currentComposer = currentComposerPayload()
                 val currentDraftState = composerDraftViewModel.state.value
                 val composerInstanceId = currentComposer.instanceId.ifBlank { payload.instanceId }
@@ -7520,7 +7877,9 @@ internal fun SharedThreadRouteContent(
                 onSelectIndex = ::selectImagePreviewIndex
             )
         }
-        attachmentCommentsDialogState?.let { dialogState ->
+        attachmentCommentsDialogState
+            .retainForThreadWriteAuthority(renderSlice.writeActionsEnabled)
+            ?.let { dialogState ->
             ThreadAttachmentCommentsDialog(
                 state = dialogState,
                 onDismiss = { attachmentCommentsDialogState = null },
@@ -7559,6 +7918,7 @@ internal fun SharedThreadRouteContent(
             ThreadCreateAgentActionDialogHost(
                 dialogState = dialogState,
                 computersStore = computersStore,
+                createAgentFormStore = createAgentFormStore,
                 computerServerId = createAgentComputerServerId,
                 computerServerResolved = createAgentComputerServerResolved,
                 onAuthRequired = ::routeAuthRequired,
@@ -7568,7 +7928,7 @@ internal fun SharedThreadRouteContent(
                     }
                 },
                 onSubmit = submitCreateAgent@{ request ->
-                    if (dialogState.submitting) {
+                    if (!renderSlice.writeActionsEnabled || dialogState.submitting) {
                         return@submitCreateAgent
                     }
                     val normalizedName = request.name.trim().removePrefix("@")
@@ -7822,6 +8182,7 @@ private fun threadMarkdownTaskCandidateListHeight(count: Int): Dp =
 private fun ThreadCreateAgentActionDialogHost(
     dialogState: ThreadCreateAgentActionDialogState,
     computersStore: SharedComputersStore?,
+    createAgentFormStore: SharedCreateAgentFormStore?,
     computerServerId: String?,
     computerServerResolved: Boolean,
     onAuthRequired: (String?) -> Boolean,
@@ -7872,6 +8233,8 @@ private fun ThreadCreateAgentActionDialogHost(
                 (!computerServerResolved ||
                     computerPickerSlice.status == SharedComputersLoadStatus.InFlight),
         machinesErrorMessage = machinesErrorCode?.let { threadCreateAgentMachinesErrorCopy(it) },
+        createAgentFormStore = createAgentFormStore,
+        createAgentServerId = computerServerId,
         onDismiss = onDismiss,
         onSubmit = onSubmit
     )
@@ -8689,6 +9052,7 @@ private const val THREAD_MESSAGE_VISUAL_FIXTURE_MARKDOWN_MENTION_CHILD = "markdo
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_SAVED = "saved"
 private const val THREAD_MESSAGE_VISUAL_FIXTURE_DELETED_HUMAN = "deleted_human"
 private const val THREAD_MESSAGE_VISUAL_FIXTURE_RICH_CONTENT = "rich_content"
+private const val THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_REPLIES = "inline_replies"
 private const val THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_SELECTION = "share_selection"
 private const val THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_PREVIEW = "share_preview"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_LONG_INLINE_CODE = "long_inline_code"
@@ -9002,6 +9366,118 @@ internal fun threadVisualFixture(
                         instanceId = resolvedInstanceId,
                         enabled = false
                     )
+            )
+        THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_REPLIES ->
+            KuiklyThreadScreenPayload(
+                instanceId = resolvedInstanceId,
+                title = "#mobile",
+                subtitle = "Inline replies visual fixture",
+                status = "content",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                streamChannelId = "channel-mobile",
+                sourceThreadId = "channel-mobile",
+                selectedTab = "chat",
+                showModeTabs = false,
+                showReplyActions = true,
+                alignOwnMessagesRight = false,
+                localOffsetMinutes = 480,
+                nowEpochMillis = 1_784_888_400_000L,
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "msg-inline-replies",
+                            authorId = "agent-mahua",
+                            authorName = "Mahua",
+                            authorKind = "agent",
+                            avatarLabel = "MH",
+                            timestampLabel = "07/24 18:20",
+                            messageType = "Chat",
+                            body = "Native/KMP inline reply previews are ready for review.",
+                            threadChannelId = "thread-msg-inline-replies",
+                            replyCount = 8,
+                            unreadReplyCount = 2,
+                            firstUnreadReplyMessageId = "reply-inline-7",
+                            inlineReplies =
+                                build.raft.app.network.sync.initialThreadRepliesReadModel(
+                                    replies =
+                                        listOf(
+                                            build.raft.app.network.sync.ReplyPreview(
+                                                messageId = "reply-inline-6",
+                                                seq = 6,
+                                                content = "Android capture matches the shared component.",
+                                                senderId = "user-artin",
+                                                senderType = "user",
+                                                senderName = "artin",
+                                                senderAvatarUrl = null,
+                                                createdAt = "2026-07-24T10:16:00Z",
+                                                senderDisplayName = "Artin",
+                                            ),
+                                            build.raft.app.network.sync.ReplyPreview(
+                                                messageId = "reply-inline-7",
+                                                seq = 7,
+                                                content = "Display name and avatar resolve from channel profiles.",
+                                                senderId = "agent-cindy",
+                                                senderType = "agent",
+                                                senderName = "Cindy",
+                                                senderAvatarUrl = null,
+                                                createdAt = "2026-07-24T10:18:00Z",
+                                                senderDisplayName = "Cindy",
+                                            ),
+                                            build.raft.app.network.sync.ReplyPreview(
+                                                messageId = "reply-inline-8",
+                                                seq = 8,
+                                                content = "Opening dispatches canonical read state.",
+                                                senderId = "agent-nathan",
+                                                senderType = "agent",
+                                                senderName = "Nathan",
+                                                senderAvatarUrl = null,
+                                                createdAt = "2026-07-24T10:20:00Z",
+                                                senderDisplayName = "Nathan",
+                                            ),
+                                        ),
+                                    replyCount = 8,
+                                    limit = build.raft.app.network.sync.InlineThreadReplyPreviewLimit,
+                                ),
+                        )
+                    ),
+                members =
+                    listOf(
+                        KuiklyThreadMemberItem(
+                            id = "agent-mahua",
+                            displayName = "Mahua",
+                            handle = "Mahua",
+                            kind = "agent",
+                            avatarLabel = "MH",
+                        ),
+                        KuiklyThreadMemberItem(
+                            id = "user-artin",
+                            displayName = "Artin",
+                            handle = "artin",
+                            kind = "human",
+                            avatarLabel = "AR",
+                        ),
+                        KuiklyThreadMemberItem(
+                            id = "agent-cindy",
+                            displayName = "Cindy",
+                            handle = "Cindy",
+                            kind = "agent",
+                            avatarLabel = "CI",
+                        ),
+                        KuiklyThreadMemberItem(
+                            id = "agent-nathan",
+                            displayName = "Nathan",
+                            handle = "Nathan",
+                            kind = "agent",
+                            avatarLabel = "NA",
+                        ),
+                    ),
+                showComposer = false,
+                joined = true,
+                composer =
+                    KuiklyThreadComposerPayload(
+                        instanceId = resolvedInstanceId,
+                        enabled = false,
+                    ),
             )
         THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_SELECTION,
         THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_PREVIEW ->
@@ -10514,6 +10990,7 @@ private fun ThreadPageContent(
     timelineSlice: ThreadTimelineSlice,
     accessResolution: ThreadAccessResolution,
     canonicalAccessResolved: Boolean,
+    writeActionsEnabled: Boolean,
     channelProfileUpdateStatus: ChannelProfileUpdateStatus = ChannelProfileUpdateStatus.Idle,
     channelProfileUpdateErrorCode: String? = null,
     replyMetadataByParentId: Map<String, ThreadReplyMetadata>,
@@ -10535,6 +11012,8 @@ private fun ThreadPageContent(
     onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit,
     activityMuteState: ThreadActivityMuteUiState? = null,
     onToggleActivityMute: (() -> Unit)? = null,
+    channelPinState: ThreadChannelPinUiState? = null,
+    onToggleChannelPin: (() -> Unit)? = null,
     forwardServerId: ServerId?,
     forwardTargetRepository: ForwardMessageTargetRepository?,
     contentExtrasVisible: Boolean,
@@ -10546,6 +11025,7 @@ private fun ThreadPageContent(
     highlightedMentions: Set<String>,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    inlineThreadRepliesEnabled: Boolean = false,
     diagnosticsLogger: (String) -> Unit = {},
     onLayoutGeneration: (width: Int, height: Int) -> Unit = { _, _ -> },
     pendingActionCardIds: Set<String> = emptySet(),
@@ -10568,6 +11048,12 @@ private fun ThreadPageContent(
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
     onComposerEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit
 ) {
+    val inlineReplyParticipantsById =
+        remember(payload.members, payload.memberCandidates) {
+            (payload.members + payload.memberCandidates)
+                .distinctBy(KuiklyThreadMemberItem::id)
+                .associateBy(KuiklyThreadMemberItem::id)
+        }
     val renderEarlyLoadingShell =
         payload.shouldRenderThreadLoadingShell(
             timelineSlice = timelineSlice,
@@ -11050,10 +11536,13 @@ private fun ThreadPageContent(
                         highlightedMentions = highlightedMentions,
                         agentStatusResolver = agentStatusResolver,
                         memberAvatarResolver = memberAvatarResolver,
+                        inlineThreadRepliesEnabled = inlineThreadRepliesEnabled,
+                        inlineReplyParticipantsById = inlineReplyParticipantsById,
                         pendingActionCardIds = pendingActionCardIds,
                         pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
                         attachmentOpenStates = attachmentOpenStates,
                         attachmentCommentsEnabled = attachmentCommentsEnabled,
+                        writeActionsEnabled = writeActionsEnabled,
                         currentServerSlug = currentServerSlug,
                         contentExtrasVisible = contentExtrasVisible,
                         longMessageCollapseEnabled = longMessageCollapseEnabled,
@@ -11234,6 +11723,8 @@ private fun ThreadPageContent(
                 // composer mount only with the same resolved render-slice emission
                 // that removes the loading UI, avoiding a second LazyColumn resize.
                 Unit
+            } else if (!writeActionsEnabled) {
+                Unit
             } else if (!payload.joined) {
                 ThreadJoinFooter(
                     label = localizedThreadJoinLabel(payload.joinLabel),
@@ -11276,6 +11767,7 @@ private fun ThreadPageContent(
                                 activeModal = "forwardTargets"
                             }
                         },
+                        forwardEnabled = writeActionsEnabled,
                         onExportImage = {
                             if (selectedShareMessages.isNotEmpty() && !sharePreviewLoading) {
                                 diagnosticsLogger(
@@ -11411,6 +11903,7 @@ private fun ThreadPageContent(
                     onNoteChange = { forwardNote = it },
                     onDismiss = { activeModal = "forwardTargets" },
                     onSend = {
+                        if (!writeActionsEnabled) return@ThreadForwardNoteDialog
                         val repository = forwardTargetRepository
                         val sourceServerId = forwardSourceServerId
                         val sourceChannelId = forwardSourceChannelId
@@ -11470,6 +11963,7 @@ private fun ThreadPageContent(
                     channelName = headerDisplay.title,
                     subtitle = headerDisplay.subtitle,
                     actions = payload.settingsActions,
+                    channelPinState = channelPinState,
                     updateStatus = channelProfileUpdateStatus,
                     updateErrorCode = channelProfileUpdateErrorCode,
                     onDismiss = {
@@ -11483,6 +11977,7 @@ private fun ThreadPageContent(
                             onUpdateChannelProfile(channelId, originalName, originalDescription, name, description)
                         }
                     },
+                    onTogglePin = onToggleChannelPin,
                     onOpenAction = { actionId ->
                         activeModal = null
                         onClearChannelProfileUpdateStatus()
@@ -11542,14 +12037,13 @@ private fun ThreadPageHeader(
 ) {
     val topSafeArea = if (applyTopSafeArea) slockTopSafeAreaPadding() else 0.dp
     val localizedHeaderTitle =
-        if (
-            headerDisplay.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
-            headerDisplay.title == ThreadReplyPageTitle
-        ) {
-            stringResource(MR.strings.thread_reply_title)
-        } else {
-            headerDisplay.title
-        }
+        localizedThreadHeaderTitle(
+            title = headerDisplay.title,
+            surfaceKind = headerDisplay.surfaceKind,
+            localizedReplyThread = stringResource(MR.strings.thread_reply_title),
+            localizedChannel = stringResource(MR.strings.thread_channel_title),
+            localizedDirectMessage = stringResource(MR.strings.thread_direct_message_title)
+        )
     val resolvedDmPeerAvatarWireValue =
         rememberSlockMemberAvatarWireValue(
             memberAvatarResolver,
@@ -11560,20 +12054,23 @@ private fun ThreadPageHeader(
             agentStatusResolver = agentStatusResolver,
             memberId = headerDisplay.dmAgentActivityMemberId()
         )
-    Column(modifier = Modifier.fillMaxWidth().height(topSafeArea + SlockSize.PageHeaderHeight).background(SlockColor.SurfaceWhite)) {
-        Row(
-            modifier = Modifier.fillMaxWidth()
-                .height(topSafeArea + SlockSize.PageHeaderContentHeight)
-                .padding(
-                    start = SlockSpacing.Md,
-                    top = topSafeArea + SlockSpacing.Sm,
-                    end = SlockSpacing.Md,
-                    bottom = SlockSpacing.Sm
-                ),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
-        ) {
-            ThreadHeaderIconButton(icon = SlockLucideIconName.ArrowLeft, onClick = onBack)
+    val showHeaderActions =
+        showActions &&
+            (
+                payload.threadHeaderSearchAction() != null ||
+                    (activityMuteState != null && onToggleActivityMute != null) ||
+                    payload.showSettingsAction ||
+                    payload.showMembersAction ||
+                    payload.threadHeaderOpenInParentActionVisible()
+            )
+    SlockTopPageHeader(
+        title = localizedHeaderTitle,
+        backgroundColor = SlockColor.SurfaceWhite,
+        topSafeAreaOverride = topSafeArea,
+        leadingContent = {
+            SlockTopPageHeaderAction(icon = SlockLucideIconName.ArrowLeft, onClick = onBack)
+        },
+        titleLeadingContent = {
             if (headerDisplay.surfaceKind == KuiklyThreadSurfaceKind.DirectMessage) {
                 ThreadDmPeerAvatarTile(
                     avatarWireValue = resolvedDmPeerAvatarWireValue ?: headerDisplay.dmPeerAvatarWireValue,
@@ -11586,6 +12083,8 @@ private fun ThreadPageHeader(
             } else if (payload.showModeTabs) {
                 ThreadChannelTile(headerDisplay.channelKind)
             }
+        },
+        titleContent = {
             Column(
                 modifier =
                     Modifier
@@ -11600,7 +12099,7 @@ private fun ThreadPageHeader(
                 ) {
                     Text(
                         text = localizedHeaderTitle,
-                        style = SlockType.ButtonBold.copy(fontSize = 18.sp, lineHeight = 22.sp, color = SlockColor.TextBlack),
+                        style = SlockType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp, color = SlockColor.TextBlack),
                         color = SlockColor.TextBlack,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -11611,23 +12110,17 @@ private fun ThreadPageHeader(
                 headerDisplay.subtitle?.takeIf { it.isNotBlank() }?.let {
                     Text(
                         text = it,
-                        style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                        color = SlockColor.TextMutedGray,
+                        style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
+                        color = SlockColor.TextBlack.copy(alpha = 0.55f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
             }
-            if (
-                showActions &&
-                    (
-                        payload.threadHeaderSearchAction() != null ||
-                            (activityMuteState != null && onToggleActivityMute != null) ||
-                            payload.showSettingsAction ||
-                            payload.showMembersAction ||
-                            payload.threadHeaderOpenInParentActionVisible()
-                    )
-            ) {
+        },
+        trailingContent =
+            if (showHeaderActions) {
+                {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(ThreadHeaderActionGroupSpacing)
@@ -11651,11 +12144,29 @@ private fun ThreadPageHeader(
                         ThreadHeaderIconButton(icon = SlockLucideIconName.ExternalLink, onClick = onOpenInChannel)
                     }
                 }
-            }
-        }
-        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
-    }
+                }
+            } else {
+                null
+            },
+        showBodyTopBanner = false,
+    )
 }
+
+internal fun localizedThreadHeaderTitle(
+    title: String,
+    surfaceKind: String,
+    localizedReplyThread: String,
+    localizedChannel: String,
+    localizedDirectMessage: String
+): String =
+    when {
+        surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
+            title == ThreadReplyPageTitle -> localizedReplyThread
+        surfaceKind == KuiklyThreadSurfaceKind.Channel && title == "Channel" -> localizedChannel
+        surfaceKind == KuiklyThreadSurfaceKind.DirectMessage &&
+            title == "Direct Message" -> localizedDirectMessage
+        else -> title
+    }
 
 internal fun ThreadHeaderDisplayModel.dmAgentActivityMemberId(): String? =
     dmPeerIdentity
@@ -11888,6 +12399,7 @@ private fun ThreadComposerContentWithSuggestions(
             )
         }
     ThreadComposerContent(
+        attachmentPreviewEnabled = true,
         surface = surface,
         state = renderedState,
         onEvent = onEvent,
@@ -12118,10 +12630,13 @@ private fun ThreadChatTab(
     highlightedMentions: Set<String>,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    inlineThreadRepliesEnabled: Boolean = false,
+    inlineReplyParticipantsById: Map<String, KuiklyThreadMemberItem> = emptyMap(),
     pendingActionCardIds: Set<String> = emptySet(),
     pendingTaskConvertMessageIds: Set<String> = emptySet(),
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
     attachmentCommentsEnabled: Boolean = false,
+    writeActionsEnabled: Boolean = true,
     currentServerSlug: String? = null,
     contentExtrasVisible: Boolean = true,
     longMessageCollapseEnabled: Boolean = false,
@@ -12196,10 +12711,13 @@ private fun ThreadChatTab(
                     highlightedMentions = highlightedMentions,
                     agentStatusResolver = agentStatusResolver,
                     memberAvatarResolver = memberAvatarResolver,
+                    inlineThreadRepliesEnabled = inlineThreadRepliesEnabled,
+                    inlineReplyParticipantsById = inlineReplyParticipantsById,
                     pendingActionCardIds = pendingActionCardIds,
                     pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
                     attachmentOpenStates = attachmentOpenStates,
                     attachmentCommentsEnabled = attachmentCommentsEnabled,
+                    writeActionsEnabled = writeActionsEnabled,
                     currentServerSlug = currentServerSlug,
                     contentExtrasVisible = contentExtrasVisible,
                     longMessageCollapseEnabled = longMessageCollapseEnabled,
@@ -12261,10 +12779,13 @@ private fun ThreadChatTab(
                     highlightedMentions = highlightedMentions,
                     agentStatusResolver = agentStatusResolver,
                     memberAvatarResolver = memberAvatarResolver,
+                    inlineThreadRepliesEnabled = inlineThreadRepliesEnabled,
+                    inlineReplyParticipantsById = inlineReplyParticipantsById,
                     pendingActionCardIds = pendingActionCardIds,
                     pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
                     attachmentOpenStates = attachmentOpenStates,
                     attachmentCommentsEnabled = attachmentCommentsEnabled,
+                    writeActionsEnabled = writeActionsEnabled,
                     currentServerSlug = currentServerSlug,
                     contentExtrasVisible = contentExtrasVisible,
                     longMessageCollapseEnabled = longMessageCollapseEnabled,
@@ -12317,10 +12838,13 @@ private fun ThreadChatTab(
                 highlightedMentions = highlightedMentions,
                 agentStatusResolver = agentStatusResolver,
                 memberAvatarResolver = memberAvatarResolver,
+                inlineThreadRepliesEnabled = inlineThreadRepliesEnabled,
+                inlineReplyParticipantsById = inlineReplyParticipantsById,
                 pendingActionCardIds = pendingActionCardIds,
                 pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
                 attachmentOpenStates = attachmentOpenStates,
                 attachmentCommentsEnabled = attachmentCommentsEnabled,
+                writeActionsEnabled = writeActionsEnabled,
                 currentServerSlug = currentServerSlug,
                 contentExtrasVisible = contentExtrasVisible,
                 longMessageCollapseEnabled = longMessageCollapseEnabled,
@@ -12614,10 +13138,13 @@ private fun ThreadMessagesList(
     highlightedMentions: Set<String>,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    inlineThreadRepliesEnabled: Boolean = false,
+    inlineReplyParticipantsById: Map<String, KuiklyThreadMemberItem> = emptyMap(),
     pendingActionCardIds: Set<String> = emptySet(),
     pendingTaskConvertMessageIds: Set<String> = emptySet(),
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
     attachmentCommentsEnabled: Boolean = false,
+    writeActionsEnabled: Boolean = true,
     currentServerSlug: String? = null,
     contentExtrasVisible: Boolean = true,
     longMessageCollapseEnabled: Boolean = false,
@@ -12654,7 +13181,7 @@ private fun ThreadMessagesList(
             onThreadContentReady()
         }
         if (timelineSlice.status == "loading") {
-            ThreadStateMessage("Loading...", null)
+            ThreadStateMessage(stringResource(MR.strings.thread_state_loading), null)
         } else {
             ThreadStateMessage(
                 localizedThreadStateTitle(timelineSlice.emptyTitle),
@@ -14065,7 +14592,7 @@ private fun ThreadMessagesList(
             }
             if (showReplyLoadingSkeleton) {
                 item(key = ThreadReplyLoadingListItemKey) {
-                    ThreadStateMessage("Loading...", null)
+                    ThreadStateMessage(stringResource(MR.strings.thread_state_loading), null)
                 }
             }
             items(
@@ -14249,6 +14776,9 @@ private fun ThreadMessagesList(
                                 highlightedMentions = highlightedMentions,
                                 agentStatusResolver = agentStatusResolver,
                                 memberAvatarResolver = memberAvatarResolver,
+                                inlineThreadRepliesEnabled = inlineThreadRepliesEnabled,
+                                inlineReplyParticipantsById = inlineReplyParticipantsById,
+                                replyTimeContext = renderConfig.timeContext,
                                 focused = activeFocusedMessageId == message.id || activeInlineSearchMessageId == message.id,
                                 shareSelectionActive = shareSelectionActive,
                                 selectedForShare = message.id in selectedShareMessageIds,
@@ -14269,9 +14799,6 @@ private fun ThreadMessagesList(
                                 activeMarkdownTagKey = activeMarkdownTagKey,
                                 taskOpenEnabled = renderPayload.showTaskOpenActions && isRichContentEnabled,
                                 taskStatusActionsEnabled = renderPayload.showTaskStatusActions && isRichContentEnabled,
-                                // Gesture eligibility is checked on long press, not while composing
-                                // every row when programmatic scrolling starts or stops.
-                                captureLongPressAnchor = { !listState.isScrollInProgress },
                                 isMarkdownTagValid = isMarkdownTagValid,
                                 onShowActions = { anchor ->
                                     if (!message.hasLocalSendState() || message.isFailedLocalSend() || message.isSendingLocalSend()) {
@@ -14310,6 +14837,7 @@ private fun ThreadMessagesList(
                                 },
                                 attachmentOpenStates = if (isRichContentEnabled) attachmentOpenStates else emptyMap(),
                                 pendingActionCardIds = if (isRichContentEnabled) pendingActionCardIds else emptySet(),
+                                writeActionsEnabled = writeActionsEnabled,
                                 onCommitActionCard = { onThreadEvent("commitActionCard", it, null, null) },
                                 currentServerSlug = currentServerSlug,
                                 onOpenMarkdownTag = onOpenMarkdownTag,
@@ -14487,6 +15015,7 @@ private fun ThreadMessagesList(
                     anchor = resolvedActionAnchor,
                     showReplyAction = renderPayload.showReplyActions && !message.hasLocalSendState(),
                     showSaveAction = renderPayload.showMessageSaveAction && !message.hasLocalSendState(),
+                    showFollowAction = writeActionsEnabled && !message.hasLocalSendState(),
                     showTaskStatusAction = renderPayload.showTaskStatusActions && !message.hasLocalSendState(),
                     showConvertToTaskAction =
                         renderPayload.canConvertMessagesToTasks && !message.hasLocalSendState() &&
@@ -14494,8 +15023,8 @@ private fun ThreadMessagesList(
                     showReactionActions = renderPayload.showReactionActions && !message.hasLocalSendState(),
                     showCopyLinkAction = !message.hasLocalSendState(),
                     showShareMessagesAction = !message.hasLocalSendState(),
-                    showCancelAction = isSendingLocalSend,
-                    showDeleteAction = isFailedLocalSend,
+                    showCancelAction = writeActionsEnabled && isSendingLocalSend,
+                    showDeleteAction = writeActionsEnabled && isFailedLocalSend,
                     showTranslateAction =
                         translationStore != null && message.isTranslationEligible(translationState.settings),
                     onDismiss = { actionMessageId = null },
@@ -15968,6 +16497,29 @@ internal fun threadDateDividerTextStyle(): TextStyle =
         letterSpacing = 0.sp
     )
 
+// task #800 rendering-evidence seam: fixture-only geometry tints so the
+// connected pixel oracle measures EXACTLY the body / status / cap geometry
+// instead of whole-card extremes. Default null = production provides no tints,
+// paints nothing, and (via the helper) adds zero extra layout nodes.
+internal data class ThreadMessageGeometryTints(
+    val bodyTint: Color,
+    val statusTint: Color,
+    val capTint: Color,
+    val retryTint: Color
+)
+
+internal val LocalThreadMessageGeometryTints =
+    compositionLocalOf<ThreadMessageGeometryTints?> { null }
+
+@Composable
+private fun ThreadMessageGeometryTintBox(tint: Color?, content: @Composable () -> Unit) {
+    if (tint == null) {
+        content()
+    } else {
+        Box(Modifier.background(tint)) { content() }
+    }
+}
+
 @Composable
 private fun ThreadMessageCard(
     message: KuiklyThreadMessageItem,
@@ -16010,6 +16562,7 @@ private fun ThreadMessageCard(
     onCopyLocalSendFailureDetails: () -> Unit = {},
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
     pendingActionCardIds: Set<String> = emptySet(),
+    writeActionsEnabled: Boolean = true,
     onCommitActionCard: (String) -> Unit = {},
     currentServerSlug: String? = null,
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
@@ -16019,7 +16572,9 @@ private fun ThreadMessageCard(
     focused: Boolean = false,
     isMessageListScrolling: () -> Boolean = { false },
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
-    captureLongPressAnchor: () -> Boolean = { true },
+    inlineThreadRepliesEnabled: Boolean = false,
+    inlineReplyParticipantsById: Map<String, KuiklyThreadMemberItem> = emptyMap(),
+    replyTimeContext: SlockTimeContext? = null,
     shareSelectionActive: Boolean = false,
     selectedForShare: Boolean = false,
     onToggleShareSelection: () -> Unit = {},
@@ -16045,6 +16600,7 @@ private fun ThreadMessageCard(
         if (alignOwnMessageRight) Arrangement.spacedBy(12.dp, Alignment.End) else Arrangement.spacedBy(12.dp)
     val contentAlignment = if (alignOwnMessageRight) Alignment.End else Alignment.Start
     val messageMaxWidthFraction = if (alignOwnMessageRight) 0.82f else 1f
+    val geometryTints = LocalThreadMessageGeometryTints.current
     val agentStatus =
         if (message.showsAgentStatusIndicator()) {
             rememberSlockAgentStatusIndicatorState(agentStatusResolver, message.authorId)
@@ -16100,7 +16656,15 @@ private fun ThreadMessageCard(
             hasLocalSendState = message.hasLocalSendState(),
             isSaved = message.isSaved
         )
-    val reserveInlineTrailingSpace = richContentEnabled && message.isSendingLocalSend()
+    val reserveInlineTrailingSpace = richContentEnabled && message.isSendingLocalSend() && !alignOwnMessageRight
+    val inlineReplyPresentation =
+        remember(message.inlineReplies, replyMetadata, hasReplyDraft, inlineThreadRepliesEnabled, showReplyAction) {
+            if (inlineThreadRepliesEnabled && showReplyAction) {
+                threadInlineReplyPresentation(message.inlineReplies, replyMetadata, hasReplyDraft)
+            } else {
+                null
+            }
+        }
     val hasFooterMeta =
         richContentEnabled &&
             !message.hasLocalSendState() &&
@@ -16152,7 +16716,8 @@ private fun ThreadMessageCard(
                             messageId = message.id,
                             pointerSessionKey = pointerSessionKey,
                             tapMovementGate = tapMovementGate,
-                            captureLongPressAnchor = captureLongPressAnchor,
+                            isScrollInProgress = isMessageListScrolling,
+                            diagnosticsLogger = diagnosticsLogger,
                             onTap = rowTapAction,
                             onTapRejected = { decision ->
                                 diagnosticsLogger(
@@ -16277,6 +16842,7 @@ private fun ThreadMessageCard(
                             ThreadActionCardView(
                                 card = actionCard,
                                 pending = message.id in pendingActionCardIds,
+                                commitEnabled = writeActionsEnabled,
                                 modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction),
                                 performanceKey = messagePerformanceKey,
                                 diagnosticsLogger = diagnosticsLogger,
@@ -16304,7 +16870,7 @@ private fun ThreadMessageCard(
                                 modifier =
                                     Modifier
                                         .threadMessageContentWidth(messageMaxWidthFraction)
-                                        .background(Color.Transparent),
+                                        .background(geometryTints?.capTint ?: Color.Transparent),
                                 verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
                                 horizontalAlignment = contentAlignment
                             ) {
@@ -16321,6 +16887,11 @@ private fun ThreadMessageCard(
                                     } else {
                                         renderedBody
                                     }
+                                // task #800: the sending spinner shares the End
+                                // content coordinates with the body — an in-flow
+                                // Row child, so sending → sent removes only
+                                // left-side width and the End edge cannot move.
+                                val messageBodyBlock: @Composable () -> Unit = {
                                 if (translation?.pendingPlaceholder == true) {
                                     ThreadMessageTranslationPendingPlaceholder()
                                 } else if (showLongMessageToggle && !longMessageExpanded) {
@@ -16354,6 +16925,7 @@ private fun ThreadMessageCard(
                                     key(markdownRenderSignature) {
                                         SlockMarkdownBody(
                                             body = bodyForRender,
+                                            fillWidth = !alignOwnMessageRight,
                                             textStyle = ThreadMessageBodyTextStyle,
                                             highlightedMentions = highlightedMentions,
                                             isTagValid = isMarkdownTagValid,
@@ -16379,6 +16951,26 @@ private fun ThreadMessageCard(
                                         color = SlockColor.TextBlack,
                                         modifier = Modifier
                                     )
+                                }
+                                }
+                                if (alignOwnMessageRight) {
+                                    Row(
+                                        verticalAlignment = Alignment.Top,
+                                        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+                                    ) {
+                                        if (richContentEnabled && message.isSendingLocalSend()) {
+                                            ThreadMessageGeometryTintBox(geometryTints?.statusTint) {
+                                                ThreadMessageSendingIndicator()
+                                            }
+                                        }
+                                        ThreadMessageGeometryTintBox(geometryTints?.bodyTint) {
+                                            messageBodyBlock()
+                                        }
+                                    }
+                                } else {
+                                    ThreadMessageGeometryTintBox(geometryTints?.bodyTint) {
+                                        messageBodyBlock()
+                                    }
                                 }
                                 if (showLongMessageToggle && translation?.pendingPlaceholder != true) {
                                     ThreadLongMessageToggle(
@@ -16413,11 +17005,25 @@ private fun ThreadMessageCard(
                         }
                         if (message.isFailedLocalSend()) {
                             Box(modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)) {
-                                ThreadMessageLocalSendStatus(
-                                    message = message,
-                                    alignEnd = alignOwnMessageRight,
-                                    onRetry = onRetryLocalSend,
-                                    onCopyDetails = onCopyLocalSendFailureDetails
+                                ThreadMessageGeometryTintBox(geometryTints?.statusTint) {
+                                    ThreadMessageLocalSendStatus(
+                                        message = message,
+                                        alignEnd = alignOwnMessageRight,
+                                        retryEnabled = writeActionsEnabled,
+                                        onRetry = onRetryLocalSend,
+                                        onCopyDetails = onCopyLocalSendFailureDetails
+                                    )
+                                }
+                            }
+                        }
+                        inlineReplyPresentation?.let { presentation ->
+                            Box(modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)) {
+                                ThreadInlineRepliesSurface(
+                                    presentation = presentation,
+                                    participantsById = inlineReplyParticipantsById,
+                                    memberAvatarResolver = memberAvatarResolver,
+                                    timeContext = replyTimeContext,
+                                    onOpenThread = { onOpenThread(message.id) }
                                 )
                             }
                         }
@@ -16439,6 +17045,7 @@ private fun ThreadMessageCard(
                                     onOpenTaskStatusMenu = onOpenTaskStatusMenu,
                                     showSavedBadge = showSavedBadge,
                                     showReactionAddAction = showReactionAddAction,
+                                    showReplyMetaChip = inlineReplyPresentation == null,
                                     onToggleReaction = onToggleReaction,
                                     onShowReactionDetails = onShowReactionDetails
                                 )
@@ -16447,7 +17054,7 @@ private fun ThreadMessageCard(
                     }
                     if (richContentEnabled) {
                         when {
-                            message.isSendingLocalSend() -> {
+                            message.isSendingLocalSend() && !alignOwnMessageRight -> {
                                 ThreadMessageSendingIndicator(modifier = Modifier.align(Alignment.TopEnd))
                             }
                         }
@@ -16546,6 +17153,7 @@ private fun ThreadMessageSelectionToggle(
 private fun ThreadMessageLocalSendStatus(
     message: KuiklyThreadMessageItem,
     alignEnd: Boolean,
+    retryEnabled: Boolean = true,
     onRetry: () -> Unit,
     onCopyDetails: () -> Unit
 ) {
@@ -16589,12 +17197,14 @@ private fun ThreadMessageLocalSendStatus(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f, fill = false)
             )
-            if (isFailed) {
+            if (isFailed && retryEnabled) {
                 Button(
                     onClick = { if (message.canRetryLocalSend()) onRetry() },
                     enabled = message.canRetryLocalSend(),
                     pressFeedback = message.canRetryLocalSend(),
-                    modifier = Modifier.heightIn(min = 28.dp).background(Color.Transparent)
+                    modifier =
+                        Modifier.heightIn(min = 28.dp)
+                            .background(LocalThreadMessageGeometryTints.current?.retryTint ?: Color.Transparent)
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -16683,6 +17293,7 @@ private data class ThreadActionCardRenderCopy(
 private fun ThreadActionCardView(
     card: ThreadActionCard,
     pending: Boolean,
+    commitEnabled: Boolean = true,
     modifier: Modifier = Modifier,
     performanceKey: String? = null,
     diagnosticsLogger: (String) -> Unit = {},
@@ -16770,7 +17381,7 @@ private fun ThreadActionCardView(
                     color = SlockColor.TextMutedGray
                 )
             }
-        } else {
+        } else if (commitEnabled) {
             SlockBrutalActionButton(
                 label = if (pending) renderCopy.pendingLabel else renderCopy.verb,
                 onClick = onCommit,
@@ -17561,6 +18172,30 @@ private val ThreadMessageRippleMinRadius = 24.dp
 internal fun threadMessageUsesFullRowLongPressActions(shareSelectionActive: Boolean): Boolean =
     !shareSelectionActive
 
+internal data class ThreadMessageLongPressDispatchDecision(
+    val allowed: Boolean,
+    val reason: String,
+    val scrollInProgress: Boolean
+)
+
+internal fun decideThreadMessageLongPressDispatch(
+    detectorAccepted: Boolean,
+    directPointerMovementDetected: Boolean,
+    isScrollInProgress: Boolean
+): ThreadMessageLongPressDispatchDecision =
+    // LazyListState reports both direct drags and programmatic anchor/focus movement as scrolling.
+    // The gesture detector owns direct-drag cancellation; list motion is diagnostic context only.
+    ThreadMessageLongPressDispatchDecision(
+        allowed = detectorAccepted && !directPointerMovementDetected,
+        reason =
+            when {
+                !detectorAccepted -> "detector_not_admitted"
+                directPointerMovementDetected -> "direct_pointer_movement"
+                else -> "admitted"
+            },
+        scrollInProgress = isScrollInProgress
+    )
+
 internal fun threadMessageTapOpensThread(
     showReplyAction: Boolean,
     shareSelectionActive: Boolean,
@@ -17627,7 +18262,8 @@ private fun Modifier.threadMessageLongPressActions(
     messageId: String,
     pointerSessionKey: Int,
     tapMovementGate: ThreadMessageTapMovementGate,
-    captureLongPressAnchor: () -> Boolean = { true },
+    isScrollInProgress: () -> Boolean = { false },
+    diagnosticsLogger: (String) -> Unit = {},
     onTap: (() -> Unit)? = null,
     onTapRejected: (ThreadMessageTapMovementDecision) -> Unit = {},
     onShowActions: (SlockPopoverAnchor) -> Unit,
@@ -17637,7 +18273,8 @@ private fun Modifier.threadMessageLongPressActions(
     val currentOnTap by rememberUpdatedState(onTap)
     val currentOnTapRejected by rememberUpdatedState(onTapRejected)
     val currentOnPressChanged by rememberUpdatedState(onPressChanged)
-    val currentCaptureLongPressAnchor by rememberUpdatedState(captureLongPressAnchor)
+    val currentIsScrollInProgress by rememberUpdatedState(isScrollInProgress)
+    val currentDiagnosticsLogger by rememberUpdatedState(diagnosticsLogger)
     val rootAnchor =
         remember(messageId) { SlockLiveRootAnchorRef(identity = threadMessageMenuOwnerIdentity(messageId)) }
     val tapDispatchScope = rememberCoroutineScope()
@@ -17693,9 +18330,40 @@ private fun Modifier.threadMessageLongPressActions(
                     }
                 },
                 onLongPress = { localOffset ->
-                    if (currentCaptureLongPressAnchor()) {
-                        rootAnchor.resolve(SlockPopoverLocalPoint.Exact(localOffset))?.let(currentOnShowActions)
+                    val movementDecision = tapMovementGate.decision()
+                    val directPointerMovementDetected =
+                        movementDecision.reason == "movement" || movementDecision.reason == "multi_touch"
+                    val dispatchDecision =
+                        decideThreadMessageLongPressDispatch(
+                            detectorAccepted = true,
+                            directPointerMovementDetected = directPointerMovementDetected,
+                            isScrollInProgress = currentIsScrollInProgress()
+                        )
+                    if (!dispatchDecision.allowed) {
+                        currentDiagnosticsLogger(
+                            "thread_message_long_press_rejected messageId=$messageId " +
+                                "reason=${dispatchDecision.reason} movement=${movementDecision.maxDistance} " +
+                                "touchSlop=${movementDecision.touchSlop} pointers=${movementDecision.pointerCount}"
+                        )
+                        return@detectTapGestures
                     }
+                    currentDiagnosticsLogger(
+                        "thread_message_long_press_admitted messageId=$messageId " +
+                            "scrollInProgress=${dispatchDecision.scrollInProgress}"
+                    )
+                    val anchor = rootAnchor.resolve(SlockPopoverLocalPoint.Exact(localOffset))
+                    if (anchor == null) {
+                        currentDiagnosticsLogger(
+                            "thread_message_long_press_anchor_unavailable messageId=$messageId " +
+                                "scrollInProgress=${dispatchDecision.scrollInProgress}"
+                        )
+                        return@detectTapGestures
+                    }
+                    currentDiagnosticsLogger(
+                        "thread_message_long_press_menu_emit messageId=$messageId " +
+                            "scrollInProgress=${dispatchDecision.scrollInProgress}"
+                    )
+                    currentOnShowActions(anchor)
                 }
             )
         }
@@ -18136,6 +18804,156 @@ private const val ThreadMillisPerMinute = 60_000L
 private const val ThreadMillisPerDay = 86_400_000L
 private const val ThreadCompactContinuationWindowMillis = 30L * ThreadMillisPerMinute
 
+internal data class ThreadInlineReplyPresentation(
+    val replies: List<build.raft.app.network.sync.ReplyPreview>,
+    val replyCount: Int,
+    val unreadCount: Int,
+    val hasDraft: Boolean,
+) {
+    val undisplayedReplyCount: Int
+        get() = (replyCount - replies.size).coerceAtLeast(0)
+}
+
+internal fun threadInlineReplyPresentation(
+    model: ThreadRepliesReadModel?,
+    replyMetadata: ThreadReplyMetadata,
+    hasDraft: Boolean,
+): ThreadInlineReplyPresentation? {
+    val replies = model?.replies.orEmpty().filterNot { it.senderType.equals("system", ignoreCase = true) }
+    val authoritativeReplyCount = maxOf(replyMetadata.replyCount, model?.replyCount ?: 0)
+    if (authoritativeReplyCount <= 0 || replies.isEmpty()) return null
+    return ThreadInlineReplyPresentation(
+        replies = replies.takeLast(build.raft.app.network.sync.InlineThreadReplyPreviewLimit),
+        replyCount = authoritativeReplyCount,
+        unreadCount = replyMetadata.unreadReplyCount.coerceAtLeast(0),
+        hasDraft = hasDraft,
+    )
+}
+
+@Composable
+private fun ThreadInlineRepliesSurface(
+    presentation: ThreadInlineReplyPresentation,
+    participantsById: Map<String, KuiklyThreadMemberItem>,
+    memberAvatarResolver: SlockMemberAvatarResolver,
+    timeContext: SlockTimeContext?,
+    onOpenThread: () -> Unit,
+) {
+    val countLabel =
+        if (presentation.replyCount > build.raft.app.network.sync.InlineThreadReplyPreviewLimit) {
+            stringResource(
+                MR.strings.thread_inline_earlier_replies,
+                presentation.undisplayedReplyCount,
+            )
+        } else if (presentation.replyCount == 1) {
+            stringResource(MR.strings.thread_inline_reply_count_one)
+        } else {
+            stringResource(MR.strings.thread_inline_reply_count_many, presentation.replyCount)
+        }
+    val unreadLabel =
+        presentation.unreadCount.takeIf { it > 0 }?.let { count ->
+            stringResource(MR.strings.thread_inline_new_replies, count)
+        }
+    val draftLabel = stringResource(MR.strings.thread_inline_draft)
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(top = 6.dp)
+                .background(SlockColor.TextBlack.copy(alpha = 0.04f))
+                .clickable(onClick = onOpenThread)
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = buildString {
+                    append(countLabel)
+                    unreadLabel?.let { append(" · ").append(it) }
+                    if (presentation.hasDraft) append(" · ✎ ").append(draftLabel)
+                    append(" ›")
+                },
+                modifier = Modifier.weight(1f),
+                style =
+                    SlockType.Caption
+                        .copy(fontSize = 12.5.sp, lineHeight = 16.sp, color = SlockColor.TextBlack.copy(alpha = 0.58f))
+                        .withSlockFontWeight(FontWeight.Bold),
+                color = SlockColor.TextBlack.copy(alpha = 0.58f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        presentation.replies.forEach { reply ->
+            key("inline-reply:${reply.messageId}") {
+                ThreadInlineReplyRow(
+                    reply = reply,
+                    participant = participantsById[reply.senderId],
+                    memberAvatarResolver = memberAvatarResolver,
+                    timeContext = timeContext,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ThreadInlineReplyRow(
+    reply: build.raft.app.network.sync.ReplyPreview,
+    participant: KuiklyThreadMemberItem?,
+    memberAvatarResolver: SlockMemberAvatarResolver,
+    timeContext: SlockTimeContext?,
+) {
+    val resolvedAvatar = rememberSlockMemberAvatarWireValue(memberAvatarResolver, reply.senderId)
+    val displayName =
+        reply.senderDisplayName?.trim()?.takeIf { it.isNotBlank() }
+            ?: participant?.displayName?.trim()?.takeIf { it.isNotBlank() }
+            ?: reply.senderName.trim().ifBlank { reply.senderId }
+    val avatarWireValue =
+        resolvedAvatar
+            ?: participant?.avatarUrl?.takeIf { it.isNotBlank() }
+            ?: reply.senderAvatarUrl?.takeIf { it.isNotBlank() }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        SlockAvatar(
+            avatarWireValue = avatarWireValue,
+            label = displayName.take(1).uppercase(),
+            avatarSize = 20.dp,
+            borderWidth = SlockStroke.Thin,
+        )
+        Text(
+            text = displayName,
+            style =
+                SlockType.Caption
+                    .copy(fontSize = 12.5.sp, lineHeight = 16.sp, color = SlockColor.TextBlack.copy(alpha = 0.72f))
+                    .withSlockFontWeight(FontWeight.Bold),
+            color = SlockColor.TextBlack.copy(alpha = 0.72f),
+            maxLines = 1,
+        )
+        Text(
+            text = reply.content,
+            modifier = Modifier.weight(1f),
+            style = SlockType.Caption.copy(fontSize = 12.5.sp, lineHeight = 16.sp),
+            color = SlockColor.TextBlack.copy(alpha = 0.62f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        val timeLabel = formatSlockTimestampLabel(reply.createdAt, timeContext)
+        if (timeLabel.isNotBlank()) {
+            Text(
+                text = timeLabel,
+                style = SlockType.Caption.copy(fontSize = 11.5.sp, lineHeight = 15.sp),
+                color = SlockColor.TextBlack.copy(alpha = 0.42f),
+                maxLines = 1,
+            )
+        }
+    }
+}
+
 @Composable
 private fun ThreadMessageFooterMeta(
     message: KuiklyThreadMessageItem,
@@ -18153,11 +18971,12 @@ private fun ThreadMessageFooterMeta(
     onOpenTaskStatusMenu: (SlockPopoverAnchor) -> Unit,
     showSavedBadge: Boolean = false,
     showReactionAddAction: Boolean = false,
+    showReplyMetaChip: Boolean = true,
     onToggleReaction: ((String) -> Unit)? = null,
     onShowReactionDetails: ((KuiklyThreadReactionItem, SlockPopoverAnchor) -> Unit)? = null
 ) {
     val hasTask = message.hasThreadTaskFooterMeta()
-    val hasReplies = replyMetadata.replyCount > 0 || hasReplyDraft
+    val hasReplies = showReplyMetaChip && (replyMetadata.replyCount > 0 || hasReplyDraft)
     val visibleReactions = message.reactions.filter { it.count > 0 }
     val hasReactions = visibleReactions.isNotEmpty()
     val showReactionAddChip = showReactionAddAction && hasReactions
@@ -18211,18 +19030,20 @@ private fun ThreadMessageFooterMeta(
                 modifier = Modifier.widthIn(max = 220.dp),
                 pressFeedback = false,
                 clickIdentity = replyClickIdentity,
-                onClick = if (showReplyAction) {
-                    { _ ->
-                        diagnosticsLogger(
-                            "thread_reply_chip_click parentMessageId=${message.id} " +
-                                "knownThreadChannelId=${replyMetadata.threadChannelId.orEmpty()} " +
-                                "replyCount=${replyMetadata.replyCount} clickIdentity=$replyClickIdentity"
-                        )
-                        onOpenThread()
+                onClick = null,
+                onClickWithoutAnchor =
+                    if (showReplyAction) {
+                        {
+                            diagnosticsLogger(
+                                "thread_reply_chip_click parentMessageId=${message.id} " +
+                                    "knownThreadChannelId=${replyMetadata.threadChannelId.orEmpty()} " +
+                                    "replyCount=${replyMetadata.replyCount} clickIdentity=$replyClickIdentity"
+                            )
+                            onOpenThread()
+                        }
+                    } else {
+                        null
                     }
-                } else {
-                    null
-                }
             )
         }
         if (showSavedBadge) {
@@ -18531,6 +19352,7 @@ internal fun threadMessageMenuActions(
     replyMetadata: ThreadReplyMetadata = message.toThreadReplyMetadata(),
     showReplyAction: Boolean,
     showSaveAction: Boolean,
+    showFollowAction: Boolean = true,
     showTaskStatusAction: Boolean,
     showConvertToTaskAction: Boolean,
     showCopyLinkAction: Boolean,
@@ -18604,7 +19426,7 @@ internal fun threadMessageMenuActions(
             )
         }
         val followThreadChannelId = replyMetadata.threadChannelId?.takeIf { it.isNotBlank() }
-        if (shouldShowThreadFollowAction(message, replyMetadata)) {
+        if (showFollowAction && shouldShowThreadFollowAction(message, replyMetadata)) {
             add(
                 ThreadMessageMenuAction(
                     label =
@@ -18680,6 +19502,7 @@ private fun ThreadMessageActionMenu(
     anchor: SlockPopoverAnchor,
     showReplyAction: Boolean,
     showSaveAction: Boolean,
+    showFollowAction: Boolean,
     showTaskStatusAction: Boolean,
     showConvertToTaskAction: Boolean,
     showReactionActions: Boolean,
@@ -18712,6 +19535,7 @@ private fun ThreadMessageActionMenu(
             replyMetadata,
             showReplyAction,
             showSaveAction,
+            showFollowAction,
             showTaskStatusAction,
             showConvertToTaskAction,
             showCopyLinkAction,
@@ -18738,6 +19562,7 @@ private fun ThreadMessageActionMenu(
                 replyMetadata = replyMetadata,
                 showReplyAction = showReplyAction,
                 showSaveAction = showSaveAction,
+                showFollowAction = showFollowAction,
                 showTaskStatusAction = showTaskStatusAction,
                 showConvertToTaskAction = showConvertToTaskAction,
                 showCopyLinkAction = showCopyLinkAction,
@@ -19895,7 +20720,6 @@ private fun ThreadAttachmentChip(
         ThreadInlineVideoAttachmentCard(
             attachment = attachment,
             commentsEnabled = commentsEnabled,
-            onOpenPreview = onOpen,
             onOpenComments = onOpenComments
         )
         return
@@ -21544,6 +22368,7 @@ private fun ThreadShareSelectionToolbar(
     onCancel: () -> Unit,
     onSelectAll: () -> Unit,
     onForward: () -> Unit,
+    forwardEnabled: Boolean = true,
     onExportImage: () -> Unit,
     onCopyLinks: () -> Unit
 ) {
@@ -21597,7 +22422,7 @@ private fun ThreadShareSelectionToolbar(
                     label = stringResource(MR.strings.thread_action_forward),
                     icon = SlockLucideIconName.Send,
                     onClick = onForward,
-                    enabled = hasSelection
+                    enabled = hasSelection && forwardEnabled
                 )
                 SlockBrutalIconButton(
                     iconName = SlockLucideIconName.Copy,
@@ -22192,10 +23017,12 @@ private fun ThreadSettingsModal(
     channelName: String,
     subtitle: String?,
     actions: List<KuiklyThreadSettingsAction>,
+    channelPinState: ThreadChannelPinUiState? = null,
     updateStatus: ChannelProfileUpdateStatus = ChannelProfileUpdateStatus.Idle,
     updateErrorCode: String? = null,
     onDismiss: () -> Unit,
     onSave: (String, String, String, String) -> Unit = { _, _, _, _ -> },
+    onTogglePin: (() -> Unit)? = null,
     onOpenAction: (String) -> Unit
 ) {
     var name by remember(channelName) { mutableStateOf(channelName) }
@@ -22282,9 +23109,20 @@ private fun ThreadSettingsModal(
                         }
                     )
                 }
-                if (dangerActions.isNotEmpty()) {
+                if ((channelPinState != null && onTogglePin != null) || dangerActions.isNotEmpty()) {
                     Box(modifier = Modifier.fillMaxWidth().height(2.dp).background(SlockColor.BorderBlack))
                     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        channelPinState?.takeIf { onTogglePin != null }?.let { pinState ->
+                            SlockModalFullWidthActionButton(
+                                label =
+                                    stringResource(
+                                        if (pinState.pinned) MR.strings.home_action_unpin else MR.strings.home_action_pin
+                                    ),
+                                icon = if (pinState.pinned) SlockLucideIconName.PinOff else SlockLucideIconName.Pin,
+                                color = if (pinState.pinned) SlockColor.AccentPink else SlockColor.SurfaceWhite,
+                                onClick = { onTogglePin?.invoke() }
+                            )
+                        }
                         dangerActions.forEach { (danger, action) ->
                             SlockModalFullWidthActionButton(
                                 label = action.title,
@@ -22503,6 +23341,115 @@ private fun ThreadStateActionMessage(
                 )
             }
             ThreadHeaderAction(label = actionLabel, onClick = onClick)
+        }
+    }
+}
+
+// task #800 rendering-evidence fixture: four right-aligned own-message cards
+// separated by pure-red full-width markers so the connected test can segment
+// screenshot bands and measure real bubble edges — long (cap reference),
+// single-character (must hug End), the same single character in sending state
+// (in-flow spinner, End edge must match), and failed (status row, End edge
+// must match). Deterministic content, no network.
+@Page("compose_thread_align_right_visual", supportInLocal = true)
+internal class ComposeThreadAlignRightVisualPage : build.raft.app.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { ThreadAlignRightVisualScreen() }
+    }
+}
+
+private fun threadAlignRightVisualFixtureMessage(
+    id: String,
+    body: String,
+    deliveryState: String = ThreadMessageDeliverySent,
+    pending: Boolean = false
+): KuiklyThreadMessageItem =
+    KuiklyThreadMessageItem(
+        id = id,
+        authorId = "member-own",
+        authorName = "You",
+        isOwn = true,
+        avatarLabel = "Y",
+        timestampLabel = "10:0${id.last()}",
+        body = body,
+        deliveryState = deliveryState,
+        pendingSendContext =
+            if (pending) {
+                KuiklyThreadPendingSendContext(channelId = "channel-align-right", body = body)
+            } else {
+                null
+            }
+    )
+
+// task #800 rendering-evidence fixture (oracle v3, LiBai/ZhangYi frozen bars):
+// five right-aligned own-message cards between SIX pure-red markers. Geometry
+// is measured ONLY through the fixture tints — body pure blue, status slot
+// pure magenta, 82% cap container pure green, retry button pure yellow — so
+// the connected test reads exactly the body/status/cap/retry geometry and
+// never whole-card extremes. Band order: long cap reference / sent single
+// char / sending / failed(+retry) / retry-returned-to-sending.
+@Composable
+internal fun ThreadAlignRightVisualScreen() {
+    val fixtures =
+        listOf(
+            threadAlignRightVisualFixtureMessage(
+                id = "align-right-long-1",
+                // The fenced code block is a fill-width child, so the wrapped
+                // body root deterministically expands to the FULL cap — the
+                // >=0.98 cap-reach bar cannot flake on word-wrap line fill.
+                body = "This deliberately long reference message wraps across multiple lines so its bubble reaches the width cap for the band.\n\n```\ncap reference block\n```"
+            ),
+            threadAlignRightVisualFixtureMessage(id = "align-right-short-2", body = "W"),
+            threadAlignRightVisualFixtureMessage(
+                id = "align-right-sending-3",
+                body = "W",
+                deliveryState = ThreadMessageDeliverySending,
+                pending = true
+            ),
+            threadAlignRightVisualFixtureMessage(
+                id = "align-right-failed-4",
+                body = "W",
+                deliveryState = ThreadMessageDeliveryFailed,
+                pending = true
+            ),
+            // The retry affordance returns a failed message to the sending
+            // state; this card IS that post-retry state re-rendered, so its
+            // measured geometry must be 0px-equal to the sending band.
+            threadAlignRightVisualFixtureMessage(
+                id = "align-right-retry-5",
+                body = "W",
+                deliveryState = ThreadMessageDeliverySending,
+                pending = true
+            )
+        )
+    CompositionLocalProvider(
+        LocalThreadMessageGeometryTints provides
+            ThreadMessageGeometryTints(
+                bodyTint = Color(0xFF0000FF),
+                statusTint = Color(0xFFFF00FF),
+                capTint = Color(0xFF00FF00),
+                retryTint = Color(0xFFFFFF00)
+            )
+    ) {
+        Column(Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+            fixtures.forEach { message ->
+                Box(Modifier.fillMaxWidth().height(4.dp).background(Color(0xFFFF0000)))
+                ThreadMessageCard(
+                    message = message,
+                    alignOwnMessageRight = true,
+                    onShowActions = {},
+                    onOpenMember = {},
+                    onOpenThread = {},
+                    onOpenTask = {},
+                    onOpenTaskStatusMenu = {},
+                    onToggleReaction = {},
+                    onOpenAttachment = {},
+                    onOpenMarkdownTag = {},
+                    onOpenMarkdownUrl = {}
+                )
+            }
+            Box(Modifier.fillMaxWidth().height(4.dp).background(Color(0xFFFF0000)))
         }
     }
 }

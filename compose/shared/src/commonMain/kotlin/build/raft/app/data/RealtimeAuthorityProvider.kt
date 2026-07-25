@@ -464,27 +464,25 @@ internal class RealtimeAuthorityProvider(
     fun canonicalFinalLifecycleEffectsOrNull(): RealtimeCanonicalFinalSinkLifecycleEffects? =
         canonicalFinalIntegration?.let { RealtimeCanonicalFinalSinkLifecycleEffects(this) }
 
-    private suspend fun reconcileInitialSession() {
+    /**
+     * Cold-start readiness seam for other provider-owned authority consumers. It uses the exact
+     * lifecycle reconciliation path (including the auth-revision binding hook) instead of letting
+     * a consumer synthesize environment/session ownership independently.
+     */
+    internal suspend fun ensureCurrentAuthBinding(): Boolean =
         lifecycleMutex.withLock {
             try {
-                // Restart/subscription is a WAKE with no event payload: like
-                // any entry it must rebuild authority truth from the CURRENT
-                // durable session (events may have been lost while stopped)
-                // and finish with ONE final publish+invalidate — never a bare
-                // republication of pre-stop state (terminal review blocker 1:
-                // a session that changed while the collector was down stayed
-                // live until the next incidental event, and a recorded
-                // pendingPublication was neither retried nor cleared).
                 val fullPublish = needsFullPublishLocked()
-                if (!ensureInitializedLocked()) return@withLock
+                if (!ensureInitializedLocked()) return@withLock false
                 val grantsBeforeMutation = if (fullPublish) emptySet() else currentGrantSet()
                 currentSession = authStore.readSession()
                 registry.advanceAuthFromCurrentSession(
                     session = currentSession.toRealtimeAuthoritySession(),
                     force = false,
                 )
-                if (!runBindingHookLocked()) return@withLock
+                if (!runBindingHookLocked()) return@withLock false
                 publishAndInvalidateIfGrantSetChangedLocked(grantsBeforeMutation)
+                true
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (throwable: Throwable) {
@@ -493,8 +491,14 @@ internal class RealtimeAuthorityProvider(
                     "realtime_authority_reconcile result=pending " +
                         "reason=${throwable::class.simpleName ?: "unknown"}"
                 )
+                false
             }
         }
+
+    private suspend fun reconcileInitialSession() {
+        // Restart/subscription is a WAKE with no event payload: like any entry it rebuilds
+        // authority truth from the current durable session and finishes with one publication.
+        ensureCurrentAuthBinding()
     }
 
     private suspend fun onAuthSessionEvent(event: AuthSessionEvent) {

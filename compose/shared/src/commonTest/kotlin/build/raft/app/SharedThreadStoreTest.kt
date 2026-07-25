@@ -80,6 +80,7 @@ import build.raft.app.data.ThreadActionCardMetadataItem
 import build.raft.app.data.ThreadActionResult
 import build.raft.app.data.ThreadMessagesPage
 import build.raft.app.data.ThreadReplySummariesSnapshot
+import build.raft.app.data.ThreadReplyCacheIdentitySnapshot
 import build.raft.app.data.ThreadSnapshot
 import build.raft.app.data.ThreadListSnapshot
 import build.raft.app.data.WireMessage
@@ -112,6 +113,7 @@ import build.raft.app.model.TaskSummary
 import build.raft.app.model.TaskUpdated
 import build.raft.app.model.ThreadConversation
 import build.raft.app.model.ThreadUpdated
+import build.raft.app.network.sync.ReplyPreview
 import build.raft.app.model.ThreadId
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CancellationException
@@ -169,6 +171,146 @@ private class ConcurrentTestLogBuffer {
 }
 
 class SharedThreadStoreTest {
+    @Test
+    fun readOnlyReplyFallbackClassifiesEveryThreadMutationAsWriteAccess() {
+        val threadMutations =
+            listOf(
+                "followMessageThread",
+                "unfollowMessageThread",
+                "toggleMessageSaved",
+                "commitActionCard",
+                "toggleReaction",
+                "submitAddMember",
+                "removeMember",
+                "settingsAction",
+                "convertMessageToTask",
+                "setTaskStatus",
+                "markTaskDone",
+                "reopenTask",
+                "joinChannel",
+                "retryLocalSend",
+                "cancelLocalSend",
+                "deleteLocalFailedSend"
+            )
+        val composerMutations =
+            listOf(
+                "send",
+                "inviteMention",
+                "notifyMention",
+                "attachImage",
+                "attachFile",
+                "removeAttachment",
+                "retryAttachments"
+            )
+
+        assertTrue(threadMutations.all(::threadEventRequiresWriteAccess))
+        assertTrue(composerMutations.all(::threadComposerEventRequiresWriteAccess))
+        var threadNetworkCalls = 0
+        var composerNetworkCalls = 0
+        threadMutations.forEach { action ->
+            if (threadEventAllowed(writeActionsEnabled = false, action)) threadNetworkCalls += 1
+        }
+        composerMutations.forEach { action ->
+            if (threadComposerEventAllowed(writeActionsEnabled = false, action)) composerNetworkCalls += 1
+        }
+        assertEquals(0, threadNetworkCalls)
+        assertEquals(0, composerNetworkCalls)
+        assertTrue(threadMutations.all { action -> threadEventAllowed(writeActionsEnabled = true, action) })
+        assertTrue(composerMutations.all { action -> threadComposerEventAllowed(writeActionsEnabled = true, action) })
+        assertFalse(threadEventRequiresWriteAccess("openMessageThread"))
+        assertFalse(threadEventRequiresWriteAccess("copyMessage"))
+        assertFalse(threadComposerEventRequiresWriteAccess("change"))
+
+        val gatedPayload =
+            basePayload().copy(
+                canAddMembers = true,
+                members = listOf(KuiklyThreadMemberItem(id = "u2", displayName = "Member", canRemove = true)),
+                settingsActions = listOf(KuiklyThreadSettingsAction(id = "archive")),
+                showSettingsAction = true,
+                showMessageSaveAction = true,
+                showInlineSaveAction = true,
+                showReactionActions = true,
+                showTaskStatusActions = true
+            ).withThreadWriteActionsEnabled(false)
+        assertFalse(gatedPayload.canAddMembers)
+        assertFalse(gatedPayload.members.single().canRemove)
+        assertEquals(emptyList(), gatedPayload.settingsActions)
+        assertFalse(gatedPayload.showSettingsAction)
+        assertFalse(gatedPayload.showMessageSaveAction)
+        assertFalse(gatedPayload.showInlineSaveAction)
+        assertFalse(gatedPayload.showReactionActions)
+        assertFalse(gatedPayload.showTaskStatusActions)
+
+        val gatedTimeline =
+            basePayload().toThreadTimelineSlice().copy(canConvertMessagesToTasks = true)
+                .withThreadWriteActionsEnabled(false)
+        assertFalse(gatedTimeline.showMessageSaveAction)
+        assertFalse(gatedTimeline.showInlineSaveAction)
+        assertFalse(gatedTimeline.showReactionActions)
+        assertFalse(gatedTimeline.showTaskStatusActions)
+        assertFalse(gatedTimeline.canConvertMessagesToTasks)
+    }
+
+    @Test
+    fun mountedAttachmentCommentWritesRecheckCurrentAuthorityBeforeApiCall() = runBlocking {
+        val api = FakeThreadApi()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        var writeActionsEnabled = true
+        val mountedDialog =
+            ThreadAttachmentCommentsDialogState(
+                attachment = KuiklyThreadAttachmentItem(id = "attachment-1", name = "notes.txt"),
+                status = "loaded",
+                draft = "comment"
+            )
+
+        assertNotNull(mountedDialog.retainForThreadWriteAuthority(writeActionsEnabled))
+        writeActionsEnabled = false
+        assertNull(mountedDialog.retainForThreadWriteAuthority(writeActionsEnabled))
+
+        val blockedSend =
+            runThreadWriteActionIfEnabled(
+                writeActionsEnabled = { writeActionsEnabled },
+                blockedCode = "thread_attachment_comment_write_disabled"
+            ) {
+                dataSource.sendAttachmentComment("attachment-1", "comment")
+            }
+        val blockedResolve =
+            runThreadWriteActionIfEnabled(
+                writeActionsEnabled = { writeActionsEnabled },
+                blockedCode = "thread_attachment_comment_write_disabled"
+            ) {
+                dataSource.setMessageReaction("comment-1", "✅", selected = true)
+            }
+        assertTrue(blockedSend is DataResult.Error)
+        assertTrue(blockedResolve is DataResult.Error)
+        assertEquals(emptyList(), api.sentAttachmentComments)
+        assertEquals(emptyList(), api.addedReactions)
+
+        writeActionsEnabled = true
+        assertTrue(
+            runThreadWriteActionIfEnabled(
+                writeActionsEnabled = { writeActionsEnabled },
+                blockedCode = "thread_attachment_comment_write_disabled"
+            ) {
+                dataSource.sendAttachmentComment("attachment-1", "comment")
+            } is DataResult.Content
+        )
+        assertTrue(
+            runThreadWriteActionIfEnabled(
+                writeActionsEnabled = { writeActionsEnabled },
+                blockedCode = "thread_attachment_comment_write_disabled"
+            ) {
+                dataSource.setMessageReaction("comment-1", "✅", selected = true)
+            } is DataResult.Content
+        )
+        assertEquals(listOf("attachment-1" to "comment"), api.sentAttachmentComments)
+        assertEquals(listOf("comment-1" to "✅"), api.addedReactions)
+    }
+
     @Test
     fun channelProfileUpdateAppliesCanonicalResponseAndPublishesHomeProjection() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
@@ -541,6 +683,67 @@ class SharedThreadStoreTest {
         assertEquals("server two", (second as SharedThreadMessageResolution.Loaded).message.body)
         assertEquals("server one", store.get(ServerId("server-1"), channel, messageId)?.body)
         assertEquals("server two", store.get(ServerId("server-2"), channel, messageId)?.body)
+    }
+
+    @Test
+    fun sharedThreadMessageStoreSeparatesSameMessageIdentityAcrossEnvironmentAndPrincipalScopes() = runBlocking {
+        val store = SharedThreadMessageStore()
+        val channel = ChannelId("channel-1")
+        val messageId = MessageId("m1")
+        val prodAccountOne = "https://prod.example.test\u001faccount-1\u001fserver-1"
+        val prodAccountTwo = "https://prod.example.test\u001faccount-2\u001fserver-1"
+        val stagingAccountOne = "https://staging.example.test\u001faccount-1\u001fserver-1"
+
+        store.upsertScoped(
+            prodAccountOne,
+            channel,
+            message(threadId = "channel-1", id = "m1", seq = 1, body = "prod account one")
+        )
+        store.upsertScoped(
+            prodAccountTwo,
+            channel,
+            message(threadId = "channel-1", id = "m1", seq = 1, body = "prod account two")
+        )
+        store.upsertScoped(
+            stagingAccountOne,
+            channel,
+            message(threadId = "channel-1", id = "m1", seq = 1, body = "staging account one")
+        )
+
+        assertEquals("prod account one", store.getScoped(prodAccountOne, channel, messageId)?.body)
+        assertEquals("prod account two", store.getScoped(prodAccountTwo, channel, messageId)?.body)
+        assertEquals("staging account one", store.getScoped(stagingAccountOne, channel, messageId)?.body)
+    }
+
+    @Test
+    fun sharedThreadMessageStoreDoesNotShareInFlightParentFetchAcrossPrincipalScopes() = runBlocking {
+        val store = SharedThreadMessageStore()
+        val channel = ChannelId("channel-1")
+        val messageId = MessageId("m1")
+        val releaseAccountOne = CompletableDeferred<Unit>()
+        var fetchCount = 0
+        val accountOne =
+            async {
+                store.resolveScoped("prod\u001faccount-1\u001fserver-1", channel, messageId) {
+                    fetchCount += 1
+                    releaseAccountOne.await()
+                    SharedThreadMessageResolution.Loaded(
+                        message(threadId = "channel-1", id = "m1", seq = 1, body = "account one")
+                    )
+                }
+            }
+        val accountTwo =
+            store.resolveScoped("prod\u001faccount-2\u001fserver-1", channel, messageId) {
+                fetchCount += 1
+                SharedThreadMessageResolution.Loaded(
+                    message(threadId = "channel-1", id = "m1", seq = 1, body = "account two")
+                )
+            }
+        releaseAccountOne.complete(Unit)
+
+        assertEquals("account one", (accountOne.await() as SharedThreadMessageResolution.Loaded).message.body)
+        assertEquals("account two", (accountTwo as SharedThreadMessageResolution.Loaded).message.body)
+        assertEquals(2, fetchCount)
     }
 
     @Test
@@ -1871,18 +2074,25 @@ class SharedThreadStoreTest {
     fun startRendersCachedReplyParentContentBeforeReplyNetworkFetch() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val messageStore = SharedThreadMessageStore()
-        messageStore.upsert(
-            ServerId("server-1"),
-            ChannelId("channel-1"),
-            message(threadId = "channel-1", id = "m1", seq = 1, body = "stored parent body")
-        )
         val api = FakeThreadApi(bodyText = messagesResponse("reply body"))
         val dataSource =
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                messageStore = messageStore
+                messageStore = messageStore,
+                cacheEnvironmentIdProvider = { "https://prod.example.test" },
+                replyCacheIdentityAuthority = testReplyCacheIdentityAuthority(
+                    sessionProvider = { sampleSession() }
+                )
             )
+        val provenance = requireNotNull(dataSource.captureReplyCacheProducerContext()).provenance
+        dataSource.rememberReplyParentCandidate(
+            provenance = provenance,
+            serverId = "server-1",
+            parentChannelId = "channel-1",
+            parentMessage = contentPayload("stored parent body").messages.single(),
+            threadChannelId = "thread-m1"
+        )
         val route = unresolvedReplyPayload(parentMessageId = "m1")
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
@@ -2622,6 +2832,7 @@ class SharedThreadStoreTest {
         assertTrue(resolvedFrame.payload.joined)
         assertTrue(resolvedFrame.payload.canSend)
         assertTrue(resolvedFrame.payload.composer.enabled)
+        assertTrue(resolvedFrame.writeActionsEnabled)
         assertEquals(1, channelRepository.homeCalls)
         assertFalse(
             renderEvents.any { slice ->
@@ -2795,6 +3006,7 @@ class SharedThreadStoreTest {
         assertFalse(resolvedFrame.payload.joined)
         assertFalse(resolvedFrame.payload.canSend)
         assertFalse(resolvedFrame.payload.composer.enabled)
+        assertTrue(resolvedFrame.writeActionsEnabled)
         assertEquals(1, channelRepository.homeCalls)
         assertFalse(
             renderEvents.any { slice ->
@@ -2881,6 +3093,7 @@ class SharedThreadStoreTest {
         assertFalse(resolvedFrame.payload.joined)
         assertFalse(resolvedFrame.payload.canSend)
         assertFalse(resolvedFrame.payload.composer.enabled)
+        assertTrue(resolvedFrame.writeActionsEnabled)
         assertFalse(
             renderEvents.any { slice ->
                 slice.accessResolution == ThreadAccessResolution.Resolved && slice.payload.joined
@@ -3109,7 +3322,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun activityReplyThreadFailsClosedWhenParentAccessLookupTimesOut() = runBlocking {
+    fun activityReplyThreadUsesLoadedParentContextWhenHomeAccessLookupTimesOut() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val route = activityReplyPayload(
             parentKind = ConversationKind.Channel,
@@ -3134,6 +3347,14 @@ class SharedThreadStoreTest {
                         threadSnapshot(
                             threadId = "thread-m1",
                             body = "network reply",
+                            id = "reply-1",
+                            parentMessage =
+                                message(
+                                    threadId = "channel-1",
+                                    id = "m1",
+                                    seq = 9,
+                                    body = "parent body"
+                                ),
                             conversation = replyThreadConversation(joined = false, canSend = false)
                         )
                     )
@@ -3149,33 +3370,109 @@ class SharedThreadStoreTest {
 
         store.dispatch(SharedThreadIntent.Start(route))
         withTimeout(1_500) {
-            while (store.state.value.accessResolution != ThreadAccessResolution.Error) {
+            while (!store.state.value.initialHomeAccessLookupComplete) {
                 delay(10)
             }
         }
 
-        val failedFrame = store.state.value
-        assertEquals(ThreadAccessResolution.Error, failedFrame.accessResolution)
-        assertTrue(failedFrame.initialHomeAccessLookupComplete)
-        assertTrue(failedFrame.accessResolution.shouldRenderThreadAccessRetry())
-        assertFalse(
-            failedFrame.payload.isThreadPrimaryFooterReady(
-                timelineSlice = failedFrame.timelineSlice,
-                accessResolution = failedFrame.accessResolution
-            )
-        )
-
+        val resolvedFrame = store.state.value
+        assertTrue(resolvedFrame.canonicalAccessResolved)
+        assertTrue(resolvedFrame.initialHomeAccessLookupComplete)
+        assertEquals(null, resolvedFrame.initialHomeAccessCandidate)
+        assertEquals("loaded", resolvedFrame.payload.originStatus)
+        assertEquals("m1", resolvedFrame.payload.originMessage?.id)
+        assertEquals("parent body", resolvedFrame.payload.originMessage?.body)
+        assertEquals("reply-1", resolvedFrame.payload.messages.single().id)
+        assertEquals("network reply", resolvedFrame.payload.messages.single().body)
+        assertEquals(ThreadAccessResolution.Resolved, resolvedFrame.accessResolution)
+        assertFalse(resolvedFrame.accessResolution.shouldRenderThreadAccessRetry())
+        assertFalse(resolvedFrame.payload.joined)
+        assertFalse(resolvedFrame.payload.canSend)
+        assertFalse(resolvedFrame.payload.composer.enabled)
+        assertFalse(resolvedFrame.writeActionsEnabled)
         assertEquals(1, repository.getReplyThreadRequests.size)
-        store.dispatch(SharedThreadIntent.RetryAccessResolution)
+        assertEquals(1, channelRepository.homeCalls)
+
+        store.dispatch(SharedThreadIntent.Refresh)
+        withTimeout(1_000) {
+            while (!store.state.value.writeActionsEnabled) {
+                delay(10)
+            }
+        }
+        assertEquals(ThreadAccessResolution.Resolved, store.state.value.accessResolution)
+        assertTrue(store.state.value.payload.joined)
+        assertTrue(store.state.value.payload.canSend)
+        assertTrue(store.state.value.payload.composer.enabled)
+        assertEquals(2, channelRepository.homeCalls)
+        scope.cancel()
+    }
+
+    @Test
+    fun activityReplyThreadUsesLoadedParentContextWhenHomeLookupCompletesFirstWithoutCandidate() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val route = activityReplyPayload(
+            parentKind = ConversationKind.Channel,
+            parentChannelId = "channel-1",
+            parentMessageId = "m1",
+            threadId = "thread-m1"
+        )
+        val repository =
+            FakeConversationRepository(
+                threadResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            threadId = "thread-m1",
+                            body = "network reply",
+                            id = "reply-1",
+                            parentMessage =
+                                message(
+                                    threadId = "channel-1",
+                                    id = "m1",
+                                    seq = 9,
+                                    body = "parent body"
+                                ),
+                            conversation = replyThreadConversation(joined = false, canSend = false)
+                        )
+                    )
+            ).apply {
+                getReplyThreadStarted = CompletableDeferred()
+                releaseGetReplyThread = CompletableDeferred()
+            }
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository,
+                channelRepository = FakeChannelRepository { DataResult.Content(emptyHomeSnapshot()) }
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+
+        store.dispatch(SharedThreadIntent.Start(route))
+        repository.getReplyThreadStarted?.await()
+        withTimeout(1_000) {
+            while (!store.state.value.initialHomeAccessLookupComplete) {
+                delay(10)
+            }
+        }
+        assertFalse(store.state.value.canonicalAccessResolved)
+        assertEquals(ThreadAccessResolution.Loading, store.state.value.accessResolution)
+
+        repository.releaseGetReplyThread?.complete(Unit)
         withTimeout(1_000) {
             while (store.state.value.accessResolution != ThreadAccessResolution.Resolved) {
                 delay(10)
             }
         }
-        assertEquals(2, channelRepository.homeCalls)
-        assertEquals(1, repository.getReplyThreadRequests.size)
-        assertTrue(store.state.value.payload.joined)
-        assertTrue(store.state.value.payload.composer.enabled)
+
+        val resolvedFrame = store.state.value
+        assertTrue(resolvedFrame.canonicalAccessResolved)
+        assertEquals("loaded", resolvedFrame.payload.originStatus)
+        assertEquals("m1", resolvedFrame.payload.originMessage?.id)
+        assertEquals("reply-1", resolvedFrame.payload.messages.single().id)
+        assertFalse(resolvedFrame.payload.joined)
+        assertFalse(resolvedFrame.payload.canSend)
+        assertFalse(resolvedFrame.payload.composer.enabled)
+        assertFalse(resolvedFrame.writeActionsEnabled)
         scope.cancel()
     }
 
@@ -6455,7 +6752,21 @@ class SharedThreadStoreTest {
                                         parentMessageId = MessageId("m1"),
                                         replyCount = 7,
                                         unreadCount = 2,
-                                        firstUnreadMessageId = MessageId("reply-6")
+                                        firstUnreadMessageId = MessageId("reply-6"),
+                                        latestReplies =
+                                            listOf(
+                                                ReplyPreview(
+                                                    messageId = "reply-6",
+                                                    seq = 6,
+                                                    content = "first unread",
+                                                    senderId = "u2",
+                                                    senderType = "human",
+                                                    senderName = "cindy",
+                                                    senderAvatarUrl = null,
+                                                    createdAt = "2026-05-19T16:06:00Z",
+                                                    senderDisplayName = "Cindy",
+                                                )
+                                            )
                                     )
                                 ),
                             followedThreadKeys = setOf("thread:m1")
@@ -6486,6 +6797,8 @@ class SharedThreadStoreTest {
         assertEquals(7, message.replyCount)
         assertEquals(2, message.unreadReplyCount)
         assertEquals("reply-6", message.firstUnreadReplyMessageId)
+        assertEquals(listOf("reply-6"), message.inlineReplies?.replies?.map { it.messageId })
+        assertEquals("Cindy", message.inlineReplies?.replies?.single()?.senderDisplayName)
         assertTrue(message.isThreadFollowed)
         assertEquals(0, api.channelMessageCalls)
         scope.cancel()
@@ -7167,7 +7480,11 @@ class SharedThreadStoreTest {
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 conversationRepository = repository,
-                messageStore = messageStore
+                messageStore = messageStore,
+                cacheEnvironmentIdProvider = { "https://prod.example.test" },
+                replyCacheIdentityAuthority = testReplyCacheIdentityAuthority(
+                    sessionProvider = { sampleSession() }
+                )
             )
         val route = focusedReplyRoute()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -7538,10 +7855,14 @@ class SharedThreadStoreTest {
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 messageStore = messageStore,
-                cacheEnvironmentIdProvider = { "https://prod.example.test" }
+                cacheEnvironmentIdProvider = { "https://prod.example.test" },
+                replyCacheIdentityAuthority = testReplyCacheIdentityAuthority(
+                    sessionProvider = { sampleSession() }
+                )
             )
-        seedDataSource.readSession()
+        val provenance = requireNotNull(seedDataSource.captureReplyCacheProducerContext()).provenance
         seedDataSource.rememberReplyParentCandidate(
+            provenance = provenance,
             serverId = "server-1",
             parentChannelId = "channel-1",
             parentMessage = parent,
@@ -7586,7 +7907,10 @@ class SharedThreadStoreTest {
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 conversationRepository = repository,
                 messageStore = messageStore,
-                cacheEnvironmentIdProvider = { "https://prod.example.test" }
+                cacheEnvironmentIdProvider = { "https://prod.example.test" },
+                replyCacheIdentityAuthority = testReplyCacheIdentityAuthority(
+                    sessionProvider = { sampleSession() }
+                )
             )
         val base =
             basePayload().copy(
@@ -7609,6 +7933,242 @@ class SharedThreadStoreTest {
         assertEquals("parent body", payload.originMessage?.body)
         assertEquals("loaded", payload.originStatus)
         assertEquals(listOf("reply body"), payload.messages.map { it.body })
+    }
+
+    @Test
+    fun replyParentContextStoreDoesNotReuseSameUuidAcrossPrincipals() = runBlocking {
+        val messageStore = SharedThreadMessageStore()
+        val environmentId = "https://prod.example.test"
+        val accountOneDataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+                sessionStore = InMemorySlockAuthSessionStore(replyResolutionSession("account-1")),
+                messageStore = messageStore,
+                cacheEnvironmentIdProvider = { environmentId },
+                replyCacheIdentityAuthority = testReplyCacheIdentityAuthority(
+                    sessionProvider = { replyResolutionSession("account-1") },
+                    environmentProvider = { environmentId },
+                )
+            )
+        val provenance = requireNotNull(accountOneDataSource.captureReplyCacheProducerContext()).provenance
+        accountOneDataSource.rememberReplyParentCandidate(
+            provenance = provenance,
+            serverId = "server-a",
+            parentChannelId = "channel-1",
+            parentMessage = contentPayload("account one parent").messages.single(),
+            threadChannelId = "thread-m1"
+        )
+
+        val accountTwoParent = message(threadId = "channel-1", id = "m1", seq = 1, body = "account two parent")
+        val accountTwoRepository =
+            FakeConversationRepository(
+                threadResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            threadId = "thread-m1",
+                            messages =
+                                listOf(
+                                    message(
+                                        threadId = "thread-m1",
+                                        id = "reply-1",
+                                        seq = 2,
+                                        body = "account two reply"
+                                    )
+                                ),
+                            parentMessage = null,
+                            conversation = replyThreadConversation(joined = false, canSend = false)
+                        )
+                    ),
+                messageContextResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            threadId = "channel-1",
+                            messages = listOf(accountTwoParent),
+                            parentMessage = accountTwoParent
+                        )
+                    )
+            )
+        val accountTwoDataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+                sessionStore = InMemorySlockAuthSessionStore(replyResolutionSession("account-2")),
+                conversationRepository = accountTwoRepository,
+                messageStore = messageStore,
+                cacheEnvironmentIdProvider = { environmentId },
+                replyCacheIdentityAuthority = testReplyCacheIdentityAuthority(
+                    sessionProvider = { replyResolutionSession("account-2") },
+                    environmentProvider = { environmentId },
+                )
+            )
+        val route =
+            activityReplyPayload(
+                parentKind = ConversationKind.Channel,
+                parentChannelId = "channel-1",
+                parentMessageId = "m1",
+                threadId = "thread-m1"
+            )
+
+        val payload =
+            (accountTwoDataSource.fetchThreadPayload(route, persistResult = false) as DataResult.Content).data
+
+        assertTrue(MessageId("m1") in accountTwoRepository.getMessageContextRequests)
+        assertEquals("account two parent", payload.originMessage?.body)
+        assertEquals(listOf("account two reply"), payload.messages.map { it.body })
+    }
+
+    @Test
+    fun replyParentCompletionWritesOnlyToIdentityCapturedBeforeSuspend() = runBlocking {
+        val environmentId = "https://prod.example.test"
+        val authStore = InMemorySlockAuthSessionStore(replyResolutionSession("account-1"))
+        val messageStore = SharedThreadMessageStore()
+        val parentMessageId = MessageId("m1")
+        val parentStarted = CompletableDeferred<Unit>()
+        val releaseParent = CompletableDeferred<Unit>()
+        val accountOneParent =
+            message(threadId = "channel-1", id = parentMessageId.value, seq = 1, body = "account one parent")
+        val repository =
+            FakeConversationRepository(
+                threadResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            threadId = "thread-m1",
+                            messages =
+                                listOf(
+                                    message(
+                                        threadId = "thread-m1",
+                                        id = "reply-1",
+                                        seq = 2,
+                                        body = "account one reply"
+                                    )
+                                ),
+                            parentMessage = null,
+                            conversation = replyThreadConversation(joined = false, canSend = false)
+                        )
+                    ),
+                messageContextResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            threadId = "channel-1",
+                            messages = listOf(accountOneParent),
+                            parentMessage = accountOneParent
+                        )
+                    )
+            ).also { fake ->
+                fake.messageContextStartedById[parentMessageId] = parentStarted
+                fake.releaseMessageContextById[parentMessageId] = releaseParent
+            }
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+                sessionStore = authStore,
+                conversationRepository = repository,
+                messageStore = messageStore,
+                cacheEnvironmentIdProvider = { environmentId },
+                replyCacheIdentityAuthority = testReplyCacheIdentityAuthority(
+                    sessionProvider = authStore::readSession,
+                    environmentProvider = { environmentId },
+                )
+            )
+        val route =
+            basePayload().copy(
+                title = ThreadReplyPageTitle,
+                sourceThreadId = "thread-m1",
+                streamChannelId = "thread-m1",
+                parentChannelId = "channel-1",
+                parentMessageId = parentMessageId.value,
+                originParentMessageId = parentMessageId.value,
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                showModeTabs = false,
+                originStatus = "loading"
+            )
+
+        val accountOneFetch = async { dataSource.fetchThreadPayload(route, persistResult = false) }
+        parentStarted.await()
+        authStore.saveSession(
+            replyResolutionSession("account-2").copy(selectedServerId = "server-b")
+        )
+        dataSource.readSession()
+        releaseParent.complete(Unit)
+
+        val payload = (accountOneFetch.await() as DataResult.Content).data
+        assertEquals("account one parent", payload.originMessage?.body)
+        assertEquals("account one reply", payload.messages.single().body)
+        assertEquals(
+            "account one parent",
+            messageStore.getScoped(
+                "$environmentId\u001faccount-1\u001fserver-a\u001f1",
+                ChannelId("channel-1"),
+                parentMessageId
+            )?.body
+        )
+        assertNull(
+            messageStore.getScoped(
+                "$environmentId\u001faccount-2\u001fserver-b\u001f2",
+                ChannelId("channel-1"),
+                parentMessageId
+            )
+        )
+    }
+
+    @Test
+    fun replyParentCandidateRejectsStaleProducerAfterIdentityPublication() = runBlocking {
+        val environmentId = "https://prod.example.test"
+        val authStore = InMemorySlockAuthSessionStore(replyResolutionSession("account-1"))
+        val messageStore = SharedThreadMessageStore()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+                sessionStore = authStore,
+                messageStore = messageStore,
+                cacheEnvironmentIdProvider = { environmentId },
+                replyCacheIdentityAuthority = testReplyCacheIdentityAuthority(
+                    sessionProvider = authStore::readSession,
+                    environmentProvider = { environmentId },
+                )
+            )
+        val provenance = requireNotNull(dataSource.captureReplyCacheProducerContext()).provenance
+        authStore.saveSession(
+            replyResolutionSession("account-2").copy(selectedServerId = "server-b")
+        )
+        dataSource.readSession()
+
+        val accepted = dataSource.rememberReplyParentCandidate(
+            provenance = provenance,
+            serverId = "server-a",
+            parentChannelId = "channel-1",
+            parentMessage = contentPayload("account one parent").messages.single(),
+            threadChannelId = "thread-m1"
+        )
+
+        assertFalse(accepted)
+        assertNull(
+            messageStore.getScoped(
+                "$environmentId\u001faccount-1\u001fserver-a\u001f1",
+                ChannelId("channel-1"),
+                MessageId("m1")
+            )
+        )
+        assertNull(
+            messageStore.getScoped(
+                "$environmentId\u001faccount-2\u001fserver-b\u001f2",
+                ChannelId("channel-1"),
+                MessageId("m1")
+            )
+        )
+        assertNull(
+            messageStore.getScoped(
+                "$environmentId\u001faccount-1\u001fserver-b\u001f1",
+                ChannelId("channel-1"),
+                MessageId("m1")
+            )
+        )
+        assertNull(
+            messageStore.getScoped(
+                "$environmentId\u001faccount-2\u001fserver-a\u001f2",
+                ChannelId("channel-1"),
+                MessageId("m1")
+            )
+        )
     }
 
     @Test
@@ -7684,7 +8244,12 @@ class SharedThreadStoreTest {
                 selectedServerStore = selectedServerStore,
                 conversationRepository = repository,
                 messageStore = messageStore,
-                cacheEnvironmentIdProvider = { environmentId }
+                cacheEnvironmentIdProvider = { environmentId },
+                replyCacheIdentityAuthority = testReplyCacheIdentityAuthority(
+                    sessionProvider = authStore::readSession,
+                    environmentProvider = { environmentId },
+                    serverIdProvider = { _ -> selectedServerStore.selectedServerId.value },
+                )
             )
 
         repository.configureReplyThread("thread-a", parent.id)
@@ -7717,7 +8282,12 @@ class SharedThreadStoreTest {
                 selectedServerStore = selectedServerStore,
                 conversationRepository = repository,
                 messageStore = messageStore,
-                cacheEnvironmentIdProvider = { environmentId }
+                cacheEnvironmentIdProvider = { environmentId },
+                replyCacheIdentityAuthority = testReplyCacheIdentityAuthority(
+                    sessionProvider = authStore::readSession,
+                    environmentProvider = { environmentId },
+                    serverIdProvider = { _ -> selectedServerStore.selectedServerId.value },
+                )
             )
         assertEquals(
             "thread-account-2",
@@ -7733,7 +8303,12 @@ class SharedThreadStoreTest {
                 selectedServerStore = selectedServerStore,
                 conversationRepository = repository,
                 messageStore = messageStore,
-                cacheEnvironmentIdProvider = { environmentId }
+                cacheEnvironmentIdProvider = { environmentId },
+                replyCacheIdentityAuthority = testReplyCacheIdentityAuthority(
+                    sessionProvider = authStore::readSession,
+                    environmentProvider = { environmentId },
+                    serverIdProvider = { _ -> selectedServerStore.selectedServerId.value },
+                )
             )
         assertEquals(
             "thread-staging",
@@ -7769,7 +8344,11 @@ class SharedThreadStoreTest {
                 selectedServerStore = selectedServerStore,
                 conversationRepository = repository,
                 messageStore = SharedThreadMessageStore(),
-                cacheEnvironmentIdProvider = { "https://prod.example.test" }
+                cacheEnvironmentIdProvider = { "https://prod.example.test" },
+                replyCacheIdentityAuthority = testReplyCacheIdentityAuthority(
+                    sessionProvider = authStore::readSession,
+                    serverIdProvider = { _ -> selectedServerStore.selectedServerId.value },
+                )
             )
         val base = contentPayload("parent body")
         val parent = base.messages.single()
@@ -9603,7 +10182,19 @@ class SharedThreadStoreTest {
                     lastReplyAt = "2026-05-19T16:10:00Z",
                     participantIds = emptyList(),
                     unreadCount = 2,
-                    firstUnreadMessageId = MessageId("reply-2")
+                    firstUnreadMessageId = MessageId("reply-2"),
+                    latestReply =
+                        ReplyPreview(
+                            messageId = "reply-2",
+                            seq = 2,
+                            content = "latest reply",
+                            senderId = "agent-1",
+                            senderType = "agent",
+                            senderName = "MingQi",
+                            senderAvatarUrl = null,
+                            createdAt = "2026-05-19T16:10:00Z",
+                            senderDisplayName = "明启",
+                        )
                 )
             )
         )
@@ -9626,6 +10217,8 @@ class SharedThreadStoreTest {
         assertEquals(3, message.replyCount)
         assertEquals(2, message.unreadReplyCount)
         assertEquals("reply-2", message.firstUnreadReplyMessageId)
+        assertEquals(listOf("reply-2"), message.inlineReplies?.replies?.map { it.messageId })
+        assertEquals("明启", message.inlineReplies?.replies?.single()?.senderDisplayName)
         assertEquals("Todo", message.taskStatus)
         assertEquals("Old task", store.state.value.payload.tasks.single().title)
         assertEquals("Todo", store.state.value.payload.tasks.single().status)
@@ -9765,6 +10358,22 @@ class SharedThreadStoreTest {
         assertEquals(listOf("channel-1" to 10L), api.readSeqRequests)
         assertTrue(api.readAllChannels.isEmpty())
         scope.cancel()
+    }
+
+    @Test
+    fun inlineReplyScopeOpenReadUsesCanonicalReadAllWhenPreviewIsBounded() = runBlocking {
+        val api = FakeThreadApi(failChannelMessages = true).also { it.failReadAll = false }
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+            )
+
+        val result = dataSource.markVisibleChannelRead("reply-thread", latestSeq = null)
+
+        assertTrue(result is DataResult.Content)
+        assertEquals(listOf("reply-thread"), api.readAllChannels)
+        assertTrue(api.readSeqRequests.isEmpty())
     }
 
     @Test
@@ -10691,7 +11300,11 @@ class SharedThreadStoreTest {
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 conversationRepository = repository,
-                messageStore = messageStore
+                messageStore = messageStore,
+                cacheEnvironmentIdProvider = { "https://prod.example.test" },
+                replyCacheIdentityAuthority = testReplyCacheIdentityAuthority(
+                    sessionProvider = { sampleSession() }
+                )
             )
         val base =
             basePayload().copy(
@@ -10706,6 +11319,7 @@ class SharedThreadStoreTest {
                 originStatus = "loading"
             )
 
+        dataSource.readSession()
         val payload = (dataSource.fetchThreadPayload(base, persistResult = false) as DataResult.Content).data
 
         assertEquals("parent body", payload.originMessage?.body)
@@ -10715,7 +11329,11 @@ class SharedThreadStoreTest {
         assertEquals(listOf(MessageId("m1")), repository.getMessageContextRequests)
         assertEquals(
             "parent body",
-            messageStore.get(ServerId("server-1"), ChannelId("channel-1"), MessageId("m1"))?.body
+            messageStore.getScoped(
+                "https://prod.example.test\u001fu1\u001fserver-1\u001f1",
+                ChannelId("channel-1"),
+                MessageId("m1")
+            )?.body
         )
     }
 
@@ -10723,7 +11341,6 @@ class SharedThreadStoreTest {
     fun fetchThreadPayloadReusesStoredReplyOriginMessageBeforeNetworkContext() = runBlocking {
         val canonicalParent = message(threadId = "channel-1", id = "m1", seq = 1, body = "stored parent body")
         val messageStore = SharedThreadMessageStore()
-        messageStore.upsert(ServerId("server-1"), ChannelId("channel-1"), canonicalParent)
         val repository =
             FakeConversationRepository(
                 threadResult =
@@ -10755,8 +11372,18 @@ class SharedThreadStoreTest {
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 conversationRepository = repository,
-                messageStore = messageStore
+                messageStore = messageStore,
+                cacheEnvironmentIdProvider = { "https://prod.example.test" },
+                replyCacheIdentityAuthority = testReplyCacheIdentityAuthority(
+                    sessionProvider = { sampleSession() }
+                )
             )
+        dataSource.readSession()
+        messageStore.upsertScoped(
+            "https://prod.example.test\u001fu1\u001fserver-1\u001f1",
+            ChannelId("channel-1"),
+            canonicalParent
+        )
         val base =
             basePayload().copy(
                 title = ThreadReplyPageTitle,
@@ -12015,6 +12642,7 @@ class SharedThreadStoreTest {
         val updatedTaskStatuses: MutableList<Pair<String, TaskStatus>> = mutableListOf()
         val createdThreads: MutableList<Pair<String, String>> = mutableListOf()
         val mentionActionRequests: MutableList<Pair<String, List<String>>> = mutableListOf()
+        val sentAttachmentComments: MutableList<Pair<String, String>> = mutableListOf()
         val bodyTextByThreadId: MutableMap<String, String> = mutableMapOf()
         val channelMessagesStartedByThreadId: MutableMap<String, CompletableDeferred<Unit>> = mutableMapOf()
         val releaseChannelMessagesByThreadId: MutableMap<String, CompletableDeferred<Unit>> = mutableMapOf()
@@ -12099,8 +12727,10 @@ class SharedThreadStoreTest {
         override suspend fun attachmentComments(attachmentId: String): HomeNetworkResponse =
             HomeNetworkResponse(code = 200, bodyText = """{"comments":[],"threadChannelId":"comments-$attachmentId"}""")
 
-        override suspend fun sendAttachmentComment(attachmentId: String, body: String): HomeNetworkResponse =
-            HomeNetworkResponse(code = 200, bodyText = """{"ok":true}""")
+        override suspend fun sendAttachmentComment(attachmentId: String, body: String): HomeNetworkResponse {
+            sentAttachmentComments += attachmentId to body
+            return HomeNetworkResponse(code = 200, bodyText = """{"ok":true}""")
+        }
 
         override suspend fun markChannelReadAll(channelId: String): HomeNetworkResponse {
             activeReadAllCalls += 1
@@ -13349,6 +13979,26 @@ class SharedThreadStoreTest {
                     StoredAuthServer(id = "server-b", name = "Server B", slug = "server-b")
                 )
         )
+
+    private fun testReplyCacheIdentityAuthority(
+        sessionProvider: suspend () -> StoredAuthSession?,
+        environmentProvider: () -> String = { "https://prod.example.test" },
+        serverIdProvider: (StoredAuthSession) -> String? = { it.currentServerId },
+    ): suspend () -> ThreadReplyCacheIdentitySnapshot? = {
+        sessionProvider()?.let { session ->
+            val environmentId = environmentProvider().trim().trimEnd('/')
+            val principalId = session.user.id.trim()
+            val serverId = serverIdProvider(session)?.trim().orEmpty()
+            ThreadReplyCacheIdentitySnapshot(
+                session = session.copy(selectedServerId = serverId),
+                environmentId = environmentId,
+                principalId = principalId,
+                serverId = serverId,
+                authGeneration = 0L,
+                selectionGeneration = 0L,
+            )
+        }
+    }
 
     private fun member(id: String, name: String): MemberProfile =
         MemberProfile(

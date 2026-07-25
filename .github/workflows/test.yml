@@ -104,6 +104,9 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      - name: Apply Gradle cache policy
+        uses: ./.github/actions/gradle-cache-policy
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
 
@@ -230,6 +233,9 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+
+      - name: Apply Gradle cache policy
+        uses: ./.github/actions/gradle-cache-policy
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
@@ -439,6 +445,9 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      - name: Apply Gradle cache policy
+        uses: ./.github/actions/gradle-cache-policy
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
         with:
@@ -613,6 +622,8 @@ jobs:
             adb shell am instrument -w -r -e class build.raft.app.shared.SlockComposerFirstCharacterBaselineTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner > first-character-baseline-instrumentation.txt
             cat first-character-baseline-instrumentation.txt
             scripts/ci/assert-instrumentation-ok.sh first-character-baseline-instrumentation.txt 1
+            adb shell am instrument -w -r -e class build.raft.app.shared.KuiklyProfilerRuntimeSmokeTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner | tee kuikly-profiler-runtime-smoke-instrumentation.txt
+            scripts/ci/assert-instrumentation-ok.sh kuikly-profiler-runtime-smoke-instrumentation.txt 1
             adb install -r "$(find android-shared-atomic-sink-test-apk -type f -name '*.apk' | head -n 1)"
             adb shell pm list instrumentation | tee attachment-atomic-sink-instrumentation.txt
             grep -Fq 'instrumentation:build.raft.app.shared.test/androidx.test.runner.AndroidJUnitRunner' attachment-atomic-sink-instrumentation.txt
@@ -638,6 +649,8 @@ jobs:
             scripts/ci/assert-instrumentation-ok.sh child-page-visibility-instrumentation.txt 1
             adb shell am instrument -w -r -e class build.raft.app.shared.SlockPagerScrollProbeConnectedTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner | tee pager-scroll-probe-instrumentation.txt
             scripts/ci/assert-instrumentation-ok.sh pager-scroll-probe-instrumentation.txt 1
+            adb shell am instrument -w -r -e class build.raft.app.shared.SlockReleaseNotesSectionGapConnectedTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner | tee release-notes-section-gap-instrumentation.txt
+            scripts/ci/assert-instrumentation-ok.sh release-notes-section-gap-instrumentation.txt 1
             adb shell am instrument -w -r -e class build.raft.app.core.data.diagnostics.DiagnosticsCallerPipelineConnectedTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner | tee diagnostics-caller-pipeline-instrumentation.txt
             scripts/ci/assert-instrumentation-ok.sh diagnostics-caller-pipeline-instrumentation.txt 1
             adb shell am instrument -w -r -e class build.raft.app.data.DurablePartitionAndroidDriverMigrationTest build.raft.app.shared.test/androidx.test.runner.AndroidJUnitRunner | tee durable-partition-migration-instrumentation.txt
@@ -661,11 +674,13 @@ jobs:
           name: first-character-baseline-instrumentation
           path: |
             first-character-baseline-instrumentation.txt
+            kuikly-profiler-runtime-smoke-instrumentation.txt
             attachment-atomic-sink-instrumentation.txt
             attachment-download-runtime-instrumentation.txt
             performance-trace-feedback-instrumentation.txt
             child-page-visibility-instrumentation.txt
             pager-scroll-probe-instrumentation.txt
+            release-notes-section-gap-instrumentation.txt
             diagnostics-caller-pipeline-instrumentation.txt
             durable-partition-migration-instrumentation.txt
             thread-newer-auto-pagination-instrumentation.txt
@@ -778,6 +793,9 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+
+      - name: Apply Gradle cache policy
+        uses: ./.github/actions/gradle-cache-policy
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
@@ -895,6 +913,9 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+
+      - name: Apply Gradle cache policy
+        uses: ./.github/actions/gradle-cache-policy
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
@@ -1079,6 +1100,9 @@ jobs:
       # zstd (actions/cache compression fingerprint) and curl (the SQLite
       # amalgamation download in prepare_ohos_sqlite_provider.sh) are now baked
       # into harmonyos-ci-image, so the per-run apt-get install is gone.
+      - name: Apply Gradle cache policy
+        uses: ./.github/actions/gradle-cache-policy
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
 

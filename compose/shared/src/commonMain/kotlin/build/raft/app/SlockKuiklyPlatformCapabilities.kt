@@ -27,8 +27,8 @@ internal expect fun slockPlatformUsesNativeVideoController(): Boolean
 
 internal expect fun slockPlatformSupportsPushPreviewPrivacySetting(): Boolean
 
-// iOS exposes a PhotoKit add-only host capability for sent image attachments. Android/OHOS keep
-// their existing Downloads/Files action and must not show an inert "Save to Photos" entry.
+// Each host owns its system gallery implementation: Android MediaStore Images, iOS PhotoKit
+// add-only, and OHOS PhotoAccessHelper. Shared exposes one typed sent-image action/result contract.
 internal expect fun slockPlatformSupportsSaveImageToPhotos(): Boolean
 
 // task #90: each platform is a separate Quiver app with its own release

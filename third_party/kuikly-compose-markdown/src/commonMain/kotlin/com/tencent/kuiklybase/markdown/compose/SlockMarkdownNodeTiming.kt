@@ -174,7 +174,13 @@ internal class SlockMarkdownRenderTiming(
         }
     }
 
-    fun finishRender(renderNodesUs: Long) {
+    /**
+     * Returns true when this render's attribution is VALID (no aborted
+     * frames). Callers may use the verdict to forward per-render facts (e.g.
+     * the row census render cost) strictly on the valid path — invalid
+     * renders yield no data anywhere, per the no-false-data contract.
+     */
+    fun finishRender(renderNodesUs: Long): Boolean {
         // Reviewed no-false-data contract: frames left open by an abandoned
         // pass must NOT be synthesized into durations. If any frame is still
         // open, the whole render's attribution is discarded — only an
@@ -186,7 +192,7 @@ internal class SlockMarkdownRenderTiming(
                 "SlockMarkdownSpike phase=markdown.node.reconcile renderSeq=$renderSeq " +
                     "invalid=1 abortedFrames=$abortedFrames renderNodesUs=$renderNodesUs"
             )
-            return
+            return false
         }
         for ((typeKey, s) in summaries) {
             sink.emit(
@@ -203,6 +209,7 @@ internal class SlockMarkdownRenderTiming(
                 "remainderUs=$remainderUs detailDropped=$detailDropped abortedFrames=0 " +
                 "annotatedStringHits=$annotatedStringHits annotatedStringRebuilds=$annotatedStringRebuilds"
         )
+        return true
     }
 }
 
@@ -299,3 +306,19 @@ internal fun slockMarkdownAnnotatedStringMemoKeys(
     } else {
         arrayOf(content, node, style, annotatorSettings, revision)
     }
+
+/**
+ * Per-row render-cost sink for the host's plain-candidate census (task #20
+ * Option B P1 v2, reviewed). MarkdownSuccess forwards renderNodesUs here
+ * STRICTLY on the valid finishRender path — invalid/aborted renders forward
+ * nothing (no-false-data). The host provides a per-row token that buffers the
+ * cost as a pending value and only commits it to the per-open collector when
+ * the composition itself commits (RememberObserver.onRemembered), so an
+ * abandoned pass leaves no trace. Default null = census off = zero work.
+ */
+interface SlockMarkdownRowRenderCostSink {
+    fun recordValidRender(renderNodesUs: Long)
+}
+
+val LocalSlockMarkdownRowRenderCostSink =
+    compositionLocalOf<SlockMarkdownRowRenderCostSink?> { null }

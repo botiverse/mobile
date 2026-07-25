@@ -1364,6 +1364,19 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureThreadMessageRowInlineReplies() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.inline-replies",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-inline-replies")
+                    .put("visualFixture", "inline_replies"),
+            crop = FULL_VIEWPORT_CROP
+        )
+    }
+
+    @Test
     fun captureThreadMessageRowLongInlineCode() {
         captureKmpComponentCase(
             caseId = "components.thread.message-row.long-inline-code",
@@ -1648,6 +1661,26 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureTask797ThreadHeaderSafeArea0() {
+        captureTask797HeaderEvidence(
+            caseId = "evidence.task797.thread.safe-area-0",
+            pageName = "compose_task797_thread_header_visual",
+            safeAreaDp = 0,
+            crop = THREAD_HEADER_COMPONENT_CROP,
+        )
+    }
+
+    @Test
+    fun captureTask797ThreadHeaderSafeArea24() {
+        captureTask797HeaderEvidence(
+            caseId = "evidence.task797.thread.safe-area-24",
+            pageName = "compose_task797_thread_header_visual",
+            safeAreaDp = 24,
+            crop = THREAD_HEADER_COMPONENT_CROP,
+        )
+    }
+
+    @Test
     fun captureThreadDmAgentActivityHeader() {
         captureKmpComponentCase(
             caseId = "components.thread.dm-agent-header.activity",
@@ -1741,6 +1774,118 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureHomeSearchChannelPinMenu() {
+        captureHomeSearchEntityPinMenu(
+            caseId = "components.home.search.channel-pin-menu",
+            pageName = "compose_home_search_channel_pin_visual",
+            entityLabel = "Channel"
+        )
+    }
+
+    @Test
+    fun captureHomeSearchDmPinMenu() {
+        captureHomeSearchEntityPinMenu(
+            caseId = "components.home.search.dm-pin-menu",
+            pageName = "compose_home_search_dm_pin_visual",
+            entityLabel = "DM"
+        )
+    }
+
+    @Test
+    fun captureHomeSearchAgentPinMenu() {
+        captureHomeSearchEntityPinMenu(
+            caseId = "components.home.search.agent-pin-menu",
+            pageName = "compose_home_search_agent_pin_visual",
+            entityLabel = "Agent"
+        )
+    }
+
+    @Test
+    fun captureHomeSearchHumanPinMenu() {
+        captureHomeSearchEntityPinMenu(
+            caseId = "components.home.search.human-pin-menu",
+            pageName = "compose_home_search_human_pin_visual",
+            entityLabel = "Human"
+        )
+    }
+
+    private fun captureHomeSearchEntityPinMenu(
+        caseId: String,
+        pageName: String,
+        entityLabel: String
+    ) {
+        captureKmpComponentCase(
+            caseId = caseId,
+            pageName = pageName,
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 4_500,
+            beforeScreenshot = {
+                var before: Bitmap? = null
+                var menuOpen: Bitmap? = null
+                var selected: Bitmap? = null
+                try {
+                    dismissCompatibilityDialog()
+                    waitForIdleBounded()
+                    val activePackage =
+                        InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow?.packageName
+                    require(activePackage == "build.raft.app.connectedtest") {
+                        "Search fixture is not the active input window: package=$activePackage"
+                    }
+                    before = captureActivityScreenshot("$caseId.before")
+                    val yellowBefore = before.countThreadOpenProbeYellowSamplesInTopBand()
+                    val cyanBefore = before.countThreadChildActionProbeSamples(0x00, 0xE5, 0xFF)
+                    val duplicateBefore = before.countThreadChildActionProbeSamples(0xFF, 0x00, 0x00)
+                    longPressDisplayDp(x = 180f, y = 220f)
+                    Thread.sleep(250)
+                    waitForIdleBounded()
+                    Thread.sleep(500)
+                    menuOpen = captureActivityScreenshot("$caseId.open")
+                    val yellowMenuOpen = menuOpen.countThreadOpenProbeYellowSamplesInTopBand()
+                    val changedRatio = before.fullBitmapChangedPixelRatio(menuOpen)
+                    assertTrue(
+                        "Long-pressing an active $entityLabel search result must render the Pin menu; changedRatio=$changedRatio",
+                        changedRatio >= SEARCH_PIN_MENU_MIN_CHANGED_RATIO
+                    )
+                    assertTrue(
+                        "Long-pressing a $entityLabel row must not open it; yellowBefore=$yellowBefore yellowMenuOpen=$yellowMenuOpen",
+                        yellowMenuOpen < yellowBefore + THREAD_TAP_PROBE_MIN_ADDED_YELLOW_SAMPLES
+                    )
+
+                    tapDisplayDp(x = 240f, y = 250f)
+                    waitForIdleBounded()
+                    Thread.sleep(300)
+                    selected = captureActivityScreenshot("$caseId.selected")
+                    val yellowSelected = selected.countThreadOpenProbeYellowSamplesInTopBand()
+                    val cyanSelected = selected.countThreadChildActionProbeSamples(0x00, 0xE5, 0xFF)
+                    val duplicateSelected = selected.countThreadChildActionProbeSamples(0xFF, 0x00, 0x00)
+                    assertTrue(
+                        "Selecting the real Pin menu item must not open the $entityLabel; yellowBefore=$yellowBefore yellowSelected=$yellowSelected",
+                        yellowSelected < yellowBefore + THREAD_TAP_PROBE_MIN_ADDED_YELLOW_SAMPLES
+                    )
+                    assertTrue(
+                        "Selecting the real Pin menu item must toggle exactly once; cyanBefore=$cyanBefore cyanSelected=$cyanSelected",
+                        cyanSelected >= cyanBefore + THREAD_CHILD_ACTION_PROBE_MIN_ADDED_SAMPLES
+                    )
+                    assertTrue(
+                        "Selecting the real Pin menu item must not toggle twice; duplicateBefore=$duplicateBefore duplicateSelected=$duplicateSelected",
+                        duplicateSelected < duplicateBefore + THREAD_CHILD_ACTION_PROBE_MIN_ADDED_SAMPLES
+                    )
+
+                    Thread.sleep(1_000)
+                    waitForIdleBounded()
+                    longPressDisplayDp(x = 180f, y = 220f)
+                    waitForIdleBounded()
+                    Thread.sleep(500)
+                } finally {
+                    before?.recycle()
+                    menuOpen?.recycle()
+                    selected?.recycle()
+                }
+            }
+        )
+    }
+
+    @Test
     fun captureHomeSearchChannelDropdown() {
         captureKmpComponentCase(
             caseId = "components.home.search.channel-dropdown",
@@ -1781,12 +1926,52 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureTask797SavedHeaderSafeArea0() {
+        captureTask797HeaderEvidence(
+            caseId = "evidence.task797.saved.safe-area-0",
+            pageName = "compose_home_saved_visual",
+            safeAreaDp = 0,
+            crop = HOME_SAVED_RESULTS_CROP,
+        )
+    }
+
+    @Test
+    fun captureTask797SavedHeaderSafeArea24() {
+        captureTask797HeaderEvidence(
+            caseId = "evidence.task797.saved.safe-area-24",
+            pageName = "compose_home_saved_visual",
+            safeAreaDp = 24,
+            crop = HOME_SAVED_RESULTS_CROP,
+        )
+    }
+
+    @Test
     fun captureHomeActivityResults() {
         captureKmpComponentCase(
             caseId = "components.home.activity.results",
             pageName = "compose_home_activity_visual",
             crop = HOME_ACTIVITY_RESULTS_CROP,
             settleMs = 4_500
+        )
+    }
+
+    @Test
+    fun captureTask797ActivityHeaderSafeArea0() {
+        captureTask797HeaderEvidence(
+            caseId = "evidence.task797.activity.safe-area-0",
+            pageName = "compose_home_activity_visual",
+            safeAreaDp = 0,
+            crop = HOME_ACTIVITY_RESULTS_CROP,
+        )
+    }
+
+    @Test
+    fun captureTask797ActivityHeaderSafeArea24() {
+        captureTask797HeaderEvidence(
+            caseId = "evidence.task797.activity.safe-area-24",
+            pageName = "compose_home_activity_visual",
+            safeAreaDp = 24,
+            crop = HOME_ACTIVITY_RESULTS_CROP,
         )
     }
 
@@ -1936,6 +2121,16 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureMembersCreateAgentBuiltInDialog() {
+        captureKmpComponentCase(
+            caseId = "components.members.create-agent.builtin-dialog",
+            pageName = "compose_create_agent_builtin_dialog_visual",
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_500
+        )
+    }
+
+    @Test
     fun captureMembersAgentDetailProfile() {
         captureKmpComponentCase(
             caseId = "components.members.agent-detail.profile",
@@ -2077,6 +2272,16 @@ class KmpVisualScreenshotCaptureTest {
         captureKmpComponentCase(
             caseId = "components.channel.settings.panel",
             pageName = "compose_channel_settings_panel_visual",
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_500
+        )
+    }
+
+    @Test
+    fun captureChannelSettingsPinnedPanel() {
+        captureKmpComponentCase(
+            caseId = "components.channel.settings.pinned-panel",
+            pageName = "compose_channel_settings_pinned_panel_visual",
             crop = FULL_VIEWPORT_CROP,
             settleMs = 2_500
         )
@@ -2359,7 +2564,33 @@ class KmpVisualScreenshotCaptureTest {
     // React baselines have no device status bar, so captures must not inherit
     // the host/native top inset. Read by slockTopSafeAreaPadding().
     private fun withVisualCaptureParams(pageData: JSONObject?): JSONObject =
-        (pageData ?: JSONObject()).put("slockVisualZeroSafeArea", true)
+        (pageData ?: JSONObject()).apply {
+            if (!has("slockVisualZeroSafeArea")) {
+                put("slockVisualZeroSafeArea", true)
+            }
+        }
+
+    private fun captureTask797HeaderEvidence(
+        caseId: String,
+        pageName: String,
+        safeAreaDp: Int,
+        crop: VisualCrop,
+    ) {
+        val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
+        captureKmpComponentCase(
+            caseId = caseId,
+            pageName = pageName,
+            pageData =
+                JSONObject()
+                    .put("slockVisualZeroSafeArea", safeAreaDp == 0)
+                    .put("slockNativeSafeAreaInsetsArePixels", true)
+                    .put("safeAreaTop", safeAreaDp * density)
+                    .put("task797IncludeTopSafeArea", safeAreaDp > 0)
+                    .put("task797Refreshing", true),
+            crop = crop,
+            settleMs = 2_500,
+        )
+    }
 
     /**
      * Idle-sync with a hard wall-clock ceiling (task #362). Plain
@@ -4408,6 +4639,7 @@ class KmpVisualScreenshotCaptureTest {
         private const val THREAD_CHILD_ACTION_PROBE_TOLERANCE = 12
         private const val THREAD_CHILD_ACTION_PROBE_MIN_ADDED_SAMPLES = 100
         private const val THREAD_LONG_PRESS_MIN_CHANGED_RATIO = 0.02f
+        private const val SEARCH_PIN_MENU_MIN_CHANGED_RATIO = 0.004f
         private const val THREAD_OPEN_PROBE_TOP_BAND_FRACTION = 0.15f
         private const val FORWARD_PROBE_SWIPE_STEPS = 12
         private const val FORWARD_PROBE_SWIPE_DURATION_MS = 360L

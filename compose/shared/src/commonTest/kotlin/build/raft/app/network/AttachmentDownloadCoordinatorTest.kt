@@ -396,6 +396,36 @@ class AttachmentDownloadCoordinatorTest {
     }
 
     @Test
+    fun existingOnlyCancelWithoutAttemptDoesNotPoisonSameIdSuccessor() {
+        val transport = FakeTransport()
+        val sinks = FakeSinkFactory()
+        val observer = RecordingObserver()
+        val engine = AttachmentDownloadCoordinatorEngine(transport, sinks, nowMillis = { 1_000L })
+
+        assertEquals("missing", engine.controlExisting("download-prestart", null, "cancel"))
+        engine.start(request().copy(downloadId = "download-prestart"), observer)
+
+        assertEquals(1, sinks.created.single().beginCount)
+        assertEquals(1, transport.calls.size)
+        assertTrue(observer.results.isEmpty())
+    }
+
+    @Test
+    fun existingOnlyCancelReturnsAfterSinkCleanup() {
+        val transport = FakeTransport()
+        var abortCompleted = false
+        val sinks = FakeSinkFactory(onAbort = { abortCompleted = true })
+        val engine = AttachmentDownloadCoordinatorEngine(transport, sinks, nowMillis = { 1_000L })
+        val attemptToken = engine.start(request(), RecordingObserver())
+
+        val status = engine.controlExisting("download-1", attemptToken, "cancel")
+
+        assertEquals("cancelled", status)
+        assertTrue(abortCompleted)
+        assertEquals(1, sinks.created.single().abortCount)
+    }
+
+    @Test
     fun targetCleanupReservationRejectsNewStartsUntilHostDeletionFinishes() {
         val transport = FakeTransport()
         val sinks = FakeSinkFactory()
@@ -701,19 +731,27 @@ private class FakeTransportCall(
 private class FakeSinkFactory(
     private val beginSucceeds: Boolean = true,
     private val writeSucceeds: Boolean = true,
-    private val commitSucceeds: Boolean = true
+    private val commitSucceeds: Boolean = true,
+    private val onAbort: () -> Unit = {}
 ) : AttachmentDownloadSinkFactory {
     val created = mutableListOf<FakeSink>()
 
     override fun create(targetPath: String, attemptToken: String): AttachmentDownloadAtomicSink =
-        FakeSink(attemptToken, beginSucceeds, writeSucceeds, commitSucceeds).also(created::add)
+        FakeSink(
+            attemptToken,
+            beginSucceeds,
+            writeSucceeds,
+            commitSucceeds,
+            onAbort
+        ).also(created::add)
 }
 
 private class FakeSink(
     val attemptToken: String,
     private val beginSucceeds: Boolean,
     private val writeSucceeds: Boolean,
-    private val commitSucceeds: Boolean
+    private val commitSucceeds: Boolean,
+    private val onAbort: () -> Unit
 ) : AttachmentDownloadAtomicSink {
     var bytes = ByteArray(0)
     var commitCount = 0
@@ -738,6 +776,7 @@ private class FakeSink(
     }
 
     override fun abort() {
+        onAbort()
         abortCount += 1
     }
 }

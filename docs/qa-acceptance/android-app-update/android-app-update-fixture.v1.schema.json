@@ -1,0 +1,181 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stamp.build/schemas/android-app-update-fixture.v1.json",
+  "title": "Stamp Android app-update fixture v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "fixture_id",
+    "fixture_generation",
+    "mode",
+    "carrier",
+    "baseline",
+    "target",
+    "distribution",
+    "execution",
+    "rollback"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "kind": { "const": "android-app-update" },
+    "fixture_id": { "type": "string", "minLength": 1 },
+    "fixture_generation": { "type": "integer", "minimum": 1 },
+    "mode": { "enum": ["full-downloadmanager", "delta-sdk", "delta-corrupt-fallback"] },
+    "carrier": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "app_package",
+        "build_variant",
+        "hands_delta_update_enabled",
+        "expected_ui_states"
+      ],
+      "properties": {
+        "app_package": { "type": "string", "minLength": 1 },
+        "build_variant": { "enum": ["release", "alpha"] },
+        "hands_delta_update_enabled": { "type": "boolean" },
+        "expected_ui_states": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "baseline": { "$ref": "#/$defs/artifact" },
+    "target": { "$ref": "#/$defs/artifact" },
+    "distribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hands_app_slug",
+        "hands_channel_slug",
+        "hands_release_id",
+        "hands_build_id",
+        "hands_asset_id",
+        "scope_kind",
+        "scope_ref",
+        "activate_after",
+        "expires_at"
+      ],
+      "properties": {
+        "hands_app_slug": { "type": "string", "minLength": 1 },
+        "hands_channel_slug": { "type": "string", "minLength": 1 },
+        "hands_release_id": { "type": "string", "minLength": 1 },
+        "hands_build_id": { "type": "string", "minLength": 1 },
+        "hands_asset_id": { "type": "string", "minLength": 1 },
+        "scope_kind": { "const": "device-group" },
+        "scope_ref": { "type": "string", "minLength": 1 },
+        "activate_after": { "type": "string", "format": "date-time" },
+        "expires_at": { "type": "string", "format": "date-time" },
+        "delta_asset_id": { "type": ["string", "null"] },
+        "full_fallback_asset_id": { "type": ["string", "null"] }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required_coordinates"],
+      "properties": {
+        "required_coordinates": {
+          "const": ["android12-update-hard", "android14-update-control"]
+        }
+      }
+    },
+    "rollback": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["owner", "action", "deadline", "terminal_receipt_required"],
+      "properties": {
+        "owner": { "type": "string", "minLength": 1 },
+        "action": { "enum": ["cancel-release", "deactivate-release", "expire-scope"] },
+        "deadline": { "type": "string", "format": "date-time" },
+        "terminal_receipt_required": { "const": true }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "mode": { "const": "full-downloadmanager" } } },
+      "then": {
+        "properties": {
+          "carrier": {
+            "properties": {
+              "app_package": { "const": "build.raft.app" },
+              "build_variant": { "const": "release" },
+              "hands_delta_update_enabled": { "const": false },
+              "expected_ui_states": { "const": ["Download", "Downloading", "Retry", "Install"] }
+            }
+          },
+          "distribution": {
+            "properties": {
+              "hands_app_slug": { "const": "raft-android" },
+              "hands_channel_slug": { "const": "debug" },
+              "delta_asset_id": { "const": null },
+              "full_fallback_asset_id": { "const": null }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "mode": { "enum": ["delta-sdk", "delta-corrupt-fallback"] } } },
+      "then": {
+        "properties": {
+          "carrier": {
+            "properties": {
+              "app_package": { "const": "build.raft.app.alpha" },
+              "build_variant": { "const": "alpha" },
+              "hands_delta_update_enabled": { "const": true },
+              "expected_ui_states": { "const": ["Installing"] }
+            }
+          },
+          "distribution": {
+            "properties": {
+              "hands_app_slug": { "const": "raft-android-alpha-delta" },
+              "hands_channel_slug": { "const": "alpha-delta" }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_commit",
+        "build_run_id",
+        "artifact_id",
+        "artifact_ref",
+        "apk_sha256",
+        "size_bytes",
+        "package_id",
+        "version_name",
+        "version_code",
+        "signer_lineage_sha256"
+      ],
+      "properties": {
+        "source_commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "build_run_id": { "type": "string", "minLength": 1 },
+        "artifact_id": { "type": "string", "minLength": 1 },
+        "artifact_ref": { "type": "string", "minLength": 1 },
+        "apk_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "size_bytes": { "type": "integer", "minimum": 1 },
+        "package_id": { "type": "string", "minLength": 1 },
+        "version_name": { "type": "string", "minLength": 1 },
+        "version_code": { "type": "integer", "minimum": 1 },
+        "signer_lineage_sha256": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "Ordered oldest-to-current signer lineage; the target lineage must have the baseline lineage as a prefix.",
+          "items": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        }
+      }
+    }
+  }
+}

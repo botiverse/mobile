@@ -1,6 +1,7 @@
 package build.raft.app
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -45,7 +46,6 @@ internal data class ThreadInlineVideoPreviewUiState(
 )
 
 internal enum class ThreadInlineVideoRenderMode {
-    AwaitingUser,
     Loading,
     Ready,
     Error
@@ -53,7 +53,7 @@ internal enum class ThreadInlineVideoRenderMode {
 
 internal fun ThreadInlineVideoPreviewUiState?.renderMode(): ThreadInlineVideoRenderMode =
     when (this?.status) {
-        null -> ThreadInlineVideoRenderMode.AwaitingUser
+        null -> ThreadInlineVideoRenderMode.Loading
         ThreadInlineVideoPreviewStatus.Loading -> ThreadInlineVideoRenderMode.Loading
         ThreadInlineVideoPreviewStatus.Ready ->
             if (url.isBlank()) ThreadInlineVideoRenderMode.Error else ThreadInlineVideoRenderMode.Ready
@@ -84,12 +84,17 @@ internal val LocalThreadInlineVideoPreviewHost =
 internal fun ThreadInlineVideoAttachmentCard(
     attachment: KuiklyThreadAttachmentItem,
     commentsEnabled: Boolean,
-    onOpenPreview: () -> Unit,
     onOpenComments: () -> Unit
 ) {
     val host = LocalThreadInlineVideoPreviewHost.current
     val previewState = host?.states?.get(attachment.id)
     val canOpenComments = commentsEnabled
+
+    LaunchedEffect(attachment.id, host != null) {
+        if (previewState == null) {
+            host?.requestPreview?.invoke(attachment.id, false)
+        }
+    }
 
     Column(
         modifier = Modifier.fillMaxWidth().widthIn(max = 360.dp),
@@ -106,9 +111,7 @@ internal fun ThreadInlineVideoAttachmentCard(
                 attachment = attachment,
                 previewState = previewState,
                 previewEnabled = host != null,
-                onRequestPreview = { host?.requestPreview?.invoke(attachment.id, false) },
-                onRetry = { host?.requestPreview?.invoke(attachment.id, true) },
-                onOpenPreview = onOpenPreview
+                onRetry = { host?.requestPreview?.invoke(attachment.id, true) }
             )
             Column(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = SlockSpacing.Sm, vertical = SlockSpacing.Xs),
@@ -153,9 +156,7 @@ private fun ThreadInlineVideoSurface(
     attachment: KuiklyThreadAttachmentItem,
     previewState: ThreadInlineVideoPreviewUiState?,
     previewEnabled: Boolean,
-    onRequestPreview: () -> Unit,
-    onRetry: () -> Unit,
-    onOpenPreview: () -> Unit
+    onRetry: () -> Unit
 ) {
     val source = previewState?.url.orEmpty()
     val renderMode = previewState.renderMode()
@@ -183,28 +184,15 @@ private fun ThreadInlineVideoSurface(
         when {
             !previewEnabled ->
                 ThreadInlineVideoOverlay(
-                    iconName = SlockLucideIconName.Play,
-                    label = stringResource(MR.strings.file_preview_video),
-                    actionIcon = SlockLucideIconName.AppWindow,
-                    onAction = onOpenPreview
-                )
-            renderMode == ThreadInlineVideoRenderMode.AwaitingUser ->
-                ThreadInlineVideoOverlay(
-                    iconName = SlockLucideIconName.Play,
-                    label = stringResource(MR.strings.file_preview_video),
-                    actionIcon = SlockLucideIconName.Play,
-                    onAction = onRequestPreview,
-                    secondaryActionIcon = SlockLucideIconName.AppWindow,
-                    onSecondaryAction = onOpenPreview
+                    iconName = SlockLucideIconName.TriangleAlert,
+                    label = stringResource(MR.strings.thread_video_preview_unavailable)
                 )
             renderMode == ThreadInlineVideoRenderMode.Error ->
                 ThreadInlineVideoOverlay(
                     iconName = SlockLucideIconName.TriangleAlert,
                     label = stringResource(MR.strings.thread_video_preview_unavailable),
                     actionIcon = SlockLucideIconName.RefreshCw,
-                    onAction = onRetry,
-                    secondaryActionIcon = SlockLucideIconName.AppWindow,
-                    onSecondaryAction = onOpenPreview
+                    onAction = onRetry
                 )
             renderMode == ThreadInlineVideoRenderMode.Loading ->
                 ThreadInlineVideoOverlay(
@@ -217,38 +205,24 @@ private fun ThreadInlineVideoSurface(
                     iconName = SlockLucideIconName.TriangleAlert,
                     label = stringResource(MR.strings.thread_video_playback_failed),
                     actionIcon = SlockLucideIconName.RefreshCw,
-                    onAction = onRetry,
-                    secondaryActionIcon = SlockLucideIconName.AppWindow,
-                    onSecondaryAction = onOpenPreview
+                    onAction = onRetry
                 )
             !nativeController ->
-                Row(
+                SlockBrutalIconButton(
+                    iconName = if (playState == PlayState.PLAYING) SlockLucideIconName.Pause else SlockLucideIconName.Play,
+                    onClick = {
+                        playControl =
+                            if (playState == PlayState.PLAYING) {
+                                VideoPlayControl.PAUSE
+                            } else {
+                                VideoPlayControl.PLAY
+                            }
+                    },
                     modifier = Modifier.align(Alignment.BottomEnd).padding(SlockSpacing.Sm),
-                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    SlockBrutalIconButton(
-                        iconName = if (playState == PlayState.PLAYING) SlockLucideIconName.Pause else SlockLucideIconName.Play,
-                        onClick = {
-                            playControl =
-                                if (playState == PlayState.PLAYING) {
-                                    VideoPlayControl.PAUSE
-                                } else {
-                                    VideoPlayControl.PLAY
-                                }
-                        },
-                        backgroundColor = SlockColor.SurfaceWhite,
-                        size = 34.dp,
-                        shadowOffset = 0.dp
-                    )
-                    SlockBrutalIconButton(
-                        iconName = SlockLucideIconName.AppWindow,
-                        onClick = onOpenPreview,
-                        backgroundColor = SlockColor.SurfaceWhite,
-                        size = 34.dp,
-                        shadowOffset = 0.dp
-                    )
-                }
+                    backgroundColor = SlockColor.SurfaceWhite,
+                    size = 34.dp,
+                    shadowOffset = 0.dp
+                )
             !firstFrameVisible ->
                 ThreadInlineVideoOverlay(
                     iconName = SlockLucideIconName.LoaderCircle,

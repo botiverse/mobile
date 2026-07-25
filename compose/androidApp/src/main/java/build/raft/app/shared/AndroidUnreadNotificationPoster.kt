@@ -26,7 +26,9 @@ internal object AndroidUnreadNotificationPoster {
     private const val UNREAD_GENERAL_NOTIFICATION_CHANNEL_ID = "slock-unread-general-v1"
     private const val UNREAD_CHANNEL_NOTIFICATION_CHANNEL_ID = "slock-unread-channel-v1"
     private const val UNREAD_DM_NOTIFICATION_CHANNEL_ID = "slock-unread-dm-v1"
-    private const val UNREAD_MENTION_NOTIFICATION_CHANNEL_ID = "slock-unread-mention-v1"
+    // Also used by the Settings test notification so the test exercises the
+    // same HIGH-importance channel real mentions ride on.
+    const val UNREAD_MENTION_NOTIFICATION_CHANNEL_ID = "slock-unread-mention-v1"
 
     fun postUnreadNotification(context: Context, request: SystemUnreadNotificationRequest): Map<String, Any> =
         postUnreadNotification(context, request.toJson())
