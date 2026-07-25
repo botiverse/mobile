@@ -11,9 +11,15 @@ import android.util.AtomicFile
 import build.raft.app.shared.SlockKuiklyRouteKeys
 import java.io.File
 import java.io.FileOutputStream
+import java.io.InputStream
 import java.security.MessageDigest
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -31,28 +37,97 @@ internal sealed interface AndroidExternalShareIntakeResult {
     data class Rejected(val code: String) : AndroidExternalShareIntakeResult
 }
 
+/** Serial process owner. A newer warm share supersedes only UI publication, never an in-flight copy. */
+internal class AndroidExternalShareAdmissionOwner<T>(
+    scope: CoroutineScope,
+    private val admit: suspend (T) -> AndroidExternalShareIntakeResult,
+    private val onLatestResult: (AndroidExternalShareIntakeResult) -> Unit,
+) {
+    private val queue = Channel<QueuedInput<T>>(Channel.UNLIMITED)
+    private var latestGeneration = 0L
+
+    init {
+        scope.launch {
+            for (queued in queue) {
+                val result = admit(queued.intent)
+                if (queued.generation == latestGeneration) onLatestResult(result)
+            }
+        }
+    }
+
+    fun submit(intent: T) {
+        latestGeneration += 1L
+        check(queue.trySend(QueuedInput(latestGeneration, intent)).isSuccess)
+    }
+
+    private data class QueuedInput<T>(val generation: Long, val intent: T)
+
+    companion object {
+        fun create(
+            context: Context,
+            scope: CoroutineScope,
+            onLatestResult: (AndroidExternalShareIntakeResult) -> Unit,
+        ): AndroidExternalShareAdmissionOwner<Intent> =
+            AndroidExternalShareAdmissionOwner(
+                scope = scope,
+                admit = { intent ->
+                    withContext(Dispatchers.IO) { AndroidExternalShareIntake(context).admit(intent) }
+                },
+                onLatestResult = onLatestResult,
+            )
+    }
+}
+
 /**
  * Owns the temporary Android share grant. Provider URIs are consumed only while copying into the
  * app-private inbox; the published envelope contains private paths and never external URIs.
  */
 internal class AndroidExternalShareIntake(
-    private val context: Context,
+    private val inboxRoot: File,
+    private val provider: AndroidExternalShareProvider,
+    private val limits: AndroidExternalShareLimits = AndroidExternalShareLimits(),
     private val tokenFactory: () -> String = { UUID.randomUUID().toString() },
     private val clock: () -> Long = System::currentTimeMillis,
+    private val atomicEnvelopeWriter: (File, ByteArray) -> Unit = ::androidWriteAtomicEnvelope,
 ) {
+    constructor(
+        context: Context,
+        tokenFactory: () -> String = { UUID.randomUUID().toString() },
+        clock: () -> Long = System::currentTimeMillis,
+    ) : this(
+        inboxRoot = File(context.noBackupFilesDir, InboxDirectory),
+        provider = AndroidContentExternalShareProvider(context),
+        tokenFactory = tokenFactory,
+        clock = clock,
+    )
+
     fun admit(intent: Intent): AndroidExternalShareIntakeResult {
         val spec = intent.toExternalShareSpec()
             ?: return AndroidExternalShareIntakeResult.Rejected("external_share_action_unsupported")
+        return admit(
+            spec = spec,
+            retainedToken = intent.getStringExtra(PrivateTokenExtra).orEmpty(),
+            retainToken = { token -> intent.putExtra(PrivateTokenExtra, token) },
+        )
+    }
+
+    internal fun admit(
+        spec: AndroidExternalShareSpec,
+        retainedToken: String = "",
+        retainToken: (String) -> Unit = {},
+    ): AndroidExternalShareIntakeResult {
         val now = clock()
         pruneExpiredInboxes(now)
-        val retainedToken = intent.getStringExtra(PrivateTokenExtra).orEmpty()
         if (isSafeToken(retainedToken) && envelopeIsLive(retainedToken, now)) {
             return AndroidExternalShareIntakeResult.Admitted(AndroidExternalShareLaunch(retainedToken))
+        }
+        if (spec.textTooLong) {
+            return AndroidExternalShareIntakeResult.Rejected("external_share_text_too_large")
         }
         if (!spec.hasContent()) {
             return AndroidExternalShareIntakeResult.Rejected("external_share_empty")
         }
-        if (spec.uris.size > MaxItems) {
+        if (spec.uris.size > limits.maxItems) {
             return AndroidExternalShareIntakeResult.Rejected("external_share_too_many_items")
         }
 
@@ -62,12 +137,12 @@ internal class AndroidExternalShareIntake(
             ?.takeIf { now - it.admittedAtEpochMillis <= RedeliveryWindowMillis }
             ?.takeIf { envelopeIsLive(it.token, now) }
             ?.let { receipt ->
-                intent.putExtra(PrivateTokenExtra, receipt.token)
+                retainToken(receipt.token)
                 return AndroidExternalShareIntakeResult.Admitted(AndroidExternalShareLaunch(receipt.token))
             }
         val token = tokenFactory().takeIf(::isSafeToken)
             ?: return AndroidExternalShareIntakeResult.Rejected("external_share_token_invalid")
-        val inbox = File(context.noBackupFilesDir, "$InboxDirectory/$token")
+        val inbox = File(inboxRoot, token)
         if (!inbox.mkdirs() && !inbox.isDirectory) {
             return AndroidExternalShareIntakeResult.Rejected("external_share_storage_unavailable")
         }
@@ -93,7 +168,7 @@ internal class AndroidExternalShareIntake(
                 })
             publishEnvelope(inbox, envelope)
             RedeliveryReceipts[fingerprint] = RedeliveryReceipt(token, now)
-            intent.putExtra(PrivateTokenExtra, token)
+            retainToken(token)
             AndroidExternalShareIntakeResult.Admitted(AndroidExternalShareLaunch(token))
         } catch (failure: AndroidExternalShareRejected) {
             inbox.deleteRecursively()
@@ -104,17 +179,15 @@ internal class AndroidExternalShareIntake(
         }
     }
 
-    private fun copyItems(uris: List<Uri>, inbox: File): List<CopiedItem> {
+    private fun copyItems(uris: List<String>, inbox: File): List<CopiedItem> {
         var totalBytes = 0L
         return uris.mapIndexed { index, uri ->
-            if (uri.scheme != ContentResolver.SCHEME_CONTENT) {
-                reject("external_share_uri_unsupported")
-            }
+            if (!provider.isGrantedContentRef(uri)) reject("external_share_uri_unsupported")
             val metadata = queryMetadata(uri, index)
-            if (metadata.declaredSize != null && metadata.declaredSize > MaxItemBytes) {
+            if (metadata.declaredSize != null && metadata.declaredSize > limits.maxItemBytes) {
                 reject("external_share_item_too_large")
             }
-            if (metadata.declaredSize != null && totalBytes + metadata.declaredSize > MaxTotalBytes) {
+            if (metadata.declaredSize != null && totalBytes + metadata.declaredSize > limits.maxTotalBytes) {
                 reject("external_share_total_too_large")
             }
             val target = File(inbox, "item-${index + 1}-${metadata.safeStorageName}")
@@ -129,20 +202,20 @@ internal class AndroidExternalShareIntake(
         }
     }
 
-    private fun copyBounded(uri: Uri, target: File, bytesBefore: Long): Long {
-        val input = context.contentResolver.openInputStream(uri)
+    private fun copyBounded(uri: String, target: File, bytesBefore: Long): Long {
+        val input = provider.open(uri)
             ?: reject("external_share_item_unreadable")
         var copied = 0L
         input.use { source ->
             FileOutputStream(target).use { output ->
-                val buffer = ByteArray(CopyBufferBytes)
+                val buffer = ByteArray(limits.copyBufferBytes)
                 while (true) {
                     val read = source.read(buffer)
                     if (read < 0) break
                     if (read == 0) continue
                     copied += read
-                    if (copied > MaxItemBytes) reject("external_share_item_too_large")
-                    if (bytesBefore + copied > MaxTotalBytes) reject("external_share_total_too_large")
+                    if (copied > limits.maxItemBytes) reject("external_share_item_too_large")
+                    if (bytesBefore + copied > limits.maxTotalBytes) reject("external_share_total_too_large")
                     output.write(buffer, 0, read)
                 }
                 output.fd.sync()
@@ -152,63 +225,35 @@ internal class AndroidExternalShareIntake(
         return copied
     }
 
-    private fun queryMetadata(uri: Uri, index: Int): ItemMetadata {
-        var displayName: String? = null
-        var size: Long? = null
-        runCatching {
-            context.contentResolver.query(
-                uri,
-                arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE),
-                null,
-                null,
-                null,
-            )?.use { cursor ->
-                if (cursor.moveToFirst()) {
-                    displayName = cursor.string(OpenableColumns.DISPLAY_NAME)
-                    size = cursor.long(OpenableColumns.SIZE)?.takeIf { it >= 0L }
-                }
-            }
-        }
-        val safeDisplayName = sanitizeDisplayName(displayName ?: uri.lastPathSegment, index)
-        val mimeType = context.contentResolver.getType(uri)
-            ?.substringBefore(';')
-            ?.trim()
-            ?.lowercase()
-            ?.takeIf { it.length <= MaxMimeTypeLength }
-            ?: "application/octet-stream"
+    private fun queryMetadata(uri: String, index: Int): ItemMetadata {
+        val source = provider.metadata(uri)
+        val safeDisplayName = sanitizeDisplayName(source.displayName, index)
+        val mimeType = source.mimeType.substringBefore(';').trim().lowercase()
+            .takeIf { it.isNotBlank() && it.length <= MaxMimeTypeLength } ?: "application/octet-stream"
         return ItemMetadata(
             displayName = safeDisplayName,
             safeStorageName = safeDisplayName.replace(UnsafeStorageCharacters, "_").take(MaxFileNameLength),
             mimeType = mimeType,
-            declaredSize = size,
+            declaredSize = source.declaredSize?.takeIf { it >= 0L },
         )
     }
 
     private fun publishEnvelope(inbox: File, envelope: JSONObject) {
-        val atomicFile = AtomicFile(File(inbox, EnvelopeFileName))
-        var output: FileOutputStream? = null
-        try {
-            output = atomicFile.startWrite()
-            output.write(envelope.toString().toByteArray(Charsets.UTF_8))
-            atomicFile.finishWrite(output)
-        } catch (failure: Throwable) {
-            output?.let(atomicFile::failWrite)
-            throw failure
-        }
+        atomicEnvelopeWriter(File(inbox, EnvelopeFileName), envelope.toString().toByteArray(Charsets.UTF_8))
     }
 
     private fun envelopeFile(token: String): File =
-        File(context.noBackupFilesDir, "$InboxDirectory/$token/$EnvelopeFileName")
+        File(inboxRoot, "$token/$EnvelopeFileName")
 
     private fun envelopeIsLive(token: String, now: Long): Boolean =
         envelopeFile(token).let { file ->
-            file.isFile && now - file.lastModified() in 0..EnvelopeTtlMillis
+            file.isFile && now - file.lastModified() in 0..limits.envelopeTtlMillis
         }
 
     private fun pruneExpiredInboxes(now: Long) {
-        File(context.noBackupFilesDir, InboxDirectory).listFiles()?.forEach { directory ->
+        inboxRoot.listFiles()?.forEach { directory ->
             val envelope = File(directory, EnvelopeFileName)
-            if (!directory.isDirectory || !envelope.isFile || now - envelope.lastModified() !in 0..EnvelopeTtlMillis) {
+            if (!directory.isDirectory || !envelope.isFile || now - envelope.lastModified() !in 0..limits.envelopeTtlMillis) {
                 directory.deleteRecursively()
             }
         }
@@ -241,32 +286,20 @@ internal class AndroidExternalShareIntake(
         val admittedAtEpochMillis: Long,
     )
 
-    private fun Cursor.string(column: String): String? =
-        getColumnIndex(column).takeIf { it >= 0 && !isNull(it) }?.let(::getString)
-
-    private fun Cursor.long(column: String): Long? =
-        getColumnIndex(column).takeIf { it >= 0 && !isNull(it) }?.let(::getLong)
-
     private fun reject(code: String): Nothing = throw AndroidExternalShareRejected(code)
 
     private class AndroidExternalShareRejected(val code: String) : RuntimeException(code)
 
-    private companion object {
-        const val InboxDirectory = "external-share/inbox"
+    companion object {
+        internal const val InboxDirectory = "external-share/inbox"
         const val EnvelopeFileName = "envelope.json"
         const val PrivateTokenExtra = "build.raft.app.externalShareToken"
-        const val MaxItems = 9
-        const val MaxTextLength = 256 * 1024
         const val MaxFileNameLength = 120
         const val MaxMimeTypeLength = 255
-        const val MaxItemBytes = 25L * 1024L * 1024L
-        const val MaxTotalBytes = 100L * 1024L * 1024L
-        const val CopyBufferBytes = 64 * 1024
         const val RedeliveryWindowMillis = 30L * 1000L
-        const val EnvelopeTtlMillis = 24L * 60L * 60L * 1000L
         val UnsafeStorageCharacters = Regex("[^A-Za-z0-9._-]")
         val SafeToken = Regex("[A-Za-z0-9-]{16,80}")
-        val RedeliveryReceipts = ConcurrentHashMap<String, RedeliveryReceipt>()
+        private val RedeliveryReceipts = ConcurrentHashMap<String, RedeliveryReceipt>()
 
         fun isSafeToken(value: String): Boolean = SafeToken.matches(value)
 
@@ -280,13 +313,87 @@ internal class AndroidExternalShareIntake(
             return normalized.takeIf { it.isNotBlank() && it != "." && it != ".." }
                 ?: "shared-item-${index + 1}"
         }
+
     }
+}
+
+private fun androidWriteAtomicEnvelope(file: File, bytes: ByteArray) {
+    val atomicFile = AtomicFile(file)
+    var output: FileOutputStream? = null
+    try {
+        output = atomicFile.startWrite()
+        output.write(bytes)
+        output.fd.sync()
+        atomicFile.finishWrite(output)
+    } catch (failure: Throwable) {
+        output?.let(atomicFile::failWrite)
+        throw failure
+    }
+}
+
+internal data class AndroidExternalShareLimits(
+    val maxItems: Int = 9,
+    val maxItemBytes: Long = 25L * 1024L * 1024L,
+    val maxTotalBytes: Long = 100L * 1024L * 1024L,
+    val copyBufferBytes: Int = 64 * 1024,
+    val envelopeTtlMillis: Long = 24L * 60L * 60L * 1000L,
+)
+
+internal data class AndroidExternalShareSourceMetadata(
+    val displayName: String?,
+    val mimeType: String,
+    val declaredSize: Long?,
+)
+
+internal interface AndroidExternalShareProvider {
+    fun isGrantedContentRef(ref: String): Boolean
+    fun metadata(ref: String): AndroidExternalShareSourceMetadata
+    fun open(ref: String): InputStream?
+}
+
+private class AndroidContentExternalShareProvider(private val context: Context) : AndroidExternalShareProvider {
+    override fun isGrantedContentRef(ref: String): Boolean =
+        runCatching { Uri.parse(ref).scheme == ContentResolver.SCHEME_CONTENT }.getOrDefault(false)
+
+    override fun metadata(ref: String): AndroidExternalShareSourceMetadata {
+        val uri = Uri.parse(ref)
+        var displayName: String? = null
+        var size: Long? = null
+        runCatching {
+            context.contentResolver.query(
+                uri,
+                arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE),
+                null,
+                null,
+                null,
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    displayName = cursor.string(OpenableColumns.DISPLAY_NAME)
+                    size = cursor.long(OpenableColumns.SIZE)
+                }
+            }
+        }
+        return AndroidExternalShareSourceMetadata(
+            displayName = displayName ?: uri.lastPathSegment,
+            mimeType = context.contentResolver.getType(uri).orEmpty(),
+            declaredSize = size,
+        )
+    }
+
+    override fun open(ref: String): InputStream? = context.contentResolver.openInputStream(Uri.parse(ref))
+
+    private fun Cursor.string(column: String): String? =
+        getColumnIndex(column).takeIf { it >= 0 && !isNull(it) }?.let(::getString)
+
+    private fun Cursor.long(column: String): Long? =
+        getColumnIndex(column).takeIf { it >= 0 && !isNull(it) }?.let(::getLong)
 }
 
 internal data class AndroidExternalShareSpec(
     val text: String,
     val subject: String,
-    val uris: List<Uri>,
+    val uris: List<String>,
+    val textTooLong: Boolean = false,
 ) {
     fun hasContent(): Boolean = text.isNotBlank() || subject.isNotBlank() || uris.isNotEmpty()
 }
@@ -297,10 +404,14 @@ internal fun Intent.toExternalShareSpec(): AndroidExternalShareSpec? {
         externalShareStreamUris().forEach { uri -> if (uri !in this) add(uri) }
         clipData.externalShareUris().forEach { uri -> if (uri !in this) add(uri) }
     }
+    val textValue = getCharSequenceExtra(Intent.EXTRA_TEXT)
+    val subjectValue = getCharSequenceExtra(Intent.EXTRA_SUBJECT)
+    val textTooLong = (textValue?.length ?: 0) > 256 * 1024 || (subjectValue?.length ?: 0) > 256 * 1024
     return AndroidExternalShareSpec(
-        text = getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString().orEmpty().take(256 * 1024),
-        subject = getCharSequenceExtra(Intent.EXTRA_SUBJECT)?.toString().orEmpty().take(256 * 1024),
-        uris = uris,
+        text = textValue?.takeUnless { textTooLong }?.toString().orEmpty(),
+        subject = subjectValue?.takeUnless { textTooLong }?.toString().orEmpty(),
+        uris = uris.map(Uri::toString),
+        textTooLong = textTooLong,
     )
 }
 

@@ -4,6 +4,10 @@ import build.raft.app.core.data.auth.AndroidMobileOAuth
 import build.raft.app.shared.resolveAndroidShellLaunchTarget
 import build.raft.app.shared.taskLaunchPlan
 import java.io.File
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -120,10 +124,64 @@ class MainActivityLaunchTest {
         val handler = source.substringAfter("private fun handleExternalShareIntent(intent: Intent?)")
             .substringBefore("private fun handleUnsupportedSlockWebLink")
 
-        assertEquals(1, Regex("AndroidExternalShareIntake\\(applicationContext\\)\\.admit\\(shareIntent\\)")
+        assertEquals(1, Regex("externalShareAdmissionOwner = AndroidExternalShareAdmissionOwner\\.create")
             .findAll(source).count())
-        assertTrue(handler.indexOf("setIntent(Intent(this, MainActivity::class.java))") < handler.indexOf("withContext(Dispatchers.IO)"))
-        assertTrue(handler.contains("openSharedShellPageData(androidExternalSharePageData(result.launch))"))
+        assertTrue(handler.indexOf("setIntent(Intent(this, MainActivity::class.java))") < handler.indexOf("externalShareAdmissionOwner.submit"))
+        assertTrue(source.contains("openSharedShellPageData(androidExternalSharePageData(result.launch))"))
+    }
+
+    @Test
+    fun parkedDistinctWarmSharePublishesOnlyTheNewestGeneration() = runTest {
+        val firstRelease = CompletableDeferred<Unit>()
+        val admitted = mutableListOf<String>()
+        val published = mutableListOf<String>()
+        val owner = AndroidExternalShareAdmissionOwner<String>(
+            scope = backgroundScope,
+            admit = { value ->
+                admitted += value
+                if (value == "first") firstRelease.await()
+                AndroidExternalShareIntakeResult.Admitted(AndroidExternalShareLaunch("token-$value-123456"))
+            },
+            onLatestResult = { result ->
+                published += (result as AndroidExternalShareIntakeResult.Admitted).launch.token
+            },
+        )
+
+        owner.submit("first")
+        runCurrent()
+        owner.submit("second")
+        firstRelease.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(listOf("first", "second"), admitted)
+        assertEquals(listOf("token-second-123456"), published)
+    }
+
+    @Test
+    fun parkedSamePayloadStillSerializesAndPublishesOneLatestResult() = runTest {
+        val firstRelease = CompletableDeferred<Unit>()
+        var calls = 0
+        val published = mutableListOf<String>()
+        val owner = AndroidExternalShareAdmissionOwner<String>(
+            scope = backgroundScope,
+            admit = {
+                calls += 1
+                if (calls == 1) firstRelease.await()
+                AndroidExternalShareIntakeResult.Admitted(AndroidExternalShareLaunch("same-token-123456"))
+            },
+            onLatestResult = { result ->
+                published += (result as AndroidExternalShareIntakeResult.Admitted).launch.token
+            },
+        )
+
+        owner.submit("same")
+        runCurrent()
+        owner.submit("same")
+        firstRelease.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(2, calls)
+        assertEquals(listOf("same-token-123456"), published)
     }
 
     @Test

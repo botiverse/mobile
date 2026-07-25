@@ -32,8 +32,10 @@ import {
 import slockOhosProcessNetworkLifecycle from './SlockOhosProcessNetworkLifecycle';
 import {
   SLOCK_OHOS_EXTERNAL_SHARE_STORAGE_KEY,
-  SlockOhosExternalShareIntake
+  SlockOhosExternalShareAdmissionOwner,
+  SlockOhosExternalShareLaunch
 } from './SlockOhosExternalShareIntake';
+import slockOhosExternalShareLaunchBridge from '../kuikly/SlockOhosExternalShareLaunchBridge';
 import BuildProfile from 'BuildProfile';
 
 const SAFE_AREA_TOP_PX = 'slockSafeAreaTopPx';
@@ -105,12 +107,18 @@ export default class EntryAbility extends UIAbility {
   private windowSizeCallback?: Callback<window.Size>;
   private foldStatusCallback?: Callback<display.FoldStatus>;
   private foldPosture: string = 'unknown';
+  private externalShareAdmissionOwner?: SlockOhosExternalShareAdmissionOwner;
 
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     hilog.info(0x0000, 'testTag', '%{public}s', 'Ability onCreate');
     SlockOhosAppDiagnostics.initialize(this.context);
     AppStorage.setOrCreate(SLOCK_OHOS_EXTERNAL_SHARE_STORAGE_KEY, '');
-    this.admitExternalShareWant(want);
+    this.externalShareAdmissionOwner = new SlockOhosExternalShareAdmissionOwner(
+      this.context,
+      (launch: SlockOhosExternalShareLaunch): void => this.publishExternalShareLaunch(launch),
+      (code: string): void => this.reportExternalShareFailure(code)
+    );
+    this.externalShareAdmissionOwner.submit(want);
     // Crash reporting must install BEFORE any native/KNOI initialization —
     // a startup-chain crash (like the task #19 resource-bridge SIGSEGV)
     // is otherwise invisible to Hands.
@@ -130,7 +138,7 @@ export default class EntryAbility extends UIAbility {
   }
 
   onNewWant(want: Want, _launchParam: AbilityConstant.LaunchParam): void {
-    this.admitExternalShareWant(want);
+    this.externalShareAdmissionOwner?.submit(want);
   }
 
   onDestroy(): void {
@@ -255,17 +263,16 @@ export default class EntryAbility extends UIAbility {
     hilog.info(0x0000, SLOCK_KNOI_LOG_TAG, '%{public}s', 'KNOI setup complete for libshared.so');
   }
 
-  private admitExternalShareWant(want: Want): void {
-    const result = SlockOhosExternalShareIntake.admit(this.context, want);
-    if (!result.admitted || result.launch === undefined) {
-      if (result.code !== 'external_share_action_unsupported') {
-        hilog.warn(0x0000, 'SlockExternalShare', 'intake rejected code=%{public}s', result.code);
-      }
-      return;
-    }
-    AppStorage.setOrCreate(SLOCK_OHOS_EXTERNAL_SHARE_STORAGE_KEY, JSON.stringify(result.launch));
-    AppStorage.set(SLOCK_OHOS_EXTERNAL_SHARE_STORAGE_KEY, JSON.stringify(result.launch));
-    hilog.info(0x0000, 'SlockExternalShare', 'intake admitted code=%{public}s', result.code);
+  private publishExternalShareLaunch(launch: SlockOhosExternalShareLaunch): void {
+    const encoded = JSON.stringify(launch);
+    AppStorage.setOrCreate(SLOCK_OHOS_EXTERNAL_SHARE_STORAGE_KEY, encoded);
+    AppStorage.set(SLOCK_OHOS_EXTERNAL_SHARE_STORAGE_KEY, encoded);
+    slockOhosExternalShareLaunchBridge.publish(launch);
+    hilog.info(0x0000, 'SlockExternalShare', '%{public}s', 'intake admitted');
+  }
+
+  private reportExternalShareFailure(code: string): void {
+    hilog.warn(0x0000, 'SlockExternalShare', 'intake rejected code=%{public}s', code);
   }
 
   private updateSafeAreaStorage(mainWindow: window.Window): void {

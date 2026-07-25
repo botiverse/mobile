@@ -32,9 +32,16 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
 class MainActivity : ComponentActivity() {
+    private lateinit var externalShareAdmissionOwner: AndroidExternalShareAdmissionOwner<Intent>
+
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
+        externalShareAdmissionOwner = AndroidExternalShareAdmissionOwner.create(
+            context = applicationContext,
+            scope = lifecycleScope,
+            onLatestResult = ::handleExternalShareAdmissionResult,
+        )
         SlockAppLog.d(
             "SlockBoot",
             "main_activity_created " +
@@ -76,25 +83,24 @@ class MainActivity : ComponentActivity() {
         } ?: return false
         // Drop the raw provider grants and payload from retained Activity state before any suspend.
         setIntent(Intent(this, MainActivity::class.java))
-        lifecycleScope.launch {
-            val result = withContext(Dispatchers.IO) {
-                AndroidExternalShareIntake(applicationContext).admit(shareIntent)
-            }
-            when (result) {
-                is AndroidExternalShareIntakeResult.Admitted ->
-                    openSharedShellPageData(androidExternalSharePageData(result.launch))
-                is AndroidExternalShareIntakeResult.Rejected -> {
-                    SlockAppLog.w("SlockBoot", "external_share_rejected code=${result.code}")
-                    Toast.makeText(
-                        this@MainActivity,
-                        "Raft couldn't import this shared content",
-                        Toast.LENGTH_LONG,
-                    ).show()
-                    openSharedShell(Intent(this@MainActivity, MainActivity::class.java))
-                }
+        externalShareAdmissionOwner.submit(shareIntent)
+        return true
+    }
+
+    private fun handleExternalShareAdmissionResult(result: AndroidExternalShareIntakeResult) {
+        when (result) {
+            is AndroidExternalShareIntakeResult.Admitted ->
+                openSharedShellPageData(androidExternalSharePageData(result.launch))
+            is AndroidExternalShareIntakeResult.Rejected -> {
+                SlockAppLog.w("SlockBoot", "external_share_rejected code=${result.code}")
+                Toast.makeText(
+                    this@MainActivity,
+                    "Raft couldn't import this shared content",
+                    Toast.LENGTH_LONG,
+                ).show()
+                openSharedShell(Intent(this@MainActivity, MainActivity::class.java))
             }
         }
-        return true
     }
 
     /**

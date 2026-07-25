@@ -12,10 +12,7 @@ import { SlockOhosClipboard } from '../kuikly/SlockOhosClipboard';
 import slockOhosAdaptivePaneBridge from '../kuikly/SlockOhosAdaptivePaneBridge';
 import { SlockOhosDiagnostics } from '../kuikly/SlockOhosDiagnostics';
 import { SlockOhosAppDiagnostics } from '../entryability/SlockOhosAppDiagnostics';
-import {
-  SLOCK_OHOS_EXTERNAL_SHARE_INTENT,
-  SLOCK_OHOS_EXTERNAL_SHARE_STORAGE_KEY
-} from '../entryability/SlockOhosExternalShareIntake';
+import slockOhosExternalShareLaunchBridge from '../kuikly/SlockOhosExternalShareLaunchBridge';
 
 const SAFE_AREA_TOP_PX = 'slockSafeAreaTopPx';
 const SAFE_AREA_BOTTOM_PX = 'slockSafeAreaBottomPx';
@@ -39,7 +36,6 @@ struct Index {
   pageData?: KRRecord;
   @StorageLink(SAFE_AREA_TOP_PX) safeAreaTopPx: number = 0;
   @StorageLink(SAFE_AREA_BOTTOM_PX) safeAreaBottomPx: number = 0;
-  @StorageLink(SLOCK_OHOS_EXTERNAL_SHARE_STORAGE_KEY) externalShareLaunch: string = '';
   @State exception?: string = "";
   @State exceptionDetailsVisible: boolean = false;
   @State exceptionReportState: string = SLOCK_EXCEPTION_REPORT_IDLE;
@@ -79,6 +75,7 @@ struct Index {
           slockOhosMotionBridge.setController(controller);
           slockOhosRealtimeBridge.setController(controller);
           slockOhosAdaptivePaneBridge.setController(controller);
+          slockOhosExternalShareLaunchBridge.setController(controller);
         },
       })
       if (this.exception) {
@@ -134,11 +131,6 @@ struct Index {
     Object.keys(source).forEach((key: string) => {
       pageData[key] = source[key];
     });
-    const externalShare = this.externalSharePageData();
-    if (externalShare !== undefined) {
-      pageData['intent'] = SLOCK_OHOS_EXTERNAL_SHARE_INTENT;
-      pageData['externalShareToken'] = externalShare['externalShareToken'];
-    }
     pageData['safeAreaTop'] = this.safeAreaTopPx;
     pageData['statusBarHeight'] = this.safeAreaTopPx;
     pageData['safeAreaBottom'] = this.safeAreaBottomPx;
@@ -154,21 +146,6 @@ struct Index {
       pageData['slockNativeTabBarFallbackReason'] = 'unsupported_ohos_hds';
     }
     return pageData;
-  }
-
-  private externalSharePageData(): Record<string, Object> | undefined {
-    if (this.externalShareLaunch.length === 0) return undefined;
-    try {
-      const parsed = JSON.parse(this.externalShareLaunch) as Record<string, Object>;
-      const intent = parsed['intent'];
-      const token = parsed['externalShareToken'];
-      if (intent !== SLOCK_OHOS_EXTERNAL_SHARE_INTENT || typeof token !== 'string') return undefined;
-      if (!/^[A-Za-z0-9-]{16,80}$/.test(token)) return undefined;
-      // Return a deliberately reconstructed token-only object; never spread host intake metadata.
-      return { 'externalShareToken': token };
-    } catch (_error) {
-      return undefined;
-    }
   }
 
   private handleKuiklyExceptionStack(stack: string): void {
