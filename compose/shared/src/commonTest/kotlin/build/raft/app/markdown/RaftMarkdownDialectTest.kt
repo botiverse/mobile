@@ -25,6 +25,15 @@ class RaftMarkdownDialectTest {
     }
 
     @Test
+    fun mentionKeepsInternalDotButReturnsTrailingSentenceDotToText() {
+        val source = "Ping @release.bot and @artin."
+        val syntax = parseMarkdownInlineSyntax(source)
+
+        assertEquals(listOf("@release.bot", "@artin"), syntax.raftRefs.map { it.sourceText })
+        assertEquals(source.lastIndexOf('.'), syntax.raftRefs.last().endOffset)
+    }
+
+    @Test
     fun canonicalInlineSyntaxUsesCommonMarkCodeSpanTextRules() {
         val syntax = parseMarkdownInlineSyntax("`` `inner` `` and `line1\nline2`")
 

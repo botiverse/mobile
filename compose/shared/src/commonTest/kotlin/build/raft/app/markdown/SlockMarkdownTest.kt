@@ -1715,7 +1715,7 @@ class SlockMarkdownTest {
 
     @Test
     fun mentionInsideLinkStaysOwnedWhileStandaloneSiblingRemainsRaftAction() {
-        val body = "[ping @artin](https://example.test) and outside @artin"
+        val body = "[ping @artin](https://example.test) and outside @artin."
         val validator = validThreadMarkdownTags(knownMentions = setOf("artin"))
         val matches = body.threadInlineTagMatches()
         val annotated =

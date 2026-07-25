@@ -103,7 +103,8 @@ followed by whitespace belongs to prose (`#design: next` recognizes
 ### Mention
 
 `@` followed by a letter or digit, then up to 63 additional letters, digits,
-`_`, `.`, or `-`.
+`_`, `.`, or `-`. Dots are legal inside a handle, but trailing `.` characters
+belong to surrounding sentence punctuation and are not part of the mention.
 
 ## Boundaries, escaping, and CJK
 

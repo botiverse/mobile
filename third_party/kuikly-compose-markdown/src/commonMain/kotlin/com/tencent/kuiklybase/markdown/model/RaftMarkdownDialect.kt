@@ -97,6 +97,10 @@ private fun String.raftMentionRange(start: Int): IntRange? {
         end++
         count++
     }
+    // `.` is legal inside a Raft handle, but sentence punctuation is not part
+    // of the mention. Keep internal dots and return trailing dots to Markdown
+    // text, matching Web/GFM trailing-punctuation behavior.
+    while (end > nameStart && this[end - 1] == '.') end--
     return start until end
 }
 
