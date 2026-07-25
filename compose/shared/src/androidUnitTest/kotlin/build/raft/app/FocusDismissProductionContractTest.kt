@@ -96,6 +96,32 @@ class FocusDismissProductionContractTest {
     }
 
     @Test
+    fun standaloneThreadPageInstallsTheFocusDismissHostOnItsFullSizeRoot() {
+        val thread = source("build/raft/app/ThreadPage.kt")
+        val pageStart = "internal class ComposeThreadPage : build.raft.app.base.BasePager() {"
+        val pageEnd = "@Page(THREAD_MEMBERS_PAGE, supportInLocal = true)"
+        assertContains(thread, pageStart)
+        assertContains(thread, pageEnd)
+        val page =
+            functionBlock(
+                thread,
+                pageStart,
+                pageEnd
+            )
+
+        assertContains(page, "SlockInputFocusDismissHost { focusDismissModifier ->")
+        assertContains(page, "Box(modifier = focusDismissModifier.fillMaxSize()) {")
+        assertContains(page, "ThreadPageScreen(slockPageVisibleResumeTick)")
+        assertTrue(
+            page.indexOf("SlockInputFocusDismissHost { focusDismissModifier ->") <
+                page.indexOf("Box(modifier = focusDismissModifier.fillMaxSize()) {") &&
+                page.indexOf("Box(modifier = focusDismissModifier.fillMaxSize()) {") <
+                page.indexOf("ThreadPageScreen(slockPageVisibleResumeTick)"),
+            "The standalone Thread screen must remain inside the full-size page-root dismiss host"
+        )
+    }
+
+    @Test
     fun standardInputFamiliesAutomaticallyUseTheRegisteredBaseTextField() {
         val brutal = source("build/raft/app/components/SlockBrutalComponents.kt")
         val formPrimitives = source("build/raft/app/components/SlockRaftUiFormPrimitives.kt")
