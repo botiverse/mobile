@@ -60,7 +60,9 @@ fun MarkdownBlockQuote(
                     nonBlockquotes.onEach { quote ->
                         when (quote.type) {
                             PARAGRAPH -> {
-                                MarkdownParagraph(content, quote, style = style)
+                                // Slock (task #800): quoted paragraphs keep the
+                                // legacy fill regardless of the paragraph fill local.
+                                MarkdownParagraph(content, quote, modifier = Modifier.fillMaxWidth(), style = style)
                             }
 
                             else -> {

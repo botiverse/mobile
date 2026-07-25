@@ -288,6 +288,14 @@ val LocalSlockMarkdownAnnotationRevision =
     compositionLocalOf<Any?> { SlockMarkdownAnnotationRevisionUnspecified }
 
 /**
+ * Slock (task #800): whether MarkdownParagraph fills the available width.
+ * Default true preserves the legacy layout for every existing surface; the
+ * Thread page provides false for right-aligned own messages so short
+ * paragraphs wrap to their text and hug the End edge.
+ */
+val LocalSlockMarkdownParagraphFillWidth = compositionLocalOf { true }
+
+/**
  * Single decision point for AnnotatedString memoization, shared by
  * MarkdownParagraph and MarkdownText and locked by contract teeth:
  * null = memo DISABLED (legacy rebuild-every-recomposition semantics);
