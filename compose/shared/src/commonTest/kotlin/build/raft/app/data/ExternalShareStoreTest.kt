@@ -22,7 +22,7 @@ class ExternalShareStoreTest {
         val store = store(scope = this, targets = targets, maximumTargetCount = 2)
 
         store.dispatch(ExternalShareIntent.Load("share-1", Server.value))
-        yield()
+        store.awaitSelecting { state -> state.targets.map { it.id } == listOf("one", "two", "three") }
         store.toggle(targets[0])
         store.toggle(targets[1])
         store.toggle(targets[2])
@@ -56,12 +56,12 @@ class ExternalShareStoreTest {
         val store = store(scope = this, targets = targets, sender = sender)
 
         store.dispatch(ExternalShareIntent.Load("share-1", Server.value))
-        yield()
+        store.awaitSelecting { state -> state.targets.map { it.id } == listOf("success", "retry") }
         targets.forEach { target -> store.toggle(target) }
         store.dispatch(ExternalShareIntent.Continue)
         store.dispatch(ExternalShareIntent.ChangeComment("Take a look"))
         store.dispatch(ExternalShareIntent.Send)
-        yield()
+        store.awaitCompleted()
 
         val first = assertIs<ExternalShareState.Completed>(store.state.value)
         assertEquals(listOf("success"), first.sentTargets.map { it.id })
@@ -69,7 +69,7 @@ class ExternalShareStoreTest {
         assertEquals(listOf("success", "retry"), calls)
 
         store.dispatch(ExternalShareIntent.RetryFailed)
-        yield()
+        store.awaitCompleted { state -> state.failedTargets.isEmpty() }
         val second = assertIs<ExternalShareState.Completed>(store.state.value)
         assertEquals(listOf("success", "retry"), second.sentTargets.map { it.id })
         assertTrue(second.failedTargets.isEmpty())
@@ -138,14 +138,18 @@ class ExternalShareStoreTest {
         val store = store(scope = this, targetRepository = repository)
 
         store.dispatch(ExternalShareIntent.Load("share-1", Server.value))
-        yield()
-        val firstPage = assertIs<ExternalShareState.SelectingTargets>(store.state.value)
+        val firstPage =
+            store.awaitSelecting { state ->
+                state.targets.map { it.id } == listOf("one") && state.nextCursor != null
+            }
         assertEquals(listOf("one"), firstPage.targets.map { it.id })
         assertTrue(firstPage.nextCursor != null)
 
         store.dispatch(ExternalShareIntent.LoadMore)
-        yield()
-        val secondPage = assertIs<ExternalShareState.SelectingTargets>(store.state.value)
+        val secondPage =
+            store.awaitSelecting { state ->
+                state.targets.map { it.id } == listOf("one", "two") && state.nextCursor == null
+            }
         assertEquals(listOf("one", "two"), secondPage.targets.map { it.id })
         assertEquals(null, secondPage.nextCursor)
         store.clear()
@@ -185,7 +189,7 @@ class ExternalShareStoreTest {
             )
         val store = store(scope = this, targets = listOf(unjoined))
         store.dispatch(ExternalShareIntent.Load("share-1", Server.value))
-        yield()
+        store.awaitSelecting { state -> state.targets.map { it.id } == listOf("unjoined") }
 
         store.toggle(unjoined)
 
@@ -593,6 +597,30 @@ class ExternalShareStoreTest {
                 renderGeneration = current.requestGeneration
             )
         )
+    }
+
+    private suspend fun ExternalShareStore.awaitSelecting(
+        predicate: (ExternalShareState.SelectingTargets) -> Boolean = { true }
+    ): ExternalShareState.SelectingTargets {
+        repeat(100) {
+            val current = state.value
+            if (current is ExternalShareState.SelectingTargets && !current.loading && predicate(current)) {
+                return current
+            }
+            yield()
+        }
+        error("ExternalShareStore did not reach the expected ready SelectingTargets state")
+    }
+
+    private suspend fun ExternalShareStore.awaitCompleted(
+        predicate: (ExternalShareState.Completed) -> Boolean = { true }
+    ): ExternalShareState.Completed {
+        repeat(100) {
+            val current = state.value
+            if (current is ExternalShareState.Completed && predicate(current)) return current
+            yield()
+        }
+        error("ExternalShareStore did not reach the expected Completed state")
     }
 
     private open class StubTargetRepository(
