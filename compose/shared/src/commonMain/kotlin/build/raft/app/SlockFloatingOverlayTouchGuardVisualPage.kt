@@ -31,6 +31,8 @@ import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.annotations.Page
 import build.raft.app.model.TaskStatus
 import kotlinx.coroutines.delay
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 
 const val SLOCK_FLOATING_OVERLAY_TOUCH_GUARD_VISUAL_PAGE = "compose_floating_overlay_touch_guard_visual"
 
@@ -39,12 +41,22 @@ internal class ComposeSlockFloatingOverlayTouchGuardVisualPage : build.raft.app.
     override fun willInit() {
         super.willInit()
         val fixture = pageData.params.optString("fixture")
+        val probeGeneration = pageData.params.optString("instanceId")
+        if (fixture.startsWith("release-notes-section-gap-")) {
+            SlockReleaseNotesSectionGapProbe.begin(probeGeneration)
+        }
         setContent {
             when (fixture) {
                 FloatingOverlayTouchGuardModalFixture -> SlockModalPointerBarrierVisualScreen()
                 FloatingOverlayTouchGuardModalTextFieldFixture -> SlockModalTextFieldPointerVisualScreen()
                 FloatingOverlayTouchGuardTaskStatusFixture -> SlockTaskStatusMenuTouchVisualScreen()
                 FloatingOverlayTouchGuardAnchorLeaseFixture -> SlockAnchorLeaseLazyReuseVisualScreen()
+                ReleaseNotesSectionGapZeroFixture ->
+                    SlockReleaseNotesSectionGapVisualScreen(0.dp, probeGeneration)
+                ReleaseNotesSectionGapEightFixture ->
+                    SlockReleaseNotesSectionGapVisualScreen(SlockSpacing.Sm, probeGeneration)
+                ReleaseNotesSectionGapDefaultFixture ->
+                    SlockReleaseNotesSectionGapVisualScreen(null, probeGeneration)
                 else -> SlockFloatingOverlayTouchGuardVisualScreen()
             }
         }
@@ -55,6 +67,84 @@ private const val FloatingOverlayTouchGuardModalFixture = "modal"
 private const val FloatingOverlayTouchGuardModalTextFieldFixture = "modal-text-field"
 private const val FloatingOverlayTouchGuardTaskStatusFixture = "task-status-menu"
 private const val FloatingOverlayTouchGuardAnchorLeaseFixture = "anchor-lease-lazy"
+private const val ReleaseNotesSectionGapZeroFixture = "release-notes-section-gap-zero"
+private const val ReleaseNotesSectionGapEightFixture = "release-notes-section-gap-eight"
+private const val ReleaseNotesSectionGapDefaultFixture = "release-notes-section-gap-default"
+
+@Composable
+private fun SlockReleaseNotesSectionGapVisualScreen(
+    sectionGap: com.tencent.kuikly.compose.ui.unit.Dp?,
+    probeGeneration: String
+) {
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .background(SlockColor.SurfaceCream)
+                .padding(SlockSpacing.Md)
+    ) {
+        if (sectionGap == null) {
+            SlockMarkdownBody(
+                body = ReleaseNotesSectionGapFixtureBody,
+                onSectionHeadingPositioned = { bounds ->
+                    SlockReleaseNotesSectionGapProbe.record(probeGeneration, bounds)
+                }
+            )
+        } else {
+            SlockMarkdownBody(
+                body = ReleaseNotesSectionGapFixtureBody,
+                sectionHeadingTopPadding = sectionGap,
+                onSectionHeadingPositioned = { bounds ->
+                    SlockReleaseNotesSectionGapProbe.record(probeGeneration, bounds)
+                }
+            )
+        }
+    }
+}
+
+private val ReleaseNotesSectionGapFixtureBody =
+    """
+    # Raft Alpha 1.0.0
+
+    这份精确版本文档用于验证 build **1000002** 的原生 Release Notes 体验，并与消息和文件预览共同复用 `SlockMarkdownBody` 渲染器。
+
+    ## 本次内容
+    """.trimIndent()
+
+data class SlockReleaseNotesSectionHeadingBounds(
+    val left: Int,
+    val top: Int,
+    val right: Int,
+    val bottom: Int
+)
+
+object SlockReleaseNotesSectionGapProbe : SynchronizedObject() {
+    private var activeGeneration: String? = null
+    private var latestBounds: SlockReleaseNotesSectionHeadingBounds? = null
+
+    fun begin(generation: String) = synchronized(this) {
+        activeGeneration = generation
+        latestBounds = null
+    }
+
+    fun record(
+        generation: String,
+        bounds: com.tencent.kuikly.compose.ui.geometry.Rect
+    ) = synchronized(this) {
+        if (generation != activeGeneration) return@synchronized
+        latestBounds =
+            SlockReleaseNotesSectionHeadingBounds(
+                left = kotlin.math.floor(bounds.left).toInt(),
+                top = kotlin.math.floor(bounds.top).toInt(),
+                right = kotlin.math.ceil(bounds.right).toInt(),
+                bottom = kotlin.math.ceil(bounds.bottom).toInt()
+            )
+    }
+
+    fun snapshot(generation: String): SlockReleaseNotesSectionHeadingBounds? = synchronized(this) {
+        latestBounds.takeIf { generation == activeGeneration }
+    }
+}
 
 @Composable
 internal fun SlockFloatingOverlayTouchGuardVisualScreen() {

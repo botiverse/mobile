@@ -142,9 +142,9 @@ private fun AppUpdateScreen() {
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             val versionCode = snapshot?.latestVersionCode?.takeIf { it > 0L }?.toString().orEmpty()
             if (versionCode.isNotBlank()) {
-                ReleaseNotesWebViewBody(versionCode)
+                ReleaseNotesNativeBody(versionCode)
             } else {
-                ReleaseNotesCenteredNotice(stringResource(MR.strings.release_notes_loading))
+                ReleaseNotesLoadingCover()
             }
         }
     }
@@ -345,6 +345,7 @@ internal fun appUpdatePrimaryActionLabel(
     installLabel: String = "Install"
 ): String =
     when {
+        actionRunning && snapshot.isDownloadAction() -> downloadingLabel
         actionRunning -> workingLabel
         snapshot == null -> retryLabel
         snapshot.actionLabel.equals("download", ignoreCase = true) -> downloadLabel
@@ -357,6 +358,13 @@ internal fun appUpdatePrimaryActionLabel(
         snapshot.statusLabel.equals("installing", ignoreCase = true) -> installingLabel
         else -> downloadLabel
     }
+
+private fun SharedSettingsUpdateCheckSnapshot?.isDownloadAction(): Boolean =
+    this != null &&
+        (
+            actionLabel.equals("download", ignoreCase = true) ||
+                (actionLabel.isBlank() && statusLabel.equals("download", ignoreCase = true))
+        )
 
 internal fun appUpdatePrimaryActionEnabled(
     snapshot: SharedSettingsUpdateCheckSnapshot?,

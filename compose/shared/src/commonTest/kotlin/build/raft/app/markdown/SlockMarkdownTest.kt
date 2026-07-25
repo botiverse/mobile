@@ -1029,6 +1029,18 @@ class SlockMarkdownTest {
     }
 
     @Test
+    fun releaseNotesSectionGapClearsInlineCodeChromePaintOverflow() {
+        // The old dense top-level default has no room for the 2dp bottom
+        // padding + 1dp border and reproduces the geometry behind the zh-CN
+        // 1.3x overlap. Release Notes' 8dp document opt-in clears it while
+        // other Markdown surfaces keep the unchanged zero-gap default.
+        assertFalse(slockMarkdownSectionHeadingGapClearsInlineCodeChrome(0.dp))
+        assertFalse(slockMarkdownSectionHeadingGapClearsInlineCodeChrome(2.dp))
+        assertTrue(slockMarkdownSectionHeadingGapClearsInlineCodeChrome(3.dp))
+        assertTrue(slockMarkdownSectionHeadingGapClearsInlineCodeChrome(8.dp))
+    }
+
+    @Test
     fun markdownTextStyleRaisesLineHeightForInlineChips() {
         val style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp)
 

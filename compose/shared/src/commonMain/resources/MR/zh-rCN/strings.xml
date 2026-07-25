@@ -1242,6 +1242,7 @@
     <string name="home_notification_app_update_body">当前版本：%1$s；最新版本：%2$s。</string>
     <string name="app_update_view">查看</string>
     <string name="app_update_retry">重试</string>
+    <string name="app_locale_request_tag">zh-CN</string>
     <string name="app_update_working">处理中…</string>
     <string name="app_update_download">下载</string>
     <string name="app_update_downloading">下载中</string>

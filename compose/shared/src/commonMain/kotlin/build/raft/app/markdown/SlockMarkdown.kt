@@ -45,6 +45,7 @@ import com.tencent.kuikly.core.pager.Pager
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.geometry.Rect
 import com.tencent.kuikly.compose.ui.graphics.Color
+import com.tencent.kuikly.compose.ui.layout.boundsInRoot
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.text.AnnotatedString
 import com.tencent.kuikly.compose.ui.text.InlineBoxSpanStyle
@@ -90,6 +91,7 @@ import com.tencent.kuiklybase.markdown.model.markdownAnnotatorConfig
 import com.tencent.kuiklybase.markdown.compose.elements.MarkdownCode
 import com.tencent.kuiklybase.markdown.compose.elements.MarkdownCodeBlock
 import com.tencent.kuiklybase.markdown.compose.elements.MarkdownCodeFence
+import com.tencent.kuiklybase.markdown.compose.elements.MarkdownHeader
 import com.tencent.kuiklybase.markdown.model.MarkdownDimens
 import com.tencent.kuiklybase.markdown.model.markdownPadding
 import com.tencent.kuiklybase.markdown.model.prepareMarkdownContent
@@ -1868,6 +1870,8 @@ fun SlockMarkdownBody(
     resolveTagLabel: ((ThreadMarkdownTag) -> String)? = null,
     inlineContentScope: String? = null,
     activeTagKey: String? = null,
+    sectionHeadingTopPadding: Dp = 0.dp,
+    onSectionHeadingPositioned: ((Rect) -> Unit)? = null,
     performanceKey: String? = null,
     performanceLogger: (String) -> Unit = {}
 ) {
@@ -2089,8 +2093,41 @@ fun SlockMarkdownBody(
             blockQuoteBar = PaddingValues.Absolute(left = 0.dp, top = 0.dp, right = 0.dp, bottom = 0.dp)
         )
     }
-    val components = remember {
+    val components = remember(sectionHeadingTopPadding, onSectionHeadingPositioned) {
+        val sectionHeadingModifier =
+            Modifier
+                .padding(top = sectionHeadingTopPadding)
+                .let { modifier ->
+                    if (onSectionHeadingPositioned == null) {
+                        modifier
+                    } else {
+                        modifier.onGloballyPositioned { coordinates ->
+                            onSectionHeadingPositioned(coordinates.boundsInRoot())
+                        }
+                    }
+                }
         markdownComponents(
+            // Kuikly's Markdown renderer stacks top-level nodes without a
+            // spacer. Most message surfaces intentionally keep that dense
+            // layout, but document surfaces can opt into a section gap. This
+            // also reserves the paint overflow of an inline-code box before
+            // the following heading at large system font scales.
+            heading2 = { model ->
+                MarkdownHeader(
+                    model.content,
+                    model.node,
+                    style = model.typography.h2,
+                    modifier = sectionHeadingModifier
+                )
+            },
+            heading3 = { model ->
+                MarkdownHeader(
+                    model.content,
+                    model.node,
+                    style = model.typography.h3,
+                    modifier = sectionHeadingModifier
+                )
+            },
             horizontalRule = {
                 SlockMarkdownHorizontalRule()
             },
@@ -2579,16 +2616,27 @@ private fun SlockRichTextChromeStyleToken.toInlineBoxSpanStyle(): InlineBoxSpanS
     return InlineBoxSpanStyle(
         backgroundColor = fill.toSlockMarkdownColor(),
         borderColor = SlockColor.BorderBlack,
-        borderWidth = 1.dp,
+        borderWidth = SlockRichTextInlineBoxBorderWidthDp.dp,
         paddingStart = 4.dp,
         paddingEnd = 4.dp,
-        paddingTop = 2.dp,
-        paddingBottom = 2.dp,
+        paddingTop = SlockRichTextInlineBoxVerticalPaddingDp.dp,
+        paddingBottom = SlockRichTextInlineBoxVerticalPaddingDp.dp,
         marginStart = 2.dp,
         marginEnd = 2.dp,
         cornerRadius = 0.dp
     )
 }
+
+private const val SlockRichTextInlineBoxBorderWidthDp = 1f
+private const val SlockRichTextInlineBoxVerticalPaddingDp = 2f
+
+/**
+ * Top-level Markdown nodes do not reserve space for inline-box paint outside
+ * the text line. A following heading must clear the box's bottom padding plus
+ * border; this keeps the document opt-in tied to the actual chrome geometry.
+ */
+internal fun slockMarkdownSectionHeadingGapClearsInlineCodeChrome(gap: Dp): Boolean =
+    gap.value >= SlockRichTextInlineBoxVerticalPaddingDp + SlockRichTextInlineBoxBorderWidthDp
 
 private fun SlockRichTextColorToken?.toSlockMarkdownColor(): Color =
     requireNotNull(this) { "Slock richtext color token is required for this chrome path" }
