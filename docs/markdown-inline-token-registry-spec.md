@@ -2,7 +2,12 @@
 
 Date: 2026-06-21
 Owner: KMP / Kuikly shared
-Status: Draft
+Status: Historical design; syntax ownership superseded by `raft-markdown-dialect.md`
+
+> The registry/token-plan and typed-rendering parts of this document remain
+> useful context. Its raw `find(content)` rule model is no longer the syntax
+> source of truth. Raft reference recognition is parser-aware and specified in
+> `docs/raft-markdown-dialect.md`.
 
 ## Problem
 

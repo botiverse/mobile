@@ -1671,6 +1671,26 @@ class SlockMarkdownTest {
     }
 
     @Test
+    fun markdownLinksOwnReferenceSemanticsInsideTheirLabelsAndDestinations() {
+        val body =
+            "[#1487 feat(search): pin entities](https://github.com/botiverse/mobile/pull/1487#discussion) " +
+                "then task #1487"
+
+        val matches = body.threadInlineTagMatches()
+
+        assertEquals(listOf("#1487"), matches.map { it.tag.label })
+        assertEquals(body.lastIndexOf("#1487"), matches.single().range.first)
+    }
+
+    @Test
+    fun markdownLinkProtectionHandlesEscapesAndNestedParentheses() {
+        val body =
+            "[PR #42 with \\] label](https://example.test/path_(preview)#fragment) outside #43"
+
+        assertEquals(listOf("#43"), body.threadInlineTagMatches().map { it.tag.label })
+    }
+
+    @Test
     fun inlineTokenRegistryKeepsColonThreadReferenceAsSingleToken() {
         val plan =
             SlockMarkdownInlineTokenRegistry.plan(
