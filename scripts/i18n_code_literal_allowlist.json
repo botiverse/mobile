@@ -1,0 +1,37 @@
+[
+  {
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SlockKuiklyChildPage.kt",
+    "literal": "Child Page Host Smoke",
+    "reason": "internal child-host smoke page, not a product surface"
+  },
+  {
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SlockKuiklyChildPage.kt",
+    "literal": "pageData.marker = $marker",
+    "reason": "internal child-host diagnostic marker"
+  },
+  {
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SlockTypographyProbePage.kt",
+    "literal": "Tight Fallback Lines",
+    "reason": "internal typography probe label"
+  },
+  {
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SlockTypographyProbePage.kt",
+    "literal": "Message Body Path",
+    "reason": "internal typography probe label"
+  },
+  {
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/TokenPaletteVisualPage.kt",
+    "literal": "Shared Tokens",
+    "reason": "internal visual token palette label"
+  },
+  {
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/TokenPaletteVisualPage.kt",
+    "literal": "Shadow",
+    "reason": "internal visual token palette label"
+  },
+  {
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/TokenPaletteVisualPage.kt",
+    "literal": "4px 4px 0px #141111",
+    "reason": "internal visual token palette measurement"
+  }
+]
