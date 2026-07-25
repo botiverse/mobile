@@ -206,4 +206,21 @@ class ThreadMessageLongPressSurfaceTest {
         assertNull(threadVisibleResumePlan(lifecycleSeen = false, routeActive = true))
         assertNull(threadVisibleResumePlan(lifecycleSeen = true, routeActive = false))
     }
+
+    @Test
+    fun hiddenThreadSkipsAppShellResumeThenRefreshesExactlyOnceAfterAppearing() {
+        val gate = ThreadVisibleResumeGate(lifecycleSeen = true)
+        var conversationRefreshes = 0
+        var roomRejoins = 0
+
+        listOf(false, true).forEach { routeActive ->
+            gate.onVisibleResume(routeActive)?.let { plan ->
+                if (plan.refreshVisibleConversation) conversationRefreshes += 1
+                if (plan.rejoinVisibleRooms) roomRejoins += 1
+            }
+        }
+
+        assertEquals(1, conversationRefreshes)
+        assertEquals(1, roomRejoins)
+    }
 }

@@ -865,7 +865,10 @@ internal class ComposeThreadPage : build.raft.app.base.BasePager() {
         setContent {
             SlockInputFocusDismissHost { focusDismissModifier ->
                 Box(modifier = focusDismissModifier.fillMaxSize()) {
-                    ThreadPageScreen(slockPageVisibleResumeTick)
+                    ThreadPageScreen(
+                        pageVisibleTick = slockPageVisibleResumeTick,
+                        pageVisible = slockPageVisible
+                    )
                 }
             }
         }
@@ -2494,7 +2497,10 @@ private fun KuiklyThreadTab.toSlockTabSpec(): SlockTabSpec<KuiklyThreadTab> =
     )
 
 @Composable
-private fun ThreadPageScreen(pageVisibleTick: Int = 0) {
+private fun ThreadPageScreen(
+    pageVisibleTick: Int,
+    pageVisible: Boolean
+) {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = Utils.bridgeModule(pager.pagerId)
     val params = pager.pageData.params
@@ -2745,6 +2751,7 @@ private fun ThreadPageScreen(pageVisibleTick: Int = 0) {
         storeScope = storeScope,
         composerDraftPersistSlice = sharedStores.composerDraftPersistSlice,
         eventBus = sharedStores.eventBus,
+        active = pageVisible,
         onBack = {
             routerModule.closePage()
         },
@@ -4600,8 +4607,10 @@ internal fun SharedThreadRouteContent(
     // The listener can mount after Activity.onResume. Seed from the authoritative host
     // visibility so the first external-browser return is treated as a subsequent resume
     // and rotates stale pointer registrations instead of merely marking lifecycle as seen.
-    var threadLifecycleSeen by remember(threadInstanceKey, storeScope.shellInstanceId) {
-        mutableStateOf(isSlockHostVisible(storeScope.shellInstanceId))
+    val threadVisibleResumeGate = remember(threadInstanceKey, storeScope.shellInstanceId) {
+        ThreadVisibleResumeGate(
+            lifecycleSeen = isSlockHostVisible(storeScope.shellInstanceId)
+        )
     }
     var threadHostForeground by remember(threadInstanceKey, storeScope.shellInstanceId) {
         mutableStateOf(isSlockHostVisible(storeScope.shellInstanceId))
@@ -4675,7 +4684,7 @@ internal fun SharedThreadRouteContent(
                         event == SlockRealtimeNotifyContract.LifecycleVisibleResume ||
                         event == SlockRealtimeNotifyContract.LifecycleVisibleShow
                     ) {
-                        val resumePlan = threadVisibleResumePlan(threadLifecycleSeen, active)
+                        val resumePlan = threadVisibleResumeGate.onVisibleResume(active)
                         if (resumePlan != null) {
                             threadPointerSessionKey = nextThreadPointerSessionKey(threadPointerSessionKey)
                             if (resumePlan.refreshVisibleConversation) {
@@ -4687,8 +4696,6 @@ internal fun SharedThreadRouteContent(
                                     latestCurrentSession?.currentServerId
                                 )
                             }
-                        } else {
-                            threadLifecycleSeen = true
                         }
                     }
                 }
@@ -16603,6 +16610,18 @@ internal fun threadVisibleResumePlan(
     } else {
         null
     }
+
+internal class ThreadVisibleResumeGate(
+    lifecycleSeen: Boolean
+) {
+    private var lifecycleSeen = lifecycleSeen
+
+    fun onVisibleResume(routeActive: Boolean): ThreadVisibleResumePlan? {
+        val plan = threadVisibleResumePlan(lifecycleSeen, routeActive)
+        lifecycleSeen = true
+        return plan
+    }
+}
 
 internal fun KuiklyThreadScreenPayload.toSlockTimeContext(): SlockTimeContext =
     SlockTimeContext(
