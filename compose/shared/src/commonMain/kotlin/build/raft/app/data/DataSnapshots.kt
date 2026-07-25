@@ -1241,6 +1241,13 @@ data class SettingsMobileSnapshot(
             statusLabel = "Off",
             detail = "Use the new multi-server left drawer on Home. When off, keep the current server switcher popover."
         ),
+    val homeServerAvatar: SettingsMobileToggleSnapshot =
+        SettingsMobileToggleSnapshot(
+            enabled = false,
+            available = true,
+            statusLabel = "Off",
+            detail = "Show the current workspace avatar in the Home header. When off, keep the existing compact title badge."
+        ),
     val threadRowAffordances: SettingsMobileMultiSelectionSnapshot =
         SettingsMobileMultiSelectionSnapshot(
             selectedKeys = ThreadRowAffordancePreference.Default.map { it.storageKey }.toSet(),

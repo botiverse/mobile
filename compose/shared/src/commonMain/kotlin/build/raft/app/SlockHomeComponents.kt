@@ -884,9 +884,26 @@ private fun SlockHomeConversationItem.toThreadLaunchConversationIdentity(): Thre
 
 @Composable
 internal fun HomeTitlebarVisualScreen() {
-    Box(modifier = Modifier.width(342.dp).height(110.dp).background(SlockColor.SurfaceWhite).padding(top = 48.dp)) {
+    val designServer =
+        SlockServerSwitcherItem(
+            id = "srv_design",
+            name = "Raft Product Design Workspace",
+            slug = "raft-design",
+            avatarUrl = "pixel:paint"
+        )
+    val fallbackServer = designServer.copy(avatarUrl = null)
+    Column(
+        modifier =
+            Modifier
+                .width(342.dp)
+                .height(560.dp)
+                .background(SlockColor.SurfaceWhite)
+                .padding(top = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        HomeTitlebarDesignLabel("SETTING OFF · EXISTING COMPACT BADGE")
         HomeTitlebar(
-            serverName = "Raft Design",
+            serverName = designServer.name,
             hasOtherServerUnread = true,
             notifications = visualHomeNotifications(),
             refreshing = false,
@@ -894,7 +911,166 @@ internal fun HomeTitlebarVisualScreen() {
             onServerBadgeClick = {},
             onNotificationToggle = {}
         )
+        HomeTitlebarDesignLabel("SETTING ON · 32DP SQUARE · CUSTOM · 15SP")
+        HomeTitlebar(
+            serverName = designServer.name,
+            serverIdentity = designServer,
+            hasOtherServerUnread = false,
+            notifications = visualHomeNotifications(),
+            refreshing = false,
+            topSafeArea = 0.dp,
+            onServerBadgeClick = {},
+            onNotificationToggle = {}
+        )
+        HomeTitlebarDesignLabel("SETTING ON · 32DP SQUARE · FALLBACK · 15SP")
+        HomeTitlebar(
+            serverName = fallbackServer.name,
+            serverIdentity = fallbackServer,
+            hasOtherServerUnread = false,
+            notifications = visualHomeNotifications(),
+            refreshing = false,
+            topSafeArea = 0.dp,
+            onServerBadgeClick = {},
+            onNotificationToggle = {}
+        )
+        HomeTitlebarDesignLabel("RIGHT PINK DOT = NOTIFICATION UNREAD")
+        HomeTitlebarDesignLabel("EXPANDED SWITCHER · SAME IDENTITY TOKEN")
+        HardShadowPanel(
+            modifier = Modifier.padding(horizontal = SlockSpacing.Md),
+            minWidth = 276.dp,
+            maxWidth = 328.dp
+        ) {
+            ServerSwitcherRow(
+                server = designServer,
+                selected = true,
+                pending = false,
+                onClick = {}
+            )
+            ServerSwitcherRow(
+                server =
+                    SlockServerSwitcherItem(
+                        id = "srv_fallback",
+                        name = "Raft Community",
+                        slug = "raft-community"
+                    ),
+                selected = false,
+                pending = false,
+                onClick = {}
+            )
+        }
     }
+}
+
+@Composable
+internal fun HomeTitlebarPreferenceVisualScreen(enabled: Boolean) {
+    val server =
+        SlockServerSwitcherItem(
+            id = "srv_persisted",
+            name = "Raft Product Design Workspace",
+            slug = "raft-design",
+            avatarUrl = "pixel:paint"
+        )
+    SlockStructuralHomeShell(
+        currentServerName = server.name,
+        currentServerId = server.id,
+        servers = listOf(server),
+        homeServerAvatarEnabled = enabled,
+        applyTopSafeArea = false,
+        showBottomBar = false,
+        outerPadding = 0.dp
+    )
+}
+
+@Composable
+internal fun HomeTitlebarServerSwitchVisualScreen() {
+    val servers =
+        remember {
+            listOf(
+                SlockServerSwitcherItem(
+                    id = "server-a",
+                    name = "Workspace A",
+                    slug = "workspace-a",
+                    avatarUrl = "pixel:paint"
+                ),
+                SlockServerSwitcherItem(
+                    id = "server-b",
+                    name = "Workspace B after switch",
+                    slug = "workspace-b"
+                )
+            )
+        }
+    var currentServerId by remember { mutableStateOf(servers.first().id) }
+    LaunchedEffect(Unit) {
+        delay(700)
+        currentServerId = servers.last().id
+    }
+    val currentServer = servers.first { server -> server.id == currentServerId }
+    SlockStructuralHomeShell(
+        currentServerName = currentServer.name,
+        currentServerId = currentServer.id,
+        servers = servers,
+        homeServerAvatarEnabled = true,
+        serverSwitcherExpanded = true,
+        applyTopSafeArea = false,
+        showBottomBar = false,
+        outerPadding = 0.dp
+    )
+}
+
+@Composable
+internal fun HomeTitlebarLoadingVisualScreen() {
+    val server =
+        SlockServerSwitcherItem(
+            id = "server-loading",
+            name = "Loading workspace",
+            slug = "loading-workspace"
+        )
+    SlockStructuralHomeShell(
+        currentServerName = server.name,
+        currentServerId = server.id,
+        servers = listOf(server),
+        homeServerAvatarEnabled = true,
+        showLoadingSkeletons = true,
+        applyTopSafeArea = false,
+        showBottomBar = false,
+        outerPadding = 0.dp
+    )
+}
+
+@Composable
+internal fun HomeTitlebarErrorVisualScreen() {
+    val server =
+        SlockServerSwitcherItem(
+            id = "server-error",
+            name = "Workspace with removed avatar",
+            slug = "workspace-error"
+        )
+    SlockStructuralHomeShell(
+        currentServerName = server.name,
+        currentServerId = server.id,
+        servers = listOf(server),
+        homeServerAvatarEnabled = true,
+        inlineError =
+            SlockHomeInlineError(
+                title = "Could not refresh Home",
+                detail = "The last workspace identity remains available while content retries.",
+                code = "home_network",
+                actionLabel = "Retry"
+            ),
+        applyTopSafeArea = false,
+        showBottomBar = false,
+        outerPadding = 0.dp
+    )
+}
+
+@Composable
+private fun HomeTitlebarDesignLabel(text: String) {
+    Text(
+        text = text,
+        style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp),
+        color = SlockColor.TextMutedGray,
+        modifier = Modifier.padding(horizontal = SlockSpacing.Md)
+    )
 }
 
 @Composable
@@ -1028,6 +1204,7 @@ internal fun SlockStructuralHomeShell(
     contentRefreshEnabled: Boolean = true,
     serverSwitcherExpanded: Boolean = false,
     serverDrawerEnabled: Boolean = false,
+    homeServerAvatarEnabled: Boolean = false,
     serverDrawerSections: List<SlockHomeServerDrawerSection> = emptyList(),
     pendingServerId: String? = null,
     prefersChineseCommunity: Boolean = false,
@@ -1223,6 +1400,14 @@ internal fun SlockStructuralHomeShell(
         remember(currentServerId, servers) {
             homeServerSwitcherHasOtherUnread(currentServerId, servers)
         }
+    val currentHomeHeaderServer =
+        remember(currentServerId, currentServerName, servers) {
+            homeHeaderServerIdentity(
+                currentServerId = currentServerId,
+                currentServerName = currentServerName,
+                servers = servers
+            )
+        }
     val serverSwitcherAvatarPainters = rememberServerSwitcherAvatarPainters(servers)
     val sidebarSelection =
         homeSidebarSelection(
@@ -1413,6 +1598,7 @@ internal fun SlockStructuralHomeShell(
                 traceMarkdownSection(SlockHomeTraceNames.TITLEBAR_RENDER, notifications.size) {
                     HomeTitlebar(
                         serverName = currentServerName,
+                        serverIdentity = currentHomeHeaderServer.takeIf { homeServerAvatarEnabled },
                         hasOtherServerUnread = serverSwitcherHasOtherUnread,
                         notifications = visibleNotifications,
                         refreshing = headerRefreshing,
@@ -3019,6 +3205,7 @@ private fun List<SlockHomePinnedRow>.sortedPinnedRows(mode: SlockSidebarSortMode
 @Composable
 private fun HomeTitlebar(
     serverName: String,
+    serverIdentity: SlockServerSwitcherItem? = null,
     hasOtherServerUnread: Boolean,
     notifications: List<SlockHomeNotificationItem>,
     refreshing: Boolean,
@@ -3038,22 +3225,30 @@ private fun HomeTitlebar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Box(modifier = Modifier.clickable(onClick = onServerBadgeClick)) {
-                SlockLogoBadge(
-                    text = serverName,
-                    showDropdown = true,
-                    tilted = true,
-                    unread = hasOtherServerUnread,
-                    textStyle = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 24.sp)
+            if (serverIdentity == null) {
+                Box(modifier = Modifier.clickable(onClick = onServerBadgeClick)) {
+                    SlockLogoBadge(
+                        text = serverName,
+                        showDropdown = true,
+                        tilted = true,
+                        unread = hasOtherServerUnread,
+                        textStyle = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 24.sp)
+                    )
+                }
+                val blankModifier =
+                    if (onBlankClick != null) {
+                        Modifier.weight(1f).height(SlockSize.PageHeaderContentHeight).clickable(onClick = onBlankClick)
+                    } else {
+                        Modifier.weight(1f)
+                    }
+                Spacer(blankModifier)
+            } else {
+                HomeServerIdentityCluster(
+                    server = serverIdentity,
+                    onClick = onServerBadgeClick,
+                    modifier = Modifier.weight(1f)
                 )
             }
-            val blankModifier =
-                if (onBlankClick != null) {
-                    Modifier.weight(1f).height(SlockSize.PageHeaderContentHeight).clickable(onClick = onBlankClick)
-                } else {
-                    Modifier.weight(1f)
-                }
-            Spacer(blankModifier)
             if (refreshing) {
                 SlockHeaderRefreshIndicator()
             }
@@ -3062,6 +3257,35 @@ private fun HomeTitlebar(
                 onToggle = onNotificationToggle
             )
         }
+    }
+}
+
+@Composable
+private fun HomeServerIdentityCluster(
+    server: SlockServerSwitcherItem,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier.height(SlockSize.PageHeaderContentHeight).clickable(onClick = onClick),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        ServerSwitcherAvatarTile(server)
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = server.name,
+            color = SlockColor.TextBlack,
+            style = SlockType.ButtonBold.copy(fontSize = 15.sp, lineHeight = 20.sp),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+        Spacer(Modifier.width(4.dp))
+        SlockLucideIcon(
+            SlockLucideIconName.ChevronDown,
+            Modifier.size(16.dp),
+            color = SlockColor.TextBlackArgb
+        )
     }
 }
 
@@ -4268,12 +4492,24 @@ private fun ServerSwitcherAvatarTile(server: SlockServerSwitcherItem) {
             textAlign = TextAlign.Center
         )
         presentation.avatarWireValue?.let { source ->
-            // The invisible prewarm Image owns its painter. Give the visible row a distinct
-            // painter so Kuikly's stateful image node can draw the already-warm cache entry.
-            SlockAvatarHttpImage(
-                source = source,
-                modifier = Modifier.fillMaxSize()
-            )
+            if (source.toPixelAvatarSpec() != null) {
+                // Visual-fixture pixel avatars use the same renderer as the compact header so
+                // the connected comparison can prove one identity projection at both levels.
+                SlockAvatar(
+                    avatarWireValue = source,
+                    label = presentation.fallbackLabel,
+                    modifier = Modifier.fillMaxSize(),
+                    avatarSize = 32.dp,
+                    borderWidth = 0.dp
+                )
+            } else {
+                // The invisible prewarm Image owns its painter. Give the visible row a distinct
+                // painter so Kuikly's stateful image node can draw the already-warm cache entry.
+                SlockAvatarHttpImage(
+                    source = source,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
         }
     }
 }
@@ -4288,6 +4524,20 @@ internal fun SlockServerSwitcherItem.toServerSwitcherAvatarPresentation(): Serve
         avatarWireValue = avatarUrl?.takeIf { it.isNotBlank() },
         fallbackLabel = name.take(1).uppercase()
     )
+
+internal fun homeHeaderServerIdentity(
+    currentServerId: String,
+    currentServerName: String,
+    servers: List<SlockServerSwitcherItem>
+): SlockServerSwitcherItem {
+    val matched = servers.firstOrNull { server -> server.id == currentServerId }
+    return matched?.copy(name = matched.name.ifBlank { currentServerName })
+        ?: SlockServerSwitcherItem(
+            id = currentServerId,
+            name = currentServerName,
+            slug = currentServerId
+        )
+}
 
 @Composable
 private fun rememberServerSwitcherAvatarPainters(

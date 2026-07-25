@@ -437,6 +437,7 @@ sealed interface SharedSettingsIntent {
     data class SetComposerSendKey(val enabled: Boolean) : SharedSettingsIntent
     data class SetMultiShellHostEnabled(val enabled: Boolean) : SharedSettingsIntent
     data class SetServerDrawerEnabled(val enabled: Boolean) : SharedSettingsIntent
+    data class SetHomeServerAvatarEnabled(val enabled: Boolean) : SharedSettingsIntent
     data class SetThreadRowAffordance(val affordance: String, val enabled: Boolean) : SharedSettingsIntent
     data object RefreshStorage : SharedSettingsIntent
     data class ClearStorage(val target: String) : SharedSettingsIntent
@@ -1080,6 +1081,14 @@ class SharedSettingsDataSource(
         return loadMobilePreferences()
     }
 
+    suspend fun setHomeServerAvatarEnabled(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
+        val repository =
+            chatLayoutPreferenceRepository
+                ?: return DataResult.Error(ScreenError("settings_home_server_avatar_unavailable", retryable = false))
+        repository.setHomeServerAvatarEnabled(enabled)
+        return loadMobilePreferences()
+    }
+
     suspend fun setThreadRowAffordance(
         affordanceKey: String,
         enabled: Boolean
@@ -1384,6 +1393,13 @@ class SharedSettingsDataSource(
                         available = false,
                         statusLabel = "Unsupported",
                         detail = "The multi-server Home drawer is not available on this platform."
+                    ),
+            homeServerAvatar =
+                chatLayout?.toSettingsMobileHomeServerAvatarSnapshot()
+                    ?: homeServerAvatar.copy(
+                        available = false,
+                        statusLabel = "Unsupported",
+                        detail = "The Home workspace avatar preference is not available on this platform."
                     ),
             threadRowAffordances =
                 chatLayout?.toSettingsMobileThreadRowAffordancesSnapshot()
@@ -2143,6 +2159,14 @@ class SharedSettingsStore(
                     )
                 dataSource.setServerDrawerEnabled(intent.enabled)
                     .applyMobileActionResult(MOBILE_ACTION_SERVER_DRAWER)
+            }
+            is SharedSettingsIntent.SetHomeServerAvatarEnabled -> {
+                _state.value =
+                    _state.value.copy(
+                        actionState = SharedSettingsActionState(MOBILE_ACTION_HOME_SERVER_AVATAR, inProgress = true)
+                    )
+                dataSource.setHomeServerAvatarEnabled(intent.enabled)
+                    .applyMobileActionResult(MOBILE_ACTION_HOME_SERVER_AVATAR)
             }
             is SharedSettingsIntent.SetThreadRowAffordance -> {
                 _state.value =
@@ -3360,6 +3384,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.SetComposerSendKey,
             is SharedSettingsIntent.SetMultiShellHostEnabled,
             is SharedSettingsIntent.SetServerDrawerEnabled,
+            is SharedSettingsIntent.SetHomeServerAvatarEnabled,
             is SharedSettingsIntent.SetThreadRowAffordance,
             is SharedSettingsIntent.ClearStorage,
             is SharedSettingsIntent.SetApiEnvironment,
@@ -3533,6 +3558,7 @@ internal const val MOBILE_ACTION_ACTIVITY_TASK_STATUS_BADGES = "activityTaskStat
 internal const val MOBILE_ACTION_COMPOSER_SEND_KEY = "composerSendKey"
 internal const val MOBILE_ACTION_MULTI_SHELL_HOST = "multiShellHost"
 internal const val MOBILE_ACTION_SERVER_DRAWER = "serverDrawer"
+internal const val MOBILE_ACTION_HOME_SERVER_AVATAR = "homeServerAvatar"
 internal const val MOBILE_ACTION_THREAD_ROW_AFFORDANCES = "threadRowAffordances"
 internal const val LANGUAGE_REGION_ACTION_SERVER_TRANSLATION = "languageRegionServerTranslation"
 internal const val COMPUTER_ACTION_RENAME = "renameComputer"
@@ -3793,6 +3819,14 @@ private fun ChatLayoutPreferenceSnapshot.toSettingsMobileServerDrawerSnapshot():
         available = true,
         statusLabel = if (serverDrawerEnabled) "Enabled" else "Off",
         detail = "Use the new multi-server left drawer on Home. When off, keep the current server switcher popover."
+    )
+
+private fun ChatLayoutPreferenceSnapshot.toSettingsMobileHomeServerAvatarSnapshot(): SettingsMobileToggleSnapshot =
+    SettingsMobileToggleSnapshot(
+        enabled = homeServerAvatarEnabled,
+        available = true,
+        statusLabel = if (homeServerAvatarEnabled) "Enabled" else "Off",
+        detail = "Show the current workspace avatar in the Home header. When off, keep the existing compact title badge."
     )
 
 private fun ChatLayoutPreferenceSnapshot.toSettingsMobileThreadRowAffordancesSnapshot(): SettingsMobileMultiSelectionSnapshot =
