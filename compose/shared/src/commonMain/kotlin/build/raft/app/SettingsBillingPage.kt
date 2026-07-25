@@ -553,7 +553,10 @@ internal fun SettingsBillingActionSnapshot.toBillingActionPayload(
 @Composable
 private fun SettingsBillingLoadingContent() {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        SettingsBillingSectionHeader(SlockLucideIconName.CreditCard, "Plan & Billing")
+        SettingsBillingSectionHeader(
+            SlockLucideIconName.CreditCard,
+            stringResource(MR.strings.settings_section_billing_title)
+        )
         HardShadowCard {
             repeat(4) { index ->
                 Box(
@@ -565,7 +568,10 @@ private fun SettingsBillingLoadingContent() {
                 )
             }
         }
-        SettingsBillingSectionHeader(SlockLucideIconName.CreditCard, "Plans")
+        SettingsBillingSectionHeader(
+            SlockLucideIconName.CreditCard,
+            stringResource(MR.strings.settings_billing_plans_title)
+        )
         repeat(3) {
             Box(
                 modifier =

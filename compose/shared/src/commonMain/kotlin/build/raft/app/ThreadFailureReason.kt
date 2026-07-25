@@ -108,6 +108,7 @@ internal fun threadUserFacingErrorCodeReason(errorCode: String?): ThreadUserFaci
             normalized == "code_0" ||
             normalized == "0" -> ThreadUserFacingErrorReason.NetworkFailed
         "server_unavailable" in normalized ||
+            normalized == "server_missing" ||
             "http_5" in normalized ||
             normalized.endsWith("_503") -> ThreadUserFacingErrorReason.ServerUnavailable
         "not_found" in normalized ||

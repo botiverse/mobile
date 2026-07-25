@@ -17654,11 +17654,14 @@ private fun SharedHomePanelStatus(
     emptyDetail: String,
     onRetry: () -> Unit
 ) {
+    val userFacingErrorLabels = threadUserFacingErrorLabels()
     when {
         noPermissionCode != null ->
             SharedHomePanelMessage(
                 title = stringResource(MR.strings.panel_error_no_permission),
-                detail = noPermissionCode,
+                detail =
+                    userFacingErrorLabels.forErrorCode(noPermissionCode)
+                        ?: userFacingErrorLabels.generic(),
                 tone = SlockColor.AccentRed,
                 actionLabel = stringResource(MR.strings.common_retry),
                 onAction = onRetry
@@ -17666,7 +17669,9 @@ private fun SharedHomePanelStatus(
         errorCode != null ->
             SharedHomePanelMessage(
                 title = stringResource(MR.strings.panel_error_load),
-                detail = errorCode,
+                detail =
+                    userFacingErrorLabels.forErrorCode(errorCode)
+                        ?: userFacingErrorLabels.generic(),
                 tone = SlockColor.AccentRed,
                 actionLabel = stringResource(MR.strings.common_retry),
                 onAction = onRetry

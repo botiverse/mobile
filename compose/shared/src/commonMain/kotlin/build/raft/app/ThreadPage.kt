@@ -11999,14 +11999,13 @@ private fun ThreadPageHeader(
 ) {
     val topSafeArea = if (applyTopSafeArea) slockTopSafeAreaPadding() else 0.dp
     val localizedHeaderTitle =
-        if (
-            headerDisplay.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
-            headerDisplay.title == ThreadReplyPageTitle
-        ) {
-            stringResource(MR.strings.thread_reply_title)
-        } else {
-            headerDisplay.title
-        }
+        localizedThreadHeaderTitle(
+            title = headerDisplay.title,
+            surfaceKind = headerDisplay.surfaceKind,
+            localizedReplyThread = stringResource(MR.strings.thread_reply_title),
+            localizedChannel = stringResource(MR.strings.thread_channel_title),
+            localizedDirectMessage = stringResource(MR.strings.thread_direct_message_title)
+        )
     val resolvedDmPeerAvatarWireValue =
         rememberSlockMemberAvatarWireValue(
             memberAvatarResolver,
@@ -12114,6 +12113,22 @@ private fun ThreadPageHeader(
         showBodyTopBanner = false,
     )
 }
+
+internal fun localizedThreadHeaderTitle(
+    title: String,
+    surfaceKind: String,
+    localizedReplyThread: String,
+    localizedChannel: String,
+    localizedDirectMessage: String
+): String =
+    when {
+        surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
+            title == ThreadReplyPageTitle -> localizedReplyThread
+        surfaceKind == KuiklyThreadSurfaceKind.Channel && title == "Channel" -> localizedChannel
+        surfaceKind == KuiklyThreadSurfaceKind.DirectMessage &&
+            title == "Direct Message" -> localizedDirectMessage
+        else -> title
+    }
 
 internal fun ThreadHeaderDisplayModel.dmAgentActivityMemberId(): String? =
     dmPeerIdentity

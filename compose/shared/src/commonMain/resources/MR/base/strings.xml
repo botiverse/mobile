@@ -205,6 +205,7 @@
     <string name="settings_section_admins_title">Admins</string>
     <string name="settings_section_system_channels_title">System Channels</string>
     <string name="settings_section_billing_title">Plan &amp; Billing</string>
+    <string name="settings_billing_plans_title">Plans</string>
     <string name="settings_section_pending_invites_title">Pending Invites</string>
     <string name="settings_section_join_links_title">Join Links</string>
     <string name="settings_section_pre_join_agreement_title">Pre-join Agreement</string>
@@ -267,6 +268,8 @@
     <string name="thread_send_failure_details_copied">Failure details copied</string>
     <string name="thread_state_original_unavailable">Original message is unavailable.</string>
     <string name="thread_reply_title">Thread</string>
+    <string name="thread_channel_title">Channel</string>
+    <string name="thread_direct_message_title">Direct Message</string>
     <string name="thread_state_no_replies">No replies yet</string>
     <string name="thread_inline_reply_count_one">1 reply</string>
     <string name="thread_inline_reply_count_many">%1$d replies</string>
@@ -1365,6 +1368,9 @@
     <string name="saved_state_no_preview">No preview</string>
     <string name="panel_error_no_permission">No permission</string>
     <string name="panel_error_load">Could not load</string>
+    <string name="members_page_title">Members</string>
+    <string name="members_section_agents">AGENTS</string>
+    <string name="members_section_humans">HUMANS</string>
     <string name="settings_state_unavailable">Unavailable</string>
     <string name="settings_state_permission_required">Permission Required</string>
     <string name="settings_state_ready">Ready</string>
