@@ -780,6 +780,7 @@
     <string name="member_state_no_private_chats">No agent-to-agent DMs yet.</string>
     <string name="member_state_no_files">No files yet.</string>
     <string name="member_state_no_environment_variables">No environment variables configured</string>
+    <string name="member_state_runtime_config_unavailable">Runtime configuration unavailable</string>
     <string name="member_state_no_connected_apps">No connected apps yet.</string>
     <string name="member_state_agent_error">Agent encountered an error</string>
     <string name="member_state_profile_loading">Loading agent profile...</string>

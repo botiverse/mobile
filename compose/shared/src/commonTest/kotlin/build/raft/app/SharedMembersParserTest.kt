@@ -17,6 +17,7 @@ import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
+import build.raft.app.model.RuntimeModelConfig
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerPermissions
 import build.raft.app.model.ServerSummary
@@ -443,7 +444,7 @@ class SharedMembersParserTest {
     }
 
     @Test
-    fun memberDetailInitialRouteUsesMatchingAgentSeedForTheFirstFrame() {
+    fun memberDetailInitialRouteRejectsMatchingAgentRosterSeedUntilCanonicalLoad() {
         val member =
             MemberProfile(
                 id = MemberId("agent-cindy"),
@@ -461,13 +462,11 @@ class SharedMembersParserTest {
                 serverMembersState = serverMembersState(server, member)
             )
 
-        val agentRoute = assertIs<MemberDetailRouteState.Agent>(route)
-        assertEquals(server, agentRoute.server)
-        assertEquals(MemberDetailAccessMode.LocalFull, agentRoute.accessMode)
+        assertNull(route)
     }
 
     @Test
-    fun memberDetailInitialRouteKeepsRemoteAgentProfileOnly() {
+    fun memberDetailInitialRouteRejectsRemoteAgentRosterSeedUntilCanonicalLoad() {
         val member =
             MemberProfile(
                 id = MemberId("agent-remote"),
@@ -485,10 +484,7 @@ class SharedMembersParserTest {
                 serverMembersState = serverMembersState(server, member)
             )
 
-        assertEquals(
-            MemberDetailAccessMode.RemoteProfileOnly,
-            assertIs<MemberDetailRouteState.Agent>(route).accessMode
-        )
+        assertNull(route)
     }
 
     @Test
@@ -639,6 +635,190 @@ class SharedMembersParserTest {
                 identity.copy(kind = MemberKind.Human),
                 ServerId("server-1"),
                 currentGeneration = 7L
+            )
+        )
+    }
+
+    @Test
+    fun agentProfileRequestFenceRejectsAgentServerAndRetryGenerationChanges() {
+        val identity = MemberDetailIdentity(MemberId("agent-1"), MemberKind.Agent, ServerId("server-1"))
+        val fence = MembersAgentProfileRequestFence(identity.memberId, ServerId("server-1"), generation = 3L)
+
+        assertTrue(fence.matches(identity, "server-local", currentGeneration = 3L))
+        assertFalse(fence.matches(identity.copy(memberId = MemberId("agent-2")), "server-local", currentGeneration = 3L))
+        assertFalse(fence.matches(identity.copy(sourceServerId = ServerId("server-2")), "server-local", currentGeneration = 3L))
+        assertFalse(fence.matches(identity, "server-local", currentGeneration = 4L))
+        assertFalse(fence.matches(identity.copy(kind = MemberKind.Human), "server-local", currentGeneration = 3L))
+
+        val localIdentity = identity.copy(sourceServerId = null)
+        assertTrue(fence.matches(localIdentity, "server-1", currentGeneration = 3L))
+        assertFalse(fence.matches(localIdentity, "server-2", currentGeneration = 3L))
+    }
+
+    @Test
+    fun agentRuntimeOptionsFenceRejectsEveryRequestIdentityDimension() {
+        val identity = MemberDetailIdentity(MemberId("agent-1"), MemberKind.Agent, ServerId("server-1"))
+        val fence =
+            MembersAgentRuntimeOptionsRequestFence(
+                memberId = identity.memberId,
+                serverId = ServerId("server-1"),
+                machineId = "machine-1",
+                runtimeId = "codex",
+                profileGeneration = 4L,
+                generation = 9L
+            )
+
+        assertTrue(fence.matches(identity, "server-local", "machine-1", "codex", 4L, 9L))
+        assertFalse(fence.matches(identity.copy(memberId = MemberId("agent-2")), "server-local", "machine-1", "codex", 4L, 9L))
+        assertFalse(fence.matches(identity.copy(sourceServerId = ServerId("server-2")), "server-local", "machine-1", "codex", 4L, 9L))
+        assertFalse(fence.matches(identity, "server-local", "machine-2", "codex", 4L, 9L))
+        assertFalse(fence.matches(identity, "server-local", "machine-1", "claude", 4L, 9L))
+        assertFalse(fence.matches(identity, "server-local", "machine-1", "codex", 5L, 9L))
+        assertFalse(fence.matches(identity, "server-local", "machine-1", "codex", 4L, 10L))
+    }
+
+    @Test
+    fun staleRuntimeOptionsRetireOnlyTheirOwnGenerationInFlight() {
+        val key = "machine-a" to "codex"
+        val inFlight = setOf(key)
+
+        assertEquals(
+            emptySet(),
+            membersAgentRuntimeRequestCompletionInFlight(inFlight, mapOf(key to 2L), key, 2L),
+            "A→B→A stale completion must retire its still-owned loading key"
+        )
+        assertEquals(
+            inFlight,
+            membersAgentRuntimeRequestCompletionInFlight(inFlight, mapOf(key to 3L), key, 2L),
+            "an old retry must not clear the newer retry's in-flight key"
+        )
+    }
+
+    @Test
+    fun agentRuntimeConfigRequiresCanonicalRuntimeAndModelWithoutDefaults() {
+        assertEquals(
+            MembersAgentRuntimeConfigResolution.Unavailable("agent_runtime_profile_missing"),
+            null.toMembersRuntimeConfigResolution()
+        )
+        assertEquals(
+            MembersAgentRuntimeConfigResolution.Unavailable("agent_runtime_missing"),
+            AgentDetailSummary(id = "agent-1", name = "one", model = "gpt-5").toMembersRuntimeConfigResolution()
+        )
+        assertEquals(
+            MembersAgentRuntimeConfigResolution.Unavailable("agent_runtime_model_missing"),
+            AgentDetailSummary(id = "agent-1", name = "one", runtime = "codex").toMembersRuntimeConfigResolution()
+        )
+
+        val content =
+            assertIs<MembersAgentRuntimeConfigResolution.Content>(
+                AgentDetailSummary(
+                    id = "agent-1",
+                    name = "one",
+                    runtime = " codex ",
+                    model = " gpt-5 ",
+                    runtimeModelKind = "preset"
+                ).toMembersRuntimeConfigResolution()
+            )
+        assertEquals("codex", content.config.runtime)
+        assertEquals(RuntimeModelConfig.Preset("gpt-5"), content.config.model)
+    }
+
+    @Test
+    fun agentRuntimeSaveRequiresResolvedExactIdOptionsAndRejectsUnavailableState() {
+        val duplicateLabels =
+            SharedCreateAgentRuntimeModelCatalog(
+                models =
+                    listOf(
+                        SharedCreateAgentRuntimeModelOption(id = "model-a", label = "Same label"),
+                        SharedCreateAgentRuntimeModelOption(id = "model-b", label = "Same label")
+                    )
+            )
+        fun enabled(
+            runtime: String = "codex",
+            model: String = "model-b",
+            catalog: SharedCreateAgentRuntimeModelCatalog? = duplicateLabels,
+            loading: Boolean = false,
+            error: String? = null
+        ) = membersAgentRuntimeConfigSaveEnabled(
+            runtime = runtime,
+            model = model,
+            customModelMode = false,
+            customModelName = "",
+            machineRuntimeIds = listOf("codex"),
+            runtimeModelsCatalog = catalog,
+            runtimeModelsLoading = loading,
+            runtimeModelsError = error
+        )
+
+        assertTrue(enabled())
+        assertFalse(enabled(model = "Same label"))
+        assertFalse(enabled(model = "missing"))
+        assertFalse(enabled(runtime = "claude"))
+        assertFalse(enabled(catalog = null))
+        assertFalse(enabled(loading = true))
+        assertFalse(enabled(error = "runtime_models_unavailable"))
+    }
+
+    @Test
+    fun openedRuntimeEditorFailsClosedAfterIdentityProfileOrCatalogGenerationChanges() {
+        val opened =
+            MembersAgentProfileEditAuthority(
+                memberId = MemberId("agent-1"),
+                serverId = ServerId("server-1"),
+                profileGeneration = 4L
+            )
+
+        assertTrue(membersAgentProfileEditAuthorityMatches(opened, opened, 7L, 7L))
+        assertFalse(
+            membersAgentProfileEditAuthorityMatches(
+                opened,
+                opened.copy(memberId = MemberId("agent-2")),
+                7L,
+                7L
+            )
+        )
+        assertFalse(
+            membersAgentProfileEditAuthorityMatches(
+                opened,
+                opened.copy(serverId = ServerId("server-2")),
+                7L,
+                7L
+            )
+        )
+        assertFalse(
+            membersAgentProfileEditAuthorityMatches(
+                opened,
+                opened.copy(profileGeneration = 5L),
+                7L,
+                7L
+            )
+        )
+        assertFalse(membersAgentProfileEditAuthorityMatches(opened, opened, 7L, 8L))
+        assertFalse(membersAgentProfileEditAuthorityMatches(null, opened, 7L, 7L))
+
+        val matchingStore =
+            SharedAgentDetailState(
+                agentId = opened.memberId,
+                detailServerId = opened.serverId,
+                detail = AgentDetailSnapshot(
+                    agentId = opened.memberId,
+                    summary = AgentDetailSummary(id = opened.memberId.value, name = "one"),
+                    directMessages = emptyList(),
+                    reminders = emptyList(),
+                    activity = emptyList()
+                )
+            )
+        assertTrue(membersAgentProfileStoreMatchesAuthority(matchingStore, opened))
+        assertFalse(
+            membersAgentProfileStoreMatchesAuthority(
+                matchingStore.copy(detailServerId = ServerId("server-2")),
+                opened
+            )
+        )
+        assertFalse(
+            membersAgentProfileStoreMatchesAuthority(
+                matchingStore.copy(agentId = MemberId("agent-2")),
+                opened
             )
         )
     }
