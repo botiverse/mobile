@@ -382,6 +382,9 @@
     <string name="thread_members_removing">正在移除</string>
     <string name="thread_members_remove_failed">无法移除成员</string>
     <string name="thread_members_remove_no_permission">无法移除成员：没有权限</string>
+    <string name="thread_members_remove_confirm_title">移除成员</string>
+    <string name="thread_members_remove_confirm_question">要将 %1$s 移出 #%2$s 吗？</string>
+    <string name="thread_members_remove_confirm_detail">该成员将停止接收此频道的普通消息。已关注的讨论不会自动取消关注；在其取消关注或管理这些讨论之前，已关注的公开讨论仍可能通知该成员。私密内容仍按当前访问权限控制。</string>
     <string name="thread_members_refresh_detail">请刷新当前对话后重试。</string>
     <string name="thread_add_member_search">搜索</string>
     <string name="thread_add_member_name_placeholder">姓名</string>
