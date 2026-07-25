@@ -37,6 +37,7 @@ import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Dp
+import com.tencent.kuikly.compose.ui.unit.TextUnit
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 
@@ -135,7 +136,10 @@ private fun SlockBrutalBadgeChrome(
                 SlockType.Caption
                     .copy(
                         fontSize = 10.sp,
-                        lineHeight = 10.sp,
+                        // Let every native text renderer use its font metrics. A forced
+                        // 10sp line box is shorter than Space Grotesk's ascent + descender
+                        // on iOS and clips p/q/y at the badge's bottom edge.
+                        lineHeight = TextUnit.Unspecified,
                         letterSpacing = if (uppercase) 0.6.sp else 0.sp
                     )
                     .withSlockFontWeight(FontWeight.Bold),
