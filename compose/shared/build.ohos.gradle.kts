@@ -118,13 +118,13 @@ kotlin {
     sourceSets {
         val commonMain by getting {
             kotlin.srcDir(rootProject.file("../third_party/kuikly-compose-markdown/src/commonMain/kotlin"))
+            kotlin.srcDir(rootProject.file("../third_party/markdown-parser/src/commonMain/kotlin"))
             kotlin.srcDir(generatedTmmCommonSourceDir.map { it.dir("src") })
             dependencies {
                 implementation("com.tencent.kuikly-open:core:${Version.getKuiklyOhosVersion()}")
                 implementation("com.tencent.kuikly-open:core-annotations:${Version.getKuiklyOhosVersion()}")
                 implementation("com.tencent.kuikly-open:compose:${Version.getKuiklyOhosVersion()}")
 
-                implementation("com.tencent.kuiklybase:markdown-parser:0.7.4-ohos")
                 implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.1-KBA-003")
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0-KBA-002")
                 implementation("app.cash.sqldelight:runtime:2.1.0-KBA-001")
@@ -140,12 +140,14 @@ kotlin {
             }
         }
         val androidMain by getting {
+            kotlin.srcDir(rootProject.file("../third_party/markdown-parser/src/jvmMain/kotlin"))
             kotlin.srcDir(generatedTmmResourceDir.map { it.dir("androidMain/src") })
             dependencies {
                 api("com.tencent.kuikly-open:core-render-android:${Version.getKuiklyOhosVersion()}")
             }
         }
         val ohosArm64Main by getting {
+            kotlin.srcDir(rootProject.file("../third_party/markdown-parser/src/nativeMain/kotlin"))
             kotlin.srcDir(generatedTmmResourceDir.map { it.dir("ohosArm64Main/src") })
             dependencies {
                 implementation("app.cash.sqldelight:native-driver-ohosarm64:2.1.0-KBA-001")
