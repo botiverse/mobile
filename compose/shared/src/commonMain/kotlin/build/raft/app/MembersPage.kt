@@ -633,6 +633,91 @@ internal data class MembersAgentActivityRequestFence(
             currentGeneration == generation
 }
 
+internal data class MembersAgentProfileRequestFence(
+    val memberId: MemberId,
+    val serverId: ServerId,
+    val generation: Long
+) {
+    fun matches(
+        identity: MemberDetailIdentity?,
+        activeServerId: String?,
+        currentGeneration: Long
+    ): Boolean =
+        identity != null &&
+            identity.memberId == memberId &&
+            identity.kind == MemberKind.Agent &&
+            membersAgentProfileRequestServerId(identity, activeServerId) == serverId &&
+            currentGeneration == generation
+}
+
+internal fun membersAgentProfileRequestServerId(
+    identity: MemberDetailIdentity,
+    activeServerId: String?
+): ServerId? =
+    when (identity.memberDetailAccessMode(activeServerId)) {
+        MemberDetailAccessMode.LocalFull ->
+            activeServerId?.trim()?.takeIf { it.isNotBlank() }?.let(::ServerId)
+        MemberDetailAccessMode.RemoteProfileOnly -> identity.sourceServerId
+    }
+
+internal data class MembersAgentRuntimeOptionsRequestFence(
+    val memberId: MemberId,
+    val serverId: ServerId,
+    val machineId: String,
+    val runtimeId: String,
+    val profileGeneration: Long,
+    val generation: Long
+) {
+    fun matches(
+        identity: MemberDetailIdentity?,
+        activeServerId: String?,
+        currentMachineId: String?,
+        currentRuntimeId: String?,
+        currentProfileGeneration: Long,
+        currentGeneration: Long
+    ): Boolean =
+        identity != null &&
+            identity.memberId == memberId &&
+            identity.kind == MemberKind.Agent &&
+            membersAgentProfileRequestServerId(identity, activeServerId) == serverId &&
+            currentMachineId?.trim() == machineId &&
+            currentRuntimeId?.trim() == runtimeId &&
+            currentProfileGeneration == profileGeneration &&
+            currentGeneration == generation
+}
+
+internal fun membersAgentRuntimeRequestCompletionInFlight(
+    inFlight: Set<Pair<String, String>>,
+    generations: Map<Pair<String, String>, Long>,
+    key: Pair<String, String>,
+    requestGeneration: Long
+): Set<Pair<String, String>> =
+    if (generations[key] == requestGeneration) inFlight - key else inFlight
+
+internal data class MembersAgentProfileEditAuthority(
+    val memberId: MemberId,
+    val serverId: ServerId,
+    val profileGeneration: Long
+)
+
+internal fun membersAgentProfileEditAuthorityMatches(
+    opened: MembersAgentProfileEditAuthority?,
+    current: MembersAgentProfileEditAuthority?,
+    openedCatalogGeneration: Long,
+    currentCatalogGeneration: Long
+): Boolean =
+    opened != null &&
+        opened == current &&
+        openedCatalogGeneration == currentCatalogGeneration
+
+internal fun membersAgentProfileStoreMatchesAuthority(
+    state: SharedAgentDetailState,
+    authority: MembersAgentProfileEditAuthority
+): Boolean =
+    state.agentId == authority.memberId &&
+        state.detailServerId == authority.serverId &&
+        state.detail?.agentId == authority.memberId
+
 internal fun membersAgentActivityLoadStart(hasCachedActivity: Boolean): MembersAgentActivityLoadState =
     if (hasCachedActivity) MembersAgentActivityLoadState.Refreshing else MembersAgentActivityLoadState.Loading
 
@@ -1735,23 +1820,11 @@ internal fun memberDetailInitialRouteState(
     if (matches.size != 1) return null
     val (server, member) = matches.single()
     return when (identity.kind) {
-        MemberKind.Agent -> {
-            val detail = agentDetailState.detail
-            if (
-                agentDetailState.agentId != identity.memberId ||
-                agentDetailState.detailServerId?.value?.trim() != server.id.value.trim() ||
-                detail?.agentId != identity.memberId ||
-                detail.summary?.id?.trim()?.takeIf { it.isNotBlank() }?.let { it != identity.memberId.value } == true
-            ) {
-                null
-            } else {
-                MemberDetailRouteState.Agent(
-                    server = server,
-                    currentUserId = null,
-                    accessMode = identity.memberDetailAccessMode(activeServer)
-                )
-            }
-        }
+        // Roster projections are not authoritative agent-profile cache entries. In particular,
+        // their `roleDescription` historically carried a runtime-shaped string and could make the
+        // first frame look Loaded before GET /agents/:id completed. Agent detail therefore always
+        // starts cold; only the generation-fenced canonical response may enter Content.
+        MemberKind.Agent -> null
         MemberKind.Human ->
             MemberDetailRouteState.Human(
                 server = server,
@@ -1832,7 +1905,8 @@ private class MemberDetailRouteProvider(
     }
 
     suspend fun loadMember(
-        identity: MemberDetailIdentity
+        identity: MemberDetailIdentity,
+        isCurrentRequest: () -> Boolean = { true }
     ): MemberDetailRouteState {
         val session = authStore.readSession()
         val serverId = session?.currentServerId
@@ -1854,7 +1928,7 @@ private class MemberDetailRouteProvider(
             loadAgent = { selectedId, accessMode ->
                 when (accessMode) {
                     MemberDetailAccessMode.LocalFull ->
-                        loadAgentMember(selectedId, server, session.user.id)
+                        loadAgentMember(selectedId, server, session.user.id, isCurrentRequest)
                     MemberDetailAccessMode.RemoteProfileOnly -> {
                         val sourceServerId = checkNotNull(identity.sourceServerId)
                         loadAgentProfileOnly(
@@ -1867,8 +1941,9 @@ private class MemberDetailRouteProvider(
                                     ?: ServerSummary(
                                         id = sourceServerId,
                                         name = sourceServerId.value
-                                    ),
-                            currentUserId = session.user.id
+                            ),
+                            currentUserId = session.user.id,
+                            isCurrentRequest = isCurrentRequest
                         )
                     }
                 }
@@ -1881,11 +1956,13 @@ private class MemberDetailRouteProvider(
         selectedId: MemberId,
         profileServerId: ServerId,
         profileServer: ServerSummary,
-        currentUserId: String?
+        currentUserId: String?,
+        isCurrentRequest: () -> Boolean
     ): MemberDetailRouteState {
         val client = agentsApiClient ?: return MemberDetailRouteState.Error("agent_profile_unavailable")
         return when (val detailResult = client.publicAgentDetail(selectedId)) {
             is DataResult.Content -> {
+                if (!isCurrentRequest()) return MemberDetailRouteState.Error("member_request_stale")
                 val detail = detailResult.data
                 if (detail.agentId != selectedId || detail.summary?.id != selectedId.value) {
                     return MemberDetailRouteState.Error("member_identity_mismatch")
@@ -1914,19 +1991,15 @@ private class MemberDetailRouteProvider(
     private suspend fun loadAgentMember(
         selectedId: MemberId,
         server: ServerSummary,
-        currentUserId: String?
+        currentUserId: String?,
+        isCurrentRequest: () -> Boolean
     ): MemberDetailRouteState {
-        val state = agentDetailStore.state.value
-        val hasMatchingDetail = state.agentId == selectedId && state.detail?.agentId == selectedId
-        val loadPlan = memberDetailLoadPlan(hasMatchingDetail)
-        if (!hasMatchingDetail) {
-            agentDetailStore.dispatch(SharedAgentDetailIntent.SelectMember(selectedId))
-        }
-        if (loadPlan.showInitialLoading) {
-            agentDetailStore.dispatch(SharedAgentDetailIntent.SetDetailLoading(selectedId))
-        }
+        // Agent profile content is deliberately cold-loaded. A roster seed has no revision or
+        // canonical runtime authority and may never be kept as if it were a successful response.
+        val loadPlan = memberDetailLoadPlan(hasCachedDetail = false)
         return when (val detailResult = memberRepository.getAgentDetail(loadPlan.priority, selectedId)) {
             is DataResult.Content -> {
+                if (!isCurrentRequest()) return MemberDetailRouteState.Error("member_request_stale")
                 agentDetailStore.dispatch(SharedAgentDetailIntent.SelectMember(selectedId))
                 agentDetailStore.dispatch(
                     SharedAgentDetailIntent.SetDetail(
@@ -1942,6 +2015,7 @@ private class MemberDetailRouteProvider(
                 )
             }
             is DataResult.Empty -> {
+                if (!isCurrentRequest()) return MemberDetailRouteState.Error("member_request_stale")
                 resolveAgentDetailFailure(
                     selectedId = selectedId,
                     server = server,
@@ -1951,6 +2025,7 @@ private class MemberDetailRouteProvider(
                 )
             }
             is DataResult.Error -> {
+                if (!isCurrentRequest()) return MemberDetailRouteState.Error("member_request_stale")
                 resolveAgentDetailFailure(
                     selectedId = selectedId,
                     server = server,
@@ -1965,6 +2040,7 @@ private class MemberDetailRouteProvider(
                 )
             }
             is DataResult.NoPermission -> {
+                if (!isCurrentRequest()) return MemberDetailRouteState.Error("member_request_stale")
                 resolveAgentDetailFailure(
                     selectedId = selectedId,
                     server = server,
@@ -2056,14 +2132,21 @@ private class MemberDetailRouteProvider(
         }
     }
 
-    fun updateCachedMemberProfile(member: MemberProfile) {
+    fun updateCachedMemberProfile(member: MemberProfile, expectedServerId: ServerId) {
         val state = agentDetailStore.state.value
         val detail = state.detail ?: return
-        if (state.agentId != member.id || detail.agentId != member.id) return
+        if (
+            state.agentId != member.id ||
+            state.detailServerId != expectedServerId ||
+            detail.agentId != member.id
+        ) {
+            return
+        }
         agentDetailStore.dispatch(
             SharedAgentDetailIntent.SetDetail(
                 member.id,
-                detail.withMemberProfileProjection(member)
+                detail.withMemberProfileProjection(member),
+                expectedServerId
             )
         )
     }
@@ -2369,6 +2452,7 @@ private fun MemberDetailPageContent() {
     val provider = rememberMemberDetailRouteProvider(pager, bridge)
     val routeScope = rememberCoroutineScope()
     val memberIdentity = payload.identity
+    val activeServerId by provider.selectedServerStore.currentServerId.collectAsState()
     var routeState by remember(memberIdentity) {
         mutableStateOf(
             memberDetailInitialRouteState(
@@ -2380,6 +2464,7 @@ private fun MemberDetailPageContent() {
         )
     }
     var localAgentDetailRefreshKey by remember { mutableStateOf(0) }
+    var agentProfileRequestGeneration by remember { mutableStateOf(0L) }
     var agentActivityLoadState by remember(memberIdentity) {
         mutableStateOf<MembersAgentActivityLoadState>(MembersAgentActivityLoadState.Idle)
     }
@@ -2425,6 +2510,12 @@ private fun MemberDetailPageContent() {
     }
     var agentRuntimeModelLoadsInFlight by remember(memberIdentity, statusLookupServerId) {
         mutableStateOf<Set<Pair<String, String>>>(emptySet())
+    }
+    var agentRuntimeModelErrors by remember(memberIdentity, statusLookupServerId) {
+        mutableStateOf<Map<Pair<String, String>, String>>(emptyMap())
+    }
+    var agentRuntimeOptionRequestGenerations by remember(memberIdentity, statusLookupServerId) {
+        mutableStateOf<Map<Pair<String, String>, Long>>(emptyMap())
     }
     LaunchedEffect(provider.computersStore, statusLookupServerId) {
         val serverId = statusLookupServerId?.trim()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
@@ -2502,25 +2593,42 @@ private fun MemberDetailPageContent() {
         agentActivityLoadState = result.toMembersAgentActivityLoadState()
     }
 
-    LaunchedEffect(memberIdentity, localAgentDetailRefreshKey) {
+    LaunchedEffect(memberIdentity, activeServerId, localAgentDetailRefreshKey) {
         if (memberIdentity == null) {
             routeState = MemberDetailRouteState.Error("member_identity_missing")
             return@LaunchedEffect
         }
-        val cached = provider.cachedContext(memberIdentity)
-        if (cached != null) {
-            routeState = cached
-        } else if (routeState !is MemberDetailRouteState.Agent && routeState !is MemberDetailRouteState.Human) {
+        if (memberIdentity.kind == MemberKind.Agent || routeState !is MemberDetailRouteState.Human) {
             routeState = MemberDetailRouteState.Loading
         }
-        if (cached != null && cached.accessMode.allowsPrivateAgentSurfaces && selectedMemberId != null) {
-            launch {
-                refreshVisibleAgentActivity(cached, selectedMemberId)
+        val generation = agentProfileRequestGeneration + 1L
+        agentProfileRequestGeneration = generation
+        val requestServerId = membersAgentProfileRequestServerId(memberIdentity, activeServerId)
+        val requestFence =
+            requestServerId?.let { serverId ->
+                MembersAgentProfileRequestFence(
+                    memberId = memberIdentity.memberId,
+                    serverId = serverId,
+                    generation = generation
+                )
             }
+        if (memberIdentity.kind == MemberKind.Agent) {
+            // Remove roster-derived seeds before the canonical request. They are useful for list
+            // rows, but have neither a profile revision nor runtime-config authority.
+            provider.agentDetailStore.dispatch(SharedAgentDetailIntent.DeselectMember)
+            provider.agentDetailStore.dispatch(SharedAgentDetailIntent.SelectMember(memberIdentity.memberId))
+            provider.agentDetailStore.dispatch(SharedAgentDetailIntent.SetDetailLoading(memberIdentity.memberId))
         }
-        val loaded = provider.loadMember(memberIdentity)
+        val loaded = provider.loadMember(memberIdentity) {
+            requestFence?.matches(memberIdentity, activeServerId, agentProfileRequestGeneration) == true
+        }
+        if (requestFence != null &&
+            !requestFence.matches(memberIdentity, activeServerId, agentProfileRequestGeneration)
+        ) {
+            return@LaunchedEffect
+        }
         routeState = loaded
-        if (cached == null && loaded is MemberDetailRouteState.Agent && selectedMemberId != null) {
+        if (loaded is MemberDetailRouteState.Agent && selectedMemberId != null) {
             refreshVisibleAgentActivity(loaded, selectedMemberId)
         }
     }
@@ -2584,7 +2692,8 @@ private fun MemberDetailPageContent() {
             MemberDetailErrorPageShell(
                 title = stringResource(MR.strings.member_error_load_member),
                 detail = current.code,
-                onBack = { provider.bridge.closePage() }
+                onBack = { provider.bridge.closePage() },
+                onRetry = { localAgentDetailRefreshKey += 1 }
             )
         is MemberDetailRouteState.Agent -> {
             val member = selectedAgentDetail?.toMemberProfile(current.server)
@@ -2615,37 +2724,108 @@ private fun MemberDetailPageContent() {
                                 .mapTo(linkedSetOf()) { (_, runtime) -> runtime }
                         }
                         .orEmpty()
+                val agentRuntimeModelErrorsByRuntime =
+                    agentMachineId
+                        ?.let { machineId ->
+                            agentRuntimeModelErrors
+                                .filterKeys { (catalogMachineId, _) -> catalogMachineId == machineId }
+                                .mapKeys { (key, _) -> key.second }
+                        }
+                        .orEmpty()
+                val agentRuntimeModelGenerationsByRuntime =
+                    agentMachineId
+                        ?.let { machineId ->
+                            agentRuntimeOptionRequestGenerations
+                                .filterKeys { (catalogMachineId, _) -> catalogMachineId == machineId }
+                                .mapKeys { (key, _) -> key.second }
+                        }
+                        .orEmpty()
+                val agentProfileEditAuthority =
+                    MembersAgentProfileEditAuthority(
+                        memberId = member.id,
+                        serverId = current.server.id,
+                        profileGeneration = agentProfileRequestGeneration
+                    )
                 val loadAgentRuntimeModels: (String, Boolean) -> Unit = { runtime, force ->
                     val key = agentMachineId?.trim().orEmpty() to runtime.trim()
                     val serverId = statusLookupServerId?.trim().orEmpty()
                     if (serverId.isNotBlank() && key.first.isNotBlank() && key.second.isNotBlank() &&
                         (force || (key !in agentRuntimeModelCatalogs && key !in agentRuntimeModelLoadsInFlight))
                     ) {
+                        val requestGeneration = (agentRuntimeOptionRequestGenerations[key] ?: 0L) + 1L
+                        agentRuntimeOptionRequestGenerations =
+                            agentRuntimeOptionRequestGenerations + (key to requestGeneration)
+                        val requestFence =
+                            MembersAgentRuntimeOptionsRequestFence(
+                                memberId = member.id,
+                                serverId = ServerId(serverId),
+                                machineId = key.first,
+                                runtimeId = key.second,
+                                profileGeneration = agentProfileRequestGeneration,
+                                generation = requestGeneration
+                            )
                         agentRuntimeModelLoadsInFlight = agentRuntimeModelLoadsInFlight + key
+                        agentRuntimeModelErrors = agentRuntimeModelErrors - key
                         routeScope.launch {
-                            when (
-                                val result =
-                                    provider.createAgentCoordinator.loadRuntimeModels(
-                                        serverId = serverId,
-                                        machineId = key.first,
-                                        runtime = key.second
-                                    )
+                            val result =
+                                provider.createAgentCoordinator.loadRuntimeModels(
+                                    serverId = serverId,
+                                    machineId = key.first,
+                                    runtime = key.second
+                                )
+                            if (!requestFence.matches(
+                                    identity = memberIdentity,
+                                    activeServerId = activeServerId,
+                                    currentMachineId = agentMachineId,
+                                    currentRuntimeId = key.second,
+                                    currentProfileGeneration = agentProfileRequestGeneration,
+                                    currentGeneration = agentRuntimeOptionRequestGenerations[key] ?: 0L
+                                )
                             ) {
+                                agentRuntimeModelLoadsInFlight =
+                                    membersAgentRuntimeRequestCompletionInFlight(
+                                        inFlight = agentRuntimeModelLoadsInFlight,
+                                        generations = agentRuntimeOptionRequestGenerations,
+                                        key = key,
+                                        requestGeneration = requestGeneration
+                                    )
+                                return@launch
+                            }
+                            when (result) {
                                 is DataResult.Content ->
-                                    agentRuntimeModelCatalogs = agentRuntimeModelCatalogs + (key to result.data)
-                                is DataResult.Empty -> Unit
-                                is DataResult.Error ->
+                                    if (result.data.models.isNotEmpty()) {
+                                        agentRuntimeModelCatalogs = agentRuntimeModelCatalogs + (key to result.data)
+                                    } else {
+                                        agentRuntimeModelErrors = agentRuntimeModelErrors +
+                                            (key to "runtime_models_unavailable")
+                                    }
+                                is DataResult.Empty ->
+                                    agentRuntimeModelErrors = agentRuntimeModelErrors +
+                                        (key to "runtime_models_unavailable")
+                                is DataResult.Error -> {
+                                    agentRuntimeModelErrors = agentRuntimeModelErrors +
+                                        (key to result.error.code)
                                     bridge.log(
                                         "member_detail_runtime_models_failed runtime=${key.second} " +
                                             "code=${result.error.code}"
                                     )
-                                is DataResult.NoPermission ->
+                                }
+                                is DataResult.NoPermission -> {
+                                    agentRuntimeModelErrors = agentRuntimeModelErrors +
+                                        (key to result.blocker.code)
                                     bridge.log(
                                         "member_detail_runtime_models_blocked runtime=${key.second} " +
                                             "code=${result.blocker.code}"
                                     )
+                                }
                             }
-                            agentRuntimeModelLoadsInFlight = agentRuntimeModelLoadsInFlight - key
+                            agentRuntimeModelLoadsInFlight =
+                                membersAgentRuntimeRequestCompletionInFlight(
+                                    inFlight = agentRuntimeModelLoadsInFlight,
+                                    generations = agentRuntimeOptionRequestGenerations,
+                                    key = key,
+                                    requestGeneration = requestGeneration
+                                )
                         }
                     }
                 }
@@ -2684,13 +2864,8 @@ private fun MemberDetailPageContent() {
 
                             override suspend fun updateAgentProfile(
                                 request: AgentProfileUpdateRequest
-                            ): DataResult<MemberProfile> {
-                                val result = provider.updateAgentProfile(current.server.id, request)
-                                if (result is DataResult.Content) {
-                                    provider.updateCachedMemberProfile(result.data)
-                                }
-                                return result
-                            }
+                            ): DataResult<MemberProfile> =
+                                provider.updateAgentProfile(current.server.id, request)
                         }
                     }
                 MembersDetailContent(
@@ -2706,6 +2881,9 @@ private fun MemberDetailPageContent() {
                         ),
                     agentRuntimeModelsByRuntime = agentRuntimeModelsByRuntime,
                     agentRuntimeModelLoadsInFlight = agentRuntimeModelLoadsByRuntime,
+                    agentRuntimeModelErrorsByRuntime = agentRuntimeModelErrorsByRuntime,
+                    agentRuntimeModelGenerationsByRuntime = agentRuntimeModelGenerationsByRuntime,
+                    agentProfileEditAuthority = agentProfileEditAuthority,
                     onAgentRuntimeModelsRequest = loadAgentRuntimeModels,
                     canViewPrivateAgentSurfaces = { _, detail ->
                         current.accessMode.allowsPrivateAgentSurfaces &&
@@ -2758,13 +2936,16 @@ private fun MemberDetailPageContent() {
                     onUpdateAgentProfile = { request ->
                         agentDetailActions.updateAgentProfile(request)
                     },
+                    onApplyAgentProfileResult = { updatedMember ->
+                        provider.updateCachedMemberProfile(updatedMember, current.server.id)
+                    },
                     onPickAgentAvatarFile = {
                         provider.pickAgentAvatarFile()
                     },
                     onUploadAgentAvatar = { agentId, file ->
                         val result = provider.uploadAgentAvatar(current.server.id, agentId, file)
                         if (result is DataResult.Content) {
-                            provider.updateCachedMemberProfile(result.data)
+                            provider.updateCachedMemberProfile(result.data, current.server.id)
                         }
                         result
                     },
@@ -3033,13 +3214,16 @@ private fun MemberDetailLoadingPageShell(
 private fun MemberDetailErrorPageShell(
     title: String,
     detail: String,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onRetry: () -> Unit
 ) {
     MemberDetailRoutePageShell(onBack = onBack) {
         SlockEmptyState(
             title = title,
             detail = detail,
             iconName = SlockLucideIconName.TriangleAlert,
+            actionLabel = stringResource(MR.strings.common_retry),
+            onAction = onRetry,
             modifier = Modifier.fillMaxSize()
         )
     }
@@ -3836,6 +4020,9 @@ private fun MembersDetailContent(
     agentMachineRuntimes: List<String> = emptyList(),
     agentRuntimeModelsByRuntime: Map<String, SharedCreateAgentRuntimeModelCatalog> = emptyMap(),
     agentRuntimeModelLoadsInFlight: Set<String> = emptySet(),
+    agentRuntimeModelErrorsByRuntime: Map<String, String> = emptyMap(),
+    agentRuntimeModelGenerationsByRuntime: Map<String, Long> = emptyMap(),
+    agentProfileEditAuthority: MembersAgentProfileEditAuthority? = null,
     onAgentRuntimeModelsRequest: (runtime: String, force: Boolean) -> Unit = { _, _ -> },
     canViewPrivateAgentSurfaces: (MemberProfile, AgentDetailSnapshot?) -> Boolean,
     canManageAgent: (MemberProfile, AgentDetailSnapshot?) -> Boolean,
@@ -3851,6 +4038,7 @@ private fun MembersDetailContent(
     onOpenReminderMessage: (String) -> Unit = {},
     agentDetailActions: SharedAgentDetailActions? = null,
     onUpdateAgentProfile: (suspend (AgentProfileUpdateRequest) -> DataResult<MemberProfile>)?,
+    onApplyAgentProfileResult: (MemberProfile) -> Unit = {},
     onUploadAgentAvatar: (suspend (MemberId, PlatformFile) -> DataResult<MemberProfile>)?,
     onPickAgentAvatarFile: suspend () -> DataResult<PlatformFile> = { DataResult.Empty(EmptyReason.NoMembers) },
     onAgentLifecycleAction: (suspend (MemberId, MembersAgentLifecycleAction) -> DataResult<AgentLifecycleActionResult>)?,
@@ -4352,6 +4540,9 @@ private fun MembersDetailContent(
                                         agentMachineRuntimes = agentMachineRuntimes,
                                         agentRuntimeModelsByRuntime = agentRuntimeModelsByRuntime,
                                         agentRuntimeModelLoadsInFlight = agentRuntimeModelLoadsInFlight,
+                                        agentRuntimeModelErrorsByRuntime = agentRuntimeModelErrorsByRuntime,
+                                        agentRuntimeModelGenerationsByRuntime = agentRuntimeModelGenerationsByRuntime,
+                                        agentProfileEditAuthority = agentProfileEditAuthority,
                                         onAgentRuntimeModelsRequest = onAgentRuntimeModelsRequest,
                                         canManage = canManage,
                                         agentStatusIndicatorState = agentStatusIndicatorState,
@@ -4386,6 +4577,7 @@ private fun MembersDetailContent(
                                         storeState = storeState.takeIf { sharedAgentDetailStore != null },
                                         agentDetailActions = agentDetailActions,
                                         onUpdateAgentProfile = onUpdateAgentProfile,
+                                        onApplyAgentProfileResult = onApplyAgentProfileResult,
                                         onUnavailableAction = onUnavailableAction,
                                         lifecycleInFlight = lifecycleInFlight,
                                         diagnosticActionState = effectiveDiagnosticActionState,
@@ -6732,6 +6924,9 @@ private fun MembersAgentProfileTab(
     agentMachineRuntimes: List<String> = emptyList(),
     agentRuntimeModelsByRuntime: Map<String, SharedCreateAgentRuntimeModelCatalog> = emptyMap(),
     agentRuntimeModelLoadsInFlight: Set<String> = emptySet(),
+    agentRuntimeModelErrorsByRuntime: Map<String, String> = emptyMap(),
+    agentRuntimeModelGenerationsByRuntime: Map<String, Long> = emptyMap(),
+    agentProfileEditAuthority: MembersAgentProfileEditAuthority? = null,
     onAgentRuntimeModelsRequest: (runtime: String, force: Boolean) -> Unit = { _, _ -> },
     canManage: Boolean,
     agentStatusIndicatorState: SlockAgentStatusIndicatorState?,
@@ -6746,6 +6941,7 @@ private fun MembersAgentProfileTab(
     storeState: SharedAgentDetailState? = null,
     agentDetailActions: SharedAgentDetailActions? = null,
     onUpdateAgentProfile: (suspend (AgentProfileUpdateRequest) -> DataResult<MemberProfile>)?,
+    onApplyAgentProfileResult: (MemberProfile) -> Unit = {},
     onUnavailableAction: (String) -> Unit,
     lifecycleInFlight: String? = null,
     diagnosticActionState: MembersAgentDiagnosticActionState? = null,
@@ -6757,9 +6953,30 @@ private fun MembersAgentProfileTab(
     modifier: Modifier = Modifier
 ) {
     val summary = detail?.summary
+    val runtimeConfigResolution = remember(summary) { summary.toMembersRuntimeConfigResolution() }
+    val canonicalRuntimeConfig =
+        (runtimeConfigResolution as? MembersAgentRuntimeConfigResolution.Content)?.config
+    val canonicalRuntimeId = canonicalRuntimeConfig?.runtime
+    val canonicalRuntimeModel = canonicalRuntimeConfig?.model
+    val runtimeEditorReady =
+        canonicalRuntimeConfig != null &&
+            membersAgentRuntimeConfigSaveEnabled(
+                runtime = canonicalRuntimeConfig.runtime,
+                model = canonicalRuntimeConfig.toMembersRuntimeModelValue(),
+                customModelMode = canonicalRuntimeModel is RuntimeModelConfig.Custom,
+                customModelName = (canonicalRuntimeModel as? RuntimeModelConfig.Custom)?.name.orEmpty(),
+                machineRuntimeIds = agentMachineRuntimes,
+                runtimeModelsCatalog = agentRuntimeModelsByRuntime[canonicalRuntimeConfig.runtime],
+                runtimeModelsLoading = canonicalRuntimeConfig.runtime in agentRuntimeModelLoadsInFlight,
+                runtimeModelsError = agentRuntimeModelErrorsByRuntime[canonicalRuntimeConfig.runtime]
+            )
     val scope = rememberCoroutineScope()
+    val currentProfileEditAuthority by rememberUpdatedState(agentProfileEditAuthority)
+    val currentRuntimeModelGenerations by rememberUpdatedState(agentRuntimeModelGenerationsByRuntime)
     val deleted = summary?.deletedAt?.isNotBlank() == true
-    val canEdit = canManage && !deleted
+    // Roster metadata is never edit authority. Only a canonical loaded profile summary may enter
+    // an editor or construct an update request.
+    val canEdit = canManage && summary != null && agentProfileEditAuthority != null && !deleted
     val profileEditingUnavailable = stringResource(MR.strings.member_error_profile_edit_unavailable)
     val roleEditingUnavailable = stringResource(MR.strings.member_error_role_edit_unavailable)
     val runtimeEditingUnavailable = stringResource(MR.strings.member_error_runtime_edit_unavailable)
@@ -6778,6 +6995,9 @@ private fun MembersAgentProfileTab(
     var localDraftDisplayName by remember(member.id.value, member.displayName) { mutableStateOf(member.displayName) }
     var localSavingDisplayName by remember(member.id.value) { mutableStateOf(false) }
     var localDisplayNameError by remember(member.id.value) { mutableStateOf<String?>(null) }
+    var displayNameEditorAuthority by remember(member.id.value) {
+        mutableStateOf<MembersAgentProfileEditAuthority?>(null)
+    }
     val editingDisplayName =
         if (storeBackedProfileEdit) profileState.displayNameEditing else localEditingDisplayName
     val draftDisplayName =
@@ -6793,6 +7013,9 @@ private fun MembersAgentProfileTab(
     var localDraftRole by remember(member.id.value, member.description) { mutableStateOf(member.description.orEmpty()) }
     var localSavingRole by remember(member.id.value) { mutableStateOf(false) }
     var localRoleError by remember(member.id.value) { mutableStateOf<String?>(null) }
+    var roleEditorAuthority by remember(member.id.value) {
+        mutableStateOf<MembersAgentProfileEditAuthority?>(null)
+    }
     val editingRole =
         if (storeBackedProfileEdit) profileState.roleEditing else localEditingRole
     val draftRole =
@@ -6811,13 +7034,28 @@ private fun MembersAgentProfileTab(
     var roleHelpOpen by remember(member.id.value) { mutableStateOf(false) }
     var savingServerRole by remember(member.id.value) { mutableStateOf(false) }
     var serverRoleError by remember(member.id.value, currentServerRole?.wireValue) { mutableStateOf<String?>(null) }
+    var serverRoleEditorAuthority by remember(member.id.value) {
+        mutableStateOf<MembersAgentProfileEditAuthority?>(null)
+    }
     var editingRuntimeConfig by remember(member.id.value) { mutableStateOf(false) }
+    var runtimeEditorAuthority by remember(member.id.value) {
+        mutableStateOf<MembersAgentProfileEditAuthority?>(null)
+    }
     var savingRuntimeConfig by remember(member.id.value) { mutableStateOf(false) }
     var runtimeConfigError by remember(member.id.value) { mutableStateOf<String?>(null) }
 
+    LaunchedEffect(canonicalRuntimeId) {
+        canonicalRuntimeId?.let { onAgentRuntimeModelsRequest(it, false) }
+    }
+
     fun saveDisplayName() {
         val callback = onUpdateAgentProfile
-        if (!canEdit || (agentDetailActions == null && callback == null) || savingDisplayName) {
+        if (
+            !canEdit ||
+            displayNameEditorAuthority != agentProfileEditAuthority ||
+            (agentDetailActions == null && callback == null) ||
+            savingDisplayName
+        ) {
             onUnavailableAction(profileEditingUnavailable)
             return
         }
@@ -6833,6 +7071,10 @@ private fun MembersAgentProfileTab(
             return
         }
         scope.launch {
+            if (displayNameEditorAuthority != currentProfileEditAuthority) {
+                onUnavailableAction(profileEditingUnavailable)
+                return@launch
+            }
             if (storeBackedProfileEdit) {
                 profileStore.dispatch(SharedAgentDetailIntent.StartSaveDisplayName(next))
             } else {
@@ -6856,8 +7098,10 @@ private fun MembersAgentProfileTab(
                 } catch (_: Throwable) {
                     DataResult.Error(ScreenError("agent_profile_save_failed"))
                 }
+            if (displayNameEditorAuthority != currentProfileEditAuthority) return@launch
             when (result) {
                 is DataResult.Content -> {
+                    onApplyAgentProfileResult(result.data)
                     if (storeBackedProfileEdit) {
                         profileStore.dispatch(SharedAgentDetailIntent.FinishSaveDisplayName)
                     } else {
@@ -6896,7 +7140,12 @@ private fun MembersAgentProfileTab(
 
     fun saveRole() {
         val callback = onUpdateAgentProfile
-        if (!canEdit || (agentDetailActions == null && callback == null) || savingRole) {
+        if (
+            !canEdit ||
+            roleEditorAuthority != agentProfileEditAuthority ||
+            (agentDetailActions == null && callback == null) ||
+            savingRole
+        ) {
             onUnavailableAction(profileEditingUnavailable)
             return
         }
@@ -6911,6 +7160,10 @@ private fun MembersAgentProfileTab(
             return
         }
         scope.launch {
+            if (roleEditorAuthority != currentProfileEditAuthority) {
+                onUnavailableAction(profileEditingUnavailable)
+                return@launch
+            }
             if (storeBackedProfileEdit) {
                 profileStore.dispatch(SharedAgentDetailIntent.StartSaveRole(next))
             } else {
@@ -6934,8 +7187,10 @@ private fun MembersAgentProfileTab(
                 } catch (_: Throwable) {
                     DataResult.Error(ScreenError("agent_profile_save_failed"))
                 }
+            if (roleEditorAuthority != currentProfileEditAuthority) return@launch
             when (result) {
                 is DataResult.Content -> {
+                    onApplyAgentProfileResult(result.data)
                     if (storeBackedProfileEdit) {
                         profileStore.dispatch(SharedAgentDetailIntent.FinishSaveRole)
                     } else {
@@ -6974,7 +7229,12 @@ private fun MembersAgentProfileTab(
 
     fun saveServerRole() {
         val callback = onUpdateAgentProfile
-        if (!canEditServerRole || (agentDetailActions == null && callback == null) || savingServerRole) {
+        if (
+            !canEditServerRole ||
+            serverRoleEditorAuthority != agentProfileEditAuthority ||
+            (agentDetailActions == null && callback == null) ||
+            savingServerRole
+        ) {
             onUnavailableAction(roleEditingUnavailable)
             return
         }
@@ -6985,6 +7245,10 @@ private fun MembersAgentProfileTab(
             return
         }
         scope.launch {
+            if (serverRoleEditorAuthority != currentProfileEditAuthority) {
+                onUnavailableAction(roleEditingUnavailable)
+                return@launch
+            }
             savingServerRole = true
             serverRoleError = null
             val result =
@@ -7006,8 +7270,13 @@ private fun MembersAgentProfileTab(
                 } catch (_: Throwable) {
                     DataResult.Error(ScreenError("agent_server_role_save_failed"))
                 }
+            if (serverRoleEditorAuthority != currentProfileEditAuthority) return@launch
             when (result) {
-                is DataResult.Content,
+                is DataResult.Content -> {
+                    onApplyAgentProfileResult(result.data)
+                    editingServerRole = false
+                    serverRoleMenuExpanded = false
+                }
                 is DataResult.Empty -> {
                     editingServerRole = false
                     serverRoleMenuExpanded = false
@@ -7021,19 +7290,47 @@ private fun MembersAgentProfileTab(
         }
     }
 
-    fun saveRuntimeConfig(nextConfig: RuntimeConfig) {
+    fun saveRuntimeConfig(nextConfig: RuntimeConfig, openedCatalogGeneration: Long) {
         val callback = onUpdateAgentProfile
         if (!canEdit || (agentDetailActions == null && callback == null) || savingRuntimeConfig) {
             onUnavailableAction(runtimeEditingUnavailable)
             return
         }
-        val currentConfig = summary.toMembersRuntimeConfig(member)
+        val currentConfig = canonicalRuntimeConfig
+        if (currentConfig == null) {
+            runtimeConfigError = "agent_runtime_config_unavailable"
+            onUnavailableAction(runtimeEditingUnavailable)
+            return
+        }
+        if (!membersAgentProfileEditAuthorityMatches(
+                opened = runtimeEditorAuthority,
+                current = agentProfileEditAuthority,
+                openedCatalogGeneration = openedCatalogGeneration,
+                currentCatalogGeneration = agentRuntimeModelGenerationsByRuntime[nextConfig.runtime] ?: 0L
+            )
+        ) {
+            runtimeConfigError = "agent_runtime_editor_stale"
+            onUnavailableAction(runtimeEditingUnavailable)
+            return
+        }
         val currentStatus = AgentStatus.fromWireValue(summary?.status)
         val activeAgent = currentStatus != null && currentStatus.presence != Presence.Offline
         val restartMode = membersRuntimeConfigResetMode(currentConfig, nextConfig, activeAgent)
         scope.launch {
             savingRuntimeConfig = true
             runtimeConfigError = null
+            if (!membersAgentProfileEditAuthorityMatches(
+                    opened = runtimeEditorAuthority,
+                    current = currentProfileEditAuthority,
+                    openedCatalogGeneration = openedCatalogGeneration,
+                    currentCatalogGeneration = currentRuntimeModelGenerations[nextConfig.runtime] ?: 0L
+                )
+            ) {
+                savingRuntimeConfig = false
+                runtimeConfigError = "agent_runtime_editor_stale"
+                onUnavailableAction(runtimeEditingUnavailable)
+                return@launch
+            }
             val result =
                 try {
                     val request = AgentProfileUpdateRequest(
@@ -7054,17 +7351,36 @@ private fun MembersAgentProfileTab(
                 } catch (_: Throwable) {
                     DataResult.Error(ScreenError("agent_runtime_config_save_failed"))
                 }
+            if (!membersAgentProfileEditAuthorityMatches(
+                    opened = runtimeEditorAuthority,
+                    current = currentProfileEditAuthority,
+                    openedCatalogGeneration = openedCatalogGeneration,
+                    currentCatalogGeneration = currentRuntimeModelGenerations[nextConfig.runtime] ?: 0L
+                )
+            ) {
+                return@launch
+            }
             when (result) {
-                is DataResult.Content,
+                is DataResult.Content -> {
+                    onApplyAgentProfileResult(result.data)
+                    editingRuntimeConfig = false
+                }
                 is DataResult.Empty -> {
                     editingRuntimeConfig = false
                     val store = sharedAgentDetailStore
                     val currentDetail = detail
-                    if (store != null && currentDetail != null) {
+                    val authority = runtimeEditorAuthority
+                    if (
+                        store != null &&
+                        currentDetail != null &&
+                        authority != null &&
+                        membersAgentProfileStoreMatchesAuthority(store.state.value, authority)
+                    ) {
                         store.dispatch(
                             SharedAgentDetailIntent.SetDetail(
                                 member.id,
-                                currentDetail.withRuntimeConfigProjection(nextConfig)
+                                currentDetail.withRuntimeConfigProjection(nextConfig),
+                                authority.serverId
                             )
                         )
                     }
@@ -7118,6 +7434,7 @@ private fun MembersAgentProfileTab(
                     title = stringResource(MR.strings.member_label_display_name).uppercase(),
                     showEdit = canEdit && !editingDisplayName,
                     onEditClick = {
+                        displayNameEditorAuthority = agentProfileEditAuthority
                         if (storeBackedProfileEdit) {
                             profileStore.dispatch(
                                 SharedAgentDetailIntent.BeginEditDisplayName(member.displayName)
@@ -7178,6 +7495,7 @@ private fun MembersAgentProfileTab(
                                     localDisplayNameError = null
                                     localEditingDisplayName = false
                                 }
+                                displayNameEditorAuthority = null
                             },
                             enabled = !savingDisplayName,
                             backgroundColor = SlockColor.SurfaceWhite
@@ -7203,6 +7521,7 @@ private fun MembersAgentProfileTab(
                     title = stringResource(MR.strings.member_section_description).uppercase(),
                     showEdit = canEdit && !editingRole,
                     onEditClick = {
+                        roleEditorAuthority = agentProfileEditAuthority
                         if (storeBackedProfileEdit) {
                             profileStore.dispatch(
                                 SharedAgentDetailIntent.BeginEditRole(member.description.orEmpty())
@@ -7329,6 +7648,7 @@ private fun MembersAgentProfileTab(
                     if (canEditServerRole && !editingServerRole) {
                         MembersProfilePencilButton(
                             onClick = {
+                                serverRoleEditorAuthority = agentProfileEditAuthority
                                 draftServerRole = currentServerRole ?: MembersAgentServerRole.Member
                                 serverRoleError = null
                                 serverRoleMenuExpanded = true
@@ -7511,34 +7831,54 @@ private fun MembersAgentProfileTab(
             ) {
                 MembersEditableSectionTitleRow(
                     title = stringResource(MR.strings.member_section_runtime_config).uppercase(),
-                    showEdit = canEdit && !editingRuntimeConfig,
+                    showEdit = canEdit && runtimeEditorReady && !editingRuntimeConfig,
                     onEditClick = {
                         runtimeConfigError = null
+                        runtimeEditorAuthority = agentProfileEditAuthority
                         editingRuntimeConfig = true
                     }
                 )
             }
-            MembersAgentRuntimeConfigRows(summary = summary, member = member)
+            MembersAgentRuntimeConfigRows(runtimeConfigResolution)
             MembersAgentRuntimeEnvVars(summary)
+            canonicalRuntimeId
+                ?.takeIf { agentRuntimeModelErrorsByRuntime[it] != null }
+                ?.let { failedRuntime ->
+                    SlockBrutalActionButton(
+                        label = stringResource(MR.strings.common_retry),
+                        leadingIcon = SlockLucideIconName.RefreshCw,
+                        enabled = failedRuntime !in agentRuntimeModelLoadsInFlight,
+                        backgroundColor = SlockColor.SurfaceWhite,
+                        onClick = { onAgentRuntimeModelsRequest(failedRuntime, true) }
+                    )
+                }
         }
 
-        if (editingRuntimeConfig) {
+        if (editingRuntimeConfig && canonicalRuntimeConfig != null) {
             MembersAgentRuntimeConfigDialog(
-                member = member,
+                initialConfig = canonicalRuntimeConfig,
+                memberId = member.id,
                 summary = summary,
                 machineRuntimeIds = agentMachineRuntimes,
                 runtimeModelsByRuntime = agentRuntimeModelsByRuntime,
                 runtimeModelLoadsInFlight = agentRuntimeModelLoadsInFlight,
+                runtimeModelErrorsByRuntime = agentRuntimeModelErrorsByRuntime,
+                runtimeModelGenerationsByRuntime = agentRuntimeModelGenerationsByRuntime,
+                openedProfileAuthority = runtimeEditorAuthority,
+                currentProfileAuthority = agentProfileEditAuthority,
                 onRuntimeModelsRequest = onAgentRuntimeModelsRequest,
                 saving = savingRuntimeConfig,
                 error = runtimeConfigError,
                 onDismiss = {
                     if (!savingRuntimeConfig) {
                         editingRuntimeConfig = false
+                        runtimeEditorAuthority = null
                         runtimeConfigError = null
                     }
                 },
-                onSave = { nextConfig -> saveRuntimeConfig(nextConfig) }
+                onSave = { nextConfig, catalogGeneration ->
+                    saveRuntimeConfig(nextConfig, catalogGeneration)
+                }
             )
         }
 
@@ -7653,10 +7993,22 @@ private fun MembersAgentProfileActionsSection(
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
 private fun MembersAgentRuntimeConfigRows(
-    summary: AgentDetailSummary?,
-    member: MemberProfile
+    resolution: MembersAgentRuntimeConfigResolution
 ) {
-    val runtimeConfig = summary.toMembersRuntimeConfig(member)
+    val runtimeConfig = (resolution as? MembersAgentRuntimeConfigResolution.Content)?.config
+    if (runtimeConfig == null) {
+        Text(
+            text = stringResource(MR.strings.member_state_runtime_config_unavailable),
+            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
+            color = SlockColor.AccentRed
+        )
+        Text(
+            text = (resolution as MembersAgentRuntimeConfigResolution.Unavailable).code,
+            style = SlockType.Caption,
+            color = SlockColor.TextMutedGray
+        )
+        return
+    }
     val runtimeId = runtimeConfig.runtime
     FlowRow(
         modifier = Modifier.fillMaxWidth(),
@@ -7814,47 +8166,55 @@ private fun membersMaskedEnvValue(value: String?): String =
 
 @Composable
 private fun MembersAgentRuntimeConfigDialog(
-    member: MemberProfile,
+    initialConfig: RuntimeConfig,
+    memberId: MemberId,
     summary: AgentDetailSummary?,
     machineRuntimeIds: List<String> = emptyList(),
     runtimeModelsByRuntime: Map<String, SharedCreateAgentRuntimeModelCatalog> = emptyMap(),
     runtimeModelLoadsInFlight: Set<String> = emptySet(),
+    runtimeModelErrorsByRuntime: Map<String, String> = emptyMap(),
+    runtimeModelGenerationsByRuntime: Map<String, Long> = emptyMap(),
+    openedProfileAuthority: MembersAgentProfileEditAuthority?,
+    currentProfileAuthority: MembersAgentProfileEditAuthority?,
     onRuntimeModelsRequest: (runtime: String, force: Boolean) -> Unit = { _, _ -> },
     saving: Boolean,
     error: String?,
     onDismiss: () -> Unit,
-    onSave: (RuntimeConfig) -> Unit
+    onSave: (RuntimeConfig, catalogGeneration: Long) -> Unit
 ) {
-    val initialConfig = remember(member.id.value, summary) { summary.toMembersRuntimeConfig(member) }
-    var runtime by remember(initialConfig) { mutableStateOf(initialConfig.runtime) }
-    val initialModelValue = remember(initialConfig) { initialConfig.toMembersRuntimeModelValue() }
-    val initialModelSelection = remember(initialConfig) {
-        when (val initialModel = initialConfig.model) {
+    val stableInitialConfig = remember(memberId.value, initialConfig) { initialConfig }
+    var runtime by remember(stableInitialConfig) { mutableStateOf(stableInitialConfig.runtime) }
+    val initialModelSelection = remember(stableInitialConfig) {
+        when (val initialModel = stableInitialConfig.model) {
             is RuntimeModelConfig.Preset -> false to initialModel.id
             is RuntimeModelConfig.Custom -> true to initialModel.name
         }
     }
-    var model by remember(initialConfig) { mutableStateOf(initialModelSelection.second) }
-    var customModelMode by remember(initialConfig) { mutableStateOf(initialModelSelection.first) }
-    var customModelName by remember(initialConfig) {
+    var model by remember(stableInitialConfig) { mutableStateOf(initialModelSelection.second) }
+    var customModelMode by remember(stableInitialConfig) { mutableStateOf(initialModelSelection.first) }
+    var customModelName by remember(stableInitialConfig) {
         mutableStateOf(if (initialModelSelection.first) initialModelSelection.second else "")
     }
-    val initialProvider = initialConfig.provider as? RuntimeProviderConfig.Custom
-    var providerMode by remember(initialConfig) {
+    val initialProvider = stableInitialConfig.provider as? RuntimeProviderConfig.Custom
+    var providerMode by remember(stableInitialConfig) {
         mutableStateOf(
             if (initialProvider != null) RUNTIME_PROVIDER_MODE_CUSTOM else RUNTIME_PROVIDER_MODE_DEFAULT
         )
     }
-    var providerApiUrl by remember(initialConfig) { mutableStateOf(initialProvider?.apiUrl.orEmpty()) }
-    var providerApiKey by remember(initialConfig) { mutableStateOf(initialProvider?.apiKey.orEmpty()) }
-    var fastMode by remember(initialConfig) { mutableStateOf(initialConfig.mode is RuntimeModeConfig.Fast) }
-    var reasoningEffort by remember(initialConfig) { mutableStateOf(initialConfig.reasoningEffort) }
-    var command by remember(initialConfig) { mutableStateOf(initialConfig.command.orEmpty()) }
-    var envVarEntries by remember(initialConfig) {
-        mutableStateOf(initialConfig.envVars.orEmpty().entries.map { it.key to it.value })
+    var providerApiUrl by remember(stableInitialConfig) { mutableStateOf(initialProvider?.apiUrl.orEmpty()) }
+    var providerApiKey by remember(stableInitialConfig) { mutableStateOf(initialProvider?.apiKey.orEmpty()) }
+    var fastMode by remember(stableInitialConfig) { mutableStateOf(stableInitialConfig.mode is RuntimeModeConfig.Fast) }
+    var reasoningEffort by remember(stableInitialConfig) { mutableStateOf(stableInitialConfig.reasoningEffort) }
+    var command by remember(stableInitialConfig) { mutableStateOf(stableInitialConfig.command.orEmpty()) }
+    var envVarEntries by remember(stableInitialConfig) {
+        mutableStateOf(stableInitialConfig.envVars.orEmpty().entries.map { it.key to it.value })
     }
-    var pendingRuntimeSwitchConfig by remember(initialConfig) { mutableStateOf<RuntimeConfig?>(null) }
-    var advancedOpen by remember(initialConfig) {
+    var pendingRuntimeSwitchConfig by remember(stableInitialConfig) { mutableStateOf<RuntimeConfig?>(null) }
+    var awaitingServerModelForRuntime by remember(stableInitialConfig) { mutableStateOf(false) }
+    var acceptedCatalogGeneration by remember(stableInitialConfig) {
+        mutableStateOf(runtimeModelGenerationsByRuntime[stableInitialConfig.runtime] ?: 0L)
+    }
+    var advancedOpen by remember(stableInitialConfig) {
         mutableStateOf(command.isNotBlank() || envVarEntries.isNotEmpty())
     }
     val currentStatus = AgentStatus.fromWireValue(summary?.status)
@@ -7871,12 +8231,41 @@ private fun MembersAgentRuntimeConfigDialog(
     val runtimeModelsCatalog = runtimeModelsByRuntime[runtime]
     val runtimeModelsOverride = runtimeModelsCatalog?.models.orEmpty()
     val runtimeModelsLoading = runtime in runtimeModelLoadsInFlight
+    val runtimeModelsError = runtimeModelErrorsByRuntime[runtime]
+    val runtimeConfigSaveEnabled =
+        membersAgentRuntimeConfigSaveEnabled(
+            runtime = runtime,
+            model = model,
+            customModelMode = customModelMode,
+            customModelName = customModelName,
+            machineRuntimeIds = machineRuntimeIds,
+            runtimeModelsCatalog = runtimeModelsCatalog,
+            runtimeModelsLoading = runtimeModelsLoading,
+            runtimeModelsError = runtimeModelsError
+        )
 
     LaunchedEffect(runtime) {
         if (runtime.isNotBlank()) {
             onRuntimeModelsRequest(runtime, false)
         }
     }
+    LaunchedEffect(runtime, runtimeModelsCatalog, awaitingServerModelForRuntime) {
+        if (awaitingServerModelForRuntime && runtimeModelsCatalog != null) {
+            model =
+                runtimeModelsCatalog.defaultModel
+                    ?.takeIf { default -> runtimeModelsCatalog.models.any { it.id == default } }
+                    ?: runtimeModelsCatalog.models.firstOrNull()?.id.orEmpty()
+            acceptedCatalogGeneration = runtimeModelGenerationsByRuntime[runtime] ?: 0L
+            awaitingServerModelForRuntime = false
+        }
+    }
+    val runtimeEditorAuthorityCurrent =
+        membersAgentProfileEditAuthorityMatches(
+            opened = openedProfileAuthority,
+            current = currentProfileAuthority,
+            openedCatalogGeneration = acceptedCatalogGeneration,
+            currentCatalogGeneration = runtimeModelGenerationsByRuntime[runtime] ?: 0L
+        )
 
     SlockUnifiedDialog(
         title = stringResource(MR.strings.member_dialog_edit_runtime_config).uppercase(),
@@ -7896,7 +8285,10 @@ private fun MembersAgentRuntimeConfigDialog(
                         runtime = runtime,
                         onRuntimeChange = { nextRuntime ->
                             runtime = nextRuntime
-                            model = getDefaultModel(nextRuntime)
+                            // A runtime switch must wait for this machine's canonical model catalog;
+                            // enum/static defaults are not server truth and cannot seed a save.
+                            model = ""
+                            awaitingServerModelForRuntime = true
                             customModelMode = false
                             customModelName = ""
                             providerMode = RUNTIME_PROVIDER_MODE_DEFAULT
@@ -7927,6 +8319,7 @@ private fun MembersAgentRuntimeConfigDialog(
                         },
                         runtimeModelsOverride = runtimeModelsOverride,
                         runtimeModelsLoading = runtimeModelsLoading,
+                        runtimeAvailabilityError = runtimeModelsError,
                         onRuntimeModelsRefresh = {
                             onRuntimeModelsRequest(runtime, true)
                         },
@@ -7950,6 +8343,15 @@ private fun MembersAgentRuntimeConfigDialog(
                         advancedOpen = advancedOpen,
                         onAdvancedOpenChange = { advancedOpen = it }
                     )
+                    if (runtimeModelsError != null) {
+                        SlockBrutalActionButton(
+                            label = stringResource(MR.strings.common_retry),
+                            leadingIcon = SlockLucideIconName.RefreshCw,
+                            enabled = !runtimeModelsLoading && !saving,
+                            backgroundColor = SlockColor.SurfaceWhite,
+                            onClick = { onRuntimeModelsRequest(runtime, true) }
+                        )
+                    }
                 }
                 item {
                     Text(
@@ -7983,7 +8385,13 @@ private fun MembersAgentRuntimeConfigDialog(
                 )
                 SlockBrutalActionButton(
                     label = if (saving) stringResource(MR.strings.member_action_saving) else stringResource(MR.strings.member_action_save_runtime_config),
-                    enabled = !saving && !customModelMissing && !providerUrlInvalid && !providerKeyInvalid,
+                    enabled =
+                        !saving &&
+                            runtimeConfigSaveEnabled &&
+                            runtimeEditorAuthorityCurrent &&
+                            !customModelMissing &&
+                            !providerUrlInvalid &&
+                            !providerKeyInvalid,
                     backgroundColor = SlockColor.AccentPink,
                     minWidth = 166.dp,
                     onClick = {
@@ -8000,10 +8408,10 @@ private fun MembersAgentRuntimeConfigDialog(
                             envVars = envVarEntries.toMembersRuntimeEnvVars(),
                             command = command
                         )
-                        if (membersRuntimeConfigSwitchConfirmation(initialConfig, nextConfig, activeAgent) != null) {
+                        if (membersRuntimeConfigSwitchConfirmation(stableInitialConfig, nextConfig, activeAgent) != null) {
                             pendingRuntimeSwitchConfig = nextConfig
                         } else {
-                            onSave(nextConfig)
+                            onSave(nextConfig, acceptedCatalogGeneration)
                         }
                     }
                 )
@@ -8012,12 +8420,12 @@ private fun MembersAgentRuntimeConfigDialog(
     }
 
     pendingRuntimeSwitchConfig?.let { pendingConfig ->
-        membersRuntimeConfigSwitchConfirmation(initialConfig, pendingConfig, activeAgent)?.let { confirmation ->
+        membersRuntimeConfigSwitchConfirmation(stableInitialConfig, pendingConfig, activeAgent)?.let { confirmation ->
             MembersRuntimeConfigSwitchConfirmationDialog(
                 confirmation = confirmation,
                 onConfirm = {
                     pendingRuntimeSwitchConfig = null
-                    onSave(pendingConfig)
+                    onSave(pendingConfig, acceptedCatalogGeneration)
                 },
                 onCancel = {
                     if (!saving) {
@@ -8150,22 +8558,53 @@ private fun MembersRuntimeConfigSwitchConfirmationDialog(
     }
 }
 
-private fun AgentDetailSummary?.toMembersRuntimeConfig(member: MemberProfile): RuntimeConfig {
-    val runtime = this?.runtime?.takeIf { it.isNotBlank() }
-        ?: member.roleDescription?.takeIf { it.isNotBlank() }
-        ?: RUNTIMES.first().id
-    val model = this?.model?.takeIf { it.isNotBlank() } ?: getDefaultModel(runtime)
-    return RuntimeConfig(
+internal sealed interface MembersAgentRuntimeConfigResolution {
+    data class Content(val config: RuntimeConfig) : MembersAgentRuntimeConfigResolution
+    data class Unavailable(val code: String) : MembersAgentRuntimeConfigResolution
+}
+
+internal fun membersAgentRuntimeConfigSaveEnabled(
+    runtime: String,
+    model: String,
+    customModelMode: Boolean,
+    customModelName: String,
+    machineRuntimeIds: List<String>,
+    runtimeModelsCatalog: SharedCreateAgentRuntimeModelCatalog?,
+    runtimeModelsLoading: Boolean,
+    runtimeModelsError: String?
+): Boolean {
+    if (
+        runtime !in machineRuntimeIds ||
+        runtimeModelsCatalog == null ||
+        runtimeModelsLoading ||
+        runtimeModelsError != null
+    ) {
+        return false
+    }
+    return if (customModelMode) {
+        customModelName.trim().isNotBlank()
+    } else {
+        runtimeModelsCatalog.models.any { it.id == model }
+    }
+}
+
+internal fun AgentDetailSummary?.toMembersRuntimeConfigResolution(): MembersAgentRuntimeConfigResolution {
+    val summary = this ?: return MembersAgentRuntimeConfigResolution.Unavailable("agent_runtime_profile_missing")
+    val runtime = summary.runtime?.trim()?.takeIf { it.isNotBlank() }
+        ?: return MembersAgentRuntimeConfigResolution.Unavailable("agent_runtime_missing")
+    val model = summary.model?.trim()?.takeIf { it.isNotBlank() }
+        ?: return MembersAgentRuntimeConfigResolution.Unavailable("agent_runtime_model_missing")
+    return MembersAgentRuntimeConfigResolution.Content(RuntimeConfig(
         runtime = runtime,
-        model = membersRuntimeModelConfig(runtime, model, this?.runtimeModelKind),
-        mode = if (this?.executionMode?.trim()?.lowercase() == "fast") {
+        model = membersRuntimeModelConfig(runtime, model, summary.runtimeModelKind),
+        mode = if (summary.executionMode?.trim()?.lowercase() == "fast") {
             RuntimeModeConfig.Fast
         } else {
             RuntimeModeConfig.Default
         },
-        reasoningEffort = this?.reasoning?.takeIf { it.isNotBlank() },
-        envVars = this?.envVars?.takeIf { it.isNotEmpty() }
-    )
+        reasoningEffort = summary.reasoning?.takeIf { it.isNotBlank() },
+        envVars = summary.envVars.takeIf { it.isNotEmpty() }
+    ))
 }
 
 internal fun membersRuntimeModelConfig(

@@ -776,6 +776,7 @@
     <string name="member_state_no_private_chats">暂无智能体间私信。</string>
     <string name="member_state_no_files">暂无文件。</string>
     <string name="member_state_no_environment_variables">未配置环境变量</string>
+    <string name="member_state_runtime_config_unavailable">运行时配置不可用</string>
     <string name="member_state_no_connected_apps">暂无已连接应用。</string>
     <string name="member_state_agent_error">智能体遇到错误</string>
     <string name="member_state_profile_loading">正在加载智能体资料…</string>
