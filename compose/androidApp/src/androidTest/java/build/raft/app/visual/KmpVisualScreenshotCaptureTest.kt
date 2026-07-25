@@ -17,6 +17,8 @@ import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
 import build.raft.app.shared.SlockKuiklyActivity
+import build.raft.app.data.KeyValueChatLayoutPreferenceStore
+import build.raft.app.data.slockSharedPreferenceStore
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
@@ -24,9 +26,12 @@ import androidx.test.runner.lifecycle.Stage
 import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
+import org.junit.Assume.assumeTrue
 import org.junit.BeforeClass
 import org.junit.Rule
 import org.junit.Test
@@ -1714,6 +1719,117 @@ class KmpVisualScreenshotCaptureTest {
         captureKmpComponentCase(
             caseId = "components.home.titlebar.states",
             pageName = "compose_home_titlebar_visual",
+            crop = FULL_VIEWPORT_CROP
+        )
+    }
+
+    @Test
+    fun captureHomeTitlebarPreferencePersistenceStates() {
+        val store = slockSharedPreferenceStore()
+        val previous = store.getString(HOME_SERVER_AVATAR_PREFERENCE_KEY)
+        try {
+            store.putString(HOME_SERVER_AVATAR_PREFERENCE_KEY, null)
+            assertFalse(
+                KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
+                    .readHomeServerAvatarEnabledSync()
+            )
+            captureKmpComponentCase(
+                caseId = "components.home.titlebar.preference-fresh-off",
+                pageName = "compose_home_titlebar_preference_visual",
+                crop = HOME_TITLEBAR_PREFERENCE_CROP
+            )
+
+            runBlocking {
+                KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
+                    .saveHomeServerAvatarEnabled(true)
+            }
+            assertTrue(
+                KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
+                    .readHomeServerAvatarEnabledSync()
+            )
+            captureKmpComponentCase(
+                caseId = "components.home.titlebar.preference-relaunch-on",
+                pageName = "compose_home_titlebar_preference_visual",
+                crop = HOME_TITLEBAR_PREFERENCE_CROP
+            )
+
+            runBlocking {
+                KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
+                    .saveHomeServerAvatarEnabled(false)
+            }
+            assertFalse(
+                KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
+                    .readHomeServerAvatarEnabledSync()
+            )
+            captureKmpComponentCase(
+                caseId = "components.home.titlebar.preference-relaunch-off",
+                pageName = "compose_home_titlebar_preference_visual",
+                crop = HOME_TITLEBAR_PREFERENCE_CROP
+            )
+        } finally {
+            store.putString(HOME_SERVER_AVATAR_PREFERENCE_KEY, previous)
+        }
+    }
+
+    @Test
+    fun captureHomeTitlebarPreferenceAcrossProcessRestartPhase() {
+        val phase =
+            InstrumentationRegistry.getArguments()
+                .getString(HOME_SERVER_AVATAR_PROCESS_RESTART_PHASE_ARG)
+                .orEmpty()
+        assumeTrue("process-restart phase is opt-in", phase.isNotBlank())
+        val preferenceStore = KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
+        when (phase) {
+            "seed-on" -> {
+                slockSharedPreferenceStore().putString(HOME_SERVER_AVATAR_PREFERENCE_KEY, null)
+                assertFalse(preferenceStore.readHomeServerAvatarEnabledSync())
+                runBlocking { preferenceStore.saveHomeServerAvatarEnabled(true) }
+                assertTrue(preferenceStore.readHomeServerAvatarEnabledSync())
+            }
+            "assert-on-seed-off" -> {
+                assertTrue(preferenceStore.readHomeServerAvatarEnabledSync())
+                captureKmpComponentCase(
+                    caseId = "components.home.titlebar.preference-process-restart-on",
+                    pageName = "compose_home_titlebar_preference_visual",
+                    crop = HOME_TITLEBAR_PREFERENCE_CROP
+                )
+                runBlocking { preferenceStore.saveHomeServerAvatarEnabled(false) }
+                assertFalse(preferenceStore.readHomeServerAvatarEnabledSync())
+            }
+            "assert-off-reset" -> {
+                assertFalse(preferenceStore.readHomeServerAvatarEnabledSync())
+                captureKmpComponentCase(
+                    caseId = "components.home.titlebar.preference-process-restart-off",
+                    pageName = "compose_home_titlebar_preference_visual",
+                    crop = HOME_TITLEBAR_PREFERENCE_CROP
+                )
+                slockSharedPreferenceStore().putString(HOME_SERVER_AVATAR_PREFERENCE_KEY, null)
+                assertFalse(preferenceStore.readHomeServerAvatarEnabledSync())
+            }
+            else -> error("Unknown $HOME_SERVER_AVATAR_PROCESS_RESTART_PHASE_ARG=$phase")
+        }
+    }
+
+    @Test
+    fun captureHomeTitlebarServerSwitchIdentity() {
+        captureKmpComponentCase(
+            caseId = "components.home.titlebar.server-switch-identity",
+            pageName = "compose_home_titlebar_server_switch_visual",
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_500
+        )
+    }
+
+    @Test
+    fun captureHomeTitlebarLoadingAndErrorIdentity() {
+        captureKmpComponentCase(
+            caseId = "components.home.titlebar.loading-fallback",
+            pageName = "compose_home_titlebar_loading_visual",
+            crop = FULL_VIEWPORT_CROP
+        )
+        captureKmpComponentCase(
+            caseId = "components.home.titlebar.error-removed-avatar-fallback",
+            pageName = "compose_home_titlebar_error_visual",
             crop = FULL_VIEWPORT_CROP
         )
     }
@@ -4049,6 +4165,15 @@ class KmpVisualScreenshotCaptureTest {
                 contract = "viewport-bounds",
                 captureMethod = "app-window-root-draw-viewport-density-resize"
             )
+        private val HOME_TITLEBAR_PREFERENCE_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 390,
+                heightDp = 64
+            )
+        private const val HOME_SERVER_AVATAR_PREFERENCE_KEY = "mobile:home_server_avatar_enabled"
+        private const val HOME_SERVER_AVATAR_PROCESS_RESTART_PHASE_ARG = "homeServerAvatarProcessRestartPhase"
         private val HOME_SAVED_RESULTS_CROP =
             VisualCrop(
                 leftDp = 0,

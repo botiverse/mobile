@@ -5,6 +5,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import build.raft.app.base.BasePager
 import build.raft.app.data.AppLocale
+import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.SharedAgentCreateDataSchema
 import build.raft.app.data.SharedAgentCreateFieldCopy
 import build.raft.app.data.SharedAgentCreateFieldSchema
@@ -18,6 +19,7 @@ import build.raft.app.data.SharedAgentCreateVisibilityRule
 import build.raft.app.data.SharedResolvedAgentCreateForm
 import build.raft.app.data.SharedRuntimeFormDefinitionRef
 import build.raft.app.data.stringDescLocaleType
+import build.raft.app.data.slockSharedPreferenceStore
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.core.annotations.Page
@@ -28,6 +30,41 @@ internal class ComposeHomeTitlebarVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
         setContent { HomeTitlebarVisualScreen() }
+    }
+}
+
+@Page("compose_home_titlebar_preference_visual", supportInLocal = true)
+internal class ComposeHomeTitlebarPreferenceVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        val enabled =
+            KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
+                .readHomeServerAvatarEnabledSync()
+        setContent { HomeTitlebarPreferenceVisualScreen(enabled) }
+    }
+}
+
+@Page("compose_home_titlebar_server_switch_visual", supportInLocal = true)
+internal class ComposeHomeTitlebarServerSwitchVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { HomeTitlebarServerSwitchVisualScreen() }
+    }
+}
+
+@Page("compose_home_titlebar_loading_visual", supportInLocal = true)
+internal class ComposeHomeTitlebarLoadingVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { HomeTitlebarLoadingVisualScreen() }
+    }
+}
+
+@Page("compose_home_titlebar_error_visual", supportInLocal = true)
+internal class ComposeHomeTitlebarErrorVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { HomeTitlebarErrorVisualScreen() }
     }
 }
 
