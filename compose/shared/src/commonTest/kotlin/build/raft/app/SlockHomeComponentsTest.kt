@@ -374,6 +374,84 @@ class SlockHomeComponentsTest {
     }
 
     @Test
+    fun homeHeaderIdentityUsesTheCurrentServerItemById() {
+        val current =
+            SlockServerSwitcherItem(
+                id = "server-current",
+                name = "Current workspace",
+                slug = "current",
+                avatarUrl = "https://cdn.raft.build/current.png"
+            )
+
+        val resolved =
+            homeHeaderServerIdentity(
+                currentServerId = current.id,
+                currentServerName = "Canonical name",
+                servers =
+                    listOf(
+                        SlockServerSwitcherItem(
+                            id = "server-other",
+                            name = "Other workspace",
+                            slug = "other",
+                            avatarUrl = "https://cdn.raft.build/other.png"
+                        ),
+                        current
+                    )
+            )
+
+        assertEquals(current, resolved)
+        assertEquals(current.toServerSwitcherAvatarPresentation(), resolved.toServerSwitcherAvatarPresentation())
+    }
+
+    @Test
+    fun homeHeaderIdentityDoesNotBorrowAnotherServerAvatarWhenCurrentIdIsMissing() {
+        val resolved =
+            homeHeaderServerIdentity(
+                currentServerId = "server-current",
+                currentServerName = "Canonical name",
+                servers =
+                    listOf(
+                        SlockServerSwitcherItem(
+                            id = "server-other",
+                            name = "Canonical name",
+                            slug = "other",
+                            avatarUrl = "https://cdn.raft.build/other.png"
+                        )
+                    )
+            )
+
+        assertEquals("server-current", resolved.id)
+        assertEquals("Canonical name", resolved.name)
+        assertEquals(null, resolved.avatarUrl)
+        assertEquals(
+            ServerSwitcherAvatarPresentation(avatarWireValue = null, fallbackLabel = "C"),
+            resolved.toServerSwitcherAvatarPresentation()
+        )
+    }
+
+    @Test
+    fun homeHeaderIdentityUsesCanonicalNameForBlankMatchedName() {
+        val resolved =
+            homeHeaderServerIdentity(
+                currentServerId = "server-current",
+                currentServerName = "Canonical name",
+                servers =
+                    listOf(
+                        SlockServerSwitcherItem(
+                            id = "server-current",
+                            name = " ",
+                            slug = "current",
+                            avatarUrl = "https://cdn.raft.build/current.png"
+                        )
+                    )
+            )
+
+        assertEquals("Canonical name", resolved.name)
+        assertEquals("https://cdn.raft.build/current.png", resolved.avatarUrl)
+        assertEquals("C", resolved.toServerSwitcherAvatarPresentation().fallbackLabel)
+    }
+
+    @Test
     fun homeServerSwitcherCommunityActionsFollowJoinedSlugsIndependently() {
         val labels = SlockHomeShellLabels()
 

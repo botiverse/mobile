@@ -112,6 +112,7 @@ class LocalPreferencesTest {
         assertEquals(false, snapshot.composerSendKeyEnabled)
         assertEquals(false, snapshot.multiShellHostEnabled)
         assertEquals(false, snapshot.serverDrawerEnabled)
+        assertEquals(false, snapshot.homeServerAvatarEnabled)
         assertEquals(TranslationModePreference.Manual, snapshot.translationMode)
         assertEquals(TranslationTargetLanguages.Browser, snapshot.translationTargetLanguage)
         assertEquals(setOf(ThreadRowAffordancePreference.Reactions), snapshot.threadRowAffordances)
@@ -142,6 +143,24 @@ class LocalPreferencesTest {
     }
 
     @Test
+    fun homeServerAvatarPreferenceDefaultsOffAndResetReturnsToOff() = runBlocking {
+        val key = "mobile:home_server_avatar_enabled"
+        val store = InMemorySlockKeyValueStore()
+        val preferenceStore = KeyValueChatLayoutPreferenceStore(store)
+
+        assertEquals(false, preferenceStore.readHomeServerAvatarEnabled())
+
+        store.putString(key, "legacy-unknown")
+        assertEquals(false, preferenceStore.readHomeServerAvatarEnabled())
+
+        preferenceStore.saveHomeServerAvatarEnabled(true)
+        assertEquals(true, preferenceStore.readHomeServerAvatarEnabled())
+
+        store.putString(key, null)
+        assertEquals(false, preferenceStore.readHomeServerAvatarEnabled())
+    }
+
+    @Test
     fun chatLayoutPersistsSelectedValues() = runBlocking {
         val store = InMemorySlockKeyValueStore()
         val repository = PersistentChatLayoutPreferenceRepository(
@@ -161,6 +180,7 @@ class LocalPreferencesTest {
         val composerSendKey = repository.setComposerSendKeyEnabled(false)
         val multiShellHost = repository.setMultiShellHostEnabled(true)
         val serverDrawer = repository.setServerDrawerEnabled(true)
+        val homeServerAvatar = repository.setHomeServerAvatarEnabled(true)
         val translationMode = repository.setTranslationMode(TranslationModePreference.Manual)
         val translationTarget = repository.setTranslationTargetLanguage("zh-Hans")
         val savedAction = repository.setThreadRowAffordance(ThreadRowAffordancePreference.Saved, true)
@@ -185,6 +205,7 @@ class LocalPreferencesTest {
         assertEquals(false, composerSendKey.composerSendKeyEnabled)
         assertEquals(true, multiShellHost.multiShellHostEnabled)
         assertEquals(true, serverDrawer.serverDrawerEnabled)
+        assertEquals(true, homeServerAvatar.homeServerAvatarEnabled)
         assertEquals(TranslationModePreference.Manual, translationMode.translationMode)
         assertEquals("zh-cn", translationTarget.translationTargetLanguage)
         assertEquals(MyMessageAlignmentPreference.Right, restored.myMessageAlignment)
@@ -199,6 +220,7 @@ class LocalPreferencesTest {
         assertEquals(false, restored.composerSendKeyEnabled)
         assertEquals(true, restored.multiShellHostEnabled)
         assertEquals(true, restored.serverDrawerEnabled)
+        assertEquals(true, restored.homeServerAvatarEnabled)
         assertEquals(TranslationModePreference.Manual, restored.translationMode)
         assertEquals("zh-cn", restored.translationTargetLanguage)
         assertEquals(setOf(ThreadRowAffordancePreference.Reactions), savedAction.threadRowAffordances)
@@ -215,6 +237,7 @@ class LocalPreferencesTest {
         assertEquals(true, restoredDisabledCompact.composerSendKeyEnabled)
         assertEquals(true, restoredDisabledCompact.multiShellHostEnabled)
         assertEquals(true, restoredDisabledCompact.serverDrawerEnabled)
+        assertEquals(true, restoredDisabledCompact.homeServerAvatarEnabled)
     }
 
     @Test
