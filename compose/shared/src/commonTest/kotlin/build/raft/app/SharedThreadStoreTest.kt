@@ -12613,7 +12613,7 @@ class SharedThreadStoreTest {
         scope.cancel()
     }
 
-    private class FakeThreadApi(
+    internal class FakeThreadApi(
         var bodyText: String = messagesResponse("network body"),
         var olderBodyText: String = messagesResponse("older body", id = "older", seq = 1, historyLimited = false),
         var newerBodyText: String = messagesResponse("newer body", id = "newer", seq = 100, historyLimited = false),

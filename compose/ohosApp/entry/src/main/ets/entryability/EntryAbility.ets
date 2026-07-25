@@ -29,6 +29,7 @@ import {
   SLOCK_OHOS_PLATFORM_FILE_READER_SERVICE,
   SlockOhosPlatformFileReader
 } from './SlockOhosPlatformFileReader';
+import slockOhosProcessNetworkLifecycle from './SlockOhosProcessNetworkLifecycle';
 import BuildProfile from 'BuildProfile';
 
 const SAFE_AREA_TOP_PX = 'slockSafeAreaTopPx';
@@ -119,6 +120,7 @@ export default class EntryAbility extends UIAbility {
       this.context,
     );
     this.setupKnoi();
+    slockOhosProcessNetworkLifecycle.install(this.context.getApplicationContext());
   }
 
   onDestroy(): void {

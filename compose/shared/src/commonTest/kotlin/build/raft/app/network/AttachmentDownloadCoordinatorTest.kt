@@ -489,6 +489,25 @@ class AttachmentDownloadCoordinatorTest {
     }
 
     @Test
+    fun staleAttemptCleanupDoesNotCancelSameTargetSuccessor() {
+        val transport = FakeTransport()
+        val sinks = FakeSinkFactory()
+        val engine = AttachmentDownloadCoordinatorEngine(transport, sinks, nowMillis = { 1_000L })
+        val firstObserver = RecordingObserver()
+        val first = engine.start(request(), firstObserver)
+        assertEquals("cancelled", engine.control("download-1", first, "cancel"))
+        val successorObserver = RecordingObserver()
+        engine.start(request().copy(downloadId = "download-2"), successorObserver)
+
+        val staleCleanup = engine.beginTargetCleanup("attachment-1", expectedAttemptToken = first)
+
+        assertEquals("stale", staleCleanup.status)
+        assertTrue(staleCleanup.token.isEmpty())
+        assertTrue(successorObserver.results.isEmpty())
+        assertEquals(2, sinks.created.count { it.beginCount > 0 })
+    }
+
+    @Test
     fun admittedProgressSurvivesAsyncDrainAfterFastCompletion() {
         val pendingDrains = mutableListOf<() -> Unit>()
         val transport = FakeTransport()

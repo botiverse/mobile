@@ -24,49 +24,25 @@ import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.material3.Text
-import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.draw.alpha
 import com.tencent.kuikly.compose.ui.graphics.Color
-import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
-import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.pager.Pager
 import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import kotlinx.serialization.Serializable
 
-const val SETTINGS_BILLING_PAGE = "compose_settings_billing"
-
-@Page(SETTINGS_BILLING_PAGE, supportInLocal = true)
-internal class ComposeSettingsBillingPage : build.raft.app.base.BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { SettingsBillingScreen() }
-    }
-}
-
-// Opened from the Settings "Workspace" section. Billing is its own single-page
-// pager (not an in-Settings-child-pager destination) so the WebView gets a
-// full-height native viewport + clean lifecycle — same reason as Release Notes
-// (task #227): rendering the WebView inside the retained multi-tab child pager
-// caused the header/webview attach-order flash.
+// Opened from the Settings "Workspace" section through the single production
+// Settings WebView page. Rendering inside the retained multi-tab child pager
+// previously caused the header/WebView attach-order flash (task #227).
 internal fun Pager.openSettingsBillingPage(storeScope: build.raft.app.data.SlockShellStoreScope) {
-    acquireModule<com.tencent.kuikly.core.module.RouterModule>(
-        com.tencent.kuikly.core.module.RouterModule.MODULE_NAME
-    ).openPage(
-        SETTINGS_BILLING_PAGE,
-        com.tencent.kuikly.core.nvi.serialization.json.JSONObject().apply {
-            put("pageName", SETTINGS_BILLING_PAGE)
-            put(SLOCK_SHELL_INSTANCE_ID, storeScope.shellInstanceId)
-            storeScope.initialServerId?.let { put(SLOCK_SHELL_SERVER_ID, it) }
-        }
-    )
+    openSettingsWebViewPage(SettingsWebViewSurface.Billing, storeScope)
 }
 
 @Serializable
@@ -222,23 +198,10 @@ internal val settingsBillingSmokePayload =
             )
     )
 
-@Composable
-private fun SettingsBillingScreen() {
-    val pager = LocalActivity.current.getPager() as Pager
-    StandaloneSettingsWebViewPage(
-        pager = pager,
-        title = stringResource(MR.strings.settings_billing_title),
-        iconName = SlockLucideIconName.CreditCard,
-        spec = settingsBillingWebViewSpec,
-        loadingContent = { SettingsBillingLoadingContent() },
-    )
-}
-
-private val settingsBillingWebViewSpec =
+internal val settingsBillingWebViewSpec =
     StandaloneSettingsWebViewSpec(
         surface = SettingsWebViewSurface.Billing,
         destination = SharedSettingsDestination.Billing,
-        backgroundColor = SlockColor.SurfaceWhite,
         includeLocaleQuery = true,
         buildWebUrl = ::settingsBillingWebViewUrl,
     )

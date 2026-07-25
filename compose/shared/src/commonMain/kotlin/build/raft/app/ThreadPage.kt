@@ -857,7 +857,13 @@ internal fun threadHeaderDisplayTitle(
 internal class ComposeThreadPage : build.raft.app.base.BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { ThreadPageScreen(slockPageVisibleResumeTick) }
+        setContent {
+            SlockInputFocusDismissHost { focusDismissModifier ->
+                Box(modifier = focusDismissModifier.fillMaxSize()) {
+                    ThreadPageScreen(slockPageVisibleResumeTick)
+                }
+            }
+        }
     }
 }
 
@@ -2462,10 +2468,13 @@ private fun ThreadPageScreen(pageVisibleTick: Int = 0) {
                 logger = { message -> bridge.log("thread_$message") }
             )
         }
+    val selectedServerStore =
+        remember(sharedStores, storeScope) { sharedStores.selectedServerStore(storeScope) }
     val dataSource =
         remember(
             networkClient,
             authStore,
+            selectedServerStore,
             memberRepository,
             serverMembersStore,
             channelRepository,
@@ -2477,13 +2486,14 @@ private fun ThreadPageScreen(pageVisibleTick: Int = 0) {
             SharedThreadDataSource(
                 networkApi = NetworkSlockThreadApi(networkClient),
                 sessionStore = authStore,
-                selectedServerStore = sharedStores.selectedServerStore(storeScope),
+                selectedServerStore = selectedServerStore,
                 memberRepository = memberRepository,
                 serverMembersStore = serverMembersStore,
                 conversationRepository =
                     RealConversationRepository(
                         sessionStore = authStore,
                         networkClient = networkClient,
+                        routeServerIdProvider = { selectedServerStore.selectedServerId.value },
                         warningLogger = { message -> bridge.log("thread_conversation_repository $message") }
                     ),
                 channelRepository = channelRepository,

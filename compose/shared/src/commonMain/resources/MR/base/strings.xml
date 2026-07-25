@@ -3,6 +3,8 @@
     <string name="common_ok">OK</string>
     <string name="common_cancel">Cancel</string>
     <string name="common_retry">Retry</string>
+    <string name="settings_webview_error_title">Could not load this page</string>
+    <string name="settings_webview_error_body">Check your connection and try again.</string>
     <string name="tab_home">HOME</string>
     <string name="tab_tasks">TASKS</string>
     <string name="tab_members">MEMBERS</string>

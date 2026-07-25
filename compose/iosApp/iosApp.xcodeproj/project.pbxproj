@@ -13,6 +13,9 @@
 		058557D9273AAEEB004C7B11 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 058557D8273AAEEB004C7B11 /* Preview Assets.xcassets */; };
 		0721899DF9F6E0424B1E4B7D /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B8FDA997E9DD2D474C82E853 /* Foundation.framework */; };
 		2152FB042600AC8F00CF470E /* iOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2152FB032600AC8F00CF470E /* iOSApp.swift */; };
+		A12900010000000000000001 /* SlockIosNetworkRequestLifetimeAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12900020000000000000001 /* SlockIosNetworkRequestLifetimeAdapter.swift */; };
+		A12900010000000000000002 /* SlockIosNetworkRequestLifetimeAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12900020000000000000001 /* SlockIosNetworkRequestLifetimeAdapter.swift */; };
+		A12900010000000000000003 /* SlockIosNetworkRequestLifetimeAdapterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12900020000000000000002 /* SlockIosNetworkRequestLifetimeAdapterTests.swift */; };
 		3FDCFB96518F86B53D4E5ADD /* Pods_iosApp.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 28A2BBF98AD622240C0C6069 /* Pods_iosApp.framework */; };
 		7555FF83242A565900829871 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7555FF82242A565900829871 /* ContentView.swift */; };
 		B84B15A29AB40BD06D3F34C8 /* IosUseInteractionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C465599FD991429AC545C211 /* IosUseInteractionTests.swift */; };
@@ -57,6 +60,9 @@
 		058557BA273AAA24004C7B11 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		058557D8273AAEEB004C7B11 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
 		1DAE3769BAE68C43F5D78324 /* iosAppUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = iosAppUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A12900020000000000000001 /* SlockIosNetworkRequestLifetimeAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosNetworkRequestLifetimeAdapter.swift; sourceTree = "<group>"; };
+		A12900020000000000000002 /* SlockIosNetworkRequestLifetimeAdapterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosNetworkRequestLifetimeAdapterTests.swift; sourceTree = "<group>"; };
+		A12900020000000000000003 /* iosAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = iosAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		2152FB032600AC8F00CF470E /* iOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = iOSApp.swift; sourceTree = "<group>"; };
 		28A2BBF98AD622240C0C6069 /* Pods_iosApp.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_iosApp.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		312F0DBEF95A91A72E5FCBFA /* Pods-iosApp.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-iosApp.debug.xcconfig"; path = "Target Support Files/Pods-iosApp/Pods-iosApp.debug.xcconfig"; sourceTree = "<group>"; };
@@ -116,6 +122,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A12900050000000000000002 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -170,6 +183,7 @@
 				FDF972C7159D4191183C9089 /* Pods */,
 				254BBAA1096EC0C0491EF8C3 /* Frameworks */,
 				A0C1056F00055DC2789CB933 /* iosAppUITests */,
+				A12900030000000000000001 /* iosAppTests */,
 			);
 			sourceTree = "<group>";
 		};
@@ -178,6 +192,7 @@
 			children = (
 				7555FF7B242A565900829871 /* iosApp.app */,
 				1DAE3769BAE68C43F5D78324 /* iosAppUITests.xctest */,
+				A12900020000000000000003 /* iosAppTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -197,6 +212,7 @@
 				7555FF82242A565900829871 /* ContentView.swift */,
 				7555FF8C242A565B00829871 /* Info.plist */,
 				2152FB032600AC8F00CF470E /* iOSApp.swift */,
+				A12900020000000000000001 /* SlockIosNetworkRequestLifetimeAdapter.swift */,
 				058557D7273AAEEB004C7B11 /* Preview Content */,
 			);
 			path = iosApp;
@@ -209,6 +225,14 @@
 				C46559A0D991429AC545C212 /* QaAcceptanceLoopTests.swift */,
 			);
 			path = iosAppUITests;
+			sourceTree = "<group>";
+		};
+		A12900030000000000000001 /* iosAppTests */ = {
+			isa = PBXGroup;
+			children = (
+				A12900020000000000000002 /* SlockIosNetworkRequestLifetimeAdapterTests.swift */,
+			);
+			path = iosAppTests;
 			sourceTree = "<group>";
 		};
 		D43B80132E0E500100C0DE01 /* Components */ = {
@@ -328,6 +352,23 @@
 			productReference = 1DAE3769BAE68C43F5D78324 /* iosAppUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		A12900040000000000000001 /* iosAppTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A12900070000000000000001 /* Build configuration list for PBXNativeTarget "iosAppTests" */;
+			buildPhases = (
+				A12900050000000000000001 /* Sources */,
+				A12900050000000000000002 /* Frameworks */,
+				A12900050000000000000003 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = iosAppTests;
+			productName = iosAppTests;
+			productReference = A12900020000000000000003 /* iosAppTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -346,6 +387,9 @@
 							};
 						};
 					};
+					A12900040000000000000001 = {
+						CreatedOnToolsVersion = 16.0;
+					};
 				};
 			};
 			buildConfigurationList = 7555FF76242A565900829871 /* Build configuration list for PBXProject "iosApp" */;
@@ -363,6 +407,7 @@
 			targets = (
 				7555FF7A242A565900829871 /* iosApp */,
 				88BC1E863A7604D85563C5C6 /* iosAppUITests */,
+				A12900040000000000000001 /* iosAppTests */,
 			);
 		};
 /* End PBXProject section */
@@ -384,6 +429,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		D4CF1579663686D13F798DDC /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A12900050000000000000003 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -509,6 +561,7 @@
 				04E32B3E29F01975000A6BC5 /* KRRouterHandler.m in Sources */,
 				0474A3F329F6A41000F43E31 /* UINavigationController+FDFullscreenPopGesture.m in Sources */,
 				2152FB042600AC8F00CF470E /* iOSApp.swift in Sources */,
+				A12900010000000000000001 /* SlockIosNetworkRequestLifetimeAdapter.swift in Sources */,
 				D41350012E0F000100C0DE02 /* GeneratedRealtimeContract.swift in Sources */,
 				D41350062E140100100C0DE03 /* SlockIosAppScopeMMKV.swift in Sources */,
 				D46363012E17000100C0DE09 /* SlockIosMobileOAuthHost.swift in Sources */,
@@ -532,6 +585,15 @@
 			files = (
 				B84B15A29AB40BD06D3F34C8 /* IosUseInteractionTests.swift in Sources */,
 				B84B15A39AB40BD06D3F34C9 /* QaAcceptanceLoopTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A12900050000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A12900010000000000000002 /* SlockIosNetworkRequestLifetimeAdapter.swift in Sources */,
+				A12900010000000000000003 /* SlockIosNetworkRequestLifetimeAdapterTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -754,6 +816,47 @@
 			};
 			name = Release;
 		};
+		A12900060000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.1;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = build.raft.appTests;
+				PRODUCT_MODULE_NAME = iosAppTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		A12900060000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.1;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = build.raft.appTests;
+				PRODUCT_MODULE_NAME = iosAppTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -780,6 +883,15 @@
 			buildConfigurations = (
 				C2EA9517739CDFD8F6A946CE /* Release */,
 				84C49A8455784CD9A0A2BDE7 /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A12900070000000000000001 /* Build configuration list for PBXNativeTarget "iosAppTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A12900060000000000000001 /* Debug */,
+				A12900060000000000000002 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

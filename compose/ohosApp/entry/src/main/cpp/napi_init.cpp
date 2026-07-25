@@ -3,6 +3,7 @@
 #include "SlockOhosImageAdapter.h"
 #include <hilog/log.h>
 #include <Kuikly/Kuikly.h>
+#include <cstdint>
 #include <cstring>
 #include <mutex>
 #include <string>
@@ -144,11 +145,38 @@ static napi_value SetImageHttp3Enabled(napi_env env, napi_callback_info info) {
     return result;
 }
 
+static napi_value UpdateProcessNetworkVisibility(napi_env env, napi_callback_info info) {
+    // Reserve a second slot so napi_get_cb_info reports an extra argument instead of
+    // truncating it to the one-slot capacity. The bridge contract is exactly one Boolean.
+    size_t argc = 2;
+    napi_value argv[2] = {nullptr, nullptr};
+    const bool callbackInfoValid =
+        napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr) == napi_ok;
+    bool foreground = false;
+    const bool argumentValid =
+        callbackInfoValid &&
+        argc == 1 &&
+        argv[0] != nullptr &&
+        napi_get_value_bool(env, argv[0], &foreground) == napi_ok;
+
+    int32_t retiredRequestCount = -1;
+    if (argumentValid) {
+        auto api = libshared_symbols();
+        retiredRequestCount =
+            api->kotlin.root.raftUpdateProcessNetworkVisibility(foreground);
+    }
+
+    napi_value result;
+    napi_create_int32(env, retiredRequestCount, &result);
+    return result;
+}
+
 EXTERN_C_START
 static napi_value Init(napi_env env, napi_value exports) {
     napi_property_descriptor desc[] = {
         {"initKuikly", nullptr, InitKuikly, nullptr, nullptr, nullptr, napi_default, nullptr},
-        {"setImageHttp3Enabled", nullptr, SetImageHttp3Enabled, nullptr, nullptr, nullptr, napi_default, nullptr}
+        {"setImageHttp3Enabled", nullptr, SetImageHttp3Enabled, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"updateProcessNetworkVisibility", nullptr, UpdateProcessNetworkVisibility, nullptr, nullptr, nullptr, napi_default, nullptr}
     };
     napi_define_properties(env, exports, sizeof(desc) / sizeof(desc[0]), desc);
     return exports;

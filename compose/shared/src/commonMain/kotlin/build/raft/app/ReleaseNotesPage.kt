@@ -94,7 +94,7 @@ internal fun Pager.openReleaseNotesPage(
 // About data via the standalone settings environment, so version_code is resolved
 // race-free instead of depending on the shell having loaded About.
 @Composable
-private fun ReleaseNotesScreen() {
+internal fun ReleaseNotesScreen() {
     RememberKmmResourceLocaleSeedFromLocalActivity()
     val pager = LocalActivity.current.getPager() as Pager
     val launchVersionCode =
