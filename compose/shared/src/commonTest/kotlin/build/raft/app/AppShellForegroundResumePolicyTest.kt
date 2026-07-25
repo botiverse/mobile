@@ -1,0 +1,118 @@
+package build.raft.app
+
+import build.raft.app.data.SharedHomeState
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+
+class AppShellForegroundResumePolicyTest {
+    @Test
+    fun childTabActivityRequiresTheParentPagerToBeVisible() {
+        assertTrue(
+            appShellChildTabIsActive(
+                parentVisible = true,
+                selectedTab = "home",
+                tab = "home"
+            )
+        )
+        assertFalse(
+            appShellChildTabIsActive(
+                parentVisible = false,
+                selectedTab = "home",
+                tab = "home"
+            )
+        )
+        assertFalse(
+            appShellChildTabIsActive(
+                parentVisible = true,
+                selectedTab = "home",
+                tab = "tasks"
+            )
+        )
+    }
+
+    @Test
+    fun hiddenParentCannotRestartHome() {
+        assertFalse(
+            appShellParentShouldStartHome(
+                pageVisible = false,
+                selectedTab = "home",
+                selectedHomeDestination = null,
+                readyServerId = "server-1",
+                state = SharedHomeState()
+            )
+        )
+    }
+
+    @Test
+    fun lifecycleRefreshRequiresTheAppShellPagerToBeVisible() {
+        assertTrue(
+            appShellLifecycleCanRefreshVisibleRoute(
+                pageVisible = true,
+                lifecycleEvent = SlockRealtimeNotifyContract.LifecycleVisibleResume
+            )
+        )
+        assertTrue(
+            appShellLifecycleCanRefreshVisibleRoute(
+                pageVisible = true,
+                lifecycleEvent = SlockRealtimeNotifyContract.LifecycleVisibleShow
+            )
+        )
+        assertFalse(
+            appShellLifecycleCanRefreshVisibleRoute(
+                pageVisible = false,
+                lifecycleEvent = SlockRealtimeNotifyContract.LifecycleVisibleResume
+            )
+        )
+        assertFalse(
+            appShellLifecycleCanRefreshVisibleRoute(
+                pageVisible = true,
+                lifecycleEvent = SlockRealtimeNotifyContract.LifecycleHidden
+            )
+        )
+    }
+
+    @Test
+    fun foregroundPlanScopesDependenciesToTheVisibleRoute() {
+        assertEquals(
+            AppShellForegroundResumePlan(
+                refreshVisibleRoute = true,
+                refreshActivityUnreadSummary = true,
+                refreshServerMembers = true
+            ),
+            appShellForegroundResumePlan(
+                pageVisible = true,
+                selectedTab = "home",
+                selectedHomeDestination = null
+            )
+        )
+        assertEquals(
+            AppShellForegroundResumePlan(
+                refreshVisibleRoute = true,
+                refreshActivityUnreadSummary = false,
+                refreshServerMembers = false
+            ),
+            appShellForegroundResumePlan(
+                pageVisible = true,
+                selectedTab = "tasks",
+                selectedHomeDestination = null
+            )
+        )
+        assertNull(
+            appShellForegroundResumePlan(
+                pageVisible = false,
+                selectedTab = "home",
+                selectedHomeDestination = null
+            )
+        )
+        assertNull(
+            appShellForegroundResumePlan(
+                pageVisible = true,
+                selectedTab = "home",
+                selectedHomeDestination = "search"
+            )
+        )
+    }
+}

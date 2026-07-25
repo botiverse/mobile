@@ -17,6 +17,8 @@ internal abstract class BasePager : ComposeContainer() {
     private var nightModel: Boolean? by observable(null)
     protected var slockPageVisibleResumeTick by mutableStateOf(0)
         private set
+    protected var slockPageVisible by mutableStateOf(false)
+        private set
     private var slockHasAppeared = false
 
     override fun createExternalModules(): Map<String, Module>? {
@@ -51,6 +53,7 @@ internal abstract class BasePager : ComposeContainer() {
 
     override fun pageDidAppear() {
         super.pageDidAppear()
+        slockPageVisible = true
         val initialAppearance = !slockHasAppeared
         slockHasAppeared = true
         if (!initialAppearance) {
@@ -59,7 +62,15 @@ internal abstract class BasePager : ComposeContainer() {
         onSlockPageDidAppear(isInitialAppearance = initialAppearance)
     }
 
+    override fun pageDidDisappear() {
+        super.pageDidDisappear()
+        slockPageVisible = false
+        onSlockPageDidDisappear()
+    }
+
     protected open fun onSlockPageDidAppear(isInitialAppearance: Boolean) = Unit
+
+    protected open fun onSlockPageDidDisappear() = Unit
 
     override fun themeDidChanged(data: JSONObject) {
         super.themeDidChanged(data)

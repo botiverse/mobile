@@ -4265,7 +4265,6 @@ internal fun SharedThreadRouteContent(
             } ?: emptyCanonicalFinalAuthorityFlow
         }
     val canonicalFinalAuthority by canonicalFinalAuthorityFlow.collectAsState()
-    val foregroundReconciler = remember(sharedStores) { sharedStores.foregroundReconciler }
     val foregroundBannerCurrentServerStore = remember(sharedStores) { sharedStores.localDataStore }
     val sharedHomeStore = remember(sharedStores, storeScope) { sharedStores.sharedHomeStore(storeScope) }
     val sharedHomeStateFlow = remember(sharedHomeStore) { sharedHomeStore?.state ?: flowOf(SharedHomeState()) }
@@ -4676,25 +4675,18 @@ internal fun SharedThreadRouteContent(
                         event == SlockRealtimeNotifyContract.LifecycleVisibleResume ||
                         event == SlockRealtimeNotifyContract.LifecycleVisibleShow
                     ) {
-                        latestCurrentSession
-                            ?.currentServerId
-                            ?.trim()
-                            ?.takeIf { it.isNotBlank() }
-                            ?.let { serverId ->
-                                sharedStores.activityUnreadSummaryStore.onForeground(
-                                    serverId = ServerId(serverId),
-                                    epoch = lifecycleData.optLong(SlockRealtimeNotifyContract.KeyForegroundEpoch, 0L),
-                                    reason = "thread_$event"
+                        val resumePlan = threadVisibleResumePlan(threadLifecycleSeen, active)
+                        if (resumePlan != null) {
+                            threadPointerSessionKey = nextThreadPointerSessionKey(threadPointerSessionKey)
+                            if (resumePlan.refreshVisibleConversation) {
+                                threadViewModel.dispatch(SharedThreadIntent.RefreshLatestAfterVisibleMaxSeq)
+                            }
+                            if (resumePlan.rejoinVisibleRooms) {
+                                realtimeEvents.rejoinChannels(
+                                    latestForegroundRejoinRoomIds,
+                                    latestCurrentSession?.currentServerId
                                 )
                             }
-                        if (threadLifecycleSeen && active) {
-                            threadPointerSessionKey = nextThreadPointerSessionKey(threadPointerSessionKey)
-                            threadViewModel.dispatch(SharedThreadIntent.RefreshLatestAfterVisibleMaxSeq)
-                            realtimeEvents.rejoinChannels(
-                                latestForegroundRejoinRoomIds,
-                                latestCurrentSession?.currentServerId
-                            )
-                            foregroundReconciler.onForeground("thread_$event")
                         } else {
                             threadLifecycleSeen = true
                         }
@@ -16593,6 +16585,24 @@ internal fun shouldMarkThreadVisibleRead(
 
 internal fun threadLifecycleEventTargetsThread(pageName: String): Boolean =
     pageName == THREAD_PAGE || pageName == SLOCK_APP_SHELL_PAGE
+
+internal data class ThreadVisibleResumePlan(
+    val refreshVisibleConversation: Boolean,
+    val rejoinVisibleRooms: Boolean
+)
+
+internal fun threadVisibleResumePlan(
+    lifecycleSeen: Boolean,
+    routeActive: Boolean
+): ThreadVisibleResumePlan? =
+    if (lifecycleSeen && routeActive) {
+        ThreadVisibleResumePlan(
+            refreshVisibleConversation = true,
+            rejoinVisibleRooms = true
+        )
+    } else {
+        null
+    }
 
 internal fun KuiklyThreadScreenPayload.toSlockTimeContext(): SlockTimeContext =
     SlockTimeContext(

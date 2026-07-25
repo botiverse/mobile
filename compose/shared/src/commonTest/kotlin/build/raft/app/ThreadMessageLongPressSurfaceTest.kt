@@ -2,7 +2,9 @@ package build.raft.app
 
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ThreadMessageLongPressSurfaceTest {
@@ -190,5 +192,18 @@ class ThreadMessageLongPressSurfaceTest {
         assertTrue(nextThreadPointerSessionKey(0) == 1)
         assertTrue(nextThreadPointerSessionKey(41) == 42)
         assertTrue(nextThreadPointerSessionKey(Int.MAX_VALUE) == 0)
+    }
+
+    @Test
+    fun visibleThreadResumePlansOnlyTheCurrentConversationWork() {
+        assertEquals(
+            ThreadVisibleResumePlan(
+                refreshVisibleConversation = true,
+                rejoinVisibleRooms = true
+            ),
+            threadVisibleResumePlan(lifecycleSeen = true, routeActive = true)
+        )
+        assertNull(threadVisibleResumePlan(lifecycleSeen = false, routeActive = true))
+        assertNull(threadVisibleResumePlan(lifecycleSeen = true, routeActive = false))
     }
 }
