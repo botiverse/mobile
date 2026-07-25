@@ -9,7 +9,7 @@ This directory vendors the common Kotlin sources of JetBrains Markdown
 - Upstream commit: `52368fb17e1d0faf58e2f954c8d57d034a1f2f98`
 - Botiverse fork: <https://github.com/botiverse/jetbrains-markdown>
 - Fork branch: `raft/0.7.5-mobile`
-- Fork commit: `7a2cfac5d19bf16a1a781166db67528b0b88457b`
+- Fork commit: `7a2cfac17afbf87830ec51f6d9f18806967b391a`
 - Maven coordinate: `org.jetbrains:markdown:0.7.5`
 - Source archive: `markdown-0.7.5-sources.jar`
 - Source archive SHA-256:
@@ -61,7 +61,7 @@ not change the parser grammar or lexer state machine.
    `52368fb17e1d0faf58e2f954c8d57d034a1f2f98`.
 5. Reapply and independently review the four local-divergence files listed
    above, or copy those files from Botiverse fork commit
-   `7a2cfac5d19bf16a1a781166db67528b0b88457b`.
+   `7a2cfac17afbf87830ec51f6d9f18806967b391a`.
 
 Build wiring lives in `compose/shared/build.gradle.kts` and
 `compose/shared/build.ohos.gradle.kts`. Neither build may also depend on a
