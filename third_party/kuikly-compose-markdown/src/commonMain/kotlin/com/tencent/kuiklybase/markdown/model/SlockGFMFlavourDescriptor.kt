@@ -1,5 +1,7 @@
 package com.tencent.kuiklybase.markdown.model
 
+import org.intellij.markdown.IElementType
+import org.intellij.markdown.MarkdownTokenTypes
 import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
 import org.intellij.markdown.flavours.gfm.lexer._GFMLexer
 import org.intellij.markdown.lexer.GeneratedLexer
@@ -21,8 +23,126 @@ import org.intellij.markdown.lexer.MarkdownLexer
  */
 class SlockGFMFlavourDescriptor : GFMFlavourDescriptor() {
     override fun createInlinesLexer(): MarkdownLexer =
-        MarkdownLexer(SlockCodeSpanShieldingLexer())
+        MarkdownLexer(SlockRaftMarkdownLexer())
 }
+
+/** Inline token emitted by the single Raft Markdown parse entry. */
+object RaftMarkdownTokenTypes {
+    val REFERENCE: IElementType = IElementType("RAFT_REFERENCE")
+}
+
+/**
+ * Adds Raft reference tokens at the flavour lexer boundary.
+ *
+ * The base GFM lexer still decides Markdown punctuation and construct
+ * boundaries. We only replace candidates composed entirely of ordinary text
+ * and colon tokens. URL, email, HTML, and code lexing therefore stay intact,
+ * while the resulting AST exposes refs as first-class source nodes. Markdown
+ * ancestry remains authoritative: consumers ignore tokens below links,
+ * images, code, autolinks, or HTML.
+ */
+private class SlockRaftMarkdownLexer : GeneratedLexer {
+    private val delegate = SlockCodeSpanShieldingLexer()
+    private var segments: List<SlockLexerSegment> = emptyList()
+    private var segmentIndex = 0
+    private var currentStart = 0
+    private var currentEnd = 0
+
+    override val tokenStart: Int
+        get() = currentStart
+
+    override val tokenEnd: Int
+        get() = currentEnd
+
+    override val state: Int
+        get() = delegate.state
+
+    override fun reset(
+        buffer: CharSequence,
+        start: Int,
+        end: Int,
+        initialState: Int,
+    ) {
+        delegate.reset(buffer, start, end, initialState)
+        val baseSegments = buildList {
+            while (true) {
+                val type = delegate.advance() ?: break
+                add(SlockLexerSegment(delegate.tokenStart, delegate.tokenEnd, type))
+            }
+        }
+        segments = baseSegments.withRaftReferenceTokens(buffer.toString(), start, end)
+        segmentIndex = 0
+        currentStart = start
+        currentEnd = start
+    }
+
+    override fun advance(): IElementType? {
+        val segment = segments.getOrNull(segmentIndex++) ?: return null
+        currentStart = segment.start
+        currentEnd = segment.endExclusive
+        return segment.type
+    }
+}
+
+private data class SlockLexerSegment(
+    val start: Int,
+    val endExclusive: Int,
+    val type: IElementType,
+)
+
+private fun List<SlockLexerSegment>.withRaftReferenceTokens(
+    content: String,
+    start: Int,
+    end: Int,
+): List<SlockLexerSegment> {
+    if (isEmpty() || (!content.contains('#') && !content.contains('@'))) return this
+    val candidates = content.raftMarkdownSyntaxCandidateRanges(start, end)
+    if (candidates.isEmpty()) return this
+
+    val eligible = candidates.filter { candidate ->
+        val overlapping = filter { segment ->
+            segment.start < candidate.last + 1 && candidate.first < segment.endExclusive
+        }
+        overlapping.isNotEmpty() && overlapping.all { it.type in RaftReferenceSourceTokenTypes }
+    }
+    if (eligible.isEmpty()) return this
+
+    return buildList {
+        var candidateIndex = 0
+        var emittedCandidateEnd = -1
+        for (segment in this@withRaftReferenceTokens) {
+            var cursor = segment.start.coerceAtLeast(emittedCandidateEnd)
+            while (candidateIndex < eligible.size && eligible[candidateIndex].last < cursor) candidateIndex++
+            while (cursor < segment.endExclusive) {
+                val candidate = eligible.getOrNull(candidateIndex)
+                if (candidate == null || candidate.first >= segment.endExclusive) {
+                    add(SlockLexerSegment(cursor, segment.endExclusive, segment.type))
+                    break
+                }
+                if (cursor < candidate.first) {
+                    add(SlockLexerSegment(cursor, candidate.first, segment.type))
+                }
+                if (candidate.first >= segment.start) {
+                    val candidateEnd = candidate.last + 1
+                    add(SlockLexerSegment(candidate.first, candidateEnd, RaftMarkdownTokenTypes.REFERENCE))
+                    emittedCandidateEnd = candidateEnd
+                }
+                cursor = (candidate.last + 1).coerceAtMost(segment.endExclusive)
+                if (candidate.last + 1 <= segment.endExclusive) candidateIndex++
+            }
+        }
+    }
+}
+
+private val RaftReferenceSourceTokenTypes: Set<IElementType> =
+    setOf(
+        MarkdownTokenTypes.TEXT,
+        MarkdownTokenTypes.COLON,
+        // `_` is legal inside Raft channel/member names. GFM lexes it as an
+        // emphasis delimiter, but within a complete ref it belongs to the ref
+        // token and must not reach the emphasis parser independently.
+        MarkdownTokenTypes.EMPH,
+    )
 
 private class SlockCodeSpanShieldingLexer : GeneratedLexer {
     private val delegate = _GFMLexer()

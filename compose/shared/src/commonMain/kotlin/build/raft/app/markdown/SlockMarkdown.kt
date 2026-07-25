@@ -86,9 +86,11 @@ import com.tencent.kuiklybase.markdown.compose.SlockMarkdownNodeTrace
 import com.tencent.kuiklybase.markdown.compose.SlockMarkdownNodeTraceSink
 import com.tencent.kuiklybase.markdown.compose.SlockMarkdownSubTrace
 import com.tencent.kuiklybase.markdown.model.MarkdownParserContent
+import com.tencent.kuiklybase.markdown.model.RaftMarkdownTokenTypes
 import com.tencent.kuiklybase.markdown.model.TextProvider
 import com.tencent.kuiklybase.markdown.model.markdownAnnotator
 import com.tencent.kuiklybase.markdown.model.markdownAnnotatorConfig
+import com.tencent.kuiklybase.markdown.model.parseRaftMarkdownInlineRefs
 import com.tencent.kuiklybase.markdown.compose.elements.MarkdownCode
 import com.tencent.kuiklybase.markdown.compose.elements.MarkdownCodeBlock
 import com.tencent.kuiklybase.markdown.compose.elements.MarkdownCodeFence
@@ -531,10 +533,9 @@ private fun String.threadMarkdownInlineScan(
     inlineContentScope: String? = null
 ): ThreadMarkdownInlineScan {
     val inlineCodeMatches = scanThreadInlineCodeMatches(baseOffset)
-    val protectedRanges = threadMarkdownCodeProtectionRanges(inlineCodeMatches)
     val inlineContentIdPrefix = inlineContentScope.toSlockMarkdownInlineContentIdPrefix()
     val tagMatches =
-        threadInlineTagRanges(protectedRanges).mapNotNull { range ->
+        raftMarkdownInlineRefRanges().mapNotNull { range ->
             substring(range).toThreadMarkdownTagOrNull()?.let { tag ->
                 ThreadInlineTagMatch(
                     id = "$inlineContentIdPrefix:${baseOffset + range.first}",
@@ -549,14 +550,15 @@ private fun String.threadMarkdownInlineScan(
     )
 }
 
-private fun String.threadMarkdownCodeProtectionRanges(
-    inlineCodeMatches: List<ThreadInlineCodeMatch> = scanThreadInlineCodeMatches()
-): List<IntRange> =
-    buildList {
-        addAll(threadMarkdownFenceRanges())
-        addAll(inlineCodeMatches.map { it.range })
-        addAll(threadMarkdownAutolinkRanges())
-    }
+/**
+ * Reads Raft-reference candidates from the same AST that owns Markdown link,
+ * code, image, and autolink semantics. The lexer defines the candidate grammar;
+ * AST ancestry defines whether the candidate is ordinary inline text. This is
+ * deliberately not a second raw-string scanner with an exclusion list.
+ */
+private fun String.raftMarkdownInlineRefRanges(): List<IntRange> {
+    return parseRaftMarkdownInlineRefs(this).map { ref -> ref.startOffset until ref.endOffset }
+}
 
 private fun String.threadMarkdownFenceRanges(): List<IntRange> {
     val ranges = mutableListOf<IntRange>()
@@ -586,12 +588,6 @@ private fun Regex.find(input: CharSequence, startIndex: Int, predicate: (MatchRe
     }
     return null
 }
-
-private fun String.threadMarkdownAutolinkRanges(): List<IntRange> =
-    ThreadMarkdownAutolinkRegex.findAll(this).map { it.range }.toList()
-
-private val ThreadMarkdownAutolinkRegex =
-    Regex("""<https?://[^>\s]+>""")
 
 internal fun String?.toSlockMarkdownInlineContentIdPrefix(): String =
     this
@@ -690,105 +686,14 @@ private fun String.isThreadChannelReference(): Boolean {
 fun String.threadInlineTagMatches(baseOffset: Int = 0): List<ThreadInlineTagMatch> =
     threadMarkdownInlineScan(baseOffset).tagMatches
 
-private fun String.threadInlineTagRanges(protectedRanges: List<IntRange>): List<IntRange> {
-    val ranges = mutableListOf<IntRange>()
-    var index = 0
-    while (index < length) {
-        if (protectedRanges.any { index in it }) {
-            index++
-            continue
-        }
-        val char = this[index]
-        val range =
-            when (char) {
-                '@' -> scanThreadMentionRange(index)
-                '#' -> scanThreadHashRange(index)
-                else -> null
-            }
-        if (range != null && isThreadInlineTagBoundary(index - 1)) {
-            ranges += range
-            index = range.last + 1
-        } else {
-            index++
-        }
-    }
-    return ranges
-}
-
-private fun String.scanThreadMentionRange(start: Int): IntRange? {
-    val nameStart = start + 1
-    if (nameStart >= length || !this[nameStart].isLetterOrDigit()) return null
-    var endExclusive = nameStart + 1
-    var count = 1
-    while (endExclusive < length && count < 64 && this[endExclusive].isThreadMentionPart()) {
-        endExclusive++
-        count++
-    }
-    return start until endExclusive
-}
-
-private fun String.scanThreadHashRange(start: Int): IntRange? {
-    val valueStart = start + 1
-    if (valueStart >= length) return null
-    if (this[valueStart].isDigit()) {
-        var endExclusive = valueStart + 1
-        while (endExclusive < length && this[endExclusive].isDigit()) endExclusive++
-        if (endExclusive < length && this[endExclusive].isThreadTaskTrailingPart()) return null
-        return start until endExclusive
-    }
-    if (!this[valueStart].isLetter()) return null
-
-    var nameEndExclusive = valueStart + 1
-    var count = 1
-    while (nameEndExclusive < length && count < 64 && this[nameEndExclusive].isThreadChannelPart()) {
-        nameEndExclusive++
-        count++
-    }
-    val shortStart = nameEndExclusive + 1
-    if (nameEndExclusive < length && this[nameEndExclusive] == ':' && shortStart < length) {
-        // A colon followed by whitespace belongs to the prose, not to a
-        // channel-thread short id (for example `#design: next`).
-        // Keep the channel token and leave the colon outside its range. A
-        // non-empty but malformed short id remains rejected below.
-        if (this[shortStart].isWhitespace()) {
-            return start until nameEndExclusive
-        }
-        var shortEndExclusive = shortStart
-        while (shortEndExclusive < length &&
-            shortEndExclusive - shortStart < 8 &&
-            this[shortEndExclusive].isThreadShortIdPart()
-        ) {
-            shortEndExclusive++
-        }
-        val shortLength = shortEndExclusive - shortStart
-        if (shortLength in 6..8 && (shortEndExclusive >= length || !this[shortEndExclusive].isThreadShortIdPart())) {
-            return start until shortEndExclusive
-        }
-        return null
-    }
-    return start until nameEndExclusive
-}
-
-private fun Char.isThreadMentionPart(): Boolean =
-    isLetterOrDigit() || this == '_' || this == '.' || this == '-'
-
-private fun Char.isThreadChannelPart(): Boolean =
-    isLetterOrDigit() || this == '_' || this == '-'
-
 private fun Char.isThreadShortIdPart(): Boolean =
     isDigit() || this in 'a'..'f' || this in 'A'..'F'
-
-private fun Char.isThreadTaskTrailingPart(): Boolean =
-    isLetterOrDigit() || this == '_'
 
 private fun String.isBareThreadShortIdLikeReference(): Boolean =
     length in 6..8 &&
         any { it.isDigit() } &&
         any { it in 'a'..'f' || it in 'A'..'F' } &&
         all { it.isThreadShortIdPart() }
-
-private fun String.isThreadInlineTagBoundary(index: Int): Boolean =
-    index < 0 || !(this[index].isLetterOrDigit() || this[index] == '_')
 
 fun String.threadInlineCodeMatches(baseOffset: Int = 0): List<ThreadInlineCodeMatch> {
     return scanThreadInlineCodeMatches(baseOffset)
@@ -897,7 +802,7 @@ internal fun slockMarkdownAnnotator(
                 return@markdownAnnotator false
             }
 
-            if (child.type != MarkdownTokenTypes.TEXT) {
+            if (child.type != MarkdownTokenTypes.TEXT && child.type != RaftMarkdownTokenTypes.REFERENCE) {
                 return@markdownAnnotator false
             }
 
@@ -908,7 +813,8 @@ internal fun slockMarkdownAnnotator(
                 documentOffset = nodeStart,
                 rendererInput = rendererInput,
                 onOpenAction = onOpenAction,
-                resolveActionLabel = resolveActionLabel
+                resolveActionLabel = resolveActionLabel,
+                allowLocalFallback = child.type != RaftMarkdownTokenTypes.REFERENCE,
             )
         },
         inlineContent = { emptyMap() },
@@ -1087,11 +993,12 @@ private fun AnnotatedString.Builder.appendSlockRichTextSegment(
     documentOffset: Int,
     rendererInput: SlockRichTextRendererInput,
     onOpenAction: (SlockRichTextAction) -> Unit,
-    resolveActionLabel: ((SlockRichTextAction) -> String?)?
+    resolveActionLabel: ((SlockRichTextAction) -> String?)?,
+    allowLocalFallback: Boolean = true,
 ): Boolean {
     val documentTokens = rendererInput.slockRefTokensStartingInRange(documentOffset, documentOffset + text.length)
     val localTokens =
-        if (documentTokens.isEmpty()) {
+        if (documentTokens.isEmpty() && allowLocalFallback) {
             // Some markdown-renderer paths, including list-item paragraphs,
             // expose child offsets in a local node coordinate space. Match
             // already-built IR tokens back to that text instead of reparsing

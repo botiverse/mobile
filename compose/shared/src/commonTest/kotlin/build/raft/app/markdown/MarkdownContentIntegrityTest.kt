@@ -27,7 +27,6 @@ import kotlin.test.assertTrue
  * which diffs the library's type universe against the dispatch nightly.
  */
 class MarkdownContentIntegrityTest {
-
     @Test
     fun emailInsideCodeSpanStaysVerbatim() {
         val rendered = renderTopParagraphs("Inline: `artin <artin@cat.ms>` end.")

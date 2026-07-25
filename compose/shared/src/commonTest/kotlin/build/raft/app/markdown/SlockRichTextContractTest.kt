@@ -195,6 +195,19 @@ class SlockRichTextContractTest {
     }
 
     @Test
+    fun externalMarkdownLinkLabelDoesNotBecomeNestedTaskChrome() {
+        val body = "Review [#1487 pin entities](https://github.com/botiverse/mobile/pull/1487)"
+        val document =
+            buildSlockRichTextDocument(
+                body,
+                SlockRichTextContext(knownTaskNumbers = setOf(1487))
+            )
+
+        assertFalse(document.inlineTokens.any { it.kind == SlockRichTextInlineKind.SlockRef })
+        assertFalse(document.actions.any { it.kind == SlockRichTextActionKind.OpenSlockRef })
+    }
+
+    @Test
     fun richTextDocumentGoldenJsonIsStable() {
         val body = "Ping @artin in #markdown专修 for #42 and `code #99`"
         val document =
