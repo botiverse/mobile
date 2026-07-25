@@ -8,6 +8,112 @@ import kotlin.test.assertNotNull
 
 class MessageParserTest {
     @Test
+    fun distinguishesAbsentValidEmptyAndMalformedEmbeddedSummaryAuthority() {
+        fun parse(summaryField: String): SharedMessagesPayload =
+            parseSharedChannelMessages(
+                """
+                {
+                  "messages": [{
+                    "id": "parent-1",
+                    "seq": 1,
+                    "channelId": "channel-1",
+                    "senderType": "user",
+                    "senderId": "u-1",
+                    "senderName": "Artin",
+                    "messageType": "chat",
+                    "content": "parent",
+                    "createdAt": "2026-07-25T14:00:00.000Z"
+                  }]$summaryField
+                }
+                """.trimIndent(),
+                fallbackThreadId = ThreadId("channel-1"),
+            )
+
+        assertEquals(ThreadReplySummariesAuthority.Unavailable, parse("").replySummariesAuthority)
+        assertEquals(
+            ThreadReplySummariesAuthority.Embedded,
+            parse(", \"threadSummariesByParentMessageId\": {}").replySummariesAuthority,
+        )
+        assertEquals(
+            ThreadReplySummariesAuthority.EmbeddedInvalid,
+            parse(", \"threadSummariesByParentMessageId\": []").replySummariesAuthority,
+        )
+        assertEquals(
+            ThreadReplySummariesAuthority.EmbeddedInvalid,
+            parse(", \"threadSummariesByParentMessageId\": null").replySummariesAuthority,
+        )
+        assertEquals(
+            ThreadReplySummariesAuthority.EmbeddedInvalid,
+            parse(
+                ", \"threadSummariesByParentMessageId\": {" +
+                    "\"parent-1\": {\"threadChannelId\": \"\", \"replyCount\": 2}}",
+            ).replySummariesAuthority,
+        )
+    }
+
+    @Test
+    fun parsesPageEmbeddedThreadSummariesWithoutPuttingPreviewIntoMessageWireState() {
+        val payload =
+            parseSharedChannelMessages(
+                """
+                {
+                  "messages": [
+                    {
+                      "id": "parent-1",
+                      "seq": 10,
+                      "channelId": "channel-1",
+                      "senderType": "user",
+                      "senderId": "u-1",
+                      "senderName": "Artin",
+                      "messageType": "chat",
+                      "content": "parent",
+                      "createdAt": "2026-07-25T14:00:00.000Z"
+                    }
+                  ],
+                  "threadSummariesByParentMessageId": {
+                    "parent-1": {
+                      "threadChannelId": "thread-1",
+                      "replyCount": 5,
+                      "unreadCount": 2,
+                      "firstUnreadMessageId": "reply-4",
+                      "latestReplies": [
+                        {
+                          "messageId": "reply-5",
+                          "seq": 5,
+                          "preview": "ready on the first visible frame",
+                          "senderId": "agent-1",
+                          "senderType": "agent",
+                          "senderName": "MingQi",
+                          "senderDisplayName": "明启",
+                          "senderAvatarUrl": "https://example.test/avatar.png",
+                          "createdAt": "2026-07-25T14:01:00.000Z"
+                        }
+                      ]
+                    }
+                  },
+                  "historyLimited": false
+                }
+                """.trimIndent(),
+                fallbackThreadId = ThreadId("channel-1"),
+            )
+
+        val wireMessage = payload.messages.single()
+        assertEquals(ThreadReplySummariesAuthority.Embedded, payload.replySummariesAuthority)
+        assertEquals(0, wireMessage.replyCount)
+        assertEquals(null, wireMessage.threadChannelId)
+        val summary = payload.threadSummaries.threads.single()
+        assertEquals("parent-1", summary.parentMessageId?.value)
+        assertEquals("thread-1", summary.threadChannelId?.value)
+        assertEquals(5, summary.replyCount)
+        assertEquals(2, summary.unreadCount)
+        assertEquals("reply-4", summary.firstUnreadMessageId?.value)
+        val preview = summary.latestReplies.single()
+        assertEquals("reply-5", preview.messageId)
+        assertEquals("MingQi", preview.senderName)
+        assertEquals("明启", preview.senderDisplayName)
+    }
+
+    @Test
     fun parsesThreadSummaryIntoDomainMessageReplyMetadata() {
         val payload =
             parseSharedChannelMessages(
@@ -39,6 +145,7 @@ class MessageParserTest {
             )
 
         val message = payload.messages.single()
+        assertEquals(ThreadReplySummariesAuthority.Unavailable, payload.replySummariesAuthority)
         assertEquals("thread-1", message.threadChannelId?.value)
         assertEquals(4, message.replyCount)
         assertEquals(2, message.unreadReplyCount)

@@ -168,18 +168,32 @@ fun parseChannelThreadSummaryRecord(
     diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
 ): SharedThreadListItems? = runCatching {
     val root = inboxJson.parseToJsonElement(bodyText) as? JsonObject ?: return@runCatching null
+    parseChannelThreadSummaryRecordElement(root, diagnostics)
+}.getOrNull()
+
+/**
+ * Parses the same parent-message keyed summary record when it is embedded in another canonical
+ * response, such as the additive summaries carried by a messages page. Keeping one decoder avoids
+ * a second Mobile-only interpretation of the server's `/channels/:id/threads` contract.
+ */
+internal fun parseChannelThreadSummaryRecordElement(
+    root: JsonObject,
+    diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
+): SharedThreadListItems? = runCatching {
     if ("threads" in root) return@runCatching null
     if (root.values.any { it !is JsonObject }) return@runCatching null
-    val items = root.entries
-        .asSequence()
-        .mapNotNull { (parentMessageId, value) ->
-            val record = value as JsonObject
+    val projected = mutableListOf<InboxItem>()
+    for ((parentMessageId, value) in root) {
+        val cleanParentMessageId = parentMessageId.trim().takeIf { it.isNotBlank() } ?: return@runCatching null
+        val record = value as? JsonObject ?: return@runCatching null
+        val decoded =
             inboxJson.decodeFromJsonElement(WireInboxItem.serializer(), record)
-                .copy(kind = "thread", parentMessageId = parentMessageId)
-        }
-        .mapNotNull { it.toThreadDomain(diagnostics) }
-        .distinctBy { it.key }
-        .toList()
+                .copy(kind = "thread", parentMessageId = cleanParentMessageId)
+        // A summary response is one authority record. A malformed child cannot be silently
+        // omitted and reinterpreted as an authoritative empty/partial snapshot.
+        projected += decoded.toThreadDomain(diagnostics) ?: return@runCatching null
+    }
+    val items = projected.distinctBy { it.key }
     SharedThreadListItems(
         items = items,
         totalCount = items.size,
@@ -256,7 +270,7 @@ private fun WireInboxItem.toChannelOrDmDomain(diagnostics: (String) -> Unit): In
 }
 
 private fun WireInboxItem.toThreadDomain(diagnostics: (String) -> Unit): InboxItem? {
-    val threadId = threadChannelId ?: return null
+    val threadId = threadChannelId?.trim()?.takeIf { it.isNotBlank() } ?: return null
     return InboxItem(
         key = "thread:$threadId",
         kind = InboxItemKind.Thread,

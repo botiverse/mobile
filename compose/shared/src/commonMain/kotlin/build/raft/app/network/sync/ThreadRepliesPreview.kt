@@ -49,6 +49,25 @@ data class ThreadRepliesReadModel(
 
 const val InlineThreadReplyPreviewLimit: Int = 3
 
+const val ThreadRepliesSyncWindowProducer: String = "message-service.thread-replies-window.v1"
+
+/** Strictly projected existing v1 producer envelope. Cursor/epoch remain compatibility metadata. */
+@Serializable
+data class ThreadRepliesSyncWindowEnvelope(
+    val producer: String,
+    val rootKind: String,
+    val rootServerId: String,
+    val rootMessageId: String,
+    val relationKind: String,
+    val parentScopeServerId: String,
+    val parentScopeKind: String,
+    val parentScopeId: String,
+    val backing: String,
+    val windowKind: String,
+    val scopeCursor: String? = null,
+    val epoch: String? = null,
+)
+
 /**
  * Build the read model from the initial `getLatestNReplies(messageId, N)` snapshot. `snapshotSeq` is fixed
  * here to the newest seq in the batch — the seam live deltas are measured against.
