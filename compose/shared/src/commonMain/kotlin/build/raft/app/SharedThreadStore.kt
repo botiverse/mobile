@@ -8795,6 +8795,18 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
         } else {
             null
         }
+    val parentSurfaceKind =
+        if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+            // Parent shape is immutable route intent. Snapshot content may omit it, but it must
+            // never erase a valid launch identity before the directory projection renders the
+            // header. Preserve malformed non-blank input too so display enrichment still rejects
+            // it fail-closed instead of silently guessing Channel.
+            base.parentSurfaceKind?.takeIf { it.isNotBlank() }
+                ?: base.parentChannelKind.parsedThreadParentSurfaceKindOrNull()
+                ?: conversation.threadParentSurfaceKind()
+        } else {
+            null
+        }
     val parentChannelKind =
         if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
             base.parentChannelKind.normalizedThreadChannelKind()
@@ -8893,6 +8905,7 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
         streamChannelId = streamChannelId,
         parentChannelId = parentChannelId,
         parentMessageId = parentMessageId,
+        parentSurfaceKind = parentSurfaceKind,
         parentChannelKind = parentChannelKind,
         memberScopedMentions = base.memberScopedMentions || conversation.usesMemberScopedMentions(),
         messages = cachedMessages,

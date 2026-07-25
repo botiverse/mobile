@@ -3207,6 +3207,8 @@ class SharedThreadStoreTest {
 
         assertEquals(0, channelRepository.homeCalls)
         assertEquals(1, repository.getReplyThreadRequests.size)
+        assertEquals(KuiklyThreadSurfaceKind.Channel, store.state.value.payload.parentSurfaceKind)
+        assertEquals(KuiklyThreadSurfaceKind.Channel, store.state.value.payload.parentChannelKind)
         assertTrue(store.state.value.payload.joined)
         assertTrue(store.state.value.payload.composer.enabled)
         scope.cancel()
@@ -3260,6 +3262,8 @@ class SharedThreadStoreTest {
         }
 
         val resolvedFrame = store.state.value
+        assertEquals(KuiklyThreadSurfaceKind.Channel, resolvedFrame.payload.parentSurfaceKind)
+        assertEquals(JointChannelKindWireValue, resolvedFrame.payload.parentChannelKind)
         assertEquals(ConversationKind.Joint, resolvedFrame.payload.resolveThreadRouteIdentity().parentConversationKind)
         assertTrue(resolvedFrame.payload.joined)
         assertTrue(resolvedFrame.payload.canSend)
@@ -7811,6 +7815,8 @@ class SharedThreadStoreTest {
                 surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
                 parentChannelId = "channel-1",
                 parentMessageId = "m1",
+                parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
+                parentChannelKind = KuiklyThreadSurfaceKind.Channel,
                 originParentMessageId = "m1",
                 originMessage = contentPayload("parent body").messages.single(),
                 composer =
@@ -7840,6 +7846,8 @@ class SharedThreadStoreTest {
         assertEquals("thread-m1", payload.sourceThreadId)
         assertEquals("thread-m1", payload.streamChannelId)
         assertEquals("channel-1", payload.parentChannelId)
+        assertEquals(KuiklyThreadSurfaceKind.Channel, payload.parentSurfaceKind)
+        assertEquals(KuiklyThreadSurfaceKind.Channel, payload.parentChannelKind)
         assertEquals("m1", payload.originParentMessageId)
         assertEquals("thread-m1", payload.composer.streamChannelId)
         assertEquals("reply body", payload.messages.single().body)
