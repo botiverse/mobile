@@ -33,5 +33,142 @@
     "path": "compose/shared/src/commonMain/kotlin/build/raft/app/TokenPaletteVisualPage.kt",
     "literal": "4px 4px 0px #141111",
     "reason": "internal visual token palette measurement"
+  },
+  {
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/AppUpdatePage.kt",
+    "literal": "WHAT'S NEW IN 1.6.0",
+    "reason": "internal app-update visual fixture copy"
+  },
+  {
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/AppUpdatePage.kt",
+    "literal": "A focused update for faster collaboration",
+    "reason": "internal app-update visual fixture copy"
+  },
+  {
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/AuthComponents.kt",
+    "literal": "Sign In",
+    "reason": "internal auth component preview label",
+    "context": "text = \"Sign In\","
+  },
+  {
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/RouterPage.kt",
+    "literal": "$routeCount routes · Raft shared/KMP page launcher",
+    "reason": "internal developer route launcher diagnostic copy"
+  },
+  {
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
+    "literal": "Bottom TabBar",
+    "reason": "internal bottom-tab smoke preview label"
+  },
+  {
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
+    "literal": "Harmony smoke preview",
+    "reason": "internal bottom-tab smoke preview label"
+  },
+  {
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
+    "literal": "Edge",
+    "reason": "internal bottom-tab smoke variant label"
+  },
+  {
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
+    "literal": "Floating Dock",
+    "reason": "internal bottom-tab smoke variant label"
+  },
+  {
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
+    "literal": "Navigation Rail",
+    "reason": "internal bottom-tab smoke variant label"
+  },
+  {
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
+    "literal": "Rail layout",
+    "reason": "internal bottom-tab smoke layout label"
+  },
+  {
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
+    "literal": "Shared TabBar variant parity with Android",
+    "reason": "internal bottom-tab parity probe copy"
+  },
+  {
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
+    "literal": "Server Profile",
+    "reason": "internal server danger-modal visual fixture heading",
+    "context": "\"Server Profile\","
+  },
+  {
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
+    "literal": "PROFILE",
+    "reason": "internal server danger-modal visual fixture label"
+  },
+  {
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SlockFloatingOverlayTouchGuardVisualPage.kt",
+    "literal": "MENU ACTION",
+    "reason": "internal floating-overlay touch guard visual probe"
+  },
+  {
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SlockHomeComponents.kt",
+    "literal": "HOME",
+    "reason": "internal home app-update banner visual fixture label"
+  },
+  {
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SlockKuiklyChildPage.kt",
+    "literal": "Android proof for nested Kuikly child pages with independent child delegators.",
+    "reason": "internal nested child-page host proof copy"
+  },
+  {
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SlockKuiklyChildPage.kt",
+    "literal": "If this renders inside the parent page, Android host registration and child onAttach pageData are working.",
+    "reason": "internal nested child-page host proof copy"
+  },
+  {
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SlockLucideIconGalleryPage.kt",
+    "literal": "Lucide Icons",
+    "reason": "internal generated icon gallery heading"
+  },
+  {
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SlockLucideIconGalleryPage.kt",
+    "literal": "${names.size} icons · generated OHOS paths",
+    "reason": "internal generated icon gallery diagnostic copy"
+  },
+  {
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SlockModalPointerBarrierVisualPage.kt",
+    "literal": "MODAL ACTION",
+    "reason": "internal modal pointer-barrier visual probe state"
+  },
+  {
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SlockModalPointerBarrierVisualPage.kt",
+    "literal": "UNDERLAY HIT",
+    "reason": "internal modal pointer-barrier visual probe state"
+  },
+  {
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SlockModalPointerBarrierVisualPage.kt",
+    "literal": "CURSOR MOVED",
+    "reason": "internal modal pointer-barrier visual probe state"
+  },
+  {
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SlockTypographyProbePage.kt",
+    "literal": "Typography Probe",
+    "reason": "internal typography probe heading"
+  },
+  {
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SlockTypographyProbePage.kt",
+    "literal": "Space Grotesk weight and CJK fallback parity checks",
+    "reason": "internal typography probe diagnostic copy"
+  },
+  {
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SlockTypographyProbePage.kt",
+    "literal": "20sp/22sp · combining mark + emoji + CJK",
+    "reason": "internal typography probe measurement label"
+  },
+  {
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SlockTypographyProbePage.kt",
+    "literal": "SlockMarkdownBody · 14sp/24sp · regular",
+    "reason": "internal typography probe measurement label"
+  },
+  {
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SlockTypographyProbePage.kt",
+    "literal": "SlockMarkdownBody · 14sp/24sp · medium probe",
+    "reason": "internal typography probe measurement label"
   }
 ]
