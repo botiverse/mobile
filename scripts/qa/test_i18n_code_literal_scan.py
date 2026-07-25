@@ -56,6 +56,20 @@ class I18nCodeLiteralScanTest(unittest.TestCase):
         )
         self.assertEqual([], self.scan(".kt", source))
 
+    def test_comment_or_log_sibling_does_not_hide_direct_text(self) -> None:
+        sources = (
+            'Text("Hardcoded English") // diagnostic fallback until loading completes',
+            'Text("Hardcoded English"); Log.i("tag", "rendered")',
+        )
+        for source in sources:
+            with self.subTest(source=source):
+                findings = self.scan(".kt", source)
+                self.assertEqual(["Hardcoded English"], [item.literal for item in findings])
+                self.assertTrue(scanner.is_direct_sink(findings[0].sink))
+
+    def test_pure_log_line_remains_excluded(self) -> None:
+        self.assertEqual([], self.scan(".kt", 'Log.i("tag", "rendered")'))
+
     def test_nearby_multiline_ui_argument_is_medium_confidence(self) -> None:
         source = '\n'.join(
             [
@@ -107,6 +121,18 @@ class I18nCodeLiteralScanTest(unittest.TestCase):
         findings = self.scan(".kt", source)
         self.assertEqual(1, len(findings))
         self.assertTrue(scanner.is_direct_sink(findings[0].sink))
+
+    def test_multiline_text_positional_and_named_literals_are_direct(self) -> None:
+        sources = (
+            '\n'.join(["Text(", '    "Hardcoded English"', ")"]),
+            '\n'.join(["Text(", '    text = "Hardcoded English"', ")"]),
+        )
+        for source in sources:
+            with self.subTest(source=source):
+                findings = self.scan(".kt", source)
+                self.assertEqual(["Hardcoded English"], [item.literal for item in findings])
+                self.assertEqual("multiline-text-call", findings[0].sink)
+                self.assertTrue(scanner.is_direct_sink(findings[0].sink))
 
     def test_multiline_toast_next_to_resource_label_remains_a_direct_sink(self) -> None:
         source = '\n'.join(

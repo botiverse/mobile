@@ -113,7 +113,14 @@ INTERNAL_FIELD_LITERALS = {
     "unknown",
     "yes",
 }
-DIRECT_SINKS = {"text-call", "arkui-text", "toast-dialog", "multiline-toast-dialog"}
+DIRECT_SINKS = {
+    "text-call",
+    "arkui-text",
+    "toast-dialog",
+    "multiline-text-call",
+    "multiline-arkui-text",
+    "multiline-toast-dialog",
+}
 
 
 def is_direct_sink(sink: str) -> bool:
@@ -194,6 +201,29 @@ def masked_source_line(line: str, language: str) -> str:
     return masked
 
 
+def width_preserving_masked_line(line: str, language: str) -> str:
+    """Mask literals without changing columns, for token-local context checks."""
+    characters = list(line)
+    for column, token in literal_tokens(line, language):
+        characters[column : column + len(token)] = " " * len(token)
+    return "".join(characters)
+
+
+def is_non_ui_token(line: str, column: int, language: str) -> bool:
+    """Exclude only the comment/expression that owns this literal token."""
+    masked = width_preserving_masked_line(line, language)
+    comment_column = masked.find("//")
+    code_end = comment_column if comment_column >= 0 else len(line)
+    if column >= code_end:
+        return True
+    expression_start = masked.rfind(";", 0, column) + 1
+    expression_end = masked.find(";", column, code_end)
+    if expression_end < 0:
+        expression_end = code_end
+    expression = masked[expression_start:expression_end]
+    return NON_UI_CONTEXT_RE.search(expression) is not None
+
+
 def has_open_multiline_call(
     lines: list[str],
     index: int,
@@ -230,20 +260,20 @@ def classify_context(path: Path, lines: list[str], index: int, language: str) ->
     line = lines[index]
     masked_line = masked_source_line(line, language)
     window_lines = lines[max(0, index - 2) : min(len(lines), index + 3)]
-    window = " ".join(window_lines)
     masked_window = " ".join(masked_source_line(item, language) for item in window_lines)
-    # Resource references must not suppress the surrounding context window:
-    # a localized sibling next to a hardcoded sink is still actionable. Any
-    # quoted resource identifier is filtered per literal by
-    # is_pure_english_candidate() instead.
-    if NON_UI_CONTEXT_RE.search(masked_line):
-        return None
+    # Resource/non-UI references must not suppress the surrounding context
+    # window: a localized or logging sibling next to a hardcoded sink is still
+    # actionable. Resource identifiers are filtered per literal by
+    # is_pure_english_candidate(); non-UI ownership is checked per token by
+    # is_non_ui_token().
+    for name, pattern in HIGH_SINKS:
+        if name == "ui-property":
+            continue
+        if has_open_multiline_call(lines, index, language, pattern):
+            return "high", f"multiline-{name}"
     for name, pattern in HIGH_SINKS:
         if pattern.search(masked_line):
             return "high", name
-    toast_pattern = dict(HIGH_SINKS)["toast-dialog"]
-    if has_open_multiline_call(lines, index, language, toast_pattern):
-        return "high", "multiline-toast-dialog"
     for name, pattern in HIGH_SINKS:
         if pattern.search(masked_window):
             return "medium", f"near-{name}"
@@ -266,6 +296,8 @@ def scan_file(path: Path, repo_root: Path) -> list[Finding]:
             continue
         confidence, sink = classification
         for column, token in literal_tokens(line, language):
+            if is_non_ui_token(line, column, language):
+                continue
             value = decoded_literal(token)
             if not is_pure_english_candidate(value):
                 continue
