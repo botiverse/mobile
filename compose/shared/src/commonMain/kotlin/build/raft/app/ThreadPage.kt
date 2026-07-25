@@ -9393,6 +9393,15 @@ internal fun threadVisualFixture(
                             replyCount = 8,
                             unreadReplyCount = 2,
                             firstUnreadReplyMessageId = "reply-inline-7",
+                            taskId = "task_73",
+                            taskNumber = 73,
+                            taskStatus = "in_progress",
+                            taskAssigneeId = "agent-nathan",
+                            taskAssigneeName = "Nathan",
+                            reactions =
+                                listOf(
+                                    KuiklyThreadReactionItem(emoji = "✅", count = 2, selected = true),
+                                ),
                             inlineReplies =
                                 build.raft.app.network.sync.initialThreadRepliesReadModel(
                                     replies =
@@ -17012,39 +17021,48 @@ private fun ThreadMessageCard(
                                 }
                             }
                         }
-                        inlineReplyPresentation?.let { presentation ->
-                            Box(modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)) {
-                                ThreadInlineRepliesSurface(
-                                    presentation = presentation,
-                                    participantsById = inlineReplyParticipantsById,
-                                    memberAvatarResolver = memberAvatarResolver,
-                                    timeContext = replyTimeContext,
-                                    onOpenThread = { onOpenThread(message.id) }
-                                )
-                            }
-                        }
-                        if (hasFooterMeta) {
-                            Box(modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)) {
-                                ThreadMessageFooterMeta(
-                                    message = message,
-                                    replyMetadata = replyMetadata,
-                                    hasReplyDraft = hasReplyDraft,
-                                    showReplyAction = showReplyAction,
-                                    taskOpenEnabled = taskOpenEnabled,
-                                    taskStatusActionsEnabled = taskStatusActionsEnabled,
-                                    resolvedTaskAssigneeName = resolvedTaskAssigneeName,
-                                    diagnosticsLogger = diagnosticsLogger,
-                                    alignEnd = alignOwnMessageRight,
-                                    onOpenThread = { onOpenThread(message.id) },
-                                    onOpenTask = onOpenTask,
-                                    onShowActions = onShowActions,
-                                    onOpenTaskStatusMenu = onOpenTaskStatusMenu,
-                                    showSavedBadge = showSavedBadge,
-                                    showReactionAddAction = showReactionAddAction,
-                                    showReplyMetaChip = inlineReplyPresentation == null,
-                                    onToggleReaction = onToggleReaction,
-                                    onShowReactionDetails = onShowReactionDetails
-                                )
+                        threadMessageTrailingSectionOrder(
+                            hasMetaChips = hasFooterMeta,
+                            hasInlineReplies = inlineReplyPresentation != null,
+                        ).forEach { section ->
+                            when (section) {
+                                ThreadMessageTrailingSection.MetaChips -> {
+                                    Box(modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)) {
+                                        ThreadMessageFooterMeta(
+                                            message = message,
+                                            replyMetadata = replyMetadata,
+                                            hasReplyDraft = hasReplyDraft,
+                                            showReplyAction = showReplyAction,
+                                            taskOpenEnabled = taskOpenEnabled,
+                                            taskStatusActionsEnabled = taskStatusActionsEnabled,
+                                            resolvedTaskAssigneeName = resolvedTaskAssigneeName,
+                                            diagnosticsLogger = diagnosticsLogger,
+                                            alignEnd = alignOwnMessageRight,
+                                            onOpenThread = { onOpenThread(message.id) },
+                                            onOpenTask = onOpenTask,
+                                            onShowActions = onShowActions,
+                                            onOpenTaskStatusMenu = onOpenTaskStatusMenu,
+                                            showSavedBadge = showSavedBadge,
+                                            showReactionAddAction = showReactionAddAction,
+                                            showReplyMetaChip = inlineReplyPresentation == null,
+                                            onToggleReaction = onToggleReaction,
+                                            onShowReactionDetails = onShowReactionDetails
+                                        )
+                                    }
+                                }
+                                ThreadMessageTrailingSection.InlineReplies -> {
+                                    inlineReplyPresentation?.let { presentation ->
+                                        Box(modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)) {
+                                            ThreadInlineRepliesSurface(
+                                                presentation = presentation,
+                                                participantsById = inlineReplyParticipantsById,
+                                                memberAvatarResolver = memberAvatarResolver,
+                                                timeContext = replyTimeContext,
+                                                onOpenThread = { onOpenThread(message.id) }
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -19093,6 +19111,20 @@ internal fun KuiklyThreadMessageItem.hasThreadFooterMeta(
         hasReplyDraft ||
         showSavedBadge ||
         reactions.any { it.count > 0 }
+
+internal enum class ThreadMessageTrailingSection {
+    MetaChips,
+    InlineReplies,
+}
+
+internal fun threadMessageTrailingSectionOrder(
+    hasMetaChips: Boolean,
+    hasInlineReplies: Boolean,
+): List<ThreadMessageTrailingSection> =
+    buildList {
+        if (hasMetaChips) add(ThreadMessageTrailingSection.MetaChips)
+        if (hasInlineReplies) add(ThreadMessageTrailingSection.InlineReplies)
+    }
 
 private fun KuiklyThreadMessageItem.hasThreadTaskFooterMeta(): Boolean =
     !taskId.isNullOrBlank() ||
