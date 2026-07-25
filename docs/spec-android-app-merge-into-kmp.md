@@ -187,7 +187,7 @@ The `compose/androidApp/build.gradle.kts` is completely rewritten. Key changes:
 1. **Namespace** changes from `build.raft.app` → `build.raft.app`
 2. **applicationId** stays `build.raft.app`
 3. **compileSdk** bumps from 34 → 36 (match outer)
-4. **minSdk** stays 24, **targetSdk** bumps from 30 → 36
+4. **minSdk** is 29 (Android 10; raised from the migration-time value 24), **targetSdk** is 36
 5. **Kotlin JVM target** bumps from 1.8 → 11
 6. **Dependencies**: merge outer `app/build.gradle.kts` with `implementation(project(":shared"))`
 7. **SQLDelight plugin** added with the outer database config

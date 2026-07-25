@@ -474,6 +474,7 @@ jobs:
           TARGET_SDK="$(sed -n "s/^targetSdkVersion:'\([^']*\)'.*/\1/p" aapt-badging.log | head -n 1)"
           [[ "${MIN_SDK}" =~ ^[0-9]+$ ]] || { echo "Unable to read minSdk" >&2; exit 1; }
           [[ "${TARGET_SDK}" =~ ^[0-9]+$ ]] || { echo "Unable to read targetSdk" >&2; exit 1; }
+          [ "${MIN_SDK}" = "29" ] || { echo "Release APK must require Android 10 / API 29, got ${MIN_SDK}" >&2; exit 1; }
           # apksigner prints newest/current first. Reverse it so the machine
           # contract is the canonical oldest-to-current lineage order.
           SIGNERS_JSON="$(awk -F ': ' '/certificate SHA-256 digest:/ {print $2}' apksigner-verify.log | jq -Rsc 'split("\n") | map(select(length > 0)) | reverse')"

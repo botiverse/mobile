@@ -530,6 +530,10 @@ jobs:
           set -euo pipefail
           APK="$(find compose/androidApp/build/outputs/apk/connectedTest -maxdepth 1 -type f -name '*.apk' | sort | head -n 1)"
           test -n "${APK}"
+          AAPT="$(find "${ANDROID_HOME}/build-tools" -type f -name aapt | sort -V | tail -n 1)"
+          test -x "${AAPT}"
+          "${AAPT}" dump badging "${APK}" | tee connectedtest-app-badging.txt
+          grep -Fq "sdkVersion:'29'" connectedtest-app-badging.txt
           compose/androidApp/src/test/scripts/check_networkkmm_curl_runtime_package.sh \
             --self-test \
             "${APK}"
@@ -569,7 +573,7 @@ jobs:
         uses: ./.github/actions/gradle-failure-diagnostics
 
   android-device:
-    name: Android first-character baseline (emulator)
+    name: Android minimum-supported runtime (API 29 emulator)
     runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: android
     timeout-minutes: 30
@@ -643,7 +647,7 @@ jobs:
       - name: Run first-character baseline regression
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 34
+          api-level: 29
           arch: x86_64
           target: google_apis
           profile: pixel_6_pro
