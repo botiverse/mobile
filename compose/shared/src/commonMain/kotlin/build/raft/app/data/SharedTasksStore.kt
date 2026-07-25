@@ -34,6 +34,14 @@ data class TasksUiState(
 fun TasksUiState.isCreatingTasksFor(channelId: ChannelId): Boolean =
     createPendingChannelId == channelId.value
 
+data class TasksCreateOperationId(
+    val attempt: Long,
+    val channelId: ChannelId
+)
+
+fun TasksUiState.ownsCreateOperation(operation: TasksCreateOperationId): Boolean =
+    createAttempt == operation.attempt && createPendingChannelId == operation.channelId.value
+
 data class TasksContent(
     val summaryCounts: Map<TaskStatus, Int>,
     val tasks: List<TaskSummary>
@@ -101,9 +109,15 @@ sealed interface SharedTasksIntent {
     data class TaskStatusUpdateSucceeded(val task: TaskSummary) : SharedTasksIntent
     data class TaskStatusUpdateFailed(val previousTask: TaskSummary, val errorCode: String) : SharedTasksIntent
     data class NavigationFailed(val errorCode: String?) : SharedTasksIntent
-    data class CreateTasksStarted(val channelId: ChannelId) : SharedTasksIntent
-    data class CreateTasksSucceeded(val snapshot: TaskSnapshot) : SharedTasksIntent
-    data class CreateTasksFailed(val errorCode: String) : SharedTasksIntent
+    data class CreateTasksStarted(val operation: TasksCreateOperationId) : SharedTasksIntent
+    data class CreateTasksSucceeded(
+        val operation: TasksCreateOperationId,
+        val snapshot: TaskSnapshot
+    ) : SharedTasksIntent
+    data class CreateTasksFailed(
+        val operation: TasksCreateOperationId,
+        val errorCode: String
+    ) : SharedTasksIntent
 }
 
 sealed interface SharedTasksRouteIntent {
@@ -233,11 +247,16 @@ internal class SharedTasksViewModel(
             is SharedTasksRouteIntent.CreateTasks -> {
                 val cleanedTitles = action.titles.map { it.trim() }.filter { it.isNotBlank() }
                 if (cleanedTitles.isEmpty()) return
+                val operation =
+                    TasksCreateOperationId(
+                        attempt = state.value.createAttempt + 1L,
+                        channelId = action.channelId
+                    )
                 createJob?.cancel()
-                store.accept(SharedTasksIntent.CreateTasksStarted(action.channelId))
+                store.accept(SharedTasksIntent.CreateTasksStarted(operation))
                 createJob =
                     runtimeScope.launch {
-                        createTasks(action.channelId, cleanedTitles)
+                        createTasks(operation, cleanedTitles)
                     }
             }
             SharedTasksRouteIntent.ClearNavigationError ->
@@ -530,33 +549,33 @@ internal class SharedTasksViewModel(
         }
     }
 
-    private suspend fun createTasks(channelId: ChannelId, titles: List<String>) {
+    private suspend fun createTasks(operation: TasksCreateOperationId, titles: List<String>) {
         try {
-            when (val result = useCase.createTasks(TasksCreateRequest(channelId, titles))) {
+            when (val result = useCase.createTasks(TasksCreateRequest(operation.channelId, titles))) {
                 is DataResult.Content -> {
-                    result.data.tasks.forEach { task ->
-                        publishSharedTaskUpdate(task, "create_result")
+                    if (store.accept(SharedTasksIntent.CreateTasksSucceeded(operation, result.data))) {
+                        result.data.tasks.forEach { task ->
+                            publishSharedTaskUpdate(task, "create_result")
+                        }
+                        // Re-fetch the active scope so the board/list reflects server-side
+                        // canonical ordering and any derived counts after create.
+                        load(SharedTasksRouteIntent.Refresh)
                     }
-                    store.accept(SharedTasksIntent.CreateTasksSucceeded(result.data))
-                    // Re-fetch the active scope so the board/list reflects server-side
-                    // canonical ordering and any derived counts after create.
-                    load(SharedTasksRouteIntent.Refresh)
                 }
                 else -> {
                     val errorCode = result.failureCodeOrNull() ?: "tasks_create_unknown"
-                    events.emit(SharedTasksEvent.OperationFailed(errorCode))
-                    store.accept(
-                        SharedTasksIntent.CreateTasksFailed(
-                            errorCode
-                        )
-                    )
+                    if (store.accept(SharedTasksIntent.CreateTasksFailed(operation, errorCode))) {
+                        events.emit(SharedTasksEvent.OperationFailed(errorCode))
+                    }
                 }
             }
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: Throwable) {
-            events.emit(SharedTasksEvent.OperationFailed("tasks_create_network"))
-            store.accept(SharedTasksIntent.CreateTasksFailed("tasks_create_network"))
+            val errorCode = "tasks_create_network"
+            if (store.accept(SharedTasksIntent.CreateTasksFailed(operation, errorCode))) {
+                events.emit(SharedTasksEvent.OperationFailed(errorCode))
+            }
         }
     }
 
@@ -685,30 +704,42 @@ fun TasksUiState.reduce(intent: SharedTasksIntent): TasksUiState =
             )
         is SharedTasksIntent.NavigationFailed -> copy(navigationErrorCode = intent.errorCode)
         is SharedTasksIntent.CreateTasksStarted ->
-            copy(
-                navigationErrorCode = null,
-                refreshing = true,
-                createPendingChannelId = intent.channelId.value,
-                createErrorCode = null,
-                createAttempt = createAttempt + 1L,
-                createTerminalAttempt = null
-            )
+            if (intent.operation.attempt <= createAttempt) {
+                this
+            } else {
+                copy(
+                    navigationErrorCode = null,
+                    refreshing = true,
+                    createPendingChannelId = intent.operation.channelId.value,
+                    createErrorCode = null,
+                    createAttempt = intent.operation.attempt,
+                    createTerminalAttempt = null
+                )
+            }
         is SharedTasksIntent.CreateTasksSucceeded ->
-            copy(
-                refreshing = false,
-                navigationErrorCode = null,
-                createPendingChannelId = null,
-                createErrorCode = null,
-                createTerminalAttempt = createAttempt
-            )
+            if (!ownsCreateOperation(intent.operation)) {
+                this
+            } else {
+                copy(
+                    refreshing = false,
+                    navigationErrorCode = null,
+                    createPendingChannelId = null,
+                    createErrorCode = null,
+                    createTerminalAttempt = intent.operation.attempt
+                )
+            }
         is SharedTasksIntent.CreateTasksFailed ->
-            copy(
-                refreshing = false,
-                navigationErrorCode = intent.errorCode,
-                createPendingChannelId = null,
-                createErrorCode = intent.errorCode,
-                createTerminalAttempt = createAttempt
-            )
+            if (!ownsCreateOperation(intent.operation)) {
+                this
+            } else {
+                copy(
+                    refreshing = false,
+                    navigationErrorCode = intent.errorCode,
+                    createPendingChannelId = null,
+                    createErrorCode = intent.errorCode,
+                    createTerminalAttempt = intent.operation.attempt
+                )
+            }
     }
 
 private fun TasksUiState.withCreateOperationFrom(previous: TasksUiState): TasksUiState =
