@@ -29,12 +29,12 @@ import com.tencent.kuiklybase.markdown.compose.elements.updateMarkdownTableColum
 import com.tencent.kuiklybase.markdown.model.MarkdownAnnotator
 import com.tencent.kuiklybase.markdown.model.MarkdownImageStateImpl
 import com.tencent.kuiklybase.markdown.model.MarkdownParserContent
+import com.tencent.kuiklybase.markdown.model.SlockGFMFlavourDescriptor
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
 import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.ast.ASTNode
-import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
 import org.intellij.markdown.parser.MarkdownParser
 import kotlin.test.Test
 import kotlin.test.assertFalse
@@ -1683,6 +1683,35 @@ class SlockMarkdownTest {
     }
 
     @Test
+    fun productionLinkRendersAsOneExternalActionWhileStandaloneTaskStaysRaftAction() {
+        val body =
+            "[#1487 feat(search): pin entities](https://github.com/botiverse/mobile/pull/1487) " +
+                "then task #1487"
+        val annotated = buildSlockMarkdownParagraphAnnotatedString(body)
+        val links = annotated.getLinkAnnotations(0, annotated.length)
+        assertEquals(
+            listOf("Url:0..32", "Clickable:43..48"),
+            links.map { range ->
+                val kind =
+                    when (range.item) {
+                        is LinkAnnotation.Url -> "Url"
+                        is LinkAnnotation.Clickable -> "Clickable"
+                        else -> "Other"
+                    }
+                "$kind:${range.start}..${range.end}"
+            },
+        )
+        val external = links.single { it.item is LinkAnnotation.Url }
+        val raft = links.single { it.item is LinkAnnotation.Clickable }
+
+        assertEquals("#1487 feat(search): pin entities then task #1487", annotated.text)
+        assertEquals("#1487 feat(search): pin entities", annotated.text.substring(external.start, external.end))
+        assertEquals("#1487", annotated.text.substring(raft.start, raft.end))
+        assertTrue(raft.start >= external.end)
+        assertEquals(setOf("slock:${body.lastIndexOf("#1487")}"), annotated.slockMarkdownClickableTags())
+    }
+
+    @Test
     fun markdownLinkProtectionHandlesEscapesAndNestedParentheses() {
         val body =
             "[PR #42 with \\] label](https://example.test/path_(preview)#fragment) outside #43"
@@ -1802,7 +1831,7 @@ class SlockMarkdownTest {
         annotator: MarkdownAnnotator
     ): List<AnnotatedString> {
         val parserContent = MarkdownParserContent.from(content).parserContent
-        val parsedTree = MarkdownParser(GFMFlavourDescriptor()).buildMarkdownTreeFromString(parserContent)
+        val parsedTree = MarkdownParser(SlockGFMFlavourDescriptor()).buildMarkdownTreeFromString(parserContent)
         val paragraphs = mutableListOf<ASTNode>()
         fun collectListParagraphs(node: ASTNode) {
             if (node.type == MarkdownElementTypes.PARAGRAPH &&
@@ -1900,7 +1929,7 @@ class SlockMarkdownTest {
         linkInteractionListener: LinkInteractionListener? = null
     ): AnnotatedString {
         val parserContent = MarkdownParserContent.from(content).parserContent
-        val parsedTree = MarkdownParser(GFMFlavourDescriptor()).buildMarkdownTreeFromString(parserContent)
+        val parsedTree = MarkdownParser(SlockGFMFlavourDescriptor()).buildMarkdownTreeFromString(parserContent)
         val paragraph = parsedTree.children.first { it.type == MarkdownElementTypes.PARAGRAPH }
         val settings =
             DefaultAnnotatorSettings(

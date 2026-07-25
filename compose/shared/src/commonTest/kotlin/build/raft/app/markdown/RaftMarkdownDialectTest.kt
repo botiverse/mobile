@@ -1,8 +1,13 @@
 package build.raft.app.markdown
 
 import com.tencent.kuiklybase.markdown.model.RaftMarkdownDialect
+import com.tencent.kuiklybase.markdown.model.RaftMarkdownTokenTypes
+import com.tencent.kuiklybase.markdown.model.SlockGFMFlavourDescriptor
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+import org.intellij.markdown.ast.ASTNode
+import org.intellij.markdown.parser.MarkdownParser
 
 class RaftMarkdownDialectTest {
     @Test
@@ -12,6 +17,22 @@ class RaftMarkdownDialectTest {
             "Review #1487 with @artin in #visual-testing and #visual-testing:c5c60593."
                 .raftRefs(),
         )
+    }
+
+    @Test
+    fun flavourParseEmitsFirstClassRaftReferenceTokens() {
+        val source = "**Review #1487 with @artin**"
+        val tree = MarkdownParser(SlockGFMFlavourDescriptor()).buildMarkdownTreeFromString(source)
+        val tokenTexts = mutableListOf<String>()
+        fun collect(node: ASTNode) {
+            if (node.type == RaftMarkdownTokenTypes.REFERENCE) {
+                tokenTexts += source.substring(node.startOffset, node.endOffset)
+            }
+            node.children.forEach(::collect)
+        }
+        collect(tree)
+        assertEquals(listOf("#1487", "@artin"), tokenTexts)
+        assertTrue(tree.children.isNotEmpty())
     }
 
     @Test
@@ -63,5 +84,8 @@ class RaftMarkdownDialectTest {
     }
 
     private fun String.raftRefs(): List<String> =
-        RaftMarkdownDialect.parseInlineRefs(this).map { ref -> ref.sourceText }
+        RaftMarkdownDialect.inlineRefs(
+            MarkdownParser(SlockGFMFlavourDescriptor()).buildMarkdownTreeFromString(this),
+            this,
+        ).map { ref -> ref.sourceText }
 }

@@ -15,6 +15,7 @@ import com.tencent.kuiklybase.markdown.model.MarkdownAnnotator
 import com.tencent.kuiklybase.markdown.model.MarkdownParserContent
 import com.tencent.kuiklybase.markdown.model.ReferenceLinkHandler
 import com.tencent.kuiklybase.markdown.model.SlockGFMFlavourDescriptor
+import com.tencent.kuiklybase.markdown.model.RaftMarkdownTokenTypes
 import com.tencent.kuiklybase.markdown.model.markdownAnnotator
 import com.tencent.kuiklybase.markdown.utils.MARKDOWN_TAG_IMAGE_URL
 import com.tencent.kuiklybase.markdown.utils.findChildOfTypeRecursive
@@ -527,6 +528,7 @@ fun AnnotatedString.Builder.buildMarkdownAnnotatedString(
 
                     // Token Types
                     MarkdownTokenTypes.TEXT -> append(child.getUnescapedTextInNode(content))
+                    RaftMarkdownTokenTypes.REFERENCE -> append(child.getUnescapedTextInNode(content))
                     GFMTokenTypes.GFM_AUTOLINK -> if (insideCodeSpan || child.parent == MarkdownElementTypes.LINK_TEXT) {
                         // Code spans are verbatim (task #493): no linkification.
                         append(child.getUnescapedTextInNode(content))

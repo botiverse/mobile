@@ -32,19 +32,21 @@ keeps the whole label under the outer link and creates no nested task action.
 
 ```text
 normalized source
-  -> SlockGFMFlavourDescriptor / JetBrains Markdown AST
-  -> RaftMarkdownDialect candidate recognition
-       reject candidates in Markdown-owned AST ranges
+  -> SlockGFMFlavourDescriptor lexer emits GFM + Raft ref tokens
+  -> one JetBrains Markdown parse / one cached AST result
+  -> RaftMarkdownDialect collects ref nodes outside Markdown-owned ancestry
   -> app validation (known task/channel/member)
   -> MarkdownInlineTokenPlan
   -> SlockRichTextDocument (tokens + chrome + actions)
   -> Kuikly Markdown renderer
 ```
 
-The parser and renderer use the same `SlockGFMFlavourDescriptor`. The planner
-may invoke the parser through its own content cache before the renderer's
-prepared-tree cache, but there is only one syntax model: the Markdown AST.
-There is no second implementation of Markdown link/fence/delimiter matching.
+The planner and renderer consume the same cached parse result produced by
+`SlockGFMFlavourDescriptor`. A planner cache miss publishes that canonical
+result for `MarkdownState`; the renderer does not parse the content again.
+Raft candidates are first-class `RAFT_REFERENCE` lexer/AST tokens, not an
+AST-external overlay pass. There is no second implementation of Markdown
+link/fence/delimiter matching and no app-side `MarkdownParser`.
 
 `RaftMarkdownDialect` returns source-accurate candidates only. Repository data
 and viewer state remain outside the parser:
@@ -67,9 +69,11 @@ Higher entries own lower entries:
 5. Raft inline references;
 6. ordinary text.
 
-Ownership is derived from AST ranges. Adding a new Markdown link shape should
-be handled by the GFM parser and its ownership type, not by adding delimiter
-matching to the Raft reference recognizer.
+Ownership is derived from AST ancestry. A Raft token below a Markdown-owned
+node is rendered as that parent's literal child and is not collected as a
+product reference. Adding a new Markdown link shape is therefore handled by
+the GFM parser and its ownership type, not by adding delimiter matching to the
+Raft reference recognizer.
 
 ## Reference grammar
 

@@ -117,6 +117,29 @@ suspend fun prepareMarkdownContent(content: MarkdownParserContent, lookupLinks: 
 }
 
 /**
+ * Returns Raft reference nodes from the same cached parse result consumed by
+ * [MarkdownState]. A cache miss performs the canonical flavour parse once and
+ * publishes that result for the renderer; there is no app-side second parser.
+ */
+fun parseRaftMarkdownInlineRefs(
+    content: String,
+    lookupLinks: Boolean = true,
+): List<RaftMarkdownInlineRef> {
+    if (!content.contains('#') && !content.contains('@')) return emptyList()
+    val key = MarkdownParseResultCacheKey(content, lookupLinks)
+    val (cached, _) =
+        MarkdownParseResultCache.getOrPut(key) {
+            val flavour = SlockGFMFlavourDescriptor()
+            parseMarkdownContent(
+                content = content,
+                lookupLinks = lookupLinks,
+                parser = MarkdownParser(flavour),
+            )
+        }
+    return cached.inlineRefs
+}
+
+/**
  * A [MarkdownState] that that executes the parsing of the markdown content with the [MarkdownParser] asynchronously.
  */
 @Stable
@@ -321,6 +344,7 @@ private fun parseMarkdownContent(
         }
     return MarkdownCachedParseResult(
         links = links,
+        inlineRefs = RaftMarkdownDialect.inlineRefs(parsedResult, content),
         nodes =
             parsedResult.children.map {
                 ParseResult(it.startOffset, it.endOffset).apply { this.node = it }
@@ -335,6 +359,7 @@ private data class MarkdownParseResultCacheKey(
 
 private data class MarkdownCachedParseResult(
     val links: Map<String, String?>,
+    val inlineRefs: List<RaftMarkdownInlineRef>,
     val nodes: List<ParseResult>
 )
 

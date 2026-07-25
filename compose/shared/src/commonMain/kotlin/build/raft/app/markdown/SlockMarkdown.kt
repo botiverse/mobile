@@ -85,10 +85,11 @@ import com.tencent.kuiklybase.markdown.compose.SlockMarkdownNodeTrace
 import com.tencent.kuiklybase.markdown.compose.SlockMarkdownNodeTraceSink
 import com.tencent.kuiklybase.markdown.compose.SlockMarkdownSubTrace
 import com.tencent.kuiklybase.markdown.model.MarkdownParserContent
-import com.tencent.kuiklybase.markdown.model.RaftMarkdownDialect
+import com.tencent.kuiklybase.markdown.model.RaftMarkdownTokenTypes
 import com.tencent.kuiklybase.markdown.model.TextProvider
 import com.tencent.kuiklybase.markdown.model.markdownAnnotator
 import com.tencent.kuiklybase.markdown.model.markdownAnnotatorConfig
+import com.tencent.kuiklybase.markdown.model.parseRaftMarkdownInlineRefs
 import com.tencent.kuiklybase.markdown.compose.elements.MarkdownCode
 import com.tencent.kuiklybase.markdown.compose.elements.MarkdownCodeBlock
 import com.tencent.kuiklybase.markdown.compose.elements.MarkdownCodeFence
@@ -555,7 +556,7 @@ private fun String.threadMarkdownInlineScan(
  * deliberately not a second raw-string scanner with an exclusion list.
  */
 private fun String.raftMarkdownInlineRefRanges(): List<IntRange> {
-    return RaftMarkdownDialect.parseInlineRefs(this).map { ref -> ref.startOffset until ref.endOffset }
+    return parseRaftMarkdownInlineRefs(this).map { ref -> ref.startOffset until ref.endOffset }
 }
 
 private fun String.threadMarkdownFenceRanges(): List<IntRange> {
@@ -800,7 +801,7 @@ internal fun slockMarkdownAnnotator(
                 return@markdownAnnotator false
             }
 
-            if (child.type != MarkdownTokenTypes.TEXT) {
+            if (child.type != MarkdownTokenTypes.TEXT && child.type != RaftMarkdownTokenTypes.REFERENCE) {
                 return@markdownAnnotator false
             }
 
@@ -811,7 +812,8 @@ internal fun slockMarkdownAnnotator(
                 documentOffset = nodeStart,
                 rendererInput = rendererInput,
                 onOpenAction = onOpenAction,
-                resolveActionLabel = resolveActionLabel
+                resolveActionLabel = resolveActionLabel,
+                allowLocalFallback = child.type != RaftMarkdownTokenTypes.REFERENCE,
             )
         },
         inlineContent = { emptyMap() },
@@ -990,11 +992,12 @@ private fun AnnotatedString.Builder.appendSlockRichTextSegment(
     documentOffset: Int,
     rendererInput: SlockRichTextRendererInput,
     onOpenAction: (SlockRichTextAction) -> Unit,
-    resolveActionLabel: ((SlockRichTextAction) -> String?)?
+    resolveActionLabel: ((SlockRichTextAction) -> String?)?,
+    allowLocalFallback: Boolean = true,
 ): Boolean {
     val documentTokens = rendererInput.slockRefTokensStartingInRange(documentOffset, documentOffset + text.length)
     val localTokens =
-        if (documentTokens.isEmpty()) {
+        if (documentTokens.isEmpty() && allowLocalFallback) {
             // Some markdown-renderer paths, including list-item paragraphs,
             // expose child offsets in a local node coordinate space. Match
             // already-built IR tokens back to that text instead of reparsing

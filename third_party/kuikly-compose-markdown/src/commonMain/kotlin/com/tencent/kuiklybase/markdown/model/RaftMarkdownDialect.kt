@@ -5,7 +5,6 @@ import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.MarkdownTokenTypes
 import org.intellij.markdown.ast.ASTNode
 import org.intellij.markdown.flavours.gfm.GFMTokenTypes
-import org.intellij.markdown.parser.MarkdownParser
 
 /** A source-accurate inline reference recognized by the Raft Markdown dialect. */
 data class RaftMarkdownInlineRef(
@@ -24,36 +23,31 @@ data class RaftMarkdownInlineRef(
  * delimiter matching or maintain an exclusion scanner for each new construct.
  */
 object RaftMarkdownDialect {
-    fun parseInlineRefs(content: String): List<RaftMarkdownInlineRef> {
-        if (!content.contains('#') && !content.contains('@')) return emptyList()
-        val tree = MarkdownParser(SlockGFMFlavourDescriptor()).buildMarkdownTreeFromString(content)
-        val ownedRanges = buildList { tree.collectRaftMarkdownOwnedRanges(this) }
+    /** Collects refs from the already-built Raft Markdown AST. */
+    fun inlineRefs(tree: ASTNode, content: String): List<RaftMarkdownInlineRef> {
         val refs = mutableListOf<RaftMarkdownInlineRef>()
-        var cursor = 0
-        while (cursor < content.length) {
-            val range = content.raftInlineRefRange(cursor)
-            if (range != null && ownedRanges.none { owned -> range.overlaps(owned) }) {
-                refs +=
-                    RaftMarkdownInlineRef(
-                        sourceText = content.substring(range),
-                        startOffset = range.first,
-                        endOffset = range.last + 1,
-                    )
-                cursor = range.last + 1
-            } else {
-                cursor++
-            }
-        }
+        tree.collectRaftMarkdownInlineRefs(content, refs)
         return refs
     }
 }
 
-private fun ASTNode.collectRaftMarkdownOwnedRanges(result: MutableList<IntRange>) {
+private fun ASTNode.collectRaftMarkdownInlineRefs(
+    content: String,
+    result: MutableList<RaftMarkdownInlineRef>,
+) {
     if (type in RaftMarkdownOwningTypes) {
-        result += startOffset until endOffset
         return
     }
-    children.forEach { child -> child.collectRaftMarkdownOwnedRanges(result) }
+    if (type == RaftMarkdownTokenTypes.REFERENCE) {
+        result +=
+            RaftMarkdownInlineRef(
+                sourceText = content.substring(startOffset, endOffset),
+                startOffset = startOffset,
+                endOffset = endOffset,
+            )
+        return
+    }
+    children.forEach { child -> child.collectRaftMarkdownInlineRefs(content, result) }
 }
 
 private val RaftMarkdownOwningTypes: Set<IElementType> =
@@ -72,7 +66,21 @@ private val RaftMarkdownOwningTypes: Set<IElementType> =
         GFMTokenTypes.GFM_AUTOLINK,
     )
 
-private fun IntRange.overlaps(other: IntRange): Boolean = first <= other.last && other.first <= last
+internal fun String.raftMarkdownSyntaxCandidateRanges(start: Int = 0, end: Int = length): List<IntRange> {
+    val result = mutableListOf<IntRange>()
+    var cursor = start.coerceAtLeast(0)
+    val boundedEnd = end.coerceAtMost(length)
+    while (cursor < boundedEnd) {
+        val range = raftInlineRefRange(cursor)?.takeIf { it.last < boundedEnd }
+        if (range != null) {
+            result += range
+            cursor = range.last + 1
+        } else {
+            cursor++
+        }
+    }
+    return result
+}
 
 private fun String.raftInlineRefRange(start: Int): IntRange? {
     if (start >= length || (this[start] != '#' && this[start] != '@')) return null
