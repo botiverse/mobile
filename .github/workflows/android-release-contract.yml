@@ -4,21 +4,25 @@ on:
   pull_request:
     paths:
       - ".github/workflows/android-release.yml"
+      - ".github/workflows/android-update-qa.yml"
       - ".github/workflows/android-release-contract.yml"
       - "scripts/*android*hands*"
       - "scripts/*android*quiver*"
       - "docs/android-hands-release-*"
       - "docs/android-release-sop.md"
+      - "docs/qa-acceptance/android-app-update/**"
   push:
     branches:
       - main
     paths:
       - ".github/workflows/android-release.yml"
+      - ".github/workflows/android-update-qa.yml"
       - ".github/workflows/android-release-contract.yml"
       - "scripts/*android*hands*"
       - "scripts/*android*quiver*"
       - "docs/android-hands-release-*"
       - "docs/android-release-sop.md"
+      - "docs/qa-acceptance/android-app-update/**"
   workflow_dispatch:
 
 permissions:

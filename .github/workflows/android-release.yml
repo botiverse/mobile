@@ -7,8 +7,107 @@ name: Android Release
 # happen only after the release owner approves reviewed notes and smoke results.
 
 on:
+  workflow_call:
+    inputs:
+      source_sha:
+        description: "Immutable source commit to check out; empty uses the caller commit"
+        required: false
+        type: string
+        default: ""
+      artifact_name:
+        description: "Unique signed APK artifact name"
+        required: false
+        type: string
+        default: "android-release-apk"
+      version_major:
+        required: true
+        type: string
+      version_minor:
+        required: true
+        type: string
+      version_patch:
+        required: true
+        type: string
+      version_build:
+        required: true
+        type: string
+      version_suffix:
+        required: false
+        type: string
+        default: ""
+      quiver_channel:
+        required: false
+        type: string
+        default: "main"
+      android_variant:
+        required: false
+        type: string
+        default: "release"
+      release_mode:
+        required: false
+        type: string
+        default: "draft"
+      publish_hands:
+        description: "Canonical Hands draft switch; reusable callers should keep this false for build-only use"
+        required: false
+        type: string
+        default: "false"
+      publish_quiver:
+        description: "Deprecated compatibility alias; reusable callers should leave this empty"
+        required: false
+        type: string
+        default: ""
+      create_share_page:
+        required: false
+        type: boolean
+        default: false
+      share_ttl_seconds:
+        required: false
+        type: string
+        default: ""
+    outputs:
+      source_sha:
+        value: ${{ jobs.build_android_release.outputs.source_sha }}
+      artifact_name:
+        value: ${{ jobs.build_android_release.outputs.artifact_name }}
+      artifact_id:
+        value: ${{ jobs.build_android_release.outputs.artifact_id }}
+      apk_member:
+        value: ${{ jobs.build_android_release.outputs.apk_member }}
+      apk_sha256:
+        value: ${{ jobs.build_android_release.outputs.apk_sha256 }}
+      apk_size:
+        value: ${{ jobs.build_android_release.outputs.apk_size }}
+      version_code:
+        value: ${{ jobs.build_android_release.outputs.version_code }}
+      version_name:
+        value: ${{ jobs.build_android_release.outputs.version_name }}
+      package_id:
+        value: ${{ jobs.build_android_release.outputs.package_id }}
+      min_sdk:
+        value: ${{ jobs.build_android_release.outputs.min_sdk }}
+      target_sdk:
+        value: ${{ jobs.build_android_release.outputs.target_sdk }}
+      signer_cert_sha256_json:
+        value: ${{ jobs.build_android_release.outputs.signer_cert_sha256_json }}
+      verified_v2:
+        value: ${{ jobs.build_android_release.outputs.verified_v2 }}
+      verified_v3:
+        value: ${{ jobs.build_android_release.outputs.verified_v3 }}
+      verified_v31:
+        value: ${{ jobs.build_android_release.outputs.verified_v31 }}
   workflow_dispatch:
     inputs:
+      source_sha:
+        description: "Immutable source commit to check out; empty uses the selected workflow ref"
+        required: false
+        type: string
+        default: ""
+      artifact_name:
+        description: "Signed APK artifact name"
+        required: false
+        type: string
+        default: "android-release-apk"
       version_major:
         description: "versionName major (X)"
         required: true
@@ -152,16 +251,41 @@ jobs:
     needs: resolve
     timeout-minutes: 30
     outputs:
+      source_sha: ${{ steps.source.outputs.source_sha }}
+      artifact_name: ${{ inputs.artifact_name }}
+      artifact_id: ${{ steps.upload-apk.outputs.artifact-id }}
+      apk_member: ${{ steps.verify.outputs.member }}
       apk_path: ${{ steps.locate.outputs.apk_path }}
       apk_sha256: ${{ steps.verify.outputs.sha256 }}
       apk_size: ${{ steps.verify.outputs.size }}
       version_code: ${{ steps.resolve.outputs.version_code }}
       version_name: ${{ steps.resolve.outputs.version_name }}
+      package_id: ${{ steps.verify.outputs.package_id }}
+      min_sdk: ${{ steps.verify.outputs.min_sdk }}
+      target_sdk: ${{ steps.verify.outputs.target_sdk }}
+      signer_cert_sha256_json: ${{ steps.verify.outputs.signer_cert_sha256_json }}
+      verified_v2: ${{ steps.verify.outputs.verified_v2 }}
+      verified_v3: ${{ steps.verify.outputs.verified_v3 }}
+      verified_v31: ${{ steps.verify.outputs.verified_v31 }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          ref: ${{ inputs.source_sha || github.sha }}
+
+      - name: Verify immutable source
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTUAL="$(git rev-parse HEAD)"
+          REQUESTED="${{ inputs.source_sha }}"
+          if [ -n "${REQUESTED}" ] && [ "${ACTUAL}" != "${REQUESTED}" ]; then
+            echo "Requested source ${REQUESTED}, checked out ${ACTUAL}" >&2
+            exit 1
+          fi
+          echo "source_sha=${ACTUAL}" >> "$GITHUB_OUTPUT"
 
       - name: Setup JDK 17
         uses: actions/setup-java@v5
@@ -344,14 +468,39 @@ jobs:
           "${BT}/zipalign" -c -p 4 "${APK}"
           "${BT}/apksigner" verify --verbose --print-certs "${APK}" 2>&1 | tee apksigner-verify.log
           "${BT}/aapt" dump badging "${APK}" 2>&1 | tee aapt-badging.log
+          PACKAGE_ID="$(sed -n "s/^package: name='\([^']*\)'.*/\1/p" aapt-badging.log | head -n 1)"
+          [ -n "${PACKAGE_ID}" ] || { echo "Unable to read package id" >&2; exit 1; }
+          MIN_SDK="$(sed -n "s/^sdkVersion:'\([^']*\)'.*/\1/p" aapt-badging.log | head -n 1)"
+          TARGET_SDK="$(sed -n "s/^targetSdkVersion:'\([^']*\)'.*/\1/p" aapt-badging.log | head -n 1)"
+          [[ "${MIN_SDK}" =~ ^[0-9]+$ ]] || { echo "Unable to read minSdk" >&2; exit 1; }
+          [[ "${TARGET_SDK}" =~ ^[0-9]+$ ]] || { echo "Unable to read targetSdk" >&2; exit 1; }
+          # apksigner prints newest/current first. Reverse it so the machine
+          # contract is the canonical oldest-to-current lineage order.
+          SIGNERS_JSON="$(awk -F ': ' '/certificate SHA-256 digest:/ {print $2}' apksigner-verify.log | jq -Rsc 'split("\n") | map(select(length > 0)) | reverse')"
+          [ "$(printf '%s' "${SIGNERS_JSON}" | jq 'length')" -gt 0 ] || { echo "Unable to read signer digest" >&2; exit 1; }
+          V2="$(awk -F ': ' '/Verified using v2 scheme/ {print $2}' apksigner-verify.log | tail -n 1)"
+          V3="$(awk -F ': ' '/Verified using v3 scheme/ {print $2}' apksigner-verify.log | tail -n 1)"
+          V31="$(awk -F ': ' '/Verified using v3.1 scheme/ {print $2}' apksigner-verify.log | tail -n 1)"
+          [ "${V2}" = "true" ] || { echo "APK v2 verification is not true" >&2; exit 1; }
+          [ "${V3}" = "true" ] || { echo "APK v3 verification is not true" >&2; exit 1; }
+          [ "${V31}" = "true" ] || { echo "APK v3.1 verification is not true" >&2; exit 1; }
           echo "apk_path=${APK}" >> "$GITHUB_OUTPUT"
+          echo "member=$(basename "${APK}")" >> "$GITHUB_OUTPUT"
           echo "sha256=$(sha256sum "${APK}" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
           echo "size=$(stat -c %s "${APK}" 2>/dev/null || stat -f %z "${APK}")" >> "$GITHUB_OUTPUT"
+          echo "package_id=${PACKAGE_ID}" >> "$GITHUB_OUTPUT"
+          echo "min_sdk=${MIN_SDK}" >> "$GITHUB_OUTPUT"
+          echo "target_sdk=${TARGET_SDK}" >> "$GITHUB_OUTPUT"
+          echo "signer_cert_sha256_json=${SIGNERS_JSON}" >> "$GITHUB_OUTPUT"
+          echo "verified_v2=${V2}" >> "$GITHUB_OUTPUT"
+          echo "verified_v3=${V3}" >> "$GITHUB_OUTPUT"
+          echo "verified_v31=${V31}" >> "$GITHUB_OUTPUT"
 
       - name: Upload APK as workflow artifact
+        id: upload-apk
         uses: actions/upload-artifact@v4
         with:
-          name: android-release-apk
+          name: ${{ inputs.artifact_name }}
           path: ${{ steps.locate.outputs.apk_path }}
           if-no-files-found: error
           retention-days: 14
@@ -361,7 +510,7 @@ jobs:
         # this as a proguard-mapping build asset.
         uses: actions/upload-artifact@v4
         with:
-          name: android-release-mapping
+          name: ${{ inputs.artifact_name }}-mapping
           path: compose/androidApp/build/outputs/mapping/${{ needs.resolve.outputs.android_variant }}/mapping.txt
           if-no-files-found: warn
           retention-days: 14
@@ -369,7 +518,7 @@ jobs:
       - name: Upload exact native symbols as workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: android-release-native-symbols
+          name: ${{ inputs.artifact_name }}-native-symbols
           path: ${{ steps.native-symbols.outputs.archive }}
           if-no-files-found: error
           retention-days: 14
@@ -429,7 +578,7 @@ jobs:
       - name: Download signed APK
         uses: actions/download-artifact@v4
         with:
-          name: android-release-apk
+          name: ${{ inputs.artifact_name }}
           path: dist/
 
       - name: Download R8 mapping (optional)
@@ -438,13 +587,13 @@ jobs:
         continue-on-error: true
         uses: actions/download-artifact@v4
         with:
-          name: android-release-mapping
+          name: ${{ inputs.artifact_name }}-mapping
           path: compose/androidApp/build/outputs/mapping/${{ needs.resolve.outputs.android_variant }}/
 
       - name: Download exact native symbols
         uses: actions/download-artifact@v4
         with:
-          name: android-release-native-symbols
+          name: ${{ inputs.artifact_name }}-native-symbols
           path: dist/native-symbols/
 
       - name: Install Hands CLI (npm)

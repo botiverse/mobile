@@ -32,8 +32,10 @@ if env SLOCK_PUBLISH_HANDS=true SLOCK_PUBLISH_QUIVER=false \
 fi
 
 ruby -e '
+  require "json"
   require "yaml"
   workflow = YAML.load_file(".github/workflows/android-release.yml")
+  update_workflow = YAML.load_file(".github/workflows/android-update-qa.yml")
   YAML.load_file(".github/workflows/android-release-contract.yml")
 
   inputs = workflow.fetch(true).fetch("workflow_dispatch").fetch("inputs")
@@ -51,6 +53,53 @@ ruby -e '
   raise "missing independent share step" unless share_step
   unless share_step.fetch("if") == "needs.resolve.outputs.create_share_page == '\''true'\''"
     raise "share step is not independently gated"
+  end
+
+  call_inputs = workflow.fetch(true).fetch("workflow_call").fetch("inputs")
+  raise "reusable release workflow lacks source_sha" unless call_inputs.key?("source_sha")
+  raise "reusable release workflow lacks unique artifact_name" unless call_inputs.key?("artifact_name")
+
+  update_inputs = update_workflow.fetch(true).fetch("workflow_dispatch").fetch("inputs")
+  raise "update workflow lacks required source_sha" unless update_inputs.fetch("source_sha").fetch("required")
+  update_jobs = update_workflow.fetch("jobs")
+  %w[validate baseline target manifest].each do |name|
+    raise "update workflow missing #{name} job" unless update_jobs.key?(name)
+  end
+  %w[baseline target].each do |name|
+    call = update_jobs.fetch(name)
+    raise "#{name} does not reuse android-release" unless call.fetch("uses") == "./.github/workflows/android-release.yml"
+    raise "#{name} can publish Hands" unless call.fetch("with").fetch("publish_hands") == "false"
+    raise "#{name} is not release variant" unless call.fetch("with").fetch("android_variant") == "release"
+    raise "#{name} is not debug carrier" unless call.fetch("with").fetch("quiver_channel") == "debug"
+  end
+  manifest_run = update_jobs.fetch("manifest").fetch("steps").find { |step| step["name"] == "Create immutable build-pair manifest" }.fetch("run")
+  raise "update manifest does not fail closed on external writes" unless manifest_run.include?("external_writes: false")
+  raise "update manifest lacks ordered signer lineage" unless manifest_run.include?("signer_lineage_sha256")
+  raise "update manifest lacks v3.1 verification" unless manifest_run.include?("verified_v31: true")
+
+  release_verify = jobs.fetch("build_android_release").fetch("steps").find { |step| step["name"] == "Verify APK" }.fetch("run")
+  raise "release identity output does not canonicalize lineage oldest-to-current" unless release_verify.include?("| reverse")
+
+  fixture_schema = JSON.parse(File.read("docs/qa-acceptance/android-app-update/android-app-update-fixture.v1.schema.json"))
+  required = fixture_schema.fetch("required")
+  %w[baseline target distribution execution rollback].each do |name|
+    raise "fixture schema does not require #{name}" unless required.include?(name)
+  end
+  coords = fixture_schema.fetch("properties").fetch("execution").fetch("properties").fetch("required_coordinates").fetch("const")
+  raise "fixture schema does not freeze Android 12 hard + Android 14 control" unless coords == %w[android12-update-hard android14-update-control]
+  lineage = fixture_schema.fetch("$defs").fetch("artifact").fetch("properties").fetch("signer_lineage_sha256")
+  raise "signer lineage ordering is undocumented" unless lineage.fetch("description").include?("oldest-to-current")
+
+  full_case = YAML.load_file("docs/qa-acceptance/android-app-update/android-app-update-full-success.v1.yaml")
+  expected_states = full_case.fetch("android").fetch("carrier_contract").fetch("expected_ui_states")
+  raise "full update case does not require Retry" unless expected_states.include?("Retry")
+  step_ids = full_case.fetch("android").fetch("steps").map { |step| step.fetch("id") }
+  %w[inject-network-failure verify-retry].each do |id|
+    raise "full update case missing #{id} step" unless step_ids.include?(id)
+  end
+  assertion_ids = full_case.fetch("assertions").map { |assertion| assertion.fetch("id") }
+  %w[download-failure-actionable-retry retry-target-b-exact].each do |id|
+    raise "full update case missing #{id} assertion" unless assertion_ids.include?(id)
   end
 '
 
