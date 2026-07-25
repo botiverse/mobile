@@ -23257,7 +23257,7 @@ internal fun <T> SlockForwardTargetPicker(
                     }
                     SlockModalFullWidthActionButton(
                         label = stringResource(MR.strings.common_continue),
-                        icon = SlockLucideIconName.ArrowRight,
+                        icon = SlockLucideIconName.ChevronRight,
                         onClick = { onIntent(SlockForwardTargetPickerIntent.Continue) },
                         enabled = state.interactive
                     )

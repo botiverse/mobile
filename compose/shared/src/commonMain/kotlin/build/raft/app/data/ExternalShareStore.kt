@@ -70,6 +70,13 @@ internal data class ExternalShareSendRequest(
     val comment: String
 )
 
+internal data class ExternalShareSendAuthority(
+    val accountId: String,
+    val accessToken: String,
+    val refreshToken: String,
+    val serverId: String
+)
+
 internal interface ExternalShareSender {
     suspend fun send(request: ExternalShareSendRequest): DataResult<Unit>
 }
@@ -81,27 +88,42 @@ internal interface ExternalShareSender {
 internal class RealExternalShareSender(
     private val targetRepository: ForwardMessageTargetRepository,
     private val uploadAttachments: suspend (AttachmentUploadRequest) -> DataResult<AttachmentUploadResult>,
-    private val sendMessage: suspend (ChannelId, String, List<AttachmentId>, String) -> DataResult<SendMessageResult>
+    private val sendMessage: suspend (ChannelId, String, List<AttachmentId>, String) -> DataResult<SendMessageResult>,
+    private val currentAuthority: suspend () -> ExternalShareSendAuthority?
 ) : ExternalShareSender {
     constructor(
         targetRepository: ForwardMessageTargetRepository,
-        threadRepository: ThreadRepository
+        conversationRepository: ConversationRepository,
+        sessionStore: SlockAuthSessionStore
     ) : this(
         targetRepository = targetRepository,
-        uploadAttachments = threadRepository::uploadAttachments,
+        uploadAttachments = conversationRepository::uploadAttachments,
         sendMessage = { channelId, body, attachmentIds, randomId ->
-            threadRepository.sendMessage(
+            conversationRepository.sendMessage(
                 channelId = channelId,
                 body = body,
                 attachmentIds = attachmentIds,
                 randomId = randomId
             )
+        },
+        currentAuthority = {
+            sessionStore.readSession()?.let { session ->
+                val serverId = session.currentServerId?.takeIf(String::isNotBlank) ?: return@let null
+                ExternalShareSendAuthority(
+                    accountId = session.user.id,
+                    accessToken = session.accessToken,
+                    refreshToken = session.refreshToken,
+                    serverId = serverId
+                )
+            }
         }
     )
 
     override suspend fun send(request: ExternalShareSendRequest): DataResult<Unit> {
         val sourceServerId = request.sourceServerId.trim().takeIf { it.isNotBlank() }
             ?: return DataResult.Error(ScreenError("external_share_source_server_invalid", retryable = false))
+        val authority = currentAuthority()?.takeIf { it.serverId == sourceServerId }
+            ?: return DataResult.Error(ScreenError("external_share_authority_changed", retryable = true))
         val resolved =
             targetRepository.resolveTargetChannel(
                 sourceServerId = ServerId(sourceServerId),
@@ -136,12 +158,38 @@ internal class RealExternalShareSender(
                     is DataResult.NoPermission -> return DataResult.NoPermission(uploaded.blocker)
                 }
             }
-        return sendMessage(
-            destination.channelId,
+        if (currentAuthority() != authority) {
+            return DataResult.Error(ScreenError("external_share_authority_changed", retryable = true))
+        }
+        val sendDestination =
+            when (
+                val refreshed =
+                    targetRepository.resolveTargetChannel(
+                        sourceServerId = ServerId(sourceServerId),
+                        target = request.target,
+                        allowJoin = false
+                    )
+            ) {
+                is DataResult.Content -> refreshed.data
+                is DataResult.Empty -> return DataResult.Empty(refreshed.reason)
+                is DataResult.Error -> return DataResult.Error(refreshed.error)
+                is DataResult.NoPermission -> return DataResult.NoPermission(refreshed.blocker)
+            }
+        if (sendDestination != destination || currentAuthority() != authority) {
+            return DataResult.Error(ScreenError("external_share_authority_changed", retryable = true))
+        }
+        val sent = sendMessage(
+            sendDestination.channelId,
             request.externalShareMessageBody(),
             attachmentIds,
             request.deliveryId
-        ).mapContent { Unit }
+        )
+        return when (sent) {
+            is DataResult.Content -> DataResult.Content(Unit)
+            is DataResult.Empty -> DataResult.Empty(sent.reason)
+            is DataResult.Error -> DataResult.Error(sent.error)
+            is DataResult.NoPermission -> DataResult.NoPermission(sent.blocker)
+        }
     }
 }
 
@@ -239,7 +287,11 @@ internal sealed interface ExternalShareIntent {
 
     data object LoadMore : ExternalShareIntent
 
-    data class ToggleTarget(val target: ForwardMessageTarget) : ExternalShareIntent
+    data class ToggleTarget(
+        val target: ForwardMessageTarget,
+        val sessionId: String,
+        val renderGeneration: Int
+    ) : ExternalShareIntent
 
     data object Continue : ExternalShareIntent
 
@@ -284,7 +336,7 @@ internal class ExternalShareStore(
             is ExternalShareIntent.Load -> load(intent.token, intent.serverId)
             is ExternalShareIntent.Search -> search(intent.query)
             ExternalShareIntent.LoadMore -> loadMore()
-            is ExternalShareIntent.ToggleTarget -> toggleTarget(intent.target)
+            is ExternalShareIntent.ToggleTarget -> toggleTarget(intent)
             ExternalShareIntent.Continue -> continueToConfirmation()
             is ExternalShareIntent.RemoveTarget -> removeTarget(intent.targetKey)
             is ExternalShareIntent.ChangeComment -> changeComment(intent.value)
@@ -571,8 +623,12 @@ internal class ExternalShareStore(
                             pageSize = 40
                         )
                     } else {
-                        targetRepository.searchTargets(ServerId(current.serverId), query, 40).mapContent { targets ->
-                            ForwardMessageTargetDirectoryPage(items = targets)
+                        when (val searched = targetRepository.searchTargets(ServerId(current.serverId), query, 40)) {
+                            is DataResult.Content ->
+                                DataResult.Content(ForwardMessageTargetDirectoryPage(items = searched.data))
+                            is DataResult.Empty -> DataResult.Empty(searched.reason)
+                            is DataResult.Error -> DataResult.Error(searched.error)
+                            is DataResult.NoPermission -> DataResult.NoPermission(searched.blocker)
                         }
                     }
                 if (generation != targetGeneration) return@launch
@@ -605,14 +661,30 @@ internal class ExternalShareStore(
         search(current.query, append = true)
     }
 
-    private fun toggleTarget(target: ForwardMessageTarget) {
+    private fun toggleTarget(intent: ExternalShareIntent.ToggleTarget) {
         val current = _state.value as? ExternalShareState.SelectingTargets ?: return
+        val target = intent.target
+        if (
+            intent.sessionId != current.externalShareDirectorySessionId() ||
+            intent.renderGeneration != current.requestGeneration ||
+            current.loading ||
+            current.errorCode != null
+        ) {
+            return
+        }
         if (target.serverId.value != current.serverId) {
             _state.value = current.copy(selectionErrorCode = "external_share_target_server_mismatch")
             return
         }
         val key = target.externalShareSelectionKey()
         val selected = current.selectedTargets
+        val liveTarget = current.targets.firstOrNull { it.externalShareSelectionKey() == key }
+        val selectedTarget = selected.firstOrNull { it.externalShareSelectionKey() == key }
+        if (target != liveTarget && target != selectedTarget) return
+        if (target.requiredAction == ForwardMessageTargetRequiredAction.JoinChannel && selectedTarget == null) {
+            _state.value = current.copy(selectionErrorCode = "external_share_join_confirmation_required")
+            return
+        }
         _state.value =
             if (selected.any { it.externalShareSelectionKey() == key }) {
                 current.copy(
@@ -923,6 +995,7 @@ private fun ExternalShareDraft.isValidFor(
     val selectedKeys = selectedTargets.map { it.externalShareSelectionKey() }
     if (selectedKeys.size != selectedKeys.toSet().size) return false
     if (selectedTargets.any { it.id.isBlank() || it.serverId.value != serverId }) return false
+    if (selectedTargets.any { it.requiredAction == ForwardMessageTargetRequiredAction.JoinChannel }) return false
     return when (stage) {
         ExternalShareDraftStage.SelectingTargets -> deliveries.isEmpty()
         ExternalShareDraftStage.Confirming -> selectedTargets.isNotEmpty() && deliveries.isEmpty()

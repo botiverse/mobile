@@ -7,6 +7,7 @@ import build.raft.app.model.ConversationKind
 import build.raft.app.model.ServerId
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
 import kotlin.test.Test
@@ -22,9 +23,9 @@ class ExternalShareStoreTest {
 
         store.dispatch(ExternalShareIntent.Load("share-1", Server.value))
         yield()
-        store.dispatch(ExternalShareIntent.ToggleTarget(targets[0]))
-        store.dispatch(ExternalShareIntent.ToggleTarget(targets[1]))
-        store.dispatch(ExternalShareIntent.ToggleTarget(targets[2]))
+        store.toggle(targets[0])
+        store.toggle(targets[1])
+        store.toggle(targets[2])
 
         val selecting = assertIs<ExternalShareState.SelectingTargets>(store.state.value)
         assertEquals(listOf("one", "two"), selecting.selectedTargets.map { it.id })
@@ -56,7 +57,7 @@ class ExternalShareStoreTest {
 
         store.dispatch(ExternalShareIntent.Load("share-1", Server.value))
         yield()
-        targets.forEach { store.dispatch(ExternalShareIntent.ToggleTarget(it)) }
+        targets.forEach(store::toggle)
         store.dispatch(ExternalShareIntent.Continue)
         store.dispatch(ExternalShareIntent.ChangeComment("Take a look"))
         store.dispatch(ExternalShareIntent.Send)
@@ -151,6 +152,50 @@ class ExternalShareStoreTest {
     }
 
     @Test
+    fun queuedOldRenderIntentCannotSelectAfterNewQueryAdmission() = runBlocking {
+        val old = target("old")
+        val repository = StubTargetRepository(listOf(old))
+        val store = store(scope = this, targetRepository = repository)
+        store.dispatch(ExternalShareIntent.Load("share-1", Server.value))
+        yield()
+        val rendered = assertIs<ExternalShareState.SelectingTargets>(store.state.value)
+        val queued =
+            ExternalShareIntent.ToggleTarget(
+                target = old,
+                sessionId = rendered.externalShareDirectorySessionId(),
+                renderGeneration = rendered.requestGeneration
+            )
+
+        store.dispatch(ExternalShareIntent.Search("new"))
+        yield()
+        store.dispatch(queued)
+
+        val current = assertIs<ExternalShareState.SelectingTargets>(store.state.value)
+        assertTrue(current.selectedTargets.isEmpty())
+        assertTrue(current.requestGeneration > rendered.requestGeneration)
+        store.clear()
+    }
+
+    @Test
+    fun unjoinedChannelFailsSelectionClosedUntilExplicitJoinUiExists() = runBlocking {
+        val unjoined =
+            target("unjoined").copy(
+                requiredAction = ForwardMessageTargetRequiredAction.JoinChannel,
+                joined = false
+            )
+        val store = store(scope = this, targets = listOf(unjoined))
+        store.dispatch(ExternalShareIntent.Load("share-1", Server.value))
+        yield()
+
+        store.toggle(unjoined)
+
+        val current = assertIs<ExternalShareState.SelectingTargets>(store.state.value)
+        assertTrue(current.selectedTargets.isEmpty())
+        assertEquals("external_share_join_confirmation_required", current.selectionErrorCode)
+        store.clear()
+    }
+
+    @Test
     fun realSenderResolvesUploadsAndBindsStableDeliveryIdToNormalMessageRandomId() = runBlocking {
         val destination = target("destination")
         var uploaded: AttachmentUploadRequest? = null
@@ -183,6 +228,9 @@ class ExternalShareStoreTest {
                     sentAttachments = attachmentIds
                     sentRandomId = randomId
                     DataResult.Error(ScreenError("send_probe", retryable = true))
+                },
+                currentAuthority = {
+                    ExternalShareSendAuthority("account", "access", "refresh", Server.value)
                 }
             )
 
@@ -213,6 +261,59 @@ class ExternalShareStoreTest {
         assertEquals("Comment\n\nSubject\n\nShared body", sentBody)
         assertEquals(listOf(AttachmentId("attachment-1")), sentAttachments)
         assertEquals("delivery-stable", sentRandomId)
+    }
+
+    @Test
+    fun accountSwitchWhileUploadIsParkedPreventsIrreversibleSend() = runBlocking {
+        val destination = target("destination")
+        var authority = ExternalShareSendAuthority("account-a", "access-a", "refresh-a", Server.value)
+        val uploadStarted = CompletableDeferred<Unit>()
+        val releaseUpload = CompletableDeferred<Unit>()
+        var sendCalls = 0
+        val sender =
+            RealExternalShareSender(
+                targetRepository = StubTargetRepository(listOf(destination)),
+                uploadAttachments = {
+                    uploadStarted.complete(Unit)
+                    releaseUpload.await()
+                    DataResult.Content(
+                        AttachmentUploadResult(
+                            listOf(Attachment(AttachmentId("attachment-1"), "photo.png", "image/png", "4 B", 4L))
+                        )
+                    )
+                },
+                sendMessage = { _, _, _, _ ->
+                    sendCalls += 1
+                    DataResult.Error(ScreenError("unexpected_send"))
+                },
+                currentAuthority = { authority }
+            )
+        val sending =
+            async {
+                sender.send(
+                    ExternalShareSendRequest(
+                        attemptId = 1,
+                        deliveryId = "delivery-stable",
+                        sourceServerId = Server.value,
+                        envelope =
+                            ExternalShareEnvelope(
+                                "share-1",
+                                1L,
+                                "android",
+                                items = listOf(ExternalShareItem("private/photo", "photo.png", "image/png", 4L))
+                            ),
+                        target = destination,
+                        comment = ""
+                    )
+                )
+            }
+        uploadStarted.await()
+        authority = ExternalShareSendAuthority("account-b", "access-b", "refresh-b", Server.value)
+        releaseUpload.complete(Unit)
+
+        val result = assertIs<DataResult.Error>(sending.await())
+        assertEquals("external_share_authority_changed", result.error.code)
+        assertEquals(0, sendCalls)
     }
 
     @Test
@@ -420,6 +521,17 @@ class ExternalShareStoreTest {
             normalizedQuery = "",
             authorityRevision = "revision"
         )
+
+    private fun ExternalShareStore.toggle(target: ForwardMessageTarget) {
+        val current = assertIs<ExternalShareState.SelectingTargets>(state.value)
+        dispatch(
+            ExternalShareIntent.ToggleTarget(
+                target = target,
+                sessionId = current.externalShareDirectorySessionId(),
+                renderGeneration = current.requestGeneration
+            )
+        )
+    }
 
     private open class StubTargetRepository(
         private val targets: List<ForwardMessageTarget>

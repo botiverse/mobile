@@ -3,6 +3,7 @@ package build.raft.app
 import androidx.compose.runtime.Composable
 import build.raft.app.data.ExternalShareIntent
 import build.raft.app.data.ExternalShareState
+import build.raft.app.data.externalShareDirectorySessionId
 import build.raft.app.data.externalShareSelectionKey
 
 internal data class ExternalSharePickerSurface(
@@ -78,13 +79,27 @@ internal fun ExternalShareState.SelectingTargets.toExternalShareIntent(
         is SlockForwardTargetPickerIntent.RemoveSelection ->
             selectedTargets
                 .firstOrNull { it.externalShareSelectionKey() == intent.stableKey }
-                ?.let(ExternalShareIntent::ToggleTarget)
+                ?.let { target ->
+                    ExternalShareIntent.ToggleTarget(
+                        target = target,
+                        sessionId = externalShareDirectorySessionId(),
+                        renderGeneration = requestGeneration
+                    )
+                }
         is SlockForwardTargetPickerIntent.TargetSelected -> {
             if (loading || errorCode != null || intent.renderGeneration != requestGeneration) {
                 null
             } else {
                 val live = targets.firstOrNull { it.externalShareSelectionKey() == intent.item.stableKey }
-                if (live == intent.item.payload) ExternalShareIntent.ToggleTarget(live) else null
+                if (live == intent.item.payload) {
+                    ExternalShareIntent.ToggleTarget(
+                        target = live,
+                        sessionId = externalShareDirectorySessionId(),
+                        renderGeneration = requestGeneration
+                    )
+                } else {
+                    null
+                }
             }
         }
     }
