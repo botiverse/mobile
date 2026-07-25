@@ -356,6 +356,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Only report direct Text/Button/toast/dialog sinks; omit property/model candidates.",
     )
+    parser.add_argument(
+        "--catalog-backed-only",
+        action="store_true",
+        help="Only report literals that exactly match an existing MR/base value.",
+    )
     parser.add_argument("--fail-on-findings", action="store_true")
     return parser
 
@@ -380,6 +385,8 @@ def main(argv: list[str] | None = None) -> int:
     findings = [replace(item, catalog_keys=mr_values.get(item.literal, ())) for item in findings]
     if args.direct_only:
         findings = [item for item in findings if is_direct_sink(item.sink)]
+    if args.catalog_backed_only:
+        findings = [item for item in findings if item.catalog_keys]
     allowlist_path = args.allowlist if args.allowlist.is_absolute() else repo_root / args.allowlist
     allowlist = parse_allowlist(allowlist_path)
     before_suppression = len(findings)
