@@ -864,12 +864,6 @@ internal class SharedThreadComposerDraftStore(
                     executingMentionActionStates = current.executingMentionActionStates - intent.resolutionId
                 )
             is SharedThreadComposerDraftIntent.AddUploadedAttachments -> {
-                val fallbackReplacedAttachmentIds =
-                    if (intent.replacedAttachmentIdsByUploadedId.isEmpty()) {
-                        intent.replacedAttachmentIds
-                    } else {
-                        emptySet()
-                    }
                 val visibleAttachments =
                     intent.attachments
                         .filterNot { attachment ->
@@ -880,15 +874,37 @@ internal class SharedThreadComposerDraftStore(
                     visibleAttachments
                         .mapNotNull { attachment -> intent.replacedAttachmentIdsByUploadedId[attachment.id] }
                         .toSet()
+                val nextUploadedAttachments =
+                    if (intent.replacedAttachmentIdsByUploadedId.isEmpty()) {
+                        current.uploadedAttachments + visibleAttachments
+                    } else {
+                        val replacementsBySourceId =
+                            visibleAttachments
+                                .mapNotNull { attachment ->
+                                    intent.replacedAttachmentIdsByUploadedId[attachment.id]
+                                        ?.let { sourceId -> sourceId to attachment }
+                                }
+                                .groupBy(
+                                    keySelector = { (sourceId, _) -> sourceId },
+                                    valueTransform = { (_, attachment) -> attachment }
+                                )
+                        val unmappedAttachments =
+                            visibleAttachments.filter { attachment ->
+                                attachment.id !in intent.replacedAttachmentIdsByUploadedId
+                            }
+                        current.uploadedAttachments.flatMap { attachment ->
+                            replacementsBySourceId[attachment.id] ?: listOf(attachment)
+                        } + unmappedAttachments
+                    }
                 current.copy(
                     syncNonce = current.syncNonce + 1,
                     failureLabel = null,
                     removedAttachmentIds =
                         current.removedAttachmentIds +
-                            fallbackReplacedAttachmentIds +
+                            intent.replacedAttachmentIds +
                             replacedVisibleAttachmentIds,
                     uploadedAttachments =
-                        (current.uploadedAttachments + visibleAttachments)
+                        nextUploadedAttachments
                             .distinctBy { attachment -> attachment.id }
                 )
             }
@@ -903,8 +919,12 @@ internal class SharedThreadComposerDraftStore(
                             failureLabel = null,
                             removedAttachmentIds = current.removedAttachmentIds - localAttachmentIds,
                             uploadedAttachments =
-                                (current.uploadedAttachments.filterNot { attachment -> attachment.id in localAttachmentIds } +
-                                    intent.attachments)
+                                (current.uploadedAttachments.map { attachment ->
+                                    intent.attachments.firstOrNull { replacement -> replacement.id == attachment.id }
+                                        ?: attachment
+                                } + intent.attachments.filter { attachment ->
+                                    current.uploadedAttachments.none { existing -> existing.id == attachment.id }
+                                })
                                     .distinctBy { attachment -> attachment.id }
                         )
                     }

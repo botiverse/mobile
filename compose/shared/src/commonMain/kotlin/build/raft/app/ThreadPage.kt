@@ -1150,6 +1150,11 @@ internal fun KuiklyThreadScreenPayload.consumeComposerSeedForSend(
     )
 }
 
+internal fun threadComposerReplacementSlotId(
+    replaceAttachmentId: String?,
+    localAttachmentId: String
+): String = replaceAttachmentId?.takeIf { it.isNotBlank() } ?: localAttachmentId
+
 internal fun KuiklyThreadScreenPayload.toThreadMemberDetailPageData(
     identity: MemberDetailIdentity
 ): JSONObject? {
@@ -6260,15 +6265,17 @@ internal fun SharedThreadRouteContent(
                                         ) {
                                             handleAttachmentUploadFailure("empty_upload_result", setOf(localAttachmentId))
                                         } else {
-                                            replaceAttachmentId?.takeIf { it.isNotBlank() }?.let { id ->
-                                                composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.RemoveAttachment(id))
-                                            }
+                                            val replacementSlotId =
+                                                threadComposerReplacementSlotId(
+                                                    replaceAttachmentId = replaceAttachmentId,
+                                                    localAttachmentId = localAttachmentId
+                                                )
                                             composerDraftViewModel.dispatch(
                                                 SharedThreadComposerDraftIntent.AddUploadedAttachments(
                                                     attachments = uploaded,
                                                     replacedAttachmentIds = setOf(localAttachmentId),
                                                     replacedAttachmentIdsByUploadedId =
-                                                        uploaded.associate { attachment -> attachment.id to localAttachmentId }
+                                                        uploaded.associate { attachment -> attachment.id to replacementSlotId }
                                                 )
                                             )
                                             attachmentUploadFilesByLocalId = attachmentUploadFilesByLocalId - localAttachmentId
