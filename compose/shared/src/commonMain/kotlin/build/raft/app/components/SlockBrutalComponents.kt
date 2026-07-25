@@ -122,13 +122,32 @@ internal enum class SlockMetaChipClickDispatch {
 
 internal fun resolveSlockMetaChipClickDispatch(
     hasPlainClick: Boolean,
-    hasAnchoredClick: Boolean
+    hasAnchoredClick: Boolean,
+    loading: Boolean = false
 ): SlockMetaChipClickDispatch =
     when {
+        loading -> SlockMetaChipClickDispatch.Disabled
         hasPlainClick -> SlockMetaChipClickDispatch.Plain
         hasAnchoredClick -> SlockMetaChipClickDispatch.Anchored
         else -> SlockMetaChipClickDispatch.Disabled
     }
+
+internal fun slockChipInteractionEnabled(enabled: Boolean, loading: Boolean): Boolean =
+    enabled && !loading
+
+@Composable
+internal fun SlockChipLoadingIndicator(
+    modifier: Modifier = Modifier,
+    size: Dp = 12.dp,
+    color: String = SlockColor.TextMutedGrayArgb
+) {
+    SlockLucideIcon(
+        name = SlockLucideIconName.LoaderCircle,
+        modifier = modifier.size(size),
+        color = color,
+        spinning = true
+    )
+}
 
 @Composable
 internal fun SlockAnchoredMetaChip(
@@ -150,7 +169,8 @@ internal fun SlockAnchoredMetaChip(
     verticalPadding: Dp = 2.dp,
     labelFontSize: TextUnit = 10.sp,
     labelLineHeight: TextUnit = 12.sp,
-    pressFeedback: Boolean = onClick != null || onClickWithoutAnchor != null,
+    loading: Boolean = false,
+    pressFeedback: Boolean = !loading && (onClick != null || onClickWithoutAnchor != null),
     anchorPlacement: SlockAnchorPlacement = SlockAnchorPlacement.Tap,
     clickIdentity: Any? = null,
     anchorOwnerIdentity: Any? = null
@@ -158,7 +178,8 @@ internal fun SlockAnchoredMetaChip(
     val clickDispatch =
         resolveSlockMetaChipClickDispatch(
             hasPlainClick = onClickWithoutAnchor != null,
-            hasAnchoredClick = onClick != null
+            hasAnchoredClick = onClick != null,
+            loading = loading
         )
     val resolvedAnchorOwnerIdentity = anchorOwnerIdentity ?: clickIdentity ?: "anchored_meta_chip:$label"
     val geometryAnchor =
@@ -227,8 +248,12 @@ internal fun SlockAnchoredMetaChip(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            trailingIconName?.let {
-                SlockLucideIcon(it, modifier = Modifier.size(trailingIconSize), color = SlockColor.TextMutedGrayArgb)
+            if (loading) {
+                SlockChipLoadingIndicator(size = trailingIconSize)
+            } else {
+                trailingIconName?.let {
+                    SlockLucideIcon(it, modifier = Modifier.size(trailingIconSize), color = SlockColor.TextMutedGrayArgb)
+                }
             }
         }
     }
@@ -1089,6 +1114,7 @@ internal fun SlockToolbarChip(
     trailingIconName: SlockLucideIconName? = null,
     active: Boolean = false,
     enabled: Boolean = true,
+    loading: Boolean = false,
     uppercase: Boolean = true,
     count: Int? = null,
     activeBackgroundColor: Color = SlockColor.AccentCyan,
@@ -1099,7 +1125,8 @@ internal fun SlockToolbarChip(
     reserveActiveShadowSpace: Boolean = false,
     activeShadowColor: Color = SlockColor.ShadowBlack
 ) {
-    val shouldDrawShadow = enabled && active && activeShadowOffset > 0.dp
+    val interactionEnabled = slockChipInteractionEnabled(enabled, loading)
+    val shouldDrawShadow = interactionEnabled && active && activeShadowOffset > 0.dp
     val reservedShadowOffset =
         if (shouldDrawShadow || reserveActiveShadowSpace) {
             activeShadowOffset
@@ -1108,7 +1135,7 @@ internal fun SlockToolbarChip(
         }
     val resolvedBorderColor =
         when {
-            !enabled -> disabledBorderColor
+            !interactionEnabled -> disabledBorderColor
             active -> SlockColor.BorderBlack
             else -> borderColor
         }
@@ -1134,7 +1161,7 @@ internal fun SlockToolbarChip(
                     .background(if (active) activeBackgroundColor else inactiveBackgroundColor, RectangleShape)
                     .border(SlockStroke.Default, resolvedBorderColor, RectangleShape)
                     .slockSquareCorners()
-                    .clickable(enabled = enabled, onClick = onClick)
+                    .clickable(enabled = interactionEnabled, onClick = onClick)
                     .padding(horizontal = 10.dp, vertical = 6.dp),
             contentAlignment = Alignment.Center
         ) {
@@ -1148,7 +1175,7 @@ internal fun SlockToolbarChip(
                 Text(
                     text = if (uppercase) label.uppercase() else label,
                     style = SlockType.TabLabel.copy(fontSize = 11.sp, lineHeight = 14.sp),
-                    color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
+                    color = if (interactionEnabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -1169,8 +1196,12 @@ internal fun SlockToolbarChip(
                         )
                     }
                 }
-                trailingIconName?.let {
-                    SlockLucideIcon(it, modifier = Modifier.size(12.dp), color = "#FF000000")
+                if (loading) {
+                    SlockChipLoadingIndicator(size = 12.dp)
+                } else {
+                    trailingIconName?.let {
+                        SlockLucideIcon(it, modifier = Modifier.size(12.dp), color = "#FF000000")
+                    }
                 }
             }
         }
@@ -1187,6 +1218,7 @@ internal fun SlockAnchoredToolbarChip(
     trailingIconName: SlockLucideIconName? = SlockLucideIconName.ChevronDown,
     active: Boolean = false,
     enabled: Boolean = true,
+    loading: Boolean = false,
     uppercase: Boolean = true,
     count: Int? = null,
     activeBackgroundColor: Color = SlockColor.AccentCyan,
@@ -1217,6 +1249,7 @@ internal fun SlockAnchoredToolbarChip(
             trailingIconName = trailingIconName,
             active = active,
             enabled = enabled,
+            loading = loading,
             uppercase = uppercase,
             count = count,
             activeBackgroundColor = activeBackgroundColor,

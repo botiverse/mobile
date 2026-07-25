@@ -4,6 +4,7 @@ import build.raft.app.base.Utils
 import build.raft.app.markdown.traceMarkdownSection
 import build.raft.app.markdown.traceMarkdownSectionNonComposable
 import build.raft.app.components.SlockBrutalActionButton
+import build.raft.app.components.SlockChipLoadingIndicator
 import build.raft.app.components.SlockCheckbox
 import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.data.SharedMembersLoadStatus
@@ -2575,6 +2576,7 @@ private fun PendingMentionActionRow(
                     },
                     variant = ComposerTextChipVariant.Pink,
                     enabled = !executing,
+                    loading = executingState == "added",
                     leadingIcon = SlockLucideIconName.UserPlus,
                     onClick = onInvite
                 )
@@ -2596,6 +2598,7 @@ private fun PendingMentionActionRow(
                     },
                     variant = ComposerTextChipVariant.White,
                     enabled = !executing,
+                    loading = executingState == "notified",
                     leadingIcon = SlockLucideIconName.BellRing,
                     onClick = onNotify
                 )
@@ -3162,6 +3165,7 @@ private fun ComposerTextChip(
     text: String,
     variant: ComposerTextChipVariant,
     enabled: Boolean = true,
+    loading: Boolean = false,
     leadingIcon: SlockLucideIconName? = null,
     onClick: () -> Unit
 ) {
@@ -3219,13 +3223,23 @@ private fun ComposerTextChip(
     SlockBrutalActionButton(
         label = text,
         onClick = onClick,
-        enabled = enabled,
+        enabled = enabled && !loading,
         backgroundColor = if (variant == ComposerTextChipVariant.Pink) SlockColor.AccentPink else SlockColor.SurfaceWhite,
         minWidth = 0.dp,
         minHeight = 26.dp,
         shadowOffset = 2.dp,
         leadingIcon = leadingIcon,
-        textStyle = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextBlack)
+        textStyle = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextBlack),
+        trailingContent = if (loading) {
+            {
+                SlockChipLoadingIndicator(
+                    size = 12.dp,
+                    color = SlockColor.TextMutedGrayArgb
+                )
+            }
+        } else {
+            null
+        }
     )
 }
 
