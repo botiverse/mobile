@@ -68,6 +68,18 @@ The platform intake must:
 - retain a failed confirmation draft until explicit cancel, successful send, or
   TTL expiry.
 
+The handoff from the native one-shot envelope to the shared draft is a durable
+two-phase transfer: save the draft with `envelopeConsumed=false`, delete the
+native envelope, then save `envelopeConsumed=true`. On restart, an incomplete
+transfer resumes the delete before any product state is shown. A durable draft
+always wins over a redelivered route token, so the same native payload cannot
+create a second share flow.
+
+Persisted recipient rows are candidate snapshots keyed by server + target kind
++ target id. Their display hints may restore the confirmation UI, but the sender
+must re-resolve the canonical destination and current auth/server generation
+before upload or send.
+
 If authentication is required, the token remains local while the normal auth
 flow completes. Auth material is never copied into the share envelope.
 
@@ -102,6 +114,14 @@ Every target execution is keyed by `attemptId + destination identity`.
 Generation/cancellation fences prevent a previous query, destination resolve,
 upload, or send callback from overwriting a newer selection/attempt. A retry
 contains only failed targets; it must never repeat a successful send.
+
+Before the first network call, the store durably records a stable per-envelope,
+per-destination `deliveryId`. Process restoration never auto-sends: `Sent`
+receipts remain terminal and any in-flight/non-terminal delivery becomes an
+explicit failed target. Manual retry reuses the same `deliveryId`, which the
+normal composer sender must bind to its idempotent client message identity.
+This closes the response-loss window where the server accepted a send but the
+client died before persisting the terminal receipt.
 
 There is no cross-target atomicity in the current API. The UI therefore reports
 partial success explicitly rather than claiming all-or-nothing delivery.

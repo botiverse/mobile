@@ -124,6 +124,7 @@ class ExternalShareStoreTest {
 
                         override suspend fun delete(token: String) = Unit
                     },
+                draftRepository = MemoryDraftRepository(),
                 targetRepository =
                     object : StubTargetRepository(emptyList()) {
                         override suspend fun recentTargets(
@@ -147,21 +148,141 @@ class ExternalShareStoreTest {
         store.clear()
     }
 
+    @Test
+    fun firstLoadTransfersEnvelopeToDurableDraftBeforeDeletingOneShotEnvelope() = runBlocking {
+        val events = mutableListOf<String>()
+        val draftRepository =
+            object : ExternalShareDraftRepository {
+                private var draft: ExternalShareDraft? = null
+
+                override suspend fun load(token: String): DataResult<ExternalShareDraft> {
+                    events += "draft_load"
+                    return draft?.let { DataResult.Content(it) }
+                        ?: DataResult.Empty(EmptyReason.NoMessages)
+                }
+
+                override suspend fun save(draft: ExternalShareDraft): DataResult<Unit> {
+                    events += "draft_save_consumed_${draft.envelopeConsumed}"
+                    this.draft = draft
+                    return DataResult.Content(Unit)
+                }
+
+                override suspend fun delete(token: String): DataResult<Unit> = DataResult.Content(Unit)
+            }
+        val envelopeRepository =
+            object : ExternalShareEnvelopeRepository {
+                override suspend fun load(token: String): DataResult<ExternalShareEnvelope> {
+                    events += "envelope_load"
+                    return DataResult.Content(envelope(token))
+                }
+
+                override suspend fun delete(token: String) {
+                    events += "envelope_delete"
+                }
+            }
+        val store =
+            store(
+                scope = this,
+                envelopeRepository = envelopeRepository,
+                draftRepository = draftRepository
+            )
+
+        store.dispatch(ExternalShareIntent.Load("share-1", Server.value))
+        yield()
+
+        assertIs<ExternalShareState.SelectingTargets>(store.state.value)
+        assertEquals(
+            listOf(
+                "draft_load",
+                "envelope_load",
+                "draft_save_consumed_false",
+                "envelope_delete",
+                "draft_save_consumed_true"
+            ),
+            events
+        )
+        store.clear()
+    }
+
+    @Test
+    fun processRestoreNeverAutoSendsAndRetryReusesStableDeliveryId() = runBlocking {
+        val sent = target("sent")
+        val interrupted = target("interrupted")
+        val draftRepository =
+            MemoryDraftRepository(
+                ExternalShareDraft(
+                    envelope = envelope(),
+                    serverId = Server.value,
+                    stage = ExternalShareDraftStage.Delivering,
+                    selectedTargets = listOf(sent, interrupted),
+                    comment = "Restored comment",
+                    deliveries =
+                        listOf(
+                            ExternalShareDelivery(
+                                target = sent,
+                                deliveryId = "delivery-sent",
+                                status = ExternalShareDeliveryStatus.Sent
+                            ),
+                            ExternalShareDelivery(
+                                target = interrupted,
+                                deliveryId = "delivery-interrupted",
+                                status = ExternalShareDeliveryStatus.Sending
+                            )
+                        ),
+                    envelopeConsumed = true
+                )
+            )
+        val calls = mutableListOf<ExternalShareSendRequest>()
+        val sender =
+            object : ExternalShareSender {
+                override suspend fun send(request: ExternalShareSendRequest): DataResult<Unit> {
+                    calls += request
+                    return DataResult.Content(Unit)
+                }
+            }
+        val store =
+            store(
+                scope = this,
+                draftRepository = draftRepository,
+                sender = sender
+            )
+
+        store.dispatch(ExternalShareIntent.Load("share-1", Server.value))
+        yield()
+
+        val restored = assertIs<ExternalShareState.Completed>(store.state.value)
+        assertEquals(listOf("sent"), restored.sentTargets.map { it.id })
+        assertEquals(listOf("interrupted"), restored.failedTargets.map { it.id })
+        assertTrue(calls.isEmpty())
+
+        store.dispatch(ExternalShareIntent.RetryFailed)
+        yield()
+
+        val completed = assertIs<ExternalShareState.Completed>(store.state.value)
+        assertEquals(listOf("sent", "interrupted"), completed.sentTargets.map { it.id })
+        assertEquals(listOf("interrupted"), calls.map { it.target.id })
+        assertEquals(listOf("delivery-interrupted"), calls.map { it.deliveryId })
+        store.clear()
+    }
+
     private fun store(
         scope: CoroutineScope,
         targets: List<ForwardMessageTarget> = emptyList(),
+        envelopeRepository: ExternalShareEnvelopeRepository =
+            object : ExternalShareEnvelopeRepository {
+                override suspend fun load(token: String): DataResult<ExternalShareEnvelope> =
+                    DataResult.Content(envelope(token))
+
+                override suspend fun delete(token: String) = Unit
+            },
+        draftRepository: ExternalShareDraftRepository = MemoryDraftRepository(),
         targetRepository: ForwardMessageTargetRepository = StubTargetRepository(targets),
         sender: ExternalShareSender = SuccessfulSender,
         maximumTargetCount: Int = ExternalShareMaximumTargetCount
     ): ExternalShareStore =
         ExternalShareStore(
-            envelopeRepository =
-                object : ExternalShareEnvelopeRepository {
-                    override suspend fun load(token: String): DataResult<ExternalShareEnvelope> =
-                        DataResult.Content(envelope(token))
-
-                    override suspend fun delete(token: String) = Unit
-                },
+            envelopeRepository = envelopeRepository,
+            draftRepository = draftRepository,
             targetRepository = targetRepository,
             sender = sender,
             scope = scope,
@@ -220,6 +341,28 @@ class ExternalShareStoreTest {
     private object SuccessfulSender : ExternalShareSender {
         override suspend fun send(request: ExternalShareSendRequest): DataResult<Unit> =
             DataResult.Content(Unit)
+    }
+
+    private class MemoryDraftRepository(
+        initialDraft: ExternalShareDraft? = null
+    ) : ExternalShareDraftRepository {
+        var draft: ExternalShareDraft? = initialDraft
+
+        override suspend fun load(token: String): DataResult<ExternalShareDraft> =
+            draft
+                ?.takeIf { it.envelope.token == token }
+                ?.let { DataResult.Content(it) }
+                ?: DataResult.Empty(EmptyReason.NoMessages)
+
+        override suspend fun save(draft: ExternalShareDraft): DataResult<Unit> {
+            this.draft = draft
+            return DataResult.Content(Unit)
+        }
+
+        override suspend fun delete(token: String): DataResult<Unit> {
+            if (draft?.envelope?.token == token) draft = null
+            return DataResult.Content(Unit)
+        }
     }
 
     private companion object {
