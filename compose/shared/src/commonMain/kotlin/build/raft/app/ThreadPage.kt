@@ -810,7 +810,13 @@ internal fun threadHeaderDisplayTitle(
 internal class ComposeThreadPage : build.raft.app.base.BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { ThreadPageScreen(slockPageVisibleResumeTick) }
+        setContent {
+            SlockInputFocusDismissHost { focusDismissModifier ->
+                Box(modifier = focusDismissModifier.fillMaxSize()) {
+                    ThreadPageScreen(slockPageVisibleResumeTick)
+                }
+            }
+        }
     }
 }
 
