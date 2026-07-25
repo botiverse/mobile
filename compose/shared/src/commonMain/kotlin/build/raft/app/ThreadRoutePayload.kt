@@ -1,8 +1,11 @@
 package build.raft.app
 
 import build.raft.app.data.AuthPendingOpenRequest
+import build.raft.app.data.ThreadRouteId
+import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberKind
+import build.raft.app.model.MessageId
 import build.raft.app.model.SlockTimeFormat24Hour
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlinx.serialization.Serializable
@@ -291,6 +294,178 @@ private fun WireThreadLaunchPayload.toThreadLaunchRouteKindsOrNull(): ThreadLaun
         parentChannelKind = parentChannel
     )
 }
+
+/**
+ * Legacy flat-wire adapter for PR-A of Thread launch provenance.
+ *
+ * Production parsing remains unchanged in this PR. New Store/producer migrations use this
+ * adapter and the single typed constructor, so conflicting nullable aliases are rejected
+ * instead of being resolved by a nonblank-first guess.
+ */
+internal fun WireThreadLaunchPayload.toThreadLaunchIdentityConstruction(): ThreadLaunchIdentityConstructionResult {
+    val rawSurfaceKind = surfaceKind.nonBlank()
+        ?: return rejectedThreadLaunchIdentity(ThreadLaunchIdentityConstructionError.MalformedLegacyKind)
+    val surfaceConversationKind = parseConversationKindOrNull(rawSurfaceKind)
+        ?: return rejectedThreadLaunchIdentity(ThreadLaunchIdentityConstructionError.MalformedLegacyKind)
+    val parsedChannelKind =
+        channelKind.nonBlank()?.let { rawKind ->
+            parseConversationKindOrNull(rawKind)
+                ?: return rejectedThreadLaunchIdentity(ThreadLaunchIdentityConstructionError.MalformedLegacyKind)
+        }
+    if (
+        surfaceConversationKind == ConversationKind.DirectMessage &&
+        parsedChannelKind != null &&
+        parsedChannelKind != ConversationKind.DirectMessage &&
+        // Legacy screen payloads left their default `channel` value on the DM surface.
+        parsedChannelKind != ConversationKind.Channel
+    ) {
+        return rejectedThreadLaunchIdentity(ThreadLaunchIdentityConstructionError.ConflictingLegacyIdentity)
+    }
+    if (
+        surfaceConversationKind == ConversationKind.Channel &&
+        parsedChannelKind == ConversationKind.DirectMessage
+    ) {
+        return rejectedThreadLaunchIdentity(ThreadLaunchIdentityConstructionError.ConflictingLegacyIdentity)
+    }
+    if (
+        surfaceConversationKind == ConversationKind.Thread &&
+        parsedChannelKind != null &&
+        // Reply screen payloads likewise retained the render default `channel` value.
+        parsedChannelKind != ConversationKind.Channel
+    ) {
+        return rejectedThreadLaunchIdentity(ThreadLaunchIdentityConstructionError.ConflictingLegacyIdentity)
+    }
+
+    val routeKinds = toThreadLaunchRouteKindsOrNull()
+        ?: return when {
+            surfaceConversationKind == ConversationKind.Thread &&
+                (parentChannelId.nonBlank() == null || parentMessageId.nonBlank() == null) ->
+                rejectedThreadLaunchIdentity(ThreadLaunchIdentityConstructionError.MissingReplyParentPair)
+            else -> rejectedThreadLaunchIdentity(ThreadLaunchIdentityConstructionError.MalformedLegacyKind)
+        }
+
+    return if (routeKinds.isReplyThread) {
+        val parentChannel = parentChannelId.nonBlank()?.let(::ChannelId)
+            ?: return rejectedThreadLaunchIdentity(ThreadLaunchIdentityConstructionError.MissingReplyParentPair)
+        val parentMessage = parentMessageId.nonBlank()?.let(::MessageId)
+            ?: return rejectedThreadLaunchIdentity(ThreadLaunchIdentityConstructionError.MissingReplyParentPair)
+        if (legacyReplyParentKindsConflict()) {
+            return rejectedThreadLaunchIdentity(ThreadLaunchIdentityConstructionError.ConflictingLegacyIdentity)
+        }
+        val parentKind =
+            typedReplyParentConversationKindOrNull(
+                parentSurfaceKind = routeKinds.parentSurfaceKind,
+                parentChannelKind = routeKinds.parentChannelKind
+            ) ?: return rejectedThreadLaunchIdentity(ThreadLaunchIdentityConstructionError.ReplyParentKindMissing)
+        val streamCandidates =
+            listOf(streamChannelId, sourceThreadId, threadId)
+                .mapNotNull { it.nonBlank() }
+                .filterNot { it == parentChannel.value }
+                .distinct()
+        if (streamCandidates.size > 1) {
+            return rejectedThreadLaunchIdentity(ThreadLaunchIdentityConstructionError.ConflictingLegacyIdentity)
+        }
+        val replyStream =
+            streamCandidates.singleOrNull()
+                ?.let { ThreadLaunchReplyStream.Resolved(ChannelId(it)) }
+                ?: ThreadLaunchReplyStream.Unresolved
+        val proofStreamChannelId =
+            when (replyStream) {
+                ThreadLaunchReplyStream.Unresolved -> parentChannel
+                is ThreadLaunchReplyStream.Resolved -> replyStream.channelId
+            }
+        constructThreadLaunchConversationIdentity(
+            routeId =
+                ThreadRouteId.ReplyThread(
+                    parentChannelId = parentChannel,
+                    parentMessageId = parentMessage,
+                    threadChannelId = proofStreamChannelId
+                ),
+            kind = ConversationKind.Thread,
+            parentConversationKind = parentKind,
+            replyStream = replyStream
+        )
+    } else {
+        val channelCandidates =
+            listOf(streamChannelId, sourceThreadId, threadId)
+                .mapNotNull { it.nonBlank() }
+                .distinct()
+        if (channelCandidates.isEmpty()) {
+            return rejectedThreadLaunchIdentity(ThreadLaunchIdentityConstructionError.BlankRouteIdentity)
+        }
+        if (channelCandidates.size > 1) {
+            return rejectedThreadLaunchIdentity(ThreadLaunchIdentityConstructionError.ConflictingLegacyIdentity)
+        }
+        constructThreadLaunchConversationIdentity(
+            routeId = ThreadRouteId.ChannelThread(channelId = ChannelId(channelCandidates.single())),
+            kind = routeKinds.kind,
+            channelType = routeKinds.channelKind,
+            dmPeerIdentity = dmPeerIdentity
+        )
+    }
+}
+
+private fun WireThreadLaunchPayload.legacyReplyParentKindsConflict(): Boolean {
+    val parsedSurface = parseConversationKindOrNull(parentSurfaceKind)
+    val parsedChannel = parseConversationKindOrNull(parentChannelKind)
+    if (parsedSurface == null || parsedChannel == null) return false
+    val surfaceIsDirect = parsedSurface == ConversationKind.DirectMessage
+    val channelIsDirect = parsedChannel == ConversationKind.DirectMessage
+    return surfaceIsDirect != channelIsDirect
+}
+
+private fun rejectedThreadLaunchIdentity(
+    error: ThreadLaunchIdentityConstructionError
+): ThreadLaunchIdentityConstructionResult.Rejected =
+    ThreadLaunchIdentityConstructionResult.Rejected(error)
+
+/** Normalize only identity fields; intent/host preferences stay on the supplied legacy frame. */
+internal fun ThreadLaunchIdentityConstructionResult.Accepted.toNormalizedLegacyWirePayload(
+    template: WireThreadLaunchPayload
+): WireThreadLaunchPayload =
+    when (val route = routeId) {
+        is ThreadRouteId.ChannelThread ->
+            template.copy(
+                surfaceKind = identity.kind.toKuiklySurfaceKind(),
+                channelKind =
+                    when (identity.kind) {
+                        ConversationKind.Channel ->
+                            identity.channelType.normalizedThreadChannelKind()
+                                ?: KuiklyThreadSurfaceKind.Channel
+                        ConversationKind.Joint -> JointChannelKindWireValue
+                        else -> null
+                    },
+                threadId = route.channelId.value,
+                sourceThreadId = null,
+                streamChannelId = null,
+                parentChannelId = null,
+                parentMessageId = null,
+                parentSurfaceKind = null,
+                parentChannelKind = null,
+                dmPeerIdentity = identity.dmPeerIdentity.takeIf {
+                    identity.kind == ConversationKind.DirectMessage
+                }
+            )
+
+        is ThreadRouteId.ReplyThread -> {
+            val resolvedStream = (replyStream as? ThreadLaunchReplyStream.Resolved)?.channelId?.value
+            val parentKind = checkNotNull(parentConversationKind)
+            template.copy(
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                channelKind = null,
+                threadId = null,
+                sourceThreadId = null,
+                streamChannelId = resolvedStream,
+                parentChannelId = route.parentChannelId.value,
+                parentMessageId = route.parentMessageId.value,
+                parentSurfaceKind = parentKind.threadParentSurfaceKindOrNull(),
+                parentChannelKind = parentKind.threadChannelKindWireValue(),
+                dmPeerIdentity = null
+            )
+        }
+
+        is ThreadRouteId.FocusedThread -> error("Focused route is not a launch conversation identity")
+    }
 
 private fun ConversationKind.toLaunchChannelKind(rawKind: String?): String? =
     when (this) {
