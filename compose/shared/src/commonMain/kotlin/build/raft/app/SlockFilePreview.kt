@@ -1456,7 +1456,6 @@ internal fun SlockFilePreviewAttachmentCommentsPanel(
             onSend = onSend,
             onResolve = onResolve,
             onQuote = onQuote,
-            containerTapRequestsFocus = true,
             compact = true
         )
     }

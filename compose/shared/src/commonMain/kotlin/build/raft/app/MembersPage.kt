@@ -5249,8 +5249,7 @@ private fun MembersAgentIssueReportDialog(
                 optional = true,
                 enabled = !busy,
                 maxLines = 4,
-                fieldMinHeight = 88.dp,
-                containerTapRequestsFocus = true
+                fieldMinHeight = 88.dp
             )
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 SlockSectionEyebrow(label = stringResource(MR.strings.member_report_issue_include))

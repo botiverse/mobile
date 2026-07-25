@@ -40,6 +40,7 @@ import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.BoxScope
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.Row
+import com.tencent.kuikly.compose.foundation.layout.fillMaxHeight
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.height
@@ -428,6 +429,7 @@ internal fun SlockBrutalTextField(
     optional: Boolean = false,
     labelSize: SlockFormFieldSize = SlockFormFieldSize.Default,
     enabled: Boolean = true,
+    readOnly: Boolean = false,
     hint: String? = null,
     error: String? = null,
     autoFocus: Boolean = false,
@@ -459,6 +461,7 @@ internal fun SlockBrutalTextField(
             onValueChange = onValueChange,
             placeholder = placeholder,
             enabled = enabled,
+            readOnly = readOnly,
             autoFocus = autoFocus,
             maxLines = maxLines,
             textStyle = textStyle,
@@ -484,6 +487,7 @@ internal fun SlockBrutalInputField(
     placeholder: String,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    readOnly: Boolean = false,
     autoFocus: Boolean = false,
     maxLines: Int = 1,
     textStyle: TextStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
@@ -506,11 +510,12 @@ internal fun SlockBrutalInputField(
     trailingContent: (@Composable () -> Unit)? = null
 ) {
     var focused by remember { mutableStateOf(false) }
-    val isMultiline = maxLines > 1
+    val focusPolicy = slockBrutalInputFocusPolicy(maxLines, enabled, readOnly, containerTapRequestsFocus)
+    val isMultiline = focusPolicy.fillEditorHeight
     val fieldContentAlignment = if (isMultiline) Alignment.TopStart else Alignment.CenterStart
     val rowVerticalAlignment = if (isMultiline) Alignment.Top else Alignment.CenterVertically
     val shadowOffset = if (showShadow) {
-        if ((focused || forceFocused) && enabled) SlockShadow.Brutal else SlockShadow.BrutalSmall
+        if ((focused || forceFocused) && focusPolicy.acceptsFocus) SlockShadow.Brutal else SlockShadow.BrutalSmall
     } else {
         0.dp
     }
@@ -538,10 +543,10 @@ internal fun SlockBrutalInputField(
                     .fillMaxWidth()
                     .height(fieldMinHeight)
                     .slockSquareCorners()
-                    .background(if (enabled) enabledBackgroundColor else disabledBackgroundColor)
+                    .background(if (focusPolicy.acceptsFocus) enabledBackgroundColor else disabledBackgroundColor)
                     .border(SlockStroke.Default, borderColor)
                     .then(
-                        if (containerTapRequestsFocus && enabled) {
+                        if (focusPolicy.containerTapRequestsFocus) {
                             Modifier.clickable { focusRequester.requestFocus() }
                         } else {
                             Modifier
@@ -551,31 +556,37 @@ internal fun SlockBrutalInputField(
             contentAlignment = fieldContentAlignment
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .then(if (focusPolicy.fillEditorHeight) Modifier.fillMaxHeight() else Modifier),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = rowVerticalAlignment
             ) {
                 TextField(
                     value = value,
-                    onValueChange = { if (enabled) onValueChange(it) },
+                    onValueChange = { if (focusPolicy.acceptsFocus) onValueChange(it) },
                     placeholder = placeholder,
                     placeholderColor = placeholderColor,
-                    autoFocus = autoFocus,
+                    autoFocus = autoFocus && focusPolicy.acceptsFocus,
                     onFocus = { focused = true },
                     onBlur = { focused = false },
                     maxLines = maxLines,
                     keyboardOptions = keyboardOptions,
                     keyboardActions = keyboardActions,
-                    enabled = enabled,
-                    readOnly = !enabled,
+                    enabled = focusPolicy.acceptsFocus,
+                    readOnly = !focusPolicy.acceptsFocus,
                     textStyle = textStyle,
                     visualTransformation = visualTransformation,
                     systemNewlineAction = isMultiline,
                     contentAlignment = fieldContentAlignment,
-                    modifier = Modifier.weight(1f),
+                    modifier =
+                        Modifier
+                            .weight(1f)
+                            .then(if (focusPolicy.fillEditorHeight) Modifier.fillMaxHeight() else Modifier),
                     focusRequester = focusRequester
                 )
-                if (showClearWhenNotEmpty && value.isNotEmpty() && enabled) {
+                if (showClearWhenNotEmpty && value.isNotEmpty() && focusPolicy.acceptsFocus) {
                     SlockBrutalIconButton(
                         iconName = SlockLucideIconName.X,
                         onClick = { onClear?.invoke() ?: onValueChange("") },
@@ -596,6 +607,7 @@ internal fun SlockBrutalInputField(
     placeholder: String,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    readOnly: Boolean = false,
     autoFocus: Boolean = false,
     maxLines: Int = 1,
     textStyle: TextStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
@@ -618,11 +630,12 @@ internal fun SlockBrutalInputField(
     trailingContent: (@Composable () -> Unit)? = null
 ) {
     var focused by remember { mutableStateOf(false) }
-    val isMultiline = maxLines > 1
+    val focusPolicy = slockBrutalInputFocusPolicy(maxLines, enabled, readOnly, containerTapRequestsFocus)
+    val isMultiline = focusPolicy.fillEditorHeight
     val fieldContentAlignment = if (isMultiline) Alignment.TopStart else Alignment.CenterStart
     val rowVerticalAlignment = if (isMultiline) Alignment.Top else Alignment.CenterVertically
     val shadowOffset = if (showShadow) {
-        if ((focused || forceFocused) && enabled) SlockShadow.Brutal else SlockShadow.BrutalSmall
+        if ((focused || forceFocused) && focusPolicy.acceptsFocus) SlockShadow.Brutal else SlockShadow.BrutalSmall
     } else {
         0.dp
     }
@@ -650,10 +663,10 @@ internal fun SlockBrutalInputField(
                     .fillMaxWidth()
                     .height(fieldMinHeight)
                     .slockSquareCorners()
-                    .background(if (enabled) enabledBackgroundColor else disabledBackgroundColor)
+                    .background(if (focusPolicy.acceptsFocus) enabledBackgroundColor else disabledBackgroundColor)
                     .border(SlockStroke.Default, borderColor)
                     .then(
-                        if (containerTapRequestsFocus && enabled) {
+                        if (focusPolicy.containerTapRequestsFocus) {
                             Modifier.clickable { focusRequester.requestFocus() }
                         } else {
                             Modifier
@@ -663,31 +676,37 @@ internal fun SlockBrutalInputField(
             contentAlignment = fieldContentAlignment
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .then(if (focusPolicy.fillEditorHeight) Modifier.fillMaxHeight() else Modifier),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = rowVerticalAlignment
             ) {
                 TextField(
                     value = value,
-                    onValueChange = { if (enabled) onValueChange(it) },
+                    onValueChange = { if (focusPolicy.acceptsFocus) onValueChange(it) },
                     placeholder = placeholder,
                     placeholderColor = placeholderColor,
-                    autoFocus = autoFocus,
+                    autoFocus = autoFocus && focusPolicy.acceptsFocus,
                     onFocus = { focused = true },
                     onBlur = { focused = false },
                     maxLines = maxLines,
                     keyboardOptions = keyboardOptions,
                     keyboardActions = keyboardActions,
-                    enabled = enabled,
-                    readOnly = !enabled,
+                    enabled = focusPolicy.acceptsFocus,
+                    readOnly = !focusPolicy.acceptsFocus,
                     textStyle = textStyle,
                     visualTransformation = visualTransformation,
                     systemNewlineAction = isMultiline,
                     contentAlignment = fieldContentAlignment,
-                    modifier = Modifier.weight(1f),
+                    modifier =
+                        Modifier
+                            .weight(1f)
+                            .then(if (focusPolicy.fillEditorHeight) Modifier.fillMaxHeight() else Modifier),
                     focusRequester = focusRequester
                 )
-                if (showClearWhenNotEmpty && value.text.isNotEmpty() && enabled) {
+                if (showClearWhenNotEmpty && value.text.isNotEmpty() && focusPolicy.acceptsFocus) {
                     SlockBrutalIconButton(
                         iconName = SlockLucideIconName.X,
                         onClick = { onClear?.invoke() ?: onValueChange(TextFieldValue("")) },
@@ -699,6 +718,35 @@ internal fun SlockBrutalInputField(
             }
         }
     }
+}
+
+internal data class SlockBrutalInputFocusPolicy(
+    val acceptsFocus: Boolean,
+    val fillEditorHeight: Boolean,
+    val containerTapRequestsFocus: Boolean
+)
+
+/**
+ * Multiline input owns its complete visible editing surface by default.
+ *
+ * Filling the editor height lets the native TextArea receive blank-area taps and place the cursor
+ * from the real touch position. The container fallback covers border/padding gaps with the same
+ * [FocusRequester]. Single-line fields keep their historical opt-in, and disabled/read-only fields
+ * never gain focus through either path.
+ */
+internal fun slockBrutalInputFocusPolicy(
+    maxLines: Int,
+    enabled: Boolean,
+    readOnly: Boolean,
+    explicitContainerTapRequestsFocus: Boolean = false
+): SlockBrutalInputFocusPolicy {
+    val acceptsFocus = enabled && !readOnly
+    val multiline = maxLines > 1
+    return SlockBrutalInputFocusPolicy(
+        acceptsFocus = acceptsFocus,
+        fillEditorHeight = multiline,
+        containerTapRequestsFocus = acceptsFocus && (multiline || explicitContainerTapRequestsFocus)
+    )
 }
 
 @Composable
