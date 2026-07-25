@@ -4618,6 +4618,7 @@ internal fun SharedThreadRouteContent(
     var threadPointerSessionKey by remember(threadInstanceKey, storeScope.shellInstanceId) {
         mutableStateOf(0)
     }
+    val latestRouteActive by rememberUpdatedState(active)
     val latestForegroundRejoinRoomIds by rememberUpdatedState(payload.activeRealtimeRoomIds())
     val latestCoreThreadRealtimeEventHandler by rememberUpdatedState<suspend (RealtimeEvent) -> Unit>(
         { event ->
@@ -4656,9 +4657,30 @@ internal fun SharedThreadRouteContent(
                 ?.grant(serverId ?: return@remember null)
                 ?.let { grant -> grant.scopeLeaseId to grant.serverId }
         }
+
+    fun applyThreadVisibleResumePlan(plan: ThreadVisibleResumePlan) {
+        threadPointerSessionKey = nextThreadPointerSessionKey(threadPointerSessionKey)
+        if (plan.refreshVisibleConversation) {
+            threadViewModel.dispatch(SharedThreadIntent.RefreshLatestAfterVisibleMaxSeq)
+        }
+        if (plan.rejoinVisibleRooms) {
+            realtimeEvents.rejoinChannels(
+                latestForegroundRejoinRoomIds,
+                latestCurrentSession?.currentServerId
+            )
+        }
+    }
+
+    LaunchedEffect(active, threadVisibleResumeGate) {
+        if (active) {
+            threadVisibleResumeGate.onRouteBecameVisible()
+                ?.let(::applyThreadVisibleResumePlan)
+        }
+    }
+
     // Pager lifecycle notifications remain mounted with the route core. A
     // loading -> resolved transition must not reset foreground reconciliation.
-    DisposableEffect(realtimeEvents, active) {
+    DisposableEffect(realtimeEvents) {
         val callbackRef =
             realtimeEvents.addListener { eventData ->
                 val eventDataSnapshot = eventData.toString()
@@ -4684,19 +4706,9 @@ internal fun SharedThreadRouteContent(
                         event == SlockRealtimeNotifyContract.LifecycleVisibleResume ||
                         event == SlockRealtimeNotifyContract.LifecycleVisibleShow
                     ) {
-                        val resumePlan = threadVisibleResumeGate.onVisibleResume(active)
-                        if (resumePlan != null) {
-                            threadPointerSessionKey = nextThreadPointerSessionKey(threadPointerSessionKey)
-                            if (resumePlan.refreshVisibleConversation) {
-                                threadViewModel.dispatch(SharedThreadIntent.RefreshLatestAfterVisibleMaxSeq)
-                            }
-                            if (resumePlan.rejoinVisibleRooms) {
-                                realtimeEvents.rejoinChannels(
-                                    latestForegroundRejoinRoomIds,
-                                    latestCurrentSession?.currentServerId
-                                )
-                            }
-                        }
+                        threadVisibleResumeGate
+                            .onLifecycleVisibleResume(latestRouteActive)
+                            ?.let(::applyThreadVisibleResumePlan)
                     }
                 }
             }
@@ -16615,11 +16627,26 @@ internal class ThreadVisibleResumeGate(
     lifecycleSeen: Boolean
 ) {
     private var lifecycleSeen = lifecycleSeen
+    private var pendingVisibleResume = false
 
-    fun onVisibleResume(routeActive: Boolean): ThreadVisibleResumePlan? {
-        val plan = threadVisibleResumePlan(lifecycleSeen, routeActive)
+    fun onLifecycleVisibleResume(routeActive: Boolean): ThreadVisibleResumePlan? {
+        val wasLifecycleSeen = lifecycleSeen
         lifecycleSeen = true
-        return plan
+        if (!routeActive) {
+            pendingVisibleResume = true
+            return null
+        }
+        pendingVisibleResume = false
+        return threadVisibleResumePlan(wasLifecycleSeen, routeActive = true)
+    }
+
+    fun onRouteBecameVisible(): ThreadVisibleResumePlan? {
+        if (!pendingVisibleResume) return null
+        pendingVisibleResume = false
+        return ThreadVisibleResumePlan(
+            refreshVisibleConversation = true,
+            rejoinVisibleRooms = true
+        )
     }
 }
 

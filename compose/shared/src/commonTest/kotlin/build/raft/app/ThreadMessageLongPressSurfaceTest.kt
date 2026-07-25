@@ -213,14 +213,36 @@ class ThreadMessageLongPressSurfaceTest {
         var conversationRefreshes = 0
         var roomRejoins = 0
 
-        listOf(false, true).forEach { routeActive ->
-            gate.onVisibleResume(routeActive)?.let { plan ->
-                if (plan.refreshVisibleConversation) conversationRefreshes += 1
-                if (plan.rejoinVisibleRooms) roomRejoins += 1
-            }
+        assertNull(gate.onLifecycleVisibleResume(routeActive = false))
+        gate.onRouteBecameVisible()?.let { plan ->
+            if (plan.refreshVisibleConversation) conversationRefreshes += 1
+            if (plan.rejoinVisibleRooms) roomRejoins += 1
         }
+        assertNull(gate.onRouteBecameVisible())
 
         assertEquals(1, conversationRefreshes)
         assertEquals(1, roomRejoins)
+    }
+
+    @Test
+    fun threadAppearanceWithoutPendingResumeDoesNotRefresh() {
+        val gate = ThreadVisibleResumeGate(lifecycleSeen = true)
+
+        assertNull(gate.onRouteBecameVisible())
+        assertNull(gate.onRouteBecameVisible())
+    }
+
+    @Test
+    fun visibleLifecycleResumeDoesNotLeaveWorkForAppearance() {
+        val gate = ThreadVisibleResumeGate(lifecycleSeen = true)
+
+        assertEquals(
+            ThreadVisibleResumePlan(
+                refreshVisibleConversation = true,
+                rejoinVisibleRooms = true
+            ),
+            gate.onLifecycleVisibleResume(routeActive = true)
+        )
+        assertNull(gate.onRouteBecameVisible())
     }
 }
