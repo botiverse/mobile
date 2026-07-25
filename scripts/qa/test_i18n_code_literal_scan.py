@@ -70,6 +70,54 @@ class I18nCodeLiteralScanTest(unittest.TestCase):
     def test_pure_log_line_remains_excluded(self) -> None:
         self.assertEqual([], self.scan(".kt", 'Log.i("tag", "rendered")'))
 
+    def test_template_only_text_is_not_english_but_visible_copy_remains(self) -> None:
+        source = '\n'.join(
+            [
+                'Text("${pageIndex + 1} / ${pages.size}")',
+                'Text("Retry · ${row.code}")',
+            ]
+        )
+        findings = self.scan(".kt", source)
+        self.assertEqual(["Retry · ${row.code}"], [item.literal for item in findings])
+
+    def test_arkts_backtick_templates_and_escape_are_tokenized(self) -> None:
+        source = '\n'.join(
+            [
+                "Text(`${pageIndex + 1}`)",
+                "Text(`Retry · ${row.code}`)",
+                r"Text(`Press \`Run\` now`)",
+            ]
+        )
+        findings = self.scan(".ets", source)
+        self.assertEqual(
+            ["Retry · ${row.code}", "Press `Run` now"],
+            [item.literal for item in findings],
+        )
+
+    def test_kotlin_conditional_template_reports_visible_branch_literals(self) -> None:
+        findings = self.scan(".kt", 'Text("${if (ok) \"Ready\" else \"Failed\"}")')
+        self.assertEqual(["Ready", "Failed"], [item.literal for item in findings])
+
+    def test_machine_branch_and_comparison_tokens_are_not_direct_copy(self) -> None:
+        source = '\n'.join(
+            [
+                "Text(",
+                "    text = when (mode) {",
+                '        "create" -> stringResource(MR.strings.create)',
+                '        "empty" -> stringResource(MR.strings.empty)',
+                '        else -> "Visible English"',
+                "    },",
+                ")",
+                'Text(text = if (title.equals("workspace", ignoreCase = true)) "Workspace" else title)',
+                'Text(text = if (status == "failed") "Failure" else status)',
+            ]
+        )
+        findings = self.scan(".kt", source)
+        self.assertEqual(
+            ["Visible English", "Workspace", "Failure"],
+            [item.literal for item in findings],
+        )
+
     def test_nearby_multiline_ui_argument_is_medium_confidence(self) -> None:
         source = '\n'.join(
             [
@@ -95,8 +143,40 @@ class I18nCodeLiteralScanTest(unittest.TestCase):
                 encoding="utf-8",
             )
             entries = scanner.parse_allowlist(path)
-        self.assertIn(("Probe.kt", "Smoke"), entries)
-        self.assertEqual("internal probe", entries[("Probe.kt", "Smoke")].reason)
+        self.assertIn(("Probe.kt", "Smoke", None), entries)
+        self.assertEqual("internal probe", entries[("Probe.kt", "Smoke", None)].reason)
+
+    def test_allowlist_resolution_is_occurrence_exact(self) -> None:
+        findings = self.scan(".kt", '\n'.join(['Text("Shared label")', 'title = "Shared label"']))
+        reviewed = scanner.ReviewedException(
+            path="SettingsPage.kt",
+            literal="Shared label",
+            reason="internal fixture title",
+            context='title = "Shared label"',
+        )
+        resolved = scanner.resolve_allowlist_occurrences(
+            findings,
+            {(reviewed.path, reviewed.literal, reviewed.context): reviewed},
+        )
+        remaining = [
+            item
+            for item in findings
+            if (item.path, item.line, item.column, item.literal) not in resolved
+        ]
+        self.assertEqual(['Text("Shared label")'], [item.context for item in remaining])
+
+    def test_ambiguous_allowlist_entry_fails_closed(self) -> None:
+        findings = self.scan(".kt", '\n'.join(['Text("Shared label")', 'title = "Shared label"']))
+        reviewed = scanner.ReviewedException(
+            path="SettingsPage.kt",
+            literal="Shared label",
+            reason="ambiguous review",
+        )
+        with self.assertRaisesRegex(ValueError, "matches=2"):
+            scanner.resolve_allowlist_occurrences(
+                findings,
+                {(reviewed.path, reviewed.literal, reviewed.context): reviewed},
+            )
 
     def test_mr_value_index_maps_existing_translation_key(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
