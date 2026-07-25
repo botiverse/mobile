@@ -54,15 +54,21 @@ def check_forward_row_identity(thread_page: str) -> None:
     face: click handlers must consume the render-time captured object, never
     an index into the mutable list. (Behavioral proof: ThreadForwardFlowTest.)
     """
-    if "onSelectTarget(targets[index])" in thread_page:
+    direct_index = re.compile(
+        r"TargetSelected\(\s*(?:item\s*=\s*)?state\.items\[index\]"
+    )
+    captured_row = re.compile(
+        r"TargetSelected\(\s*(?:item\s*=\s*)?rowTarget\b"
+    )
+    if direct_index.search(thread_page):
         raise Violation(
-            "task #803 regression: forward picker onClick re-reads targets[index] "
+            "task #803 regression: forward picker onClick re-reads state.items[index] "
             "at click time; capture the render-time row object instead"
         )
-    if "onSelectTarget(rowTarget)" not in thread_page:
+    if not captured_row.search(thread_page):
         raise Violation(
             "task #803 anchor missing: forward picker rows must pass the "
-            "render-time captured rowTarget to onSelectTarget"
+            "render-time captured rowTarget to TargetSelected"
         )
 
 
@@ -118,8 +124,8 @@ def run(root: Path) -> None:
 
 def self_test() -> None:
     """Every checker must reject its violation shape and accept the good shape."""
-    good_row = "x { val rowTarget = targets[index]\n onClick = { onSelectTarget(rowTarget) } }"
-    bad_row_reread = good_row + "\n onClick = { onSelectTarget(targets[index]) }"
+    good_row = "x { val rowTarget = state.items[index]\n onClick = { TargetSelected(item = rowTarget, renderGeneration = g) } }"
+    bad_row_reread = good_row + "\n onClick = { TargetSelected(item = state.items[index], renderGeneration = g) }"
     bad_row_anchorless = "nothing here"
     check_forward_row_identity(good_row)
     for bad in (bad_row_reread, bad_row_anchorless):
