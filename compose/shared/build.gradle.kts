@@ -83,6 +83,7 @@ kotlin {
     sourceSets {
         val commonMain by getting {
             kotlin.srcDir(rootProject.file("../third_party/kuikly-compose-markdown/src/commonMain/kotlin"))
+            kotlin.srcDir(rootProject.file("../third_party/markdown-parser/src/commonMain/kotlin"))
             kotlin.srcDir(generatedTmmCommonSourceDir.map { it.dir("src") })
             if (slockVisualFixturesEnabled) {
                 kotlin.srcDir("src/visualFixtures/kotlin")
@@ -92,7 +93,6 @@ kotlin {
                 implementation("com.tencent.kuikly-open:core-annotations:${Version.getKuiklyVersion()}")
                 implementation("com.tencent.kuikly-open:compose:${Version.getKuiklyVersion()}")
 
-                implementation("org.jetbrains:markdown:0.7.5")
                 implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2")
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
                 // Common platform-safe monitor used by the synchronous shell-store cache.
@@ -115,6 +115,7 @@ kotlin {
             }
         }
         val androidMain by getting {
+            kotlin.srcDir(rootProject.file("../third_party/markdown-parser/src/jvmMain/kotlin"))
             dependencies {
                 api("com.tencent.kuikly-open:core-render-android:${Version.getKuiklyVersion()}") {
                     isChanging = true
@@ -139,6 +140,7 @@ kotlin {
         val iosSimulatorArm64Main by getting
         val iosMain by creating {
             dependsOn(commonMain)
+            kotlin.srcDir(rootProject.file("../third_party/markdown-parser/src/nativeMain/kotlin"))
             iosX64Main.dependsOn(this)
             iosArm64Main.dependsOn(this)
             iosSimulatorArm64Main.dependsOn(this)

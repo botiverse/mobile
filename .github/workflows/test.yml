@@ -22,6 +22,7 @@ on:
       - "third_party/sqliter"
       - "third_party/sqldelight"
       - "third_party/kuikly-compose-markdown/**"
+      - "third_party/markdown-parser/**"
   push:
     branches:
       - main
@@ -45,6 +46,7 @@ on:
       - "third_party/sqliter"
       - "third_party/sqldelight"
       - "third_party/kuikly-compose-markdown/**"
+      - "third_party/markdown-parser/**"
   workflow_dispatch:
   # Nightly run so the (slow, macOS) iOS compile still runs on a schedule even
   # though it no longer gates pull requests. See the `ios` job's `if:` guard.

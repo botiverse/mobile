@@ -2,10 +2,23 @@ package com.tencent.kuiklybase.markdown.model
 
 import org.intellij.markdown.IElementType
 import org.intellij.markdown.MarkdownTokenTypes
+import org.intellij.markdown.flavours.gfm.GFMConstraints
 import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
+import org.intellij.markdown.flavours.gfm.GFMMarkerProcessor
 import org.intellij.markdown.flavours.gfm.lexer._GFMLexer
+import org.intellij.markdown.flavours.gfm.table.GitHubTableMarkerBlock
+import org.intellij.markdown.flavours.gfm.table.GitHubTableMarkerProvider
 import org.intellij.markdown.lexer.GeneratedLexer
 import org.intellij.markdown.lexer.MarkdownLexer
+import org.intellij.markdown.parser.LookaheadText
+import org.intellij.markdown.parser.MarkerProcessor
+import org.intellij.markdown.parser.MarkerProcessorFactory
+import org.intellij.markdown.parser.ProductionHolder
+import org.intellij.markdown.parser.constraints.MarkdownConstraints
+import org.intellij.markdown.parser.constraints.eatItselfFromString
+import org.intellij.markdown.parser.constraints.extendsPrev
+import org.intellij.markdown.parser.markerblocks.MarkerBlock
+import org.intellij.markdown.parser.markerblocks.MarkerBlockProvider
 
 /**
  * GFM with code-span precedence restored at the lexer boundary.
@@ -22,9 +35,95 @@ import org.intellij.markdown.lexer.MarkdownLexer
  * claim code ranges before URL, email, HTML, or emphasis tokenization.
  */
 class SlockGFMFlavourDescriptor : GFMFlavourDescriptor() {
+    override val markerProcessorFactory: MarkerProcessorFactory =
+        object : MarkerProcessorFactory {
+            override fun createMarkerProcessor(productionHolder: ProductionHolder): MarkerProcessor<*> =
+                GFMMarkerProcessor(
+                    productionHolder = productionHolder,
+                    constraintsBase = GFMConstraints.BASE,
+                    tableMarkerProvider = SlockTableContinuationMarkerProvider(),
+                )
+        }
+
     override fun createInlinesLexer(): MarkdownLexer =
         MarkdownLexer(SlockRaftMarkdownLexer())
 }
+
+/**
+ * Composes Raft's tight-table form with the unmodified stock GFM provider.
+ */
+private class SlockTableContinuationMarkerProvider : MarkerBlockProvider<MarkerProcessor.StateInfo> {
+    private val stock = GitHubTableMarkerProvider()
+
+    override fun createMarkerBlocks(
+        pos: LookaheadText.Position,
+        productionHolder: ProductionHolder,
+        stateInfo: MarkerProcessor.StateInfo,
+    ): List<MarkerBlock> {
+        val constraints = stateInfo.currentConstraints
+        if (stateInfo.nextConstraints == constraints) {
+            val headerCells = slockTableContinuationColumns(pos, constraints)
+            if (headerCells != null) {
+                return listOf(GitHubTableMarkerBlock(pos, constraints, productionHolder, headerCells))
+            }
+        }
+        return stock.createMarkerBlocks(pos, productionHolder, stateInfo)
+    }
+
+    override fun interruptsParagraph(
+        pos: LookaheadText.Position,
+        constraints: MarkdownConstraints,
+    ): Boolean =
+        slockTableContinuationColumns(pos, constraints) != null ||
+            stock.interruptsParagraph(pos, constraints)
+}
+
+/**
+ * Returns the table column count when the current and next lines form Raft's
+ * chat-friendly tight-table continuation, otherwise null.
+ *
+ * The forked parser owns the provider hook; this flavour owns the dialect
+ * policy. Parsing reads the untouched source, so AST offsets remain exact.
+ */
+private fun slockTableContinuationColumns(
+    pos: LookaheadText.Position,
+    constraints: MarkdownConstraints,
+): Int? {
+    val headerCells = tableHeaderCellCount(pos.currentLineFromPosition) ?: return null
+    val separator = nextLineWithoutConstraints(pos, constraints) ?: return null
+    val separatorCells =
+        GitHubTableMarkerProvider.countSecondLineCells(separator.withoutTerminalCarriageReturn())
+    return headerCells.takeIf { it == separatorCells }
+}
+
+private fun tableHeaderCellCount(line: CharSequence): Int? {
+    val header = line.withoutTerminalCarriageReturn()
+    if (!header.contains('|')) return null
+    val split = GitHubTableMarkerBlock.splitByPipes(header)
+    // An escaped pipe is cell content, not a table delimiter. Require at least
+    // one delimiter that the upstream splitter actually consumed.
+    if (split.size < 2) return null
+    val count =
+        split
+            .mapIndexed { index, cell ->
+                (index > 0 && index < split.lastIndex) || cell.isNotBlank()
+            }
+            .count { it }
+    return count.takeIf { it > 0 }
+}
+
+private fun nextLineWithoutConstraints(
+    pos: LookaheadText.Position,
+    constraints: MarkdownConstraints,
+): CharSequence? {
+    val line = pos.nextLine ?: return null
+    val nextConstraints = constraints.applyToNextLine(pos.nextLinePosition())
+    if (!nextConstraints.extendsPrev(constraints)) return null
+    return nextConstraints.eatItselfFromString(line)
+}
+
+private fun CharSequence.withoutTerminalCarriageReturn(): CharSequence =
+    if (lastOrNull() == '\r') subSequence(0, length - 1) else this
 
 /** Inline token emitted by the single Raft Markdown parse entry. */
 object RaftMarkdownTokenTypes {

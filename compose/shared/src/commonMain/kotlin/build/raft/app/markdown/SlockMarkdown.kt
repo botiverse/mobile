@@ -476,53 +476,6 @@ fun String.normalizeThreadMarkdownBody(): String {
 private fun threadEscapedMarkdownLineBreakRegex(): Regex =
     Regex("""\\r?\\n(?:\\r?\\n|[-*+] |\d+\. |> |#|```|~~~)""")
 
-// task #497: web renders a GFM table even when its header row directly follows
-// a text line, but spec-GFM (and the jetbrains parser) treats such rows as
-// paragraph continuation, so Android showed raw pipe text. Insert the missing
-// blank line before a header+separator pair whenever the preceding line is
-// plain text — outside code fences, where pipes stay verbatim.
-internal fun String.ensureThreadMarkdownTableSeparation(): String {
-    if (!contains('|') || !contains('\n')) return this
-    val fenceRanges = threadMarkdownFenceRanges()
-    val lines = split("\n")
-    val insertBefore = mutableSetOf<Int>()
-    var offset = 0
-    val lineStarts = IntArray(lines.size)
-    for (i in lines.indices) {
-        lineStarts[i] = offset
-        offset += lines[i].length + 1
-    }
-    for (i in 1 until lines.size - 1) {
-        val prev = lines[i - 1]
-        if (prev.isBlank() || prev.isThreadMarkdownTableRow()) continue
-        if (!lines[i].isThreadMarkdownTableRow()) continue
-        if (!lines[i + 1].isThreadMarkdownTableSeparatorRow()) continue
-        if (fenceRanges.any { lineStarts[i] in it }) continue
-        insertBefore += i
-    }
-    if (insertBefore.isEmpty()) return this
-    return buildString(length + insertBefore.size) {
-        lines.forEachIndexed { i, line ->
-            if (i > 0) append('\n')
-            if (i in insertBefore) append('\n')
-            append(line)
-        }
-    }
-}
-
-private fun String.isThreadMarkdownTableRow(): Boolean {
-    val trimmed = trim()
-    return trimmed.length >= 2 && trimmed.startsWith("|") && trimmed.endsWith("|")
-}
-
-private fun String.isThreadMarkdownTableSeparatorRow(): Boolean {
-    val trimmed = trim()
-    return trimmed.isNotEmpty() &&
-        trimmed.contains('-') &&
-        trimmed.contains('|') &&
-        trimmed.all { it == '|' || it == '-' || it == ':' || it == ' ' }
-}
-
 private data class MarkdownInlineTokenInputs(
     val inlineCodeMatches: List<ThreadInlineCodeMatch>,
     val validatedTagMatches: List<ThreadInlineTagMatch>
@@ -557,35 +510,6 @@ private fun String.markdownInlineTokenInputs(
         inlineCodeMatches = inlineCodeMatches,
         validatedTagMatches = validatedTagMatches
     )
-}
-
-private fun String.threadMarkdownFenceRanges(): List<IntRange> {
-    val ranges = mutableListOf<IntRange>()
-    val fenceRegex = Regex("""(?m)^(```|~~~).*$""")
-    var searchIndex = 0
-    while (searchIndex < length) {
-        val start = fenceRegex.find(this, searchIndex) ?: break
-        val marker = start.value.take(3)
-        val end = fenceRegex.find(this, start.range.last + 1) {
-            it.value.startsWith(marker)
-        }
-        if (end == null) {
-            ranges += start.range.first until length
-            break
-        }
-        ranges += start.range.first..end.range.last
-        searchIndex = end.range.last + 1
-    }
-    return ranges
-}
-
-private fun Regex.find(input: CharSequence, startIndex: Int, predicate: (MatchResult) -> Boolean): MatchResult? {
-    var match = find(input, startIndex)
-    while (match != null) {
-        if (predicate(match)) return match
-        match = match.next()
-    }
-    return null
 }
 
 internal fun String?.toSlockMarkdownInlineContentIdPrefix(): String =
@@ -1755,7 +1679,7 @@ fun SlockMarkdownBody(
         val (prepared, cacheHit) =
             traceMarkdownSectionNonComposable(SlockMarkdownTraceNames.PREPARE) {
                 SlockMarkdownPreparedBodyCache.getOrPut(body) {
-                    body.normalizeThreadMarkdownBody().ensureThreadMarkdownTableSeparation()
+                    body.normalizeThreadMarkdownBody()
                 }
             }
         if (performanceKey != null) {

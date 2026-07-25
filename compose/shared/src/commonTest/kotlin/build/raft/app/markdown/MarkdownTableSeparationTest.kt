@@ -1,20 +1,21 @@
 package build.raft.app.markdown
 
+import com.tencent.kuiklybase.markdown.model.SlockGFMFlavourDescriptor
 import org.intellij.markdown.ast.ASTNode
 import org.intellij.markdown.flavours.gfm.GFMElementTypes
 import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
+import org.intellij.markdown.flavours.gfm.GFMTokenTypes
 import org.intellij.markdown.parser.MarkdownParser
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
- * task #497: GFM tables directly following a text line (no blank line) are
- * paragraph continuation per spec, so the parser rendered raw pipes while web
- * shows a table. `ensureThreadMarkdownTableSeparation` inserts the missing
- * blank line during body preparation; these tests pin both the string
- * transform and the parse outcome (a TABLE node must exist afterwards).
+ * Raft tables may directly follow prose without a blank line. The canonical
+ * flavour recognizes that chat-friendly continuation at the block-parser
+ * boundary while preserving the original source and offsets.
  */
 class MarkdownTableSeparationTest {
 
@@ -25,21 +26,22 @@ class MarkdownTableSeparationTest {
             "| Submit indicator | PASS |"
 
     @Test
-    fun tightTableGainsBlankLineAndParsesToTable() {
-        val prepared = tightTable.ensureThreadMarkdownTableSeparation()
-        assertTrue(
-            prepared.contains("：\n\n| Assertion"),
-            "blank line must be inserted before the header row; got: $prepared"
-        )
-        assertTrue(parseContainsTable(prepared), "prepared body must parse to a TABLE node")
-        assertFalse(parseContainsTable(tightTable), "control: tight body must NOT parse to a TABLE node")
+    fun tightTableParsesWithoutRewritingSource() {
+        val table = parseTable(tightTable)
+
+        assertNotNull(table, "Raft flavour must parse the tight header as a TABLE")
+        assertEquals(tightTable.indexOf("| Assertion"), table.startOffset)
+        assertEquals(tightTable.length, table.endOffset)
+        assertFalse(parseContainsTable(tightTable, GFMFlavourDescriptor()))
     }
 
     @Test
     fun alreadySeparatedTableIsUnchanged() {
         val body = "Intro line.\n\n| A | B |\n|---|---|\n| 1 | 2 |"
-        assertEquals(body, body.ensureThreadMarkdownTableSeparation())
-        assertTrue(parseContainsTable(body))
+        val table = parseTable(body)
+
+        assertNotNull(table)
+        assertEquals(body.indexOf("| A | B |"), table.startOffset)
     }
 
     @Test
@@ -50,29 +52,139 @@ class MarkdownTableSeparationTest {
                 "| not | a | table |\n" +
                 "|-----|---|-------|\n" +
                 "```"
-        assertEquals(body, body.ensureThreadMarkdownTableSeparation())
+        assertFalse(parseContainsTable(body))
     }
 
     @Test
     fun pipeTextWithoutSeparatorRowIsUntouched() {
         val body = "Options are read | write | admin\n| but this line has pipes |\nplain tail."
-        assertEquals(body, body.ensureThreadMarkdownTableSeparation())
+        assertFalse(parseContainsTable(body))
     }
 
     @Test
     fun tableAfterTableRowIsNotDoubleSeparated() {
         val body = "| A | B |\n|---|---|\n| 1 | 2 |\n| 3 | 4 |"
-        assertEquals(body, body.ensureThreadMarkdownTableSeparation())
+        val table = parseTable(body)
+
+        assertNotNull(table)
+        assertEquals(body.length, table.endOffset)
     }
 
-    private fun parseContainsTable(content: String): Boolean {
-        val tree = MarkdownParser(GFMFlavourDescriptor()).buildMarkdownTreeFromString(content)
-        var found = false
-        fun walk(node: ASTNode) {
-            if (node.type == GFMElementTypes.TABLE) found = true
-            node.children.forEach(::walk)
+    @Test
+    fun tightTableWithCrLfKeepsOriginalOffsets() {
+        val body = "结论：\r\n| 项 | 值 |\r\n|---|---|\r\n| 状态 | PASS |"
+        val table = parseTable(body)
+
+        assertNotNull(table)
+        assertEquals(body.indexOf("| 项"), table.startOffset)
+        assertEquals(body.length, table.endOffset)
+    }
+
+    @Test
+    fun customMarkerProcessorPreservesGfmTaskListAndAlertProviders() {
+        val tree = parseTree("- [x] done\n\n> [!NOTE]\n> body")
+
+        assertNotNull(tree.findFirst(GFMTokenTypes.CHECK_BOX))
+        assertNotNull(tree.findFirst(GFMElementTypes.ALERT))
+    }
+
+    @Test
+    fun escapedPipeIsCellContentNotAnExtraDelimiter() {
+        val body = "Intro\na \\| b | c\n---|---\nleft|right"
+        val table = parseTable(body)
+
+        assertNotNull(table)
+        assertEquals(body.indexOf("a \\| b | c"), table.startOffset)
+    }
+
+    @Test
+    fun escapedPipeAloneDoesNotCreateSingleColumnTable() {
+        val body = "Intro\na \\| b\n---\nTail"
+
+        assertFalse(parseContainsTable(body))
+    }
+
+    @Test
+    fun bareDashesKeepSetextMeaning() {
+        val body = "some text\n---"
+
+        assertFalse(parseContainsTable(body))
+        assertEquals(
+            astSignature(body, GFMFlavourDescriptor()),
+            astSignature(body, SlockGFMFlavourDescriptor()),
+        )
+    }
+
+    @Test
+    fun singleColumnTableRequiresAnUnescapedPipeInHeader() {
+        val positive = "Intro\n| a |\n|---|\n| 1 |"
+        val negative = "Intro\na\n|---|\nTail"
+
+        assertNotNull(parseTable(positive))
+        assertFalse(parseContainsTable(negative))
+    }
+
+    @Test
+    fun blockQuoteLazySeparatorDoesNotInterruptParagraph() {
+        val body = "> Intro\n> a | b\n---|---\nTail"
+
+        assertFalse(parseContainsTable(body))
+        assertEquals(
+            astSignature(body, GFMFlavourDescriptor()),
+            astSignature(body, SlockGFMFlavourDescriptor()),
+        )
+    }
+
+    @Test
+    fun nonTightCanonicalGfmAstMatchesStockParser() {
+        val body =
+            """
+            # Heading
+
+            - [x] done
+            - ordinary item
+
+            > [!NOTE]
+            > body
+
+            | A | B |
+            |---|---|
+            | 1 | 2 |
+
+            `code` and **strong** text.
+            """.trimIndent()
+
+        assertEquals(
+            astSignature(body, GFMFlavourDescriptor()),
+            astSignature(body, SlockGFMFlavourDescriptor()),
+        )
+    }
+
+    private fun parseTable(content: String): ASTNode? =
+        parseTree(content).findFirst(GFMElementTypes.TABLE)
+
+    private fun parseTree(content: String): ASTNode =
+        MarkdownParser(SlockGFMFlavourDescriptor()).buildMarkdownTreeFromString(content)
+
+    private fun parseContainsTable(
+        content: String,
+        flavour: GFMFlavourDescriptor = SlockGFMFlavourDescriptor(),
+    ): Boolean =
+        MarkdownParser(flavour)
+            .buildMarkdownTreeFromString(content)
+            .findFirst(GFMElementTypes.TABLE) != null
+
+    private fun astSignature(content: String, flavour: GFMFlavourDescriptor): List<String> =
+        buildList {
+            fun walk(node: ASTNode) {
+                add("${node.type}:${node.startOffset}:${node.endOffset}")
+                node.children.forEach(::walk)
+            }
+            walk(MarkdownParser(flavour).buildMarkdownTreeFromString(content))
         }
-        walk(tree)
-        return found
+
+    private fun ASTNode.findFirst(type: org.intellij.markdown.IElementType): ASTNode? {
+        if (this.type == type) return this
+        return children.firstNotNullOfOrNull { it.findFirst(type) }
     }
 }

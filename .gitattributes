@@ -1,0 +1,4 @@
+# Preserve frozen third-party source bytes verbatim. Upstream contains legacy
+# trailing whitespace, so repository whitespace checks must not rewrite or
+# reject this vendored subtree.
+third_party/markdown-parser/** -whitespace
