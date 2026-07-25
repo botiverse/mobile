@@ -86,6 +86,7 @@ case "$cmd" in
           selector=""
           attempt=""
           generation=""
+          capture_locale=""
           reset_public_output=""
           previous=""
           for arg in "$@"; do
@@ -95,12 +96,15 @@ case "$cmd" in
               attempt="$arg"
             elif [[ "$previous" == "visualGeneration" ]]; then
               generation="$arg"
+            elif [[ "$previous" == "capture_locale" ]]; then
+              capture_locale="$arg"
             elif [[ "$previous" == "visualResetPublicOutput" ]]; then
               reset_public_output="$arg"
             fi
             previous="$arg"
           done
           printf '%s\n' "$reset_public_output" >> "$state/reset-public-output-flags.txt"
+          printf '%s\n' "$capture_locale" >> "$state/capture-locales.txt"
           # Model KmpVisualScreenshotCaptureTest.@BeforeClass: a fresh
           # instrumentation process clears the shared public artifact directory
           # only when the harness explicitly requests it. This reproduces the
@@ -135,8 +139,14 @@ case "$cmd" in
             printf 'png\n' > "$state/device-results/${case_id}.png"
             captured_ms="$(date -u +%s%3N)"
             captured_mono="${FAKE_CAPTURE_MONOTONIC_NS:-150000000000}"
-            printf '{"caseId":"%s","capturedAt":"%s","captureIdentity":{"attempt":%s,"generation":"%s","bootId":"11111111-2222-3333-4444-555555555555","capturedAtEpochMs":%s,"capturedAtMonotonicNs":%s},"diagnostics":{"targetPackage":"build.raft.app.connectedtest","processId":%s,"processUid":%s}}\n' \
-              "$case_id" "$captured_ms" "$attempt" "$generation" "$captured_ms" "$captured_mono" "$pid" "$uid" \
+            locale_json=""
+            case "$capture_locale" in
+              en) locale_json=',"appLocale":"en","stringDescLocale":"en"' ;;
+              zh-CN) locale_json=',"appLocale":"zh-Hans","stringDescLocale":"zh-CN"' ;;
+              ja) locale_json=',"appLocale":"ja","stringDescLocale":"ja"' ;;
+            esac
+            printf '{"caseId":"%s","capturedAt":"%s"%s,"captureIdentity":{"attempt":%s,"generation":"%s","bootId":"11111111-2222-3333-4444-555555555555","capturedAtEpochMs":%s,"capturedAtMonotonicNs":%s},"diagnostics":{"targetPackage":"build.raft.app.connectedtest","processId":%s,"processUid":%s}}\n' \
+              "$case_id" "$captured_ms" "$locale_json" "$attempt" "$generation" "$captured_ms" "$captured_mono" "$pid" "$uid" \
               > "$state/device-results/${case_id}.metadata.json"
           fi
           echo "OK (1 test)"
@@ -263,11 +273,14 @@ env "${COMMON_ENV[@]}" "$ROOT/scripts/run_android_visual_capture.sh" \
   --app-apk "$TMP/app.apk" \
   --test-apk "$TMP/test.apk" \
   --method-filter "$FILTER" \
+  --capture-locale ja \
   --output-dir "$TMP/pass"
 
 [[ "$(wc -l < "$TMP/pass/instrumentation/processes.tsv" | tr -d ' ')" == "2" ]]
 printf 'true\nfalse\n' > "$TMP/expected-reset-flags.txt"
 cmp "$TMP/expected-reset-flags.txt" "$FAKE_ADB_STATE/reset-public-output-flags.txt"
+printf 'ja\nja\n' > "$TMP/expected-capture-locales.txt"
+cmp "$TMP/expected-capture-locales.txt" "$FAKE_ADB_STATE/capture-locales.txt"
 grep -q '^START captureRaftUiSegmentedControlStates$' "$TMP/pass/android/_capture-timing.log"
 grep -q '^START captureSettingsAppearancePage$' "$TMP/pass/android/_capture-timing.log"
 python3 - "$TMP/pass/android-visual-runner-receipt.json" <<'PY'
@@ -279,6 +292,7 @@ assert receipt["schema_version"] == "android-visual-runner-receipt.v3", receipt
 assert receipt["harness_status"] == "complete", receipt
 assert receipt["failure_reasons"] == [], receipt
 assert receipt["execution"]["one_case_per_process"] is True, receipt
+assert receipt["execution"]["capture_locale"] == "ja", receipt
 assert receipt["execution"]["started_count"] == 2, receipt
 assert receipt["execution"]["ended_count"] == 2, receipt
 assert receipt["execution"]["expected_count"] == 2, receipt
@@ -290,6 +304,8 @@ assert receipt["timeline"]["host_started_monotonic_ns"] > receipt["timeline"]["d
 assert receipt["timeline"]["device_started_monotonic_ns"] == 100_000_000_000, receipt
 assert receipt["timeline"]["device_finished_monotonic_ns"] == 200_000_000_000, receipt
 for item in receipt["evidence_inventory"]:
+    assert item["app_locale"] == "ja", item
+    assert item["string_desc_locale"] == "ja", item
     assert item["generation"] == receipt["log_scope"]["generation"], item
     assert item["boot_id"] == receipt["device"]["boot_id"], item
     assert receipt["timeline"]["started_at_epoch_ms"] <= item["captured_at_epoch_ms"] <= receipt["timeline"]["finished_at_epoch_ms"], item
@@ -417,5 +433,15 @@ assert receipt["harness_status"] == "harness_incomplete", receipt
 assert receipt["failure_phase"] == "verify_installed_apks", receipt
 assert "installed_app_hash_mismatch" in receipt["failure_reasons"], receipt
 PY
+
+if env "${COMMON_ENV[@]}" "$ROOT/scripts/run_android_visual_capture.sh" \
+  --app-apk "$TMP/app.apk" \
+  --test-apk "$TMP/test.apk" \
+  --method-filter "$SINGLE_FILTER" \
+  --capture-locale fr \
+  --output-dir "$TMP/unsupported-locale"; then
+  echo "unsupported capture locale unexpectedly succeeded" >&2
+  exit 1
+fi
 
 echo "run_android_visual_capture test: PASS"

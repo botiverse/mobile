@@ -9,6 +9,7 @@ SHARD_INDEX="${VISUAL_SHARD_INDEX:-0}"
 SHARD_TOTAL="${VISUAL_SHARD_TOTAL:-1}"
 ATTEMPT="${VISUAL_ATTEMPT:-1}"
 RETRY="${VISUAL_RETRY:-0}"
+CAPTURE_LOCALE="${VISUAL_CAPTURE_LOCALE:-}"
 OUTPUT_DIR="visual-testing-results"
 ADB_BIN="${ADB:-adb}"
 AAPT_BIN="${AAPT:-}"
@@ -38,6 +39,7 @@ Options:
                                                    controls only.
   --shard-index <n> --shard-total <n>              Canonical full-suite shard.
   --attempt <n> --retry <n>                        Attempt identity.
+  --capture-locale <en|zh-CN|ja>                   Force the app resource locale.
   --blacksmith-cli-version <version>               Required for Testbox sample.
   --injected-fault <name>                          Control-only fault identity.
   --output-dir <path>                              Default: visual-testing-results.
@@ -57,6 +59,7 @@ while [[ $# -gt 0 ]]; do
     --shard-total) SHARD_TOTAL="$2"; shift 2 ;;
     --attempt) ATTEMPT="$2"; shift 2 ;;
     --retry) RETRY="$2"; shift 2 ;;
+    --capture-locale) CAPTURE_LOCALE="$2"; shift 2 ;;
     --blacksmith-cli-version) BLACKSMITH_CLI_VERSION="$2"; shift 2 ;;
     --injected-fault) INJECTED_FAULT="$2"; shift 2 ;;
     --output-dir) OUTPUT_DIR="$2"; shift 2 ;;
@@ -78,6 +81,10 @@ done
   exit 2
 }
 [[ "$ATTEMPT" -ge 1 ]] || { echo "Attempt must be >= 1" >&2; exit 2; }
+case "$CAPTURE_LOCALE" in
+  ""|en|zh-CN|ja) ;;
+  *) echo "Unsupported capture locale: $CAPTURE_LOCALE (expected en, zh-CN, or ja)" >&2; exit 2 ;;
+esac
 OUTPUT_DIR="$(python3 -c 'import pathlib,sys; print(pathlib.Path(sys.argv[1]).resolve())' "$OUTPUT_DIR")"
 [[ -n "$OUTPUT_DIR" && "$OUTPUT_DIR" != "/" && "$OUTPUT_DIR" != "$(pwd -P)" ]] || {
   echo "Refusing unsafe output directory: $OUTPUT_DIR" >&2
@@ -259,7 +266,7 @@ write_receipt() {
   export APP_APK TEST_APK APP_SHA256 TEST_SHA256 APP_INSTALLED_SHA256 TEST_INSTALLED_SHA256
   export APP_SIZE_BYTES TEST_SIZE_BYTES APP_VERSION_CODE APP_VERSION_NAME APP_MIN_SDK APP_TARGET_SDK APP_SIGNER_SHA256
   export TEST_VERSION_CODE TEST_VERSION_NAME TEST_MIN_SDK TEST_TARGET_SDK TEST_SIGNER_SHA256 TEST_TARGET_PACKAGE TARGET_UID
-  export METHOD_FILTER EXPECTED_METHOD_FILTER SHARD_INDEX SHARD_TOTAL ATTEMPT RETRY ONE_CASE_PER_PROCESS EXECUTION_MODE
+  export METHOD_FILTER EXPECTED_METHOD_FILTER SHARD_INDEX SHARD_TOTAL ATTEMPT RETRY CAPTURE_LOCALE ONE_CASE_PER_PROCESS EXECUTION_MODE
   export INSTRUMENTATION_RC FAILURE_COUNT PNG_COUNT METADATA_COUNT STARTED_COUNT ENDED_COUNT EXPECTED_COUNT
   export HUNG MISSING_EXPECTED UNEXPECTED_STARTED MISSING_ARTIFACT_CASES HARNESS_STATUS
   export FAILURE_REASONS_CSV="$failure_reasons_csv" CURRENT_PHASE INJECTED_FAULT
@@ -331,6 +338,8 @@ def evidence_inventory(case_map):
             "process_uid": parsed.get("diagnostics", {}).get("processUid"),
             "generation": identity.get("generation"),
             "attempt": identity.get("attempt"),
+            "app_locale": parsed.get("appLocale"),
+            "string_desc_locale": parsed.get("stringDescLocale"),
         })
     return inventory
 
@@ -402,6 +411,7 @@ payload = {
         "expected_method_filter": os.environ["EXPECTED_METHOD_FILTER"],
         "one_case_per_process": os.environ["ONE_CASE_PER_PROCESS"] == "1",
         "attempt": integer("ATTEMPT"), "retry": integer("RETRY"),
+        "capture_locale": os.environ["CAPTURE_LOCALE"] or None,
         "shard_index": integer("SHARD_INDEX"), "shard_total": integer("SHARD_TOTAL"),
         "instrumentation_rc": integer("INSTRUMENTATION_RC"),
         "failure_json_count": integer("FAILURE_COUNT"), "png_count": integer("PNG_COUNT"),
@@ -648,10 +658,15 @@ run_instrumentation() {
   local rc
   trap - ERR
   set +e
+  local locale_args=()
+  if [[ -n "$CAPTURE_LOCALE" ]]; then
+    locale_args=(-e capture_locale "$CAPTURE_LOCALE")
+  fi
   "$ADB_BIN" shell am instrument -w \
     -e visualAttempt "$ATTEMPT" \
     -e visualGeneration "$RUN_GENERATION" \
     -e visualBootId "$BOOT_ID" \
+    "${locale_args[@]}" \
     "$@" "${TEST_PACKAGE}/${INSTRUMENTATION_RUNNER}" | tee "$stdout_file"
   rc=${PIPESTATUS[0]}
   set -e

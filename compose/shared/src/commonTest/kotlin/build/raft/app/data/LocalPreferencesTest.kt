@@ -16,7 +16,12 @@ class LocalPreferencesTest {
 
         assertEquals(AppLocale.English, snapshot.current)
         assertEquals(
-            listOf(AppLocale.System, AppLocale.English, AppLocale.SimplifiedChinese),
+            listOf(
+                AppLocale.System,
+                AppLocale.English,
+                AppLocale.SimplifiedChinese,
+                AppLocale.Japanese
+            ),
             snapshot.supported
         )
     }
@@ -26,11 +31,11 @@ class LocalPreferencesTest {
         val store = InMemorySlockKeyValueStore()
         val repository = PersistentLocaleRepository(KeyValueLocalePreferenceStore(store))
 
-        val selected = repository.selectLocale(AppLocale.SimplifiedChinese)
+        val selected = repository.selectLocale(AppLocale.Japanese)
         val restored = repository.getLocale()
 
-        assertEquals(AppLocale.SimplifiedChinese, selected.current)
-        assertEquals(AppLocale.SimplifiedChinese, restored.current)
+        assertEquals(AppLocale.Japanese, selected.current)
+        assertEquals(AppLocale.Japanese, restored.current)
     }
 
     @Test
@@ -52,6 +57,8 @@ class LocalPreferencesTest {
         assertEquals(AppLocale.SimplifiedChinese, AppLocale.fromStorageKey("zh-Hans"))
         assertEquals(AppLocale.SimplifiedChinese, AppLocale.fromStorageKey("zh-CN"))
         assertEquals(AppLocale.SimplifiedChinese, AppLocale.fromStorageKey("zh-rCN"))
+        assertEquals(AppLocale.Japanese, AppLocale.fromStorageKey("ja"))
+        assertEquals(AppLocale.Japanese, AppLocale.fromStorageKey("ja-JP"))
         assertEquals(AppLocale.System, AppLocale.fromStorageKey("auto"))
         assertEquals(AppLocale.System, AppLocale.fromStorageKey("default"))
         assertEquals(AppLocale.System, AppLocale.fromStorageKey("system"))

@@ -26,6 +26,10 @@ on:
         description: "Optional case ids, comma-separated — drives BOTH React --case and the Android instrumentation method filter (fast targeted round); empty = full manifest"
         type: string
         default: ""
+      capture_locale:
+        description: "Optional Android app-resource locale for i18n visual smoke: en, zh-CN, or ja. Empty keeps the process default."
+        type: string
+        default: ""
       slock_source_ref:
         description: "botiverse/slock ref for React source + visual CLI"
         type: string
@@ -378,7 +382,7 @@ jobs:
           # The runner executes each script line as a separate command;
           # backslash line continuations break ("Task '\' not found").
           script: |
-            bash scripts/run_android_visual_capture.sh --app-apk "$(find apks -name '*connectedTest.apk' -not -name '*androidTest*' | sort | head -1)" --test-apk "$(find apks -name '*androidTest.apk' | sort | head -1)" --method-filter "${{ needs.android-build.outputs.method_filter }}" --shard-index "${{ matrix.shard }}" --shard-total 8 --output-dir visual-testing-results --defer-verdict
+            bash scripts/run_android_visual_capture.sh --app-apk "$(find apks -name '*connectedTest.apk' -not -name '*androidTest*' | sort | head -1)" --test-apk "$(find apks -name '*androidTest.apk' | sort | head -1)" --method-filter "${{ needs.android-build.outputs.method_filter }}" --shard-index "${{ matrix.shard }}" --shard-total 8 --capture-locale "${{ inputs.capture_locale }}" --output-dir visual-testing-results --defer-verdict
 
       - name: Upload android results
         if: ${{ always() && (needs.android-build.outputs.method_filter == '' || matrix.shard == 0) }}

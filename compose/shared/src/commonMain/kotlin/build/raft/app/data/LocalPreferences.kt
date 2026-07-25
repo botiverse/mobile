@@ -25,6 +25,12 @@ enum class AppLocale(
         languageTag = "zh-Hans",
         englishLabel = "Simplified Chinese",
         nativeLabel = "简体中文"
+    ),
+    Japanese(
+        storageKey = "ja",
+        languageTag = "ja",
+        englishLabel = "Japanese",
+        nativeLabel = "日本語"
     );
 
     companion object {
@@ -36,6 +42,7 @@ enum class AppLocale(
                 null, "" -> Default
                 "auto", "default", System.storageKey -> System
                 "zh-cn", "zh-rcn", "zh_rcn" -> SimplifiedChinese
+                "ja-jp", "ja_jp" -> Japanese
                 else ->
                     entries.firstOrNull {
                         it.storageKey.lowercase() == normalized || it.languageTag.lowercase() == normalized
@@ -53,10 +60,10 @@ enum class AppLocale(
  * as the resource folders so the runtime lookup lands on the
  * actual generated folders.
  *
- * English falls through to the `base/` folder; Simplified Chinese
- * maps to the `zh-rCN/` folder (region-based; the BCP-47 matching
- * falls back from `zh-Hans` script-only to `zh-rCN` region-only by
- * language match).
+ * English falls through to the `base/` folder. Simplified Chinese maps
+ * to the `zh-rCN/` folder (region-based; the BCP-47 matching falls back
+ * from `zh-Hans` script-only to `zh-rCN` region-only by language match),
+ * while Japanese maps directly to the `ja/` folder.
  */
 val AppLocale.kmmResourceLocaleTag: String?
     get() =
@@ -64,6 +71,7 @@ val AppLocale.kmmResourceLocaleTag: String?
             AppLocale.System -> null
             AppLocale.English -> "en"
             AppLocale.SimplifiedChinese -> "zh-CN"
+            AppLocale.Japanese -> "ja"
         }
 
 val AppLocale.stringDescLocaleType: StringDesc.LocaleType
@@ -71,7 +79,8 @@ val AppLocale.stringDescLocaleType: StringDesc.LocaleType
         when (this) {
             AppLocale.System -> StringDesc.LocaleType.System
             AppLocale.English,
-            AppLocale.SimplifiedChinese -> StringDesc.LocaleType.Custom(requireNotNull(kmmResourceLocaleTag))
+            AppLocale.SimplifiedChinese,
+            AppLocale.Japanese -> StringDesc.LocaleType.Custom(requireNotNull(kmmResourceLocaleTag))
         }
 
 data class LocaleSnapshot(
