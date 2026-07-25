@@ -14795,9 +14795,6 @@ private fun ThreadMessagesList(
                                 activeMarkdownTagKey = activeMarkdownTagKey,
                                 taskOpenEnabled = renderPayload.showTaskOpenActions && isRichContentEnabled,
                                 taskStatusActionsEnabled = renderPayload.showTaskStatusActions && isRichContentEnabled,
-                                // Gesture eligibility is checked on long press, not while composing
-                                // every row when programmatic scrolling starts or stops.
-                                captureLongPressAnchor = { !listState.isScrollInProgress },
                                 isMarkdownTagValid = isMarkdownTagValid,
                                 onShowActions = { anchor ->
                                     if (!message.hasLocalSendState() || message.isFailedLocalSend() || message.isSendingLocalSend()) {
@@ -16574,7 +16571,6 @@ private fun ThreadMessageCard(
     inlineThreadRepliesEnabled: Boolean = false,
     inlineReplyParticipantsById: Map<String, KuiklyThreadMemberItem> = emptyMap(),
     replyTimeContext: SlockTimeContext? = null,
-    captureLongPressAnchor: () -> Boolean = { true },
     shareSelectionActive: Boolean = false,
     selectedForShare: Boolean = false,
     onToggleShareSelection: () -> Unit = {},
@@ -16716,7 +16712,8 @@ private fun ThreadMessageCard(
                             messageId = message.id,
                             pointerSessionKey = pointerSessionKey,
                             tapMovementGate = tapMovementGate,
-                            captureLongPressAnchor = captureLongPressAnchor,
+                            isScrollInProgress = isMessageListScrolling,
+                            diagnosticsLogger = diagnosticsLogger,
                             onTap = rowTapAction,
                             onTapRejected = { decision ->
                                 diagnosticsLogger(
@@ -18171,6 +18168,30 @@ private val ThreadMessageRippleMinRadius = 24.dp
 internal fun threadMessageUsesFullRowLongPressActions(shareSelectionActive: Boolean): Boolean =
     !shareSelectionActive
 
+internal data class ThreadMessageLongPressDispatchDecision(
+    val allowed: Boolean,
+    val reason: String,
+    val scrollInProgress: Boolean
+)
+
+internal fun decideThreadMessageLongPressDispatch(
+    detectorAccepted: Boolean,
+    directPointerMovementDetected: Boolean,
+    isScrollInProgress: Boolean
+): ThreadMessageLongPressDispatchDecision =
+    // LazyListState reports both direct drags and programmatic anchor/focus movement as scrolling.
+    // The gesture detector owns direct-drag cancellation; list motion is diagnostic context only.
+    ThreadMessageLongPressDispatchDecision(
+        allowed = detectorAccepted && !directPointerMovementDetected,
+        reason =
+            when {
+                !detectorAccepted -> "detector_not_admitted"
+                directPointerMovementDetected -> "direct_pointer_movement"
+                else -> "admitted"
+            },
+        scrollInProgress = isScrollInProgress
+    )
+
 internal fun threadMessageTapOpensThread(
     showReplyAction: Boolean,
     shareSelectionActive: Boolean,
@@ -18237,7 +18258,8 @@ private fun Modifier.threadMessageLongPressActions(
     messageId: String,
     pointerSessionKey: Int,
     tapMovementGate: ThreadMessageTapMovementGate,
-    captureLongPressAnchor: () -> Boolean = { true },
+    isScrollInProgress: () -> Boolean = { false },
+    diagnosticsLogger: (String) -> Unit = {},
     onTap: (() -> Unit)? = null,
     onTapRejected: (ThreadMessageTapMovementDecision) -> Unit = {},
     onShowActions: (SlockPopoverAnchor) -> Unit,
@@ -18247,7 +18269,8 @@ private fun Modifier.threadMessageLongPressActions(
     val currentOnTap by rememberUpdatedState(onTap)
     val currentOnTapRejected by rememberUpdatedState(onTapRejected)
     val currentOnPressChanged by rememberUpdatedState(onPressChanged)
-    val currentCaptureLongPressAnchor by rememberUpdatedState(captureLongPressAnchor)
+    val currentIsScrollInProgress by rememberUpdatedState(isScrollInProgress)
+    val currentDiagnosticsLogger by rememberUpdatedState(diagnosticsLogger)
     val rootAnchor =
         remember(messageId) { SlockLiveRootAnchorRef(identity = threadMessageMenuOwnerIdentity(messageId)) }
     val tapDispatchScope = rememberCoroutineScope()
@@ -18303,9 +18326,40 @@ private fun Modifier.threadMessageLongPressActions(
                     }
                 },
                 onLongPress = { localOffset ->
-                    if (currentCaptureLongPressAnchor()) {
-                        rootAnchor.resolve(SlockPopoverLocalPoint.Exact(localOffset))?.let(currentOnShowActions)
+                    val movementDecision = tapMovementGate.decision()
+                    val directPointerMovementDetected =
+                        movementDecision.reason == "movement" || movementDecision.reason == "multi_touch"
+                    val dispatchDecision =
+                        decideThreadMessageLongPressDispatch(
+                            detectorAccepted = true,
+                            directPointerMovementDetected = directPointerMovementDetected,
+                            isScrollInProgress = currentIsScrollInProgress()
+                        )
+                    if (!dispatchDecision.allowed) {
+                        currentDiagnosticsLogger(
+                            "thread_message_long_press_rejected messageId=$messageId " +
+                                "reason=${dispatchDecision.reason} movement=${movementDecision.maxDistance} " +
+                                "touchSlop=${movementDecision.touchSlop} pointers=${movementDecision.pointerCount}"
+                        )
+                        return@detectTapGestures
                     }
+                    currentDiagnosticsLogger(
+                        "thread_message_long_press_admitted messageId=$messageId " +
+                            "scrollInProgress=${dispatchDecision.scrollInProgress}"
+                    )
+                    val anchor = rootAnchor.resolve(SlockPopoverLocalPoint.Exact(localOffset))
+                    if (anchor == null) {
+                        currentDiagnosticsLogger(
+                            "thread_message_long_press_anchor_unavailable messageId=$messageId " +
+                                "scrollInProgress=${dispatchDecision.scrollInProgress}"
+                        )
+                        return@detectTapGestures
+                    }
+                    currentDiagnosticsLogger(
+                        "thread_message_long_press_menu_emit messageId=$messageId " +
+                            "scrollInProgress=${dispatchDecision.scrollInProgress}"
+                    )
+                    currentOnShowActions(anchor)
                 }
             )
         }
@@ -18972,18 +19026,20 @@ private fun ThreadMessageFooterMeta(
                 modifier = Modifier.widthIn(max = 220.dp),
                 pressFeedback = false,
                 clickIdentity = replyClickIdentity,
-                onClick = if (showReplyAction) {
-                    { _ ->
-                        diagnosticsLogger(
-                            "thread_reply_chip_click parentMessageId=${message.id} " +
-                                "knownThreadChannelId=${replyMetadata.threadChannelId.orEmpty()} " +
-                                "replyCount=${replyMetadata.replyCount} clickIdentity=$replyClickIdentity"
-                        )
-                        onOpenThread()
+                onClick = null,
+                onClickWithoutAnchor =
+                    if (showReplyAction) {
+                        {
+                            diagnosticsLogger(
+                                "thread_reply_chip_click parentMessageId=${message.id} " +
+                                    "knownThreadChannelId=${replyMetadata.threadChannelId.orEmpty()} " +
+                                    "replyCount=${replyMetadata.replyCount} clickIdentity=$replyClickIdentity"
+                            )
+                            onOpenThread()
+                        }
+                    } else {
+                        null
                     }
-                } else {
-                    null
-                }
             )
         }
         if (showSavedBadge) {
