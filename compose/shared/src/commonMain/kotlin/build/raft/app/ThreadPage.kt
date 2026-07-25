@@ -16583,7 +16583,7 @@ private fun ThreadMessageCard(
             hasLocalSendState = message.hasLocalSendState(),
             isSaved = message.isSaved
         )
-    val reserveInlineTrailingSpace = richContentEnabled && message.isSendingLocalSend()
+    val reserveInlineTrailingSpace = richContentEnabled && message.isSendingLocalSend() && !alignOwnMessageRight
     val inlineReplyPresentation =
         remember(message.inlineReplies, replyMetadata, hasReplyDraft, inlineThreadRepliesEnabled, showReplyAction) {
             if (inlineThreadRepliesEnabled && showReplyAction) {
@@ -16724,10 +16724,7 @@ private fun ThreadMessageCard(
                                 modifier =
                                     Modifier
                                         .threadMessageContentWidth(messageMaxWidthFraction)
-                                        .padding(
-                                            start = if (reserveInlineTrailingSpace && alignOwnMessageRight) 30.dp else 0.dp,
-                                            end = if (reserveInlineTrailingSpace && !alignOwnMessageRight) 30.dp else 0.dp
-                                        )
+                                        .padding(end = if (reserveInlineTrailingSpace) 30.dp else 0.dp)
                                         .background(Color.Transparent)
                             ) {
                                 Row(
@@ -16816,6 +16813,11 @@ private fun ThreadMessageCard(
                                     } else {
                                         renderedBody
                                     }
+                                // task #800: the sending spinner shares the End
+                                // content coordinates with the body — an in-flow
+                                // Row child, so sending → sent removes only
+                                // left-side width and the End edge cannot move.
+                                val messageBodyBlock: @Composable () -> Unit = {
                                 if (translation?.pendingPlaceholder == true) {
                                     ThreadMessageTranslationPendingPlaceholder()
                                 } else if (showLongMessageToggle && !longMessageExpanded) {
@@ -16875,6 +16877,20 @@ private fun ThreadMessageCard(
                                         color = SlockColor.TextBlack,
                                         modifier = Modifier
                                     )
+                                }
+                                }
+                                if (alignOwnMessageRight) {
+                                    Row(
+                                        verticalAlignment = Alignment.Top,
+                                        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+                                    ) {
+                                        if (richContentEnabled && message.isSendingLocalSend()) {
+                                            ThreadMessageSendingIndicator()
+                                        }
+                                        messageBodyBlock()
+                                    }
+                                } else {
+                                    messageBodyBlock()
                                 }
                                 if (showLongMessageToggle && translation?.pendingPlaceholder != true) {
                                     ThreadLongMessageToggle(
@@ -16956,13 +16972,8 @@ private fun ThreadMessageCard(
                     }
                     if (richContentEnabled) {
                         when {
-                            message.isSendingLocalSend() -> {
-                                ThreadMessageSendingIndicator(
-                                    modifier =
-                                        Modifier.align(
-                                            if (alignOwnMessageRight) Alignment.TopStart else Alignment.TopEnd
-                                        )
-                                )
+                            message.isSendingLocalSend() && !alignOwnMessageRight -> {
+                                ThreadMessageSendingIndicator(modifier = Modifier.align(Alignment.TopEnd))
                             }
                         }
                     }
@@ -23188,5 +23199,85 @@ private fun ThreadStateActionMessage(
             }
             ThreadHeaderAction(label = actionLabel, onClick = onClick)
         }
+    }
+}
+
+// task #800 rendering-evidence fixture: four right-aligned own-message cards
+// separated by pure-red full-width markers so the connected test can segment
+// screenshot bands and measure real bubble edges — long (cap reference),
+// single-character (must hug End), the same single character in sending state
+// (in-flow spinner, End edge must match), and failed (status row, End edge
+// must match). Deterministic content, no network.
+@Page("compose_thread_align_right_visual", supportInLocal = true)
+internal class ComposeThreadAlignRightVisualPage : build.raft.app.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { ThreadAlignRightVisualScreen() }
+    }
+}
+
+private fun threadAlignRightVisualFixtureMessage(
+    id: String,
+    body: String,
+    deliveryState: String = ThreadMessageDeliverySent,
+    pending: Boolean = false
+): KuiklyThreadMessageItem =
+    KuiklyThreadMessageItem(
+        id = id,
+        authorId = "member-own",
+        authorName = "You",
+        isOwn = true,
+        avatarLabel = "Y",
+        timestampLabel = "10:0${id.last()}",
+        body = body,
+        deliveryState = deliveryState,
+        pendingSendContext =
+            if (pending) {
+                KuiklyThreadPendingSendContext(channelId = "channel-align-right", body = body)
+            } else {
+                null
+            }
+    )
+
+@Composable
+internal fun ThreadAlignRightVisualScreen() {
+    val fixtures =
+        listOf(
+            threadAlignRightVisualFixtureMessage(
+                id = "align-right-long-1",
+                body = "This deliberately long reference message wraps across multiple lines so its bubble reaches the width cap for the band."
+            ),
+            threadAlignRightVisualFixtureMessage(id = "align-right-short-2", body = "W"),
+            threadAlignRightVisualFixtureMessage(
+                id = "align-right-sending-3",
+                body = "W",
+                deliveryState = ThreadMessageDeliverySending,
+                pending = true
+            ),
+            threadAlignRightVisualFixtureMessage(
+                id = "align-right-failed-4",
+                body = "W",
+                deliveryState = ThreadMessageDeliveryFailed,
+                pending = true
+            )
+        )
+    Column(Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+        fixtures.forEach { message ->
+            Box(Modifier.fillMaxWidth().height(4.dp).background(Color(0xFFFF0000)))
+            ThreadMessageCard(
+                message = message,
+                alignOwnMessageRight = true,
+                onShowActions = {},
+                onOpenMember = {},
+                onOpenThread = {},
+                onOpenTask = {},
+                onOpenTaskStatusMenu = {},
+                onToggleReaction = {},
+                onOpenAttachment = {},
+                onOpenMarkdownTag = {},
+                onOpenMarkdownUrl = {}
+            )
+        }
+        Box(Modifier.fillMaxWidth().height(4.dp).background(Color(0xFFFF0000)))
     }
 }

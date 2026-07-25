@@ -80,6 +80,7 @@ import com.tencent.kuiklybase.markdown.model.DefaultMarkdownColors
 import com.tencent.kuiklybase.markdown.model.DefaultMarkdownTypography
 import com.tencent.kuiklybase.markdown.model.MarkdownAnnotator
 import com.tencent.kuiklybase.markdown.compose.LocalSlockMarkdownAnnotationRevision
+import com.tencent.kuiklybase.markdown.compose.LocalSlockMarkdownParagraphFillWidth
 import com.tencent.kuiklybase.markdown.compose.LocalSlockMarkdownRowRenderCostSink
 import com.tencent.kuiklybase.markdown.compose.SlockMarkdownNodeTrace
 import com.tencent.kuiklybase.markdown.compose.SlockMarkdownNodeTraceSink
@@ -2171,7 +2172,10 @@ fun SlockMarkdownBody(
             LocalTextProvider provides SlockMarkdownTextProvider,
             LocalUriHandler provides uriHandler,
             LocalSlockMarkdownBodyClick provides onClick,
-            LocalSlockMarkdownAnnotationRevision provides annotationRevision
+            LocalSlockMarkdownAnnotationRevision provides annotationRevision,
+            // task #800: top-level paragraphs wrap when the body opts out of
+            // fill (right-aligned bubbles); list/quote paragraphs pin fill.
+            LocalSlockMarkdownParagraphFillWidth provides fillWidth
         ),
         LocalSlockMarkdownRowRenderCostSink,
         rowCensusToken

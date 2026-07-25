@@ -651,6 +651,8 @@ jobs:
             scripts/ci/assert-instrumentation-ok.sh pager-scroll-probe-instrumentation.txt 1
             adb shell am instrument -w -r -e class build.raft.app.shared.SlockReleaseNotesSectionGapConnectedTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner | tee release-notes-section-gap-instrumentation.txt
             scripts/ci/assert-instrumentation-ok.sh release-notes-section-gap-instrumentation.txt 1
+            adb shell am instrument -w -r -e class build.raft.app.shared.SlockThreadAlignRightBoundsConnectedTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner | tee thread-align-right-bounds-instrumentation.txt
+            scripts/ci/assert-instrumentation-ok.sh thread-align-right-bounds-instrumentation.txt 1
             adb shell am instrument -w -r -e class build.raft.app.core.data.diagnostics.DiagnosticsCallerPipelineConnectedTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner | tee diagnostics-caller-pipeline-instrumentation.txt
             scripts/ci/assert-instrumentation-ok.sh diagnostics-caller-pipeline-instrumentation.txt 1
             adb shell am instrument -w -r -e class build.raft.app.data.DurablePartitionAndroidDriverMigrationTest build.raft.app.shared.test/androidx.test.runner.AndroidJUnitRunner | tee durable-partition-migration-instrumentation.txt

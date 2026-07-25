@@ -117,9 +117,12 @@ fun MarkdownListItems(
                                     }
 
                                     PARAGRAPH -> {
+                                        // Slock (task #800): list rows keep the legacy
+                                        // fill regardless of the paragraph fill local.
                                         MarkdownParagraph(
                                             content = content,
                                             node = nestedChild,
+                                            modifier = Modifier.fillMaxWidth(),
                                         )
                                     }
 

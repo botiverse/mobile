@@ -7,12 +7,11 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * task #800: with "align own messages right" enabled, short content must hug
- * the End edge, and the sending/loading affordances must mirror to the
- * bubble's left — implemented by extending the existing `alignOwnMessageRight`
- * parameterization, never by flipping layout direction (BiDi text, gesture
- * anchors, and the Kuikly render hosts are not RTL-safe). These teeth pin the
- * four product bars ZhangYi froze in #proj-chat:ba4e52e4.
+ * task #800 structural layer (SUPPLEMENTARY — the closing evidence for the
+ * two rendering bars lives in SlockThreadAlignRightBoundsConnectedTest, which
+ * measures real emulator pixels; see the review round on PR #1569 where
+ * structure-only assertions went falsely green against the vendor paragraph).
+ * These teeth pin the mechanism so refactors cannot silently remove it.
  */
 class ThreadAlignRightContractTest {
     private fun sourceFile(vararg candidates: String): String =
@@ -25,77 +24,93 @@ class ThreadAlignRightContractTest {
             "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt"
         )
 
-    private fun markdownSource(): String =
+    private fun vendorParagraphSource(): String =
         sourceFile(
-            "src/commonMain/kotlin/build/raft/app/markdown/SlockMarkdown.kt",
-            "compose/shared/src/commonMain/kotlin/build/raft/app/markdown/SlockMarkdown.kt"
+            "../../third_party/kuikly-compose-markdown/src/commonMain/kotlin/com/tencent/kuiklybase/markdown/compose/elements/MarkdownParagraph.kt",
+            "third_party/kuikly-compose-markdown/src/commonMain/kotlin/com/tencent/kuiklybase/markdown/compose/elements/MarkdownParagraph.kt"
         )
 
     @Test
-    fun shortContentWrapsSoASingleCharacterHugsTheEndEdge() {
-        val thread = threadPageSource()
-        // The rich body opts out of fill-width exactly when the row is
-        // right-aligned; the parent column's End alignment then pulls a short
-        // paragraph to the End edge.
-        assertContains(thread, "fillWidth = !alignOwnMessageRight")
-        assertContains(thread, "val contentAlignment = if (alignOwnMessageRight) Alignment.End else Alignment.Start")
-        val markdown = markdownSource()
-        // SlockMarkdownBody is the last public entry point in the file; the
-        // suffix from its declaration is the scope these assertions pin.
-        val bodyFn = markdown.substringAfter("fun SlockMarkdownBody(")
-        assertContains(bodyFn, "fillWidth: Boolean = true")
-        // Fill-width must be conditional everywhere in the body root — an
-        // unconditional fillMaxWidth() would regress the wrap behavior.
-        assertContains(bodyFn, "if (fillWidth) it.fillMaxWidth() else it")
+    fun paragraphFillIsGovernedByTheCompositionLocalDownToTheVendor() {
+        // The real render path: SlockMarkdownBody provides the local, the
+        // VENDOR paragraph consumes it for both its text modifier and its
+        // wrapper column — the exact layer the first review round proved was
+        // still filling width.
+        val markdown =
+            sourceFile(
+                "src/commonMain/kotlin/build/raft/app/markdown/SlockMarkdown.kt",
+                "compose/shared/src/commonMain/kotlin/build/raft/app/markdown/SlockMarkdown.kt"
+            )
+        assertContains(markdown, "LocalSlockMarkdownParagraphFillWidth provides fillWidth")
+        val paragraph = vendorParagraphSource()
+        assertContains(paragraph, "val paragraphFillWidth = LocalSlockMarkdownParagraphFillWidth.current")
+        assertContains(paragraph, "modifier ?: if (paragraphFillWidth) Modifier.fillMaxWidth() else Modifier")
+        assertContains(paragraph, "Column(modifier = if (paragraphFillWidth) Modifier.fillMaxWidth() else Modifier)")
         assertFalse(
-            Regex("modifier\\s*\\n?\\s*\\.fillMaxWidth\\(\\)").containsMatchIn(bodyFn),
-            "SlockMarkdownBody root must not unconditionally fillMaxWidth"
+            paragraph.contains("modifier: Modifier = Modifier.fillMaxWidth()"),
+            "vendor paragraph must not hardcode a fillMaxWidth default"
         )
+        // List and quote paragraphs pin the legacy fill explicitly.
+        val list =
+            sourceFile(
+                "../../third_party/kuikly-compose-markdown/src/commonMain/kotlin/com/tencent/kuiklybase/markdown/compose/elements/MarkdownList.kt",
+                "third_party/kuikly-compose-markdown/src/commonMain/kotlin/com/tencent/kuiklybase/markdown/compose/elements/MarkdownList.kt"
+            )
+        val quote =
+            sourceFile(
+                "../../third_party/kuikly-compose-markdown/src/commonMain/kotlin/com/tencent/kuiklybase/markdown/compose/elements/MarkdownBlockQuote.kt",
+                "third_party/kuikly-compose-markdown/src/commonMain/kotlin/com/tencent/kuiklybase/markdown/compose/elements/MarkdownBlockQuote.kt"
+            )
+        assertContains(list, "modifier = Modifier.fillMaxWidth(),")
+        assertContains(quote, "MarkdownParagraph(content, quote, modifier = Modifier.fillMaxWidth(), style = style)")
+        val thread = threadPageSource()
+        assertContains(thread, "fillWidth = !alignOwnMessageRight")
     }
 
     @Test
-    fun sendingReservationKeepsTheEndEdgeStableOnRightAlignedRows() {
+    fun sendingSpinnerSharesTheEndContentCoordinatesInFlow() {
         val thread = threadPageSource()
-        // The 30dp spinner reservation moves to the START side when right
-        // aligned, so the bubble's End edge does not shift when the message
-        // transitions sending → sent.
-        assertContains(thread, "start = if (reserveInlineTrailingSpace && alignOwnMessageRight) 30.dp else 0.dp")
-        assertContains(thread, "end = if (reserveInlineTrailingSpace && !alignOwnMessageRight) 30.dp else 0.dp")
-        // And the spinner itself mirrors to the bubble's left.
-        assertContains(thread, "if (alignOwnMessageRight) Alignment.TopStart else Alignment.TopEnd")
-    }
-
-    @Test
-    fun sendingAndFailureShareOneMirroredStatusSlot() {
-        val thread = threadPageSource()
-        val status =
-            thread.substringAfter("private fun ThreadMessageLocalSendStatus(")
-                .substringBefore("private fun ThreadMessageSendingIndicator(")
-        // One composable renders both the sending and failed/retry states, and
-        // its alignment follows the same alignEnd parameter the row passes.
-        assertContains(status, "ThreadMessageDeliveryFailed")
-        assertContains(status, "Sending...")
-        assertContains(status, "onRetry")
-        assertContains(status, "if (alignEnd) Alignment.End else Alignment.Start")
+        // Right-aligned rows: in-flow spinner Row inside the End content
+        // column — sent removes only left-side width, so the End edge cannot
+        // move and no trailing reservation exists to shift it back.
+        assertContains(thread, "val messageBodyBlock: @Composable () -> Unit = {")
+        assertContains(thread, "if (richContentEnabled && message.isSendingLocalSend()) {\n                                            ThreadMessageSendingIndicator()")
+        assertContains(
+            thread,
+            "val reserveInlineTrailingSpace = richContentEnabled && message.isSendingLocalSend() && !alignOwnMessageRight"
+        )
+        // The row-root overlay serves only the left-aligned layout now.
+        assertContains(thread, "message.isSendingLocalSend() && !alignOwnMessageRight -> {")
+        // Failed/retry stays in the same End-aligned status slot.
         assertContains(thread, "alignEnd = alignOwnMessageRight")
+    }
+
+    @Test
+    fun renderingEvidenceHarnessStaysWired() {
+        val thread = threadPageSource()
+        assertContains(thread, "@Page(\"compose_thread_align_right_visual\", supportInLocal = true)")
+        val workflow =
+            sourceFile(
+                "../../.github/workflows/test.yml",
+                ".github/workflows/test.yml"
+            )
+        assertContains(
+            workflow,
+            "build.raft.app.shared.SlockThreadAlignRightBoundsConnectedTest",
+            false,
+            "the rendering-evidence connected test must stay in the emulator CI gate"
+        )
     }
 
     @Test
     fun rightAlignmentNeverFlipsLayoutDirection() {
         // The decoupling bar: alignment is expressed through Alignment.End
-        // parameters only. Flipping LayoutDirection would mirror BiDi text
-        // rendering, gesture anchors, and popover placement — none of which
-        // are RTL-audited in the Kuikly hosts.
+        // parameters only — RTL body text cannot flip the actor side, and
+        // gesture anchors/popovers keep LTR coordinates.
         val thread = threadPageSource()
-        assertFalse(
-            thread.contains("LocalLayoutDirection provides LayoutDirection.Rtl"),
-            "message alignment must not be implemented via RTL layout direction"
-        )
-        val markdown = markdownSource()
-        assertFalse(
-            markdown.contains("LocalLayoutDirection provides LayoutDirection.Rtl"),
-            "markdown body must not flip layout direction for alignment"
-        )
+        assertFalse(thread.contains("LocalLayoutDirection provides LayoutDirection.Rtl"))
         assertTrue(thread.contains("Arrangement.spacedBy(12.dp, Alignment.End)"))
+        val paragraph = vendorParagraphSource()
+        assertFalse(paragraph.contains("LayoutDirection"))
     }
 }
