@@ -1,6 +1,7 @@
 package build.raft.app
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -207,6 +208,7 @@ internal data class StandaloneSettingsWebViewSpec(
     val surface: SettingsWebViewSurface,
     val destination: SharedSettingsDestination,
     val includeLocaleQuery: Boolean = false,
+    val headerFollowsDocumentTitle: Boolean = false,
     val allowedNavigationSchemes: Set<String> = setOf("http", "https"),
     val bottomContentPadding: Dp = 0.dp,
     val buildWebUrl: (webBaseUrl: String?, session: StoredAuthSession?, localeTag: String) -> String,
@@ -230,6 +232,7 @@ internal fun StandaloneSettingsWebViewPage(
         surface = spec.surface,
         title = title,
         iconName = iconName,
+        headerFollowsDocumentTitle = spec.headerFollowsDocumentTitle,
     ) { controller, onNavigationStateChange ->
         StandaloneSettingsWebViewBody(
             pager = pager,
@@ -246,14 +249,16 @@ internal fun SettingsWebViewPageScaffold(
     surface: SettingsWebViewSurface,
     title: String,
     iconName: SlockLucideIconName,
+    headerFollowsDocumentTitle: Boolean = false,
     content: @Composable (
         controller: SlockWebViewController,
-        onNavigationStateChange: (SlockWebViewNavigationState) -> Unit,
+        onNavigationStateChange: (SettingsWebViewNavigationUpdate) -> Unit,
     ) -> Unit,
 ) {
     var bodyReady by remember { mutableStateOf(false) }
     val webViewController = rememberSlockWebViewController()
     var navigationState by remember { mutableStateOf(SlockWebViewNavigationState()) }
+    var headerTitleState by remember(surface) { mutableStateOf(SettingsWebViewHeaderTitleState()) }
     LaunchedEffect(Unit) {
         // LaunchedEffect itself does not establish a rendered-frame boundary. Without awaiting a
         // frame, the heavy environment/WebView body can join the page's initial render transaction
@@ -285,7 +290,12 @@ internal fun SettingsWebViewPageScaffold(
         // WebView body. The layer must live here so it can order those two layout siblings.
         Box(modifier = Modifier.fillMaxWidth().zIndex(SETTINGS_WEB_VIEW_HEADER_Z_INDEX)) {
             SlockTopPageHeader(
-                title = title,
+                title =
+                    if (headerFollowsDocumentTitle) {
+                        headerTitleState.displayTitle(title)
+                    } else {
+                        title
+                    },
                 iconName = iconName,
                 backgroundColor = SlockColor.SurfaceWhite,
                 leadingContent = {
@@ -307,11 +317,75 @@ internal fun SettingsWebViewPageScaffold(
                     .background(SlockColor.SurfaceCream),
         ) {
             if (bodyReady) {
-                content(webViewController) { navigationState = it }
+                content(webViewController) { update ->
+                    val nextState = update.state
+                    navigationState = nextState
+                    if (headerFollowsDocumentTitle) {
+                        headerTitleState =
+                            headerTitleState.accept(
+                                owner = update.owner,
+                                candidate = nextState.title,
+                                navigationIsLoading = nextState.isLoading,
+                            )
+                    }
+                }
             } else {
                 SettingsWebViewLoadingCover()
             }
         }
+    }
+}
+
+/**
+ * Commits only a nonblank title from a completed navigation and keeps the last committed value
+ * while a subsequent navigation is loading or temporarily reports an empty title. This prevents
+ * initial HTML metadata and SPA/full-document transitions from flashing through the native header.
+ */
+internal data class SettingsWebViewHeaderTitleState(
+    val documentTitle: String? = null,
+    val pendingTitle: String? = null,
+    val activeOwner: Long? = null,
+) {
+    fun accept(
+        candidate: String,
+        navigationIsLoading: Boolean = false,
+        owner: Long = 0L,
+    ): SettingsWebViewHeaderTitleState {
+        val ownedState =
+            if (activeOwner == owner) this else copy(pendingTitle = null, activeOwner = owner)
+        val normalized = candidate.trim().takeIf { it.isNotEmpty() }
+        if (navigationIsLoading) {
+            return normalized?.let { ownedState.copy(pendingTitle = it) } ?: ownedState
+        }
+        val committedTitle = normalized ?: ownedState.pendingTitle
+        return ownedState.copy(
+            documentTitle = committedTitle ?: ownedState.documentTitle,
+            pendingTitle = null,
+        )
+    }
+
+    fun displayTitle(fallbackTitle: String): String =
+        documentTitle ?: fallbackTitle.trim()
+}
+
+internal data class SettingsWebViewNavigationUpdate(
+    val owner: Long,
+    val state: SlockWebViewNavigationState,
+)
+
+/** Invalidates callbacks retained by a detached native WebView generation. */
+internal class SettingsWebViewNavigationAuthority {
+    private var activeOwner: Long = 0L
+
+    fun acquire(): Long {
+        activeOwner = if (activeOwner == Long.MAX_VALUE) 1L else activeOwner + 1L
+        return activeOwner
+    }
+
+    fun accepts(owner: Long): Boolean = owner == activeOwner
+
+    fun release(owner: Long) {
+        if (accepts(owner)) acquire()
     }
 }
 
@@ -320,7 +394,7 @@ private fun StandaloneSettingsWebViewBody(
     pager: Pager,
     spec: StandaloneSettingsWebViewSpec,
     controller: SlockWebViewController,
-    onNavigationStateChange: (SlockWebViewNavigationState) -> Unit,
+    onNavigationStateChange: (SettingsWebViewNavigationUpdate) -> Unit,
 ) {
     val bridge = Utils.bridgeModule(pager.pagerId)
     val sharedStores = remember(bridge) { build.raft.app.data.SlockSharedStoreRegistry.get(bridge) }
@@ -365,7 +439,7 @@ internal fun StandaloneSettingsWebViewContent(
     controller: SlockWebViewController = rememberSlockWebViewController(),
     onUrlChange: (String) -> Unit = {},
     onLoadFailure: (String) -> Unit = {},
-    onNavigationStateChange: (SlockWebViewNavigationState) -> Unit = {},
+    onNavigationStateChange: (SettingsWebViewNavigationUpdate) -> Unit = {},
     accessTokenSyncLogger: (String) -> Unit = {},
 ) {
     val session = authSnapshot.session
@@ -429,7 +503,7 @@ internal fun SettingsWebViewContent(
     onLoadSuccess: () -> Unit = {},
     onUrlChange: (String) -> Unit = {},
     onLoadFailure: (String) -> Unit = {},
-    onNavigationStateChange: (SlockWebViewNavigationState) -> Unit = {},
+    onNavigationStateChange: (SettingsWebViewNavigationUpdate) -> Unit = {},
     onDocumentReadyChange: (Boolean) -> Unit = {},
 ) {
     var reloadKey by remember(url, generationKey) { mutableStateOf(0) }
@@ -441,6 +515,7 @@ internal fun SettingsWebViewContent(
         }
     var bodyFrameReady by remember(url, generationKey, reloadKey) { mutableStateOf(false) }
     var webViewAttachReady by remember(url, generationKey, reloadKey) { mutableStateOf(false) }
+    val navigationAuthority = remember { SettingsWebViewNavigationAuthority() }
     val documentReady = contentVisible && !navigationState.isLoading && navigationState.progress >= 100
 
     LaunchedEffect(documentReady) { onDocumentReadyChange(documentReady) }
@@ -472,6 +547,10 @@ internal fun SettingsWebViewContent(
         val webViewHeight = maxHeight + slockBottomSafeAreaPadding()
         if (webViewAttachReady) {
             key(generationKey, reloadKey, url) {
+                val navigationOwner = remember { navigationAuthority.acquire() }
+                DisposableEffect(navigationOwner) {
+                    onDispose { navigationAuthority.release(navigationOwner) }
+                }
                 SlockWebView(
                     url = url,
                     modifier =
@@ -500,8 +579,15 @@ internal fun SettingsWebViewContent(
                         onLoadFailure(reason)
                     },
                     onNavigationStateChange = { state ->
-                        navigationState = state
-                        onNavigationStateChange(state)
+                        if (navigationAuthority.accepts(navigationOwner)) {
+                            navigationState = state
+                            onNavigationStateChange(
+                                SettingsWebViewNavigationUpdate(
+                                    owner = navigationOwner,
+                                    state = state,
+                                ),
+                            )
+                        }
                     },
                 )
             }

@@ -25,6 +25,7 @@ internal val settingsComputersWebViewSpec =
     StandaloneSettingsWebViewSpec(
         surface = SettingsWebViewSurface.Computers,
         destination = SharedSettingsDestination.Developer,
+        headerFollowsDocumentTitle = true,
         buildWebUrl = { webBaseUrl, session, _ -> settingsComputersWebViewUrl(webBaseUrl, session) },
     )
 
