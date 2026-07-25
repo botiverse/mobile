@@ -6,7 +6,6 @@ import org.intellij.markdown.flavours.commonmark.CommonMarkMarkerProcessor
 import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
 import org.intellij.markdown.flavours.gfm.GFMConstraints
 import org.intellij.markdown.flavours.gfm.GFMTokenTypes
-import org.intellij.markdown.flavours.gfm.alert.GitHubAlertMarkerProvider
 import org.intellij.markdown.flavours.gfm.lexer._GFMLexer
 import org.intellij.markdown.flavours.gfm.table.GitHubTableMarkerBlock
 import org.intellij.markdown.flavours.gfm.table.GitHubTableMarkerProvider
@@ -61,7 +60,7 @@ private class SlockGFMMarkerProcessor(
     constraintsBase: CommonMarkdownConstraints,
 ) : CommonMarkMarkerProcessor(productionHolder, constraintsBase) {
     private val markerBlockProviders =
-        listOf(GitHubAlertMarkerProvider()) +
+        slockGfmLeadingMarkerProviders() +
             super.getMarkerBlockProviders() +
             SlockTableContinuationMarkerProvider()
 
@@ -114,6 +113,13 @@ private class SlockGFMMarkerProcessor(
             SlockGFMMarkerProcessor(productionHolder, GFMConstraints.BASE)
     }
 }
+
+/**
+ * Preserves the stock leading GFM providers available on each parser build.
+ * Android/iOS use JetBrains Markdown 0.7.5 (GitHub alerts); the OHOS toolchain
+ * currently links 0.7.4-ohos, which predates that provider.
+ */
+internal expect fun slockGfmLeadingMarkerProviders(): List<MarkerBlockProvider<MarkerProcessor.StateInfo>>
 
 private class SlockTableContinuationMarkerProvider : MarkerBlockProvider<MarkerProcessor.StateInfo> {
     override fun createMarkerBlocks(
