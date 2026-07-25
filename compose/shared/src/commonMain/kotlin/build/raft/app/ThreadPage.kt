@@ -30,6 +30,7 @@ import build.raft.app.data.ForwardMessageTarget
 import build.raft.app.data.ForwardMessageTargetKind
 import build.raft.app.data.ForwardMessageTargetRepository
 import build.raft.app.data.ForwardMessageTargetRequiredAction
+import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.NetworkSlockTasksApi
 import build.raft.app.data.NetworkSlockThreadApi
 import build.raft.app.data.RealChannelRepository
@@ -962,6 +963,137 @@ internal data class ThreadMembersPageRoute(
     val nowEpochMillis: Long?,
     val timeFormat: String
 )
+
+internal data class ThreadMemberRemovalConfirmation(
+    val serverId: ServerId,
+    val memberRowId: String,
+    val memberLabel: String,
+    val channelName: String,
+    val request: RemoveChannelMemberRequest
+)
+
+internal enum class ThreadMemberRemovalFailure {
+    Failed,
+    NoPermission
+}
+
+internal data class ThreadMemberRemovalGateState(
+    val pending: ThreadMemberRemovalConfirmation? = null,
+    val inFlight: Boolean = false,
+    val failure: ThreadMemberRemovalFailure? = null,
+    val errorCode: String? = null
+)
+
+internal sealed interface ThreadMemberRemovalGateIntent {
+    data class Request(val confirmation: ThreadMemberRemovalConfirmation) : ThreadMemberRemovalGateIntent
+
+    data class Confirm(val serverId: ServerId, val channelId: ChannelId) : ThreadMemberRemovalGateIntent
+
+    data class CompleteSuccess(val confirmation: ThreadMemberRemovalConfirmation) : ThreadMemberRemovalGateIntent
+
+    data class CompleteFailure(
+        val confirmation: ThreadMemberRemovalConfirmation,
+        val failure: ThreadMemberRemovalFailure,
+        val errorCode: String
+    ) : ThreadMemberRemovalGateIntent
+
+    data object Dismiss : ThreadMemberRemovalGateIntent
+}
+
+internal data class ThreadMemberRemovalGateResult(
+    val state: ThreadMemberRemovalGateState,
+    val execute: ThreadMemberRemovalConfirmation? = null
+)
+
+internal fun reduceThreadMemberRemovalGate(
+    state: ThreadMemberRemovalGateState,
+    intent: ThreadMemberRemovalGateIntent
+): ThreadMemberRemovalGateResult =
+    when (intent) {
+        is ThreadMemberRemovalGateIntent.Request ->
+            if (state.inFlight) {
+                ThreadMemberRemovalGateResult(state)
+            } else {
+                ThreadMemberRemovalGateResult(
+                    ThreadMemberRemovalGateState(pending = intent.confirmation)
+                )
+            }
+        is ThreadMemberRemovalGateIntent.Confirm -> {
+            val pending = state.pending
+            when {
+                state.inFlight || pending == null -> ThreadMemberRemovalGateResult(state)
+                pending.serverId != intent.serverId || pending.request.channelId != intent.channelId ->
+                    ThreadMemberRemovalGateResult(ThreadMemberRemovalGateState())
+                else ->
+                    ThreadMemberRemovalGateResult(
+                        state = state.copy(inFlight = true, failure = null, errorCode = null),
+                        execute = pending
+                    )
+            }
+        }
+        is ThreadMemberRemovalGateIntent.CompleteSuccess ->
+            if (state.inFlight && state.pending == intent.confirmation) {
+                ThreadMemberRemovalGateResult(ThreadMemberRemovalGateState())
+            } else {
+                ThreadMemberRemovalGateResult(state)
+            }
+        is ThreadMemberRemovalGateIntent.CompleteFailure ->
+            if (state.inFlight && state.pending == intent.confirmation) {
+                ThreadMemberRemovalGateResult(
+                    state.copy(
+                        inFlight = false,
+                        failure = intent.failure,
+                        errorCode = intent.errorCode
+                    )
+                )
+            } else {
+                ThreadMemberRemovalGateResult(state)
+            }
+        ThreadMemberRemovalGateIntent.Dismiss ->
+            if (state.inFlight) {
+                ThreadMemberRemovalGateResult(state)
+            } else {
+                ThreadMemberRemovalGateResult(ThreadMemberRemovalGateState())
+            }
+    }
+
+internal fun threadMembersRemovalChannelName(
+    snapshot: HomeSnapshot?,
+    serverId: ServerId,
+    channelId: ChannelId
+): String {
+    val canonicalName =
+        snapshot
+            ?.takeIf { it.server.id == serverId }
+            ?.channels
+            ?.firstOrNull { it.channelId == channelId }
+            ?.name
+            ?.trim()
+            ?.removePrefix("#")
+            ?.takeIf { it.isNotBlank() }
+    return canonicalName ?: channelId.value.trim().removePrefix("#")
+}
+
+internal fun threadMemberRemovalConfirmation(
+    member: KuiklyThreadMemberItem,
+    serverId: ServerId,
+    channelId: ChannelId,
+    channelName: String
+): ThreadMemberRemovalConfirmation? {
+    if (!member.canRemove) return null
+    val identity = member.memberDetailIdentity() ?: return null
+    val memberLabel =
+        member.displayName.trim().takeIf { it.isNotBlank() }
+            ?: member.handle.trim().removePrefix("@").takeIf { it.isNotBlank() }?.let { "@$it" }
+            ?: identity.memberId.value
+    return ThreadMemberRemovalConfirmation(
+        serverId = serverId,
+        memberRowId = member.id,
+        memberLabel = memberLabel,
+        channelName = channelName.trim().removePrefix("#").ifBlank { channelId.value },
+        request = RemoveChannelMemberRequest(channelId, identity.memberId, identity.kind)
+    )
+}
 
 internal fun KuiklyThreadScreenPayload.toThreadMembersPageData(
     serverId: ServerId,
@@ -2753,6 +2885,9 @@ private fun ThreadMembersPageScreen() {
     val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
     val serverMembersStore = remember(sharedStores, storeScope) { sharedStores.serverMembersStore(storeScope) }
     val agentDetailStore = remember(sharedStores, storeScope) { sharedStores.agentDetailStore(storeScope) }
+    val sharedHomeStore = remember(sharedStores, storeScope) { sharedStores.sharedHomeStore(storeScope) }
+    val sharedHomeStateFlow = remember(sharedHomeStore) { sharedHomeStore?.state ?: flowOf(SharedHomeState()) }
+    val sharedHomeState by sharedHomeStateFlow.collectAsState(SharedHomeState())
     val memberScope = rememberCoroutineScope()
     val router = remember(pager) { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME) }
     val slice by remember(serverMembersStore, route.serverId, route.channelId) {
@@ -2803,10 +2938,18 @@ private fun ThreadMembersPageScreen() {
     var addDialogVisible by remember { mutableStateOf(false) }
     var addMemberStatus by remember { mutableStateOf("idle") }
     var addMemberErrorCode by remember { mutableStateOf<String?>(null) }
-    var removeMemberStatus by remember { mutableStateOf("idle") }
-    var removingMemberId by remember { mutableStateOf<String?>(null) }
-    var removeMemberErrorCode by remember { mutableStateOf<String?>(null) }
+    var removalGate by
+        remember(route.serverId, route.channelId) { mutableStateOf(ThreadMemberRemovalGateState()) }
     val unableToOpenProfileLabel = stringResource(MR.strings.thread_error_open_profile)
+    val memberRemovedLabel = stringResource(MR.strings.thread_feedback_member_removed)
+    val channelName =
+        remember(sharedHomeState, route.serverId, route.channelId) {
+            threadMembersRemovalChannelName(
+                snapshot = (sharedHomeState.content as? SharedHomeContentState.Content)?.snapshot,
+                serverId = route.serverId,
+                channelId = route.channelId
+            )
+        }
 
     fun openMember(member: KuiklyThreadMemberItem) {
         val identity = member.memberDetailIdentity() ?: return
@@ -2828,38 +2971,83 @@ private fun ThreadMembersPageScreen() {
         )
     }
 
-    fun removeMember(member: KuiklyThreadMemberItem) {
-        val identity = member.memberDetailIdentity() ?: return
-        if (!member.canRemove || removingMemberId != null) return
-        removeMemberStatus = "removing"
-        removingMemberId = member.id
-        removeMemberErrorCode = null
+    fun requestRemoveMember(member: KuiklyThreadMemberItem) {
+        val confirmation =
+            threadMemberRemovalConfirmation(
+                member = member,
+                serverId = route.serverId,
+                channelId = route.channelId,
+                channelName = channelName
+            ) ?: return
+        removalGate =
+            reduceThreadMemberRemovalGate(
+                state = removalGate,
+                intent = ThreadMemberRemovalGateIntent.Request(confirmation)
+            ).state
+    }
+
+    fun confirmRemoveMember() {
+        val confirmed =
+            reduceThreadMemberRemovalGate(
+                state = removalGate,
+                intent = ThreadMemberRemovalGateIntent.Confirm(route.serverId, route.channelId)
+            )
+        removalGate = confirmed.state
+        val confirmation = confirmed.execute ?: return
         memberScope.launch {
             when (
                 val result =
                     serverMembersStore.removeChannelMember(
-                        serverId = route.serverId,
-                        request = RemoveChannelMemberRequest(route.channelId, identity.memberId, identity.kind)
+                        serverId = confirmation.serverId,
+                        request = confirmation.request
                     )
             ) {
                 is DataResult.Content -> {
-                    removeMemberStatus = "idle"
-                    removingMemberId = null
+                    val applied = removalGate.inFlight && removalGate.pending == confirmation
+                    removalGate =
+                        reduceThreadMemberRemovalGate(
+                            state = removalGate,
+                            intent = ThreadMemberRemovalGateIntent.CompleteSuccess(confirmation)
+                        ).state
+                    if (applied) {
+                        bridge.toast(memberRemovedLabel)
+                    }
                 }
                 is DataResult.Empty -> {
-                    removeMemberStatus = "failed"
-                    removeMemberErrorCode = "member_remove_empty"
-                    removingMemberId = null
+                    removalGate =
+                        reduceThreadMemberRemovalGate(
+                            state = removalGate,
+                            intent =
+                                ThreadMemberRemovalGateIntent.CompleteFailure(
+                                    confirmation = confirmation,
+                                    failure = ThreadMemberRemovalFailure.Failed,
+                                    errorCode = "member_remove_empty"
+                                )
+                        ).state
                 }
                 is DataResult.Error -> {
-                    removeMemberStatus = "failed"
-                    removeMemberErrorCode = result.error.code
-                    removingMemberId = null
+                    removalGate =
+                        reduceThreadMemberRemovalGate(
+                            state = removalGate,
+                            intent =
+                                ThreadMemberRemovalGateIntent.CompleteFailure(
+                                    confirmation = confirmation,
+                                    failure = ThreadMemberRemovalFailure.Failed,
+                                    errorCode = result.error.code
+                                )
+                        ).state
                 }
                 is DataResult.NoPermission -> {
-                    removeMemberStatus = "no_permission"
-                    removeMemberErrorCode = result.blocker.code
-                    removingMemberId = null
+                    removalGate =
+                        reduceThreadMemberRemovalGate(
+                            state = removalGate,
+                            intent =
+                                ThreadMemberRemovalGateIntent.CompleteFailure(
+                                    confirmation = confirmation,
+                                    failure = ThreadMemberRemovalFailure.NoPermission,
+                                    errorCode = result.blocker.code
+                                )
+                        ).state
                 }
             }
         }
@@ -2890,10 +3078,10 @@ private fun ThreadMembersPageScreen() {
                         null
                     }
             )
-            if (removeMemberStatus == "failed" || removeMemberStatus == "no_permission") {
+            if (removalGate.failure != null) {
                 Text(
                     text =
-                        if (removeMemberStatus == "no_permission") {
+                        if (removalGate.failure == ThreadMemberRemovalFailure.NoPermission) {
                             stringResource(MR.strings.thread_members_remove_no_permission)
                         } else {
                             stringResource(MR.strings.thread_members_remove_failed)
@@ -2925,9 +3113,9 @@ private fun ThreadMembersPageScreen() {
                                 member = agents[index],
                                 agentStatusResolver = agentStatusResolver,
                                 memberAvatarResolver = memberAvatarResolver,
-                                removing = removeMemberStatus == "removing" && removingMemberId == agents[index].id,
+                                removing = removalGate.inFlight && removalGate.pending?.memberRowId == agents[index].id,
                                 onOpen = ::openMember,
-                                onRemove = ::removeMember
+                                onRemove = ::requestRemoveMember
                             )
                         }
                     }
@@ -2938,9 +3126,9 @@ private fun ThreadMembersPageScreen() {
                                 member = humans[index],
                                 agentStatusResolver = agentStatusResolver,
                                 memberAvatarResolver = memberAvatarResolver,
-                                removing = removeMemberStatus == "removing" && removingMemberId == humans[index].id,
+                                removing = removalGate.inFlight && removalGate.pending?.memberRowId == humans[index].id,
                                 onOpen = ::openMember,
-                                onRemove = ::removeMember
+                                onRemove = ::requestRemoveMember
                             )
                         }
                     }
@@ -2989,6 +3177,27 @@ private fun ThreadMembersPageScreen() {
                         }
                     }
                 }
+            )
+        }
+        removalGate.pending?.let { confirmation ->
+            ThreadRemoveMemberConfirmationDialog(
+                confirmation = confirmation,
+                removing = removalGate.inFlight,
+                errorMessage =
+                    when (removalGate.failure) {
+                        ThreadMemberRemovalFailure.NoPermission ->
+                            stringResource(MR.strings.thread_members_remove_no_permission)
+                        ThreadMemberRemovalFailure.Failed -> stringResource(MR.strings.thread_members_remove_failed)
+                        else -> null
+                    },
+                onDismiss = {
+                    removalGate =
+                        reduceThreadMemberRemovalGate(
+                            state = removalGate,
+                            intent = ThreadMemberRemovalGateIntent.Dismiss
+                        ).state
+                },
+                onConfirm = ::confirmRemoveMember
             )
         }
     }
@@ -22750,6 +22959,91 @@ private fun threadSharePreviewImageHeight(image: ThreadSharePreviewImage?): Int 
     val width = image?.width?.takeIf { it > 0 } ?: return 280
     val height = image.height.takeIf { it > 0 } ?: return 280
     return ((height.toFloat() / width.toFloat()) * 320f).roundToInt().coerceIn(180, 440)
+}
+
+@Composable
+private fun ThreadRemoveMemberConfirmationDialog(
+    confirmation: ThreadMemberRemovalConfirmation,
+    removing: Boolean,
+    errorMessage: String?,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    SlockUnifiedDialog(
+        title = stringResource(MR.strings.thread_members_remove_confirm_title),
+        onDismiss = onDismiss,
+        dismissEnabled = !removing,
+        minWidth = 320.dp,
+        maxWidth = 424.dp,
+        titleFontSize = 18,
+        titleLineHeight = 22
+    ) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .background(SlockColor.AccentRed.copy(alpha = 0.16f))
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .padding(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            SlockLucideIcon(
+                name = SlockLucideIconName.TriangleAlert,
+                modifier = Modifier.size(20.dp),
+                color = SlockColor.TextBlackArgb
+            )
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text =
+                        stringResource(
+                            MR.strings.thread_members_remove_confirm_question,
+                            confirmation.memberLabel,
+                            confirmation.channelName
+                        ),
+                    style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
+                    color = SlockColor.TextBlack
+                )
+                Text(
+                    text = stringResource(MR.strings.thread_members_remove_confirm_detail),
+                    style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
+                    color = SlockColor.TextBlack
+                )
+            }
+        }
+        errorMessage?.let {
+            Text(
+                text = it,
+                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
+                color = SlockColor.AccentRed
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SlockBrutalActionButton(
+                label = stringResource(MR.strings.common_cancel),
+                onClick = onDismiss,
+                enabled = !removing,
+                leadingIcon = SlockLucideIconName.X,
+                backgroundColor = SlockColor.SurfaceWhite
+            )
+            SlockBrutalActionButton(
+                label =
+                    if (removing) {
+                        stringResource(MR.strings.thread_members_removing)
+                    } else {
+                        stringResource(MR.strings.member_action_remove_member)
+                    },
+                onClick = onConfirm,
+                enabled = !removing,
+                leadingIcon = SlockLucideIconName.UserMinus,
+                backgroundColor = SlockColor.AccentRed
+            )
+        }
+    }
 }
 
 @Composable
