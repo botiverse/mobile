@@ -45,7 +45,7 @@ internal class SharedSlockNetworkClient(
     private val requestScheduler: SlockRequestScheduler = SlockRequestScheduler(),
     private val platformFileResolver: SlockPlatformFileResolver? = null,
     private val executor: SlockHttpExecutor = createPlatformSlockHttpExecutor(warningLogger)
-) : SlockNetworkClient {
+) : SlockNetworkClient, AuthorityBoundSlockNetworkClient {
     private fun authMiddleware(): SlockNetworkAuthMiddleware =
         SlockNetworkAuthMiddleware(
             sessionStore = sessionStore,
@@ -170,6 +170,22 @@ internal class SharedSlockNetworkClient(
         priority: DataRequestPriority,
         channelId: ChannelId,
         files: List<MultipartFile>
+    ): HomeNetworkResponse =
+        uploadAttachmentsInternal(priority, channelId, files, expectedAuthority = null)
+
+    override suspend fun uploadAttachmentsBound(
+        priority: DataRequestPriority,
+        channelId: ChannelId,
+        files: List<MultipartFile>,
+        expectedAuthority: SlockExpectedAuthBinding
+    ): HomeNetworkResponse =
+        uploadAttachmentsInternal(priority, channelId, files, expectedAuthority)
+
+    private suspend fun uploadAttachmentsInternal(
+        priority: DataRequestPriority,
+        channelId: ChannelId,
+        files: List<MultipartFile>,
+        expectedAuthority: SlockExpectedAuthBinding?
     ): HomeNetworkResponse {
         val resolvedFiles = files.preparePlatformFileStreams().getOrElse { return it }
         return uploadMultipart(
@@ -180,7 +196,8 @@ internal class SharedSlockNetworkClient(
             fields = mapOf("channelId" to channelId.value),
             files = resolvedFiles,
             requestBytes = resolvedFiles.uploadByteEstimate(),
-            key = "attachments/upload"
+            key = "attachments/upload",
+            expectedAuthority = expectedAuthority
         )
     }
 
@@ -338,7 +355,8 @@ internal class SharedSlockNetworkClient(
         fields: Map<String, String>,
         files: List<MultipartFile>,
         requestBytes: Long,
-        key: String
+        key: String,
+        expectedAuthority: SlockExpectedAuthBinding? = null
     ): HomeNetworkResponse {
         val startedAt = TimeSource.Monotonic.markNow()
         // task #788: same files instance and same predicate the executor uses.
@@ -355,7 +373,11 @@ internal class SharedSlockNetworkClient(
                 timeoutMillis = schedulerTimeoutMillis
             ) {
                 val response =
-                    authMiddleware().request(caller = "shared_network:$diagnosticPath") { auth ->
+                    authMiddleware().request(
+                        serverIdOverride = expectedAuthority?.serverId?.let(::ServerId),
+                        expectedAuthority = expectedAuthority,
+                        caller = "shared_network:$diagnosticPath"
+                    ) { auth ->
                         executor.executeMultipart(
                             priority = priority.toNetworkPriority(),
                             url = absoluteUrl(path),

@@ -87,17 +87,23 @@ internal interface ExternalShareSender {
  */
 internal class RealExternalShareSender(
     private val targetRepository: ForwardMessageTargetRepository,
-    private val uploadAttachments: suspend (AttachmentUploadRequest) -> DataResult<AttachmentUploadResult>,
+    private val uploadAttachments: suspend (
+        AttachmentUploadRequest,
+        ExternalShareSendAuthority
+    ) -> DataResult<AttachmentUploadResult>,
     private val sendMessage: suspend (ChannelId, String, List<AttachmentId>, String) -> DataResult<SendMessageResult>,
     private val currentAuthority: suspend () -> ExternalShareSendAuthority?
 ) : ExternalShareSender {
     constructor(
         targetRepository: ForwardMessageTargetRepository,
         conversationRepository: ConversationRepository,
+        authorityBoundUploader: AuthorityBoundAttachmentUploader,
         sessionStore: SlockAuthSessionStore
     ) : this(
         targetRepository = targetRepository,
-        uploadAttachments = conversationRepository::uploadAttachments,
+        uploadAttachments = { request, authority ->
+            authorityBoundUploader.uploadAttachmentsBound(request, authority.toExpectedAuthBinding())
+        },
         sendMessage = { channelId, body, attachmentIds, randomId ->
             conversationRepository.sendMessage(
                 channelId = channelId,
@@ -137,6 +143,9 @@ internal class RealExternalShareSender(
                 is DataResult.Error -> return DataResult.Error(resolved.error)
                 is DataResult.NoPermission -> return DataResult.NoPermission(resolved.blocker)
             }
+        if (currentAuthority() != authority) {
+            return DataResult.Error(ScreenError("external_share_authority_changed", retryable = true))
+        }
         val attachmentIds =
             if (request.envelope.items.isEmpty()) {
                 emptyList()
@@ -149,7 +158,8 @@ internal class RealExternalShareSender(
                                 files = request.envelope.items.mapIndexed { index, item ->
                                     item.toExternalSharePlatformFile(request.deliveryId, index)
                                 }
-                            )
+                            ),
+                            authority
                         )
                 ) {
                     is DataResult.Content -> uploaded.data.attachmentIds
@@ -192,6 +202,14 @@ internal class RealExternalShareSender(
         }
     }
 }
+
+private fun ExternalShareSendAuthority.toExpectedAuthBinding(): SlockExpectedAuthBinding =
+    SlockExpectedAuthBinding(
+        accountId = accountId,
+        accessToken = accessToken,
+        refreshToken = refreshToken,
+        serverId = serverId
+    )
 
 private fun ExternalShareItem.toExternalSharePlatformFile(deliveryId: String, index: Int): PlatformFile =
     PlatformFile(

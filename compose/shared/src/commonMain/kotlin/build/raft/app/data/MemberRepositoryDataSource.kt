@@ -84,6 +84,15 @@ interface SlockNetworkClient {
         HomeNetworkResponse(code = 501, bodyText = null)
 }
 
+internal interface AuthorityBoundSlockNetworkClient {
+    suspend fun uploadAttachmentsBound(
+        priority: DataRequestPriority,
+        channelId: ChannelId,
+        files: List<MultipartFile>,
+        expectedAuthority: SlockExpectedAuthBinding
+    ): HomeNetworkResponse
+}
+
 private suspend fun SlockNetworkClient.serverMembers(priority: DataRequestPriority, serverId: ServerId): HomeNetworkResponse =
     request(priority, "servers/${serverId.value}/members", serverIdOverride = serverId)
 

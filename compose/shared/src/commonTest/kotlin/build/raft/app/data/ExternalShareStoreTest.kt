@@ -206,7 +206,7 @@ class ExternalShareStoreTest {
         val sender =
             RealExternalShareSender(
                 targetRepository = StubTargetRepository(listOf(destination)),
-                uploadAttachments = { request ->
+                uploadAttachments = { request, _ ->
                     uploaded = request
                     DataResult.Content(
                         AttachmentUploadResult(
@@ -273,7 +273,7 @@ class ExternalShareStoreTest {
         val sender =
             RealExternalShareSender(
                 targetRepository = StubTargetRepository(listOf(destination)),
-                uploadAttachments = {
+                uploadAttachments = { _, _ ->
                     uploadStarted.complete(Unit)
                     releaseUpload.await()
                     DataResult.Content(
@@ -313,6 +313,68 @@ class ExternalShareStoreTest {
 
         val result = assertIs<DataResult.Error>(sending.await())
         assertEquals("external_share_authority_changed", result.error.code)
+        assertEquals(0, sendCalls)
+    }
+
+    @Test
+    fun accountSwitchWhileResolveIsParkedPreventsUploadAndSend() = runBlocking {
+        val destination = target("destination")
+        val resolveStarted = CompletableDeferred<Unit>()
+        val releaseResolve = CompletableDeferred<Unit>()
+        val repository =
+            object : StubTargetRepository(listOf(destination)) {
+                override suspend fun resolveTargetChannel(
+                    sourceServerId: ServerId,
+                    target: ForwardMessageTarget,
+                    allowJoin: Boolean
+                ): DataResult<ForwardMessageDestination> {
+                    resolveStarted.complete(Unit)
+                    releaseResolve.await()
+                    return super.resolveTargetChannel(sourceServerId, target, allowJoin)
+                }
+            }
+        var authority = ExternalShareSendAuthority("account-a", "access-a", "refresh-a", Server.value)
+        var uploadCalls = 0
+        var sendCalls = 0
+        val sender =
+            RealExternalShareSender(
+                targetRepository = repository,
+                uploadAttachments = { _, _ ->
+                    uploadCalls += 1
+                    DataResult.Error(ScreenError("unexpected_upload"))
+                },
+                sendMessage = { _, _, _, _ ->
+                    sendCalls += 1
+                    DataResult.Error(ScreenError("unexpected_send"))
+                },
+                currentAuthority = { authority }
+            )
+        val sending =
+            async {
+                sender.send(
+                    ExternalShareSendRequest(
+                        attemptId = 1,
+                        deliveryId = "delivery-stable",
+                        sourceServerId = Server.value,
+                        envelope =
+                            ExternalShareEnvelope(
+                                "share-1",
+                                1L,
+                                "android",
+                                items = listOf(ExternalShareItem("private/photo", "photo.png", "image/png", 4L))
+                            ),
+                        target = destination,
+                        comment = ""
+                    )
+                )
+            }
+        resolveStarted.await()
+        authority = ExternalShareSendAuthority("account-b", "access-b", "refresh-b", Server.value)
+        releaseResolve.complete(Unit)
+
+        val result = assertIs<DataResult.Error>(sending.await())
+        assertEquals("external_share_authority_changed", result.error.code)
+        assertEquals(0, uploadCalls)
         assertEquals(0, sendCalls)
     }
 

@@ -30,12 +30,16 @@ internal class SlockNetworkAuthMiddleware(
 
     suspend fun request(
         serverIdOverride: ServerId? = null,
+        expectedAuthority: SlockExpectedAuthBinding? = null,
         caller: String = "shared_network",
         block: suspend (SlockAuthenticatedRequestContext) -> HomeNetworkResponse
     ): HomeNetworkResponse {
         val session = sessionStore.readSession()
             ?: return sessionExpiredResponse()
         val serverId = (serverIdOverride?.value ?: session.currentServerId).orEmpty()
+        if (expectedAuthority != null && !session.matchesExpectedAuthority(expectedAuthority, serverId)) {
+            return authorityChangedResponse()
+        }
         if (session.accessToken.isBlank() || serverId.isBlank()) {
             return sessionExpiredResponse()
         }
@@ -71,6 +75,9 @@ internal class SlockNetworkAuthMiddleware(
             return first.asSessionExpired()
         }
         val retryServerId = (serverIdOverride?.value ?: refreshed.currentServerId).orEmpty()
+        if (expectedAuthority != null && !refreshed.matchesExpectedAuthority(expectedAuthority, retryServerId)) {
+            return authorityChangedResponse()
+        }
         if (refreshed.accessToken.isBlank() || retryServerId.isBlank()) {
             return first.asSessionExpired()
         }
@@ -112,10 +119,31 @@ internal data class SlockAuthenticatedRequestContext(
     val serverId: String
 )
 
+/** Transient request witness. Never persist or log its token fields. */
+internal data class SlockExpectedAuthBinding(
+    val accountId: String,
+    val accessToken: String,
+    val refreshToken: String,
+    val serverId: String
+)
+
+internal fun StoredAuthSession.matchesExpectedAuthority(
+    expected: SlockExpectedAuthBinding,
+    effectiveServerId: String
+): Boolean =
+    user.id == expected.accountId &&
+        accessToken == expected.accessToken &&
+        refreshToken == expected.refreshToken &&
+        effectiveServerId == expected.serverId
+
 private const val SESSION_EXPIRED_ERROR = """{"error":"session_expired"}"""
+private const val AUTHORITY_CHANGED_ERROR = """{"error":"auth_authority_changed"}"""
 
 private fun sessionExpiredResponse(): HomeNetworkResponse =
     HomeNetworkResponse(code = 401, bodyText = null, errorBodyText = SESSION_EXPIRED_ERROR)
+
+private fun authorityChangedResponse(): HomeNetworkResponse =
+    HomeNetworkResponse(code = 409, bodyText = null, errorBodyText = AUTHORITY_CHANGED_ERROR)
 
 private fun HomeNetworkResponse.requiresTokenRefresh(): Boolean =
     code == 401 || errorBodyText.isExpiredTokenText()
