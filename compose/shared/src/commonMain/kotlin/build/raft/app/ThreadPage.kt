@@ -13302,6 +13302,7 @@ private fun ThreadMessagesList(
     var latestLocalSendBottomAnchorActiveKey by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var latestLocalSendBottomAnchorStartUserScrollGeneration by remember(threadInstanceKey) { mutableStateOf(0) }
     val userScrollGeneration = remember(threadInstanceKey) { ThreadUserScrollGeneration() }
+    var headerScrollToTopOwnerGeneration by remember(threadInstanceKey) { mutableStateOf<Int?>(null) }
     var lastComposerKeyboardInsetDp by remember(threadInstanceKey) { mutableStateOf(composerKeyboardInsetDp) }
     var pendingKeyboardBottomAnchor by remember(threadInstanceKey) { mutableStateOf(false) }
     var activeFocusedMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
@@ -13556,6 +13557,7 @@ private fun ThreadMessagesList(
         allowBottomAutoAnchor = false
         initialBottomAnchorReady = true
         userScrollGeneration.value += 1
+        headerScrollToTopOwnerGeneration = userScrollGeneration.value
         diagnosticsLogger(
             "thread_header_scroll_to_top request=$headerScrollToTopRequest " +
                 "firstVisible=${listState.firstVisibleItemIndex} totalItems=$lazyItemCount"
@@ -13886,10 +13888,23 @@ private fun ThreadMessagesList(
         if (renderPayload.olderMessagesStatus == "loading" && previousStatus != "loading") {
             olderPageCycleActive = true
             pendingOlderPageAnchor =
-                listState.threadFirstVisibleMessageAnchor(
-                    timelineSlice = renderPayload,
-                    userScrollGeneration = userScrollGeneration.value
-                )
+                if (
+                    shouldCaptureThreadOlderPageAnchor(
+                        currentUserScrollGeneration = userScrollGeneration.value,
+                        headerScrollToTopOwnerGeneration = headerScrollToTopOwnerGeneration
+                    )
+                ) {
+                    listState.threadFirstVisibleMessageAnchor(
+                        timelineSlice = renderPayload,
+                        userScrollGeneration = userScrollGeneration.value
+                    )
+                } else {
+                    diagnosticsLogger(
+                        "thread_older_anchor_capture result=skipped_header_scroll_to_top " +
+                            "userScrollGeneration=${userScrollGeneration.value}"
+                    )
+                    null
+                }
             allowBottomAutoAnchor = false
             pendingOlderPageAnchor?.let { anchor ->
                 diagnosticsLogger(
@@ -13934,6 +13949,7 @@ private fun ThreadMessagesList(
             // rows can immediately cascade into 100 -> 150 without user demand.
             olderPageSettledUserScrollGeneration = userScrollGeneration.value
             olderPageCycleActive = false
+            headerScrollToTopOwnerGeneration = null
         }
         previousOlderMessagesStatus = renderPayload.olderMessagesStatus
     }
@@ -14426,6 +14442,7 @@ private fun ThreadMessagesList(
                             // new/continued drag after the request started owns the
                             // viewport and must never be yanked back.
                             userScrollGeneration.value += 1
+                            headerScrollToTopOwnerGeneration = null
                             // A user drag retires the pending focused-message
                             // anchor request: growth-driven retries must never
                             // scroll against an interacting user (task #554).
@@ -15912,6 +15929,11 @@ internal fun shouldRestoreThreadOlderPageAnchor(
     capturedUserScrollGeneration: Int,
     currentUserScrollGeneration: Int
 ): Boolean = capturedUserScrollGeneration == currentUserScrollGeneration
+
+internal fun shouldCaptureThreadOlderPageAnchor(
+    currentUserScrollGeneration: Int,
+    headerScrollToTopOwnerGeneration: Int?
+): Boolean = headerScrollToTopOwnerGeneration != currentUserScrollGeneration
 
 private fun LazyListState.isThreadOlderAutoLoadThreshold(
     boundaryIndex: Int,

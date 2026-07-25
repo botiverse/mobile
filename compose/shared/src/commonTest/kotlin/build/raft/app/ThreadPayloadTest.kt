@@ -1725,6 +1725,28 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun threadOlderPageAnchorYieldsToHeaderScrollToTopOwnership() {
+        assertFalse(
+            shouldCaptureThreadOlderPageAnchor(
+                currentUserScrollGeneration = 7,
+                headerScrollToTopOwnerGeneration = 7
+            )
+        )
+        assertTrue(
+            shouldCaptureThreadOlderPageAnchor(
+                currentUserScrollGeneration = 8,
+                headerScrollToTopOwnerGeneration = 7
+            )
+        )
+        assertTrue(
+            shouldCaptureThreadOlderPageAnchor(
+                currentUserScrollGeneration = 7,
+                headerScrollToTopOwnerGeneration = null
+            )
+        )
+    }
+
+    @Test
     fun threadBottomAnchorOffsetBottomAlignsShortLatestItemInLongLists() {
         assertEquals(
             -520,
