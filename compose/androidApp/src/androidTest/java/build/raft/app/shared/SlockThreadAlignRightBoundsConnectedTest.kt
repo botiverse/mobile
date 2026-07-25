@@ -5,21 +5,25 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.math.abs
 
 /**
- * task #800 rendering evidence (ZhangYi's two hard bars, measured on a real
- * emulator render — not structural assertions):
- *  1. a single-character right-aligned bubble measures width < the long
- *     reference's cap AND its End edge lines up with the long bubble's;
- *  2. the End edge stays put across sent / sending / failed states (the
- *     in-flow spinner only adds width on the left).
+ * task #800 rendering evidence, oracle v3 (LiBai's four counterexamples +
+ * ZhangYi's frozen re-definition of tooth #3).
  *
- * The fixture page renders four right-aligned own-message cards separated by
- * pure-red 4dp markers; bands are segmented by scanning marker rows, and
- * bubble edges are the extreme non-background pixels inside each band.
+ * Geometry is measured ONLY through the fixture-provided tints painted on the
+ * exact production geometry (LocalThreadMessageGeometryTints, null in
+ * production): body = pure blue, status slot/spinner = pure magenta, 82% cap
+ * container = pure green, retry button = pure yellow. Whole-card non-white
+ * extremes are never scanned — the v2 run proved they only measure author
+ * chrome (both bands' extreme left was 912px of header, not the spinner).
+ *
+ * Bands: exactly SIX red markers → exactly FIVE bands, prefix/suffix rejected.
+ * Order: long cap reference / sent single char / sending / failed(+retry) /
+ * retry-returned-to-sending.
  */
 class SlockThreadAlignRightBoundsConnectedTest {
     @Test
@@ -39,106 +43,183 @@ class SlockThreadAlignRightBoundsConnectedTest {
                     "Unable to capture align-right fixture screenshot"
                 }
             try {
-                val bands = screenshot.markerBands()
-                assertTrue("Expected 4 fixture bands between markers, got ${bands.size}", bands.size >= 4)
-                val long = screenshot.bandContentEdges(bands[0])
-                val short = screenshot.bandContentEdges(bands[1])
-                val sending = screenshot.bandContentEdges(bands[2])
-                val failed = screenshot.bandContentEdges(bands[3])
-                println(
-                    "ALIGN_RIGHT_BOUNDS long=$long short=$short sending=$sending failed=$failed " +
-                        "screen=${screenshot.width}x${screenshot.height}"
+                val bands = screenshot.exactBandsBetweenMarkers(expectedMarkers = 6)
+                assertEquals("exactly five fixture bands between six markers", 5, bands.size)
+                val long = screenshot.bandGeometry(bands[0])
+                val sent = screenshot.bandGeometry(bands[1])
+                val sending = screenshot.bandGeometry(bands[2])
+                val failed = screenshot.bandGeometry(bands[3])
+                val retry = screenshot.bandGeometry(bands[4])
+                println("ALIGN_RIGHT_GEOMETRY long=$long")
+                println("ALIGN_RIGHT_GEOMETRY sent=$sent")
+                println("ALIGN_RIGHT_GEOMETRY sending=$sending")
+                println("ALIGN_RIGHT_GEOMETRY failed=$failed")
+                println("ALIGN_RIGHT_GEOMETRY retry=$retry")
+
+                // --- cap, measured independently from the green container ---
+                val longCap = requireNotNull(long.cap) { "long band lost its cap tint" }
+                val longBody = requireNotNull(long.body) { "long band lost its body tint" }
+                val sentBody = requireNotNull(sent.body) { "sent band lost its body tint" }
+                val sentCap = requireNotNull(sent.cap) { "sent band lost its cap tint" }
+                val longCapWidth = longCap.width
+                // Bar: the long reference actually reaches the cap …
+                assertTrue(
+                    "long body width ${longBody.width} must reach >= 0.98 of measured cap $longCapWidth",
+                    longBody.width >= (longCapWidth * 98) / 100
+                )
+                // … and the single character is far below it (its own band's cap).
+                assertTrue(
+                    "sent body width ${sentBody.width} must be < half of measured cap ${sentCap.width}",
+                    sentBody.width < sentCap.width / 2
                 )
 
-                val longWidth = long.right - long.left
-                val shortWidth = short.right - short.left
-                // Bar 1a: the single-character bubble is far below the cap the
-                // long reference reaches (a full-width box would measure ≈ longWidth).
+                // --- End alignment: body right edges equal across ALL bands ---
+                val bodies = listOf(long to "long", sent to "sent", sending to "sending", failed to "failed", retry to "retry")
+                for ((geom, name) in bodies) {
+                    val body = requireNotNull(geom.body) { "$name band lost its body tint" }
+                    assertTrue(
+                        "$name body End edge ${body.right} must equal long body End edge ${longBody.right}",
+                        abs(body.right - longBody.right) <= EdgeTolerancePx
+                    )
+                }
+
+                // --- sending: spinner strictly left of body, same first line ---
+                val sendingBody = requireNotNull(sending.body) { "sending band lost its body tint" }
+                val spinner = requireNotNull(sending.status) { "sending band must carry the spinner tint" }
                 assertTrue(
-                    "short bubble width $shortWidth must be < half the long reference width $longWidth",
-                    shortWidth < longWidth / 2
-                )
-                // Bar 1b: End edges line up (same End coordinate system).
-                assertTrue(
-                    "short End edge ${short.right} must align with long End edge ${long.right}",
-                    abs(short.right - long.right) <= EdgeTolerancePx
-                )
-                // Bar 2: sending → sent → failed keep the End edge fixed.
-                assertTrue(
-                    "sending End edge ${sending.right} must equal sent End edge ${short.right}",
-                    abs(sending.right - short.right) <= EdgeTolerancePx
+                    "spinner right ${spinner.right} must be strictly left of body left ${sendingBody.left}",
+                    spinner.right < sendingBody.left
                 )
                 assertTrue(
-                    "failed End edge ${failed.right} must equal sent End edge ${short.right}",
-                    abs(failed.right - short.right) <= EdgeTolerancePx
+                    "spinner ${spinner.vertical} must overlap the body's first line ${sendingBody.vertical}",
+                    spinner.top < sendingBody.top + (sendingBody.height.coerceAtLeast(1)) &&
+                        spinner.bottom > sendingBody.top
                 )
-                // The sending band carries the in-flow spinner LEFT of the
-                // bubble: its leftmost content must extend further left than
-                // the sent single-character band's.
+
+                // --- retry state == sending state, 0px equivalence ---
+                val retryBody = requireNotNull(retry.body) { "retry band lost its body tint" }
+                val retrySpinner = requireNotNull(retry.status) { "retry band must carry the spinner tint" }
+                assertEquals("retry body width == sending body width", sendingBody.width, retryBody.width)
+                assertEquals("retry body right == sending body right", sendingBody.right, retryBody.right)
+                assertEquals("retry spinner width == sending spinner width", spinner.width, retrySpinner.width)
+                assertEquals(
+                    "retry spinner offset-from-body == sending spinner offset-from-body",
+                    sendingBody.left - spinner.right,
+                    retryBody.left - retrySpinner.right
+                )
+
+                // --- failed: status row below the body, retry INSIDE the slot ---
+                val failedBody = requireNotNull(failed.body) { "failed band lost its body tint" }
+                val failedStatus = requireNotNull(failed.status) { "failed band must carry the status slot tint" }
+                val retryButton = requireNotNull(failed.retry) { "failed band must carry the retry button tint" }
                 assertTrue(
-                    "sending band left ${sending.left} must be < sent band left ${short.left} (spinner on the left)",
-                    sending.left < short.left - 2
+                    "failed status slot top ${failedStatus.top} must be below body bottom ${failedBody.bottom}",
+                    failedStatus.top >= failedBody.bottom
                 )
+                assertTrue(
+                    "retry button $retryButton must be contained in the failed status slot $failedStatus",
+                    retryButton.left >= failedStatus.left && retryButton.right <= failedStatus.right &&
+                        retryButton.top >= failedStatus.top && retryButton.bottom <= failedStatus.bottom
+                )
+                // Sent/long bands must carry no status/retry tint at all.
+                assertTrue("long band must have no status tint", long.status == null && long.retry == null)
+                assertTrue("sent band must have no status tint", sent.status == null && sent.retry == null)
             } finally {
                 screenshot.recycle()
             }
         }
     }
 
-    private data class BandEdges(val left: Int, val right: Int) {
-        override fun toString(): String = "[$left,$right]"
+    private data class Region(val left: Int, val top: Int, val right: Int, val bottom: Int) {
+        val width: Int get() = right - left
+        val height: Int get() = bottom - top
+        val vertical: String get() = "[$top..$bottom]"
+        override fun toString(): String = "[$left,$top,$right,$bottom]"
+    }
+
+    private data class BandGeometry(
+        val body: Region?,
+        val status: Region?,
+        val cap: Region?,
+        val retry: Region?
+    ) {
+        override fun toString(): String = "body=$body status=$status cap=$cap retry=$retry"
     }
 
     private data class Band(val top: Int, val bottom: Int)
 
-    /** Rows made (mostly) of the pure-red marker split the fixture bands. */
-    private fun Bitmap.markerBands(): List<Band> {
-        val markerRows = BooleanArray(height)
+    /**
+     * Exactly [expectedMarkers] red marker runs must exist; the returned bands
+     * are ONLY the regions between consecutive markers. Content above the
+     * first marker (activity chrome) and below the last is rejected, never
+     * misread as a band — the v2 oracle's first flaw.
+     */
+    private fun Bitmap.exactBandsBetweenMarkers(expectedMarkers: Int): List<Band> {
         val row = IntArray(width)
+        val markerRows = BooleanArray(height)
         for (y in 0 until height) {
             getPixels(row, 0, width, 0, y, width, 1)
             var red = 0
-            for (pixel in row) {
-                if (Color.red(pixel) > 200 && Color.green(pixel) < 60 && Color.blue(pixel) < 60) red++
-            }
+            for (pixel in row) if (pixel.isMarkerRed()) red++
             markerRows[y] = red > width / 2
         }
-        val bands = mutableListOf<Band>()
-        var bandStart = -1
+        val markerRuns = mutableListOf<Band>()
+        var runStart = -1
         for (y in 0 until height) {
             if (markerRows[y]) {
-                if (bandStart in 0 until y - 8) bands.add(Band(bandStart, y - 1))
-                bandStart = -1
-            } else if (bandStart < 0) {
-                bandStart = y
+                if (runStart < 0) runStart = y
+            } else if (runStart >= 0) {
+                markerRuns.add(Band(runStart, y - 1))
+                runStart = -1
             }
         }
-        // Content above the first marker (status bar area) produces a fake
-        // first band only if no marker precedes it; the fixture draws a marker
-        // before every card, so bands collected between markers are the cards.
-        return bands.filter { it.bottom - it.top > 16 }
+        if (runStart >= 0) markerRuns.add(Band(runStart, height - 1))
+        assertEquals("exactly $expectedMarkers red marker runs", expectedMarkers, markerRuns.size)
+        return markerRuns.zipWithNext { upper, lower -> Band(upper.bottom + 1, lower.top - 1) }
     }
 
-    /** Extreme non-background columns inside a band (background = near-white). */
-    private fun Bitmap.bandContentEdges(band: Band): BandEdges {
-        var left = width
-        var right = -1
+    /** Extents of each fixture tint inside a band — never whole-card pixels. */
+    private fun Bitmap.bandGeometry(band: Band): BandGeometry {
+        var body: Region? = null
+        var status: Region? = null
+        var cap: Region? = null
+        var retry: Region? = null
         val row = IntArray(width)
         for (y in band.top..band.bottom) {
             getPixels(row, 0, width, 0, y, width, 1)
             for (x in 0 until width) {
                 val pixel = row[x]
-                val isBackground =
-                    Color.red(pixel) > 235 && Color.green(pixel) > 235 && Color.blue(pixel) > 235
-                if (!isBackground) {
-                    if (x < left) left = x
-                    if (x > right) right = x
+                when {
+                    pixel.isBodyBlue() -> body = body.expand(x, y)
+                    pixel.isStatusMagenta() -> status = status.expand(x, y)
+                    pixel.isCapGreen() -> cap = cap.expand(x, y)
+                    pixel.isRetryYellow() -> retry = retry.expand(x, y)
                 }
             }
         }
-        assertTrue("band $band has no rendered content", right >= left)
-        return BandEdges(left, right)
+        // The cap container sits BEHIND the body: its true extent is the union.
+        val fullCap = when {
+            cap == null -> body
+            body == null -> cap
+            else -> Region(
+                minOf(cap.left, body.left),
+                minOf(cap.top, body.top),
+                maxOf(cap.right, body.right),
+                maxOf(cap.bottom, body.bottom)
+            )
+        }
+        return BandGeometry(body = body, status = status, cap = fullCap, retry = retry)
     }
+
+    private fun Region?.expand(x: Int, y: Int): Region =
+        if (this == null) Region(x, y, x, y)
+        else Region(minOf(left, x), minOf(top, y), maxOf(right, x), maxOf(bottom, y))
+
+    private fun Int.isMarkerRed() = Color.red(this) > 200 && Color.green(this) < 60 && Color.blue(this) < 60
+    private fun Int.isBodyBlue() = Color.blue(this) > 200 && Color.red(this) < 60 && Color.green(this) < 60
+    private fun Int.isStatusMagenta() = Color.red(this) > 200 && Color.blue(this) > 200 && Color.green(this) < 60
+    private fun Int.isCapGreen() = Color.green(this) > 200 && Color.red(this) < 60 && Color.blue(this) < 60
+    private fun Int.isRetryYellow() = Color.red(this) > 200 && Color.green(this) > 200 && Color.blue(this) < 60
 
     private companion object {
         const val EdgeTolerancePx = 3

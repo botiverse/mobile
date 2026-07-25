@@ -74,7 +74,8 @@ class ThreadAlignRightContractTest {
         // column — sent removes only left-side width, so the End edge cannot
         // move and no trailing reservation exists to shift it back.
         assertContains(thread, "val messageBodyBlock: @Composable () -> Unit = {")
-        assertContains(thread, "if (richContentEnabled && message.isSendingLocalSend()) {\n                                            ThreadMessageSendingIndicator()")
+        assertContains(thread, "if (richContentEnabled && message.isSendingLocalSend()) {")
+        assertContains(thread, "ThreadMessageGeometryTintBox(geometryTints?.statusTint) {\n                                                ThreadMessageSendingIndicator()")
         assertContains(
             thread,
             "val reserveInlineTrailingSpace = richContentEnabled && message.isSendingLocalSend() && !alignOwnMessageRight"
@@ -89,6 +90,23 @@ class ThreadAlignRightContractTest {
     fun renderingEvidenceHarnessStaysWired() {
         val thread = threadPageSource()
         assertContains(thread, "@Page(\"compose_thread_align_right_visual\", supportInLocal = true)")
+        // Geometry tints are the ONLY measurement channel (v2's whole-card
+        // scan measured author chrome — both bands' extreme left was the same
+        // 912px header pixel). Production default must stay null.
+        assertContains(thread, "compositionLocalOf<ThreadMessageGeometryTints?> { null }")
+        assertContains(thread, ".background(geometryTints?.capTint ?: Color.Transparent)")
+        assertContains(thread, "LocalThreadMessageGeometryTints.current?.retryTint ?: Color.Transparent")
+        val oracle =
+            sourceFile(
+                "../androidApp/src/androidTest/java/build/raft/app/shared/SlockThreadAlignRightBoundsConnectedTest.kt",
+                "compose/androidApp/src/androidTest/java/build/raft/app/shared/SlockThreadAlignRightBoundsConnectedTest.kt"
+            )
+        assertContains(oracle, "exactBandsBetweenMarkers(expectedMarkers = 6)")
+        assertContains(oracle, "assertEquals(\"exactly five fixture bands between six markers\", 5, bands.size)")
+        assertFalse(
+            oracle.contains("isBackground"),
+            "the oracle must never scan whole-card non-background extremes again"
+        )
         val workflow =
             sourceFile(
                 "../../.github/workflows/test.yml",

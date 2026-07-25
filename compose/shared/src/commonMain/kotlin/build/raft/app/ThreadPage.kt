@@ -16447,6 +16447,29 @@ internal fun threadDateDividerTextStyle(): TextStyle =
         letterSpacing = 0.sp
     )
 
+// task #800 rendering-evidence seam: fixture-only geometry tints so the
+// connected pixel oracle measures EXACTLY the body / status / cap geometry
+// instead of whole-card extremes. Default null = production provides no tints,
+// paints nothing, and (via the helper) adds zero extra layout nodes.
+internal data class ThreadMessageGeometryTints(
+    val bodyTint: Color,
+    val statusTint: Color,
+    val capTint: Color,
+    val retryTint: Color
+)
+
+internal val LocalThreadMessageGeometryTints =
+    compositionLocalOf<ThreadMessageGeometryTints?> { null }
+
+@Composable
+private fun ThreadMessageGeometryTintBox(tint: Color?, content: @Composable () -> Unit) {
+    if (tint == null) {
+        content()
+    } else {
+        Box(Modifier.background(tint)) { content() }
+    }
+}
+
 @Composable
 private fun ThreadMessageCard(
     message: KuiklyThreadMessageItem,
@@ -16528,6 +16551,7 @@ private fun ThreadMessageCard(
         if (alignOwnMessageRight) Arrangement.spacedBy(12.dp, Alignment.End) else Arrangement.spacedBy(12.dp)
     val contentAlignment = if (alignOwnMessageRight) Alignment.End else Alignment.Start
     val messageMaxWidthFraction = if (alignOwnMessageRight) 0.82f else 1f
+    val geometryTints = LocalThreadMessageGeometryTints.current
     val agentStatus =
         if (message.showsAgentStatusIndicator()) {
             rememberSlockAgentStatusIndicatorState(agentStatusResolver, message.authorId)
@@ -16796,7 +16820,7 @@ private fun ThreadMessageCard(
                                 modifier =
                                     Modifier
                                         .threadMessageContentWidth(messageMaxWidthFraction)
-                                        .background(Color.Transparent),
+                                        .background(geometryTints?.capTint ?: Color.Transparent),
                                 verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
                                 horizontalAlignment = contentAlignment
                             ) {
@@ -16885,12 +16909,18 @@ private fun ThreadMessageCard(
                                         horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
                                     ) {
                                         if (richContentEnabled && message.isSendingLocalSend()) {
-                                            ThreadMessageSendingIndicator()
+                                            ThreadMessageGeometryTintBox(geometryTints?.statusTint) {
+                                                ThreadMessageSendingIndicator()
+                                            }
                                         }
-                                        messageBodyBlock()
+                                        ThreadMessageGeometryTintBox(geometryTints?.bodyTint) {
+                                            messageBodyBlock()
+                                        }
                                     }
                                 } else {
-                                    messageBodyBlock()
+                                    ThreadMessageGeometryTintBox(geometryTints?.bodyTint) {
+                                        messageBodyBlock()
+                                    }
                                 }
                                 if (showLongMessageToggle && translation?.pendingPlaceholder != true) {
                                     ThreadLongMessageToggle(
@@ -16925,13 +16955,15 @@ private fun ThreadMessageCard(
                         }
                         if (message.isFailedLocalSend()) {
                             Box(modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)) {
-                                ThreadMessageLocalSendStatus(
-                                    message = message,
-                                    alignEnd = alignOwnMessageRight,
-                                    retryEnabled = writeActionsEnabled,
-                                    onRetry = onRetryLocalSend,
-                                    onCopyDetails = onCopyLocalSendFailureDetails
-                                )
+                                ThreadMessageGeometryTintBox(geometryTints?.statusTint) {
+                                    ThreadMessageLocalSendStatus(
+                                        message = message,
+                                        alignEnd = alignOwnMessageRight,
+                                        retryEnabled = writeActionsEnabled,
+                                        onRetry = onRetryLocalSend,
+                                        onCopyDetails = onCopyLocalSendFailureDetails
+                                    )
+                                }
                             }
                         }
                         inlineReplyPresentation?.let { presentation ->
@@ -17120,7 +17152,9 @@ private fun ThreadMessageLocalSendStatus(
                     onClick = { if (message.canRetryLocalSend()) onRetry() },
                     enabled = message.canRetryLocalSend(),
                     pressFeedback = message.canRetryLocalSend(),
-                    modifier = Modifier.heightIn(min = 28.dp).background(Color.Transparent)
+                    modifier =
+                        Modifier.heightIn(min = 28.dp)
+                            .background(LocalThreadMessageGeometryTints.current?.retryTint ?: Color.Transparent)
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -23239,13 +23273,23 @@ private fun threadAlignRightVisualFixtureMessage(
             }
     )
 
+// task #800 rendering-evidence fixture (oracle v3, LiBai/ZhangYi frozen bars):
+// five right-aligned own-message cards between SIX pure-red markers. Geometry
+// is measured ONLY through the fixture tints — body pure blue, status slot
+// pure magenta, 82% cap container pure green, retry button pure yellow — so
+// the connected test reads exactly the body/status/cap/retry geometry and
+// never whole-card extremes. Band order: long cap reference / sent single
+// char / sending / failed(+retry) / retry-returned-to-sending.
 @Composable
 internal fun ThreadAlignRightVisualScreen() {
     val fixtures =
         listOf(
             threadAlignRightVisualFixtureMessage(
                 id = "align-right-long-1",
-                body = "This deliberately long reference message wraps across multiple lines so its bubble reaches the width cap for the band."
+                // The fenced code block is a fill-width child, so the wrapped
+                // body root deterministically expands to the FULL cap — the
+                // >=0.98 cap-reach bar cannot flake on word-wrap line fill.
+                body = "This deliberately long reference message wraps across multiple lines so its bubble reaches the width cap for the band.\n\n```\ncap reference block\n```"
             ),
             threadAlignRightVisualFixtureMessage(id = "align-right-short-2", body = "W"),
             threadAlignRightVisualFixtureMessage(
@@ -23259,25 +23303,44 @@ internal fun ThreadAlignRightVisualScreen() {
                 body = "W",
                 deliveryState = ThreadMessageDeliveryFailed,
                 pending = true
+            ),
+            // The retry affordance returns a failed message to the sending
+            // state; this card IS that post-retry state re-rendered, so its
+            // measured geometry must be 0px-equal to the sending band.
+            threadAlignRightVisualFixtureMessage(
+                id = "align-right-retry-5",
+                body = "W",
+                deliveryState = ThreadMessageDeliverySending,
+                pending = true
             )
         )
-    Column(Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-        fixtures.forEach { message ->
-            Box(Modifier.fillMaxWidth().height(4.dp).background(Color(0xFFFF0000)))
-            ThreadMessageCard(
-                message = message,
-                alignOwnMessageRight = true,
-                onShowActions = {},
-                onOpenMember = {},
-                onOpenThread = {},
-                onOpenTask = {},
-                onOpenTaskStatusMenu = {},
-                onToggleReaction = {},
-                onOpenAttachment = {},
-                onOpenMarkdownTag = {},
-                onOpenMarkdownUrl = {}
+    CompositionLocalProvider(
+        LocalThreadMessageGeometryTints provides
+            ThreadMessageGeometryTints(
+                bodyTint = Color(0xFF0000FF),
+                statusTint = Color(0xFFFF00FF),
+                capTint = Color(0xFF00FF00),
+                retryTint = Color(0xFFFFFF00)
             )
+    ) {
+        Column(Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+            fixtures.forEach { message ->
+                Box(Modifier.fillMaxWidth().height(4.dp).background(Color(0xFFFF0000)))
+                ThreadMessageCard(
+                    message = message,
+                    alignOwnMessageRight = true,
+                    onShowActions = {},
+                    onOpenMember = {},
+                    onOpenThread = {},
+                    onOpenTask = {},
+                    onOpenTaskStatusMenu = {},
+                    onToggleReaction = {},
+                    onOpenAttachment = {},
+                    onOpenMarkdownTag = {},
+                    onOpenMarkdownUrl = {}
+                )
+            }
+            Box(Modifier.fillMaxWidth().height(4.dp).background(Color(0xFFFF0000)))
         }
-        Box(Modifier.fillMaxWidth().height(4.dp).background(Color(0xFFFF0000)))
     }
 }
