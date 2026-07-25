@@ -651,6 +651,58 @@ esac
   assert.equal(fs.existsSync(path.join(runnerTemp, "stamp-bootstrap-login-rc-login.json")), false);
 });
 
+test("no-material bootstrap failure confirms only the exact server terminal binding", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "stamp-bootstrap-no-material-"));
+  const bin = path.join(root, "bin");
+  const runnerTemp = path.join(root, "runner-temp");
+  fs.mkdirSync(bin); fs.mkdirSync(runnerTemp);
+  const payload = path.join(root, "payload.json");
+  const calls = path.join(root, "calls");
+  fs.writeFileSync(path.join(bin, "curl"), `#!/usr/bin/env bash
+url=""; data=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --data-binary) data="$2"; shift 2;;
+    http*) url="$1"; shift;;
+    *) shift;;
+  esac
+done
+[ "$url" = "https://stamp.test/api/agent/run-cases/rc-no-material/auth-bootstrap/login-failure-terminal" ] || exit 23
+cp "\${data#@}" "${payload}"
+node -e 'const v=require(process.argv[1]);if(Object.keys(v).sort().join(",")!=="boot_generation,signing_cert_sha256"||v.signing_cert_sha256!=="sha256:${"a".repeat(64)}"||v.boot_generation!=="boot-generation-1")process.exit(2)' "${payload}" || exit 24
+printf '%s\n' terminal >> "${calls}"
+`, { mode: 0o755 });
+  fs.writeFileSync(path.join(runnerTemp, "stamp-claim-rc-no-material"), "claim-token", { mode: 0o600 });
+  const spec = path.join(runnerTemp, "stamp-bootstrap-spec-rc-no-material.json");
+  fs.writeFileSync(spec, JSON.stringify({ required: true,
+    failure_terminal_endpoint: "/api/agent/run-cases/rc-no-material/auth-bootstrap/login-failure-terminal" }), { mode: 0o600 });
+  const binding = path.join(root, "binding.json");
+  fs.writeFileSync(binding, JSON.stringify({ signing_cert_sha256: `sha256:${"a".repeat(64)}`,
+    boot_generation: "boot-generation-1", unrelated_local_fact: "must-not-forward" }), { mode: 0o600 });
+  const env = {
+    ...process.env, PATH: `${bin}:${path.dirname(process.execPath)}:${process.env.PATH}`,
+    RUNNER_TEMP: runnerTemp, STAMP_RUN_CASE_ID: "rc-no-material", STAMP_URL: "https://stamp.test",
+    STAMP_TOKEN: "token-that-must-not-enter-payload", GITHUB_RUN_ID: "902", GITHUB_REPOSITORY: "botiverse/mobile",
+  };
+  const reporter = new URL("./stamp_report.sh", import.meta.url).pathname;
+  const output = execFileSync("bash", [reporter, "bootstrap-failure-terminal", binding], { cwd: root, env, encoding: "utf8" });
+  assert.match(output, /canonical no-material bootstrap failure terminal confirmed/);
+  assert.deepEqual(JSON.parse(fs.readFileSync(payload, "utf8")), {
+    signing_cert_sha256: `sha256:${"a".repeat(64)}`, boot_generation: "boot-generation-1",
+  });
+  assert.equal(fs.readFileSync(payload, "utf8").includes("token-that-must-not-enter-payload"), false);
+  assert.equal(fs.readFileSync(payload, "utf8").includes("unrelated_local_fact"), false);
+  assert.equal(fs.readFileSync(calls, "utf8").trim(), "terminal");
+
+  fs.writeFileSync(spec, JSON.stringify({ required: true }), { mode: 0o600 });
+  assert.throws(() => execFileSync("bash", [reporter, "bootstrap-failure-terminal", binding], { cwd: root, env }));
+  fs.writeFileSync(spec, JSON.stringify({ required: true,
+    failure_terminal_endpoint: "/api/agent/run-cases/rc-no-material/auth-bootstrap/login-failure-terminal" }), { mode: 0o600 });
+  fs.writeFileSync(binding, JSON.stringify({ signing_cert_sha256: "sha256:bad", boot_generation: "boot-generation-1" }));
+  assert.throws(() => execFileSync("bash", [reporter, "bootstrap-failure-terminal", binding], { cwd: root, env }));
+  assert.equal(fs.readFileSync(calls, "utf8").trim(), "terminal", "negative contracts must not call the endpoint");
+});
+
 test("workflow-error closes claimed failures and treats an already-terminal attempt as an idempotent no-op", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "stamp-workflow-error-"));
   const bin = path.join(root, "bin");

@@ -187,7 +187,7 @@ if [ "$PHASE" = "bootstrap-status" ]; then
   if curl -sfS --retry 2 --retry-all-errors -X GET "${STAMP_URL%/}$ENDPOINT" \
     -H "$AUTH" -H "$JOB_HEADER" -H "$CLAIM_HEADER" -o "$STATUS_FILE"; then
     chmod 600 "$STATUS_FILE"
-    node -e 'const v=require(process.argv[1]);if(v.contract_version!=="qa-bootstrap-login/v1"||v.required!==true||!["issued","ready","torn_down","aborted","error"].includes(v.status))process.exit(2)' "$STATUS_FILE" \
+    node -e 'const v=require(process.argv[1]);if(v.contract_version!=="qa-bootstrap-login/v1"||v.required!==true||!["issued","ready","torn_down","aborted","failed","error"].includes(v.status))process.exit(2)' "$STATUS_FILE" \
       || { rm -f "$STATUS_FILE"; echo "stamp: bootstrap status response invalid" >&2; exit 1; }
     echo "stamp: bootstrap status read"
     exit 0
@@ -202,7 +202,25 @@ if [ "$PHASE" = "bootstrap-failure-terminal" ]; then
   READY_FILE="${3:-${RUNNER_TEMP:-qa-evidence}/stamp-bootstrap-ready.json}"
   STATUS_FILE="${RUNNER_TEMP:-qa-evidence}/stamp-bootstrap-failure-status-$STAMP_RUN_CASE_ID.json"
   CLEANUP_FILE="${RUNNER_TEMP:-qa-evidence}/stamp-bootstrap-failure-cleanup-$STAMP_RUN_CASE_ID.json"
-  [ -s "$BOOTSTRAP_LOGIN_RESPONSE_FILE" ] && [ -s "$BINDING_FILE" ] || { echo "stamp: no bootstrap login material to terminalize"; exit 0; }
+  [ -s "$BINDING_FILE" ] || { echo "stamp: bootstrap failure lacks device binding" >&2; exit 1; }
+  if [ ! -s "$BOOTSTRAP_LOGIN_RESPONSE_FILE" ]; then
+    FAILURE_ENDPOINT=$(node -e 'const v=require(process.argv[1]),expected=`/api/agent/run-cases/${process.argv[2]}/auth-bootstrap/login-failure-terminal`;if(v.required!==true||v.failure_terminal_endpoint!==expected)process.exit(2);process.stdout.write(v.failure_terminal_endpoint)' "$BOOTSTRAP_SPEC_FILE" "$STAMP_RUN_CASE_ID") \
+      || { echo "stamp: no-material failure terminal contract unavailable" >&2; exit 1; }
+    FAILURE_PAYLOAD="${RUNNER_TEMP:-qa-evidence}/stamp-bootstrap-failure-terminal-$STAMP_RUN_CASE_ID.json"
+    node -e 'const fs=require("fs"),v=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if(typeof v.signing_cert_sha256!=="string"||!/^sha256:[a-f0-9]{64}$/.test(v.signing_cert_sha256)||typeof v.boot_generation!=="string"||!v.boot_generation||v.boot_generation!==v.boot_generation.trim())process.exit(2);fs.writeFileSync(process.argv[2],JSON.stringify({signing_cert_sha256:v.signing_cert_sha256,boot_generation:v.boot_generation}),{mode:0o600})' "$BINDING_FILE" "$FAILURE_PAYLOAD" \
+      || { rm -f "$FAILURE_PAYLOAD"; echo "stamp: no-material failure terminal payload invalid" >&2; exit 1; }
+    rc=0
+    curl -sfS --retry 2 --retry-all-errors -X POST "${STAMP_URL%/}$FAILURE_ENDPOINT" \
+      -H "$AUTH" -H "$JOB_HEADER" -H "$CLAIM_HEADER" -H 'content-type: application/json' \
+      --data-binary @"$FAILURE_PAYLOAD" >/dev/null || rc=$?
+    rm -f "$FAILURE_PAYLOAD" "$BOOTSTRAP_READY_RESPONSE_FILE" "$BOOTSTRAP_CAPTURE_CONTEXT_FILE" "$BOOTSTRAP_CAPTURE_ENV_FILE"
+    if [ "$rc" = "0" ]; then
+      echo "stamp: canonical no-material bootstrap failure terminal confirmed"
+      exit 0
+    fi
+    echo "stamp: no-material bootstrap failure terminal failed" >&2
+    exit 1
+  fi
   if ! "$0" bootstrap-status "$STATUS_FILE"; then
     PKG=$(cat qa-app-package.txt 2>/dev/null || true)
     [ -z "$PKG" ] || { adb shell am force-stop "$PKG" || true; adb shell pm clear "$PKG" || true; }
@@ -222,7 +240,7 @@ if [ "$PHASE" = "bootstrap-failure-terminal" ]; then
       outcome=aborted
       ready_args=()
       ;;
-    torn_down|aborted|error)
+    torn_down|aborted|failed|error)
       rm -f "$BOOTSTRAP_LOGIN_RESPONSE_FILE" "$BOOTSTRAP_READY_RESPONSE_FILE" "$BOOTSTRAP_CAPTURE_CONTEXT_FILE" "$BOOTSTRAP_CAPTURE_ENV_FILE"
       echo "stamp: bootstrap already terminal state=$state"
       exit 0
