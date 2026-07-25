@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownTypography
 import com.tencent.kuiklybase.markdown.compose.LocalSlockMarkdownAnnotationRevision
+import com.tencent.kuiklybase.markdown.compose.LocalSlockMarkdownParagraphFillWidth
 import com.tencent.kuiklybase.markdown.compose.slockMarkdownAnnotatedStringMemoKeys
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.foundation.layout.Column
@@ -22,10 +23,16 @@ import org.intellij.markdown.ast.ASTNode
 fun MarkdownParagraph(
     content: String,
     node: ASTNode,
-    modifier: Modifier = Modifier.fillMaxWidth(),
+    // Slock (task #800): null resolves against LocalSlockMarkdownParagraphFillWidth
+    // (default true = legacy fill). Right-aligned chat bubbles provide false so a
+    // short paragraph wraps to its text and can hug the End edge; every other
+    // caller keeps the legacy fill behavior untouched.
+    modifier: Modifier? = null,
     style: TextStyle = LocalMarkdownTypography.current.paragraph,
     annotatorSettings: AnnotatorSettings = annotatorSettings(),
 ) {
+    val paragraphFillWidth = LocalSlockMarkdownParagraphFillWidth.current
+    val resolvedModifier = modifier ?: if (paragraphFillWidth) Modifier.fillMaxWidth() else Modifier
     // t6-a paragraph sub-phases: annotate = AnnotatedString build (plain
     // block, measured via the timing's clock), textCall = MarkdownText
     // composable call (sequential enter/exit). Null timing = untimed path.
@@ -79,11 +86,11 @@ fun MarkdownParagraph(
     }
 
     // 套个娃，解决placeholder span位置不对的问题
-    Column(modifier = Modifier.fillMaxWidth()) {
+    Column(modifier = if (paragraphFillWidth) Modifier.fillMaxWidth() else Modifier) {
         nodeTiming?.enterParagraphText()
         MarkdownText(
             styledText,
-            modifier = modifier,
+            modifier = resolvedModifier,
             style = style,
         )
         nodeTiming?.exitParagraphText()

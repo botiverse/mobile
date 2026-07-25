@@ -113,12 +113,29 @@ internal enum class SlockAnchorPlacement {
     BottomEnd
 }
 
+internal enum class SlockMetaChipClickDispatch {
+    Disabled,
+    Plain,
+    Anchored
+}
+
+internal fun resolveSlockMetaChipClickDispatch(
+    hasPlainClick: Boolean,
+    hasAnchoredClick: Boolean
+): SlockMetaChipClickDispatch =
+    when {
+        hasPlainClick -> SlockMetaChipClickDispatch.Plain
+        hasAnchoredClick -> SlockMetaChipClickDispatch.Anchored
+        else -> SlockMetaChipClickDispatch.Disabled
+    }
+
 @Composable
 internal fun SlockAnchoredMetaChip(
     label: String,
     iconName: SlockLucideIconName?,
     color: Color,
     onClick: ((SlockPopoverAnchor) -> Unit)?,
+    onClickWithoutAnchor: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     iconSize: Dp = 10.dp,
     contentColor: Color = SlockColor.TextBlack,
@@ -132,11 +149,16 @@ internal fun SlockAnchoredMetaChip(
     verticalPadding: Dp = 2.dp,
     labelFontSize: TextUnit = 10.sp,
     labelLineHeight: TextUnit = 12.sp,
-    pressFeedback: Boolean = onClick != null,
+    pressFeedback: Boolean = onClick != null || onClickWithoutAnchor != null,
     anchorPlacement: SlockAnchorPlacement = SlockAnchorPlacement.Tap,
     clickIdentity: Any? = null,
     anchorOwnerIdentity: Any? = null
 ) {
+    val clickDispatch =
+        resolveSlockMetaChipClickDispatch(
+            hasPlainClick = onClickWithoutAnchor != null,
+            hasAnchoredClick = onClick != null
+        )
     val resolvedAnchorOwnerIdentity = anchorOwnerIdentity ?: clickIdentity ?: "anchored_meta_chip:$label"
     val geometryAnchor =
         remember(resolvedAnchorOwnerIdentity) { SlockLiveRootAnchorRef(identity = resolvedAnchorOwnerIdentity) }
@@ -148,25 +170,38 @@ internal fun SlockAnchoredMetaChip(
             .slockSquareCorners()
             .padding(horizontal = horizontalPadding, vertical = verticalPadding)
             .let { base ->
-                if (anchorPlacement == SlockAnchorPlacement.Tap) {
+                if (
+                    clickDispatch != SlockMetaChipClickDispatch.Anchored ||
+                    anchorPlacement == SlockAnchorPlacement.Tap
+                ) {
                     base
                 } else {
                     base.slockCaptureLiveRootAnchor(geometryAnchor)
                 }
             }
     SlockAnchorButton(
-        onClick2 = { tapAnchor ->
-            val anchor =
-                when (anchorPlacement) {
-                    SlockAnchorPlacement.Tap -> tapAnchor
-                    SlockAnchorPlacement.BottomStart ->
-                        geometryAnchor.resolve(SlockPopoverLocalPoint.BottomStart)
-                    SlockAnchorPlacement.BottomEnd ->
-                        geometryAnchor.resolve(SlockPopoverLocalPoint.BottomEnd)
-                }
-            anchor?.let { onClick?.invoke(it) }
+        onClick = {
+            if (clickDispatch == SlockMetaChipClickDispatch.Plain) {
+                onClickWithoutAnchor?.invoke()
+            }
         },
-        enabled = onClick != null,
+        onClick2 =
+            if (clickDispatch == SlockMetaChipClickDispatch.Anchored) {
+                { tapAnchor ->
+                    val anchor =
+                        when (anchorPlacement) {
+                            SlockAnchorPlacement.Tap -> tapAnchor
+                            SlockAnchorPlacement.BottomStart ->
+                                geometryAnchor.resolve(SlockPopoverLocalPoint.BottomStart)
+                            SlockAnchorPlacement.BottomEnd ->
+                                geometryAnchor.resolve(SlockPopoverLocalPoint.BottomEnd)
+                        }
+                    anchor?.let { onClick?.invoke(it) }
+                }
+            } else {
+                null
+            },
+        enabled = clickDispatch != SlockMetaChipClickDispatch.Disabled,
         pressFeedback = pressFeedback,
         clickIdentity = clickIdentity,
         anchorOwnerIdentity = resolvedAnchorOwnerIdentity,
