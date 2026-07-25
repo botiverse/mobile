@@ -1,0 +1,168 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/botiverse/mobile/main/docs/qa-acceptance/android-app-update/android-app-update-fixture.v1.schema.json",
+  "title": "Raft Android full-APK update fixture v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schema_version",
+    "fixture_id",
+    "fixture_generation",
+    "lifecycle_status",
+    "owner_guard",
+    "source",
+    "lane",
+    "baseline",
+    "target",
+    "target_distribution",
+    "rollback"
+  ],
+  "properties": {
+    "$schema": { "type": "string", "minLength": 1 },
+    "schema_version": { "const": "android-app-update-fixture.v1" },
+    "fixture_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "fixture_generation": { "type": "integer", "minimum": 1 },
+    "lifecycle_status": {
+      "enum": ["proposed_build_only", "ready_for_owner_authorization", "active", "terminal"]
+    },
+    "owner_guard": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["owner", "deadline", "reminder_ref", "external_writes_authorized"],
+      "properties": {
+        "owner": { "type": "string", "minLength": 1 },
+        "deadline": { "$ref": "#/$defs/utc" },
+        "reminder_ref": { "type": "string", "minLength": 1 },
+        "external_writes_authorized": { "type": "boolean" }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "commit_sha", "workflow_path", "resolved_ref", "resolved_ref_sha"],
+      "properties": {
+        "repository": { "const": "botiverse/mobile" },
+        "commit_sha": { "$ref": "#/$defs/git_sha" },
+        "workflow_path": { "type": "string", "minLength": 1 },
+        "resolved_ref": { "type": "string", "minLength": 1 },
+        "resolved_ref_sha": { "$ref": "#/$defs/git_sha" }
+      }
+    },
+    "lane": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "gradle_variant",
+        "package_name",
+        "hands_delta_update_enabled",
+        "hands_app_slug",
+        "hands_channel_slug",
+        "expected_ui_states"
+      ],
+      "properties": {
+        "mode": { "const": "full-downloadmanager" },
+        "gradle_variant": { "const": "release" },
+        "package_name": { "const": "build.raft.app" },
+        "hands_delta_update_enabled": { "const": false },
+        "hands_app_slug": { "const": "raft-android" },
+        "hands_channel_slug": { "const": "debug" },
+        "expected_ui_states": { "const": ["Download", "Downloading", "Retry", "Install"] }
+      }
+    },
+    "baseline": { "$ref": "#/$defs/apk" },
+    "target": { "$ref": "#/$defs/apk" },
+    "target_distribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "build_ref",
+        "release_ref",
+        "asset_ref",
+        "scope_kind",
+        "scope_ref",
+        "force_update",
+        "shares_empty",
+        "activate_after",
+        "expires_at"
+      ],
+      "properties": {
+        "build_ref": { "type": "string", "minLength": 1 },
+        "release_ref": { "type": "string", "minLength": 1 },
+        "asset_ref": { "type": "string", "minLength": 1 },
+        "scope_kind": { "const": "device-group" },
+        "scope_ref": { "type": "string", "minLength": 1 },
+        "force_update": { "const": false },
+        "shares_empty": { "const": true },
+        "activate_after": { "$ref": "#/$defs/utc" },
+        "expires_at": { "$ref": "#/$defs/utc" }
+      }
+    },
+    "rollback": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["release_role", "action", "deadline", "terminal_receipt_required"],
+      "properties": {
+        "release_role": { "const": "target-b-only" },
+        "action": { "enum": ["cancel-target-release", "deactivate-target-release"] },
+        "deadline": { "$ref": "#/$defs/utc" },
+        "terminal_receipt_required": { "const": true }
+      }
+    }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "git_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "utc": { "type": "string", "format": "date-time" },
+    "apk": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_commit",
+        "github_run_id",
+        "github_artifact_id",
+        "artifact_name",
+        "apk_member_name",
+        "apk_size_bytes",
+        "apk_sha256",
+        "package_name",
+        "version_name",
+        "version_code",
+        "min_sdk",
+        "target_sdk",
+        "lineage_order",
+        "signer_lineage_sha256",
+        "v2_verified",
+        "v3_verified"
+      ],
+      "properties": {
+        "source_commit": { "$ref": "#/$defs/git_sha" },
+        "github_run_id": { "type": "string", "pattern": "^[0-9]+$" },
+        "github_artifact_id": { "type": "string", "pattern": "^[0-9]+$" },
+        "artifact_name": { "type": "string", "minLength": 1 },
+        "apk_member_name": { "type": "string", "minLength": 1 },
+        "apk_size_bytes": { "type": "integer", "minimum": 1 },
+        "apk_sha256": { "$ref": "#/$defs/sha256" },
+        "package_name": { "const": "build.raft.app" },
+        "version_name": { "type": "string", "minLength": 1 },
+        "version_code": { "type": "integer", "minimum": 1, "maximum": 2147483647 },
+        "min_sdk": { "type": "integer", "minimum": 1 },
+        "target_sdk": { "type": "integer", "minimum": 1 },
+        "lineage_order": { "const": "oldest-to-current" },
+        "signer_lineage_sha256": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/sha256" }
+        },
+        "v2_verified": { "const": true },
+        "v3_verified": { "const": true },
+        "native_symbols_artifact_id": { "type": ["string", "null"] },
+        "native_symbols_sha256": {
+          "anyOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }]
+        }
+      }
+    }
+  }
+}

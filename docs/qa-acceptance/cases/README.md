@@ -18,6 +18,7 @@
 | 08 | `member-profile-open` | 成员资料-点击成员头像打开Profile | L1 | members, profile, regression | Hands feedback 3c1d6a34 |
 | 09 | `image-preview-in-thread` | 图片预览-对话流中查看图片 | L1 | messaging, image, P0 | Hands feedback 0ec255d7 |
 | 10 | `dm-open-and-send` | 私信-打开DM并发送消息 | L1 | messaging, dm, regression | Hands #1068, f96c5708 |
+| 27 | `android-app-update-full-success` | Android App Update-full APK Downloading to installed B | L1 | app-update, installer, upgrade | #反馈 App Update standard / Stamp task #80 |
 
 ## Schema
 

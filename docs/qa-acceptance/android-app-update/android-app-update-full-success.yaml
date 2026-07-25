@@ -1,0 +1,257 @@
+id: android-app-update-full-success
+title: "Android App Update-full APK Downloading to installed B"
+app: raft-android
+tier: L1
+version: "1.0"
+description: |
+  Upgrade exact release APK A to exact release APK B through Raft's real
+  non-delta DownloadManager and Android package-installer path. Android 12 is
+  the hard gate and Android 14 is the control. This case is not scheduled until
+  Stamp can freeze one immutable A/B bundle and execute both coordinates.
+tags: [android, app-update, downloading, installer, upgrade, release, regression]
+platforms: [android]
+timeout_seconds: 900
+max_retries: 0
+verdict_before_cleanup: false
+auth_fixture: none
+launch_route: compose_slock_app_shell
+
+execution_policy:
+  scheduled: false
+  admission_state: blocked_until_fixture_and_coordinates
+  one_owner_per_fixture: true
+  maximum_fixture_window_seconds: 14400
+  no_blind_retry_after_external_write: true
+
+matrix:
+  required_coordinates:
+    - platform: android
+      device_spec: android12-update-hard
+      required_facts:
+        api_level: 31
+        device_class: real-or-cloud-phone
+        executor_lane: stamp-device-provider
+    - platform: android
+      device_spec: android14-update-control
+      required_facts:
+        api_level: 34
+        device_class: real-or-cloud-phone
+        executor_lane: stamp-device-provider
+  hard_gate: android12-update-hard
+  control: android14-update-control
+
+environment:
+  server: staging
+  credentials_ref: qa-account:app-update
+
+fixture:
+  schema: android-app-update-fixture.v1.schema.json
+  revision: android-app-update-full/v1
+  readiness:
+    - id: immutable-a-b-bundle
+      goal: "A/B manifest is canonical, digest-bound, and proves same source/package/release variant/signing lineage with B.versionCode greater than A.versionCode."
+    - id: owner-guard-active
+      goal: "One named owner, monotonic generation, at-most-four-hour deadline, anchored reminder, and B-only rollback are frozen."
+    - id: resolver-isolated
+      goal: "Only exact B is scoped to the dedicated update-device group; anonymous and unrelated clients remain negative."
+  notes: |
+    The runnable run_case stores opaque distribution refs. Never put private
+    group/installation ids, signed URLs, credentials, ADB endpoints, or keys in
+    this YAML or public evidence.
+
+required_evidence:
+  - recording
+  - screenshot
+  - ui_dump
+  - logcat
+  - steps_log
+  - build_info
+  - checkpoint
+  - report
+
+preconditions:
+  - type: fixture_ready
+    params: { fixture_id: android-app-update-full }
+  - type: baseline_apk_installed
+    params: { role: A, package: build.raft.app }
+  - type: signed_in_minimal_state
+    params: { preserve: [session, current_server, unsent_draft, release_notes_cache] }
+
+cleanup:
+  - action: remove_target_group_member
+  - action: verify_resolver_negative
+    params: { clients: [anonymous, random_non_member, former_member] }
+  - action: cancel_target_b_release
+  - action: clear_download_manager_fixture_rows
+  - action: uninstall_or_reset_high_version_package
+  - action: restore_network_and_unknown_source_permission
+  - action: stop_isolated_adb_and_delete_one_time_key
+  - action: release_device_and_require_terminal_released
+  - action: persist_run_bound_cleanup_receipt
+    params: { bind: [run_case, attempt, artifact_bundle_digest, target_b_scope, device_allocation] }
+
+android:
+  carrier_contract:
+    gradle_variant: release
+    app_package: build.raft.app
+    hands_delta_update_enabled: false
+    hands_app_slug: raft-android
+    hands_channel_slug: debug
+    expected_ui_states: [Download, Downloading, Retry, Install]
+  steps:
+    - id: admit-baseline
+      goal: "Read back installed package, version, source receipt, and signer lineage; require exact baseline A."
+      action_category: verify
+      capture: [screenshot, logs]
+
+    - id: seed-preserved-state
+      goal: "On A, verify the frozen signed-in account/current server and seed one unsent draft plus one cached Release Notes page."
+      action_category: interact
+      capture: [screenshot, logs]
+
+    - id: open-app-update
+      goal: "Open Settings -> App Update and verify the resolver offers exact target B."
+      action_category: navigate
+      capture: [screenshot, dump_layout, logs]
+
+    - id: start-download
+      goal: "Tap Download once and immediately repeat the same tap several times."
+      action_category: interact
+      capture: [screenshot, dump_layout, logs]
+
+    - id: verify-single-owner
+      goal: "In the same interaction, require Downloading with a disabled action and exactly one DownloadManager/update owner."
+      action_category: verify
+      capture: [screenshot, dump_layout, logs]
+
+    - id: lifecycle-control
+      goal: "Record bytes/progress advancing, background and foreground once, and require the same download owner without restart or duplication."
+      action_category: interact
+      capture: [screenshot, logs]
+
+    - id: inject-network-failure
+      goal: "Apply only the scoped fixture network failure; require a bounded actionable Retry and no half-install or second download owner."
+      action_category: interact
+      capture: [screenshot, dump_layout, logs]
+
+    - id: retry-download
+      goal: "Restore network, tap Retry once, and finish exact B using the single owned download flow."
+      action_category: interact
+      capture: [screenshot, dump_layout, logs]
+
+    - id: verify-install-ready
+      goal: "Require the completed target to transition to Install and preserve exact B identity."
+      action_category: verify
+      capture: [screenshot, dump_layout, logs]
+
+    - id: install-target
+      goal: "Tap Install, handle the unknown-source permission branch if present, verify the Android system installer identifies Raft, and complete the upgrade."
+      action_category: interact
+      on_failure: abort
+      capture: [screenshot, dump_layout, logs]
+
+    - id: readback-target
+      goal: "Cold-launch and independently read package, version, source receipt, and signer lineage; require exact B."
+      action_category: verify
+      capture: [screenshot, dump_layout, logs]
+
+    - id: verify-preserved-state
+      goal: "Require the frozen session, current server, unsent draft, and cached Release Notes state to survive A to B."
+      action_category: verify
+      capture: [screenshot, logs]
+
+    - id: verify-b-no-update
+      goal: "Open App Update on B; require no same/older update and no late A process or DownloadManager callback rewriting state."
+      action_category: verify
+      capture: [screenshot, dump_layout, logs]
+
+    - id: terminal-cleanup
+      goal: "Run every cleanup action and capture one run-bound terminal distribution/device receipt."
+      action_category: verify
+      capture: [screenshot, logs]
+
+assertions:
+  - id: baseline-a-exact
+    goal: "Installed baseline equals frozen A identity."
+    type: identity_check
+    after_step: admit-baseline
+    severity: critical
+
+  - id: target-b-offer-exact
+    goal: "The offered update equals frozen B identity and scope."
+    type: identity_check
+    after_step: open-app-update
+    severity: critical
+
+  - id: single-download-owner
+    goal: "Repeated taps create exactly one DownloadManager/update owner."
+    type: log_check
+    after_step: verify-single-owner
+    severity: critical
+
+  - id: downloading-visible-disabled
+    goal: "Downloading is visible in the same interaction and the action is disabled."
+    type: log_and_visual_check
+    after_step: verify-single-owner
+    severity: critical
+
+  - id: download-survives-lifecycle
+    goal: "The same advancing download survives foreground/background without duplication."
+    type: log_and_visual_check
+    after_step: lifecycle-control
+    severity: critical
+
+  - id: retry-resumes-exact-download
+    goal: "Scoped failure exposes Retry; one retry completes B without a second owner or half install."
+    type: log_and_visual_check
+    after_step: retry-download
+    severity: critical
+
+  - id: installer-target-b-exact
+    goal: "Install and the Android system installer remain bound to exact target B."
+    type: identity_check
+    after_step: install-target
+    severity: critical
+
+  - id: installed-b-exact
+    goal: "Cold-launch readback equals frozen B identity and signer lineage."
+    type: identity_check
+    after_step: readback-target
+    severity: critical
+
+  - id: user-state-preserved
+    goal: "Session, server, draft, and cache survive the upgrade."
+    type: state_check
+    after_step: verify-preserved-state
+    severity: critical
+
+  - id: b-no-update
+    goal: "B does not offer itself or an older version."
+    type: log_and_visual_check
+    after_step: verify-b-no-update
+    severity: critical
+
+  - id: zero-stale-a-callback
+    goal: "No late callback from A or the old download rewrites B state."
+    type: log_check
+    after_step: verify-b-no-update
+    severity: critical
+
+  - id: zero-crash-anr
+    goal: "The app has zero crash or ANR during the upgrade."
+    type: no_crash
+    after_step: verify-b-no-update
+    severity: critical
+
+  - id: terminal-cleanup
+    goal: "B scope/release and device state reach a terminal run-bound cleanup receipt."
+    type: cleanup_check
+    after_step: terminal-cleanup
+    severity: critical
+
+expected:
+  result: pass
+  notes: |
+    Product PASS requires every assertion plus carrier admission and terminal
+    cleanup. Missing Android 12, B provenance, installer readback, required
+    evidence, or cleanup is NOT RUN/HARNESS, never an inferred PASS.

@@ -9,7 +9,8 @@ call. Origin: #proj-quality tasks #1–#4.
 |-----|------|
 | [`design.md`](design.md) | System design v1 (reviewed): data model, executor contract, state machine, asymmetric judging, hands release-gate integration, phasing |
 | [`case-schema.md`](case-schema.md) | Case format v0.1: steps = goal + hints, assertions stay machine-checkable |
-| [`cases/`](cases/) | The case library — 13 cases, indexed in [`cases/README.md`](cases/README.md) |
+| [`cases/`](cases/) | The case library, indexed in [`cases/README.md`](cases/README.md) |
+| [`android-app-update/`](android-app-update/) | Full-APK A/B update SOP, immutable fixture schema, evidence and cleanup contract |
 | [`annotation-spec.md`](annotation-spec.md) | Evidence annotation spec — sharp red-box overlay of assertion regions on screenshots |
 | [`../qa-acceptance-operations.md`](../qa-acceptance-operations.md) | Operation playbook — how to drive the app accurately; injected into executor context (moves into this folder once PR #1077 lands; the runner's default path points there) |
 
