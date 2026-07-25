@@ -73,6 +73,30 @@ class I18nCodeLiteralScanTest(unittest.TestCase):
         self.assertIn(("Probe.kt", "Smoke"), entries)
         self.assertEqual("internal probe", entries[("Probe.kt", "Smoke")].reason)
 
+    def test_mr_value_index_maps_existing_translation_key(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "strings.xml"
+            path.write_text(
+                '<resources><string name="common_save">Save</string></resources>',
+                encoding="utf-8",
+            )
+            values = scanner.parse_mr_value_index(path)
+        self.assertEqual(("common_save",), values["Save"])
+
+    def test_multiline_toast_literal_is_a_direct_sink(self) -> None:
+        source = '\n'.join(
+            [
+                "Toast.makeText(",
+                "    context,",
+                '    "Email verified. Sign in to continue.",',
+                "    Toast.LENGTH_SHORT,",
+                ").show()",
+            ]
+        )
+        findings = self.scan(".kt", source)
+        self.assertEqual(1, len(findings))
+        self.assertTrue(scanner.is_direct_sink(findings[0].sink))
+
 
 if __name__ == "__main__":
     unittest.main()

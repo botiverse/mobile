@@ -17,7 +17,9 @@ import argparse
 import json
 import re
 import sys
+import xml.etree.ElementTree as ET
 from dataclasses import asdict, dataclass
+from dataclasses import replace
 from pathlib import Path
 
 
@@ -32,6 +34,7 @@ DEFAULT_ROOTS = (
     Path("compose/ohosApp/entry/src/main/ets"),
 )
 DEFAULT_ALLOWLIST = Path("scripts/i18n_code_literal_allowlist.json")
+DEFAULT_MR_BASE = Path("compose/shared/src/commonMain/resources/MR/base/strings.xml")
 
 DOUBLE_QUOTED_RE = re.compile(r'"(?:\\.|[^"\\])*"')
 SINGLE_QUOTED_RE = re.compile(r"'(?:\\.|[^'\\])*'")
@@ -112,7 +115,11 @@ INTERNAL_FIELD_LITERALS = {
     "unknown",
     "yes",
 }
-DIRECT_SINKS = {"text-call", "arkui-text", "toast-dialog"}
+DIRECT_SINKS = {"text-call", "arkui-text", "toast-dialog", "multiline-toast-dialog"}
+
+
+def is_direct_sink(sink: str) -> bool:
+    return sink in DIRECT_SINKS
 
 
 @dataclass(frozen=True)
@@ -125,6 +132,7 @@ class Finding:
     sink: str
     literal: str
     context: str
+    catalog_keys: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -188,6 +196,38 @@ def masked_source_line(line: str, language: str) -> str:
     return masked
 
 
+def has_open_multiline_call(
+    lines: list[str],
+    index: int,
+    language: str,
+    pattern: re.Pattern[str],
+) -> bool:
+    start = max(0, index - 4)
+    masked = [masked_source_line(item, language) for item in lines[start : index + 1]]
+    for relative_index in range(len(masked) - 1, -1, -1):
+        line = masked[relative_index]
+        match = pattern.search(line)
+        if match is None:
+            continue
+        balance = 0
+        opened = False
+        # Only scan through the line before the candidate. If the call closed
+        # earlier, unrelated calls on the candidate line must not make it look
+        # open (e.g. a Toast followed by a multi-line log call).
+        for candidate_line in masked[relative_index:-1]:
+            source = candidate_line[match.start() :] if not opened else candidate_line
+            for char in source:
+                if char == "(":
+                    balance += 1
+                    opened = True
+                elif char == ")" and opened:
+                    balance -= 1
+                    if balance == 0:
+                        return False
+        return opened and balance > 0
+    return False
+
+
 def classify_context(path: Path, lines: list[str], index: int, language: str) -> tuple[str, str] | None:
     line = lines[index]
     masked_line = masked_source_line(line, language)
@@ -199,6 +239,9 @@ def classify_context(path: Path, lines: list[str], index: int, language: str) ->
     for name, pattern in HIGH_SINKS:
         if pattern.search(masked_line):
             return "high", name
+    toast_pattern = dict(HIGH_SINKS)["toast-dialog"]
+    if has_open_multiline_call(lines, index, language, toast_pattern):
+        return "high", "multiline-toast-dialog"
     for name, pattern in HIGH_SINKS:
         if pattern.search(masked_window):
             return "medium", f"near-{name}"
@@ -262,6 +305,19 @@ def parse_allowlist(path: Path) -> dict[tuple[str, str], ReviewedException]:
     return result
 
 
+def parse_mr_value_index(path: Path) -> dict[str, tuple[str, ...]]:
+    if not path.exists():
+        return {}
+    values: dict[str, list[str]] = {}
+    for element in ET.parse(path).getroot().findall("string"):
+        key = element.attrib.get("name")
+        if not key:
+            continue
+        value = "".join(element.itertext()).strip()
+        values.setdefault(value, []).append(key)
+    return {value: tuple(sorted(keys)) for value, keys in values.items()}
+
+
 def markdown_report(findings: list[Finding], scanned_files: int, suppressed_count: int) -> str:
     lines = [
         "# Kotlin / ArkTS user-visible English literal scan",
@@ -269,8 +325,8 @@ def markdown_report(findings: list[Finding], scanned_files: int, suppressed_coun
         f"Scanned production files: **{scanned_files}** · findings: **{len(findings)}** · "
         f"reviewed exceptions: **{suppressed_count}**",
         "",
-        "| confidence | source | location | literal | sink | context |",
-        "| --- | --- | --- | --- | --- | --- |",
+        "| confidence | source | location | literal | existing MR key(s) | sink | context |",
+        "| --- | --- | --- | --- | --- | --- | --- |",
     ]
     for item in findings:
         values = [
@@ -278,6 +334,7 @@ def markdown_report(findings: list[Finding], scanned_files: int, suppressed_coun
             item.language,
             f"{item.path}:{item.line}",
             item.literal,
+            ", ".join(item.catalog_keys),
             item.sink,
             item.context,
         ]
@@ -293,6 +350,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--format", choices=("markdown", "json"), default="markdown")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--allowlist", type=Path, default=DEFAULT_ALLOWLIST)
+    parser.add_argument("--mr-base", type=Path, default=DEFAULT_MR_BASE)
     parser.add_argument(
         "--direct-only",
         action="store_true",
@@ -317,8 +375,11 @@ def main(argv: list[str] | None = None) -> int:
     findings: list[Finding] = []
     for path in source_files:
         findings.extend(scan_file(path, repo_root))
+    mr_base_path = args.mr_base if args.mr_base.is_absolute() else repo_root / args.mr_base
+    mr_values = parse_mr_value_index(mr_base_path)
+    findings = [replace(item, catalog_keys=mr_values.get(item.literal, ())) for item in findings]
     if args.direct_only:
-        findings = [item for item in findings if item.sink in DIRECT_SINKS]
+        findings = [item for item in findings if is_direct_sink(item.sink)]
     allowlist_path = args.allowlist if args.allowlist.is_absolute() else repo_root / args.allowlist
     allowlist = parse_allowlist(allowlist_path)
     before_suppression = len(findings)
