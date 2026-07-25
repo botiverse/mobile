@@ -61,6 +61,8 @@ ruby -e '
 
   update_inputs = update_workflow.fetch(true).fetch("workflow_dispatch").fetch("inputs")
   raise "update workflow lacks required source_sha" unless update_inputs.fetch("source_sha").fetch("required")
+  update_permissions = update_workflow.fetch("permissions")
+  raise "update caller does not preserve callee packages:read" unless update_permissions.fetch("packages") == "read"
   update_jobs = update_workflow.fetch("jobs")
   %w[validate baseline target manifest].each do |name|
     raise "update workflow missing #{name} job" unless update_jobs.key?(name)

@@ -30,6 +30,9 @@ on:
 permissions:
   contents: read
   actions: read
+  # Reusable-workflow permissions can only be maintained or reduced. The
+  # called Android release lane needs this to resolve the Kuikly package.
+  packages: read
 
 jobs:
   validate:
