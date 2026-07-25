@@ -32,12 +32,12 @@ struct WidgetServerConfig {
 
   build() {
     Column({ space: 18 }) {
-      Text('Choose server')
+      Text(this.localizedString('widget_config_choose_server'))
         .fontSize(26)
         .fontWeight(FontWeight.Bold)
         .fontColor(Color.Black)
         .width('100%')
-      Text('This widget will refresh from the selected Raft server.')
+      Text(this.localizedString('widget_config_description'))
         .fontSize(15)
         .fontColor('#4F4F4F')
         .width('100%')
@@ -60,7 +60,7 @@ struct WidgetServerConfig {
 
       Blank()
 
-      Button('Save')
+      Button(this.localizedString('widget_config_save'))
         .width('100%')
         .height(48)
         .enabled(this.selectedServerId.length > 0)
@@ -98,7 +98,9 @@ struct WidgetServerConfig {
       }
       .layoutWeight(1)
 
-      Text(option.id === this.selectedServerId ? 'Selected' : 'Select')
+      Text(this.localizedString(option.id === this.selectedServerId
+        ? 'widget_config_selected'
+        : 'widget_config_select'))
         .fontSize(13)
         .fontWeight(FontWeight.Bold)
         .fontColor(Color.Black)
@@ -124,10 +126,10 @@ struct WidgetServerConfig {
       this.options = options;
       this.selectedServerId = options.find((option: SlockWidgetServerOption) => option.selected)?.id ?? options[0]?.id ?? '';
       if (options.length === 0) {
-        this.errorText = 'Open Raft and sign in before configuring this widget.';
+        this.errorText = this.localizedString('widget_config_sign_in_required');
       }
     } catch (_error) {
-      this.errorText = 'Unable to load servers.';
+      this.errorText = this.localizedString('widget_config_load_error');
     } finally {
       this.loading = false;
     }
@@ -137,11 +139,16 @@ struct WidgetServerConfig {
     const context = getContext(this) as common.UIAbilityContext;
     const saved = saveWidgetServerConfig(context, this.formId, this.selectedServerId);
     if (!saved) {
-      this.errorText = 'Unable to save server for this widget.';
+      this.errorText = this.localizedString('widget_config_save_error');
       return;
     }
     await this.refreshConfiguredForm(context);
     await context.terminateSelf();
+  }
+
+  private localizedString(name: string): string {
+    const context = getContext(this) as common.UIAbilityContext;
+    return context.resourceManager.getStringByNameSync(name);
   }
 
   private async refreshConfiguredForm(context: common.UIAbilityContext): Promise<void> {
