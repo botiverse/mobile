@@ -624,6 +624,57 @@ class SharedThreadComposerDraftStoreTest {
     }
 
     @Test
+    fun reverseCompletedMixedAttachmentsRestoreInSelectionOrderAfterRestart() {
+        val storage = InMemorySlockKeyValueStore()
+        val persistence = SharedThreadComposerDraftPersistence(storage)
+        val draftKey = "send=channel-1|parent=_|mention=channel-1"
+        val localImage = SharedThreadComposerAttachment("picked-image", "image.png", mimeType = "image/png", status = "uploading")
+        val localFile = SharedThreadComposerAttachment("picked-file", "notes.pdf", mimeType = "application/pdf", status = "uploading")
+        val remoteImage = SharedThreadComposerAttachment("remote-image", "image.png", mimeType = "image/png", status = "ready")
+        val remoteFile = SharedThreadComposerAttachment("remote-file", "notes.pdf", mimeType = "application/pdf", status = "ready")
+        val firstStore =
+            SharedThreadComposerDraftStore(
+                persistSlices = listOf(SharedThreadComposerDraftPersistSlice(persistence))
+            )
+
+        firstStore.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = KuiklyThreadComposerPayload(instanceId = "composer-1"),
+                draftKey = draftKey
+            )
+        )
+        firstStore.dispatch(SharedThreadComposerDraftIntent.AddLocalAttachments(listOf(localImage, localFile)))
+        firstStore.dispatch(
+            SharedThreadComposerDraftIntent.AddUploadedAttachments(
+                attachments = listOf(remoteFile),
+                replacedAttachmentIdsByUploadedId = mapOf(remoteFile.id to localFile.id)
+            )
+        )
+        firstStore.dispatch(
+            SharedThreadComposerDraftIntent.AddUploadedAttachments(
+                attachments = listOf(remoteImage),
+                replacedAttachmentIdsByUploadedId = mapOf(remoteImage.id to localImage.id)
+            )
+        )
+
+        val restoredStore =
+            SharedThreadComposerDraftStore(
+                persistSlices = listOf(SharedThreadComposerDraftPersistSlice(persistence))
+            )
+        restoredStore.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = KuiklyThreadComposerPayload(instanceId = "composer-2"),
+                draftKey = draftKey
+            )
+        )
+
+        assertEquals(
+            listOf(remoteImage.id, remoteFile.id),
+            restoredStore.state.value.uploadedAttachments.map { it.id }
+        )
+    }
+
+    @Test
     fun removingLastPersistedUploadedAttachmentClearsActiveRecord() {
         val storage = InMemorySlockKeyValueStore()
         val homePersistSlice = SharedThreadComposerDraftPersistSlice(SharedThreadComposerDraftPersistence(storage))
@@ -935,8 +986,161 @@ class SharedThreadComposerDraftStoreTest {
             )
         )
 
-        assertEquals(listOf(local, uploaded), store.state.value.uploadedAttachments)
+        assertEquals(listOf(uploaded), store.state.value.uploadedAttachments)
         assertEquals(setOf("picked-local-1"), store.state.value.removedAttachmentIds)
+    }
+
+    @Test
+    fun reverseUploadCompletionPreservesSelectionOrderForVisibleAndSendAttachments() {
+        val store = SharedThreadComposerDraftStore()
+        val localA = SharedThreadComposerAttachment("picked-a", "a.png", mimeType = "image/png", status = "uploading")
+        val localB = SharedThreadComposerAttachment("picked-b", "b.pdf", mimeType = "application/pdf", status = "uploading")
+        val remoteA = SharedThreadComposerAttachment("remote-a", "a.png", mimeType = "image/png", status = "ready")
+        val remoteB = SharedThreadComposerAttachment("remote-b", "b.pdf", mimeType = "application/pdf", status = "ready")
+
+        store.dispatch(SharedThreadComposerDraftIntent.AddLocalAttachments(listOf(localA, localB)))
+        store.dispatch(
+            SharedThreadComposerDraftIntent.AddUploadedAttachments(
+                attachments = listOf(remoteB),
+                replacedAttachmentIdsByUploadedId = mapOf(remoteB.id to localB.id)
+            )
+        )
+        val partiallyReady =
+            store.state.value.uploadedAttachments.map { attachment ->
+                KuiklyPendingAttachmentItem(
+                    id = attachment.id,
+                    fileName = attachment.fileName,
+                    status = attachment.status
+                )
+            }
+        assertTrue(partiallyReady.hasBlockingThreadAttachmentUpload())
+        assertEquals(listOf(remoteB.id), partiallyReady.readyThreadAttachmentIdsForSend())
+        store.dispatch(
+            SharedThreadComposerDraftIntent.AddUploadedAttachments(
+                attachments = listOf(remoteA),
+                replacedAttachmentIdsByUploadedId = mapOf(remoteA.id to localA.id)
+            )
+        )
+
+        assertEquals(listOf(remoteA.id, remoteB.id), store.state.value.uploadedAttachments.map { it.id })
+        assertEquals(
+            listOf(remoteA.id, remoteB.id),
+            store.state.value.uploadedAttachments
+                .map { KuiklyPendingAttachmentItem(id = it.id, fileName = it.fileName, status = it.status) }
+                .readyThreadAttachmentIdsForSend()
+        )
+    }
+
+    @Test
+    fun retryAndMultiResultCompletionStayInsideTheirOriginalSelectionSlots() {
+        val store = SharedThreadComposerDraftStore()
+        val localA = SharedThreadComposerAttachment("picked-a", "a.zip", status = "uploading")
+        val localB = SharedThreadComposerAttachment("picked-b", "b.png", mimeType = "image/png", status = "uploading")
+        val remoteA1 = SharedThreadComposerAttachment("remote-a-1", "a-1.zip", status = "ready")
+        val remoteA2 = SharedThreadComposerAttachment("remote-a-2", "a-2.zip", status = "ready")
+        val remoteB = SharedThreadComposerAttachment("remote-b", "b.png", mimeType = "image/png", status = "ready")
+
+        store.dispatch(SharedThreadComposerDraftIntent.AddLocalAttachments(listOf(localA, localB)))
+        store.dispatch(SharedThreadComposerDraftIntent.MarkAttachmentsFailed(setOf(localA.id), "timeout"))
+        store.dispatch(SharedThreadComposerDraftIntent.RetryAttachment(localA.id))
+        store.dispatch(SharedThreadComposerDraftIntent.AddLocalAttachments(listOf(localA)))
+        assertEquals(listOf(localA.id, localB.id), store.state.value.uploadedAttachments.map { it.id })
+
+        store.dispatch(
+            SharedThreadComposerDraftIntent.AddUploadedAttachments(
+                attachments = listOf(remoteB),
+                replacedAttachmentIdsByUploadedId = mapOf(remoteB.id to localB.id)
+            )
+        )
+        store.dispatch(
+            SharedThreadComposerDraftIntent.AddUploadedAttachments(
+                attachments = listOf(remoteA1, remoteA2),
+                replacedAttachmentIdsByUploadedId =
+                    mapOf(
+                        remoteA1.id to localA.id,
+                        remoteA2.id to localA.id
+                    )
+            )
+        )
+
+        assertEquals(
+            listOf(remoteA1.id, remoteA2.id, remoteB.id),
+            store.state.value.uploadedAttachments.map { it.id }
+        )
+    }
+
+    @Test
+    fun annotatedImageReplacementKeepsTheOriginalRemoteSlot() {
+        val store = SharedThreadComposerDraftStore()
+        val remoteImage = SharedThreadComposerAttachment("remote-image", "image.png", mimeType = "image/png", status = "ready")
+        val remoteFile = SharedThreadComposerAttachment("remote-file", "notes.pdf", mimeType = "application/pdf", status = "ready")
+        val editedLocal = SharedThreadComposerAttachment("picked-edited", "edited.png", mimeType = "image/png", status = "uploading")
+        val editedRemote = SharedThreadComposerAttachment("remote-edited", "edited.png", mimeType = "image/png", status = "ready")
+        val replacementSlotId =
+            threadComposerReplacementSlotId(
+                replaceAttachmentId = remoteImage.id,
+                localAttachmentId = editedLocal.id
+            )
+
+        store.dispatch(SharedThreadComposerDraftIntent.AddUploadedAttachments(listOf(remoteImage, remoteFile)))
+        store.dispatch(SharedThreadComposerDraftIntent.AddLocalAttachments(listOf(editedLocal)))
+        store.dispatch(
+            SharedThreadComposerDraftIntent.AddUploadedAttachments(
+                attachments = listOf(editedRemote),
+                replacedAttachmentIds = setOf(editedLocal.id),
+                replacedAttachmentIdsByUploadedId = mapOf(editedRemote.id to replacementSlotId)
+            )
+        )
+
+        assertEquals(
+            listOf(editedRemote.id, remoteFile.id),
+            store.state.value.uploadedAttachments
+                .filterNot { attachment -> attachment.id in store.state.value.removedAttachmentIds }
+                .map { it.id }
+        )
+        assertEquals(setOf(editedLocal.id, remoteImage.id), store.state.value.removedAttachmentIds)
+        assertEquals(editedLocal.id, threadComposerReplacementSlotId("", editedLocal.id))
+    }
+
+    @Test
+    fun removedSlotNeverRevivesAndNewSelectionAppendsAfterSurvivingSibling() {
+        val store = SharedThreadComposerDraftStore()
+        val localA = SharedThreadComposerAttachment("picked-a", "a.png", status = "uploading")
+        val localB = SharedThreadComposerAttachment("picked-b", "b.png", status = "uploading")
+        val localC = SharedThreadComposerAttachment("picked-c", "c.png", status = "uploading")
+        val remoteA = SharedThreadComposerAttachment("remote-a", "a.png", status = "ready")
+        val remoteB = SharedThreadComposerAttachment("remote-b", "b.png", status = "ready")
+        val remoteC = SharedThreadComposerAttachment("remote-c", "c.png", status = "ready")
+
+        store.dispatch(SharedThreadComposerDraftIntent.AddLocalAttachments(listOf(localA, localB)))
+        store.dispatch(SharedThreadComposerDraftIntent.RemoveAttachment(localA.id))
+        store.dispatch(
+            SharedThreadComposerDraftIntent.AddUploadedAttachments(
+                attachments = listOf(remoteB),
+                replacedAttachmentIdsByUploadedId = mapOf(remoteB.id to localB.id)
+            )
+        )
+        store.dispatch(SharedThreadComposerDraftIntent.AddLocalAttachments(listOf(localC)))
+        store.dispatch(
+            SharedThreadComposerDraftIntent.AddUploadedAttachments(
+                attachments = listOf(remoteA),
+                replacedAttachmentIdsByUploadedId = mapOf(remoteA.id to localA.id)
+            )
+        )
+        store.dispatch(
+            SharedThreadComposerDraftIntent.AddUploadedAttachments(
+                attachments = listOf(remoteC),
+                replacedAttachmentIdsByUploadedId = mapOf(remoteC.id to localC.id)
+            )
+        )
+
+        assertEquals(
+            listOf(remoteB.id, remoteC.id),
+            store.state.value.uploadedAttachments
+                .filterNot { attachment -> attachment.id in store.state.value.removedAttachmentIds }
+                .map { it.id }
+        )
+        assertTrue(store.state.value.uploadedAttachments.none { it.id == remoteA.id })
     }
 
     @Test
@@ -993,7 +1197,7 @@ class SharedThreadComposerDraftStoreTest {
         )
 
         assertEquals(
-            listOf(localFile, uploadedFile, localImage, uploadedImage),
+            listOf(uploadedFile, uploadedImage),
             store.state.value.uploadedAttachments
         )
         assertEquals(
@@ -1053,7 +1257,7 @@ class SharedThreadComposerDraftStoreTest {
         )
 
         assertEquals(
-            listOf(localRemoved, localKept, uploadedKept),
+            listOf(localRemoved, uploadedKept),
             store.state.value.uploadedAttachments
         )
         assertEquals(
