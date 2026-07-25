@@ -155,10 +155,11 @@ correct.
 
 ## Migration rule
 
-The removed functions `threadInlineTagRanges`, `scanThreadHashRange`, and the
-Markdown protection-range helpers must not be reintroduced. Product-reference
-grammar belongs in `RaftMarkdownDialect`; Markdown nesting belongs to the GFM
-AST; data validation belongs to the app adapter. Inline-code ownership and
-delimiter semantics also belong to the canonical AST. The table-separation
-normalizer's fence-range check is intentionally pre-parse source repair and
-must not be reused for inline token/action recognition.
+The removed functions `threadInlineTagRanges`, `scanThreadHashRange`, the
+Markdown protection-range helpers, `ensureThreadMarkdownTableSeparation`, and
+`threadMarkdownFenceRanges` must not be reintroduced. Product-reference grammar
+belongs in `RaftMarkdownDialect`; Markdown nesting belongs to the GFM AST; data
+validation belongs to the app adapter. Inline-code ownership and delimiter
+semantics also belong to the canonical AST. Raft's chat-friendly tight-table
+continuation is a block-parser rule in `SlockGFMFlavourDescriptor`, so parsing
+never rewrites the source and all AST offsets remain bound to the original body.
