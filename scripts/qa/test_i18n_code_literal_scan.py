@@ -32,8 +32,19 @@ class I18nCodeLiteralScanTest(unittest.TestCase):
         self.assertEqual("arkts", findings[0].language)
 
     def test_localized_resource_reference_is_not_reported(self) -> None:
-        findings = self.scan(".kt", 'Text(stringResource(MR.strings.settings_title))\n')
-        self.assertEqual([], findings)
+        kotlin_findings = self.scan(".kt", 'Text(stringResource(MR.strings.settings_title))\n')
+        arkts_findings = self.scan(".ets", "Text($r('app.string.settings_title'))\n")
+        self.assertEqual([], kotlin_findings)
+        self.assertEqual([], arkts_findings)
+
+    def test_adjacent_resource_reference_does_not_hide_hardcode_in_either_order(self) -> None:
+        localized = "Text(stringResource(MR.strings.settings_title))"
+        hardcoded = 'Text("Hardcoded English")'
+        for source in (f"{hardcoded}\n{localized}\n", f"{localized}\n{hardcoded}\n"):
+            with self.subTest(source=source):
+                findings = self.scan(".kt", source)
+                self.assertEqual(["Hardcoded English"], [item.literal for item in findings])
+                self.assertTrue(scanner.is_direct_sink(findings[0].sink))
 
     def test_log_and_machine_literals_are_not_reported(self) -> None:
         source = '\n'.join(
@@ -96,6 +107,24 @@ class I18nCodeLiteralScanTest(unittest.TestCase):
         findings = self.scan(".kt", source)
         self.assertEqual(1, len(findings))
         self.assertTrue(scanner.is_direct_sink(findings[0].sink))
+
+    def test_multiline_toast_next_to_resource_label_remains_a_direct_sink(self) -> None:
+        source = '\n'.join(
+            [
+                "Text(stringResource(MR.strings.settings_title))",
+                "Toast.makeText(",
+                "    context,",
+                '    "Email verified. Sign in to continue.",',
+                "    Toast.LENGTH_SHORT,",
+                ").show()",
+            ]
+        )
+        findings = self.scan(".kt", source)
+        self.assertEqual(
+            ["Email verified. Sign in to continue."],
+            [item.literal for item in findings],
+        )
+        self.assertEqual("multiline-toast-dialog", findings[0].sink)
 
 
 if __name__ == "__main__":

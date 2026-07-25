@@ -72,8 +72,6 @@ NON_UI_CONTEXT_RE = re.compile(
     r"contentType|mimeType|queryParam|apiPath)\b",
     re.IGNORECASE,
 )
-RESOURCE_REFERENCE_RE = re.compile(r"(?:MR\.strings|R\.string|\$r\(|app\.string\.)")
-
 EXACT_TECHNICAL_LITERALS = {
     "API",
     "Android",
@@ -234,7 +232,11 @@ def classify_context(path: Path, lines: list[str], index: int, language: str) ->
     window_lines = lines[max(0, index - 2) : min(len(lines), index + 3)]
     window = " ".join(window_lines)
     masked_window = " ".join(masked_source_line(item, language) for item in window_lines)
-    if RESOURCE_REFERENCE_RE.search(window) or NON_UI_CONTEXT_RE.search(masked_line):
+    # Resource references must not suppress the surrounding context window:
+    # a localized sibling next to a hardcoded sink is still actionable. Any
+    # quoted resource identifier is filtered per literal by
+    # is_pure_english_candidate() instead.
+    if NON_UI_CONTEXT_RE.search(masked_line):
         return None
     for name, pattern in HIGH_SINKS:
         if pattern.search(masked_line):
