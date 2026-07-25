@@ -41,6 +41,16 @@ internal interface AuthorityBoundAttachmentUploader {
     ): DataResult<AttachmentUploadResult>
 }
 
+internal class RealConversationAuthorityBoundAttachmentUploader(
+    private val repository: RealConversationRepository
+) : AuthorityBoundAttachmentUploader {
+    override suspend fun uploadAttachmentsBound(
+        request: AttachmentUploadRequest,
+        expectedAuthority: SlockExpectedAuthBinding
+    ): DataResult<AttachmentUploadResult> =
+        repository.uploadAttachmentsBound(request, expectedAuthority)
+}
+
 private fun DataResult<*>.conversationDiagnosticsResult(): String =
     when (this) {
         is DataResult.Content -> "content"
@@ -211,7 +221,7 @@ class RealConversationRepository(
     private val networkClient: SlockNetworkClient,
     private val routeServerIdProvider: (() -> String?)? = null,
     private val warningLogger: (String) -> Unit = projectionRejectingDiagnosticsLogger
-) : ConversationRepository, AuthorityBoundAttachmentUploader {
+) : ConversationRepository {
     override suspend fun getThread(
         threadId: ThreadId,
         includeFollowedSummaries: Boolean,
@@ -610,7 +620,7 @@ class RealConversationRepository(
         )
     }
 
-    override suspend fun uploadAttachmentsBound(
+    internal suspend fun uploadAttachmentsBound(
         request: AttachmentUploadRequest,
         expectedAuthority: SlockExpectedAuthBinding
     ): DataResult<AttachmentUploadResult> {
