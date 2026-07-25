@@ -53,15 +53,19 @@ assets. These are server validator requirements, not reviewer conventions.
 11. Crash/ANR scans are clean.
 12. Terminal distribution and device cleanup passes.
 
-Android 12 is the hard gate; Android 14 is the control. Every assertion is
-reported PASS, FAIL, or NOT RUN. Missing Android 12, provenance, or cleanup can
-never be upgraded to product PASS.
+For the task #134 acceptance cycle, Android 14 is the single required device
+coordinate. Android 12 is explicitly owner-waived and must be reported
+`NOT RUN`, never inferred as PASS. This denominator change is bound to the owner
+decision in `#反馈:1bc169a5` message `84dc5c7f`; it avoids procuring a device only
+to satisfy the earlier matrix convention and does not weaken any product,
+provenance, retry, installer, or cleanup assertion.
 
-Stamp must freeze and enforce both required coordinates at run creation. A
-coordinate label alone is not admission: server-owned required facts must
-select an exact Android/API/provider capability, and targeted allocations must
-be rechecked against the same facts. Missing Android 12 is a capacity blocker,
-not permission to create an Android-14-only run and call the matrix complete.
+Stamp must freeze and enforce the non-empty Android 14 required-coordinate set
+at run creation. A coordinate label alone is not admission: server-owned
+required facts must select an exact Android/API/provider capability, and
+targeted allocations must be rechecked against the same facts. Missing Android
+14, provenance, or cleanup can never be upgraded to product PASS. A future
+Android 12 run is additional coverage and must be reported independently.
 
 ## Single-writer window and cleanup
 

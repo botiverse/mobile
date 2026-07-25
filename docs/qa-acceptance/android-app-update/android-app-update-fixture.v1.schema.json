@@ -80,7 +80,7 @@
       "required": ["required_coordinates"],
       "properties": {
         "required_coordinates": {
-          "const": ["android12-update-hard", "android14-update-control"]
+          "const": ["android14-update-required"]
         }
       }
     },
