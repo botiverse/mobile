@@ -57,7 +57,7 @@ class ExternalShareStoreTest {
 
         store.dispatch(ExternalShareIntent.Load("share-1", Server.value))
         yield()
-        targets.forEach(store::toggle)
+        targets.forEach { target -> store.toggle(target) }
         store.dispatch(ExternalShareIntent.Continue)
         store.dispatch(ExternalShareIntent.ChangeComment("Take a look"))
         store.dispatch(ExternalShareIntent.Send)
