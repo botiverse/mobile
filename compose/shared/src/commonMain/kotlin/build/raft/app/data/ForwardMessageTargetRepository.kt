@@ -63,7 +63,13 @@ data class ForwardMessageDestination(
     val serverId: ServerId,
     val channelId: ChannelId,
     val channelKind: ConversationKind,
-    val jointChannelId: String? = null
+    val jointChannelId: String? = null,
+    /**
+     * task #803 provenance: for member-DM resolution this is the member the
+     * resolver ACTUALLY resolved against (the API key parameter), letting the
+     * send gate prove the wire destination belongs to the frozen member.
+     */
+    val resolvedMemberId: MemberId? = null
 )
 
 data class ForwardMessageExecuteRequest(
@@ -181,7 +187,8 @@ class RealForwardMessageTargetRepository(
                     ForwardMessageDestination(
                         serverId = target.serverId,
                         channelId = it.conversation.toConversationSummary().messageStreamChannelId(),
-                        channelKind = ConversationKind.DirectMessage
+                        channelKind = ConversationKind.DirectMessage,
+                        resolvedMemberId = memberId
                     )
                 }
             }

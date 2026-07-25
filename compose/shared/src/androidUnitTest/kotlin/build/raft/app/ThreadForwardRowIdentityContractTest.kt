@@ -44,6 +44,10 @@ class ThreadForwardRowIdentityContractTest {
         assertContains(source, "toThreadForwardDestinationReceipt(")
         assertContains(source, "receipt = selectedReceipt,")
         assertContains(source, "currentDirectoryGeneration = forwardDirectoryGeneration,")
+        // LiBai blocker 1: the confirm callsite must gate against the LIVE
+        // server authority, never the frozen picker-open copy.
+        assertContains(source, "val liveServerId = forwardServerId")
+        assertContains(source, "liveSourceServerId = liveServerId,")
         // The bare selected-target state variable is gone entirely.
         assertFalse(
             source.contains("forwardSelectedTarget"),

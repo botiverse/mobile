@@ -12069,7 +12069,11 @@ private fun ThreadPageContent(
                     onSend = {
                         if (!writeActionsEnabled) return@ThreadForwardNoteDialog
                         val repository = forwardTargetRepository
-                        val sourceServerId = forwardSourceServerId
+                        // task #803: the gate needs the LIVE server authority at
+                        // confirm time — forwardServerId is the live projection;
+                        // forwardSourceServerId is the frozen picker-open copy
+                        // already inside the receipt.
+                        val liveServerId = forwardServerId
                         val sourceChannelId = forwardSourceChannelId
                         val selectedReceipt = forwardSelectedReceipt
                         when {
@@ -12077,8 +12081,6 @@ private fun ThreadPageContent(
                                 onThreadEvent("forwardMessagesFailed", "Forward API unavailable", null, null)
                             sourceChannelId == null ->
                                 onThreadEvent("forwardMessagesFailed", "Source conversation unavailable", null, null)
-                            sourceServerId == null ->
-                                onThreadEvent("forwardMessagesFailed", "Source server unavailable", null, null)
                             selectedReceipt == null ->
                                 onThreadEvent("forwardMessagesFailed", "Forward target unavailable", null, null)
                             !forwardSending -> {
@@ -12088,7 +12090,7 @@ private fun ThreadPageContent(
                                         val outcome =
                                             executeThreadForward(
                                                 repository = repository,
-                                                sourceServerId = sourceServerId,
+                                                liveSourceServerId = liveServerId,
                                                 sourceChannelId = sourceChannelId,
                                                 receipt = selectedReceipt,
                                                 currentDirectoryGeneration = forwardDirectoryGeneration,
@@ -21841,7 +21843,7 @@ internal fun List<ForwardMessageTarget>.threadForwardPickerTargets(
 
 internal suspend fun executeThreadForward(
     repository: ForwardMessageTargetRepository,
-    sourceServerId: ServerId,
+    liveSourceServerId: ServerId?,
     sourceChannelId: ChannelId,
     receipt: ThreadForwardDestinationReceipt,
     currentDirectoryGeneration: Int,
@@ -21849,15 +21851,19 @@ internal suspend fun executeThreadForward(
     mode: ForwardMessageSendMode,
     note: String
 ): ThreadForwardOutcome {
-    // task #803: the send consumes ONLY the tap-time frozen receipt. Any drift
-    // (server switch, directory refresh, identity tamper) fails typed with
-    // ZERO forward API traffic — never forward elsewhere.
+    // task #803: the send consumes ONLY the tap-time frozen receipt. The gate
+    // compares the frozen source against the LIVE server authority read at
+    // confirm time (never the frozen picker-open value — LiBai's blocker 1);
+    // resolve and the wire request then run against the FROZEN source. Any
+    // drift (server switch, directory refresh, identity tamper) fails typed
+    // with ZERO forward API traffic — never forward elsewhere.
     receipt.preResolveFailureCode(
-        currentSourceServerId = sourceServerId,
+        liveSourceServerId = liveSourceServerId,
         currentDirectoryGeneration = currentDirectoryGeneration
     )?.let { return ThreadForwardOutcome(failureCode = it) }
+    val frozenSourceServerId = receipt.sourceServerId
     val target = receipt.target
-    val resolved = repository.resolveTargetChannel(sourceServerId, target)
+    val resolved = repository.resolveTargetChannel(frozenSourceServerId, target)
     val destination =
         when (resolved) {
             is DataResult.Content -> resolved.data
@@ -21869,13 +21875,13 @@ internal suspend fun executeThreadForward(
     receipt.postResolveFailureCode(destination)?.let {
         return ThreadForwardOutcome(failureCode = it)
     }
-    if (destination.serverId == sourceServerId && destination.channelId == sourceChannelId) {
+    if (destination.serverId == frozenSourceServerId && destination.channelId == sourceChannelId) {
         return ThreadForwardOutcome(failureCode = "forward_source_target_forbidden")
     }
     val forwarded =
         repository.forwardMessages(
             ForwardMessageExecuteRequest(
-                sourceServerId = sourceServerId,
+                sourceServerId = frozenSourceServerId,
                 sourceChannelId = sourceChannelId,
                 destination = destination,
                 messageIds = messageIds,
