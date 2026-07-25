@@ -12,7 +12,6 @@ import { SlockOhosClipboard } from '../kuikly/SlockOhosClipboard';
 import slockOhosAdaptivePaneBridge from '../kuikly/SlockOhosAdaptivePaneBridge';
 import { SlockOhosDiagnostics } from '../kuikly/SlockOhosDiagnostics';
 import { SlockOhosAppDiagnostics } from '../entryability/SlockOhosAppDiagnostics';
-import slockOhosExternalShareLaunchBridge from '../kuikly/SlockOhosExternalShareLaunchBridge';
 
 const SAFE_AREA_TOP_PX = 'slockSafeAreaTopPx';
 const SAFE_AREA_BOTTOM_PX = 'slockSafeAreaBottomPx';
@@ -75,7 +74,6 @@ struct Index {
           slockOhosMotionBridge.setController(controller);
           slockOhosRealtimeBridge.setController(controller);
           slockOhosAdaptivePaneBridge.setController(controller);
-          slockOhosExternalShareLaunchBridge.setController(controller);
         },
       })
       if (this.exception) {

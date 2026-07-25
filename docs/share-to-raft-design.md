@@ -3,13 +3,6 @@
 Status: proposed for task #360. This document freezes the product flow and the
 cross-platform authority boundaries before implementation.
 
-Implementation checkpoint: the shared durable store/sender and Android/OHOS native intake are
-present on Draft PR #1557. Native intake currently enforces 9 files, 25 MiB per file, 100 MiB total,
-256 KiB text/subject fields, and a 24-hour unconsumed-envelope TTL. These are wire/admission limits;
-the shared composer remains authoritative for product MIME/upload policy when the envelope is
-loaded. iOS Share Extension/App Group wiring and the final shared launch-to-store assembly remain
-open, so this checkpoint is not a complete or merge-ready product.
-
 ## Product flow
 
 The interaction follows the two-step forwarding pattern described by Product:

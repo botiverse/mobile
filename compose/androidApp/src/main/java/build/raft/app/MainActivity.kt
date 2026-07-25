@@ -32,15 +32,9 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
 class MainActivity : ComponentActivity() {
-    private lateinit var externalShareAdmissionOwner: AndroidExternalShareAdmissionOwner<Intent>
-    private val externalShareResultListener: (Long, AndroidExternalShareIntakeResult) -> Unit =
-        { generation, result -> handleExternalShareAdmissionResult(generation, result) }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
-        externalShareAdmissionOwner = AndroidExternalShareProcessOwner.get(applicationContext)
-        val resumedExternalShare = externalShareAdmissionOwner.attach(externalShareResultListener)
         SlockAppLog.d(
             "SlockBoot",
             "main_activity_created " +
@@ -48,7 +42,7 @@ class MainActivity : ComponentActivity() {
                 "clearTask=${intent.shouldClearTaskForSharedShell()} " +
                 "data=${intent.safeDataString()}"
         )
-        if (!resumedExternalShare) handleLaunchIntent(intent)
+        handleLaunchIntent(intent)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -64,16 +58,8 @@ class MainActivity : ComponentActivity() {
         handleLaunchIntent(intent)
     }
 
-    override fun onDestroy() {
-        if (::externalShareAdmissionOwner.isInitialized) {
-            externalShareAdmissionOwner.detach(externalShareResultListener)
-        }
-        super.onDestroy()
-    }
-
     private fun handleLaunchIntent(intent: Intent?) {
         if (
-            !handleExternalShareIntent(intent) &&
             !handleMobileOAuthCallback(intent) &&
             !handleSocialAuthCallback(intent) &&
             !handleEmailVerificationLink(intent) &&
@@ -81,36 +67,6 @@ class MainActivity : ComponentActivity() {
         ) {
             openSharedShell(intent)
         }
-    }
-
-    private fun handleExternalShareIntent(intent: Intent?): Boolean {
-        val shareIntent = intent?.takeIf {
-            it.action == Intent.ACTION_SEND || it.action == Intent.ACTION_SEND_MULTIPLE
-        } ?: return false
-        // Drop the raw provider grants and payload from retained Activity state before any suspend.
-        setIntent(Intent(this, MainActivity::class.java))
-        externalShareAdmissionOwner.submit(shareIntent)
-        return true
-    }
-
-    private fun handleExternalShareAdmissionResult(
-        generation: Long,
-        result: AndroidExternalShareIntakeResult,
-    ) {
-        when (result) {
-            is AndroidExternalShareIntakeResult.Admitted ->
-                openSharedShellPageData(androidExternalSharePageData(result.launch))
-            is AndroidExternalShareIntakeResult.Rejected -> {
-                SlockAppLog.w("SlockBoot", "external_share_rejected code=${result.code}")
-                Toast.makeText(
-                    this@MainActivity,
-                    "Raft couldn't import this shared content",
-                    Toast.LENGTH_LONG,
-                ).show()
-                openSharedShell(Intent(this@MainActivity, MainActivity::class.java))
-            }
-        }
-        externalShareAdmissionOwner.acknowledge(generation)
     }
 
     /**
@@ -178,16 +134,6 @@ class MainActivity : ComponentActivity() {
             this,
             pageData = pageData.withAndroidShellLaunchTarget(target),
             clearTask = taskLaunch.clearTask,
-        )
-        finish()
-    }
-
-    private fun openSharedShellPageData(pageData: JSONObject) {
-        val target = resolveAndroidShellLaunchTarget(pageData)
-        SlockKuiklyActivity.startAppShell(
-            this,
-            pageData = pageData.withAndroidShellLaunchTarget(target),
-            clearTask = false,
         )
         finish()
     }

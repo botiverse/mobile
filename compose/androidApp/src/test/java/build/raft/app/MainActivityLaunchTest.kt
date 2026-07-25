@@ -4,9 +4,6 @@ import build.raft.app.core.data.auth.AndroidMobileOAuth
 import build.raft.app.shared.resolveAndroidShellLaunchTarget
 import build.raft.app.shared.taskLaunchPlan
 import java.io.File
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.test.runCurrent
-import kotlinx.coroutines.test.runTest
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -100,143 +97,9 @@ class MainActivityLaunchTest {
         val handler =
             source.substringAfter("private fun handleLaunchIntent(intent: Intent?)")
                 .substringBefore("private fun handleUnsupportedSlockWebLink")
-        assertTrue(handler.indexOf("handleExternalShareIntent") < handler.indexOf("handleMobileOAuthCallback"))
         assertTrue(handler.indexOf("handleMobileOAuthCallback") < handler.indexOf("handleSocialAuthCallback"))
         assertTrue(handler.indexOf("handleSocialAuthCallback") < handler.indexOf("handleEmailVerificationLink"))
         assertTrue(handler.indexOf("handleEmailVerificationLink") < handler.indexOf("openSharedShell"))
-    }
-
-    @Test
-    fun externalShareLaunchPageDataContainsOnlyOpaqueTokenAndIntent() {
-        val pageData = androidExternalSharePageData(AndroidExternalShareLaunch("opaque-token-1234"))
-
-        assertEquals(setOf("intent", "externalShareToken"), pageData.keys().asSequence().toSet())
-        assertEquals("open_share_to_raft", pageData.getString("intent"))
-        assertEquals("opaque-token-1234", pageData.getString("externalShareToken"))
-        listOf("text", "subject", "items", "uris", "attachments", "targets", "auth", "envelope")
-            .forEach { forbidden -> assertFalse(pageData.has(forbidden)) }
-    }
-
-    @Test
-    fun externalShareColdAndWarmAdmissionShareOneOwnerAndClearTheRawIntent() {
-        val source = mainActivitySource()
-        val handler = source.substringAfter("private fun handleExternalShareIntent(intent: Intent?)")
-            .substringBefore("private fun handleUnsupportedSlockWebLink")
-
-        assertEquals(1, Regex("externalShareAdmissionOwner = AndroidExternalShareProcessOwner\\.get")
-            .findAll(source).count())
-        assertTrue(handler.indexOf("setIntent(Intent(this, MainActivity::class.java))") < handler.indexOf("externalShareAdmissionOwner.submit"))
-        assertTrue(source.contains("openSharedShellPageData(androidExternalSharePageData(result.launch))"))
-    }
-
-    @Test
-    fun parkedDistinctWarmSharePublishesOnlyTheNewestGeneration() = runTest {
-        val firstRelease = CompletableDeferred<Unit>()
-        val queueDrained = CompletableDeferred<Unit>()
-        val admitted = mutableListOf<String>()
-        val published = mutableListOf<String>()
-        val owner = AndroidExternalShareAdmissionOwner<String>(
-            scope = backgroundScope,
-            admit = { value ->
-                admitted += value
-                if (value == "first") firstRelease.await()
-                if (value == "second") queueDrained.complete(Unit)
-                AndroidExternalShareIntakeResult.Admitted(AndroidExternalShareLaunch("token-$value-123456"))
-            },
-        )
-        owner.attach { _, result ->
-            published += (result as AndroidExternalShareIntakeResult.Admitted).launch.token
-        }
-
-        owner.submit("first")
-        runCurrent()
-        owner.submit("second")
-        firstRelease.complete(Unit)
-        runCurrent()
-        queueDrained.await()
-        runCurrent()
-
-        assertEquals(listOf("first", "second"), admitted)
-        assertEquals(listOf("token-second-123456"), published)
-    }
-
-    @Test
-    fun parkedSamePayloadStillSerializesAndPublishesOneLatestResult() = runTest {
-        val firstRelease = CompletableDeferred<Unit>()
-        val queueDrained = CompletableDeferred<Unit>()
-        var calls = 0
-        val published = mutableListOf<String>()
-        val owner = AndroidExternalShareAdmissionOwner<String>(
-            scope = backgroundScope,
-            admit = {
-                calls += 1
-                if (calls == 1) firstRelease.await()
-                if (calls == 2) queueDrained.complete(Unit)
-                AndroidExternalShareIntakeResult.Admitted(AndroidExternalShareLaunch("same-token-123456"))
-            },
-        )
-        owner.attach { _, result ->
-            published += (result as AndroidExternalShareIntakeResult.Admitted).launch.token
-        }
-
-        owner.submit("same")
-        runCurrent()
-        owner.submit("same")
-        firstRelease.complete(Unit)
-        runCurrent()
-        queueDrained.await()
-        runCurrent()
-
-        assertEquals(2, calls)
-        assertEquals(listOf("same-token-123456"), published)
-    }
-
-    @Test
-    fun parkedCopySurvivesActivityDetachAndPublishesAfterReattach() = runTest {
-        val release = CompletableDeferred<Unit>()
-        val completed = CompletableDeferred<Unit>()
-        val firstActivity = mutableListOf<String>()
-        val recreatedActivity = mutableListOf<String>()
-        val owner = AndroidExternalShareAdmissionOwner<String>(
-            scope = backgroundScope,
-            admit = {
-                release.await()
-                completed.complete(Unit)
-                AndroidExternalShareIntakeResult.Admitted(AndroidExternalShareLaunch("recreated-token-123456"))
-            },
-        )
-        val firstListener: (Long, AndroidExternalShareIntakeResult) -> Unit = { _, result ->
-            firstActivity += (result as AndroidExternalShareIntakeResult.Admitted).launch.token
-        }
-        val recreatedListener: (Long, AndroidExternalShareIntakeResult) -> Unit = { generation, result ->
-            recreatedActivity += (result as AndroidExternalShareIntakeResult.Admitted).launch.token
-            owner.acknowledge(generation)
-        }
-
-        owner.attach(firstListener)
-        owner.submit("share")
-        runCurrent()
-        owner.detach(firstListener)
-        owner.attach(recreatedListener)
-        release.complete(Unit)
-        runCurrent()
-        completed.await()
-        runCurrent()
-
-        assertTrue(firstActivity.isEmpty())
-        assertEquals(listOf("recreated-token-123456"), recreatedActivity)
-    }
-
-    @Test
-    fun exportedTrampolineOwnsSendAndSendMultipleFilters() {
-        val manifest = androidManifestSource()
-        val mainActivity = manifest.substringAfter("android:name=\".MainActivity\"")
-            .substringBefore("</activity>")
-
-        assertTrue(mainActivity.contains("android:exported=\"true\""))
-        assertTrue(mainActivity.contains("android.intent.action.SEND\""))
-        assertTrue(mainActivity.contains("android.intent.action.SEND_MULTIPLE\""))
-        assertEquals(2, Regex("android:mimeType=\"\\*/\\*\"").findAll(mainActivity).count())
     }
 
     @Test
@@ -526,15 +389,5 @@ class MainActivityLaunchTest {
             current = current.parentFile ?: return@repeat
         }
         error("Unable to locate MainActivity.kt from ${System.getProperty("user.dir")}")
-    }
-
-    private fun androidManifestSource(): String {
-        var current = File(requireNotNull(System.getProperty("user.dir"))).absoluteFile
-        repeat(8) {
-            val candidate = File(current, "src/main/AndroidManifest.xml")
-            if (candidate.isFile) return candidate.readText()
-            current = current.parentFile ?: return@repeat
-        }
-        error("Unable to locate AndroidManifest.xml from ${System.getProperty("user.dir")}")
     }
 }
