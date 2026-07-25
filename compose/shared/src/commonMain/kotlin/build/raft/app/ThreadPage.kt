@@ -21426,7 +21426,6 @@ internal fun ThreadAttachmentCommentsContent(
     onSend: () -> Unit,
     onResolve: (ThreadAttachmentCommentItem) -> Unit,
     onQuote: (ThreadAttachmentCommentItem) -> Unit,
-    containerTapRequestsFocus: Boolean = false,
     compact: Boolean = false
 ) {
     val userFacingErrorLabels = threadUserFacingErrorLabels()
@@ -21521,7 +21520,6 @@ internal fun ThreadAttachmentCommentsContent(
             reason = page?.viewer?.reason,
             onDraftChange = onDraftChange,
             onSend = onSend,
-            containerTapRequestsFocus = containerTapRequestsFocus,
             compact = compact
         )
     }
@@ -21675,7 +21673,6 @@ private fun ThreadAttachmentCommentComposer(
     reason: String?,
     onDraftChange: (String) -> Unit,
     onSend: () -> Unit,
-    containerTapRequestsFocus: Boolean = false,
     compact: Boolean = false
 ) {
     val enabled = canComment && state.status == "loaded" && !state.sending
@@ -21706,7 +21703,6 @@ private fun ThreadAttachmentCommentComposer(
             enabled = enabled,
             maxLines = if (compact) 3 else 4,
             fieldMinHeight = if (compact) 64.dp else 82.dp,
-            containerTapRequestsFocus = containerTapRequestsFocus,
             onValueChange = onDraftChange
         )
         SlockModalFullWidthActionButton(
