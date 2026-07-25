@@ -1308,7 +1308,6 @@ open class SlockKuiklyActivity :
                     if (copied) {
                         mapOf(
                                 "status" to "saved",
-                                "message" to "Saved to Downloads or Files",
                                 "uri" to uri.toString(),
                                 "fileName" to pending.displayName,
                                 "cached" to true,

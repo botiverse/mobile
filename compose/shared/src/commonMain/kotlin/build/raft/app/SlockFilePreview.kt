@@ -935,9 +935,11 @@ private fun SlockFilePreviewStandalonePageContent() {
                 }
                 activeDownloadId = null
                 bridge.toast(
-                    result?.optString("message").orEmpty().ifBlank {
-                        if (toPhotos) imageSavedToPhotos else downloadSaved
-                    }
+                    slockFilePreviewSavedMessage(
+                        toPhotos = toPhotos,
+                        downloadSaved = downloadSaved,
+                        imageSavedToPhotos = imageSavedToPhotos
+                    )
                 )
                 null
             }
@@ -1030,10 +1032,10 @@ private fun SlockFilePreviewStandalonePageContent() {
             operationId = activeDownloadId.orEmpty(),
             downloadId = activeDownloadId.orEmpty()
         )
-        // Cached opens still cross an irreversible native launch boundary. Hold the same
-        // non-idle admission as downloads so a second tap cannot supersede this operation token
-        // before URI grant/startActivity completes.
-        downloadStatus = slockFilePreviewExternalOpenAdmissionStatus()
+        // Cached opens still cross an irreversible native launch boundary. Keep them non-idle
+        // so a second tap cannot supersede this operation token before URI grant/startActivity
+        // completes, but use a non-download status so Install/Open never flashes download chrome.
+        downloadStatus = slockFilePreviewExternalOpenAdmissionStatus(trackProgress)
         activeDownloadStartedAt = TimeSource.Monotonic.markNow()
         if (trackProgress) {
             firstBridgeDownloadId = null
@@ -1314,7 +1316,8 @@ private fun SlockFilePreviewStandalonePageContent() {
             }
         }
     ) {
-        val downloadActive = downloadStatus == "downloading" || downloadStatus == "paused"
+        val downloadActive = slockFilePreviewShowsDownloadProgress(downloadStatus)
+        val primaryActionEnabled = slockFilePreviewCanStartExternalOperation(downloadStatus)
         if (composerImageEditMode) {
             SlockFilePreviewComposerImageEditor(
                 payload = payload,
@@ -1340,6 +1343,7 @@ private fun SlockFilePreviewStandalonePageContent() {
                     downloadPaused = downloadStatus == "paused",
                     downloadProgressPercent = downloadProgress?.percent,
                     downloadCached = attachmentCacheState,
+                    primaryActionEnabled = primaryActionEnabled,
                     onDownload =
                         if (canOpenWith) {
                             when (slockFilePreviewPrimaryAction(attachmentCacheState)) {
@@ -3599,6 +3603,7 @@ internal fun SlockFilePreviewPayloadContent(
     downloadPaused: Boolean = false,
     downloadProgressPercent: Int? = null,
     downloadCached: Boolean = false,
+    primaryActionEnabled: Boolean = true,
     onDownload: (() -> Unit)? = null,
     onPauseDownload: (() -> Unit)? = null,
     onResumeDownload: (() -> Unit)? = null,
@@ -3710,7 +3715,7 @@ internal fun SlockFilePreviewPayloadContent(
                                 ?.takeIf { !downloadInProgress }
                                 ?.let { slockFilePreviewPrimaryActionLabel(payload, downloadCached, actionTerms) },
                         actionIcon = if (downloadInProgress) null else slockFilePreviewPrimaryActionIcon(payload, downloadCached),
-                        actionEnabled = true,
+                        actionEnabled = primaryActionEnabled,
                         onAction = onDownload,
                         downloadPaused = downloadPaused,
                         onToggleDownload = onToggleDownload,
@@ -3796,7 +3801,7 @@ internal fun SlockFilePreviewPayloadContent(
                         ?.takeIf { !downloadInProgress }
                         ?.let { slockFilePreviewPrimaryActionLabel(payload, downloadCached, actionTerms) },
                 actionIcon = if (downloadInProgress) null else slockFilePreviewPrimaryActionIcon(payload, downloadCached),
-                actionEnabled = true,
+                actionEnabled = primaryActionEnabled,
                 onAction = onDownload,
                 downloadPaused = downloadPaused,
                 onToggleDownload = onToggleDownload,
@@ -4732,9 +4737,20 @@ internal fun slockAttachmentDownloadControlAllowed(
     progress?.phase?.startsWith("export_") != true || (action != "pause" && action != "resume")
 
 internal fun slockFilePreviewCanStartExternalOperation(status: String): Boolean =
-    status != "downloading" && status != "paused"
+    status !in setOf("downloading", "paused", "opening")
 
-internal fun slockFilePreviewExternalOpenAdmissionStatus(): String = "downloading"
+internal fun slockFilePreviewExternalOpenAdmissionStatus(trackProgress: Boolean): String =
+    if (trackProgress) "downloading" else "opening"
+
+internal fun slockFilePreviewShowsDownloadProgress(status: String): Boolean =
+    status == "downloading" || status == "paused"
+
+internal fun slockFilePreviewSavedMessage(
+    toPhotos: Boolean,
+    downloadSaved: String,
+    imageSavedToPhotos: String
+): String =
+    if (toPhotos) imageSavedToPhotos else downloadSaved
 
 internal fun slockFilePreviewActiveDownloadStatusLabel(
     progress: BridgeAttachmentDownloadProgress?,

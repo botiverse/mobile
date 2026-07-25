@@ -87,18 +87,48 @@ class SlockFilePreviewDownloadStatusTest {
         var launches = 0
         fun tapCachedOpen() {
             if (!slockFilePreviewCanStartExternalOperation(status)) return
-            status = slockFilePreviewExternalOpenAdmissionStatus()
+            status = slockFilePreviewExternalOpenAdmissionStatus(trackProgress = false)
             launches += 1
         }
 
         tapCachedOpen()
         tapCachedOpen()
-        assertEquals("downloading", status)
+        assertEquals("opening", status)
         assertEquals(1, launches)
+        assertFalse(slockFilePreviewShowsDownloadProgress(status))
 
         status = "idle"
         tapCachedOpen()
         assertEquals(2, launches)
+    }
+
+    @Test
+    fun uncachedOpenKeepsDownloadProgressVisibleWhileNativeDownloads() {
+        val status = slockFilePreviewExternalOpenAdmissionStatus(trackProgress = true)
+
+        assertEquals("downloading", status)
+        assertTrue(slockFilePreviewShowsDownloadProgress(status))
+        assertFalse(slockFilePreviewCanStartExternalOperation(status))
+    }
+
+    @Test
+    fun successfulSaveToastUsesLocalizedSharedCopyInsteadOfNativeMessage() {
+        assertEquals(
+            "已保存到系统下载或文件",
+            slockFilePreviewSavedMessage(
+                toPhotos = false,
+                downloadSaved = "已保存到系统下载或文件",
+                imageSavedToPhotos = "已保存到照片"
+            )
+        )
+        assertEquals(
+            "已保存到照片",
+            slockFilePreviewSavedMessage(
+                toPhotos = true,
+                downloadSaved = "已保存到系统下载或文件",
+                imageSavedToPhotos = "已保存到照片"
+            )
+        )
     }
 
     @Test
