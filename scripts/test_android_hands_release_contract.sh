@@ -87,8 +87,19 @@ ruby -e '
   %w[baseline target distribution execution rollback].each do |name|
     raise "fixture schema does not require #{name}" unless required.include?(name)
   end
-  coords = fixture_schema.fetch("properties").fetch("execution").fetch("properties").fetch("required_coordinates").fetch("const")
+  execution = fixture_schema.fetch("properties").fetch("execution")
+  raise "fixture schema does not require machine coverage" unless %w[required_coordinates coverage].all? { |name| execution.fetch("required").include?(name) }
+  coords = execution.fetch("properties").fetch("required_coordinates").fetch("const")
   raise "fixture schema does not freeze owner-approved Android 14 denominator" unless coords == %w[android14-update-required]
+  invalid_coords = [[], %w[android14], %w[android14-update-required extra], %w[android12-update-hard android14-update-control]]
+  raise "fixture schema admits invalid Android coordinate set" if invalid_coords.any? { |candidate| candidate == coords }
+  coverage = execution.fetch("properties").fetch("coverage")
+  waiver = coverage.fetch("properties").fetch("waived_coordinates").fetch("const")
+  expected_waiver = [{"coordinate" => "android12-update-hard", "status" => "NOT_RUN", "reason" => "owner-waived", "decision_ref" => "#反馈:1bc169a5:84dc5c7f"}]
+  raise "fixture schema does not require exact Android 12 waiver" unless coverage.fetch("required").include?("waived_coordinates") && waiver == expected_waiver
+  modes = fixture_schema.fetch("properties").fetch("mode").fetch("enum")
+  raise "fixture schema still permits Android DownloadManager mode" if modes.include?("full-downloadmanager")
+  raise "fixture schema lacks direct-downloader full mode" unless modes.include?("full-direct-downloader")
   update_readme = File.read("docs/qa-acceptance/android-app-update/README.md")
   raise "Android 14 denominator lacks owner-decision provenance" unless update_readme.include?("84dc5c7f")
   raise "Android 12 waiver is not explicitly NOT RUN" unless update_readme.include?("Android 12 is explicitly owner-waived") && update_readme.include?("`NOT RUN`")
@@ -99,6 +110,11 @@ ruby -e '
   expected_states = full_case.fetch("android").fetch("carrier_contract").fetch("expected_ui_states")
   raise "full update case does not require Retry" unless expected_states.include?("Retry")
   raise "full update case denominator drifted" unless full_case.fetch("android").fetch("device").fetch("required_coordinates") == ["android14-update-required"]
+  case_waiver = full_case.fetch("android").fetch("device").fetch("waived_coordinates")
+  raise "full update case lacks exact Android 12 waiver" unless case_waiver == expected_waiver
+  invalid_waivers = [[], [expected_waiver.first.merge("status" => "PASS")], [expected_waiver.first.merge("reason" => "missing-capacity")]]
+  raise "full update case admits missing or PASS Android 12 waiver" if invalid_waivers.any? { |candidate| candidate == case_waiver }
+  raise "full update case still requires Android DownloadManager" if full_case.to_s.include?("DownloadManager")
   expected_notes = full_case.fetch("expected").fetch("notes")
   raise "full update case misreports Android 12 waiver" unless expected_notes.include?("owner-waived") && expected_notes.include?("NOT RUN")
   step_ids = full_case.fetch("android").fetch("steps").map { |step| step.fetch("id") }

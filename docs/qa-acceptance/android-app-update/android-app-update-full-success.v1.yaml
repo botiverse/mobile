@@ -1,11 +1,11 @@
 id: android-app-update-full-success
-title: "Android App Update-full APK Downloading→Install→B"
+title: "Android App Update-direct APK Downloading→Install→B"
 app: raft-android
 tier: L1
-version: "1.1-draft"
+version: "1.2-draft"
 description: |
   Verify an exact baseline A upgrades to exact target B through the real
-  non-delta DownloadManager and Android package-installer path. This case is
+  app-owned direct downloader and Android package-installer path. This case is
   not runnable until Stamp freezes an android-app-update artifact bundle and
   exposes the owner-approved Android 14 strict device coordinate. Android 12
   is recorded as owner-waived/NOT RUN for this acceptance cycle.
@@ -27,7 +27,7 @@ evidence:
   - report
 
 fixture:
-  revision: android-app-update-full/v1.1
+  revision: android-app-update-full/v1.2
   health_check: exact-A-installed-and-target-B-scoped-only-to-frozen-update-device-group
   provision: install-A-create-minimal-user-state-then-enable-reviewed-B-fixture
   cleanup: deactivate-B-scope-clear-downloads-reset-app-release-device-and-delete-one-time-access
@@ -44,6 +44,11 @@ android:
   device:
     type: physical-or-stamp-device
     required_coordinates: [android14-update-required]
+    waived_coordinates:
+      - coordinate: android12-update-hard
+        status: NOT_RUN
+        reason: owner-waived
+        decision_ref: "#反馈:1bc169a5:84dc5c7f"
   steps:
     - id: admit-baseline
       goal: "Read back exact baseline A package/version/source/signers before opening Raft"
@@ -66,7 +71,7 @@ android:
       capture: [screenshot, dump_layout]
 
     - id: verify-single-owner
-      goal: "Verify Downloading is visible and disabled while exactly one DownloadManager/update owner exists"
+      goal: "Verify Downloading is visible and disabled while exactly one app-owned operation and transfer attempt exists"
       action_category: verify
       capture: [screenshot, dump_layout]
 
@@ -130,7 +135,7 @@ assertions:
     severity: critical
 
   - id: single-download-owner
-    goal: "Repeated taps create exactly one download/update owner"
+    goal: "Repeated taps create exactly one app-owned operation and transfer attempt"
     type: log_check
     after_step: verify-single-owner
     severity: critical

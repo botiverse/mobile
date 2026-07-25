@@ -8,9 +8,11 @@ upgrade. A rendered update page or a delta-only result is not sufficient.
 
 The mandatory full-APK lane uses release `build.raft.app`, the canonical
 production signer lineage, `HANDS_DELTA_UPDATE_ENABLED=false`, and the existing
-Hands `raft-android/debug` test carrier. Baseline A is installed directly from
-the verified CI artifact. Only target B may receive a draft release targeted to
-the `Palm Stamp QA devices` group.
+Hands `raft-android/debug` test carrier. The app-owned direct downloader owns
+the transfer operation, attempt, progress, retry, and private-cache lifecycle;
+Android DownloadManager is not part of the product contract. Baseline A is
+installed directly from the verified CI artifact. Only target B may receive a
+draft release targeted to the `Palm Stamp QA devices` group.
 
 The optional delta lane uses `build.raft.app.alpha` and
 `raft-android-alpha-delta/alpha-delta`. It reports patch/fallback and coarse
@@ -43,8 +45,8 @@ assets. These are server validator requirements, not reviewer conventions.
 1. Install and read back exact A identity.
 2. Resolve exact B only for the scoped test installation.
 3. The first Download tap enters `Downloading` in the same frame.
-4. Repeated taps create no second DownloadManager id.
-5. Bytes/progress advance and foreground/background retain one owner.
+4. Repeated taps create no second app-owned operation or transfer attempt.
+5. Bytes/progress advance and foreground/background retain one operation owner.
 6. Failure or cancellation exposes an actionable Retry.
 7. Completion exposes Install and covers unknown-sources permission handling.
 8. Android's system installer upgrades A to exact B.
@@ -67,6 +69,11 @@ targeted allocations must be rechecked against the same facts. Missing Android
 14, provenance, or cleanup can never be upgraded to product PASS. A future
 Android 12 run is additional coverage and must be reported independently.
 
+The fixture must also carry the Android 12 waiver as machine-readable coverage:
+coordinate `android12-update-hard`, status `NOT_RUN`, reason `owner-waived`, and
+durable decision ref `#反馈:1bc169a5:84dc5c7f`. Missing the waiver or reporting
+that coordinate as PASS fails admission; prose alone is not sufficient.
+
 ## Single-writer window and cleanup
 
 Version 1 is a repeatable owner-guarded SOP, not concurrency-safe arbitrary
@@ -78,8 +85,9 @@ Cleanup is part of the verdict, in this order:
 1. Remove the test installation from the QA device group.
 2. Prove anonymous, random non-member, and former-member resolver negatives.
 3. Cancel/deactivate the B fixture; A has no Hands release.
-4. Clear DownloadManager entries, cached APKs, app data or uninstall the high
-   QA version, and restore unknown-sources permission and network state.
+4. Cancel any app-owned transfer, clear its private staged APK/cache and attempt
+   ledger, reset app data or uninstall the high QA version, and restore
+   unknown-sources permission and network state.
 5. Stop isolated ADB, delete the one-time key, and release the Palm lease to
    terminal `released`.
 

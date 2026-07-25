@@ -22,7 +22,7 @@
     "kind": { "const": "android-app-update" },
     "fixture_id": { "type": "string", "minLength": 1 },
     "fixture_generation": { "type": "integer", "minimum": 1 },
-    "mode": { "enum": ["full-downloadmanager", "delta-sdk", "delta-corrupt-fallback"] },
+    "mode": { "enum": ["full-direct-downloader", "delta-sdk", "delta-corrupt-fallback"] },
     "carrier": {
       "type": "object",
       "additionalProperties": false,
@@ -77,10 +77,27 @@
     "execution": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["required_coordinates"],
+      "required": ["required_coordinates", "coverage"],
       "properties": {
         "required_coordinates": {
           "const": ["android14-update-required"]
+        },
+        "coverage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["waived_coordinates"],
+          "properties": {
+            "waived_coordinates": {
+              "const": [
+                {
+                  "coordinate": "android12-update-hard",
+                  "status": "NOT_RUN",
+                  "reason": "owner-waived",
+                  "decision_ref": "#反馈:1bc169a5:84dc5c7f"
+                }
+              ]
+            }
+          }
         }
       }
     },
@@ -98,7 +115,7 @@
   },
   "allOf": [
     {
-      "if": { "properties": { "mode": { "const": "full-downloadmanager" } } },
+      "if": { "properties": { "mode": { "const": "full-direct-downloader" } } },
       "then": {
         "properties": {
           "carrier": {
