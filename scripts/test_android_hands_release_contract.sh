@@ -98,8 +98,8 @@ ruby -e '
   expected_waiver = [{"coordinate" => "android12-update-hard", "status" => "NOT_RUN", "reason" => "owner-waived", "decision_ref" => "#反馈:1bc169a5:84dc5c7f"}]
   raise "fixture schema does not require exact Android 12 waiver" unless coverage.fetch("required").include?("waived_coordinates") && waiver == expected_waiver
   modes = fixture_schema.fetch("properties").fetch("mode").fetch("enum")
-  raise "fixture schema still permits Android DownloadManager mode" if modes.include?("full-downloadmanager")
-  raise "fixture schema lacks direct-downloader full mode" unless modes.include?("full-direct-downloader")
+  raise "fixture schema lacks canonical DownloadManager full mode" unless modes.include?("full-downloadmanager")
+  raise "fixture schema still permits superseded direct-downloader mode" if modes.include?("full-direct-downloader")
   update_readme = File.read("docs/qa-acceptance/android-app-update/README.md")
   raise "Android 14 denominator lacks owner-decision provenance" unless update_readme.include?("84dc5c7f")
   raise "Android 12 waiver is not explicitly NOT RUN" unless update_readme.include?("Android 12 is explicitly owner-waived") && update_readme.include?("`NOT RUN`")
@@ -114,7 +114,7 @@ ruby -e '
   raise "full update case lacks exact Android 12 waiver" unless case_waiver == expected_waiver
   invalid_waivers = [[], [expected_waiver.first.merge("status" => "PASS")], [expected_waiver.first.merge("reason" => "missing-capacity")]]
   raise "full update case admits missing or PASS Android 12 waiver" if invalid_waivers.any? { |candidate| candidate == case_waiver }
-  raise "full update case still requires Android DownloadManager" if full_case.to_s.include?("DownloadManager")
+  raise "full update case does not retain App Update DownloadManager" unless full_case.to_s.include?("DownloadManager")
   expected_notes = full_case.fetch("expected").fetch("notes")
   raise "full update case misreports Android 12 waiver" unless expected_notes.include?("owner-waived") && expected_notes.include?("NOT RUN")
   step_ids = full_case.fetch("android").fetch("steps").map { |step| step.fetch("id") }

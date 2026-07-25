@@ -22,7 +22,7 @@
     "kind": { "const": "android-app-update" },
     "fixture_id": { "type": "string", "minLength": 1 },
     "fixture_generation": { "type": "integer", "minimum": 1 },
-    "mode": { "enum": ["full-direct-downloader", "delta-sdk", "delta-corrupt-fallback"] },
+    "mode": { "enum": ["full-downloadmanager", "delta-sdk", "delta-corrupt-fallback"] },
     "carrier": {
       "type": "object",
       "additionalProperties": false,
@@ -115,7 +115,7 @@
   },
   "allOf": [
     {
-      "if": { "properties": { "mode": { "const": "full-direct-downloader" } } },
+      "if": { "properties": { "mode": { "const": "full-downloadmanager" } } },
       "then": {
         "properties": {
           "carrier": {

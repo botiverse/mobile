@@ -1,11 +1,11 @@
 id: android-app-update-full-success
-title: "Android App Update-direct APK Downloading→Install→B"
+title: "Android App Update-full APK Downloading→Install→B"
 app: raft-android
 tier: L1
 version: "1.2-draft"
 description: |
   Verify an exact baseline A upgrades to exact target B through the real
-  app-owned direct downloader and Android package-installer path. This case is
+  non-delta DownloadManager and Android package-installer path. This case is
   not runnable until Stamp freezes an android-app-update artifact bundle and
   exposes the owner-approved Android 14 strict device coordinate. Android 12
   is recorded as owner-waived/NOT RUN for this acceptance cycle.
@@ -71,7 +71,7 @@ android:
       capture: [screenshot, dump_layout]
 
     - id: verify-single-owner
-      goal: "Verify Downloading is visible and disabled while exactly one app-owned operation and transfer attempt exists"
+      goal: "Verify Downloading is visible and disabled while exactly one DownloadManager/update owner exists"
       action_category: verify
       capture: [screenshot, dump_layout]
 
@@ -135,7 +135,7 @@ assertions:
     severity: critical
 
   - id: single-download-owner
-    goal: "Repeated taps create exactly one app-owned operation and transfer attempt"
+    goal: "Repeated taps create exactly one download/update owner"
     type: log_check
     after_step: verify-single-owner
     severity: critical
