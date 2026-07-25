@@ -123,6 +123,7 @@ jobs:
           A_SIGNERS_JSON: ${{ needs.baseline.outputs.signer_cert_sha256_json }}
           A_VERIFIED_V2: ${{ needs.baseline.outputs.verified_v2 }}
           A_VERIFIED_V3: ${{ needs.baseline.outputs.verified_v3 }}
+          A_VERIFIED_V31: ${{ needs.baseline.outputs.verified_v31 }}
           B_ARTIFACT_NAME: ${{ needs.target.outputs.artifact_name }}
           B_ARTIFACT_ID: ${{ needs.target.outputs.artifact_id }}
           B_MEMBER: ${{ needs.target.outputs.apk_member }}
@@ -136,6 +137,7 @@ jobs:
           B_SIGNERS_JSON: ${{ needs.target.outputs.signer_cert_sha256_json }}
           B_VERIFIED_V2: ${{ needs.target.outputs.verified_v2 }}
           B_VERIFIED_V3: ${{ needs.target.outputs.verified_v3 }}
+          B_VERIFIED_V31: ${{ needs.target.outputs.verified_v31 }}
         shell: bash
         run: |
           set -euo pipefail
@@ -149,8 +151,10 @@ jobs:
           [ "${A_SIGNERS_JSON}" = "${B_SIGNERS_JSON}" ]
           [ "${A_VERIFIED_V2}" = "true" ]
           [ "${A_VERIFIED_V3}" = "true" ]
+          [ "${A_VERIFIED_V31}" = "true" ]
           [ "${B_VERIFIED_V2}" = "true" ]
           [ "${B_VERIFIED_V3}" = "true" ]
+          [ "${B_VERIFIED_V31}" = "true" ]
           jq -n \
             --arg source "${SOURCE_SHA}" \
             --arg run "${GITHUB_RUN_ID}" \
@@ -187,8 +191,8 @@ jobs:
               hands_channel_slug: "debug",
               hands_delta_update_enabled: false,
               external_writes: false,
-              baseline: {role: "A", artifact_id: $aArtifactId, artifact_name: $aArtifact, member: $aMember, apk_sha256: $aSha, size_bytes: $aSize, version_name: $aName, version_code: $aCode, signer_cert_sha256: $aSigners, verified_v2: true, verified_v3: true},
-              target: {role: "B", artifact_id: $bArtifactId, artifact_name: $bArtifact, member: $bMember, apk_sha256: $bSha, size_bytes: $bSize, version_name: $bName, version_code: $bCode, signer_cert_sha256: $bSigners, verified_v2: true, verified_v3: true},
+              baseline: {role: "A", artifact_id: $aArtifactId, artifact_name: $aArtifact, member: $aMember, apk_sha256: $aSha, size_bytes: $aSize, version_name: $aName, version_code: $aCode, signer_lineage_sha256: $aSigners, verified_v2: true, verified_v3: true, verified_v31: true},
+              target: {role: "B", artifact_id: $bArtifactId, artifact_name: $bArtifact, member: $bMember, apk_sha256: $bSha, size_bytes: $bSize, version_name: $bName, version_code: $bCode, signer_lineage_sha256: $bSigners, verified_v2: true, verified_v3: true, verified_v31: true},
               distribution: null
             }' > android-app-update-build-pair.json
           jq empty android-app-update-build-pair.json

@@ -94,6 +94,8 @@ on:
         value: ${{ jobs.build_android_release.outputs.verified_v2 }}
       verified_v3:
         value: ${{ jobs.build_android_release.outputs.verified_v3 }}
+      verified_v31:
+        value: ${{ jobs.build_android_release.outputs.verified_v31 }}
   workflow_dispatch:
     inputs:
       source_sha:
@@ -264,6 +266,7 @@ jobs:
       signer_cert_sha256_json: ${{ steps.verify.outputs.signer_cert_sha256_json }}
       verified_v2: ${{ steps.verify.outputs.verified_v2 }}
       verified_v3: ${{ steps.verify.outputs.verified_v3 }}
+      verified_v31: ${{ steps.verify.outputs.verified_v31 }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -471,12 +474,16 @@ jobs:
           TARGET_SDK="$(sed -n "s/^targetSdkVersion:'\([^']*\)'.*/\1/p" aapt-badging.log | head -n 1)"
           [[ "${MIN_SDK}" =~ ^[0-9]+$ ]] || { echo "Unable to read minSdk" >&2; exit 1; }
           [[ "${TARGET_SDK}" =~ ^[0-9]+$ ]] || { echo "Unable to read targetSdk" >&2; exit 1; }
-          SIGNERS_JSON="$(awk -F ': ' '/certificate SHA-256 digest:/ {print $2}' apksigner-verify.log | jq -Rsc 'split("\n") | map(select(length > 0)) | unique')"
+          # apksigner prints newest/current first. Reverse it so the machine
+          # contract is the canonical oldest-to-current lineage order.
+          SIGNERS_JSON="$(awk -F ': ' '/certificate SHA-256 digest:/ {print $2}' apksigner-verify.log | jq -Rsc 'split("\n") | map(select(length > 0)) | reverse')"
           [ "$(printf '%s' "${SIGNERS_JSON}" | jq 'length')" -gt 0 ] || { echo "Unable to read signer digest" >&2; exit 1; }
           V2="$(awk -F ': ' '/Verified using v2 scheme/ {print $2}' apksigner-verify.log | tail -n 1)"
           V3="$(awk -F ': ' '/Verified using v3 scheme/ {print $2}' apksigner-verify.log | tail -n 1)"
+          V31="$(awk -F ': ' '/Verified using v3.1 scheme/ {print $2}' apksigner-verify.log | tail -n 1)"
           [ "${V2}" = "true" ] || { echo "APK v2 verification is not true" >&2; exit 1; }
           [ "${V3}" = "true" ] || { echo "APK v3 verification is not true" >&2; exit 1; }
+          [ "${V31}" = "true" ] || { echo "APK v3.1 verification is not true" >&2; exit 1; }
           echo "apk_path=${APK}" >> "$GITHUB_OUTPUT"
           echo "member=$(basename "${APK}")" >> "$GITHUB_OUTPUT"
           echo "sha256=$(sha256sum "${APK}" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
@@ -487,6 +494,7 @@ jobs:
           echo "signer_cert_sha256_json=${SIGNERS_JSON}" >> "$GITHUB_OUTPUT"
           echo "verified_v2=${V2}" >> "$GITHUB_OUTPUT"
           echo "verified_v3=${V3}" >> "$GITHUB_OUTPUT"
+          echo "verified_v31=${V31}" >> "$GITHUB_OUTPUT"
 
       - name: Upload APK as workflow artifact
         id: upload-apk

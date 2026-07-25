@@ -74,6 +74,11 @@ ruby -e '
   end
   manifest_run = update_jobs.fetch("manifest").fetch("steps").find { |step| step["name"] == "Create immutable build-pair manifest" }.fetch("run")
   raise "update manifest does not fail closed on external writes" unless manifest_run.include?("external_writes: false")
+  raise "update manifest lacks ordered signer lineage" unless manifest_run.include?("signer_lineage_sha256")
+  raise "update manifest lacks v3.1 verification" unless manifest_run.include?("verified_v31: true")
+
+  release_verify = jobs.fetch("build_android_release").fetch("steps").find { |step| step["name"] == "Verify APK" }.fetch("run")
+  raise "release identity output does not canonicalize lineage oldest-to-current" unless release_verify.include?("| reverse")
 
   fixture_schema = JSON.parse(File.read("docs/qa-acceptance/android-app-update/android-app-update-fixture.v1.schema.json"))
   required = fixture_schema.fetch("required")
