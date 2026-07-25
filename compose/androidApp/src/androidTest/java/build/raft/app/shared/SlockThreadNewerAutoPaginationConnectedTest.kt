@@ -3,6 +3,7 @@ package build.raft.app.shared
 import android.app.Instrumentation
 import android.content.Intent
 import android.graphics.Rect
+import android.os.Bundle
 import android.os.ParcelFileDescriptor
 import android.os.SystemClock
 import android.view.accessibility.AccessibilityNodeInfo
@@ -87,8 +88,9 @@ class SlockThreadNewerAutoPaginationConnectedTest {
                 "The first 30-row append displaced the reading anchor: before=$retainedMarker after=$retainedAfterAppend",
                 abs(retainedAfterAppend.bounds.top - retainedMarker.bounds.top) <= AnchorToleranceDp * density,
             )
-            println(
-                "THREAD_NEWER_ANCHOR firstRequest=${firstRequest.afterRequests.single()} " +
+            recordEvidence(
+                key = "THREAD_NEWER_ANCHOR",
+                value = "firstRequest=${firstRequest.afterRequests.single()} " +
                     "before=$retainedMarker after=$retainedAfterAppend " +
                     "deltaPx=${retainedAfterAppend.bounds.top - retainedMarker.bounds.top} " +
                     "tolerancePx=${AnchorToleranceDp * density}",
@@ -100,7 +102,7 @@ class SlockThreadNewerAutoPaginationConnectedTest {
                 durationMs = NoCascadeObservationMs,
                 reason = "settling the first 16→46 append without another gesture must not cascade",
             )
-            println("THREAD_NEWER_NO_CASCADE snapshot=${fixtureSnapshot(nonce)}")
+            recordEvidence("THREAD_NEWER_NO_CASCADE", "snapshot=${fixtureSnapshot(nonce)}")
 
             // Move to the committed tail through the explicit production
             // viewport action. This is intentionally not a direct drag, so it
@@ -136,7 +138,7 @@ class SlockThreadNewerAutoPaginationConnectedTest {
             val secondRequest = waitForAfterRequestCount(nonce, expectedCount = 2)
             assertEquals(46L, secondRequest.afterRequests[1].afterSeq)
             assertEquals(30, secondRequest.afterRequests[1].limit)
-            println("THREAD_NEWER_SECOND_REQUEST snapshot=$secondRequest")
+            recordEvidence("THREAD_NEWER_SECOND_REQUEST", "snapshot=$secondRequest")
 
             assertTrue(
                 "The parked second newer request was not released as an error",
@@ -157,7 +159,7 @@ class SlockThreadNewerAutoPaginationConnectedTest {
                 46L,
                 retryRequest.afterRequests[2].afterSeq,
             )
-            println("THREAD_NEWER_RETRY_REQUEST snapshot=$retryRequest")
+            recordEvidence("THREAD_NEWER_RETRY_REQUEST", "snapshot=$retryRequest")
             assertTrue(
                 "The parked Retry request was not released",
                 ThreadNewerAutoPaginationVisualFixtureProbe.releaseSuccess(
@@ -201,8 +203,16 @@ class SlockThreadNewerAutoPaginationConnectedTest {
                 durationMs = EndObservationMs,
                 reason = "a terminal short page must disable all later newer requests",
             )
-            println("THREAD_NEWER_TERMINAL snapshot=${fixtureSnapshot(nonce)}")
+            recordEvidence("THREAD_NEWER_TERMINAL", "snapshot=${fixtureSnapshot(nonce)}")
         }
+    }
+
+    private fun recordEvidence(key: String, value: String) {
+        println("$key $value")
+        InstrumentationRegistry.getInstrumentation().sendStatus(
+            EvidenceStatusCode,
+            Bundle().apply { putString("stream", "$key $value\n") },
+        )
     }
 
     private fun waitForInitialFocusedHistory(nonce: String) {
@@ -566,5 +576,6 @@ class SlockThreadNewerAutoPaginationConnectedTest {
         private const val MaxAccessibilitySummaryEntries = 120
         private const val MaxAccessibilitySummaryChars = 8_000
         private const val MaxAccessibilityClickAncestorDepth = 8
+        private const val EvidenceStatusCode = 2
     }
 }

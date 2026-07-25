@@ -570,6 +570,24 @@ jobs:
         shell: bash
         run: scripts/ci/test_assert_instrumentation_ok.sh
 
+      - name: Select Thread newer-pagination gate
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          run_gate=true
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            run_gate=false
+            git fetch --no-tags --depth=1 origin "$PR_BASE_SHA"
+            if git diff --name-only "$PR_BASE_SHA" HEAD | grep -Eq '^(compose/shared/src/commonMain/kotlin/build/raft/app/(ThreadPage|LazyViewportController|ThreadNewerPagination)\.kt|compose/androidApp/src/androidTest/java/build/raft/app/shared/SlockThreadNewerAutoPaginationConnectedTest\.kt)$'; then
+              run_gate=true
+            fi
+          fi
+          echo "THREAD_NEWER_PAGINATION_GATE_REQUIRED=$run_gate" >> "$GITHUB_ENV"
+          echo "Thread newer-pagination gate required: $run_gate"
+
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
@@ -662,11 +680,9 @@ jobs:
             scripts/ci/assert-instrumentation-ok.sh diagnostics-caller-pipeline-instrumentation.txt 1
             adb shell am instrument -w -r -e class build.raft.app.data.DurablePartitionAndroidDriverMigrationTest build.raft.app.shared.test/androidx.test.runner.AndroidJUnitRunner | tee durable-partition-migration-instrumentation.txt
             scripts/ci/assert-instrumentation-ok.sh durable-partition-migration-instrumentation.txt 2
-            # Long (60-90s) gesture-driven acceptance for task #692: main/nightly
-            # only, mirroring the iOS-compile policy of keeping slow coverage off
-            # the PR critical path. Single line: the emulator-runner action feeds
-            # each script line to its own `sh -c`, so multi-line if/fi breaks.
-            if [ "${GITHUB_EVENT_NAME}" != "pull_request" ]; then adb shell am instrument -w -r -e class build.raft.app.shared.SlockThreadNewerAutoPaginationConnectedTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner | tee thread-newer-auto-pagination-instrumentation.txt && scripts/ci/assert-instrumentation-ok.sh thread-newer-auto-pagination-instrumentation.txt 1; fi
+            # Run the slow gesture gate on main/nightly and on PRs that touch its
+            # Thread viewport or pagination boundary.
+            if [ "${THREAD_NEWER_PAGINATION_GATE_REQUIRED}" = "true" ]; then adb shell am instrument -w -r -e class build.raft.app.shared.SlockThreadNewerAutoPaginationConnectedTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner | tee thread-newer-auto-pagination-instrumentation.txt && scripts/ci/assert-instrumentation-ok.sh thread-newer-auto-pagination-instrumentation.txt 1; fi
             # Thread-open budget TELEMETRY (Raft task #20 t2): harvest the frozen-v3
             # perf markers the pagination run just produced. Baseline collection
             # only — currently 3/3 runs fail the 100ms draw budget, so this must

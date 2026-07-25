@@ -6556,7 +6556,7 @@ internal fun SharedThreadRouteContent(
                 threadViewModel.dispatch(SharedThreadIntent.FirstContentReady)
             },
             onLoadNewer = {
-                threadViewModel.accept(SharedThreadIntent.LoadNewer)
+                threadViewModel.loadNewerPage()
             },
             onBack = onBack,
             onUpdateChannelProfile = { channelId, originalName, originalDescription, name, description ->
@@ -11190,7 +11190,7 @@ private fun ThreadPageContent(
     onExportShareImage: suspend (ThreadShareCaptureRect?) -> JSONObject?,
     onSaveShareImage: suspend (String) -> JSONObject?,
     onFirstContentReady: () -> Unit = {},
-    onLoadNewer: suspend () -> Unit,
+    onLoadNewer: suspend () -> ThreadNewerPageLoadOutcome,
     onBack: () -> Unit,
     onUpdateChannelProfile: (String, String, String, String, String) -> Unit = { _, _, _, _, _ -> },
     onClearChannelProfileUpdateStatus: () -> Unit = {},
@@ -12796,7 +12796,7 @@ private fun ThreadChatTab(
     resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)? = null,
     activeMarkdownTagKey: String? = null,
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
-    onLoadNewer: suspend () -> Unit,
+    onLoadNewer: suspend () -> ThreadNewerPageLoadOutcome,
     onOpenMember: (MemberDetailIdentity) -> Unit,
     onMentionAuthor: (KuiklyThreadMessageItem) -> Unit,
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
@@ -13304,7 +13304,7 @@ private fun ThreadMessagesList(
     resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)? = null,
     activeMarkdownTagKey: String? = null,
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
-    onLoadNewer: suspend () -> Unit,
+    onLoadNewer: suspend () -> ThreadNewerPageLoadOutcome,
     onOpenMember: (MemberDetailIdentity) -> Unit,
     onMentionAuthor: (KuiklyThreadMessageItem) -> Unit,
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
@@ -13952,12 +13952,16 @@ private fun ThreadMessagesList(
     var olderPageSettledUserScrollGeneration by remember(threadInstanceKey) { mutableStateOf(0) }
     val newerGestureDemandTracker =
         remember(threadInstanceKey) { ThreadNewerGestureDemandTracker() }
+    var newerPointerGestureActive by remember(threadInstanceKey) { mutableStateOf(false) }
     var newerDemandGeneration by remember(threadInstanceKey) { mutableStateOf(0) }
     var lastSettledNewerDemandGeneration by remember(threadInstanceKey) { mutableStateOf(0) }
     var nextNewerPageCycleId by remember(threadInstanceKey) { mutableStateOf(0L) }
     var newerPageCycle by remember(threadInstanceKey) { mutableStateOf<ThreadNewerPageCycle?>(null) }
     val newerPageCycleActive = newerPageCycle != null
-    suspend fun settleNewerPageCycle(cycleId: Long) {
+    suspend fun settleNewerPageCycle(
+        cycleId: Long,
+        outcome: ThreadNewerPageLoadOutcome
+    ) {
         val cycle = newerPageCycle?.takeIf { active -> active.id == cycleId } ?: return
         if (!shouldSettleThreadNewerPageCycle(
                 cycleThreadInstanceKey = cycle.threadInstanceKey,
@@ -13984,6 +13988,95 @@ private fun ThreadMessagesList(
         ) {
             return
         }
+        if (shouldRestoreThreadNewerViewportAfterSettlement(
+                cycleThreadInstanceKey = cycle.threadInstanceKey,
+                currentThreadInstanceKey = currentThreadInstanceKeyState.value,
+                cycleId = cycleId,
+                activeCycleId = newerPageCycle?.id,
+                outcome = outcome
+            )
+        ) {
+            val applied = outcome as ThreadNewerPageLoadOutcome.Applied
+            diagnosticsLogger(
+                "thread_newer_page_settlement result=awaiting_owner cycleId=$cycleId " +
+                    "requestEpoch=${cycle.requestViewportEpoch} requestIntent=${cycle.requestViewportIntent} " +
+                    "currentEpoch=${currentViewportControllerState.value.epoch} " +
+                    "currentIntent=${currentViewportControllerState.value.intent} " +
+                    "pointerActive=$newerPointerGestureActive " +
+                    "anchor=${cycle.anchor} applied=${applied.addedMessageIds.size}"
+            )
+            val settlementResult =
+                snapshotFlow {
+                    val activeCycle = newerPageCycle
+                    if (activeCycle == null || !shouldSettleThreadNewerPageCycle(
+                            cycleThreadInstanceKey = cycle.threadInstanceKey,
+                            currentThreadInstanceKey = currentThreadInstanceKeyState.value,
+                            cycleId = cycleId,
+                            activeCycleId = activeCycle.id
+                        )
+                    ) {
+                        ThreadNewerViewportSettlementResult.Reject
+                    } else {
+                        val controller = currentViewportControllerState.value
+                        resolveThreadNewerViewportSettlement(
+                            requestViewportEpoch = activeCycle.requestViewportEpoch,
+                            requestViewportIntent = activeCycle.requestViewportIntent,
+                            currentViewportEpoch = controller.epoch,
+                            currentViewportIntent = controller.intent,
+                            pointerGestureActive =
+                                newerPointerGestureActive ||
+                                    (activeCycle.anchor?.let { anchor ->
+                                        anchor.userScrollGeneration != userScrollGeneration.value
+                                    } ?: false),
+                            pageProjectionCommitted =
+                                applied.addedMessageIds.all(previousViewportMessageIds::contains),
+                            requestAnchor =
+                                activeCycle.anchor?.messageId?.let { messageId ->
+                                    LazyViewportAnchorTarget.Message(messageId)
+                                },
+                            requestAnchorOffset = activeCycle.anchor?.offset ?: 0
+                        )
+                    }
+                }.first { result -> result != ThreadNewerViewportSettlementResult.Await }
+            diagnosticsLogger(
+                "thread_newer_page_settlement result=$settlementResult cycleId=$cycleId " +
+                    "currentEpoch=${currentViewportControllerState.value.epoch} " +
+                    "currentIntent=${currentViewportControllerState.value.intent} " +
+                    "activeAnchor=${newerPageCycle?.anchor}"
+            )
+            if (settlementResult == ThreadNewerViewportSettlementResult.Reject) {
+                lastSettledNewerDemandGeneration = newerDemandGeneration
+                newerPageCycle = null
+                return
+            }
+            val restoreTicket = settlementResult as ThreadNewerViewportSettlementResult.Restore
+            listState.awaitThreadMessagesLayoutFrame()
+            if (!shouldSettleThreadNewerPageCycle(
+                    cycleThreadInstanceKey = cycle.threadInstanceKey,
+                    currentThreadInstanceKey = currentThreadInstanceKeyState.value,
+                    cycleId = cycleId,
+                    activeCycleId = newerPageCycle?.id
+                )
+            ) {
+                return
+            }
+            // THREAD_NEWER_PAGE_VIEWPORT_SETTLEMENT_START
+            viewportLayoutGeneration += 1L
+            dispatchViewportEvent(
+                LazyViewportEvent.NewerPageSettled(
+                    expectedViewportEpoch = restoreTicket.expectedViewportEpoch,
+                    expectedViewportIntent = restoreTicket.expectedViewportIntent,
+                    requestAnchor = restoreTicket.requestAnchor,
+                    requestAnchorOffset = restoreTicket.requestAnchorOffset,
+                    layoutGeneration = viewportLayoutGeneration
+                )
+            )
+            val settlementCommandId = viewportControllerState.pendingCommand?.id
+            if (settlementCommandId != null) {
+                awaitViewportCommandSettlement(settlementCommandId)
+            }
+            // THREAD_NEWER_PAGE_VIEWPORT_SETTLEMENT_END
+        }
         // Consume every newer-directed gesture observed through this request,
         // including a second gesture while the page was in flight. Only a
         // fresh Down -> upward Move after settlement may authorize another page.
@@ -13996,23 +14089,33 @@ private fun ThreadMessagesList(
         }
         val cycleId = nextNewerPageCycleId + 1L
         nextNewerPageCycleId = cycleId
+        val anchor =
+            listState.threadFirstVisibleMessageAnchor(
+                timelineSlice = renderPayload,
+                userScrollGeneration = userScrollGeneration.value
+            )
         newerPageCycle =
             ThreadNewerPageCycle(
                 id = cycleId,
-                threadInstanceKey = threadInstanceKey
+                threadInstanceKey = threadInstanceKey,
+                anchor = anchor,
+                requestViewportEpoch = viewportControllerState.epoch,
+                requestViewportIntent = viewportControllerState.intent
             )
         allowBottomAutoAnchor = false
         diagnosticsLogger(
             "thread_newer_page_cycle result=requested event=$event " +
                 "demandGeneration=$newerDemandGeneration " +
                 "viewportIntent=${viewportControllerState.intent} " +
+                "viewportEpoch=${viewportControllerState.epoch} anchor=$anchor " +
                 "userScrollGeneration=${userScrollGeneration.value}"
         )
         coroutineScope.launch {
+            var outcome: ThreadNewerPageLoadOutcome = ThreadNewerPageLoadOutcome.Failed
             try {
-                onLoadNewer()
+                outcome = onLoadNewer()
             } finally {
-                settleNewerPageCycle(cycleId)
+                settleNewerPageCycle(cycleId, outcome)
             }
         }
     }
@@ -14738,6 +14841,7 @@ private fun ThreadMessagesList(
                             )
                         when (type) {
                             TouchType.Down -> {
+                                newerPointerGestureActive = true
                                 dispatchViewportEvent(LazyViewportEvent.PointerDown)
                             }
                             TouchType.Move -> {
@@ -14764,6 +14868,7 @@ private fun ThreadMessagesList(
                             }
                             }
                             TouchType.Up -> {
+                                newerPointerGestureActive = false
                                 val settlingEpoch = viewportControllerState.epoch
                                 coroutineScope.launch {
                                     withFrameNanos { }
@@ -14780,6 +14885,13 @@ private fun ThreadMessagesList(
                                             timelineSlice = currentPayloadState.value,
                                             userScrollGeneration = userScrollGeneration.value
                                         )
+                                    newerPageCycle
+                                        ?.takeIf { cycle ->
+                                            cycle.requestViewportEpoch == settlingEpoch
+                                        }
+                                        ?.let { cycle ->
+                                            newerPageCycle = cycle.copy(anchor = anchor)
+                                        }
                                     dispatchViewportEvent(
                                         LazyViewportEvent.PointerSettled(
                                             epoch = settlingEpoch,
@@ -16240,7 +16352,10 @@ private data class ThreadVisibleMessageAnchor(
 
 private data class ThreadNewerPageCycle(
     val id: Long,
-    val threadInstanceKey: String
+    val threadInstanceKey: String,
+    val anchor: ThreadVisibleMessageAnchor?,
+    val requestViewportEpoch: Long,
+    val requestViewportIntent: LazyViewportIntent
 )
 
 private class ThreadUserScrollGeneration(

@@ -235,6 +235,140 @@ class ThreadNewerPaginationTest {
         )
     }
 
+    @Test
+    fun viewportSettlementRequiresAnAppliedPageOnTheSameActiveCycle() {
+        assertTrue(
+            shouldRestoreThreadNewerViewportAfterSettlement(
+                cycleThreadInstanceKey = "thread-a",
+                currentThreadInstanceKey = "thread-a",
+                cycleId = 3L,
+                activeCycleId = 3L,
+                outcome = ThreadNewerPageLoadOutcome.Applied(listOf("message-17"))
+            )
+        )
+        listOf(
+            ThreadNewerPageLoadOutcome.Empty,
+            ThreadNewerPageLoadOutcome.Failed,
+            ThreadNewerPageLoadOutcome.Ignored
+        ).forEach { outcome ->
+            assertFalse(
+                shouldRestoreThreadNewerViewportAfterSettlement(
+                    cycleThreadInstanceKey = "thread-a",
+                    currentThreadInstanceKey = "thread-a",
+                    cycleId = 3L,
+                    activeCycleId = 3L,
+                    outcome = outcome
+                ),
+                outcome.toString()
+            )
+        }
+        assertFalse(
+            shouldRestoreThreadNewerViewportAfterSettlement(
+                cycleThreadInstanceKey = "thread-a",
+                currentThreadInstanceKey = "thread-b",
+                cycleId = 3L,
+                activeCycleId = 3L,
+                outcome = ThreadNewerPageLoadOutcome.Applied(listOf("message-17"))
+            )
+        )
+        assertFalse(
+            shouldRestoreThreadNewerViewportAfterSettlement(
+                cycleThreadInstanceKey = "thread-a",
+                currentThreadInstanceKey = "thread-a",
+                cycleId = 3L,
+                activeCycleId = 4L,
+                outcome = ThreadNewerPageLoadOutcome.Applied(listOf("message-17"))
+            )
+        )
+    }
+
+    @Test
+    fun viewportSettlementAwaitsTheRequestGestureAndAppliedProjection() {
+        assertEquals(
+            ThreadNewerViewportSettlementResult.Await,
+            resolveThreadNewerViewportSettlement(
+                requestViewportEpoch = 7L,
+                requestViewportIntent = LazyViewportIntent.UserDragging,
+                currentViewportEpoch = 7L,
+                currentViewportIntent = LazyViewportIntent.UserDragging,
+                pointerGestureActive = false,
+                pageProjectionCommitted = true,
+                requestAnchor = LazyViewportAnchorTarget.Message("request-anchor-a"),
+                requestAnchorOffset = -8
+            )
+        )
+        assertEquals(
+            ThreadNewerViewportSettlementResult.Await,
+            resolveThreadNewerViewportSettlement(
+                requestViewportEpoch = 7L,
+                requestViewportIntent = LazyViewportIntent.UserDragging,
+                currentViewportEpoch = 8L,
+                currentViewportIntent = anchoredViewportIntent(),
+                pointerGestureActive = false,
+                pageProjectionCommitted = false,
+                requestAnchor = LazyViewportAnchorTarget.Message("settled-anchor-b"),
+                requestAnchorOffset = -24
+            )
+        )
+        assertEquals(
+            ThreadNewerViewportSettlementResult.Restore(
+                expectedViewportEpoch = 8L,
+                expectedViewportIntent = LazyViewportIntent.FollowingLatest,
+                requestAnchor = LazyViewportAnchorTarget.Message("settled-anchor-b"),
+                requestAnchorOffset = -24
+            ),
+            resolveThreadNewerViewportSettlement(
+                requestViewportEpoch = 7L,
+                requestViewportIntent = LazyViewportIntent.UserDragging,
+                currentViewportEpoch = 8L,
+                currentViewportIntent = LazyViewportIntent.FollowingLatest,
+                pointerGestureActive = false,
+                pageProjectionCommitted = true,
+                requestAnchor = LazyViewportAnchorTarget.Message("settled-anchor-b"),
+                requestAnchorOffset = -24
+            )
+        )
+    }
+
+    @Test
+    fun viewportSettlementRejectsActiveOrLaterGestures() {
+        assertEquals(
+            ThreadNewerViewportSettlementResult.Reject,
+            resolveThreadNewerViewportSettlement(
+                requestViewportEpoch = 7L,
+                requestViewportIntent = LazyViewportIntent.UserDragging,
+                currentViewportEpoch = 7L,
+                currentViewportIntent = LazyViewportIntent.UserDragging,
+                pointerGestureActive = true,
+                pageProjectionCommitted = true,
+                requestAnchor = LazyViewportAnchorTarget.Message("message-11"),
+                requestAnchorOffset = -24
+            )
+        )
+        assertEquals(
+            ThreadNewerViewportSettlementResult.Reject,
+            resolveThreadNewerViewportSettlement(
+                requestViewportEpoch = 7L,
+                requestViewportIntent = LazyViewportIntent.UserDragging,
+                currentViewportEpoch = 9L,
+                currentViewportIntent = LazyViewportIntent.UserDragging,
+                pointerGestureActive = false,
+                pageProjectionCommitted = true,
+                requestAnchor = LazyViewportAnchorTarget.Message("message-11"),
+                requestAnchorOffset = -24
+            )
+        )
+    }
+
+    private fun anchoredViewportIntent(): LazyViewportIntent =
+        LazyViewportIntent.Anchored(
+            target = LazyViewportAnchorTarget.Message("message-11"),
+            offset = -24,
+            layoutGeneration = 3L,
+            placement = LazyViewportAnchorPlacement.ExactOffset,
+            fallback = LazyViewportAnchorFallback.Free
+        )
+
     private fun shouldAutoLoad(
         initialBottomAnchorReady: Boolean = true,
         canLoadMoreAfter: Boolean = true,
