@@ -42,8 +42,10 @@ import {
   isSlockOhosExternalShareEnvelopeFresh,
   slockOhosExternalShareSizeError,
   slockOhosWriteAll,
+  SlockOhosExternalShareAbilityEpochGate,
   SlockOhosExternalShareGenerationGate,
 } from '../main/ets/entryability/SlockOhosExternalShareIntake';
+import { SlockOhosExternalShareBridgeDeliveryState } from '../main/ets/kuikly/SlockOhosExternalShareLaunchBridge';
 
 class FakePlatformFileHandle {
   readonly fileRef: string;
@@ -169,7 +171,7 @@ export default function localUnitTest() {
     });
     it('externalShareUriAdmissionRejectsPlainAndLookalikePaths', 0, () => {
       expect(isSlockOhosGrantedProviderUri('content://provider/item')).assertTrue();
-      expect(isSlockOhosGrantedProviderUri('file://provider/item')).assertTrue();
+      expect(isSlockOhosGrantedProviderUri('file://provider/item')).assertFalse();
       expect(isSlockOhosGrantedProviderUri('/data/storage/el2/base/private')).assertFalse();
       expect(isSlockOhosGrantedProviderUri('https://example.com/file')).assertFalse();
       expect(isSlockOhosGrantedProviderUri('contentx://provider/item')).assertFalse();
@@ -195,6 +197,27 @@ export default function localUnitTest() {
       expect(isSlockOhosExternalShareEnvelopeFresh(day, 0)).assertTrue();
       expect(isSlockOhosExternalShareEnvelopeFresh(day + 1, 0)).assertFalse();
       expect(isSlockOhosExternalShareEnvelopeFresh(100, 101)).assertFalse();
+    });
+    it('externalShareBridgeDeliversOncePerControllerEpochAndNewestToken', 0, () => {
+      const state = new SlockOhosExternalShareBridgeDeliveryState();
+      state.onControllerChanged();
+      expect(state.shouldDeliver('token-a')).assertTrue();
+      state.markDelivered('token-a');
+      expect(state.shouldDeliver('token-a')).assertFalse();
+      expect(state.shouldDeliver('token-b')).assertTrue();
+      state.markDelivered('token-b');
+      state.onControllerChanged();
+      expect(state.shouldDeliver('token-b')).assertTrue();
+    });
+    it('externalShareAbilityEpochRejectsParkedOldCompletionAfterRecreate', 0, () => {
+      const gate = new SlockOhosExternalShareAbilityEpochGate();
+      const firstAbility = gate.attach();
+      expect(gate.isActive(firstAbility)).assertTrue();
+      expect(gate.detach(firstAbility)).assertTrue();
+      const recreatedAbility = gate.attach();
+
+      expect(gate.isActive(firstAbility)).assertFalse();
+      expect(gate.isActive(recreatedAbility)).assertTrue();
     });
     it('platformFileReaderCapsChunksAdvancesOffsetAndClosesOnce', 0, () => {
       const backend = new FakePlatformFileBackend();

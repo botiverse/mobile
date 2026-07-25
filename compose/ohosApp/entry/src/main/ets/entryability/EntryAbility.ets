@@ -33,8 +33,10 @@ import slockOhosProcessNetworkLifecycle from './SlockOhosProcessNetworkLifecycle
 import {
   SLOCK_OHOS_EXTERNAL_SHARE_STORAGE_KEY,
   SlockOhosExternalShareAdmissionOwner,
-  SlockOhosExternalShareLaunch
+  isSlockOhosExternalShareWant,
+  slockOhosExternalShareProcessOwner
 } from './SlockOhosExternalShareIntake';
+import { SlockOhosExternalShareLaunch } from './SlockOhosExternalShareContract';
 import slockOhosExternalShareLaunchBridge from '../kuikly/SlockOhosExternalShareLaunchBridge';
 import BuildProfile from 'BuildProfile';
 
@@ -108,17 +110,20 @@ export default class EntryAbility extends UIAbility {
   private foldStatusCallback?: Callback<display.FoldStatus>;
   private foldPosture: string = 'unknown';
   private externalShareAdmissionOwner?: SlockOhosExternalShareAdmissionOwner;
+  private externalShareAbilityEpoch: number = 0;
 
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     hilog.info(0x0000, 'testTag', '%{public}s', 'Ability onCreate');
     SlockOhosAppDiagnostics.initialize(this.context);
     AppStorage.setOrCreate(SLOCK_OHOS_EXTERNAL_SHARE_STORAGE_KEY, '');
-    this.externalShareAdmissionOwner = new SlockOhosExternalShareAdmissionOwner(
+    this.externalShareAdmissionOwner = slockOhosExternalShareProcessOwner;
+    this.externalShareAbilityEpoch = this.externalShareAdmissionOwner.attach(
       this.context,
       (launch: SlockOhosExternalShareLaunch): void => this.publishExternalShareLaunch(launch),
-      (code: string): void => this.reportExternalShareFailure(code)
+      (code: string): void => this.reportExternalShareFailure(code),
+      !isSlockOhosExternalShareWant(want)
     );
-    this.externalShareAdmissionOwner.submit(want);
+    this.externalShareAdmissionOwner.submit(want, this.externalShareAbilityEpoch);
     // Crash reporting must install BEFORE any native/KNOI initialization —
     // a startup-chain crash (like the task #19 resource-bridge SIGSEGV)
     // is otherwise invisible to Hands.
@@ -138,10 +143,12 @@ export default class EntryAbility extends UIAbility {
   }
 
   onNewWant(want: Want, _launchParam: AbilityConstant.LaunchParam): void {
-    this.externalShareAdmissionOwner?.submit(want);
+    this.externalShareAdmissionOwner?.submit(want, this.externalShareAbilityEpoch);
   }
 
   onDestroy(): void {
+    this.externalShareAdmissionOwner?.detach(this.externalShareAbilityEpoch);
+    slockOhosExternalShareLaunchBridge.setController(undefined);
     hilog.info(0x0000, 'testTag', '%{public}s', 'Ability onDestroy');
   }
 

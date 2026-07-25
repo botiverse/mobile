@@ -30,7 +30,7 @@ assertContract(
 );
 
 assertContract(
-  (entry.match(/externalShareAdmissionOwner[^\n]*\.submit\(want\);/g) ?? []).length === 2 &&
+  (entry.match(/externalShareAdmissionOwner[^\n]*\.submit\(want, this\.externalShareAbilityEpoch\);/g) ?? []).length === 2 &&
     entry.includes('onCreate(want: Want, launchParam: AbilityConstant.LaunchParam)') &&
     entry.includes('onNewWant(want: Want, _launchParam: AbilityConstant.LaunchParam)'),
   'cold and warm Wants must converge on one intake owner'
@@ -40,7 +40,9 @@ assertContract(
   intake.includes('@Concurrent\nexport function persistSlockOhosExternalShare') &&
     intake.includes("import taskpool from '@ohos.taskpool';") &&
     intake.includes('new taskpool.Task(') &&
-    intake.includes('private tail: Promise<void> = Promise.resolve();'),
+    intake.includes('private tail: Promise<void> = Promise.resolve();') &&
+    intake.includes('export const slockOhosExternalShareProcessOwner = new SlockOhosExternalShareAdmissionOwner();') &&
+    entry.includes('this.externalShareAdmissionOwner?.detach(this.externalShareAbilityEpoch);'),
   'all filesystem work must run in one serial taskpool owner'
 );
 
@@ -55,16 +57,15 @@ assertContract(
 );
 
 assertContract(
-  intake.includes("normalized.startsWith('file://') || normalized.startsWith('content://')") &&
-    intake.includes('const canonical = fs.realPathSync(uri);') &&
-    intake.includes('canonical.startsWith(`${privateRoot}/`)') &&
+  intake.includes("return normalized.startsWith('content://');") &&
+    !intake.includes('realPathSync') &&
+    !intake.includes("startsWith('file://')") &&
     !intake.includes('fingerprint('),
-  'OHOS input must be grant-shaped, reject canonical private paths, and avoid weak fingerprint decisions'
+  'OHOS input must be provider-grant shaped, reject raw file paths, and avoid weak fingerprint decisions'
 );
 
 assertContract(
-  intake.includes("launch: { intent: SLOCK_OHOS_EXTERNAL_SHARE_INTENT, externalShareToken: token }") &&
-    !intake.includes('launch: { intent: SLOCK_OHOS_EXTERNAL_SHARE_INTENT, externalShareToken: token,') &&
+  intake.includes('launch: new SlockOhosExternalShareLaunch(SLOCK_OHOS_EXTERNAL_SHARE_INTENT, token)') &&
     launchBridge.includes('intent: launch.intent,') &&
     launchBridge.includes('externalShareToken: launch.externalShareToken') &&
     !index.includes("pageData['text']") &&
@@ -77,7 +78,8 @@ assertContract(
   entry.includes('slockOhosExternalShareLaunchBridge.publish(launch);') &&
     index.includes('slockOhosExternalShareLaunchBridge.setController(controller);') &&
     launchBridge.includes("this.controller.sendEvent(EXTERNAL_SHARE_LAUNCH_EVENT") &&
-    launchBridge.includes('this.deliveredToken = launch.externalShareToken;'),
+    launchBridge.includes('this.deliveryState.markDelivered(launch.externalShareToken);') &&
+    launchBridge.includes('this.deliveredToken = token;'),
   'warm launches must cross an explicit mounted-controller exactly-once bridge'
 );
 

@@ -33,15 +33,14 @@ import org.json.JSONObject
 
 class MainActivity : ComponentActivity() {
     private lateinit var externalShareAdmissionOwner: AndroidExternalShareAdmissionOwner<Intent>
+    private val externalShareResultListener: (Long, AndroidExternalShareIntakeResult) -> Unit =
+        { generation, result -> handleExternalShareAdmissionResult(generation, result) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
-        externalShareAdmissionOwner = AndroidExternalShareAdmissionOwner.create(
-            context = applicationContext,
-            scope = lifecycleScope,
-            onLatestResult = ::handleExternalShareAdmissionResult,
-        )
+        externalShareAdmissionOwner = AndroidExternalShareProcessOwner.get(applicationContext)
+        val resumedExternalShare = externalShareAdmissionOwner.attach(externalShareResultListener)
         SlockAppLog.d(
             "SlockBoot",
             "main_activity_created " +
@@ -49,7 +48,7 @@ class MainActivity : ComponentActivity() {
                 "clearTask=${intent.shouldClearTaskForSharedShell()} " +
                 "data=${intent.safeDataString()}"
         )
-        handleLaunchIntent(intent)
+        if (!resumedExternalShare) handleLaunchIntent(intent)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -63,6 +62,13 @@ class MainActivity : ComponentActivity() {
                 "data=${intent.safeDataString()}"
         )
         handleLaunchIntent(intent)
+    }
+
+    override fun onDestroy() {
+        if (::externalShareAdmissionOwner.isInitialized) {
+            externalShareAdmissionOwner.detach(externalShareResultListener)
+        }
+        super.onDestroy()
     }
 
     private fun handleLaunchIntent(intent: Intent?) {
@@ -87,7 +93,10 @@ class MainActivity : ComponentActivity() {
         return true
     }
 
-    private fun handleExternalShareAdmissionResult(result: AndroidExternalShareIntakeResult) {
+    private fun handleExternalShareAdmissionResult(
+        generation: Long,
+        result: AndroidExternalShareIntakeResult,
+    ) {
         when (result) {
             is AndroidExternalShareIntakeResult.Admitted ->
                 openSharedShellPageData(androidExternalSharePageData(result.launch))
@@ -101,6 +110,7 @@ class MainActivity : ComponentActivity() {
                 openSharedShell(Intent(this@MainActivity, MainActivity::class.java))
             }
         }
+        externalShareAdmissionOwner.acknowledge(generation)
     }
 
     /**

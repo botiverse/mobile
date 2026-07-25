@@ -4,6 +4,9 @@ import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.InputStream
 import java.nio.file.Files
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -141,6 +144,54 @@ class AndroidExternalShareIntakeTest {
 
         assertRejected("external_share_text_too_large", result)
         assertTrue(fixture.root.listFiles().orEmpty().isEmpty())
+    }
+
+    @Test
+    fun samePayloadQueueRunsProductionIntakeButCopiesAndWritesOnlyOnce() = runTest {
+        val root = Files.createTempDirectory("external-share-production-queue").toFile()
+        var writes = 0
+        val provider = FakeProvider(
+            files = mapOf("content://one" to byteArrayOf(1, 2)),
+            declaredSizes = mapOf("content://one" to 2L),
+        )
+        val intake = AndroidExternalShareIntake(
+            inboxRoot = root,
+            provider = provider,
+            limits = limits(),
+            tokenFactory = { "same-production-token-123456" },
+            clock = { 1_000L },
+            atomicEnvelopeWriter = { file, bytes ->
+                file.parentFile?.mkdirs()
+                file.writeBytes(bytes)
+                file.setLastModified(1_000L)
+                writes += 1
+            },
+        )
+        val published = mutableListOf<String>()
+        val completed = CompletableDeferred<Unit>()
+        val owner = AndroidExternalShareAdmissionOwner<AndroidExternalShareSpec>(
+            scope = backgroundScope,
+            admit = { input -> intake.admit(input) },
+        )
+        owner.attach { generation, result ->
+            published += (result as AndroidExternalShareIntakeResult.Admitted).launch.token
+            owner.acknowledge(generation)
+            completed.complete(Unit)
+        }
+        try {
+            val input = spec("same-production", "content://one")
+            owner.submit(input)
+            owner.submit(input)
+            runCurrent()
+            completed.await()
+            runCurrent()
+
+            assertEquals(1, provider.openCalls)
+            assertEquals(1, writes)
+            assertEquals(listOf("same-production-token-123456"), published)
+        } finally {
+            root.deleteRecursively()
+        }
     }
 
     private fun spec(label: String, vararg refs: String): AndroidExternalShareSpec =

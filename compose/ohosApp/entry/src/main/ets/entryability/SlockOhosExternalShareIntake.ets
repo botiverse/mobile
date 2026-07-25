@@ -3,6 +3,7 @@ import { util } from '@kit.ArkTS';
 import fs from '@ohos.file.fs';
 import taskpool from '@ohos.taskpool';
 import Want from '@ohos.app.ability.Want';
+import { SlockOhosExternalShareLaunch } from './SlockOhosExternalShareContract';
 
 export const SLOCK_OHOS_EXTERNAL_SHARE_STORAGE_KEY = 'slockExternalShareLaunch';
 export const SLOCK_OHOS_EXTERNAL_SHARE_INTENT = 'open_share_to_raft';
@@ -43,11 +44,6 @@ export interface SlockOhosExternalShareCapture {
   retainedToken: string;
 }
 
-export interface SlockOhosExternalShareLaunch {
-  intent: string;
-  externalShareToken: string;
-}
-
 export interface SlockOhosExternalShareIntakeResult {
   admitted: boolean;
   code: string;
@@ -62,7 +58,7 @@ export interface SlockOhosExternalShareCaptureResult {
 
 /** Synchronous phase: copy scalar handles, validate shape, and erase the raw Want before return. */
 export function captureSlockOhosExternalShareWant(want: Want): SlockOhosExternalShareCaptureResult {
-  if (want.action !== SEND_DATA_ACTION) {
+  if (!isSlockOhosExternalShareWant(want)) {
     return { accepted: false, code: 'external_share_action_unsupported' };
   }
   const parameters = (want.parameters ?? {}) as Record<string, Object>;
@@ -96,6 +92,10 @@ export function captureSlockOhosExternalShareWant(want: Want): SlockOhosExternal
       retainedToken: retainedToken
     }
   };
+}
+
+export function isSlockOhosExternalShareWant(want: Want): boolean {
+  return want.action === SEND_DATA_ACTION;
 }
 
 /** Taskpool phase: all stat/read/write/fsync/prune work stays off UIAbility's main thread. */
@@ -134,27 +134,50 @@ export function persistSlockOhosExternalShare(
 export class SlockOhosExternalShareAdmissionOwner {
   private tail: Promise<void> = Promise.resolve();
   private generationGate: SlockOhosExternalShareGenerationGate = new SlockOhosExternalShareGenerationGate();
+  private context?: common.UIAbilityContext;
+  private publish?: (launch: SlockOhosExternalShareLaunch) => void;
+  private report?: (code: string) => void;
+  private abilityEpochGate: SlockOhosExternalShareAbilityEpochGate = new SlockOhosExternalShareAbilityEpochGate();
+  private pending?: SlockOhosExternalShareLaunch;
 
-  constructor(
-    private readonly context: common.UIAbilityContext,
-    private readonly publish: (launch: SlockOhosExternalShareLaunch) => void,
-    private readonly report: (code: string) => void
-  ) {}
+  attach(
+    context: common.UIAbilityContext,
+    publish: (launch: SlockOhosExternalShareLaunch) => void,
+    report: (code: string) => void,
+    resumePending: boolean
+  ): number {
+    const epoch = this.abilityEpochGate.attach();
+    this.context = context;
+    this.publish = publish;
+    this.report = report;
+    if (resumePending && this.pending !== undefined) this.publish(this.pending);
+    return epoch;
+  }
 
-  submit(want: Want): boolean {
+  detach(epoch: number): void {
+    if (!this.abilityEpochGate.detach(epoch)) return;
+    this.context = undefined;
+    this.publish = undefined;
+    this.report = undefined;
+  }
+
+  submit(want: Want, epoch: number): boolean {
+    const context = this.context;
+    if (context === undefined || !this.abilityEpochGate.isActive(epoch)) return false;
     const captured = captureSlockOhosExternalShareWant(want);
     if (!captured.accepted || captured.capture === undefined) {
-      if (captured.code !== 'external_share_action_unsupported') this.report(captured.code);
+      if (captured.code !== 'external_share_action_unsupported') this.report?.(captured.code);
       return captured.code !== 'external_share_action_unsupported';
     }
     const generation = this.generationGate.next();
     const capture = captured.capture;
     const retainedWant = want;
+    const filesDir = context.filesDir;
     this.tail = this.tail
       .then((): Promise<Object> => {
         const task = new taskpool.Task(
           persistSlockOhosExternalShare,
-          this.context.filesDir,
+          filesDir,
           capture,
           Date.now()
         );
@@ -163,23 +186,30 @@ export class SlockOhosExternalShareAdmissionOwner {
       .then((value: Object): void => {
         const result = value as SlockOhosExternalShareIntakeResult;
         if (!result.admitted || result.launch === undefined) {
-          if (this.generationGate.isCurrent(generation)) this.report(result.code);
+          if (this.generationGate.isCurrent(generation) && this.abilityEpochGate.isActive(epoch)) this.report?.(result.code);
           return;
         }
         const parameters = (retainedWant.parameters ?? {}) as Record<string, Object>;
         parameters[RAFT_SHARE_TOKEN_KEY] = result.launch.externalShareToken;
-        if (this.generationGate.isCurrent(generation)) this.publish(result.launch);
+        if (this.generationGate.isCurrent(generation)) {
+          this.pending = result.launch;
+          if (this.abilityEpochGate.isActive(epoch)) this.publish?.(result.launch);
+        }
       })
       .catch((_error: Error): void => {
-        if (this.generationGate.isCurrent(generation)) this.report('external_share_taskpool_failed');
+        if (this.generationGate.isCurrent(generation) && this.abilityEpochGate.isActive(epoch)) {
+          this.report?.('external_share_taskpool_failed');
+        }
       });
     return true;
   }
 }
 
+export const slockOhosExternalShareProcessOwner = new SlockOhosExternalShareAdmissionOwner();
+
 export function isSlockOhosGrantedProviderUri(uri: string): boolean {
   const normalized = uri.trim().toLowerCase();
-  return normalized.startsWith('file://') || normalized.startsWith('content://');
+  return normalized.startsWith('content://');
 }
 
 export function slockOhosWriteAll(
@@ -218,6 +248,27 @@ export class SlockOhosExternalShareGenerationGate {
   }
 }
 
+export class SlockOhosExternalShareAbilityEpochGate {
+  private epoch: number = 0;
+  private attached: boolean = false;
+
+  attach(): number {
+    this.epoch += 1;
+    this.attached = true;
+    return this.epoch;
+  }
+
+  detach(candidate: number): boolean {
+    if (!this.isActive(candidate)) return false;
+    this.attached = false;
+    return true;
+  }
+
+  isActive(candidate: number): boolean {
+    return this.attached && candidate === this.epoch;
+  }
+}
+
 function copyItems(
   filesDir: string,
   uris: Array<string>,
@@ -230,13 +281,6 @@ function copyItems(
     if (!isSlockOhosGrantedProviderUri(uri)) throw new Error('external_share_uri_unsupported');
     const source = fs.openSync(uri, fs.OpenMode.READ_ONLY);
     try {
-      if (uri.trim().toLowerCase().startsWith('file://')) {
-        const canonical = fs.realPathSync(uri);
-        const privateRoot = fs.realPathSync(filesDir);
-        if (canonical === privateRoot || canonical.startsWith(`${privateRoot}/`)) {
-          throw new Error('external_share_uri_unsupported');
-        }
-      }
       const size = fs.statSync(source.fd).size;
       const sizeError = slockOhosExternalShareSizeError(size, totalBytes);
       if (sizeError.length > 0) throw new Error(sizeError);
@@ -330,7 +374,7 @@ function admitted(token: string, code: string): SlockOhosExternalShareIntakeResu
   return {
     admitted: true,
     code: code,
-    launch: { intent: SLOCK_OHOS_EXTERNAL_SHARE_INTENT, externalShareToken: token }
+    launch: new SlockOhosExternalShareLaunch(SLOCK_OHOS_EXTERNAL_SHARE_INTENT, token)
   };
 }
 

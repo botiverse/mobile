@@ -17,6 +17,7 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -41,16 +42,20 @@ internal sealed interface AndroidExternalShareIntakeResult {
 internal class AndroidExternalShareAdmissionOwner<T>(
     scope: CoroutineScope,
     private val admit: suspend (T) -> AndroidExternalShareIntakeResult,
-    private val onLatestResult: (AndroidExternalShareIntakeResult) -> Unit,
 ) {
     private val queue = Channel<QueuedInput<T>>(Channel.UNLIMITED)
     private var latestGeneration = 0L
+    private var listener: ((Long, AndroidExternalShareIntakeResult) -> Unit)? = null
+    private var pending: PendingResult? = null
 
     init {
         scope.launch {
             for (queued in queue) {
                 val result = admit(queued.intent)
-                if (queued.generation == latestGeneration) onLatestResult(result)
+                if (queued.generation == latestGeneration) {
+                    pending = PendingResult(queued.generation, result)
+                    deliverPending()
+                }
             }
         }
     }
@@ -60,22 +65,45 @@ internal class AndroidExternalShareAdmissionOwner<T>(
         check(queue.trySend(QueuedInput(latestGeneration, intent)).isSuccess)
     }
 
-    private data class QueuedInput<T>(val generation: Long, val intent: T)
+    fun attach(listener: (Long, AndroidExternalShareIntakeResult) -> Unit): Boolean {
+        this.listener = listener
+        val hasPending = pending != null
+        deliverPending()
+        return hasPending
+    }
 
-    companion object {
-        fun create(
-            context: Context,
-            scope: CoroutineScope,
-            onLatestResult: (AndroidExternalShareIntakeResult) -> Unit,
-        ): AndroidExternalShareAdmissionOwner<Intent> =
-            AndroidExternalShareAdmissionOwner(
+    fun detach(listener: (Long, AndroidExternalShareIntakeResult) -> Unit) {
+        if (this.listener === listener) this.listener = null
+    }
+
+    fun acknowledge(generation: Long) {
+        if (pending?.generation == generation) pending = null
+    }
+
+    private fun deliverPending() {
+        val ready = pending ?: return
+        listener?.invoke(ready.generation, ready.result)
+    }
+
+    private data class QueuedInput<T>(val generation: Long, val intent: T)
+    private data class PendingResult(val generation: Long, val result: AndroidExternalShareIntakeResult)
+}
+
+internal object AndroidExternalShareProcessOwner {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    @Volatile private var owner: AndroidExternalShareAdmissionOwner<Intent>? = null
+
+    fun get(context: Context): AndroidExternalShareAdmissionOwner<Intent> =
+        owner ?: synchronized(this) {
+            owner ?: AndroidExternalShareAdmissionOwner<Intent>(
                 scope = scope,
                 admit = { intent ->
-                    withContext(Dispatchers.IO) { AndroidExternalShareIntake(context).admit(intent) }
+                    withContext(Dispatchers.IO) {
+                        AndroidExternalShareIntake(context.applicationContext).admit(intent)
+                    }
                 },
-                onLatestResult = onLatestResult,
-            )
-    }
+            ).also { owner = it }
+        }
 }
 
 /**
