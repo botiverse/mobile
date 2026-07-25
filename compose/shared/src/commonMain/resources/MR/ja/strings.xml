@@ -1613,7 +1613,7 @@
     <string name="settings_connected_apps_edit_title">OAuth クライアントを編集</string>
     <string name="settings_connected_apps_register_detail">信頼できる連携のためにサーバーローカルの OAuth クライアントを作成します。クライアントシークレットは作成後に 1 回だけ表示されます。</string>
     <string name="settings_connected_apps_label_app_name">アプリ名</string>
-    <string name="settings_connected_apps_placeholder_app_name">My integration</string>
+    <string name="settings_connected_apps_placeholder_app_name">マイインテグレーション</string>
     <string name="settings_connected_apps_placeholder_client_id">任意のカスタムクライアント ID</string>
     <string name="settings_connected_apps_placeholder_description">このアプリの機能</string>
     <string name="settings_connected_apps_label_homepage_url">ホームページ URL</string>
