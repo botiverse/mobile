@@ -35,6 +35,38 @@
     {
       "name": "agent_runtime_form_desc",
       "value": "Raft live agent activity widget"
+    },
+    {
+      "name": "widget_config_choose_server",
+      "value": "Choose server"
+    },
+    {
+      "name": "widget_config_description",
+      "value": "This widget will refresh from the selected Raft server."
+    },
+    {
+      "name": "widget_config_save",
+      "value": "Save"
+    },
+    {
+      "name": "widget_config_selected",
+      "value": "Selected"
+    },
+    {
+      "name": "widget_config_select",
+      "value": "Select"
+    },
+    {
+      "name": "widget_config_sign_in_required",
+      "value": "Open Raft and sign in before configuring this widget."
+    },
+    {
+      "name": "widget_config_load_error",
+      "value": "Unable to load servers."
+    },
+    {
+      "name": "widget_config_save_error",
+      "value": "Unable to save server for this widget."
     }
   ]
 }
