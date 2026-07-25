@@ -1070,12 +1070,10 @@ class SlockMarkdownTest {
         assertEquals(2.sp, ordinaryMention.textDecorationThickness)
     }
 
-    // react parity (task #407): web inline code renders in Space Mono
-    // (`--font-mono`) at the inherited body size. The previous pin
-    // ("keep the Slock body font") predated the Space Mono wiring (#130), when
-    // FontFamily.Monospace still meant the platform Roboto Mono.
+    // Product ruling: inline code keeps the relative code metrics but uses the
+    // same UI family as surrounding text and has exactly one chrome painter.
     @Test
-    fun inlineCodeUsesWebRelativeMonoMetricsAndNeutralChrome() {
+    fun inlineCodeUsesProductFontWebRelativeMetricsAndSingleNeutralChrome() {
         val inlineCodeStyle = slockMarkdownInlineCodeTextStyle(SlockType.Body)
         val inlineCodeStyleFromBoldText =
             slockMarkdownInlineCodeTextStyle(SlockType.Body.withSlockFontWeight(FontWeight.Bold))
@@ -1083,17 +1081,18 @@ class SlockMarkdownTest {
         val leadingEdge = slockMarkdownInlineCodeEdgeStyle(leading = true)
         val trailingEdge = slockMarkdownInlineCodeEdgeStyle(leading = false)
 
-        assertEquals(slockMonoFamilyForWeight(FontWeight.Normal), inlineCodeStyle.fontFamily)
+        assertEquals(slockFontFamilyForWeight(FontWeight.Normal), inlineCodeStyle.fontFamily)
         assertEquals(FontWeight.Normal, inlineCodeStyle.fontWeight)
         assertEquals(12.25.sp, inlineCodeStyle.fontSize)
         assertEquals(23.sp, inlineCodeStyle.lineHeight)
         assertFalse(inlineCodeStyle.fontFamily == FontFamily.Monospace)
-        assertEquals(slockMonoFamilyForWeight(FontWeight.Normal), inlineCodeStyleFromBoldText.fontFamily)
+        assertEquals(slockFontFamilyForWeight(FontWeight.Normal), inlineCodeStyleFromBoldText.fontFamily)
         assertEquals(FontWeight.Normal, inlineCodeStyleFromBoldText.fontWeight)
         assertEquals("inlineCode", SlockRichTextChromeKind.InlineCode.styleToken.id)
-        assertEquals(SlockRichTextFontFamilyToken.SlockMono, SlockRichTextChromeKind.InlineCode.styleToken.fontFamily)
+        assertEquals(SlockRichTextFontFamilyToken.SlockUi, SlockRichTextChromeKind.InlineCode.styleToken.fontFamily)
         assertEquals(SlockRichTextFontWeightToken.Normal, SlockRichTextChromeKind.InlineCode.styleToken.fontWeight)
-        assertEquals(SlockRichTextColorToken.Black5, SlockRichTextChromeKind.InlineCode.styleToken.background)
+        assertEquals(null, SlockRichTextChromeKind.InlineCode.styleToken.background)
+        assertEquals(SlockRichTextColorToken.Black5, SlockRichTextChromeKind.InlineCode.styleToken.chipFill)
         assertEquals(SlockColor.TextBlack.copy(alpha = 0.05f), inlineBox.backgroundColor)
         assertEquals(0.dp, inlineBox.borderWidth)
         assertEquals(4.dp, inlineBox.paddingStart)
@@ -2066,6 +2065,11 @@ class SlockMarkdownTest {
                     box.paddingStart > 0.dp || box.paddingEnd > 0.dp
                 } == true
             }
+        val glyphBackgroundRanges =
+            annotated.spanStyles.filter { range ->
+                range.item.background != Color.Unspecified &&
+                    range.start < annotated.length && range.end > 0
+            }
         val firstClusterBoundary = code.indexOf(expectedLeading) + expectedLeading.length
         val splitRange =
             annotated.spanStyles.first { range ->
@@ -2074,6 +2078,7 @@ class SlockMarkdownTest {
 
         assertEquals(code, annotated.text)
         assertEquals(1, boxRanges.size)
+        assertTrue(glyphBackgroundRanges.isEmpty())
         assertEquals(code, annotated.text.substring(boxRanges.single().start, boxRanges.single().end))
         assertEquals(expectedLeading, annotated.text.substring(splitRange.start, splitRange.end))
         assertTrue(annotated.text.endsWith(expectedTrailing))

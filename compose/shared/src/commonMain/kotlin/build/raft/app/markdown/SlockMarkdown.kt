@@ -2104,7 +2104,8 @@ private val SlockMarkdownColorsDefault: DefaultMarkdownColors =
         inlineCodeText = SlockColor.TextBlack,
         linkText = SlockMarkdownLinkBlue,
         codeBackground = SlockMarkdownCodeBlockBackground,
-        inlineCodeBackground = SlockRichTextChromeKind.InlineCode.styleToken.background.toSlockMarkdownColor(),
+        // InlineBoxSpanStyle is the single inline-code chrome painter.
+        inlineCodeBackground = Color.Unspecified,
         dividerColor = SlockColor.BorderBlack,
         tableText = SlockColor.TextBlack,
         tableBackground = SlockColor.SurfaceWhite,
@@ -2185,11 +2186,8 @@ internal fun slockMarkdownInlineChipWidthSp(
         .coerceAtLeast(40f)
         .sp
 
-// react parity (task #407): web inline code is `font-mono` = Space Mono at the
-// inherited body size (MarkdownContent.tsx / index.css --font-mono). The old
-// "keep the Slock body font" behavior predated the Space Mono wiring (#130) —
-// back then FontFamily.Monospace meant the platform Roboto Mono, so pinning
-// the body font was the lesser evil. Space Mono exists now; use it.
+// Keep inline code on the product typeface while preserving the web-relative
+// size and line-height contract.
 internal fun slockMarkdownInlineCodeTextStyle(base: TextStyle): TextStyle =
     SlockRichTextChromeKind.InlineCode.styleToken
         .applyToTextStyle(base)
