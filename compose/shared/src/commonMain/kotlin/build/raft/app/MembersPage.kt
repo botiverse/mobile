@@ -7729,7 +7729,7 @@ private fun MembersAgentProfileTab(
                 )
                 if (summary?.daemonVersion != null) {
                     Text(
-                        text = " · daemon v${summary.daemonVersion}",
+                        text = stringResource(MR.strings.member_daemon_version_suffix, summary.daemonVersion),
                         style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
                         color = SlockColor.TextMutedGray
                     )

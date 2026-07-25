@@ -47,9 +47,9 @@ internal fun AddComputerDialog(
     }
 
     val title = when (state.step) {
-        AddComputerStep.Type -> "Add computer"
-        AddComputerStep.Waiting -> "Connect computer"
-        AddComputerStep.Connected -> "Computer connected"
+        AddComputerStep.Type -> stringResource(MR.strings.settings_computers_add_computer)
+        AddComputerStep.Waiting -> stringResource(MR.strings.settings_computers_dialog_title_connect)
+        AddComputerStep.Connected -> stringResource(MR.strings.settings_computers_dialog_title_connected)
     }
     val dismissIntent =
         if (state.step == AddComputerStep.Connected) {
@@ -85,20 +85,20 @@ private fun AddComputerTypeStep(
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (!state.canManage || state.atLimit) {
             Text(
-                state.errorMessage ?: "You do not have permission to add computers.",
+                state.errorMessage ?: stringResource(MR.strings.settings_computers_error_add_permission),
                 style = SlockType.Caption.copy(color = SlockColor.AccentRed),
                 color = SlockColor.AccentRed
             )
         }
         Text(
-            "Choose how to connect:",
+            stringResource(MR.strings.settings_computers_choose_connection),
             style = SlockType.Body.copy(fontSize = 14.sp, color = SlockColor.TextBlack),
             color = SlockColor.TextBlack
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             AddComputerTypeCard(
-                title = "Your Computer",
-                detail = "Run agents on your own computer",
+                title = stringResource(MR.strings.settings_computers_your_computer),
+                detail = stringResource(MR.strings.settings_computers_your_computer_hint),
                 iconName = SlockLucideIconName.Monitor,
                 selected = state.machineType == AddComputerType.Local,
                 enabled = state.canManage && !state.atLimit && !state.registering,
@@ -106,8 +106,8 @@ private fun AddComputerTypeStep(
                 modifier = Modifier.weight(1f)
             )
             AddComputerTypeCard(
-                title = "Cloud Computer",
-                detail = "Coming soon",
+                title = stringResource(MR.strings.settings_computers_cloud_computer),
+                detail = stringResource(MR.strings.settings_computers_coming_soon),
                 iconName = SlockLucideIconName.Server,
                 selected = state.machineType == AddComputerType.Cloud,
                 enabled = false,
@@ -116,7 +116,7 @@ private fun AddComputerTypeStep(
             )
         }
         Text(
-            "Install the daemon on your machine and connect it to this workspace.",
+            stringResource(MR.strings.settings_computers_install_daemon_hint),
             style = SlockType.Body.copy(fontSize = 14.sp, color = SlockColor.TextBlack),
             color = SlockColor.TextBlack
         )
@@ -136,7 +136,11 @@ private fun AddComputerTypeStep(
                 backgroundColor = SlockColor.SurfaceWhite
             )
             SlockBrutalActionButton(
-                label = if (state.registering) "Setting up..." else "Next",
+                label = if (state.registering) {
+                    stringResource(MR.strings.settings_computers_setting_up)
+                } else {
+                    stringResource(MR.strings.settings_computers_next)
+                },
                 onClick = {
                     onIntent(SharedSettingsIntent.RegisterComputer(SettingsComputerRegisterRequest(name = "my-computer")))
                 },
@@ -168,7 +172,7 @@ private fun AddComputerWaitingStep(
         ) {
             SlockLucideIcon(SlockLucideIconName.Terminal, modifier = Modifier.size(16.dp))
             Text(
-                "Run this command on your computer to connect:",
+                stringResource(MR.strings.settings_computers_run_command_hint),
                 style = SlockType.Body.copy(fontSize = 14.sp, color = SlockColor.TextBlack)
                     .withSlockFontWeight(FontWeight.Bold),
                 color = SlockColor.TextBlack
@@ -188,7 +192,7 @@ private fun AddComputerWaitingStep(
         val computerCommand = state.computerSetupCommand
         if (!computerCommand.isNullOrBlank()) {
             Text(
-                "Computer",
+                stringResource(MR.strings.settings_computers_detail_computer),
                 style = SlockType.SectionLabel.copy(fontSize = 11.sp, lineHeight = 14.sp, color = SlockColor.TextMutedGray),
                 color = SlockColor.TextMutedGray
             )
@@ -209,7 +213,7 @@ private fun AddComputerWaitingStep(
         ) {
             SlockStatusIndicator(color = SlockColor.BrandYellow)
             Text(
-                "Waiting for computer to connect...",
+                stringResource(MR.strings.settings_computers_waiting_for_connection),
                 style = SlockType.Body.copy(fontSize = 14.sp, color = SlockColor.TextBlack)
                     .withSlockFontWeight(FontWeight.Bold),
                 color = SlockColor.TextBlack
@@ -217,7 +221,7 @@ private fun AddComputerWaitingStep(
         }
         state.apiKeyPrefix?.takeIf { it.isNotBlank() }?.let {
             Text(
-                "API key prefix: $it...",
+                stringResource(MR.strings.settings_computers_api_key_prefix, it),
                 style = SlockType.Caption.copy(fontSize = 12.sp, color = SlockColor.TextMutedGray),
                 color = SlockColor.TextMutedGray
             )
@@ -263,7 +267,7 @@ private fun AddComputerConnectedStep(
             SlockLucideIcon(SlockLucideIconName.CircleCheckBig, modifier = Modifier.size(22.dp))
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    "Computer connected successfully!",
+                    stringResource(MR.strings.settings_computers_connected_success),
                     style = SlockType.Body.copy(fontSize = 14.sp, color = SlockColor.TextBlack)
                         .withSlockFontWeight(FontWeight.Bold),
                     color = SlockColor.TextBlack
@@ -285,15 +289,20 @@ private fun AddComputerConnectedStep(
             }
         }
         SlockBrutalTextField(
-            label = "Computer name",
+            label = stringResource(MR.strings.settings_computers_label_name),
             value = state.name,
-            placeholder = state.connectedDetail?.substringBefore(" - ") ?: "My Mac",
+            placeholder = state.connectedDetail?.substringBefore(" - ")
+                ?: stringResource(MR.strings.settings_computers_placeholder_name),
             onValueChange = { onIntent(SharedSettingsIntent.SetAddComputerName(it)) },
             required = true,
             enabled = !state.saving
         )
         SlockBrutalActionButton(
-            label = if (state.saving) "Saving..." else "Done",
+            label = if (state.saving) {
+                stringResource(MR.strings.settings_computers_action_saving)
+            } else {
+                stringResource(MR.strings.common_done)
+            },
             onClick = { onIntent(SharedSettingsIntent.CompleteAddComputerDialog) },
             enabled = !state.saving,
             backgroundColor = SlockColor.AccentLime
@@ -395,6 +404,7 @@ private fun AddComputerCommandRow(
 
 @Composable
 private fun SettingsComputerCommandFallback(state: AddComputerDialogState) {
+    val pending = stringResource(MR.strings.settings_computers_api_key_pending)
     Box(
         modifier = Modifier.fillMaxWidth()
             .background(SlockColor.SurfaceCream)
@@ -402,7 +412,7 @@ private fun SettingsComputerCommandFallback(state: AddComputerDialogState) {
             .padding(12.dp)
     ) {
         Text(
-            "API key prefix: ${state.apiKeyPrefix ?: "pending"}...",
+            stringResource(MR.strings.settings_computers_api_key_prefix, state.apiKeyPrefix ?: pending),
             style = SlockType.Input.copy(
                 fontSize = 13.sp,
                 color = SlockColor.TextBlack,
