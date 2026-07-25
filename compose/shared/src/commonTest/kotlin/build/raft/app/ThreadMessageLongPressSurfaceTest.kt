@@ -17,6 +17,33 @@ class ThreadMessageLongPressSurfaceTest {
     }
 
     @Test
+    fun stationaryLongPressSurvivesProgrammaticListScroll() {
+        val decision =
+            decideThreadMessageLongPressDispatch(
+                detectorAccepted = true,
+                directPointerMovementDetected = false,
+                isScrollInProgress = true
+            )
+
+        assertTrue(decision.allowed)
+        assertTrue(decision.reason == "admitted")
+        assertTrue(decision.scrollInProgress)
+    }
+
+    @Test
+    fun directPointerMovementStillRejectsLongPress() {
+        val decision =
+            decideThreadMessageLongPressDispatch(
+                detectorAccepted = true,
+                directPointerMovementDetected = true,
+                isScrollInProgress = false
+            )
+
+        assertFalse(decision.allowed)
+        assertTrue(decision.reason == "direct_pointer_movement")
+    }
+
+    @Test
     fun ordinaryMessageBodyTapOpensItsThreadOnlyWhenEnabled() {
         assertFalse(
             threadMessageTapOpensThread(
