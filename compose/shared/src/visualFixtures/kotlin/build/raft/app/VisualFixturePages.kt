@@ -142,6 +142,14 @@ internal class ComposeThreadHeaderVisualPage : BasePager() {
     }
 }
 
+@Page("compose_task797_thread_header_visual", supportInLocal = true)
+internal class ComposeTask797ThreadHeaderVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { Task797ThreadHeaderVisualScreen() }
+    }
+}
+
 @Page("compose_thread_dm_agent_activity_header_visual", supportInLocal = true)
 internal class ComposeThreadDmAgentActivityHeaderVisualPage : BasePager() {
     override fun willInit() {

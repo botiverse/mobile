@@ -739,7 +739,7 @@ private val ThreadComposerKeyboardVisibleGap = 8.dp
 private val ThreadHeaderActionSize = 30.dp
 private val ThreadHeaderActionShadowOffset = 2.dp
 private val ThreadHeaderActionGroupSpacing = 4.dp
-private val ThreadHeaderActionIconSize = 15.dp
+private val ThreadHeaderActionIconSize = 16.dp
 private val ThreadHeaderActionLabelMinWidth = 46.dp
 private val ThreadHeaderDmAgentActivityMaxWidth = 150.dp
 private val ThreadHeaderDmAgentActivityLeadingGap = SlockSpacing.Sm
@@ -3377,6 +3377,77 @@ internal fun ThreadHeaderVisualScreen() {
             selectedKey = KuiklyThreadTab.Chat.toString(),
             onSelectedKeyChange = {},
             itemKeyPrefix = "thread-tab"
+        )
+    }
+}
+
+@Composable
+internal fun Task797ThreadHeaderVisualScreen() {
+    val pager = LocalActivity.current.getPager() as Pager
+    val applyTopSafeArea = pager.pageData.params.optBoolean("task797IncludeTopSafeArea", false)
+    val agentIdentity =
+        remember {
+            MemberDetailIdentity(
+                memberId = MemberId("agent-task797-pixel"),
+                kind = MemberKind.Agent,
+                sourceServerId = ServerId("server-task797"),
+            )
+        }
+    val payload =
+        remember(agentIdentity) {
+            KuiklyThreadScreenPayload(
+                instanceId = "task797-thread-header-evidence",
+                title = "Pixel visual verification for the unified secondary page header",
+                subtitle = "Working - measuring safe-area alignment and action centerlines",
+                status = "content",
+                surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+                streamChannelId = "dm-task797-pixel",
+                selectedTab = "chat",
+                showModeTabs = false,
+                showSettingsAction = false,
+                showMembersAction = false,
+                showOpenInChannelAction = false,
+                dmPeerIdentity = agentIdentity,
+                dmPeerName = "Pixel visual verification",
+                dmPeerAvatarLabel = "PX",
+                activityMuted = false,
+                activityMuteSupported = true,
+            )
+        }
+    val headerDisplay =
+        remember(agentIdentity) {
+            ThreadHeaderDisplayModel(
+                title = "Pixel visual verification for the unified secondary page header",
+                subtitle = "Working - measuring safe-area alignment and action centerlines",
+                surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+                channelKind = KuiklyThreadSurfaceKind.DirectMessage,
+                dmPeerAvatarLabel = "PX",
+                dmPeerIdentity = agentIdentity,
+            )
+        }
+    val activityState =
+        remember {
+            slockAgentStatusIndicatorState(
+                status = AgentStatus.Working,
+                presence = Presence.Active,
+                statusLabel = "Measuring safe-area alignment and action centerlines",
+            )
+        }
+    val activityResolver: SlockAgentStatusResolver = remember(activityState) { { flowOf(activityState) } }
+    Column(modifier = Modifier.width(390.dp).height(120.dp).background(SlockColor.SurfaceWhite)) {
+        ThreadPageHeader(
+            payload = payload,
+            headerDisplay = headerDisplay,
+            agentStatusResolver = activityResolver,
+            applyTopSafeArea = applyTopSafeArea,
+            activityMuteState = payload.threadActivityMuteState(null),
+            onBack = {},
+            onOpenInChannel = {},
+            onOpenMemberProfile = {},
+            onOpenSearch = {},
+            onShowMembers = {},
+            onShowSettings = {},
+            onToggleActivityMute = {},
         )
     }
 }
@@ -11946,20 +12017,23 @@ private fun ThreadPageHeader(
             agentStatusResolver = agentStatusResolver,
             memberId = headerDisplay.dmAgentActivityMemberId()
         )
-    Column(modifier = Modifier.fillMaxWidth().height(topSafeArea + SlockSize.PageHeaderHeight).background(SlockColor.SurfaceWhite)) {
-        Row(
-            modifier = Modifier.fillMaxWidth()
-                .height(topSafeArea + SlockSize.PageHeaderContentHeight)
-                .padding(
-                    start = SlockSpacing.Md,
-                    top = topSafeArea + SlockSpacing.Sm,
-                    end = SlockSpacing.Md,
-                    bottom = SlockSpacing.Sm
-                ),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
-        ) {
-            ThreadHeaderIconButton(icon = SlockLucideIconName.ArrowLeft, onClick = onBack)
+    val showHeaderActions =
+        showActions &&
+            (
+                payload.threadHeaderSearchAction() != null ||
+                    (activityMuteState != null && onToggleActivityMute != null) ||
+                    payload.showSettingsAction ||
+                    payload.showMembersAction ||
+                    payload.threadHeaderOpenInParentActionVisible()
+            )
+    SlockTopPageHeader(
+        title = localizedHeaderTitle,
+        backgroundColor = SlockColor.SurfaceWhite,
+        topSafeAreaOverride = topSafeArea,
+        leadingContent = {
+            SlockTopPageHeaderAction(icon = SlockLucideIconName.ArrowLeft, onClick = onBack)
+        },
+        titleLeadingContent = {
             if (headerDisplay.surfaceKind == KuiklyThreadSurfaceKind.DirectMessage) {
                 ThreadDmPeerAvatarTile(
                     avatarWireValue = resolvedDmPeerAvatarWireValue ?: headerDisplay.dmPeerAvatarWireValue,
@@ -11972,6 +12046,8 @@ private fun ThreadPageHeader(
             } else if (payload.showModeTabs) {
                 ThreadChannelTile(headerDisplay.channelKind)
             }
+        },
+        titleContent = {
             Column(
                 modifier =
                     Modifier
@@ -11986,7 +12062,7 @@ private fun ThreadPageHeader(
                 ) {
                     Text(
                         text = localizedHeaderTitle,
-                        style = SlockType.ButtonBold.copy(fontSize = 18.sp, lineHeight = 22.sp, color = SlockColor.TextBlack),
+                        style = SlockType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp, color = SlockColor.TextBlack),
                         color = SlockColor.TextBlack,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -11997,23 +12073,17 @@ private fun ThreadPageHeader(
                 headerDisplay.subtitle?.takeIf { it.isNotBlank() }?.let {
                     Text(
                         text = it,
-                        style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                        color = SlockColor.TextMutedGray,
+                        style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
+                        color = SlockColor.TextBlack.copy(alpha = 0.55f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
             }
-            if (
-                showActions &&
-                    (
-                        payload.threadHeaderSearchAction() != null ||
-                            (activityMuteState != null && onToggleActivityMute != null) ||
-                            payload.showSettingsAction ||
-                            payload.showMembersAction ||
-                            payload.threadHeaderOpenInParentActionVisible()
-                    )
-            ) {
+        },
+        trailingContent =
+            if (showHeaderActions) {
+                {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(ThreadHeaderActionGroupSpacing)
@@ -12037,10 +12107,12 @@ private fun ThreadPageHeader(
                         ThreadHeaderIconButton(icon = SlockLucideIconName.ExternalLink, onClick = onOpenInChannel)
                     }
                 }
-            }
-        }
-        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
-    }
+                }
+            } else {
+                null
+            },
+        showBodyTopBanner = false,
+    )
 }
 
 internal fun ThreadHeaderDisplayModel.dmAgentActivityMemberId(): String? =

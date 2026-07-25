@@ -17377,56 +17377,21 @@ private fun SharedHomeSavedHeader(
     topSafeAreaPadding: Dp = 0.dp,
     onTitleClick: (() -> Unit)? = null
 ) {
-    Column(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .background(SlockColor.SurfaceWhite)
-    ) {
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(start = 16.dp, top = topSafeAreaPadding + 12.dp, end = 16.dp, bottom = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (onClose != null) {
-                SlockBrutalIconButton(
-                    iconName = SlockLucideIconName.ArrowLeft,
-                    onClick = onClose,
-                    size = 34.dp,
-                    shadowOffset = 3.dp
-                )
-            }
-            Column(
-                modifier =
-                    Modifier
-                        .weight(1f)
-                        .clickable(enabled = onTitleClick != null) { onTitleClick?.invoke() },
-                verticalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
-                Text(
-                    stringResource(MR.strings.saved_title),
-                    style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 18.sp, lineHeight = 22.sp, letterSpacing = 0.sp),
-                    color = SlockColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    stringResource(MR.strings.saved_count, count),
-                    style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, letterSpacing = 0.sp),
-                    color = SlockColor.TextMutedGray,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            if (refreshing) {
-                SlockHeaderRefreshIndicator()
-            }
-        }
-        SharedHomeSearchDivider()
-    }
+    SlockTopPageHeader(
+        title = stringResource(MR.strings.saved_title),
+        subtitle = stringResource(MR.strings.saved_count, count),
+        backgroundColor = SlockColor.SurfaceWhite,
+        topSafeAreaOverride = topSafeAreaPadding,
+        refreshing = refreshing,
+        leadingContent =
+            onClose?.let { close ->
+                {
+                    SlockTopPageHeaderAction(icon = SlockLucideIconName.ArrowLeft, onClick = close)
+                }
+            },
+        onTitleClick = onTitleClick,
+        showBodyTopBanner = false,
+    )
 }
 
 @Composable
@@ -21653,25 +21618,31 @@ internal fun HomeSearchErrorVisualContent() {
 
 @Composable
 internal fun HomeSavedVisualContent() {
+    val pager = LocalActivity.current.getPager() as Pager
+    val params = pager.pageData.params
     Box(modifier = Modifier.width(342.dp).height(620.dp)) {
         SharedHomeSavedPanel(
-            state = homeSavedVisualState,
+            state = homeSavedVisualState.copy(refreshing = params.optBoolean("task797Refreshing", false)),
             onIntent = {},
             onClose = {},
             onOpenItem = {},
             bottomContentPadding = 12.dp,
-            includeTopSafeArea = false
+            includeTopSafeArea = params.optBoolean("task797IncludeTopSafeArea", false)
         )
     }
 }
 
 @Composable
 internal fun HomeActivityVisualContent() {
+    val pager = LocalActivity.current.getPager() as Pager
+    val params = pager.pageData.params
     Box(modifier = Modifier.width(342.dp).height(620.dp)) {
         SharedHomeActivityPanel(
             snapshot = homeActivityVisualSnapshot,
             onOpenItem = {},
             onClose = {},
+            includeTopSafeArea = params.optBoolean("task797IncludeTopSafeArea", false),
+            pullRefreshing = params.optBoolean("task797Refreshing", false),
             activityTaskStatusBadgesEnabled = true,
             draftProjection = homeActivityVisualDraftProjection,
             modifier = Modifier.fillMaxSize()
