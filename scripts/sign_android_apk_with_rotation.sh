@@ -92,6 +92,8 @@ resolved_verify_log="${verify_log:-$work_dir/apksigner-verify.log}"
 mkdir -p "$(dirname "$output")" "$(dirname "$resolved_verify_log")"
 
 "$build_tools_dir/zipalign" -p -f 4 "$input" "$aligned"
+# Keep the v2 block required by the frozen artifact contract even when the
+# manifest minSdk is 29; otherwise apksigner correctly optimizes it away.
 "$build_tools_dir/apksigner" sign \
   --ks "$SLOCK_LEGACY_KEYSTORE_FILE" \
   --ks-key-alias "$SLOCK_LEGACY_KEY_ALIAS" \
@@ -103,6 +105,7 @@ mkdir -p "$(dirname "$output")" "$(dirname "$resolved_verify_log")"
   --ks-pass env:SLOCK_ROTATED_KEYSTORE_PASS \
   --key-pass env:SLOCK_ROTATED_KEY_PASS \
   --lineage "$SLOCK_SIGNING_LINEAGE_FILE" \
+  --min-sdk-version 24 \
   --rotation-min-sdk-version 33 \
   --v2-signing-enabled true \
   --v3-signing-enabled true \
@@ -111,7 +114,11 @@ mkdir -p "$(dirname "$output")" "$(dirname "$resolved_verify_log")"
   "$aligned"
 
 "$build_tools_dir/zipalign" -c -p 4 "$signed"
-"$build_tools_dir/apksigner" verify --verbose --print-certs "$signed" 2>&1 | tee "$resolved_verify_log"
+"$build_tools_dir/apksigner" verify \
+  --min-sdk-version 24 \
+  --verbose \
+  --print-certs \
+  "$signed" 2>&1 | tee "$resolved_verify_log"
 
 grep -Fq "Verified using v2 scheme (APK Signature Scheme v2): true" "$resolved_verify_log"
 grep -Fq "Verified using v3 scheme (APK Signature Scheme v3): true" "$resolved_verify_log"

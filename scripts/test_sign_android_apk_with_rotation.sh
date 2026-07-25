@@ -39,9 +39,10 @@ if [[ "$1" == "sign" ]]; then
   cp "${@: -1}" "$output"
   exit 0
 fi
-cat <<'VERIFY'
+printf '%s\n' "$@" > "$VERIFY_ARGS_LOG"
+cat <<VERIFY
 Verifies
-Verified using v2 scheme (APK Signature Scheme v2): true
+Verified using v2 scheme (APK Signature Scheme v2): ${MOCK_V2_RESULT:-true}
 Verified using v3 scheme (APK Signature Scheme v3): true
 Verified using v3.1 scheme (APK Signature Scheme v3.1): true
 Signer (minSdkVersion=33, maxSdkVersion=2147483647) certificate SHA-256 digest: 5f08bbe82a27ccdad26c13523a60b5670d3aa7633e8ed2fd71fa6b5751f9b0b1
@@ -51,6 +52,7 @@ SH
 chmod +x "$fixture_root/build-tools/zipalign" "$fixture_root/build-tools/apksigner"
 
 export SIGN_ARGS_LOG="$fixture_root/sign-args.log"
+export VERIFY_ARGS_LOG="$fixture_root/verify-args.log"
 export SLOCK_LEGACY_KEYSTORE_FILE="$fixture_root/legacy.jks"
 export SLOCK_LEGACY_KEYSTORE_PASS="legacy-store-pass"
 export SLOCK_LEGACY_KEY_ALIAS="upload"
@@ -71,6 +73,8 @@ cmp -s "$fixture_root/input.apk" "$fixture_root/output.apk"
 grep -Fxq -- "--next-signer" "$fixture_root/sign-args.log"
 grep -Fxq -- "--lineage" "$fixture_root/sign-args.log"
 grep -Fxq -- "$fixture_root/lineage.bin" "$fixture_root/sign-args.log"
+awk 'previous == "--min-sdk-version" && $0 == "24" { found = 1 } { previous = $0 } END { exit !found }' "$fixture_root/sign-args.log"
+awk 'previous == "--min-sdk-version" && $0 == "24" { found = 1 } { previous = $0 } END { exit !found }' "$fixture_root/verify-args.log"
 grep -Fxq -- "--rotation-min-sdk-version" "$fixture_root/sign-args.log"
 grep -Fxq -- "33" "$fixture_root/sign-args.log"
 grep -Fxq -- "env:SLOCK_LEGACY_KEYSTORE_PASS" "$fixture_root/sign-args.log"
@@ -81,6 +85,14 @@ if env -u SLOCK_SIGNING_LINEAGE_FILE "$signer" \
   --output "$fixture_root/should-not-exist.apk" \
   --build-tools-dir "$fixture_root/build-tools" >/dev/null 2>&1; then
   echo "Expected missing lineage configuration to fail" >&2
+  exit 1
+fi
+
+if MOCK_V2_RESULT=false "$signer" \
+  --input "$fixture_root/input.apk" \
+  --output "$fixture_root/should-not-pass-v2.apk" \
+  --build-tools-dir "$fixture_root/build-tools" >/dev/null 2>&1; then
+  echo "Expected missing v2 verification to fail" >&2
   exit 1
 fi
 

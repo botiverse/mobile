@@ -1814,6 +1814,7 @@ class KmpVisualScreenshotCaptureTest {
 
     @Test
     fun captureHomeTitlebarPreferenceAcrossProcessRestartPhase() {
+        // VISUAL_CANONICAL_EXCLUDED: requires the external three-phase process-restart driver.
         val phase =
             InstrumentationRegistry.getArguments()
                 .getString(HOME_SERVER_AVATAR_PROCESS_RESTART_PHASE_ARG)
