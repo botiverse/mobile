@@ -59,13 +59,21 @@ on:
         default: "draft"
         options:
           - draft
+      # These remain optional strings during the compatibility window so the
+      # resolver can distinguish "omitted" from an explicit false and reject
+      # conflicting canonical/legacy values deterministically.
+      publish_hands:
+        description: "Canonical Hands draft switch: true | false. Blank defaults to false."
+        required: false
+        type: string
+        default: ""
       publish_quiver:
-        description: "If true, upload the signed APK + metadata as a Hands draft and create a share page"
-        required: true
-        type: boolean
-        default: false
+        description: "Deprecated compatibility alias for publish_hands; remove after 2026-08-31."
+        required: false
+        type: string
+        default: ""
       create_share_page:
-        description: "If true (and publish_quiver=true), create a /share/<token> page for the release"
+        description: "If true (and publish_hands resolves true), create a /share/<token> page for the draft"
         required: true
         type: boolean
         default: true
@@ -78,7 +86,7 @@ on:
 env:
   # The lane's android-release docs require these envs:
   #   docs/android-release-lane-pi-perfprofiler.md
-  #   docs/android-quiver-release-practices-2026-07-02.md
+  #   docs/android-hands-release-practices-2026-07-02.md
   GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dkotlin.compiler.execution.strategy=in-process"
   GRADLE_MAX_WORKERS: "1"
 
@@ -100,16 +108,28 @@ jobs:
       quiver_channel: ${{ steps.p.outputs.quiver_channel }}
       android_variant: ${{ steps.p.outputs.android_variant }}
       release_mode: ${{ steps.p.outputs.release_mode }}
-      publish_quiver: ${{ steps.p.outputs.publish_quiver }}
+      publish_hands: ${{ steps.p.outputs.publish_hands }}
       create_share_page: ${{ steps.p.outputs.create_share_page }}
       share_ttl_seconds: ${{ steps.p.outputs.share_ttl_seconds }}
     steps:
+      - name: Checkout release contract helpers
+        uses: actions/checkout@v5
+
       - id: p
         shell: bash
+        env:
+          INPUT_PUBLISH_HANDS: ${{ inputs.publish_hands }}
+          INPUT_PUBLISH_QUIVER: ${{ inputs.publish_quiver }}
         run: |
           set -euo pipefail
           VERSION_NAME="${{ inputs.version_major }}.${{ inputs.version_minor }}.${{ inputs.version_patch }}"
           [ -n "${{ inputs.version_suffix }}" ] && VERSION_NAME="${VERSION_NAME}-${{ inputs.version_suffix }}"
+          PUBLISH_HANDS="$(
+            scripts/resolve_android_publish_hands_input.sh \
+              "${INPUT_PUBLISH_HANDS}" \
+              "${INPUT_PUBLISH_QUIVER}" \
+              false
+          )"
           {
             echo "version_major=${{ inputs.version_major }}"
             echo "version_minor=${{ inputs.version_minor }}"
@@ -120,7 +140,7 @@ jobs:
             echo "quiver_channel=${{ inputs.quiver_channel }}"
             echo "android_variant=${{ inputs.android_variant }}"
             echo "release_mode=draft"
-            echo "publish_quiver=${{ inputs.publish_quiver }}"
+            echo "publish_hands=${PUBLISH_HANDS}"
             echo "create_share_page=${{ inputs.create_share_page }}"
             echo "share_ttl_seconds=${{ inputs.share_ttl_seconds }}"
           } >> "$GITHUB_OUTPUT"
@@ -190,7 +210,7 @@ jobs:
           BUILD="${{ needs.resolve.outputs.version_build }}"
           SUFFIX="${{ needs.resolve.outputs.version_suffix }}"
           # versionCode = X*1_000_000 + Y*10_000 + Z*100 + build (per
-          # docs/android-quiver-release-practices-2026-07-02.md)
+          # docs/android-hands-release-practices-2026-07-02.md)
           VERSION_CODE=$((MAJOR * 1000000 + MINOR * 10000 + PATCH * 100 + BUILD))
           if [ -n "$SUFFIX" ]; then
             VERSION_NAME="${MAJOR}.${MINOR}.${PATCH}-${SUFFIX}"
@@ -242,7 +262,7 @@ jobs:
 
       - name: Sign + align APK
         # Lane-canonical approach: zipalign + apksigner (the release helper
-        # scripts/publish_android_quiver_release.sh does not sign; that's a
+        # scripts/publish_android_hands_release.sh does not sign; that's a
         # known gap for KMP's helper follow-up).
         env:
           LEGACY_KEYSTORE_FILE_B64: ${{ secrets.SLOCK_KEYSTORE_FILE_BASE64 }}
@@ -368,32 +388,28 @@ jobs:
             echo "| **size (bytes)** | \`${{ steps.verify.outputs.size }}\` |"
             echo "| **sha256** | \`${{ steps.verify.outputs.sha256 }}\` |"
             echo "| **Hands channel target** | \`${{ needs.resolve.outputs.quiver_channel }}\` |"
-            echo "| **Publish to Hands** | \`${{ needs.resolve.outputs.publish_quiver }}\` |"
+            echo "| **Create Hands draft** | \`${{ needs.resolve.outputs.publish_hands }}\` |"
           } >> "$GITHUB_STEP_SUMMARY"
 
-  publish_quiver:
-    name: Publish to Hands + create share page
+  publish_hands:
+    name: Create Hands draft + optional share page
     runs-on: blacksmith-4vcpu-ubuntu-2204
     timeout-minutes: 15
     needs: [resolve, build_android_release]
     if: |
-      github.event_name == 'workflow_dispatch' && needs.resolve.outputs.publish_quiver == 'true'
+      github.event_name == 'workflow_dispatch' && needs.resolve.outputs.publish_hands == 'true'
     environment:
       name: production
       # Optional: enforce manual approval for `production` env in repo settings.
     env:
-      QUIVER_APP_SLUG: raft-android
-      QUIVER_BEARER_TOKEN: ${{ secrets.QUIVER_BEARER_TOKEN }}
-      QUIVER_AUTH_TOKEN: ${{ secrets.QUIVER_BEARER_TOKEN }}
       HANDS_APP_SLUG: raft-android
+      # The repository secret retains its legacy storage key during the input
+      # migration; runtime consumers receive only Hands-named variables.
       HANDS_BEARER_TOKEN: ${{ secrets.QUIVER_BEARER_TOKEN }}
       HANDS_AUTH_TOKEN: ${{ secrets.QUIVER_BEARER_TOKEN }}
       HANDS_API: https://hands.build
-      # Mirror the chosen channel into both env names so the helper picks
-      # it up AND any direct Hands API calls (which use the legacy variable) stay
-      # consistent.
-      SLOCK_QUIVER_CHANNEL: ${{ needs.resolve.outputs.quiver_channel }}
-      QUIVER_CHANNEL: ${{ needs.resolve.outputs.quiver_channel }}
+      SLOCK_HANDS_CHANNEL: ${{ needs.resolve.outputs.quiver_channel }}
+      HANDS_CHANNEL: ${{ needs.resolve.outputs.quiver_channel }}
       SLOCK_ANDROID_VARIANT: ${{ needs.resolve.outputs.android_variant }}
       SLOCK_ANDROID_VERSION_MAJOR: ${{ needs.resolve.outputs.version_major }}
       SLOCK_ANDROID_VERSION_MINOR: ${{ needs.resolve.outputs.version_minor }}
@@ -401,7 +417,7 @@ jobs:
       SLOCK_ANDROID_VERSION_BUILD: ${{ needs.resolve.outputs.version_build }}
       SLOCK_ANDROID_VERSION_SUFFIX: ${{ needs.resolve.outputs.version_suffix }}
       SLOCK_SKIP_GRADLE_BUILD: "1"
-      SLOCK_QUIVER_DRAFT: "1"
+      SLOCK_HANDS_DRAFT: "1"
       SLOCK_COLLECT_ANDROID_SYMBOLS: "1"
       SLOCK_REQUIRE_ANDROID_SYMBOLS: "1"
     steps:
@@ -445,15 +461,15 @@ jobs:
           # Range: previous build's provenance source_commit (authenticated
           # builds API) .. HEAD. Falls back to the last 15 subjects when the
           # previous commit is unknown or unreachable.
-          QUIVER_API_BASE="${HANDS_API:-https://hands.build}"
-          APP_ID="$(curl -fsS -H "Authorization: Bearer ${QUIVER_BEARER_TOKEN}" \
-            "${QUIVER_API_BASE}/api/apps" \
-            | python3 -c "import json,sys; d=json.load(sys.stdin); print(next((a['id'] for a in d.get('apps',[]) if a.get('slug')=='${QUIVER_APP_SLUG}'), ''))" \
+          HANDS_API_BASE="${HANDS_API:-https://hands.build}"
+          APP_ID="$(curl -fsS -H "Authorization: Bearer ${HANDS_BEARER_TOKEN}" \
+            "${HANDS_API_BASE}/api/apps" \
+            | python3 -c "import json,sys; d=json.load(sys.stdin); print(next((a['id'] for a in d.get('apps',[]) if a.get('slug')=='${HANDS_APP_SLUG}'), ''))" \
             2>/dev/null || true)"
           PREV_COMMIT=""
           if [ -n "${APP_ID}" ]; then
-            PREV_COMMIT="$(curl -fsS -H "Authorization: Bearer ${QUIVER_BEARER_TOKEN}" \
-              "${QUIVER_API_BASE}/api/apps/${APP_ID}/builds" \
+            PREV_COMMIT="$(curl -fsS -H "Authorization: Bearer ${HANDS_BEARER_TOKEN}" \
+              "${HANDS_API_BASE}/api/apps/${APP_ID}/builds" \
               | python3 -c "import json,sys; d=json.load(sys.stdin); bs=d.get('builds') or []; p=(bs[0].get('provenance_json') if bs else None); p=json.loads(p) if isinstance(p,str) else (p or {}); print(p.get('source_commit') or '')" \
               2>/dev/null || true)"
           fi
@@ -468,7 +484,7 @@ jobs:
           cat changelog.txt
 
       - name: Build metadata + publish APK + (optional) mapping/symbols
-        id: publish-quiver-release
+        id: publish-hands-release
         shell: bash
         env:
           SLOCK_RELEASE_CHANGELOG_FILE: ${{ github.workspace }}/changelog.txt
@@ -509,8 +525,8 @@ jobs:
           # Helper does the rest (build-metadata, build, asset, release, sign
           # skipped because APK is already on disk; depends on KMP follow-up
           # to integrate sign step into the helper itself).
-          ./scripts/publish_android_quiver_release.sh | tee quiver-publish.log
-          RELEASE_ID="$(awk '/^[[:space:]]*release:/ {print $2}' quiver-publish.log | tail -n 1)"
+          ./scripts/publish_android_hands_release.sh | tee hands-publish.log
+          RELEASE_ID="$(awk '/^[[:space:]]*release:/ {print $2}' hands-publish.log | tail -n 1)"
           if [ -z "${RELEASE_ID}" ]; then
             echo "Could not parse release id from Hands publish output" >&2
             exit 1
@@ -521,17 +537,17 @@ jobs:
         id: create-share-page
         if: needs.resolve.outputs.create_share_page == 'true'
         env:
-          SLOCK_QUIVER_CHANNEL: ${{ needs.resolve.outputs.quiver_channel }}
-          QUIVER_CHANNEL: ${{ needs.resolve.outputs.quiver_channel }}
+          SLOCK_HANDS_CHANNEL: ${{ needs.resolve.outputs.quiver_channel }}
+          HANDS_CHANNEL: ${{ needs.resolve.outputs.quiver_channel }}
         shell: bash
         run: |
           set -euo pipefail
-          RELEASE_ID="${{ steps.publish-quiver-release.outputs.release_id }}"
+          RELEASE_ID="${{ steps.publish-hands-release.outputs.release_id }}"
           echo "release_id=$RELEASE_ID"
           APP_ID="$(curl -fsS \
-            -H "Authorization: Bearer ${QUIVER_BEARER_TOKEN}" \
+            -H "Authorization: Bearer ${HANDS_BEARER_TOKEN}" \
             "${HANDS_API:-https://hands.build}/api/apps" \
-            | python3 -c "import json,sys;d=json.load(sys.stdin);print(next(a['id'] for a in d.get('apps',[]) if a.get('slug')=='${{ env.QUIVER_APP_SLUG }}'))")"
+            | python3 -c "import json,sys;d=json.load(sys.stdin);print(next(a['id'] for a in d.get('apps',[]) if a.get('slug')=='${{ env.HANDS_APP_SLUG }}'))")"
           # No ttl_seconds in the body = the share never expires (server-side
           # default). An explicit share_ttl_seconds input still sets one.
           TTL="${{ needs.resolve.outputs.share_ttl_seconds }}"
@@ -542,7 +558,7 @@ jobs:
           fi
           SHARE_JSON="$(curl -fsS \
             -X POST \
-            -H "Authorization: Bearer ${QUIVER_BEARER_TOKEN}" \
+            -H "Authorization: Bearer ${HANDS_BEARER_TOKEN}" \
             -H "Content-Type: application/json" \
             --data "$SHARE_BODY" \
             "${HANDS_API:-https://hands.build}/api/apps/${APP_ID}/releases/${RELEASE_ID}/shares")"
@@ -562,7 +578,7 @@ jobs:
             echo "| **APK sha256** | \`${{ needs.build_android_release.outputs.apk_sha256 }}\` |"
             echo "| **Hands channel** | \`${{ needs.resolve.outputs.quiver_channel }}\` |"
             echo "| **Release mode** | \`${{ needs.resolve.outputs.release_mode }}\` |"
-            echo "| **Release id** | \`${{ steps.publish-quiver-release.outputs.release_id || '(none)' }}\` |"
+            echo "| **Release id** | \`${{ steps.publish-hands-release.outputs.release_id || '(none)' }}\` |"
             echo "| **Share URL** | ${{ steps.create-share-page.outputs.share_url || '(skipped)' }} |"
             echo
             if [ "${{ needs.resolve.outputs.release_mode }}" = "draft" ]; then
@@ -577,9 +593,9 @@ jobs:
               echo "Publish flow:"
               echo
               echo '\`\`\`sh'
-              echo "hands releases show raft-android ${{ steps.publish-quiver-release.outputs.release_id }}"
-              echo "hands releases update raft-android ${{ steps.publish-quiver-release.outputs.release_id }} --changelog-file zh-CN=zh-CN.md --changelog-file en=en.md"
-              echo "hands releases publish raft-android ${{ steps.publish-quiver-release.outputs.release_id }}"
+              echo "hands releases show raft-android ${{ steps.publish-hands-release.outputs.release_id }}"
+              echo "hands releases update raft-android ${{ steps.publish-hands-release.outputs.release_id }} --changelog-file zh-CN=zh-CN.md --changelog-file en=en.md"
+              echo "hands releases publish raft-android ${{ steps.publish-hands-release.outputs.release_id }}"
               echo '\`\`\`'
             fi
           } >> "$GITHUB_STEP_SUMMARY"

@@ -821,11 +821,11 @@ Pipeline contracts:
   and they are never subtracted from Different counts. Fix the render or
   declare the divergence — do not tune tolerances to make a case pass.
 
-## Quiver Release & Feedback Diagnostics
+## Hands Release & Feedback Diagnostics
 
-Raft mobile ships and reports through Quiver. Two reference docs:
+Raft mobile ships and reports through Hands. Two reference docs:
 
-- `docs/android-quiver-release-practices-2026-07-02.md` — release lane:
+- `docs/android-hands-release-practices-2026-07-02.md` — release lane:
   versioning rule (`versionCode` must strictly increase), draft-first flow,
   and the release-notes (changelog) format.
 - `docs/quiver-feedback-diagnostics-zip.md` — how to open and read a Quiver

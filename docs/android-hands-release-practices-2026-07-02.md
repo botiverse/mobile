@@ -1,12 +1,12 @@
-# Android Quiver Release Practices
+# Android Hands Release Practices
 
 This document records the current Slock Android release/update conventions for
-Quiver. It covers the app/channel model, Android versioning, SDK integration,
+Hands. It covers the app/channel model, Android versioning, SDK integration,
 release artifacts, and validation scope.
 
-## Quiver App
+## Hands App
 
-Slock Android releases use the Quiver app:
+Slock Android releases use the Hands app:
 
 - App slug: `raft-android`
 - App id: `a78f3891-f980-4f48-80d7-2a58e93a99aa`
@@ -22,13 +22,15 @@ Current channels:
 | `nightly` | Nightly/continuous internal builds. |
 
 Debug builds should default to `debug`. Release/prod builds should default to
-`main`. Keep `SLOCK_QUIVER_CHANNEL` as an override so QA can force `preview`,
-`nightly`, or `debug` independent of build type.
+`main`. Keep `SLOCK_HANDS_CHANNEL` as the release-helper override so QA can
+force `preview`, `nightly`, or `debug` independent of build type. The app build
+still accepts the legacy `SLOCK_QUIVER_CHANNEL` identifier until its updater
+SDK configuration is migrated separately.
 
 ## Update Check Model
 
 Android update checks are based on Android `versionCode`, not on a separate
-hidden Quiver update code.
+hidden Hands update code.
 
 Client flow:
 
@@ -45,9 +47,9 @@ Client flow:
      &filetype=apk
    ```
 
-3. Quiver finds the latest active release for the app/channel/product type and
+3. Hands finds the latest active release for the app/channel/product type and
    a compatible installable APK asset.
-4. Quiver returns `update_available=true` only when:
+4. Hands returns `update_available=true` only when:
 
    ```text
    latest.version_code > current_version_code
@@ -92,13 +94,15 @@ Build tooling should expose Gradle properties for these parts, for example:
 -PversionSuffix=rc1
 ```
 
-The APK's Android manifest/build config and the Quiver release metadata must use
+The APK's Android manifest/build config and the Hands release metadata must use
 the same computed `versionCode`.
 
 ## SDK Integration
 
-Slock Android should consume the Quiver Android SDK rather than maintaining a
-duplicate update-check/download client.
+Slock Android should consume the configured Android updater SDK rather than
+maintaining a duplicate update-check/download client. The current Maven
+artifact and `QuiverClient` class retain legacy identifiers; they do not change
+the Hands release workflow naming contract.
 
 Dependency:
 
@@ -168,7 +172,7 @@ reintroducing a duplicate Slock-side downloader.
 
 ## Release Artifacts
 
-Quiver must distinguish installable artifacts from support artifacts.
+Hands must distinguish installable artifacts from support artifacts.
 
 Installable artifacts:
 
@@ -188,7 +192,7 @@ Public update endpoints must only return installable artifacts. Support
 artifacts should be downloadable only from authenticated admin/publisher UI/API
 surfaces.
 
-Build provenance should be first-class on the Quiver `builds` model, not only an
+Build provenance should be first-class on the Hands `builds` model, not only an
 uploaded file. Recommended fields:
 
 - `source_commit`
@@ -202,27 +206,26 @@ uploaded file. Recommended fields:
 Slock provides a release helper:
 
 ```bash
-npm install -g @oranix/quiver-cli
-scripts/publish_android_quiver_release.sh --channel main --build <build>
+npm install -g @botiverse/hands-cli
+scripts/publish_android_hands_release.sh --channel main --build <build>
 ```
 
 The helper:
 
 - builds `:androidApp:assemble<Variant>` unless `SLOCK_SKIP_GRADLE_BUILD=1`
 - computes the configured version name/code
-- writes `artifacts/android-quiver/<version>-<code>-<git>/build-metadata.json`
-- reuses `scripts/prepare_android_quiver_symbols.sh` to stage mapping/native
+- writes `artifacts/android-hands/<version>-<code>-<git>/build-metadata.json`
+- reuses `scripts/prepare_android_hands_symbols.sh` to stage mapping/native
   symbol archives when present
-- calls the npm-published Quiver CLI `builds publish-android` command to upload
+- calls the npm-published Hands CLI `builds publish-android` command to upload
   the APK as an
   `installable` asset plus support artifacts as `proguard-mapping`,
   `native-symbols`, and `metadata-file`
 
-The helper looks for `quiver` on `PATH` by default. Override `QUIVER_CLI` only
-for local development, for example `QUIVER_CLI=/path/to/quiver/packages/cli/dist/index.js`.
-If `quiver` is not installed globally, the helper falls back to
-`npm exec --yes --package @oranix/quiver-cli@0.1.0 -- quiver`; override the
-package pin with `QUIVER_CLI_PACKAGE`.
+The helper looks for `hands` on `PATH` by default. Override `HANDS_CLI` only for
+local development. If it is not installed globally, the helper falls back to
+`npm exec --yes --package @botiverse/hands-cli@0.5.4 -- hands`; override the
+package pin with `HANDS_CLI_PACKAGE`.
 
 ## GitHub Actions Release Dispatch
 
@@ -232,7 +235,7 @@ release. By default it dispatches the draft build and runs preflight in
 parallel; a failed preflight cancels the run it just dispatched:
 
 ```bash
-scripts/release_android_quiver_github.sh \
+scripts/release_android_hands_github.sh \
   --version 1.0.1 --build 0 --channel main --variant release \
   --required-pr 123 --wait
 ```
@@ -267,7 +270,7 @@ command is intentionally a separate post-smoke step.
 
 User-facing release notes follow one house format. CI/dispatch creates the draft
 with a raw commit-derived changelog; a release owner rewrites it into this
-format, writes it onto the Quiver draft, and only then publishes.
+format, writes it onto the Hands draft, and only then publishes.
 
 **Sectioned, emoji-headed, bilingual.** Up to three sections, each a bold header
 followed by bullets. Keep this order; omit a section if it has nothing.
@@ -286,8 +289,8 @@ followed by bullets. Keep this order; omit a section if it has nothing.
 
 Clients receive the note matching their system locale; keys are normalized
 (`zh` / `cn` / `zh-cn` → `zh-CN`, `en` → `en`) and fall back to English, then to
-the first entry. Write it with the Quiver CLI
-(`quiver releases update <app> <releaseId> --changelog-file zh-CN=zh.md --changelog-file en=en.md`)
+the first entry. Write it with the Hands CLI
+(`hands releases update <app> <releaseId> --changelog-file zh-CN=zh.md --changelog-file en=en.md`)
 or `PATCH /api/apps/:appId/releases/:id` with a `release_notes` object.
 
 **Platform-owned source files.** New releases store the reviewed Android pair
@@ -348,7 +351,7 @@ pipeline:
 Client/device validation passed on `emulator-5554`:
 
 - Low-version client installed as `build.raft.app`, `versionCode=1000000`.
-- Settings > Developer triggered update check against Quiver `debug`.
+- Settings > Developer triggered update check against Hands `debug`.
 - Missing unknown-source permission opened the app-specific settings path.
 - With permission granted, `DownloadManager` downloaded the signed public
   `/public/r2/...&sig=...` APK URL successfully.
@@ -359,10 +362,10 @@ Client/device validation passed on `emulator-5554`:
 
 ## Operational Rules
 
-- Do not publish an APK to Quiver with a `versionCode` lower than or equal to
+- Do not publish an APK to Hands with a `versionCode` lower than or equal to
   the intended installed client version.
 - Do not cancel the real `main` active release for visibility tests.
 - Keep channel selection overrideable for QA.
 - Keep GitHub Packages credentials out of chat and source control.
 - Preserve mapping/native symbols for crash analysis once the build produces
-  them and Quiver supports support artifacts.
+  them and Hands supports support artifacts.

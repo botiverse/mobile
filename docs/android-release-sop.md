@@ -11,7 +11,7 @@ release branch. The release branch is merged back into `main` only after the
 Hands release has been activated and verified successfully.
 
 The versioning formula and user-facing changelog rules are defined in
-[Android Quiver Release Practices](android-quiver-release-practices-2026-07-02.md).
+[Android Hands Release Practices](android-hands-release-practices-2026-07-02.md).
 This document defines the order of operations and the scripts that enforce it.
 
 ## Roles
@@ -132,7 +132,7 @@ For a diagnosis that must prove preflight before a workflow is dispatched, pass
 ```bash
 export SLOCK_RELEASE_BRANCH=release-1.2.2
 
-scripts/release_android_quiver_github.sh \
+scripts/release_android_hands_github.sh \
   --version 1.2.2 \
   --build 0 \
   --channel main \
@@ -142,6 +142,12 @@ scripts/release_android_quiver_github.sh \
   --preflight-report artifacts/release-preflight/1.2.2-1020200.md \
   --wait
 ```
+
+The canonical workflow switch is `publish_hands=true|false`, and the wrapper
+sets it through `SLOCK_PUBLISH_HANDS`. The deprecated `publish_quiver` alias is
+accepted only through 2026-08-31; if both inputs are set to different values,
+the resolve job fails before any build or publish job starts. See
+[Android Hands release input migration](android-hands-release-migration-2026-07-24.md).
 
 Expected workflow output:
 

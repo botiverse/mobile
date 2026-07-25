@@ -1,0 +1,37 @@
+name: Android Release Contract
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/android-release.yml"
+      - ".github/workflows/android-release-contract.yml"
+      - "scripts/*android*hands*"
+      - "scripts/*android*quiver*"
+      - "docs/android-hands-release-*"
+      - "docs/android-release-sop.md"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/android-release.yml"
+      - ".github/workflows/android-release-contract.yml"
+      - "scripts/*android*hands*"
+      - "scripts/*android*quiver*"
+      - "docs/android-hands-release-*"
+      - "docs/android-release-sop.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android-release-contract:
+    name: Android Hands release contract
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Validate workflow and compatibility contract
+        run: scripts/test_android_hands_release_contract.sh

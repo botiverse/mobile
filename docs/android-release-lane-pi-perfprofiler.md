@@ -1,8 +1,8 @@
 # Android Release Lane — @Pi-QA-PerfProfiler
 
 This document records the **execution steps** that @Pi-QA-PerfProfiler follows
-to take an owner "打个包" instruction through to a verified Quiver release.
-It complements `docs/android-quiver-release-practices-2026-07-02.md` (which
+to take an owner "打个包" instruction through to a verified Hands release.
+It complements `docs/android-hands-release-practices-2026-07-02.md` (which
 records the *what* — app/channel model, version scheme, validation scope).
 
 ## When does this lane trigger?
@@ -15,7 +15,7 @@ Owner (typically @artin) issues instructions like:
 in any channel (usually `#artifacts`). Lane assumptions:
 - Source = protected remote `origin/main`, after the release candidate has
   already merged through PR
-- Target = Quiver `main` channel (or override via `SLOCK_QUIVER_CHANNEL`)
+- Target = Hands `main` channel (or override via `SLOCK_HANDS_CHANNEL`)
 - **No perf smoke** is part of this lane (cloud-phone lane is separate;
   see `docs/...-practices-2026-07-02.md` for in-app update QA scope)
 
@@ -43,7 +43,7 @@ in any channel (usually `#artifacts`). Lane assumptions:
      <short-sha>
    ```
    Use a `pi-perf-artifact-taskNN-<short-sha>` directory name so the lane
-   ownership is obvious in `git worktree list` and the Quiver worker logs.
+   ownership is obvious in `git worktree list` and the Hands worker logs.
 
 3. **Materialize submodules** with `materialize-submodules.sh` (the lane's
    reusable script). It will:
@@ -75,7 +75,7 @@ in any channel (usually `#artifacts`). Lane assumptions:
    ```
    Output: `compose/androidApp/build/outputs/apk/release/androidApp-release-unsigned.apk`.
 
-   The release helper (`scripts/publish_android_quiver_release.sh`, added in
+   The release helper (`scripts/publish_android_hands_release.sh`, added in
    KMP commit `458d0207e`) currently does **not** sign or align the APK.
    The lane therefore signs + aligns manually with the Android SDK
    build-tools (this is a known gap to upstream back to the helper):
@@ -121,7 +121,7 @@ in any channel (usually `#artifacts`). Lane assumptions:
      deviation means a different keystore and Android will refuse upgrade
      install.
 
-6. **Publish to Quiver** (using the KMP helper, which wraps the Quiver
+6. **Create the Hands draft** (using the KMP helper, which wraps the Hands
    npm CLI).
    ```bash
    unset HISTFILE
@@ -131,20 +131,20 @@ in any channel (usually `#artifacts`). Lane assumptions:
    unset HISTFILE
 
    cd <worktree>
-   QUIVER_BEARER_TOKEN="$TOKEN" \
-     SLOCK_QUIVER_CHANNEL=main SLOCK_ANDROID_VARIANT=release \
+   HANDS_BEARER_TOKEN="$TOKEN" \
+     SLOCK_HANDS_CHANNEL=main SLOCK_ANDROID_VARIANT=release \
      SLOCK_SKIP_GRADLE_BUILD=1 \
-     scripts/publish_android_quiver_release.sh
+     scripts/publish_android_hands_release.sh
    ```
    Output: `Published Android release <version> (<code>) build=... release=... channel=main assets: installable:apk, metadata-file:metadata.json`.
 
-   The helper invokes `quiver builds publish-android raft-android ...` which
+   The helper invokes `hands builds publish-android raft-android ...` which
    uploads `installable` (APK) + `proguard-mapping` (if R8/minify produced
    `mapping.txt`) + `native-symbols` (if `--symbols` provided) + `metadata-file`
    (build-metadata.json with `source_commit`, `source_branch`, `build_time`,
    `created_by`).
 
-   For preview/nightly/debug channel releases, set `SLOCK_QUIVER_CHANNEL=preview`
+   For preview/nightly/debug channel releases, set `SLOCK_HANDS_CHANNEL=preview`
    (or override the channel argument). **Never** push code directly to `main`
    or publish a real `main` channel release just to test the pipeline — use
    `preview` for that, then `DELETE` the release after verification.
@@ -172,7 +172,7 @@ in any channel (usually `#artifacts`). Lane assumptions:
 
 9. **Report to owner** in the task thread with:
    - artifact path + APK SHA-256 + sign cert SHA-256
-   - Quiver `build_id` + `release_id` + provenance
+   - Hands `build_id` + `release_id` + provenance
    - public check verification (scope 1-2 + 5)
    - caveats (e.g. `SLOCK_COLLECT_ANDROID_SYMBOLS=1` skipped because R8
      not enabled; manual sign step needed until helper has it; etc.)
@@ -213,7 +213,7 @@ asks them to push. Once the SHA is reachable, retry the script.
 
 After the task is closed, the lane prunes its old detached worktrees so
 `git worktree list` stays readable. Retention is only for:
-- The Quiver reference worktree (the one whose APK is currently active
+- The Hands reference worktree (the one whose APK is currently active
   in `main` channel) — keep until that release is superseded.
 - Worktrees with a currently-in-flight smoke / install verification
   (e.g. a debug-channel release that KMP is exercising on emulator).
@@ -226,19 +226,19 @@ directly — git must deregister the worktree first, otherwise
 
 - Source-of-truth: `git log` in `#artifacts` task threads.
 - Tools: `git worktree`, `materialize-submodules.sh`, KMP
-  `scripts/publish_android_quiver_release.sh`, `raft integration login`
-  for Quiver Bearer token, `apksigner` / `zipalign` for the manual
+  `scripts/publish_android_hands_release.sh`, `raft integration login`
+  for the Hands bearer token, `apksigner` / `zipalign` for the manual
   sign/align gap.
 - Owner-channel: `#artifacts` (task threads).
 - Out-of-scope: in-app update flow end-to-end (handled by KMP,
-  Codex-Android-DevOPS for Quiver platform), source code changes in
-  `compose/androidApp/build.gradle.kts` (KMP), Quiver worker
+  Codex-Android-DevOPS for the Hands platform), source code changes in
+  `compose/androidApp/build.gradle.kts` (KMP), Hands worker
   implementation (Codex-Android-DevOPS), CI integration
   (CI/build-system lane).
 
 ## Known gaps (backlog for the lane or upstream)
 
-- Release helper (`scripts/publish_android_quiver_release.sh`) does not
+- Release helper (`scripts/publish_android_hands_release.sh`) does not
   sign/align. Lane manually signs with `apksigner` and
   `zipalign`. Upstream: add a `--sign` step to the helper that reads
   keystore path/password from env (`SLOCK_ANDROID_KEYSTORE`,
@@ -253,7 +253,7 @@ directly — git must deregister the worktree first, otherwise
   `githubPackagesQuiver()` (using the unified `bytemain` PAT, per
   owner 2026-07-02 17:51 "我的 token 两遍都能用"). Lane does not
   need to modify settings.gradle.kts.
-- The Quiver platform is adding `share page` (revocable public
+- The Hands platform is adding `share page` (revocable public
   download pages, similar to dandelion / TestFlight share links) and
   `Content-Disposition` filename (`<app-slug>-<versionName>-<versionCode>.apk`).
   Until those ship, the lane hands the owner the raw `/public/r2/...&sig=...`
