@@ -18,13 +18,13 @@ import kotlin.math.min
 class GFMMarkerProcessor(
     productionHolder: ProductionHolder,
     constraintsBase: CommonMarkdownConstraints,
-    tableContinuationColumns: ((LookaheadText.Position, MarkdownConstraints) -> Int?)? = null,
+    tableMarkerProvider: MarkerBlockProvider<MarkerProcessor.StateInfo> = GitHubTableMarkerProvider(),
 )
 : CommonMarkMarkerProcessor(productionHolder, constraintsBase) {
 
     private val markerBlockProviders = listOf(GitHubAlertMarkerProvider())
             .plus(super.getMarkerBlockProviders())
-            .plus(listOf(GitHubTableMarkerProvider(tableContinuationColumns)))
+            .plus(listOf(tableMarkerProvider))
 
     override fun getMarkerBlockProviders(): List<MarkerBlockProvider<StateInfo>> {
         return markerBlockProviders

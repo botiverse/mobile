@@ -9,7 +9,7 @@ This directory vendors the common Kotlin sources of JetBrains Markdown
 - Upstream commit: `52368fb17e1d0faf58e2f954c8d57d034a1f2f98`
 - Botiverse fork: <https://github.com/botiverse/jetbrains-markdown>
 - Fork branch: `raft/0.7.5-mobile`
-- Fork commit: `c194082a50c6a790a2feda4af8c405d204158d61`
+- Fork commit: `7a2cfac5d19bf16a1a781166db67528b0b88457b`
 - Maven coordinate: `org.jetbrains:markdown:0.7.5`
 - Source archive: `markdown-0.7.5-sources.jar`
 - Source archive SHA-256:
@@ -31,15 +31,15 @@ matches the corresponding paths at the Botiverse fork commit above.
 Only these vendored files intentionally differ from frozen upstream:
 
 - `src/commonMain/kotlin/org/intellij/markdown/flavours/gfm/GFMMarkerProcessor.kt`
-- `src/commonMain/kotlin/org/intellij/markdown/flavours/gfm/table/GitHubTableMarkerProvider.kt`
 - `src/commonMain/kotlin/org/intellij/markdown/flavours/gfm/lexer/_GFMLexer.kt`
 - `src/commonMain/kotlin/org/intellij/markdown/flavours/space/lexer/_SFMLexer.kt`
 - `src/commonMain/kotlin/org/intellij/markdown/lexer/_MarkdownLexer.kt`
 
-The first two add an optional table-continuation callback. Its default value is null,
-which preserves the stock GFM behavior. Slock supplies the callback from
-`SlockGFMFlavourDescriptor` to recognize chat-friendly tables whose separator
-immediately follows a paragraph line, without rewriting the source text.
+`GFMMarkerProcessor` adds a typed table-provider constructor seam whose default
+remains the stock `GitHubTableMarkerProvider()`. Slock supplies a composed
+provider from `SlockGFMFlavourDescriptor`; the upstream provider implementation
+stays byte-exact, while Raft's policy recognizes chat-friendly tables whose
+separator immediately follows a paragraph line without rewriting source text.
 
 The three generated lexer files contain only the mechanical Kotlin migration
 `String.toLowerCase()` to `String.lowercase()`. This is required because this
@@ -59,9 +59,9 @@ not change the parser grammar or lexer state machine.
    into the matching vendor source-set directories; verify 106 total files.
 4. Compare all imported files with upstream commit
    `52368fb17e1d0faf58e2f954c8d57d034a1f2f98`.
-5. Reapply and independently review the five local-divergence files listed
+5. Reapply and independently review the four local-divergence files listed
    above, or copy those files from Botiverse fork commit
-   `c194082a50c6a790a2feda4af8c405d204158d61`.
+   `7a2cfac5d19bf16a1a781166db67528b0b88457b`.
 
 Build wiring lives in `compose/shared/build.gradle.kts` and
 `compose/shared/build.ohos.gradle.kts`. Neither build may also depend on a

@@ -17,6 +17,8 @@ import org.intellij.markdown.parser.ProductionHolder
 import org.intellij.markdown.parser.constraints.MarkdownConstraints
 import org.intellij.markdown.parser.constraints.eatItselfFromString
 import org.intellij.markdown.parser.constraints.extendsPrev
+import org.intellij.markdown.parser.markerblocks.MarkerBlock
+import org.intellij.markdown.parser.markerblocks.MarkerBlockProvider
 
 /**
  * GFM with code-span precedence restored at the lexer boundary.
@@ -39,12 +41,41 @@ class SlockGFMFlavourDescriptor : GFMFlavourDescriptor() {
                 GFMMarkerProcessor(
                     productionHolder = productionHolder,
                     constraintsBase = GFMConstraints.BASE,
-                    tableContinuationColumns = ::slockTableContinuationColumns,
+                    tableMarkerProvider = SlockTableContinuationMarkerProvider(),
                 )
         }
 
     override fun createInlinesLexer(): MarkdownLexer =
         MarkdownLexer(SlockRaftMarkdownLexer())
+}
+
+/**
+ * Composes Raft's tight-table form with the unmodified stock GFM provider.
+ */
+private class SlockTableContinuationMarkerProvider : MarkerBlockProvider<MarkerProcessor.StateInfo> {
+    private val stock = GitHubTableMarkerProvider()
+
+    override fun createMarkerBlocks(
+        pos: LookaheadText.Position,
+        productionHolder: ProductionHolder,
+        stateInfo: MarkerProcessor.StateInfo,
+    ): List<MarkerBlock> {
+        val constraints = stateInfo.currentConstraints
+        if (stateInfo.nextConstraints == constraints) {
+            val headerCells = slockTableContinuationColumns(pos, constraints)
+            if (headerCells != null) {
+                return listOf(GitHubTableMarkerBlock(pos, constraints, productionHolder, headerCells))
+            }
+        }
+        return stock.createMarkerBlocks(pos, productionHolder, stateInfo)
+    }
+
+    override fun interruptsParagraph(
+        pos: LookaheadText.Position,
+        constraints: MarkdownConstraints,
+    ): Boolean =
+        slockTableContinuationColumns(pos, constraints) != null ||
+            stock.interruptsParagraph(pos, constraints)
 }
 
 /**
