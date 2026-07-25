@@ -162,7 +162,9 @@ The token plan signature should include token ids, ranges, kind, label, placehol
 
 ## Tests
 
-- Unit: registry finds the same mention/channel/task/code ranges as existing `threadInlineTagMatches` and `threadInlineCodeMatches`.
+- Unit: registry consumes the canonical parse snapshot's typed Raft refs and
+  inline-code spans; app validation may reject a typed ref, but must not rescan
+  Markdown delimiters or rebuild source ranges.
 - Unit: token plan ids are stable across repeated calls for the same content.
 - Unit: unresolved mention labels still render final Slock mention style using the raw label.
 - Unit: inline fast path and full markdown path produce the same inline content ids for mixed text.

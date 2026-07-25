@@ -90,7 +90,7 @@ import com.tencent.kuiklybase.markdown.model.RaftMarkdownTokenTypes
 import com.tencent.kuiklybase.markdown.model.TextProvider
 import com.tencent.kuiklybase.markdown.model.markdownAnnotator
 import com.tencent.kuiklybase.markdown.model.markdownAnnotatorConfig
-import com.tencent.kuiklybase.markdown.model.parseRaftMarkdownInlineRefs
+import com.tencent.kuiklybase.markdown.model.parseMarkdownInlineSyntax
 import com.tencent.kuiklybase.markdown.compose.elements.MarkdownCode
 import com.tencent.kuiklybase.markdown.compose.elements.MarkdownCodeBlock
 import com.tencent.kuiklybase.markdown.compose.elements.MarkdownCodeFence
@@ -243,7 +243,7 @@ internal data class MarkdownInlineTokenPlan(
         inlineCodeMatches
 }
 
-private data class MarkdownInlineScanCacheKey(
+private data class MarkdownInlineSyntaxCacheKey(
     val content: String,
     val inlineContentScope: String?,
     val baseOffset: Int
@@ -256,7 +256,7 @@ private data class MarkdownInlineTokenState(
 )
 
 private data class MarkdownInlineTokenPlanCacheKey(
-    val scanKey: MarkdownInlineScanCacheKey,
+    val syntaxKey: MarkdownInlineSyntaxCacheKey,
     val tokenStates: List<MarkdownInlineTokenState>
 )
 
@@ -270,7 +270,7 @@ internal class SlockMarkdownInlineTokenPlanner(
     private val maxEntries: Int = 512
 ) {
     private val lock = SynchronizedObject()
-    private val scanEntries = LinkedHashMap<MarkdownInlineScanCacheKey, ThreadMarkdownInlineScan>()
+    private val syntaxEntries = LinkedHashMap<MarkdownInlineSyntaxCacheKey, MarkdownInlineTokenInputs>()
     private val planEntries = LinkedHashMap<MarkdownInlineTokenPlanCacheKey, MarkdownInlineTokenPlan>()
 
     internal var planBuildCount: Int = 0
@@ -284,32 +284,32 @@ internal class SlockMarkdownInlineTokenPlanner(
         inlineContentScope: String? = null,
         baseOffset: Int = 0
     ): MarkdownInlineTokenPlan {
-        val scanKey =
-            MarkdownInlineScanCacheKey(
+        val syntaxKey =
+            MarkdownInlineSyntaxCacheKey(
                 content = content,
                 inlineContentScope = inlineContentScope,
                 baseOffset = baseOffset
             )
-        val inlineScan =
+        val tokenInputs =
             synchronized(lock) {
-                scanEntries.remove(scanKey)?.also { cached -> scanEntries[scanKey] = cached }
-            } ?: content.threadMarkdownInlineScan(
+                syntaxEntries.remove(syntaxKey)?.also { cached -> syntaxEntries[syntaxKey] = cached }
+            } ?: content.markdownInlineTokenInputs(
                 baseOffset = baseOffset,
                 inlineContentScope = inlineContentScope
             ).also { computed ->
                 synchronized(lock) {
-                    scanEntries.remove(scanKey)?.let { cached ->
-                        scanEntries[scanKey] = cached
+                    syntaxEntries.remove(syntaxKey)?.let { cached ->
+                        syntaxEntries[syntaxKey] = cached
                     } ?: run {
-                        scanEntries[scanKey] = computed
-                        scanEntries.trimMarkdownCacheTo(maxEntries)
+                        syntaxEntries[syntaxKey] = computed
+                        syntaxEntries.trimMarkdownCacheTo(maxEntries)
                     }
                 }
             }
         val highlightedMentionKeys =
             highlightedMentions.mapTo(mutableSetOf()) { threadMarkdownMentionKey(it) }
         val tokenStates =
-            inlineScan.tagMatches.map { match ->
+            tokenInputs.validatedTagMatches.map { match ->
                 val valid = isTagValid(match.tag)
                 MarkdownInlineTokenState(
                     valid = valid,
@@ -329,7 +329,7 @@ internal class SlockMarkdownInlineTokenPlanner(
                         }
                 )
             }
-        val planKey = MarkdownInlineTokenPlanCacheKey(scanKey = scanKey, tokenStates = tokenStates)
+        val planKey = MarkdownInlineTokenPlanCacheKey(syntaxKey = syntaxKey, tokenStates = tokenStates)
         synchronized(lock) {
             planEntries.remove(planKey)?.let { cached ->
                 planEntries[planKey] = cached
@@ -337,7 +337,7 @@ internal class SlockMarkdownInlineTokenPlanner(
             }
         }
         val tagTokens =
-            inlineScan.tagMatches
+            tokenInputs.validatedTagMatches
                 .zip(tokenStates)
                 .mapNotNull { (match, state) ->
                     if (!state.valid) return@mapNotNull null
@@ -355,7 +355,7 @@ internal class SlockMarkdownInlineTokenPlanner(
             MarkdownInlineTokenPlan(
                 content = content,
                 tokens = tagTokens.sortedBy { it.range.first },
-                inlineCodeMatches = inlineScan.inlineCodeMatches
+                inlineCodeMatches = tokenInputs.inlineCodeMatches
             )
         return synchronized(lock) {
             planEntries.remove(planKey)?.let { cached ->
@@ -523,20 +523,21 @@ private fun String.isThreadMarkdownTableSeparatorRow(): Boolean {
         trimmed.all { it == '|' || it == '-' || it == ':' || it == ' ' }
 }
 
-private data class ThreadMarkdownInlineScan(
+private data class MarkdownInlineTokenInputs(
     val inlineCodeMatches: List<ThreadInlineCodeMatch>,
-    val tagMatches: List<ThreadInlineTagMatch>
+    val validatedTagMatches: List<ThreadInlineTagMatch>
 )
 
-private fun String.threadMarkdownInlineScan(
+private fun String.markdownInlineTokenInputs(
     baseOffset: Int = 0,
     inlineContentScope: String? = null
-): ThreadMarkdownInlineScan {
-    val inlineCodeMatches = scanThreadInlineCodeMatches(baseOffset)
+): MarkdownInlineTokenInputs {
+    val inlineSyntax = parseMarkdownInlineSyntax(this)
     val inlineContentIdPrefix = inlineContentScope.toSlockMarkdownInlineContentIdPrefix()
-    val tagMatches =
-        raftMarkdownInlineRefRanges().mapNotNull { range ->
-            substring(range).toThreadMarkdownTagOrNull()?.let { tag ->
+    val validatedTagMatches =
+        inlineSyntax.raftRefs.mapNotNull { ref ->
+            ref.sourceText.toThreadMarkdownTagOrNull()?.let { tag ->
+                val range = ref.startOffset until ref.endOffset
                 ThreadInlineTagMatch(
                     id = "$inlineContentIdPrefix:${baseOffset + range.first}",
                     tag = tag,
@@ -544,20 +545,18 @@ private fun String.threadMarkdownInlineScan(
                 )
             }
         }
-    return ThreadMarkdownInlineScan(
+    val inlineCodeMatches =
+        inlineSyntax.inlineCodeSpans.map { span ->
+            ThreadInlineCodeMatch(
+                id = "slock-code:${baseOffset + span.startOffset}",
+                code = span.codeText,
+                range = span.startOffset until span.endOffset,
+            )
+        }
+    return MarkdownInlineTokenInputs(
         inlineCodeMatches = inlineCodeMatches,
-        tagMatches = tagMatches
+        validatedTagMatches = validatedTagMatches
     )
-}
-
-/**
- * Reads Raft-reference candidates from the same AST that owns Markdown link,
- * code, image, and autolink semantics. The lexer defines the candidate grammar;
- * AST ancestry defines whether the candidate is ordinary inline text. This is
- * deliberately not a second raw-string scanner with an exclusion list.
- */
-private fun String.raftMarkdownInlineRefRanges(): List<IntRange> {
-    return parseRaftMarkdownInlineRefs(this).map { ref -> ref.startOffset until ref.endOffset }
 }
 
 private fun String.threadMarkdownFenceRanges(): List<IntRange> {
@@ -595,23 +594,6 @@ internal fun String?.toSlockMarkdownInlineContentIdPrefix(): String =
         ?.takeIf { it.isNotEmpty() }
         ?.let { scope -> "slock-$scope" }
         ?: "slock"
-
-private fun String.hasSlockMarkdownBlockShape(): Boolean {
-    val trimmed = trimStart()
-    return SlockMarkdownHeadingPrefixRegex.containsMatchIn(trimmed) ||
-        trimmed.startsWith("> ") ||
-        trimmed.startsWith("- ") ||
-        trimmed.startsWith("* ") ||
-        trimmed.startsWith("+ ") ||
-        trimmed.startsWith("```") ||
-        trimmed.startsWith("~~~") ||
-        SlockMarkdownOrderedListPrefixRegex.containsMatchIn(trimmed) ||
-        SlockMarkdownThematicBreakRegex.containsMatchIn(trimmed)
-}
-
-private val SlockMarkdownHeadingPrefixRegex = Regex("""^#{1,6}\s""")
-private val SlockMarkdownOrderedListPrefixRegex = Regex("""^\d+[.)]\s""")
-private val SlockMarkdownThematicBreakRegex = Regex("""^(?:-{3,}|\*{3,}|_{3,})\s*$""")
 
 internal const val DEBUG_SLOCK_MARKDOWN_PERF_LOG = false
 private const val SlockMarkdownPerformanceSlowThresholdMs = 8L
@@ -684,7 +666,7 @@ private fun String.isThreadChannelReference(): Boolean {
 }
 
 fun String.threadInlineTagMatches(baseOffset: Int = 0): List<ThreadInlineTagMatch> =
-    threadMarkdownInlineScan(baseOffset).tagMatches
+    markdownInlineTokenInputs(baseOffset).validatedTagMatches
 
 private fun Char.isThreadShortIdPart(): Boolean =
     isDigit() || this in 'a'..'f' || this in 'A'..'F'
@@ -694,45 +676,6 @@ private fun String.isBareThreadShortIdLikeReference(): Boolean =
         any { it.isDigit() } &&
         any { it in 'a'..'f' || it in 'A'..'F' } &&
         all { it.isThreadShortIdPart() }
-
-fun String.threadInlineCodeMatches(baseOffset: Int = 0): List<ThreadInlineCodeMatch> {
-    return scanThreadInlineCodeMatches(baseOffset)
-}
-
-private fun String.scanThreadInlineCodeMatches(baseOffset: Int = 0): List<ThreadInlineCodeMatch> {
-    val matches = mutableListOf<ThreadInlineCodeMatch>()
-    var cursor = 0
-    while (cursor < length) {
-        val start = indexOf('`', startIndex = cursor)
-        if (start < 0) break
-        val tickCount = countBackticks(start)
-        val fence = "`".repeat(tickCount)
-        val end = indexOf(fence, startIndex = start + tickCount)
-        if (end < 0) break
-        val rawCode = substring(start + tickCount, end)
-        matches +=
-            ThreadInlineCodeMatch(
-                id = "slock-code:${baseOffset + start}",
-                code = rawCode.normalizeMarkdownInlineCodeText(),
-                range = start until end + tickCount
-            )
-        cursor = end + tickCount
-    }
-    return matches
-}
-
-private fun String.countBackticks(start: Int): Int {
-    var count = 0
-    while (start + count < length && this[start + count] == '`') count++
-    return count
-}
-
-private fun String.normalizeMarkdownInlineCodeText(): String =
-    if (length >= 2 && first() == ' ' && last() == ' ' && any { it != ' ' }) {
-        substring(1, lastIndex)
-    } else {
-        this
-    }
 
 internal fun slockMarkdownAnnotator(
     content: String,

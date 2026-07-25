@@ -3,6 +3,7 @@ package build.raft.app.markdown
 import com.tencent.kuiklybase.markdown.model.RaftMarkdownDialect
 import com.tencent.kuiklybase.markdown.model.RaftMarkdownTokenTypes
 import com.tencent.kuiklybase.markdown.model.SlockGFMFlavourDescriptor
+import com.tencent.kuiklybase.markdown.model.parseMarkdownInlineSyntax
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -11,6 +12,26 @@ import org.intellij.markdown.ast.ASTNode
 import org.intellij.markdown.parser.MarkdownParser
 
 class RaftMarkdownDialectTest {
+    @Test
+    fun canonicalInlineSyntaxReturnsRefsAndCodeFromOneAstModel() {
+        val source = "outside #42 and `code #99`"
+        val syntax = parseMarkdownInlineSyntax(source)
+
+        assertEquals(listOf("#42"), syntax.raftRefs.map { it.sourceText })
+        assertEquals(listOf("`code #99`"), syntax.inlineCodeSpans.map { it.sourceText })
+        assertEquals(listOf("code #99"), syntax.inlineCodeSpans.map { it.codeText })
+        assertEquals(source.indexOf('`'), syntax.inlineCodeSpans.single().startOffset)
+        assertEquals(source.length, syntax.inlineCodeSpans.single().endOffset)
+    }
+
+    @Test
+    fun canonicalInlineSyntaxUsesCommonMarkCodeSpanTextRules() {
+        val syntax = parseMarkdownInlineSyntax("`` `inner` `` and `line1\nline2`")
+
+        assertEquals(listOf("`inner`", "line1 line2"), syntax.inlineCodeSpans.map { it.codeText })
+        assertEquals(listOf("`` `inner` ``", "`line1\nline2`"), syntax.inlineCodeSpans.map { it.sourceText })
+    }
+
     @Test
     fun recognizesRaftRefsInOrdinaryGfmText() {
         assertEquals(
