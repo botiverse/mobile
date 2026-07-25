@@ -2,12 +2,13 @@ id: android-app-update-full-success
 title: "Android App Update-full APK Downloading→Install→B"
 app: raft-android
 tier: L1
-version: "1.0-draft"
+version: "1.2-draft"
 description: |
   Verify an exact baseline A upgrades to exact target B through the real
   non-delta DownloadManager and Android package-installer path. This case is
   not runnable until Stamp freezes an android-app-update artifact bundle and
-  exposes Android 12/14 strict device coordinates.
+  exposes the owner-approved Android 14 strict device coordinate. Android 12
+  is recorded as owner-waived/NOT RUN for this acceptance cycle.
 tags: [android, app-update, downloading, installer, upgrade, regression]
 timeout_seconds: 900
 max_retries: 0
@@ -26,7 +27,7 @@ evidence:
   - report
 
 fixture:
-  revision: android-app-update-full/v1
+  revision: android-app-update-full/v1.2
   health_check: exact-A-installed-and-target-B-scoped-only-to-frozen-update-device-group
   provision: install-A-create-minimal-user-state-then-enable-reviewed-B-fixture
   cleanup: deactivate-B-scope-clear-downloads-reset-app-release-device-and-delete-one-time-access
@@ -42,7 +43,12 @@ android:
     expected_ui_states: [Download, Downloading, Retry, Install]
   device:
     type: physical-or-stamp-device
-    required_coordinates: [android12-update-hard, android14-update-control]
+    required_coordinates: [android14-update-required]
+    waived_coordinates:
+      - coordinate: android12-update-hard
+        status: NOT_RUN
+        reason: owner-waived
+        decision_ref: "#反馈:1bc169a5:84dc5c7f"
   steps:
     - id: admit-baseline
       goal: "Read back exact baseline A package/version/source/signers before opening Raft"
@@ -204,6 +210,7 @@ expected:
   result: pass
   notes: |
     Product PASS requires every assertion plus the three machine-readable
-    admission/product/cleanup layers. Missing Android 12, missing B provenance,
-    missing installer readback, or incomplete cleanup is NOT RUN/HARNESS, never
-    an inferred PASS.
+    admission/product/cleanup layers on the required Android 14 coordinate.
+    Android 12 is owner-waived and reported NOT RUN for this cycle; it is not
+    counted as PASS. Missing Android 14, B provenance, installer readback, or
+    cleanup is NOT RUN/HARNESS, never an inferred PASS.

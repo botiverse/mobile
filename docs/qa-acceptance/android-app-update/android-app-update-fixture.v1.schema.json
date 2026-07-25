@@ -77,10 +77,27 @@
     "execution": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["required_coordinates"],
+      "required": ["required_coordinates", "coverage"],
       "properties": {
         "required_coordinates": {
-          "const": ["android12-update-hard", "android14-update-control"]
+          "const": ["android14-update-required"]
+        },
+        "coverage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["waived_coordinates"],
+          "properties": {
+            "waived_coordinates": {
+              "const": [
+                {
+                  "coordinate": "android12-update-hard",
+                  "status": "NOT_RUN",
+                  "reason": "owner-waived",
+                  "decision_ref": "#反馈:1bc169a5:84dc5c7f"
+                }
+              ]
+            }
+          }
         }
       }
     },
