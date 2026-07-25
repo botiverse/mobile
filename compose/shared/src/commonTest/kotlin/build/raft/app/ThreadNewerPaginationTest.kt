@@ -208,31 +208,6 @@ class ThreadNewerPaginationTest {
     }
 
     @Test
-    fun pageAnchorRestoreRequiresUnchangedUserGenerationAndNoFocusedOwner() {
-        assertTrue(
-            shouldRestoreThreadNewerPageAnchor(
-                capturedUserScrollGeneration = 7,
-                currentUserScrollGeneration = 7,
-                focusedViewportOwnerActive = false
-            )
-        )
-        assertFalse(
-            shouldRestoreThreadNewerPageAnchor(
-                capturedUserScrollGeneration = 7,
-                currentUserScrollGeneration = 8,
-                focusedViewportOwnerActive = false
-            )
-        )
-        assertFalse(
-            shouldRestoreThreadNewerPageAnchor(
-                capturedUserScrollGeneration = 7,
-                currentUserScrollGeneration = 7,
-                focusedViewportOwnerActive = true
-            )
-        )
-    }
-
-    @Test
     fun pageCycleSettlementRequiresTheSameRouteAndActiveCycle() {
         assertTrue(
             shouldSettleThreadNewerPageCycle(

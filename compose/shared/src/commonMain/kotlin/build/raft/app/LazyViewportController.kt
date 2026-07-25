@@ -1,0 +1,269 @@
+package build.raft.app
+
+/**
+ * Pure, surface-owned viewport policy. Each lazy surface owns one state instance;
+ * domain stores and routes never persist or transport this pixel-level state.
+ */
+internal sealed interface LazyViewportIntent {
+    data object FollowingLatest : LazyViewportIntent
+
+    data object PinnedTop : LazyViewportIntent
+
+    data class Anchored(
+        val target: LazyViewportAnchorTarget,
+        val offset: Int,
+        val layoutGeneration: Long,
+        val placement: LazyViewportAnchorPlacement,
+        val fallback: LazyViewportAnchorFallback
+    ) : LazyViewportIntent
+
+    data object UserDragging : LazyViewportIntent
+}
+
+internal sealed interface LazyViewportAnchorTarget {
+    data class Message(val messageId: String) : LazyViewportAnchorTarget
+
+    data class StableItem(val key: String) : LazyViewportAnchorTarget
+}
+
+internal enum class LazyViewportAnchorFallback {
+    Free,
+    PinnedTop,
+    FollowingLatest
+}
+
+internal enum class LazyViewportAnchorPlacement {
+    ExactOffset,
+    Focused
+}
+
+internal enum class LazyViewportMutation {
+    Prepend,
+    Append,
+    HeightChange,
+    InsetChange
+}
+
+internal data class LazyViewportAnchorSnapshot(
+    val epoch: Long,
+    val target: LazyViewportAnchorTarget,
+    val offset: Int,
+    val layoutGeneration: Long
+)
+
+internal data class LazyViewportCommandId(
+    val epoch: Long,
+    val sequence: Long
+)
+
+internal sealed interface LazyViewportCommandTarget {
+    data class Top(val animated: Boolean) : LazyViewportCommandTarget
+
+    data object Latest : LazyViewportCommandTarget
+
+    data class Anchor(
+        val target: LazyViewportAnchorTarget,
+        val offset: Int,
+        val layoutGeneration: Long,
+        val placement: LazyViewportAnchorPlacement = LazyViewportAnchorPlacement.ExactOffset
+    ) : LazyViewportCommandTarget
+}
+
+internal data class LazyViewportCommand(
+    val id: LazyViewportCommandId,
+    val target: LazyViewportCommandTarget
+)
+
+internal data class LazyViewportControllerState(
+    val intent: LazyViewportIntent = LazyViewportIntent.FollowingLatest,
+    val epoch: Long = 0L,
+    val nextSequence: Long = 0L,
+    val pendingCommand: LazyViewportCommand? = null
+)
+
+internal sealed interface LazyViewportEvent {
+    data class FollowLatest(
+        val canOverrideUserDragging: Boolean
+    ) : LazyViewportEvent
+
+    data object PinTop : LazyViewportEvent
+
+    data class Anchor(
+        val target: LazyViewportAnchorTarget,
+        val offset: Int,
+        val layoutGeneration: Long,
+        val placement: LazyViewportAnchorPlacement = LazyViewportAnchorPlacement.ExactOffset,
+        val fallback: LazyViewportAnchorFallback
+    ) : LazyViewportEvent
+
+    data object PointerDown : LazyViewportEvent
+
+    data object PointerMove : LazyViewportEvent
+
+    data class PointerSettled(
+        val epoch: Long,
+        val atRenderedBottom: Boolean,
+        val anchorMessageId: String?,
+        val anchorOffset: Int,
+        val layoutGeneration: Long
+    ) : LazyViewportEvent
+
+    data class ContentMutated(val mutation: LazyViewportMutation) : LazyViewportEvent
+
+    data class AnchorUnavailable(val commandId: LazyViewportCommandId) : LazyViewportEvent
+
+    data class CommandConsumed(val commandId: LazyViewportCommandId) : LazyViewportEvent
+}
+
+internal fun reduceLazyViewport(
+    state: LazyViewportControllerState,
+    event: LazyViewportEvent
+): LazyViewportControllerState =
+    when (event) {
+        is LazyViewportEvent.FollowLatest ->
+            if (state.intent == LazyViewportIntent.UserDragging && !event.canOverrideUserDragging) {
+                state
+            } else {
+                state.transitionTo(LazyViewportIntent.FollowingLatest, emitCommand = true)
+            }
+        LazyViewportEvent.PinTop ->
+            state.transitionTo(
+                LazyViewportIntent.PinnedTop,
+                emitCommand = true,
+                animateTop = true
+            )
+        is LazyViewportEvent.Anchor ->
+            state.transitionTo(
+                LazyViewportIntent.Anchored(
+                    target = event.target,
+                    offset = event.offset,
+                    layoutGeneration = event.layoutGeneration,
+                    placement = event.placement,
+                    fallback = event.fallback
+                ),
+                emitCommand = true
+            )
+        LazyViewportEvent.PointerDown ->
+            state.transitionTo(LazyViewportIntent.UserDragging, emitCommand = false)
+        LazyViewportEvent.PointerMove -> state
+        is LazyViewportEvent.PointerSettled ->
+            if (event.epoch != state.epoch || state.intent != LazyViewportIntent.UserDragging) {
+                state
+            } else if (event.atRenderedBottom) {
+                state.transitionTo(LazyViewportIntent.FollowingLatest, emitCommand = false)
+            } else {
+                event.anchorMessageId
+                    ?.takeIf(String::isNotBlank)
+                    ?.let { messageId ->
+                        state.transitionTo(
+                            LazyViewportIntent.Anchored(
+                                target = LazyViewportAnchorTarget.Message(messageId),
+                                offset = event.anchorOffset,
+                                layoutGeneration = event.layoutGeneration,
+                                placement = LazyViewportAnchorPlacement.ExactOffset,
+                                fallback = LazyViewportAnchorFallback.Free
+                            ),
+                            emitCommand = false
+                        )
+                    } ?: state.transitionTo(LazyViewportIntent.UserDragging, emitCommand = false)
+            }
+        is LazyViewportEvent.ContentMutated -> state.onContentMutation(event.mutation)
+        is LazyViewportEvent.AnchorUnavailable -> state.onAnchorUnavailable(event.commandId)
+        is LazyViewportEvent.CommandConsumed ->
+            if (state.pendingCommand?.id == event.commandId) state.copy(pendingCommand = null) else state
+    }
+
+internal fun LazyViewportControllerState.accepts(command: LazyViewportCommand): Boolean =
+    pendingCommand?.id == command.id &&
+        epoch == command.id.epoch &&
+        when (val currentIntent = intent) {
+            LazyViewportIntent.FollowingLatest -> command.target == LazyViewportCommandTarget.Latest
+            LazyViewportIntent.PinnedTop -> command.target is LazyViewportCommandTarget.Top
+            is LazyViewportIntent.Anchored ->
+                command.target ==
+                    LazyViewportCommandTarget.Anchor(
+                        target = currentIntent.target,
+                        offset = currentIntent.offset,
+                        layoutGeneration = currentIntent.layoutGeneration,
+                        placement = currentIntent.placement
+                    )
+            LazyViewportIntent.UserDragging -> false
+        }
+
+internal fun LazyViewportControllerState.anchorSnapshotOrNull(): LazyViewportAnchorSnapshot? =
+    (intent as? LazyViewportIntent.Anchored)?.let { anchored ->
+        LazyViewportAnchorSnapshot(
+            epoch = epoch,
+            target = anchored.target,
+            offset = anchored.offset,
+            layoutGeneration = anchored.layoutGeneration
+        )
+    }
+
+private fun LazyViewportControllerState.transitionTo(
+    nextIntent: LazyViewportIntent,
+    emitCommand: Boolean,
+    animateTop: Boolean = false
+): LazyViewportControllerState {
+    val nextState =
+        copy(
+            intent = nextIntent,
+            epoch = epoch + 1L,
+            pendingCommand = null
+        )
+    return if (emitCommand) nextState.withCommandForIntent(animateTop = animateTop) else nextState
+}
+
+private fun LazyViewportControllerState.onContentMutation(
+    mutation: LazyViewportMutation
+): LazyViewportControllerState =
+    when (intent) {
+        LazyViewportIntent.UserDragging -> copy(pendingCommand = null)
+        LazyViewportIntent.PinnedTop ->
+            if (mutation == LazyViewportMutation.Append) this else withCommandForIntent()
+        is LazyViewportIntent.Anchored ->
+            if (mutation == LazyViewportMutation.Append) this else withCommandForIntent()
+        LazyViewportIntent.FollowingLatest -> withCommandForIntent()
+    }
+
+private fun LazyViewportControllerState.onAnchorUnavailable(
+    commandId: LazyViewportCommandId
+): LazyViewportControllerState {
+    val anchored = intent as? LazyViewportIntent.Anchored ?: return this
+    if (pendingCommand?.id != commandId || commandId.epoch != epoch) return this
+    return when (anchored.fallback) {
+        LazyViewportAnchorFallback.Free ->
+            transitionTo(LazyViewportIntent.UserDragging, emitCommand = false)
+        LazyViewportAnchorFallback.PinnedTop ->
+            transitionTo(LazyViewportIntent.PinnedTop, emitCommand = true)
+        LazyViewportAnchorFallback.FollowingLatest ->
+            transitionTo(LazyViewportIntent.FollowingLatest, emitCommand = true)
+    }
+}
+
+private fun LazyViewportControllerState.withCommandForIntent(
+    animateTop: Boolean = false
+): LazyViewportControllerState {
+    val target =
+        when (val currentIntent = intent) {
+            LazyViewportIntent.FollowingLatest -> LazyViewportCommandTarget.Latest
+            LazyViewportIntent.PinnedTop -> LazyViewportCommandTarget.Top(animated = animateTop)
+            is LazyViewportIntent.Anchored ->
+                LazyViewportCommandTarget.Anchor(
+                    target = currentIntent.target,
+                    offset = currentIntent.offset,
+                    layoutGeneration = currentIntent.layoutGeneration,
+                    placement = currentIntent.placement
+                )
+            LazyViewportIntent.UserDragging -> return copy(pendingCommand = null)
+        }
+    val sequence = nextSequence + 1L
+    return copy(
+        nextSequence = sequence,
+        pendingCommand =
+            LazyViewportCommand(
+                id = LazyViewportCommandId(epoch = epoch, sequence = sequence),
+                target = target
+            )
+    )
+}
