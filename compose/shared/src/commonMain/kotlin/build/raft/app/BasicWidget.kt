@@ -11,8 +11,10 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import com.tencent.kuikly.compose.coil3.AsyncImagePainter
 import com.tencent.kuikly.compose.extension.RefFunc
 import com.tencent.kuikly.compose.extension.keyboardHeightChange
@@ -63,7 +65,6 @@ import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.graphics.SolidColor
 import com.tencent.kuikly.compose.ui.input.pointer.PointerId
 import com.tencent.kuikly.compose.ui.input.pointer.PointerEventPass
-import com.tencent.kuikly.compose.ui.input.pointer.changedToDownIgnoreConsumed
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.input.pointer.positionChanged
 import com.tencent.kuikly.compose.ui.input.pointer.positionChangedIgnoreConsumed
@@ -101,6 +102,7 @@ import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.views.KeyboardParams
 import com.tencent.kuikly.core.views.ModalView
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -527,12 +529,13 @@ fun Modifier.touchListener(
     }
 
 /**
- * Clears the current input focus when a pointer down lands outside every focused standard input.
+ * Clears the current input focus after a gesture starts outside every focused standard input.
  *
- * Scroll and clickable containers may consume their down during the Main pass, so the shared host
- * must observe all downs. Focused inputs register their root bounds, allowing the host to preserve
- * cursor/selection behavior for an inside tap while still clearing focus on scrollable chrome.
- * The host never consumes the gesture that owns the eventual tap or drag.
+ * Scroll and clickable containers may consume their pointer changes during the Main pass, so the
+ * shared host observes every change during Initial. An outside down only arms dismissal: a
+ * tap, drag, or long press commits focus dismissal only at terminal pointer release. Deferring the
+ * layout-affecting clear keeps IME relayout from canceling a descendant's in-flight gesture. The
+ * host never consumes the gesture that owns the eventual child action or scroll.
  */
 @Composable
 internal fun Modifier.dismissInputFocusOnOutsidePointerDown(
@@ -540,22 +543,92 @@ internal fun Modifier.dismissInputFocusOnOutsidePointerDown(
     enabled: Boolean = true,
 ): Modifier {
     val currentFocusManager by rememberUpdatedState(LocalFocusManager.current)
+    val currentEnabled by rememberUpdatedState(enabled)
     val hostAnchor = remember { SlockInputFocusRootAnchor() }
-    return onGloballyPositioned(hostAnchor::update).pointerInput(enabled, registry) {
-        if (!enabled) return@pointerInput
+    val focusDismissScope = rememberCoroutineScope()
+    return onGloballyPositioned(hostAnchor::update).pointerInput(registry) {
         awaitEachGesture {
-            var down = awaitPointerEvent(PointerEventPass.Initial)
-                .changes
-                .firstOrNull { it.changedToDownIgnoreConsumed() }
-            while (down == null) {
-                down = awaitPointerEvent(PointerEventPass.Initial)
-                    .changes
-                    .firstOrNull { it.changedToDownIgnoreConsumed() }
-            }
-            val firstDown = down ?: return@awaitEachGesture
-            val rootPosition = hostAnchor.resolve(firstDown.position)
-            if (rootPosition != null && registry.shouldClearFocus(rootPosition)) {
-                currentFocusManager.clearFocus(force = true)
+            val touchTracker = SlockTouchSequenceTracker<PointerId>()
+            val dismissTracker = SlockInputFocusDismissGestureTracker()
+            var multiplePointers = false
+            while (true) {
+                val event = awaitPointerEvent(PointerEventPass.Initial)
+                if (
+                    isNativeInputFocusDismissCancellation(
+                        nativeEvent = event.nativeEvent,
+                        hasTerminalChange = event.changes.any { it.previousPressed && !it.pressed }
+                    )
+                ) {
+                    dismissTracker.cancel()
+                    registry.invalidatePointerFocusClearCandidates()
+                    awaitPointerEvent(PointerEventPass.Main)
+                    return@awaitEachGesture
+                }
+                if (event.changes.count { it.pressed || it.previousPressed } > 1) {
+                    multiplePointers = true
+                    dismissTracker.cancel()
+                    registry.blockMultiPointerFocusClear()
+                }
+                if (multiplePointers) {
+                    if (event.changes.none { it.pressed }) {
+                        awaitPointerEvent(PointerEventPass.Main)
+                        registry.unblockMultiPointerFocusClear()
+                        return@awaitEachGesture
+                    }
+                    continue
+                }
+                var terminalDismissToken: SlockInputFocusDismissToken? = null
+                var sawTrackedUp = false
+                event.changes.forEach { change ->
+                    val type =
+                        touchTracker.onChange(
+                            pointerId = change.id,
+                            pressed = change.pressed,
+                            positionChanged = change.positionChangedIgnoreConsumed()
+                        ) ?: return@forEach
+                    if (type == TouchType.Down) {
+                        // Initial reaches this stable page root before descendant/local Main.
+                        // Starting a new epoch here invalidates delayed work from the previous
+                        // gesture while giving both observers the same token for this gesture.
+                        registry.beginPointerFocusClearSequence()
+                    }
+                    val dismissToken =
+                        if (type == TouchType.Down && currentEnabled) {
+                            hostAnchor.resolve(change.position)
+                                ?.let(registry::outsideFocusToken)
+                        } else {
+                            null
+                        }
+                    dismissTracker.onTouch(
+                        type = type,
+                        dismissToken = dismissToken
+                    )?.let { terminalDismissToken = it }
+                    if (type == TouchType.Up) {
+                        sawTrackedUp = true
+                    }
+                }
+                if (sawTrackedUp) {
+                    // Descendants finish tap/long-press handling first during Main. Clearing in
+                    // Initial would allow IME relayout to detach or move that child mid-dispatch.
+                    awaitPointerEvent(PointerEventPass.Main)
+                    terminalDismissToken?.let { dismissToken ->
+                        focusDismissScope.launch {
+                            // Thread message body taps intentionally settle rich-text child
+                            // arbitration on the next frame. Two frames keep that child-owned
+                            // callback ahead of any blur-driven list relayout regardless of
+                            // frame callback ordering.
+                            withFrameNanos { }
+                            withFrameNanos { }
+                            if (registry.claimFocusClear(dismissToken)) {
+                                currentFocusManager.clearFocus(force = true)
+                                withFrameNanos { }
+                                withFrameNanos { }
+                                registry.releaseUnreconciledFocusClearClaim(dismissToken)
+                            }
+                        }
+                    }
+                    return@awaitEachGesture
+                }
             }
         }
     }
@@ -576,14 +649,24 @@ internal class SlockInputFocusOwnerAnchor {
 
 internal class SlockInputFocusOwnerRegistry {
     private val activeOwners = mutableMapOf<Any, () -> Rect?>()
+    private var focusOwnerGeneration: Long = 0L
+    private var pointerSafetyGeneration: Long = 0L
+    private var multiPointerFocusClearBlocked: Boolean = false
+    private var claimedFocusClearToken: SlockInputFocusDismissToken? = null
     var hasActiveOwner by mutableStateOf(false)
         private set
 
     fun setFocused(owner: Any, focused: Boolean, bounds: (() -> Rect?)? = null) {
         if (focused) {
+            val wasActive = activeOwners.containsKey(owner)
             activeOwners[owner] = bounds ?: { null }
+            if (!wasActive) {
+                advanceFocusOwnerGeneration()
+            }
         } else {
-            activeOwners -= owner
+            if (activeOwners.remove(owner) != null) {
+                advanceFocusOwnerGeneration()
+            }
         }
         hasActiveOwner = activeOwners.isNotEmpty()
     }
@@ -604,17 +687,136 @@ internal class SlockInputFocusOwnerRegistry {
         return true
     }
 
+    fun outsideFocusToken(position: Offset): SlockInputFocusDismissToken? {
+        if (multiPointerFocusClearBlocked || !shouldClearFocus(position)) return null
+        return SlockInputFocusDismissToken(
+            focusOwnerGeneration = focusOwnerGeneration,
+            pointerSafetyGeneration = pointerSafetyGeneration
+        )
+    }
+
+    fun beginPointerFocusClearSequence() {
+        if (!multiPointerFocusClearBlocked) {
+            pointerSafetyGeneration += 1L
+            claimedFocusClearToken = null
+        }
+    }
+
+    fun claimFocusClear(token: SlockInputFocusDismissToken): Boolean {
+        if (
+            activeOwners.isEmpty() ||
+            multiPointerFocusClearBlocked ||
+            focusOwnerGeneration != token.focusOwnerGeneration ||
+            pointerSafetyGeneration != token.pointerSafetyGeneration ||
+            claimedFocusClearToken == token
+        ) {
+            return false
+        }
+        claimedFocusClearToken = token
+        return true
+    }
+
+    fun releaseUnreconciledFocusClearClaim(token: SlockInputFocusDismissToken) {
+        if (
+            activeOwners.isNotEmpty() &&
+            focusOwnerGeneration == token.focusOwnerGeneration &&
+            pointerSafetyGeneration == token.pointerSafetyGeneration &&
+            claimedFocusClearToken == token
+        ) {
+            claimedFocusClearToken = null
+        }
+    }
+
+    fun blockMultiPointerFocusClear() {
+        if (!multiPointerFocusClearBlocked) {
+            multiPointerFocusClearBlocked = true
+            pointerSafetyGeneration += 1L
+            claimedFocusClearToken = null
+        }
+    }
+
+    fun unblockMultiPointerFocusClear() {
+        multiPointerFocusClearBlocked = false
+    }
+
+    fun invalidatePointerFocusClearCandidates() {
+        pointerSafetyGeneration += 1L
+        multiPointerFocusClearBlocked = false
+        claimedFocusClearToken = null
+    }
+
     fun remove(owner: Any) {
-        activeOwners -= owner
+        if (activeOwners.remove(owner) != null) {
+            advanceFocusOwnerGeneration()
+        }
         hasActiveOwner = activeOwners.isNotEmpty()
     }
+
+    private fun advanceFocusOwnerGeneration() {
+        focusOwnerGeneration += 1L
+        claimedFocusClearToken = null
+    }
 }
+
+internal data class SlockInputFocusDismissToken(
+    val focusOwnerGeneration: Long,
+    val pointerSafetyGeneration: Long
+)
+
+private const val SlockKuiklyNativeCancelEvent = "cancel"
+
+/**
+ * Kuikly's `SuperTouchManager` tags a native touch-cancel as
+ * the literal `cancel` event while normal physical Up remains untagged, including after a native
+ * scroll gesture. A cancel terminates the Compose hit path but is not proof that the finger lifted,
+ * so it must invalidate pending focus dismissal instead of being folded into [TouchType.Up].
+ */
+internal fun isNativeInputFocusDismissCancellation(
+    nativeEvent: Any?,
+    hasTerminalChange: Boolean
+): Boolean = nativeEvent == SlockKuiklyNativeCancelEvent && hasTerminalChange
 
 internal val LocalSlockInputFocusOwnerRegistry =
     compositionLocalOf<SlockInputFocusOwnerRegistry?> { null }
 
-internal fun shouldDismissInputFocusOnScrollableChrome(type: TouchType): Boolean =
-    type == TouchType.Down
+/**
+ * Arbitrates focus dismissal without changing layout during a stationary child gesture.
+ *
+ * [dismissToken] is sampled only for [TouchType.Down], after the caller resolves that down
+ * into root coordinates and verifies it is outside the active input. Tap, drag, and long-press
+ * sequences all dispatch once at terminal release, after descendants have finished their pointer
+ * gesture. An inside-input gesture never arms, even if it later leaves the input bounds.
+ */
+internal class SlockInputFocusDismissGestureTracker {
+    private var tracking: Boolean = false
+    private var armedDismissToken: SlockInputFocusDismissToken? = null
+
+    fun onTouch(
+        type: TouchType,
+        dismissToken: SlockInputFocusDismissToken? = null
+    ): SlockInputFocusDismissToken? =
+        when (type) {
+            TouchType.Down -> {
+                tracking = true
+                armedDismissToken = dismissToken
+                null
+            }
+
+            TouchType.Move -> null
+
+            TouchType.Up -> {
+                val token = armedDismissToken.takeIf { tracking }
+                tracking = false
+                armedDismissToken = null
+                token
+            }
+        }
+
+    fun cancel() {
+        tracking = false
+        armedDismissToken = null
+    }
+}
 
 /**
  * Shared non-consuming outside-focus observer for native-backed scrollable chrome. Attaching
@@ -628,17 +830,76 @@ internal fun Modifier.dismissInputFocusOnScrollableChrome(): Modifier {
     val focusOwnerRegistry = LocalSlockInputFocusOwnerRegistry.current
     val currentFocusManager by rememberUpdatedState(LocalFocusManager.current)
     val scrollAnchor = remember { SlockInputFocusRootAnchor() }
-    return onGloballyPositioned(scrollAnchor::update).touchListener { type, position ->
-        if (!shouldDismissInputFocusOnScrollableChrome(type)) return@touchListener
-        val rootPosition = scrollAnchor.resolve(position)
-        if (rootPosition != null && focusOwnerRegistry?.shouldClearFocus(rootPosition) == true) {
-            currentFocusManager.clearFocus(force = true)
+    val focusDismissScope = rememberCoroutineScope()
+    return onGloballyPositioned(scrollAnchor::update).pointerInput(focusOwnerRegistry) {
+        val registry = focusOwnerRegistry ?: return@pointerInput
+        awaitEachGesture {
+            val touchTracker = SlockTouchSequenceTracker<PointerId>()
+            val dismissTracker = SlockInputFocusDismissGestureTracker()
+            var multiplePointers = false
+            while (true) {
+                val event = awaitPointerEvent(PointerEventPass.Main)
+                if (
+                    isNativeInputFocusDismissCancellation(
+                        nativeEvent = event.nativeEvent,
+                        hasTerminalChange = event.changes.any { it.previousPressed && !it.pressed }
+                    )
+                ) {
+                    dismissTracker.cancel()
+                    return@awaitEachGesture
+                }
+                if (event.changes.count { it.pressed || it.previousPressed } > 1) {
+                    multiplePointers = true
+                    dismissTracker.cancel()
+                }
+                var terminalDismissToken: SlockInputFocusDismissToken? = null
+                var sawTrackedUp = false
+                event.changes.forEach { change ->
+                    val type =
+                        touchTracker.onChange(
+                            pointerId = change.id,
+                            pressed = change.pressed,
+                            positionChanged = change.positionChangedIgnoreConsumed()
+                        ) ?: return@forEach
+                    val dismissToken =
+                        if (type == TouchType.Down) {
+                            scrollAnchor.resolve(change.position)
+                                ?.let(registry::outsideFocusToken)
+                        } else {
+                            null
+                        }
+                    dismissTracker.onTouch(
+                        type = type,
+                        dismissToken = dismissToken
+                    )?.let { terminalDismissToken = it }
+                    if (type == TouchType.Up) {
+                        sawTrackedUp = true
+                    }
+                }
+                if (sawTrackedUp) {
+                    terminalDismissToken
+                        ?.takeUnless { multiplePointers }
+                        ?.let { dismissToken ->
+                            focusDismissScope.launch {
+                                withFrameNanos { }
+                                withFrameNanos { }
+                                if (registry.claimFocusClear(dismissToken)) {
+                                    currentFocusManager.clearFocus(force = true)
+                                    withFrameNanos { }
+                                    withFrameNanos { }
+                                    registry.releaseUnreconciledFocusClearClaim(dismissToken)
+                                }
+                            }
+                        }
+                    return@awaitEachGesture
+                }
+            }
         }
     }
 }
 
 /**
- * Installs the shared blank-down focus-dismiss boundary for an app, page, or modal root.
+ * Installs the shared outside-gesture focus-dismiss boundary for an app, page, or modal root.
  * Inputs register themselves through [TextField], so adding a standard input never requires a
  * business-page tap handler or allowlist entry.
  */
