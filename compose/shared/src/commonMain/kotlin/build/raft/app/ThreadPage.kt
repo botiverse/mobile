@@ -31,6 +31,7 @@ import build.raft.app.data.AuthLossSignal
 import build.raft.app.data.ForwardMessageExecuteRequest
 import build.raft.app.data.ForwardMessageSendMode
 import build.raft.app.data.ForwardMessageTarget
+import build.raft.app.data.ForwardMessageTargetDirectoryCursor
 import build.raft.app.data.ForwardMessageTargetKind
 import build.raft.app.data.ForwardMessageTargetRepository
 import build.raft.app.data.ForwardMessageTargetRequiredAction
@@ -11527,14 +11528,13 @@ private fun ThreadPageContent(
         mutableStateOf(ThreadShareCaptureTopScrollOffsetPx)
     }
     var inlineSearchVisible by remember(threadInstanceKey) { mutableStateOf(false) }
-    var forwardTargetQuery by remember(threadInstanceKey) { mutableStateOf("") }
     var forwardTargets by remember(threadInstanceKey) { mutableStateOf<List<ForwardMessageTarget>>(emptyList()) }
-    var forwardTargetStatus by remember(threadInstanceKey) { mutableStateOf(SharedMembersLoadStatus.Idle) }
-    var forwardTargetErrorCode by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    var forwardPickerFlow by remember(threadInstanceKey) { mutableStateOf(SlockForwardPickerFlowState()) }
     var forwardSending by remember(threadInstanceKey) { mutableStateOf(false) }
     var forwardSourceServerId by remember(threadInstanceKey) { mutableStateOf<ServerId?>(null) }
     var forwardSelectedReceipt by remember(threadInstanceKey) { mutableStateOf<ThreadForwardDestinationReceipt?>(null) }
     var forwardDirectoryGeneration by remember(threadInstanceKey) { mutableStateOf(0) }
+    var forwardDirectoryNextCursor by remember(threadInstanceKey) { mutableStateOf<ForwardMessageTargetDirectoryCursor?>(null) }
     var forwardOperationNonce by remember(threadInstanceKey) { mutableStateOf(0) }
     var forwardNote by remember(threadInstanceKey) { mutableStateOf("") }
     var insertMentionRequestNonce by remember(threadInstanceKey) { mutableStateOf(0) }
@@ -11567,50 +11567,140 @@ private fun ThreadPageContent(
         remember(forwardTargets, forwardSourceServerId, forwardSourceChannelId) {
             forwardTargets
                 .threadForwardPickerTargets(forwardSourceServerId, forwardSourceChannelId)
-                .map { it.toThreadForwardTargetItem() }
+                .map { it.toSlockForwardTargetPickerItem() }
         }
-    LaunchedEffect(activeModal, forwardTargetQuery, forwardSourceServerId, forwardTargetRepository, selectedShareMessageIds) {
-        if (activeModal != "forwardTargets") return@LaunchedEffect
+    LaunchedEffect(
+        forwardPickerFlow.sessionKey,
+        forwardPickerFlow.query,
+        forwardPickerFlow.requestGeneration,
+        forwardSourceServerId,
+        forwardServerId,
+        forwardTargetRepository
+    ) {
+        val sessionKey = forwardPickerFlow.sessionKey ?: return@LaunchedEffect
+        if (forwardPickerFlow.step == SlockForwardPickerStep.Closed) return@LaunchedEffect
+        val requestGeneration = forwardPickerFlow.requestGeneration
         val repository = forwardTargetRepository
         val serverId = forwardSourceServerId
         if (repository == null || serverId == null) {
-            forwardTargets = emptyList()
-            forwardTargetStatus = SharedMembersLoadStatus.Error
-            forwardTargetErrorCode = "forward_target_repository_unavailable"
+            forwardPickerFlow =
+                forwardPickerFlow.reduce(
+                    SlockForwardPickerFlowEvent.LoadFailed(
+                        generation = requestGeneration,
+                        errorCode = "forward_target_repository_unavailable"
+                    )
+                )
             return@LaunchedEffect
         }
-        forwardTargetStatus = SharedMembersLoadStatus.InFlight
-        forwardTargetErrorCode = null
-        val result =
-            if (forwardTargetQuery.isBlank()) {
-                repository.recentTargets(serverId, limit = 20)
+        if (forwardServerId != serverId) {
+            repository.releaseDirectorySnapshot(sessionKey.directorySessionId())
+            forwardDirectoryNextCursor = null
+            forwardPickerFlow =
+                forwardPickerFlow.reduce(
+                    SlockForwardPickerFlowEvent.LoadFailed(
+                        generation = requestGeneration,
+                        errorCode = "forward_source_server_changed"
+                    )
+                )
+            return@LaunchedEffect
+        }
+        val query = forwardPickerFlow.query
+        val append = query.isBlank() && forwardPickerFlow.appending && forwardDirectoryNextCursor != null
+        val cursor =
+            if (append) {
+                forwardDirectoryNextCursor ?: ForwardMessageTargetDirectoryCursor()
             } else {
-                repository.searchTargets(serverId, forwardTargetQuery, limit = 30)
+                ForwardMessageTargetDirectoryCursor()
             }
+        val requestIdentity =
+            SlockForwardPickerRequestIdentity(
+                serverId = serverId.value,
+                sessionKey = sessionKey,
+                query = query,
+                generation = requestGeneration
+            )
+        if (query.isNotBlank() && !append) delay(180)
+        if (!requestIdentity.accepts(
+                serverId = forwardServerId?.value.orEmpty(),
+                sessionKey = forwardPickerFlow.sessionKey ?: return@LaunchedEffect,
+                query = forwardPickerFlow.query,
+                generation = forwardPickerFlow.requestGeneration
+            )
+        ) return@LaunchedEffect
+        val result: DataResult<ThreadForwardTargetLoadPage> =
+            if (query.isBlank()) {
+                when (
+                    val page =
+                        repository.directoryTargets(
+                            serverId = serverId,
+                            sessionId = sessionKey.directorySessionId(),
+                            cursor = cursor,
+                            pageSize = 30
+                        )
+                ) {
+                    is DataResult.Content ->
+                        DataResult.Content(
+                            ThreadForwardTargetLoadPage(
+                                items = page.data.items,
+                                nextCursor = page.data.nextCursor,
+                                reset = page.data.reset
+                            )
+                        )
+                    is DataResult.Empty -> DataResult.Empty(page.reason)
+                    is DataResult.Error -> DataResult.Error(page.error)
+                    is DataResult.NoPermission -> DataResult.NoPermission(page.blocker)
+                }
+            } else {
+                when (val page = repository.searchTargets(serverId, query, limit = 60)) {
+                    is DataResult.Content -> DataResult.Content(ThreadForwardTargetLoadPage(items = page.data))
+                    is DataResult.Empty -> DataResult.Empty(page.reason)
+                    is DataResult.Error -> DataResult.Error(page.error)
+                    is DataResult.NoPermission -> DataResult.NoPermission(page.blocker)
+                }
+            }
+        if (!requestIdentity.accepts(
+                serverId = forwardServerId?.value.orEmpty(),
+                sessionKey = forwardPickerFlow.sessionKey ?: return@LaunchedEffect,
+                query = forwardPickerFlow.query,
+                generation = forwardPickerFlow.requestGeneration
+            )
+        ) return@LaunchedEffect
         when (result) {
             is DataResult.Content -> {
-                forwardTargets = result.data
+                val nextItems = result.data.items
+                forwardTargets =
+                    if (append && !result.data.reset) {
+                        (forwardTargets + nextItems).distinctBy { it.threadForwardSelectionKey() }
+                    } else {
+                        nextItems
+                    }
+                forwardDirectoryNextCursor =
+                    if (query.isBlank()) result.data.nextCursor else null
                 forwardDirectoryGeneration += 1
-                forwardTargetStatus = SharedMembersLoadStatus.Loaded
-                forwardTargetErrorCode = null
+                forwardPickerFlow =
+                    forwardPickerFlow.reduce(SlockForwardPickerFlowEvent.LoadSucceeded(requestGeneration))
             }
             is DataResult.Empty -> {
-                forwardTargets = emptyList()
+                if (!append) forwardTargets = emptyList()
+                forwardDirectoryNextCursor = null
                 forwardDirectoryGeneration += 1
-                forwardTargetStatus = SharedMembersLoadStatus.Loaded
-                forwardTargetErrorCode = null
+                forwardPickerFlow =
+                    forwardPickerFlow.reduce(SlockForwardPickerFlowEvent.LoadSucceeded(requestGeneration))
             }
             is DataResult.Error -> {
-                forwardTargets = emptyList()
-                forwardDirectoryGeneration += 1
-                forwardTargetStatus = SharedMembersLoadStatus.Error
-                forwardTargetErrorCode = result.error.code
+                if (result.error.code == "forward_directory_snapshot_expired") {
+                    forwardDirectoryNextCursor = null
+                }
+                forwardPickerFlow =
+                    forwardPickerFlow.reduce(
+                        SlockForwardPickerFlowEvent.LoadFailed(requestGeneration, result.error.code)
+                    )
             }
             is DataResult.NoPermission -> {
-                forwardTargets = emptyList()
-                forwardDirectoryGeneration += 1
-                forwardTargetStatus = SharedMembersLoadStatus.Error
-                forwardTargetErrorCode = result.blocker.code
+                forwardPickerFlow =
+                    forwardPickerFlow.reduce(
+                        SlockForwardPickerFlowEvent.LoadFailed(requestGeneration, result.blocker.code)
+                    )
             }
         }
     }
@@ -12153,7 +12243,18 @@ private fun ThreadPageContent(
                             } else {
                                 activeForwardSelectionMode = ThreadForwardSelectionMode.Merged
                                 forwardSourceServerId = forwardServerId
-                                forwardTargetQuery = ""
+                                forwardPickerFlow.sessionKey?.let { previous ->
+                                    forwardTargetRepository?.releaseDirectorySnapshot(previous.directorySessionId())
+                                }
+                                forwardPickerFlow =
+                                    forwardPickerFlow.reduce(
+                                        SlockForwardPickerFlowEvent.Open(
+                                            sourceContext = threadInstanceKey,
+                                            serverId = forwardServerId?.value.orEmpty()
+                                        )
+                                    )
+                                forwardTargets = emptyList()
+                                forwardDirectoryNextCursor = null
                                 forwardSelectedReceipt = null
                                 forwardNote = ""
                                 activeModal = "forwardTargets"
@@ -12266,43 +12367,101 @@ private fun ThreadPageContent(
                 }
             }
         }
-        when (activeModal) {
-            "forwardTargets" ->
-                ThreadForwardTargetPickerPage(
+        val visibleForwardPickerSession = forwardPickerFlow.sessionKey
+        if ((activeModal == "forwardTargets" || activeModal == "forwardNote") && visibleForwardPickerSession != null) {
+                SlockForwardTargetPicker(
                     messageCount = forwardMessageSelection.forwardableMessages.size,
                     skippedCount = forwardMessageSelection.skippedCount,
                     nestedForwardCount = forwardMessageSelection.nestedForwardCount,
                     taskLinkedCount = forwardMessageSelection.taskLinkedCount,
-                    query = forwardTargetQuery,
-                    loading = forwardTargetStatus == SharedMembersLoadStatus.InFlight,
-                    targets = forwardTargetItems,
-                    errorCode = forwardTargetErrorCode,
-                    onQueryChange = { forwardTargetQuery = it },
-                    onDismiss = { activeModal = null },
-                    onSelectTarget = { target ->
-                        target.forwardTarget?.let { selected ->
-                            val sourceServerId = forwardSourceServerId
-                            if (sourceServerId != null) {
-                                forwardOperationNonce += 1
-                                forwardSelectedReceipt =
-                                    selected.toThreadForwardDestinationReceipt(
-                                        operationId = "$threadInstanceKey-fwd-$forwardOperationNonce",
-                                        sourceServerId = sourceServerId,
-                                        directoryGeneration = forwardDirectoryGeneration
+                    state =
+                        SlockForwardTargetPickerUiState(
+                            sessionKey = visibleForwardPickerSession,
+                            query = forwardPickerFlow.query,
+                            items = forwardTargetItems,
+                            selectedKey = forwardPickerFlow.selectedKey,
+                            loadState = forwardPickerFlow.loadState,
+                            errorCode = forwardPickerFlow.errorCode,
+                            canLoadMore = forwardDirectoryNextCursor != null,
+                            appending = forwardPickerFlow.appending,
+                            interactive = forwardPickerFlow.rowsInteractive,
+                            dismissEnabled = forwardPickerFlow.dismissEnabled,
+                            requestGeneration = forwardPickerFlow.requestGeneration
+                        ),
+                    onIntent = { intent ->
+                        when (intent) {
+                            is SlockForwardTargetPickerIntent.QueryChanged -> {
+                                forwardPickerFlow.sessionKey?.let { session ->
+                                    forwardTargetRepository?.releaseDirectorySnapshot(session.directorySessionId())
+                                }
+                                forwardPickerFlow =
+                                    forwardPickerFlow.reduce(
+                                        SlockForwardPickerFlowEvent.QueryChanged(intent.query)
                                     )
-                                activeModal = "forwardNote"
+                                forwardDirectoryNextCursor = null
+                            }
+                            SlockForwardTargetPickerIntent.Retry -> {
+                                forwardPickerFlow =
+                                    forwardPickerFlow.reduce(
+                                        SlockForwardPickerFlowEvent.Retry(
+                                            appending = forwardPickerFlow.query.isBlank() && forwardDirectoryNextCursor != null
+                                        )
+                                    )
+                            }
+                            SlockForwardTargetPickerIntent.LoadMore -> {
+                                if (forwardDirectoryNextCursor != null && !forwardPickerFlow.appending) {
+                                    forwardPickerFlow =
+                                        forwardPickerFlow.reduce(SlockForwardPickerFlowEvent.LoadMore)
+                                }
+                            }
+                            SlockForwardTargetPickerIntent.Dismiss -> {
+                                forwardPickerFlow.sessionKey?.let { session ->
+                                    forwardTargetRepository?.releaseDirectorySnapshot(session.directorySessionId())
+                                }
+                                forwardPickerFlow = forwardPickerFlow.reduce(SlockForwardPickerFlowEvent.Dismiss)
+                                activeModal = null
+                            }
+                            is SlockForwardTargetPickerIntent.TargetSelected -> {
+                                val nextFlow =
+                                    forwardPickerFlow.reduce(
+                                        SlockForwardPickerFlowEvent.TargetSelected(
+                                            stableKey = intent.item.stableKey,
+                                            renderGeneration = intent.renderGeneration
+                                        )
+                                    )
+                                val selectionAccepted =
+                                    forwardPickerFlow.step == SlockForwardPickerStep.Targets &&
+                                        nextFlow.step == SlockForwardPickerStep.Note &&
+                                        nextFlow.selectedKey == intent.item.stableKey
+                                val sourceServerId = forwardSourceServerId
+                                if (selectionAccepted && sourceServerId != null) {
+                                    forwardPickerFlow = nextFlow
+                                    val selected = intent.item.payload
+                                    forwardOperationNonce += 1
+                                    forwardSelectedReceipt =
+                                        selected.toThreadForwardDestinationReceipt(
+                                            operationId = "$threadInstanceKey-fwd-$forwardOperationNonce",
+                                            sourceServerId = sourceServerId,
+                                            directoryGeneration = forwardDirectoryGeneration
+                                        )
+                                    activeModal = "forwardNote"
+                                }
                             }
                         }
                     }
                 )
-            "forwardNote" ->
+        }
+        if (activeModal == "forwardNote") {
                 ThreadForwardNoteDialog(
                     messageCount = forwardMessageSelection.forwardableMessages.size,
                     selectedTarget = forwardSelectedReceipt?.target,
                     note = forwardNote,
                     sending = forwardSending,
                     onNoteChange = { forwardNote = it },
-                    onDismiss = { activeModal = "forwardTargets" },
+                    onDismiss = {
+                        forwardPickerFlow = forwardPickerFlow.reduce(SlockForwardPickerFlowEvent.NoteBack)
+                        activeModal = "forwardTargets"
+                    },
                     onSend = {
                         if (!writeActionsEnabled) return@ThreadForwardNoteDialog
                         val repository = forwardTargetRepository
@@ -12337,6 +12496,11 @@ private fun ThreadPageContent(
                                             )
                                         if (outcome.failureCode == null) {
                                             activeModal = null
+                                            forwardPickerFlow.sessionKey?.let { session ->
+                                                forwardTargetRepository?.releaseDirectorySnapshot(session.directorySessionId())
+                                            }
+                                            forwardPickerFlow =
+                                                forwardPickerFlow.reduce(SlockForwardPickerFlowEvent.Dismiss)
                                             forwardSelectedReceipt = null
                                             forwardNote = ""
                                             clearShareSelection()
@@ -12362,6 +12526,8 @@ private fun ThreadPageContent(
                         }
                     }
                 )
+        }
+        when (activeModal) {
             "settings" ->
                 ThreadSettingsModal(
                     channelName = headerDisplay.title,
@@ -22344,41 +22510,35 @@ private fun String?.threadForwardSelectionModeLabel(): String =
         else -> ThreadForwardSelectionMode.Merged.label
     }
 
-private data class ThreadForwardTargetItem(
-    val id: String,
-    val title: String,
-    val subtitle: String,
-    val kind: ThreadForwardTargetKind,
-    val avatarWireValue: String? = null,
-    val avatarLabel: String = title.take(1).uppercase(),
-    val forwardTarget: ForwardMessageTarget? = null
+private data class ThreadForwardTargetLoadPage(
+    val items: List<ForwardMessageTarget>,
+    val nextCursor: ForwardMessageTargetDirectoryCursor? = null,
+    val reset: Boolean = false
 )
 
-private enum class ThreadForwardTargetKind {
-    Channel,
-    DirectMessage,
-    PublicChannelUnjoined,
-    Member
-}
-
-private fun ForwardMessageTarget.toThreadForwardTargetItem(): ThreadForwardTargetItem =
-    ThreadForwardTargetItem(
-        id = threadForwardSelectionKey(),
+private fun ForwardMessageTarget.toSlockForwardTargetPickerItem(): SlockForwardTargetPickerItem<ForwardMessageTarget> =
+    SlockForwardTargetPickerItem(
+        stableKey = threadForwardSelectionKey(),
         title = title,
         subtitle = threadForwardTargetSubtitle(),
         avatarWireValue = avatarWireValue,
         avatarLabel = avatarLabel,
-        kind =
-            when (kind) {
-                ForwardMessageTargetKind.RecentChannel -> ThreadForwardTargetKind.Channel
-                ForwardMessageTargetKind.RecentDirectMessage -> ThreadForwardTargetKind.DirectMessage
-                ForwardMessageTargetKind.PublicChannelUnjoined -> ThreadForwardTargetKind.PublicChannelUnjoined
-                ForwardMessageTargetKind.HumanDirectMessageCandidate,
-                ForwardMessageTargetKind.AgentDirectMessageCandidate ->
-                    ThreadForwardTargetKind.Member
-            },
-        forwardTarget = this
+        visualKind = forwardTargetVisualKind(),
+        payload = this
     )
+
+private fun ForwardMessageTarget.forwardTargetVisualKind(): SlockForwardTargetVisualKind =
+    when {
+        kind == ForwardMessageTargetKind.RecentDirectMessage ||
+            kind == ForwardMessageTargetKind.HumanDirectMessageCandidate ||
+            kind == ForwardMessageTargetKind.AgentDirectMessageCandidate ->
+            SlockForwardTargetVisualKind.DirectMessage
+        channelKind == ConversationKind.Joint || channelType?.trim()?.lowercase() == "joint" ->
+            SlockForwardTargetVisualKind.JointChannel
+        channelType?.trim()?.lowercase() == "private" ->
+            SlockForwardTargetVisualKind.PrivateChannel
+        else -> SlockForwardTargetVisualKind.PublicChannel
+    }
 
 private fun ForwardMessageTarget.threadForwardTargetSubtitle(): String =
     when (requiredAction) {
@@ -22399,7 +22559,7 @@ private fun ForwardMessageTarget.threadForwardTargetSubtitle(): String =
     }
 
 @Composable
-private fun ThreadForwardTargetItem.localizedForwardTargetSubtitle(): String =
+private fun <T> SlockForwardTargetPickerItem<T>.localizedForwardTargetSubtitle(): String =
     when (subtitle) {
         "Join channel before forwarding" -> stringResource(MR.strings.thread_forward_join_channel_first)
         "Start DM before forwarding" -> stringResource(MR.strings.thread_forward_start_dm_first)
@@ -22429,57 +22589,71 @@ internal fun ThreadForwardModalVisualScreen() {
         remember(scrollProbe) {
             if (scrollProbe) {
                 List(ThreadForwardScrollProbeTargetCount) { index ->
-                    ThreadForwardTargetItem(
-                        id = "forward-scroll-probe-$index",
+                    SlockForwardTargetPickerItem(
+                        stableKey = "forward-scroll-probe-$index",
                         title = "Forward target ${index + 1}",
                         subtitle = "Recent DM",
-                        kind = ThreadForwardTargetKind.DirectMessage
+                        visualKind = SlockForwardTargetVisualKind.DirectMessage,
+                        payload = null
                     )
                 }
             } else {
                 listOf(
-                    ThreadForwardTargetItem(
-                        id = "channel-design",
+                    SlockForwardTargetPickerItem(
+                        stableKey = "channel-design",
                         title = "design",
                         subtitle = "Product and UI decisions",
-                        kind = ThreadForwardTargetKind.Channel
+                        visualKind = SlockForwardTargetVisualKind.PublicChannel,
+                        payload = null
                     ),
-                    ThreadForwardTargetItem(
-                        id = "dm-artin",
+                    SlockForwardTargetPickerItem(
+                        stableKey = "dm-artin",
                         title = "artin",
                         subtitle = "Direct message",
-                        kind = ThreadForwardTargetKind.DirectMessage,
+                        visualKind = SlockForwardTargetVisualKind.DirectMessage,
                         avatarWireValue = AvatarReference.Random("artin").wireValue,
-                        avatarLabel = "A"
+                        avatarLabel = "A",
+                        payload = null
                     ),
-                    ThreadForwardTargetItem(
-                        id = "channel-android",
+                    SlockForwardTargetPickerItem(
+                        stableKey = "channel-android",
                         title = "android-artifacts",
                         subtitle = "Public channel",
-                        kind = ThreadForwardTargetKind.PublicChannelUnjoined
+                        visualKind = SlockForwardTargetVisualKind.PrivateChannel,
+                        payload = null
                     ),
-                    ThreadForwardTargetItem(
-                        id = "member-cindy",
+                    SlockForwardTargetPickerItem(
+                        stableKey = "joint-release",
+                        title = "release-joint",
+                        subtitle = "Joint channel",
+                        visualKind = SlockForwardTargetVisualKind.JointChannel,
+                        payload = null
+                    ),
+                    SlockForwardTargetPickerItem(
+                        stableKey = "member-cindy",
                         title = "Cindy",
                         subtitle = "Keeps visual testing release notes aligned",
-                        kind = ThreadForwardTargetKind.Member
+                        visualKind = SlockForwardTargetVisualKind.DirectMessage,
+                        payload = null
                     )
                 )
             }
         }
-    ThreadForwardTargetPickerPage(
+    SlockForwardTargetPicker(
         messageCount = 2,
         skippedCount = 0,
         nestedForwardCount = 0,
         taskLinkedCount = 0,
-        query = "",
-        loading = false,
-        targets = if (selectedProbeTargetId == null) fixtureTargets else emptyList(),
-        errorCode = null,
-        onQueryChange = {},
-        onDismiss = {},
-        onSelectTarget = { target ->
-            if (scrollProbe) selectedProbeTargetId = target.id
+        state =
+            SlockForwardTargetPickerUiState(
+                sessionKey = SlockForwardPickerSessionKey("visual", "server-visual", 1),
+                items = if (selectedProbeTargetId == null) fixtureTargets else emptyList(),
+                loadState = SlockForwardPickerLoadState.Loaded
+            ),
+        onIntent = { intent ->
+            if (scrollProbe && intent is SlockForwardTargetPickerIntent.TargetSelected) {
+                selectedProbeTargetId = intent.item.stableKey
+            }
         }
     )
 }
@@ -22864,21 +23038,28 @@ internal fun threadForwardBundleVisualFixtureBundle(): ForwardMessageBundle =
     )
 
 @Composable
-private fun ThreadForwardTargetPickerPage(
+internal fun <T> SlockForwardTargetPicker(
     messageCount: Int,
     skippedCount: Int,
     nestedForwardCount: Int,
     taskLinkedCount: Int,
-    query: String,
-    loading: Boolean,
-    targets: List<ThreadForwardTargetItem>,
-    errorCode: String?,
-    onQueryChange: (String) -> Unit,
-    onDismiss: () -> Unit,
-    onSelectTarget: (ThreadForwardTargetItem) -> Unit
+    state: SlockForwardTargetPickerUiState<T>,
+    onIntent: (SlockForwardTargetPickerIntent<T>) -> Unit
 ) {
     val userFacingErrorLabels = threadUserFacingErrorLabels()
-    SlockBackHandler(enabled = true, label = "thread_forward_targets") { onDismiss() }
+    val loading = state.loadState == SlockForwardPickerLoadState.Loading
+    val listState = key(state.sessionKey) { rememberLazyListState() }
+    SlockBackHandler(enabled = state.dismissEnabled, label = "thread_forward_targets") {
+        onIntent(SlockForwardTargetPickerIntent.Dismiss)
+    }
+    LaunchedEffect(state.sessionKey, state.canLoadMore, state.appending, state.items.size, state.interactive) {
+        snapshotFlow {
+            val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+            state.canLoadMore && state.interactive && !state.appending && lastVisible >= state.items.lastIndex - 2
+        }.distinctUntilChanged().collect { shouldLoadMore ->
+            if (shouldLoadMore) onIntent(SlockForwardTargetPickerIntent.LoadMore)
+        }
+    }
     Box(
         modifier =
             Modifier
@@ -22904,7 +23085,9 @@ private fun ThreadForwardTargetPickerPage(
                 leadingContent = {
                     SlockBrutalIconButton(
                         iconName = SlockLucideIconName.ArrowLeft,
-                        onClick = onDismiss,
+                        onClick = {
+                            if (state.dismissEnabled) onIntent(SlockForwardTargetPickerIntent.Dismiss)
+                        },
                         size = 30.dp,
                         shadowOffset = 2.dp
                     )
@@ -22929,18 +23112,18 @@ private fun ThreadForwardTargetPickerPage(
                 }
             }
             SharedHomeSearchInput(
-                query = query,
+                query = state.query,
                 loading = loading,
-                interactive = true,
-                onQueryChange = onQueryChange,
+                interactive = state.interactive,
+                onQueryChange = { onIntent(SlockForwardTargetPickerIntent.QueryChanged(it)) },
                 onSubmit = {},
-                onClear = { onQueryChange("") },
+                onClear = { onIntent(SlockForwardTargetPickerIntent.QueryChanged("")) },
                 placeholder = stringResource(MR.strings.thread_action_search),
                 modifier = Modifier.fillMaxWidth().padding(start = 16.dp, top = 16.dp, end = 16.dp)
             )
             Text(
                 text =
-                    if (query.isBlank()) {
+                    if (state.query.isBlank()) {
                         stringResource(MR.strings.thread_forward_destinations)
                     } else {
                         stringResource(MR.strings.thread_forward_search_results)
@@ -22950,39 +23133,96 @@ private fun ThreadForwardTargetPickerPage(
                 modifier = Modifier.padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 4.dp)
             )
             Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
-                if (targets.isEmpty()) {
+                if (state.items.isEmpty() && loading) {
+                    Column(modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) {
+                        repeat(4) { ThreadForwardSearchingSkeletonRow() }
+                    }
+                } else if (state.items.isEmpty()) {
                     ThreadModalEmptyState(
                         title =
                             when {
-                                loading -> stringResource(MR.strings.thread_forward_loading_targets)
-                                errorCode != null -> stringResource(MR.strings.thread_forward_targets_unavailable)
-                                query.isBlank() -> stringResource(MR.strings.thread_forward_no_recent_targets)
+                                state.errorCode != null -> stringResource(MR.strings.thread_forward_targets_unavailable)
+                                state.query.isBlank() -> stringResource(MR.strings.thread_forward_no_recent_targets)
                                 else -> stringResource(MR.strings.thread_forward_no_targets)
                             },
                         detail =
                             when {
-                                loading -> stringResource(MR.strings.thread_forward_fetching_targets)
-                                errorCode != null ->
-                                    userFacingErrorLabels.forErrorCode(errorCode)?.uppercase()
+                                state.errorCode != null ->
+                                    userFacingErrorLabels.forErrorCode(state.errorCode)?.uppercase()
                                         ?: stringResource(MR.strings.common_error)
-                                query.isBlank() -> stringResource(MR.strings.thread_forward_recent_targets_hint)
+                                state.query.isBlank() -> stringResource(MR.strings.thread_forward_recent_targets_hint)
                                 else -> stringResource(MR.strings.thread_add_member_try_different_search)
                             }
                     )
+                    if (state.errorCode != null) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                            SlockModalActionButton(
+                                label = stringResource(MR.strings.common_retry),
+                                icon = SlockLucideIconName.RefreshCw,
+                                onClick = { onIntent(SlockForwardTargetPickerIntent.Retry) }
+                            )
+                        }
+                    }
                 } else {
                     LazyColumn(
+                        state = listState,
                         modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite),
                         contentPadding = PaddingValues(bottom = 12.dp)
                     ) {
-                        items(targets.size, key = { targets[it].id }) { index ->
+                        items(state.items.size, key = { state.items[it].rowKey }) { index ->
                             // task #803: freeze the row identity at RENDER time.
                             // Re-reading targets[index] inside onClick raced list
                             // refreshes — displayed A could select B (feedback #152).
-                            val rowTarget = targets[index]
+                            val rowTarget = state.items[index]
+                            val rowGeneration = state.requestGeneration
                             ThreadForwardTargetRow(
                                 target = rowTarget,
-                                onClick = { onSelectTarget(rowTarget) }
+                                selected = rowTarget.stableKey == state.selectedKey,
+                                interactive = state.interactive,
+                                onClick = {
+                                    if (state.interactive) {
+                                        onIntent(
+                                            SlockForwardTargetPickerIntent.TargetSelected(
+                                                item = rowTarget,
+                                                renderGeneration = rowGeneration
+                                            )
+                                        )
+                                    }
+                                }
                             )
+                        }
+                    }
+                    if (loading || state.errorCode != null) {
+                        Box(
+                            modifier =
+                                Modifier
+                                    .matchParentSize()
+                                    .background(SlockColor.SurfaceWhite.copy(alpha = 0.82f))
+                                    .slockNativeDispatchCapture(),
+                            contentAlignment = Alignment.TopCenter
+                        ) {
+                            if (loading) {
+                                Column(modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) {
+                                    repeat(4) { ThreadForwardSearchingSkeletonRow() }
+                                }
+                            } else {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 24.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    Text(
+                                        text = stringResource(MR.strings.thread_forward_targets_unavailable),
+                                        style = SlockType.Body,
+                                        color = SlockColor.TextBlack
+                                    )
+                                    SlockModalActionButton(
+                                        label = stringResource(MR.strings.common_retry),
+                                        icon = SlockLucideIconName.RefreshCw,
+                                        onClick = { onIntent(SlockForwardTargetPickerIntent.Retry) }
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -23061,8 +23301,33 @@ private fun ThreadForwardNoteDialog(
 }
 
 @Composable
-private fun ThreadForwardTargetRow(
-    target: ThreadForwardTargetItem,
+private fun ThreadForwardSearchingSkeletonRow() {
+    Box(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 6.dp)
+                .height(60.dp)
+                .background(SlockColor.SurfaceWhite)
+                .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = 0.08f))
+                .padding(horizontal = 12.dp),
+        contentAlignment = Alignment.CenterStart
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Box(modifier = Modifier.size(38.dp).background(SlockColor.BorderBlack.copy(alpha = 0.08f)))
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Box(modifier = Modifier.width(144.dp).height(12.dp).background(SlockColor.BorderBlack.copy(alpha = 0.10f)))
+                Box(modifier = Modifier.width(92.dp).height(9.dp).background(SlockColor.BorderBlack.copy(alpha = 0.06f)))
+            }
+        }
+    }
+}
+
+@Composable
+private fun <T> ThreadForwardTargetRow(
+    target: SlockForwardTargetPickerItem<T>,
+    selected: Boolean,
+    interactive: Boolean,
     onClick: () -> Unit
 ) {
     Button(
@@ -23071,9 +23336,13 @@ private fun ThreadForwardTargetRow(
         modifier =
             Modifier
                 .fillMaxWidth()
+                .alpha(if (interactive) 1f else 0.72f)
                 .padding(horizontal = 16.dp, vertical = 6.dp)
-                .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = 0.12f))
+                .background(if (selected) SlockColor.BrandYellow.copy(alpha = 0.22f) else SlockColor.SurfaceWhite)
+                .border(
+                    SlockStroke.Default,
+                    if (selected) SlockColor.BorderBlack else SlockColor.BorderBlack.copy(alpha = 0.12f)
+                )
                 .padding(horizontal = 12.dp, vertical = 8.dp)
     ) {
         Row(
@@ -23081,17 +23350,17 @@ private fun ThreadForwardTargetRow(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            when (target.kind) {
-                ThreadForwardTargetKind.DirectMessage,
-                ThreadForwardTargetKind.Member ->
+            when (target.visualKind) {
+                SlockForwardTargetVisualKind.DirectMessage ->
                     SlockAvatar(
                         avatarWireValue = target.avatarWireValue,
                         label = target.avatarLabel,
                         avatarSize = 38.dp,
                         borderWidth = SlockStroke.Default
                     )
-                ThreadForwardTargetKind.Channel,
-                ThreadForwardTargetKind.PublicChannelUnjoined ->
+                SlockForwardTargetVisualKind.PublicChannel,
+                SlockForwardTargetVisualKind.PrivateChannel,
+                SlockForwardTargetVisualKind.JointChannel ->
                     Box(
                         modifier =
                             Modifier
@@ -23101,7 +23370,7 @@ private fun ThreadForwardTargetRow(
                         contentAlignment = Alignment.Center
                     ) {
                         SlockLucideIcon(
-                            SlockLucideIconName.Hash,
+                            target.visualKind.iconName() ?: SlockLucideIconName.Hash,
                             modifier = Modifier.size(18.dp),
                             color = "#FF111111"
                         )

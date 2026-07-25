@@ -51,6 +51,7 @@ data class ForwardMessageTarget(
     val avatarLabel: String = title.take(1).uppercase(),
     val channelId: ChannelId? = null,
     val channelKind: ConversationKind = ConversationKind.Channel,
+    val channelType: String? = null,
     val jointChannelId: String? = null,
     val memberId: MemberId? = null,
     val joined: Boolean? = null,
@@ -58,6 +59,72 @@ data class ForwardMessageTarget(
     val canForwardNow: Boolean = channelId != null,
     val requiredAction: ForwardMessageTargetRequiredAction = ForwardMessageTargetRequiredAction.None
 )
+
+data class ForwardMessageTargetDirectoryCursor(
+    val snapshotId: String? = null,
+    val sessionId: String? = null,
+    val normalizedQuery: String = "",
+    val authorityRevision: String? = null,
+    val directMessageOffset: Int = 0,
+    val publicChannelOffset: Int = 0,
+    val privateChannelOffset: Int = 0,
+    val jointChannelOffset: Int = 0,
+    val memberOffset: Int = 0
+)
+
+data class ForwardMessageTargetDirectoryPage(
+    val items: List<ForwardMessageTarget>,
+    val nextCursor: ForwardMessageTargetDirectoryCursor? = null,
+    val reset: Boolean = false
+)
+
+internal data class ForwardMessageTargetDirectorySnapshot(
+    val id: String,
+    val serverId: ServerId,
+    val sessionId: String,
+    val normalizedQuery: String,
+    val authorityRevision: String,
+    val createdAtMillis: Long,
+    val items: List<ForwardMessageTarget>
+) {
+    fun page(
+        cursor: ForwardMessageTargetDirectoryCursor =
+            ForwardMessageTargetDirectoryCursor(
+                snapshotId = id,
+                sessionId = sessionId,
+                normalizedQuery = normalizedQuery,
+                authorityRevision = authorityRevision
+            ),
+        pageSize: Int = 30
+    ): ForwardMessageTargetDirectoryPage =
+        items.toForwardDirectoryPage(
+            cursor =
+                cursor.copy(
+                    snapshotId = id,
+                    sessionId = sessionId,
+                    normalizedQuery = normalizedQuery,
+                    authorityRevision = authorityRevision
+                ),
+            pageSize = pageSize
+        )
+}
+
+internal fun List<ForwardMessageTarget>.toForwardDirectorySnapshot(
+    id: String,
+    serverId: ServerId,
+    sessionId: String,
+    normalizedQuery: String = "",
+    createdAtMillis: Long = 0L
+): ForwardMessageTargetDirectorySnapshot =
+    ForwardMessageTargetDirectorySnapshot(
+        id = id,
+        serverId = serverId,
+        sessionId = sessionId,
+        normalizedQuery = normalizedQuery,
+        authorityRevision = forwardDirectoryAuthorityRevision(),
+        createdAtMillis = createdAtMillis,
+        items = dedupeForwardTargets()
+    )
 
 data class ForwardMessageDestination(
     val serverId: ServerId,
@@ -86,6 +153,16 @@ data class ForwardMessageExecuteRequest(
 
 interface ForwardMessageTargetRepository {
     suspend fun recentTargets(serverId: ServerId, limit: Int): DataResult<List<ForwardMessageTarget>>
+    suspend fun directoryTargets(
+        serverId: ServerId,
+        sessionId: String = serverId.value,
+        cursor: ForwardMessageTargetDirectoryCursor = ForwardMessageTargetDirectoryCursor(),
+        pageSize: Int = 30
+    ): DataResult<ForwardMessageTargetDirectoryPage> =
+        recentTargets(serverId, limit = pageSize).mapContent { items ->
+            ForwardMessageTargetDirectoryPage(items = items)
+        }
+    fun releaseDirectorySnapshot(sessionId: String) = Unit
     suspend fun searchTargets(serverId: ServerId, query: String, limit: Int): DataResult<List<ForwardMessageTarget>>
     suspend fun resolveTargetChannel(
         sourceServerId: ServerId,
@@ -100,8 +177,12 @@ class RealForwardMessageTargetRepository(
     private val networkClient: SlockNetworkClient,
     private val channelRepository: ChannelRepository,
     private val memberRepository: MemberRepository,
+    private val nowMillis: () -> Long = ::defaultNowMillis,
     private val warningLogger: (String) -> Unit = {}
 ) : ForwardMessageTargetRepository {
+    private var nextDirectorySnapshotId = 0L
+    private val directorySnapshots = mutableMapOf<String, ForwardMessageTargetDirectorySnapshot>()
+
     override suspend fun recentTargets(serverId: ServerId, limit: Int): DataResult<List<ForwardMessageTarget>> {
         currentSession() ?: return forwardAuthRequired()
         val directMessages = channelRepository.getDirectMessages(serverId).contentOrEmpty { it.directMessages }
@@ -116,6 +197,64 @@ class RealForwardMessageTargetRepository(
                 .distinctBy { it.serverId.value + ":" + it.kind.name + ":" + it.id }
                 .take(limit.coerceAtLeast(1))
         return DataResult.Content(items)
+    }
+
+    override suspend fun directoryTargets(
+        serverId: ServerId,
+        sessionId: String,
+        cursor: ForwardMessageTargetDirectoryCursor,
+        pageSize: Int
+    ): DataResult<ForwardMessageTargetDirectoryPage> {
+        currentSession() ?: return forwardAuthRequired()
+        val now = nowMillis()
+        pruneDirectorySnapshots(now)
+        val targets =
+            when (val authority = localDirectoryTargets(serverId)) {
+                is DataResult.Content -> authority.data
+                is DataResult.Empty -> emptyList()
+                is DataResult.Error -> return DataResult.Error(authority.error)
+                is DataResult.NoPermission -> return DataResult.NoPermission(authority.blocker)
+            }
+        val revision = targets.forwardDirectoryAuthorityRevision()
+        val normalizedQuery = ""
+        val requestedSnapshot =
+            cursor.snapshotId?.let(directorySnapshots::get)?.takeIf { snapshot ->
+                snapshot.serverId == serverId &&
+                    snapshot.sessionId == sessionId &&
+                    cursor.sessionId == sessionId &&
+                    snapshot.normalizedQuery == normalizedQuery &&
+                    cursor.normalizedQuery == normalizedQuery &&
+                    snapshot.authorityRevision == cursor.authorityRevision &&
+                    snapshot.authorityRevision == revision
+            }
+        val reset = cursor.snapshotId != null && requestedSnapshot == null
+        val snapshot =
+            requestedSnapshot
+                ?: createLocalDirectorySnapshot(
+                    serverId = serverId,
+                    sessionId = sessionId,
+                    normalizedQuery = normalizedQuery,
+                    targets = targets,
+                    nowMillis = now
+                )
+        val pageCursor =
+            if (reset || cursor.snapshotId == null) {
+                ForwardMessageTargetDirectoryCursor(
+                    snapshotId = snapshot.id,
+                    sessionId = snapshot.sessionId,
+                    normalizedQuery = snapshot.normalizedQuery,
+                    authorityRevision = snapshot.authorityRevision
+                )
+            } else {
+                cursor
+            }
+        return DataResult.Content(
+            snapshot.page(cursor = pageCursor, pageSize = pageSize).copy(reset = reset)
+        )
+    }
+
+    override fun releaseDirectorySnapshot(sessionId: String) {
+        directorySnapshots.entries.removeAll { it.value.sessionId == sessionId }
     }
 
     override suspend fun searchTargets(serverId: ServerId, query: String, limit: Int): DataResult<List<ForwardMessageTarget>> {
@@ -245,6 +384,69 @@ class RealForwardMessageTargetRepository(
         )
     }
 
+    private suspend fun localDirectoryTargets(serverId: ServerId): DataResult<List<ForwardMessageTarget>> {
+        val directMessages =
+            when (val result = channelRepository.getDirectMessages(serverId)) {
+                is DataResult.Content -> result.data.directMessages
+                is DataResult.Empty -> emptyList()
+                is DataResult.Error -> return DataResult.Error(result.error)
+                is DataResult.NoPermission -> return DataResult.NoPermission(result.blocker)
+            }
+        val channels =
+            when (val result = channelRepository.getChannels(serverId)) {
+                is DataResult.Content -> result.data.channels
+                is DataResult.Empty -> emptyList()
+                is DataResult.Error -> return DataResult.Error(result.error)
+                is DataResult.NoPermission -> return DataResult.NoPermission(result.blocker)
+            }
+        val members =
+            when (val result = memberRepository.getMembers(DataRequestPriority.Foreground, serverId)) {
+                is DataResult.Content -> result.data.members
+                is DataResult.Empty -> emptyList()
+                is DataResult.Error -> return DataResult.Error(result.error)
+                is DataResult.NoPermission -> return DataResult.NoPermission(result.blocker)
+            }
+        val targets = fallbackForwardMessageTargets(
+            serverId = serverId,
+            directMessages = directMessages,
+            channels = channels,
+            members = members,
+            query = "",
+            limit = directMessages.size + channels.size + members.size
+        )
+        return DataResult.Content(targets)
+    }
+
+    private fun createLocalDirectorySnapshot(
+        serverId: ServerId,
+        sessionId: String,
+        normalizedQuery: String,
+        targets: List<ForwardMessageTarget>,
+        nowMillis: Long
+    ): ForwardMessageTargetDirectorySnapshot {
+        releaseDirectorySnapshot(sessionId)
+        nextDirectorySnapshotId += 1
+        val snapshot =
+            targets.toForwardDirectorySnapshot(
+                id = "${serverId.value}:$sessionId:$nextDirectorySnapshotId",
+                serverId = serverId,
+                sessionId = sessionId,
+                normalizedQuery = normalizedQuery,
+                createdAtMillis = nowMillis
+            )
+        if (directorySnapshots.size >= ForwardDirectorySnapshotCacheSize) {
+            directorySnapshots.keys.firstOrNull()?.let(directorySnapshots::remove)
+        }
+        directorySnapshots[snapshot.id] = snapshot
+        return snapshot
+    }
+
+    private fun pruneDirectorySnapshots(nowMillis: Long) {
+        directorySnapshots.entries.removeAll { entry ->
+            nowMillis - entry.value.createdAtMillis >= ForwardDirectorySnapshotTtlMillis
+        }
+    }
+
     private suspend fun resolveForwardDestination(
         sourceServerId: ServerId,
         target: ForwardMessageTarget,
@@ -355,6 +557,7 @@ private fun HomeDirectMessageRow.toRecentForwardTarget(
         avatarLabel = peer?.avatarLabel?.takeIf { it.isNotBlank() } ?: title.take(1).uppercase(),
         channelId = channelId,
         channelKind = ConversationKind.DirectMessage,
+        channelType = "dm",
         memberId = presenceMemberId,
         dmExists = true,
         canForwardNow = true
@@ -374,6 +577,7 @@ private fun HomeChannelRow.toRecentForwardTarget(serverId: ServerId): ForwardMes
         avatarLabel = "#",
         channelId = channelId,
         channelKind = kind,
+        channelType = channelType,
         jointChannelId = jointChannelId,
         joined = true,
         canForwardNow = true
@@ -381,21 +585,31 @@ private fun HomeChannelRow.toRecentForwardTarget(serverId: ServerId): ForwardMes
 }
 
 private fun HomeChannelRow.toSearchForwardTarget(serverId: ServerId): ForwardMessageTarget? {
-    if (!joined || archived) return null
+    if (archived) return null
+    val normalizedType = channelType?.trim()?.lowercase()
+    if (!joined && normalizedType != "public") return null
     val channelId = toConversationSummary().messageStreamChannelId()
     val title = name.trim().removePrefix("#").takeIf { it.isNotBlank() } ?: return null
+    val requiresJoin = !joined
     return ForwardMessageTarget(
         serverId = serverId,
-        kind = ForwardMessageTargetKind.RecentChannel,
+        kind = if (requiresJoin) ForwardMessageTargetKind.PublicChannelUnjoined else ForwardMessageTargetKind.RecentChannel,
         id = channelId.value,
         title = "#$title",
-        subtitle = subtitle?.takeIf { it.isNotBlank() } ?: "Joined channel",
+        subtitle = subtitle?.takeIf { it.isNotBlank() } ?: if (requiresJoin) "Public channel" else "Joined channel",
         avatarLabel = "#",
         channelId = channelId,
         channelKind = kind,
+        channelType = channelType,
         jointChannelId = jointChannelId,
-        joined = true,
-        canForwardNow = true
+        joined = joined,
+        canForwardNow = joined,
+        requiredAction =
+            if (requiresJoin) {
+                ForwardMessageTargetRequiredAction.JoinChannel
+            } else {
+                ForwardMessageTargetRequiredAction.None
+            }
     )
 }
 
@@ -409,7 +623,8 @@ internal fun fallbackForwardMessageTargets(
 ): List<ForwardMessageTarget> {
     val existingDmMemberIds = directMessages.mapNotNull { it.presenceMemberId }.toSet()
     val membersById = members.associateBy { it.id }
-    return (
+    val matches =
+        (
         directMessages.mapNotNull { directMessage ->
             directMessage.toRecentForwardTarget(serverId, directMessage.presenceMemberId?.let(membersById::get))
         } +
@@ -420,8 +635,94 @@ internal fun fallbackForwardMessageTargets(
         )
         .filter { it.matchesForwardQuery(query) }
         .dedupeForwardTargets()
-        .take(limit.coerceAtLeast(1))
+    return if (query.isBlank()) {
+        matches.take(limit.coerceAtLeast(1))
+    } else {
+        matches.toForwardDirectoryPage(pageSize = limit).items
+    }
 }
+
+internal fun List<ForwardMessageTarget>.toForwardDirectoryPage(
+    cursor: ForwardMessageTargetDirectoryCursor = ForwardMessageTargetDirectoryCursor(),
+    pageSize: Int = 30
+): ForwardMessageTargetDirectoryPage {
+    val sectionSize = (pageSize.coerceAtLeast(5) / 5).coerceAtLeast(1)
+    val directMessages = filter { it.kind == ForwardMessageTargetKind.RecentDirectMessage }
+    val publicChannels = filter { it.isForwardPublicChannel() }
+    val privateChannels = filter { it.isForwardPrivateChannel() }
+    val jointChannels = filter { it.isForwardJointChannel() }
+    val members = filter {
+        it.kind == ForwardMessageTargetKind.HumanDirectMessageCandidate ||
+            it.kind == ForwardMessageTargetKind.AgentDirectMessageCandidate
+    }
+
+    val directPage = directMessages.drop(cursor.directMessageOffset.coerceAtLeast(0)).take(sectionSize)
+    val publicPage = publicChannels.drop(cursor.publicChannelOffset.coerceAtLeast(0)).take(sectionSize)
+    val privatePage = privateChannels.drop(cursor.privateChannelOffset.coerceAtLeast(0)).take(sectionSize)
+    val jointPage = jointChannels.drop(cursor.jointChannelOffset.coerceAtLeast(0)).take(sectionSize)
+    val memberPage = members.drop(cursor.memberOffset.coerceAtLeast(0)).take(sectionSize)
+    val next =
+        ForwardMessageTargetDirectoryCursor(
+            snapshotId = cursor.snapshotId,
+            sessionId = cursor.sessionId,
+            normalizedQuery = cursor.normalizedQuery,
+            authorityRevision = cursor.authorityRevision,
+            directMessageOffset = cursor.directMessageOffset + directPage.size,
+            publicChannelOffset = cursor.publicChannelOffset + publicPage.size,
+            privateChannelOffset = cursor.privateChannelOffset + privatePage.size,
+            jointChannelOffset = cursor.jointChannelOffset + jointPage.size,
+            memberOffset = cursor.memberOffset + memberPage.size
+        )
+    val hasMore =
+        next.directMessageOffset < directMessages.size ||
+            next.publicChannelOffset < publicChannels.size ||
+            next.privateChannelOffset < privateChannels.size ||
+            next.jointChannelOffset < jointChannels.size ||
+            next.memberOffset < members.size
+    return ForwardMessageTargetDirectoryPage(
+        items = directPage + publicPage + privatePage + jointPage + memberPage,
+        nextCursor = next.takeIf { hasMore }
+    )
+}
+
+internal fun List<ForwardMessageTarget>.forwardDirectoryAuthorityRevision(): String {
+    var hash = -0x340d631b7bdddcdbL
+    forEach { target ->
+        val witness =
+            listOf(
+                target.serverId.value,
+                target.kind.name,
+                target.id,
+                target.channelId?.value.orEmpty(),
+                target.channelKind.name,
+                target.channelType.orEmpty(),
+                target.jointChannelId.orEmpty(),
+                target.memberId?.value.orEmpty(),
+                target.joined?.toString().orEmpty(),
+                target.requiredAction.name
+            ).joinToString(separator = "\u001f")
+        witness.forEach { character ->
+            hash = hash xor character.code.toLong()
+            hash *= 0x100000001b3L
+        }
+    }
+    return hash.toString(16)
+}
+
+private const val ForwardDirectorySnapshotCacheSize = 4
+internal const val ForwardDirectorySnapshotTtlMillis = 60_000L
+
+private fun ForwardMessageTarget.isForwardJointChannel(): Boolean =
+    kind in setOf(ForwardMessageTargetKind.RecentChannel, ForwardMessageTargetKind.PublicChannelUnjoined) &&
+        (channelKind == ConversationKind.Joint || channelType?.trim()?.lowercase() == "joint")
+
+private fun ForwardMessageTarget.isForwardPrivateChannel(): Boolean =
+    kind in setOf(ForwardMessageTargetKind.RecentChannel, ForwardMessageTargetKind.PublicChannelUnjoined) &&
+        !isForwardJointChannel() && channelType?.trim()?.lowercase() == "private"
+
+private fun ForwardMessageTarget.isForwardPublicChannel(): Boolean =
+    kind in setOf(ForwardMessageTargetKind.RecentChannel, ForwardMessageTargetKind.PublicChannelUnjoined) &&
+        !isForwardJointChannel() && !isForwardPrivateChannel()
 
 private fun MemberProfile.toForwardMemberCandidate(serverId: ServerId): ForwardMessageTarget? {
     val targetKind =
@@ -440,6 +741,7 @@ private fun MemberProfile.toForwardMemberCandidate(serverId: ServerId): ForwardM
         avatarWireValue = avatar?.wireValue ?: avatarUrl,
         avatarLabel = avatarLabel.ifBlank { title.take(1).uppercase() },
         channelKind = ConversationKind.DirectMessage,
+        channelType = "dm",
         memberId = id,
         dmExists = false,
         canForwardNow = false,
@@ -488,6 +790,7 @@ internal data class ForwardTargetSearchItemDto(
     val serverId: String? = null,
     val channelId: String? = null,
     val channelKind: String? = null,
+    val channelType: String? = null,
     val jointChannelId: String? = null,
     val joined: Boolean? = null,
     val dmExists: Boolean? = null,
@@ -563,6 +866,9 @@ private fun ForwardTargetSearchItemDto.toForwardMessageTarget(fallbackServerId: 
                     ConversationKind.Channel
                 }
             },
+        channelType =
+            channelType?.trim()?.takeIf { it.isNotBlank() }
+                ?: channelKind?.trim()?.lowercase()?.takeIf { it == "public" || it == "private" || it == "joint" },
         jointChannelId = jointChannelId?.trim()?.takeIf { it.isNotBlank() },
         memberId =
             when (kind) {
