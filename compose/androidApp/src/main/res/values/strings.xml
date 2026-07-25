@@ -108,12 +108,12 @@
     <string name="settings_storage_database_detail">Messages, channels, members, tasks, and local projections. This is read-only here.</string>
     <string name="settings_storage_image_cache_title">Image cache</string>
     <string name="settings_storage_image_cache_detail">Rebuildable avatar, attachment, and markdown image cache.</string>
-    <string name="settings_storage_downloaded_files_title">Attachment cache</string>
+    <string name="settings_storage_downloaded_files_title">Attachment staging</string>
     <string name="settings_storage_downloaded_files_detail">Files downloaded for opening or installing from previews.</string>
     <string name="settings_storage_temp_logs_title">Temporary and logs</string>
     <string name="settings_storage_temp_logs_detail">Crash dumps plus explicit temporary/log directories.</string>
     <string name="settings_storage_clear_image_cache">Clear image cache</string>
-    <string name="settings_storage_clear_downloaded_files">Clear attachment cache</string>
+    <string name="settings_storage_clear_downloaded_files">Clear attachment staging</string>
     <string name="settings_storage_clear_temp_logs">Clear temporary and logs</string>
     <string name="settings_storage_safe_clear_note">Clearing storage here keeps auth/session, selected server, drafts, and unsent attachments intact.</string>
     <string name="settings_storage_feedback_refreshed">Storage sizes refreshed.</string>

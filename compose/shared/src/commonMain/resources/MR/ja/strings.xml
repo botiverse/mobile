@@ -1225,7 +1225,7 @@
     <string name="channel_create_error">エラー: %1$s</string>
     <string name="channel_create_action_creating">作成中...</string>
     <string name="channel_create_action_create">チャンネルを作成</string>
-    <string name="settings_storage_clear_downloaded_files">添付ファイルのキャッシュをクリア</string>
+    <string name="settings_storage_clear_downloaded_files">添付ファイルの一時データを消去</string>
     <string name="settings_storage_clear_image_cache">画像キャッシュをクリア</string>
     <string name="settings_storage_clear_temp_files">一時ファイルとログをクリア</string>
     <string name="settings_billing_thirty_days_history">30 日間のメッセージ履歴</string>
@@ -1715,15 +1715,15 @@
     <string name="settings_storage_row_database_detail">このデバイスに保存されているメッセージ、タスクのメタデータ、サーバーのスナップショット。</string>
     <string name="settings_storage_row_image_cache">画像キャッシュ</string>
     <string name="settings_storage_row_image_cache_detail">表示を高速化するために保持されているダウンロード済みの画像プレビュー。</string>
-    <string name="settings_storage_row_downloads">添付ファイルのキャッシュ</string>
-    <string name="settings_storage_row_downloads_detail">ファイルのプレビュー、オープン、インストールのために保持されるプライベートコピー。公開エクスポートは削除されません。</string>
+    <string name="settings_storage_row_downloads">添付ファイルの一時データ</string>
+    <string name="settings_storage_row_downloads_detail">ダウンロード中または失敗した際の一時データです。完了したファイルは「ダウンロード」に残ります。</string>
     <string name="settings_storage_row_temporary">一時ファイルとログ</string>
     <string name="settings_storage_row_temporary_detail">アプリが生成したデバッグログと一時ファイル。</string>
     <string name="settings_storage_ohos_database_detail">OHOS のストレージ使用量は、まだホスト機能から取得できません。</string>
     <string name="settings_storage_ohos_image_cache_detail">OHOS では画像キャッシュのクリアはまだ利用できません。</string>
     <string name="settings_storage_ohos_temporary_detail">ローカル診断バッファには、診断のログクリアを使用してください。</string>
     <string name="settings_storage_feedback_image_cleared">画像キャッシュをクリアしました。</string>
-    <string name="settings_storage_feedback_downloads_cleared">添付ファイルのキャッシュをクリアしました。公開エクスポートは削除されていません。</string>
+    <string name="settings_storage_feedback_downloads_cleared">添付ファイルの一時データを消去しました。完了したダウンロードは削除されていません。</string>
     <string name="settings_storage_feedback_temporary_cleared">一時ファイルと診断ログをクリアしました。</string>
     <string name="settings_diagnostics_feedback_channel_guidance">最近使ったチャンネルが先頭に表示されます。選択すると、診断ログが添付ファイルとしてコンポーザーに追加されます。</string>
     <string name="settings_diagnostics_feedback_channel_recent">最近使った項目</string>

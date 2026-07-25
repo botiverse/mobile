@@ -468,6 +468,43 @@ class AttachmentDownloadCoordinatorTest {
     }
 
     @Test
+    fun directoryCleanupSnapshotsActiveTargetsAndRequiresPerTargetCleanupWhileBlockingNewStarts() {
+        val transport = FakeTransport()
+        val sinks = FakeSinkFactory()
+        val engine = AttachmentDownloadCoordinatorEngine(transport, sinks, nowMillis = { 1_000L })
+        val prefix = "/cache/slock-attachments/"
+        val firstTarget = "${prefix}first.pdf"
+        engine.start(
+            request().copy(targetKey = firstTarget, targetPath = firstTarget),
+            RecordingObserver()
+        )
+
+        val directory = engine.beginDirectoryCleanup(prefix)
+        assertEquals(setOf(firstTarget), directory.targetKeys)
+        val target = engine.beginTargetCleanup(directory.targetKeys.single())
+        assertEquals("cancelled", target.status)
+
+        val rejectedObserver = RecordingObserver()
+        val secondTarget = "${prefix}second.pdf"
+        engine.start(
+            request().copy(downloadId = "download-2", targetKey = secondTarget, targetPath = secondTarget),
+            rejectedObserver
+        )
+        assertEquals("cancelled", rejectedObserver.results.single().status)
+        assertEquals("target_directory_deleted", rejectedObserver.results.single().errorKind)
+
+        engine.finishTargetCleanup(firstTarget, target.token)
+        engine.finishDirectoryCleanup(prefix, directory.token)
+        val acceptedObserver = RecordingObserver()
+        engine.start(
+            request().copy(downloadId = "download-3", targetKey = secondTarget, targetPath = secondTarget),
+            acceptedObserver
+        )
+        assertTrue(acceptedObserver.results.isEmpty())
+        assertEquals(2, sinks.created.count { it.beginCount > 0 })
+    }
+
+    @Test
     fun overlappingTargetCleanupOwnersCannotReleaseEachOther() {
         val transport = FakeTransport()
         val sinks = FakeSinkFactory()

@@ -1,6 +1,5 @@
 package build.raft.app.shared
 
-import android.database.SQLException
 import android.graphics.BitmapFactory
 import java.io.File
 import java.util.Locale
@@ -10,52 +9,6 @@ internal data class AndroidGalleryImageValidation(
     val width: Int,
     val height: Int
 )
-
-internal data class LegacyAndroidGalleryInsertResult(
-    val uri: String,
-    val displayName: String,
-    val absolutePath: String
-)
-
-internal const val LEGACY_ANDROID_GALLERY_MAX_INSERT_ATTEMPTS = 100
-
-/**
- * Inserts a pre-Android-Q MediaStore image without ever binding to an existing user file.
- *
- * Old MediaProvider versions enforce a case-insensitive unique constraint on `_data`. A file
- * existence check handles the normal collision case, while advancing after a null/failed insert
- * closes the race between that check and the provider insert. Every candidate is attempted at
- * most once, so a persistent provider failure remains bounded.
- */
-internal fun insertLegacyAndroidGalleryImage(
-    directory: File,
-    requestedDisplayName: String,
-    pathExists: (File) -> Boolean = File::exists,
-    insertCandidate: (displayName: String, absolutePath: String) -> String?
-): LegacyAndroidGalleryInsertResult? {
-    for (index in 0 until LEGACY_ANDROID_GALLERY_MAX_INSERT_ATTEMPTS) {
-        val candidateName = legacyAndroidGalleryCandidateName(requestedDisplayName, index)
-        val candidateFile = File(directory, candidateName)
-        if (pathExists(candidateFile)) continue
-        val uri = try {
-            insertCandidate(candidateName, candidateFile.absolutePath)
-        } catch (_: SQLException) {
-            null
-        } ?: continue
-        return LegacyAndroidGalleryInsertResult(uri, candidateName, candidateFile.absolutePath)
-    }
-    return null
-}
-
-internal fun legacyAndroidGalleryCandidateName(displayName: String, collisionIndex: Int): String {
-    require(collisionIndex >= 0)
-    if (collisionIndex == 0) return displayName
-    val lastDot = displayName.lastIndexOf('.')
-    val hasExtension = lastDot > 0 && lastDot < displayName.lastIndex
-    val basename = if (hasExtension) displayName.substring(0, lastDot) else displayName
-    val extension = if (hasExtension) displayName.substring(lastDot) else ""
-    return "$basename ($collisionIndex)$extension"
-}
 
 internal fun validateAndroidGalleryImage(
     source: File,

@@ -530,6 +530,10 @@ jobs:
           set -euo pipefail
           APK="$(find compose/androidApp/build/outputs/apk/connectedTest -maxdepth 1 -type f -name '*.apk' | sort | head -n 1)"
           test -n "${APK}"
+          AAPT="$(find "${ANDROID_HOME}/build-tools" -type f -name aapt | sort -V | tail -n 1)"
+          test -x "${AAPT}"
+          "${AAPT}" dump badging "${APK}" | tee connectedtest-app-badging.txt
+          grep -Fq "sdkVersion:'29'" connectedtest-app-badging.txt
           compose/androidApp/src/test/scripts/check_networkkmm_curl_runtime_package.sh \
             --self-test \
             "${APK}"
@@ -728,6 +732,82 @@ jobs:
             durable-partition-migration-instrumentation.txt
             thread-newer-auto-pagination-instrumentation.txt
             thread-open-budget-telemetry.txt
+          if-no-files-found: warn
+          retention-days: 7
+
+  android-minimum-supported-attachment-runtime:
+    name: Android attachment authority (API 29 emulator)
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    needs: android
+    timeout-minutes: 20
+    steps:
+      - name: Free runner disk space for emulator
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Self-test instrumentation assertion helper
+        shell: bash
+        run: scripts/ci/test_assert_instrumentation_ok.sh
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Download connected-test APKs
+        uses: actions/download-artifact@v4
+        with:
+          name: android-connected-test-apks
+          path: android-connected-test-apks
+
+      - name: Verify minimum-supported app artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          app_apk="$(find android-connected-test-apks -type f -name '*connectedTest.apk' -not -name '*androidTest*' | head -n 1)"
+          test_apk="$(find android-connected-test-apks -type f -name '*androidTest.apk' | head -n 1)"
+          test -n "${app_apk}"
+          test -n "${test_apk}"
+          aapt_bin="$(find "${ANDROID_HOME}/build-tools" -type f -name aapt | sort -V | tail -n 1)"
+          test -x "${aapt_bin}"
+          "${aapt_bin}" dump badging "${app_apk}" | tee api29-connectedtest-app-badging.txt
+          grep -Fq "sdkVersion:'29'" api29-connectedtest-app-badging.txt
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run exact public-download authority on Android 10
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6_pro
+          ram-size: 4096M
+          cores: 2
+          emulator-boot-timeout: 1200
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-metrics
+          disable-animations: true
+          script: |
+            adb wait-for-device
+            adb install -r "$(find android-connected-test-apks -type f -name '*connectedTest.apk' -not -name '*androidTest*' | head -n 1)"
+            adb install -r "$(find android-connected-test-apks -type f -name '*androidTest.apk' | head -n 1)"
+            adb shell am instrument -w -r -e class build.raft.app.shared.AndroidAttachmentPublicDownloadsConnectedTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner | tee attachment-public-downloads-api29-instrumentation.txt
+            scripts/ci/assert-instrumentation-ok.sh attachment-public-downloads-api29-instrumentation.txt 1
+
+      - name: Upload Android 10 attachment evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: attachment-public-downloads-api29-evidence
+          path: |
+            api29-connectedtest-app-badging.txt
+            attachment-public-downloads-api29-instrumentation.txt
           if-no-files-found: warn
           retention-days: 7
 

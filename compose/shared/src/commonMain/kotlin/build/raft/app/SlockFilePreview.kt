@@ -870,6 +870,13 @@ private fun SlockFilePreviewStandalonePageContent() {
                 activeDownloadId = null
                 downloadStopped
             }
+            "missing" -> {
+                attachmentCacheState = false
+                attachmentCacheAttemptToken = null
+                attachmentCacheRecordVersion = null
+                activeDownloadId = null
+                result?.optString("message").orEmpty().ifBlank { unableToDownloadAttachment }
+            }
             "no_app" -> result?.optString("message").orEmpty().ifBlank { noAppCanOpenFile }
             "storage_failed" -> result?.optString("message").orEmpty().ifBlank { storageUnavailable }
             else -> result?.optString("message").orEmpty().ifBlank { unableToOpenAttachment }

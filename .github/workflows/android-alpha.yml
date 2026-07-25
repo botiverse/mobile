@@ -190,6 +190,7 @@ jobs:
           grep -q "package: name='build.raft.app.alpha'" aapt-badging.log
           grep -q "application-label:'Raft Alpha'" aapt-badging.log
           grep -q "versionName='[^']*-alpha'" aapt-badging.log
+          grep -q "^sdkVersion:'29'$" aapt-badging.log
           VERSION_CODE="$(sed -n "s/^package: .* versionCode='\([^']*\)'.*/\1/p" aapt-badging.log | head -n 1)"
           VERSION_NAME="$(sed -n "s/^package: .* versionName='\([^']*\)'.*/\1/p" aapt-badging.log | head -n 1)"
           test -n "${VERSION_CODE}"
@@ -253,7 +254,8 @@ jobs:
             echo "- Ref: \`${{ steps.source.outputs.sha }}\`"
             echo "- Package: \`build.raft.app.alpha\`"
             echo "- Version: \`${{ steps.verify.outputs.version_name }} (${{ steps.verify.outputs.version_code }})\`"
-            echo "- API 24-32 signer SHA-256: \`${{ steps.verify.outputs.legacy_signer_sha256 }}\`"
+            echo "- Minimum Android: 10 (API 29)"
+            echo "- API 29-32 signer SHA-256: \`${{ steps.verify.outputs.legacy_signer_sha256 }}\`"
             echo "- API 33+ signer SHA-256: \`${{ steps.verify.outputs.rotated_signer_sha256 }}\`"
             echo "- APK SHA-256: \`${{ steps.verify.outputs.sha256 }}\`"
             echo "- Hands native symbols SHA-256: \`${{ steps.native-symbols.outputs.sha256 }}\`"

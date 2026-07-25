@@ -550,7 +550,7 @@ android {
 
     defaultConfig {
         applicationId = slockAndroidApplicationId
-        minSdk = 24
+        minSdk = 29
         targetSdk = 36
         versionCode = slockAndroidVersionCode
         versionName = slockAndroidVersionName

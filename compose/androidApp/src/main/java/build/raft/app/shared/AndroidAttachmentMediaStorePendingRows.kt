@@ -2,10 +2,11 @@ package build.raft.app.shared
 
 import android.content.ContentResolver
 import android.content.Context
-import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import java.util.concurrent.Executors
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 internal const val ANDROID_ATTACHMENT_PENDING_NAME_PREFIX = ".raft-pending-"
@@ -21,15 +22,25 @@ internal fun isAppOwnedPendingAttachmentName(displayName: String): Boolean =
 /** Removes only app-tokenized Raft rows that are still pending. Published rows are never selected. */
 internal object ProcessAndroidAttachmentMediaStoreCleanup {
     private val started = AtomicBoolean(false)
+    private val completed = CountDownLatch(1)
     private val worker = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "attachment-mediastore-cleanup").apply { isDaemon = true }
     }
 
     fun start(context: Context) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || !started.compareAndSet(false, true)) return
+        if (!started.compareAndSet(false, true)) return
         val resolver = context.applicationContext.contentResolver
-        worker.execute { cleanupPendingRows(resolver) }
+        worker.execute {
+            try {
+                cleanupPendingRows(resolver)
+            } finally {
+                completed.countDown()
+            }
+        }
     }
+
+    fun awaitCompletion(timeoutMs: Long = 10_000L): Boolean =
+        completed.await(timeoutMs, TimeUnit.MILLISECONDS)
 
     private fun cleanupPendingRows(resolver: ContentResolver) {
         cleanupPendingRows(
