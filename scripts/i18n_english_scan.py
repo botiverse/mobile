@@ -25,6 +25,7 @@ from typing import Iterable
 
 DEFAULT_CATALOG_ROOT = Path("compose/shared/src/commonMain/resources/MR")
 DEFAULT_GLOSSARY = Path("docs/i18n-ja-glossary.md")
+DEFAULT_ALLOWLIST = Path("scripts/i18n_english_allowlist.json")
 
 FORMAT_PLACEHOLDER_RE = re.compile(
     r"%(?:\d+\$)?[-#+ 0,(<]*\d*(?:\.\d+)?(?:[a-zA-Z]|%)"
@@ -115,6 +116,25 @@ def glossary_latin_terms(path: Path) -> set[str]:
     return {term.strip() for term in re.findall(r"\*\*([^*]+)\*\*", paragraph) if term.strip()}
 
 
+def parse_allowlist(path: Path) -> dict[str, dict[str, str]]:
+    if not path.exists():
+        return {}
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"allowlist must be an object: {path}")
+    result: dict[str, dict[str, str]] = {}
+    for locale, entries in payload.items():
+        if not isinstance(locale, str) or not isinstance(entries, dict):
+            raise ValueError(f"allowlist locale entries must be objects: {path}")
+        locale_entries: dict[str, str] = {}
+        for key, reason in entries.items():
+            if not isinstance(key, str) or not isinstance(reason, str) or not reason.strip():
+                raise ValueError(f"allowlist entries require a non-empty reason: {locale}/{key}")
+            locale_entries[key] = reason.strip()
+        result[locale] = locale_entries
+    return result
+
+
 def remove_terms(text: str, terms: Iterable[str]) -> str:
     result = text
     for term in sorted(set(terms), key=len, reverse=True):
@@ -152,6 +172,7 @@ def scan_locale(
     localized: dict[str, str],
     base: dict[str, str],
     latin_terms: set[str],
+    allowlist: dict[str, str],
     mixed_threshold: float,
 ) -> tuple[list[Finding], list[Suppressed]]:
     findings: list[Finding] = []
@@ -160,6 +181,9 @@ def scan_locale(
         base_value = base.get(key, "")
         stripped = value.strip()
 
+        if key in allowlist:
+            suppressed.append(Suppressed(locale, key, f"reviewed allowlist: {allowlist[key]}", value))
+            continue
         if key.endswith("_bilingual"):
             suppressed.append(Suppressed(locale, key, "intentional bilingual string", value))
             continue
@@ -257,6 +281,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--base-locale", default="base")
     parser.add_argument("--locale", action="append", dest="locales")
     parser.add_argument("--glossary", type=Path, default=DEFAULT_GLOSSARY)
+    parser.add_argument("--allowlist", type=Path, default=DEFAULT_ALLOWLIST)
     parser.add_argument("--mixed-threshold", type=float, default=0.65)
     parser.add_argument("--format", choices=("markdown", "json"), default="markdown")
     parser.add_argument("--output", type=Path)
@@ -278,6 +303,7 @@ def main(argv: list[str] | None = None) -> int:
         if path.parent.name != args.base_locale
     ]
     terms = glossary_latin_terms(args.glossary)
+    allowlist = parse_allowlist(args.allowlist)
     findings: list[Finding] = []
     suppressed: list[Suppressed] = []
     for locale in locales:
@@ -294,6 +320,7 @@ def main(argv: list[str] | None = None) -> int:
             localized=localized,
             base=base,
             latin_terms=terms,
+            allowlist=allowlist.get(locale, {}),
             mixed_threshold=args.mixed_threshold,
         )
         findings.extend(locale_findings)

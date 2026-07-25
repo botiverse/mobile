@@ -1,0 +1,19 @@
+{
+  "ja": {
+    "agent_create_label_api_url": "API URL is a compact technical field label",
+    "agent_create_placeholder_name": "Noel is example identity data",
+    "auth_display_name_placeholder": "Alex Chen is example identity data",
+    "auth_username_placeholder": "alexchen is example identity data",
+    "channel_create_placeholder_name": "ai-research is an example channel slug",
+    "file_preview_image_placeholder": "IMG is a compact file-type marker",
+    "member_label_revision": "rev plus a version placeholder is a technical revision marker",
+    "member_role_android": "Android is a platform name",
+    "settings_computers_label_os": "OS is a compact technical field label",
+    "settings_computers_run_version": "v plus placeholders is a machine version value",
+    "settings_developer_web_url": "Web URL is a compact technical field label",
+    "settings_diagnostics_profiler_export_detail": "analyzer and profiler filenames identify the diagnostics tool contract",
+    "settings_diagnostics_state_sdk": "SDK is a compact technical state label",
+    "settings_section_founder_plan_title": "Founder is the proper name of the plan",
+    "thread_settings_name_placeholder": "ai-research is an example channel slug"
+  }
+}

@@ -25,6 +25,7 @@ class I18nEnglishScanTest(unittest.TestCase):
             localized={"common_save": "Save"},
             base={"common_save": "Save"},
             latin_terms=set(),
+            allowlist={},
             mixed_threshold=0.65,
         )
         self.assertEqual([], suppressed)
@@ -46,6 +47,7 @@ class I18nEnglishScanTest(unittest.TestCase):
                 "locale_tag": "en",
             },
             latin_terms={"Raft"},
+            allowlist={},
             mixed_threshold=0.65,
         )
         self.assertEqual([], findings)
@@ -57,6 +59,7 @@ class I18nEnglishScanTest(unittest.TestCase):
             localized={"diagnostic": "Retry connection を確認"},
             base={"diagnostic": "Retry connection"},
             latin_terms=set(),
+            allowlist={},
             mixed_threshold=0.65,
         )
         self.assertEqual(1, len(findings))
@@ -68,9 +71,23 @@ class I18nEnglishScanTest(unittest.TestCase):
             localized={"oauth_help": "OAuth 設定を開きます"},
             base={"oauth_help": "Open OAuth settings"},
             latin_terms={"OAuth"},
+            allowlist={},
             mixed_threshold=0.65,
         )
         self.assertEqual([], findings)
+
+    def test_reviewed_key_allowlist_requires_and_reports_reason(self) -> None:
+        findings, suppressed = scanner.scan_locale(
+            locale="ja",
+            localized={"member_role_android": "Android"},
+            base={"member_role_android": "Android"},
+            latin_terms=set(),
+            allowlist={"member_role_android": "Android is a platform name"},
+            mixed_threshold=0.65,
+        )
+        self.assertEqual([], findings)
+        self.assertEqual(1, len(suppressed))
+        self.assertIn("Android is a platform name", suppressed[0].reason)
 
 
 if __name__ == "__main__":
