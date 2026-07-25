@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.SharedHomeState
+import build.raft.app.data.realtime.SlockRealtimeNotifyContract
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
