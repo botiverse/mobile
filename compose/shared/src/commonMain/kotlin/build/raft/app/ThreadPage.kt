@@ -9109,6 +9109,7 @@ private const val THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_REPLIES = "inline_replies
 private const val THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_SELECTION = "share_selection"
 private const val THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_PREVIEW = "share_preview"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_LONG_INLINE_CODE = "long_inline_code"
+internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_LINK_REF = "md_link_ref"
 private const val THREAD_MESSAGE_VISUAL_FIXTURE_WIDE_MARKDOWN_WRAP = "wide_markdown_wrap"
 private const val THREAD_MESSAGE_VISUAL_FIXTURE_PERMALINK_CHIPS = "permalink_chips"
 private const val THREAD_MESSAGE_VISUAL_FIXTURE_PERMALINK_CHIPS_NARROW = "permalink_chips_narrow"
@@ -9722,6 +9723,72 @@ internal fun threadVisualFixture(
                             handle = "KMP-专家",
                             kind = "agent",
                             avatarLabel = "KM"
+                        )
+                    ),
+                showComposer = false,
+                joined = true,
+                composer =
+                    KuiklyThreadComposerPayload(
+                        instanceId = resolvedInstanceId,
+                        enabled = false
+                    )
+            )
+        THREAD_MESSAGE_VISUAL_FIXTURE_MD_LINK_REF ->
+            KuiklyThreadScreenPayload(
+                instanceId = resolvedInstanceId,
+                title = "#visual-testing",
+                subtitle = "Markdown link label owns nested refs (task #517)",
+                status = "content",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                streamChannelId = "channel-visual-testing",
+                sourceThreadId = "channel-visual-testing",
+                selectedTab = "chat",
+                showModeTabs = false,
+                showReplyActions = false,
+                alignOwnMessagesRight = false,
+                showMessageSaveAction = false,
+                showTaskOpenActions = false,
+                showTaskStatusActions = false,
+                knownMarkdownChannelNames = listOf("visual-testing"),
+                knownMarkdownMentionNames = listOf("artin"),
+                knownMarkdownTaskNumbers = listOf(1487),
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "msg_md_link_ref_visual",
+                            authorId = "agent-cindy",
+                            authorName = "Cindy",
+                            authorKind = "agent",
+                            avatarLabel = "CI",
+                            timestampLabel = "07/25 08:20",
+                            messageType = "Chat",
+                            // The Raft dialect contract this case guards: refs inside a
+                            // Markdown link label/destination stay part of that one blue
+                            // external link; only standalone refs outside links chip.
+                            body =
+                                "Review [#1487 feat(search): pin entities from long-press and channel settings](https://github.com/botiverse/mobile/pull/1487) then follow task #1487.\n\n" +
+                                    "Channel ref in label: [notes in #visual-testing](https://raft.build/visual-testing) and outside #visual-testing.\n\n" +
+                                    "Mention in label: [ping @artin](https://raft.build/mentions) and outside @artin.",
+                            threadChannelId = "thread-msg-md-link-ref-visual",
+                            replyCount = 0,
+                            unreadReplyCount = 0
+                        )
+                    ),
+                members =
+                    listOf(
+                        KuiklyThreadMemberItem(
+                            id = "agent-cindy",
+                            displayName = "Cindy",
+                            handle = "Cindy",
+                            kind = "agent",
+                            avatarLabel = "CI"
+                        ),
+                        KuiklyThreadMemberItem(
+                            id = "visual-user",
+                            displayName = "artin",
+                            handle = "artin",
+                            kind = "human",
+                            avatarLabel = "AR"
                         )
                     ),
                 showComposer = false,

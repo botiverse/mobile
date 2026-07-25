@@ -1395,6 +1395,19 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureThreadMessageRowMdLinkRef() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.md-link-ref",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-md-link-ref")
+                    .put("visualFixture", "md_link_ref"),
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
+        )
+    }
+
+    @Test
     fun captureThreadMessageRowMdWrapSlice1() {
         captureKmpComponentCase(
             caseId = "components.thread.message-row.md-wrap-slice1",
