@@ -1706,25 +1706,6 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun threadOlderPageAnchorRestoresOriginalTopFlingButYieldsToLaterDrag() {
-        // The load itself starts while the top fling is still settling. That
-        // inertial isScrollInProgress state must not suppress anchor restore;
-        // only a direct pointer move after capture transfers viewport ownership.
-        assertTrue(
-            shouldRestoreThreadOlderPageAnchor(
-                capturedUserScrollGeneration = 7,
-                currentUserScrollGeneration = 7
-            )
-        )
-        assertFalse(
-            shouldRestoreThreadOlderPageAnchor(
-                capturedUserScrollGeneration = 7,
-                currentUserScrollGeneration = 8
-            )
-        )
-    }
-
-    @Test
     fun threadBottomAnchorOffsetBottomAlignsShortLatestItemInLongLists() {
         assertEquals(
             -520,

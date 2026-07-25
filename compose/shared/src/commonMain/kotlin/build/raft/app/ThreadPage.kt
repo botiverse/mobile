@@ -408,6 +408,53 @@ internal fun threadShareCaptureAnchorListItemIndex(
         targetIndex
     }
 
+internal fun threadShareCaptureAnchorTarget(
+    targetIndex: Int,
+    anchorBeforeTarget: Boolean,
+    originVisible: Boolean,
+    historyBoundaryVisible: Boolean,
+    messageIds: List<String>
+): LazyViewportAnchorTarget? {
+    if (targetIndex < 0) return null
+    val scrollIndex =
+        threadShareCaptureAnchorListItemIndex(
+            targetIndex = targetIndex,
+            anchorBeforeTarget = anchorBeforeTarget
+        )
+    var nextIndex = 0
+    if (originVisible) {
+        if (scrollIndex == nextIndex) {
+            return LazyViewportAnchorTarget.StableItem(ThreadOriginListItemKey)
+        }
+        nextIndex += 1
+    }
+    if (historyBoundaryVisible) {
+        if (scrollIndex == nextIndex) {
+            return LazyViewportAnchorTarget.StableItem(ThreadOlderMessagesListItemKey)
+        }
+        nextIndex += 1
+    }
+    return messageIds
+        .getOrNull(scrollIndex - nextIndex)
+        ?.let { messageId -> LazyViewportAnchorTarget.Message(messageId) }
+}
+
+internal fun threadStableViewportListItemIndex(
+    key: String,
+    originVisible: Boolean,
+    historyBoundaryVisible: Boolean
+): Int =
+    when (key) {
+        ThreadOriginListItemKey -> if (originVisible) 0 else -1
+        ThreadOlderMessagesListItemKey ->
+            if (historyBoundaryVisible) {
+                if (originVisible) 1 else 0
+            } else {
+                -1
+            }
+        else -> -1
+    }
+
 private data class ThreadSharePreviewImage(
     val uri: String,
     val path: String,
@@ -13278,6 +13325,20 @@ private fun ThreadMessagesList(
         initialFirstVisibleItemIndex =
             threadInitialFirstVisibleItemIndex(latestItemIndex = latestItemIndex)
     )
+    var viewportControllerState by remember(threadInstanceKey) {
+        mutableStateOf(LazyViewportControllerState())
+    }
+    var viewportLayoutGeneration by remember(threadInstanceKey) { mutableStateOf(0L) }
+    val dispatchViewportEvent: (LazyViewportEvent) -> Unit = { event ->
+        viewportControllerState = reduceLazyViewport(viewportControllerState, event)
+    }
+    suspend fun awaitViewportCommandSettlement(commandId: LazyViewportCommandId) {
+        snapshotFlow {
+            viewportControllerState.epoch to viewportControllerState.pendingCommand?.id
+        }.first { (epoch, pendingId) ->
+            epoch != commandId.epoch || pendingId == null
+        }
+    }
     var measuredThreadViewportHeightDp by remember(threadInstanceKey) { mutableStateOf(0f) }
     val viewportMeasurementReady = threadViewportMeasurementReady(measuredThreadViewportHeightDp)
     val threadLazyWindowConsumerCounts =
@@ -13324,6 +13385,15 @@ private fun ThreadMessagesList(
         mutableStateOf<Set<String>>(emptySet())
     }
     val longMessageItemHeights = remember(threadInstanceKey) { mutableMapOf<String, Int>() }
+    val recordMessageItemHeight: (String, Int) -> Unit = { messageId, height ->
+        val previousHeight = longMessageItemHeights.put(messageId, height)
+        if (previousHeight != null && previousHeight != height) {
+            viewportLayoutGeneration += 1L
+            dispatchViewportEvent(
+                LazyViewportEvent.ContentMutated(LazyViewportMutation.HeightChange)
+            )
+        }
+    }
     val toggleLongMessage: (String, Int) -> Unit = { messageId, listItemIndex ->
         val collapsing = messageId in expandedLongMessageIds
         val firstVisibleItemIndex = listState.firstVisibleItemIndex
@@ -13346,7 +13416,14 @@ private fun ThreadMessagesList(
                         collapsedItemHeight = longMessageItemHeights[messageId] ?: 0
                     ) ?: return@launch
                 if (!listState.isScrollInProgress && listState.canScrollToThreadItem(listItemIndex)) {
-                    listState.scrollToItem(listItemIndex, anchorOffset)
+                    dispatchViewportEvent(
+                        LazyViewportEvent.Anchor(
+                            target = LazyViewportAnchorTarget.Message(messageId),
+                            offset = -anchorOffset,
+                            layoutGeneration = viewportLayoutGeneration,
+                            fallback = LazyViewportAnchorFallback.Free
+                        )
+                    )
                 }
             }
         }
@@ -13595,6 +13672,97 @@ private fun ThreadMessagesList(
     val currentPayloadState = rememberUpdatedState(renderPayload)
     val currentLatestItemIndexState = rememberUpdatedState(latestItemIndex)
     val currentThreadInstanceKeyState = rememberUpdatedState(threadInstanceKey)
+    val currentViewportControllerState = rememberUpdatedState(viewportControllerState)
+    var previousViewportMessageIds by remember(threadInstanceKey) {
+        mutableStateOf(renderPayload.messages.map { message -> message.id })
+    }
+    LaunchedEffect(threadInstanceKey, messageIndexSignature) {
+        val nextIds = renderPayload.messages.map { message -> message.id }
+        val previousIds = previousViewportMessageIds
+        previousViewportMessageIds = nextIds
+        if (previousIds == nextIds) return@LaunchedEffect
+        val mutation =
+            when {
+                previousIds.isEmpty() || nextIds.take(previousIds.size) == previousIds ->
+                    LazyViewportMutation.Append
+                nextIds.takeLast(previousIds.size) == previousIds ->
+                    LazyViewportMutation.Prepend
+                else -> LazyViewportMutation.HeightChange
+            }
+        viewportLayoutGeneration += 1L
+        dispatchViewportEvent(LazyViewportEvent.ContentMutated(mutation))
+    }
+    // THREAD_VIEWPORT_EXECUTOR_START: the only production owner allowed to mutate listState.
+    LaunchedEffect(threadInstanceKey, viewportControllerState.pendingCommand?.id) {
+        val command = viewportControllerState.pendingCommand ?: return@LaunchedEffect
+        if (!currentViewportControllerState.value.accepts(command)) return@LaunchedEffect
+        listState.awaitThreadMessagesLayoutFrame()
+        if (!currentViewportControllerState.value.accepts(command)) return@LaunchedEffect
+        val executed =
+            when (val target = command.target) {
+                is LazyViewportCommandTarget.Top -> {
+                    if (!currentViewportControllerState.value.accepts(command)) return@LaunchedEffect
+                    if (target.animated) {
+                        slockExpressiveTopSettleAnchor(
+                            firstVisibleItemIndex = listState.firstVisibleItemIndex,
+                            visibleItemCount = listState.layoutInfo.visibleItemsInfo.size
+                        )?.let { anchor ->
+                            listState.scrollToItem(anchor)
+                            if (!currentViewportControllerState.value.accepts(command)) return@LaunchedEffect
+                        }
+                        listState.animateScrollToItem(0)
+                        if (!currentViewportControllerState.value.accepts(command)) return@LaunchedEffect
+                    } else {
+                        listState.scrollToItem(0)
+                        if (!currentViewportControllerState.value.accepts(command)) return@LaunchedEffect
+                    }
+                    true
+                }
+                LazyViewportCommandTarget.Latest -> {
+                    val targetIndex = currentLatestItemIndexState.value
+                    if (targetIndex < 0) {
+                        false
+                    } else {
+                        if (!currentViewportControllerState.value.accepts(command)) return@LaunchedEffect
+                        listState.scrollLatestItemToRenderedBottom(targetIndex) {
+                            currentViewportControllerState.value.accepts(command)
+                        }
+                        if (!currentViewportControllerState.value.accepts(command)) return@LaunchedEffect
+                        true
+                    }
+                }
+                is LazyViewportCommandTarget.Anchor -> {
+                    val targetIndex = currentPayloadState.value.threadViewportListItemIndex(target.target)
+                    if (targetIndex < 0 || !listState.canScrollToThreadItem(targetIndex)) {
+                        dispatchViewportEvent(LazyViewportEvent.AnchorUnavailable(command.id))
+                        false
+                    } else {
+                        if (!currentViewportControllerState.value.accepts(command)) return@LaunchedEffect
+                        val anchorExecuted =
+                            when (target.placement) {
+                                LazyViewportAnchorPlacement.ExactOffset -> {
+                                    listState.scrollToItem(targetIndex, -target.offset)
+                                    true
+                                }
+                                LazyViewportAnchorPlacement.Focused ->
+                                    listState.scrollThreadItemToFocusedViewport(targetIndex) {
+                                        currentViewportControllerState.value.accepts(command)
+                                    }
+                            }
+                        if (!currentViewportControllerState.value.accepts(command)) return@LaunchedEffect
+                        anchorExecuted
+                    }
+                }
+            }
+        if (currentViewportControllerState.value.accepts(command)) {
+            if (executed) {
+                dispatchViewportEvent(LazyViewportEvent.CommandConsumed(command.id))
+            } else if (command.target is LazyViewportCommandTarget.Anchor) {
+                dispatchViewportEvent(LazyViewportEvent.AnchorUnavailable(command.id))
+            }
+        }
+    }
+    // THREAD_VIEWPORT_EXECUTOR_END
     val headerScrollToTopRequestFence =
         remember(threadInstanceKey) { AppShellScrollToTopRequestFence(headerScrollToTopRequest) }
     LaunchedEffect(threadInstanceKey, headerScrollToTopRequest, lazyItemCount) {
@@ -13614,12 +13782,11 @@ private fun ThreadMessagesList(
         allowBottomAutoAnchor = false
         initialBottomAnchorReady = true
         userScrollGeneration.value += 1
+        dispatchViewportEvent(LazyViewportEvent.PinTop)
         diagnosticsLogger(
             "thread_header_scroll_to_top request=$headerScrollToTopRequest " +
                 "firstVisible=${listState.firstVisibleItemIndex} totalItems=$lazyItemCount"
         )
-        listState.awaitThreadMessagesLayoutFrame()
-        listState.animateScrollToTopExpressive()
     }
     LaunchedEffect(
         threadInstanceKey,
@@ -13655,18 +13822,34 @@ private fun ThreadMessagesList(
         selectedShareMessageIds.forEach { messageId ->
             onShareSelectionBounds(messageId, null)
         }
-        listState.scrollToItem(
-            scrollIndex,
+        val scrollTarget =
+            threadShareCaptureAnchorTarget(
+                targetIndex = targetIndex,
+                anchorBeforeTarget = shareSelectionCaptureAnchorBeforeTarget,
+                originVisible = renderPayload.hasThreadOriginItem(),
+                historyBoundaryVisible = renderPayload.hasThreadHistoryBoundaryItem(),
+                messageIds = renderPayload.messages.map { message -> message.id }
+            ) ?: return@LaunchedEffect
+        val desiredScrollOffset =
             if (shareSelectionCaptureAnchorBeforeTarget) 0 else shareSelectionCaptureScrollOffsetPx
+        dispatchViewportEvent(
+            LazyViewportEvent.Anchor(
+                target = scrollTarget,
+                offset = -desiredScrollOffset,
+                layoutGeneration = viewportLayoutGeneration,
+                fallback = LazyViewportAnchorFallback.Free
+            )
         )
-        listState.awaitThreadMessagesLayoutFrame()
+        val commandId = viewportControllerState.pendingCommand?.id
+        if (commandId != null) {
+            awaitViewportCommandSettlement(commandId)
+        }
         delay(ThreadShareCaptureScrollSettleMs)
         diagnosticsLogger(
             "thread_share_anchor_complete messageId=$anchorMessageId " +
                 "visible=${listState.layoutInfo.visibleItemsInfo.joinToString(",") { it.index.toString() }}"
         )
     }
-    var pendingOlderPageAnchor by remember(threadInstanceKey) { mutableStateOf<ThreadVisibleMessageAnchor?>(null) }
     var previousOlderMessagesStatus by remember(threadInstanceKey) { mutableStateOf(renderPayload.olderMessagesStatus) }
     var olderPageCycleActive by remember(threadInstanceKey) { mutableStateOf(false) }
     var olderPageSettledUserScrollGeneration by remember(threadInstanceKey) { mutableStateOf(0) }
@@ -13695,10 +13878,6 @@ private fun ThreadMessagesList(
         }
         allowBottomAutoAnchor = false
         withFrameNanos { }
-        val anchor = cycle.anchor
-        if (anchor != null) {
-            listState.awaitThreadMessagesLayoutFrame()
-        }
         if (!shouldSettleThreadNewerPageCycle(
                 cycleThreadInstanceKey = cycle.threadInstanceKey,
                 currentThreadInstanceKey = currentThreadInstanceKeyState.value,
@@ -13707,38 +13886,6 @@ private fun ThreadMessagesList(
             )
         ) {
             return
-        }
-        val focusedViewportOwnerActive =
-            focusedMessageAnchorOwnsViewport(
-                pendingIdentity = pendingFocusedMessageAnchorIdentityState.value,
-                consumedIdentity = consumedFocusedMessageAnchorIdentity,
-                scrollInterruptedIdentity = scrollInterruptedFocusedMessageAnchorIdentity,
-                yieldElapsedMs = bottomAnchorFocusedYieldElapsedMs
-            )
-        if (
-            anchor != null &&
-            shouldRestoreThreadNewerPageAnchor(
-                capturedUserScrollGeneration = anchor.userScrollGeneration,
-                currentUserScrollGeneration = userScrollGeneration.value,
-                focusedViewportOwnerActive = focusedViewportOwnerActive
-            )
-        ) {
-            val targetIndex = currentPayloadState.value.threadMessageListItemIndex(anchor.messageId)
-            if (targetIndex >= 0) {
-                listState.scrollToItem(targetIndex, -anchor.offset)
-                diagnosticsLogger(
-                    "thread_newer_anchor_restore result=restored messageId=${anchor.messageId} " +
-                        "targetIndex=$targetIndex offset=${anchor.offset} " +
-                        "userScrollGeneration=${userScrollGeneration.value}"
-                )
-            }
-        } else if (anchor != null) {
-            diagnosticsLogger(
-                "thread_newer_anchor_restore result=skipped_viewport_owner messageId=${anchor.messageId} " +
-                    "capturedUserScrollGeneration=${anchor.userScrollGeneration} " +
-                    "currentUserScrollGeneration=${userScrollGeneration.value} " +
-                    "focusedViewportOwnerActive=$focusedViewportOwnerActive"
-            )
         }
         // Consume every newer-directed gesture observed through this request,
         // including a second gesture while the page was in flight. Only a
@@ -13750,25 +13897,19 @@ private fun ThreadMessagesList(
         if (newerPageCycle != null || !renderPayload.canLoadMoreAfter) {
             return@request
         }
-        val anchor =
-            listState.threadFirstVisibleMessageAnchor(
-                timelineSlice = renderPayload,
-                userScrollGeneration = userScrollGeneration.value
-            )
         val cycleId = nextNewerPageCycleId + 1L
         nextNewerPageCycleId = cycleId
         newerPageCycle =
             ThreadNewerPageCycle(
                 id = cycleId,
-                threadInstanceKey = threadInstanceKey,
-                anchor = anchor
+                threadInstanceKey = threadInstanceKey
             )
         allowBottomAutoAnchor = false
         diagnosticsLogger(
             "thread_newer_page_cycle result=requested event=$event " +
                 "demandGeneration=$newerDemandGeneration " +
-                "messageId=${anchor?.messageId.orEmpty()} offset=${anchor?.offset ?: 0} " +
-                "userScrollGeneration=${anchor?.userScrollGeneration ?: userScrollGeneration.value}"
+                "viewportIntent=${viewportControllerState.intent} " +
+                "userScrollGeneration=${userScrollGeneration.value}"
         )
         coroutineScope.launch {
             try {
@@ -13896,7 +14037,9 @@ private fun ThreadMessagesList(
             .distinctUntilChanged()
             .collect { (cycleActive, state) ->
                 if (!cycleActive && shouldAutoCorrectThreadBottomAnchor(state)) {
-                    listState.scrollLatestItemToRenderedBottom(latestItemIndex)
+                    dispatchViewportEvent(
+                        LazyViewportEvent.ContentMutated(LazyViewportMutation.HeightChange)
+                    )
                 }
             }
     }
@@ -13943,49 +14086,19 @@ private fun ThreadMessagesList(
         val previousStatus = previousOlderMessagesStatus
         if (renderPayload.olderMessagesStatus == "loading" && previousStatus != "loading") {
             olderPageCycleActive = true
-            pendingOlderPageAnchor =
-                listState.threadFirstVisibleMessageAnchor(
-                    timelineSlice = renderPayload,
-                    userScrollGeneration = userScrollGeneration.value
-                )
             allowBottomAutoAnchor = false
-            pendingOlderPageAnchor?.let { anchor ->
-                diagnosticsLogger(
-                    "thread_older_anchor_capture messageId=${anchor.messageId} offset=${anchor.offset} " +
-                        "userScrollGeneration=${anchor.userScrollGeneration} " +
-                        "isScrollInProgress=${listState.isScrollInProgress}"
-                )
-            }
+            diagnosticsLogger(
+                "thread_older_page_cycle result=loading " +
+                    "viewportIntent=${viewportControllerState.intent} " +
+                    "isScrollInProgress=${listState.isScrollInProgress}"
+            )
         } else if (previousStatus == "loading" && renderPayload.olderMessagesStatus != "loading") {
-            val anchor = pendingOlderPageAnchor
-            pendingOlderPageAnchor = null
             allowBottomAutoAnchor = false
-            if (anchor != null) {
-                listState.awaitThreadMessagesLayoutFrame()
-            }
-            if (
-                anchor != null &&
-                shouldRestoreThreadOlderPageAnchor(
-                    capturedUserScrollGeneration = anchor.userScrollGeneration,
-                    currentUserScrollGeneration = userScrollGeneration.value
-                )
-            ) {
-                val targetIndex = renderPayload.threadMessageListItemIndex(anchor.messageId)
-                if (targetIndex >= 0) {
-                    listState.scrollToItem(targetIndex, -anchor.offset)
-                    diagnosticsLogger(
-                        "thread_older_anchor_restore result=restored messageId=${anchor.messageId} " +
-                            "targetIndex=$targetIndex offset=${anchor.offset} " +
-                            "userScrollGeneration=${userScrollGeneration.value}"
-                    )
-                }
-            } else if (anchor != null) {
-                diagnosticsLogger(
-                    "thread_older_anchor_restore result=skipped_user_moved messageId=${anchor.messageId} " +
-                        "capturedUserScrollGeneration=${anchor.userScrollGeneration} " +
-                        "currentUserScrollGeneration=${userScrollGeneration.value}"
-                )
-            }
+            diagnosticsLogger(
+                "thread_older_page_cycle result=settled " +
+                    "viewportIntent=${viewportControllerState.intent} " +
+                    "userScrollGeneration=${userScrollGeneration.value}"
+            )
             // A completed prepend consumes every pointer move observed through
             // that cycle. Require a fresh direct drag before another older page
             // can start; otherwise the transient top layout after 50 -> 100
@@ -14042,6 +14155,11 @@ private fun ThreadMessagesList(
         latestLocalSendBottomAnchorStartUserScrollGeneration = userScrollGeneration.value
         latestLocalSendBottomAnchorActiveKey = latestLocalSendBottomAnchorKey
         allowBottomAutoAnchor = true
+        // THREAD_LOCAL_SEND_VIEWPORT_HANDOFF_START
+        dispatchViewportEvent(
+            LazyViewportEvent.FollowLatest(canOverrideUserDragging = false)
+        )
+        // THREAD_LOCAL_SEND_VIEWPORT_HANDOFF_END
     }
     LaunchedEffect(threadInstanceKey, latestLocalSendBottomAnchorActiveKey) {
         val anchorKey = latestLocalSendBottomAnchorActiveKey ?: return@LaunchedEffect
@@ -14060,7 +14178,11 @@ private fun ThreadMessagesList(
                 attempt = attempt
             )
         ) {
-            listState.scrollLatestItemToRenderedBottom(currentLatestItemIndexState.value)
+            dispatchViewportEvent(LazyViewportEvent.ContentMutated(LazyViewportMutation.Append))
+            val commandId = viewportControllerState.pendingCommand?.id
+            if (commandId != null) {
+                awaitViewportCommandSettlement(commandId)
+            }
             delay(ThreadLayoutStabilityFrameDelayMs)
             attempt += 1
         }
@@ -14104,17 +14226,23 @@ private fun ThreadMessagesList(
             scrollInterruptedFocusedMessageAnchorIdentity = targetIdentity
             return@LaunchedEffect
         }
-        if (!listState.isThreadItemVisible(targetIndex)) {
-            listState.scrollToItem(targetIndex)
-            delay(ThreadLayoutStabilityFrameDelayMs)
-        }
         activeFocusedMessageId = targetMessageId
         allowBottomAutoAnchor = false
         initialBottomAnchorReady = true
-        val didFocus =
-            listState.scrollThreadItemToFocusedViewport(
-                itemIndex = targetIndex
+        dispatchViewportEvent(
+            LazyViewportEvent.Anchor(
+                target = LazyViewportAnchorTarget.Message(targetMessageId),
+                offset = 0,
+                layoutGeneration = viewportLayoutGeneration,
+                placement = LazyViewportAnchorPlacement.Focused,
+                fallback = LazyViewportAnchorFallback.Free
             )
+        )
+        val focusCommandId = viewportControllerState.pendingCommand?.id
+        if (focusCommandId != null) {
+            awaitViewportCommandSettlement(focusCommandId)
+        }
+        val didFocus = listState.focusedAnchorTargetOffset(targetIndex) != null
         if (!didFocus) {
             diagnosticsLogger(
                 "thread_focused_message_anchor result=scroll_skipped_unmeasured " +
@@ -14189,7 +14317,19 @@ private fun ThreadMessagesList(
                             "originStatus=${renderPayload.originStatus} totalItems=${listState.layoutInfo.totalItemsCount} " +
                             "firstVisible=${listState.firstVisibleItemIndex} messageId=$targetMessageId"
                     )
-                    listState.scrollThreadItemToFocusedViewport(targetIndex)
+                    dispatchViewportEvent(
+                        LazyViewportEvent.Anchor(
+                            target = LazyViewportAnchorTarget.Message(targetMessageId),
+                            offset = 0,
+                            layoutGeneration = viewportLayoutGeneration,
+                            placement = LazyViewportAnchorPlacement.Focused,
+                            fallback = LazyViewportAnchorFallback.Free
+                        )
+                    )
+                    val reanchorCommandId = viewportControllerState.pendingCommand?.id
+                    if (reanchorCommandId != null) {
+                        awaitViewportCommandSettlement(reanchorCommandId)
+                    }
                     anchoredOffset = listState.focusedAnchorTargetOffset(targetIndex)
                     quietMs = 0L
                 }
@@ -14247,7 +14387,20 @@ private fun ThreadMessagesList(
             return@LaunchedEffect
         }
         correctedFocusedOriginIdentity = targetIdentity
-        val corrected = listState.scrollThreadItemToFocusedViewport(targetIndex)
+        dispatchViewportEvent(
+            LazyViewportEvent.Anchor(
+                target = LazyViewportAnchorTarget.Message(targetMessageId),
+                offset = 0,
+                layoutGeneration = viewportLayoutGeneration,
+                placement = LazyViewportAnchorPlacement.Focused,
+                fallback = LazyViewportAnchorFallback.Free
+            )
+        )
+        val correctionCommandId = viewportControllerState.pendingCommand?.id
+        if (correctionCommandId != null) {
+            awaitViewportCommandSettlement(correctionCommandId)
+        }
+        val corrected = listState.focusedAnchorTargetOffset(targetIndex) != null
         diagnosticsLogger(
             "thread_focused_origin_correction result=${if (corrected) "corrected" else "skipped_unmeasured"} " +
                 "messageId=$targetMessageId targetIndex=$targetIndex originStatus=${renderPayload.originStatus} " +
@@ -14263,7 +14416,14 @@ private fun ThreadMessagesList(
         }
         allowBottomAutoAnchor = false
         initialBottomAnchorReady = true
-        listState.scrollToItem(match.listItemIndex)
+        dispatchViewportEvent(
+            LazyViewportEvent.Anchor(
+                target = LazyViewportAnchorTarget.Message(match.messageId),
+                offset = 0,
+                layoutGeneration = viewportLayoutGeneration,
+                fallback = LazyViewportAnchorFallback.Free
+            )
+        )
     }
     LaunchedEffect(threadInstanceKey, activeFocusedMessageId) {
         val highlightedMessageId = activeFocusedMessageId ?: return@LaunchedEffect
@@ -14297,7 +14457,7 @@ private fun ThreadMessagesList(
         // task #567: while a focused-message anchor request is pending, the
         // bottom anchor must not touch the viewport at all — it was the second
         // scroll actor racing the focused anchor on cold entry
-        // (anchorInitialThreadBottomToLatest is a multi-step suspend that can
+        // (the old initial anchor was a multi-step suspend that could
         // land a scroll after the focused anchor positioned the target). The
         // yield is bounded: if the focused target never becomes anchorable
         // (deleted message, failed context fetch), normal bottom anchoring
@@ -14354,8 +14514,15 @@ private fun ThreadMessagesList(
                     initialBottomAnchorReady = true
                     return@LaunchedEffect
                 }
+                dispatchViewportEvent(
+                    LazyViewportEvent.FollowLatest(canOverrideUserDragging = false)
+                )
+                val initialCommandId = viewportControllerState.pendingCommand?.id
+                if (initialCommandId != null) {
+                    awaitViewportCommandSettlement(initialCommandId)
+                }
                 val anchored =
-                    listState.anchorInitialThreadBottomToLatest(
+                    listState.isLatestItemAtRenderedBottom(
                         latestItemIndex = initialBottomAnchorTargetItemIndex,
                         trailingPaddingSize = initialBottomAnchorTrailingPaddingPx
                     )
@@ -14392,7 +14559,7 @@ private fun ThreadMessagesList(
             return@LaunchedEffect
         }
         if (!listState.isLatestItemAtRenderedBottom(latestItemIndex)) {
-            listState.scrollLatestItemToRenderedBottom(latestItemIndex)
+            dispatchViewportEvent(LazyViewportEvent.ContentMutated(LazyViewportMutation.HeightChange))
         }
     }
     LaunchedEffect(
@@ -14447,16 +14614,11 @@ private fun ThreadMessagesList(
         }
         allowBottomAutoAnchor = true
         pendingKeyboardBottomAnchor = true
-        listState.awaitThreadMessagesLayoutStability(latestItemIndex)
-        repeat(ThreadKeyboardBottomAnchorAttempts) { attempt ->
-            listState.scrollLatestItemToRenderedBottom(latestItemIndex)
-            delay(ThreadLayoutStabilityFrameDelayMs)
-            if (attempt >= ThreadBottomAnchorMinimumAttempts &&
-                listState.isLatestItemAtRenderedBottom(latestItemIndex)
-            ) {
-                pendingKeyboardBottomAnchor = false
-                return@LaunchedEffect
-            }
+        viewportLayoutGeneration += 1L
+        dispatchViewportEvent(LazyViewportEvent.ContentMutated(LazyViewportMutation.InsetChange))
+        val insetCommandId = viewportControllerState.pendingCommand?.id
+        if (insetCommandId != null) {
+            awaitViewportCommandSettlement(insetCommandId)
         }
         pendingKeyboardBottomAnchor = false
     }
@@ -14477,7 +14639,12 @@ private fun ThreadMessagesList(
                                 pointerY = position.y,
                                 touchSlop = touchSlop
                             )
-                        if (type == TouchType.Move) {
+                        when (type) {
+                            TouchType.Down -> {
+                                dispatchViewportEvent(LazyViewportEvent.PointerDown)
+                            }
+                            TouchType.Move -> {
+                                dispatchViewportEvent(LazyViewportEvent.PointerMove)
                             // Count every direct pointer move, not inertial/programmatic
                             // scrolling. Older-page completion may safely cancel the
                             // original top fling and restore its message anchor, but a
@@ -14497,6 +14664,38 @@ private fun ThreadMessagesList(
                             if (latestLocalSendBottomAnchorActiveKey != null) {
                                 latestLocalSendBottomAnchorActiveKey = null
                                 allowBottomAutoAnchor = false
+                            }
+                            }
+                            TouchType.Up -> {
+                                val settlingEpoch = viewportControllerState.epoch
+                                coroutineScope.launch {
+                                    withFrameNanos { }
+                                    snapshotFlow { listState.isScrollInProgress }
+                                        .first { inProgress -> !inProgress }
+                                    if (
+                                        viewportControllerState.epoch != settlingEpoch ||
+                                        viewportControllerState.intent != LazyViewportIntent.UserDragging
+                                    ) {
+                                        return@launch
+                                    }
+                                    val anchor =
+                                        listState.threadFirstVisibleMessageAnchor(
+                                            timelineSlice = currentPayloadState.value,
+                                            userScrollGeneration = userScrollGeneration.value
+                                        )
+                                    dispatchViewportEvent(
+                                        LazyViewportEvent.PointerSettled(
+                                            epoch = settlingEpoch,
+                                            atRenderedBottom =
+                                                listState.isLatestItemAtRenderedBottom(
+                                                    currentLatestItemIndexState.value
+                                                ),
+                                            anchorMessageId = anchor?.messageId,
+                                            anchorOffset = anchor?.offset ?: 0,
+                                            layoutGeneration = viewportLayoutGeneration
+                                        )
+                                    )
+                                }
                             }
                         }
                     }
@@ -14518,7 +14717,7 @@ private fun ThreadMessagesList(
                                 .fillMaxWidth()
                                 .onGloballyPositioned { coordinates ->
                                     renderPayload.originMessage?.id?.let { messageId ->
-                                        longMessageItemHeights[messageId] = coordinates.size.height
+                                        recordMessageItemHeight(messageId, coordinates.size.height)
                                     }
                                 },
                         renderConfig = renderConfig,
@@ -14717,7 +14916,7 @@ private fun ThreadMessagesList(
                         Modifier
                             .fillMaxWidth()
                             .onGloballyPositioned { coordinates ->
-                                longMessageItemHeights[message.id] = coordinates.size.height
+                                recordMessageItemHeight(message.id, coordinates.size.height)
                             }
                 ) {
                     dateDividerLabel?.let { label ->
@@ -14978,14 +15177,12 @@ private fun ThreadMessagesList(
                     coroutineScope.launch {
                         try {
                             allowBottomAutoAnchor = true
-                            for (attempt in 0 until ThreadBackToBottomAnchorAttempts) {
-                                listState.scrollLatestItemToRenderedBottom(latestItemIndex)
-                                if (attempt >= ThreadBottomAnchorMinimumAttempts &&
-                                    listState.isLatestItemAtRenderedBottom(latestItemIndex)
-                                ) {
-                                    break
-                                }
-                                delay(16)
+                            dispatchViewportEvent(
+                                LazyViewportEvent.FollowLatest(canOverrideUserDragging = true)
+                            )
+                            val commandId = viewportControllerState.pendingCommand?.id
+                            if (commandId != null) {
+                                awaitViewportCommandSettlement(commandId)
                             }
                         } finally {
                             // A new user drag can cancel the scroll mutation.
@@ -15585,6 +15782,19 @@ private fun KuiklyThreadScreenPayload.threadMessageListItemIndex(messageId: Stri
     return firstMessageListItemIndex() + messageIndex
 }
 
+private fun ThreadTimelineSlice.threadViewportListItemIndex(
+    target: LazyViewportAnchorTarget
+): Int =
+    when (target) {
+        is LazyViewportAnchorTarget.Message -> threadMessageListItemIndex(target.messageId)
+        is LazyViewportAnchorTarget.StableItem ->
+            threadStableViewportListItemIndex(
+                key = target.key,
+                originVisible = hasThreadOriginItem(),
+                historyBoundaryVisible = hasThreadHistoryBoundaryItem()
+            )
+    }
+
 // A focused-message anchor request is identified by (message id, request
 // nonce) ONLY. Timeline signature / item count deliberately do not participate:
 // they change on secondary refresh, realtime arrivals, and older pages, and a
@@ -15933,8 +16143,7 @@ private data class ThreadVisibleMessageAnchor(
 
 private data class ThreadNewerPageCycle(
     val id: Long,
-    val threadInstanceKey: String,
-    val anchor: ThreadVisibleMessageAnchor?
+    val threadInstanceKey: String
 )
 
 private class ThreadUserScrollGeneration(
@@ -15962,11 +16171,6 @@ private fun LazyListState.threadFirstVisibleMessageAnchor(
         userScrollGeneration = userScrollGeneration
     )
 }
-
-internal fun shouldRestoreThreadOlderPageAnchor(
-    capturedUserScrollGeneration: Int,
-    currentUserScrollGeneration: Int
-): Boolean = capturedUserScrollGeneration == currentUserScrollGeneration
 
 private fun LazyListState.isThreadOlderAutoLoadThreshold(
     boundaryIndex: Int,
@@ -16023,62 +16227,14 @@ private fun LazyListState.focusedAnchorTargetOffset(targetIndex: Int): Int? =
 private fun LazyListState.canScrollToThreadItem(index: Int): Boolean =
     index >= 0 && layoutInfo.totalItemsCount > index
 
-private suspend fun LazyListState.anchorInitialThreadBottomToLatest(
-    latestItemIndex: Int,
-    trailingPaddingSize: Int = 0
-): Boolean {
-    if (latestItemIndex < 0) return true
-    repeat(ThreadInitialBottomAnchorAttempts) {
-        awaitThreadMessagesLayoutFrame()
-        if (!canScrollToThreadItem(latestItemIndex)) {
-            delay(ThreadLayoutStabilityFrameDelayMs)
-            return@repeat
-        }
-        val layoutInfo = layoutInfo
-        val viewportSize = layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset
-        if (viewportSize <= 0) {
-            delay(ThreadLayoutStabilityFrameDelayMs)
-            return@repeat
-        }
-        val latestItem = layoutInfo.visibleItemsInfo.firstOrNull { item -> item.index == latestItemIndex }
-        val requestedDelta =
-            if (latestItem == null) {
-                viewportSize
-            } else {
-                threadInitialBottomAnchorScrollDelta(
-                    itemOffset = latestItem.offset,
-                    itemSize = latestItem.size,
-                    trailingPaddingSize = trailingPaddingSize,
-                    viewportEndOffset = layoutInfo.viewportEndOffset
-                )
-            }
-        if (kotlin.math.abs(requestedDelta) <= ThreadBackToBottomTolerancePx) {
-            return true
-        }
-        val consumedDelta = scrollBy(requestedDelta.toFloat())
-        delay(ThreadLayoutStabilityFrameDelayMs)
-        if (kotlin.math.abs(consumedDelta) < ThreadInitialBottomAnchorMinimumConsumedDeltaPx) {
-            return false
-        }
-        if (
-            isLatestItemAtRenderedBottom(
-                latestItemIndex = latestItemIndex,
-                trailingPaddingSize = trailingPaddingSize
-            )
-        ) {
-            return true
-        }
-    }
-    return false
-}
-
 private suspend fun LazyListState.scrollLatestItemToRenderedBottom(
     latestItemIndex: Int,
-    trailingPaddingSize: Int = 0
-) {
-    if (latestItemIndex < 0) return
+    trailingPaddingSize: Int = 0,
+    commandStillCurrent: () -> Boolean
+): Boolean {
+    if (latestItemIndex < 0) return false
     if (layoutInfo.totalItemsCount <= latestItemIndex) {
-        return
+        return false
     }
     val latestItem = layoutInfo.visibleItemsInfo.firstOrNull { it.index == latestItemIndex }
     val viewportHeight = layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset
@@ -16094,19 +16250,27 @@ private suspend fun LazyListState.scrollLatestItemToRenderedBottom(
                 )
             }
             ?: 0
+    if (!commandStillCurrent()) return false
     scrollToItem(latestItemIndex, offset)
+    return commandStillCurrent()
 }
 
-private suspend fun LazyListState.scrollThreadItemToFocusedViewport(itemIndex: Int): Boolean {
+private suspend fun LazyListState.scrollThreadItemToFocusedViewport(
+    itemIndex: Int,
+    commandStillCurrent: () -> Boolean
+): Boolean {
     if (itemIndex < 0 || layoutInfo.totalItemsCount <= itemIndex) {
         return false
     }
     var didScroll = false
     repeat(ThreadFocusedMessageCenterAttempts) {
+        if (!commandStillCurrent()) return false
         val item = layoutInfo.visibleItemsInfo.firstOrNull { it.index == itemIndex }
         if (item == null) {
             scrollToItem(itemIndex)
+            if (!commandStillCurrent()) return false
             delay(ThreadLayoutStabilityFrameDelayMs)
+            if (!commandStillCurrent()) return false
             return@repeat
         }
         val viewportHeight = layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset
@@ -16116,8 +16280,10 @@ private suspend fun LazyListState.scrollThreadItemToFocusedViewport(itemIndex: I
                 viewportHeight = viewportHeight
             )
         scrollToItem(itemIndex, offset)
+        if (!commandStillCurrent()) return false
         didScroll = true
         delay(ThreadLayoutStabilityFrameDelayMs)
+        if (!commandStillCurrent()) return false
     }
     return didScroll
 }

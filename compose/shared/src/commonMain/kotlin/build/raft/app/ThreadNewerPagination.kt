@@ -95,19 +95,6 @@ internal fun shouldThreadAutoLoadNewerMessages(
 }
 
 /**
- * A completed newer page may restore its captured stable message anchor only
- * while the same direct-scroll owner remains current and a focused-message
- * session has not taken ownership of the viewport.
- */
-internal fun shouldRestoreThreadNewerPageAnchor(
-    capturedUserScrollGeneration: Int,
-    currentUserScrollGeneration: Int,
-    focusedViewportOwnerActive: Boolean
-): Boolean =
-    !focusedViewportOwnerActive &&
-        capturedUserScrollGeneration == currentUserScrollGeneration
-
-/**
  * A page-cycle completion may touch the viewport only while both its route
  * identity and cycle id still own the current Thread surface.
  */

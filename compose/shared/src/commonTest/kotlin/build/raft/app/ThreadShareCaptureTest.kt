@@ -13,6 +13,94 @@ class ThreadShareCaptureTest {
     }
 
     @Test
+    fun firstReplyCaptureTargetsStableHistoryBoundaryWithAndWithoutOrigin() {
+        assertEquals(
+            LazyViewportAnchorTarget.StableItem("thread-page:older-messages"),
+            threadShareCaptureAnchorTarget(
+                targetIndex = 2,
+                anchorBeforeTarget = true,
+                originVisible = true,
+                historyBoundaryVisible = true,
+                messageIds = listOf("first-reply")
+            )
+        )
+        assertEquals(
+            LazyViewportAnchorTarget.StableItem("thread-page:older-messages"),
+            threadShareCaptureAnchorTarget(
+                targetIndex = 1,
+                anchorBeforeTarget = true,
+                originVisible = false,
+                historyBoundaryVisible = true,
+                messageIds = listOf("first-reply")
+            )
+        )
+        assertEquals(
+            1,
+            threadStableViewportListItemIndex(
+                key = "thread-page:older-messages",
+                originVisible = true,
+                historyBoundaryVisible = true
+            )
+        )
+        assertEquals(
+            0,
+            threadStableViewportListItemIndex(
+                key = "thread-page:older-messages",
+                originVisible = false,
+                historyBoundaryVisible = true
+            )
+        )
+    }
+
+    @Test
+    fun missingShareTargetFailsClosedBeforeIndexNormalizationWithAndWithoutOrigin() {
+        assertNull(
+            threadShareCaptureAnchorTarget(
+                targetIndex = -1,
+                anchorBeforeTarget = true,
+                originVisible = true,
+                historyBoundaryVisible = true,
+                messageIds = listOf("first-reply")
+            )
+        )
+        assertNull(
+            threadShareCaptureAnchorTarget(
+                targetIndex = -1,
+                anchorBeforeTarget = true,
+                originVisible = false,
+                historyBoundaryVisible = true,
+                messageIds = listOf("first-reply")
+            )
+        )
+    }
+
+    @Test
+    fun laterReplyCaptureTargetsTheNormalPreviousMessageWithAndWithoutOrigin() {
+        val messageIds = listOf("first-reply", "second-reply")
+
+        assertEquals(
+            LazyViewportAnchorTarget.Message("first-reply"),
+            threadShareCaptureAnchorTarget(
+                targetIndex = 3,
+                anchorBeforeTarget = true,
+                originVisible = true,
+                historyBoundaryVisible = true,
+                messageIds = messageIds
+            )
+        )
+        assertEquals(
+            LazyViewportAnchorTarget.Message("first-reply"),
+            threadShareCaptureAnchorTarget(
+                targetIndex = 2,
+                anchorBeforeTarget = true,
+                originVisible = false,
+                historyBoundaryVisible = true,
+                messageIds = messageIds
+            )
+        )
+    }
+
+    @Test
     fun tallMessageCaptureAdvancesThroughOrderedViewportSlicesWithoutCroppingTheTop() {
         val first =
             threadShareCaptureSlice(
