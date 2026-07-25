@@ -10,8 +10,8 @@ rollout: release
 
 ## zh-CN
 
-修复在频道或回复串中输入消息后，点击消息、列表空白处、拖动列表或按发送按钮仍无法收起键盘的问题。输入框内的光标与选区、消息和附件操作、长按菜单以及列表滚动保持原有行为。
+修复 Android 和 iOS 在回复串中激活消息输入框后，点击输入框外的消息列表区域仍无法收起键盘的问题。
 
 ## en
 
-Fixed the keyboard remaining visible after typing in a channel or reply-thread composer and then tapping a message, tapping blank list space, dragging the list, or pressing the send button. Cursor and selection behavior inside the composer, message and attachment actions, long-press menus, and normal scrolling remain unchanged.
+Fixed the keyboard remaining visible on Android and iOS after activating a reply-thread composer and then tapping the message list outside the composer.
