@@ -7,6 +7,9 @@ import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.components.SlockBrutalSearchField
 import build.raft.app.components.SlockBrutalTextField
+import build.raft.app.components.SlockRaftUiBanner
+import build.raft.app.components.SlockRaftUiBannerSize
+import build.raft.app.components.SlockRaftUiBannerStatus
 import build.raft.app.components.SlockRaftUiControlledMenu
 import build.raft.app.components.SlockRaftUiMenuItem
 import build.raft.app.components.SharedHomeSearchInput
@@ -22978,39 +22981,18 @@ private fun ThreadRemoveMemberConfirmationDialog(
         titleFontSize = 18,
         titleLineHeight = 22
     ) {
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .background(SlockColor.AccentRed.copy(alpha = 0.16f))
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .padding(14.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.Top
-        ) {
-            SlockLucideIcon(
-                name = SlockLucideIconName.TriangleAlert,
-                modifier = Modifier.size(20.dp),
-                color = SlockColor.TextBlackArgb
-            )
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(
-                    text =
-                        stringResource(
-                            MR.strings.thread_members_remove_confirm_question,
-                            confirmation.memberLabel,
-                            confirmation.channelName
-                        ),
-                    style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
-                    color = SlockColor.TextBlack
-                )
-                Text(
-                    text = stringResource(MR.strings.thread_members_remove_confirm_detail),
-                    style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
-                    color = SlockColor.TextBlack
-                )
-            }
-        }
+        SlockRaftUiBanner(
+            status = SlockRaftUiBannerStatus.Destructive,
+            title =
+                stringResource(
+                    MR.strings.thread_members_remove_confirm_question,
+                    confirmation.memberLabel,
+                    confirmation.channelName
+                ),
+            description = stringResource(MR.strings.thread_members_remove_confirm_detail),
+            size = SlockRaftUiBannerSize.Medium,
+            iconName = SlockLucideIconName.TriangleAlert
+        )
         errorMessage?.let {
             Text(
                 text = it,
