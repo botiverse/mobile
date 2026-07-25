@@ -8,6 +8,7 @@ import build.raft.app.data.ForwardMessageSendMode
 import build.raft.app.data.ForwardMessageTarget
 import build.raft.app.data.ForwardMessageTargetKind
 import build.raft.app.data.ForwardMessageTargetRepository
+import build.raft.app.data.ForwardMessageTargetRequiredAction
 import build.raft.app.data.ScreenError
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
@@ -51,9 +52,10 @@ class ThreadForwardFlowTest {
         val outcome =
             executeThreadForward(
                 repository = repository,
-                sourceServerId = sourceServerId,
+                liveSourceServerId = sourceServerId,
                 sourceChannelId = ChannelId("source"),
-                target = selected,
+                receipt = selected.receiptAt(generation = 7),
+                currentDirectoryGeneration = 7,
                 messageIds = listOf("message-1", "message-2"),
                 mode = ForwardMessageSendMode.Merged,
                 note = "Selected note"
@@ -85,9 +87,10 @@ class ThreadForwardFlowTest {
         val outcome =
             executeThreadForward(
                 repository = repository,
-                sourceServerId = sourceServerId,
+                liveSourceServerId = sourceServerId,
                 sourceChannelId = ChannelId("source"),
-                target = selected,
+                receipt = selected.receiptAt(generation = 7),
+                currentDirectoryGeneration = 7,
                 messageIds = listOf("message-1"),
                 mode = ForwardMessageSendMode.Merged,
                 note = ""
@@ -116,9 +119,10 @@ class ThreadForwardFlowTest {
         val outcome =
             executeThreadForward(
                 repository = repository,
-                sourceServerId = sourceServerId,
+                liveSourceServerId = sourceServerId,
                 sourceChannelId = sourceChannelId,
-                target = candidate,
+                receipt = candidate.receiptAt(generation = 3),
+                currentDirectoryGeneration = 3,
                 messageIds = listOf("message-1"),
                 mode = ForwardMessageSendMode.Merged,
                 note = ""
@@ -147,9 +151,10 @@ class ThreadForwardFlowTest {
         val outcome =
             executeThreadForward(
                 repository = repository,
-                sourceServerId = sourceServerId,
+                liveSourceServerId = sourceServerId,
                 sourceChannelId = ChannelId("dm-source"),
-                target = candidate,
+                receipt = candidate.receiptAt(generation = 3),
+                currentDirectoryGeneration = 3,
                 messageIds = listOf("message-1"),
                 mode = ForwardMessageSendMode.Merged,
                 note = "Review this"
@@ -183,9 +188,10 @@ class ThreadForwardFlowTest {
         val outcome =
             executeThreadForward(
                 repository = repository,
-                sourceServerId = sourceServerId,
+                liveSourceServerId = sourceServerId,
                 sourceChannelId = ChannelId("source-channel"),
-                target = selected,
+                receipt = selected.receiptAt(generation = 1),
+                currentDirectoryGeneration = 1,
                 messageIds = listOf("message-1"),
                 mode = ForwardMessageSendMode.Individual,
                 note = ""
@@ -194,6 +200,323 @@ class ThreadForwardFlowTest {
         assertEquals(null, outcome.failureCode)
         assertEquals(resolved, repository.requests.single().destination)
     }
+
+    // task #803 drift teeth: every drift class fails typed with ZERO forward
+    // API traffic — never forward elsewhere (桑兰 contract, feedback #152).
+
+    @Test
+    fun serverSwitchAfterTapFailsClosedWithZeroNetwork() = runBlocking {
+        val selected = target("selected", ForwardMessageTargetKind.RecentChannel, ChannelId("channel-selected"))
+        val repository = RecordingForwardRepository()
+
+        val outcome =
+            executeThreadForward(
+                repository = repository,
+                liveSourceServerId = ServerId("server-switched"),
+                sourceChannelId = ChannelId("source"),
+                receipt = selected.receiptAt(generation = 7),
+                currentDirectoryGeneration = 7,
+                messageIds = listOf("message-1"),
+                mode = ForwardMessageSendMode.Merged,
+                note = ""
+            )
+
+        assertEquals("forward_source_server_changed", outcome.failureCode)
+        assertEquals(0, repository.resolveCalls)
+        assertEquals(emptyList(), repository.requests)
+    }
+
+    @Test
+    fun directoryRefreshBetweenTapAndSendFailsClosedWithZeroNetwork() = runBlocking {
+        val selected = target("selected", ForwardMessageTargetKind.RecentChannel, ChannelId("channel-selected"))
+        val repository = RecordingForwardRepository()
+
+        val outcome =
+            executeThreadForward(
+                repository = repository,
+                liveSourceServerId = sourceServerId,
+                sourceChannelId = ChannelId("source"),
+                receipt = selected.receiptAt(generation = 7),
+                currentDirectoryGeneration = 8,
+                messageIds = listOf("message-1"),
+                mode = ForwardMessageSendMode.Merged,
+                note = ""
+            )
+
+        assertEquals("forward_directory_refreshed", outcome.failureCode)
+        assertEquals(0, repository.resolveCalls)
+        assertEquals(emptyList(), repository.requests)
+    }
+
+    @Test
+    fun resolvedChannelDriftBlocksForwardAfterResolve() = runBlocking {
+        val selected = target("selected", ForwardMessageTargetKind.RecentChannel, ChannelId("channel-displayed"))
+        val repository =
+            RecordingForwardRepository(
+                resolvedDestinations =
+                    mapOf(
+                        selected.id to
+                            ForwardMessageDestination(
+                                serverId = sourceServerId,
+                                channelId = ChannelId("channel-other"),
+                                channelKind = ConversationKind.Channel
+                            )
+                    )
+            )
+
+        val outcome =
+            executeThreadForward(
+                repository = repository,
+                liveSourceServerId = sourceServerId,
+                sourceChannelId = ChannelId("source"),
+                receipt = selected.receiptAt(generation = 2),
+                currentDirectoryGeneration = 2,
+                messageIds = listOf("message-1"),
+                mode = ForwardMessageSendMode.Merged,
+                note = ""
+            )
+
+        assertEquals("forward_destination_identity_mismatch", outcome.failureCode)
+        assertEquals(1, repository.resolveCalls)
+        assertEquals(emptyList(), repository.requests)
+    }
+
+    @Test
+    fun memberCandidateResolvedOnWrongServerBlocksForward() = runBlocking {
+        val candidate =
+            ForwardMessageTarget(
+                serverId = sourceServerId,
+                kind = ForwardMessageTargetKind.HumanDirectMessageCandidate,
+                id = "user-b",
+                title = "User B",
+                memberId = MemberId("user-b")
+            )
+        val repository =
+            RecordingForwardRepository(
+                resolvedDestinations =
+                    mapOf(
+                        candidate.id to
+                            ForwardMessageDestination(
+                                serverId = ServerId("server-elsewhere"),
+                                channelId = ChannelId("dm-elsewhere"),
+                                channelKind = ConversationKind.DirectMessage
+                            )
+                    )
+            )
+
+        val outcome =
+            executeThreadForward(
+                repository = repository,
+                liveSourceServerId = sourceServerId,
+                sourceChannelId = ChannelId("source"),
+                receipt = candidate.receiptAt(generation = 4),
+                currentDirectoryGeneration = 4,
+                messageIds = listOf("message-1"),
+                mode = ForwardMessageSendMode.Merged,
+                note = ""
+            )
+
+        assertEquals("forward_destination_identity_mismatch", outcome.failureCode)
+        assertEquals(emptyList(), repository.requests)
+    }
+
+    @Test
+    fun tamperedReceiptIdentityFailsBeforeResolve() = runBlocking {
+        val selected = target("selected", ForwardMessageTargetKind.RecentChannel, ChannelId("channel-selected"))
+        val repository = RecordingForwardRepository()
+
+        val outcome =
+            executeThreadForward(
+                repository = repository,
+                liveSourceServerId = sourceServerId,
+                sourceChannelId = ChannelId("source"),
+                receipt = selected.receiptAt(generation = 5)
+                    .copy(target = target("someone-else", ForwardMessageTargetKind.RecentChannel, ChannelId("channel-x"))),
+                currentDirectoryGeneration = 5,
+                messageIds = listOf("message-1"),
+                mode = ForwardMessageSendMode.Merged,
+                note = ""
+            )
+
+        assertEquals("forward_destination_identity_mismatch", outcome.failureCode)
+        assertEquals(0, repository.resolveCalls)
+        assertEquals(emptyList(), repository.requests)
+    }
+
+    @Test
+    fun duplicateDisplayNamesForwardToTheFrozenIdentityNotTheName() = runBlocking {
+        // Two targets share the SAME display title; the receipt binds by id.
+        val tappedB = ForwardMessageTarget(
+            serverId = sourceServerId,
+            kind = ForwardMessageTargetKind.RecentChannel,
+            id = "channel-b",
+            title = "general",
+            channelId = ChannelId("channel-b")
+        )
+        val repository = RecordingForwardRepository()
+
+        val outcome =
+            executeThreadForward(
+                repository = repository,
+                liveSourceServerId = sourceServerId,
+                sourceChannelId = ChannelId("source"),
+                receipt = tappedB.receiptAt(generation = 6),
+                currentDirectoryGeneration = 6,
+                messageIds = listOf("message-1"),
+                mode = ForwardMessageSendMode.Merged,
+                note = ""
+            )
+
+        assertEquals(null, outcome.failureCode)
+        assertEquals(listOf(ChannelId("channel-b")), repository.requests.map { it.targetChannelId })
+    }
+
+    @Test
+    fun sameKeyDifferentRoutingFieldsFailBeforeResolve() = runBlocking {
+        val base = target("selected", ForwardMessageTargetKind.RecentChannel, ChannelId("channel-a"))
+        val receipt = base.receiptAt(generation = 5)
+        // Same server/kind/id (same display key) — each routing-field change
+        // must fail closed BEFORE resolve (LiBai blocker 2).
+        val tampered =
+            listOf(
+                base.copy(channelId = ChannelId("channel-b")),
+                base.copy(channelId = null, memberId = MemberId("member-x")),
+                base.copy(jointChannelId = "joint-x"),
+                base.copy(channelKind = ConversationKind.Joint),
+                base.copy(requiredAction = ForwardMessageTargetRequiredAction.JoinChannel)
+            )
+        for (variant in tampered) {
+            val repository = RecordingForwardRepository()
+            val outcome =
+                executeThreadForward(
+                    repository = repository,
+                    liveSourceServerId = sourceServerId,
+                    sourceChannelId = ChannelId("source"),
+                    receipt = receipt.copy(target = variant),
+                    currentDirectoryGeneration = 5,
+                    messageIds = listOf("message-1"),
+                    mode = ForwardMessageSendMode.Merged,
+                    note = ""
+                )
+            assertEquals("forward_destination_identity_mismatch", outcome.failureCode)
+            assertEquals(0, repository.resolveCalls)
+            assertEquals(emptyList(), repository.requests)
+        }
+    }
+
+    @Test
+    fun plainChannelResolvedOnDifferentServerBlocksForward() = runBlocking {
+        val selected = target("selected", ForwardMessageTargetKind.RecentChannel, ChannelId("channel-a"))
+        val repository =
+            RecordingForwardRepository(
+                resolvedDestinations =
+                    mapOf(
+                        selected.id to
+                            ForwardMessageDestination(
+                                serverId = ServerId("server-elsewhere"),
+                                channelId = ChannelId("channel-a"),
+                                channelKind = ConversationKind.Channel
+                            )
+                    )
+            )
+        val outcome =
+            executeThreadForward(
+                repository = repository,
+                liveSourceServerId = sourceServerId,
+                sourceChannelId = ChannelId("source"),
+                receipt = selected.receiptAt(generation = 2),
+                currentDirectoryGeneration = 2,
+                messageIds = listOf("message-1"),
+                mode = ForwardMessageSendMode.Merged,
+                note = ""
+            )
+        assertEquals("forward_destination_identity_mismatch", outcome.failureCode)
+        assertEquals(1, repository.resolveCalls)
+        assertEquals(emptyList(), repository.requests)
+    }
+
+    @Test
+    fun sameServerWrongMemberDmBlocksForward() = runBlocking {
+        val candidate =
+            ForwardMessageTarget(
+                serverId = sourceServerId,
+                kind = ForwardMessageTargetKind.HumanDirectMessageCandidate,
+                id = "user-a",
+                title = "User A",
+                memberId = MemberId("user-a")
+            )
+        val repository =
+            RecordingForwardRepository(
+                resolvedDestinations =
+                    mapOf(
+                        candidate.id to
+                            ForwardMessageDestination(
+                                serverId = sourceServerId,
+                                channelId = ChannelId("dm-user-b"),
+                                channelKind = ConversationKind.DirectMessage,
+                                resolvedMemberId = MemberId("user-b")
+                            )
+                    )
+            )
+        val outcome =
+            executeThreadForward(
+                repository = repository,
+                liveSourceServerId = sourceServerId,
+                sourceChannelId = ChannelId("source"),
+                receipt = candidate.receiptAt(generation = 3),
+                currentDirectoryGeneration = 3,
+                messageIds = listOf("message-1"),
+                mode = ForwardMessageSendMode.Merged,
+                note = ""
+            )
+        assertEquals("forward_destination_identity_mismatch", outcome.failureCode)
+        assertEquals(1, repository.resolveCalls)
+        assertEquals(emptyList(), repository.requests)
+    }
+
+    @Test
+    fun memberDmWithoutResolverProvenanceBlocksForward() = runBlocking {
+        val candidate =
+            ForwardMessageTarget(
+                serverId = sourceServerId,
+                kind = ForwardMessageTargetKind.AgentDirectMessageCandidate,
+                id = "agent-a",
+                title = "Agent A",
+                memberId = MemberId("agent-a")
+            )
+        val repository =
+            RecordingForwardRepository(
+                resolvedDestinations =
+                    mapOf(
+                        candidate.id to
+                            ForwardMessageDestination(
+                                serverId = sourceServerId,
+                                channelId = ChannelId("dm-agent-a"),
+                                channelKind = ConversationKind.DirectMessage
+                            )
+                    )
+            )
+        val outcome =
+            executeThreadForward(
+                repository = repository,
+                liveSourceServerId = sourceServerId,
+                sourceChannelId = ChannelId("source"),
+                receipt = candidate.receiptAt(generation = 3),
+                currentDirectoryGeneration = 3,
+                messageIds = listOf("message-1"),
+                mode = ForwardMessageSendMode.Merged,
+                note = ""
+            )
+        assertEquals("forward_destination_identity_mismatch", outcome.failureCode)
+        assertEquals(emptyList(), repository.requests)
+    }
+
+    private fun ForwardMessageTarget.receiptAt(generation: Int): ThreadForwardDestinationReceipt =
+        toThreadForwardDestinationReceipt(
+            operationId = "test-op",
+            sourceServerId = this@ThreadForwardFlowTest.sourceServerId,
+            directoryGeneration = generation
+        )
 
     private fun target(
         id: String,
@@ -216,6 +539,7 @@ private class RecordingForwardRepository(
     private val forwardResults: Map<ChannelId, DataResult<Unit>> = emptyMap()
 ) : ForwardMessageTargetRepository {
     val requests = mutableListOf<ForwardMessageExecuteRequest>()
+    var resolveCalls = 0
 
     override suspend fun recentTargets(serverId: ServerId, limit: Int): DataResult<List<ForwardMessageTarget>> =
         DataResult.Empty(EmptyReason.NoMessages)
@@ -230,15 +554,19 @@ private class RecordingForwardRepository(
         sourceServerId: ServerId,
         target: ForwardMessageTarget,
         allowJoin: Boolean
-    ): DataResult<ForwardMessageDestination> =
-        resolvedDestinations[target.id]?.let { DataResult.Content(it) }
+    ): DataResult<ForwardMessageDestination> {
+        resolveCalls += 1
+        return resolvedDestinations[target.id]?.let { DataResult.Content(it) }
             ?: resolvedChannels[target.id]?.let {
                 DataResult.Content(
                     ForwardMessageDestination(
                         serverId = target.serverId,
                         channelId = it,
                         channelKind = target.channelKind,
-                        jointChannelId = target.jointChannelId
+                        jointChannelId = target.jointChannelId,
+                        // mirrors production: member resolution attests the
+                        // member it was keyed by (task #803 provenance)
+                        resolvedMemberId = target.memberId
                     )
                 )
             }
@@ -253,6 +581,7 @@ private class RecordingForwardRepository(
                 )
             }
             ?: DataResult.Error(ScreenError(code = "missing_channel", retryable = false))
+    }
 
     override suspend fun forwardMessages(request: ForwardMessageExecuteRequest): DataResult<Unit> {
         requests += request

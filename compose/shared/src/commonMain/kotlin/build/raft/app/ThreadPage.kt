@@ -11515,7 +11515,9 @@ private fun ThreadPageContent(
     var forwardTargetErrorCode by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var forwardSending by remember(threadInstanceKey) { mutableStateOf(false) }
     var forwardSourceServerId by remember(threadInstanceKey) { mutableStateOf<ServerId?>(null) }
-    var forwardSelectedTarget by remember(threadInstanceKey) { mutableStateOf<ForwardMessageTarget?>(null) }
+    var forwardSelectedReceipt by remember(threadInstanceKey) { mutableStateOf<ThreadForwardDestinationReceipt?>(null) }
+    var forwardDirectoryGeneration by remember(threadInstanceKey) { mutableStateOf(0) }
+    var forwardOperationNonce by remember(threadInstanceKey) { mutableStateOf(0) }
     var forwardNote by remember(threadInstanceKey) { mutableStateOf("") }
     var insertMentionRequestNonce by remember(threadInstanceKey) { mutableStateOf(0) }
     var insertMentionRequest by remember(threadInstanceKey) { mutableStateOf<ThreadComposerInsertMentionRequest?>(null) }
@@ -11570,21 +11572,25 @@ private fun ThreadPageContent(
         when (result) {
             is DataResult.Content -> {
                 forwardTargets = result.data
+                forwardDirectoryGeneration += 1
                 forwardTargetStatus = SharedMembersLoadStatus.Loaded
                 forwardTargetErrorCode = null
             }
             is DataResult.Empty -> {
                 forwardTargets = emptyList()
+                forwardDirectoryGeneration += 1
                 forwardTargetStatus = SharedMembersLoadStatus.Loaded
                 forwardTargetErrorCode = null
             }
             is DataResult.Error -> {
                 forwardTargets = emptyList()
+                forwardDirectoryGeneration += 1
                 forwardTargetStatus = SharedMembersLoadStatus.Error
                 forwardTargetErrorCode = result.error.code
             }
             is DataResult.NoPermission -> {
                 forwardTargets = emptyList()
+                forwardDirectoryGeneration += 1
                 forwardTargetStatus = SharedMembersLoadStatus.Error
                 forwardTargetErrorCode = result.blocker.code
             }
@@ -12130,7 +12136,7 @@ private fun ThreadPageContent(
                                 activeForwardSelectionMode = ThreadForwardSelectionMode.Merged
                                 forwardSourceServerId = forwardServerId
                                 forwardTargetQuery = ""
-                                forwardSelectedTarget = null
+                                forwardSelectedReceipt = null
                                 forwardNote = ""
                                 activeModal = "forwardTargets"
                             }
@@ -12257,15 +12263,24 @@ private fun ThreadPageContent(
                     onDismiss = { activeModal = null },
                     onSelectTarget = { target ->
                         target.forwardTarget?.let { selected ->
-                            forwardSelectedTarget = selected
-                            activeModal = "forwardNote"
+                            val sourceServerId = forwardSourceServerId
+                            if (sourceServerId != null) {
+                                forwardOperationNonce += 1
+                                forwardSelectedReceipt =
+                                    selected.toThreadForwardDestinationReceipt(
+                                        operationId = "$threadInstanceKey-fwd-$forwardOperationNonce",
+                                        sourceServerId = sourceServerId,
+                                        directoryGeneration = forwardDirectoryGeneration
+                                    )
+                                activeModal = "forwardNote"
+                            }
                         }
                     }
                 )
             "forwardNote" ->
                 ThreadForwardNoteDialog(
                     messageCount = forwardMessageSelection.forwardableMessages.size,
-                    selectedTarget = forwardSelectedTarget,
+                    selectedTarget = forwardSelectedReceipt?.target,
                     note = forwardNote,
                     sending = forwardSending,
                     onNoteChange = { forwardNote = it },
@@ -12273,17 +12288,19 @@ private fun ThreadPageContent(
                     onSend = {
                         if (!writeActionsEnabled) return@ThreadForwardNoteDialog
                         val repository = forwardTargetRepository
-                        val sourceServerId = forwardSourceServerId
+                        // task #803: the gate needs the LIVE server authority at
+                        // confirm time — forwardServerId is the live projection;
+                        // forwardSourceServerId is the frozen picker-open copy
+                        // already inside the receipt.
+                        val liveServerId = forwardServerId
                         val sourceChannelId = forwardSourceChannelId
-                        val selectedTarget = forwardSelectedTarget
+                        val selectedReceipt = forwardSelectedReceipt
                         when {
                             repository == null ->
                                 onThreadEvent("forwardMessagesFailed", "Forward API unavailable", null, null)
                             sourceChannelId == null ->
                                 onThreadEvent("forwardMessagesFailed", "Source conversation unavailable", null, null)
-                            sourceServerId == null ->
-                                onThreadEvent("forwardMessagesFailed", "Source server unavailable", null, null)
-                            selectedTarget == null ->
+                            selectedReceipt == null ->
                                 onThreadEvent("forwardMessagesFailed", "Forward target unavailable", null, null)
                             !forwardSending -> {
                                 forwardSending = true
@@ -12292,21 +12309,22 @@ private fun ThreadPageContent(
                                         val outcome =
                                             executeThreadForward(
                                                 repository = repository,
-                                                sourceServerId = sourceServerId,
+                                                liveSourceServerId = liveServerId,
                                                 sourceChannelId = sourceChannelId,
-                                                target = selectedTarget,
+                                                receipt = selectedReceipt,
+                                                currentDirectoryGeneration = forwardDirectoryGeneration,
                                                 messageIds = forwardMessageSelection.forwardableMessages.map { it.id },
                                                 mode = activeForwardSelectionMode.toForwardMessageSendMode(),
                                                 note = forwardNote
                                             )
                                         if (outcome.failureCode == null) {
                                             activeModal = null
-                                            forwardSelectedTarget = null
+                                            forwardSelectedReceipt = null
                                             forwardNote = ""
                                             clearShareSelection()
                                             onThreadEvent(
                                                 "forwardMessagesSent",
-                                                selectedTarget.title,
+                                                selectedReceipt.displayedTitle,
                                                 null,
                                                 activeForwardSelectionMode.wireValue
                                             )
@@ -15845,6 +15863,8 @@ internal const val ThreadForwardCrossServerUnavailableMessage =
     "This destination is not available from the source server. Choose its joint-channel projection or another destination."
 internal const val ThreadForwardServerUnauthorizedMessage =
     "You no longer have access to the source or destination server. Refresh and choose another destination."
+internal const val ThreadForwardTargetChangedMessage =
+    "The destination list changed before sending. Nothing was forwarded — please reselect the destination."
 
 internal data class ThreadForwardMessageSelection(
     val forwardableMessages: List<KuiklyThreadMessageItem>,
@@ -15888,6 +15908,10 @@ internal fun String.threadForwardErrorMessage(): String =
         "forward_source_server_unauthorized",
         "forward_target_server_unauthorized",
         "forward_target_server_not_selected" -> ThreadForwardServerUnauthorizedMessage
+        // task #803: identity-drift gates fail closed; the user re-selects.
+        "forward_destination_identity_mismatch",
+        "forward_source_server_changed",
+        "forward_directory_refreshed" -> ThreadForwardTargetChangedMessage
         else -> this
     }
 
@@ -22153,14 +22177,27 @@ internal fun List<ForwardMessageTarget>.threadForwardPickerTargets(
 
 internal suspend fun executeThreadForward(
     repository: ForwardMessageTargetRepository,
-    sourceServerId: ServerId,
+    liveSourceServerId: ServerId?,
     sourceChannelId: ChannelId,
-    target: ForwardMessageTarget,
+    receipt: ThreadForwardDestinationReceipt,
+    currentDirectoryGeneration: Int,
     messageIds: List<String>,
     mode: ForwardMessageSendMode,
     note: String
 ): ThreadForwardOutcome {
-    val resolved = repository.resolveTargetChannel(sourceServerId, target)
+    // task #803: the send consumes ONLY the tap-time frozen receipt. The gate
+    // compares the frozen source against the LIVE server authority read at
+    // confirm time (never the frozen picker-open value — LiBai's blocker 1);
+    // resolve and the wire request then run against the FROZEN source. Any
+    // drift (server switch, directory refresh, identity tamper) fails typed
+    // with ZERO forward API traffic — never forward elsewhere.
+    receipt.preResolveFailureCode(
+        liveSourceServerId = liveSourceServerId,
+        currentDirectoryGeneration = currentDirectoryGeneration
+    )?.let { return ThreadForwardOutcome(failureCode = it) }
+    val frozenSourceServerId = receipt.sourceServerId
+    val target = receipt.target
+    val resolved = repository.resolveTargetChannel(frozenSourceServerId, target)
     val destination =
         when (resolved) {
             is DataResult.Content -> resolved.data
@@ -22169,13 +22206,16 @@ internal suspend fun executeThreadForward(
                     failureCode = resolved.threadForwardFailureCode("forward_target_unavailable")
                 )
         }
-    if (destination.serverId == sourceServerId && destination.channelId == sourceChannelId) {
+    receipt.postResolveFailureCode(destination)?.let {
+        return ThreadForwardOutcome(failureCode = it)
+    }
+    if (destination.serverId == frozenSourceServerId && destination.channelId == sourceChannelId) {
         return ThreadForwardOutcome(failureCode = "forward_source_target_forbidden")
     }
     val forwarded =
         repository.forwardMessages(
             ForwardMessageExecuteRequest(
-                sourceServerId = sourceServerId,
+                sourceServerId = frozenSourceServerId,
                 sourceChannelId = sourceChannelId,
                 destination = destination,
                 messageIds = messageIds,
@@ -22835,9 +22875,13 @@ private fun ThreadForwardTargetPickerPage(
                         contentPadding = PaddingValues(bottom = 12.dp)
                     ) {
                         items(targets.size, key = { targets[it].id }) { index ->
+                            // task #803: freeze the row identity at RENDER time.
+                            // Re-reading targets[index] inside onClick raced list
+                            // refreshes — displayed A could select B (feedback #152).
+                            val rowTarget = targets[index]
                             ThreadForwardTargetRow(
-                                target = targets[index],
-                                onClick = { onSelectTarget(targets[index]) }
+                                target = rowTarget,
+                                onClick = { onSelectTarget(rowTarget) }
                             )
                         }
                     }
