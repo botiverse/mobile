@@ -20,8 +20,8 @@ internal actual fun slockPlatformSupportsSaveImageToPhotos(): Boolean = true
 
 internal actual fun slockReleaseNotesAppSlug(): String = "raft-android"
 
-// Android char-wraps ordinary background spans natively. Edge-only narrow
-// spaces provide the Web 4px inset without restoring the atomic legacy chip.
+// Android char-wraps ordinary background spans natively. Edge-only boxes
+// provide the Web 4px inset without restoring the atomic legacy chip.
 internal actual fun slockInlineCodeCharWrapBridgeThreshold(): Int? = null
 
 internal actual fun slockInlineCodeUsesEdgePaddingBridge(): Boolean = true

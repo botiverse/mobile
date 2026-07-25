@@ -210,7 +210,7 @@ class MarkdownContentIntegrityTest {
         return paragraphs.map { paragraph ->
             buildAnnotatedString {
                 buildMarkdownAnnotatedString(parserContent, paragraph, settings)
-            }.text.replace(SLOCK_RICHTEXT_INLINE_CODE_EDGE_PADDING, "")
+            }.text
         }
     }
 
@@ -235,7 +235,7 @@ class MarkdownContentIntegrityTest {
                     buildMarkdownAnnotatedString(parserContent, paragraph, settings)
                 }
             RenderedParagraph(
-                text = annotated.text.replace(SLOCK_RICHTEXT_INLINE_CODE_EDGE_PADDING, ""),
+                text = annotated.text,
                 urls =
                     annotated
                         .getLinkAnnotations(0, annotated.length)

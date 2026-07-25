@@ -38,11 +38,12 @@ internal actual fun slockPlatformSupportsSaveImageToPhotos(): Boolean = true
 
 internal actual fun slockReleaseNotesAppSlug(): String = "raft-ios"
 
-// iOS atomizes inline code into one native attachment per grapheme. TextKit can
-// therefore wrap at atom boundaries without shared U+200B compatibility chars.
+// The current semantic metadata deliberately avoids Kuikly's legacy inline-code
+// marker, so iOS receives the same ordinary wrapping background span as Android.
+// TextKit wraps that span without shared U+200B compatibility characters.
 internal actual fun slockInlineCodeCharWrapBridgeThreshold(): Int? = null
 
-// Edge-only narrow spaces provide the Web 4px inset while preserving the
+// Edge-only boxes provide the Web 4px inset while preserving the
 // ordinary wrapping background span used by the shared renderer.
 internal actual fun slockInlineCodeUsesEdgePaddingBridge(): Boolean = true
 

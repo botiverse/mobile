@@ -34,8 +34,8 @@ import org.intellij.markdown.flavours.gfm.GFMTokenTypes
 import org.intellij.markdown.parser.MarkdownParser
 import build.raft.app.markdown.SLOCK_RICHTEXT_INLINE_CODE_ANNOTATION_TAG
 import build.raft.app.markdown.SLOCK_RICHTEXT_INLINE_CODE_CHAR_WRAP_BREAK
-import build.raft.app.markdown.SLOCK_RICHTEXT_INLINE_CODE_EDGE_PADDING
 import build.raft.app.markdown.SLOCK_RICHTEXT_INLINE_CODE_TRAILING_MARGIN_ANNOTATION_TAG
+import build.raft.app.markdown.slockMarkdownInlineCodeEdgeStyle
 import build.raft.app.slockInlineCodeCharWrapBridgeThreshold
 import build.raft.app.slockInlineCodeUsesEdgePaddingBridge
 
@@ -471,22 +471,26 @@ fun AnnotatedString.Builder.buildMarkdownAnnotatedString(
                         pushStyle(annotatorSettings.codeSpanStyle)
                         val charWrapThreshold = slockInlineCodeCharWrapBridgeThreshold()
                         val usesEdgePaddingBridge = slockInlineCodeUsesEdgePaddingBridge()
-                        // Edge-only narrow spaces provide horizontal chrome on
-                        // wrapping background spans. Keep this gate independent
-                        // from charWrapThreshold: some platforms need explicit
-                        // U+200B break opportunities as a separate concern.
-                        if (usesEdgePaddingBridge) {
-                            append(SLOCK_RICHTEXT_INLINE_CODE_EDGE_PADDING)
-                        }
-                        if (charWrapThreshold != null) {
-                            // task #401 A-bridge (see the expect in
-                            // SlockKuiklyPlatformCapabilities.kt): on platforms whose
-                            // native layout cannot atomize long inline-code runs, append
-                            // zero-width-space break opportunities so they wrap at
-                            // character boundaries. Code spans carry no
-                            // nested markup, so flattening the recursion's output text
-                            // is lossless here.
-                            val codeText =
+                        val codeText =
+                            if (charWrapThreshold != null) {
+                                // task #401 A-bridge (see the expect in
+                                // SlockKuiklyPlatformCapabilities.kt): on platforms whose
+                                // native layout cannot atomize long inline-code runs, append
+                                // zero-width-space break opportunities so they wrap at
+                                // character boundaries. Code spans carry no
+                                // nested markup, so flattening the recursion's output text
+                                // is lossless here.
+                                val rawCodeText =
+                                    AnnotatedString.Builder().apply {
+                                        buildMarkdownAnnotatedString(
+                                            content,
+                                            child.children.innerList(),
+                                            annotatorSettings,
+                                            insideCodeSpan = true
+                                        )
+                                    }.toAnnotatedString().text
+                                rawCodeText.withSlockInlineCodeCharWrapBreaks(charWrapThreshold)
+                            } else {
                                 AnnotatedString.Builder().apply {
                                     buildMarkdownAnnotatedString(
                                         content,
@@ -495,12 +499,11 @@ fun AnnotatedString.Builder.buildMarkdownAnnotatedString(
                                         insideCodeSpan = true
                                     )
                                 }.toAnnotatedString().text
-                            append(codeText.withSlockInlineCodeCharWrapBreaks(charWrapThreshold))
-                        } else {
-                            buildMarkdownAnnotatedString(content, child.children.innerList(), annotatorSettings, insideCodeSpan = true)
-                        }
+                            }
                         if (usesEdgePaddingBridge) {
-                            append(SLOCK_RICHTEXT_INLINE_CODE_EDGE_PADDING)
+                            appendSlockInlineCodeWithEdgeBoxes(codeText)
+                        } else {
+                            append(codeText)
                         }
                         pop()
                         addStringAnnotation(
@@ -639,4 +642,33 @@ fun AnnotatedString.Builder.buildMarkdownAnnotatedString(
         }
         childIndex++
     }
+}
+
+private fun AnnotatedString.Builder.appendSlockInlineCodeWithEdgeBoxes(codeText: String) {
+    if (codeText.isEmpty()) return
+    val firstEnd =
+        if (codeText.length > 1 && codeText[0].isHighSurrogate() && codeText[1].isLowSurrogate()) 2 else 1
+    val lastStart =
+        if (codeText.length > 1 && codeText.last().isLowSurrogate() && codeText[codeText.lastIndex - 1].isHighSurrogate()) {
+            codeText.length - 2
+        } else {
+            codeText.length - 1
+        }
+    if (firstEnd > lastStart) {
+        pushStyle(
+            SpanStyle(
+                inlineBoxStyle = slockMarkdownInlineCodeEdgeStyle(leading = true, trailing = true)
+            )
+        )
+        append(codeText)
+        pop()
+        return
+    }
+    pushStyle(SpanStyle(inlineBoxStyle = slockMarkdownInlineCodeEdgeStyle(leading = true)))
+    append(codeText.substring(0, firstEnd))
+    pop()
+    append(codeText.substring(firstEnd, lastStart))
+    pushStyle(SpanStyle(inlineBoxStyle = slockMarkdownInlineCodeEdgeStyle(leading = false)))
+    append(codeText.substring(lastStart))
+    pop()
 }

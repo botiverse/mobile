@@ -171,9 +171,6 @@ object SlockRichTextChromeStyleTokens {
 const val SLOCK_RICHTEXT_INLINE_CODE_ANNOTATION_TAG = "raft.build.markdown.inlineCodeMetadata"
 const val SLOCK_RICHTEXT_INLINE_CODE_TRAILING_MARGIN_ANNOTATION_TAG =
     "raft.build.markdown.inlineCodeTrailingMarginMetadata"
-// Two hair spaces approximate the Web 4px edge inset without
-// turning the whole code run into an atomic inline box.
-const val SLOCK_RICHTEXT_INLINE_CODE_EDGE_PADDING = "\u200A\u200A"
 const val SLOCK_RICHTEXT_INLINE_CODE_CHAR_WRAP_BREAK = '\u200B'
 const val SLOCK_RICHTEXT_INLINE_CHIP_HORIZONTAL_CHROME_SP = 12f
 const val SLOCK_RICHTEXT_REFERENCE_UNDERLINE_THICKNESS_SP = 2f

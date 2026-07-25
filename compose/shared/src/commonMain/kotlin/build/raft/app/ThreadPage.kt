@@ -18924,6 +18924,9 @@ internal fun threadReactionChipBackground(
         threadNeutralMessageSurfaceColor(emphasized)
     }
 
+internal fun threadReactionAddChipBackground(emphasized: Boolean = false): Color =
+    threadNeutralMessageSurfaceColor(emphasized)
+
 // task #569: everything the tooltip needs, captured at long-press time.
 internal data class ThreadReactionDetailsRequest(
     val emoji: String,
@@ -19030,10 +19033,16 @@ private val ThreadReactionDetailsLabelCharWidth = 7.dp
 
 @Composable
 private fun ThreadReactionAddChipChrome() {
+    val hoverInteractionSource = remember { MutableInteractionSource() }
+    val isHovered by hoverInteractionSource.collectIsHoveredAsState()
     Box(
         modifier = Modifier
+            .hoverable(hoverInteractionSource)
             .height(20.dp)
-            .background(Color(0xFFEEEDE6), RoundedCornerShape(SlockRadius.Sm))
+            .background(
+                threadReactionAddChipBackground(emphasized = isHovered),
+                RoundedCornerShape(SlockRadius.Sm),
+            )
             .padding(horizontal = 6.dp),
         contentAlignment = Alignment.Center
     ) {

@@ -2415,6 +2415,23 @@ private fun SlockRichTextChromeStyleToken.toTagSpanStyle(): SpanStyle {
 internal fun slockMarkdownInlineBoxStyle(kind: SlockRichTextChromeKind): InlineBoxSpanStyle =
     requireNotNull(kind.styleToken.toInlineBoxSpanStyle())
 
+internal fun slockMarkdownInlineCodeEdgeStyle(
+    leading: Boolean,
+    trailing: Boolean = !leading,
+): InlineBoxSpanStyle =
+    InlineBoxSpanStyle(
+        backgroundColor = SlockRichTextChromeKind.InlineCode.styleToken.chipFill.toSlockMarkdownColor(),
+        borderColor = Color.Transparent,
+        borderWidth = 0.dp,
+        paddingStart = if (leading) 4.dp else 0.dp,
+        paddingEnd = if (trailing) 4.dp else 0.dp,
+        paddingTop = 0.dp,
+        paddingBottom = 0.dp,
+        marginStart = 0.dp,
+        marginEnd = 0.dp,
+        cornerRadius = 0.dp,
+    )
+
 private fun SlockRichTextChromeStyleToken.toInlineBoxSpanStyle(): InlineBoxSpanStyle? {
     if (id == SlockRichTextChromeStyleTokens.OrdinaryMention.id) return null
     val fill = chipFill ?: return null

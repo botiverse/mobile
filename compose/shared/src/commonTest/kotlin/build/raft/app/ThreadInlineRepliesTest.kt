@@ -70,6 +70,11 @@ class ThreadInlineRepliesTest {
             threadReactionChipBackground(selected = false, emphasized = true),
         )
         assertEquals(SlockColor.AccentPink.copy(alpha = 0.2f), threadReactionChipBackground(selected = true))
+        assertEquals(SlockColor.TextBlack.copy(alpha = 0.03f), threadReactionAddChipBackground())
+        assertEquals(
+            SlockColor.TextBlack.copy(alpha = 0.08f),
+            threadReactionAddChipBackground(emphasized = true),
+        )
     }
 
     @Test

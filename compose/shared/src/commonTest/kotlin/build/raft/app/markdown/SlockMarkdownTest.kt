@@ -47,7 +47,6 @@ class SlockMarkdownTest {
     private val expectedLinkBlue = Color(0xFF1D4ED8)
     private val slockInlineCodeAnnotationTag = SLOCK_RICHTEXT_INLINE_CODE_ANNOTATION_TAG
     private val slockInlineCodeTrailingMarginAnnotationTag = SLOCK_RICHTEXT_INLINE_CODE_TRAILING_MARGIN_ANNOTATION_TAG
-    private val inlineCodePadding = SLOCK_RICHTEXT_INLINE_CODE_EDGE_PADDING.toString()
 
     @Test
     fun bodyClickAnnotatesOnlyTextOutsideExistingLinks() {
@@ -568,7 +567,7 @@ class SlockMarkdownTest {
     }
 
     @Test
-    fun inlineCodeUsesNonBreakingEdgePaddingForCommandRepro() {
+    fun inlineCodePreservesExactCommandTextWithEdgeChrome() {
         val command = "go test ./..."
         val body = "Run `$command` before review"
         val annotated =
@@ -1067,6 +1066,8 @@ class SlockMarkdownTest {
         val inlineCodeStyleFromBoldText =
             slockMarkdownInlineCodeTextStyle(SlockType.Body.withSlockFontWeight(FontWeight.Bold))
         val inlineBox = slockMarkdownInlineBoxStyle(SlockRichTextChromeKind.InlineCode)
+        val leadingEdge = slockMarkdownInlineCodeEdgeStyle(leading = true)
+        val trailingEdge = slockMarkdownInlineCodeEdgeStyle(leading = false)
 
         assertEquals(slockMonoFamilyForWeight(FontWeight.Normal), inlineCodeStyle.fontFamily)
         assertEquals(FontWeight.Normal, inlineCodeStyle.fontWeight)
@@ -1088,6 +1089,12 @@ class SlockMarkdownTest {
         assertEquals(0.dp, inlineBox.marginStart)
         assertEquals(0.dp, inlineBox.marginEnd)
         assertEquals(0.dp, inlineBox.cornerRadius)
+        assertEquals(4.dp, leadingEdge.paddingStart)
+        assertEquals(0.dp, leadingEdge.paddingEnd)
+        assertEquals(0.dp, trailingEdge.paddingStart)
+        assertEquals(4.dp, trailingEdge.paddingEnd)
+        assertEquals(SlockColor.TextBlack.copy(alpha = 0.05f), leadingEdge.backgroundColor)
+        assertEquals(SlockColor.TextBlack.copy(alpha = 0.05f), trailingEdge.backgroundColor)
     }
 
     @Test
@@ -2032,12 +2039,8 @@ class SlockMarkdownTest {
             text.substring(range.start, range.end)
         }
 
-    // Mirrors the CODE_SPAN emission (AnnotatedStringKtx): edge-only narrow
-    // spaces provide horizontal chrome without making the code run atomic.
+    // Mirrors the CODE_SPAN emission (AnnotatedStringKtx): edge-only boxes
+    // provide horizontal chrome without making the code run atomic.
     private fun inlineCodeSegment(code: String): String =
-        if (slockInlineCodeUsesEdgePaddingBridge()) {
-            "$inlineCodePadding$code$inlineCodePadding"
-        } else {
-            code
-        }
+        code
 }
