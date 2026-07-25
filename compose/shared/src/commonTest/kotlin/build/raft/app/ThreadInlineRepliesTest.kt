@@ -55,6 +55,24 @@ class ThreadInlineRepliesTest {
     }
 
     @Test
+    fun neutralMessageSurfacesMatchWebBlackOpacityContract() {
+        assertEquals(
+            SlockColor.TextBlack.copy(alpha = 0.03f),
+            threadNeutralMessageSurfaceColor(emphasized = false),
+        )
+        assertEquals(
+            SlockColor.TextBlack.copy(alpha = 0.08f),
+            threadNeutralMessageSurfaceColor(emphasized = true),
+        )
+        assertEquals(SlockColor.TextBlack.copy(alpha = 0.03f), threadReactionChipBackground(selected = false))
+        assertEquals(
+            SlockColor.TextBlack.copy(alpha = 0.08f),
+            threadReactionChipBackground(selected = false, emphasized = true),
+        )
+        assertEquals(SlockColor.AccentPink.copy(alpha = 0.2f), threadReactionChipBackground(selected = true))
+    }
+
+    @Test
     fun metaChipsRenderBeforeInlineRepliesWhenBothAreVisible() {
         assertEquals(
             listOf(

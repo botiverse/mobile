@@ -471,11 +471,10 @@ fun AnnotatedString.Builder.buildMarkdownAnnotatedString(
                         pushStyle(annotatorSettings.codeSpanStyle)
                         val charWrapThreshold = slockInlineCodeCharWrapBridgeThreshold()
                         val usesEdgePaddingBridge = slockInlineCodeUsesEdgePaddingBridge()
-                        // NBSP edge padding is only for platforms whose fallback
-                        // renderer does not own chip box metrics. Keep this gate
-                        // independent from charWrapThreshold: iOS now owns native
-                        // chrome/padding but still needs U+200B break opportunities,
-                        // while OHOS needs both fallback behaviours.
+                        // Edge-only narrow spaces provide horizontal chrome on
+                        // wrapping background spans. Keep this gate independent
+                        // from charWrapThreshold: some platforms need explicit
+                        // U+200B break opportunities as a separate concern.
                         if (usesEdgePaddingBridge) {
                             append(SLOCK_RICHTEXT_INLINE_CODE_EDGE_PADDING)
                         }

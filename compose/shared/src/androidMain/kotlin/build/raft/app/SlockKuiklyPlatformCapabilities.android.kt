@@ -20,10 +20,11 @@ internal actual fun slockPlatformSupportsSaveImageToPhotos(): Boolean = true
 
 internal actual fun slockReleaseNotesAppSlug(): String = "raft-android"
 
-// Android's core-render-android draws the chip and char-wraps natively.
+// Android char-wraps ordinary background spans natively. Edge-only narrow
+// spaces provide the Web 4px inset without restoring the atomic legacy chip.
 internal actual fun slockInlineCodeCharWrapBridgeThreshold(): Int? = null
 
-internal actual fun slockInlineCodeUsesEdgePaddingBridge(): Boolean = false
+internal actual fun slockInlineCodeUsesEdgePaddingBridge(): Boolean = true
 
 // Hands Android SDK 0.10.x uploads >10MB attachments via presigned R2 PUT.
 internal actual fun slockFeedbackAttachmentMaxBytes(): Long = 200L * 1024L * 1024L

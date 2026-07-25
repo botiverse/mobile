@@ -42,9 +42,9 @@ internal actual fun slockReleaseNotesAppSlug(): String = "raft-ios"
 // therefore wrap at atom boundaries without shared U+200B compatibility chars.
 internal actual fun slockInlineCodeCharWrapBridgeThreshold(): Int? = null
 
-// Native atom-chain bounds own the same 4/15 inner + 2/15 outer geometry as
-// reference-chip attachments, so shared must not synthesize NBSP padding.
-internal actual fun slockInlineCodeUsesEdgePaddingBridge(): Boolean = false
+// Edge-only narrow spaces provide the Web 4px inset while preserving the
+// ordinary wrapping background span used by the shared renderer.
+internal actual fun slockInlineCodeUsesEdgePaddingBridge(): Boolean = true
 
 // Hands iOS SDK ios-v0.2.x uploads >10MB attachments via presigned R2 PUT.
 internal actual fun slockFeedbackAttachmentMaxBytes(): Long = 200L * 1024L * 1024L

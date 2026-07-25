@@ -78,6 +78,7 @@ data class SlockRichTextChromeStyleToken(
 
 enum class SlockRichTextColorToken(val wireValue: String) {
     TextBlack("textBlack"),
+    Black5("black5"),
     BrandYellow("brandYellow"),
     BrandYellow40("brandYellow40"),
     AccentPink30("accentPink30"),
@@ -106,8 +107,8 @@ object SlockRichTextChromeStyleTokens {
         SlockRichTextChromeStyleToken(
             id = "inlineCode",
             foreground = SlockRichTextColorToken.TextBlack,
-            background = SlockRichTextColorToken.BrandYellow40,
-            chipFill = SlockRichTextColorToken.BrandYellow40,
+            background = SlockRichTextColorToken.Black5,
+            chipFill = SlockRichTextColorToken.Black5,
             fontFamily = SlockRichTextFontFamilyToken.SlockMono,
             fontWeight = SlockRichTextFontWeightToken.Normal
         )
@@ -163,10 +164,16 @@ object SlockRichTextChromeStyleTokens {
         )
 }
 
-const val SLOCK_RICHTEXT_INLINE_CODE_ANNOTATION_TAG = "raft.build.markdown.inlineCode"
+// Keep semantic metadata distinct from Kuikly's legacy
+// `raft.build.markdown.inlineCode` renderer marker. The legacy marker injects
+// yellow framed chrome and fixed margins; current renderers consume the
+// ordinary wrapping SpanStyle background instead.
+const val SLOCK_RICHTEXT_INLINE_CODE_ANNOTATION_TAG = "raft.build.markdown.inlineCodeMetadata"
 const val SLOCK_RICHTEXT_INLINE_CODE_TRAILING_MARGIN_ANNOTATION_TAG =
-    "raft.build.markdown.inlineCodeTrailingMargin"
-const val SLOCK_RICHTEXT_INLINE_CODE_EDGE_PADDING = '\u00A0'
+    "raft.build.markdown.inlineCodeTrailingMarginMetadata"
+// Two hair spaces approximate the Web 4px edge inset without
+// turning the whole code run into an atomic inline box.
+const val SLOCK_RICHTEXT_INLINE_CODE_EDGE_PADDING = "\u200A\u200A"
 const val SLOCK_RICHTEXT_INLINE_CODE_CHAR_WRAP_BREAK = '\u200B'
 const val SLOCK_RICHTEXT_INLINE_CHIP_HORIZONTAL_CHROME_SP = 12f
 const val SLOCK_RICHTEXT_REFERENCE_UNDERLINE_THICKNESS_SP = 2f

@@ -558,6 +558,13 @@ class SlockMarkdownTest {
             ),
             annotated.slockInlineCodeMarkerTextSegments()
         )
+        assertTrue(
+            annotated.getStringAnnotations(
+                "raft.build.markdown.inlineCode",
+                start = 0,
+                end = annotated.length
+            ).isEmpty()
+        )
     }
 
     @Test
@@ -875,7 +882,7 @@ class SlockMarkdownTest {
             boxedLinkTexts
         )
         assertFalse(boxedLinkTexts.contains("另外帮一个澄清避免混淆："))
-        assertEquals(listOf("message:new"), annotated.slockInlineCodeMarkerTextSegments())
+        assertEquals(listOf(inlineCodeSegment("message:new")), annotated.slockInlineCodeMarkerTextSegments())
     }
 
     @Test
@@ -1055,33 +1062,39 @@ class SlockMarkdownTest {
     // ("keep the Slock body font") predated the Space Mono wiring (#130), when
     // FontFamily.Monospace still meant the platform Roboto Mono.
     @Test
-    fun inlineCodeUsesSpaceMonoAtBodyMetrics() {
+    fun inlineCodeUsesWebRelativeMonoMetricsAndNeutralChrome() {
         val inlineCodeStyle = slockMarkdownInlineCodeTextStyle(SlockType.Body)
         val inlineCodeStyleFromBoldText =
             slockMarkdownInlineCodeTextStyle(SlockType.Body.withSlockFontWeight(FontWeight.Bold))
+        val inlineBox = slockMarkdownInlineBoxStyle(SlockRichTextChromeKind.InlineCode)
 
         assertEquals(slockMonoFamilyForWeight(FontWeight.Normal), inlineCodeStyle.fontFamily)
         assertEquals(FontWeight.Normal, inlineCodeStyle.fontWeight)
-        assertEquals(SlockType.Body.fontSize, inlineCodeStyle.fontSize)
-        assertEquals(SlockType.Body.lineHeight, inlineCodeStyle.lineHeight)
+        assertEquals(12.25.sp, inlineCodeStyle.fontSize)
+        assertEquals(23.sp, inlineCodeStyle.lineHeight)
         assertFalse(inlineCodeStyle.fontFamily == FontFamily.Monospace)
         assertEquals(slockMonoFamilyForWeight(FontWeight.Normal), inlineCodeStyleFromBoldText.fontFamily)
         assertEquals(FontWeight.Normal, inlineCodeStyleFromBoldText.fontWeight)
         assertEquals("inlineCode", SlockRichTextChromeKind.InlineCode.styleToken.id)
         assertEquals(SlockRichTextFontFamilyToken.SlockMono, SlockRichTextChromeKind.InlineCode.styleToken.fontFamily)
         assertEquals(SlockRichTextFontWeightToken.Normal, SlockRichTextChromeKind.InlineCode.styleToken.fontWeight)
-        assertEquals(SlockRichTextColorToken.BrandYellow40, SlockRichTextChromeKind.InlineCode.styleToken.background)
+        assertEquals(SlockRichTextColorToken.Black5, SlockRichTextChromeKind.InlineCode.styleToken.background)
+        assertEquals(SlockColor.TextBlack.copy(alpha = 0.05f), inlineBox.backgroundColor)
+        assertEquals(0.dp, inlineBox.borderWidth)
+        assertEquals(4.dp, inlineBox.paddingStart)
+        assertEquals(4.dp, inlineBox.paddingEnd)
+        assertEquals(0.dp, inlineBox.paddingTop)
+        assertEquals(0.dp, inlineBox.paddingBottom)
+        assertEquals(0.dp, inlineBox.marginStart)
+        assertEquals(0.dp, inlineBox.marginEnd)
+        assertEquals(0.dp, inlineBox.cornerRadius)
     }
 
     @Test
     fun releaseNotesSectionGapClearsInlineCodeChromePaintOverflow() {
-        // The old dense top-level default has no room for the 2dp bottom
-        // padding + 1dp border and reproduces the geometry behind the zh-CN
-        // 1.3x overlap. Release Notes' 8dp document opt-in clears it while
-        // other Markdown surfaces keep the unchanged zero-gap default.
-        assertFalse(slockMarkdownSectionHeadingGapClearsInlineCodeChrome(0.dp))
-        assertFalse(slockMarkdownSectionHeadingGapClearsInlineCodeChrome(2.dp))
-        assertTrue(slockMarkdownSectionHeadingGapClearsInlineCodeChrome(3.dp))
+        // Web parity removes inline-code vertical padding and border, so the
+        // chrome no longer paints outside the text line.
+        assertTrue(slockMarkdownSectionHeadingGapClearsInlineCodeChrome(0.dp))
         assertTrue(slockMarkdownSectionHeadingGapClearsInlineCodeChrome(8.dp))
     }
 
@@ -1095,7 +1108,7 @@ class SlockMarkdownTest {
         assertEquals(22.sp, resolvedStyle.lineHeight)
         assertEquals(22.sp, typography.text.lineHeight)
         assertEquals(22.sp, typography.paragraph.lineHeight)
-        assertEquals(22.sp, typography.inlineCode.lineHeight)
+        assertEquals(23.sp, typography.inlineCode.lineHeight)
         assertEquals(SlockType.Body.fontFamily, resolvedStyle.fontFamily)
     }
 
@@ -2019,9 +2032,8 @@ class SlockMarkdownTest {
             text.substring(range.start, range.end)
         }
 
-    // Mirrors the CODE_SPAN emission (AnnotatedStringKtx): the NBSP edge
-    // padding only exists on A-bridge platforms (no native chip chrome); the
-    // android target reserves real advance padding instead (task #407).
+    // Mirrors the CODE_SPAN emission (AnnotatedStringKtx): edge-only narrow
+    // spaces provide horizontal chrome without making the code run atomic.
     private fun inlineCodeSegment(code: String): String =
         if (slockInlineCodeUsesEdgePaddingBridge()) {
             "$inlineCodePadding$code$inlineCodePadding"

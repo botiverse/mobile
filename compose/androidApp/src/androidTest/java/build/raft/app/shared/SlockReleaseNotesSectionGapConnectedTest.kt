@@ -18,7 +18,7 @@ import org.junit.Test
 
 class SlockReleaseNotesSectionGapConnectedTest {
     @Test
-    fun zhLargeFontInlineCodeClearsFollowingHeading() {
+    fun zhLargeFontNeutralInlineCodeNeedsNoExtraHeadingClearance() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val originalFontScale = instrumentation.shell("settings get system font_scale").trim().ifBlank { "1.0" }
         try {
@@ -30,8 +30,8 @@ class SlockReleaseNotesSectionGapConnectedTest {
             val releaseNotesGap = captureFixture(instrumentation, FixtureEightDpGap)
 
             assertTrue(
-                "The zero-gap counterfactual must reproduce yellow inline-code paint inside the H2 bounds: $noGap",
-                noGap.yellowPixelsInsideHeading >= MinimumOverlapPixels
+                "Neutral inline code must not retain legacy yellow paint inside the H2 bounds: $noGap",
+                noGap.yellowPixelsInsideHeading <= MaximumClearedPixels
             )
             assertEquals(
                 "Omitting sectionHeadingTopPadding must preserve the ordinary Markdown zero-gap pixels",
@@ -39,7 +39,7 @@ class SlockReleaseNotesSectionGapConnectedTest {
                 defaultGap
             )
             assertTrue(
-                "The Release Notes 8dp gap must clear inline-code paint from the H2 bounds: $releaseNotesGap",
+                "Release Notes must also stay free of legacy yellow inline-code paint: $releaseNotesGap",
                 releaseNotesGap.yellowPixelsInsideHeading <= MaximumClearedPixels
             )
             assertTrue(
@@ -176,7 +176,6 @@ class SlockReleaseNotesSectionGapConnectedTest {
         private const val ConfigurationSettleMs = 800L
         private const val HeadingPollAttempts = 20
         private const val HeadingPollIntervalMs = 250L
-        private const val MinimumOverlapPixels = 20
         private const val MaximumClearedPixels = 2
         private const val YellowRedMin = 245
         private val YellowGreenRange = 205..245
