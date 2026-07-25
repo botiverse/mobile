@@ -34,7 +34,8 @@ keeps the whole label under the outer link and creates no nested task action.
 normalized source
   -> SlockGFMFlavourDescriptor lexer emits GFM + Raft ref tokens
   -> one JetBrains Markdown parse / one cached AST result
-  -> RaftMarkdownDialect collects ref nodes outside Markdown-owned ancestry
+  -> canonical inline syntax snapshot (Raft refs + inline-code spans)
+       RaftMarkdownDialect collects ref nodes outside Markdown-owned ancestry
   -> app validation (known task/channel/member)
   -> MarkdownInlineTokenPlan
   -> SlockRichTextDocument (tokens + chrome + actions)
@@ -46,7 +47,13 @@ The planner and renderer consume the same cached parse result produced by
 result for `MarkdownState`; the renderer does not parse the content again.
 Raft candidates are first-class `RAFT_REFERENCE` lexer/AST tokens, not an
 AST-external overlay pass. There is no second implementation of Markdown
-link/fence/delimiter matching and no app-side `MarkdownParser`.
+link/fence/delimiter matching and no app-side `MarkdownParser`. The app token
+planner consumes `RaftMarkdownInlineRef` and `MarkdownInlineCodeSpan` directly;
+it does not convert AST refs back to ranges and rescan/subslice the source, and
+it does not run a second backtick matcher for typed rich-text inline code.
+`MarkdownInlineCodeSpan.codeText` follows the same CommonMark text rules as the
+renderer: line endings become spaces, then one leading/trailing space is
+trimmed when the payload is not all spaces.
 
 `RaftMarkdownDialect` returns source-accurate candidates only. Repository data
 and viewer state remain outside the parser:
@@ -96,7 +103,8 @@ followed by whitespace belongs to prose (`#design: next` recognizes
 ### Mention
 
 `@` followed by a letter or digit, then up to 63 additional letters, digits,
-`_`, `.`, or `-`.
+`_`, `.`, or `-`. Dots are legal inside a handle, but trailing `.` characters
+belong to surrounding sentence punctuation and are not part of the mention.
 
 ## Boundaries, escaping, and CJK
 
@@ -150,4 +158,7 @@ correct.
 The removed functions `threadInlineTagRanges`, `scanThreadHashRange`, and the
 Markdown protection-range helpers must not be reintroduced. Product-reference
 grammar belongs in `RaftMarkdownDialect`; Markdown nesting belongs to the GFM
-AST; data validation belongs to the app adapter.
+AST; data validation belongs to the app adapter. Inline-code ownership and
+delimiter semantics also belong to the canonical AST. The table-separation
+normalizer's fence-range check is intentionally pre-parse source repair and
+must not be reused for inline token/action recognition.

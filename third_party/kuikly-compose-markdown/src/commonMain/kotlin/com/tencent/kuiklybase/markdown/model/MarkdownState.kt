@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.ast.ASTNode
 import org.intellij.markdown.flavours.MarkdownFlavourDescriptor
 import org.intellij.markdown.parser.MarkdownParser
@@ -116,16 +117,33 @@ suspend fun prepareMarkdownContent(content: MarkdownParserContent, lookupLinks: 
     return cacheHit
 }
 
+/** Source-accurate inline-code node emitted by the canonical Markdown parse. */
+data class MarkdownInlineCodeSpan(
+    val sourceText: String,
+    val codeText: String,
+    val startOffset: Int,
+    val endOffset: Int,
+)
+
+/** Inline syntax facts shared by the app token planner and Markdown renderer. */
+data class MarkdownInlineSyntax(
+    val raftRefs: List<RaftMarkdownInlineRef>,
+    val inlineCodeSpans: List<MarkdownInlineCodeSpan>,
+)
+
 /**
- * Returns Raft reference nodes from the same cached parse result consumed by
+ * Returns inline syntax nodes from the same cached parse result consumed by
  * [MarkdownState]. A cache miss performs the canonical flavour parse once and
- * publishes that result for the renderer; there is no app-side second parser.
+ * publishes that result for the renderer; there is no app-side second parser
+ * and no app-side delimiter scanner.
  */
-fun parseRaftMarkdownInlineRefs(
+fun parseMarkdownInlineSyntax(
     content: String,
     lookupLinks: Boolean = true,
-): List<RaftMarkdownInlineRef> {
-    if (!content.contains('#') && !content.contains('@')) return emptyList()
+): MarkdownInlineSyntax {
+    if (!content.contains('#') && !content.contains('@') && !content.contains('`')) {
+        return MarkdownInlineSyntax(emptyList(), emptyList())
+    }
     val key = MarkdownParseResultCacheKey(content, lookupLinks)
     val (cached, _) =
         MarkdownParseResultCache.getOrPut(key) {
@@ -136,7 +154,10 @@ fun parseRaftMarkdownInlineRefs(
                 parser = MarkdownParser(flavour),
             )
         }
-    return cached.inlineRefs
+    return MarkdownInlineSyntax(
+        raftRefs = cached.inlineRefs,
+        inlineCodeSpans = cached.inlineCodeSpans,
+    )
 }
 
 /**
@@ -345,6 +366,7 @@ private fun parseMarkdownContent(
     return MarkdownCachedParseResult(
         links = links,
         inlineRefs = RaftMarkdownDialect.inlineRefs(parsedResult, content),
+        inlineCodeSpans = parsedResult.markdownInlineCodeSpans(content),
         nodes =
             parsedResult.children.map {
                 ParseResult(it.startOffset, it.endOffset).apply { this.node = it }
@@ -360,8 +382,52 @@ private data class MarkdownParseResultCacheKey(
 private data class MarkdownCachedParseResult(
     val links: Map<String, String?>,
     val inlineRefs: List<RaftMarkdownInlineRef>,
+    val inlineCodeSpans: List<MarkdownInlineCodeSpan>,
     val nodes: List<ParseResult>
 )
+
+private fun ASTNode.markdownInlineCodeSpans(content: String): List<MarkdownInlineCodeSpan> =
+    buildList {
+        fun collect(node: ASTNode) {
+            if (node.type == MarkdownElementTypes.CODE_SPAN) {
+                val sourceText = content.substring(node.startOffset, node.endOffset)
+                val markerLength = sourceText.takeWhile { it == '`' }.length
+                val rawCode =
+                    if (markerLength > 0 && sourceText.length >= markerLength * 2) {
+                        sourceText.substring(markerLength, sourceText.length - markerLength)
+                    } else {
+                        sourceText
+                    }
+                val normalizedCode =
+                    rawCode
+                        .replace("\r\n", "\n")
+                        .replace('\r', '\n')
+                        .replace('\n', ' ')
+                val codeText =
+                    if (
+                        normalizedCode.length >= 2 &&
+                        normalizedCode.first() == ' ' &&
+                        normalizedCode.last() == ' ' &&
+                        normalizedCode.any { it != ' ' }
+                    ) {
+                        normalizedCode.substring(1, normalizedCode.lastIndex)
+                    } else {
+                        normalizedCode
+                    }
+                add(
+                    MarkdownInlineCodeSpan(
+                        sourceText = sourceText,
+                        codeText = codeText,
+                        startOffset = node.startOffset,
+                        endOffset = node.endOffset,
+                    ),
+                )
+                return
+            }
+            node.children.forEach(::collect)
+        }
+        collect(this@markdownInlineCodeSpans)
+    }
 
 private object MarkdownParseResultCache {
     // #192 / #195: increased from 256 → 1024 to reduce cold-parse jank

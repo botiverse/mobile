@@ -272,8 +272,10 @@ class SlockMarkdownTest {
                 listOf("Plain text only", "Ping @artin", fullRendererBody, fullRendererBody)
             )
         assertEquals(3, first.requestedCount)
-        assertEquals(3, first.parsedCount)
-        assertEquals(0, first.cacheHitCount)
+        // The inline-token planner and full renderer intentionally share the
+        // canonical parse cache. Test order may therefore make one of these a
+        // parser-cache hit; every requested body must still be accounted for.
+        assertEquals(3, first.parsedCount + first.cacheHitCount)
         assertEquals(3, first.scheduledCount)
 
         val second = prepareSlockMarkdownFullRendererBodies(listOf(fullRendererBody))
@@ -1709,6 +1711,27 @@ class SlockMarkdownTest {
         assertEquals("#1487", annotated.text.substring(raft.start, raft.end))
         assertTrue(raft.start >= external.end)
         assertEquals(setOf("slock:${body.lastIndexOf("#1487")}"), annotated.slockMarkdownClickableTags())
+    }
+
+    @Test
+    fun mentionInsideLinkStaysOwnedWhileStandaloneSiblingRemainsRaftAction() {
+        val body = "[ping @artin](https://example.test) and outside @artin."
+        val validator = validThreadMarkdownTags(knownMentions = setOf("artin"))
+        val matches = body.threadInlineTagMatches()
+        val annotated =
+            buildSlockMarkdownParagraphAnnotatedString(
+                content = body,
+                annotator = slockMarkdownAnnotator(content = body, isTagValid = validator),
+            )
+        val links = annotated.getLinkAnnotations(0, annotated.length)
+        val external = links.single { it.item is LinkAnnotation.Url }
+        val standalone = links.single { it.item is LinkAnnotation.Clickable }
+
+        assertEquals(listOf(body.lastIndexOf("@artin")), matches.map { it.range.first })
+        assertEquals("ping @artin", annotated.text.substring(external.start, external.end))
+        assertEquals("@artin", annotated.text.substring(standalone.start, standalone.end))
+        assertTrue(standalone.start >= external.end)
+        assertEquals(setOf("slock:${body.lastIndexOf("@artin")}"), annotated.slockMarkdownClickableTags())
     }
 
     @Test

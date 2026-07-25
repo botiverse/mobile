@@ -83,20 +83,19 @@ class SlockRichTextContractTest {
     }
 
     @Test
-    fun adjacentAndMultipleInlineCodeSpansDoNotInvertPlainText() {
+    fun canonicalAstOwnsAmbiguousBacktickRunSemantics() {
         val document = buildSlockRichTextDocument("x`a``b`y `c`")
 
         assertEquals(
             listOf(
                 SlockRichTextInlineKind.Text to "x",
-                SlockRichTextInlineKind.InlineCode to "a",
-                SlockRichTextInlineKind.InlineCode to "b",
+                SlockRichTextInlineKind.InlineCode to "a``b",
                 SlockRichTextInlineKind.Text to "y ",
                 SlockRichTextInlineKind.InlineCode to "c"
             ),
             document.inlineTokens.map { it.kind to it.text }
         )
-        assertEquals(listOf("`a`", "`b`", "`c`"), document.inlineTokens
+        assertEquals(listOf("`a``b`", "`c`"), document.inlineTokens
             .filter { it.kind == SlockRichTextInlineKind.InlineCode }
             .map { it.sourceText })
         assertEquals(emptyList(), document.actions)
