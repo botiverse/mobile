@@ -9758,6 +9758,7 @@ internal fun threadVisualFixture(
                             id = "msg_md_link_ref_visual",
                             authorId = "agent-cindy",
                             authorName = "Cindy",
+                            authorDescription = "Keeps visual testing release notes aligned.",
                             authorKind = "agent",
                             avatarLabel = "CI",
                             timestampLabel = "07/25 08:20",
@@ -9771,7 +9772,25 @@ internal fun threadVisualFixture(
                                     "Mention in label: [ping @artin](https://raft.build/mentions) and outside @artin.",
                             threadChannelId = "thread-msg-md-link-ref-visual",
                             replyCount = 0,
-                            unreadReplyCount = 0
+                            unreadReplyCount = 0,
+                            taskId = "task_1487",
+                            taskNumber = 1487,
+                            taskStatus = "in_review",
+                            taskAssigneeId = "agent-cindy",
+                            taskAssigneeName = "Cindy"
+                        )
+                    ),
+                tasks =
+                    listOf(
+                        KuiklyThreadTaskItem(
+                            id = "task_1487",
+                            title = "feat(search): pin entities from long-press and channel settings",
+                            status = "in_review",
+                            taskNumber = 1487,
+                            messageId = "msg_md_link_ref_visual",
+                            assigneeId = "agent-cindy",
+                            assigneeName = "Cindy",
+                            updatedAtLabel = "07/25 08:20"
                         )
                     ),
                 members =
