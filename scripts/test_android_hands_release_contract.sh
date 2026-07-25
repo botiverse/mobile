@@ -89,6 +89,18 @@ ruby -e '
   raise "fixture schema does not freeze Android 12 hard + Android 14 control" unless coords == %w[android12-update-hard android14-update-control]
   lineage = fixture_schema.fetch("$defs").fetch("artifact").fetch("properties").fetch("signer_lineage_sha256")
   raise "signer lineage ordering is undocumented" unless lineage.fetch("description").include?("oldest-to-current")
+
+  full_case = YAML.load_file("docs/qa-acceptance/android-app-update/android-app-update-full-success.v1.yaml")
+  expected_states = full_case.fetch("android").fetch("carrier_contract").fetch("expected_ui_states")
+  raise "full update case does not require Retry" unless expected_states.include?("Retry")
+  step_ids = full_case.fetch("android").fetch("steps").map { |step| step.fetch("id") }
+  %w[inject-network-failure verify-retry].each do |id|
+    raise "full update case missing #{id} step" unless step_ids.include?(id)
+  end
+  assertion_ids = full_case.fetch("assertions").map { |assertion| assertion.fetch("id") }
+  %w[download-failure-actionable-retry retry-target-b-exact].each do |id|
+    raise "full update case missing #{id} assertion" unless assertion_ids.include?(id)
+  end
 '
 
 grep -Eq '^      publish_hands:$' .github/workflows/android-release.yml ||

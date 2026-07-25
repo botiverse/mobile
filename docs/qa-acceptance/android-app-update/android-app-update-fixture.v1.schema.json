@@ -106,7 +106,7 @@
               "app_package": { "const": "build.raft.app" },
               "build_variant": { "const": "release" },
               "hands_delta_update_enabled": { "const": false },
-              "expected_ui_states": { "const": ["Download", "Downloading", "Install"] }
+              "expected_ui_states": { "const": ["Download", "Downloading", "Retry", "Install"] }
             }
           },
           "distribution": {

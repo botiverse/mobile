@@ -39,7 +39,7 @@ android:
     hands_app_slug: raft-android
     hands_channel_slug: debug
     target_group_label: Palm Stamp QA devices
-    expected_ui_states: [Download, Downloading, Install]
+    expected_ui_states: [Download, Downloading, Retry, Install]
   device:
     type: physical-or-stamp-device
     required_coordinates: [android12-update-hard, android14-update-control]
@@ -66,6 +66,16 @@ android:
 
     - id: verify-single-owner
       goal: "Verify Downloading is visible and disabled while exactly one DownloadManager/update owner exists"
+      action_category: verify
+      capture: [screenshot, dump_layout]
+
+    - id: inject-network-failure
+      goal: "Apply the frozen app-UID network failure while Downloading is active; verify the download fails without a second concurrent owner"
+      action_category: interact
+      capture: [screenshot, dump_layout]
+
+    - id: verify-retry
+      goal: "Verify an actionable Retry state, restore network, tap Retry once, and prove the resumed offer still targets exact B"
       action_category: verify
       capture: [screenshot, dump_layout]
 
@@ -128,6 +138,18 @@ assertions:
     goal: "Downloading is visible and the action cannot be triggered again"
     type: visual_check
     after_step: verify-single-owner
+    severity: critical
+
+  - id: download-failure-actionable-retry
+    goal: "Scoped network failure exposes Retry without a concurrent duplicate owner"
+    type: state_check
+    after_step: verify-retry
+    severity: critical
+
+  - id: retry-target-b-exact
+    goal: "One Retry resumes the exact frozen B target after network restoration"
+    type: identity_check
+    after_step: verify-retry
     severity: critical
 
   - id: download-survives-lifecycle
