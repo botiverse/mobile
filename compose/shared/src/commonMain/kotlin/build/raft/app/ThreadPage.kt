@@ -16724,7 +16724,10 @@ private fun ThreadMessageCard(
                                 modifier =
                                     Modifier
                                         .threadMessageContentWidth(messageMaxWidthFraction)
-                                        .padding(end = if (reserveInlineTrailingSpace) 30.dp else 0.dp)
+                                        .padding(
+                                            start = if (reserveInlineTrailingSpace && alignOwnMessageRight) 30.dp else 0.dp,
+                                            end = if (reserveInlineTrailingSpace && !alignOwnMessageRight) 30.dp else 0.dp
+                                        )
                                         .background(Color.Transparent)
                             ) {
                                 Row(
@@ -16846,6 +16849,7 @@ private fun ThreadMessageCard(
                                     key(markdownRenderSignature) {
                                         SlockMarkdownBody(
                                             body = bodyForRender,
+                                            fillWidth = !alignOwnMessageRight,
                                             textStyle = ThreadMessageBodyTextStyle,
                                             highlightedMentions = highlightedMentions,
                                             isTagValid = isMarkdownTagValid,
@@ -16953,7 +16957,12 @@ private fun ThreadMessageCard(
                     if (richContentEnabled) {
                         when {
                             message.isSendingLocalSend() -> {
-                                ThreadMessageSendingIndicator(modifier = Modifier.align(Alignment.TopEnd))
+                                ThreadMessageSendingIndicator(
+                                    modifier =
+                                        Modifier.align(
+                                            if (alignOwnMessageRight) Alignment.TopStart else Alignment.TopEnd
+                                        )
+                                )
                             }
                         }
                     }

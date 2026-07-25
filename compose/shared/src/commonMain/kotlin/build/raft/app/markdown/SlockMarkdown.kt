@@ -1873,7 +1873,11 @@ fun SlockMarkdownBody(
     sectionHeadingTopPadding: Dp = 0.dp,
     onSectionHeadingPositioned: ((Rect) -> Unit)? = null,
     performanceKey: String? = null,
-    performanceLogger: (String) -> Unit = {}
+    performanceLogger: (String) -> Unit = {},
+    // task #800: right-aligned own messages wrap short paragraphs so a brief
+    // message hugs the End edge; block children that fill width still expand
+    // to the parent cap, so long/ranged content is unaffected.
+    fillWidth: Boolean = true
 ) {
     // task #441: print the factual renderer-capability marker so visual capture
     // records this platform's caps (collector: scripts/collect_richtext_caps.py;
@@ -1946,7 +1950,7 @@ fun SlockMarkdownBody(
             var layoutLogged by remember(content, performanceKey) { mutableStateOf(false) }
             val layoutStartedAt = remember(content, performanceKey) { TimeSource.Monotonic.markNow() }
             modifier
-                .fillMaxWidth()
+                .let { if (fillWidth) it.fillMaxWidth() else it }
                 .onGloballyPositioned {
                     if (!layoutLogged) {
                         layoutLogged = true
@@ -1957,7 +1961,7 @@ fun SlockMarkdownBody(
                     }
                 }
         } else {
-            modifier.fillMaxWidth()
+            modifier.let { if (fillWidth) it.fillMaxWidth() else it }
         }
     val markdownTextStyle = remember(textStyle) {
         slockMarkdownTextStyleWithInlineLineHeight(textStyle)
