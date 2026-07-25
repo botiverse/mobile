@@ -47,6 +47,26 @@
             "actions": [
               "action.system.home"
             ]
+          },
+          {
+            "entities": [
+              "entity.system.default"
+            ],
+            "actions": [
+              "ohos.want.action.sendData"
+            ],
+            "uris": [
+              {
+                "scheme": "file",
+                "type": "*/*",
+                "utd": "general.data"
+              },
+              {
+                "scheme": "content",
+                "type": "*/*",
+                "utd": "general.data"
+              }
+            ]
           }
         ]
       },

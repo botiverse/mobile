@@ -24,6 +24,8 @@ internal object SlockKuiklyPages {
 }
 
 internal object SlockKuiklyRouteKeys {
+    const val INTENT = "intent"
+    const val EXTERNAL_SHARE_TOKEN = "externalShareToken"
     const val AUTH_CHOOSE_SERVER_SKIP_INITIAL_LOAD = "slockAuthChooseServerSkipInitialLoad"
     const val AUTH_LEGAL_PROVIDER = "slockAuthLegalProvider"
     const val AUTH_LEGAL_PLATFORM = "slockAuthLegalPlatform"

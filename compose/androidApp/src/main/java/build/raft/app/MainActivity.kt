@@ -60,6 +60,7 @@ class MainActivity : ComponentActivity() {
 
     private fun handleLaunchIntent(intent: Intent?) {
         if (
+            !handleExternalShareIntent(intent) &&
             !handleMobileOAuthCallback(intent) &&
             !handleSocialAuthCallback(intent) &&
             !handleEmailVerificationLink(intent) &&
@@ -67,6 +68,33 @@ class MainActivity : ComponentActivity() {
         ) {
             openSharedShell(intent)
         }
+    }
+
+    private fun handleExternalShareIntent(intent: Intent?): Boolean {
+        val shareIntent = intent?.takeIf {
+            it.action == Intent.ACTION_SEND || it.action == Intent.ACTION_SEND_MULTIPLE
+        } ?: return false
+        // Drop the raw provider grants and payload from retained Activity state before any suspend.
+        setIntent(Intent(this, MainActivity::class.java))
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                AndroidExternalShareIntake(applicationContext).admit(shareIntent)
+            }
+            when (result) {
+                is AndroidExternalShareIntakeResult.Admitted ->
+                    openSharedShellPageData(androidExternalSharePageData(result.launch))
+                is AndroidExternalShareIntakeResult.Rejected -> {
+                    SlockAppLog.w("SlockBoot", "external_share_rejected code=${result.code}")
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Raft couldn't import this shared content",
+                        Toast.LENGTH_LONG,
+                    ).show()
+                    openSharedShell(Intent(this@MainActivity, MainActivity::class.java))
+                }
+            }
+        }
+        return true
     }
 
     /**
@@ -134,6 +162,16 @@ class MainActivity : ComponentActivity() {
             this,
             pageData = pageData.withAndroidShellLaunchTarget(target),
             clearTask = taskLaunch.clearTask,
+        )
+        finish()
+    }
+
+    private fun openSharedShellPageData(pageData: JSONObject) {
+        val target = resolveAndroidShellLaunchTarget(pageData)
+        SlockKuiklyActivity.startAppShell(
+            this,
+            pageData = pageData.withAndroidShellLaunchTarget(target),
+            clearTask = false,
         )
         finish()
     }

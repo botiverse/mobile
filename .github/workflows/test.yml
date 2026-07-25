@@ -1088,6 +1088,7 @@ jobs:
           install -m 755 "$shared_output/libshared.so" ohosApp/entry/libs/arm64-v8a/libshared.so
           install -m 644 "$shared_output/libshared_api.h" ohosApp/entry/src/main/cpp/libshared_api.h
           node ohosApp/scripts/test_process_network_lifecycle_source_contract.mjs
+          node ohosApp/scripts/test_external_share_intake_source_contract.mjs
 
       - name: Compile OHOS NAPI against the generated Kotlin Native bridge
         if: steps.ohos_native.outputs.required == 'true'

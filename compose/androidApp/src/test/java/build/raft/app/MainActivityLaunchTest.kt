@@ -97,9 +97,45 @@ class MainActivityLaunchTest {
         val handler =
             source.substringAfter("private fun handleLaunchIntent(intent: Intent?)")
                 .substringBefore("private fun handleUnsupportedSlockWebLink")
+        assertTrue(handler.indexOf("handleExternalShareIntent") < handler.indexOf("handleMobileOAuthCallback"))
         assertTrue(handler.indexOf("handleMobileOAuthCallback") < handler.indexOf("handleSocialAuthCallback"))
         assertTrue(handler.indexOf("handleSocialAuthCallback") < handler.indexOf("handleEmailVerificationLink"))
         assertTrue(handler.indexOf("handleEmailVerificationLink") < handler.indexOf("openSharedShell"))
+    }
+
+    @Test
+    fun externalShareLaunchPageDataContainsOnlyOpaqueTokenAndIntent() {
+        val pageData = androidExternalSharePageData(AndroidExternalShareLaunch("opaque-token-1234"))
+
+        assertEquals(setOf("intent", "externalShareToken"), pageData.keys().asSequence().toSet())
+        assertEquals("open_share_to_raft", pageData.getString("intent"))
+        assertEquals("opaque-token-1234", pageData.getString("externalShareToken"))
+        listOf("text", "subject", "items", "uris", "attachments", "targets", "auth", "envelope")
+            .forEach { forbidden -> assertFalse(pageData.has(forbidden)) }
+    }
+
+    @Test
+    fun externalShareColdAndWarmAdmissionShareOneOwnerAndClearTheRawIntent() {
+        val source = mainActivitySource()
+        val handler = source.substringAfter("private fun handleExternalShareIntent(intent: Intent?)")
+            .substringBefore("private fun handleUnsupportedSlockWebLink")
+
+        assertEquals(1, Regex("AndroidExternalShareIntake\\(applicationContext\\)\\.admit\\(shareIntent\\)")
+            .findAll(source).count())
+        assertTrue(handler.indexOf("setIntent(Intent(this, MainActivity::class.java))") < handler.indexOf("withContext(Dispatchers.IO)"))
+        assertTrue(handler.contains("openSharedShellPageData(androidExternalSharePageData(result.launch))"))
+    }
+
+    @Test
+    fun exportedTrampolineOwnsSendAndSendMultipleFilters() {
+        val manifest = androidManifestSource()
+        val mainActivity = manifest.substringAfter("android:name=\".MainActivity\"")
+            .substringBefore("</activity>")
+
+        assertTrue(mainActivity.contains("android:exported=\"true\""))
+        assertTrue(mainActivity.contains("android.intent.action.SEND\""))
+        assertTrue(mainActivity.contains("android.intent.action.SEND_MULTIPLE\""))
+        assertEquals(2, Regex("android:mimeType=\"\\*/\\*\"").findAll(mainActivity).count())
     }
 
     @Test
@@ -389,5 +425,15 @@ class MainActivityLaunchTest {
             current = current.parentFile ?: return@repeat
         }
         error("Unable to locate MainActivity.kt from ${System.getProperty("user.dir")}")
+    }
+
+    private fun androidManifestSource(): String {
+        var current = File(requireNotNull(System.getProperty("user.dir"))).absoluteFile
+        repeat(8) {
+            val candidate = File(current, "src/main/AndroidManifest.xml")
+            if (candidate.isFile) return candidate.readText()
+            current = current.parentFile ?: return@repeat
+        }
+        error("Unable to locate AndroidManifest.xml from ${System.getProperty("user.dir")}")
     }
 }

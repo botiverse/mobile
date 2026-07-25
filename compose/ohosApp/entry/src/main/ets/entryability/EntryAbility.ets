@@ -30,6 +30,10 @@ import {
   SlockOhosPlatformFileReader
 } from './SlockOhosPlatformFileReader';
 import slockOhosProcessNetworkLifecycle from './SlockOhosProcessNetworkLifecycle';
+import {
+  SLOCK_OHOS_EXTERNAL_SHARE_STORAGE_KEY,
+  SlockOhosExternalShareIntake
+} from './SlockOhosExternalShareIntake';
 import BuildProfile from 'BuildProfile';
 
 const SAFE_AREA_TOP_PX = 'slockSafeAreaTopPx';
@@ -105,6 +109,8 @@ export default class EntryAbility extends UIAbility {
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     hilog.info(0x0000, 'testTag', '%{public}s', 'Ability onCreate');
     SlockOhosAppDiagnostics.initialize(this.context);
+    AppStorage.setOrCreate(SLOCK_OHOS_EXTERNAL_SHARE_STORAGE_KEY, '');
+    this.admitExternalShareWant(want);
     // Crash reporting must install BEFORE any native/KNOI initialization —
     // a startup-chain crash (like the task #19 resource-bridge SIGSEGV)
     // is otherwise invisible to Hands.
@@ -121,6 +127,10 @@ export default class EntryAbility extends UIAbility {
     );
     this.setupKnoi();
     slockOhosProcessNetworkLifecycle.install(this.context.getApplicationContext());
+  }
+
+  onNewWant(want: Want, _launchParam: AbilityConstant.LaunchParam): void {
+    this.admitExternalShareWant(want);
   }
 
   onDestroy(): void {
@@ -243,6 +253,19 @@ export default class EntryAbility extends UIAbility {
     // so the ordering is structural.
     initKmmResourceCompose(this.context);
     hilog.info(0x0000, SLOCK_KNOI_LOG_TAG, '%{public}s', 'KNOI setup complete for libshared.so');
+  }
+
+  private admitExternalShareWant(want: Want): void {
+    const result = SlockOhosExternalShareIntake.admit(this.context, want);
+    if (!result.admitted || result.launch === undefined) {
+      if (result.code !== 'external_share_action_unsupported') {
+        hilog.warn(0x0000, 'SlockExternalShare', 'intake rejected code=%{public}s', result.code);
+      }
+      return;
+    }
+    AppStorage.setOrCreate(SLOCK_OHOS_EXTERNAL_SHARE_STORAGE_KEY, JSON.stringify(result.launch));
+    AppStorage.set(SLOCK_OHOS_EXTERNAL_SHARE_STORAGE_KEY, JSON.stringify(result.launch));
+    hilog.info(0x0000, 'SlockExternalShare', 'intake admitted code=%{public}s', result.code);
   }
 
   private updateSafeAreaStorage(mainWindow: window.Window): void {
