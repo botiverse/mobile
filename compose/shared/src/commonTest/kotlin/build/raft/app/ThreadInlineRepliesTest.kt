@@ -14,6 +14,20 @@ import kotlin.test.assertSame
 
 class ThreadInlineRepliesTest {
     @Test
+    fun metaChipsRenderBeforeInlineRepliesWhenBothAreVisible() {
+        assertEquals(
+            listOf(
+                ThreadMessageTrailingSection.MetaChips,
+                ThreadMessageTrailingSection.InlineReplies,
+            ),
+            threadMessageTrailingSectionOrder(
+                hasMetaChips = true,
+                hasInlineReplies = true,
+            ),
+        )
+    }
+
+    @Test
     fun systemRowsAdvanceSnapshotSeamButDoNotConsumeLatestThreeUiSlots() {
         val model =
             initialThreadRepliesReadModel(
