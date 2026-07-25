@@ -10966,6 +10966,7 @@ internal fun threadVisualFixtureHighlightedMentions(
 
 private fun String.requiresViewerSelfMentionContext(): Boolean =
     this == THREAD_MESSAGE_VISUAL_FIXTURE_MARKDOWN_MENTION_CHILD ||
+        this == THREAD_MESSAGE_VISUAL_FIXTURE_MD_LINK_REF ||
         this == THREAD_MESSAGE_VISUAL_FIXTURE_RICH_CONTENT ||
         this == THREAD_MESSAGE_VISUAL_FIXTURE_LONG_INLINE_CODE ||
         this == THREAD_MESSAGE_VISUAL_FIXTURE_WIDE_MARKDOWN_WRAP ||
