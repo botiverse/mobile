@@ -1,0 +1,205 @@
+name: Android App Update QA Fixture
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: "Reviewed immutable 40-character commit SHA"
+        required: true
+        type: string
+      fixture_generation:
+        description: "Owner/run monotonic fixture generation"
+        required: true
+        type: string
+      version_major:
+        description: "Reserved QA major version; keep final versionCode below 2147483647"
+        required: true
+        type: string
+        default: "2000"
+      baseline_build:
+        description: "A build component"
+        required: true
+        type: string
+        default: "1"
+      target_build:
+        description: "B build component; must be greater than A"
+        required: true
+        type: string
+        default: "2"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    outputs:
+      source_sha: ${{ steps.inputs.outputs.source_sha }}
+      fixture_generation: ${{ steps.inputs.outputs.fixture_generation }}
+      version_major: ${{ steps.inputs.outputs.version_major }}
+      baseline_build: ${{ steps.inputs.outputs.baseline_build }}
+      target_build: ${{ steps.inputs.outputs.target_build }}
+    steps:
+      - id: inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE="${{ inputs.source_sha }}"
+          GENERATION="${{ inputs.fixture_generation }}"
+          MAJOR="${{ inputs.version_major }}"
+          A="${{ inputs.baseline_build }}"
+          B="${{ inputs.target_build }}"
+          [[ "${SOURCE}" =~ ^[0-9a-f]{40}$ ]] || { echo "source_sha must be a full lowercase commit SHA" >&2; exit 1; }
+          [[ "${GENERATION}" =~ ^[1-9][0-9]*$ ]] || { echo "fixture_generation must be a positive integer" >&2; exit 1; }
+          [[ "${MAJOR}" =~ ^[1-9][0-9]*$ ]] || { echo "version_major must be a positive integer" >&2; exit 1; }
+          [[ "${A}" =~ ^[0-9]+$ && "${B}" =~ ^[0-9]+$ ]] || { echo "build components must be non-negative integers" >&2; exit 1; }
+          [ "${B}" -gt "${A}" ] || { echo "target_build must be greater than baseline_build" >&2; exit 1; }
+          A_CODE=$((MAJOR * 1000000 + A))
+          B_CODE=$((MAJOR * 1000000 + B))
+          [ "${B_CODE}" -lt 2147483647 ] || { echo "target versionCode exceeds Android maximum" >&2; exit 1; }
+          {
+            echo "source_sha=${SOURCE}"
+            echo "fixture_generation=${GENERATION}"
+            echo "version_major=${MAJOR}"
+            echo "baseline_build=${A}"
+            echo "target_build=${B}"
+          } >> "$GITHUB_OUTPUT"
+
+  baseline:
+    needs: validate
+    uses: ./.github/workflows/android-release.yml
+    secrets: inherit
+    with:
+      source_sha: ${{ needs.validate.outputs.source_sha }}
+      artifact_name: android-update-qa-a-apk
+      version_major: ${{ needs.validate.outputs.version_major }}
+      version_minor: "0"
+      version_patch: "0"
+      version_build: ${{ needs.validate.outputs.baseline_build }}
+      version_suffix: update-qa-a
+      quiver_channel: debug
+      android_variant: release
+      release_mode: draft
+      publish_hands: "false"
+      create_share_page: false
+
+  target:
+    needs: validate
+    uses: ./.github/workflows/android-release.yml
+    secrets: inherit
+    with:
+      source_sha: ${{ needs.validate.outputs.source_sha }}
+      artifact_name: android-update-qa-b-apk
+      version_major: ${{ needs.validate.outputs.version_major }}
+      version_minor: "0"
+      version_patch: "0"
+      version_build: ${{ needs.validate.outputs.target_build }}
+      version_suffix: update-qa-b
+      quiver_channel: debug
+      android_variant: release
+      release_mode: draft
+      publish_hands: "false"
+      create_share_page: false
+
+  manifest:
+    needs: [validate, baseline, target]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create immutable build-pair manifest
+        env:
+          SOURCE_SHA: ${{ needs.validate.outputs.source_sha }}
+          FIXTURE_GENERATION: ${{ needs.validate.outputs.fixture_generation }}
+          A_ARTIFACT_NAME: ${{ needs.baseline.outputs.artifact_name }}
+          A_ARTIFACT_ID: ${{ needs.baseline.outputs.artifact_id }}
+          A_MEMBER: ${{ needs.baseline.outputs.apk_member }}
+          A_SHA256: ${{ needs.baseline.outputs.apk_sha256 }}
+          A_SIZE: ${{ needs.baseline.outputs.apk_size }}
+          A_VERSION_NAME: ${{ needs.baseline.outputs.version_name }}
+          A_VERSION_CODE: ${{ needs.baseline.outputs.version_code }}
+          A_PACKAGE_ID: ${{ needs.baseline.outputs.package_id }}
+          A_MIN_SDK: ${{ needs.baseline.outputs.min_sdk }}
+          A_TARGET_SDK: ${{ needs.baseline.outputs.target_sdk }}
+          A_SIGNERS_JSON: ${{ needs.baseline.outputs.signer_cert_sha256_json }}
+          A_VERIFIED_V2: ${{ needs.baseline.outputs.verified_v2 }}
+          A_VERIFIED_V3: ${{ needs.baseline.outputs.verified_v3 }}
+          B_ARTIFACT_NAME: ${{ needs.target.outputs.artifact_name }}
+          B_ARTIFACT_ID: ${{ needs.target.outputs.artifact_id }}
+          B_MEMBER: ${{ needs.target.outputs.apk_member }}
+          B_SHA256: ${{ needs.target.outputs.apk_sha256 }}
+          B_SIZE: ${{ needs.target.outputs.apk_size }}
+          B_VERSION_NAME: ${{ needs.target.outputs.version_name }}
+          B_VERSION_CODE: ${{ needs.target.outputs.version_code }}
+          B_PACKAGE_ID: ${{ needs.target.outputs.package_id }}
+          B_MIN_SDK: ${{ needs.target.outputs.min_sdk }}
+          B_TARGET_SDK: ${{ needs.target.outputs.target_sdk }}
+          B_SIGNERS_JSON: ${{ needs.target.outputs.signer_cert_sha256_json }}
+          B_VERIFIED_V2: ${{ needs.target.outputs.verified_v2 }}
+          B_VERIFIED_V3: ${{ needs.target.outputs.verified_v3 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [ "${{ needs.baseline.outputs.source_sha }}" = "${SOURCE_SHA}" ]
+          [ "${{ needs.target.outputs.source_sha }}" = "${SOURCE_SHA}" ]
+          [ "${B_VERSION_CODE}" -gt "${A_VERSION_CODE}" ]
+          [ "${A_PACKAGE_ID}" = "build.raft.app" ]
+          [ "${B_PACKAGE_ID}" = "${A_PACKAGE_ID}" ]
+          [ "${B_MIN_SDK}" = "${A_MIN_SDK}" ]
+          [ "${B_TARGET_SDK}" = "${A_TARGET_SDK}" ]
+          [ "${A_SIGNERS_JSON}" = "${B_SIGNERS_JSON}" ]
+          [ "${A_VERIFIED_V2}" = "true" ]
+          [ "${A_VERIFIED_V3}" = "true" ]
+          [ "${B_VERIFIED_V2}" = "true" ]
+          [ "${B_VERIFIED_V3}" = "true" ]
+          jq -n \
+            --arg source "${SOURCE_SHA}" \
+            --arg run "${GITHUB_RUN_ID}" \
+            --arg generation "${FIXTURE_GENERATION}" \
+            --arg aArtifact "${A_ARTIFACT_NAME}" \
+            --arg aArtifactId "${A_ARTIFACT_ID}" \
+            --arg aMember "${A_MEMBER}" \
+            --arg aSha "${A_SHA256}" \
+            --argjson aSize "${A_SIZE}" \
+            --arg aName "${A_VERSION_NAME}" \
+            --argjson aCode "${A_VERSION_CODE}" \
+            --argjson aSigners "${A_SIGNERS_JSON}" \
+            --argjson minSdk "${A_MIN_SDK}" \
+            --argjson targetSdk "${A_TARGET_SDK}" \
+            --arg bArtifact "${B_ARTIFACT_NAME}" \
+            --arg bArtifactId "${B_ARTIFACT_ID}" \
+            --arg bMember "${B_MEMBER}" \
+            --arg bSha "${B_SHA256}" \
+            --argjson bSize "${B_SIZE}" \
+            --arg bName "${B_VERSION_NAME}" \
+            --argjson bCode "${B_VERSION_CODE}" \
+            --argjson bSigners "${B_SIGNERS_JSON}" \
+            '{
+              schema_version: 1,
+              kind: "android-app-update-build-pair",
+              fixture_generation: ($generation | tonumber),
+              source_commit: $source,
+              github_run_id: $run,
+              package_id: "build.raft.app",
+              min_sdk: $minSdk,
+              target_sdk: $targetSdk,
+              build_variant: "release",
+              hands_app_slug: "raft-android",
+              hands_channel_slug: "debug",
+              hands_delta_update_enabled: false,
+              external_writes: false,
+              baseline: {role: "A", artifact_id: $aArtifactId, artifact_name: $aArtifact, member: $aMember, apk_sha256: $aSha, size_bytes: $aSize, version_name: $aName, version_code: $aCode, signer_cert_sha256: $aSigners, verified_v2: true, verified_v3: true},
+              target: {role: "B", artifact_id: $bArtifactId, artifact_name: $bArtifact, member: $bMember, apk_sha256: $bSha, size_bytes: $bSize, version_name: $bName, version_code: $bCode, signer_cert_sha256: $bSigners, verified_v2: true, verified_v3: true},
+              distribution: null
+            }' > android-app-update-build-pair.json
+          jq empty android-app-update-build-pair.json
+          sha256sum android-app-update-build-pair.json > android-app-update-build-pair.json.sha256
+
+      - name: Upload build-pair manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-update-qa-fixture
+          path: |
+            android-app-update-build-pair.json
+            android-app-update-build-pair.json.sha256
+          if-no-files-found: error
+          retention-days: 14

@@ -1,0 +1,187 @@
+id: android-app-update-full-success
+title: "Android App Update-full APK Downloading→Install→B"
+app: raft-android
+tier: L1
+version: "1.0-draft"
+description: |
+  Verify an exact baseline A upgrades to exact target B through the real
+  non-delta DownloadManager and Android package-installer path. This case is
+  not runnable until Stamp freezes an android-app-update artifact bundle and
+  exposes Android 12/14 strict device coordinates.
+tags: [android, app-update, downloading, installer, upgrade, regression]
+timeout_seconds: 900
+max_retries: 0
+auth_fixture: none
+launch_route: compose_slock_app_shell
+verdict_before_cleanup: false
+
+evidence:
+  - recording
+  - screenshot
+  - ui_dump
+  - logcat
+  - steps_log
+  - build_info
+  - checkpoint
+  - report
+
+fixture:
+  revision: android-app-update-full/v1
+  health_check: exact-A-installed-and-target-B-scoped-only-to-frozen-update-device-group
+  provision: install-A-create-minimal-user-state-then-enable-reviewed-B-fixture
+  cleanup: deactivate-B-scope-clear-downloads-reset-app-release-device-and-delete-one-time-access
+
+android:
+  carrier_contract:
+    app_package: build.raft.app
+    build_variant: release
+    hands_delta_update_enabled: false
+    hands_app_slug: raft-android
+    hands_channel_slug: debug
+    target_group_label: Palm Stamp QA devices
+    expected_ui_states: [Download, Downloading, Install]
+  device:
+    type: physical-or-stamp-device
+    required_coordinates: [android12-update-hard, android14-update-control]
+  steps:
+    - id: admit-baseline
+      goal: "Read back exact baseline A package/version/source/signers before opening Raft"
+      action_category: verify
+      capture: [screenshot]
+
+    - id: seed-state
+      goal: "Open Raft A and create the frozen minimal state: signed-in account, current server, one unsent draft, and one cached Release Notes page"
+      action_category: interact
+      capture: [screenshot, dump_layout]
+
+    - id: open-update
+      goal: "Open Settings → App Update and verify exact target B is offered"
+      action_category: navigate
+      capture: [screenshot, dump_layout]
+
+    - id: start-download
+      goal: "Tap Download once, then immediately repeat the same tap several times"
+      action_category: interact
+      capture: [screenshot, dump_layout]
+
+    - id: verify-single-owner
+      goal: "Verify Downloading is visible and disabled while exactly one DownloadManager/update owner exists"
+      action_category: verify
+      capture: [screenshot, dump_layout]
+
+    - id: lifecycle-control
+      goal: "Background/foreground and rotate once; verify the same download continues without reset or duplicate"
+      action_category: interact
+      capture: [screenshot, dump_layout]
+
+    - id: verify-install-ready
+      goal: "Wait for the exact target to finish; verify the action transitions from Downloading to Install"
+      action_category: verify
+      capture: [screenshot, dump_layout]
+
+    - id: install-target
+      goal: "Tap Install, verify Android system installer identifies the expected Raft package, and complete the upgrade"
+      action_category: interact
+      on_failure: abort
+      capture: [screenshot, dump_layout]
+
+    - id: readback-target
+      goal: "Cold-launch and read back exact B package/version/source/signers"
+      action_category: verify
+      capture: [screenshot, dump_layout]
+
+    - id: verify-preserved-state
+      goal: "Verify signed-in identity, current server, unsent draft, and cached Release Notes state survived A→B"
+      action_category: verify
+      capture: [screenshot, dump_layout]
+
+    - id: verify-no-update
+      goal: "Open App Update on B and verify no same-version update is offered; verify no late A callback changes the result"
+      action_category: verify
+      capture: [screenshot, dump_layout]
+
+    - id: terminal-cleanup
+      goal: "Complete distribution and device cleanup and capture the run-bound terminal receipt"
+      action_category: verify
+      capture: [screenshot]
+
+assertions:
+  - id: baseline-a-exact
+    goal: "Installed baseline equals frozen A identity"
+    type: identity_check
+    after_step: admit-baseline
+    severity: critical
+
+  - id: target-b-offer-exact
+    goal: "The offered update equals frozen B identity"
+    type: identity_check
+    after_step: open-update
+    severity: critical
+
+  - id: single-download-owner
+    goal: "Repeated taps create exactly one download/update owner"
+    type: log_check
+    after_step: verify-single-owner
+    severity: critical
+
+  - id: downloading-visible-disabled
+    goal: "Downloading is visible and the action cannot be triggered again"
+    type: visual_check
+    after_step: verify-single-owner
+    severity: critical
+
+  - id: download-survives-lifecycle
+    goal: "The same download survives foreground/background and rotation without duplication"
+    type: state_check
+    after_step: lifecycle-control
+    severity: critical
+
+  - id: installer-target-b-exact
+    goal: "System installer receives the exact target B package"
+    type: identity_check
+    after_step: install-target
+    severity: critical
+
+  - id: installed-b-exact
+    goal: "Cold-launch readback equals frozen B identity"
+    type: identity_check
+    after_step: readback-target
+    severity: critical
+
+  - id: user-state-preserved
+    goal: "Session, server, draft, and cache survive the upgrade"
+    type: state_check
+    after_step: verify-preserved-state
+    severity: critical
+
+  - id: b-no-update
+    goal: "B does not offer itself or an older version"
+    type: visual_check
+    after_step: verify-no-update
+    severity: critical
+
+  - id: zero-stale-a-callback
+    goal: "No late callback from A overwrites B state"
+    type: log_check
+    after_step: verify-no-update
+    severity: critical
+
+  - id: zero-crash-anr
+    goal: "No app crash or ANR occurs during the upgrade"
+    type: no_crash
+    after_step: verify-no-update
+    severity: critical
+
+  - id: terminal-cleanup
+    goal: "Hands scope and device cleanup reached a terminal run-bound receipt"
+    type: cleanup_check
+    after_step: terminal-cleanup
+    severity: critical
+
+expected:
+  result: pass
+  notes: |
+    Product PASS requires every assertion plus the three machine-readable
+    admission/product/cleanup layers. Missing Android 12, missing B provenance,
+    missing installer readback, or incomplete cleanup is NOT RUN/HARNESS, never
+    an inferred PASS.

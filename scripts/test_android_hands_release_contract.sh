@@ -32,8 +32,10 @@ if env SLOCK_PUBLISH_HANDS=true SLOCK_PUBLISH_QUIVER=false \
 fi
 
 ruby -e '
+  require "json"
   require "yaml"
   workflow = YAML.load_file(".github/workflows/android-release.yml")
+  update_workflow = YAML.load_file(".github/workflows/android-update-qa.yml")
   YAML.load_file(".github/workflows/android-release-contract.yml")
 
   inputs = workflow.fetch(true).fetch("workflow_dispatch").fetch("inputs")
@@ -52,6 +54,36 @@ ruby -e '
   unless share_step.fetch("if") == "needs.resolve.outputs.create_share_page == '\''true'\''"
     raise "share step is not independently gated"
   end
+
+  call_inputs = workflow.fetch(true).fetch("workflow_call").fetch("inputs")
+  raise "reusable release workflow lacks source_sha" unless call_inputs.key?("source_sha")
+  raise "reusable release workflow lacks unique artifact_name" unless call_inputs.key?("artifact_name")
+
+  update_inputs = update_workflow.fetch(true).fetch("workflow_dispatch").fetch("inputs")
+  raise "update workflow lacks required source_sha" unless update_inputs.fetch("source_sha").fetch("required")
+  update_jobs = update_workflow.fetch("jobs")
+  %w[validate baseline target manifest].each do |name|
+    raise "update workflow missing #{name} job" unless update_jobs.key?(name)
+  end
+  %w[baseline target].each do |name|
+    call = update_jobs.fetch(name)
+    raise "#{name} does not reuse android-release" unless call.fetch("uses") == "./.github/workflows/android-release.yml"
+    raise "#{name} can publish Hands" unless call.fetch("with").fetch("publish_hands") == "false"
+    raise "#{name} is not release variant" unless call.fetch("with").fetch("android_variant") == "release"
+    raise "#{name} is not debug carrier" unless call.fetch("with").fetch("quiver_channel") == "debug"
+  end
+  manifest_run = update_jobs.fetch("manifest").fetch("steps").find { |step| step["name"] == "Create immutable build-pair manifest" }.fetch("run")
+  raise "update manifest does not fail closed on external writes" unless manifest_run.include?("external_writes: false")
+
+  fixture_schema = JSON.parse(File.read("docs/qa-acceptance/android-app-update/android-app-update-fixture.v1.schema.json"))
+  required = fixture_schema.fetch("required")
+  %w[baseline target distribution execution rollback].each do |name|
+    raise "fixture schema does not require #{name}" unless required.include?(name)
+  end
+  coords = fixture_schema.fetch("properties").fetch("execution").fetch("properties").fetch("required_coordinates").fetch("const")
+  raise "fixture schema does not freeze Android 12 hard + Android 14 control" unless coords == %w[android12-update-hard android14-update-control]
+  lineage = fixture_schema.fetch("$defs").fetch("artifact").fetch("properties").fetch("signer_lineage_sha256")
+  raise "signer lineage ordering is undocumented" unless lineage.fetch("description").include?("oldest-to-current")
 '
 
 grep -Eq '^      publish_hands:$' .github/workflows/android-release.yml ||
