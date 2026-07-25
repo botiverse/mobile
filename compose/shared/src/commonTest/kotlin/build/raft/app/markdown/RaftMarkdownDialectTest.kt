@@ -6,6 +6,7 @@ import com.tencent.kuiklybase.markdown.model.SlockGFMFlavourDescriptor
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.ast.ASTNode
 import org.intellij.markdown.parser.MarkdownParser
 
@@ -79,6 +80,22 @@ class RaftMarkdownDialectTest {
             outside #56
         """.trimIndent()
         assertEquals(listOf("#56"), source.raftRefs())
+    }
+
+    @Test
+    fun taskShapedLinkDefinitionLabelRemainsADefinitionAndNeverBecomesRaftAction() {
+        val source = "[#123]: https://example.test/release\n\nUse [#123] then outside #56"
+        val tree = MarkdownParser(SlockGFMFlavourDescriptor()).buildMarkdownTreeFromString(source)
+        val definitions = mutableListOf<ASTNode>()
+        fun collect(node: ASTNode) {
+            if (node.type == MarkdownElementTypes.LINK_DEFINITION) definitions += node
+            node.children.forEach(::collect)
+        }
+        collect(tree)
+
+        assertEquals(1, definitions.size)
+        assertTrue(source.substring(definitions.single().startOffset, definitions.single().endOffset).startsWith("[#123]:"))
+        assertEquals(listOf("#56"), RaftMarkdownDialect.inlineRefs(tree, source).map { it.sourceText })
     }
 
     @Test
