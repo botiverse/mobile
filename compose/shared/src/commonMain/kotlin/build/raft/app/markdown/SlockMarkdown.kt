@@ -2420,7 +2420,7 @@ internal fun slockMarkdownInlineCodeEdgeStyle(
     trailing: Boolean = !leading,
 ): InlineBoxSpanStyle =
     InlineBoxSpanStyle(
-        backgroundColor = Color.Transparent,
+        backgroundColor = SlockRichTextChromeKind.InlineCode.styleToken.chipFill.toSlockMarkdownColor(),
         borderColor = Color.Transparent,
         borderWidth = 0.dp,
         paddingStart = if (leading) 4.dp else 0.dp,

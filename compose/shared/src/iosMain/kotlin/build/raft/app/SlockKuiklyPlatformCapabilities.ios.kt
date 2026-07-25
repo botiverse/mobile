@@ -2,6 +2,8 @@ package build.raft.app
 
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.useContents
+import platform.CoreFoundation.CFStringGetRangeOfComposedCharactersAtIndex
+import platform.CoreFoundation.CFStringRef
 import platform.Foundation.NSProcessInfo
 
 internal actual fun slockPlatformSupportsKuiklyPullToRefreshItem(): Boolean = true
@@ -46,6 +48,22 @@ internal actual fun slockInlineCodeCharWrapBridgeThreshold(): Int? = null
 // Edge-only boxes provide the Web 4px inset while preserving the
 // ordinary wrapping background span used by the shared renderer.
 internal actual fun slockInlineCodeUsesEdgePaddingBridge(): Boolean = true
+
+@OptIn(ExperimentalForeignApi::class)
+internal actual fun slockFirstComposedCharacterEnd(text: String): Int? {
+    if (text.isEmpty()) return null
+    return CFStringGetRangeOfComposedCharactersAtIndex(text as CFStringRef, 0)
+        .useContents { (location + length).toInt() }
+        .takeIf { it in 1..text.length }
+}
+
+@OptIn(ExperimentalForeignApi::class)
+internal actual fun slockLastComposedCharacterStart(text: String): Int? {
+    if (text.isEmpty()) return null
+    return CFStringGetRangeOfComposedCharactersAtIndex(text as CFStringRef, text.lastIndex.toLong())
+        .useContents { location.toInt() }
+        .takeIf { it in 0 until text.length }
+}
 
 // Hands iOS SDK ios-v0.2.x uploads >10MB attachments via presigned R2 PUT.
 internal actual fun slockFeedbackAttachmentMaxBytes(): Long = 200L * 1024L * 1024L

@@ -1107,8 +1107,8 @@ class SlockMarkdownTest {
         assertEquals(0.dp, leadingEdge.paddingEnd)
         assertEquals(0.dp, trailingEdge.paddingStart)
         assertEquals(4.dp, trailingEdge.paddingEnd)
-        assertEquals(Color.Transparent, leadingEdge.backgroundColor)
-        assertEquals(Color.Transparent, trailingEdge.backgroundColor)
+        assertEquals(SlockColor.TextBlack.copy(alpha = 0.05f), leadingEdge.backgroundColor)
+        assertEquals(SlockColor.TextBlack.copy(alpha = 0.05f), trailingEdge.backgroundColor)
     }
 
     @Test
@@ -2058,6 +2058,11 @@ class SlockMarkdownTest {
         expectedLeading: String,
         expectedTrailing: String,
     ) {
+        assertEquals(expectedLeading.length, build.raft.app.slockFirstComposedCharacterEnd(code))
+        assertEquals(
+            code.length - expectedTrailing.length,
+            build.raft.app.slockLastComposedCharacterStart(code),
+        )
         val annotated = buildSlockMarkdownParagraphAnnotatedString("`$code`")
         val boxRanges =
             annotated.spanStyles.filter { range ->
@@ -2066,17 +2071,21 @@ class SlockMarkdownTest {
                 } == true
             }
         val firstClusterBoundary = code.indexOf(expectedLeading) + expectedLeading.length
-        val splitRange =
+        val leadingRange =
             annotated.spanStyles.first { range ->
-                range.start == 0 && range.end == firstClusterBoundary && range.item.inlineBoxStyle == null
+                range.start == 0 && range.end == firstClusterBoundary && range.item.inlineBoxStyle != null
             }
 
         assertEquals(code, annotated.text)
-        assertEquals(1, boxRanges.size)
-        assertEquals(code, annotated.text.substring(boxRanges.single().start, boxRanges.single().end))
-        assertEquals(expectedLeading, annotated.text.substring(splitRange.start, splitRange.end))
+        assertEquals(2, boxRanges.size)
+        assertEquals(expectedLeading, annotated.text.substring(leadingRange.start, leadingRange.end))
+        assertEquals(expectedTrailing, annotated.text.substring(boxRanges.last().start, boxRanges.last().end))
         assertTrue(annotated.text.endsWith(expectedTrailing))
-        assertEquals(Color.Transparent, boxRanges.single().item.inlineBoxStyle?.backgroundColor)
+        assertTrue(
+            boxRanges.all {
+                it.item.inlineBoxStyle?.backgroundColor == SlockColor.TextBlack.copy(alpha = 0.05f)
+            }
+        )
     }
 
     // Mirrors the CODE_SPAN emission (AnnotatedStringKtx): edge-only boxes
