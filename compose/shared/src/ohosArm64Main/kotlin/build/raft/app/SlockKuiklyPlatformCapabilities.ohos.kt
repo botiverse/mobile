@@ -36,8 +36,6 @@ internal actual fun slockInlineCodeUsesEdgePaddingBridge(): Boolean = true
 // yet. Fail closed: preserve exact text and skip the padding group.
 internal actual fun slockFirstComposedCharacterEnd(text: String): Int? = null
 
-internal actual fun slockLastComposedCharacterStart(text: String): Int? = null
-
 // Hands OHOS SDK reads attachments into a single ArrayBuffer — 50MB hard cap
 // until it streams (see docs/sdk-parity/ohos.md in the hands repo).
 internal actual fun slockFeedbackAttachmentMaxBytes(): Long = 50L * 1024L * 1024L

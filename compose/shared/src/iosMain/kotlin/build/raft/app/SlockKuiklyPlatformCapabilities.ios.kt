@@ -57,14 +57,6 @@ internal actual fun slockFirstComposedCharacterEnd(text: String): Int? {
         .takeIf { it in 1..text.length }
 }
 
-@OptIn(ExperimentalForeignApi::class)
-internal actual fun slockLastComposedCharacterStart(text: String): Int? {
-    if (text.isEmpty()) return null
-    return CFStringGetRangeOfComposedCharactersAtIndex(text as CFStringRef, text.lastIndex.toLong())
-        .useContents { location.toInt() }
-        .takeIf { it in 0 until text.length }
-}
-
 // Hands iOS SDK ios-v0.2.x uploads >10MB attachments via presigned R2 PUT.
 internal actual fun slockFeedbackAttachmentMaxBytes(): Long = 200L * 1024L * 1024L
 

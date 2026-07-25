@@ -64,9 +64,6 @@ internal expect fun slockInlineCodeUsesEdgePaddingBridge(): Boolean
  */
 internal expect fun slockFirstComposedCharacterEnd(text: String): Int?
 
-/** Returns the start of the final platform-standard composed character. */
-internal expect fun slockLastComposedCharacterStart(text: String): Int?
-
 /**
  * Vertical correction (dp) for the slug-input slash glyph so its ink center
  * matches react's (react measures dead-centered in the tile). Measured

@@ -39,7 +39,6 @@ import build.raft.app.markdown.slockMarkdownInlineCodeEdgeStyle
 import build.raft.app.slockFirstComposedCharacterEnd
 import build.raft.app.slockInlineCodeCharWrapBridgeThreshold
 import build.raft.app.slockInlineCodeUsesEdgePaddingBridge
-import build.raft.app.slockLastComposedCharacterStart
 
 // task #401 A-bridge: interleave zero-width spaces into non-whitespace runs
 // longer than [threshold] so renders without native inline-code atomization
@@ -649,32 +648,27 @@ fun AnnotatedString.Builder.buildMarkdownAnnotatedString(
 private fun AnnotatedString.Builder.appendSlockInlineCodeWithEdgeBoxes(codeText: String) {
     if (codeText.isEmpty()) return
     val firstEnd = slockFirstComposedCharacterEnd(codeText)
-    val lastStart = slockLastComposedCharacterStart(codeText)
-    if (
-        firstEnd == null ||
-        lastStart == null ||
-        firstEnd !in 1..codeText.length ||
-        lastStart !in 0 until codeText.length
-    ) {
+    if (firstEnd == null || firstEnd !in 1..codeText.length) {
         append(codeText)
         return
     }
-    if (firstEnd > lastStart) {
-        pushStyle(
-            SpanStyle(
-                inlineBoxStyle = slockMarkdownInlineCodeEdgeStyle(leading = true, trailing = true)
-            )
+    pushStyle(
+        SpanStyle(
+            inlineBoxStyle = slockMarkdownInlineCodeEdgeStyle(leading = true, trailing = true)
         )
+    )
+    if (firstEnd == codeText.length) {
         append(codeText)
         pop()
         return
     }
 
-    pushStyle(SpanStyle(inlineBoxStyle = slockMarkdownInlineCodeEdgeStyle(leading = true)))
+    // Force at least two children without splitting the first composed
+    // character. The group remains wrapping/non-atomic while one box owns both
+    // edge insets and a consistent background height.
+    pushStyle(SpanStyle())
     append(codeText.substring(0, firstEnd))
     pop()
-    append(codeText.substring(firstEnd, lastStart))
-    pushStyle(SpanStyle(inlineBoxStyle = slockMarkdownInlineCodeEdgeStyle(leading = false)))
-    append(codeText.substring(lastStart))
+    append(codeText.substring(firstEnd))
     pop()
 }

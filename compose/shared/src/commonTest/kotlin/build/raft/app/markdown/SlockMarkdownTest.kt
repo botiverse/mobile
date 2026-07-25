@@ -2059,10 +2059,6 @@ class SlockMarkdownTest {
         expectedTrailing: String,
     ) {
         assertEquals(expectedLeading.length, build.raft.app.slockFirstComposedCharacterEnd(code))
-        assertEquals(
-            code.length - expectedTrailing.length,
-            build.raft.app.slockLastComposedCharacterStart(code),
-        )
         val annotated = buildSlockMarkdownParagraphAnnotatedString("`$code`")
         val boxRanges =
             annotated.spanStyles.filter { range ->
@@ -2071,20 +2067,19 @@ class SlockMarkdownTest {
                 } == true
             }
         val firstClusterBoundary = code.indexOf(expectedLeading) + expectedLeading.length
-        val leadingRange =
+        val splitRange =
             annotated.spanStyles.first { range ->
-                range.start == 0 && range.end == firstClusterBoundary && range.item.inlineBoxStyle != null
+                range.start == 0 && range.end == firstClusterBoundary && range.item.inlineBoxStyle == null
             }
 
         assertEquals(code, annotated.text)
-        assertEquals(2, boxRanges.size)
-        assertEquals(expectedLeading, annotated.text.substring(leadingRange.start, leadingRange.end))
-        assertEquals(expectedTrailing, annotated.text.substring(boxRanges.last().start, boxRanges.last().end))
+        assertEquals(1, boxRanges.size)
+        assertEquals(code, annotated.text.substring(boxRanges.single().start, boxRanges.single().end))
+        assertEquals(expectedLeading, annotated.text.substring(splitRange.start, splitRange.end))
         assertTrue(annotated.text.endsWith(expectedTrailing))
-        assertTrue(
-            boxRanges.all {
-                it.item.inlineBoxStyle?.backgroundColor == SlockColor.TextBlack.copy(alpha = 0.05f)
-            }
+        assertEquals(
+            SlockColor.TextBlack.copy(alpha = 0.05f),
+            boxRanges.single().item.inlineBoxStyle?.backgroundColor,
         )
     }
 
