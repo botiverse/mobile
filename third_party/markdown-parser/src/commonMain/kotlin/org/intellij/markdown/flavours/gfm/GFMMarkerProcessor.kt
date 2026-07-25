@@ -15,12 +15,16 @@ import org.intellij.markdown.parser.markerblocks.MarkerBlockProvider
 import org.intellij.markdown.parser.sequentialparsers.SequentialParser
 import kotlin.math.min
 
-class GFMMarkerProcessor(productionHolder: ProductionHolder, constraintsBase: CommonMarkdownConstraints)
+class GFMMarkerProcessor(
+    productionHolder: ProductionHolder,
+    constraintsBase: CommonMarkdownConstraints,
+    tableContinuationColumns: ((LookaheadText.Position, MarkdownConstraints) -> Int?)? = null,
+)
 : CommonMarkMarkerProcessor(productionHolder, constraintsBase) {
 
     private val markerBlockProviders = listOf(GitHubAlertMarkerProvider())
             .plus(super.getMarkerBlockProviders())
-            .plus(listOf(GitHubTableMarkerProvider()))
+            .plus(listOf(GitHubTableMarkerProvider(tableContinuationColumns)))
 
     override fun getMarkerBlockProviders(): List<MarkerBlockProvider<StateInfo>> {
         return markerBlockProviders

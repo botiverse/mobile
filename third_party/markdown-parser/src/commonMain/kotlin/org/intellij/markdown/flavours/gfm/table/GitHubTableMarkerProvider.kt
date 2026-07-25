@@ -9,24 +9,22 @@ import org.intellij.markdown.parser.constraints.extendsPrev
 import org.intellij.markdown.parser.markerblocks.MarkerBlock
 import org.intellij.markdown.parser.markerblocks.MarkerBlockProvider
 
-class GitHubTableMarkerProvider : MarkerBlockProvider<MarkerProcessor.StateInfo> {
+class GitHubTableMarkerProvider(
+    private val tableContinuationColumns: ((LookaheadText.Position, MarkdownConstraints) -> Int?)? = null,
+) : MarkerBlockProvider<MarkerProcessor.StateInfo> {
     override fun createMarkerBlocks(pos: LookaheadText.Position, productionHolder: ProductionHolder, stateInfo: MarkerProcessor.StateInfo): List<MarkerBlock> {
         val currentConstraints = stateInfo.currentConstraints
         if (stateInfo.nextConstraints != currentConstraints) {
             return emptyList()
         }
 
-        val currentLineFromPosition = pos.currentLineFromPosition
-        if (!currentLineFromPosition.contains('|')) {
-            return emptyList()
-        }
-
-        val split = GitHubTableMarkerBlock.splitByPipes(currentLineFromPosition)
-        val numberOfHeaderCells = split
-                .mapIndexed { i, s -> (i > 0 && i < split.lastIndex) || s.isNotBlank() }
-                .count { it }
+        val continuationColumns = tableContinuationColumns?.invoke(pos, currentConstraints)
+        val numberOfHeaderCells = continuationColumns ?: stockHeaderCellCount(pos.currentLineFromPosition)
         if (numberOfHeaderCells == 0) {
             return emptyList()
+        }
+        if (continuationColumns != null) {
+            return listOf(GitHubTableMarkerBlock(pos, currentConstraints, productionHolder, numberOfHeaderCells))
         }
         val nextLine = getNextLineFromConstraints(pos, currentConstraints) ?: return emptyList()
         if (countSecondLineCells(nextLine) == numberOfHeaderCells) {
@@ -36,7 +34,15 @@ class GitHubTableMarkerProvider : MarkerBlockProvider<MarkerProcessor.StateInfo>
     }
 
     override fun interruptsParagraph(pos: LookaheadText.Position, constraints: MarkdownConstraints): Boolean {
-        return false
+        return tableContinuationColumns?.invoke(pos, constraints) != null
+    }
+
+    private fun stockHeaderCellCount(line: CharSequence): Int {
+        if (!line.contains('|')) return 0
+        val split = GitHubTableMarkerBlock.splitByPipes(line)
+        return split
+                .mapIndexed { i, s -> (i > 0 && i < split.lastIndex) || s.isNotBlank() }
+                .count { it }
     }
 
     private fun getNextLineFromConstraints(pos: LookaheadText.Position, constraints: MarkdownConstraints): CharSequence? {
