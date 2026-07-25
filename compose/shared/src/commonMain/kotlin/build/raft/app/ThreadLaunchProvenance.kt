@@ -21,11 +21,20 @@ internal sealed interface ThreadLaunchReplyStream {
     data class Resolved(val channelId: ChannelId) : ThreadLaunchReplyStream
 }
 
-/** Stable, non-raw identity digest for lifecycle equality/rejection diagnostics. */
+/**
+ * Stable, non-raw identity digest for diagnostics only.
+ *
+ * This unkeyed wire-derived value must never authorize a candidate, side effect, cache restore,
+ * or lifecycle transition. Those gates compare the full typed identity plus Store-owned runtime
+ * authority; the digest exists only for structured telemetry and test equality.
+ */
 internal data class ThreadLaunchProvenanceDigest(
     val schemaVersion: Int = 1,
     val value: String
-)
+) {
+    val diagnosticOnly: Boolean
+        get() = true
+}
 
 internal sealed class ThreadLaunchIdentityConstructionError(val reason: String) {
     data object BlankRouteIdentity : ThreadLaunchIdentityConstructionError("blank_route_identity")
@@ -65,6 +74,7 @@ internal fun constructThreadLaunchConversationIdentity(
     routeId: ThreadRouteId,
     kind: ConversationKind,
     parentConversationKind: ConversationKind? = null,
+    parentChannelType: String? = null,
     replyStream: ThreadLaunchReplyStream? = null,
     channelType: String? = null,
     dmPeerIdentity: MemberDetailIdentity? = null
@@ -82,7 +92,7 @@ internal fun constructThreadLaunchConversationIdentity(
                         ThreadLaunchIdentityConstructionError.RouteKindMismatch
                     )
                 }
-                if (parentConversationKind != null || replyStream != null) {
+                if (parentConversationKind != null || parentChannelType != null || replyStream != null) {
                     return ThreadLaunchIdentityConstructionResult.Rejected(
                         ThreadLaunchIdentityConstructionError.UnexpectedReplyMetadata
                     )
@@ -92,6 +102,23 @@ internal fun constructThreadLaunchConversationIdentity(
                         ThreadLaunchIdentityConstructionError.UnexpectedDirectMessagePeer
                     )
                 }
+                val normalizedChannelType = channelType.normalizedThreadChannelKind()
+                val parsedChannelType = parseConversationKindOrNull(normalizedChannelType)
+                val channelTypeMatchesKind =
+                    when (kind) {
+                        ConversationKind.Channel ->
+                            normalizedChannelType == null || parsedChannelType == ConversationKind.Channel
+                        ConversationKind.Joint ->
+                            normalizedChannelType == null || parsedChannelType == ConversationKind.Joint
+                        ConversationKind.DirectMessage ->
+                            normalizedChannelType == null || parsedChannelType == ConversationKind.DirectMessage
+                        else -> false
+                    }
+                if (!channelTypeMatchesKind) {
+                    return ThreadLaunchIdentityConstructionResult.Rejected(
+                        ThreadLaunchIdentityConstructionError.RouteKindMismatch
+                    )
+                }
                 ThreadLaunchConversationIdentity(
                     threadId = topLevelThreadId(routeId.channelId),
                     channelId = routeId.channelId,
@@ -99,7 +126,7 @@ internal fun constructThreadLaunchConversationIdentity(
                         when (kind) {
                             ConversationKind.Joint -> JointChannelKindWireValue
                             ConversationKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
-                            else -> channelType.normalizedThreadChannelKind()
+                            else -> normalizedChannelType ?: KuiklyThreadSurfaceKind.Channel
                         },
                     kind = kind,
                     dmPeerIdentity = dmPeerIdentity.takeIf { kind == ConversationKind.DirectMessage }
@@ -120,6 +147,11 @@ internal fun constructThreadLaunchConversationIdentity(
                         ThreadLaunchIdentityConstructionError.RouteKindMismatch
                     )
                 }
+                if (channelType != null) {
+                    return ThreadLaunchIdentityConstructionResult.Rejected(
+                        ThreadLaunchIdentityConstructionError.UnexpectedReplyMetadata
+                    )
+                }
                 val parentKind =
                     parentConversationKind?.takeIf {
                         it == ConversationKind.Channel ||
@@ -128,6 +160,25 @@ internal fun constructThreadLaunchConversationIdentity(
                     } ?: return ThreadLaunchIdentityConstructionResult.Rejected(
                         ThreadLaunchIdentityConstructionError.ReplyParentKindMissing
                     )
+                val normalizedParentChannelType = parentChannelType.normalizedThreadChannelKind()
+                val parsedParentChannelType = parseConversationKindOrNull(normalizedParentChannelType)
+                val parentChannelTypeMatchesKind =
+                    when (parentKind) {
+                        ConversationKind.Channel ->
+                            normalizedParentChannelType == null ||
+                                parsedParentChannelType == ConversationKind.Channel
+                        ConversationKind.Joint ->
+                            normalizedParentChannelType == null || parsedParentChannelType == ConversationKind.Joint
+                        ConversationKind.DirectMessage ->
+                            normalizedParentChannelType == null ||
+                                parsedParentChannelType == ConversationKind.DirectMessage
+                        else -> false
+                    }
+                if (!parentChannelTypeMatchesKind) {
+                    return ThreadLaunchIdentityConstructionResult.Rejected(
+                        ThreadLaunchIdentityConstructionError.RouteKindMismatch
+                    )
+                }
                 val resolvedStream =
                     when (replyStream) {
                         ThreadLaunchReplyStream.Unresolved -> {
@@ -170,7 +221,14 @@ internal fun constructThreadLaunchConversationIdentity(
                             parentMessageId = routeId.parentMessageId,
                             streamChannelId = resolvedStream,
                             parentSurfaceKind = parentKind.threadParentSurfaceKindOrNull(),
-                            parentChannelKind = parentKind.threadChannelKindWireValue()
+                            parentChannelKind =
+                                when (parentKind) {
+                                    ConversationKind.Channel ->
+                                        normalizedParentChannelType ?: KuiklyThreadSurfaceKind.Channel
+                                    ConversationKind.Joint -> JointChannelKindWireValue
+                                    ConversationKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
+                                    else -> null
+                                }
                         ),
                     kind = ConversationKind.Thread
                 )
@@ -182,6 +240,7 @@ internal fun constructThreadLaunchConversationIdentity(
         }
     val digest =
         threadLaunchProvenanceDigest(
+            identity = identity,
             routeId = routeId,
             kind = kind,
             parentConversationKind = parentConversationKind,
@@ -198,6 +257,7 @@ internal fun constructThreadLaunchConversationIdentity(
 }
 
 private fun threadLaunchProvenanceDigest(
+    identity: ThreadLaunchConversationIdentity,
     routeId: ThreadRouteId,
     kind: ConversationKind,
     parentConversationKind: ConversationKind?,
@@ -208,6 +268,8 @@ private fun threadLaunchProvenanceDigest(
         appendDigestPart("thread-launch-v1")
         appendDigestPart(kind.name)
         appendDigestPart(parentConversationKind?.name.orEmpty())
+        appendDigestPart(identity.channelType.normalizedThreadChannelKind().orEmpty())
+        appendDigestPart(identity.thread?.parentChannelKind.normalizedThreadChannelKind().orEmpty())
         appendDigestPart(routeId.serverId?.value.orEmpty())
         when (routeId) {
             is ThreadRouteId.ChannelThread -> {

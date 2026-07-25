@@ -91,6 +91,8 @@ class ThreadLaunchProvenanceConstructionTest {
             listOf(
                 ReplyVector(ConversationKind.Channel, resolvedStream = null),
                 ReplyVector(ConversationKind.Channel, resolvedStream = "reply-stream-1"),
+                ReplyVector(ConversationKind.Channel, resolvedStream = "reply-stream-1", parentChannelKind = "public"),
+                ReplyVector(ConversationKind.Channel, resolvedStream = "reply-stream-1", parentChannelKind = "private"),
                 ReplyVector(ConversationKind.Joint, resolvedStream = "reply-stream-1"),
                 ReplyVector(ConversationKind.DirectMessage, resolvedStream = "reply-stream-1")
             )
@@ -105,7 +107,7 @@ class ThreadLaunchProvenanceConstructionTest {
                     parentChannelId = "parent-1",
                     parentMessageId = "message-1",
                     parentSurfaceKind = vector.parentKind.threadParentSurfaceKindOrNull(),
-                    parentChannelKind = vector.parentKind.threadChannelKindWireValue(),
+                    parentChannelKind = vector.parentChannelKind,
                     selectedTab = "chat"
                 )
             val accepted = assertAccepted(wire.toThreadLaunchIdentityConstruction())
@@ -121,6 +123,8 @@ class ThreadLaunchProvenanceConstructionTest {
             )
             assertEquals(vector.resolvedStream, accepted.identity.thread?.streamChannelId?.value)
             assertEquals(vector.resolvedStream, normalized.streamChannelId)
+            assertEquals(vector.parentChannelKind, accepted.identity.thread?.parentChannelKind)
+            assertEquals(vector.parentChannelKind, normalized.parentChannelKind)
             assertNull(normalized.threadId)
             assertNull(normalized.sourceThreadId)
             assertEquals(accepted.identity, roundTrip.identity)
@@ -189,9 +193,48 @@ class ThreadLaunchProvenanceConstructionTest {
                 RejectionVector(
                     WireThreadLaunchPayload(
                         surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                        channelKind = KuiklyThreadSurfaceKind.ReplyThread,
+                        threadId = "reply-stream-1",
+                        parentChannelId = "parent-1",
+                        parentMessageId = "message-1",
+                        parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
+                        parentChannelKind = "private"
+                    ),
+                    ThreadLaunchIdentityConstructionError.ConflictingLegacyIdentity
+                ),
+                RejectionVector(
+                    WireThreadLaunchPayload(
+                        surfaceKind = KuiklyThreadSurfaceKind.Channel,
                         channelKind = KuiklyThreadSurfaceKind.Channel
                     ),
                     ThreadLaunchIdentityConstructionError.BlankRouteIdentity
+                ),
+                RejectionVector(
+                    WireThreadLaunchPayload(
+                        surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                        threadId = "channel-1",
+                        parentChannelId = "parent-1",
+                        parentMessageId = "message-1",
+                        parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
+                        parentChannelKind = KuiklyThreadSurfaceKind.Channel
+                    ),
+                    ThreadLaunchIdentityConstructionError.UnexpectedReplyMetadata
+                ),
+                RejectionVector(
+                    WireThreadLaunchPayload(
+                        surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                        streamChannelId = "reply-stream-1",
+                        parentChannelId = "parent-1",
+                        parentMessageId = "message-1",
+                        parentSurfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+                        parentChannelKind = KuiklyThreadSurfaceKind.DirectMessage,
+                        dmPeerIdentity =
+                            MemberDetailIdentity(
+                                memberId = MemberId("human-1"),
+                                kind = MemberKind.Human
+                            )
+                    ),
+                    ThreadLaunchIdentityConstructionError.UnexpectedDirectMessagePeer
                 )
             )
 
@@ -223,7 +266,56 @@ class ThreadLaunchProvenanceConstructionTest {
     }
 
     @Test
-    fun digestIsStableAcrossLegacyNormalizationAndChangesWithAuthorityCandidate() {
+    fun typedConstructionRejectsChannelKindThatConflictsWithChannelType() {
+        val result =
+            constructThreadLaunchConversationIdentity(
+                routeId = ThreadRouteId.ChannelThread(channelId = ChannelId("channel-1")),
+                kind = ConversationKind.Channel,
+                channelType = JointChannelKindWireValue
+            )
+
+        val rejected = assertIs<ThreadLaunchIdentityConstructionResult.Rejected>(result)
+        assertEquals(ThreadLaunchIdentityConstructionError.RouteKindMismatch, rejected.error)
+    }
+
+    @Test
+    fun parentSentinelIsIgnoredWhenOneDistinctResolvedReplyStreamExists() {
+        val accepted =
+            assertAccepted(
+                WireThreadLaunchPayload(
+                    surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                    streamChannelId = "parent-1",
+                    sourceThreadId = "reply-stream-1",
+                    parentChannelId = "parent-1",
+                    parentMessageId = "message-1",
+                    parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
+                    parentChannelKind = "private"
+                ).toThreadLaunchIdentityConstruction()
+            )
+
+        assertEquals(ThreadLaunchReplyStream.Resolved(ChannelId("reply-stream-1")), accepted.replyStream)
+        assertEquals(ChannelId("reply-stream-1"), accepted.identity.thread?.streamChannelId)
+    }
+
+    @Test
+    fun replyParentVisibilityChangesDiagnosticDigest() {
+        fun digest(parentChannelKind: String): ThreadLaunchProvenanceDigest =
+            assertAccepted(
+                WireThreadLaunchPayload(
+                    surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                    streamChannelId = "reply-stream-1",
+                    parentChannelId = "parent-1",
+                    parentMessageId = "message-1",
+                    parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
+                    parentChannelKind = parentChannelKind
+                ).toThreadLaunchIdentityConstruction()
+            ).digest
+
+        assertNotEquals(digest("public"), digest("private"))
+    }
+
+    @Test
+    fun diagnosticDigestChangesWithAuthorityCandidateAndChannelVisibility() {
         val base =
             assertAccepted(
                 constructThreadLaunchConversationIdentity(
@@ -246,8 +338,22 @@ class ThreadLaunchProvenanceConstructionTest {
                     kind = ConversationKind.Channel
                 )
             )
+        val privateChannel =
+            assertAccepted(
+                constructThreadLaunchConversationIdentity(
+                    routeId =
+                        ThreadRouteId.ChannelThread(
+                            channelId = ChannelId("channel-1"),
+                            serverId = ServerId("server-1")
+                        ),
+                    kind = ConversationKind.Channel,
+                    channelType = "private"
+                )
+            )
 
         assertNotEquals(base.digest, otherServer.digest)
+        assertNotEquals(base.digest, privateChannel.digest)
+        assertEquals(true, base.digest.diagnosticOnly)
         assertFalse(base.digest.value.contains("channel-1"))
         assertFalse(base.digest.value.contains("server-1"))
         assertEquals(16, base.digest.value.length)
@@ -297,7 +403,8 @@ class ThreadLaunchProvenanceConstructionTest {
 
     private data class ReplyVector(
         val parentKind: ConversationKind,
-        val resolvedStream: String?
+        val resolvedStream: String?,
+        val parentChannelKind: String = parentKind.threadChannelKindWireValue().orEmpty()
     )
 
     private data class RejectionVector(
