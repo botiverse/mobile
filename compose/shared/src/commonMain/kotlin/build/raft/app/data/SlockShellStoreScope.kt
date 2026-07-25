@@ -81,6 +81,28 @@ internal data class SelectedServerSelectionUpdate(
     val changed: Boolean,
 )
 
+internal data class SelectedServerAuthoritySnapshot(
+    val ownerUserId: String,
+    val selection: SelectedServerSelection,
+    val generation: Long,
+)
+
+internal data class ThreadReplyCacheIdentitySnapshot(
+    val session: StoredAuthSession,
+    val environmentId: String,
+    val principalId: String,
+    val serverId: String,
+    val authGeneration: Long,
+    val selectionGeneration: Long,
+)
+
+internal data class ThreadReplyCacheIdentityTransitionAnchor(
+    val environmentId: String,
+    val principalId: String,
+    val authGeneration: Long,
+    val selectionGeneration: Long,
+)
+
 internal class SelectedServerStore internal constructor(
     val scope: SlockShellStoreScope,
     private val mutex: Mutex = Mutex(),
@@ -90,6 +112,7 @@ internal class SelectedServerStore internal constructor(
     private var ownerUserId: String? = null
     private var selectedServerSlug: String? = null
     private var selectionInitialized: Boolean = requestedInitialServerId != null
+    private var authorityGeneration: Long = 0L
     private val _selectedServerId = MutableStateFlow(requestedInitialServerId)
     val selectedServerId: StateFlow<String?> = _selectedServerId.asStateFlow()
 
@@ -110,10 +133,12 @@ internal class SelectedServerStore internal constructor(
 
     internal suspend fun select(serverId: String?, serverSlug: String?): SelectedServerSelection =
         mutex.withLock {
+            val before = authorityState()
             val normalizedServerId = serverId?.trim()?.takeIf { it.isNotBlank() }
             selectionInitialized = true
             setSelectedServerId(normalizedServerId)
             selectedServerSlug = serverSlug?.trim()?.takeIf { it.isNotBlank() }
+            advanceAuthorityIfChanged(before)
             selection()
         }
 
@@ -126,12 +151,14 @@ internal class SelectedServerStore internal constructor(
             if (ownerUserId != null && ownerUserId != expectedAccountId) {
                 return@withLock null
             }
+            val before = authorityState()
             val previous = selection()
             ownerUserId = expectedAccountId
             val normalizedServerId = serverId?.trim()?.takeIf { it.isNotBlank() }
             selectionInitialized = true
             setSelectedServerId(normalizedServerId)
             selectedServerSlug = serverSlug?.trim()?.takeIf { it.isNotBlank() }
+            advanceAuthorityIfChanged(before)
             val updated = selection()
             SelectedServerSelectionUpdate(
                 selection = updated,
@@ -141,47 +168,119 @@ internal class SelectedServerStore internal constructor(
 
     internal suspend fun reconcile(session: StoredAuthSession): SelectedServerSelection =
         mutex.withLock {
-            if (ownerUserId != session.user.id) {
-                ownerUserId = session.user.id
-                val initialSelection =
-                    requestedInitialServerId
-                        ?.takeIf { requested -> session.servers.any { it.id == requested } }
-                setSelectedServerId(initialSelection ?: session.selectedServerId)
-                selectedServerSlug =
-                    session.servers.firstOrNull { it.id == selectedServerId.value }?.slug
-                        ?: session.selectedServerSlug
-                selectionInitialized = true
-            } else if (!selectionInitialized) {
+            reconcileLocked(session)
+        }
+
+    /**
+     * Converges only a provider-proven account transition. A stable hybrid where the current
+     * principal still equals [expectedPreviousOwner] is rejected by the caller; this atomic owner
+     * check prevents an unrelated route owner from being overwritten between readiness and repair.
+     */
+    internal suspend fun convergeReplyCacheAuthorityTransition(
+        expectedPreviousOwner: String,
+        session: StoredAuthSession,
+    ): SelectedServerSelection? =
+        mutex.withLock {
+            if (_disposed.value) return@withLock null
+            val nextOwner = session.user.id.trim().takeIf { it.isNotBlank() } ?: return@withLock null
+            if (
+                ownerUserId != null &&
+                ownerUserId != expectedPreviousOwner &&
+                ownerUserId != nextOwner
+            ) {
+                return@withLock null
+            }
+            reconcileLocked(session)
+        }
+
+    /**
+     * Captures the shell route only when it is owned by [session]'s principal. A null owner may be
+     * initialized from this exact process-session snapshot, but a different existing owner is never
+     * reconciled here: reply-cache authority must fail closed on an A-session/B-route hybrid.
+     */
+    internal suspend fun captureReplyCacheAuthority(
+        session: StoredAuthSession,
+    ): SelectedServerAuthoritySnapshot? =
+        mutex.withLock {
+            if (_disposed.value) return@withLock null
+            val principalId = session.user.id.trim().takeIf { it.isNotBlank() } ?: return@withLock null
+            if (ownerUserId != null && ownerUserId != principalId) return@withLock null
+            val before = authorityState()
+            if (ownerUserId == null) ownerUserId = principalId
+            if (!selectionInitialized) {
                 setSelectedServerId(session.selectedServerId)
                 selectedServerSlug = session.selectedServerSlug
                 selectionInitialized = true
-            } else if (selectedServerId.value != null && session.servers.none { it.id == selectedServerId.value }) {
-                // Losing the selected membership does not authorize inheriting another
-                // shell's process last-used server.
-                setSelectedServerId(null)
-                selectedServerSlug = null
-            } else if (selectedServerSlug == null) {
-                selectedServerSlug = session.servers.firstOrNull { it.id == selectedServerId.value }?.slug
             }
-            selection()
+            val serverId = selectedServerId.value?.trim()?.takeIf { it.isNotBlank() }
+            if (serverId == null) {
+                advanceAuthorityIfChanged(before)
+                return@withLock null
+            }
+            if (session.servers.isNotEmpty() && session.servers.none { it.id == serverId }) {
+                advanceAuthorityIfChanged(before)
+                return@withLock null
+            }
+            if (selectedServerSlug == null) {
+                selectedServerSlug = session.servers.firstOrNull { it.id == serverId }?.slug
+            }
+            advanceAuthorityIfChanged(before)
+            SelectedServerAuthoritySnapshot(
+                ownerUserId = principalId,
+                selection = selection(),
+                generation = authorityGeneration,
+            )
+        }
+
+    internal suspend fun isReplyCacheAuthorityCurrent(
+        expected: SelectedServerAuthoritySnapshot,
+    ): Boolean =
+        mutex.withLock {
+            !_disposed.value &&
+                ownerUserId == expected.ownerUserId &&
+                selection() == expected.selection &&
+                authorityGeneration == expected.generation
         }
 
     internal suspend fun clearSelection() {
         mutex.withLock {
+            val before = authorityState()
             ownerUserId = null
             setSelectedServerId(requestedInitialServerId)
             selectedServerSlug = null
             selectionInitialized = requestedInitialServerId != null
+            advanceAuthorityIfChanged(before)
         }
     }
 
     internal suspend fun clearActiveSelection() {
         mutex.withLock {
+            val before = authorityState()
             ownerUserId = null
             setSelectedServerId(null)
             selectedServerSlug = null
             selectionInitialized = false
+            advanceAuthorityIfChanged(before)
         }
+    }
+
+    private data class SelectionAuthorityState(
+        val ownerUserId: String?,
+        val serverId: String?,
+        val serverSlug: String?,
+        val initialized: Boolean,
+    )
+
+    private fun authorityState(): SelectionAuthorityState =
+        SelectionAuthorityState(
+            ownerUserId = ownerUserId,
+            serverId = selectedServerId.value,
+            serverSlug = selectedServerSlug,
+            initialized = selectionInitialized,
+        )
+
+    private fun advanceAuthorityIfChanged(before: SelectionAuthorityState) {
+        if (authorityState() != before) authorityGeneration += 1L
     }
 
     private fun selection(): SelectedServerSelection =
@@ -189,6 +288,34 @@ internal class SelectedServerStore internal constructor(
             serverId = selectedServerId.value,
             serverSlug = selectedServerSlug
         )
+
+    private fun reconcileLocked(session: StoredAuthSession): SelectedServerSelection {
+        val before = authorityState()
+        if (ownerUserId != session.user.id) {
+            ownerUserId = session.user.id
+            val initialSelection =
+                requestedInitialServerId
+                    ?.takeIf { requested -> session.servers.any { it.id == requested } }
+            setSelectedServerId(initialSelection ?: session.selectedServerId)
+            selectedServerSlug =
+                session.servers.firstOrNull { it.id == selectedServerId.value }?.slug
+                    ?: session.selectedServerSlug
+            selectionInitialized = true
+        } else if (!selectionInitialized) {
+            setSelectedServerId(session.selectedServerId)
+            selectedServerSlug = session.selectedServerSlug
+            selectionInitialized = true
+        } else if (selectedServerId.value != null && session.servers.none { it.id == selectedServerId.value }) {
+            // Losing the selected membership does not authorize inheriting another
+            // shell's process last-used server.
+            setSelectedServerId(null)
+            selectedServerSlug = null
+        } else if (selectedServerSlug == null) {
+            selectedServerSlug = session.servers.firstOrNull { it.id == selectedServerId.value }?.slug
+        }
+        advanceAuthorityIfChanged(before)
+        return selection()
+    }
 
     private fun setSelectedServerId(serverId: String?) {
         val normalizedServerId = serverId?.trim()?.takeIf { it.isNotBlank() }
@@ -200,6 +327,53 @@ internal class SelectedServerStore internal constructor(
     internal fun dispose() {
         onSelectionChanged(null)
         _disposed.value = true
+    }
+}
+
+/**
+ * One verifiable authority for reply-cache ownership. Environment/principal come from the immutable
+ * process auth-revision binding; the route comes from the shell store's principal-bound snapshot.
+ * Every live owner is revalidated before the snapshot escapes.
+ */
+internal class ThreadReplyCacheIdentityAuthority(
+    private val sessionStore: SlockAuthSessionStore,
+    private val selectedServerStore: SelectedServerStore,
+    private val authContextProvider: () -> ProcessPresenceAuthContext?,
+    private val environmentIdProvider: () -> String,
+) {
+    suspend fun capture(): ThreadReplyCacheIdentitySnapshot? {
+        val authContext = authContextProvider() ?: return null
+        val environmentId = environmentIdProvider().trim().trimEnd('/')
+        if (environmentId.isBlank() || environmentId != authContext.environmentId) return null
+        val session = sessionStore.readSession() ?: return null
+        val principalId = session.user.id.trim()
+        if (principalId.isBlank() || principalId != authContext.accountId) return null
+        val selection = selectedServerStore.captureReplyCacheAuthority(session) ?: return null
+        val serverId = selection.selection.serverId?.trim()?.takeIf { it.isNotBlank() } ?: return null
+
+        val confirmedContext = authContextProvider()
+        val confirmedEnvironmentId = environmentIdProvider().trim().trimEnd('/')
+        val confirmedSession = sessionStore.readSession()
+        if (
+            confirmedContext != authContext ||
+            confirmedEnvironmentId != environmentId ||
+            confirmedSession != session ||
+            !selectedServerStore.isReplyCacheAuthorityCurrent(selection)
+        ) {
+            return null
+        }
+        return ThreadReplyCacheIdentitySnapshot(
+            session = session.copy(
+                selectedServerId = serverId,
+                selectedServerSlug = selection.selection.serverSlug,
+                allowImplicitServerFallback = false,
+            ),
+            environmentId = environmentId,
+            principalId = principalId,
+            serverId = serverId,
+            authGeneration = authContext.authorityGeneration,
+            selectionGeneration = selection.generation,
+        )
     }
 }
 

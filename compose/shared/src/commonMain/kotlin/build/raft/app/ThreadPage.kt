@@ -2454,6 +2454,12 @@ private fun ThreadPageScreen(pageVisibleTick: Int = 0) {
                 cacheEnvironmentIdProvider = {
                     sharedStores.apiEnvironmentStore.current().apiBaseUrl
                 },
+                replyCacheIdentityAuthority = {
+                    sharedStores.captureThreadReplyCacheIdentity(storeScope)
+                },
+                replyCacheIdentityTransitionWaiter = { transitionAnchor ->
+                    sharedStores.awaitThreadReplyCacheIdentityTransition(storeScope, transitionAnchor)
+                },
                 payloadStore = sharedStores.threadPayloadStore,
                 agentsApiClient = SlockAgentsApiClient(
                     transport = SlockAgentsNetworkApi(networkClient),
@@ -4040,6 +4046,9 @@ internal fun SharedThreadRouteContent(
     var currentSession by remember(initialThreadInstanceKey) {
         mutableStateOf<StoredAuthSession?>(null)
     }
+    var replyCacheProvenance by remember(initialThreadInstanceKey) {
+        mutableStateOf<ReplyCacheProvenance?>(null)
+    }
     var currentServerSlug by remember(initialThreadInstanceKey) {
         mutableStateOf<String?>(null)
     }
@@ -4050,10 +4059,11 @@ internal fun SharedThreadRouteContent(
         mutableStateOf<TimeMark?>(null)
     }
     var firstRenderLoggedThreadId by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(authStore, initialThreadInstanceKey) {
-        val session = authStore.readSession()
-        currentSession = session
-        currentServerSlug = session?.currentServerSlug()
+    LaunchedEffect(dataSource, initialThreadInstanceKey) {
+        val producerContext = dataSource.captureReplyCacheProducerContext()
+        currentSession = producerContext?.session
+        replyCacheProvenance = producerContext?.provenance
+        currentServerSlug = producerContext?.session?.currentServerSlug()
     }
     LaunchedEffect(initialPayload, initialThreadInstanceKey) {
         if (!initialRouteIdentity.canRetainThreadPageFor(incomingRouteIdentity)) {
@@ -6648,12 +6658,21 @@ internal fun SharedThreadRouteContent(
                     }
                     val parentReplyMetadata = replyMetadataByParentId.threadReplyMetadataFor(parentMessage)
                     val parentChannelId = renderedThread.replyParentChannelIdForNestedOpen()
-                    dataSource.rememberReplyParentCandidate(
-                        serverId = currentServerId,
-                        parentChannelId = parentChannelId,
-                        parentMessage = parentMessage,
-                        threadChannelId = parentReplyMetadata.threadChannelId
-                    )
+                    val provenance = replyCacheProvenance
+                    if (
+                        provenance == null ||
+                        !dataSource.rememberReplyParentCandidate(
+                            provenance = provenance,
+                            serverId = currentServerId,
+                            parentChannelId = parentChannelId,
+                            parentMessage = parentMessage,
+                            threadChannelId = parentReplyMetadata.threadChannelId
+                        )
+                    ) {
+                        bridge.logWarn("thread_reply_parent_seed_rejected reason=stale_provenance")
+                        bridge.toast(unableToOpenRepliesLabel)
+                        return@ThreadPageContent
+                    }
                     val loadingPayload =
                         renderedThread.replyThreadLoadingPayload(
                             parentMessageId = parentMessage.id,
@@ -6908,12 +6927,21 @@ internal fun SharedThreadRouteContent(
                     }
                     val parentReplyMetadata = replyMetadataByParentId.threadReplyMetadataFor(parentMessage)
                     val parentChannelId = renderedThread.replyParentChannelIdForNestedOpen()
-                    dataSource.rememberReplyParentCandidate(
-                        serverId = currentServerId,
-                        parentChannelId = parentChannelId,
-                        parentMessage = parentMessage,
-                        threadChannelId = parentReplyMetadata.threadChannelId
-                    )
+                    val provenance = replyCacheProvenance
+                    if (
+                        provenance == null ||
+                        !dataSource.rememberReplyParentCandidate(
+                            provenance = provenance,
+                            serverId = currentServerId,
+                            parentChannelId = parentChannelId,
+                            parentMessage = parentMessage,
+                            threadChannelId = parentReplyMetadata.threadChannelId
+                        )
+                    ) {
+                        bridge.logWarn("thread_task_parent_seed_rejected reason=stale_provenance")
+                        bridge.toast(unableToOpenTaskLabel)
+                        return@ThreadPageContent
+                    }
                     val loadingPayload =
                         renderedThread.replyThreadLoadingPayload(
                             parentMessageId = parentMessage.id,
@@ -7153,9 +7181,15 @@ internal fun SharedThreadRouteContent(
                 }
                 action == "openMarkdownThreadRef" && !itemId.isNullOrBlank() -> {
                     coroutineScope.launch {
+                        val provenance = replyCacheProvenance
+                        if (provenance == null) {
+                            bridge.toast(localizedUnableToOpenTarget(itemId.take(32)))
+                            return@launch
+                        }
                         when (
                             val result =
                                 dataSource.markdownThreadRefLaunchPayload(
+                                    provenance = provenance,
                                     currentPayload = renderedThread,
                                     channelLabel = itemId,
                                     threadShortId = tab

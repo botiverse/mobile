@@ -2821,6 +2821,12 @@ internal fun SlockAppShellContent(
                 cacheEnvironmentIdProvider = {
                     sharedStores.apiEnvironmentStore.current().apiBaseUrl
                 },
+                replyCacheIdentityAuthority = {
+                    sharedStores.captureThreadReplyCacheIdentity(storeScope)
+                },
+                replyCacheIdentityTransitionWaiter = { transitionAnchor ->
+                    sharedStores.awaitThreadReplyCacheIdentityTransition(storeScope, transitionAnchor)
+                },
                 payloadStore = sharedStores.threadPayloadStore,
                 readReceiptCoordinator = sharedStores.processReadReceiptCoordinator(),
                 readReceiptOwnerFactory = sharedStores::readReceiptOwner,
