@@ -4854,7 +4854,12 @@ internal fun SharedThreadRouteContent(
         }
         onDispose { foregroundBannerStore.clearVisibleRoute(foregroundBannerRouteOwnerId) }
     }
-    var pendingReactionKeys by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
+    var pendingReactionKeys by remember(threadInstanceKey) {
+        mutableStateOf<Set<ThreadReactionPendingKey>>(emptySet())
+    }
+    var pendingReactionVisuals by remember(threadInstanceKey) {
+        mutableStateOf<Map<ThreadReactionPendingKey, ThreadReactionPendingVisual>>(emptyMap())
+    }
     var pendingActionCardIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
     var pendingTaskConvertMessageIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
     var pendingThreadFollowMessageIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
@@ -6652,6 +6657,7 @@ internal fun SharedThreadRouteContent(
                 LocalSlockMessagePermalinkLabelResolver provides messagePermalinkLabelResolver,
                 LocalThreadMessagePointerSessionKey provides threadPointerSessionKey,
                 LocalThreadPendingReactionKeys provides pendingReactionKeys,
+                LocalThreadPendingReactionVisuals provides pendingReactionVisuals,
                 LocalThreadPendingTaskId provides threadTasksState.statusUpdatingTaskId
             ),
             LocalSlockMarkdownPlainCandidateSession,
@@ -7169,6 +7175,9 @@ internal fun SharedThreadRouteContent(
                     val nextSelected = toggleTarget.nextSelected
                     val previousReactions = toggleTarget.message.reactions
                     pendingReactionKeys = pendingReactionKeys + reactionKey
+                    pendingReactionVisuals =
+                        pendingReactionVisuals +
+                            (reactionKey to previousReactions.toPendingReactionVisual(tab, nextSelected))
                     threadViewModel.dispatch(
                         SharedThreadIntent.ApplyMessageReactionSelection(itemId, tab, selected = nextSelected)
                     )
@@ -7198,6 +7207,7 @@ internal fun SharedThreadRouteContent(
                             }
                         } finally {
                             pendingReactionKeys = pendingReactionKeys - reactionKey
+                            pendingReactionVisuals = pendingReactionVisuals - reactionKey
                         }
                     }
                 }
@@ -17291,6 +17301,8 @@ private fun ThreadMessageCard(
             isSaved = message.isSaved
         )
     val reserveInlineTrailingSpace = richContentEnabled && message.isSendingLocalSend() && !alignOwnMessageRight
+    val hasPendingReaction =
+        LocalThreadPendingReactionVisuals.current.keys.any { key -> key.messageId == message.id }
     val inlineReplyPresentation =
         remember(message.inlineReplies, replyMetadata, hasReplyDraft, inlineThreadRepliesEnabled, showReplyAction) {
             if (inlineThreadRepliesEnabled && showReplyAction) {
@@ -17302,7 +17314,12 @@ private fun ThreadMessageCard(
     val hasFooterMeta =
         richContentEnabled &&
             !message.hasLocalSendState() &&
-            message.hasThreadFooterMeta(replyMetadata, hasReplyDraft, showSavedBadge)
+            message.hasThreadFooterMeta(
+                replyMetadata = replyMetadata,
+                hasReplyDraft = hasReplyDraft,
+                showSavedBadge = showSavedBadge,
+                hasPendingReaction = hasPendingReaction
+            )
     val messagePerformanceKey =
         remember(message.id, messageIndex) {
             threadMessagePerformanceKey(message.id, messageIndex)
@@ -18631,8 +18648,15 @@ private fun ThreadReactionChip(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            if (loading) {
-                SlockChipLoadingIndicator(size = 12.dp)
+            if (onClick != null || loading) {
+                Box(
+                    modifier = Modifier.size(12.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (loading) {
+                        SlockChipLoadingIndicator(size = 12.dp)
+                    }
+                }
             }
         }
     }
@@ -19623,10 +19647,16 @@ private fun ThreadMessageFooterMeta(
     onShowReactionDetails: ((KuiklyThreadReactionItem, SlockPopoverAnchor) -> Unit)? = null
 ) {
     val pendingReactionKeys = LocalThreadPendingReactionKeys.current
+    val pendingReactionVisuals = LocalThreadPendingReactionVisuals.current
     val pendingTaskId = LocalThreadPendingTaskId.current
     val hasTask = message.hasThreadTaskFooterMeta()
     val hasReplies = showReplyMetaChip && (replyMetadata.replyCount > 0 || hasReplyDraft)
-    val visibleReactions = message.reactions.filter { it.count > 0 }
+    val visibleReactions =
+        threadVisibleReactionsWithPending(
+            messageId = message.id,
+            reactions = message.reactions,
+            pendingVisuals = pendingReactionVisuals
+        )
     val hasReactions = visibleReactions.isNotEmpty()
     val showReactionAddChip = showReactionAddAction && hasReactions
     if (!hasTask && !hasReplies && !showSavedBadge && !hasReactions && !showReactionAddChip) return
@@ -19732,30 +19762,79 @@ private fun ThreadMessageFooterMeta(
     }
 }
 
-internal fun threadReactionPendingKey(messageId: String, emoji: String): String =
-    "$messageId:$emoji"
+internal data class ThreadReactionPendingKey(
+    val messageId: String,
+    val emoji: String
+)
+
+internal fun threadReactionPendingKey(messageId: String, emoji: String): ThreadReactionPendingKey =
+    ThreadReactionPendingKey(messageId = messageId, emoji = emoji)
+
+internal data class ThreadReactionPendingVisual(
+    val reaction: KuiklyThreadReactionItem,
+    val originalIndex: Int
+)
+
+internal fun List<KuiklyThreadReactionItem>.toPendingReactionVisual(
+    emoji: String,
+    selected: Boolean
+): ThreadReactionPendingVisual {
+    val originalIndex = indexOfFirst { reaction -> reaction.emoji == emoji }
+    return ThreadReactionPendingVisual(
+        reaction =
+            getOrNull(originalIndex)
+                ?: KuiklyThreadReactionItem(emoji = emoji, count = 1, selected = selected),
+        originalIndex = originalIndex.takeIf { it >= 0 } ?: size
+    )
+}
+
+internal fun threadVisibleReactionsWithPending(
+    messageId: String,
+    reactions: List<KuiklyThreadReactionItem>,
+    pendingVisuals: Map<ThreadReactionPendingKey, ThreadReactionPendingVisual>
+): List<KuiklyThreadReactionItem> {
+    val visible = reactions.filter { reaction -> reaction.count > 0 }.toMutableList()
+    pendingVisuals
+        .filterKeys { key -> key.messageId == messageId }
+        .toList()
+        .sortedBy { (_, visual) -> visual.originalIndex }
+        .forEach { (key, visual) ->
+            if (visible.none { reaction -> reaction.emoji == key.emoji }) {
+                visible.add(
+                    index = visual.originalIndex.coerceIn(0, visible.size),
+                    element = visual.reaction
+                )
+            }
+        }
+    return visible
+}
 
 internal fun threadTaskChipLoading(taskId: String?, pendingTaskId: String?): Boolean =
     pendingTaskId != null && taskId == pendingTaskId
 
-internal val LocalThreadPendingReactionKeys = compositionLocalOf<Set<String>> { emptySet() }
+internal val LocalThreadPendingReactionKeys = compositionLocalOf<Set<ThreadReactionPendingKey>> { emptySet() }
+internal val LocalThreadPendingReactionVisuals =
+    compositionLocalOf<Map<ThreadReactionPendingKey, ThreadReactionPendingVisual>> { emptyMap() }
 internal val LocalThreadPendingTaskId = compositionLocalOf<String?> { null }
 
 internal fun KuiklyThreadMessageItem.hasThreadFooterMeta(
     hasReplyDraft: Boolean = false,
-    showSavedBadge: Boolean = false
+    showSavedBadge: Boolean = false,
+    hasPendingReaction: Boolean = false
 ): Boolean =
-    hasThreadFooterMeta(toThreadReplyMetadata(), hasReplyDraft, showSavedBadge)
+    hasThreadFooterMeta(toThreadReplyMetadata(), hasReplyDraft, showSavedBadge, hasPendingReaction)
 
 internal fun KuiklyThreadMessageItem.hasThreadFooterMeta(
     replyMetadata: ThreadReplyMetadata,
     hasReplyDraft: Boolean = false,
-    showSavedBadge: Boolean = false
+    showSavedBadge: Boolean = false,
+    hasPendingReaction: Boolean = false
 ): Boolean =
     hasThreadTaskFooterMeta() ||
         replyMetadata.replyCount > 0 ||
         hasReplyDraft ||
         showSavedBadge ||
+        hasPendingReaction ||
         reactions.any { it.count > 0 }
 
 internal enum class ThreadMessageTrailingSection {

@@ -17,6 +17,7 @@ import build.raft.app.data.TasksUiState
 import build.raft.app.data.TasksVisibleContent
 import build.raft.app.data.TasksViewMode
 import build.raft.app.data.slockSharedPreferenceStore
+import build.raft.app.data.isCreatingTasksFor
 import build.raft.app.data.boardColumns
 import build.raft.app.data.reduce
 import build.raft.app.data.tasksAssigneeDisplayName
@@ -151,7 +152,33 @@ internal fun SharedTasksPanel(
     // #no-task-new-btn: when the task list is empty (ScreenLoadState.Empty),
     // the user still needs the New Task button and filter toolbar visible.
     var emptyCreateDialogOpen by remember { mutableStateOf(false) }
+    var emptyCreateSubmitted by remember { mutableStateOf(false) }
+    var emptyCreateFailureVisible by remember { mutableStateOf(false) }
+    var emptyCreateBaselineAttempt by remember { mutableStateOf(state.createAttempt) }
     var emptySelectedMode by remember { mutableStateOf(TasksViewMode.List) }
+    LaunchedEffect(
+        emptyCreateDialogOpen,
+        emptyCreateSubmitted,
+        emptyCreateBaselineAttempt,
+        state.createTerminalAttempt,
+        state.createErrorCode
+    ) {
+        val terminalAttempt = state.createTerminalAttempt ?: return@LaunchedEffect
+        if (
+            !emptyCreateDialogOpen ||
+            !emptyCreateSubmitted ||
+            terminalAttempt <= emptyCreateBaselineAttempt
+        ) {
+            return@LaunchedEffect
+        }
+        if (state.createErrorCode == null) {
+            emptyCreateDialogOpen = false
+            emptyCreateFailureVisible = false
+        } else {
+            emptyCreateFailureVisible = true
+        }
+        emptyCreateSubmitted = false
+    }
 
     Column(
         modifier = modifier
@@ -216,7 +243,12 @@ internal fun SharedTasksPanel(
                         onCreatorChipClick = { },
                         onAssigneeChipClick = { },
                         onClearAll = { },
-                        onCreateClick = { emptyCreateDialogOpen = true }
+                        onCreateClick = {
+                            emptyCreateBaselineAttempt = state.createAttempt
+                            emptyCreateSubmitted = false
+                            emptyCreateFailureVisible = false
+                            emptyCreateDialogOpen = true
+                        }
                     )
                 }
                 SharedTasksStateBody(
@@ -225,12 +257,20 @@ internal fun SharedTasksPanel(
                     iconName = SlockLucideIconName.SquareCheckBig
                 )
                 if (emptyCreateDialogOpen && createTasksChannelId != null) {
+                    val createLoading =
+                        emptyCreateSubmitted || state.isCreatingTasksFor(createTasksChannelId)
                     TasksCreateDialog(
-                        refreshing = state.refreshing,
-                        onDismiss = { emptyCreateDialogOpen = false },
+                        loading = createLoading,
+                        errorCode = state.createErrorCode.takeIf { emptyCreateFailureVisible && !createLoading },
+                        onDismiss = {
+                            if (!createLoading) emptyCreateDialogOpen = false
+                        },
                         onSubmit = { titles ->
-                            onIntent(SharedTasksRouteIntent.CreateTasks(createTasksChannelId, titles))
-                            emptyCreateDialogOpen = false
+                            if (!createLoading) {
+                                emptyCreateFailureVisible = false
+                                emptyCreateSubmitted = true
+                                onIntent(SharedTasksRouteIntent.CreateTasks(createTasksChannelId, titles))
+                            }
                         }
                     )
                 }
@@ -503,6 +543,30 @@ private fun SharedTasksLoadedBodyContent(
     var creatorAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
     var assigneeAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
     var createDialogOpen by remember { mutableStateOf(false) }
+    var createSubmitted by remember { mutableStateOf(false) }
+    var createFailureVisible by remember { mutableStateOf(false) }
+    var createBaselineAttempt by remember { mutableStateOf(state.createAttempt) }
+    val createLoading =
+        createSubmitted || createTasksChannelId?.let { state.isCreatingTasksFor(it) } == true
+    LaunchedEffect(
+        createDialogOpen,
+        createSubmitted,
+        createBaselineAttempt,
+        state.createTerminalAttempt,
+        state.createErrorCode
+    ) {
+        val terminalAttempt = state.createTerminalAttempt ?: return@LaunchedEffect
+        if (!createDialogOpen || !createSubmitted || terminalAttempt <= createBaselineAttempt) {
+            return@LaunchedEffect
+        }
+        if (state.createErrorCode == null) {
+            createDialogOpen = false
+            createFailureVisible = false
+        } else {
+            createFailureVisible = true
+        }
+        createSubmitted = false
+    }
     val channelFilterOptions = remember(visibleContent.channelOptions) {
         visibleContent.channelOptions.map { name -> SlockFilterOption(id = name, label = name, icon = SlockLucideIconName.Hash) }
     }
@@ -516,7 +580,8 @@ private fun SharedTasksLoadedBodyContent(
         enabled = createDialogOpen || statusMenuTask != null || presentationState.openFilterId != null
     ) {
         when {
-            createDialogOpen -> createDialogOpen = false
+            createDialogOpen && !createLoading -> createDialogOpen = false
+            createDialogOpen -> Unit
             statusMenuTask != null -> statusMenuTask = null
             presentationState.openFilterId != null ->
                 presentationState = presentationState.reduce(TasksPresentationIntent.SetOpenFilter(null))
@@ -587,7 +652,12 @@ private fun SharedTasksLoadedBodyContent(
                     onClearAll = {
                         presentationState = presentationState.reduce(TasksPresentationIntent.ClearAllFilters)
                     },
-                    onCreateClick = { createDialogOpen = true }
+                    onCreateClick = {
+                        createBaselineAttempt = state.createAttempt
+                        createSubmitted = false
+                        createFailureVisible = false
+                        createDialogOpen = true
+                    }
                 )
                 when (presentationState.selectedMode) {
                     TasksViewMode.Board -> {
@@ -769,11 +839,17 @@ private fun SharedTasksLoadedBodyContent(
 
         if (createDialogOpen && createTasksChannelId != null) {
             TasksCreateDialog(
-                refreshing = state.refreshing,
-                onDismiss = { createDialogOpen = false },
+                loading = createLoading,
+                errorCode = state.createErrorCode.takeIf { createFailureVisible && !createLoading },
+                onDismiss = {
+                    if (!createLoading) createDialogOpen = false
+                },
                 onSubmit = { titles ->
-                    onIntent(SharedTasksRouteIntent.CreateTasks(createTasksChannelId, titles))
-                    createDialogOpen = false
+                    if (!createLoading) {
+                        createFailureVisible = false
+                        createSubmitted = true
+                        onIntent(SharedTasksRouteIntent.CreateTasks(createTasksChannelId, titles))
+                    }
                 }
             )
         }
@@ -1492,20 +1568,21 @@ private fun String.toTaskSortValue(): Long {
 
 @Composable
 private fun TasksCreateDialog(
-    refreshing: Boolean,
+    loading: Boolean,
+    errorCode: String?,
     onDismiss: () -> Unit,
     onSubmit: (List<String>) -> Unit
 ) {
     var titles by remember { mutableStateOf(listOf("")) }
     val anyNonBlank = titles.any { it.isNotBlank() }
-    Modal(onWillDismiss = { onDismiss() }) {
+    Modal(onWillDismiss = { if (!loading) onDismiss() }) {
         Box(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
         ) {
             SlockModalDismissBarrier(
                 overlayAlpha = 0.4f,
-                onDismiss = onDismiss
+                onDismiss = { if (!loading) onDismiss() }
             )
             Column(
                 modifier = Modifier
@@ -1531,6 +1608,7 @@ private fun TasksCreateDialog(
                         },
                         placeholder = stringResource(MR.strings.tasks_label_title),
                         placeholderColor = SlockColor.TextMutedGray,
+                        enabled = !loading,
                         autoFocus = index == 0,
                         maxLines = 2,
                         modifier = Modifier
@@ -1545,8 +1623,18 @@ private fun TasksCreateDialog(
                     label = stringResource(MR.strings.tasks_action_add_another),
                     iconName = SlockLucideIconName.Plus,
                     active = false,
+                    enabled = !loading,
                     onClick = { titles = titles + "" }
                 )
+                errorCode?.takeIf { it.isNotBlank() }?.let { code ->
+                    Text(
+                        text = code,
+                        style = SlockType.Caption,
+                        color = SlockColor.AccentRed,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
@@ -1557,14 +1645,15 @@ private fun TasksCreateDialog(
                         label = stringResource(MR.strings.common_cancel),
                         iconName = null,
                         active = false,
+                        enabled = !loading,
                         onClick = onDismiss
                     )
                     SlockToolbarChip(
-                        label = if (refreshing) "Creating\u2026" else "Create",
+                        label = if (loading) "Creating\u2026" else "Create",
                         iconName = SlockLucideIconName.Check,
                         active = true,
-                        enabled = anyNonBlank && !refreshing,
-                        loading = refreshing,
+                        enabled = anyNonBlank && !loading,
+                        loading = loading,
                         onClick = { onSubmit(titles) }
                     )
                 }
