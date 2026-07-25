@@ -232,6 +232,10 @@ jobs:
           path: ~/.m2/repository/com/tencent/kuikly-open
           key: kuikly-fork-mavenlocal-ohos-${{ steps.pins.outputs.kuikly }}
 
+      - name: Gradle failure diagnostics
+        if: failure()
+        uses: ./.github/actions/gradle-failure-diagnostics
+
   fork-deps:
     name: Shared OHOS fork dependencies
     runs-on: blacksmith-4vcpu-ubuntu-2404
@@ -341,6 +345,7 @@ jobs:
 
           pushd third_party/stately
           ./gradlew --no-daemon --console=plain \
+            --stacktrace \
             :stately-strict:publishKotlinMultiplatformPublicationToMavenLocal \
             :stately-strict:publishOhosArm64PublicationToMavenLocal \
             :stately-concurrency:publishKotlinMultiplatformPublicationToMavenLocal \
@@ -349,12 +354,14 @@ jobs:
 
           pushd third_party/sqliter
           ./gradlew --no-daemon --console=plain \
+            --stacktrace \
             :sqliter-driver:publishKotlinMultiplatformPublicationToMavenLocal \
             :sqliter-driver:publishOhosArm64PublicationToMavenLocal
           popd
 
           pushd third_party/sqldelight
           ./gradlew --no-daemon --console=plain \
+            --stacktrace \
             :sqldelight-compiler:environment:publishMavenPublicationToMavenLocal \
             :sqldelight-compiler:dialect:publishMavenPublicationToMavenLocal \
             :sqldelight-compiler:publishMavenPublicationToMavenLocal \
@@ -396,6 +403,10 @@ jobs:
             fi
           done
           exit "$missing"
+
+      - name: Gradle failure diagnostics
+        if: failure()
+        uses: ./.github/actions/gradle-failure-diagnostics
 
   build-ohos-release:
     name: Build, sign, and validate OHOS .app
@@ -500,6 +511,7 @@ jobs:
         run: |
           set -euo pipefail
           ./gradlew --no-daemon --console=plain \
+            --stacktrace \
             -c settings.ohos.gradle.kts \
             copyNetworkOhosRuntimeLibs \
             :ohosBridge:linkReleaseSharedOhosArm64
@@ -747,3 +759,7 @@ jobs:
         if: always()
         shell: bash
         run: rm -rf "${{ steps.signing.outputs.directory }}"
+
+      - name: Gradle failure diagnostics
+        if: failure()
+        uses: ./.github/actions/gradle-failure-diagnostics

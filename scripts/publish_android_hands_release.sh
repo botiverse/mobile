@@ -196,6 +196,7 @@ if [ "${SKIP_GRADLE_BUILD}" != "1" ]; then
   GRADLE_ARGS=(
     --no-daemon
     --console=plain
+    --stacktrace
     ":androidApp:assemble${VARIANT_CAP}"
     "-PversionX=${VERSION_X}"
     "-PversionY=${VERSION_Y}"

@@ -1,0 +1,13 @@
+name: Gradle failure diagnostics
+description: >
+  Dumps bounded disk diagnostics (df -h/-i, Gradle-home usage, zero-byte jars,
+  largest build dirs) into the job log. Wire as the last step of any job that
+  runs Gradle builds, guarded with `if: failure()`, so a failed job already
+  carries the disk-state evidence needed for cache/disk postmortems. Never
+  fails the job itself.
+runs:
+  using: composite
+  steps:
+    - name: Dump Gradle failure diagnostics
+      shell: bash
+      run: bash "${GITHUB_ACTION_PATH}/diagnose.sh"

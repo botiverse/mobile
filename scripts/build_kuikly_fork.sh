@@ -59,6 +59,7 @@ ARGS=(
   -c settings.2.1.21.gradle.kts
   --no-daemon
   --console=plain
+  --stacktrace
   :core:publishToMavenLocal
   :core-annotations:publishToMavenLocal
   :core-ksp:publishToMavenLocal
@@ -70,6 +71,7 @@ OHOS_ARGS=(
   -c settings.2.0.ohos.gradle.kts
   --no-daemon
   --console=plain
+  --stacktrace
   :core:publishKotlinMultiplatformPublicationToMavenLocal
   :core:publishOhosArm64PublicationToMavenLocal
   :core-annotations:publishKotlinMultiplatformPublicationToMavenLocal

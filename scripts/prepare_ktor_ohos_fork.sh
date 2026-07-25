@@ -107,4 +107,4 @@ for module in "${modules[@]}"; do
   tasks+=("${module}:publishOhosArm64PublicationToMavenLocal")
 done
 
-"${GRADLE_RUNNER}" -p "${WORKDIR}" --no-daemon --no-configuration-cache --console=plain -PreleaseVersion="${VERSION_NAME}" "${tasks[@]}"
+"${GRADLE_RUNNER}" -p "${WORKDIR}" --no-daemon --no-configuration-cache --console=plain --stacktrace -PreleaseVersion="${VERSION_NAME}" "${tasks[@]}"

@@ -99,7 +99,7 @@ jobs:
             :androidApp:copyHandsNativeSymbols \
             "-PversionBuild=${ALPHA_VERSION_BUILD}" \
             -PversionSuffix=alpha \
-            --no-daemon --max-workers=${{ env.GRADLE_MAX_WORKERS }} --console=plain
+            --no-daemon --max-workers=${{ env.GRADLE_MAX_WORKERS }} --console=plain --stacktrace
 
       - name: Locate alpha APK
         id: locate
@@ -259,3 +259,7 @@ jobs:
             echo "- Hands native symbols SHA-256: \`${{ steps.native-symbols.outputs.sha256 }}\`"
             echo "- Artifact retention: 7 days"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Gradle failure diagnostics
+        if: failure()
+        uses: ./.github/actions/gradle-failure-diagnostics

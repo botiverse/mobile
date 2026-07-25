@@ -364,7 +364,7 @@ jobs:
           fi
           ./gradlew \
             "${GRADLE_ARGS[@]}" \
-            --no-daemon --max-workers=${{ env.GRADLE_MAX_WORKERS }} --console=plain
+            --no-daemon --max-workers=${{ env.GRADLE_MAX_WORKERS }} --console=plain --stacktrace
 
       - name: Determine APK path
         id: locate
@@ -539,6 +539,10 @@ jobs:
             echo "| **Hands channel target** | \`${{ needs.resolve.outputs.quiver_channel }}\` |"
             echo "| **Create Hands draft** | \`${{ needs.resolve.outputs.publish_hands }}\` |"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Gradle failure diagnostics
+        if: failure()
+        uses: ./.github/actions/gradle-failure-diagnostics
 
   publish_hands:
     name: Create Hands draft + optional share page
