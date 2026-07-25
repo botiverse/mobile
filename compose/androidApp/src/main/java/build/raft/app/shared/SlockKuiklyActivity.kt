@@ -5712,7 +5712,7 @@ internal class SlockKuiklyBridgeModule(
                 }
         val handlers = appContext.packageManager.queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY)
         if (handlers.isEmpty() && !isPackageArchive) {
-            showToast("No app can open this attachment")
+            showToast(appContext.getString(R.string.attachment_no_app_toast))
             SlockAppLog.record(
                     "SlockAttachmentOpen",
                     "attachmentId=${attachmentId.take(8)} status=no_app mimeType=$openMimeType durationMs=${System.currentTimeMillis() - startedAt}"
@@ -5743,7 +5743,7 @@ internal class SlockKuiklyBridgeModule(
                     }
                 } else {
                     val chooser =
-                            Intent.createChooser(intent, "Open with").apply {
+                            Intent.createChooser(intent, appContext.getString(R.string.attachment_open_with_chooser_title)).apply {
                                 clipData = intent.clipData
                                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
                             }
@@ -5764,10 +5764,10 @@ internal class SlockKuiklyBridgeModule(
             )
         }.getOrElse { throwable ->
             if (throwable is ActivityNotFoundException) {
-                showToast("No app can open this attachment")
+                showToast(appContext.getString(R.string.attachment_no_app_toast))
                 mapOf("status" to "no_app", "message" to "No app can open this file")
             } else {
-                showToast("Unable to open attachment")
+                showToast(appContext.getString(R.string.attachment_open_failed_toast))
                 mapOf("status" to "failed", "message" to "Unable to open attachment")
             }
         }

@@ -476,4 +476,18 @@
     <string name="settings_update_error_missing_release">Raft のアップデート応答に最新リリースが含まれていませんでした。</string>
     <string name="settings_update_error_missing_asset">Raft のアップデート応答に APK アセットが含まれていませんでした。</string>
     <string name="settings_update_error_download_manager_unavailable">Android のダウンロードマネージャーを利用できません。</string>
+    <string name="browser_unavailable_toast">このリンクを開けるブラウザがありません</string>
+    <string name="email_verified_toast">メールアドレスを確認しました</string>
+    <string name="email_verified_sign_in_toast">メールアドレスを確認しました。続行するにはログインしてください。</string>
+    <string name="provider_unavailable_toast">このログインプロバイダーはまだ Android では利用できません</string>
+    <string name="google_sign_in_no_code_toast">Google ログインが認可コードを返しませんでした</string>
+    <string name="google_sign_in_failed_toast">Google ログインに失敗しました。もう一度お試しください。</string>
+    <string name="oauth_request_expired_toast">ログインリクエストの有効期限が切れました。もう一度お試しください。</string>
+    <string name="provider_no_handoff_code_toast">%1$s がハンドオフコードを返しませんでした</string>
+    <string name="provider_linked_toast">%1$s アカウントを連携しました。</string>
+    <string name="provider_link_sign_in_again_toast">%1$s を連携するには、もう一度ログインしてください。</string>
+    <string name="provider_sign_in_failed_toast">%1$s のログインに失敗しました。もう一度お試しください。</string>
+    <string name="attachment_no_app_toast">この添付ファイルを開けるアプリがありません</string>
+    <string name="attachment_open_failed_toast">添付ファイルを開けませんでした</string>
+    <string name="attachment_open_with_chooser_title">アプリで開く</string>
 </resources>
