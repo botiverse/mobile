@@ -110,6 +110,14 @@ internal sealed interface LazyViewportEvent {
 
     data class ContentMutated(val mutation: LazyViewportMutation) : LazyViewportEvent
 
+    data class NewerPageSettled(
+        val expectedViewportEpoch: Long,
+        val expectedViewportIntent: LazyViewportIntent,
+        val requestAnchor: LazyViewportAnchorTarget?,
+        val requestAnchorOffset: Int,
+        val layoutGeneration: Long
+    ) : LazyViewportEvent
+
     data class AnchorUnavailable(val commandId: LazyViewportCommandId) : LazyViewportEvent
 
     data class CommandConsumed(val commandId: LazyViewportCommandId) : LazyViewportEvent
@@ -168,6 +176,7 @@ internal fun reduceLazyViewport(
                     } ?: state.transitionTo(LazyViewportIntent.UserDragging, emitCommand = false)
             }
         is LazyViewportEvent.ContentMutated -> state.onContentMutation(event.mutation)
+        is LazyViewportEvent.NewerPageSettled -> state.onNewerPageSettled(event)
         is LazyViewportEvent.AnchorUnavailable -> state.onAnchorUnavailable(event.commandId)
         is LazyViewportEvent.CommandConsumed ->
             if (state.pendingCommand?.id == event.commandId) state.copy(pendingCommand = null) else state
@@ -219,12 +228,34 @@ private fun LazyViewportControllerState.onContentMutation(
 ): LazyViewportControllerState =
     when (intent) {
         LazyViewportIntent.UserDragging -> copy(pendingCommand = null)
-        LazyViewportIntent.PinnedTop ->
-            if (mutation == LazyViewportMutation.Append) this else withCommandForIntent()
-        is LazyViewportIntent.Anchored ->
-            if (mutation == LazyViewportMutation.Append) this else withCommandForIntent()
+        LazyViewportIntent.PinnedTop -> if (mutation == LazyViewportMutation.Append) this else withCommandForIntent()
+        is LazyViewportIntent.Anchored -> if (mutation == LazyViewportMutation.Append) this else withCommandForIntent()
         LazyViewportIntent.FollowingLatest -> withCommandForIntent()
     }
+
+private fun LazyViewportControllerState.onNewerPageSettled(
+    event: LazyViewportEvent.NewerPageSettled
+): LazyViewportControllerState {
+    if (epoch != event.expectedViewportEpoch || intent != event.expectedViewportIntent) return this
+    return when (intent) {
+        LazyViewportIntent.UserDragging -> copy(pendingCommand = null)
+        LazyViewportIntent.PinnedTop -> pendingCommand?.let { this } ?: withCommandForIntent()
+        is LazyViewportIntent.Anchored -> pendingCommand?.let { this } ?: withCommandForIntent()
+        LazyViewportIntent.FollowingLatest ->
+            event.requestAnchor?.let { target ->
+                transitionTo(
+                    LazyViewportIntent.Anchored(
+                        target = target,
+                        offset = event.requestAnchorOffset,
+                        layoutGeneration = event.layoutGeneration,
+                        placement = LazyViewportAnchorPlacement.ExactOffset,
+                        fallback = LazyViewportAnchorFallback.Free
+                    ),
+                    emitCommand = true
+                )
+            } ?: withCommandForIntent()
+    }
+}
 
 private fun LazyViewportControllerState.onAnchorUnavailable(
     commandId: LazyViewportCommandId

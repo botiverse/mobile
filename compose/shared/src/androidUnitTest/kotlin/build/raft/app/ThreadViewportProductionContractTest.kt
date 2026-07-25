@@ -38,6 +38,11 @@ class ThreadViewportProductionContractTest {
                 "// THREAD_LOCAL_SEND_VIEWPORT_HANDOFF_START",
                 "// THREAD_LOCAL_SEND_VIEWPORT_HANDOFF_END"
             )
+        val newerPageSettlement =
+            source.substringBetween(
+                "// THREAD_NEWER_PAGE_VIEWPORT_SETTLEMENT_START",
+                "// THREAD_NEWER_PAGE_VIEWPORT_SETTLEMENT_END"
+            )
 
         assertEquals(1, source.countOccurrences("LazyViewportEvent.PinTop"))
         assertTrue(
@@ -59,6 +64,20 @@ class ThreadViewportProductionContractTest {
         assertTrue(source.contains("LazyViewportEvent.PointerSettled("))
         assertTrue(source.contains("LazyViewportMutation.Prepend"))
         assertTrue(source.contains("LazyViewportMutation.Append"))
+        assertTrue(source.contains("shouldRestoreThreadNewerViewportAfterSettlement("))
+        assertTrue(source.contains("outcome = outcome"))
+        assertTrue(
+            newerPageSettlement.contains(
+                "LazyViewportEvent.NewerPageSettled("
+            ),
+            "newer-page geometry must restore the current owner through the viewport controller"
+        )
+        assertTrue(newerPageSettlement.contains("expectedViewportEpoch = restoreTicket.expectedViewportEpoch"))
+        assertTrue(newerPageSettlement.contains("expectedViewportIntent = restoreTicket.expectedViewportIntent"))
+        assertTrue(newerPageSettlement.contains("requestAnchor ="))
+        assertTrue(source.contains("val activeCycle = newerPageCycle"))
+        assertTrue(source.contains("newerPageCycle = cycle.copy(anchor = anchor)"))
+        assertFalse(newerPageSettlement.contains("LazyViewportEvent.Anchor("))
         assertTrue(source.contains("LazyViewportMutation.HeightChange"))
         assertTrue(source.contains("LazyViewportMutation.InsetChange"))
     }

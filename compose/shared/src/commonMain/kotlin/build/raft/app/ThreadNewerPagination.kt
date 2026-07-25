@@ -2,6 +2,62 @@ package build.raft.app
 
 internal const val ThreadNewerAutoLoadVisibleItemThreshold = 8
 
+internal sealed interface ThreadNewerPageLoadOutcome {
+    data class Applied(val addedMessageIds: List<String>) : ThreadNewerPageLoadOutcome {
+        init {
+            require(addedMessageIds.isNotEmpty()) { "addedMessageIds must not be empty" }
+        }
+    }
+
+    data object Empty : ThreadNewerPageLoadOutcome
+
+    data object Failed : ThreadNewerPageLoadOutcome
+
+    data object Ignored : ThreadNewerPageLoadOutcome
+}
+
+internal sealed interface ThreadNewerViewportSettlementResult {
+    data object Await : ThreadNewerViewportSettlementResult
+
+    data object Reject : ThreadNewerViewportSettlementResult
+
+    data class Restore(
+        val expectedViewportEpoch: Long,
+        val expectedViewportIntent: LazyViewportIntent,
+        val requestAnchor: LazyViewportAnchorTarget?,
+        val requestAnchorOffset: Int
+    ) : ThreadNewerViewportSettlementResult
+}
+
+internal fun resolveThreadNewerViewportSettlement(
+    requestViewportEpoch: Long,
+    requestViewportIntent: LazyViewportIntent,
+    currentViewportEpoch: Long,
+    currentViewportIntent: LazyViewportIntent,
+    pointerGestureActive: Boolean,
+    pageProjectionCommitted: Boolean,
+    requestAnchor: LazyViewportAnchorTarget?,
+    requestAnchorOffset: Int
+): ThreadNewerViewportSettlementResult {
+    if (pointerGestureActive) return ThreadNewerViewportSettlementResult.Reject
+    val expectedOwnerEpoch =
+        requestViewportEpoch + if (requestViewportIntent == LazyViewportIntent.UserDragging) 1L else 0L
+    if (currentViewportEpoch > expectedOwnerEpoch) return ThreadNewerViewportSettlementResult.Reject
+    if (currentViewportEpoch < expectedOwnerEpoch || !pageProjectionCommitted) {
+        return ThreadNewerViewportSettlementResult.Await
+    }
+    return if (currentViewportIntent == LazyViewportIntent.UserDragging) {
+        ThreadNewerViewportSettlementResult.Reject
+    } else {
+        ThreadNewerViewportSettlementResult.Restore(
+            expectedViewportEpoch = currentViewportEpoch,
+            expectedViewportIntent = currentViewportIntent,
+            requestAnchor = requestAnchor,
+            requestAnchorOffset = requestAnchorOffset
+        )
+    }
+}
+
 /**
  * Converts direct pointer gestures into one-shot demand for a newer page.
  *
@@ -106,3 +162,17 @@ internal fun shouldSettleThreadNewerPageCycle(
 ): Boolean =
     cycleThreadInstanceKey == currentThreadInstanceKey &&
         cycleId == activeCycleId
+
+internal fun shouldRestoreThreadNewerViewportAfterSettlement(
+    cycleThreadInstanceKey: String,
+    currentThreadInstanceKey: String,
+    cycleId: Long,
+    activeCycleId: Long?,
+    outcome: ThreadNewerPageLoadOutcome
+): Boolean =
+    shouldSettleThreadNewerPageCycle(
+        cycleThreadInstanceKey = cycleThreadInstanceKey,
+        currentThreadInstanceKey = currentThreadInstanceKey,
+        cycleId = cycleId,
+        activeCycleId = activeCycleId
+    ) && outcome is ThreadNewerPageLoadOutcome.Applied

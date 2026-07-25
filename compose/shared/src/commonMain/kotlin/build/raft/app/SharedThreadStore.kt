@@ -5755,15 +5755,17 @@ internal class SharedThreadStore(
         }
     }
 
-    private suspend fun loadNewer() {
+    suspend fun loadNewer(): ThreadNewerPageLoadOutcome {
         val initial = _state.value.payload
-        if (!initial.canLoadMoreAfter || initial.newerMessagesStatus == "loading") return
+        if (!initial.canLoadMoreAfter || initial.newerMessagesStatus == "loading") {
+            return ThreadNewerPageLoadOutcome.Ignored
+        }
         val afterSeq = initial.messages.mapNotNull { it.seq }.maxOrNull()
         if (afterSeq == null) {
             reducePayloadPatch { currentPayload ->
                 currentPayload.copy(newerMessagesStatus = "error", errorCode = "missing_after_seq")
             }
-            return
+            return ThreadNewerPageLoadOutcome.Failed
         }
         val staleToken = routeStaleToken
         val routeIdentity = initial.realtimeGapRouteIdentity()
@@ -5800,8 +5802,9 @@ internal class SharedThreadStore(
                     }
                     id
                 }
-            } ?: return
+            } ?: return ThreadNewerPageLoadOutcome.Ignored
         var successorRecovery: Pair<KuiklyThreadScreenPayload, RealtimeVisibleStreamGapRequest>? = null
+        var outcome: ThreadNewerPageLoadOutcome = ThreadNewerPageLoadOutcome.Ignored
         try {
             val result = dataSource.fetchNewerThreadPayload(initial, afterSeq)
             realtimeGapRecoveryMutex.withLock {
@@ -5857,6 +5860,7 @@ internal class SharedThreadStore(
                         is DataResult.NoPermission ->
                             currentPayload.copy(newerMessagesStatus = "error", errorCode = result.blocker.code)
                     }
+                var appliedToCurrentRoute = false
                 reducePayloadPatch(cachePayload = true) { latestPayload ->
                     if (
                         !staleTokenStillCurrent(
@@ -5875,7 +5879,30 @@ internal class SharedThreadStore(
                     ) {
                         return@reducePayloadPatch latestPayload
                     }
+                    appliedToCurrentRoute = true
                     latestPayload.withThreadContentProjectionFrom(nextPayload)
+                }
+                if (appliedToCurrentRoute) {
+                    outcome =
+                        when (result) {
+                            is DataResult.Content -> {
+                                val existingIds = currentPayload.messages.mapTo(mutableSetOf()) { it.id }
+                                val appliedIds = _state.value.payload.messages.mapTo(mutableSetOf()) { it.id }
+                                val addedMessageIds =
+                                    result.data.payload.messages
+                                        .map { it.id }
+                                        .filter { id -> id.isNotBlank() && id !in existingIds && id in appliedIds }
+                                        .distinct()
+                                if (addedMessageIds.isEmpty()) {
+                                    ThreadNewerPageLoadOutcome.Empty
+                                } else {
+                                    ThreadNewerPageLoadOutcome.Applied(addedMessageIds)
+                                }
+                            }
+                            is DataResult.Empty -> ThreadNewerPageLoadOutcome.Empty
+                            is DataResult.Error,
+                            is DataResult.NoPermission -> ThreadNewerPageLoadOutcome.Failed
+                        }
                 }
                 loadNewerState = null
                 val pendingTarget = active.pendingTargetSeq
@@ -5919,6 +5946,7 @@ internal class SharedThreadStore(
         successorRecovery?.let { (successorInitial, request) ->
             recoverRealtimeGap(successorInitial, request, staleToken)
         }
+        return outcome
     }
 
     private suspend fun recoverRealtimeGap(serverSeq: Long) {
@@ -6758,6 +6786,8 @@ internal class SharedThreadViewModel(
     suspend fun accept(intent: SharedThreadIntent) {
         store.accept(intent)
     }
+
+    suspend fun loadNewerPage(): ThreadNewerPageLoadOutcome = store.loadNewer()
 
     override fun onCleared() {
         if (storeDelegate.isInitialized()) {

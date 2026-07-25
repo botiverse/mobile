@@ -266,21 +266,179 @@ class LazyViewportControllerTest {
                 )
             )
 
-        val pinnedAfterAppend =
+        listOf(LazyViewportMutation.Append).forEach { mutation ->
+            val pinnedAfterAppend =
+                reduceLazyViewport(
+                    pinned,
+                    LazyViewportEvent.ContentMutated(mutation)
+                )
+            val anchoredAfterAppend =
+                reduceLazyViewport(
+                    anchored,
+                    LazyViewportEvent.ContentMutated(mutation)
+                )
+
+            assertEquals(pinned.pendingCommand, pinnedAfterAppend.pendingCommand, mutation.toString())
+            assertEquals(anchored.pendingCommand, anchoredAfterAppend.pendingCommand, mutation.toString())
+            assertTrue(pinnedAfterAppend.accepts(pinned.pendingCommand!!), mutation.toString())
+            assertTrue(anchoredAfterAppend.accepts(anchored.pendingCommand!!), mutation.toString())
+        }
+
+        val pinnedAfterSettlement =
             reduceLazyViewport(
                 pinned,
-                LazyViewportEvent.ContentMutated(LazyViewportMutation.Append)
+                LazyViewportEvent.NewerPageSettled(
+                    expectedViewportEpoch = pinned.epoch,
+                    expectedViewportIntent = pinned.intent,
+                    requestAnchor = LazyViewportAnchorTarget.Message("request-anchor"),
+                    requestAnchorOffset = 12,
+                    layoutGeneration = 4L
+                )
             )
-        val anchoredAfterAppend =
+        val anchoredAfterSettlement =
             reduceLazyViewport(
                 anchored,
-                LazyViewportEvent.ContentMutated(LazyViewportMutation.Append)
+                LazyViewportEvent.NewerPageSettled(
+                    expectedViewportEpoch = anchored.epoch,
+                    expectedViewportIntent = anchored.intent,
+                    requestAnchor = LazyViewportAnchorTarget.Message("request-anchor"),
+                    requestAnchorOffset = 12,
+                    layoutGeneration = 4L
+                )
+            )
+        assertEquals(pinned.pendingCommand, pinnedAfterSettlement.pendingCommand)
+        assertEquals(anchored.pendingCommand, anchoredAfterSettlement.pendingCommand)
+    }
+
+    @Test
+    fun newerPageSettlementRestoresStableAnchorButNeverMovesActiveDrag() {
+        val enteredAnchor =
+            reduceLazyViewport(
+                LazyViewportControllerState(),
+                LazyViewportEvent.Anchor(
+                    target = LazyViewportAnchorTarget.Message("message-11"),
+                    offset = 29,
+                    layoutGeneration = 8L,
+                    fallback = LazyViewportAnchorFallback.Free
+                )
+            )
+        val anchored =
+            reduceLazyViewport(
+                enteredAnchor,
+                LazyViewportEvent.CommandConsumed(enteredAnchor.pendingCommand!!.id)
+            )
+        val restored =
+            reduceLazyViewport(
+                anchored,
+                LazyViewportEvent.NewerPageSettled(
+                    expectedViewportEpoch = anchored.epoch,
+                    expectedViewportIntent = anchored.intent,
+                    requestAnchor = LazyViewportAnchorTarget.Message("request-anchor"),
+                    requestAnchorOffset = 51,
+                    layoutGeneration = 9L
+                )
             )
 
-        assertEquals(pinned.pendingCommand, pinnedAfterAppend.pendingCommand)
-        assertEquals(anchored.pendingCommand, anchoredAfterAppend.pendingCommand)
-        assertTrue(pinnedAfterAppend.accepts(pinned.pendingCommand!!))
-        assertTrue(anchoredAfterAppend.accepts(anchored.pendingCommand!!))
+        assertEquals(anchored.intent, restored.intent)
+        assertEquals(
+            LazyViewportCommandTarget.Anchor(
+                target = LazyViewportAnchorTarget.Message("message-11"),
+                offset = 29,
+                layoutGeneration = 8L
+            ),
+            restored.pendingCommand?.target
+        )
+        assertTrue(restored.accepts(restored.pendingCommand!!))
+
+        val staleSettlementCommand = restored.pendingCommand!!
+        val dragging = reduceLazyViewport(restored, LazyViewportEvent.PointerDown)
+        assertFalse(dragging.accepts(staleSettlementCommand))
+        val afterSettlement =
+            reduceLazyViewport(
+                dragging,
+                LazyViewportEvent.NewerPageSettled(
+                    expectedViewportEpoch = dragging.epoch,
+                    expectedViewportIntent = dragging.intent,
+                    requestAnchor = LazyViewportAnchorTarget.Message("message-11"),
+                    requestAnchorOffset = 29,
+                    layoutGeneration = 8L
+                )
+            )
+        assertEquals(LazyViewportIntent.UserDragging, afterSettlement.intent)
+        assertNull(afterSettlement.pendingCommand)
+    }
+
+    @Test
+    fun newerPageSettlementAnchorsAnIncompleteTailThatLookedLikeFollowingLatest() {
+        val following = LazyViewportControllerState(intent = LazyViewportIntent.FollowingLatest)
+        val settled =
+            reduceLazyViewport(
+                following,
+                LazyViewportEvent.NewerPageSettled(
+                    expectedViewportEpoch = following.epoch,
+                    expectedViewportIntent = following.intent,
+                    requestAnchor = LazyViewportAnchorTarget.Message("message-11"),
+                    requestAnchorOffset = -23,
+                    layoutGeneration = 12L
+                )
+            )
+
+        assertEquals(
+            LazyViewportIntent.Anchored(
+                target = LazyViewportAnchorTarget.Message("message-11"),
+                offset = -23,
+                layoutGeneration = 12L,
+                placement = LazyViewportAnchorPlacement.ExactOffset,
+                fallback = LazyViewportAnchorFallback.Free
+            ),
+            settled.intent
+        )
+        assertTrue(settled.accepts(settled.pendingCommand!!))
+
+        val genuineFollowingLatest =
+            reduceLazyViewport(
+                following,
+                LazyViewportEvent.NewerPageSettled(
+                    expectedViewportEpoch = following.epoch,
+                    expectedViewportIntent = following.intent,
+                    requestAnchor = null,
+                    requestAnchorOffset = 0,
+                    layoutGeneration = 12L
+                )
+            )
+        assertEquals(LazyViewportIntent.FollowingLatest, genuineFollowingLatest.intent)
+        assertEquals(LazyViewportCommandTarget.Latest, genuineFollowingLatest.pendingCommand?.target)
+    }
+
+    @Test
+    fun newerPageSettlementTicketRejectsALaterGestureThatAlreadySettledFollowingLatest() {
+        val originalOwner = LazyViewportControllerState(intent = LazyViewportIntent.FollowingLatest)
+        val staleSettlement =
+            LazyViewportEvent.NewerPageSettled(
+                expectedViewportEpoch = originalOwner.epoch,
+                expectedViewportIntent = originalOwner.intent,
+                requestAnchor = LazyViewportAnchorTarget.Message("message-11"),
+                requestAnchorOffset = -23,
+                layoutGeneration = 12L
+            )
+        val dragging = reduceLazyViewport(originalOwner, LazyViewportEvent.PointerDown)
+        val laterFollowing =
+            reduceLazyViewport(
+                dragging,
+                LazyViewportEvent.PointerSettled(
+                    epoch = dragging.epoch,
+                    atRenderedBottom = true,
+                    anchorMessageId = "message-19",
+                    anchorOffset = -5,
+                    layoutGeneration = 13L
+                )
+            )
+
+        val rejected = reduceLazyViewport(laterFollowing, staleSettlement)
+
+        assertEquals(laterFollowing, rejected)
+        assertEquals(LazyViewportIntent.FollowingLatest, rejected.intent)
+        assertNull(rejected.pendingCommand)
     }
 
     @Test

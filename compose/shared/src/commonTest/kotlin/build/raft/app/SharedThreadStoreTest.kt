@@ -11601,14 +11601,92 @@ class SharedThreadStoreTest {
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = true)))
 
-        store.accept(SharedThreadIntent.LoadNewer)
+        val outcome = store.loadNewer()
 
         val payload = store.state.value.payload
+        assertEquals(ThreadNewerPageLoadOutcome.Applied(listOf("m12")), outcome)
         assertEquals(listOf("current body", "newer body"), payload.messages.map { it.body })
         assertEquals(listOf(10L), api.afterSeqs)
         assertEquals(emptyList(), api.syncSinceSeqs)
         assertEquals(false, payload.canLoadMoreAfter)
         assertEquals("idle", payload.newerMessagesStatus)
+        scope.cancel()
+    }
+
+    @Test
+    fun realtimeAppendDuringFailedNewerPageDoesNotBecomeAppliedPageOutcome() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api =
+            FakeThreadApi(
+                bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
+                newerResponseCode = 500
+            )
+        api.afterMessagesStarted = CompletableDeferred()
+        api.releaseAfterMessages = CompletableDeferred()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = true)))
+
+        val pageOutcome = async { store.loadNewer() }
+        api.afterMessagesStarted?.await()
+        store.accept(
+            SharedThreadIntent.ApplyRealtimeEvent(
+                MessageNew(message(id = "m11", seq = 11, body = "realtime body"))
+            )
+        )
+        api.releaseAfterMessages?.complete(Unit)
+
+        assertEquals(ThreadNewerPageLoadOutcome.Failed, pageOutcome.await())
+        assertEquals(listOf("m10", "m11"), store.state.value.payload.messages.map { it.id })
+        assertEquals("error", store.state.value.payload.newerMessagesStatus)
+        scope.cancel()
+    }
+
+    @Test
+    fun emptyNewerPageReturnsEmptyOutcomeWithoutAppliedIdentities() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api =
+            FakeThreadApi(
+                bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
+                newerBodyText = emptyMessagesResponse()
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = true)))
+
+        assertEquals(ThreadNewerPageLoadOutcome.Empty, store.loadNewer())
+        assertEquals(listOf("m10"), store.state.value.payload.messages.map { it.id })
+        assertEquals(false, store.state.value.payload.canLoadMoreAfter)
+        scope.cancel()
+    }
+
+    @Test
+    fun deduplicatedNewerPageReturnsEmptyOutcomeWithoutAppliedIdentities() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val currentResponse = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false)
+        val api =
+            FakeThreadApi(
+                bodyText = currentResponse,
+                newerBodyText = currentResponse
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = true)))
+
+        assertEquals(ThreadNewerPageLoadOutcome.Empty, store.loadNewer())
+        assertEquals(listOf("m10"), store.state.value.payload.messages.map { it.id })
         scope.cancel()
     }
 
@@ -12617,6 +12695,7 @@ class SharedThreadStoreTest {
         var bodyText: String = messagesResponse("network body"),
         var olderBodyText: String = messagesResponse("older body", id = "older", seq = 1, historyLimited = false),
         var newerBodyText: String = messagesResponse("newer body", id = "newer", seq = 100, historyLimited = false),
+        var newerResponseCode: Int = 200,
         var failChannelMessages: Boolean = false,
         var channelMessagesResponseCode: Int = 200
     ) : SharedThreadNetworkApi {
@@ -12683,7 +12762,7 @@ class SharedThreadStoreTest {
                     afterSeqs += afterSeq
                     afterMessagesStarted?.complete(Unit)
                     releaseAfterMessages?.await()
-                    HomeNetworkResponse(code = 200, bodyText = newerBodyText)
+                    HomeNetworkResponse(code = newerResponseCode, bodyText = newerBodyText)
                 }
                 else -> HomeNetworkResponse(code = channelMessagesResponseCode, bodyText = responseBody)
             }
