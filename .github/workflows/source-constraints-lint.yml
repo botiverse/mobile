@@ -1,0 +1,38 @@
+name: Source constraints lint
+
+# Incident-born static constraints as an explicit gate (test-discipline
+# announcement, #all 2026-07-25): tasks #800 / #803 / #361 structural faces.
+# Behavior stays proven by behavior tests; this only blocks silent structural
+# regressions a refactor could reintroduce.
+
+on:
+  pull_request:
+    paths:
+      - "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt"
+      - "compose/shared/src/commonMain/kotlin/build/raft/app/markdown/SlockMarkdown.kt"
+      - "compose/shared/src/commonMain/kotlin/build/raft/app/data/BridgeAuth.kt"
+      - "compose/androidApp/src/main/java/build/raft/app/shared/SlockKuiklyActivity.kt"
+      - "third_party/kuikly-compose-markdown/**"
+      - "scripts/ci/check_source_constraints.py"
+      - ".github/workflows/source-constraints-lint.yml"
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  constraints:
+    name: Incident constraints invariant
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Self-test checker
+        run: python3 scripts/ci/check_source_constraints.py --self-test
+
+      - name: Enforce constraints
+        run: python3 scripts/ci/check_source_constraints.py
