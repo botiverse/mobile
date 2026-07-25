@@ -7717,6 +7717,10 @@ private fun SettingsAppLanguageCard(
                     SegmentedControlOption(
                         AppLocale.SimplifiedChinese.languageTag,
                         stringResource(MR.strings.settings_app_language_simplified_chinese)
+                    ),
+                    SegmentedControlOption(
+                        AppLocale.Japanese.languageTag,
+                        stringResource(MR.strings.settings_app_language_japanese)
                     )
                 ),
             onValueSelected = { selected -> selected?.let(onLocaleChange) },

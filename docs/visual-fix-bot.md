@@ -97,7 +97,7 @@ against the PR branch head, so the “after” reflects exactly the proposed fix
 gh workflow run visual-testing.yml --repo botiverse/mobile \
   --ref <PR-head-branch> \
   -f case_filter="components.ui.slug-input.states,components.ui.button.states" \
-  [-f capture_locale="zh-CN"]
+  [-f capture_locale="zh-CN"] # also accepts en or ja
 ```
 
 - **`case_filter`** (comma-separated caseIds) drives BOTH the React `--case`
@@ -105,8 +105,8 @@ gh workflow run visual-testing.yml --repo botiverse/mobile \
   of the full manifest. The Android build maps each caseId to its `@Test` method
   by finding the method whose body contains the `"<caseId>"` string literal
   (`Derive android method filter` step). Targeted runs use shard 0 only.
-- **`capture_locale`** (optional, e.g. `zh-CN`) forces the app KmmResource locale
-  for the capture — see §6.
+- **`capture_locale`** (optional: `en`, `zh-CN`, or `ja`) forces the Android app
+  KmmResource locale for the capture — see §6.
 - Cases are **deterministic visual fixtures** (`@Page(..., supportInLocal = true)`
   in the `visualFixtures` source set), NOT production session routes. A page that
   depends on persisted session / auth gate (e.g. `compose_slock_app_shell`) is
@@ -132,13 +132,13 @@ Each case yields `<caseId>.png` + `<caseId>.metadata.json`.
 ## 6. Locale capture (`capture_locale`)
 
 The app seeds the global `StringDesc.localeType` from the persisted `AppLocale`
-at process start (CI runs English by default). For a zh capture, the harness
-sets the locale **before the page’s first composition** — the KmmResource global
-has no auto-recompose semantics — and restores it per case in `finally`, so cases
-that don’t set a locale keep the English baseline byte-for-byte:
+at process start (CI runs English by default). For a localized capture, the
+harness sets the locale **before the page’s first composition** — the KmmResource
+global has no auto-recompose semantics — and restores it per case in `finally`,
+so cases that don’t set a locale keep the English baseline byte-for-byte:
 
 - driven by the `capture_locale` instrumentation arg (`zh-CN`→SimplifiedChinese,
-  `en`→English, empty→no-op);
+  `ja`→Japanese, `en`→English, empty→no-op; unsupported tags fail closed);
 - `StringDesc` usage is confined to a shared `commonMain` helper
   (`VisualCaptureLocaleSupport.kt`, `AppLocale`-only surface) because the
   `androidTest` module has no KmmResource `StringDesc` on its classpath;

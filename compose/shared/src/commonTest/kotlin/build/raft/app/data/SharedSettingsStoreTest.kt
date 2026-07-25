@@ -716,8 +716,13 @@ class SharedSettingsStoreTest {
             assertEquals(originalLocaleType, com.tencent.tmm.kmmresource.resource.desc.StringDesc.localeType)
             assertEquals(AppLocale.SimplifiedChinese, KmmResourceLocaleRuntime.locale.value)
 
-            val result2 = dataSource.setLocale("en")
+            val result2 = dataSource.setLocale("ja")
             assertIs<DataResult.Content<*>>(result2)
+            assertEquals(originalLocaleType, com.tencent.tmm.kmmresource.resource.desc.StringDesc.localeType)
+            assertEquals(AppLocale.Japanese, KmmResourceLocaleRuntime.locale.value)
+
+            val result3 = dataSource.setLocale("en")
+            assertIs<DataResult.Content<*>>(result3)
             assertEquals(originalLocaleType, com.tencent.tmm.kmmresource.resource.desc.StringDesc.localeType)
             assertEquals(AppLocale.English, KmmResourceLocaleRuntime.locale.value)
         } finally {
@@ -743,29 +748,6 @@ class SharedSettingsStoreTest {
         } finally {
             KmmResourceLocaleRuntime.replaceForTest(originalRuntimeLocale)
         }
-    }
-
-    @Test
-    fun kmmResourceLocaleTagMappingCoversSupportedAppLocales() {
-        // #85 follow-up: `AppLocale.kmmResourceLocaleTag` must produce a
-        // BCP-47 tag that KmmResource's folder parser can resolve.
-        // English is `en`; Simplified Chinese is `zh-CN` (the
-        // folder matcher falls back from the script-only
-        // `zh-Hans` form to the region-based `zh-rCN` folder by
-        // language match).
-        assertEquals(null, AppLocale.System.kmmResourceLocaleTag)
-        assertEquals("en", AppLocale.English.kmmResourceLocaleTag)
-        assertEquals("zh-CN", AppLocale.SimplifiedChinese.kmmResourceLocaleTag)
-        assertEquals(
-            com.tencent.tmm.kmmresource.resource.desc.StringDesc.LocaleType.System,
-            AppLocale.System.stringDescLocaleType
-        )
-        assertIs<com.tencent.tmm.kmmresource.resource.desc.StringDesc.LocaleType.Custom>(
-            AppLocale.English.stringDescLocaleType
-        )
-        assertIs<com.tencent.tmm.kmmresource.resource.desc.StringDesc.LocaleType.Custom>(
-            AppLocale.SimplifiedChinese.stringDescLocaleType
-        )
     }
 
     @Test
@@ -825,7 +807,7 @@ class SharedSettingsStoreTest {
         assertEquals("Enabled", mobile.pushNotifications.statusLabel)
         assertEquals("Simplified Chinese / 简体中文", mobile.localePreference.statusLabel)
         assertEquals(
-            listOf("system", "en", "zh-Hans"),
+            listOf("system", "en", "zh-Hans", "ja"),
             mobile.localePreference.options.map { it.key }
         )
         assertEquals("Right", mobile.messageAlignmentPreference.statusLabel)

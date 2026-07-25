@@ -17,7 +17,13 @@ import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
 import build.raft.app.shared.SlockKuiklyActivity
+import build.raft.app.data.AppLocale
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
+import build.raft.app.data.VisualCaptureLocaleRestoreToken
+import build.raft.app.data.applyVisualCaptureLocale
+import build.raft.app.data.kmmResourceLocaleTag
+import build.raft.app.data.parseVisualCaptureLocale
+import build.raft.app.data.restoreVisualCaptureLocale
 import build.raft.app.data.slockSharedPreferenceStore
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
@@ -51,6 +57,9 @@ class KmpVisualScreenshotCaptureTest {
     private fun visualBootId(): String =
         InstrumentationRegistry.getArguments().getString("visualBootId").orEmpty()
 
+    private var activeCaptureLocale: AppLocale? = null
+    private var captureLocaleRestoreToken: VisualCaptureLocaleRestoreToken? = null
+
     // Per-case timing to logcat + a hard per-case wall-clock backstop (task
     // #362). AndroidJUnitRunner buffers its one-dot-per-test stream, so a hung
     // shard prints nothing until the 45m job timeout kills it — these rules
@@ -66,6 +75,19 @@ class KmpVisualScreenshotCaptureTest {
             override fun starting(description: Description) {
                 startUptimeMs = SystemClock.uptimeMillis()
                 currentCaseId = null
+                activeCaptureLocale =
+                    parseVisualCaptureLocale(
+                        InstrumentationRegistry.getArguments().getString("capture_locale")
+                    )
+                captureLocaleRestoreToken = activeCaptureLocale?.applyVisualCaptureLocale()
+                activeCaptureLocale?.let { locale ->
+                    Log.i(
+                        VISUAL_LOG_TAG,
+                        "capture_locale applied: method=${description.methodName} " +
+                            "appLocale=${locale.languageTag} " +
+                            "stringDescLocale=${locale.kmmResourceLocaleTag}"
+                    )
+                }
                 // Log the display/viewport condition up front (task #367): a
                 // case that later renders blank should carry the exact
                 // width/height/density it ran under, so a CI-only failure can be
@@ -99,6 +121,12 @@ class KmpVisualScreenshotCaptureTest {
                 )
                 recordTiming("FAIL ${description.methodName} durationMs=$durationMs error=${e.javaClass.simpleName}")
                 currentCaseId?.let { writeExceptionFailureArtifact(it, e) }
+            }
+
+            override fun finished(description: Description) {
+                captureLocaleRestoreToken?.let(::restoreVisualCaptureLocale)
+                captureLocaleRestoreToken = null
+                activeCaptureLocale = null
             }
         }
 
@@ -3966,6 +3994,9 @@ class KmpVisualScreenshotCaptureTest {
         val attempt = visualAttempt()
         val generation = visualGeneration()
         val bootId = visualBootId()
+        val appLocale = activeCaptureLocale?.languageTag?.let { "\"$it\"" } ?: "null"
+        val stringDescLocale =
+            activeCaptureLocale?.kmmResourceLocaleTag?.let { "\"$it\"" } ?: "null"
         val route =
             JSONObject()
                 .put("pageName", routePageName)
@@ -3979,6 +4010,8 @@ class KmpVisualScreenshotCaptureTest {
               "providerType": "android-kuikly-shared-page",
               "source": "kmp-shared",
               "caseId": "$caseId",
+              "appLocale": $appLocale,
+              "stringDescLocale": $stringDescLocale,
               "route": $route,
               "image": "${imageFile.absolutePath}",
               "viewport": { "width": ${bitmap.width}, "height": ${bitmap.height}, "density": 1 },
