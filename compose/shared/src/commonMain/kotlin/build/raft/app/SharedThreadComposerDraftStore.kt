@@ -752,6 +752,12 @@ internal class SharedThreadComposerDraftStore(
                     seedText = "",
                     seedAsTask = false,
                     syncNonce = current.syncNonce + 1,
+                    // Sending clears the current value, but it remains an active composer
+                    // interaction. Reassert focus at the same synchronous boundary so a send
+                    // click cannot turn the host clear into an editor blur/IME dismissal. Do not
+                    // defer this to CompleteSend: that callback may arrive after the user has
+                    // deliberately tapped outside the composer.
+                    focusRequestNonce = current.focusRequestNonce + 1,
                     sending = true,
                     failureLabel = null,
                     removedAttachmentIds = emptySet(),

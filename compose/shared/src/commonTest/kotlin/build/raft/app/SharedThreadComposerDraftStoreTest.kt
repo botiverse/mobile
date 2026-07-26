@@ -915,6 +915,7 @@ class SharedThreadComposerDraftStoreTest {
         assertEquals("", store.state.value.seedText)
         assertEquals(false, store.state.value.seedAsTask)
         assertEquals(4, store.state.value.syncNonce)
+        assertEquals(1, store.state.value.focusRequestNonce)
 
         store.dispatch(
             SharedThreadComposerDraftIntent.RestoreAfterFailure(
@@ -929,6 +930,31 @@ class SharedThreadComposerDraftStoreTest {
         assertEquals(true, store.state.value.seedAsTask)
         assertEquals("Send failed. Try again.", store.state.value.failureLabel)
         assertEquals(5, store.state.value.syncNonce)
+        assertEquals(1, store.state.value.focusRequestNonce)
+    }
+
+    @Test
+    fun sendRequestsFocusSynchronouslyButAsyncCompletionDoesNotReviveIt() {
+        val store = SharedThreadComposerDraftStore()
+
+        store.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                KuiklyThreadComposerPayload(
+                    instanceId = "composer-send-focus",
+                    seedText = "first",
+                    focusRequestNonce = 7
+                )
+            )
+        )
+        store.dispatch(SharedThreadComposerDraftIntent.BeginSend)
+
+        assertEquals(8, store.state.value.focusRequestNonce)
+
+        store.dispatch(SharedThreadComposerDraftIntent.CompleteSend())
+
+        // Completion can race with a later outside tap. Only the synchronous send action owns
+        // focus retention; an async terminal callback must never reopen the keyboard.
+        assertEquals(8, store.state.value.focusRequestNonce)
     }
 
     @Test

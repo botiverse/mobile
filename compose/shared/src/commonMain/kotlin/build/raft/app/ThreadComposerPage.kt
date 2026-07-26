@@ -1095,10 +1095,21 @@ internal fun ThreadComposerContent(
     val composerFocusRequester = remember(state.instanceId) { FocusRequester() }
     val softwareKeyboardController = LocalSoftwareKeyboardController.current
     val shouldAutoFocus = state.focusRequestNonce > handledFocusRequestNonce
+    LaunchedEffect(state.instanceId, state.focusRequestNonce) {
+        if (state.focusRequestNonce > handledFocusRequestNonce) {
+            focused = true
+            composerFocusRequester.requestFocus()
+            // A focused native editor may still have had its IME hidden by the toolbar tap.
+            // A focus request can then be a no-op, so restore both halves of the input contract.
+            softwareKeyboardController?.show()
+        }
+    }
+    // Host synchronization owns editor content, attachments, and action state. Focus is a native
+    // interaction state and must only move through onFocus/onBlur or an explicit focus request;
+    // attachment/mention/send callbacks must not synthesize a blur.
     LaunchedEffect(state.instanceId, state.syncNonce) {
         fieldValue = TextFieldValue(state.seedText, selection = TextRange(state.seedText.length))
         asTask = state.seedAsTask
-        focused = state.suggestionsOpen
     }
     val selectionStart = minOf(fieldValue.selection.start, fieldValue.selection.end).coerceIn(0, text.length)
     val selectionEnd = maxOf(fieldValue.selection.start, fieldValue.selection.end).coerceIn(0, text.length)
