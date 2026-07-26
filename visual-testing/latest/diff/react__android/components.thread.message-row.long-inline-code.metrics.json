@@ -1,13 +1,13 @@
 {
   "baselineWidth": 1170,
-  "baselineHeight": 2532,
+  "baselineHeight": 1236,
   "currentWidth": 1170,
   "currentHeight": 2532,
   "comparisonWidth": 1170,
   "comparisonHeight": 2532,
-  "rgbSimilarity": 0.8277010807128309,
-  "pixelPerfectSimilarity": 0.509055710832962,
-  "pixelMismatchRatio": 0.49094428916703803,
+  "rgbSimilarity": 0.8614389264703758,
+  "pixelPerfectSimilarity": 0.6552625538407529,
+  "pixelMismatchRatio": 0.34473744615924706,
   "compositor": "sharp",
   "displayMode": "preserve-provider-raw-size",
   "metricMode": "rgb-resize-pixel-pad-no-crop"

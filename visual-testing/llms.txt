@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-07-26 05:09:35 UTC
-Latest run: ffcf4337-20260726050045
-Latest commit: ffcf4337-20260726050045
-Commit subject: fix(ci): preserve v2 signing after minSdk bump (#1616)
+Generated: 2026-07-26 22:11:08 UTC
+Latest run: d27f2622-20260726220916
+Latest commit: d27f2622-20260726220916
+Commit subject: chore(android): bump Hands SDK to 0.12.2 (#1654)
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 80, same 0, pass 0, basic-pass 0, different 79, missing 1
-AI analysis: ready 79 / total 80, pending 1
+AI analysis: ready 65 / total 80, pending 15
 Visual coverage matrix: active 89 / total 108, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
@@ -14,7 +14,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 - react__android: total 80, same 0, pass 0, basic-pass 0, different 79, missing 1
 - react__ios: total 80, same 0, pass 12, basic-pass 10, different 52, missing 6
-- android__ios: total 80, same 0, pass 14, basic-pass 17, different 44, missing 5
+- android__ios: total 80, same 0, pass 14, basic-pass 18, different 43, missing 5
 
 ## Capture Type Coverage
 
@@ -116,6 +116,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- d27f2622-20260726220916: react vs android, total 80, pass 0, basic-pass 0, different 79, matrix runs/d27f2622-20260726220916/component-matrix.json, page runs/d27f2622-20260726220916/
 - ffcf4337-20260726050045: react vs android, total 80, pass 0, basic-pass 0, different 79, matrix runs/ffcf4337-20260726050045/component-matrix.json, page runs/ffcf4337-20260726050045/
 - 91f78973-20260724222236: react vs android, total 79, pass 0, basic-pass 0, different 78, matrix runs/91f78973-20260724222236/component-matrix.json, page runs/91f78973-20260724222236/
 - 37df1bb1-20260723224841: react vs android, total 79, pass 0, basic-pass 0, different 78, matrix runs/37df1bb1-20260723224841/component-matrix.json, page runs/37df1bb1-20260723224841/
