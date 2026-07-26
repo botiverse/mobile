@@ -151,7 +151,6 @@ import build.raft.app.markdown.ThreadMarkdownTag
 import build.raft.app.markdown.ThreadMarkdownTagKind
 import build.raft.app.markdown.prepareSlockMarkdownFullRendererBodies
 import build.raft.app.markdown.preparedSlockMarkdownFullRendererContentOrNull
-import build.raft.app.markdown.threadMarkdownTagActivationKey
 import build.raft.app.markdown.threadMarkdownTagDisplayLabel
 import build.raft.app.model.ChannelId
 import build.raft.app.model.Heartbeat
@@ -4872,6 +4871,19 @@ internal fun SharedThreadRouteContent(
     var pendingActionCardIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
     var pendingTaskConvertMessageIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
     var pendingThreadFollowMessageIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
+    var markdownReferencePending by remember(threadInstanceKey) {
+        mutableStateOf(ThreadMarkdownReferencePendingState())
+    }
+    fun beginMarkdownReferencePending(actionId: String?): ThreadMarkdownReferencePendingToken? {
+        val started = markdownReferencePending.start(actionId.orEmpty())
+        markdownReferencePending = started.state
+        return started.token
+    }
+    fun finishMarkdownReferencePending(token: ThreadMarkdownReferencePendingToken?) {
+        if (token != null) {
+            markdownReferencePending = markdownReferencePending.finish(token)
+        }
+    }
     var textSelectionMessage by remember(threadInstanceKey) { mutableStateOf<KuiklyThreadMessageItem?>(null) }
     var createAgentDialogState by remember(threadInstanceKey) { mutableStateOf<ThreadCreateAgentActionDialogState?>(null) }
     var markdownTaskCandidateModalState by remember(threadInstanceKey) {
@@ -6761,6 +6773,7 @@ internal fun SharedThreadRouteContent(
             },
             pendingActionCardIds = pendingActionCardIds,
             pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
+            markdownReferencePendingActionId = markdownReferencePending.active?.actionId,
             attachmentOpenStates = attachmentOpenStates,
             attachmentCommentsEnabled = attachmentCommentsEnabled && renderSlice.writeActionsEnabled,
             composerSendKeyEnabled = composerSendKeyEnabled,
@@ -6816,7 +6829,7 @@ internal fun SharedThreadRouteContent(
             onClearChannelProfileUpdateStatus = {
                 threadViewModel.dispatch(SharedThreadIntent.ClearChannelProfileUpdateStatus)
             },
-            onThreadEvent = { action, itemId, attachmentId, tab ->
+            onThreadEvent = ThreadEventHandler(dispatch = ThreadPageContent@{ action, itemId, attachmentId, tab, markdownActionId ->
                 if (handleThreadStoreRetryEvent(action, threadViewModel::dispatch)) {
                     return@ThreadPageContent
                 }
@@ -7220,54 +7233,63 @@ internal fun SharedThreadRouteContent(
                     }
                 }
                 action == "openTask" && !itemId.isNullOrBlank() -> {
-                    markdownTaskOpenRequestGate.nextRequest()
-                    markdownTaskCandidateModalState = null
-                    val parentMessage = renderedTimelineSlice.findTaskParentMessage(itemId, linkedTasksProjection)
-                    if (parentMessage == null) {
-                        bridge.toast(unableToOpenTaskLabel)
-                        return@ThreadPageContent
+                    val markdownPendingToken = markdownActionId?.let(::beginMarkdownReferencePending)
+                    if (markdownActionId != null && markdownPendingToken == null) return@ThreadPageContent
+                    try {
+                        markdownTaskOpenRequestGate.nextRequest()
+                        markdownTaskCandidateModalState = null
+                        val parentMessage = renderedTimelineSlice.findTaskParentMessage(itemId, linkedTasksProjection)
+                        if (parentMessage == null) {
+                            bridge.toast(unableToOpenTaskLabel)
+                            return@ThreadPageContent
+                        }
+                        val parentReplyMetadata = replyMetadataByParentId.threadReplyMetadataFor(parentMessage)
+                        val parentChannelId = renderedThread.replyParentChannelIdForNestedOpen()
+                        val provenance = replyCacheProvenance
+                        if (
+                            provenance == null ||
+                            !dataSource.rememberReplyParentCandidate(
+                                provenance = provenance,
+                                serverId = currentServerId,
+                                parentChannelId = parentChannelId,
+                                parentMessage = parentMessage,
+                                threadChannelId = parentReplyMetadata.threadChannelId
+                            )
+                        ) {
+                            bridge.logWarn("thread_task_parent_seed_rejected reason=stale_provenance")
+                            bridge.toast(unableToOpenTaskLabel)
+                            return@ThreadPageContent
+                        }
+                        val loadingPayload =
+                            renderedThread.replyThreadLoadingPayload(
+                                parentMessageId = parentMessage.id,
+                                parentChannelId = parentChannelId,
+                                threadChannelId = parentReplyMetadata.threadChannelId,
+                                focusedMessageId = parentReplyMetadata.firstUnreadReplyMessageId
+                            )
+                        threadViewModel.dispatch(
+                            SharedThreadIntent.ApplyReplyThreadRead(
+                                parentMessageId = parentMessage.id,
+                                threadChannelId = parentReplyMetadata.threadChannelId
+                            )
+                        )
+                        bridge.log(
+                            "thread_reply_open action=task parentChannelId=${loadingPayload.parentChannelId.orEmpty()} " +
+                                "parentMessageId=${parentMessage.id} taskId=$itemId replyCount=${parentReplyMetadata.replyCount} " +
+                                "knownThreadChannelId=${parentReplyMetadata.threadChannelId.orEmpty()} " +
+                                "loadingInstance=${loadingPayload.resolveThreadRouteIdentity().instanceKey}"
+                        )
+                        onOpenThreadPayload(loadingPayload)
+                    } finally {
+                        finishMarkdownReferencePending(markdownPendingToken)
                     }
-                    val parentReplyMetadata = replyMetadataByParentId.threadReplyMetadataFor(parentMessage)
-                    val parentChannelId = renderedThread.replyParentChannelIdForNestedOpen()
-                    val provenance = replyCacheProvenance
-                    if (
-                        provenance == null ||
-                        !dataSource.rememberReplyParentCandidate(
-                            provenance = provenance,
-                            serverId = currentServerId,
-                            parentChannelId = parentChannelId,
-                            parentMessage = parentMessage,
-                            threadChannelId = parentReplyMetadata.threadChannelId
-                        )
-                    ) {
-                        bridge.logWarn("thread_task_parent_seed_rejected reason=stale_provenance")
-                        bridge.toast(unableToOpenTaskLabel)
-                        return@ThreadPageContent
-                    }
-                    val loadingPayload =
-                        renderedThread.replyThreadLoadingPayload(
-                            parentMessageId = parentMessage.id,
-                            parentChannelId = parentChannelId,
-                            threadChannelId = parentReplyMetadata.threadChannelId,
-                            focusedMessageId = parentReplyMetadata.firstUnreadReplyMessageId
-                        )
-                    threadViewModel.dispatch(
-                        SharedThreadIntent.ApplyReplyThreadRead(
-                            parentMessageId = parentMessage.id,
-                            threadChannelId = parentReplyMetadata.threadChannelId
-                        )
-                    )
-                    bridge.log(
-                        "thread_reply_open action=task parentChannelId=${loadingPayload.parentChannelId.orEmpty()} " +
-                            "parentMessageId=${parentMessage.id} taskId=$itemId replyCount=${parentReplyMetadata.replyCount} " +
-                            "knownThreadChannelId=${parentReplyMetadata.threadChannelId.orEmpty()} " +
-                            "loadingInstance=${loadingPayload.resolveThreadRouteIdentity().instanceKey}"
-                    )
-                    onOpenThreadPayload(loadingPayload)
                 }
                 action == "openMarkdownTaskNumber" && !itemId.isNullOrBlank() -> {
+                    val markdownPendingToken = markdownActionId?.let(::beginMarkdownReferencePending)
+                    if (markdownActionId != null && markdownPendingToken == null) return@ThreadPageContent
                     val taskNumber = itemId.removePrefix("#").trim().toIntOrNull()
                     if (taskNumber == null || currentServerId.isNullOrBlank()) {
+                        finishMarkdownReferencePending(markdownPendingToken)
                         bridge.toast(localizedUnableToOpenTarget(itemId.take(32)))
                         return@ThreadPageContent
                     }
@@ -7279,76 +7301,80 @@ internal fun SharedThreadRouteContent(
                             "generation=$requestGeneration"
                     )
                     coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) {
-                        val resolved =
-                            openMarkdownTaskNumberPayload(
-                                serverId = ServerId(currentServerId),
-                                taskNumber = taskNumber,
-                                currentPayload = renderedThread,
-                                currentTaskChannelId = taskChannelId,
-                                tasksDataSource = tasksDataSource,
-                                tasksDataStore = tasksDataStore,
-                                conversationIdentityProvider = conversationIdentityProvider
-                            )
-                        val result = markdownTaskOpenRequestGate.accept(requestGeneration, resolved)
-                        if (result == null) {
-                            bridge.log(
-                                "thread_markdown_task_resolve result=stale taskNumber=$taskNumber " +
-                                    "generation=$requestGeneration " +
-                                    "durationMs=${resolveStartedAt.elapsedNow().inWholeMilliseconds}"
-                            )
-                            return@launch
-                        }
-                        when (result) {
-                            is MarkdownTaskNumberOpenResult.Found -> {
-                                bridge.log(
-                                    "thread_markdown_task_open taskNumber=$taskNumber taskId=${result.task.id.value} " +
-                                        "source=${result.source.name} generation=$requestGeneration " +
-                                        "resolveDurationMs=${resolveStartedAt.elapsedNow().inWholeMilliseconds} " +
-                                        "parentChannelId=${result.payload.parentChannelId.orEmpty()} " +
-                                        "parentMessageId=${result.payload.parentMessageId.orEmpty()} " +
-                                        "threadId=${result.payload.streamChannelId.orEmpty()}"
+                        try {
+                            val resolved =
+                                openMarkdownTaskNumberPayload(
+                                    serverId = ServerId(currentServerId),
+                                    taskNumber = taskNumber,
+                                    currentPayload = renderedThread,
+                                    currentTaskChannelId = taskChannelId,
+                                    tasksDataSource = tasksDataSource,
+                                    tasksDataStore = tasksDataStore,
+                                    conversationIdentityProvider = conversationIdentityProvider
                                 )
-                                onOpenThreadPayload(result.payload)
-                            }
-                            is MarkdownTaskNumberOpenResult.Ambiguous -> {
+                            val result = markdownTaskOpenRequestGate.accept(requestGeneration, resolved)
+                            if (result == null) {
                                 bridge.log(
-                                    "thread_markdown_task_resolve result=ambiguous taskNumber=$taskNumber " +
-                                        "source=${result.source.name} generation=$requestGeneration " +
-                                        "candidateCount=${result.candidates.size} " +
+                                    "thread_markdown_task_resolve result=stale taskNumber=$taskNumber " +
+                                        "generation=$requestGeneration " +
                                         "durationMs=${resolveStartedAt.elapsedNow().inWholeMilliseconds}"
                                 )
-                                markdownTaskCandidateModalState =
-                                    ThreadMarkdownTaskCandidateModalState(
-                                        taskNumber = result.taskNumber,
-                                        candidates = result.candidates
+                                return@launch
+                            }
+                            when (result) {
+                                is MarkdownTaskNumberOpenResult.Found -> {
+                                    bridge.log(
+                                        "thread_markdown_task_open taskNumber=$taskNumber taskId=${result.task.id.value} " +
+                                            "source=${result.source.name} generation=$requestGeneration " +
+                                            "resolveDurationMs=${resolveStartedAt.elapsedNow().inWholeMilliseconds} " +
+                                            "parentChannelId=${result.payload.parentChannelId.orEmpty()} " +
+                                            "parentMessageId=${result.payload.parentMessageId.orEmpty()} " +
+                                            "threadId=${result.payload.streamChannelId.orEmpty()}"
                                     )
+                                    onOpenThreadPayload(result.payload)
+                                }
+                                is MarkdownTaskNumberOpenResult.Ambiguous -> {
+                                    bridge.log(
+                                        "thread_markdown_task_resolve result=ambiguous taskNumber=$taskNumber " +
+                                            "source=${result.source.name} generation=$requestGeneration " +
+                                            "candidateCount=${result.candidates.size} " +
+                                            "durationMs=${resolveStartedAt.elapsedNow().inWholeMilliseconds}"
+                                    )
+                                    markdownTaskCandidateModalState =
+                                        ThreadMarkdownTaskCandidateModalState(
+                                            taskNumber = result.taskNumber,
+                                            candidates = result.candidates
+                                        )
+                                }
+                                MarkdownTaskNumberOpenResult.NotFound -> {
+                                    bridge.log(
+                                        "thread_markdown_task_resolve result=not_found taskNumber=$taskNumber " +
+                                            "generation=$requestGeneration " +
+                                            "durationMs=${resolveStartedAt.elapsedNow().inWholeMilliseconds}"
+                                    )
+                                    bridge.toast(localizedUnableToOpenTaskNumber(taskNumber))
+                                }
+                                MarkdownTaskNumberOpenResult.AuthRequired -> {
+                                    bridge.log(
+                                        "thread_markdown_task_resolve result=auth_required taskNumber=$taskNumber " +
+                                            "generation=$requestGeneration " +
+                                            "durationMs=${resolveStartedAt.elapsedNow().inWholeMilliseconds}"
+                                    )
+                                    routeAuthRequired(
+                                        DataResult.NoPermission(PermissionBlocker(code = "tasks_401"))
+                                    )
+                                }
+                                MarkdownTaskNumberOpenResult.Failed -> {
+                                    bridge.log(
+                                        "thread_markdown_task_resolve result=failed taskNumber=$taskNumber " +
+                                            "generation=$requestGeneration " +
+                                            "durationMs=${resolveStartedAt.elapsedNow().inWholeMilliseconds}"
+                                    )
+                                    bridge.toast(localizedUnableToOpenTaskNumber(taskNumber))
+                                }
                             }
-                            MarkdownTaskNumberOpenResult.NotFound -> {
-                                bridge.log(
-                                    "thread_markdown_task_resolve result=not_found taskNumber=$taskNumber " +
-                                        "generation=$requestGeneration " +
-                                        "durationMs=${resolveStartedAt.elapsedNow().inWholeMilliseconds}"
-                                )
-                                bridge.toast(localizedUnableToOpenTaskNumber(taskNumber))
-                            }
-                            MarkdownTaskNumberOpenResult.AuthRequired -> {
-                                bridge.log(
-                                    "thread_markdown_task_resolve result=auth_required taskNumber=$taskNumber " +
-                                        "generation=$requestGeneration " +
-                                        "durationMs=${resolveStartedAt.elapsedNow().inWholeMilliseconds}"
-                                )
-                                routeAuthRequired(
-                                    DataResult.NoPermission(PermissionBlocker(code = "tasks_401"))
-                                )
-                            }
-                            MarkdownTaskNumberOpenResult.Failed -> {
-                                bridge.log(
-                                    "thread_markdown_task_resolve result=failed taskNumber=$taskNumber " +
-                                        "generation=$requestGeneration " +
-                                        "durationMs=${resolveStartedAt.elapsedNow().inWholeMilliseconds}"
-                                )
-                                bridge.toast(localizedUnableToOpenTaskNumber(taskNumber))
-                            }
+                        } finally {
+                            finishMarkdownReferencePending(markdownPendingToken)
                         }
                     }
                 }
@@ -7472,50 +7498,62 @@ internal fun SharedThreadRouteContent(
                     }
                 }
                 action == "openMarkdownChannel" && !itemId.isNullOrBlank() -> {
+                    val markdownPendingToken = markdownActionId?.let(::beginMarkdownReferencePending)
+                    if (markdownActionId != null && markdownPendingToken == null) return@ThreadPageContent
                     coroutineScope.launch {
-                        val loadingPayload = dataSource.markdownChannelLaunchPayload(renderedThread, itemId)
-                        if (loadingPayload == null) {
-                            bridge.toast(localizedUnableToOpenTarget("#${itemId.removePrefix("#").take(31)}"))
-                        } else {
-                            onOpenThreadPayload(loadingPayload)
+                        try {
+                            val loadingPayload = dataSource.markdownChannelLaunchPayload(renderedThread, itemId)
+                            if (loadingPayload == null) {
+                                bridge.toast(localizedUnableToOpenTarget("#${itemId.removePrefix("#").take(31)}"))
+                            } else {
+                                onOpenThreadPayload(loadingPayload)
+                            }
+                        } finally {
+                            finishMarkdownReferencePending(markdownPendingToken)
                         }
                     }
                 }
                 action == "openMarkdownThreadRef" && !itemId.isNullOrBlank() -> {
+                    val markdownPendingToken = markdownActionId?.let(::beginMarkdownReferencePending)
+                    if (markdownActionId != null && markdownPendingToken == null) return@ThreadPageContent
                     coroutineScope.launch {
-                        val provenance = replyCacheProvenance
-                        if (provenance == null) {
-                            bridge.toast(localizedUnableToOpenTarget(itemId.take(32)))
-                            return@launch
-                        }
-                        when (
-                            val result =
-                                dataSource.markdownThreadRefLaunchPayload(
-                                    provenance = provenance,
-                                    currentPayload = renderedThread,
-                                    channelLabel = itemId,
-                                    threadShortId = tab
-                                )
-                        ) {
-                            is DataResult.Content -> {
-                                bridge.log(
-                                    "thread_markdown_ref_open label=${itemId.take(32)} " +
-                                        "parentChannelId=${result.data.parentChannelId.orEmpty()} " +
-                                        "parentMessageId=${result.data.parentMessageId.orEmpty()} " +
-                                        "threadId=${result.data.streamChannelId.orEmpty()} " +
-                                        "focusedMessageId=${result.data.focusedMessageId.orEmpty()}"
-                                )
-                                onOpenThreadPayload(result.data)
-                            }
-                            is DataResult.Empty -> {
+                        try {
+                            val provenance = replyCacheProvenance
+                            if (provenance == null) {
                                 bridge.toast(localizedUnableToOpenTarget(itemId.take(32)))
+                                return@launch
                             }
-                            is DataResult.Error -> {
-                                bridge.toast(localizedUnableToOpenTarget(itemId.take(32)))
+                            when (
+                                val result =
+                                    dataSource.markdownThreadRefLaunchPayload(
+                                        provenance = provenance,
+                                        currentPayload = renderedThread,
+                                        channelLabel = itemId,
+                                        threadShortId = tab
+                                    )
+                            ) {
+                                is DataResult.Content -> {
+                                    bridge.log(
+                                        "thread_markdown_ref_open label=${itemId.take(32)} " +
+                                            "parentChannelId=${result.data.parentChannelId.orEmpty()} " +
+                                            "parentMessageId=${result.data.parentMessageId.orEmpty()} " +
+                                            "threadId=${result.data.streamChannelId.orEmpty()} " +
+                                            "focusedMessageId=${result.data.focusedMessageId.orEmpty()}"
+                                    )
+                                    onOpenThreadPayload(result.data)
+                                }
+                                is DataResult.Empty -> {
+                                    bridge.toast(localizedUnableToOpenTarget(itemId.take(32)))
+                                }
+                                is DataResult.Error -> {
+                                    bridge.toast(localizedUnableToOpenTarget(itemId.take(32)))
+                                }
+                                is DataResult.NoPermission -> {
+                                    routeAuthRequired(result)
+                                }
                             }
-                            is DataResult.NoPermission -> {
-                                routeAuthRequired(result)
-                            }
+                        } finally {
+                            finishMarkdownReferencePending(markdownPendingToken)
                         }
                     }
                 }
@@ -7808,7 +7846,7 @@ internal fun SharedThreadRouteContent(
                     )
                 }
                 }
-            },
+            }),
             onComposerEvent = { action, value, asTask, attachmentId ->
                 if (!threadComposerEventAllowed(renderSlice.writeActionsEnabled, action)) {
                     bridge.log("thread_composer_action_blocked action=$action reason=read_only_access_fallback")
@@ -11379,6 +11417,26 @@ private fun ThreadDeferredLoadingRouteContent(
 }
 
 @Composable
+private class ThreadEventHandler(
+    private val dispatch: (
+        action: String,
+        itemId: String?,
+        attachmentId: String?,
+        tab: String?,
+        markdownActionId: String?
+    ) -> Unit
+) {
+    operator fun invoke(
+        action: String,
+        itemId: String? = null,
+        attachmentId: String? = null,
+        tab: String? = null,
+        markdownActionId: String? = null
+    ) {
+        dispatch(action, itemId, attachmentId, tab, markdownActionId)
+    }
+}
+
 private fun ThreadPageContent(
     threadInstanceKey: String,
     payload: KuiklyThreadScreenPayload,
@@ -11424,6 +11482,7 @@ private fun ThreadPageContent(
     onLayoutGeneration: (width: Int, height: Int) -> Unit = { _, _ -> },
     pendingActionCardIds: Set<String> = emptySet(),
     pendingTaskConvertMessageIds: Set<String> = emptySet(),
+    markdownReferencePendingActionId: String? = null,
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
     attachmentCommentsEnabled: Boolean = false,
     composerSendKeyEnabled: Boolean = false,
@@ -11439,7 +11498,7 @@ private fun ThreadPageContent(
     onBack: () -> Unit,
     onUpdateChannelProfile: (String, String, String, String, String) -> Unit = { _, _, _, _, _ -> },
     onClearChannelProfileUpdateStatus: () -> Unit = {},
-    onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
+    onThreadEvent: ThreadEventHandler,
     onComposerEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit
 ) {
     val inlineReplyParticipantsById =
@@ -11456,7 +11515,6 @@ private fun ThreadPageContent(
     val renderAccessRetry = accessResolution.shouldRenderThreadAccessRetry()
     val accessErrorLabels = threadUserFacingErrorLabels()
     val shareExportScope = rememberCoroutineScope()
-    val markdownTagFeedbackScope = rememberCoroutineScope()
     LaunchedEffect(threadInstanceKey, selectedTab, timelineSlice.status, timelineSlice.messages.size) {
         if (
             selectedTab != KuiklyThreadTab.Chat &&
@@ -11896,18 +11954,10 @@ private fun ThreadPageContent(
         remember(activeDraftRecords) {
             activeDraftRecords.toSharedThreadComposerDraftProjection()
         }
-    var activeMarkdownTagKey by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
-    var activeMarkdownTagPressId by remember(threadInstanceKey) { mutableStateOf(0) }
-    val openMarkdownTag: (ThreadMarkdownTag) -> Unit = { tag ->
-        val activeKey = threadMarkdownTagActivationKey(tag)
-        val pressId = activeMarkdownTagPressId + 1
-        activeMarkdownTagPressId = pressId
-        activeMarkdownTagKey = activeKey
-        markdownTagFeedbackScope.launch {
-            delay(ThreadMarkdownTagActiveFeedbackMs)
-            if (activeMarkdownTagPressId == pressId && activeMarkdownTagKey == activeKey) {
-                activeMarkdownTagKey = null
-            }
+    val activeMarkdownTagKey = markdownReferencePendingActionId
+    val openMarkdownTag: (ThreadMarkdownTag, String) -> Unit = openMarkdownTag@{ tag, actionId ->
+        if (tag.kind != ThreadMarkdownTagKind.UserMention && markdownReferencePendingActionId != null) {
+            return@openMarkdownTag
         }
         when (tag.kind) {
             ThreadMarkdownTagKind.UserMention -> {
@@ -11916,16 +11966,26 @@ private fun ThreadPageContent(
             ThreadMarkdownTagKind.Task -> {
                 val taskId = timelineSlice.findMarkdownTaskId(tag, linkedTasksProjection)
                 if (!taskId.isNullOrBlank()) {
-                    onThreadEvent("openTask", taskId, null, null)
+                    onThreadEvent("openTask", taskId, markdownActionId = actionId)
                 } else {
-                    onThreadEvent("openMarkdownTaskNumber", tag.label, null, null)
+                    onThreadEvent("openMarkdownTaskNumber", tag.label, markdownActionId = actionId)
                 }
             }
             ThreadMarkdownTagKind.Channel -> {
-                onThreadEvent("openMarkdownChannel", tag.channelName ?: tag.label, null, tag.kind.name)
+                onThreadEvent(
+                    "openMarkdownChannel",
+                    tag.channelName ?: tag.label,
+                    tab = tag.kind.name,
+                    markdownActionId = actionId
+                )
             }
             ThreadMarkdownTagKind.ChannelThread -> {
-                onThreadEvent("openMarkdownThreadRef", tag.label, null, tag.threadShortId)
+                onThreadEvent(
+                    "openMarkdownThreadRef",
+                    tag.label,
+                    tab = tag.threadShortId,
+                    markdownActionId = actionId
+                )
             }
         }
     }
@@ -13223,11 +13283,11 @@ private fun ThreadChatTab(
     markdownTagContextSignature: String = "",
     resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)? = null,
     activeMarkdownTagKey: String? = null,
-    onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
+    onThreadEvent: ThreadEventHandler,
     onLoadNewer: suspend () -> ThreadNewerPageLoadOutcome,
     onOpenMember: (MemberDetailIdentity) -> Unit,
     onMentionAuthor: (KuiklyThreadMessageItem) -> Unit,
-    onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
+    onOpenMarkdownTag: (ThreadMarkdownTag, String) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit,
     diagnosticsLogger: (String) -> Unit = {},
     shareSelectionActive: Boolean = false,
@@ -13727,11 +13787,11 @@ private fun ThreadMessagesList(
     markdownTagContextSignature: String = "",
     resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)? = null,
     activeMarkdownTagKey: String? = null,
-    onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
+    onThreadEvent: ThreadEventHandler,
     onLoadNewer: suspend () -> ThreadNewerPageLoadOutcome,
     onOpenMember: (MemberDetailIdentity) -> Unit,
     onMentionAuthor: (KuiklyThreadMessageItem) -> Unit,
-    onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
+    onOpenMarkdownTag: (ThreadMarkdownTag, String) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit,
     diagnosticsLogger: (String) -> Unit = {},
     shareSelectionActive: Boolean = false,
@@ -17141,7 +17201,6 @@ private const val ThreadInitialBottomAnchorAttempts = 12
 private const val ThreadInitialBottomAnchorRetryDelayMs = 80L
 private const val ThreadInitialBottomAnchorMinimumConsumedDeltaPx = 0.5f
 private const val ThreadLayoutStabilityFrameDelayMs = 16L
-private const val ThreadMarkdownTagActiveFeedbackMs = 900L
 private const val ThreadFirstContentTaskJoinDelayMs = 96L
 private const val ThreadLayoutStabilityMaxFrames = 30
 private const val ThreadLayoutStabilityRequiredFrames = 3
@@ -17422,7 +17481,7 @@ private fun ThreadMessageCard(
     writeActionsEnabled: Boolean = true,
     onCommitActionCard: (String) -> Unit = {},
     currentServerSlug: String? = null,
-    onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
+    onOpenMarkdownTag: (ThreadMarkdownTag, String) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit,
     onMentionAuthor: (KuiklyThreadMessageItem) -> Unit = {},
     richContentEnabled: Boolean = true,
@@ -17794,9 +17853,9 @@ private fun ThreadMessageCard(
                                             resolveTagLabel = resolveMarkdownTagLabel,
                                             inlineContentScope = markdownRenderSignature.inlineContentScope,
                                             activeTagKey = activeMarkdownTagKey,
-                                            onOpenTag = { tag ->
+                                            onOpenTagAction = { tag, actionId ->
                                                 tapMovementGate.rejectChildAction("markdown_tag")
-                                                onOpenMarkdownTag(tag)
+                                                onOpenMarkdownTag(tag, actionId)
                                             },
                                             onOpenUrl = { url ->
                                                 tapMovementGate.rejectChildAction("markdown_url")
@@ -20910,7 +20969,7 @@ private fun ThreadOriginCard(
     resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)? = null,
     activeMarkdownTagKey: String? = null,
     diagnosticsLogger: (String) -> Unit = {},
-    onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
+    onThreadEvent: ThreadEventHandler,
     onOpenMember: (MemberDetailIdentity) -> Unit,
     onShowActions: (KuiklyThreadMessageItem, SlockPopoverAnchor) -> Unit,
     onOpenTaskStatusMenu: (KuiklyThreadMessageItem, SlockPopoverAnchor) -> Unit,
@@ -20918,7 +20977,7 @@ private fun ThreadOriginCard(
     onMentionAuthor: (KuiklyThreadMessageItem) -> Unit,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
-    onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
+    onOpenMarkdownTag: (ThreadMarkdownTag, String) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit,
     shareSelectionActive: Boolean = false,
     selectedShareMessageIds: Set<String> = emptySet(),

@@ -917,9 +917,7 @@ private fun AnnotatedString.Builder.appendSlockRichTextToken(
     resolveActionLabel: ((SlockRichTextAction) -> String?)?
 ) {
     val action = rendererInput.actionFor(token) ?: return append(token.text)
-    val label =
-        resolveActionLabel?.invoke(action)?.takeIf { it.isNotBlank() }
-            ?: token.text
+    val label = resolveSlockRichTextTokenLabel(token, resolveActionLabel?.invoke(action))
     pushStringAnnotation(
         tag = SlockMarkdownTagAnnotationTag,
         annotation = action.id
@@ -935,6 +933,15 @@ private fun AnnotatedString.Builder.appendSlockRichTextToken(
     }
     pop()
 }
+
+internal fun resolveSlockRichTextTokenLabel(
+    token: SlockRichTextInlineToken,
+    resolvedLabel: String?
+): String =
+    resolvedLabel
+        ?.takeIf { it.isNotBlank() }
+        ?.plus(token.trailingIndicator)
+        ?: token.text
 
 private fun SlockRichTextAction.toThreadMarkdownTag(): ThreadMarkdownTag =
     ThreadMarkdownTag(
@@ -1645,6 +1652,7 @@ private const val SlockMarkdownDefaultPreparseLimit = 20
 
 private val SlockMarkdownBodyFontSize = 14.sp
 private val SlockMarkdownBodyLineHeight = 22.sp
+internal const val SlockMarkdownPendingActionIndicator = " …"
 private const val SlockMarkdownBodyClickTag = "slock-markdown-body-click"
 private val LocalSlockMarkdownBodyClick = compositionLocalOf<(() -> Unit)?> { null }
 
@@ -1659,11 +1667,14 @@ fun SlockMarkdownBody(
     highlightedMentions: Set<String> = emptySet(),
     isTagValid: (ThreadMarkdownTag) -> Boolean = ::defaultSlockMarkdownTagValidity,
     onOpenTag: (ThreadMarkdownTag) -> Unit = {},
+    onOpenTagAction: ((ThreadMarkdownTag, String) -> Unit)? = null,
     onOpenUrl: (String) -> Unit = {},
     onClick: (() -> Unit)? = null,
     resolveTagLabel: ((ThreadMarkdownTag) -> String)? = null,
     inlineContentScope: String? = null,
     activeTagKey: String? = null,
+    activeActionId: String? = null,
+    activeActionIndicator: String = SlockMarkdownPendingActionIndicator,
     sectionHeadingTopPadding: Dp = 0.dp,
     onSectionHeadingPositioned: ((Rect) -> Unit)? = null,
     softLineBreaksAsNewLines: Boolean = true,
@@ -1762,6 +1773,7 @@ fun SlockMarkdownBody(
         slockMarkdownTextStyleWithInlineLineHeight(textStyle)
     }
     val currentOnOpenTag by rememberUpdatedState(onOpenTag)
+    val currentOnOpenTagAction by rememberUpdatedState(onOpenTagAction)
     val currentOnOpenUrl = rememberUpdatedState(onOpenUrl)
     val currentResolveTagLabel by rememberUpdatedState(resolveTagLabel)
     val colors = SlockMarkdownColorsDefault
@@ -1786,20 +1798,30 @@ fun SlockMarkdownBody(
                 inlineContentScope = inlineContentScope
             )
         }
+    val bodyActiveActionId =
+        remember(tokenPlan, activeActionId, activeTagKey) {
+            (activeActionId ?: activeTagKey)?.takeIf { targetId ->
+                tokenPlan.tagTokens().any { token -> token.id == targetId }
+            }
+        }
     val bodyActiveTagKey =
-        remember(tokenPlan, activeTagKey) {
+        remember(tokenPlan, activeTagKey, bodyActiveActionId) {
             activeTagKey?.takeIf { targetKey ->
+                bodyActiveActionId == null &&
                 tokenPlan.tagTokens().any { token ->
                     token.tag?.let(::threadMarkdownTagActivationKey) == targetKey
                 }
             }
         }
-    val richTextDocument: SlockRichTextDocument = remember(body, parserContent, tokenPlan, bodyActiveTagKey) {
+    val richTextDocument: SlockRichTextDocument =
+        remember(body, parserContent, tokenPlan, bodyActiveTagKey, bodyActiveActionId, activeActionIndicator) {
         buildSlockRichTextDocumentFromMarkdownPlan(
             source = body,
             content = parserContent,
             tokenPlan = tokenPlan,
-            activeTagKey = bodyActiveTagKey
+            activeTagKey = bodyActiveTagKey,
+            activeActionId = bodyActiveActionId,
+            activeActionIndicator = activeActionIndicator
         )
     }
     if (performanceKey != null) {
@@ -1830,7 +1852,10 @@ fun SlockMarkdownBody(
     val annotator: MarkdownAnnotator = remember(richTextDocument, performanceKey, softLineBreaksAsNewLines) {
         slockMarkdownAnnotator(
             document = richTextDocument,
-            onOpenAction = { action: SlockRichTextAction -> currentOnOpenTag(action.toThreadMarkdownTag()) },
+            onOpenAction = { action: SlockRichTextAction ->
+                val tag = action.toThreadMarkdownTag()
+                currentOnOpenTagAction?.invoke(tag, action.id) ?: currentOnOpenTag(tag)
+            },
             resolveActionLabel = { action: SlockRichTextAction ->
                 currentResolveTagLabel?.invoke(action.toThreadMarkdownTag())
             },

@@ -30,7 +30,8 @@ data class SlockRichTextInlineToken(
     val chrome: SlockRichTextChromeKind? = null,
     val styleTokenId: String? = chrome?.styleToken?.id,
     val actionId: String? = null,
-    val refKind: SlockRichTextRefKind? = null
+    val refKind: SlockRichTextRefKind? = null,
+    val trailingIndicator: String = ""
 )
 
 enum class SlockRichTextInlineKind(val wireValue: String) {
@@ -267,7 +268,9 @@ internal fun buildSlockRichTextDocumentFromMarkdownPlan(
     source: String,
     content: String,
     tokenPlan: MarkdownInlineTokenPlan,
-    activeTagKey: String? = null
+    activeTagKey: String? = null,
+    activeActionId: String? = null,
+    activeActionIndicator: String = ""
 ): SlockRichTextDocument {
     val richTokenSources =
         buildList {
@@ -300,21 +303,25 @@ internal fun buildSlockRichTextDocumentFromMarkdownPlan(
                 val token = tokenSource.token
                 val tag = token.tag ?: return@forEach
                 val action = tag.toRichTextAction(token.id)
+                val actionPending = activeActionId == action.id
                 actions += action
                 tokens +=
                     SlockRichTextInlineToken(
                         id = token.id,
                         kind = SlockRichTextInlineKind.SlockRef,
                         range = token.range.toRichTextRange(),
-                        text = token.resolvedLabel ?: threadMarkdownTagDisplayLabel(tag.label),
+                        text =
+                            (token.resolvedLabel ?: threadMarkdownTagDisplayLabel(tag.label)) +
+                                activeActionIndicator.takeIf { actionPending }.orEmpty(),
                         sourceText = content.substring(token.range),
                         chrome =
                             tag.toRichTextChromeKind(
                                 highlighted = token.highlighted,
-                                active = activeTagKey == threadMarkdownTagActivationKey(tag)
+                                active = actionPending || activeTagKey == threadMarkdownTagActivationKey(tag)
                             ),
                         actionId = action.id,
-                        refKind = tag.kind.toRichTextRefKind()
+                        refKind = tag.kind.toRichTextRefKind(),
+                        trailingIndicator = activeActionIndicator.takeIf { actionPending }.orEmpty()
                     )
             }
         }
