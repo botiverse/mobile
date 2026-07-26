@@ -17,6 +17,77 @@ class RealtimeProcessDesiredSessionTest {
         assertEquals(setOf("server-a", "server-b"), plan.connectServerIds)
     }
 
+    // Task #366 (artin ruling "维护8个，要是用户有20个呢？…先下掉，改成更合理的"):
+    // realtime transport is scoped to the CURRENT server only. Authentication
+    // grants for every server stay intact (drawer unread rides the home
+    // snapshot's serverUnreadSummary, not a persistent socket per server).
+    @Test
+    fun currentServerScopeKeepsOnlySelectedGrantedServer() {
+        assertEquals(
+            setOf("server-b"),
+            realtimeCurrentServerScopedServerIds(
+                currentServerId = "server-b",
+                grantedServerIds = setOf("server-a", "server-b", "server-c"),
+            ),
+        )
+    }
+
+    @Test
+    fun currentServerScopeTrimsAndMatchesNormalizedIds() {
+        assertEquals(
+            setOf("server-a"),
+            realtimeCurrentServerScopedServerIds(
+                currentServerId = "  server-a  ",
+                grantedServerIds = setOf(" server-a ", "server-b"),
+            ),
+        )
+    }
+
+    @Test
+    fun blankOrNullCurrentServerYieldsNoTransport() {
+        // No selected server yet → keep zero persistent sockets (never fan out
+        // to every authenticated server); a later re-run reconnects the current.
+        assertEquals(
+            emptySet(),
+            realtimeCurrentServerScopedServerIds(
+                currentServerId = "",
+                grantedServerIds = setOf("server-a", "server-b"),
+            ),
+        )
+        assertEquals(
+            emptySet(),
+            realtimeCurrentServerScopedServerIds(
+                currentServerId = null,
+                grantedServerIds = setOf("server-a", "server-b"),
+            ),
+        )
+    }
+
+    @Test
+    fun currentServerNotAmongGrantsYieldsNoTransport() {
+        assertEquals(
+            emptySet(),
+            realtimeCurrentServerScopedServerIds(
+                currentServerId = "server-z",
+                grantedServerIds = setOf("server-a", "server-b"),
+            ),
+        )
+    }
+
+    @Test
+    fun serverSwitchDisconnectsPreviousAndConnectsCurrentOnly() {
+        // Desired sets are already current-scoped; switching server-a → server-b
+        // must converge cleanly: drop the old socket, open exactly the new one.
+        val previous = desired(serverIds = setOf("server-a"))
+        val next = previous.copy(serverIds = setOf("server-b"))
+
+        val plan = reconcileRealtimeProcessDesiredSession(previous, next)
+
+        assertFalse(plan.disconnectAll)
+        assertEquals(setOf("server-a"), plan.disconnectServerIds)
+        assertEquals(setOf("server-b"), plan.connectServerIds)
+    }
+
     @Test
     fun removingOneServerKeepsOtherRuntime() {
         val previous = desired(serverIds = setOf("server-a", "server-b"))
