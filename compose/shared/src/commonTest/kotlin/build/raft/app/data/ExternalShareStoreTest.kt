@@ -17,6 +17,67 @@ import kotlin.test.assertTrue
 
 class ExternalShareStoreTest {
     @Test
+    fun serverSelectionClearsOldTargetsPersistsChoiceAndLoadsCanonicalServerSlice() = runBlocking {
+        val serverTwo = ServerId("server-2")
+        val serverOneTarget = target("one")
+        val serverTwoTarget = target("two").copy(serverId = serverTwo)
+        val releasedSessions = mutableListOf<String>()
+        val repository =
+            object : StubTargetRepository(emptyList()) {
+                override suspend fun directoryTargets(
+                    serverId: ServerId,
+                    sessionId: String,
+                    cursor: ForwardMessageTargetDirectoryCursor,
+                    pageSize: Int
+                ): DataResult<ForwardMessageTargetDirectoryPage> =
+                    DataResult.Content(
+                        ForwardMessageTargetDirectoryPage(
+                            items = if (serverId == serverTwo) listOf(serverTwoTarget) else listOf(serverOneTarget)
+                        )
+                    )
+
+                override fun releaseDirectorySnapshot(sessionId: String) {
+                    releasedSessions += sessionId
+                }
+            }
+        val draftRepository = MemoryDraftRepository()
+        val store = store(scope = this, draftRepository = draftRepository, targetRepository = repository)
+        val options =
+            listOf(
+                ExternalShareServerOption(Server.value, "One"),
+                ExternalShareServerOption(serverTwo.value, "Two")
+            )
+
+        store.dispatch(ExternalShareIntent.Load("share-1", Server.value, options))
+        store.awaitSelecting { state -> state.targets == listOf(serverOneTarget) }
+        store.toggle(serverOneTarget)
+
+        store.dispatch(ExternalShareIntent.SelectServer(serverTwo.value))
+
+        val switched = store.awaitSelecting { state -> state.targets == listOf(serverTwoTarget) }
+        assertEquals(serverTwo.value, switched.serverId)
+        assertEquals(options, switched.serverOptions)
+        assertTrue(switched.selectedTargets.isEmpty())
+        assertTrue(releasedSessions.contains("external-share:share-1:${Server.value}"))
+        var persisted = false
+        repeat(100) {
+            if (draftRepository.draft?.serverId == serverTwo.value) {
+                persisted = true
+            } else {
+                yield()
+            }
+        }
+        assertTrue(persisted, "server selection was not persisted: ${draftRepository.draft}")
+        assertEquals(serverTwo.value, draftRepository.draft?.serverId)
+
+        store.dispatch(ExternalShareIntent.SelectServer("server-unknown"))
+        val rejected = assertIs<ExternalShareState.SelectingTargets>(store.state.value)
+        assertEquals(serverTwo.value, rejected.serverId)
+        assertEquals("external_share_server_unavailable", rejected.selectionErrorCode)
+        store.clear()
+    }
+
+    @Test
     fun multiSelectContinuesToConfirmationAndEnforcesLimit() = runBlocking {
         val targets = listOf(target("one"), target("two"), target("three"))
         val store = store(scope = this, targets = targets, maximumTargetCount = 2)
@@ -265,6 +326,58 @@ class ExternalShareStoreTest {
         assertEquals("Comment\n\nSubject\n\nShared body", sentBody)
         assertEquals(listOf(AttachmentId("attachment-1")), sentAttachments)
         assertEquals("delivery-stable", sentRandomId)
+    }
+
+    @Test
+    fun realSenderBindsRequestedCanonicalServerBeforeAuthorityCapture() = runBlocking {
+        val selectedServer = ServerId("server-2")
+        val destination = target("destination").copy(serverId = selectedServer)
+        var boundServer: String? = null
+        var resolvedServer: ServerId? = null
+        var sendCalls = 0
+        val repository =
+            object : StubTargetRepository(listOf(destination)) {
+                override suspend fun resolveTargetChannel(
+                    sourceServerId: ServerId,
+                    target: ForwardMessageTarget,
+                    allowJoin: Boolean
+                ): DataResult<ForwardMessageDestination> {
+                    resolvedServer = sourceServerId
+                    return super.resolveTargetChannel(sourceServerId, target, allowJoin)
+                }
+            }
+        val sender =
+            RealExternalShareSender(
+                targetRepository = repository,
+                uploadAttachments = { _, _ -> error("text-only share must not upload") },
+                sendMessage = { _, _, _, _ ->
+                    sendCalls += 1
+                    DataResult.Error(ScreenError("send_probe", retryable = true))
+                },
+                currentAuthority = {
+                    boundServer?.let { server ->
+                        ExternalShareSendAuthority("account", "access", "refresh", server)
+                    }
+                },
+                bindSourceServer = { server -> boundServer = server }
+            )
+
+        val result =
+            sender.send(
+                ExternalShareSendRequest(
+                    attemptId = 1,
+                    deliveryId = "delivery-server-2",
+                    sourceServerId = selectedServer.value,
+                    envelope = ExternalShareEnvelope("share-1", 1L, "android", text = "hello"),
+                    target = destination,
+                    comment = ""
+                )
+            )
+
+        assertEquals("send_probe", assertIs<DataResult.Error>(result).error.code)
+        assertEquals(selectedServer.value, boundServer)
+        assertEquals(selectedServer, resolvedServer)
+        assertEquals(1, sendCalls)
     }
 
     @Test

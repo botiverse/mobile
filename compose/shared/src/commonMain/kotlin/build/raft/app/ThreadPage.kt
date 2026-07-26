@@ -23092,7 +23092,8 @@ internal fun <T> SlockForwardTargetPicker(
     nestedForwardCount: Int,
     taskLinkedCount: Int,
     state: SlockForwardTargetPickerUiState<T>,
-    onIntent: (SlockForwardTargetPickerIntent<T>) -> Unit
+    onIntent: (SlockForwardTargetPickerIntent<T>) -> Unit,
+    topContent: (@Composable () -> Unit)? = null
 ) {
     val userFacingErrorLabels = threadUserFacingErrorLabels()
     val loading = state.loadState == SlockForwardPickerLoadState.Loading
@@ -23141,6 +23142,7 @@ internal fun <T> SlockForwardTargetPicker(
                     )
                 }
             )
+            topContent?.invoke()
             threadForwardSkippedWarning(skippedCount, nestedForwardCount, taskLinkedCount)?.let { warning ->
                 Box(
                     modifier =
