@@ -7,6 +7,7 @@ import test from "node:test";
 import {
   apksignerVerifyArgs,
   canonicalJson,
+  parseBootstrapDiagnostics,
   parseReadyLine,
   readyPayload,
   selectApkSigningCertificateSha256,
@@ -336,4 +337,19 @@ test("READY parser rejects another attempt and emits token-free Stamp payload", 
   assert.equal(payload.runtime_envelope.pid, 42);
   assert.equal(JSON.stringify(payload).includes("access-secret"), false);
   assert.equal(parseReadyLine(line.replace("attempt=2", "attempt=3"), { ...expected, envelopeDigest: login.envelopeDigest, attempt: 2 }), null);
+});
+
+test("bootstrap diagnostics expose only fixed stage and code tokens", () => {
+  const text = [
+    "I/SlockQaBootstrap: QA_BOOTSTRAP_STAGE stage=inbox_consumed",
+    "I/SlockQaBootstrap: QA_BOOTSTRAP_FAILURE stage=login_consume code=network access_token=secret",
+    "I/SlockQaBootstrap: QA_BOOTSTRAP_STAGE stage=inbox_consumed request_id=private",
+    "I/SlockQaBootstrap: QA_BOOTSTRAP_READY envelopeDigest=sha256:secret",
+  ].join("\n");
+  assert.deepEqual(parseBootstrapDiagnostics(text), [
+    "QA_BOOTSTRAP_STAGE stage=inbox_consumed",
+    "QA_BOOTSTRAP_FAILURE stage=login_consume code=network",
+  ]);
+  const rendered = parseBootstrapDiagnostics(text).join(",");
+  assert.doesNotMatch(rendered, /secret|access_token|request_id|envelopeDigest/);
 });

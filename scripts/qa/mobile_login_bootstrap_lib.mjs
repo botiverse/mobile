@@ -138,6 +138,15 @@ export function parseReadyLine(text, expected) {
   return null;
 }
 
+export function parseBootstrapDiagnostics(text) {
+  const diagnostics = [];
+  const pattern = /QA_BOOTSTRAP_(?:STAGE|FAILURE) stage=[a-z0-9_]+(?: code=[a-z0-9_]+)?/g;
+  for (const match of String(text).matchAll(pattern)) {
+    if (!diagnostics.includes(match[0])) diagnostics.push(match[0]);
+  }
+  return diagnostics;
+}
+
 export function readyPayload(login, ready) {
   const fields = ready.fields;
   return {

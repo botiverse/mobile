@@ -19,15 +19,32 @@ private val qaBootstrapProcessGeneration by lazy { Process.getStartUptimeMillis(
 internal actual suspend fun slockPlatformCompleteQaBootstrapRouteReady(authDataSource: SharedAuthDataSource) {
     var session = authDataSource.readStoredSession() ?: return
     var metadata = session.qaBootstrap ?: return
+    qaBootstrapStage("route_ready_started")
     if (metadata.readyReceipt == null) {
-        when (authDataSource.readyQaBootstrap()) {
-            is SharedAuthResult.Success -> Unit
-            else -> return
+        when (val result = authDataSource.readyQaBootstrap()) {
+            is SharedAuthResult.Success -> qaBootstrapStage("ready_receipt_persisted")
+            SharedAuthResult.Unauthenticated -> {
+                qaBootstrapFailure("ready_receipt", "unauthenticated")
+                return
+            }
+            is SharedAuthResult.Failure -> {
+                qaBootstrapFailure("ready_receipt", result.code.name.lowercase())
+                return
+            }
         }
-        session = authDataSource.readStoredSession() ?: return
-        metadata = session.qaBootstrap ?: return
+        session = authDataSource.readStoredSession() ?: run {
+            qaBootstrapFailure("ready_session_reload", "missing")
+            return
+        }
+        metadata = session.qaBootstrap ?: run {
+            qaBootstrapFailure("ready_metadata_reload", "missing")
+            return
+        }
     }
-    val receipt = metadata.readyReceipt ?: return
+    val receipt = metadata.readyReceipt ?: run {
+        qaBootstrapFailure("ready_receipt_reload", "missing")
+        return
+    }
     val envelope = resolveQaBootstrapRuntimeEnvelope(
         metadata = metadata,
         receipt = receipt,
@@ -37,9 +54,19 @@ internal actual suspend fun slockPlatformCompleteQaBootstrapRouteReady(authDataS
         readyNanos = SystemClock.elapsedRealtimeNanos().toString(),
         existing = metadata.runtimeEnvelope
     )
-    val persisted = authDataSource.saveQaBootstrapRuntimeEnvelope(metadata, envelope) ?: return
-    metadata = persisted.qaBootstrap ?: return
-    val persistedEnvelope = metadata.runtimeEnvelope ?: return
+    val persisted = authDataSource.saveQaBootstrapRuntimeEnvelope(metadata, envelope) ?: run {
+        qaBootstrapFailure("runtime_envelope_persist", "binding_changed")
+        return
+    }
+    metadata = persisted.qaBootstrap ?: run {
+        qaBootstrapFailure("runtime_metadata_reload", "missing")
+        return
+    }
+    val persistedEnvelope = metadata.runtimeEnvelope ?: run {
+        qaBootstrapFailure("runtime_envelope_reload", "missing")
+        return
+    }
+    qaBootstrapStage("runtime_envelope_persisted")
     Log.i(
         QaBootstrapLogTag,
         "QA_BOOTSTRAP_READY " +
@@ -59,6 +86,14 @@ internal actual suspend fun slockPlatformCompleteQaBootstrapRouteReady(authDataS
             "routeReadyProofDigest=${persistedEnvelope.routeReadyProofDigest}" +
             (persistedEnvelope.recoveryOf?.let { " recoveryOf=$it" } ?: "")
     )
+}
+
+private fun qaBootstrapStage(stage: String) {
+    Log.i(QaBootstrapLogTag, "QA_BOOTSTRAP_STAGE stage=$stage")
+}
+
+private fun qaBootstrapFailure(stage: String, code: String) {
+    Log.i(QaBootstrapLogTag, "QA_BOOTSTRAP_FAILURE stage=$stage code=$code")
 }
 
 internal fun resolveQaBootstrapRuntimeEnvelope(
