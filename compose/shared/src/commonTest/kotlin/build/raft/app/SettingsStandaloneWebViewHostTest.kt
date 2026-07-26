@@ -116,4 +116,64 @@ class SettingsStandaloneWebViewHostTest {
     fun headerLayerIsAboveTheNativeWebViewBodySibling() {
         assertTrue(SETTINGS_WEB_VIEW_HEADER_Z_INDEX > SETTINGS_WEB_VIEW_BODY_Z_INDEX)
     }
+
+    @Test
+    fun computersHeaderUsesFallbackUntilTheWebDocumentPublishesATitle() {
+        val state =
+            SettingsWebViewHeaderTitleState()
+                .accept(candidate = "Raft", navigationIsLoading = true)
+
+        assertTrue(settingsComputersWebViewSpec.headerFollowsDocumentTitle)
+        assertEquals("Computers", state.displayTitle("Computers"))
+    }
+
+    @Test
+    fun computersHeaderTracksAgentDocumentTitle() {
+        val loadingState =
+            SettingsWebViewHeaderTitleState()
+                .accept(candidate = "  Jony  ", navigationIsLoading = true)
+        val committedState =
+            loadingState.accept(candidate = "", navigationIsLoading = false)
+
+        assertEquals("Computers", loadingState.displayTitle("Computers"))
+        assertEquals("Jony", committedState.displayTitle("Computers"))
+    }
+
+    @Test
+    fun emptyNavigationTitleKeepsTheLastCommittedAgentTitle() {
+        val state =
+            SettingsWebViewHeaderTitleState()
+                .accept("Jony")
+                .accept("   ")
+
+        assertEquals("Jony", state.displayTitle("Computers"))
+    }
+
+    @Test
+    fun detachedWebViewGenerationCannotPublishALateTitle() {
+        val authority = SettingsWebViewNavigationAuthority()
+        val oldOwner = authority.acquire()
+        val oldLoadingState =
+            SettingsWebViewHeaderTitleState()
+                .accept(
+                    owner = oldOwner,
+                    candidate = "Old Agent",
+                    navigationIsLoading = true,
+                )
+        authority.release(oldOwner)
+
+        assertEquals(false, authority.accepts(oldOwner))
+
+        val currentOwner = authority.acquire()
+        val currentCommittedState =
+            oldLoadingState.accept(
+                owner = currentOwner,
+                candidate = "",
+                navigationIsLoading = false,
+            )
+
+        assertEquals(false, authority.accepts(oldOwner))
+        assertEquals(true, authority.accepts(currentOwner))
+        assertEquals("Computers", currentCommittedState.displayTitle("Computers"))
+    }
 }
