@@ -2,8 +2,11 @@ package build.raft.app
 
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.useContents
+import platform.CoreFoundation.CFRelease
+import platform.CoreFoundation.CFStringCreateWithCString
 import platform.CoreFoundation.CFStringGetRangeOfComposedCharactersAtIndex
-import platform.CoreFoundation.CFStringRef
+import platform.CoreFoundation.kCFAllocatorDefault
+import platform.CoreFoundation.kCFStringEncodingUTF8
 import platform.Foundation.NSProcessInfo
 
 internal actual fun slockPlatformSupportsKuiklyPullToRefreshItem(): Boolean = true
@@ -52,9 +55,19 @@ internal actual fun slockInlineCodeUsesEdgePaddingBridge(): Boolean = true
 @OptIn(ExperimentalForeignApi::class)
 internal actual fun slockFirstComposedCharacterEnd(text: String): Int? {
     if (text.isEmpty()) return null
-    return CFStringGetRangeOfComposedCharactersAtIndex(text as CFStringRef, 0)
-        .useContents { (location + length).toInt() }
-        .takeIf { it in 1..text.length }
+    val cfText =
+        CFStringCreateWithCString(
+            kCFAllocatorDefault,
+            text,
+            kCFStringEncodingUTF8
+        ) ?: return null
+    return try {
+        CFStringGetRangeOfComposedCharactersAtIndex(cfText, 0)
+            .useContents { (location + length).toInt() }
+            .takeIf { it in 1..text.length }
+    } finally {
+        CFRelease(cfText)
+    }
 }
 
 // Hands iOS SDK ios-v0.2.x uploads >10MB attachments via presigned R2 PUT.
