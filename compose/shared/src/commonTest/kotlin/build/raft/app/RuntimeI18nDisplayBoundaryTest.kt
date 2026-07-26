@@ -7,7 +7,7 @@ class RuntimeI18nDisplayBoundaryTest {
     @Test
     fun membersCanonicalDefaultsLocalizeWithoutChangingCustomPayloadCopy() {
         assertEquals("成员", canonicalMembersDisplayText("Members", "Members", "成员"))
-        assertEquals("智能体", canonicalMembersDisplayText("AGENTS", "AGENTS", "智能体"))
+        assertEquals("Agent", canonicalMembersDisplayText("AGENTS", "AGENTS", "Agent"))
         assertEquals("HUMANS — ONLINE", canonicalMembersDisplayText("HUMANS — ONLINE", "HUMANS", "用户"))
         assertEquals("Workspace People", canonicalMembersDisplayText("Workspace People", "Members", "成员"))
     }
@@ -19,7 +19,7 @@ class RuntimeI18nDisplayBoundaryTest {
             localizedThreadHeaderTitle(
                 "Channel",
                 KuiklyThreadSurfaceKind.Channel,
-                "对话串",
+                "话题",
                 "频道",
                 "私聊"
             )
@@ -29,17 +29,17 @@ class RuntimeI18nDisplayBoundaryTest {
             localizedThreadHeaderTitle(
                 "Direct Message",
                 KuiklyThreadSurfaceKind.DirectMessage,
-                "对话串",
+                "话题",
                 "频道",
                 "私聊"
             )
         )
         assertEquals(
-            "对话串",
+            "话题",
             localizedThreadHeaderTitle(
                 ThreadReplyPageTitle,
                 KuiklyThreadSurfaceKind.ReplyThread,
-                "对话串",
+                "话题",
                 "频道",
                 "私聊"
             )
@@ -49,7 +49,7 @@ class RuntimeI18nDisplayBoundaryTest {
             localizedThreadHeaderTitle(
                 "product",
                 KuiklyThreadSurfaceKind.Channel,
-                "对话串",
+                "话题",
                 "频道",
                 "私聊"
             )
@@ -59,7 +59,7 @@ class RuntimeI18nDisplayBoundaryTest {
             localizedThreadHeaderTitle(
                 "Ada",
                 KuiklyThreadSurfaceKind.DirectMessage,
-                "对话串",
+                "话题",
                 "频道",
                 "私聊"
             )
