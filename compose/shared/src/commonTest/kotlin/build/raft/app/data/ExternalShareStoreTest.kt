@@ -10,8 +10,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
-import kotlinx.coroutines.test.advanceUntilIdle
-import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -491,7 +489,7 @@ class ExternalShareStoreTest {
     }
 
     @Test
-    fun consumedMarkerRetryUsesStableIdAndNativeEnvelopeConsumesExactlyOnce() = runTest {
+    fun consumedMarkerRetryUsesStableIdAndNativeEnvelopeConsumesExactlyOnce() = runBlocking {
         var persistedDraft: ExternalShareDraft? = null
         var failConsumedMarkerOnce = true
         val draftRepository =
@@ -530,15 +528,13 @@ class ExternalShareStoreTest {
 
         val first = store(this, envelopeRepository = envelopeRepository, draftRepository = draftRepository)
         first.dispatch(ExternalShareIntent.Load("share-1", Server.value))
-        advanceUntilIdle()
-        assertEquals("marker_write_failed", assertIs<ExternalShareState.Error>(first.state.value).errorCode)
+        assertEquals("marker_write_failed", first.awaitError().errorCode)
         first.clear()
 
         val restored = store(this, envelopeRepository = envelopeRepository, draftRepository = draftRepository)
         restored.dispatch(ExternalShareIntent.Load("share-1", Server.value))
-        advanceUntilIdle()
 
-        assertIs<ExternalShareState.SelectingTargets>(restored.state.value)
+        restored.awaitSelecting()
         assertEquals(2, consumeCalls)
         assertEquals(1, physicalConsumes)
         assertEquals(setOf("external-share-consume:share-1"), consumedIds)
@@ -546,7 +542,7 @@ class ExternalShareStoreTest {
     }
 
     @Test
-    fun draftPersistFailureLeavesNativeEnvelopeUnconsumed() = runTest {
+    fun draftPersistFailureLeavesNativeEnvelopeUnconsumed() = runBlocking {
         var consumeCalls = 0
         val envelopeRepository =
             object : ExternalShareEnvelopeRepository {
@@ -573,15 +569,14 @@ class ExternalShareStoreTest {
         val store = store(this, envelopeRepository = envelopeRepository, draftRepository = draftRepository)
 
         store.dispatch(ExternalShareIntent.Load("share-1", Server.value))
-        advanceUntilIdle()
 
-        assertEquals("disk_full", assertIs<ExternalShareState.Error>(store.state.value).errorCode)
+        assertEquals("disk_full", store.awaitError().errorCode)
         assertEquals(0, consumeCalls)
         store.clear()
     }
 
     @Test
-    fun durableDraftFromAnotherServerFailsClosedWithoutTargetLoadOrSend() = runTest {
+    fun durableDraftFromAnotherServerFailsClosedWithoutTargetLoadOrSend() = runBlocking {
         var targetCalls = 0
         var sendCalls = 0
         val draft =
@@ -617,9 +612,8 @@ class ExternalShareStoreTest {
             )
 
         store.dispatch(ExternalShareIntent.Load("share-1", "server-b"))
-        advanceUntilIdle()
 
-        assertEquals("external_share_draft_invalid", assertIs<ExternalShareState.Error>(store.state.value).errorCode)
+        assertEquals("external_share_draft_invalid", store.awaitError().errorCode)
         assertEquals(0, targetCalls)
         assertEquals(0, sendCalls)
         store.clear()
@@ -772,6 +766,15 @@ class ExternalShareStoreTest {
             yield()
         }
         error("ExternalShareStore did not reach the expected Completed state")
+    }
+
+    private suspend fun ExternalShareStore.awaitError(): ExternalShareState.Error {
+        repeat(100) {
+            val current = state.value
+            if (current is ExternalShareState.Error) return current
+            yield()
+        }
+        error("ExternalShareStore did not reach the expected Error state")
     }
 
     private open class StubTargetRepository(

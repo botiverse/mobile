@@ -3,14 +3,14 @@ package build.raft.app.data
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ServerId
-import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 
 class ExternalSharePersistenceTest {
     @Test
-    fun durableDraftRoundTripsAllResumeAndDeliveryIdentity() = runTest {
+    fun durableDraftRoundTripsAllResumeAndDeliveryIdentity() = runBlocking {
         val keyValueStore = InMemorySlockKeyValueStore()
         val repository = KeyValueExternalShareDraftRepository(keyValueStore, ownerAccountId = "account-a")
         val target =
@@ -57,7 +57,7 @@ class ExternalSharePersistenceTest {
     }
 
     @Test
-    fun invalidTokenCannotAddressDurableStorage() = runTest {
+    fun invalidTokenCannotAddressDurableStorage() = runBlocking {
         val repository =
             KeyValueExternalShareDraftRepository(
                 InMemorySlockKeyValueStore(),
@@ -73,7 +73,7 @@ class ExternalSharePersistenceTest {
     }
 
     @Test
-    fun durableDraftsAreIsolatedByCanonicalAccount() = runTest {
+    fun durableDraftsAreIsolatedByCanonicalAccount() = runBlocking {
         val keyValueStore = InMemorySlockKeyValueStore()
         val accountA = KeyValueExternalShareDraftRepository(keyValueStore, "account-a")
         val accountB = KeyValueExternalShareDraftRepository(keyValueStore, "account-b")
@@ -91,7 +91,7 @@ class ExternalSharePersistenceTest {
     }
 
     @Test
-    fun unknownTargetKindFailsClosedInsteadOfDefaulting() = runTest {
+    fun unknownTargetKindFailsClosedInsteadOfDefaulting() = runBlocking {
         val token = "opaque-token_1234567890"
         val keyValueStore =
             InMemorySlockKeyValueStore(
