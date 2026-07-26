@@ -1293,6 +1293,7 @@ internal fun LoginContent(
                 isError = !passwordError.isNullOrBlank(),
                 errorText = passwordError,
                 focusRequester = passwordFocusRequester,
+                password = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { submitCurrentDraft() })
             )
@@ -1447,6 +1448,7 @@ internal fun RegisterContent(
                 isError = !passwordError.isNullOrBlank(),
                 errorText = passwordError,
                 focusRequester = passwordFocusRequester,
+                password = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { submitIfAllowed() })
             )

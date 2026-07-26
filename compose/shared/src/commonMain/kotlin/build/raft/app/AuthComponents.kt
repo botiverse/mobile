@@ -48,6 +48,7 @@ import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
 import com.tencent.kuikly.compose.ui.text.style.TextDecoration
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
+import com.tencent.kuikly.compose.ui.text.input.KeyboardType
 import com.tencent.kuikly.compose.ui.text.input.PasswordVisualTransformation
 import com.tencent.kuikly.compose.ui.text.input.VisualTransformation
 import com.tencent.kuikly.compose.ui.unit.Dp
@@ -297,8 +298,10 @@ internal fun AuthTextField(
     focusRequester: FocusRequester? = null,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
-    password: Boolean = false
+    password: Boolean = false,
+    showPasswordToggle: Boolean = false
 ) {
+    val passwordField = authTextFieldUsesPasswordMode(password, keyboardOptions.keyboardType)
     var passwordVisible by remember { mutableStateOf(false) }
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -322,12 +325,12 @@ internal fun AuthTextField(
             enabledBackgroundColor = SlockColor.SurfaceWhite,
             disabledBackgroundColor = SlockColor.EmptyStateGray,
             placeholderColor = AuthInputPlaceholderColor,
-            visualTransformation = if (password && !passwordVisible) PasswordVisualTransformation() else VisualTransformation.None,
+            visualTransformation = if (passwordField && !passwordVisible) PasswordVisualTransformation() else VisualTransformation.None,
             keyboardOptions = keyboardOptions,
             keyboardActions = keyboardActions,
             focusRequester = focusRequester ?: remember { FocusRequester() },
             trailingContent =
-                if (password) {
+                if (authTextFieldShowsPasswordToggle(passwordField, showPasswordToggle)) {
                     {
                         SlockBrutalIconButton(
                             iconName = if (passwordVisible) SlockLucideIconName.EyeOff else SlockLucideIconName.Eye,
@@ -352,6 +355,16 @@ internal fun AuthTextField(
         }
     }
 }
+
+internal fun authTextFieldUsesPasswordMode(
+    password: Boolean,
+    keyboardType: KeyboardType
+): Boolean = password || keyboardType == KeyboardType.Password
+
+internal fun authTextFieldShowsPasswordToggle(
+    passwordMode: Boolean,
+    showPasswordToggle: Boolean
+): Boolean = passwordMode && showPasswordToggle
 
 @Composable
 internal fun AuthFieldLabel(label: String, required: Boolean = false, optional: Boolean = false) {
