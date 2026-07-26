@@ -649,6 +649,7 @@ internal class SlockInputFocusOwnerAnchor {
 
 internal class SlockInputFocusOwnerRegistry {
     private val activeOwners = mutableMapOf<Any, () -> Rect?>()
+    private val retainedInteractionRegions = mutableMapOf<Any, () -> Rect?>()
     private var focusOwnerGeneration: Long = 0L
     private var pointerSafetyGeneration: Long = 0L
     private var multiPointerFocusClearBlocked: Boolean = false
@@ -675,16 +676,23 @@ internal class SlockInputFocusOwnerRegistry {
         if (activeOwners.isEmpty()) return false
         activeOwners.values.forEach { resolveBounds ->
             val bounds = resolveBounds() ?: return false
-            if (
-                position.x >= bounds.left &&
-                position.x <= bounds.right &&
-                position.y >= bounds.top &&
-                position.y <= bounds.bottom
-            ) {
+            if (bounds.containsInclusive(position)) {
                 return false
             }
         }
+        retainedInteractionRegions.values.forEach { resolveBounds ->
+            val bounds = resolveBounds() ?: return@forEach
+            if (bounds.containsInclusive(position)) return false
+        }
         return true
+    }
+
+    fun retainFocusForInteraction(owner: Any, bounds: () -> Rect?) {
+        retainedInteractionRegions[owner] = bounds
+    }
+
+    fun removeRetainedInteraction(owner: Any) {
+        retainedInteractionRegions.remove(owner)
     }
 
     fun outsideFocusToken(position: Offset): SlockInputFocusDismissToken? {
@@ -758,6 +766,12 @@ internal class SlockInputFocusOwnerRegistry {
     }
 }
 
+private fun Rect.containsInclusive(position: Offset): Boolean =
+    position.x >= left &&
+        position.x <= right &&
+        position.y >= top &&
+        position.y <= bottom
+
 internal data class SlockInputFocusDismissToken(
     val focusOwnerGeneration: Long,
     val pointerSafetyGeneration: Long
@@ -778,6 +792,26 @@ internal fun isNativeInputFocusDismissCancellation(
 
 internal val LocalSlockInputFocusOwnerRegistry =
     compositionLocalOf<SlockInputFocusOwnerRegistry?> { null }
+
+/**
+ * Marks a composed interaction surface as belonging to the currently focused input experience.
+ *
+ * A focused field remains the authority that enables global outside-focus dismissal. This modifier
+ * only contributes another root-coordinate region where descendant taps and drags must preserve
+ * that focus, such as a composer's toolbar or suggestion list. It does not consume pointer input,
+ * request focus, or keep an unfocused field active.
+ */
+@Composable
+internal fun Modifier.retainInputFocusForInteractions(): Modifier {
+    val registry = LocalSlockInputFocusOwnerRegistry.current ?: return this
+    val interactionOwner = remember { Any() }
+    val interactionAnchor = remember { SlockInputFocusOwnerAnchor() }
+    DisposableEffect(registry, interactionOwner) {
+        registry.retainFocusForInteraction(interactionOwner, interactionAnchor::resolveBounds)
+        onDispose { registry.removeRetainedInteraction(interactionOwner) }
+    }
+    return onGloballyPositioned(interactionAnchor::update)
+}
 
 /**
  * Arbitrates focus dismissal without changing layout during a stationary child gesture.

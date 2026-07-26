@@ -174,4 +174,36 @@ class ThreadComposerFocusDismissTest {
 
         assertEquals(false, registry.claimFocusClear(staleToken))
     }
+
+    @Test
+    fun composerInteractionRegionPreservesFocusWhileOutsideBlankStillDismisses() {
+        val registry = SlockInputFocusOwnerRegistry()
+        val fieldOwner = Any()
+        val composerInteractionOwner = Any()
+        registry.setFocused(fieldOwner, true) { Rect(0f, 80f, 100f, 120f) }
+        registry.retainFocusForInteraction(composerInteractionOwner) {
+            Rect(0f, 20f, 100f, 120f)
+        }
+
+        assertNull(registry.outsideFocusToken(Offset(20f, 30f)))
+        assertNull(registry.outsideFocusToken(Offset(20f, 100f)))
+        val timelineBlankToken = requireNotNull(registry.outsideFocusToken(Offset(20f, 10f)))
+        assertEquals(true, registry.claimFocusClear(timelineBlankToken))
+    }
+
+    @Test
+    fun disposedInteractionRegionNoLongerSuppressesOutsideDismiss() {
+        val registry = SlockInputFocusOwnerRegistry()
+        val fieldOwner = Any()
+        val composerInteractionOwner = Any()
+        registry.setFocused(fieldOwner, true) { Rect(0f, 80f, 100f, 120f) }
+        registry.retainFocusForInteraction(composerInteractionOwner) {
+            Rect(0f, 20f, 100f, 120f)
+        }
+
+        registry.removeRetainedInteraction(composerInteractionOwner)
+
+        val formerSuggestionPanelToken = requireNotNull(registry.outsideFocusToken(Offset(20f, 30f)))
+        assertEquals(true, registry.claimFocusClear(formerSuggestionPanelToken))
+    }
 }

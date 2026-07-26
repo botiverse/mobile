@@ -1429,6 +1429,7 @@ internal fun ThreadComposerContent(
         modifier =
             Modifier
                 .fillMaxWidth()
+                .retainInputFocusForInteractions()
                 .background(SlockColor.SurfaceWhite)
                 .padding(
                     start = hostPaddingHorizontal,
