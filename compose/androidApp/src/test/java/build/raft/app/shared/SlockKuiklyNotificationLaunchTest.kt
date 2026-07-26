@@ -129,8 +129,16 @@ class SlockKuiklyNotificationLaunchTest {
                 environment = "App: Raft",
                 utcTime = "2026-07-13T15:00:00Z",
                 localTime = "2026-07-13 23:00:00 +0800",
-                appSlug = "raft-android",
-                channel = "main",
+                feedbackAppSlug = "raft-android",
+                feedbackChannel = "main",
+                updateRoute =
+                    HandsUpdateRoute(
+                        mode = HANDS_UPDATE_MODE_FULL_APK,
+                        appSlug = "raft-android",
+                        channel = "main",
+                        deltaEnabled = false
+                    ),
+                deviceId = "install-123",
                 attachmentNames =
                     listOf(
                         "/tmp/logcat.txt",
@@ -166,13 +174,53 @@ class SlockKuiklyNotificationLaunchTest {
                 environment = "App: Raft",
                 utcTime = "2026-07-13T15:00:00Z",
                 localTime = "2026-07-13 23:00:00 +0800",
-                appSlug = "raft-android",
-                channel = "main",
+                feedbackAppSlug = "raft-android",
+                feedbackChannel = "main",
+                updateRoute =
+                    HandsUpdateRoute(
+                        mode = HANDS_UPDATE_MODE_FULL_APK,
+                        appSlug = "raft-android",
+                        channel = "main",
+                        deltaEnabled = false
+                    ),
+                deviceId = "install-123",
                 attachmentNames = emptyList()
             )
 
         assertFalse(shareText.contains("attachments:"))
         assertTrue(shareText.contains("Ticket: ticket-1234567890\nSubmitted:"))
+    }
+
+    @Test
+    fun feedbackShareTextDistinguishesFeedbackAndUpdateRoutes() {
+        val shareText =
+            formatHandsFeedbackShareText(
+                ticketId = "ticket-1234567890",
+                description = "The update page failed.",
+                environment = "App: Raft",
+                utcTime = "2026-07-13T15:00:00Z",
+                localTime = "2026-07-13 23:00:00 +0800",
+                feedbackAppSlug = "raft-android",
+                feedbackChannel = "debug",
+                updateRoute =
+                    HandsUpdateRoute(
+                        mode = HANDS_UPDATE_MODE_ALPHA_DELTA,
+                        appSlug = HANDS_DELTA_ALPHA_APP_SLUG,
+                        channel = HANDS_DELTA_ALPHA_CHANNEL,
+                        deltaEnabled = true
+                    ),
+                deviceId = "device-123",
+                attachmentNames = emptyList()
+            )
+
+        assertTrue(shareText.contains("Hands feedback route: slug=raft-android, channel=debug"))
+        assertTrue(
+            shareText.contains(
+                "SlockHandsUpdate request: mode=alpha_delta, " +
+                    "slug=raft-android-alpha-delta, channel=alpha-delta, device_id=device-123"
+            )
+        )
+        assertFalse(shareText.contains("\nHands: slug="))
     }
 
     @Test

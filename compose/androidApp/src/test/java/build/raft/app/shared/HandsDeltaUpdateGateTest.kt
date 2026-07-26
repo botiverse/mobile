@@ -84,6 +84,44 @@ class HandsDeltaUpdateGateTest {
     }
 
     @Test
+    fun alphaRouteUsesDedicatedDeltaCoordinates() {
+        assertEquals(
+            HandsUpdateRoute(
+                mode = HANDS_UPDATE_MODE_ALPHA_DELTA,
+                appSlug = HANDS_DELTA_ALPHA_APP_SLUG,
+                channel = HANDS_DELTA_ALPHA_CHANNEL,
+                deltaEnabled = true
+            ),
+            resolveHandsUpdateRoute(
+                alphaDeltaEnabled = true,
+                defaultAppSlug = "raft-android",
+                defaultChannel = "debug",
+                deltaAppSlug = HANDS_DELTA_ALPHA_APP_SLUG,
+                deltaChannel = HANDS_DELTA_ALPHA_CHANNEL
+            )
+        )
+    }
+
+    @Test
+    fun deniedDeltaRouteUsesDefaultFullApkCoordinates() {
+        assertEquals(
+            HandsUpdateRoute(
+                mode = HANDS_UPDATE_MODE_FULL_APK,
+                appSlug = "raft-android",
+                channel = "main",
+                deltaEnabled = false
+            ),
+            resolveHandsUpdateRoute(
+                alphaDeltaEnabled = false,
+                defaultAppSlug = "raft-android",
+                defaultChannel = "main",
+                deltaAppSlug = HANDS_DELTA_ALPHA_APP_SLUG,
+                deltaChannel = HANDS_DELTA_ALPHA_CHANNEL
+            )
+        )
+    }
+
+    @Test
     fun callOwnerAllowsOnlyOneConcurrentSdkCall() = runTest {
         val owner = HandsDeltaUpdateCallOwner()
         val entered = CompletableDeferred<Unit>()
