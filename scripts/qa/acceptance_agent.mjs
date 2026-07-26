@@ -39,6 +39,7 @@ import { captureAndroidScreenshotWithPostProof } from "./android_capture_proof.m
 import { buildEvidenceOverlays, screenshotPixelTap } from "./evidence_annotations.mjs";
 import { capacityClientFromEnv, runWithModelRetries } from "./model_capacity.mjs";
 import { detectForeignAndroidSystemBlocker } from "./system_blocker.mjs";
+import { adbRunAsShellArgs } from "./mobile_login_bootstrap_lib.mjs";
 
 const argv = process.argv.slice(2);
 const arg = (f, d) => { const i = argv.indexOf(f); return i >= 0 ? argv[i + 1] : d; };
@@ -124,10 +125,13 @@ function captureAndroidQaBoundary(imageSha256) {
   }));
   const requestDigest = `sha256:${createHash("sha256").update(request).digest("hex")}`;
   const relative = `files/qa-bootstrap/inbox/${requestId}.capture`;
-  adb([
-    "exec-in", "run-as", opts.appPackage, "sh", "-c",
-    `umask 077; mkdir -p files/qa-bootstrap/inbox; tmp='${relative}.tmp'; cat >\"$tmp\"; chmod 600 \"$tmp\"; mv \"$tmp\" '${relative}'`,
-  ], { input: request, encoding: "utf8" });
+  const installScript =
+    `umask 077; mkdir -p files/qa-bootstrap/inbox; tmp='${relative}.tmp'; ` +
+    `cat >\"$tmp\"; chmod 600 \"$tmp\"; mv \"$tmp\" '${relative}'`;
+  adb(adbRunAsShellArgs("exec-in", opts.appPackage, installScript), {
+    input: request,
+    encoding: "utf8",
+  });
   adb([
     "shell", "am", "broadcast",
     "-n", `${opts.appPackage}/build.raft.app.core.data.auth.QaCaptureBoundaryReceiver`,

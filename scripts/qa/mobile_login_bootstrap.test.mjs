@@ -5,6 +5,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
 import {
+  adbRunAsShellArgs,
   apksignerVerifyArgs,
   canonicalJson,
   parseBootstrapDiagnostics,
@@ -27,9 +28,27 @@ test("pre-READY subprocesses are bounded and phase-observable", () => {
   assert.match(source, /private envelope installed/);
   assert.match(source, /launching bootstrap activity/);
   assert.match(source, /bootstrap activity launched; polling READY/);
-  assert.match(source, /\["exec-in", "run-as", applicationId/);
-  assert.match(agentSource, /"exec-in", "run-as", opts\.appPackage/);
+  assert.match(source, /adbRunAsShellArgs\("exec-in", applicationId, script\)/);
+  assert.match(agentSource, /adbRunAsShellArgs\("exec-in", opts\.appPackage, installScript\)/);
   assert.doesNotMatch(agentSource, /"exec-out", "run-as", opts\.appPackage/);
+});
+
+test("run-as keeps the complete remote script in one shell-quoted ADB command", () => {
+  assert.deepEqual(
+    adbRunAsShellArgs(
+      "exec-in",
+      "build.raft.app.alpha",
+      "set -eu; tmp='files/request.session.tmp'; cat >\"$tmp\"; mv \"$tmp\" files/request.session",
+    ),
+    [
+      "exec-in",
+      "run-as 'build.raft.app.alpha' sh -c 'set -eu; tmp='\"'\"'files/request.session.tmp'\"'\"'; cat >\"$tmp\"; mv \"$tmp\" files/request.session'",
+    ],
+  );
+  assert.throws(
+    () => adbRunAsShellArgs("exec-in", "build.raft.app;id", "true"),
+    /application id is invalid/,
+  );
 });
 
 test("a hung pre-READY ADB command is killed before the outer fuse", () => {
@@ -90,11 +109,13 @@ test("private envelope uses ADB exec-in, observes stdin EOF, and never stages on
   ].join(" ");
   writeExecutable(path.join(bin, "adb"), [
     "if [ \"${1:-}\" = exec-in ]; then",
+    "  [ \"$#\" -eq 2 ] || exit 8",
     "  printf '%s\\n' \"$*\" > \"$CAPTURED_ARGS\"",
     "  cat > \"$CAPTURED_BYTES\"",
     "  exit 0",
     "fi",
     "if [ \"${1:-}\" = exec-out ]; then",
+    "  [ \"$#\" -eq 2 ] || exit 8",
     "  printf '%s\\n' \"$*\" > \"$CAPTURED_VERIFY_ARGS\"",
     "  exit 0",
     "fi",
@@ -125,11 +146,11 @@ test("private envelope uses ADB exec-in, observes stdin EOF, and never stages on
     assert.equal(result.status, 0, result.stderr);
     assert.equal(fs.readFileSync(capturedBytes, "utf8"), canonicalJson(response.envelope));
     const args = fs.readFileSync(capturedArgs, "utf8");
-    assert.match(args, /^exec-in run-as build\.raft\.app\.alpha sh -c /);
+    assert.match(args, /^exec-in run-as 'build\.raft\.app\.alpha' sh -c '/);
     assert.match(args, /files\/qa-bootstrap\/inbox\/request-1\.session\.tmp/);
     assert.doesNotMatch(args, /sdcard|storage\/emulated|data\/local\/tmp/i);
     const verifyArgs = fs.readFileSync(capturedVerifyArgs, "utf8");
-    assert.match(verifyArgs, /^exec-out run-as build\.raft\.app\.alpha sh -c /);
+    assert.match(verifyArgs, /^exec-out run-as 'build\.raft\.app\.alpha' sh -c '/);
     assert.match(verifyArgs, /stat -c %a/);
     assert.match(verifyArgs, /wc -c/);
     assert.match(verifyArgs, /sha256sum/);

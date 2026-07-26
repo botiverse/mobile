@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import {
+  adbRunAsShellArgs,
   apksignerVerifyArgs,
   parseBootstrapDiagnostics,
   parseReadyLine,
@@ -102,7 +103,7 @@ function installPrivateEnvelope(applicationId, requestId, bytes) {
   // exec-in is the ADB service whose contract is host stdin -> remote stdin.
   // exec-out is intended for the opposite direction and can keep the remote
   // reader waiting after Node has supplied its input buffer on hosted runners.
-  run("adb", ["exec-in", "run-as", applicationId, "sh", "-c", script], { input: bytes });
+  run("adb", adbRunAsShellArgs("exec-in", applicationId, script), { input: bytes });
   const verifyScript = [
     "set -eu",
     `dst=files/qa-bootstrap/inbox/${requestId}.session`,
@@ -111,7 +112,7 @@ function installPrivateEnvelope(applicationId, requestId, bytes) {
     `test "$(wc -c <\"$dst\")" = ${bytes.length}`,
     `test "$(sha256sum \"$dst\" | cut -d' ' -f1)" = ${expectedDigest}`,
   ].join("; ");
-  run("adb", ["exec-out", "run-as", applicationId, "sh", "-c", verifyScript]);
+  run("adb", adbRunAsShellArgs("exec-out", applicationId, verifyScript));
 }
 
 function expectedLogin(responseFile, bindingFile, runCaseId, ciJobRef) {
