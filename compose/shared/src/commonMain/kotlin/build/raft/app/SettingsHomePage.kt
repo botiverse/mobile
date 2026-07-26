@@ -3808,6 +3808,10 @@ internal fun SlockAppShellContent(
         processRealtimeAuthority?.witness?.connectionFamilyId,
         processRealtimeAuthority?.accessToken,
         realtimeAuthorityConnectTick,
+        // Task #366: realtime follows the current server, so a server switch
+        // must re-reconcile (disconnect old, connect new). Without this key the
+        // effect only re-ran on auth-family/token/tick changes.
+        canonicalFinalSelectedServerId,
     ) {
         val environment = sharedStores.apiEnvironmentStore.current()
         val desired =
@@ -3815,6 +3819,7 @@ internal fun SlockAppShellContent(
                 authority = processRealtimeAuthority,
                 environmentId = environment.apiBaseUrl,
                 socketUrl = environment.socketBaseUrl,
+                currentServerId = canonicalFinalSelectedServerId,
             )
         realtimeConnectionFamilyId = desired?.connectionFamilyId
         appShellAgentDetailStore.dispatch(SharedAgentDetailIntent.ResetAgentActivitySeq)

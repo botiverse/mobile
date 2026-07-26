@@ -63,10 +63,39 @@ internal data class RealtimeProcessDesiredSessionPlan(
     val forceReconnect: Boolean,
 )
 
+/**
+ * Task #366 (artin ruling: "维护8个，要是用户有20个呢？这个就不合理，先下掉，…改成更合理的").
+ * Scope the realtime transport set to the CURRENT server only, instead of
+ * holding a persistent socket for every authenticated server (PR #1180). We
+ * stay authenticated to every granted server (grants are unchanged), but keep
+ * a live realtime connection for the selected server alone; non-current server
+ * drawer unread rides the home snapshot's serverUnreadSummary, not a socket.
+ *
+ * Rules:
+ *  - current server present AND among the grants -> exactly {current};
+ *  - current unknown/blank, or not among the grants -> empty, so we keep zero
+ *    persistent sockets until a granted current server is known (a later
+ *    reconcile re-run opens it). Never fan out to every authenticated server.
+ */
+internal fun realtimeCurrentServerScopedServerIds(
+    currentServerId: String?,
+    grantedServerIds: Set<String>,
+): Set<String> {
+    val normalizedGrants =
+        grantedServerIds.asSequence().map(String::trim).filter(String::isNotEmpty).toSet()
+    val normalizedCurrent = currentServerId?.trim().orEmpty()
+    return if (normalizedCurrent.isNotEmpty() && normalizedCurrent in normalizedGrants) {
+        setOf(normalizedCurrent)
+    } else {
+        emptySet()
+    }
+}
+
 internal fun realtimeProcessDesiredSession(
     authority: RealtimeScopeAuthority?,
     environmentId: String,
     socketUrl: String,
+    currentServerId: String?,
 ): RealtimeProcessDesiredSession? {
     val current = authority ?: return null
     return RealtimeProcessDesiredSession(
@@ -76,7 +105,7 @@ internal fun realtimeProcessDesiredSession(
         authGeneration = current.witness.authGeneration,
         connectionFamilyId = current.witness.connectionFamilyId,
         accessToken = current.accessToken,
-        serverIds = current.grantsByServer.keys,
+        serverIds = realtimeCurrentServerScopedServerIds(currentServerId, current.grantsByServer.keys),
     ).normalizedOrNull()
 }
 
