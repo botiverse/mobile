@@ -125,7 +125,7 @@ function captureAndroidQaBoundary(imageSha256) {
   const requestDigest = `sha256:${createHash("sha256").update(request).digest("hex")}`;
   const relative = `files/qa-bootstrap/inbox/${requestId}.capture`;
   adb([
-    "exec-out", "run-as", opts.appPackage, "sh", "-c",
+    "exec-in", "run-as", opts.appPackage, "sh", "-c",
     `umask 077; mkdir -p files/qa-bootstrap/inbox; tmp='${relative}.tmp'; cat >\"$tmp\"; chmod 600 \"$tmp\"; mv \"$tmp\" '${relative}'`,
   ], { input: request, encoding: "utf8" });
   adb([

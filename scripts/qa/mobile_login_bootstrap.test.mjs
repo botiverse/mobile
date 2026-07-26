@@ -16,13 +16,19 @@ import {
 
 test("pre-READY subprocesses are bounded and phase-observable", () => {
   const source = fs.readFileSync(path.resolve("scripts/qa/mobile_login_bootstrap.mjs"), "utf8");
+  const agentSource = fs.readFileSync(path.resolve("scripts/qa/acceptance_agent.mjs"), "utf8");
   assert.match(source, /timeoutMs = commandTimeoutMs/);
   assert.match(source, /timeout: timeoutMs/);
   assert.match(source, /killSignal: "SIGKILL"/);
+  assert.match(source, /signal=\$\{result\.signal/);
+  assert.match(source, /result\.error\.code/);
   assert.match(source, /installing private envelope/);
   assert.match(source, /private envelope installed/);
   assert.match(source, /launching bootstrap activity/);
   assert.match(source, /bootstrap activity launched; polling READY/);
+  assert.match(source, /\["exec-in", "run-as", applicationId/);
+  assert.match(agentSource, /"exec-in", "run-as", opts\.appPackage/);
+  assert.doesNotMatch(agentSource, /"exec-out", "run-as", opts\.appPackage/);
 });
 
 test("a hung pre-READY ADB command is killed before the outer fuse", () => {
@@ -52,7 +58,71 @@ test("a hung pre-READY ADB command is killed before the outer fuse", () => {
   try {
     assert.notEqual(result.status, 0);
     assert.ok(Date.now() - started < 2_000, "hung adb exceeded the bounded test timeout");
-    assert.match(result.stderr, /adb failed|timed out|ETIMEDOUT/i);
+    assert.match(result.stderr, /adb failed \(status=none, signal=SIGKILL, code=ETIMEDOUT\)/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("private envelope uses ADB exec-in, observes stdin EOF, and never stages on shared storage", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "qa-bootstrap-exec-in-"));
+  const bin = path.join(root, "bin");
+  fs.mkdirSync(bin, { recursive: true });
+  const responseFile = path.join(root, "response.json");
+  const bindingFile = path.join(root, "binding.json");
+  const readyFile = path.join(root, "ready.json");
+  const capturedBytes = path.join(root, "captured-envelope.json");
+  const capturedArgs = path.join(root, "captured-args.txt");
+  const response = loginResponse();
+  fs.writeFileSync(responseFile, JSON.stringify(response));
+  fs.writeFileSync(bindingFile, JSON.stringify({ signing_cert_sha256: digestA, boot_generation: digestB }));
+  const readyLine = [
+    "I/SlockQaBootstrap: QA_BOOTSTRAP_READY",
+    `envelopeDigest=${response.envelope_digest}`,
+    "runCaseId=case-1", "attempt=2", `ciJobRef=${expected.ciJobRef}`,
+    "principalId=user-1", "serverId=server-1", "sessionGeneration=session-1",
+    "route=compose_slock_app_shell", "applicationId=build.raft.app.alpha",
+    `bootGeneration=${digestB}`, "pid=42", "processInstanceId=process-1", "processGeneration=100",
+    "deviceReadyElapsedRealtimeNanos=200", `readyReceiptDigest=${response.envelope_digest}`,
+    `runtimeEnvelopeDigest=${digestA}`, `routeReadyProofDigest=${digestB}`,
+  ].join(" ");
+  writeExecutable(path.join(bin, "adb"), [
+    "if [ \"${1:-}\" = exec-in ]; then",
+    "  printf '%s\\n' \"$*\" > \"$CAPTURED_ARGS\"",
+    "  cat > \"$CAPTURED_BYTES\"",
+    "  exit 0",
+    "fi",
+    "case \"$*\" in",
+    "  'logcat -c') exit 0 ;;",
+    "  'shell am start -W '*) exit 0 ;;",
+    "  'logcat -d -v brief SlockQaBootstrap:I *:S') printf '%s\\n' \"$READY_LINE\"; exit 0 ;;",
+    "esac",
+    "exit 9",
+  ].join("\n"));
+  const result = spawnSync(process.execPath, [
+    path.resolve("scripts/qa/mobile_login_bootstrap.mjs"), "prepare",
+    "--response", responseFile, "--binding", bindingFile,
+    "--run-case-id", "case-1", "--ci-job-ref", expected.ciJobRef,
+    "--ready-output", readyFile, "--timeout-seconds", "1",
+  ], {
+    cwd: path.resolve("."), encoding: "utf8",
+    env: {
+      ...process.env,
+      PATH: `${bin}:${process.env.PATH ?? ""}`,
+      CAPTURED_ARGS: capturedArgs,
+      CAPTURED_BYTES: capturedBytes,
+      READY_LINE: readyLine,
+    },
+  });
+  try {
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(fs.readFileSync(capturedBytes, "utf8"), canonicalJson(response.envelope));
+    const args = fs.readFileSync(capturedArgs, "utf8");
+    assert.match(args, /^exec-in run-as build\.raft\.app\.alpha sh -c /);
+    assert.match(args, /files\/qa-bootstrap\/inbox\/request-1\.session\.tmp/);
+    assert.doesNotMatch(args, /sdcard|storage\/emulated|data\/local\/tmp/i);
+    assert.equal(fs.statSync(readyFile).mode & 0o777, 0o600);
+    assert.equal(fs.readFileSync(readyFile, "utf8").includes("access-secret"), false);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
