@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-07-26T05:02:37.724Z",
+  "generatedAt": "2026-07-26T05:09:35.697Z",
   "latestRunId": "ffcf4337-20260726050045",
   "latest": {
     "runId": "ffcf4337-20260726050045",
     "commit": "ffcf4337-20260726050045",
     "commitSubject": "fix(ci): preserve v2 signing after minSdk bump (#1616)",
-    "generatedAt": "2026-07-26T05:02:37.724Z",
+    "generatedAt": "2026-07-26T05:09:35.697Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -20,8 +20,8 @@
     },
     "analysisSummary": {
       "total": 80,
-      "ready": 65,
-      "pending": 15
+      "ready": 79,
+      "pending": 1
     },
     "comparisons": [
       "react__android",
@@ -129,7 +129,7 @@
       "runId": "ffcf4337-20260726050045",
       "commit": "ffcf4337-20260726050045",
       "commitSubject": "fix(ci): preserve v2 signing after minSdk bump (#1616)",
-      "generatedAt": "2026-07-26T05:02:37.724Z",
+      "generatedAt": "2026-07-26T05:09:35.697Z",
       "baseline": "react",
       "current": "android",
       "summary": {
@@ -142,8 +142,8 @@
       },
       "analysisSummary": {
         "total": 80,
-        "ready": 65,
-        "pending": 15
+        "ready": 79,
+        "pending": 1
       },
       "comparisons": [
         "react__android",

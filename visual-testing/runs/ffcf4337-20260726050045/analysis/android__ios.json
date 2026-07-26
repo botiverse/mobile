@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-26T05:02:36.246Z",
+  "generatedAt": "2026-07-26T05:09:33.532Z",
   "baseline": "android",
   "current": "ios",
   "comparison": "android__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 80,
-    "ready": 66,
-    "pending": 14
+    "ready": 75,
+    "pending": 5
   },
   "cases": [
     {
@@ -944,15 +944,28 @@
     },
     {
       "id": "components.thread.header.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1f1c1f1c00e000e000200020000000000000000000007ffefffefffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fff81fff",
-      "generatedAt": "2026-07-26T05:02:35.384Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-26T05:06:17.264Z",
+      "severity": "low",
+      "summary": [
+        "Both ends render the same Thread Header component with chat title, subtitle, back button, channel hash, settings, members (4), and tab bar (Chat/Tasks/Files) — visually isomorphic within tolerance.",
+        "Slight vertical alignment difference: on iOS the header content row sits marginally lower and the tab bar appears to have a slightly thinner/less prominent active-tab underline vs Android."
+      ],
+      "likelyCauses": [
+        "Minor dp-to-pt rounding differences between Android and iOS rendering pipelines in Kuikly.",
+        "Default font metrics differ between platforms (San Francisco vs Roboto) causing tiny vertical baseline shifts in the title/subtitle row."
+      ],
+      "suggestedOwner": "ui-platform",
+      "suggestedFixes": [
+        "Normalize header row vertical alignment using a fixed height container rather than intrinsic content sizing.",
+        "Pin the active-tab indicator stroke width to a dp constant on both platforms.",
+        "Run a regression with ignoreAntialiasing=true to confirm the 1.47% pixel mismatch is purely sub-pixel rendering."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.014713209381455816
     },
     {
@@ -1120,15 +1133,30 @@
     },
     {
       "id": "components.thread.forward-modal",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ffc1ffc83fe03fe807e007e000000000000000080000000dffe5ffe83fe03fe80fe00fe8ffe0ffe83fe87fe9ffe1ffe807e007e9ffe0bfe81fe01fe81fe01fedffe7ffe87fe87fe800e004efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
-      "generatedAt": "2026-07-26T05:02:35.521Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-26T05:06:17.480Z",
+      "severity": "low",
+      "summary": [
+        "Both renders show the same Forward modal with single-step destination list — no structural divergence.",
+        "Minor pixel-level differences consistent with platform font rendering and DPR scaling; RGB similarity 98.0%, pixel-perfect 94.0%.",
+        "Layout, spacing, alignment, icon placement, and text content are visually isomorphic between Android and iOS."
+      ],
+      "likelyCauses": [
+        "Default platform font metrics and antialiasing differences between Android (Roboto) and iOS (San Francisco).",
+        "Device pixel ratio scaling differences between baseline 390×844 and current 1170×2532 canvases."
+      ],
+      "suggestedOwner": "design",
+      "suggestedFixes": [
+        "No fixes required — the two renders are sufficiently isomorphic for this component.",
+        "If exact parity is desired, standardize font stack and metrics in the Kuikly theme tokens; otherwise accept platform-native rendering."
+      ],
+      "intentional": [
+        "Forward flow uses a single combined modal with inline destination list on both Android and iOS renders shown here; platform-difference (two-step vs single-step) is not exercised in this side-by-side."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.059766948866474934
     },
     {
@@ -1167,15 +1195,35 @@
     },
     {
       "id": "components.home.titlebar.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:9ffe1ffeffffffff000300030003000380ff00ef0003000300030003e07f407f0003000300030003f0ff40ff807fc87f8003000780f300d7ccf348f780078007ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-      "generatedAt": "2026-07-26T05:02:35.548Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-26T05:06:17.518Z",
+      "severity": "medium",
+      "summary": [
+        "iOS expanded switcher text 'Raft Product Design Workspace' is fully visible while Android truncates it to 'Raft Product Design Workspa…'",
+        "iOS 'Raft Community' tile avatar shows letter 'R' in plain dark color, while Android renders 'R' as orange/amber text on black background",
+        "iOS /raft-community subtitle is rendered in a darker gray, whereas Android renders it in lighter gray",
+        "iOS top-right platform badge reads 'iOS' instead of Android's 'ANDROID' label (expected platform indicator)",
+        "iOS expanded switcher tile is slightly taller, accommodating the untruncated workspace title"
+      ],
+      "likelyCauses": [
+        "Inconsistent text truncation / maxLines or ellipsis policy for the title text between platforms",
+        "Avatar component fallback styling differs between Android and iOS (color token mapping)",
+        "Subtitle text color token not normalized across platform themes",
+        "Density-independent sizing causes subtle height differences in expanded switcher rows"
+      ],
+      "suggestedOwner": "Kuikly titlebar/switcher component owner",
+      "suggestedFixes": [
+        "Align text truncation behavior (maxLines + ellipsize) for workspace title across Android and iOS renders",
+        "Unify the avatar fallback rendering so the 'R' glyph uses the same color on both platforms",
+        "Normalize the /raft-community subtitle color token across platform theme layers",
+        "Verify the expanded switcher row minHeight matches across platforms so untruncated text fits identically",
+        "Confirm the platform badge label switches correctly between ANDROID and iOS in the test harness header"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.48061226556487224
     },
     {
@@ -1277,15 +1325,35 @@
     },
     {
       "id": "components.home.saved.results",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ff83ffc03fd07fe03fd07fe00000006836106c680210046807d00fefffdfffe88c5330e80210046800100468ffd1ffefffdfffee1e5c24e81e003c680310046803d003e9ffdfffef83df07ef83df07efffdfffefffdfffe0001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffa1fff",
-      "generatedAt": "2026-07-26T05:02:35.624Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-26T05:06:17.644Z",
+      "severity": "low",
+      "summary": [
+        "iOS canvas is significantly taller (1170×2532 vs 342×620), leaving large empty space below the 'Load More' button",
+        "Third saved card body text wraps differently: Android shows 'Publish preflight is green — report goes live after the next full run.' across three lines, iOS breaks as 'Publish preflight is green — report goes live after the next full' / 'run.'",
+        "Second saved card's avatar/username alignment appears slightly shifted on iOS (smaller horizontal gap between username and '14 days ago')",
+        "Cards and 'Load More' button are proportionally smaller within the iOS viewport due to non-normalized canvas sizes",
+        "Otherwise content, typography, colors, borders, icons, and counts are visually equivalent"
+      ],
+      "likelyCauses": [
+        "Comparison canvas dimensions not normalized to a common dp/px space (342×620 vs 1170×2532 raw sizes)",
+        "Text wrapping differences driven by container width variance on iOS rendering",
+        "Minor spacing token differences in avatar-to-timestamp gap between platforms",
+        "Possible missing bottom safe-area / footer region on iOS canvas"
+      ],
+      "suggestedOwner": "kuikly-renderer / mobile-platform",
+      "suggestedFixes": [
+        "Normalize both ends to a common canvas size (or use dp-equivalent scaling) before visual diffing",
+        "Audit the third card body width and line-break rules so wrap points match across platforms",
+        "Verify avatar-to-timestamp spacing token is identical on Android and iOS Kuikly renderers",
+        "Confirm iOS viewport includes any expected trailing content or safe-area spacer to fill the empty area",
+        "Re-run slock capture after fixes and recheck pixel-perfect similarity"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.071557567410648
     },
     {
@@ -1524,15 +1592,37 @@
     },
     {
       "id": "components.members.agent-detail.profile",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:3ffe3ffe00310031003100210000000007ea07e28fff0fff801f001f8fff0bff9fff9fffc7ffc7ffdfffdfffefffffff81f780f7ffffffffffffffff8fff0fff8fff0ffff87ff8fff9fff1fff1fff1ffffffffffffffffff8c3f0c3f8c3f0c7f8c7f0c7f8007000380030003f7ffffff87ff87ff87fe97ff88026802ffffffff",
-      "generatedAt": "2026-07-26T05:02:35.786Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-26T05:06:18.131Z",
+      "severity": "low",
+      "summary": [
+        "Header avatar (QR code) is slightly larger on iOS, reducing horizontal space and causing title/subtitle truncation to match (\"screensho…\") on both sides, but the iOS avatar extends slightly more rightward into the title area.",
+        "Back/chat/list icons in the top bar are slightly larger on iOS, shifting the icon group marginally compared to Android.",
+        "Profile avatar in the main content area is a touch larger on iOS, causing more right-shift of the name/handle/Working block.",
+        "Info row label widths (Role/Computer/Created/Creator) are slightly wider on iOS, pushing the values column further right; \"Jiachengs-MacB…\" truncation is identical but at different x.",
+        "Runtime Config chips (Runtime/Model/Reasoning/Mode) and env-var chips render marginally larger and with slightly more horizontal padding on iOS."
+      ],
+      "likelyCauses": [
+        "Platform default sizing for QR/avatar assets (different dp→px scaling between Android 390×844 and iOS 1170×2532 crops).",
+        "Kuikly render mapping producing different icon/avatar scale on the iOS renderer vs Android renderer.",
+        "Default padding/size tokens for chips and list items diverge between the two platform renderers."
+      ],
+      "suggestedOwner": "kuikly-renderer / ui-components",
+      "suggestedFixes": [
+        "Normalize avatar/icon sizes to a fixed dp value so the QR top-left avatar and profile avatar render the same on both ends.",
+        "Align header icon group (back/chat/list) to a shared width/padding token across Android and iOS renderers.",
+        "Pin Info-section label column width and Runtime-Config/Env-var chip dimensions to identical tokens.",
+        "Adjust CREATED AGENTS row height and status-dot size to a single shared value.",
+        "Re-run pixel-perfect diff at 1× scale on identical viewports to confirm the remaining 8.79% mismatch is only AA-related."
+      ],
+      "intentional": [
+        "Header title and subtitle are truncated to the same ellipsis form (\"screensho…\") on both platforms, suggesting intentional responsive truncation.",
+        "Tab order (Profile/Activity/Chat/Reminders) and chip colors (Member purple, Codex CLI cyan, GPT-5 Codex purple, Medium yellow, Default orange) match between sides."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.08794000891157294
     },
     {
@@ -1853,7 +1943,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-26T05:02:35.876Z",
+      "generatedAt": "2026-07-26T05:09:33.003Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1866,7 +1956,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-26T05:02:35.876Z",
+      "generatedAt": "2026-07-26T05:09:33.003Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1879,7 +1969,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-26T05:02:35.876Z",
+      "generatedAt": "2026-07-26T05:09:33.003Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1892,7 +1982,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-26T05:02:35.876Z",
+      "generatedAt": "2026-07-26T05:09:33.003Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1905,7 +1995,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-26T05:02:35.876Z",
+      "generatedAt": "2026-07-26T05:09:33.003Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1916,41 +2006,96 @@
     },
     {
       "id": "screens.members.human.profile",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:03f403fc03f803fe03e803fa0000000003fe7ffe01fe7ffe0ffe7ffe0ffe7ffe07fe7ffe00067ffe1ffe7ffefffe7ffe0ffe7ffe0ffe7ffe07fe7e7e03fe7e7e1ffe700e07fe781e83fe7c3e03fe7c3efffe7c3efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
-      "generatedAt": "2026-07-26T05:02:35.990Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-26T05:06:19.371Z",
+      "severity": "high",
+      "summary": [
+        "Android renders a fully populated member profile (avatar, name 'artin', @artin handle, description, role badge 'Member' with edit pencil, email, joined date, 'CREATED AGENTS 0' section)",
+        "iOS renders a 'Could not load member' error state with a warning icon, code 'member_identity_missing', and a Retry button instead of profile content",
+        "Top-bar action differs: Android shows a chat/message icon on the right; iOS has no trailing action icon",
+        "iOS title reads 'Member / Profile' (two-line) whereas Android shows the dynamic member name 'artin' on a single line"
+      ],
+      "likelyCauses": [
+        "iOS build is missing the member identity parameter, triggering the error boundary state on that platform only",
+        "Possible platform-specific serialization or navigation arg pass-through dropping the memberId on iOS",
+        "Chat/messaging action icon only registered on the Android route or hidden behind a feature flag disabled on iOS"
+      ],
+      "suggestedOwner": "mobile-platform / members-feature owner",
+      "suggestedFixes": [
+        "Verify navigation arguments (memberId/identity) are correctly propagated to the iOS Kuikly render path",
+        "Add parity test asserting the profile body renders instead of the error state when a valid member id is supplied",
+        "Confirm the trailing action icon (chat bubble) is registered for the iOS top-bar variant or intentionally hidden via the same flag on both platforms",
+        "Check error-boundary mapping for 'member_identity_missing' to ensure it does not mask a legitimate load failure specific to iOS"
+      ],
+      "intentional": [
+        "Difference may be intentional if iOS intentionally surfaces the missing-identity error while Android uses a fallback; confirm with product before treating as a bug"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.05537968701475815
     },
     {
       "id": "components.members.agent-lifecycle-actions",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:3ffe3ffe40310031083108210000000005fc05dc8c018c01800100018fff0bff9fff9fffe7ffe7ffffffffffffffffff81ff81ffffffffffffffffff9fff1fff8fff0ffff87ff8fff9fff1fff1fff1ffffffffffffffffff8c3f0c3f8c3f8c7f8c7f0c7f8007000380030003f7ffffff97ff87ff87fe97ff9c067c02ffffffff",
-      "generatedAt": "2026-07-26T05:02:36.030Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-26T05:06:21.996Z",
+      "severity": "low",
+      "summary": [
+        "Tab labels in the header are clipped on Android (only 'Activ' visible) while iOS shows the full tab text but with tighter cropping at the right edge of the tabs row.",
+        "The 'Member' info chip on iOS appears slightly narrower / less padded than on Android, with smaller horizontal insets around the text.",
+        "The 'Codex CLI', 'GPT-5 Codex', 'Medium', and 'Default' runtime-config chips on iOS appear slightly smaller (narrower padding) than their Android counterparts.",
+        "The 'CREATED AGENTS' row item container on iOS has visibly thinner borders / less internal padding than the Android row card."
+      ],
+      "likelyCauses": [
+        "Kuikly's iOS renderer is applying platform-native tighter padding/sizing to Tag/Chip and Card components versus Android.",
+        "Inconsistent chip and card padding tokens across the iOS and Android Kuikly style maps (separate dp/pt scaling).",
+        "Header tab strip uses different text-overflow / truncation thresholds on each platform."
+      ],
+      "suggestedOwner": "kuikly-design-system",
+      "suggestedFixes": [
+        "Normalize Tag/Chip horizontal padding to a shared design token so Android and iOS chips render at the same width.",
+        "Unify Card/Row border thickness and internal padding for the Created Agents item across platforms.",
+        "Ensure the Profile/Activity/etc. tab strip uses a consistent min-width or auto-sizing policy so labels are not clipped on Android.",
+        "Audit iOS vs Android component scale: confirm whether iOS should render at @1x/2x/3x equivalent of Android dp, and unify DPR handling in Kuikly."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.09199612481603003
     },
     {
       "id": "components.members.avatar-management",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:3ffe3ffe003100310031002100000000000a000a883f083f8fff0fffffffffff83ff83ffffffffff87ff8fff81ff81ffffffffffffffffff8fff0fff8fff0ffff8fff8fff1fff1fffbfffbffffffffff8c3f0c3f8c3f0c3f8c7f1c7f8c7f0c7f8003000380030403fffff7ff87fe87ff97ff97ffffffffff8ffe0ffeffffffff",
-      "generatedAt": "2026-07-26T05:02:36.043Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-26T05:06:23.984Z",
+      "severity": "low",
+      "summary": [
+        "Header bar back/title/icon layout nearly identical between Android and iOS with minor spacing differences.",
+        "Tab bar (Profile/Activity/Chat/Reminders) shows subtle vertical alignment differences — iOS tab text appears slightly lower within each tab cell.",
+        "Avatar tile in the profile header appears slightly larger on iOS relative to Android.",
+        "Role 'Member' chip stroke weight looks slightly thicker on iOS.",
+        "Avatar image inside the 'Visual QA' agent card has slightly larger dimensions on iOS."
+      ],
+      "likelyCauses": [
+        "Platform-specific default font metrics (SF Pro vs Roboto) causing minor vertical alignment differences.",
+        "Kuikly layout using raw pixel values rather than density-independent units causing small bound differences.",
+        "iOS rendering at higher pixel density amplifying minor sub-pixel layout differences."
+      ],
+      "suggestedOwner": "ui-engineering",
+      "suggestedFixes": [
+        "Verify tab bar uses density-independent padding and centered text alignment in both renderers.",
+        "Audit avatar component size definitions to use consistent dp/pt units across platforms.",
+        "Normalize font baseline metrics so SF Pro and Roboto align within the same line height box.",
+        "Review chip border thickness to ensure consistent stroke across platforms.",
+        "Run layout-tolerance validation at 1dp tolerance to detect any remaining bound mismatches."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.09118125599168259
     },
     {
@@ -2081,15 +2226,31 @@
     },
     {
       "id": "components.thread.message-row.md-link-ref",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:03fc03fc7ffe7ffe83f203f280000000e0026000e0026002e0026002e0026002e1fe61fee1fe61fefffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffefffe7ffe00000000fff81fff",
-      "generatedAt": "2026-07-26T05:02:36.143Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-26T05:06:24.954Z",
+      "severity": "low",
+      "summary": [
+        "Right (iOS) message bubble has no background fill, while left (Android) has a light cream/off-white bubble background behind the message content.",
+        "Right (iOS) body text and timestamps are noticeably wider/larger relative to canvas, producing tighter line wraps (e.g. 'Keeps visual testing…' uses ellipsis on iOS but fits fully on Android).",
+        "Metadata tag in the top-right corner differs: left shows 'ANDROID' badge, right shows 'iOS' badge (platform label, not a UI divergence)."
+      ],
+      "likelyCauses": [
+        "Kuikly iOS render path omits the message-row container background fill that Android applies.",
+        "iOS uses a different default body font metrics (likely SF/system) vs Android (likely Roboto), producing larger advance widths and earlier wrapping at the same logical DP sizes."
+      ],
+      "suggestedOwner": "kuikly-render / message-row component owner",
+      "suggestedFixes": [
+        "Verify the message-row container background style is emitted on the iOS render path so the bubble fill matches Android.",
+        "Normalize body text font-family/size or apply a shared text-style token so line-wrap behavior aligns across platforms.",
+        "Audit timestamp and username line metrics so the ellipsis only appears when content actually overflows."
+      ],
+      "intentional": [
+        "Channel/mention refs inside Markdown link labels differ by platform dialect — intentional per the known divergence (not re-reported as a defect)."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.7239967729304222
     },
     {

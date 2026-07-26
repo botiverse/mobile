@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-07-26 05:02:37 UTC
+Generated: 2026-07-26 05:09:35 UTC
 Latest run: ffcf4337-20260726050045
 Latest commit: ffcf4337-20260726050045
 Commit subject: fix(ci): preserve v2 signing after minSdk bump (#1616)
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 80, same 0, pass 0, basic-pass 0, different 79, missing 1
-AI analysis: ready 65 / total 80, pending 15
+AI analysis: ready 79 / total 80, pending 1
 Visual coverage matrix: active 89 / total 108, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 

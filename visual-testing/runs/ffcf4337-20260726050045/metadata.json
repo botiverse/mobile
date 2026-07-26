@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-26T05:02:37.724Z",
+  "generatedAt": "2026-07-26T05:09:35.697Z",
   "runId": "ffcf4337-20260726050045",
   "commit": "ffcf4337-20260726050045",
   "commitSubject": "fix(ci): preserve v2 signing after minSdk bump (#1616)",
@@ -27,8 +27,8 @@
       },
       "analysisSummary": {
         "total": 80,
-        "ready": 65,
-        "pending": 15
+        "ready": 79,
+        "pending": 1
       }
     },
     {
@@ -51,8 +51,8 @@
       },
       "analysisSummary": {
         "total": 80,
-        "ready": 61,
-        "pending": 19
+        "ready": 74,
+        "pending": 6
       }
     },
     {
@@ -75,8 +75,8 @@
       },
       "analysisSummary": {
         "total": 80,
-        "ready": 66,
-        "pending": 14
+        "ready": 75,
+        "pending": 5
       }
     }
   ],
@@ -90,8 +90,8 @@
   },
   "analysisSummary": {
     "total": 80,
-    "ready": 65,
-    "pending": 15
+    "ready": 79,
+    "pending": 1
   },
   "componentMatrixSummary": {
     "total": 108,
