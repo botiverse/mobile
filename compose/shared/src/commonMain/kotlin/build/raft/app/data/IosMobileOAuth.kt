@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.SlockHostStrings
 import build.raft.app.slockLogInfo
 import build.raft.app.slockLogWarn
 import kotlinx.coroutines.CoroutineScope
@@ -603,10 +604,12 @@ private fun iosMobileOAuthActionFailedMessage(provider: String, mode: String): S
         "${provider.iosMobileOAuthProviderName()} sign-in failed. Try again."
     }
 
-private fun iosMobileOAuthProviderErrorMessage(
+internal fun iosMobileOAuthProviderErrorMessage(
     provider: String,
     mode: String,
     error: String,
+    accountConflictMessage: (String) -> String = SlockHostStrings::mobileOAuthAccountConflict,
+    providerConflictMessage: (String) -> String = SlockHostStrings::mobileOAuthProviderConflict,
 ): String {
     val providerName = provider.iosMobileOAuthProviderName()
     return when (error.trim().lowercase()) {
@@ -618,8 +621,8 @@ private fun iosMobileOAuthProviderErrorMessage(
             }
         "expired", "request_not_pending", "handoff_code_expired", "handoff_code_consumed" ->
             "Sign-in request expired. Try again."
-        "account_conflict", "provider_conflict" ->
-            "This $providerName account is already linked to another user."
+        "account_conflict" -> accountConflictMessage(providerName)
+        "provider_conflict" -> providerConflictMessage(providerName)
         "registration_disabled" ->
             "New account registration is currently unavailable."
         "runtime_not_ready" ->

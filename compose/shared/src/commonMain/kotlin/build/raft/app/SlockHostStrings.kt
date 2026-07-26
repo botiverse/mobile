@@ -62,6 +62,12 @@ object SlockHostStrings {
     fun appLocaleLanguageTag(): String? =
         (KmmResourceLocaleRuntime.locale.value ?: AppLocale.Default).kmmResourceLocaleTag
 
+    fun mobileOAuthAccountConflict(providerName: String): String =
+        resolve(MR.strings.auth_error_mobile_oauth_account_conflict.format(listOf(providerName)))
+
+    fun mobileOAuthProviderConflict(providerName: String): String =
+        resolve(MR.strings.auth_error_mobile_oauth_provider_conflict.format(listOf(providerName)))
+
     fun ok(): String = resolve(MR.strings.common_ok)
 
     private fun resolve(resource: StringResource): String {

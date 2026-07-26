@@ -1144,6 +1144,8 @@
     <string name="auth_error_request_expired">ログインリクエストの有効期限が切れました。もう一度お試しください。</string>
     <string name="auth_error_provider_setup">%1$s のログインのセットアップを完了できませんでした。もう一度お試しください。</string>
     <string name="auth_error_provider_failed">%1$s のログインに失敗しました。もう一度お試しください。</string>
+    <string name="auth_error_mobile_oauth_account_conflict">このメールアドレスの Raft パスワードアカウントはすでに存在します。まずパスワードでログインし、設定で %1$s を連携してください。</string>
+    <string name="auth_error_mobile_oauth_provider_conflict">この %1$s アカウントは別のユーザーにすでに連携されています。</string>
     <string name="auth_error_register_setup">アカウント作成のセットアップを完了できませんでした。もう一度お試しください。</string>
     <string name="auth_error_register_failed">アカウントの作成に失敗しました。もう一度お試しください。</string>
     <string name="auth_error_password_reset_setup">パスワードリセットのセットアップを完了できませんでした。もう一度お試しください。</string>
