@@ -54,6 +54,7 @@ class ExternalSharePersistenceTest {
         assertEquals(draft, assertIs<DataResult.Content<ExternalShareDraft>>(repository.load(draft.envelope.token)).data)
         assertIs<DataResult.Content<Unit>>(repository.delete(draft.envelope.token))
         assertIs<DataResult.Empty>(repository.load(draft.envelope.token))
+        Unit
     }
 
     @Test
@@ -70,6 +71,7 @@ class ExternalSharePersistenceTest {
             "external_share_identity_invalid",
             assertIs<DataResult.Error>(result).error.code
         )
+        Unit
     }
 
     @Test
@@ -88,6 +90,7 @@ class ExternalSharePersistenceTest {
         assertIs<DataResult.Content<Unit>>(accountA.save(draft))
         assertEquals(draft, assertIs<DataResult.Content<ExternalShareDraft>>(accountA.load(draft.envelope.token)).data)
         assertIs<DataResult.Empty>(accountB.load(draft.envelope.token))
+        Unit
     }
 
     @Test
@@ -105,5 +108,6 @@ class ExternalSharePersistenceTest {
         val result = repository.load(token)
 
         assertEquals("external_share_draft_decode_failed", assertIs<DataResult.Error>(result).error.code)
+        Unit
     }
 }
