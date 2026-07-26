@@ -43,8 +43,8 @@ printf '%s\n' "$@" > "$VERIFY_ARGS_LOG"
 cat <<VERIFY
 Verifies
 Verified using v2 scheme (APK Signature Scheme v2): ${MOCK_V2_RESULT:-true}
-Verified using v3 scheme (APK Signature Scheme v3): true
-Verified using v3.1 scheme (APK Signature Scheme v3.1): true
+Verified using v3 scheme (APK Signature Scheme v3): ${MOCK_V3_RESULT:-true}
+Verified using v3.1 scheme (APK Signature Scheme v3.1): ${MOCK_V31_RESULT:-true}
 Signer (minSdkVersion=33, maxSdkVersion=2147483647) certificate SHA-256 digest: 5f08bbe82a27ccdad26c13523a60b5670d3aa7633e8ed2fd71fa6b5751f9b0b1
 Signer (minSdkVersion=24, maxSdkVersion=32) certificate SHA-256 digest: b4919381d8f9cede4f8eb8f6d132f6dfe0d6d15bf6d1f63057d5eba045161a45
 VERIFY
@@ -93,6 +93,22 @@ if MOCK_V2_RESULT=false "$signer" \
   --output "$fixture_root/should-not-pass-v2.apk" \
   --build-tools-dir "$fixture_root/build-tools" >/dev/null 2>&1; then
   echo "Expected missing v2 verification to fail" >&2
+  exit 1
+fi
+
+if MOCK_V3_RESULT=false "$signer" \
+  --input "$fixture_root/input.apk" \
+  --output "$fixture_root/should-not-pass-v3.apk" \
+  --build-tools-dir "$fixture_root/build-tools" >/dev/null 2>&1; then
+  echo "Expected missing v3 verification to fail" >&2
+  exit 1
+fi
+
+if MOCK_V31_RESULT=false "$signer" \
+  --input "$fixture_root/input.apk" \
+  --output "$fixture_root/should-not-pass-v31.apk" \
+  --build-tools-dir "$fixture_root/build-tools" >/dev/null 2>&1; then
+  echo "Expected missing v3.1 verification to fail" >&2
   exit 1
 fi
 

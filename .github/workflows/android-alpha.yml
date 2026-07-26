@@ -175,9 +175,10 @@ jobs:
           set -euo pipefail
           APK="${{ steps.locate.outputs.apk }}"
           BT="${ANDROID_HOME}/build-tools/36.0.0"
-          "${BT}/zipalign" -c -p 4 "$APK"
-          "${BT}/apksigner" verify --verbose --print-certs "$APK" 2>&1 | tee apksigner-verify.log
-          grep -q "Verified using v2 scheme (APK Signature Scheme v2): true" apksigner-verify.log
+          scripts/verify_android_apk_with_rotation.sh \
+            --apk "$APK" \
+            --build-tools-dir "$BT" \
+            --verify-log apksigner-verify.log
           if grep -q "CN=Android Debug" apksigner-verify.log; then
             echo "Alpha APK still uses the ephemeral Android Debug signer" >&2
             exit 1
