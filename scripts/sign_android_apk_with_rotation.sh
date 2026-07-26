@@ -2,8 +2,7 @@
 
 set -euo pipefail
 
-legacy_signer_sha256="b4919381d8f9cede4f8eb8f6d132f6dfe0d6d15bf6d1f63057d5eba045161a45"
-rotated_signer_sha256="5f08bbe82a27ccdad26c13523a60b5670d3aa7633e8ed2fd71fa6b5751f9b0b1"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() {
   cat >&2 <<'USAGE'
@@ -113,26 +112,9 @@ mkdir -p "$(dirname "$output")" "$(dirname "$resolved_verify_log")"
   --out "$signed" \
   "$aligned"
 
-"$build_tools_dir/zipalign" -c -p 4 "$signed"
-"$build_tools_dir/apksigner" verify \
-  --min-sdk-version 24 \
-  --verbose \
-  --print-certs \
-  "$signed" 2>&1 | tee "$resolved_verify_log"
-
-grep -Fq "Verified using v2 scheme (APK Signature Scheme v2): true" "$resolved_verify_log"
-grep -Fq "Verified using v3 scheme (APK Signature Scheme v3): true" "$resolved_verify_log"
-grep -Fq "Verified using v3.1 scheme (APK Signature Scheme v3.1): true" "$resolved_verify_log"
-
-legacy_line="$(grep -E 'Signer \(minSdkVersion=[0-9]+, maxSdkVersion=32\) certificate SHA-256 digest:' "$resolved_verify_log" | head -n 1)"
-rotated_line="$(grep -E 'Signer \(minSdkVersion=33, maxSdkVersion=[0-9]+\) certificate SHA-256 digest:' "$resolved_verify_log" | head -n 1)"
-[[ "${legacy_line,,}" == *"$legacy_signer_sha256"* ]] || {
-  echo "API <=32 signer does not match the approved legacy certificate" >&2
-  exit 1
-}
-[[ "${rotated_line,,}" == *"$rotated_signer_sha256"* ]] || {
-  echo "API >=33 signer does not match the approved Botiverse certificate" >&2
-  exit 1
-}
+"$script_dir/verify_android_apk_with_rotation.sh" \
+  --apk "$signed" \
+  --build-tools-dir "$build_tools_dir" \
+  --verify-log "$resolved_verify_log"
 
 cp "$signed" "$output"
