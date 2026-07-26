@@ -4001,6 +4001,7 @@ internal class SlockKuiklyBridgeModule(
                         "currentVersionCode" to BuildConfig.VERSION_CODE.toLong(),
                         "latestVersionLabel" to response.latest?.version.orEmpty(),
                         "latestVersionCode" to (response.latest?.version_code ?: response.latest_version_code ?: 0L),
+                        "latestChangelog" to response.latest?.changelog.orEmpty(),
                         "updateDownloadUrl" to response.asset?.download_url.orEmpty(),
                         "updateCheckedAtLabel" to System.currentTimeMillis().toString(),
                         "updateCheckErrorCode" to installResult.errorCode.orEmpty()
