@@ -1249,6 +1249,12 @@ internal fun AnnotatedString.withSlockMarkdownSpanFonts(baseStyle: TextStyle): A
     if (spanStyles.isEmpty()) return this
 
     val resolvedBase = baseStyle.withResolvedSlockFontFamily()
+    val inlineCodeRanges =
+        getStringAnnotations(
+            SLOCK_RICHTEXT_INLINE_CODE_ANNOTATION_TAG,
+            start = 0,
+            end = length,
+        )
     val builder = AnnotatedString.Builder(length)
     builder.append(this)
     spanStyles.forEach { range ->
@@ -1280,6 +1286,16 @@ internal fun AnnotatedString.withSlockMarkdownSpanFonts(baseStyle: TextStyle): A
                 range.end
             )
         }
+    }
+    inlineCodeRanges.forEach { range ->
+        builder.addStyle(
+            SpanStyle(
+                fontFamily = slockFontFamilyForWeight(FontWeight.Normal),
+                fontWeight = FontWeight.Normal,
+            ),
+            range.start,
+            range.end,
+        )
     }
     return builder.toAnnotatedString()
 }
@@ -2104,7 +2120,8 @@ private val SlockMarkdownColorsDefault: DefaultMarkdownColors =
         inlineCodeText = SlockColor.TextBlack,
         linkText = SlockMarkdownLinkBlue,
         codeBackground = SlockMarkdownCodeBlockBackground,
-        inlineCodeBackground = SlockRichTextChromeKind.InlineCode.styleToken.background.toSlockMarkdownColor(),
+        // InlineBoxSpanStyle is the single inline-code chrome painter.
+        inlineCodeBackground = Color.Unspecified,
         dividerColor = SlockColor.BorderBlack,
         tableText = SlockColor.TextBlack,
         tableBackground = SlockColor.SurfaceWhite,
@@ -2185,11 +2202,8 @@ internal fun slockMarkdownInlineChipWidthSp(
         .coerceAtLeast(40f)
         .sp
 
-// react parity (task #407): web inline code is `font-mono` = Space Mono at the
-// inherited body size (MarkdownContent.tsx / index.css --font-mono). The old
-// "keep the Slock body font" behavior predated the Space Mono wiring (#130) —
-// back then FontFamily.Monospace meant the platform Roboto Mono, so pinning
-// the body font was the lesser evil. Space Mono exists now; use it.
+// Inline code uses the same resolved product typography as the surrounding
+// message. Its chrome remains distinct, but its glyph metrics must not drift.
 internal fun slockMarkdownInlineCodeTextStyle(base: TextStyle): TextStyle =
     SlockRichTextChromeKind.InlineCode.styleToken.applyToTextStyle(base)
 
@@ -2394,22 +2408,43 @@ private fun SlockRichTextChromeStyleToken.toTagSpanStyle(): SpanStyle {
  * Compatibility lowering for the original Slock semantic chrome tokens.
  *
  * New consumers should construct [InlineBoxSpanStyle] directly. Existing
- * channel/thread/task/self-mention/inline-code tokens keep their current
- * pixels while render backends migrate away from understanding Slock kinds.
+ * semantic tokens lower through this adapter while render backends migrate
+ * away from understanding Slock kinds.
  */
+internal fun slockMarkdownInlineBoxStyle(kind: SlockRichTextChromeKind): InlineBoxSpanStyle =
+    requireNotNull(kind.styleToken.toInlineBoxSpanStyle())
+
+internal fun slockMarkdownInlineCodeEdgeStyle(
+    leading: Boolean,
+    trailing: Boolean = !leading,
+): InlineBoxSpanStyle =
+    InlineBoxSpanStyle(
+        backgroundColor = SlockRichTextChromeKind.InlineCode.styleToken.chipFill.toSlockMarkdownColor(),
+        borderColor = Color.Transparent,
+        borderWidth = 0.dp,
+        paddingStart = if (leading) 4.dp else 0.dp,
+        paddingEnd = if (trailing) 4.dp else 0.dp,
+        paddingTop = 0.dp,
+        paddingBottom = 0.dp,
+        marginStart = 0.dp,
+        marginEnd = 0.dp,
+        cornerRadius = 0.dp,
+    )
+
 private fun SlockRichTextChromeStyleToken.toInlineBoxSpanStyle(): InlineBoxSpanStyle? {
     if (id == SlockRichTextChromeStyleTokens.OrdinaryMention.id) return null
     val fill = chipFill ?: return null
+    val isInlineCode = id == SlockRichTextChromeStyleTokens.InlineCode.id
     return InlineBoxSpanStyle(
         backgroundColor = fill.toSlockMarkdownColor(),
-        borderColor = SlockColor.BorderBlack,
-        borderWidth = SlockRichTextInlineBoxBorderWidthDp.dp,
+        borderColor = if (isInlineCode) Color.Transparent else SlockColor.BorderBlack,
+        borderWidth = if (isInlineCode) 0.dp else SlockRichTextInlineBoxBorderWidthDp.dp,
         paddingStart = 4.dp,
         paddingEnd = 4.dp,
-        paddingTop = SlockRichTextInlineBoxVerticalPaddingDp.dp,
-        paddingBottom = SlockRichTextInlineBoxVerticalPaddingDp.dp,
-        marginStart = 2.dp,
-        marginEnd = 2.dp,
+        paddingTop = if (isInlineCode) 0.dp else SlockRichTextInlineBoxVerticalPaddingDp.dp,
+        paddingBottom = if (isInlineCode) 0.dp else SlockRichTextInlineBoxVerticalPaddingDp.dp,
+        marginStart = if (isInlineCode) 0.dp else 2.dp,
+        marginEnd = if (isInlineCode) 0.dp else 2.dp,
         cornerRadius = 0.dp
     )
 }
@@ -2423,7 +2458,9 @@ private const val SlockRichTextInlineBoxVerticalPaddingDp = 2f
  * border; this keeps the document opt-in tied to the actual chrome geometry.
  */
 internal fun slockMarkdownSectionHeadingGapClearsInlineCodeChrome(gap: Dp): Boolean =
-    gap.value >= SlockRichTextInlineBoxVerticalPaddingDp + SlockRichTextInlineBoxBorderWidthDp
+    slockMarkdownInlineBoxStyle(SlockRichTextChromeKind.InlineCode).let { style ->
+        gap.value >= style.paddingBottom.value + style.borderWidth.value
+    }
 
 private fun SlockRichTextColorToken?.toSlockMarkdownColor(): Color =
     requireNotNull(this) { "Slock richtext color token is required for this chrome path" }
@@ -2432,6 +2469,7 @@ private fun SlockRichTextColorToken?.toSlockMarkdownColor(): Color =
 private fun SlockRichTextColorToken?.toSlockMarkdownColorOrUnspecified(): Color =
     when (this) {
         SlockRichTextColorToken.TextBlack -> SlockColor.TextBlack
+        SlockRichTextColorToken.Black5 -> SlockColor.TextBlack.copy(alpha = 0.05f)
         SlockRichTextColorToken.BrandYellow -> SlockColor.BrandYellow
         // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1045
         SlockRichTextColorToken.BrandYellow40 -> SlockColor.BrandYellow.copy(alpha = 0.4f)

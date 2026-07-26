@@ -203,6 +203,9 @@ import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
 import com.tencent.kuikly.compose.foundation.gestures.awaitEachGesture
 import com.tencent.kuikly.compose.foundation.gestures.awaitFirstDown
 import com.tencent.kuikly.compose.foundation.gestures.scrollBy
+import com.tencent.kuikly.compose.foundation.hoverable
+import com.tencent.kuikly.compose.foundation.interaction.MutableInteractionSource
+import com.tencent.kuikly.compose.foundation.interaction.collectIsHoveredAsState
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.ExperimentalLayoutApi
 import com.tencent.kuikly.compose.foundation.layout.FlowRow
@@ -9700,6 +9703,7 @@ internal fun threadVisualFixture(
                             reactions =
                                 listOf(
                                     KuiklyThreadReactionItem(emoji = "✅", count = 2, selected = true),
+                                    KuiklyThreadReactionItem(emoji = "👍", count = 3, selected = false),
                                 ),
                             inlineReplies =
                                 build.raft.app.network.sync.initialThreadRepliesReadModel(
@@ -9890,7 +9894,7 @@ internal fun threadVisualFixture(
                                     "Ordinary mention regression: @KMP-专家 #520 Phase 5: delete remaining ConversationSummary launch compatibility helpers.\n\n" +
                                     "Short code should stay compact: `CODE_SPAN`, `raft.build.markdown.inlineCode`, `go test ./...`, and `git commit -s`.\n\n" +
                                     "Long path should wrap inline without ellipsis: `reply/channel-markdown/msg-inline-visual/composer-draft-scroll-realtime-read-receipt/owner-key-consumes-thread-route-identity-only/without-source-thread-fallback/max-width-wrap-proof-alpha-beta-gamma-delta-epsilon-zeta-eta-theta-iota-kappa-lambda-mu`.\n\n" +
-                                    "Command should wrap with the same yellow fill and black frame: `./gradlew :shared:testDebugUnitTest --tests build.raft.app.markdown.SlockMarkdownTest --tests build.raft.app.visual.KmpVisualScreenshotCaptureTest.captureThreadMessageRowLongInlineCode`.\n\n" +
+                                    "Command should wrap with the same neutral fill and no frame: `./gradlew :shared:testDebugUnitTest --tests build.raft.app.markdown.SlockMarkdownTest --tests build.raft.app.visual.KmpVisualScreenshotCaptureTest.captureThreadMessageRowLongInlineCode`.\n\n" +
                                     "> Quote block keeps normal markdown flow beside inline `code` and Slock tags.\n\n" +
                                     "- Link: https://raft.build/visual-testing\n" +
                                     "- File: `compose/shared/src/commonMain/kotlin/build/raft/app/markdown/SlockMarkdown.kt`",
@@ -18828,9 +18832,12 @@ private fun ThreadReactionChip(
 ) {
     val currentOnClick by rememberUpdatedState(onClick.takeUnless { loading })
     val currentOnLongPress by rememberUpdatedState(onLongPress)
-    // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1041
-    val background = if (reaction.selected) SlockColor.AccentPink.copy(alpha = 0.2f) else Color(0xFFEEEDE6)
-    val chipModifier = Modifier
+    val hoverInteractionSource = remember(interactionIdentity) { MutableInteractionSource() }
+    val isHovered by hoverInteractionSource.collectIsHoveredAsState()
+    val background = threadReactionChipBackground(reaction.selected, emphasized = isHovered)
+    val chipModifier =
+        Modifier
+            .hoverable(hoverInteractionSource)
             .background(background, RoundedCornerShape(SlockRadius.Sm))
             .padding(horizontal = 6.dp, vertical = 3.dp)
     val chipContent: @Composable () -> Unit = {
@@ -18903,6 +18910,22 @@ private fun ThreadReactionChip(
         }
     }
 }
+
+internal fun threadNeutralMessageSurfaceColor(emphasized: Boolean): Color =
+    SlockColor.TextBlack.copy(alpha = if (emphasized) 0.08f else 0.03f)
+
+internal fun threadReactionChipBackground(
+    selected: Boolean,
+    emphasized: Boolean = false
+): Color =
+    if (selected) {
+        SlockColor.AccentPink.copy(alpha = 0.2f)
+    } else {
+        threadNeutralMessageSurfaceColor(emphasized)
+    }
+
+internal fun threadReactionAddChipBackground(emphasized: Boolean = false): Color =
+    threadNeutralMessageSurfaceColor(emphasized)
 
 // task #569: everything the tooltip needs, captured at long-press time.
 internal data class ThreadReactionDetailsRequest(
@@ -19010,10 +19033,16 @@ private val ThreadReactionDetailsLabelCharWidth = 7.dp
 
 @Composable
 private fun ThreadReactionAddChipChrome() {
+    val hoverInteractionSource = remember { MutableInteractionSource() }
+    val isHovered by hoverInteractionSource.collectIsHoveredAsState()
     Box(
         modifier = Modifier
+            .hoverable(hoverInteractionSource)
             .height(20.dp)
-            .background(Color(0xFFEEEDE6), RoundedCornerShape(SlockRadius.Sm))
+            .background(
+                threadReactionAddChipBackground(emphasized = isHovered),
+                RoundedCornerShape(SlockRadius.Sm),
+            )
             .padding(horizontal = 6.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -19730,6 +19759,8 @@ private fun ThreadInlineRepliesSurface(
     onOpenThread: () -> Unit,
 ) {
     val replyRowHeight = threadInlineReplyRowHeightDp(LocalDensity.current.fontScale).dp
+    val hoverInteractionSource = remember { MutableInteractionSource() }
+    val isHovered by hoverInteractionSource.collectIsHoveredAsState()
     val countLabel =
         if (presentation.replyCount > build.raft.app.network.sync.InlineThreadReplyPreviewLimit) {
             stringResource(
@@ -19751,7 +19782,8 @@ private fun ThreadInlineRepliesSurface(
             Modifier
                 .fillMaxWidth()
                 .padding(top = 6.dp)
-                .background(SlockColor.TextBlack.copy(alpha = 0.04f))
+                .hoverable(hoverInteractionSource)
+                .background(threadNeutralMessageSurfaceColor(emphasized = isHovered))
                 .clickable(onClick = onOpenThread)
                 .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(5.dp),

@@ -2,6 +2,8 @@ package build.raft.app
 
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.useContents
+import platform.CoreFoundation.CFStringGetRangeOfComposedCharactersAtIndex
+import platform.CoreFoundation.CFStringRef
 import platform.Foundation.NSProcessInfo
 
 internal actual fun slockPlatformSupportsKuiklyPullToRefreshItem(): Boolean = true
@@ -38,13 +40,22 @@ internal actual fun slockPlatformSupportsSaveImageToPhotos(): Boolean = true
 
 internal actual fun slockReleaseNotesAppSlug(): String = "raft-ios"
 
-// iOS atomizes inline code into one native attachment per grapheme. TextKit can
-// therefore wrap at atom boundaries without shared U+200B compatibility chars.
+// The current semantic metadata deliberately avoids Kuikly's legacy inline-code
+// marker, so iOS receives the same ordinary wrapping background span as Android.
+// TextKit wraps that span without shared U+200B compatibility characters.
 internal actual fun slockInlineCodeCharWrapBridgeThreshold(): Int? = null
 
-// Native atom-chain bounds own the same 4/15 inner + 2/15 outer geometry as
-// reference-chip attachments, so shared must not synthesize NBSP padding.
-internal actual fun slockInlineCodeUsesEdgePaddingBridge(): Boolean = false
+// Edge-only boxes provide the Web 4px inset while preserving the
+// ordinary wrapping background span used by the shared renderer.
+internal actual fun slockInlineCodeUsesEdgePaddingBridge(): Boolean = true
+
+@OptIn(ExperimentalForeignApi::class)
+internal actual fun slockFirstComposedCharacterEnd(text: String): Int? {
+    if (text.isEmpty()) return null
+    return CFStringGetRangeOfComposedCharactersAtIndex(text as CFStringRef, 0)
+        .useContents { (location + length).toInt() }
+        .takeIf { it in 1..text.length }
+}
 
 // Hands iOS SDK ios-v0.2.x uploads >10MB attachments via presigned R2 PUT.
 internal actual fun slockFeedbackAttachmentMaxBytes(): Long = 200L * 1024L * 1024L

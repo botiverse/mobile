@@ -47,7 +47,6 @@ class SlockMarkdownTest {
     private val expectedLinkBlue = Color(0xFF1D4ED8)
     private val slockInlineCodeAnnotationTag = SLOCK_RICHTEXT_INLINE_CODE_ANNOTATION_TAG
     private val slockInlineCodeTrailingMarginAnnotationTag = SLOCK_RICHTEXT_INLINE_CODE_TRAILING_MARGIN_ANNOTATION_TAG
-    private val inlineCodePadding = SLOCK_RICHTEXT_INLINE_CODE_EDGE_PADDING.toString()
 
     @Test
     fun bodyClickAnnotatesOnlyTextOutsideExistingLinks() {
@@ -558,10 +557,17 @@ class SlockMarkdownTest {
             ),
             annotated.slockInlineCodeMarkerTextSegments()
         )
+        assertTrue(
+            annotated.getStringAnnotations(
+                "raft.build.markdown.inlineCode",
+                start = 0,
+                end = annotated.length
+            ).isEmpty()
+        )
     }
 
     @Test
-    fun inlineCodeUsesNonBreakingEdgePaddingForCommandRepro() {
+    fun inlineCodePreservesExactCommandTextWithEdgeChrome() {
         val command = "go test ./..."
         val body = "Run `$command` before review"
         val annotated =
@@ -578,6 +584,20 @@ class SlockMarkdownTest {
         assertEquals(
             listOf(" "),
             annotated.slockInlineCodeTrailingMarginSegments()
+        )
+    }
+
+    @Test
+    fun inlineCodeEdgeBoxesPreserveExtendedGraphemeClusters() {
+        assertInlineCodeEdgeGraphemes(
+            code = "👩‍💻tool e\u0301",
+            expectedLeading = "👩‍💻",
+            expectedTrailing = "e\u0301",
+        )
+        assertInlineCodeEdgeGraphemes(
+            code = "e\u0301tool 👩‍💻",
+            expectedLeading = "e\u0301",
+            expectedTrailing = "👩‍💻",
         )
     }
 
@@ -875,7 +895,7 @@ class SlockMarkdownTest {
             boxedLinkTexts
         )
         assertFalse(boxedLinkTexts.contains("另外帮一个澄清避免混淆："))
-        assertEquals(listOf("message:new"), annotated.slockInlineCodeMarkerTextSegments())
+        assertEquals(listOf(inlineCodeSegment("message:new")), annotated.slockInlineCodeMarkerTextSegments())
     }
 
     @Test
@@ -1050,38 +1070,68 @@ class SlockMarkdownTest {
         assertEquals(2.sp, ordinaryMention.textDecorationThickness)
     }
 
-    // react parity (task #407): web inline code renders in Space Mono
-    // (`--font-mono`) at the inherited body size. The previous pin
-    // ("keep the Slock body font") predated the Space Mono wiring (#130), when
-    // FontFamily.Monospace still meant the platform Roboto Mono.
+    // Product ruling: inline code uses the surrounding product typography and
+    // exactly one distinct chrome painter.
     @Test
-    fun inlineCodeUsesSpaceMonoAtBodyMetrics() {
+    fun inlineCodeUsesBodyTypographyAndSingleNeutralChrome() {
         val inlineCodeStyle = slockMarkdownInlineCodeTextStyle(SlockType.Body)
         val inlineCodeStyleFromBoldText =
             slockMarkdownInlineCodeTextStyle(SlockType.Body.withSlockFontWeight(FontWeight.Bold))
+        val inlineBox = slockMarkdownInlineBoxStyle(SlockRichTextChromeKind.InlineCode)
+        val leadingEdge = slockMarkdownInlineCodeEdgeStyle(leading = true)
+        val trailingEdge = slockMarkdownInlineCodeEdgeStyle(leading = false)
 
-        assertEquals(slockMonoFamilyForWeight(FontWeight.Normal), inlineCodeStyle.fontFamily)
+        assertEquals(slockFontFamilyForWeight(FontWeight.Normal), inlineCodeStyle.fontFamily)
         assertEquals(FontWeight.Normal, inlineCodeStyle.fontWeight)
         assertEquals(SlockType.Body.fontSize, inlineCodeStyle.fontSize)
         assertEquals(SlockType.Body.lineHeight, inlineCodeStyle.lineHeight)
+        assertEquals(SlockType.Body.letterSpacing, inlineCodeStyle.letterSpacing)
         assertFalse(inlineCodeStyle.fontFamily == FontFamily.Monospace)
-        assertEquals(slockMonoFamilyForWeight(FontWeight.Normal), inlineCodeStyleFromBoldText.fontFamily)
+        assertEquals(slockFontFamilyForWeight(FontWeight.Normal), inlineCodeStyleFromBoldText.fontFamily)
         assertEquals(FontWeight.Normal, inlineCodeStyleFromBoldText.fontWeight)
         assertEquals("inlineCode", SlockRichTextChromeKind.InlineCode.styleToken.id)
-        assertEquals(SlockRichTextFontFamilyToken.SlockMono, SlockRichTextChromeKind.InlineCode.styleToken.fontFamily)
+        assertEquals(SlockRichTextFontFamilyToken.SlockUi, SlockRichTextChromeKind.InlineCode.styleToken.fontFamily)
         assertEquals(SlockRichTextFontWeightToken.Normal, SlockRichTextChromeKind.InlineCode.styleToken.fontWeight)
-        assertEquals(SlockRichTextColorToken.BrandYellow40, SlockRichTextChromeKind.InlineCode.styleToken.background)
+        assertEquals(null, SlockRichTextChromeKind.InlineCode.styleToken.background)
+        assertEquals(SlockRichTextColorToken.Black5, SlockRichTextChromeKind.InlineCode.styleToken.chipFill)
+        assertEquals(SlockColor.TextBlack.copy(alpha = 0.05f), inlineBox.backgroundColor)
+        assertEquals(0.dp, inlineBox.borderWidth)
+        assertEquals(4.dp, inlineBox.paddingStart)
+        assertEquals(4.dp, inlineBox.paddingEnd)
+        assertEquals(0.dp, inlineBox.paddingTop)
+        assertEquals(0.dp, inlineBox.paddingBottom)
+        assertEquals(0.dp, inlineBox.marginStart)
+        assertEquals(0.dp, inlineBox.marginEnd)
+        assertEquals(0.dp, inlineBox.cornerRadius)
+        assertEquals(4.dp, leadingEdge.paddingStart)
+        assertEquals(0.dp, leadingEdge.paddingEnd)
+        assertEquals(0.dp, trailingEdge.paddingStart)
+        assertEquals(4.dp, trailingEdge.paddingEnd)
+        assertEquals(SlockColor.TextBlack.copy(alpha = 0.05f), leadingEdge.backgroundColor)
+        assertEquals(SlockColor.TextBlack.copy(alpha = 0.05f), trailingEdge.backgroundColor)
+
+        val body = "`effective-family`"
+        val rendered =
+            buildSlockMarkdownParagraphAnnotatedString(
+                content = body,
+                annotator = slockMarkdownAnnotator(body),
+                codeSpanStyle = inlineCodeStyle.toSpanStyle(),
+            ).withSlockMarkdownSpanFonts(SlockType.Body)
+        val effectiveAtFirstGlyph =
+            rendered.spanStyles
+                .filter { range -> range.start <= 0 && range.end > 0 }
+                .fold(SpanStyle()) { style, range -> style.merge(range.item) }
+        assertEquals(slockFontFamilyForWeight(FontWeight.Normal), effectiveAtFirstGlyph.fontFamily)
+        assertEquals(FontWeight.Normal, effectiveAtFirstGlyph.fontWeight)
+        assertEquals(SlockType.Body.fontSize, effectiveAtFirstGlyph.fontSize)
+        assertEquals(SlockType.Body.letterSpacing, effectiveAtFirstGlyph.letterSpacing)
     }
 
     @Test
     fun releaseNotesSectionGapClearsInlineCodeChromePaintOverflow() {
-        // The old dense top-level default has no room for the 2dp bottom
-        // padding + 1dp border and reproduces the geometry behind the zh-CN
-        // 1.3x overlap. Release Notes' 8dp document opt-in clears it while
-        // other Markdown surfaces keep the unchanged zero-gap default.
-        assertFalse(slockMarkdownSectionHeadingGapClearsInlineCodeChrome(0.dp))
-        assertFalse(slockMarkdownSectionHeadingGapClearsInlineCodeChrome(2.dp))
-        assertTrue(slockMarkdownSectionHeadingGapClearsInlineCodeChrome(3.dp))
+        // Web parity removes inline-code vertical padding and border, so the
+        // chrome no longer paints outside the text line.
+        assertTrue(slockMarkdownSectionHeadingGapClearsInlineCodeChrome(0.dp))
         assertTrue(slockMarkdownSectionHeadingGapClearsInlineCodeChrome(8.dp))
     }
 
@@ -1096,6 +1146,8 @@ class SlockMarkdownTest {
         assertEquals(22.sp, typography.text.lineHeight)
         assertEquals(22.sp, typography.paragraph.lineHeight)
         assertEquals(22.sp, typography.inlineCode.lineHeight)
+        assertEquals(14.sp, typography.inlineCode.fontSize)
+        assertEquals(0.sp, typography.inlineCode.letterSpacing)
         assertEquals(SlockType.Body.fontFamily, resolvedStyle.fontFamily)
     }
 
@@ -1992,7 +2044,8 @@ class SlockMarkdownTest {
     private fun buildSlockMarkdownParagraphAnnotatedString(
         content: String,
         annotator: MarkdownAnnotator,
-        linkInteractionListener: LinkInteractionListener? = null
+        linkInteractionListener: LinkInteractionListener? = null,
+        codeSpanStyle: SpanStyle = SpanStyle(),
     ): AnnotatedString {
         val parserContent = MarkdownParserContent.from(content).parserContent
         val parsedTree = MarkdownParser(SlockGFMFlavourDescriptor()).buildMarkdownTreeFromString(parserContent)
@@ -2000,7 +2053,7 @@ class SlockMarkdownTest {
         val settings =
             DefaultAnnotatorSettings(
                 linkTextSpanStyle = TextLinkStyles(style = slockMarkdownLinkSpanStyle(SlockType.Body)),
-                codeSpanStyle = SpanStyle(),
+                codeSpanStyle = codeSpanStyle,
                 annotator = annotator,
                 linkInteractionListener = linkInteractionListener
         )
@@ -2019,13 +2072,44 @@ class SlockMarkdownTest {
             text.substring(range.start, range.end)
         }
 
-    // Mirrors the CODE_SPAN emission (AnnotatedStringKtx): the NBSP edge
-    // padding only exists on A-bridge platforms (no native chip chrome); the
-    // android target reserves real advance padding instead (task #407).
+    private fun assertInlineCodeEdgeGraphemes(
+        code: String,
+        expectedLeading: String,
+        expectedTrailing: String,
+    ) {
+        assertEquals(expectedLeading.length, build.raft.app.slockFirstComposedCharacterEnd(code))
+        val annotated = buildSlockMarkdownParagraphAnnotatedString("`$code`")
+        val boxRanges =
+            annotated.spanStyles.filter { range ->
+                range.item.inlineBoxStyle?.let { box ->
+                    box.paddingStart > 0.dp || box.paddingEnd > 0.dp
+                } == true
+            }
+        val glyphBackgroundRanges =
+            annotated.spanStyles.filter { range ->
+                range.item.background != Color.Unspecified &&
+                    range.start < annotated.length && range.end > 0
+            }
+        val firstClusterBoundary = code.indexOf(expectedLeading) + expectedLeading.length
+        val splitRange =
+            annotated.spanStyles.first { range ->
+                range.start == 0 && range.end == firstClusterBoundary && range.item.inlineBoxStyle == null
+            }
+
+        assertEquals(code, annotated.text)
+        assertEquals(1, boxRanges.size)
+        assertTrue(glyphBackgroundRanges.isEmpty())
+        assertEquals(code, annotated.text.substring(boxRanges.single().start, boxRanges.single().end))
+        assertEquals(expectedLeading, annotated.text.substring(splitRange.start, splitRange.end))
+        assertTrue(annotated.text.endsWith(expectedTrailing))
+        assertEquals(
+            SlockColor.TextBlack.copy(alpha = 0.05f),
+            boxRanges.single().item.inlineBoxStyle?.backgroundColor,
+        )
+    }
+
+    // Mirrors the CODE_SPAN emission (AnnotatedStringKtx): edge-only boxes
+    // provide horizontal chrome without making the code run atomic.
     private fun inlineCodeSegment(code: String): String =
-        if (slockInlineCodeUsesEdgePaddingBridge()) {
-            "$inlineCodePadding$code$inlineCodePadding"
-        } else {
-            code
-        }
+        code
 }

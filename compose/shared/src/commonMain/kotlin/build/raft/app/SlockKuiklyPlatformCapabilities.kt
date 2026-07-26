@@ -44,19 +44,25 @@ internal expect fun slockPlatformSupportsSaveImageToPhotos(): Boolean
 internal expect fun slockReleaseNotesAppSlug(): String
 
 // task #401 temporary char-wrap bridge. The markdown layer interleaves U+200B
-// break opportunities into long inline-code runs on platforms whose native
-// layout does not yet atomize them. This is independent from chrome ownership:
-// iOS has native chrome but still needs this line-breaking bridge.
+// break opportunities into long inline-code runs only on platforms whose
+// ordinary background spans do not already wrap at character boundaries.
 internal expect fun slockInlineCodeCharWrapBridgeThreshold(): Int?
 
 /**
- * Whether markdown must synthesize NBSP characters at inline-code edges.
+ * Whether markdown applies 4dp edge-only inline boxes to the first and last
+ * code glyph while leaving the interior as an ordinary wrapping span.
  *
  * This is separate from [slockInlineCodeCharWrapBridgeThreshold]: a platform
- * may own native chip padding while still needing U+200B break opportunities
- * for long code runs.
+ * may need explicit break opportunities independently from edge chrome.
  */
 internal expect fun slockInlineCodeUsesEdgePaddingBridge(): Boolean
+
+/**
+ * Returns the first platform-standard composed-character boundary, or null
+ * when this target has no standards-backed segmenter. Callers must fail closed
+ * instead of approximating Unicode grapheme rules.
+ */
+internal expect fun slockFirstComposedCharacterEnd(text: String): Int?
 
 /**
  * Vertical correction (dp) for the slug-input slash glyph so its ink center

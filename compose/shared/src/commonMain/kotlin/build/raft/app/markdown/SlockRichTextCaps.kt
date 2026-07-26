@@ -18,7 +18,7 @@ package build.raft.app.markdown
  *   - if multiple lines are printed (re-render), the LAST one wins.
  */
 internal data class SlockRichTextPlatformCaps(
-    /** Native renderer draws the inline-code chip (fill + 1dp black border). */
+    /** Native renderer draws inline-code chrome from the wrapping span style. */
     val inlineCodeChrome: Boolean,
     /** Native renderer draws slock-ref chips (channel/thread/task/self-mention). */
     val slockRefChrome: Boolean,
