@@ -23225,7 +23225,8 @@ internal fun <T> SlockForwardTargetPicker(
     taskLinkedCount: Int,
     state: SlockForwardTargetPickerUiState<T>,
     onIntent: (SlockForwardTargetPickerIntent<T>) -> Unit,
-    topContent: (@Composable () -> Unit)? = null
+    topContent: (@Composable () -> Unit)? = null,
+    searchInputInteractive: Boolean = state.interactive
 ) {
     val userFacingErrorLabels = threadUserFacingErrorLabels()
     val loading = state.loadState == SlockForwardPickerLoadState.Loading
@@ -23296,7 +23297,7 @@ internal fun <T> SlockForwardTargetPicker(
             SharedHomeSearchInput(
                 query = state.query,
                 loading = loading,
-                interactive = state.interactive,
+                interactive = searchInputInteractive,
                 onQueryChange = { onIntent(SlockForwardTargetPickerIntent.QueryChanged(it)) },
                 onSubmit = {},
                 onClear = { onIntent(SlockForwardTargetPickerIntent.QueryChanged("")) },

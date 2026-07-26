@@ -1,10 +1,18 @@
 package build.raft.app
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import build.raft.app.data.ExternalShareIntent
 import build.raft.app.data.ExternalShareState
 import build.raft.app.data.externalShareDirectorySessionId
 import build.raft.app.data.externalShareSelectionKey
+import kotlinx.coroutines.delay
+
+internal const val ExternalShareSearchDebounceMillis = 300L
 
 internal data class ExternalSharePickerSurface(
     val picker: SlockForwardTargetPickerUiState<build.raft.app.data.ForwardMessageTarget>,
@@ -16,7 +24,14 @@ internal fun ExternalShareTargetPickerSurface(
     state: ExternalShareState.SelectingTargets,
     onIntent: (ExternalShareIntent) -> Unit
 ) {
-    val surface = state.toExternalSharePickerSurface()
+    var inputQuery by remember(state.envelope.token, state.serverId) { mutableStateOf(state.query) }
+    LaunchedEffect(state.envelope.token, state.serverId, inputQuery) {
+        if (inputQuery != state.query) {
+            delay(ExternalShareSearchDebounceMillis)
+            onIntent(ExternalShareIntent.Search(inputQuery))
+        }
+    }
+    val surface = state.toExternalSharePickerSurface(queryOverride = inputQuery)
     val contentCount = state.envelope.items.size + if (state.envelope.text.isNotBlank() || state.envelope.subject.isNotBlank()) 1 else 0
     SlockForwardTargetPicker(
         messageCount = contentCount,
@@ -25,8 +40,15 @@ internal fun ExternalShareTargetPickerSurface(
         taskLinkedCount = 0,
         state = surface.picker,
         onIntent = { pickerIntent ->
-            state.toExternalShareIntent(pickerIntent)?.let(onIntent)
+            if (pickerIntent is SlockForwardTargetPickerIntent.QueryChanged) {
+                inputQuery = pickerIntent.query
+            } else {
+                state.toExternalShareIntent(pickerIntent)?.let(onIntent)
+            }
         },
+        // Keep the native input mounted while directory rows reload. Replacing it with the
+        // non-interactive placeholder on every debounced request drops Android IME focus.
+        searchInputInteractive = true,
         topContent = {
             SlockServerChoice(
                 title = "Server",
@@ -41,9 +63,12 @@ internal fun ExternalShareTargetPickerSurface(
     )
 }
 
-internal fun ExternalShareState.SelectingTargets.toExternalSharePickerSurface(): ExternalSharePickerSurface {
+internal fun ExternalShareState.SelectingTargets.toExternalSharePickerSurface(
+    queryOverride: String = query
+): ExternalSharePickerSurface {
     val items = targets.map { it.toSlockForwardTargetPickerItem() }
     val selected = selectedTargets.map { it.toSlockForwardTargetPickerItem() }
+    val queryPending = queryOverride != query
     return ExternalSharePickerSurface(
         picker =
             SlockForwardTargetPickerUiState(
@@ -53,19 +78,19 @@ internal fun ExternalShareState.SelectingTargets.toExternalSharePickerSurface():
                         serverId = serverId,
                         openGeneration = 1
                     ),
-                query = query,
+                query = queryOverride,
                 items = items,
                 selectedItems = selected,
                 loadState =
                     when {
-                        loading -> SlockForwardPickerLoadState.Loading
+                        queryPending || loading -> SlockForwardPickerLoadState.Loading
                         errorCode != null -> SlockForwardPickerLoadState.Error
                         else -> SlockForwardPickerLoadState.Loaded
                     },
                 errorCode = errorCode,
                 canLoadMore = nextCursor != null,
                 appending = appending,
-                interactive = !loading && errorCode == null,
+                interactive = !queryPending && !loading && errorCode == null,
                 dismissEnabled = true,
                 requestGeneration = requestGeneration
             ),

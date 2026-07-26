@@ -40,9 +40,11 @@ internal fun <T> SlockServerChoice(
                 val id = optionId(option)
                 SlockModalActionButton(
                     label = optionLabel(option),
-                    onClick = { onSelect(option) },
-                    color = if (id == selectedId) SlockColor.AccentPink else SlockColor.SurfaceWhite,
-                    enabled = enabled && id != selectedId
+                    onClick = { if (id != selectedId) onSelect(option) },
+                    color = if (id == selectedId) SlockColor.BrandYellow else SlockColor.SurfaceWhite,
+                    // Keep the selected option visually enabled even while server switching is
+                    // temporarily blocked; the generic disabled treatment would erase yellow.
+                    enabled = enabled || id == selectedId
                 )
             }
         }
