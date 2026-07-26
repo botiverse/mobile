@@ -10704,6 +10704,69 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun warmSavedProjectionSurvivesPrimaryRefreshUntilSavedAuthorityCommits() = runBlocking {
+        val savedLookupStarted = CompletableDeferred<Unit>()
+        val releaseSavedLookup = CompletableDeferred<DataResult<SavedMessageStatusSnapshot>>()
+        val savedStatusRepository =
+            object : SavedStatusRepository {
+                override suspend fun checkSavedMessages(
+                    serverId: ServerId,
+                    messageIds: List<MessageId>
+                ): DataResult<SavedMessageStatusSnapshot> {
+                    savedLookupStarted.complete(Unit)
+                    return releaseSavedLookup.await()
+                }
+            }
+        val repository =
+            FakeConversationRepository(
+                threadResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            messages = listOf(message(id = "m1", seq = 1, body = "fresh body").copy(isSaved = false))
+                        )
+                    )
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository,
+                savedStatusRepository = savedStatusRepository
+            )
+        val accepted =
+            contentPayload("cached body").copy(
+                messages = listOf(contentPayload("cached body").messages.single().copy(isSaved = true))
+            )
+        dataSource.cachePayloadForTest(accepted)
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        assertEquals("fresh body", store.state.value.payload.messages.single().body)
+        assertTrue(
+            store.state.value.payload.messages.single().isSaved,
+            "the messages response has no Saved authority and must not clear the accepted projection"
+        )
+
+        store.accept(SharedThreadIntent.FirstContentReady)
+        savedLookupStarted.await()
+        assertTrue(store.state.value.payload.messages.single().isSaved)
+
+        releaseSavedLookup.complete(
+            DataResult.Content(SavedMessageStatusSnapshot(savedIds = emptySet()))
+        )
+        withTimeout(1_000L) {
+            while (store.state.value.payload.messages.single().isSaved) {
+                delay(10L)
+            }
+        }
+
+        assertFalse(store.state.value.payload.messages.single().isSaved)
+        scope.cancel()
+    }
+
+    @Test
     fun applyMessageSavedPatchesPayloadAndCache() = runBlocking {
         val localStore = InMemoryComposeLocalDataStore()
         val dataSource =

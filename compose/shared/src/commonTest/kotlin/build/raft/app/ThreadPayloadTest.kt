@@ -4606,6 +4606,81 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun primaryRefreshRetainsAcceptedSavedAndTaskFactsUntilAuxiliaryAuthoritiesCommit() {
+        val acceptedMessage =
+            KuiklyThreadMessageItem(
+                id = "message-240",
+                authorId = "user-artin",
+                authorName = "Artin",
+                body = "ship task",
+                isSaved = true,
+                taskId = "task-240",
+                taskNumber = 240,
+                taskStatus = "InReview",
+                taskAssigneeKind = "agent",
+                taskAssigneeId = "agent-android",
+                taskAssigneeName = "Android Developer"
+            )
+        val previous =
+            KuiklyThreadScreenPayload(
+                instanceId = "thread-channel-1",
+                status = "content",
+                sourceThreadId = "thread-channel-1",
+                messages = listOf(acceptedMessage)
+            )
+        val primaryRefresh =
+            previous.copy(
+                messages =
+                    listOf(
+                        acceptedMessage.copy(
+                            isSaved = false,
+                            taskId = null,
+                            taskNumber = null,
+                            taskStatus = null,
+                            taskAssigneeKind = null,
+                            taskAssigneeId = null,
+                            taskAssigneeName = null
+                        )
+                    )
+            )
+
+        val retained =
+            primaryRefresh.preserveStableTimelineFrom(
+                previous = previous,
+                preserveAuxiliaryProjectionFromPrevious = true
+            )
+
+        assertTrue(retained.messages.single().isSaved)
+        assertEquals("task-240", retained.messages.single().taskId)
+        assertEquals("InReview", retained.messages.single().taskStatus)
+        assertEquals("Android Developer", retained.messages.single().taskAssigneeName)
+
+        val savedAuthorityCommitted = retained.withSavedMessageIds(emptySet())
+        assertFalse(savedAuthorityCommitted.messages.single().isSaved)
+
+        val authoritativeTask =
+            TaskSummary(
+                id = TaskId("task-240"),
+                title = "ship task",
+                status = TaskStatus.Done,
+                taskNumber = 240,
+                messageId = MessageId("message-240"),
+                updatedAtLabel = "now"
+            )
+        val taskAuthorityCommitted =
+            savedAuthorityCommitted
+                .toThreadTimelineSlice()
+                .withThreadLinkedTasksProjection(
+                    ThreadLinkedTasksProjection(
+                        authoritative = true,
+                        lookup = listOf(authoritativeTask).threadLinkedTasksByMessageLookup()
+                    )
+                )
+
+        assertEquals("done", taskAuthorityCommitted.messages.single().taskStatus)
+    }
+
+    @Test
     fun refreshPatchDropsResolvedLinkedTaskWhenVisibleMessagesNoLongerReferenceIt() {
         val previous =
             KuiklyThreadScreenPayload(
