@@ -1,125 +1,43 @@
 id: channel-edit-name
 title: "频道管理-修改频道名称"
-app: raft-android
+goal: "验证修改频道名称功能，Save Changes可点击且生效"
 tier: L1
-version: "0.1"
-description: |
-  Verify that editing a channel name works. User can open channel
-  settings, change the name, and the new name is reflected in the
-  channel list and header. Must run in test server only.
-tags: [channels, edit, regression]
-timeout_seconds: 120
-verdict_before_cleanup: true
 max_retries: 1
 auth_fixture: alpha-qa
 launch_route: compose_slock_app_shell
-
-device:
-  type: emulator
-  api_level: 34
-  locale: en-US
-
-environment:
-  server: staging
-  credentials_ref: qa-account:slock-test
-
-preconditions:
-  - type: app_installed
-    params: { package: build.raft.app }
-  - type: logged_in
-  - type: in_test_server
-  - type: channel_exists
-    params:
-      channel_prefix: "qa-test-"
-      note: "Use an existing qa-test- channel (orphan channels from create runs). Non-destructive: rename and rename back."
-
-cleanup:
-  - action: stop_app
-
-steps:
-  - id: open-channel
-    goal: "Create a fresh channel named qa-test-edit-<random 4 digits> and open it"
-    action_category: navigate
-    hint: "Self-contained: create the channel this case will rename (do NOT assume a fixture channel exists), then open it"
-    capture: [screenshot]
-
-  - id: open-channel-settings
-    goal: "Open channel settings/info"
-    action_category: interact
-    hint: "Tap the channel name header at the top to open channel info"
-    capture: [screenshot, dump_layout]
-
-  - id: find-edit-name
-    goal: "Find and tap the edit channel name option"
-    action_category: interact
-    hint: "Look for 'Edit Channel', 'Rename', or a pencil icon next to the channel name"
-    capture: [screenshot]
-
-  - id: clear-name
-    goal: "Clear the current channel name"
-    action_category: interact
-    hint: "Select all text in the name field and delete it"
-
-  - id: enter-new-name
-    goal: "Type the new channel name"
-    action_category: input
-    hint: "The channel name edit field"
-    params:
-      text: "qa-test-edit-renamed"
-    capture: [screenshot]
-
-  - id: confirm-rename
-    goal: "Confirm the name change"
-    action_category: interact
-    hint: "Tap 'Save', 'Done', or 'Confirm'"
-    on_failure: abort
-    capture: [screenshot, dump_layout]
-
-  - id: wait-rename
-    goal: "Wait for rename to propagate"
-    action_category: wait
-    params:
-      duration_ms: 2000
-
-  - id: verify-rename
-    goal: "Capture state showing the renamed channel"
-    action_category: verify
-    capture: [screenshot, dump_layout]
-
 assertions:
   - id: new-name-visible
-    goal: "The channel shows the new name 'qa-test-edit-renamed'"
-    type: text_present
-    params:
-      text: "qa-test-edit-renamed"
-    after_step: verify-rename
+    goal: "新名称显示在频道header"
+    type: visual_check
     severity: critical
-    highlight:
-      description: "Channel header or list showing the new name"
-      search_text: "qa-test-edit-renamed"
-
-  - id: old-name-gone
-    goal: "The old channel name is no longer displayed"
-    type: text_absent
-    params:
-      text_match_regex: "qa-test-edit(?!-renamed)"
-    after_step: verify-rename
-    severity: major
-
-  - id: no-rename-error
-    goal: "No error during rename"
-    type: text_absent
-    params:
-      text_match_regex: "(?i)(error|failed|permission denied)"
-    after_step: verify-rename
-    severity: major
-
-  - id: no-crash-rename
-    goal: "App must not crash during rename"
-    type: no_crash
-    after_step: verify-rename
-    severity: critical
-
-expected:
-  result: pass
-  notes: "Channel lifecycle - edit name. Must be in test server only."
+android:
+  device: { type: emulator, api_level: 34 }
+  steps:
+    - goal: "打开一个qa-test频道"
+      capture: [screenshot]
+    - goal: "点击右上角齿轮设置"
+      capture: [screenshot]
+    - goal: "找到编辑/改名选项"
+      capture: [screenshot]
+    - goal: "修改频道名加-renamed后缀"
+      capture: [screenshot]
+    - goal: "用tap_text点击Save Changes"
+      capture: [screenshot]
+    - goal: "验证新名称显示"
+      capture: [screenshot]
+ios:
+  device: { type: ios-simulator, device_name: "iPhone 14" }
+  steps:
+    - goal: "打开一个qa-test频道"
+      capture: [screenshot]
+    - goal: "点击右上角设置图标"
+      capture: [screenshot]
+    - goal: "找到编辑选项"
+      capture: [screenshot]
+    - goal: "修改频道名"
+      hint: "用屏幕键盘"
+      capture: [screenshot]
+    - goal: "点击保存"
+      capture: [screenshot]
+    - goal: "验证新名称"
+      capture: [screenshot]

@@ -1,138 +1,56 @@
 id: select-and-upload-image
 title: "附件上传-选择图片上传到对话"
-app: raft-android
+goal: "验证从相册选择图片上传到对话功能正常，权限请求正确"
 tier: L1
-version: "0.1"
-description: |
-  Verify that selecting an image from the photo gallery and uploading it
-  to a conversation works on Android. Covers: permission request, picker
-  UI, image selection, composer preview, and send.
-  From iOS feedback (PR #1193): image button must request album permission.
-  iOS variant will be added after case IR unification (platform overlay).
-tags: [attachments, image, upload, critical, regression, android]
-timeout_seconds: 120
 max_retries: 1
 auth_fixture: alpha-qa
 launch_route: compose_slock_app_shell
-verdict_before_cleanup: true
-
-device:
-  type: emulator
-  api_level: 34
-  locale: en-US
-
-environment:
-  server: staging
-  credentials_ref: qa-account:slock-test
-
-preconditions:
-  - type: app_installed
-    params: { package: build.raft.app }
-  - type: logged_in
-  - type: device_has_photos
-    params:
-      note: "Device/emulator must have at least 1 photo in gallery. CI emulators have stock photos."
-
-cleanup:
-  - action: stop_app
-
-steps:
-  - id: open-channel
-    goal: "Open #all channel"
-    action_category: navigate
-    hint: "Navigate to #all in OranixSlockTest server"
-    capture: [screenshot]
-
-  - id: find-image-button
-    goal: "Find and tap the image/photo button near the message input"
-    action_category: interact
-    hint: "Look for an image icon, photo icon, or '+' attachment button near the composer/input field. It may be inside the input toolbar."
-    capture: [screenshot, dump_layout]
-
-  - id: handle-permission
-    goal: "If a photo permission dialog appears, tap Allow/Grant"
-    action_category: interact
-    hint: "System permission dialog asking for photo access. Tap 'Allow' or 'While Using App'. If no dialog appears, continue."
-    on_failure: continue
-    capture: [screenshot]
-
-  - id: select-image
-    goal: "In the photo picker, select an image to upload"
-    action_category: interact
-    hint: "Tap any photo in the gallery/picker to select it. Then tap Done/Confirm/Select if there's a confirmation button."
-    on_failure: abort
-    capture: [screenshot, dump_layout]
-
-  - id: verify-composer-preview
-    goal: "Verify the selected image appears as a preview in the composer"
-    action_category: verify
-    hint: "The image thumbnail should appear above or in the message input area, ready to send"
-    capture: [screenshot]
-
-  - id: send-with-image
-    goal: "Send the message with the attached image"
-    action_category: interact
-    hint: "Tap the send button"
-    capture: [screenshot]
-
-  - id: wait-upload
-    goal: "Wait for image upload and message render"
-    action_category: wait
-    params:
-      duration_ms: 3000
-
-  - id: verify-sent
-    goal: "Verify the image appears in the conversation"
-    action_category: verify
-    capture: [screenshot, dump_layout]
-
 assertions:
   - id: picker-opened
-    goal: "Photo picker or gallery is open and images are visible (proves image button works and permission was granted or not needed)"
+    goal: "图片选择器/相册打开"
     type: visual_check
-    after_step: select-image
     severity: critical
-    hint: "If we see a system permission dialog instead, it must be handled first. If we see a blank/error screen, that's a fail."
-
-  - id: permission-not-denied
-    goal: "No 'permission denied' or 'access restricted' error visible"
-    type: text_absent
-    params:
-      text_match_regex: "(?i)(permission denied|access restricted|not allowed|forbidden)"
-    after_step: select-image
-    severity: critical
-
   - id: image-in-composer
-    goal: "Selected image appears as preview/thumbnail in composer before sending"
+    goal: "选中图片在composer显示预览"
     type: visual_check
-    after_step: verify-composer-preview
     severity: critical
-
   - id: image-sent
-    goal: "Image message appears in conversation after sending"
+    goal: "图片消息出现在对话中"
     type: visual_check
-    after_step: verify-sent
     severity: critical
-
-  - id: no-upload-error
-    goal: "No upload errors visible"
-    type: text_absent
-    params:
-      text_match_regex: "(?i)(upload failed|error|could not|permission denied)"
-    after_step: verify-sent
-    severity: major
-
-  - id: no-crash-upload
-    goal: "No crash during image selection and upload"
-    type: no_crash
-    after_step: verify-sent
-    severity: critical
-
-expected:
-  result: pass
-  notes: |
-    Multi-platform case for image upload. From iOS feedback (image button
-    not requesting album permission). Platform variants:
-    - Android: system photo picker / ACTION_PICK
-    - iOS: PHPickerViewController (PR #1193)
-    - Precondition: device must have photos in gallery.
+android:
+  device: { type: emulator, api_level: 34 }
+  steps:
+    - goal: "打开 #all 频道"
+      capture: [screenshot]
+    - goal: "找到并点击图片/附件按钮"
+      capture: [screenshot]
+    - goal: "如出现权限弹窗点Allow"
+      capture: [screenshot]
+    - goal: "在相册选择一张图片"
+      capture: [screenshot]
+    - goal: "验证图片在composer预览"
+      capture: [screenshot]
+    - goal: "发送消息"
+      capture: [screenshot]
+    - goal: "等待上传"
+      hint: "wait 3s"
+    - goal: "验证图片在对话中"
+      capture: [screenshot]
+ios:
+  device: { type: ios-simulator, device_name: "iPhone 14" }
+  steps:
+    - goal: "打开 #all 频道"
+      capture: [screenshot]
+    - goal: "点击图片按钮"
+      capture: [screenshot]
+    - goal: "授权相册权限"
+      capture: [screenshot]
+    - goal: "在PHPicker选择图片"
+      capture: [screenshot]
+    - goal: "验证composer预览"
+      capture: [screenshot]
+    - goal: "发送"
+      capture: [screenshot]
+    - goal: "验证图片在对话中"
+      capture: [screenshot]

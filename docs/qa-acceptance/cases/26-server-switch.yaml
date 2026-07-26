@@ -8,9 +8,9 @@ tags: [release, navigation, multi-server, regression]
 platforms: [android, ios]
 timeout_seconds: 300
 max_retries: 1
-verdict_before_cleanup: true
 auth_fixture: alpha-qa
 launch_route: compose_slock_app_shell
+verdict_before_cleanup: true
 
 matrix:
   required_coordinates:

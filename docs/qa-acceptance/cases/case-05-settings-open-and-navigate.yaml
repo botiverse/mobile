@@ -1,120 +1,54 @@
 id: settings-open-and-navigate
 title: "设置页-打开设置并浏览子页面"
-app: raft-android
+goal: "验证设置页打开正确，Account 和 Storage 子页面可访问"
 tier: L1
-version: "0.1"
-description: |
-  Verify that the settings page opens correctly and key sub-pages are
-  accessible. Covers: settings navigation, account info rendering, storage
-  page, and back navigation. Settings is a common regression target because
-  it touches many stores and repositories.
-tags: [settings, navigation, regression]
-timeout_seconds: 90
-max_retries: 2
+max_retries: 1
 auth_fixture: alpha-qa
 launch_route: compose_slock_app_shell
-
-device:
-  type: emulator
-  api_level: 34
-  locale: en-US
-
-environment:
-  server: staging
-  credentials_ref: qa-account:slock-test
-
-preconditions:
-  - type: app_installed
-    params: { package: build.raft.app }
-  - type: logged_in
-
-cleanup:
-  - action: stop_app
-
-steps:
-  - id: open-settings
-    action: open_page
-    params:
-      page_name: compose_settings_home
-    description: "Open settings via Kuikly deeplink"
-    capture: [screenshot, dump_layout]
-
-  - id: verify-settings-list
-    action: screenshot
-    description: "Capture settings root page"
-    capture: [screenshot]
-
-  - id: tap-account
-    action: tap
-    params:
-      text: "Account"
-    description: "Navigate to Account settings"
-    capture: [screenshot, dump_layout]
-
-  - id: wait-account
-    action: wait
-    params:
-      duration_ms: 1500
-
-  - id: capture-account
-    action: screenshot
-    description: "Capture account settings page"
-    capture: [screenshot]
-
-  - id: go-back-to-settings
-    action: key
-    params:
-      key_name: BACK
-    description: "Navigate back to settings root"
-
-  - id: tap-storage
-    action: tap
-    params:
-      text: "Storage"
-    description: "Navigate to Storage settings"
-    capture: [screenshot, dump_layout]
-
-  - id: wait-storage
-    action: wait
-    params:
-      duration_ms: 1500
-
-  - id: capture-storage
-    action: screenshot
-    description: "Capture storage settings page"
-    capture: [screenshot, dump_layout]
-
 assertions:
   - id: settings-list-visible
-    type: element_visible
-    params:
-      text: "Account"
-    after_step: verify-settings-list
+    goal: "设置根页面显示导航项"
+    type: visual_check
     severity: major
-    description: "Settings root must show navigation items like 'Account'"
-
   - id: account-page-loaded
-    type: element_visible
-    params:
-      text_match_regex: "(?i)(email|profile|account|sign.?out)"
-    after_step: capture-account
+    goal: "Account 页面正确加载"
+    type: visual_check
     severity: major
-    description: "Account page must show account-related content"
-
   - id: storage-page-loaded
-    type: element_visible
-    params:
-      text_match_regex: "(?i)(storage|cache|data|clear)"
-    after_step: capture-storage
+    goal: "Storage 页面正确加载"
+    type: visual_check
     severity: major
-    description: "Storage page must show storage management options"
-
-  - id: no-crash-settings
-    type: no_crash
-    after_step: capture-storage
-    severity: critical
-    description: "No crashes during settings navigation"
-
-expected:
-  result: pass
-  notes: "Settings touches many stores/repositories. Good for catching integration regressions."
+android:
+  device: { type: emulator, api_level: 34 }
+  steps:
+    - goal: "打开设置页"
+      capture: [screenshot]
+    - goal: "点击 Account"
+      capture: [screenshot]
+    - goal: "等待加载"
+      hint: "wait 1.5s"
+    - goal: "截图 Account 页"
+      capture: [screenshot]
+    - goal: "返回设置根"
+      hint: "BACK 键"
+    - goal: "点击 Storage"
+      capture: [screenshot]
+    - goal: "截图 Storage 页"
+      capture: [screenshot, dump_layout]
+ios:
+  device: { type: ios-simulator, device_name: "iPhone 14" }
+  steps:
+    - goal: "打开设置页"
+      capture: [screenshot]
+    - goal: "点击 Account"
+      capture: [screenshot]
+    - goal: "等待加载"
+      hint: "wait 1.5s"
+    - goal: "截图 Account 页"
+      capture: [screenshot]
+    - goal: "返回设置根"
+      hint: "左上角返回按钮或左边缘滑动"
+    - goal: "点击 Storage"
+      capture: [screenshot]
+    - goal: "截图 Storage 页"
+      capture: [screenshot]

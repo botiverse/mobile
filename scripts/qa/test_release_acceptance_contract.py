@@ -39,6 +39,14 @@ class ReleaseAcceptanceContractTest(unittest.TestCase):
         with self.assertRaisesRegex(ContractError, "execution_policy.scheduled must be false"):
             load_contract(self.case_dir)
 
+    def test_android_only_source_cannot_replace_unified_case_contract(self) -> None:
+        path = self.case_dir / "case-01-login-email-password.yaml"
+        source = path.read_text(encoding="utf-8")
+        android_only = source[: source.index("ios:\n")]
+        path.write_text(android_only, encoding="utf-8")
+        with self.assertRaisesRegex(ContractError, "must preserve the unified Android/iOS contract"):
+            load_contract(self.case_dir)
+
     def test_duplicate_manifest_key_is_rejected(self) -> None:
         path = self.case_dir / "release-1.7.0-android.json"
         value = json.loads(path.read_text(encoding="utf-8"))
