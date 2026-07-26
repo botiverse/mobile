@@ -12436,6 +12436,8 @@ private fun ThreadPageContent(
                                 forwardPickerFlow = forwardPickerFlow.reduce(SlockForwardPickerFlowEvent.Dismiss)
                                 activeModal = null
                             }
+                            SlockForwardTargetPickerIntent.Continue,
+                            is SlockForwardTargetPickerIntent.RemoveSelection -> Unit
                             is SlockForwardTargetPickerIntent.TargetSelected -> {
                                 val nextFlow =
                                     forwardPickerFlow.reduce(
@@ -22614,7 +22616,7 @@ private data class ThreadForwardTargetLoadPage(
     val reset: Boolean = false
 )
 
-private fun ForwardMessageTarget.toSlockForwardTargetPickerItem(): SlockForwardTargetPickerItem<ForwardMessageTarget> =
+internal fun ForwardMessageTarget.toSlockForwardTargetPickerItem(): SlockForwardTargetPickerItem<ForwardMessageTarget> =
     SlockForwardTargetPickerItem(
         stableKey = threadForwardSelectionKey(),
         title = title,
@@ -22625,7 +22627,7 @@ private fun ForwardMessageTarget.toSlockForwardTargetPickerItem(): SlockForwardT
         payload = this
     )
 
-private fun ForwardMessageTarget.forwardTargetVisualKind(): SlockForwardTargetVisualKind =
+internal fun ForwardMessageTarget.forwardTargetVisualKind(): SlockForwardTargetVisualKind =
     when {
         kind == ForwardMessageTargetKind.RecentDirectMessage ||
             kind == ForwardMessageTargetKind.HumanDirectMessageCandidate ||
@@ -23275,7 +23277,7 @@ internal fun <T> SlockForwardTargetPicker(
                             val rowGeneration = state.requestGeneration
                             ThreadForwardTargetRow(
                                 target = rowTarget,
-                                selected = rowTarget.stableKey == state.selectedKey,
+                                selected = rowTarget.stableKey in state.selectedKeys,
                                 interactive = state.interactive,
                                 onClick = {
                                     if (state.interactive) {
@@ -23323,6 +23325,40 @@ internal fun <T> SlockForwardTargetPicker(
                             }
                         }
                     }
+                }
+            }
+            if (state.selectedItems.isNotEmpty()) {
+                Column(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .border(SlockStroke.Default, SlockColor.BorderBlack)
+                            .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = stringResource(MR.strings.thread_forward_destinations_selected, state.selectedItems.size),
+                        style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                        color = SlockColor.TextMutedGray
+                    )
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(state.selectedItems.size, key = { state.selectedItems[it].rowKey }) { index ->
+                            val selected = state.selectedItems[index]
+                            SlockModalActionButton(
+                                label = "${selected.title} ×",
+                                onClick = {
+                                    onIntent(SlockForwardTargetPickerIntent.RemoveSelection(selected.stableKey))
+                                },
+                                enabled = state.interactive
+                            )
+                        }
+                    }
+                    SlockModalFullWidthActionButton(
+                        label = stringResource(MR.strings.common_continue),
+                        icon = SlockLucideIconName.ChevronRight,
+                        onClick = { onIntent(SlockForwardTargetPickerIntent.Continue) },
+                        enabled = state.interactive
+                    )
                 }
             }
         }

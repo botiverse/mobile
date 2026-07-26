@@ -12,6 +12,74 @@ import kotlinx.coroutines.runBlocking
 
 class SharedApiEnvironmentNetworkClientTest {
     @Test
+    fun boundMultipartAuthorityMismatchSkipsExecutorAndPlatformStreamOpen() = runBlocking {
+        val sessionStore =
+            InMemorySlockAuthSessionStore(
+                StoredAuthSession(
+                    user = StoredAuthUser(id = "user-b", email = "b@raft.build"),
+                    accessToken = "access-b",
+                    refreshToken = "refresh-b",
+                    selectedServerId = "server-1",
+                    servers = listOf(StoredAuthServer(id = "server-1", name = "Raft"))
+                )
+            )
+        var streamOpenCalls = 0
+        val resolver =
+            object : SlockPlatformFileResolver {
+                override suspend fun readFile(fileRef: String): SlockPlatformFileReadResult =
+                    error("whole-file read must not run")
+
+                override suspend fun statFile(fileRef: String): SlockPlatformFileStatResult =
+                    SlockPlatformFileStatResult(code = 200, sizeBytes = 4L)
+
+                override suspend fun openFileStream(
+                    fileRef: String,
+                    expectedSizeBytes: Long
+                ): SlockPlatformFileChunkSource {
+                    streamOpenCalls += 1
+                    return object : SlockPlatformFileChunkSource {
+                        override suspend fun read(maxBytes: Int): ByteArray = ByteArray(0)
+                        override fun close() = Unit
+                    }
+                }
+            }
+        val executor = RecordingHttpExecutor()
+        val client =
+            SharedSlockNetworkClient(
+                sessionStore = sessionStore,
+                platformFileResolver = resolver,
+                executor = executor
+            )
+
+        val response =
+            client.uploadAttachmentsBound(
+                priority = DataRequestPriority.Foreground,
+                channelId = build.raft.app.model.ChannelId("channel-a"),
+                files =
+                    listOf(
+                        MultipartFile(
+                            name = "files",
+                            fileName = "private.txt",
+                            mimeType = "text/plain",
+                            fileRef = "private/file",
+                            sizeBytes = 4L
+                        )
+                    ),
+                expectedAuthority =
+                    SlockExpectedAuthBinding(
+                        accountId = "user-a",
+                        accessToken = "access-a",
+                        refreshToken = "refresh-a",
+                        serverId = "server-1"
+                    )
+            )
+
+        assertEquals(409, response.code)
+        assertEquals(0, executor.multipartCalls)
+        assertEquals(0, streamOpenCalls)
+    }
+
+    @Test
     fun currentEnvironmentAuthDataSourceTracksLatestApiEnvironmentWithoutRecreation() = runBlocking {
         val environmentStore = SharedApiEnvironmentStore(InMemorySlockKeyValueStore())
         val executor = RecordingHttpExecutor(responseCode = 500)
@@ -138,6 +206,7 @@ class SharedApiEnvironmentNetworkClientTest {
         private val responseCode: Int = 200
     ) : SlockHttpExecutor {
         val urls = mutableListOf<String>()
+        var multipartCalls = 0
 
         override suspend fun execute(
             priority: SlockRequestPriority,
@@ -158,6 +227,7 @@ class SharedApiEnvironmentNetworkClientTest {
             files: List<MultipartFile>,
             headers: Map<String, String>
         ): SlockHttpExecutorResponse {
+            multipartCalls += 1
             urls += url
             return SlockHttpExecutorResponse(code = responseCode, bodyText = "{}", errorBodyText = null)
         }

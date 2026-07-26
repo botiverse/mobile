@@ -7,6 +7,67 @@ import kotlin.test.assertEquals
 
 class SlockNetworkAuthMiddlewareTest {
     @Test
+    fun expectedAuthorityMismatchRejectsBeforeNetworkBlock() = runBlocking {
+        val store = InMemorySlockAuthSessionStore(sampleSession(accessToken = "access-b", refreshToken = "refresh-b"))
+        val middleware = SlockNetworkAuthMiddleware(store, FakeAuthApi(refreshResult = null))
+        var calls = 0
+
+        val response =
+            middleware.request(
+                serverIdOverride = ServerId("server-1"),
+                expectedAuthority =
+                    SlockExpectedAuthBinding(
+                        accountId = "user-1",
+                        accessToken = "access-a",
+                        refreshToken = "refresh-a",
+                        serverId = "server-1"
+                    )
+            ) {
+                calls += 1
+                HomeNetworkResponse(code = 200, bodyText = "{}")
+            }
+
+        assertEquals(409, response.code)
+        assertEquals(0, calls)
+        assertEquals(true, response.errorBodyText?.contains("auth_authority_changed"))
+    }
+
+    @Test
+    fun expectedAuthorityNeverRetriesOldMutationAfterTokenRefresh() = runBlocking {
+        val store = InMemorySlockAuthSessionStore(sampleSession(accessToken = "access-a", refreshToken = "refresh-a"))
+        val middleware =
+            SlockNetworkAuthMiddleware(
+                store,
+                FakeAuthApi(
+                    refreshTokenAssertion = "refresh-a",
+                    refreshResult = AuthApiResult.Success(AuthRefreshResponse("access-a-prime", "refresh-a-prime"))
+                )
+            )
+        var calls = 0
+
+        val response =
+            middleware.request(
+                serverIdOverride = ServerId("server-1"),
+                expectedAuthority =
+                    SlockExpectedAuthBinding(
+                        accountId = "user-1",
+                        accessToken = "access-a",
+                        refreshToken = "refresh-a",
+                        serverId = "server-1"
+                    )
+            ) {
+                calls += 1
+                HomeNetworkResponse(code = 401, bodyText = null, errorBodyText = """{"error":"expiredToken"}""")
+            }
+
+        assertEquals(409, response.code)
+        assertEquals(1, calls)
+        assertEquals("access-a-prime", store.readSession()?.accessToken)
+        assertEquals("refresh-a-prime", store.readSession()?.refreshToken)
+        assertEquals(true, response.errorBodyText?.contains("auth_authority_changed"))
+    }
+
+    @Test
     fun retriesRequestWithRefreshedTokenAfterUnauthorized() = runBlocking {
         val store = InMemorySlockAuthSessionStore(sampleSession())
         val api = FakeAuthApi(refreshResult = AuthApiResult.Success(AuthRefreshResponse("fresh-access", "fresh-refresh")))

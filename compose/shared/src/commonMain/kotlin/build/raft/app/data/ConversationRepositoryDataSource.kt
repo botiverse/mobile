@@ -35,6 +35,23 @@ private val conversationRepositoryJson = Json {
     encodeDefaults = true
 }
 
+internal interface AuthorityBoundAttachmentUploader {
+    suspend fun uploadAttachmentsBound(
+        request: AttachmentUploadRequest,
+        expectedAuthority: SlockExpectedAuthBinding
+    ): DataResult<AttachmentUploadResult>
+}
+
+internal class RealConversationAuthorityBoundAttachmentUploader(
+    private val repository: RealConversationRepository
+) : AuthorityBoundAttachmentUploader {
+    override suspend fun uploadAttachmentsBound(
+        request: AttachmentUploadRequest,
+        expectedAuthority: SlockExpectedAuthBinding
+    ): DataResult<AttachmentUploadResult> =
+        repository.uploadAttachmentsBound(request, expectedAuthority)
+}
+
 private fun DataResult<*>.conversationDiagnosticsResult(): String =
     when (this) {
         is DataResult.Content -> "content"
@@ -602,6 +619,33 @@ class RealConversationRepository(
                 )
             },
             source = "attachments_upload",
+            mapper = { bodyText -> parseSharedAttachmentUploadResult(bodyText) },
+            emptyWhen = { it.attachments.isEmpty() }
+        )
+    }
+
+    internal suspend fun uploadAttachmentsBound(
+        request: AttachmentUploadRequest,
+        expectedAuthority: SlockExpectedAuthBinding
+    ): DataResult<AttachmentUploadResult> {
+        val context = currentContext() ?: return authRequired()
+        if (!context.session.matchesExpectedAuthority(expectedAuthority, context.server.id.value)) {
+            return DataResult.Error(ScreenError("external_share_authority_changed", retryable = true))
+        }
+        if (request.files.isEmpty()) return DataResult.Empty(EmptyReason.NoMessages)
+        val boundNetwork = networkClient as? AuthorityBoundSlockNetworkClient
+            ?: return DataResult.Error(ScreenError("attachment_upload_authority_binding_unsupported", retryable = false))
+        return executeConversation(
+            emptyReason = EmptyReason.NoMessages,
+            block = {
+                boundNetwork.uploadAttachmentsBound(
+                    priority = DataRequestPriority.Foreground,
+                    channelId = request.channelId,
+                    files = request.files.map { it.toMultipartFile() },
+                    expectedAuthority = expectedAuthority
+                )
+            },
+            source = "attachments_upload_bound",
             mapper = { bodyText -> parseSharedAttachmentUploadResult(bodyText) },
             emptyWhen = { it.attachments.isEmpty() }
         )
