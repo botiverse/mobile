@@ -1,6 +1,7 @@
 package build.raft.app.markdown
 
 import build.raft.app.SlockType
+import build.raft.app.ReplyCacheProvenance
 import build.raft.app.data.THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY
 import build.raft.app.network.sync.DiagnosticFeatureFlagOverrideMode
 import build.raft.app.network.sync.DiagnosticFeatureFlagOverrideRegistry
@@ -336,6 +337,56 @@ class SlockMarkdownLightPathTest {
                 serverId = "server-a",
             ),
             "a non-entitled ForceOn latch must not enable the light path"
+        )
+    }
+
+    @Test
+    fun gateInputsComeFromProvenanceNeverSessionCurrentServer() {
+        // Review round 1 tooth: the route renders the provenance's server
+        // (shell-selected B), which may differ from the session current (A).
+        // Gate inputs must be built from the provenance alone — a helper that
+        // silently fell back to the session's server would open/close the
+        // experiment on the wrong server.
+        val provenanceB =
+            ReplyCacheProvenance(
+                environmentId = "https://api-b.example/",
+                principalId = "principal-b",
+                serverId = "server-b",
+                generation = 7L,
+            )
+        assertEquals(
+            ThreadMarkdownLightGateInputs(
+                environmentId = "https://api-b.example/",
+                accountId = "principal-b",
+                serverId = "server-b",
+            ),
+            threadMarkdownLightGateInputsOrNull(provenanceB),
+        )
+    }
+
+    @Test
+    fun gateInputsFailClosedWhenProvenanceMissingOrIncomplete() {
+        assertNull(threadMarkdownLightGateInputsOrNull(null))
+        assertNull(
+            threadMarkdownLightGateInputsOrNull(
+                ReplyCacheProvenance(
+                    environmentId = "https://api-b.example/",
+                    principalId = "principal-b",
+                    serverId = "",
+                    generation = 7L,
+                )
+            ),
+            "blank serverId must fail closed — a ForceOn latch must not fire with an empty scope"
+        )
+        assertNull(
+            threadMarkdownLightGateInputsOrNull(
+                ReplyCacheProvenance(
+                    environmentId = "https://api-b.example/",
+                    principalId = "",
+                    serverId = "server-b",
+                    generation = 7L,
+                )
+            )
         )
     }
 

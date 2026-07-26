@@ -145,6 +145,7 @@ import build.raft.app.markdown.SlockMarkdownBody
 import build.raft.app.markdown.LocalSlockMarkdownPlainCandidateSession
 import build.raft.app.markdown.SlockMarkdownPlainCandidateSession
 import build.raft.app.markdown.resolveThreadMarkdownSingleParagraphLightPathEnabled
+import build.raft.app.markdown.threadMarkdownLightGateInputsOrNull
 import build.raft.app.markdown.slockMarkdownProvidedValuesWith
 import build.raft.app.markdown.slockTraceDiagnosticsEnabled
 import build.raft.app.markdown.SlockMarkdownRenderConfig
@@ -5090,28 +5091,33 @@ internal fun SharedThreadRouteContent(
     // route and provided as an ambient render config — the row-level
     // SlockMarkdownBody performs no registry or StateFlow work of its own.
     // Mirrors the MOBILE_ACTIVITY_STABLE_ORDER wiring (SharedInboxPanel).
+    // Identity comes from the reply-cache provenance (the server the route
+    // actually renders), never from session.currentServerId alone; an
+    // un-captured provenance fails closed to OFF.
     val markdownLightPathOverrideRevision by
         ProcessDiagnosticFeatureFlagOverrides.registry
             .revisionFor(THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY)
             .collectAsState()
-    val singleParagraphLightPathEnabled =
-        remember(
-            markdownLightPathOverrideRevision,
-            currentSession?.currentServerId,
-            currentSession?.user?.id
-        ) {
-            resolveThreadMarkdownSingleParagraphLightPathEnabled(
-                registry = ProcessDiagnosticFeatureFlagOverrides.registry,
-                serverEffective =
-                    sharedStores.serverFeatureFlags.isEnabled(
-                        currentSession?.currentServerId?.let(::ServerId),
-                        THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY
-                    ),
-                environmentId = sharedStores.apiEnvironmentStore.current().apiBaseUrl,
-                accountId = currentSession?.user?.id.orEmpty(),
-                serverId = currentSession?.currentServerId.orEmpty()
-            )
+    val markdownLightGateInputs =
+        remember(replyCacheProvenance) {
+            threadMarkdownLightGateInputsOrNull(replyCacheProvenance)
         }
+    val singleParagraphLightPathEnabled =
+        markdownLightGateInputs?.let { gateInputs ->
+            remember(markdownLightPathOverrideRevision, gateInputs) {
+                resolveThreadMarkdownSingleParagraphLightPathEnabled(
+                    registry = ProcessDiagnosticFeatureFlagOverrides.registry,
+                    serverEffective =
+                        sharedStores.serverFeatureFlags.isEnabled(
+                            ServerId(gateInputs.serverId),
+                            THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY
+                        ),
+                    environmentId = gateInputs.environmentId,
+                    accountId = gateInputs.accountId,
+                    serverId = gateInputs.serverId
+                )
+            }
+        } ?: false
 
     LaunchedEffect(threadInstanceKey, threadTimelineKey, timelineSlice.status, timelineSlice.messages.size) {
         if (payload.isReadyForThreadPerformanceGate() && firstContentLoggedThreadId != threadInstanceKey) {

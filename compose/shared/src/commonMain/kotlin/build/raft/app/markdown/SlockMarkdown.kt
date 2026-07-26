@@ -6,6 +6,7 @@ import build.raft.app.SlockLucideIconName
 import build.raft.app.SlockMessagePermalinkTarget
 import build.raft.app.SlockSpacing
 import build.raft.app.SlockType
+import build.raft.app.ReplyCacheProvenance
 import build.raft.app.data.THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY
 import build.raft.app.network.sync.DiagnosticFeatureFlagOverrideRegistry
 import build.raft.app.network.sync.DiagnosticFeatureFlagScope
@@ -1700,6 +1701,39 @@ internal fun resolveThreadMarkdownSingleParagraphLightPathEnabled(
                 serverId = serverId,
             ),
     ).finalEffective
+
+/**
+ * #367 gate identity (review round 1): the route renders the REPLY-CACHE
+ * provenance's server — `selectedServerStore.selectedServerId ?:
+ * session.currentServerId` — so the flag query and the ServerExact
+ * diagnostics scope must be built from that same provenance, never from
+ * `session.currentServerId` alone. When the shell selects B while the session
+ * current is A, deciding A's flag while rendering B would open/close the
+ * experiment on the wrong server. Fail CLOSED: provenance not yet captured
+ * (or any identity field blank) means no gate decision at all — the override
+ * ForceOn latch must not fire with an empty principal/server scope.
+ */
+internal data class ThreadMarkdownLightGateInputs(
+    val environmentId: String,
+    val accountId: String,
+    val serverId: String,
+)
+
+internal fun threadMarkdownLightGateInputsOrNull(
+    provenance: ReplyCacheProvenance?,
+): ThreadMarkdownLightGateInputs? {
+    val inputs =
+        provenance?.let {
+            ThreadMarkdownLightGateInputs(
+                environmentId = it.environmentId,
+                accountId = it.principalId,
+                serverId = it.serverId,
+            )
+        } ?: return null
+    return inputs.takeIf {
+        it.environmentId.isNotBlank() && it.accountId.isNotBlank() && it.serverId.isNotBlank()
+    }
+}
 
 /**
  * #367 light-path eligibility, decided from the PARSED node tree — never
