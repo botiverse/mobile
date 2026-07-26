@@ -2,7 +2,9 @@ package build.raft.app
 
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ThreadMessageLongPressSurfaceTest {
@@ -190,5 +192,57 @@ class ThreadMessageLongPressSurfaceTest {
         assertTrue(nextThreadPointerSessionKey(0) == 1)
         assertTrue(nextThreadPointerSessionKey(41) == 42)
         assertTrue(nextThreadPointerSessionKey(Int.MAX_VALUE) == 0)
+    }
+
+    @Test
+    fun visibleThreadResumePlansOnlyTheCurrentConversationWork() {
+        assertEquals(
+            ThreadVisibleResumePlan(
+                refreshVisibleConversation = true,
+                rejoinVisibleRooms = true
+            ),
+            threadVisibleResumePlan(lifecycleSeen = true, routeActive = true)
+        )
+        assertNull(threadVisibleResumePlan(lifecycleSeen = false, routeActive = true))
+        assertNull(threadVisibleResumePlan(lifecycleSeen = true, routeActive = false))
+    }
+
+    @Test
+    fun hiddenThreadSkipsAppShellResumeThenRefreshesExactlyOnceAfterAppearing() {
+        val gate = ThreadVisibleResumeGate(lifecycleSeen = true)
+        var conversationRefreshes = 0
+        var roomRejoins = 0
+
+        assertNull(gate.onLifecycleVisibleResume(routeActive = false))
+        gate.onRouteBecameVisible()?.let { plan ->
+            if (plan.refreshVisibleConversation) conversationRefreshes += 1
+            if (plan.rejoinVisibleRooms) roomRejoins += 1
+        }
+        assertNull(gate.onRouteBecameVisible())
+
+        assertEquals(1, conversationRefreshes)
+        assertEquals(1, roomRejoins)
+    }
+
+    @Test
+    fun threadAppearanceWithoutPendingResumeDoesNotRefresh() {
+        val gate = ThreadVisibleResumeGate(lifecycleSeen = true)
+
+        assertNull(gate.onRouteBecameVisible())
+        assertNull(gate.onRouteBecameVisible())
+    }
+
+    @Test
+    fun visibleLifecycleResumeDoesNotLeaveWorkForAppearance() {
+        val gate = ThreadVisibleResumeGate(lifecycleSeen = true)
+
+        assertEquals(
+            ThreadVisibleResumePlan(
+                refreshVisibleConversation = true,
+                rejoinVisibleRooms = true
+            ),
+            gate.onLifecycleVisibleResume(routeActive = true)
+        )
+        assertNull(gate.onRouteBecameVisible())
     }
 }

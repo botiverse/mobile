@@ -652,6 +652,7 @@ internal class AppShellChildTabRenderSlot(
 internal class AppShellChildTabEntry(
     val debugId: Int,
     initialSelectedTab: String = "home",
+    initialParentVisible: Boolean = true,
     initialRetainedTabs: Set<String> = setOf(initialSelectedTab),
     initialRenderer: AppShellChildTabRenderer = { _, _ ->
         SlockCenteredLoading()
@@ -659,6 +660,7 @@ internal class AppShellChildTabEntry(
     initialModalHostState: SlockUnifiedDialogHostState? = null
 ) {
     var selectedTab by mutableStateOf(initialSelectedTab)
+    var parentVisible by mutableStateOf(initialParentVisible)
     var retainedTabs by mutableStateOf(initialRetainedTabs)
     private val renderSlots =
         AppShellChildPageTabKeys.associateWith {
@@ -676,11 +678,13 @@ internal class AppShellChildTabEntry(
     fun updateSelection(
         selectedTab: String,
         retainedTabs: Set<String>,
-        renderer: AppShellChildTabRenderer
+        renderer: AppShellChildTabRenderer,
+        parentVisible: Boolean = true
     ) {
         updateRenderer(selectedTab, renderer)
         this.retainedTabs = retainedTabs
         this.selectedTab = selectedTab
+        this.parentVisible = parentVisible
     }
 }
 
@@ -1465,6 +1469,7 @@ internal class ComposeSlockAppShellPage : build.raft.app.base.BasePager() {
             SlockAppShellContent(
                 pageVisibleTick = slockPageVisibleResumeTick,
                 initialAuthRestoreTick = initialAuthRestoreTick,
+                pageVisible = slockPageVisible,
                 adaptivePane = adaptivePane
             )
         }
@@ -1510,7 +1515,7 @@ private fun SlockAppShellChildTabPageContent() {
         )
         return
     }
-    val active = entry.selectedTab == tab
+    val active = appShellChildTabIsActive(entry.parentVisible, entry.selectedTab, tab)
     val retained = tab in entry.retainedTabs
     LaunchedEffect(shellId, tab, entry.debugId) {
         bridge.log(
@@ -1877,6 +1882,12 @@ internal fun appShellChildPagePrewarmOrder(
 internal fun appShellChildPageRendersContent(active: Boolean, retained: Boolean): Boolean =
     active || retained
 
+internal fun appShellChildTabIsActive(
+    parentVisible: Boolean,
+    selectedTab: String,
+    tab: String
+): Boolean = parentVisible && retainedAppShellSelectedTab(selectedTab) == tab
+
 internal fun appShellNextChildTabSwitchEpoch(currentTab: String, nextTab: String, currentEpoch: Int): Int =
     if (retainedAppShellSelectedTab(currentTab) == retainedAppShellSelectedTab(nextTab)) {
         currentEpoch
@@ -1911,6 +1922,48 @@ internal fun appShellAppearanceShouldRefresh(
     return retainedAppShellSelectedTab(selectedTab) == "home" &&
         selectedHomeDestination == null &&
         hasRetainedHomeContent
+}
+
+internal fun appShellLifecycleCanRefreshVisibleRoute(
+    pageVisible: Boolean,
+    lifecycleEvent: String
+): Boolean =
+    pageVisible &&
+        (
+            lifecycleEvent == SlockRealtimeNotifyContract.LifecycleVisibleResume ||
+                lifecycleEvent == SlockRealtimeNotifyContract.LifecycleVisibleShow
+            )
+
+internal data class AppShellForegroundResumePlan(
+    val refreshVisibleRoute: Boolean,
+    val refreshActivityUnreadSummary: Boolean,
+    val refreshServerMembers: Boolean
+)
+
+internal fun appShellForegroundResumePlan(
+    pageVisible: Boolean,
+    selectedTab: String,
+    selectedHomeDestination: String?
+): AppShellForegroundResumePlan? {
+    if (!pageVisible) return null
+    return when (retainedAppShellSelectedTab(selectedTab)) {
+        "home" ->
+            if (selectedHomeDestination.isNullOrBlank()) {
+                AppShellForegroundResumePlan(
+                    refreshVisibleRoute = true,
+                    refreshActivityUnreadSummary = true,
+                    refreshServerMembers = true
+                )
+            } else {
+                null
+            }
+        else ->
+            AppShellForegroundResumePlan(
+                refreshVisibleRoute = true,
+                refreshActivityUnreadSummary = false,
+                refreshServerMembers = false
+            )
+    }
 }
 
 internal fun appShellDefersReadyGraph(authGateState: SharedAuthGateState): Boolean =
@@ -2058,9 +2111,11 @@ internal fun appShellParentShouldStartHome(
     selectedTab: String,
     selectedHomeDestination: String?,
     readyServerId: String?,
-    state: SharedHomeState
+    state: SharedHomeState,
+    pageVisible: Boolean = true
 ): Boolean =
-    retainedAppShellSelectedTab(selectedTab) == "home" &&
+    pageVisible &&
+        retainedAppShellSelectedTab(selectedTab) == "home" &&
         selectedHomeDestination == null &&
         !readyServerId.isNullOrBlank() &&
         sharedHomeShouldStartOnActive(active = true, sessionReady = true, state = state)
@@ -2214,6 +2269,7 @@ internal fun homeSurfaceVisibilityDispatchDelayMs(visible: Boolean): Long =
 @Composable
 private fun AppShellTabs(
     selectedTab: String,
+    pageVisible: Boolean,
     childHostShellId: String,
     mountedTabs: Set<String>,
     childTabSwitchEpoch: Int,
@@ -2244,13 +2300,13 @@ private fun AppShellTabs(
                     SlockAppShellChildTabHost(
                         shellId = childHostShellId,
                         tab = tab,
-                        active = tab == activeChildTab
+                        active = pageVisible && tab == activeChildTab
                     )
                 }
             }
         } else {
             key("app-shell-$activeTab") {
-                content(activeTab, true)
+                content(activeTab, pageVisible)
             }
         }
     }
@@ -2287,6 +2343,7 @@ private fun SlockAppShellChildTabHost(
 internal fun SlockAppShellContent(
     pageVisibleTick: Int = 0,
     initialAuthRestoreTick: Int = 0,
+    pageVisible: Boolean = true,
     adaptivePane: SlockAdaptivePaneState = SlockAdaptivePaneState()
 ) {
     // #85 follow-up: seed the KmmResource `StringDesc.localeType`
@@ -3192,6 +3249,7 @@ internal fun SlockAppShellContent(
     val latestSelectedTab by rememberUpdatedState(selectedTab)
     val latestSelectedHomeDestination by rememberUpdatedState(selectedHomeDestination)
     val latestVisibleAppearanceGeneration by rememberUpdatedState(visibleAppearanceGeneration)
+    val latestPageVisible by rememberUpdatedState(pageVisible)
     val homeConversationDirectoryFlow =
         remember(homeStore, readyServerId) {
             val serverId = readyServerId?.takeIf { it.isNotBlank() }
@@ -3231,10 +3289,12 @@ internal fun SlockAppShellContent(
         )
     }
     val homeSurfaceVisible =
-        selectedTab == "home" &&
+        pageVisible &&
+            selectedTab == "home" &&
             selectedHomeDestination == null
     val parentShouldStartHome =
         appShellParentShouldStartHome(
+            pageVisible = pageVisible,
             selectedTab = selectedTab,
             selectedHomeDestination = selectedHomeDestination,
             readyServerId = readyServerId,
@@ -4272,30 +4332,50 @@ internal fun SlockAppShellContent(
                             visibleRefreshGate.onLifecycleHidden(appearanceGenerationAtDelivery)
                             return@launch
                         }
+                        val visibleLifecycleEvent =
+                            event == SlockRealtimeNotifyContract.LifecycleVisibleResume ||
+                                event == SlockRealtimeNotifyContract.LifecycleVisibleShow
+                        if (visibleLifecycleEvent && !latestPageVisible) {
+                            bridge.log(
+                                "app_shell_visible_refresh_skip reason=app_lifecycle_$event " +
+                                    "cause=page_not_visible tab=$latestSelectedTab " +
+                                    "homeDestination=${latestSelectedHomeDestination.orEmpty()}"
+                            )
+                            return@launch
+                        }
                         if (
-                            (
-                                event == SlockRealtimeNotifyContract.LifecycleVisibleResume ||
-                                    event == SlockRealtimeNotifyContract.LifecycleVisibleShow
-                                ) &&
+                            appShellLifecycleCanRefreshVisibleRoute(latestPageVisible, event) &&
                             latestReadySession != null
                         ) {
-                            latestReadySession
-                                ?.currentServerId
-                                ?.trim()
-                                ?.takeIf { it.isNotBlank() }
-                                ?.let { serverId ->
-                                    sharedStores.activityUnreadSummaryStore.onForeground(
-                                        serverId = ServerId(serverId),
-                                        epoch = eventData.optLong(SlockRealtimeNotifyContract.KeyForegroundEpoch, 0L),
-                                        reason = "app_shell_$event"
-                                    )
-                                }
-                            refreshVisibleAppShellRoute(
-                                reason = "app_lifecycle_$event",
-                                signal = AppShellVisibleRefreshSignal.Lifecycle,
-                                appearanceGeneration = appearanceGenerationAtDelivery
-                            )
-                            sharedStores.foregroundReconciler.onForeground("app_shell_$event")
+                            val plan =
+                                appShellForegroundResumePlan(
+                                    pageVisible = latestPageVisible,
+                                    selectedTab = latestSelectedTab,
+                                    selectedHomeDestination = latestSelectedHomeDestination
+                                )
+                            if (plan?.refreshActivityUnreadSummary == true) {
+                                latestReadySession
+                                    ?.currentServerId
+                                    ?.trim()
+                                    ?.takeIf { it.isNotBlank() }
+                                    ?.let { serverId ->
+                                        sharedStores.activityUnreadSummaryStore.onForeground(
+                                            serverId = ServerId(serverId),
+                                            epoch = eventData.optLong(SlockRealtimeNotifyContract.KeyForegroundEpoch, 0L),
+                                            reason = "app_shell_$event"
+                                        )
+                                    }
+                            }
+                            if (plan?.refreshVisibleRoute == true) {
+                                refreshVisibleAppShellRoute(
+                                    reason = "app_lifecycle_$event",
+                                    signal = AppShellVisibleRefreshSignal.Lifecycle,
+                                    appearanceGeneration = appearanceGenerationAtDelivery
+                                )
+                            }
+                            if (plan?.refreshServerMembers == true) {
+                                sharedStores.foregroundReconciler.onForeground("app_shell_$event")
+                            }
                         }
                         return@launch
                     }
@@ -5073,6 +5153,7 @@ internal fun SlockAppShellContent(
                             val entry = AppShellChildTabEntry(
                                 debugId = AppShellChildTabRegistry.createEntryId(),
                                 initialSelectedTab = currentChildTab,
+                                initialParentVisible = pageVisible,
                                 initialRetainedTabs = retainedAppShellTabs,
                                 initialRenderer = childTabRenderer,
                                 initialModalHostState = appShellModalHostState
@@ -5084,6 +5165,7 @@ internal fun SlockAppShellContent(
                     SideEffect {
                         childTabEntry.updateSelection(
                             selectedTab = currentChildTab,
+                            parentVisible = pageVisible,
                             retainedTabs = retainedAppShellTabs,
                             renderer = childTabRenderer
                         )
@@ -5107,6 +5189,7 @@ internal fun SlockAppShellContent(
                     }
                     AppShellTabs(
                         selectedTab = selectedTab,
+                        pageVisible = pageVisible,
                         childHostShellId = childTabShellId,
                         mountedTabs = retainedAppShellTabs + prewarmedAppShellTabs,
                         childTabSwitchEpoch = childTabSwitchEpoch,

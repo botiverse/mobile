@@ -866,7 +866,10 @@ internal class ComposeThreadPage : build.raft.app.base.BasePager() {
         setContent {
             SlockInputFocusDismissHost { focusDismissModifier ->
                 Box(modifier = focusDismissModifier.fillMaxSize()) {
-                    ThreadPageScreen(slockPageVisibleResumeTick)
+                    ThreadPageScreen(
+                        pageVisibleTick = slockPageVisibleResumeTick,
+                        pageVisible = slockPageVisible
+                    )
                 }
             }
         }
@@ -2495,7 +2498,10 @@ private fun KuiklyThreadTab.toSlockTabSpec(): SlockTabSpec<KuiklyThreadTab> =
     )
 
 @Composable
-private fun ThreadPageScreen(pageVisibleTick: Int = 0) {
+private fun ThreadPageScreen(
+    pageVisibleTick: Int,
+    pageVisible: Boolean
+) {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = Utils.bridgeModule(pager.pagerId)
     val params = pager.pageData.params
@@ -2746,6 +2752,7 @@ private fun ThreadPageScreen(pageVisibleTick: Int = 0) {
         storeScope = storeScope,
         composerDraftPersistSlice = sharedStores.composerDraftPersistSlice,
         eventBus = sharedStores.eventBus,
+        active = pageVisible,
         onBack = {
             routerModule.closePage()
         },
@@ -4266,7 +4273,6 @@ internal fun SharedThreadRouteContent(
             } ?: emptyCanonicalFinalAuthorityFlow
         }
     val canonicalFinalAuthority by canonicalFinalAuthorityFlow.collectAsState()
-    val foregroundReconciler = remember(sharedStores) { sharedStores.foregroundReconciler }
     val foregroundBannerCurrentServerStore = remember(sharedStores) { sharedStores.localDataStore }
     val sharedHomeStore = remember(sharedStores, storeScope) { sharedStores.sharedHomeStore(storeScope) }
     val sharedHomeStateFlow = remember(sharedHomeStore) { sharedHomeStore?.state ?: flowOf(SharedHomeState()) }
@@ -4602,8 +4608,10 @@ internal fun SharedThreadRouteContent(
     // The listener can mount after Activity.onResume. Seed from the authoritative host
     // visibility so the first external-browser return is treated as a subsequent resume
     // and rotates stale pointer registrations instead of merely marking lifecycle as seen.
-    var threadLifecycleSeen by remember(threadInstanceKey, storeScope.shellInstanceId) {
-        mutableStateOf(isSlockHostVisible(storeScope.shellInstanceId))
+    val threadVisibleResumeGate = remember(threadInstanceKey, storeScope.shellInstanceId) {
+        ThreadVisibleResumeGate(
+            lifecycleSeen = isSlockHostVisible(storeScope.shellInstanceId)
+        )
     }
     var threadHostForeground by remember(threadInstanceKey, storeScope.shellInstanceId) {
         mutableStateOf(isSlockHostVisible(storeScope.shellInstanceId))
@@ -4611,6 +4619,7 @@ internal fun SharedThreadRouteContent(
     var threadPointerSessionKey by remember(threadInstanceKey, storeScope.shellInstanceId) {
         mutableStateOf(0)
     }
+    val latestRouteActive by rememberUpdatedState(active)
     val latestForegroundRejoinRoomIds by rememberUpdatedState(payload.activeRealtimeRoomIds())
     val latestCoreThreadRealtimeEventHandler by rememberUpdatedState<suspend (RealtimeEvent) -> Unit>(
         { event ->
@@ -4649,9 +4658,30 @@ internal fun SharedThreadRouteContent(
                 ?.grant(serverId ?: return@remember null)
                 ?.let { grant -> grant.scopeLeaseId to grant.serverId }
         }
+
+    fun applyThreadVisibleResumePlan(plan: ThreadVisibleResumePlan) {
+        threadPointerSessionKey = nextThreadPointerSessionKey(threadPointerSessionKey)
+        if (plan.refreshVisibleConversation) {
+            threadViewModel.dispatch(SharedThreadIntent.RefreshLatestAfterVisibleMaxSeq)
+        }
+        if (plan.rejoinVisibleRooms) {
+            realtimeEvents.rejoinChannels(
+                latestForegroundRejoinRoomIds,
+                latestCurrentSession?.currentServerId
+            )
+        }
+    }
+
+    LaunchedEffect(active, threadVisibleResumeGate) {
+        if (active) {
+            threadVisibleResumeGate.onRouteBecameVisible()
+                ?.let(::applyThreadVisibleResumePlan)
+        }
+    }
+
     // Pager lifecycle notifications remain mounted with the route core. A
     // loading -> resolved transition must not reset foreground reconciliation.
-    DisposableEffect(realtimeEvents, active) {
+    DisposableEffect(realtimeEvents) {
         val callbackRef =
             realtimeEvents.addListener { eventData ->
                 val eventDataSnapshot = eventData.toString()
@@ -4677,28 +4707,9 @@ internal fun SharedThreadRouteContent(
                         event == SlockRealtimeNotifyContract.LifecycleVisibleResume ||
                         event == SlockRealtimeNotifyContract.LifecycleVisibleShow
                     ) {
-                        latestCurrentSession
-                            ?.currentServerId
-                            ?.trim()
-                            ?.takeIf { it.isNotBlank() }
-                            ?.let { serverId ->
-                                sharedStores.activityUnreadSummaryStore.onForeground(
-                                    serverId = ServerId(serverId),
-                                    epoch = lifecycleData.optLong(SlockRealtimeNotifyContract.KeyForegroundEpoch, 0L),
-                                    reason = "thread_$event"
-                                )
-                            }
-                        if (threadLifecycleSeen && active) {
-                            threadPointerSessionKey = nextThreadPointerSessionKey(threadPointerSessionKey)
-                            threadViewModel.dispatch(SharedThreadIntent.RefreshLatestAfterVisibleMaxSeq)
-                            realtimeEvents.rejoinChannels(
-                                latestForegroundRejoinRoomIds,
-                                latestCurrentSession?.currentServerId
-                            )
-                            foregroundReconciler.onForeground("thread_$event")
-                        } else {
-                            threadLifecycleSeen = true
-                        }
+                        threadVisibleResumeGate
+                            .onLifecycleVisibleResume(latestRouteActive)
+                            ?.let(::applyThreadVisibleResumePlan)
                     }
                 }
             }
@@ -16759,6 +16770,51 @@ internal fun shouldMarkThreadVisibleRead(
 
 internal fun threadLifecycleEventTargetsThread(pageName: String): Boolean =
     pageName == THREAD_PAGE || pageName == SLOCK_APP_SHELL_PAGE
+
+internal data class ThreadVisibleResumePlan(
+    val refreshVisibleConversation: Boolean,
+    val rejoinVisibleRooms: Boolean
+)
+
+internal fun threadVisibleResumePlan(
+    lifecycleSeen: Boolean,
+    routeActive: Boolean
+): ThreadVisibleResumePlan? =
+    if (lifecycleSeen && routeActive) {
+        ThreadVisibleResumePlan(
+            refreshVisibleConversation = true,
+            rejoinVisibleRooms = true
+        )
+    } else {
+        null
+    }
+
+internal class ThreadVisibleResumeGate(
+    lifecycleSeen: Boolean
+) {
+    private var lifecycleSeen = lifecycleSeen
+    private var pendingVisibleResume = false
+
+    fun onLifecycleVisibleResume(routeActive: Boolean): ThreadVisibleResumePlan? {
+        val wasLifecycleSeen = lifecycleSeen
+        lifecycleSeen = true
+        if (!routeActive) {
+            pendingVisibleResume = true
+            return null
+        }
+        pendingVisibleResume = false
+        return threadVisibleResumePlan(wasLifecycleSeen, routeActive = true)
+    }
+
+    fun onRouteBecameVisible(): ThreadVisibleResumePlan? {
+        if (!pendingVisibleResume) return null
+        pendingVisibleResume = false
+        return ThreadVisibleResumePlan(
+            refreshVisibleConversation = true,
+            rejoinVisibleRooms = true
+        )
+    }
+}
 
 internal fun KuiklyThreadScreenPayload.toSlockTimeContext(): SlockTimeContext =
     SlockTimeContext(
