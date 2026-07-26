@@ -30,7 +30,6 @@ const val ATTACHMENT_COMMENTS_FEATURE_FLAG_KEY: String = "attachment_comments_v0
 const val READ_RECEIPTS_FEATURE_FLAG_KEY: String = "read_receipts_v0"
 const val MOBILE_THREAD_PAGE_SIZE_FEATURE_FLAG_KEY: String = "mobile_thread_page_size_v0"
 const val MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY: String = "mobile_activity_stable_order_v1"
-const val INLINE_THREAD_REPLIES_FEATURE_FLAG_KEY: String = "inline_thread_replies_v0"
 
 /**
  * Positive default-on flag whose backend `kill_switch` reason is persisted by Android as the emergency
@@ -49,7 +48,6 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     READ_RECEIPTS_FEATURE_FLAG_KEY,
     MOBILE_THREAD_PAGE_SIZE_FEATURE_FLAG_KEY,
     MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY,
-    INLINE_THREAD_REPLIES_FEATURE_FLAG_KEY,
     ANDROID_REUSED_H2_RECOVERY_FEATURE_FLAG_KEY,
     MOBILE_CURL_TRANSPORT_FEATURE_FLAG_KEY,
 )

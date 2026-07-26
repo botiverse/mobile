@@ -127,7 +127,6 @@ import build.raft.app.data.canonicalServerMembersMentionHandle
 import build.raft.app.data.convertMessageToCanonicalTask
 import build.raft.app.data.isSupportedCommitAction
 import build.raft.app.data.isSubmittableChannelName
-import build.raft.app.data.INLINE_THREAD_REPLIES_FEATURE_FLAG_KEY
 import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.AvatarReference
@@ -3538,7 +3537,6 @@ private fun ThreadMessageVisualScreenContent() {
                     message = message,
                     replyMetadata = visualReplyMetadataByParentId.threadReplyMetadataFor(message),
                     highlightedMentions = highlightedMentions,
-                    inlineThreadRepliesEnabled = visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_REPLIES,
                     inlineReplyParticipantsById = payload.members.associateBy(KuiklyThreadMemberItem::id),
                     replyTimeContext = payload.toSlockTimeContext(),
                     hasReplyDraft = visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_REPLIES,
@@ -3615,12 +3613,10 @@ private fun ThreadTaskStatusOwnerAnchorVisualProbe(message: KuiklyThreadMessageI
         Spacer(Modifier.height(SlockSpacing.Md))
         ThreadMessageFooterMeta(
             message = message,
-            showReplyAction = false,
             taskOpenEnabled = false,
             taskStatusActionsEnabled = true,
             resolvedTaskAssigneeName = message.taskAssigneeName,
             alignEnd = false,
-            onOpenThread = {},
             onOpenTask = {},
             onShowActions = {},
             onOpenTaskStatusMenu = { anchor ->
@@ -4204,12 +4200,10 @@ private fun ThreadMessageVisualCard(
                     Box(modifier = Modifier.threadMessageContentWidth(1f)) {
                         ThreadMessageFooterMeta(
                             message = message,
-                            showReplyAction = true,
                             taskOpenEnabled = false,
                             taskStatusActionsEnabled = false,
                             resolvedTaskAssigneeName = resolvedTaskAssigneeName,
                             alignEnd = false,
-                            onOpenThread = {},
                             onOpenTask = {},
                             onShowActions = {},
                             onOpenTaskStatusMenu = {}
@@ -4433,11 +4427,6 @@ internal fun SharedThreadRouteContent(
                 serverId = headerProjectionServerId?.value
             )
         }
-    val inlineThreadRepliesEnabled =
-        sharedStores.serverFeatureFlags.isEnabled(
-            headerProjectionServerId,
-            INLINE_THREAD_REPLIES_FEATURE_FLAG_KEY,
-        )
     val initialDirectoryConversationProjections =
         remember(
             conversationIdentityProvider,
@@ -6749,7 +6738,6 @@ internal fun SharedThreadRouteContent(
             highlightedMentions = highlightedMentions,
             agentStatusResolver = agentStatusResolver,
             memberAvatarResolver = memberAvatarResolver,
-            inlineThreadRepliesEnabled = inlineThreadRepliesEnabled,
             diagnosticsLogger = { bridge.log(it) },
             onLayoutGeneration = { width, height ->
                 performanceGenerationCounter.nextLayout(width, height)?.let { generation ->
@@ -11427,7 +11415,6 @@ private fun ThreadPageContent(
     highlightedMentions: Set<String>,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
-    inlineThreadRepliesEnabled: Boolean = false,
     diagnosticsLogger: (String) -> Unit = {},
     onLayoutGeneration: (width: Int, height: Int) -> Unit = { _, _ -> },
     pendingActionCardIds: Set<String> = emptySet(),
@@ -12033,7 +12020,6 @@ private fun ThreadPageContent(
                         highlightedMentions = highlightedMentions,
                         agentStatusResolver = agentStatusResolver,
                         memberAvatarResolver = memberAvatarResolver,
-                        inlineThreadRepliesEnabled = inlineThreadRepliesEnabled,
                         inlineReplyParticipantsById = inlineReplyParticipantsById,
                         pendingActionCardIds = pendingActionCardIds,
                         pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
@@ -13215,7 +13201,6 @@ private fun ThreadChatTab(
     highlightedMentions: Set<String>,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
-    inlineThreadRepliesEnabled: Boolean = false,
     inlineReplyParticipantsById: Map<String, KuiklyThreadMemberItem> = emptyMap(),
     pendingActionCardIds: Set<String> = emptySet(),
     pendingTaskConvertMessageIds: Set<String> = emptySet(),
@@ -13296,7 +13281,6 @@ private fun ThreadChatTab(
                     highlightedMentions = highlightedMentions,
                     agentStatusResolver = agentStatusResolver,
                     memberAvatarResolver = memberAvatarResolver,
-                    inlineThreadRepliesEnabled = inlineThreadRepliesEnabled,
                     inlineReplyParticipantsById = inlineReplyParticipantsById,
                     pendingActionCardIds = pendingActionCardIds,
                     pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
@@ -13364,7 +13348,6 @@ private fun ThreadChatTab(
                     highlightedMentions = highlightedMentions,
                     agentStatusResolver = agentStatusResolver,
                     memberAvatarResolver = memberAvatarResolver,
-                    inlineThreadRepliesEnabled = inlineThreadRepliesEnabled,
                     inlineReplyParticipantsById = inlineReplyParticipantsById,
                     pendingActionCardIds = pendingActionCardIds,
                     pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
@@ -13423,7 +13406,6 @@ private fun ThreadChatTab(
                 highlightedMentions = highlightedMentions,
                 agentStatusResolver = agentStatusResolver,
                 memberAvatarResolver = memberAvatarResolver,
-                inlineThreadRepliesEnabled = inlineThreadRepliesEnabled,
                 inlineReplyParticipantsById = inlineReplyParticipantsById,
                 pendingActionCardIds = pendingActionCardIds,
                 pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
@@ -13723,7 +13705,6 @@ private fun ThreadMessagesList(
     highlightedMentions: Set<String>,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
-    inlineThreadRepliesEnabled: Boolean = false,
     inlineReplyParticipantsById: Map<String, KuiklyThreadMemberItem> = emptyMap(),
     pendingActionCardIds: Set<String> = emptySet(),
     pendingTaskConvertMessageIds: Set<String> = emptySet(),
@@ -15625,7 +15606,6 @@ private fun ThreadMessagesList(
                                 highlightedMentions = highlightedMentions,
                                 agentStatusResolver = agentStatusResolver,
                                 memberAvatarResolver = memberAvatarResolver,
-                                inlineThreadRepliesEnabled = inlineThreadRepliesEnabled,
                                 inlineReplyParticipantsById = inlineReplyParticipantsById,
                                 replyTimeContext = renderConfig.timeContext,
                                 focused = activeFocusedMessageId == message.id || activeInlineSearchMessageId == message.id,
@@ -17442,7 +17422,6 @@ private fun ThreadMessageCard(
     focused: Boolean = false,
     isMessageListScrolling: () -> Boolean = { false },
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
-    inlineThreadRepliesEnabled: Boolean = false,
     inlineReplyParticipantsById: Map<String, KuiklyThreadMemberItem> = emptyMap(),
     replyTimeContext: SlockTimeContext? = null,
     shareSelectionActive: Boolean = false,
@@ -17530,19 +17509,18 @@ private fun ThreadMessageCard(
     val hasPendingReaction =
         LocalThreadPendingReactionVisuals.current.keys.any { key -> key.messageId == message.id }
     val inlineReplyPresentation =
-        remember(message.inlineReplies, replyMetadata, hasReplyDraft, inlineThreadRepliesEnabled, showReplyAction) {
-            if (inlineThreadRepliesEnabled && showReplyAction) {
-                threadInlineReplyPresentation(message.inlineReplies, replyMetadata, hasReplyDraft)
-            } else {
-                null
-            }
+        remember(message.inlineReplies, replyMetadata, hasReplyDraft, showReplyAction) {
+            threadInlineReplyPresentationForMessage(
+                model = message.inlineReplies,
+                replyMetadata = replyMetadata,
+                hasDraft = hasReplyDraft,
+                showReplyAction = showReplyAction,
+            )
         }
     val hasFooterMeta =
         richContentEnabled &&
             !message.hasLocalSendState() &&
             message.hasThreadFooterMeta(
-                replyMetadata = replyMetadata,
-                hasReplyDraft = hasReplyDraft,
                 showSavedBadge = showSavedBadge,
                 hasPendingReaction = hasPendingReaction
             )
@@ -17902,21 +17880,15 @@ private fun ThreadMessageCard(
                                     Box(modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)) {
                                         ThreadMessageFooterMeta(
                                             message = message,
-                                            replyMetadata = replyMetadata,
-                                            hasReplyDraft = hasReplyDraft,
-                                            showReplyAction = showReplyAction,
                                             taskOpenEnabled = taskOpenEnabled,
                                             taskStatusActionsEnabled = taskStatusActionsEnabled,
                                             resolvedTaskAssigneeName = resolvedTaskAssigneeName,
-                                            diagnosticsLogger = diagnosticsLogger,
                                             alignEnd = alignOwnMessageRight,
-                                            onOpenThread = { onOpenThread(message.id) },
                                             onOpenTask = onOpenTask,
                                             onShowActions = onShowActions,
                                             onOpenTaskStatusMenu = onOpenTaskStatusMenu,
                                             showSavedBadge = showSavedBadge,
                                             showReactionAddAction = showReactionAddAction,
-                                            showReplyMetaChip = inlineReplyPresentation == null,
                                             onToggleReaction = onToggleReaction,
                                             onShowReactionDetails = onShowReactionDetails
                                         )
@@ -19735,6 +19707,18 @@ internal fun threadInlineReplyPresentation(
     )
 }
 
+internal fun threadInlineReplyPresentationForMessage(
+    model: ThreadRepliesReadModel?,
+    replyMetadata: ThreadReplyMetadata,
+    hasDraft: Boolean,
+    showReplyAction: Boolean,
+): ThreadInlineReplyPresentation? =
+    if (showReplyAction) {
+        threadInlineReplyPresentation(model, replyMetadata, hasDraft)
+    } else {
+        null
+    }
+
 @Composable
 private fun ThreadInlineRepliesSurface(
     presentation: ThreadInlineReplyPresentation,
@@ -19892,21 +19876,15 @@ private const val ThreadInlineReplyRowVerticalAllowanceDp = 4f
 @Composable
 private fun ThreadMessageFooterMeta(
     message: KuiklyThreadMessageItem,
-    replyMetadata: ThreadReplyMetadata = message.toThreadReplyMetadata(),
-    hasReplyDraft: Boolean = false,
-    showReplyAction: Boolean,
     taskOpenEnabled: Boolean,
     taskStatusActionsEnabled: Boolean,
     resolvedTaskAssigneeName: String? = null,
-    diagnosticsLogger: (String) -> Unit = {},
     alignEnd: Boolean,
-    onOpenThread: () -> Unit,
     onOpenTask: (String) -> Unit,
     onShowActions: (SlockPopoverAnchor) -> Unit,
     onOpenTaskStatusMenu: (SlockPopoverAnchor) -> Unit,
     showSavedBadge: Boolean = false,
     showReactionAddAction: Boolean = false,
-    showReplyMetaChip: Boolean = true,
     onToggleReaction: ((String) -> Unit)? = null,
     onShowReactionDetails: ((KuiklyThreadReactionItem, SlockPopoverAnchor) -> Unit)? = null
 ) {
@@ -19914,7 +19892,6 @@ private fun ThreadMessageFooterMeta(
     val pendingReactionVisuals = LocalThreadPendingReactionVisuals.current
     val pendingTaskId = LocalThreadPendingTaskId.current
     val hasTask = message.hasThreadTaskFooterMeta()
-    val hasReplies = showReplyMetaChip && (replyMetadata.replyCount > 0 || hasReplyDraft)
     val visibleReactions =
         threadVisibleReactionsWithPending(
             messageId = message.id,
@@ -19923,7 +19900,7 @@ private fun ThreadMessageFooterMeta(
         )
     val hasReactions = visibleReactions.isNotEmpty()
     val showReactionAddChip = showReactionAddAction && hasReactions
-    if (!hasTask && !hasReplies && !showSavedBadge && !hasReactions && !showReactionAddChip) return
+    if (!hasTask && !showSavedBadge && !hasReactions && !showReactionAddChip) return
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -19957,37 +19934,6 @@ private fun ThreadMessageFooterMeta(
                 anchorOwnerIdentity = threadMessageMenuOwnerIdentity(message.id),
                 loading = threadTaskChipLoading(message.taskId, pendingTaskId),
                 onClick = taskChipClick
-            )
-        }
-        if (hasReplies) {
-            val replyLabel = threadMessageRepliesMetaLabel(replyMetadata)
-            val replyClickIdentity =
-                "thread-reply:${message.id}:${replyMetadata.threadChannelId.orEmpty()}:" +
-                    "${replyMetadata.replyCount}:${replyMetadata.unreadReplyCount}:$hasReplyDraft"
-            SlockAnchoredMetaChip(
-                label = replyLabel,
-                iconName = SlockLucideIconName.MessageSquare,
-                iconSize = 12.dp,
-                trailingIconName = SlockLucideIconName.Pencil.takeIf { hasReplyDraft },
-                trailingIconSize = 12.dp,
-                color = threadRepliesMetaChipColor(replyMetadata),
-                modifier = Modifier.widthIn(max = 220.dp),
-                pressFeedback = false,
-                clickIdentity = replyClickIdentity,
-                onClick = null,
-                onClickWithoutAnchor =
-                    if (showReplyAction) {
-                        {
-                            diagnosticsLogger(
-                                "thread_reply_chip_click parentMessageId=${message.id} " +
-                                    "knownThreadChannelId=${replyMetadata.threadChannelId.orEmpty()} " +
-                                    "replyCount=${replyMetadata.replyCount} clickIdentity=$replyClickIdentity"
-                            )
-                            onOpenThread()
-                        }
-                    } else {
-                        null
-                    }
             )
         }
         if (showSavedBadge) {
@@ -20082,21 +20028,10 @@ internal val LocalThreadPendingReactionVisuals =
 internal val LocalThreadPendingTaskId = compositionLocalOf<String?> { null }
 
 internal fun KuiklyThreadMessageItem.hasThreadFooterMeta(
-    hasReplyDraft: Boolean = false,
-    showSavedBadge: Boolean = false,
-    hasPendingReaction: Boolean = false
-): Boolean =
-    hasThreadFooterMeta(toThreadReplyMetadata(), hasReplyDraft, showSavedBadge, hasPendingReaction)
-
-internal fun KuiklyThreadMessageItem.hasThreadFooterMeta(
-    replyMetadata: ThreadReplyMetadata,
-    hasReplyDraft: Boolean = false,
     showSavedBadge: Boolean = false,
     hasPendingReaction: Boolean = false
 ): Boolean =
     hasThreadTaskFooterMeta() ||
-        replyMetadata.replyCount > 0 ||
-        hasReplyDraft ||
         showSavedBadge ||
         hasPendingReaction ||
         reactions.any { it.count > 0 }
@@ -20163,25 +20098,6 @@ private fun String.isUuidLike(): Boolean {
         }
     }
 }
-
-internal fun threadMessageRepliesMetaLabel(replyMetadata: ThreadReplyMetadata): String =
-    buildString {
-        append(replyMetadata.replyCount)
-        append(if (replyMetadata.replyCount == 1) " reply" else " replies")
-        if (replyMetadata.unreadReplyCount > 0) {
-            append(" · ")
-            append(replyMetadata.unreadReplyCount)
-            append(" new")
-        }
-    }
-
-internal fun threadRepliesMetaChipColor(replyMetadata: ThreadReplyMetadata): Color =
-    if (replyMetadata.unreadReplyCount > 0) {
-        // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1041
-        SlockColor.AccentCyan.copy(alpha = 0.2f)
-    } else {
-        SlockColor.SurfaceWhite
-    }
 
 internal fun Set<SharedThreadComposerDraftRecord>.toReplyComposerDraftParentMessageIds(): Set<String> =
     mapNotNull { record ->
