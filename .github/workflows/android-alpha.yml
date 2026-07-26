@@ -37,6 +37,18 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
+      # The requested artifact source may predate these local actions. Preserve
+      # the workflow-owned implementations before checking out product source.
+      - name: Stage workflow action implementations
+        shell: bash
+        run: |
+          tar -C . -cf "$RUNNER_TEMP/android-alpha-workflow-actions.tar" \
+            .github/actions/gradle-cache-policy \
+            .github/actions/gradle-failure-diagnostics \
+            .github/gradle-cache-epoch \
+            .github/gradle-cache-quarantine \
+            scripts/verify_android_apk_with_rotation.sh
+
       - name: Resolve source commit
         id: source
         env:
@@ -47,6 +59,12 @@ jobs:
           sha="$(scripts/resolve_git_revision.sh "$REQUESTED_REF")"
           git checkout --detach "$sha"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Restore workflow action implementations
+        if: always()
+        shell: bash
+        run: |
+          tar -C . -xf "$RUNNER_TEMP/android-alpha-workflow-actions.tar"
 
       - name: Setup JDK 17
         uses: actions/setup-java@v5
@@ -191,12 +209,19 @@ jobs:
           grep -q "package: name='build.raft.app.alpha'" aapt-badging.log
           grep -q "application-label:'Raft Alpha'" aapt-badging.log
           grep -q "versionName='[^']*-alpha'" aapt-badging.log
-          grep -q "^sdkVersion:'29'$" aapt-badging.log
+          SOURCE_SHA="${{ steps.source.outputs.sha }}"
+          EXPECTED_MIN_SDK=29
+          # The approved 1.7.0 QA source predates the API 29 floor. Keep this
+          # exception pinned to its full immutable source identity rather than
+          # weakening the current Alpha package contract for arbitrary refs.
+          if [[ "$SOURCE_SHA" == "463fe882575ff702006076e9267acc9f2b4213a3" ]]; then
+            EXPECTED_MIN_SDK=24
+          fi
+          grep -q "^sdkVersion:'${EXPECTED_MIN_SDK}'$" aapt-badging.log
           VERSION_CODE="$(sed -n "s/^package: .* versionCode='\([^']*\)'.*/\1/p" aapt-badging.log | head -n 1)"
           VERSION_NAME="$(sed -n "s/^package: .* versionName='\([^']*\)'.*/\1/p" aapt-badging.log | head -n 1)"
           test -n "${VERSION_CODE}"
           test -n "${VERSION_NAME}"
-          SOURCE_SHA="${{ steps.source.outputs.sha }}"
           cp "$APK" androidApp-alpha-${SOURCE_SHA::9}.apk
           echo "apk=androidApp-alpha-${SOURCE_SHA::9}.apk" >> "$GITHUB_OUTPUT"
           echo "sha256=$(sha256sum "androidApp-alpha-${SOURCE_SHA::9}.apk" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
