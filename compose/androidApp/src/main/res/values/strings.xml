@@ -447,6 +447,7 @@
     <string name="home_refresh_failed">Server refresh failed</string>
     <string name="home_refresh_failed_detail">Could not refresh this server. Error: %1$s</string>
     <string name="share_sheet_unavailable_toast">Unable to open share sheet</string>
+    <string name="external_share_import_failed_toast">Raft couldn’t import this shared content</string>
     <string name="open_link_no_app_toast">No app can open this link</string>
     <string name="open_link_failed_toast">Unable to open link</string>
     <string name="settings_update_ready_status">Ready</string>

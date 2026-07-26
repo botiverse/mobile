@@ -32,9 +32,20 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
 class MainActivity : ComponentActivity() {
+    private lateinit var externalShareAdmissionOwner: AndroidExternalShareAdmissionOwner<Intent>
+    private val externalShareResultListener: (Long, AndroidExternalShareIntakeResult) -> Unit =
+        { generation, result -> handleExternalShareAdmissionResult(generation, result) }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
+        externalShareAdmissionOwner = AndroidExternalShareProcessOwner.admissionOwner(applicationContext)
+        val rawShare = intent.takeIf(Intent::isAndroidExternalShareIntent)
+        if (rawShare != null) {
+            setIntent(Intent(this, MainActivity::class.java))
+            externalShareAdmissionOwner.submit(rawShare)
+        }
+        val resumedExternalShare = externalShareAdmissionOwner.attach(externalShareResultListener)
         SlockAppLog.d(
             "SlockBoot",
             "main_activity_created " +
@@ -42,7 +53,14 @@ class MainActivity : ComponentActivity() {
                 "clearTask=${intent.shouldClearTaskForSharedShell()} " +
                 "data=${intent.safeDataString()}"
         )
-        handleLaunchIntent(intent)
+        if (rawShare == null && !resumedExternalShare) {
+            val durablePending = AndroidExternalShareProcessOwner.inbox(applicationContext).pendingLaunchOrNull()
+            if (durablePending == null) {
+                handleLaunchIntent(intent)
+            } else {
+                openSharedShellPageData(androidExternalSharePageData(durablePending))
+            }
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -58,8 +76,16 @@ class MainActivity : ComponentActivity() {
         handleLaunchIntent(intent)
     }
 
+    override fun onDestroy() {
+        if (::externalShareAdmissionOwner.isInitialized) {
+            externalShareAdmissionOwner.detach(externalShareResultListener)
+        }
+        super.onDestroy()
+    }
+
     private fun handleLaunchIntent(intent: Intent?) {
         if (
+            !handleExternalShareIntent(intent) &&
             !handleMobileOAuthCallback(intent) &&
             !handleSocialAuthCallback(intent) &&
             !handleEmailVerificationLink(intent) &&
@@ -67,6 +93,35 @@ class MainActivity : ComponentActivity() {
         ) {
             openSharedShell(intent)
         }
+    }
+
+    private fun handleExternalShareIntent(intent: Intent?): Boolean {
+        val shareIntent = intent?.takeIf(Intent::isAndroidExternalShareIntent) ?: return false
+        // Remove raw text/provider URIs and temporary grants from retained Activity state before
+        // the asynchronous copy. The process owner keeps the one in-flight Intent only.
+        setIntent(Intent(this, MainActivity::class.java))
+        externalShareAdmissionOwner.submit(shareIntent)
+        return true
+    }
+
+    private fun handleExternalShareAdmissionResult(
+        generation: Long,
+        result: AndroidExternalShareIntakeResult
+    ) {
+        when (result) {
+            is AndroidExternalShareIntakeResult.Admitted ->
+                openSharedShellPageData(androidExternalSharePageData(result.launch))
+            is AndroidExternalShareIntakeResult.Rejected -> {
+                SlockAppLog.w("SlockBoot", "external_share_rejected code=${result.code}")
+                Toast.makeText(
+                    this,
+                    getString(R.string.external_share_import_failed_toast),
+                    Toast.LENGTH_LONG
+                ).show()
+                openSharedShell(Intent(this, MainActivity::class.java))
+            }
+        }
+        externalShareAdmissionOwner.acknowledge(generation)
     }
 
     /**
@@ -128,6 +183,13 @@ class MainActivity : ComponentActivity() {
 
     private fun openSharedShell(launchIntent: Intent? = intent) {
         val pageData = SlockKuiklyActivity.appShellPageDataFromIntent(launchIntent)
+        openSharedShellPageData(pageData, launchIntent)
+    }
+
+    private fun openSharedShellPageData(
+        pageData: JSONObject,
+        launchIntent: Intent? = intent
+    ) {
         val target = resolveAndroidShellLaunchTarget(pageData)
         val taskLaunch = target.taskLaunchPlan(launchIntent.shouldClearTaskForSharedShell())
         SlockKuiklyActivity.startAppShell(
