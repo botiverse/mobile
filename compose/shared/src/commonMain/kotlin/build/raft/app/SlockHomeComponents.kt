@@ -3522,7 +3522,7 @@ private fun HomeAppUpdateBanner(
                 .fillMaxWidth()
                 .background(SlockColor.SurfaceCream)
                 .clickable(onClick = onClick)
-                .padding(horizontal = 16.dp, vertical = 6.dp),
+                .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
