@@ -1,6 +1,15 @@
 package build.raft.app
 
 import androidx.compose.runtime.Composable
+import com.tencent.kuikly.compose.foundation.layout.Arrangement
+import com.tencent.kuikly.compose.foundation.layout.Column
+import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
+import com.tencent.kuikly.compose.foundation.layout.padding
+import com.tencent.kuikly.compose.foundation.lazy.LazyRow
+import com.tencent.kuikly.compose.material3.Text
+import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.unit.dp
+import com.tencent.kuikly.compose.ui.unit.sp
 import build.raft.app.data.ExternalShareIntent
 import build.raft.app.data.ExternalShareState
 import build.raft.app.data.externalShareDirectorySessionId
@@ -26,8 +35,42 @@ internal fun ExternalShareTargetPickerSurface(
         state = surface.picker,
         onIntent = { pickerIntent ->
             state.toExternalShareIntent(pickerIntent)?.let(onIntent)
+        },
+        topContent = {
+            ExternalShareServerSelector(
+                state = state,
+                onServerSelected = { serverId -> onIntent(ExternalShareIntent.SelectServer(serverId)) }
+            )
         }
     )
+}
+
+@Composable
+private fun ExternalShareServerSelector(
+    state: ExternalShareState.SelectingTargets,
+    onServerSelected: (String) -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, top = 12.dp, end = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            text = "Server",
+            style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+            color = SlockColor.TextMutedGray
+        )
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(state.serverOptions.size, key = { index -> state.serverOptions[index].id }) { index ->
+                val server = state.serverOptions[index]
+                SlockModalActionButton(
+                    label = server.title,
+                    onClick = { onServerSelected(server.id) },
+                    color = if (server.id == state.serverId) SlockColor.AccentPink else SlockColor.SurfaceWhite,
+                    enabled = !state.loading && server.id != state.serverId
+                )
+            }
+        }
+    }
 }
 
 internal fun ExternalShareState.SelectingTargets.toExternalSharePickerSurface(): ExternalSharePickerSurface {

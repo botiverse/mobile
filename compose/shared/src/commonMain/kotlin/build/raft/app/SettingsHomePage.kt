@@ -5292,7 +5292,15 @@ internal fun SlockAppShellContent(
                 readySession?.let { session ->
                     ExternalShareLaunchAuthority(
                         accountId = session.user.id,
-                        serverId = session.currentServerId.orEmpty()
+                        serverId = session.currentServerId.orEmpty(),
+                        servers =
+                            session.servers.map { server ->
+                                build.raft.app.data.ExternalShareServerOption(
+                                    id = server.id,
+                                    title = server.name,
+                                    slug = server.slug
+                                )
+                            }
                     )
                 },
             bridge = bridge

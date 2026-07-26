@@ -15,6 +15,7 @@ import build.raft.app.data.ExternalShareDeliveryStatus
 import build.raft.app.data.ExternalShareIntent
 import build.raft.app.data.ExternalShareState
 import build.raft.app.data.ExternalShareStore
+import build.raft.app.data.ExternalShareSourceServerBinding
 import build.raft.app.data.KeyValueExternalShareDraftRepository
 import build.raft.app.data.RealChannelRepository
 import build.raft.app.data.RealConversationAuthorityBoundAttachmentUploader
@@ -98,11 +99,16 @@ internal fun ExternalShareLaunchHost(
                 warningLogger = { bridge.log("external_share_target_repository $it") }
             )
         }
+    val sourceServerBinding =
+        remember(readyAuthority.accountId) {
+            ExternalShareSourceServerBinding(readyAuthority.serverId)
+        }
     val conversationRepository =
-        remember(authStore, networkClient) {
+        remember(authStore, networkClient, sourceServerBinding) {
             RealConversationRepository(
                 sessionStore = authStore,
                 networkClient = networkClient,
+                routeServerIdProvider = sourceServerBinding::current,
                 warningLogger = { bridge.log("external_share_conversation_repository $it") }
             )
         }
@@ -112,7 +118,8 @@ internal fun ExternalShareLaunchHost(
                 targetRepository = targetRepository,
                 conversationRepository = conversationRepository,
                 authorityBoundUploader = RealConversationAuthorityBoundAttachmentUploader(conversationRepository),
-                sessionStore = authStore
+                sessionStore = authStore,
+                sourceServerBinding = sourceServerBinding
             )
         }
     val store =
