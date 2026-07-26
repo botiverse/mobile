@@ -17,6 +17,7 @@ DEFAULT_SOURCE = Path(
 )
 TEST_CLASS = "build.raft.app.visual.KmpVisualScreenshotCaptureTest"
 CASE_ID_RE = re.compile(r'"([A-Za-z0-9][A-Za-z0-9._-]*\.[A-Za-z0-9._-]+)"')
+CANONICAL_EXCLUDED_MARKER = "VISUAL_CANONICAL_EXCLUDED:"
 
 
 def parse_csv(raw: str) -> list[str]:
@@ -56,6 +57,7 @@ def enumerate_capture_tests(source: str) -> list[dict[str, object]]:
                 "method": method,
                 "selector": f"{TEST_CLASS}#{method}",
                 "sourceBodySha256": hashlib.sha256(body.encode("utf-8")).hexdigest(),
+                "canonicalEnabled": CANONICAL_EXCLUDED_MARKER not in body,
                 "testboxEligible": f"TESTBOX_ELIGIBLE: {case_id}" in body,
                 "routePageName": page_name,
                 "fixtureKey": fixture_match.group(1) if fixture_match else None,
@@ -101,17 +103,26 @@ def run_self_test() -> None:
         fun helper() { println("not-a-case") }
         @Test
         fun captureThree() { capture(caseId = "case.three", pageName = "page_three") }
+        @Test
+        fun captureOptIn() {
+            // VISUAL_CANONICAL_EXCLUDED: requires an external phase driver
+            capture(caseId = "case.opt-in", pageName = "page_opt_in")
+        }
     '''
     entries = enumerate_capture_tests(fixture)
-    assert [entry["method"] for entry in entries] == ["captureOne", "captureTwo", "captureThree"]
-    assert [entry["testboxEligible"] for entry in entries] == [True, False, False]
+    assert [entry["method"] for entry in entries] == [
+        "captureOne", "captureTwo", "captureThree", "captureOptIn"
+    ]
+    assert [entry["testboxEligible"] for entry in entries] == [True, False, False, False]
+    assert [entry["canonicalEnabled"] for entry in entries] == [True, True, True, False]
     requested = parse_csv("case.two, case.one, case.two")
     resolved, missing = select_cases(entries, requested)
     assert not missing
     assert [entry["method"] for entry in resolved] == ["captureTwo", "captureOne"]
     selected, missing = select_selectors(entries, [str(entries[2]["selector"])])
     assert not missing and selected[0]["caseId"] == "case.three"
-    shards = [shard_entries(entries, index, 2) for index in range(2)]
+    canonical_entries = [entry for entry in entries if entry["canonicalEnabled"]]
+    shards = [shard_entries(canonical_entries, index, 2) for index in range(2)]
     assert sorted(str(entry["method"]) for shard in shards for entry in shard) == [
         "captureOne", "captureThree", "captureTwo"
     ]
@@ -123,7 +134,7 @@ def main() -> int:
     source_group = parser.add_mutually_exclusive_group()
     source_group.add_argument("--cases", default=None, help="Comma-separated visual case ids")
     source_group.add_argument("--selectors", default=None, help="Comma-separated class#method selectors")
-    source_group.add_argument("--all", action="store_true", help="Enumerate every canonical @Test capture")
+    source_group.add_argument("--all", action="store_true", help="Enumerate every canonical-enabled @Test capture")
     parser.add_argument("--source", type=Path, default=DEFAULT_SOURCE)
     parser.add_argument("--format", choices=("filter", "json", "case-ids", "methods"), default="filter")
     parser.add_argument("--github-output", type=Path)
@@ -146,7 +157,7 @@ def main() -> int:
 
     missing: list[str] = []
     if args.all:
-        payload = entries
+        payload = [entry for entry in entries if entry["canonicalEnabled"]]
     elif args.selectors is not None:
         payload, missing = select_selectors(entries, parse_csv(args.selectors))
     else:
