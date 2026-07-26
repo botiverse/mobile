@@ -10728,7 +10728,8 @@ internal fun SharedSettingsAboutContent(
     onOpenSourceLicenses: () -> Unit,
     onCopyEnvironmentInfo: () -> Unit,
     onOpenApiEnvironment: () -> Unit,
-    onOpenDiagnostics: () -> Unit
+    onOpenDiagnostics: () -> Unit,
+    onSendFeedback: (() -> Unit)? = null
 ) {
     val snapshot =
         when (state) {
@@ -10754,25 +10755,18 @@ internal fun SharedSettingsAboutContent(
                     aboutPayload.sections +
                         KuiklySharedSettingsSection(
                             title = stringResource(MR.strings.settings_developer_section_api_server),
-                            rows =
-                                listOf(
-                                    KuiklySharedSettingsRow(
-                                        key = DEVELOPER_ACTION_API_ENVIRONMENT,
-                                        iconName = SlockLucideIconName.Server,
-                                        title = stringResource(MR.strings.settings_developer_api_environment),
-                                        detail = environmentDetail,
-                                        status = environmentStatus,
-                                        enabled = developerState is ScreenLoadState.Content
-                                    ),
-                                    KuiklySharedSettingsRow(
-                                        key = "diagnostics",
-                                        iconName = SlockLucideIconName.ClipboardList,
-                                        title = stringResource(MR.strings.settings_diagnostics_title),
-                                        detail = stringResource(MR.strings.settings_developer_diagnostics_detail),
-                                        status = stringResource(MR.strings.settings_state_open),
-                                        enabled = true
-                                    )
-                                )
+                            rows = settingsAboutDeveloperShortcutRows(
+                                environmentTitle = stringResource(MR.strings.settings_developer_api_environment),
+                                environmentDetail = environmentDetail,
+                                environmentStatus = environmentStatus,
+                                environmentEnabled = developerState is ScreenLoadState.Content,
+                                diagnosticsTitle = stringResource(MR.strings.settings_diagnostics_title),
+                                diagnosticsDetail = stringResource(MR.strings.settings_developer_diagnostics_detail),
+                                feedbackTitle = stringResource(MR.strings.settings_feedback_title),
+                                feedbackDetail = stringResource(MR.strings.settings_feedback_subtitle),
+                                openStatus = stringResource(MR.strings.settings_state_open),
+                                includeFeedback = onSendFeedback != null
+                            )
                         )
             )
         } else {
@@ -10787,9 +10781,59 @@ internal fun SharedSettingsAboutContent(
             "copyEnvironmentInfo" -> onCopyEnvironmentInfo()
             DEVELOPER_ACTION_API_ENVIRONMENT -> onOpenApiEnvironment()
             "diagnostics" -> onOpenDiagnostics()
+            SETTINGS_ABOUT_FEEDBACK_ACTION -> onSendFeedback?.invoke()
         }
     }
 }
+
+internal const val SETTINGS_ABOUT_FEEDBACK_ACTION = "sendFeedback"
+
+internal fun settingsAboutDeveloperShortcutRows(
+    environmentTitle: String,
+    environmentDetail: String,
+    environmentStatus: String,
+    environmentEnabled: Boolean,
+    diagnosticsTitle: String,
+    diagnosticsDetail: String,
+    feedbackTitle: String,
+    feedbackDetail: String,
+    openStatus: String,
+    includeFeedback: Boolean
+): List<KuiklySharedSettingsRow> =
+    buildList {
+        add(
+            KuiklySharedSettingsRow(
+                key = DEVELOPER_ACTION_API_ENVIRONMENT,
+                iconName = SlockLucideIconName.Server,
+                title = environmentTitle,
+                detail = environmentDetail,
+                status = environmentStatus,
+                enabled = environmentEnabled
+            )
+        )
+        add(
+            KuiklySharedSettingsRow(
+                key = "diagnostics",
+                iconName = SlockLucideIconName.ClipboardList,
+                title = diagnosticsTitle,
+                detail = diagnosticsDetail,
+                status = openStatus,
+                enabled = true
+            )
+        )
+        if (includeFeedback) {
+            add(
+                KuiklySharedSettingsRow(
+                    key = SETTINGS_ABOUT_FEEDBACK_ACTION,
+                    iconName = SlockLucideIconName.MessageSquarePlus,
+                    title = feedbackTitle,
+                    detail = feedbackDetail,
+                    status = openStatus,
+                    enabled = true
+                )
+            )
+        }
+    }
 
 @Composable
 private fun SharedSettingsOpenSourceLicensesContent(

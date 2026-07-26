@@ -940,7 +940,12 @@ private fun AuthAboutScreen(initialDestination: AuthAboutDestination = AuthAbout
                         )
                     },
                     onOpenApiEnvironment = { destination = AuthAboutDestination.ApiEnvironment },
-                    onOpenDiagnostics = { destination = AuthAboutDestination.Diagnostics }
+                    onOpenDiagnostics = { destination = AuthAboutDestination.Diagnostics },
+                    onSendFeedback = {
+                        bridgeCallScope.launch {
+                            settingsCapabilities.sendFeedback()
+                        }
+                    }
                 )
             AuthAboutDestination.ApiEnvironment ->
                 SharedSettingsApiEnvironmentContent(
