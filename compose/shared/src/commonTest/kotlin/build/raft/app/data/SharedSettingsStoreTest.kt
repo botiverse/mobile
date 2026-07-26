@@ -2189,9 +2189,9 @@ class SharedSettingsStoreTest {
         val diagnostics = assertIs<ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>>(store.state.value.diagnostics).data
         assertEquals(listOf("SlockTest"), diagnostics.entries.map { it.tag })
         assertEquals(false, diagnostics.profiler.supported)
-        // Opening About also fetches the quiver update status and the developer
+        // Opening About also fetches the hands update status and the developer
         // snapshot (48631ed3: refresh update notices periodically).
-        assertEquals(listOf("about", "quiverUpdateStatus", "developer", "about", "diagnostics"), capabilities.calls)
+        assertEquals(listOf("about", "handsUpdateStatus", "developer", "about", "diagnostics"), capabilities.calls)
         scope.cancel()
     }
 
@@ -2399,7 +2399,7 @@ class SharedSettingsStoreTest {
     }
 
     @Test
-    fun developerQuiverUpdateCheckRunsThroughPlatformCapabilities() = runBlocking {
+    fun developerHandsUpdateCheckRunsThroughPlatformCapabilities() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val capabilities = FakeSettingsCapabilities()
         val store =
@@ -2413,15 +2413,15 @@ class SharedSettingsStoreTest {
             )
 
         store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Developer))
-        store.accept(SharedSettingsIntent.CheckQuiverUpdate)
+        store.accept(SharedSettingsIntent.CheckHandsUpdate)
 
         val updated = assertIs<ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>>(store.state.value.developer).data
         assertEquals(true, updated.updateCheck.supported)
         assertEquals("Update available", updated.updateCheck.statusLabel)
         assertEquals(true, updated.updateCheck.updateAvailable)
         assertEquals(2L, updated.updateCheck.latestVersionCode)
-        assertEquals(SharedSettingsActionState(DEVELOPER_ACTION_QUIVER_UPDATE_CHECK, inProgress = false), store.state.value.actionState)
-        assertEquals(listOf("developer", "quiverUpdateCheck"), capabilities.calls)
+        assertEquals(SharedSettingsActionState(DEVELOPER_ACTION_HANDS_UPDATE_CHECK, inProgress = false), store.state.value.actionState)
+        assertEquals(listOf("developer", "handsUpdateCheck"), capabilities.calls)
         scope.cancel()
     }
 
@@ -2446,7 +2446,7 @@ class SharedSettingsStoreTest {
         assertEquals(true, developer.updateCheck.supported)
         assertEquals("Current", developer.updateCheck.statusLabel)
         assertEquals("Check", developer.updateCheck.actionLabel)
-        assertEquals(listOf("about", "quiverUpdateStatus"), capabilities.calls)
+        assertEquals(listOf("about", "handsUpdateStatus"), capabilities.calls)
         scope.cancel()
     }
 
@@ -2483,7 +2483,7 @@ class SharedSettingsStoreTest {
         assertEquals(false, developer.updateCheck.supported)
         assertEquals("Check failed", developer.updateCheck.statusLabel)
         assertEquals("settings_capability_unknown", developer.updateCheck.errorCode)
-        assertEquals(listOf("about", "quiverUpdateStatus"), capabilities.calls)
+        assertEquals(listOf("about", "handsUpdateStatus"), capabilities.calls)
         scope.cancel()
     }
 
@@ -2596,9 +2596,9 @@ class SharedSettingsStoreTest {
         assertEquals("Artin", about.signedInUserLabel)
         assertEquals("Slock Community", about.selectedServerLabel)
         assertEquals("Signed in", about.sessionStatusLabel)
-        // Opening About also fetches the quiver update status and the developer
+        // Opening About also fetches the hands update status and the developer
         // snapshot (48631ed3: refresh update notices periodically).
-        assertEquals(listOf("about", "quiverUpdateStatus", "developer"), capabilities.calls)
+        assertEquals(listOf("about", "handsUpdateStatus", "developer"), capabilities.calls)
         scope.cancel()
     }
 
@@ -3599,8 +3599,8 @@ class SharedSettingsStoreTest {
             return DataResult.Content(Unit)
         }
 
-        override suspend fun checkQuiverUpdate(): DataResult<SharedSettingsDeveloperSnapshot> {
-            calls += "quiverUpdateCheck"
+        override suspend fun checkHandsUpdate(): DataResult<SharedSettingsDeveloperSnapshot> {
+            calls += "handsUpdateCheck"
             developerSnapshot =
                 developerSnapshot.copy(
                     updateCheck =
@@ -3618,8 +3618,8 @@ class SharedSettingsStoreTest {
             return DataResult.Content(developerSnapshot)
         }
 
-        override suspend fun checkQuiverUpdateStatus(): DataResult<SharedSettingsUpdateCheckSnapshot> {
-            calls += "quiverUpdateStatus"
+        override suspend fun checkHandsUpdateStatus(): DataResult<SharedSettingsUpdateCheckSnapshot> {
+            calls += "handsUpdateStatus"
             return updateStatusResult
         }
 

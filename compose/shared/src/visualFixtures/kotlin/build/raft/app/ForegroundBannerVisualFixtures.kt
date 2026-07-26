@@ -65,7 +65,7 @@ internal fun ForegroundBannerVisualContent() {
                         ),
                     title = "JingKe",
                     context = "#native - thread",
-                    threadContext = "Retry Quiver OHPM publish after package-group auth",
+                    threadContext = "Retry Hands OHPM publish after package-group auth",
                     body = "HAR ref bump is ready; waiting on device validation.",
                     iconKind = SlockForegroundMessageBannerIconKind.Channel,
                     iconName = SlockLucideIconName.MessageSquare,

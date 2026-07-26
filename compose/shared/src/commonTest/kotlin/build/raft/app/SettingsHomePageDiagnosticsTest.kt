@@ -10,7 +10,7 @@ import build.raft.app.data.SharedSettingsDiagnosticsSnapshot
 import build.raft.app.data.SharedSettingsDiagnosticFeatureFlagSnapshot
 import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.DEVELOPER_ACTION_API_ENVIRONMENT
-import build.raft.app.data.DEVELOPER_ACTION_QUIVER_UPDATE_CHECK
+import build.raft.app.data.DEVELOPER_ACTION_HANDS_UPDATE_CHECK
 import build.raft.app.data.DIAGNOSTICS_ACTION_PROFILER_ENABLED
 import build.raft.app.data.SERVER_ACTION_MEMBER_REMOVE
 import build.raft.app.data.SERVER_ACTION_MEMBER_ROLE
@@ -509,7 +509,7 @@ class SettingsHomePageDiagnosticsTest {
         assertEquals("Production", environmentRow.status)
         assertTrue(environmentRow.enabled)
         assertTrue(environmentRow.detail.contains("Choose presets"))
-        assertFalse(apiRows.any { it.key == DEVELOPER_ACTION_QUIVER_UPDATE_CHECK })
+        assertFalse(apiRows.any { it.key == DEVELOPER_ACTION_HANDS_UPDATE_CHECK })
     }
 
     @Test
@@ -605,7 +605,7 @@ class SettingsHomePageDiagnosticsTest {
     fun feedbackFailurePresentationKeepsServerCodeOutOfUserFacingCopy() {
         val attachmentMaxLabel = settingsFeedbackAttachmentMaxLabel(200L * 1024L * 1024L)
         val copy =
-            SettingsQuiverFeedbackCopy(
+            SettingsHandsFeedbackCopy(
                 submissionFailedTitle = "发送失败",
                 submissionFailedBody = "暂时无法发送反馈，请重试。",
                 submissionNetworkBody = "无法连接 Hands，请检查网络后重试。",
@@ -635,7 +635,7 @@ class SettingsHomePageDiagnosticsTest {
     @Test
     fun feedbackRetryRequestMatchesTheRestoredDraftAndAttachments() {
         val attachment = PlatformFile(id = "picked-1", fileName = "screen.png")
-        val request = SettingsQuiverFeedbackRetryRequest("上传图片失败", listOf(attachment))
+        val request = SettingsHandsFeedbackRetryRequest("上传图片失败", listOf(attachment))
 
         assertTrue(request.matches("  上传图片失败  ", listOf(attachment)))
         assertFalse(request.matches("另一条反馈", listOf(attachment)))
@@ -780,12 +780,12 @@ class SettingsHomePageDiagnosticsTest {
             )
 
         val rows = payload.sections.first { it.title == "Actions" }.rows
-        val updateRow = rows.first { it.key == DEVELOPER_ACTION_QUIVER_UPDATE_CHECK }
+        val updateRow = rows.first { it.key == DEVELOPER_ACTION_HANDS_UPDATE_CHECK }
 
         assertEquals("Check for update", updateRow.title)
         assertEquals("已是最新版本", updateRow.status)
         assertTrue(updateRow.enabled)
-        assertFalse(updateRow.detail.contains("Quiver"))
+        assertFalse(updateRow.detail.contains("Hands"))
         assertTrue(updateRow.detail.contains("Raft"))
         assertFalse(updateRow.detail.contains("main"))
         assertFalse(updateRow.detail.contains("渠道"))
@@ -833,7 +833,7 @@ class SettingsHomePageDiagnosticsTest {
                 .first { it.title == "Actions" }
                 .rows
 
-        assertFalse(actionRows.any { it.key == DEVELOPER_ACTION_QUIVER_UPDATE_CHECK })
+        assertFalse(actionRows.any { it.key == DEVELOPER_ACTION_HANDS_UPDATE_CHECK })
         assertTrue(actionRows.any { it.key == "openSlock" })
     }
 
@@ -855,7 +855,7 @@ class SettingsHomePageDiagnosticsTest {
                 .first { it.title == "Actions" }
                 .rows
 
-        assertFalse(actionRows.any { it.key == DEVELOPER_ACTION_QUIVER_UPDATE_CHECK })
+        assertFalse(actionRows.any { it.key == DEVELOPER_ACTION_HANDS_UPDATE_CHECK })
         assertTrue(actionRows.any { it.key == "openSlock" })
     }
 

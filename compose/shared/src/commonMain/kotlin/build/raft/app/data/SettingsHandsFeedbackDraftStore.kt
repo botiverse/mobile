@@ -5,19 +5,19 @@ import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
-internal data class SettingsQuiverFeedbackDraftSnapshot(
+internal data class SettingsHandsFeedbackDraftSnapshot(
     val text: String = "",
     val attachments: List<PlatformFile> = emptyList()
 )
 
 @Serializable
-private data class PersistedSettingsQuiverFeedbackDraft(
+private data class PersistedSettingsHandsFeedbackDraft(
     val text: String = "",
-    val attachments: List<PersistedSettingsQuiverFeedbackAttachment> = emptyList()
+    val attachments: List<PersistedSettingsHandsFeedbackAttachment> = emptyList()
 )
 
 @Serializable
-private data class PersistedSettingsQuiverFeedbackAttachment(
+private data class PersistedSettingsHandsFeedbackAttachment(
     val id: String,
     val fileName: String,
     val mimeType: String? = null,
@@ -27,23 +27,23 @@ private data class PersistedSettingsQuiverFeedbackAttachment(
     val source: String = "platform_picker"
 )
 
-internal class SettingsQuiverFeedbackDraftStore(
+internal class SettingsHandsFeedbackDraftStore(
     private val store: SharedPreferenceStore
 ) {
-    fun read(accountId: String): SettingsQuiverFeedbackDraftSnapshot =
+    fun read(accountId: String): SettingsHandsFeedbackDraftSnapshot =
         store.getString(key(accountId))
             ?.let { encoded ->
                 runCatching {
-                    DraftJson.decodeFromString<PersistedSettingsQuiverFeedbackDraft>(encoded)
+                    DraftJson.decodeFromString<PersistedSettingsHandsFeedbackDraft>(encoded)
                 }.getOrNull()
             }
             ?.let { persisted ->
-                SettingsQuiverFeedbackDraftSnapshot(
+                SettingsHandsFeedbackDraftSnapshot(
                     text = persisted.text,
                     attachments = persisted.attachments.map { attachment -> attachment.toPlatformFile() }
                 )
             }
-            ?: SettingsQuiverFeedbackDraftSnapshot()
+            ?: SettingsHandsFeedbackDraftSnapshot()
 
     fun save(
         accountId: String,
@@ -59,7 +59,7 @@ internal class SettingsQuiverFeedbackDraftStore(
                 .distinctBy { it.id }
                 .take(MaxAttachments)
         val persisted =
-            PersistedSettingsQuiverFeedbackDraft(
+            PersistedSettingsHandsFeedbackDraft(
                 text = text.takeIf { it.isNotBlank() }.orEmpty(),
                 attachments = persistedAttachments
             )
@@ -79,7 +79,7 @@ internal class SettingsQuiverFeedbackDraftStore(
         "$KeyPrefix${accountId.trim().ifBlank { AnonymousAccount }}"
 
     private companion object {
-        const val KeyPrefix = "settingsQuiverFeedbackDraft:v1:"
+        const val KeyPrefix = "settingsHandsFeedbackDraft:v1:"
         const val AnonymousAccount = "anonymous"
         const val MaxAttachments = 9
         val DraftJson = Json {
@@ -89,9 +89,9 @@ internal class SettingsQuiverFeedbackDraftStore(
     }
 }
 
-private fun PlatformFile.toPersistedFeedbackAttachmentOrNull(): PersistedSettingsQuiverFeedbackAttachment? {
+private fun PlatformFile.toPersistedFeedbackAttachmentOrNull(): PersistedSettingsHandsFeedbackAttachment? {
     val durableFileRef = fileRef?.takeIf { it.isNotBlank() } ?: return null
-    return PersistedSettingsQuiverFeedbackAttachment(
+    return PersistedSettingsHandsFeedbackAttachment(
         id = id,
         fileName = fileName,
         mimeType = mimeType,
@@ -102,7 +102,7 @@ private fun PlatformFile.toPersistedFeedbackAttachmentOrNull(): PersistedSetting
     )
 }
 
-private fun PersistedSettingsQuiverFeedbackAttachment.toPlatformFile(): PlatformFile =
+private fun PersistedSettingsHandsFeedbackAttachment.toPlatformFile(): PlatformFile =
     PlatformFile(
         id = id,
         fileName = fileName,

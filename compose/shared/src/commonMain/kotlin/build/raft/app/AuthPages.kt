@@ -916,10 +916,10 @@ private fun AuthAboutScreen(initialDestination: AuthAboutDestination = AuthAbout
                     onCopyBuild = { value -> settingsCapabilities.bridgeCopyToClipboard(value) },
                     webUrl = (developerState as? ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>)?.data?.webUrl.orEmpty(),
                     onOpenSlock = { url -> linkNavigator.open(url) },
-                    onCheckQuiverUpdate = {
+                    onCheckHandsUpdate = {
                         bridgeCallScope.launch {
                             developerState =
-                                when (val result = settingsDataSource.checkQuiverUpdate()) {
+                                when (val result = settingsDataSource.checkHandsUpdate()) {
                                     is DataResult.Content -> ScreenLoadState.Content(result.data)
                                     is DataResult.Empty -> ScreenLoadState.Empty(result.reason)
                                     is DataResult.Error -> ScreenLoadState.Error(result.error)
@@ -999,7 +999,7 @@ private fun AuthAboutScreen(initialDestination: AuthAboutDestination = AuthAbout
                         bridgeCallScope.launch {
                             val about = (aboutState as? ScreenLoadState.Content<SharedSettingsAboutSnapshot>)?.data
                             when (
-                                val result = settingsCapabilities.submitQuiverFeedback(
+                                val result = settingsCapabilities.submitHandsFeedback(
                                     message = buildSignedOutAuthDiagnosticsFeedbackMessage(about),
                                     attachments = emptyList()
                                 )

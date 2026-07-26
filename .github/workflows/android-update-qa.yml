@@ -81,7 +81,7 @@ jobs:
       version_patch: "0"
       version_build: ${{ needs.validate.outputs.baseline_build }}
       version_suffix: update-qa-a
-      quiver_channel: debug
+      hands_channel: debug
       android_variant: release
       release_mode: draft
       publish_hands: "false"
@@ -99,7 +99,7 @@ jobs:
       version_patch: "0"
       version_build: ${{ needs.validate.outputs.target_build }}
       version_suffix: update-qa-b
-      quiver_channel: debug
+      hands_channel: debug
       android_variant: release
       release_mode: draft
       publish_hands: "false"

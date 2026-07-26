@@ -84,10 +84,9 @@ individual bullets do not repeat "iOS".
 
 The Hands CLI package is `@botiverse/hands-cli` and the binary is `hands`.
 CI sets `HANDS_API=https://hands.build` so large IPA uploads go directly to
-Hands instead of through the legacy Quiver reverse proxy. CI continues to use
-the already configured `QUIVER_BEARER_TOKEN` secret while the deployment naming
-finishes migrating. The helper also accepts `HANDS_*` env names for local/future
-compatibility, but this workflow does not require a new Hands-named secret.
+Hands. Runtime consumers use `HANDS_BEARER_TOKEN`; the GitHub repository secret
+keeps its existing external storage key. The helper accepts only `HANDS_*`
+environment names.
 
 Xcode export still uses the workflow `export_method` input, for example
 `app-store-connect`. The publish helper maps that value to the Hands CLI
@@ -227,8 +226,8 @@ Optional:
 - `SLOCK_IOS_CODE_SIGN_IDENTITY`: defaults to `Apple Distribution`.
 - `SLOCK_IOS_EXPORT_OPTIONS_PLIST_BASE64`: base64 encoded ExportOptions.plist.
   If omitted, CI generates one from the workflow input `export_method`.
-- `QUIVER_BEARER_TOKEN`: required only when `publish_hands=true`. This is the
-  current configured Hands bearer token secret for the mobile release lane.
+- `HANDS_BEARER_TOKEN`: runtime variable required only when
+  `publish_hands=true`; CI sources it from the existing repository secret.
 
 The ASC credential is managed only in Hands. GitHub Actions needs the Apple
 signing material listed above and the Hands publishing token, but it does not

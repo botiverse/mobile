@@ -89,12 +89,12 @@ class SlockApplication : Application() {
         }
         HandsCrash.install(
             context = this,
-            baseUrl = BuildConfig.QUIVER_BASE_URL,
-            appSlug = BuildConfig.QUIVER_APP_SLUG,
+            baseUrl = BuildConfig.HANDS_BASE_URL,
+            appSlug = BuildConfig.HANDS_APP_SLUG,
             versionName = BuildConfig.VERSION_NAME,
             versionCode = BuildConfig.VERSION_CODE.toLong(),
-            channel = BuildConfig.QUIVER_CHANNEL,
-            clientKey = BuildConfig.QUIVER_CLIENT_KEY,
+            channel = BuildConfig.HANDS_CHANNEL,
+            clientKey = BuildConfig.HANDS_CLIENT_KEY,
             extraContext = {
                 SlockAndroidLocalDiagnostics.exportRecentDiagnosticsText(this)
             }

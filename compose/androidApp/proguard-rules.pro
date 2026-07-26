@@ -12,7 +12,7 @@
 #   public *;
 #}
 
-# Preserve source and line number information for Quiver crash stack traces.
+# Preserve source and line number information for Hands crash stack traces.
 -keepattributes SourceFile,LineNumberTable
 
 # Keep RMonitor SDK entry points intact when release minification is enabled.

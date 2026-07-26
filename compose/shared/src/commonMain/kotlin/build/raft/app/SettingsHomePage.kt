@@ -68,7 +68,7 @@ import build.raft.app.data.APPEARANCE_ACTION_MESSAGE_FONT_SIZE
 import build.raft.app.data.AppLocale
 import build.raft.app.data.kmmResourceLocaleTag
 import build.raft.app.data.DEVELOPER_ACTION_API_ENVIRONMENT
-import build.raft.app.data.DEVELOPER_ACTION_QUIVER_UPDATE_CHECK
+import build.raft.app.data.DEVELOPER_ACTION_HANDS_UPDATE_CHECK
 import build.raft.app.data.LANGUAGE_REGION_ACTION_AUTO_TRANSLATION
 import build.raft.app.data.LANGUAGE_REGION_ACTION_LANGUAGE
 import build.raft.app.data.LANGUAGE_REGION_ACTION_SERVER_TRANSLATION
@@ -290,9 +290,9 @@ import build.raft.app.data.PlatformFile
 import build.raft.app.data.ForwardMessageTarget
 import build.raft.app.data.AttachmentUploadRequest
 import build.raft.app.data.EmptyReason
-import build.raft.app.data.SettingsQuiverFeedbackSubmission
-import build.raft.app.data.SettingsQuiverFeedbackDraftSnapshot
-import build.raft.app.data.SettingsQuiverFeedbackDraftStore
+import build.raft.app.data.SettingsHandsFeedbackSubmission
+import build.raft.app.data.SettingsHandsFeedbackDraftSnapshot
+import build.raft.app.data.SettingsHandsFeedbackDraftStore
 import build.raft.app.data.formatAttachmentSizeLabel
 import build.raft.app.data.parseSharedThreadPickedPlatformFiles
 import build.raft.app.data.ScreenError
@@ -584,7 +584,7 @@ private const val SettingsDestinationDiagnostics = "diagnostics"
 private const val SettingsDestinationLocalFeatureOverrides = "local-feature-overrides"
 private const val SettingsDestinationLocalFeatureOverridePrefix = "local-feature-override:"
 private const val SettingsDestinationDiagnosticsFeedbackChannel = "diagnostics-feedback-channel"
-private const val SettingsDestinationQuiverFeedback = "quiver-feedback"
+private const val SettingsDestinationHandsFeedback = "hands-feedback"
 private const val SettingsDestinationDeveloper = "developer"
 private const val SettingsDestinationApiEnvironment = "api-environment"
 private const val SettingsDestinationRouter = "router"
@@ -1649,7 +1649,7 @@ private val settingsTabBarSmokePayload = KuiklySettingsHomePayload(
             iconName = SlockLucideIconName.BadgeInfo
         ),
         SlockTabItemPayload(
-            key = SettingsDestinationQuiverFeedback,
+            key = SettingsDestinationHandsFeedback,
             title = "Send feedback",
             subtitle = "Report a problem or suggestion",
             iconName = SlockLucideIconName.MessageSquarePlus
@@ -1710,7 +1710,7 @@ private val settingsVisualItems = listOf(
         iconName = SlockLucideIconName.Monitor
     ),
     SlockTabItemPayload(
-        key = SettingsDestinationQuiverFeedback,
+        key = SettingsDestinationHandsFeedback,
         title = "Send feedback",
         subtitle = "Report a problem or suggestion",
         iconName = SlockLucideIconName.MessageSquarePlus
@@ -2703,7 +2703,7 @@ internal fun SlockAppShellContent(
                 announcementsApi = NetworkSlockAnnouncementsRemindersApi(appShellNetworkClient),
                 computersApi = SlockComputersNetworkApi(appShellNetworkClient),
                 appUpdateStatusProvider = {
-                    when (val result = settingsCapabilities.checkQuiverUpdateStatus()) {
+                    when (val result = settingsCapabilities.checkHandsUpdateStatus()) {
                         is DataResult.Content ->
                             DataResult.Content(result.data.withSkippedAppUpdateVersionApplied())
                         is DataResult.Empty -> result
@@ -5636,7 +5636,7 @@ private fun SettingsAppShellContent(
     session: StoredAuthSession?,
     authDataSource: SharedAuthDataSource,
     settingsCapabilities: BridgeSettingsPlatformCapabilities,
-    quiverFeedbackVisualFixture: SettingsQuiverFeedbackVisualFixture? = null,
+    handsFeedbackVisualFixture: SettingsHandsFeedbackVisualFixture? = null,
     settingsState: SharedSettingsState,
     notificationPreferenceSnapshot: NotificationPreferenceSnapshot,
     onToggleNotificationPreference: () -> Unit,
@@ -5679,7 +5679,7 @@ private fun SettingsAppShellContent(
     val returnFromSettingsDetail: () -> Unit = {
         when (selectedDestination) {
             SettingsDestinationDiagnosticsFeedbackChannel -> onDiagnosticsFeedbackBack()
-            SettingsDestinationQuiverFeedback -> onDestinationChange(SettingsDestinationHome)
+            SettingsDestinationHandsFeedback -> onDestinationChange(SettingsDestinationHome)
             SettingsDestinationApiEnvironment -> onDestinationChange(SettingsDestinationDeveloper)
             SettingsDestinationOpenSourceLicenses -> onDestinationChange(SettingsDestinationAbout)
             SettingsDestinationLocalFeatureOverrides -> onDestinationChange(SettingsDestinationDiagnostics)
@@ -5768,7 +5768,7 @@ private fun SettingsAppShellContent(
                 }
             }
             SharedSettingsEffect.SendFeedback -> {
-                onDestinationChange(SettingsDestinationQuiverFeedback)
+                onDestinationChange(SettingsDestinationHandsFeedback)
             }
             SharedSettingsEffect.RequestNotificationPermission -> {
                 val result = settingsCapabilities.requestNotificationPermission()
@@ -6493,8 +6493,8 @@ private fun SettingsAppShellContent(
                     },
                     webUrl = sharedSettingsResolvedWebBaseUrl(settingsState.developer.configuredWebBaseUrlOrNull()),
                     onOpenSlock = { url -> settingsCapabilities.openUrl(url) },
-                    onCheckQuiverUpdate = {
-                        onSettingsIntent(SharedSettingsIntent.CheckQuiverUpdate)
+                    onCheckHandsUpdate = {
+                        onSettingsIntent(SharedSettingsIntent.CheckHandsUpdate)
                     },
                     onOpenSourceLicenses = { onDestinationChange(SettingsDestinationOpenSourceLicenses) },
                     onCopyEnvironmentInfo = { onSettingsIntent(SharedSettingsIntent.CopyDiagnostics) },
@@ -6584,11 +6584,11 @@ private fun SettingsAppShellContent(
                         onSelectChannel = onDiagnosticsFeedbackChannelSelected
                     )
                 }
-            SettingsDestinationQuiverFeedback ->
-                SharedQuiverFeedbackContent(
+            SettingsDestinationHandsFeedback ->
+                SharedHandsFeedbackContent(
                     settingsCapabilities = settingsCapabilities,
                     accountId = session?.user?.id.orEmpty(),
-                    visualFixture = quiverFeedbackVisualFixture,
+                    visualFixture = handsFeedbackVisualFixture,
                     bottomContentPadding = bottomContentPadding
                 )
             else ->
@@ -10724,7 +10724,7 @@ internal fun SharedSettingsAboutContent(
     onCopyBuild: (String) -> Unit,
     webUrl: String = SharedSettingsDefaultWebBaseUrl,
     onOpenSlock: (String) -> Unit,
-    onCheckQuiverUpdate: () -> Unit,
+    onCheckHandsUpdate: () -> Unit,
     onOpenSourceLicenses: () -> Unit,
     onCopyEnvironmentInfo: () -> Unit,
     onOpenApiEnvironment: () -> Unit,
@@ -10782,7 +10782,7 @@ internal fun SharedSettingsAboutContent(
         when (action) {
             "copyBuild" -> onCopyBuild(value.orEmpty().ifBlank { snapshot.buildSummary() })
             "openSlock" -> onOpenSlock(value.orEmpty().ifBlank { webUrl })
-            DEVELOPER_ACTION_QUIVER_UPDATE_CHECK -> onCheckQuiverUpdate()
+            DEVELOPER_ACTION_HANDS_UPDATE_CHECK -> onCheckHandsUpdate()
             "openSourceLicenses" -> onOpenSourceLicenses()
             "copyEnvironmentInfo" -> onCopyEnvironmentInfo()
             DEVELOPER_ACTION_API_ENVIRONMENT -> onOpenApiEnvironment()
@@ -11134,15 +11134,15 @@ private fun parseDiagnosticFeatureFlagAction(action: String): Pair<String, Strin
 }
 
 @Composable
-private fun SharedQuiverFeedbackContent(
+private fun SharedHandsFeedbackContent(
     settingsCapabilities: BridgeSettingsPlatformCapabilities,
     accountId: String,
-    visualFixture: SettingsQuiverFeedbackVisualFixture? = null,
+    visualFixture: SettingsHandsFeedbackVisualFixture? = null,
     bottomContentPadding: Dp = SlockSpacing.Lg
 ) {
     val attachmentMaxBytes = slockFeedbackAttachmentMaxBytes()
     val attachmentMaxLabel = settingsFeedbackAttachmentMaxLabel(attachmentMaxBytes)
-    val copy = settingsQuiverFeedbackCopy(attachmentMaxLabel)
+    val copy = settingsHandsFeedbackCopy(attachmentMaxLabel)
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     val chatLayoutPreferenceStore =
@@ -11151,7 +11151,7 @@ private fun SharedQuiverFeedbackContent(
         }
     val feedbackDraftStore =
         remember {
-            SettingsQuiverFeedbackDraftStore(slockSharedPreferenceStore())
+            SettingsHandsFeedbackDraftStore(slockSharedPreferenceStore())
         }
     val restoredDraft =
         remember(feedbackDraftStore, accountId, visualFixture) {
@@ -11173,16 +11173,16 @@ private fun SharedQuiverFeedbackContent(
     val latestAttachmentsForPersistence by rememberUpdatedState(attachments)
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-    var pendingRetryRequest by remember { mutableStateOf<SettingsQuiverFeedbackRetryRequest?>(null) }
+    var pendingRetryRequest by remember { mutableStateOf<SettingsHandsFeedbackRetryRequest?>(null) }
     var composerSyncNonce by remember { mutableStateOf(0) }
     var nextEntryId by remember { mutableStateOf(1) }
     var visualAutoSubmitted by remember(accountId, visualFixture) { mutableStateOf(false) }
     var entries by remember {
         mutableStateOf(
             listOf(
-                SettingsQuiverFeedbackEntry(
+                SettingsHandsFeedbackEntry(
                     id = 0,
-                    kind = SettingsQuiverFeedbackEntryKind.Quiver,
+                    kind = SettingsHandsFeedbackEntryKind.Hands,
                     title = copy.title,
                     body = copy.introduction
                 )
@@ -11190,10 +11190,10 @@ private fun SharedQuiverFeedbackContent(
         )
     }
     var previousEntryIds by remember(accountId) {
-        mutableStateOf(entries.map(SettingsQuiverFeedbackEntry::id))
+        mutableStateOf(entries.map(SettingsHandsFeedbackEntry::id))
     }
     var allowBottomAnchor by remember(accountId) { mutableStateOf(true) }
-    val feedbackEntryIds = remember(entries) { entries.map(SettingsQuiverFeedbackEntry::id) }
+    val feedbackEntryIds = remember(entries) { entries.map(SettingsHandsFeedbackEntry::id) }
     // task #92 close-out: server + Hands SDKs support 9 files with presigned
     // large-file upload; the per-file byte cap is platform-dependent (OHOS SDK
     // still caps at 50MB).
@@ -11289,7 +11289,7 @@ private fun SharedQuiverFeedbackContent(
         }
     }
 
-    fun submitFeedback(explicitRetryRequest: SettingsQuiverFeedbackRetryRequest? = null) {
+    fun submitFeedback(explicitRetryRequest: SettingsHandsFeedbackRetryRequest? = null) {
         val currentAttachments = attachments.take(attachmentLimit)
         val retryRequest =
             explicitRetryRequest
@@ -11299,20 +11299,20 @@ private fun SharedQuiverFeedbackContent(
         val submittedMessage = retryRequest?.message ?: normalizedMessage
         val submittedAttachments = retryRequest?.attachments ?: currentAttachments
         settingsCapabilities.log(
-            "settings_quiver_feedback_submit_click busy=$busy " +
+            "settings_hands_feedback_submit_click busy=$busy " +
                 "messageLength=${submittedMessage.length} retry=${retryRequest != null} " +
                 "attachmentCount=${submittedAttachments.size}"
         )
         if (busy) {
-            settingsCapabilities.log("settings_quiver_feedback_submit_ignored reason=busy")
+            settingsCapabilities.log("settings_hands_feedback_submit_ignored reason=busy")
             return
         }
         if (submittedMessage.isBlank()) {
-            settingsCapabilities.log("settings_quiver_feedback_submit_blocked reason=blank_message")
+            settingsCapabilities.log("settings_hands_feedback_submit_blocked reason=blank_message")
             error = copy.messageRequired
             return
         }
-        settingsCapabilities.log("settings_quiver_feedback_submit_enter")
+        settingsCapabilities.log("settings_hands_feedback_submit_enter")
         busy = true
         error = null
         pendingRetryRequest = null
@@ -11323,9 +11323,9 @@ private fun SharedQuiverFeedbackContent(
         if (retryRequest == null) {
             entries =
                 entries +
-                    SettingsQuiverFeedbackEntry(
+                    SettingsHandsFeedbackEntry(
                         id = nextConversationEntryId(),
-                        kind = SettingsQuiverFeedbackEntryKind.User,
+                        kind = SettingsHandsFeedbackEntryKind.User,
                         title = copy.you,
                         body = submittedMessage,
                         detail =
@@ -11334,9 +11334,9 @@ private fun SharedQuiverFeedbackContent(
                                 ?.joinToString { it.fileName.ifBlank { copy.attachment } }
                     )
         }
-        val submittedRequest = SettingsQuiverFeedbackRetryRequest(submittedMessage, submittedAttachments)
+        val submittedRequest = SettingsHandsFeedbackRetryRequest(submittedMessage, submittedAttachments)
 
-        fun appendFailure(failure: SettingsQuiverFeedbackFailurePresentation) {
+        fun appendFailure(failure: SettingsHandsFeedbackFailurePresentation) {
             val nextRetryRequest = submittedRequest.takeIf { failure.retryable }
             pendingRetryRequest = nextRetryRequest
             messageFieldValue = TextFieldValue(submittedMessage, selection = TextRange(submittedMessage.length))
@@ -11346,9 +11346,9 @@ private fun SharedQuiverFeedbackContent(
             error = failure.composerStatus
             entries =
                 entries +
-                    SettingsQuiverFeedbackEntry(
+                    SettingsHandsFeedbackEntry(
                         id = nextConversationEntryId(),
-                        kind = SettingsQuiverFeedbackEntryKind.Error,
+                        kind = SettingsHandsFeedbackEntryKind.Error,
                         title = failure.title,
                         body = failure.body,
                         retryRequest = nextRetryRequest
@@ -11357,15 +11357,15 @@ private fun SharedQuiverFeedbackContent(
 
         scope.launch {
             try {
-                when (val result = settingsCapabilities.submitQuiverFeedback(submittedMessage, submittedAttachments)) {
+                when (val result = settingsCapabilities.submitHandsFeedback(submittedMessage, submittedAttachments)) {
                     is DataResult.Content -> {
                         settingsCapabilities.log(
-                            "settings_quiver_feedback_submit_result status=ok ticket=${result.data.ticketId.take(8)}"
+                            "settings_hands_feedback_submit_result status=ok ticket=${result.data.ticketId.take(8)}"
                         )
                         pendingRetryRequest = null
                         entries =
                             entries +
-                                result.data.toQuiverFeedbackEntry(
+                                result.data.toHandsFeedbackEntry(
                                     id = nextConversationEntryId(),
                                     copy = copy
                                 )
@@ -11375,30 +11375,30 @@ private fun SharedQuiverFeedbackContent(
                         attachments = emptyList()
                     }
                     is DataResult.Empty -> {
-                        settingsCapabilities.log("settings_quiver_feedback_submit_result status=empty")
+                        settingsCapabilities.log("settings_hands_feedback_submit_result status=empty")
                         appendFailure(copy.submissionUnavailableFailure())
                     }
                     is DataResult.Error -> {
                         settingsCapabilities.log(
-                            "settings_quiver_feedback_submit_result status=error code=${result.error.code}"
+                            "settings_hands_feedback_submit_result status=error code=${result.error.code}"
                         )
                         appendFailure(copy.submissionFailure(result.error.code, result.error.retryable))
                     }
                     is DataResult.NoPermission -> {
                         settingsCapabilities.log(
-                            "settings_quiver_feedback_submit_result status=no_permission code=${result.blocker.code}"
+                            "settings_hands_feedback_submit_result status=no_permission code=${result.blocker.code}"
                         )
                         appendFailure(copy.submissionPermissionFailure())
                     }
                 }
             } catch (throwable: Throwable) {
                 settingsCapabilities.log(
-                        "settings_quiver_feedback_submit_exception error=${throwable::class.simpleName} " +
+                        "settings_hands_feedback_submit_exception error=${throwable::class.simpleName} " +
                         "message=${throwable.message.orEmpty()}"
                 )
                 appendFailure(copy.submissionFailure())
             } finally {
-                settingsCapabilities.log("settings_quiver_feedback_submit_finished")
+                settingsCapabilities.log("settings_hands_feedback_submit_finished")
                 busy = false
             }
         }
@@ -11408,7 +11408,7 @@ private fun SharedQuiverFeedbackContent(
         if (visualFixture?.autoSubmit == true && !visualAutoSubmitted) {
             visualAutoSubmitted = true
             settingsCapabilities.log(
-                "settings_quiver_feedback_visual_initial attachmentCount=${attachments.size} " +
+                "settings_hands_feedback_visual_initial attachmentCount=${attachments.size} " +
                     "messageLength=${message.length}"
             )
             // Let the real composer render both attachment rows before the
@@ -11429,7 +11429,7 @@ private fun SharedQuiverFeedbackContent(
         ) {
             entries.forEach { entry ->
                 item(key = entry.id) {
-                    SettingsQuiverFeedbackConversationRow(
+                    SettingsHandsFeedbackConversationRow(
                         entry = entry,
                         copy = copy,
                         onCopy = { shareText ->
@@ -11441,11 +11441,11 @@ private fun SharedQuiverFeedbackContent(
             }
             if (busy) {
                 item {
-                    SettingsQuiverFeedbackConversationRow(
+                    SettingsHandsFeedbackConversationRow(
                         entry =
-                            SettingsQuiverFeedbackEntry(
+                            SettingsHandsFeedbackEntry(
                                 id = -1,
-                                kind = SettingsQuiverFeedbackEntryKind.Quiver,
+                                kind = SettingsHandsFeedbackEntryKind.Hands,
                                 title = copy.title,
                                 body = copy.submitting
                             ),
@@ -11472,7 +11472,7 @@ private fun SharedQuiverFeedbackContent(
                     ),
                 state =
                     ThreadComposerUiState(
-                        instanceId = "settings-quiver-feedback-composer",
+                        instanceId = "settings-hands-feedback-composer",
                         seedText = message,
                         syncNonce = composerSyncNonce,
                         placeholder = copy.placeholder,
@@ -11493,7 +11493,7 @@ private fun SharedQuiverFeedbackContent(
                             error = null
                         }
                         "send" -> {
-                            settingsCapabilities.log("settings_quiver_feedback_composer_send")
+                            settingsCapabilities.log("settings_hands_feedback_composer_send")
                             submitFeedback()
                         }
                         "attachImage" -> pickAttachment(imageOnly = true)
@@ -11572,29 +11572,29 @@ private fun LazyListState.isSettingsFeedbackAtBottom(lastIndex: Int): Boolean {
     }
 }
 
-private enum class SettingsQuiverFeedbackEntryKind {
+private enum class SettingsHandsFeedbackEntryKind {
     User,
-    Quiver,
+    Hands,
     Error
 }
 
-private data class SettingsQuiverFeedbackEntry(
+private data class SettingsHandsFeedbackEntry(
     val id: Int,
-    val kind: SettingsQuiverFeedbackEntryKind,
+    val kind: SettingsHandsFeedbackEntryKind,
     val title: String,
     val body: String,
     val detail: String? = null,
     val ticketId: String? = null,
     val shareText: String? = null,
-    val retryRequest: SettingsQuiverFeedbackRetryRequest? = null
+    val retryRequest: SettingsHandsFeedbackRetryRequest? = null
 )
 
-internal data class SettingsQuiverFeedbackVisualFixture(
-    val draft: SettingsQuiverFeedbackDraftSnapshot,
+internal data class SettingsHandsFeedbackVisualFixture(
+    val draft: SettingsHandsFeedbackDraftSnapshot,
     val autoSubmit: Boolean
 )
 
-internal data class SettingsQuiverFeedbackCopy(
+internal data class SettingsHandsFeedbackCopy(
     val title: String = "Send feedback",
     val introduction: String = "Share a problem or suggestion. Each submission creates a feedback message and copies a shareable reference.",
     val you: String = "You",
@@ -11623,17 +11623,17 @@ internal data class SettingsQuiverFeedbackCopy(
     val retry: String = "Retry"
 )
 
-internal data class SettingsQuiverFeedbackFailurePresentation(
+internal data class SettingsHandsFeedbackFailurePresentation(
     val composerStatus: String,
     val title: String,
     val body: String,
     val retryable: Boolean
 )
 
-internal fun SettingsQuiverFeedbackCopy.submissionFailure(
+internal fun SettingsHandsFeedbackCopy.submissionFailure(
     diagnosticCode: String? = null,
     retryable: Boolean = true
-): SettingsQuiverFeedbackFailurePresentation {
+): SettingsHandsFeedbackFailurePresentation {
     val body =
         when (diagnosticCode) {
             "settings_feedback_network_failed" -> submissionNetworkBody
@@ -11652,7 +11652,7 @@ internal fun SettingsQuiverFeedbackCopy.submissionFailure(
                     "settings_feedback_attachment_too_large",
                     "settings_feedback_auth_failed"
                 )
-    return SettingsQuiverFeedbackFailurePresentation(
+    return SettingsHandsFeedbackFailurePresentation(
         composerStatus = body,
         title = submissionFailedTitle,
         body = body,
@@ -11660,16 +11660,16 @@ internal fun SettingsQuiverFeedbackCopy.submissionFailure(
     )
 }
 
-internal fun SettingsQuiverFeedbackCopy.submissionUnavailableFailure(): SettingsQuiverFeedbackFailurePresentation =
-    SettingsQuiverFeedbackFailurePresentation(
+internal fun SettingsHandsFeedbackCopy.submissionUnavailableFailure(): SettingsHandsFeedbackFailurePresentation =
+    SettingsHandsFeedbackFailurePresentation(
         composerStatus = submissionUnavailable,
         title = submissionFailedTitle,
         body = submissionUnavailable,
         retryable = true
     )
 
-internal fun SettingsQuiverFeedbackCopy.submissionPermissionFailure(): SettingsQuiverFeedbackFailurePresentation =
-    SettingsQuiverFeedbackFailurePresentation(
+internal fun SettingsHandsFeedbackCopy.submissionPermissionFailure(): SettingsHandsFeedbackFailurePresentation =
+    SettingsHandsFeedbackFailurePresentation(
         composerStatus = submissionPermissionBody,
         title = submissionPermissionTitle,
         body = submissionPermissionBody,
@@ -11680,12 +11680,12 @@ internal fun settingsFeedbackAttachmentMaxLabel(maxBytes: Long): String =
     "${maxBytes / (1024L * 1024L)} MB"
 
 @Composable
-private fun settingsQuiverFeedbackCopy(attachmentMaxLabel: String): SettingsQuiverFeedbackCopy {
+private fun settingsHandsFeedbackCopy(attachmentMaxLabel: String): SettingsHandsFeedbackCopy {
     val attachmentLimitReachedTemplate = stringResource(MR.strings.settings_feedback_attachment_limit_reached)
     val attachmentTooLargeTemplate = stringResource(MR.strings.settings_feedback_attachment_too_large)
     val attachmentLimitTrimmedTemplate = stringResource(MR.strings.settings_feedback_attachment_limit_trimmed)
     val submissionSucceededTemplate = stringResource(MR.strings.settings_feedback_submission_succeeded)
-    return SettingsQuiverFeedbackCopy(
+    return SettingsHandsFeedbackCopy(
         title = stringResource(MR.strings.settings_feedback_title),
         introduction = stringResource(MR.strings.settings_feedback_introduction),
         you = stringResource(MR.strings.settings_feedback_you),
@@ -11717,12 +11717,12 @@ private fun settingsQuiverFeedbackCopy(attachmentMaxLabel: String): SettingsQuiv
     )
 }
 
-internal data class SettingsQuiverFeedbackRetryRequest(
+internal data class SettingsHandsFeedbackRetryRequest(
     val message: String,
     val attachments: List<PlatformFile>
 )
 
-internal fun SettingsQuiverFeedbackRetryRequest.matches(
+internal fun SettingsHandsFeedbackRetryRequest.matches(
     message: String,
     attachments: List<PlatformFile>
 ): Boolean =
@@ -11738,13 +11738,13 @@ internal fun String.replaceLocalizedFormatArgs(vararg args: Any): String =
             .replace("%${placeholderIndex}${'$'}d", argument.toString())
     }
 
-private fun SettingsQuiverFeedbackSubmission.toQuiverFeedbackEntry(
+private fun SettingsHandsFeedbackSubmission.toHandsFeedbackEntry(
     id: Int,
-    copy: SettingsQuiverFeedbackCopy
-): SettingsQuiverFeedbackEntry =
-    SettingsQuiverFeedbackEntry(
+    copy: SettingsHandsFeedbackCopy
+): SettingsHandsFeedbackEntry =
+    SettingsHandsFeedbackEntry(
         id = id,
-        kind = SettingsQuiverFeedbackEntryKind.Quiver,
+        kind = SettingsHandsFeedbackEntryKind.Hands,
         title = copy.title,
         body =
             listOf(
@@ -11757,7 +11757,7 @@ private fun SettingsQuiverFeedbackSubmission.toQuiverFeedbackEntry(
     )
 
 private fun List<PlatformFile>.toFeedbackComposerAttachmentItems(
-    copy: SettingsQuiverFeedbackCopy
+    copy: SettingsHandsFeedbackCopy
 ): List<KuiklyPendingAttachmentItem> =
     map { file ->
         KuiklyPendingAttachmentItem(
@@ -11775,13 +11775,13 @@ private fun PlatformFile.feedbackComposerAttachmentId(): String =
     fileRef?.takeIf { it.isNotBlank() } ?: id
 
 @Composable
-private fun SettingsQuiverFeedbackConversationRow(
-    entry: SettingsQuiverFeedbackEntry,
-    copy: SettingsQuiverFeedbackCopy,
+private fun SettingsHandsFeedbackConversationRow(
+    entry: SettingsHandsFeedbackEntry,
+    copy: SettingsHandsFeedbackCopy,
     onCopy: (String) -> Unit,
-    onRetry: (SettingsQuiverFeedbackRetryRequest) -> Unit
+    onRetry: (SettingsHandsFeedbackRetryRequest) -> Unit
 ) {
-    val isUser = entry.kind == SettingsQuiverFeedbackEntryKind.User
+    val isUser = entry.kind == SettingsHandsFeedbackEntryKind.User
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
@@ -11792,10 +11792,10 @@ private fun SettingsQuiverFeedbackConversationRow(
                     .widthIn(max = 560.dp)
                     .background(
                         when (entry.kind) {
-                            SettingsQuiverFeedbackEntryKind.User -> SlockColor.BrandYellow
-                            SettingsQuiverFeedbackEntryKind.Quiver -> SlockColor.SurfaceWhite
+                            SettingsHandsFeedbackEntryKind.User -> SlockColor.BrandYellow
+                            SettingsHandsFeedbackEntryKind.Hands -> SlockColor.SurfaceWhite
                             // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1044
-                            SettingsQuiverFeedbackEntryKind.Error -> SlockColor.AccentRed.copy(alpha = 0.18f)
+                            SettingsHandsFeedbackEntryKind.Error -> SlockColor.AccentRed.copy(alpha = 0.18f)
                         }
                     )
                     .border(SlockStroke.Default, SlockColor.BorderBlack)
@@ -12041,11 +12041,11 @@ private fun appShellSettingsHomePayload(
                     section = aboutSection
                 ),
                 SlockTabItemPayload(
-                    key = SettingsDestinationQuiverFeedback,
+                    key = SettingsDestinationHandsFeedback,
                     title = stringResource(MR.strings.settings_feedback_title),
                     subtitle = stringResource(MR.strings.settings_feedback_subtitle),
                     iconName = SlockLucideIconName.MessageSquarePlus,
-                    selected = selectedDestination == SettingsDestinationQuiverFeedback,
+                    selected = selectedDestination == SettingsDestinationHandsFeedback,
                     section = aboutSection
                 ),
                 SlockTabItemPayload(
@@ -13541,7 +13541,7 @@ internal fun SharedSettingsAboutSnapshot.toAboutPayload(
     val resolvedWebUrl = sharedSettingsResolvedWebBaseUrl(webUrl)
     val raftLabel = "Raft"
     val updateCheckBusy =
-        actionState?.action == DEVELOPER_ACTION_QUIVER_UPDATE_CHECK && actionState.inProgress
+        actionState?.action == DEVELOPER_ACTION_HANDS_UPDATE_CHECK && actionState.inProgress
     return KuiklySharedSettingsPayload(
         instanceId = "shared-shell-settings-about",
         title = copy.title,
@@ -13568,7 +13568,7 @@ internal fun SharedSettingsAboutSnapshot.toAboutPayload(
                             if (updateCheck?.supported == true) {
                                 add(
                                     KuiklySharedSettingsRow(
-                                        key = DEVELOPER_ACTION_QUIVER_UPDATE_CHECK,
+                                        key = DEVELOPER_ACTION_HANDS_UPDATE_CHECK,
                                         iconName = SlockLucideIconName.Download,
                                         title = copy.checkUpdate,
                                         detail = updateCheck.detail.ifBlank { copy.checkUpdateDetail },
@@ -14219,7 +14219,7 @@ private fun settingsDestinationTitle(destination: String): String =
         SettingsDestinationDiagnostics -> stringResource(MR.strings.settings_diagnostics_title)
         SettingsDestinationLocalFeatureOverrides -> "Local Feature Overrides"
         SettingsDestinationDiagnosticsFeedbackChannel -> stringResource(MR.strings.settings_diagnostics_feedback_channel_title)
-        SettingsDestinationQuiverFeedback -> stringResource(MR.strings.settings_feedback_title)
+        SettingsDestinationHandsFeedback -> stringResource(MR.strings.settings_feedback_title)
         else ->
             destination.localFeatureOverrideKeyOrNull()
                 ?.replace(Regex("_v[0-9]+$"), "")
@@ -14252,7 +14252,7 @@ private fun settingsDestinationSubtitle(destination: String): String =
         SettingsDestinationDiagnostics -> stringResource(MR.strings.settings_diagnostics_subtitle)
         SettingsDestinationLocalFeatureOverrides -> "Internal process-local feature controls"
         SettingsDestinationDiagnosticsFeedbackChannel -> stringResource(MR.strings.settings_diagnostics_feedback_channel_subtitle)
-        SettingsDestinationQuiverFeedback -> stringResource(MR.strings.settings_feedback_subtitle)
+        SettingsDestinationHandsFeedback -> stringResource(MR.strings.settings_feedback_subtitle)
         else -> if (destination.localFeatureOverrideKeyOrNull() != null) "Registered local override" else ""
     }
 
@@ -14277,7 +14277,7 @@ private fun settingsDestinationIcon(destination: String): SlockLucideIconName =
         SettingsDestinationDiagnostics -> SlockLucideIconName.Clipboard
         SettingsDestinationLocalFeatureOverrides -> SlockLucideIconName.SlidersHorizontal
         SettingsDestinationDiagnosticsFeedbackChannel -> SlockLucideIconName.Hash
-        SettingsDestinationQuiverFeedback -> SlockLucideIconName.MessageSquarePlus
+        SettingsDestinationHandsFeedback -> SlockLucideIconName.MessageSquarePlus
         else ->
             if (destination.localFeatureOverrideKeyOrNull() != null) {
                 SlockLucideIconName.SlidersHorizontal
@@ -22220,18 +22220,18 @@ private fun SettingsRouteVisualScreen() {
         remember(route.destination, route.itemId, route.fixtureKey) {
             settingsRouteVisualState(route)
         }
-    val quiverFeedbackVisualFixture =
+    val handsFeedbackVisualFixture =
         remember(route.fixtureKey) {
-            settingsQuiverFeedbackVisualFixture(route.fixtureKey)
+            settingsHandsFeedbackVisualFixture(route.fixtureKey)
         }
     val copiedMessage = stringResource(MR.strings.common_copied)
     val settingsCapabilities =
-        remember(bridge, quiverFeedbackVisualFixture, copiedMessage) {
+        remember(bridge, handsFeedbackVisualFixture, copiedMessage) {
             BridgeSettingsPlatformCapabilities(
                 bridge = bridge,
                 copiedMessage = copiedMessage,
-                feedbackVisualSubmission = quiverFeedbackVisualFixture?.let {
-                    SettingsQuiverFeedbackSubmission(
+                feedbackVisualSubmission = handsFeedbackVisualFixture?.let {
+                    SettingsHandsFeedbackSubmission(
                         ticketId = "visual-feedback-ticket-139",
                         shareText = "Hands feedback visual-139"
                     )
@@ -22262,7 +22262,7 @@ private fun SettingsRouteVisualScreen() {
         session = session,
         authDataSource = authDataSource,
         settingsCapabilities = settingsCapabilities,
-        quiverFeedbackVisualFixture = quiverFeedbackVisualFixture,
+        handsFeedbackVisualFixture = handsFeedbackVisualFixture,
         settingsState = state,
         notificationPreferenceSnapshot = NotificationPreferenceSnapshot(enabled = true),
         onToggleNotificationPreference = {},
@@ -22298,11 +22298,11 @@ private fun SettingsRouteVisualScreen() {
     )
 }
 
-private fun settingsQuiverFeedbackVisualFixture(fixtureKey: String): SettingsQuiverFeedbackVisualFixture? {
+private fun settingsHandsFeedbackVisualFixture(fixtureKey: String): SettingsHandsFeedbackVisualFixture? {
     if (fixtureKey != "feedback-two-attachments" && fixtureKey != "feedback-submit-success") return null
-    return SettingsQuiverFeedbackVisualFixture(
+    return SettingsHandsFeedbackVisualFixture(
         draft =
-            SettingsQuiverFeedbackDraftSnapshot(
+            SettingsHandsFeedbackDraftSnapshot(
                 text = "The attachment row should be replaced by a square-corner User feedback row.",
                 attachments =
                     listOf(
@@ -22434,7 +22434,7 @@ private fun parseSettingsRouteVisualPayload(params: com.tencent.kuikly.core.nvi.
     val destination =
         params.optString(SettingsRouteVisualDestinationKey)
             .trim()
-            .takeIf { it.toSharedSettingsDestination() != null || it == SettingsDestinationQuiverFeedback }
+            .takeIf { it.toSharedSettingsDestination() != null || it == SettingsDestinationHandsFeedback }
             ?: SettingsDestinationAdministration
     val itemId =
         params.optString(SettingsRouteVisualItemIdKey)

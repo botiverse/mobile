@@ -575,15 +575,15 @@ android {
         buildConfigField("String", "GOOGLE_SERVER_CLIENT_ID", "\"$googleServerClientId\"")
         buildConfigField("String", "BUILD_TIME", "\"${slockBuildTime()}\"")
         buildConfigField("String", "GIT_COMMIT", "\"${slockGitCommit()}\"")
-        buildConfigField("String", "QUIVER_BASE_URL", "\"${slockBuildConfigString("SLOCK_HANDS_BASE_URL", slockBuildConfigString("SLOCK_QUIVER_BASE_URL", "https://hands.build"))}\"")
-        buildConfigField("String", "QUIVER_APP_SLUG", "\"${slockBuildConfigString("SLOCK_QUIVER_APP_SLUG", "raft-android")}\"")
-        buildConfigField("String", "QUIVER_CHANNEL", "\"${slockBuildConfigString("SLOCK_QUIVER_CHANNEL", "main")}\"")
-        buildConfigField("String", "QUIVER_CLIENT_KEY", "\"${slockBuildConfigString("SLOCK_QUIVER_CLIENT_KEY", "qk_40c9c9ab0b91665c85ca6278f3b0268c08d5afa3")}\"")
+        buildConfigField("String", "HANDS_BASE_URL", "\"${slockBuildConfigString("SLOCK_HANDS_BASE_URL", "https://hands.build")}\"")
+        buildConfigField("String", "HANDS_APP_SLUG", "\"${slockBuildConfigString("SLOCK_HANDS_APP_SLUG", "raft-android")}\"")
+        buildConfigField("String", "HANDS_CHANNEL", "\"${slockBuildConfigString("SLOCK_HANDS_CHANNEL", "main")}\"")
+        buildConfigField("String", "HANDS_CLIENT_KEY", "\"${slockBuildConfigString("SLOCK_HANDS_CLIENT_KEY", "qk_40c9c9ab0b91665c85ca6278f3b0268c08d5afa3")}\"")
     }
 
     buildTypes {
         getByName("debug") {
-            buildConfigField("String", "QUIVER_CHANNEL", "\"${slockBuildConfigString("SLOCK_QUIVER_CHANNEL", "debug")}\"")
+            buildConfigField("String", "HANDS_CHANNEL", "\"${slockBuildConfigString("SLOCK_HANDS_CHANNEL", "debug")}\"")
             buildConfigField("Boolean", "READ_STATE_DIAGNOSTIC_OVERRIDE_ENABLED", "true")
         }
         create("alpha") {
@@ -594,7 +594,7 @@ android {
             buildConfigField("Boolean", "READ_STATE_DIAGNOSTIC_OVERRIDE_ENABLED", "true")
             buildConfigField("Boolean", "QA_SESSION_BOOTSTRAP_ENABLED", "true")
             buildConfigField("Boolean", "SCREENSHOT_FEEDBACK_ENABLED", "true")
-            buildConfigField("String", "QUIVER_CHANNEL", "\"debug\"")
+            buildConfigField("String", "HANDS_CHANNEL", "\"debug\"")
             buildConfigField("Boolean", "HANDS_DELTA_UPDATE_ENABLED", "true")
             buildConfigField("String", "HANDS_DELTA_APP_SLUG", "\"$handsAlphaDeltaAppSlug\"")
             buildConfigField("String", "HANDS_DELTA_CHANNEL", "\"$handsAlphaDeltaChannelSlug\"")
@@ -606,7 +606,7 @@ android {
             buildConfigField("Boolean", "SHOW_TEST_BUILD_BADGE", "true")
             buildConfigField("Boolean", "READ_STATE_DIAGNOSTIC_OVERRIDE_ENABLED", "true")
             buildConfigField("Boolean", "QA_SESSION_BOOTSTRAP_ENABLED", "true")
-            buildConfigField("String", "QUIVER_CHANNEL", "\"${slockBuildConfigString("SLOCK_QUIVER_CHANNEL", "debug")}\"")
+            buildConfigField("String", "HANDS_CHANNEL", "\"${slockBuildConfigString("SLOCK_HANDS_CHANNEL", "debug")}\"")
             matchingFallbacks += listOf("debug")
         }
         release {
@@ -615,6 +615,13 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+        }
+        create("beta") {
+            initWith(getByName("release"))
+            applicationIdSuffix = ".beta"
+            buildConfigField("Boolean", "SHOW_TEST_BUILD_BADGE", "true")
+            buildConfigField("String", "HANDS_CHANNEL", "\"debug\"")
+            matchingFallbacks += listOf("release")
         }
     }
     compileOptions {

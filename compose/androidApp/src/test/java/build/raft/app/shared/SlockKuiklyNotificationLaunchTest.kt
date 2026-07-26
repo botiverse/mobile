@@ -10,16 +10,16 @@ import org.junit.Test
 class SlockKuiklyNotificationLaunchTest {
 
     @Test
-    fun quiverUpdateDownloadKeyUsesReleaseIdentityOnly() {
+    fun handsUpdateDownloadKeyUsesReleaseIdentityOnly() {
         val firstKey =
-            quiverUpdateDownloadKey(
+            handsUpdateDownloadKey(
                 slug = "raft-android",
                 channel = "preview",
                 versionCode = 1_000_100L,
                 arch = "arm64-v8a"
             )
         val secondKey =
-            quiverUpdateDownloadKey(
+            handsUpdateDownloadKey(
                 slug = "raft-android",
                 channel = "preview",
                 versionCode = 1_000_100L,

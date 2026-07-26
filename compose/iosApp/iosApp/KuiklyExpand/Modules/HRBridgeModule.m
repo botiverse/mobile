@@ -1803,7 +1803,7 @@ static void SlockIosRegisterHandsDiagnosticsProvider(void) {
     Class crashReporter = NSClassFromString(@"HandsCrashReporter");
     SEL selector = NSSelectorFromString(@"setDiagnosticsProvider:");
     if (!crashReporter || ![crashReporter respondsToSelector:selector]) {
-        SlockDiagnosticsRecord(@"warn", @"SlockDiagnostics", @"quiver_diagnostics_provider_unavailable");
+        SlockDiagnosticsRecord(@"warn", @"SlockDiagnostics", @"hands_diagnostics_provider_unavailable");
         return;
     }
     NSArray<NSString *> *_Nullable (^provider)(int64_t) = ^NSArray<NSString *> *_Nullable(int64_t crashAtMillis) {
@@ -1813,7 +1813,7 @@ static void SlockIosRegisterHandsDiagnosticsProvider(void) {
 #pragma clang diagnostic ignored "-Warc-performSelector-leaks"
     [crashReporter performSelector:selector withObject:[provider copy]];
 #pragma clang diagnostic pop
-    SlockDiagnosticsRecord(@"info", @"SlockDiagnostics", @"quiver_diagnostics_provider_registered crashAtMillis=true");
+    SlockDiagnosticsRecord(@"info", @"SlockDiagnostics", @"hands_diagnostics_provider_registered crashAtMillis=true");
 }
 
 void SlockIosInstallHandsReporting(void) {
@@ -3251,7 +3251,7 @@ static NSString *SlockPickedAttachmentDisplayName(NSString *suggestedName,
     }
     if ([action isEqualToString:@"sendFeedback"]) {
         [self slock_promptAndSubmitHandsFeedback];
-        SlockDiagnosticsRecord(@"info", @"SlockDiagnostics", @"quiver_feedback_prompt_opened");
+        SlockDiagnosticsRecord(@"info", @"SlockDiagnostics", @"hands_feedback_prompt_opened");
         return @{ @"status" : @"ok" };
     }
     if ([action isEqualToString:@"submitFeedback"]) {
@@ -3262,7 +3262,7 @@ static NSString *SlockPickedAttachmentDisplayName(NSString *suggestedName,
                                                  message:@"Feedback message is required"];
         }
         [self slock_submitHandsFeedbackWithDescription:description];
-        SlockDiagnosticsRecord(@"info", @"SlockDiagnostics", @"quiver_feedback_submit_started");
+        SlockDiagnosticsRecord(@"info", @"SlockDiagnostics", @"hands_feedback_submit_started");
         return @{ @"status" : @"ok", @"ticketId" : @"", @"shareText" : @"" };
     }
     if ([action isEqualToString:@"clearStorage"]) {
@@ -3346,7 +3346,7 @@ static NSString *SlockPickedAttachmentDisplayName(NSString *suggestedName,
                 UIViewController *controller = [self slock_currentViewController];
                 if (error || ticketId.length == 0) {
                     SlockDiagnosticsRecord(@"warn", @"SlockDiagnostics",
-                        [NSString stringWithFormat:@"quiver_feedback_submit_failed error=%@", error.localizedDescription ?: @"unknown"]);
+                        [NSString stringWithFormat:@"hands_feedback_submit_failed error=%@", error.localizedDescription ?: @"unknown"]);
                     UIAlertController *failed =
                         [UIAlertController alertControllerWithTitle:SharedSlockHostStrings.shared.feedbackFailedTitle
                                                             message:error.localizedDescription ?: SharedSlockHostStrings.shared.feedbackErrorUnknown
@@ -3371,7 +3371,7 @@ static NSString *SlockPickedAttachmentDisplayName(NSString *suggestedName,
                     description];
                 UIPasteboard.generalPasteboard.string = shareText;
                 SlockDiagnosticsRecord(@"info", @"SlockDiagnostics",
-                    [NSString stringWithFormat:@"quiver_feedback_submitted ticket=%@", shortId]);
+                    [NSString stringWithFormat:@"hands_feedback_submitted ticket=%@", shortId]);
                 UIAlertController *done =
                     [UIAlertController alertControllerWithTitle:SharedSlockHostStrings.shared.feedbackSentTitle
                                                         message:SharedSlockHostStrings.shared.feedbackCopiedMessage

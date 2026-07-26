@@ -79,7 +79,7 @@ internal fun resolveOpenRequest(
     // may only take identity from its OWN reply-thread row. Even with the lookup fallback
     // tail deleted, a thread request's channelId can name the PARENT channel on some wire
     // shapes — a non-reply-thread hit must not become the thread's identity (the #415
-    // parent-claims-child misroute; Quiver feedback 20d596f9: Activity reply row opened the
+    // parent-claims-child misroute; Hands feedback 20d596f9: Activity reply row opened the
     // outer channel stream). Rejecting the hit routes the source to the trusted typed
     // rebuild below (Activity rows carry parentChannelKind), or an honest Pending — never
     // a guessed parent surface, regardless of source.

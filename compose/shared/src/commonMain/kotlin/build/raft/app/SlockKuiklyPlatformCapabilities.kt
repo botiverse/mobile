@@ -31,11 +31,11 @@ internal expect fun slockPlatformSupportsPushPreviewPrivacySetting(): Boolean
 // add-only, and OHOS PhotoAccessHelper. Shared exposes one typed sent-image action/result contract.
 internal expect fun slockPlatformSupportsSaveImageToPhotos(): Boolean
 
-// task #90: each platform is a separate Quiver app with its own release
+// task #90: each platform is a separate Hands app with its own release
 // stream, so the release-notes slug must be injected per platform (like the
 // build version), not hardcoded in commonMain. These MUST stay in sync with
-// the canonical Quiver update-check slug each app module already ships:
-//   Android → BuildConfig.QUIVER_APP_SLUG (compose/androidApp/build.gradle.kts)
+// the canonical Hands update-check slug each app module already ships:
+//   Android → BuildConfig.HANDS_APP_SLUG (compose/androidApp/build.gradle.kts)
 //   OHOS    → appSlug in compose/ohosApp/.../EntryAbility.ets
 //   iOS     → appSlug in compose/iosApp/.../iOSApp.swift
 // (That value lives in the app modules for the native update-check and is not

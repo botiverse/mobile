@@ -7,7 +7,6 @@ on:
       - ".github/workflows/android-update-qa.yml"
       - ".github/workflows/android-release-contract.yml"
       - "scripts/*android*hands*"
-      - "scripts/*android*quiver*"
       - "docs/android-hands-release-*"
       - "docs/android-release-sop.md"
       - "docs/qa-acceptance/android-app-update/**"
@@ -19,7 +18,6 @@ on:
       - ".github/workflows/android-update-qa.yml"
       - ".github/workflows/android-release-contract.yml"
       - "scripts/*android*hands*"
-      - "scripts/*android*quiver*"
       - "docs/android-hands-release-*"
       - "docs/android-release-sop.md"
       - "docs/qa-acceptance/android-app-update/**"
@@ -37,5 +35,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Validate workflow and compatibility contract
+      - name: Validate workflow contract
         run: scripts/test_android_hands_release_contract.sh
+
+      - name: Validate Hands identifier migration
+        run: scripts/test_hands_identifier_migration.sh

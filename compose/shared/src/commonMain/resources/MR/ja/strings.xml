@@ -152,7 +152,7 @@
     <string name="settings_feedback_placeholder">フィードバックを共有</string>
     <string name="settings_feedback_copy_result">結果をコピー</string>
     <string name="settings_members_title">メンバー</string>
-    <string name="settings_quiver_title">Hands</string>
+    <string name="settings_hands_title">Hands</string>
     <string name="settings_onboarding_title">オンボーディング</string>
     <string name="settings_language_region_title">言語と地域</string>
     <string name="settings_language_region_subtitle">言語、タイムゾーン、翻訳</string>

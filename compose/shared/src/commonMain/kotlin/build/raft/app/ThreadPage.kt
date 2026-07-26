@@ -3909,7 +3909,7 @@ internal fun ThreadActivityMuteVisualScreen() {
 
 @Composable
 internal fun ThreadReactionAtlasVisualScreen() {
-    // task #376 (Quiver 389d855b): this standalone visual screen renders reaction
+    // task #376 (Hands 389d855b): this standalone visual screen renders reaction
     // glyphs outside ThreadMessagesList, so it provides its own hoisted atlas
     // image for LocalThreadReactionAtlasImage (glyphs no longer self-load).
     ThreadReactionAtlasProvider {
@@ -11200,7 +11200,7 @@ private fun threadActionCardCatalogMessages(): List<KuiklyThreadMessageItem> =
 
 private fun approveLoginActionCardVisualMessages(executed: Boolean): List<KuiklyThreadMessageItem> {
     val duplicateDraftHint =
-        "LiBai is requesting human approval to use Quiver. Server-installed apps do not need this approval; Marketplace apps do."
+        "LiBai is requesting human approval to use Hands. Server-installed apps do not need this approval; Marketplace apps do."
     val prepared =
         ThreadActionCard(
             type = "integration:approve_agent_login",
@@ -11209,9 +11209,9 @@ private fun approveLoginActionCardVisualMessages(executed: Boolean): List<Kuikly
             requestId = "login-request-visual",
             agentId = "agent-libai",
             agentName = "LiBai",
-            clientId = "client-quiver",
-            clientKey = "quiver",
-            clientName = "Quiver",
+            clientId = "client-hands",
+            clientKey = "hands",
+            clientName = "Hands",
             scopes = listOf("identity", "openid", "profile"),
             draftHint = duplicateDraftHint
         )
@@ -11221,7 +11221,7 @@ private fun approveLoginActionCardVisualMessages(executed: Boolean): List<Kuikly
                 state = "executed",
                 executedByUserName = "artin",
                 resultKind = "agent-integration-login",
-                resultName = "Quiver"
+                resultName = "Hands"
             )
         } else {
             prepared
@@ -11229,7 +11229,7 @@ private fun approveLoginActionCardVisualMessages(executed: Boolean): List<Kuikly
     return listOf(
         threadActionCardVisualMessage(
             id = if (executed) "msg-action-card-approve-login-executed" else "msg-action-card-approve-login-prepared",
-            body = if (executed) "Quiver login approved for @LiBai" else "Approve Quiver for @LiBai",
+            body = if (executed) "Hands login approved for @LiBai" else "Approve Hands for @LiBai",
             card = card
         )
     )
@@ -20885,7 +20885,7 @@ private fun ThreadMessageReactionRow(
 private fun threadDisplayReactionEmoji(emoji: String): String =
     emoji
 
-// task #376 (Quiver 389d855b): the decoded reaction sprite atlas is hoisted to
+// task #376 (Hands 389d855b): the decoded reaction sprite atlas is hoisted to
 // a stable ThreadPage mount point and provided here so glyphs consume the ready
 // ImageBitmap instead of each starting their own async `imageResource` load. A
 // null value means "not decoded yet" (temporary) and updates to the ready bitmap
@@ -20958,7 +20958,7 @@ private fun ThreadReactionSpriteGlyph(
     modifier: Modifier = Modifier,
     reactionAtlasImage: ImageBitmap? = null
 ) {
-    // task #376 (Quiver 389d855b): consume the atlas image hoisted to the
+    // task #376 (Hands 389d855b): consume the atlas image hoisted to the
     // ThreadPage root via LocalThreadReactionAtlasImage instead of starting a
     // fresh async `imageResource` load here. In a short-lived composition
     // subtree (the long-press action-menu overlay) a per-glyph `imageResource`

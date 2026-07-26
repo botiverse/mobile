@@ -450,15 +450,11 @@ jobs:
     environment:
       name: production
     env:
-      QUIVER_APP_SLUG: raft-ios
       HANDS_APP_SLUG: raft-ios
       HANDS_BEARER_TOKEN: ${{ secrets.QUIVER_IOS_BEARER_TOKEN }}
       HANDS_AUTH_TOKEN: ${{ secrets.QUIVER_IOS_BEARER_TOKEN }}
       HANDS_CHANNEL: ${{ needs.resolve.outputs.hands_channel }}
       HANDS_API: https://hands.build
-      QUIVER_BEARER_TOKEN: ${{ secrets.QUIVER_IOS_BEARER_TOKEN }}
-      QUIVER_AUTH_TOKEN: ${{ secrets.QUIVER_IOS_BEARER_TOKEN }}
-      QUIVER_CHANNEL: ${{ needs.resolve.outputs.hands_channel }}
       RAFT_IOS_VERSION_NAME: ${{ needs.resolve.outputs.version_name }}
       RAFT_IOS_VERSION_CODE: ${{ needs.resolve.outputs.version_code }}
       SLOCK_IOS_EXPORT_METHOD: ${{ needs.resolve.outputs.export_method }}
@@ -492,8 +488,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          HANDS_API_BASE="${HANDS_API:-${QUIVER_API:-https://hands.build}}"
-          HANDS_TOKEN="${HANDS_BEARER_TOKEN:-${QUIVER_BEARER_TOKEN}}"
+          HANDS_API_BASE="${HANDS_API:-https://hands.build}"
+          HANDS_TOKEN="${HANDS_BEARER_TOKEN}"
           APP_ID="$(curl -fsS -H "Authorization: Bearer ${HANDS_TOKEN}" \
             "${HANDS_API_BASE}/api/apps" \
             | python3 -c "import json,sys; d=json.load(sys.stdin); print(next((a['id'] for a in d.get('apps',[]) if a.get('slug')=='raft-ios'), ''))" \

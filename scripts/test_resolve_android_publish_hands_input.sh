@@ -12,13 +12,12 @@ fail() {
 assert_value() {
   local expected="$1"
   local canonical="$2"
-  local legacy="$3"
-  local default_value="$4"
+  local default_value="$3"
   local actual
 
-  actual="$("${RESOLVER}" "${canonical}" "${legacy}" "${default_value}" 2>/dev/null)"
+  actual="$("${RESOLVER}" "${canonical}" "${default_value}" 2>/dev/null)"
   [ "${actual}" = "${expected}" ] ||
-    fail "expected ${expected}, got ${actual} for canonical='${canonical}' legacy='${legacy}' default='${default_value}'"
+    fail "expected ${expected}, got ${actual} for canonical='${canonical}' default='${default_value}'"
 }
 
 assert_failure() {
@@ -27,21 +26,15 @@ assert_failure() {
   fi
 }
 
-assert_value false "" "" false
-assert_value true "" "" true
-assert_value true true "" false
-assert_value false false "" true
-assert_value true "" true false
-assert_value false "" false true
-assert_value true true true false
-assert_value false false false true
-assert_value true " TRUE " "" false
-assert_value false "" 0 true
+assert_value false "" false
+assert_value true "" true
+assert_value true true false
+assert_value false false true
+assert_value true " TRUE " false
+assert_value false 0 true
 
-assert_failure true false false
-assert_failure false true false
-assert_failure maybe "" false
-assert_failure "" invalid false
-assert_failure "" "" ""
+assert_failure maybe false
+assert_failure "" invalid
+assert_failure "" ""
 
 echo "publish_hands input resolver contract: PASS"
