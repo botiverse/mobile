@@ -11,19 +11,59 @@ internal object QaSessionBootstrapInbox {
     private const val MaxRequestBytes = 16 * 1024L
     private const val PermissionAndSpecialModeBits = 0xFFF // POSIX 07777
 
-    fun consume(context: Context, requestId: String, suffix: String): ByteArray? {
-        if (!requestIdPattern.matches(requestId)) return null
-        if (suffix != "ticket" && suffix != "session" && suffix != "capture") return null
-        val directory = File(context.filesDir, "qa-bootstrap/inbox")
-        val file = File(directory, "$requestId.$suffix")
-        val canonicalDirectory = runCatching { directory.canonicalFile }.getOrNull() ?: return null
-        if (file.parentFile?.canonicalFile != canonicalDirectory) return null
-        return consumeFile(file)
+    internal sealed interface ConsumeResult {
+        data class Consumed(val bytes: ByteArray) : ConsumeResult
+
+        data class Rejected(val code: RejectionCode) : ConsumeResult
     }
 
-    internal fun consumeFile(file: File, beforeOpenForTests: (() -> Unit)? = null): ByteArray? {
-        val initial = runCatching { Os.lstat(file.absolutePath) }.getOrNull() ?: return null
-        if (!validRequestStat(initial.st_mode, initial.st_size)) return null
+    internal enum class RejectionCode(val wire: String) {
+        RequestId("request_id"),
+        Suffix("suffix"),
+        Directory("directory"),
+        Parent("parent"),
+        Missing("missing"),
+        NotRegular("not_regular"),
+        Size("size"),
+        Mode("mode"),
+        Changed("changed"),
+        Remove("remove"),
+        Read("read"),
+        Open("open"),
+    }
+
+    fun consume(context: Context, requestId: String, suffix: String): ByteArray? =
+        (consumeDetailed(context, requestId, suffix) as? ConsumeResult.Consumed)?.bytes
+
+    internal fun consumeDetailed(context: Context, requestId: String, suffix: String): ConsumeResult {
+        if (!requestIdPattern.matches(requestId)) return ConsumeResult.Rejected(RejectionCode.RequestId)
+        if (suffix != "ticket" && suffix != "session" && suffix != "capture") {
+            return ConsumeResult.Rejected(RejectionCode.Suffix)
+        }
+        val directory = File(context.filesDir, "qa-bootstrap/inbox")
+        val file = File(directory, "$requestId.$suffix")
+        val canonicalDirectory =
+            runCatching { directory.canonicalFile }.getOrNull()
+                ?: return ConsumeResult.Rejected(RejectionCode.Directory)
+        if (file.parentFile?.canonicalFile != canonicalDirectory) {
+            return ConsumeResult.Rejected(RejectionCode.Parent)
+        }
+        return consumeFileDetailed(file)
+    }
+
+    internal fun consumeFile(file: File, beforeOpenForTests: (() -> Unit)? = null): ByteArray? =
+        (consumeFileDetailed(file, beforeOpenForTests) as? ConsumeResult.Consumed)?.bytes
+
+    internal fun consumeFileDetailed(
+        file: File,
+        beforeOpenForTests: (() -> Unit)? = null
+    ): ConsumeResult {
+        val initial =
+            runCatching { Os.lstat(file.absolutePath) }.getOrNull()
+                ?: return ConsumeResult.Rejected(RejectionCode.Missing)
+        rejectionForStat(initial.st_mode, initial.st_size)?.let {
+            return ConsumeResult.Rejected(it)
+        }
         beforeOpenForTests?.invoke()
         var descriptor: FileDescriptor? = null
         return try {
@@ -33,25 +73,35 @@ internal object QaSessionBootstrapInbox {
                 0
             )
             val opened = Os.fstat(descriptor)
-            if (
-                !validRequestStat(opened.st_mode, opened.st_size) ||
-                opened.st_dev != initial.st_dev ||
-                opened.st_ino != initial.st_ino
-            ) return null
-            Os.remove(file.absolutePath)
-            readExact(descriptor, opened.st_size.toInt())
+            rejectionForStat(opened.st_mode, opened.st_size)?.let {
+                return ConsumeResult.Rejected(it)
+            }
+            if (opened.st_dev != initial.st_dev || opened.st_ino != initial.st_ino) {
+                return ConsumeResult.Rejected(RejectionCode.Changed)
+            }
+            try {
+                Os.remove(file.absolutePath)
+            } catch (_: Throwable) {
+                return ConsumeResult.Rejected(RejectionCode.Remove)
+            }
+            val bytes = readExact(descriptor, opened.st_size.toInt())
+                ?: return ConsumeResult.Rejected(RejectionCode.Read)
+            ConsumeResult.Consumed(bytes)
         } catch (_: Throwable) {
-            null
+            ConsumeResult.Rejected(RejectionCode.Open)
         } finally {
             descriptor?.let { runCatching { Os.close(it) } }
         }
     }
 
-    private fun validRequestStat(mode: Int, size: Long): Boolean =
-        OsConstants.S_ISREG(mode) &&
-            size in 1..MaxRequestBytes &&
-            mode and PermissionAndSpecialModeBits ==
-                (OsConstants.S_IRUSR or OsConstants.S_IWUSR)
+    private fun rejectionForStat(mode: Int, size: Long): RejectionCode? =
+        when {
+            !OsConstants.S_ISREG(mode) -> RejectionCode.NotRegular
+            size !in 1..MaxRequestBytes -> RejectionCode.Size
+            mode and PermissionAndSpecialModeBits !=
+                (OsConstants.S_IRUSR or OsConstants.S_IWUSR) -> RejectionCode.Mode
+            else -> null
+        }
 
     private fun readExact(descriptor: FileDescriptor, size: Int): ByteArray? {
         val bytes = ByteArray(size)

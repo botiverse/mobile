@@ -74,6 +74,7 @@ test("private envelope uses ADB exec-in, observes stdin EOF, and never stages on
   const readyFile = path.join(root, "ready.json");
   const capturedBytes = path.join(root, "captured-envelope.json");
   const capturedArgs = path.join(root, "captured-args.txt");
+  const capturedVerifyArgs = path.join(root, "captured-verify-args.txt");
   const response = loginResponse();
   fs.writeFileSync(responseFile, JSON.stringify(response));
   fs.writeFileSync(bindingFile, JSON.stringify({ signing_cert_sha256: digestA, boot_generation: digestB }));
@@ -91,6 +92,10 @@ test("private envelope uses ADB exec-in, observes stdin EOF, and never stages on
     "if [ \"${1:-}\" = exec-in ]; then",
     "  printf '%s\\n' \"$*\" > \"$CAPTURED_ARGS\"",
     "  cat > \"$CAPTURED_BYTES\"",
+    "  exit 0",
+    "fi",
+    "if [ \"${1:-}\" = exec-out ]; then",
+    "  printf '%s\\n' \"$*\" > \"$CAPTURED_VERIFY_ARGS\"",
     "  exit 0",
     "fi",
     "case \"$*\" in",
@@ -112,6 +117,7 @@ test("private envelope uses ADB exec-in, observes stdin EOF, and never stages on
       PATH: `${bin}:${process.env.PATH ?? ""}`,
       CAPTURED_ARGS: capturedArgs,
       CAPTURED_BYTES: capturedBytes,
+      CAPTURED_VERIFY_ARGS: capturedVerifyArgs,
       READY_LINE: readyLine,
     },
   });
@@ -122,6 +128,11 @@ test("private envelope uses ADB exec-in, observes stdin EOF, and never stages on
     assert.match(args, /^exec-in run-as build\.raft\.app\.alpha sh -c /);
     assert.match(args, /files\/qa-bootstrap\/inbox\/request-1\.session\.tmp/);
     assert.doesNotMatch(args, /sdcard|storage\/emulated|data\/local\/tmp/i);
+    const verifyArgs = fs.readFileSync(capturedVerifyArgs, "utf8");
+    assert.match(verifyArgs, /^exec-out run-as build\.raft\.app\.alpha sh -c /);
+    assert.match(verifyArgs, /stat -c %a/);
+    assert.match(verifyArgs, /wc -c/);
+    assert.match(verifyArgs, /sha256sum/);
     assert.equal(fs.statSync(readyFile).mode & 0o777, 0o600);
     assert.equal(fs.readFileSync(readyFile, "utf8").includes("access-secret"), false);
   } finally {

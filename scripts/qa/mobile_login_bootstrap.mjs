@@ -91,6 +91,7 @@ function binding() {
 }
 
 function installPrivateEnvelope(applicationId, requestId, bytes) {
+  const expectedDigest = sha256Digest(bytes).slice("sha256:".length);
   const script = [
     "set -eu", "umask 077", "mkdir -p files/qa-bootstrap/inbox",
     `tmp=files/qa-bootstrap/inbox/${requestId}.session.tmp`,
@@ -102,6 +103,15 @@ function installPrivateEnvelope(applicationId, requestId, bytes) {
   // exec-out is intended for the opposite direction and can keep the remote
   // reader waiting after Node has supplied its input buffer on hosted runners.
   run("adb", ["exec-in", "run-as", applicationId, "sh", "-c", script], { input: bytes });
+  const verifyScript = [
+    "set -eu",
+    `dst=files/qa-bootstrap/inbox/${requestId}.session`,
+    "test -f \"$dst\"",
+    "test \"$(stat -c %a \"$dst\")\" = 600",
+    `test "$(wc -c <\"$dst\")" = ${bytes.length}`,
+    `test "$(sha256sum \"$dst\" | cut -d' ' -f1)" = ${expectedDigest}`,
+  ].join("; ");
+  run("adb", ["exec-out", "run-as", applicationId, "sh", "-c", verifyScript]);
 }
 
 function expectedLogin(responseFile, bindingFile, runCaseId, ciJobRef) {
