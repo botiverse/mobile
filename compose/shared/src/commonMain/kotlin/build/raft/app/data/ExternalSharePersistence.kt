@@ -19,19 +19,104 @@ private val externalShareDraftJson = Json {
  * Bottom capability installed by Android, OHOS, or iOS when that host owns a native share inbox.
  * Shared code never derives a filesystem path from the opaque token.
  */
-internal object SlockExternalShareEnvelopeRepositoryProvider {
-    private var appScopeFactory: (() -> ExternalShareEnvelopeRepository)? = null
+data class SlockExternalShareEnvelopeHostItem(
+    val localRef: String,
+    val displayName: String,
+    val mimeType: String,
+    val sizeBytes: Long
+)
 
-    fun installAppScopeRepository(factory: () -> ExternalShareEnvelopeRepository) {
+data class SlockExternalShareEnvelopeHostRecord(
+    val token: String,
+    val createdAtEpochMillis: Long,
+    val sourcePlatform: String,
+    val text: String = "",
+    val subject: String = "",
+    val items: List<SlockExternalShareEnvelopeHostItem> = emptyList()
+)
+
+sealed interface SlockExternalShareEnvelopeHostReadResult {
+    data class Content(val record: SlockExternalShareEnvelopeHostRecord) : SlockExternalShareEnvelopeHostReadResult
+    data object Missing : SlockExternalShareEnvelopeHostReadResult
+    data class Failure(val code: String, val retryable: Boolean) : SlockExternalShareEnvelopeHostReadResult
+}
+
+sealed interface SlockExternalShareEnvelopeHostMutationResult {
+    data object Success : SlockExternalShareEnvelopeHostMutationResult
+    data object Missing : SlockExternalShareEnvelopeHostMutationResult
+    data class Failure(val code: String, val retryable: Boolean) : SlockExternalShareEnvelopeHostMutationResult
+}
+
+interface SlockExternalShareEnvelopeHost {
+    suspend fun load(token: String): SlockExternalShareEnvelopeHostReadResult
+    suspend fun consume(token: String, consumptionId: String): SlockExternalShareEnvelopeHostMutationResult
+    suspend fun delete(token: String)
+}
+
+object SlockExternalShareEnvelopeHostProvider {
+    private var appScopeFactory: (() -> SlockExternalShareEnvelopeHost)? = null
+
+    fun installAppScopeHost(factory: () -> SlockExternalShareEnvelopeHost) {
         appScopeFactory = factory
     }
 
-    internal fun create(): ExternalShareEnvelopeRepository =
-        appScopeFactory?.invoke() ?: UnavailableExternalShareEnvelopeRepository
+    internal fun create(): SlockExternalShareEnvelopeHost? = appScopeFactory?.invoke()
 
-    internal fun clearAppScopeRepositoryForTests() {
+    internal fun clearForTests() {
         appScopeFactory = null
     }
+}
+
+internal object SlockExternalShareEnvelopeRepositoryProvider {
+    internal fun create(): ExternalShareEnvelopeRepository =
+        SlockExternalShareEnvelopeHostProvider.create()?.let(::HostExternalShareEnvelopeRepository)
+            ?: UnavailableExternalShareEnvelopeRepository
+
+    internal fun clearAppScopeRepositoryForTests() {
+        SlockExternalShareEnvelopeHostProvider.clearForTests()
+    }
+}
+
+private class HostExternalShareEnvelopeRepository(
+    private val host: SlockExternalShareEnvelopeHost
+) : ExternalShareEnvelopeRepository {
+    override suspend fun load(token: String): DataResult<ExternalShareEnvelope> =
+        when (val result = host.load(token)) {
+            is SlockExternalShareEnvelopeHostReadResult.Content ->
+                DataResult.Content(
+                    ExternalShareEnvelope(
+                        token = result.record.token,
+                        createdAtEpochMillis = result.record.createdAtEpochMillis,
+                        sourcePlatform = result.record.sourcePlatform,
+                        text = result.record.text,
+                        subject = result.record.subject,
+                        items =
+                            result.record.items.map { item ->
+                                ExternalShareItem(
+                                    localRef = item.localRef,
+                                    displayName = item.displayName,
+                                    mimeType = item.mimeType,
+                                    sizeBytes = item.sizeBytes
+                                )
+                            }
+                    )
+                )
+            SlockExternalShareEnvelopeHostReadResult.Missing ->
+                DataResult.Empty(EmptyReason.NoSettingsAvailable)
+            is SlockExternalShareEnvelopeHostReadResult.Failure ->
+                DataResult.Error(ScreenError(result.code, result.retryable))
+        }
+
+    override suspend fun consume(token: String, consumptionId: String): DataResult<Unit> =
+        when (val result = host.consume(token, consumptionId)) {
+            SlockExternalShareEnvelopeHostMutationResult.Success -> DataResult.Content(Unit)
+            SlockExternalShareEnvelopeHostMutationResult.Missing ->
+                DataResult.Empty(EmptyReason.NoSettingsAvailable)
+            is SlockExternalShareEnvelopeHostMutationResult.Failure ->
+                DataResult.Error(ScreenError(result.code, result.retryable))
+        }
+
+    override suspend fun delete(token: String) = host.delete(token)
 }
 
 private object UnavailableExternalShareEnvelopeRepository : ExternalShareEnvelopeRepository {

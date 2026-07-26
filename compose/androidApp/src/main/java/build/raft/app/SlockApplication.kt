@@ -72,6 +72,7 @@ class SlockApplication : Application() {
         }
         installAndroidAppScopeSharedKeyValueStores(this)
         installAndroidAppScopePlatformFileResolver(this)
+        installAndroidExternalShareInbox(this)
         installAndroidAppScopeEventBus(this)
         AndroidAppScopeRealtimeOwner.install(this)
         runCatching {

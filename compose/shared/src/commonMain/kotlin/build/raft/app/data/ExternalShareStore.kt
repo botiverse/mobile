@@ -3,6 +3,7 @@ package build.raft.app.data
 import build.raft.app.model.AttachmentId
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ServerId
+import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -12,6 +13,12 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 
 internal const val ExternalShareMaximumTargetCount = 9
+
+internal data class ExternalShareServerOption(
+    val id: String,
+    val title: String,
+    val slug: String? = null
+)
 
 @Serializable
 internal data class ExternalShareItem(
@@ -90,6 +97,16 @@ internal interface ExternalShareSender {
     suspend fun send(request: ExternalShareSendRequest): DataResult<Unit>
 }
 
+internal class ExternalShareSourceServerBinding(initialServerId: String? = null) {
+    private val serverId = atomic(initialServerId?.trim()?.takeIf { it.isNotBlank() })
+
+    fun bind(value: String) {
+        serverId.value = value.trim().takeIf { it.isNotBlank() }
+    }
+
+    fun current(): String? = serverId.value
+}
+
 /**
  * Production adapter for the normal composer upload/send path. Target resolution remains owned by
  * [ForwardMessageTargetRepository]; no directory or routing logic is duplicated here.
@@ -101,13 +118,15 @@ internal class RealExternalShareSender(
         ExternalShareSendAuthority
     ) -> DataResult<AttachmentUploadResult>,
     private val sendMessage: suspend (ChannelId, String, List<AttachmentId>, String) -> DataResult<SendMessageResult>,
-    private val currentAuthority: suspend () -> ExternalShareSendAuthority?
+    private val currentAuthority: suspend () -> ExternalShareSendAuthority?,
+    private val bindSourceServer: (String) -> Unit = {}
 ) : ExternalShareSender {
     constructor(
         targetRepository: ForwardMessageTargetRepository,
         conversationRepository: ConversationRepository,
         authorityBoundUploader: AuthorityBoundAttachmentUploader,
-        sessionStore: SlockAuthSessionStore
+        sessionStore: SlockAuthSessionStore,
+        sourceServerBinding: ExternalShareSourceServerBinding
     ) : this(
         targetRepository = targetRepository,
         uploadAttachments = { request, authority ->
@@ -121,9 +140,11 @@ internal class RealExternalShareSender(
                 randomId = randomId
             )
         },
+        bindSourceServer = sourceServerBinding::bind,
         currentAuthority = {
             sessionStore.readSession()?.let { session ->
-                val serverId = session.currentServerId?.takeIf(String::isNotBlank) ?: return@let null
+                val serverId = sourceServerBinding.current()?.takeIf(String::isNotBlank) ?: return@let null
+                if (session.servers.none { it.id == serverId }) return@let null
                 ExternalShareSendAuthority(
                     accountId = session.user.id,
                     accessToken = session.accessToken,
@@ -137,6 +158,7 @@ internal class RealExternalShareSender(
     override suspend fun send(request: ExternalShareSendRequest): DataResult<Unit> {
         val sourceServerId = request.sourceServerId.trim().takeIf { it.isNotBlank() }
             ?: return DataResult.Error(ScreenError("external_share_source_server_invalid", retryable = false))
+        bindSourceServer(sourceServerId)
         val authority = currentAuthority()?.takeIf { it.serverId == sourceServerId }
             ?: return DataResult.Error(ScreenError("external_share_authority_changed", retryable = true))
         val resolved =
@@ -261,6 +283,7 @@ internal sealed interface ExternalShareState {
     data class SelectingTargets(
         val envelope: ExternalShareEnvelope,
         val serverId: String,
+        val serverOptions: List<ExternalShareServerOption> = emptyList(),
         val query: String = "",
         val targets: List<ForwardMessageTarget> = emptyList(),
         val selectedTargets: List<ForwardMessageTarget> = emptyList(),
@@ -275,6 +298,7 @@ internal sealed interface ExternalShareState {
     data class Confirming(
         val envelope: ExternalShareEnvelope,
         val serverId: String,
+        val serverOptions: List<ExternalShareServerOption> = emptyList(),
         val selectedTargets: List<ForwardMessageTarget>,
         val comment: String = ""
     ) : ExternalShareState
@@ -310,7 +334,14 @@ internal sealed interface ExternalShareState {
 }
 
 internal sealed interface ExternalShareIntent {
-    data class Load(val token: String, val serverId: String) : ExternalShareIntent
+    data class Load(
+        val token: String,
+        val serverId: String,
+        val serverOptions: List<ExternalShareServerOption> =
+            listOf(ExternalShareServerOption(id = serverId, title = serverId))
+    ) : ExternalShareIntent
+
+    data class SelectServer(val serverId: String) : ExternalShareIntent
 
     data class Search(val query: String) : ExternalShareIntent
 
@@ -359,10 +390,12 @@ internal class ExternalShareStore(
     private var targetJob: Job? = null
     private var sendJob: Job? = null
     private var draftWriteTail: Job? = null
+    private var authorizedServerOptions: List<ExternalShareServerOption> = emptyList()
 
     fun dispatch(intent: ExternalShareIntent) {
         when (intent) {
-            is ExternalShareIntent.Load -> load(intent.token, intent.serverId)
+            is ExternalShareIntent.Load -> load(intent.token, intent.serverId, intent.serverOptions)
+            is ExternalShareIntent.SelectServer -> selectServer(intent.serverId)
             is ExternalShareIntent.Search -> search(intent.query)
             ExternalShareIntent.LoadMore -> loadMore()
             is ExternalShareIntent.ToggleTarget -> toggleTarget(intent)
@@ -389,13 +422,20 @@ internal class ExternalShareStore(
         loadJob = null
         targetJob = null
         sendJob = null
+        authorizedServerOptions = emptyList()
         _state.value = ExternalShareState.Idle
     }
 
-    private fun load(rawToken: String, rawServerId: String) {
+    private fun load(
+        rawToken: String,
+        rawServerId: String,
+        rawServerOptions: List<ExternalShareServerOption>
+    ) {
         val token = rawToken.trim()
         val serverId = rawServerId.trim()
-        if (token.isBlank() || serverId.isBlank()) {
+        val serverOptions = rawServerOptions.normalizedExternalShareServerOptions()
+        if (token.isBlank() || serverId.isBlank() || serverOptions.none { it.id == serverId }) {
+            authorizedServerOptions = emptyList()
             _state.value =
                 ExternalShareState.Error(
                     token = token,
@@ -405,6 +445,7 @@ internal class ExternalShareStore(
                 )
             return
         }
+        authorizedServerOptions = serverOptions
         loadGeneration += 1
         val generation = loadGeneration
         loadJob?.cancel()
@@ -496,7 +537,7 @@ internal class ExternalShareStore(
         generation: Long
     ) {
         if (generation != loadGeneration) return
-        if (!draft.isValidFor(token, serverId, maximumTargetCount)) {
+        if (!draft.isValidFor(token, authorizedServerOptions.mapTo(linkedSetOf()) { it.id }, maximumTargetCount)) {
             setLoadError(token, serverId, "external_share_draft_invalid", false, generation)
             return
         }
@@ -527,6 +568,7 @@ internal class ExternalShareStore(
                     ExternalShareState.SelectingTargets(
                         envelope = readyDraft.envelope,
                         serverId = readyDraft.serverId,
+                        serverOptions = authorizedServerOptions,
                         selectedTargets = readyDraft.selectedTargets
                     )
                 search("")
@@ -536,6 +578,7 @@ internal class ExternalShareStore(
                     ExternalShareState.Confirming(
                         envelope = readyDraft.envelope,
                         serverId = readyDraft.serverId,
+                        serverOptions = authorizedServerOptions,
                         selectedTargets = readyDraft.selectedTargets,
                         comment = readyDraft.comment
                     )
@@ -632,6 +675,35 @@ internal class ExternalShareStore(
                         diagnosticsLogger("external_share_draft_save_failed code=${result.blocker.code}")
                 }
             }
+    }
+
+    private fun selectServer(rawServerId: String) {
+        val current = _state.value as? ExternalShareState.SelectingTargets ?: return
+        val serverId = rawServerId.trim()
+        if (authorizedServerOptions.none { it.id == serverId }) {
+            _state.value = current.copy(selectionErrorCode = "external_share_server_unavailable")
+            return
+        }
+        if (serverId == current.serverId) return
+        targetGeneration += 1
+        targetJob?.cancel()
+        targetRepository.releaseDirectorySnapshot(current.externalShareDirectorySessionId())
+        _state.value =
+            current.copy(
+                serverId = serverId,
+                serverOptions = authorizedServerOptions,
+                query = "",
+                targets = emptyList(),
+                selectedTargets = emptyList(),
+                loading = false,
+                appending = false,
+                requestGeneration = current.requestGeneration + 1,
+                nextCursor = null,
+                errorCode = null,
+                selectionErrorCode = null
+            )
+        persistCurrentDraft()
+        search("")
     }
 
     private fun search(rawQuery: String, append: Boolean = false) {
@@ -754,6 +826,7 @@ internal class ExternalShareStore(
             ExternalShareState.Confirming(
                 envelope = current.envelope,
                 serverId = current.serverId,
+                serverOptions = current.serverOptions,
                 selectedTargets = current.selectedTargets
             )
         persistCurrentDraft()
@@ -766,7 +839,8 @@ internal class ExternalShareStore(
             if (nextTargets.isEmpty()) {
                 ExternalShareState.SelectingTargets(
                     envelope = current.envelope,
-                    serverId = current.serverId
+                    serverId = current.serverId,
+                    serverOptions = current.serverOptions
                 )
             } else {
                 current.copy(selectedTargets = nextTargets)
@@ -786,6 +860,7 @@ internal class ExternalShareStore(
             ExternalShareState.SelectingTargets(
                 envelope = current.envelope,
                 serverId = current.serverId,
+                serverOptions = current.serverOptions,
                 selectedTargets = current.selectedTargets
             )
         persistCurrentDraft()
@@ -1038,11 +1113,11 @@ private fun DataResult<Unit>.mapDraftFailure(): DataResult<ExternalShareDraft> =
 
 private fun ExternalShareDraft.isValidFor(
     token: String,
-    requestedServerId: String,
+    authorizedServerIds: Set<String>,
     maximumTargetCount: Int
 ): Boolean {
     if (envelope.token != token || !envelope.hasContent()) return false
-    if (serverId.isBlank() || serverId != requestedServerId) return false
+    if (serverId.isBlank() || serverId !in authorizedServerIds) return false
     if (selectedTargets.size > maximumTargetCount) return false
     val selectedKeys = selectedTargets.map { it.externalShareSelectionKey() }
     if (selectedKeys.size != selectedKeys.toSet().size) return false
@@ -1104,3 +1179,13 @@ private fun ExternalShareState.toExternalShareDraft(): ExternalShareDraft? =
         is ExternalShareState.LoadingEnvelope,
         is ExternalShareState.Error -> null
     }
+
+private fun List<ExternalShareServerOption>.normalizedExternalShareServerOptions(): List<ExternalShareServerOption> =
+    mapNotNull { option ->
+        val id = option.id.trim().takeIf { it.isNotBlank() } ?: return@mapNotNull null
+        ExternalShareServerOption(
+            id = id,
+            title = option.title.trim().takeIf { it.isNotBlank() } ?: id,
+            slug = option.slug?.trim()?.takeIf { it.isNotBlank() }
+        )
+    }.distinctBy { it.id }

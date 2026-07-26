@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.ExternalShareIntent
+import build.raft.app.data.ExternalShareServerOption
 import build.raft.app.data.externalShareOpaqueTokenOrNull
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 
@@ -35,13 +36,30 @@ private val ExternalShareForbiddenPageDataKeys =
 
 internal data class ExternalShareLaunchAuthority(
     val accountId: String,
-    val serverId: String
+    val serverId: String,
+    val servers: List<ExternalShareServerOption> =
+        listOf(ExternalShareServerOption(id = serverId, title = serverId))
 ) {
     fun normalizedOrNull(): ExternalShareLaunchAuthority? {
         val account = accountId.trim()
-        val server = serverId.trim()
-        return takeIf { account.isNotBlank() && server.isNotBlank() }
-            ?.copy(accountId = account, serverId = server)
+        val normalizedServers =
+            servers.mapNotNull { server ->
+                val id = server.id.trim().takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                ExternalShareServerOption(
+                    id = id,
+                    title = server.title.trim().takeIf { it.isNotBlank() } ?: id,
+                    slug = server.slug?.trim()?.takeIf { it.isNotBlank() }
+                )
+            }.distinctBy { it.id }
+        val requestedServer = serverId.trim()
+        val initialServer =
+            requestedServer.takeIf { requested -> normalizedServers.any { it.id == requested } }
+                ?: normalizedServers.firstOrNull()?.id
+        return if (account.isBlank() || initialServer == null) {
+            null
+        } else {
+            copy(accountId = account, serverId = initialServer, servers = normalizedServers)
+        }
     }
 }
 
@@ -81,7 +99,13 @@ internal class ExternalShareLaunchCoordinator(
         }
         dispatchedToken = request.token
         pending = null
-        dispatch(ExternalShareIntent.Load(request.token, ready.serverId))
+        dispatch(
+            ExternalShareIntent.Load(
+                token = request.token,
+                serverId = ready.serverId,
+                serverOptions = ready.servers
+            )
+        )
         return ExternalShareLaunchDecision.Dispatched
     }
 }

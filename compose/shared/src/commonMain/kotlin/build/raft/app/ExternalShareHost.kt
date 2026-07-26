@@ -15,6 +15,8 @@ import build.raft.app.data.ExternalShareDeliveryStatus
 import build.raft.app.data.ExternalShareIntent
 import build.raft.app.data.ExternalShareState
 import build.raft.app.data.ExternalShareStore
+import build.raft.app.data.ExternalShareSourceServerBinding
+import build.raft.app.data.ForwardMessageTarget
 import build.raft.app.data.KeyValueExternalShareDraftRepository
 import build.raft.app.data.RealChannelRepository
 import build.raft.app.data.RealConversationAuthorityBoundAttachmentUploader
@@ -51,7 +53,8 @@ internal fun ExternalShareLaunchHost(
     authStore: SlockAuthSessionStore,
     networkClient: SlockNetworkClient,
     authority: ExternalShareLaunchAuthority?,
-    bridge: BridgeModule
+    bridge: BridgeModule,
+    onOpenSentTarget: (ForwardMessageTarget) -> Unit
 ) {
     val pageDataSignature = pageData.toString()
     val request = remember(pageDataSignature) { pageData.externalShareLaunchRequestOrNull() }
@@ -98,11 +101,16 @@ internal fun ExternalShareLaunchHost(
                 warningLogger = { bridge.log("external_share_target_repository $it") }
             )
         }
+    val sourceServerBinding =
+        remember(readyAuthority.accountId) {
+            ExternalShareSourceServerBinding(readyAuthority.serverId)
+        }
     val conversationRepository =
-        remember(authStore, networkClient) {
+        remember(authStore, networkClient, sourceServerBinding) {
             RealConversationRepository(
                 sessionStore = authStore,
                 networkClient = networkClient,
+                routeServerIdProvider = sourceServerBinding::current,
                 warningLogger = { bridge.log("external_share_conversation_repository $it") }
             )
         }
@@ -112,7 +120,8 @@ internal fun ExternalShareLaunchHost(
                 targetRepository = targetRepository,
                 conversationRepository = conversationRepository,
                 authorityBoundUploader = RealConversationAuthorityBoundAttachmentUploader(conversationRepository),
-                sessionStore = authStore
+                sessionStore = authStore,
+                sourceServerBinding = sourceServerBinding
             )
         }
     val store =
@@ -136,13 +145,18 @@ internal fun ExternalShareLaunchHost(
     DisposableEffect(store) {
         onDispose { store.clear() }
     }
-    ExternalShareSurface(state = state, onIntent = store::dispatch)
+    ExternalShareSurface(
+        state = state,
+        onIntent = store::dispatch,
+        onOpenSentTarget = onOpenSentTarget
+    )
 }
 
 @Composable
 private fun ExternalShareSurface(
     state: ExternalShareState,
-    onIntent: (ExternalShareIntent) -> Unit
+    onIntent: (ExternalShareIntent) -> Unit,
+    onOpenSentTarget: (ForwardMessageTarget) -> Unit
 ) {
     when (state) {
         ExternalShareState.Idle -> Unit
@@ -162,8 +176,17 @@ private fun ExternalShareSurface(
                         "${state.deliveries.size} destinations complete",
                 onClose = null
             )
-        is ExternalShareState.Completed ->
-            ExternalShareCompletedSurface(state, onIntent)
+        is ExternalShareState.Completed -> {
+            val navigationTarget = state.singleSuccessfulNavigationTargetOrNull()
+            if (navigationTarget != null) {
+                LaunchedEffect(state.attemptId, navigationTarget.externalShareNavigationKey()) {
+                    onIntent(ExternalShareIntent.Cancel)
+                    onOpenSentTarget(navigationTarget)
+                }
+            } else {
+                ExternalShareCompletedSurface(state, onIntent)
+            }
+        }
         is ExternalShareState.Error ->
             ExternalShareStatusSurface(
                 title = "Could not open shared content",
@@ -172,6 +195,21 @@ private fun ExternalShareSurface(
             )
     }
 }
+
+internal fun ExternalShareState.Completed.singleSuccessfulNavigationTargetOrNull(): ForwardMessageTarget? =
+    sentTargets.singleOrNull().takeIf { failedTargets.isEmpty() }
+
+internal fun ForwardMessageTarget.toExternalShareConversationIdentityOrNull(): ThreadLaunchConversationIdentity? {
+    val destinationChannelId = channelId ?: return null
+    return buildThreadLaunchConversationIdentity(
+        kind = channelKind,
+        channelId = destinationChannelId,
+        channelType = channelType
+    )
+}
+
+private fun ForwardMessageTarget.externalShareNavigationKey(): String =
+    "${serverId.value}:${channelId?.value.orEmpty()}:$id"
 
 @Composable
 private fun ExternalShareConfirmationSurface(
