@@ -9,9 +9,11 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.serialization.Serializable
 
 internal const val ExternalShareMaximumTargetCount = 9
 
+@Serializable
 internal data class ExternalShareItem(
     val localRef: String,
     val displayName: String,
@@ -19,6 +21,7 @@ internal data class ExternalShareItem(
     val sizeBytes: Long
 )
 
+@Serializable
 internal data class ExternalShareEnvelope(
     val token: String,
     val createdAtEpochMillis: Long,
@@ -34,15 +37,21 @@ internal data class ExternalShareEnvelope(
 internal interface ExternalShareEnvelopeRepository {
     suspend fun load(token: String): DataResult<ExternalShareEnvelope>
 
+    /** Idempotent by [consumptionId]; retries must not consume the native envelope twice. */
+    suspend fun consume(token: String, consumptionId: String): DataResult<Unit>
+
+    /** Explicit user discard. This is not the successful two-phase consume path. */
     suspend fun delete(token: String)
 }
 
+@Serializable
 internal enum class ExternalShareDraftStage {
     SelectingTargets,
     Confirming,
     Delivering
 }
 
+@Serializable
 internal data class ExternalShareDraft(
     val envelope: ExternalShareEnvelope,
     val serverId: String,
@@ -228,6 +237,7 @@ internal fun ExternalShareSendRequest.externalShareMessageBody(): String =
         .distinct()
         .joinToString("\n\n")
 
+@Serializable
 internal enum class ExternalShareDeliveryStatus {
     Pending,
     Sending,
@@ -235,6 +245,7 @@ internal enum class ExternalShareDeliveryStatus {
     Failed
 }
 
+@Serializable
 internal data class ExternalShareDelivery(
     val target: ForwardMessageTarget,
     val deliveryId: String,
@@ -448,12 +459,25 @@ internal class ExternalShareStore(
         val initialSave = draftRepository.save(draft)
         if (initialSave !is DataResult.Content) return initialSave.mapDraftFailure()
         if (!draft.envelopeConsumed) {
-            try {
-                envelopeRepository.delete(draft.envelope.token)
-            } catch (cancellation: CancellationException) {
-                throw cancellation
-            } catch (throwable: Throwable) {
-                return DataResult.Error(ScreenError("external_share_envelope_consume_failed", retryable = true))
+            val consume =
+                try {
+                    envelopeRepository.consume(
+                        token = draft.envelope.token,
+                        consumptionId = draft.envelope.externalShareConsumptionId()
+                    )
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (throwable: Throwable) {
+                    DataResult.Error(ScreenError("external_share_envelope_consume_failed", retryable = true))
+                }
+            when (consume) {
+                is DataResult.Content -> Unit
+                is DataResult.Empty ->
+                    return DataResult.Error(
+                        ScreenError("external_share_envelope_consume_empty", retryable = true)
+                    )
+                is DataResult.Error -> return consume
+                is DataResult.NoPermission -> return consume
             }
         }
         val consumedDraft = draft.copy(envelopeConsumed = true)
@@ -956,28 +980,38 @@ internal class ExternalShareStore(
     }
 
     private fun cancelAndDiscard() {
-        val token =
-            when (val current = _state.value) {
-                is ExternalShareState.LoadingEnvelope -> current.token
-                is ExternalShareState.SelectingTargets -> current.envelope.token
-                is ExternalShareState.Confirming -> current.envelope.token
-                is ExternalShareState.Sending -> current.envelope.token
-                is ExternalShareState.Completed -> current.envelope.token
-                is ExternalShareState.Error -> current.token
-                ExternalShareState.Idle -> null
-            }
+        val current = _state.value
+        val token = current.externalShareTokenOrNull()
+        val discardNativeEnvelope =
+            current is ExternalShareState.LoadingEnvelope || current is ExternalShareState.Error
         clear()
         token?.takeIf { it.isNotBlank() }?.let { discardedToken ->
             val previousWrite = draftWriteTail
             draftWriteTail =
                 scope.launch {
                     previousWrite?.join()
-                    runCatching { envelopeRepository.delete(discardedToken) }
+                    if (discardNativeEnvelope) {
+                        runCatching { envelopeRepository.delete(discardedToken) }
+                    }
                     draftRepository.delete(discardedToken)
                 }
         }
     }
 }
+
+private fun ExternalShareState.externalShareTokenOrNull(): String? =
+    when (this) {
+        is ExternalShareState.LoadingEnvelope -> token
+        is ExternalShareState.SelectingTargets -> envelope.token
+        is ExternalShareState.Confirming -> envelope.token
+        is ExternalShareState.Sending -> envelope.token
+        is ExternalShareState.Completed -> envelope.token
+        is ExternalShareState.Error -> token
+        ExternalShareState.Idle -> null
+    }
+
+internal fun ExternalShareEnvelope.externalShareConsumptionId(): String =
+    "external-share-consume:$token"
 
 internal fun ForwardMessageTarget.externalShareSelectionKey(): String =
     "${serverId.value}:${kind.name}:$id"

@@ -395,6 +395,9 @@ class ExternalShareStoreTest {
                             return DataResult.Content(envelope())
                         }
 
+                        override suspend fun consume(token: String, consumptionId: String): DataResult<Unit> =
+                            DataResult.Content(Unit)
+
                         override suspend fun delete(token: String) = Unit
                     },
                 draftRepository = MemoryDraftRepository(),
@@ -422,7 +425,7 @@ class ExternalShareStoreTest {
     }
 
     @Test
-    fun firstLoadTransfersEnvelopeToDurableDraftBeforeDeletingOneShotEnvelope() = runBlocking {
+    fun firstLoadPersistsDurableDraftBeforeIdempotentNativeConsume() = runBlocking {
         val events = mutableListOf<String>()
         val draftRepository =
             object : ExternalShareDraftRepository {
@@ -449,6 +452,11 @@ class ExternalShareStoreTest {
                     return DataResult.Content(envelope(token))
                 }
 
+                override suspend fun consume(token: String, consumptionId: String): DataResult<Unit> {
+                    events += "envelope_consume:$consumptionId"
+                    return DataResult.Content(Unit)
+                }
+
                 override suspend fun delete(token: String) {
                     events += "envelope_delete"
                 }
@@ -469,11 +477,145 @@ class ExternalShareStoreTest {
                 "draft_load",
                 "envelope_load",
                 "draft_save_consumed_false",
-                "envelope_delete",
+                "envelope_consume:external-share-consume:share-1",
                 "draft_save_consumed_true"
             ),
             events
         )
+        store.dispatch(ExternalShareIntent.Cancel)
+        yield()
+        assertTrue("envelope_delete" !in events)
+        store.clear()
+    }
+
+    @Test
+    fun consumedMarkerRetryUsesStableIdAndNativeEnvelopeConsumesExactlyOnce() = runBlocking {
+        var persistedDraft: ExternalShareDraft? = null
+        var failConsumedMarkerOnce = true
+        val draftRepository =
+            object : ExternalShareDraftRepository {
+                override suspend fun load(token: String): DataResult<ExternalShareDraft> =
+                    persistedDraft?.let { DataResult.Content(it) }
+                        ?: DataResult.Empty(EmptyReason.NoMessages)
+
+                override suspend fun save(draft: ExternalShareDraft): DataResult<Unit> {
+                    if (draft.envelopeConsumed && failConsumedMarkerOnce) {
+                        failConsumedMarkerOnce = false
+                        return DataResult.Error(ScreenError("marker_write_failed", retryable = true))
+                    }
+                    persistedDraft = draft
+                    return DataResult.Content(Unit)
+                }
+
+                override suspend fun delete(token: String): DataResult<Unit> = DataResult.Content(Unit)
+            }
+        val consumedIds = mutableSetOf<String>()
+        var consumeCalls = 0
+        var physicalConsumes = 0
+        val envelopeRepository =
+            object : ExternalShareEnvelopeRepository {
+                override suspend fun load(token: String): DataResult<ExternalShareEnvelope> =
+                    DataResult.Content(envelope(token))
+
+                override suspend fun consume(token: String, consumptionId: String): DataResult<Unit> {
+                    consumeCalls += 1
+                    if (consumedIds.add(consumptionId)) physicalConsumes += 1
+                    return DataResult.Content(Unit)
+                }
+
+                override suspend fun delete(token: String) = Unit
+            }
+
+        val first = store(this, envelopeRepository = envelopeRepository, draftRepository = draftRepository)
+        first.dispatch(ExternalShareIntent.Load("share-1", Server.value))
+        assertEquals("marker_write_failed", first.awaitError().errorCode)
+        first.clear()
+
+        val restored = store(this, envelopeRepository = envelopeRepository, draftRepository = draftRepository)
+        restored.dispatch(ExternalShareIntent.Load("share-1", Server.value))
+
+        restored.awaitSelecting()
+        assertEquals(2, consumeCalls)
+        assertEquals(1, physicalConsumes)
+        assertEquals(setOf("external-share-consume:share-1"), consumedIds)
+        restored.clear()
+    }
+
+    @Test
+    fun draftPersistFailureLeavesNativeEnvelopeUnconsumed() = runBlocking {
+        var consumeCalls = 0
+        val envelopeRepository =
+            object : ExternalShareEnvelopeRepository {
+                override suspend fun load(token: String): DataResult<ExternalShareEnvelope> =
+                    DataResult.Content(envelope(token))
+
+                override suspend fun consume(token: String, consumptionId: String): DataResult<Unit> {
+                    consumeCalls += 1
+                    return DataResult.Content(Unit)
+                }
+
+                override suspend fun delete(token: String) = Unit
+            }
+        val draftRepository =
+            object : ExternalShareDraftRepository {
+                override suspend fun load(token: String): DataResult<ExternalShareDraft> =
+                    DataResult.Empty(EmptyReason.NoMessages)
+
+                override suspend fun save(draft: ExternalShareDraft): DataResult<Unit> =
+                    DataResult.Error(ScreenError("disk_full", retryable = true))
+
+                override suspend fun delete(token: String): DataResult<Unit> = DataResult.Content(Unit)
+            }
+        val store = store(this, envelopeRepository = envelopeRepository, draftRepository = draftRepository)
+
+        store.dispatch(ExternalShareIntent.Load("share-1", Server.value))
+
+        assertEquals("disk_full", store.awaitError().errorCode)
+        assertEquals(0, consumeCalls)
+        store.clear()
+    }
+
+    @Test
+    fun durableDraftFromAnotherServerFailsClosedWithoutTargetLoadOrSend() = runBlocking {
+        var targetCalls = 0
+        var sendCalls = 0
+        val draft =
+            ExternalShareDraft(
+                envelope = envelope(),
+                serverId = "server-a",
+                stage = ExternalShareDraftStage.SelectingTargets,
+                envelopeConsumed = true
+            )
+        val targetRepository =
+            object : StubTargetRepository(emptyList()) {
+                override suspend fun recentTargets(
+                    serverId: ServerId,
+                    limit: Int
+                ): DataResult<List<ForwardMessageTarget>> {
+                    targetCalls += 1
+                    return super.recentTargets(serverId, limit)
+                }
+            }
+        val sender =
+            object : ExternalShareSender {
+                override suspend fun send(request: ExternalShareSendRequest): DataResult<Unit> {
+                    sendCalls += 1
+                    return DataResult.Content(Unit)
+                }
+            }
+        val store =
+            store(
+                scope = this,
+                draftRepository = MemoryDraftRepository(draft),
+                targetRepository = targetRepository,
+                sender = sender
+            )
+
+        store.dispatch(ExternalShareIntent.Load("share-1", "server-b"))
+
+        assertEquals("external_share_draft_invalid", store.awaitError().errorCode)
+        assertEquals(0, targetCalls)
+        assertEquals(0, sendCalls)
         store.clear()
     }
 
@@ -545,6 +687,9 @@ class ExternalShareStoreTest {
             object : ExternalShareEnvelopeRepository {
                 override suspend fun load(token: String): DataResult<ExternalShareEnvelope> =
                     DataResult.Content(envelope(token))
+
+                override suspend fun consume(token: String, consumptionId: String): DataResult<Unit> =
+                    DataResult.Content(Unit)
 
                 override suspend fun delete(token: String) = Unit
             },
@@ -621,6 +766,15 @@ class ExternalShareStoreTest {
             yield()
         }
         error("ExternalShareStore did not reach the expected Completed state")
+    }
+
+    private suspend fun ExternalShareStore.awaitError(): ExternalShareState.Error {
+        repeat(100) {
+            val current = state.value
+            if (current is ExternalShareState.Error) return current
+            yield()
+        }
+        error("ExternalShareStore did not reach the expected Error state")
     }
 
     private open class StubTargetRepository(

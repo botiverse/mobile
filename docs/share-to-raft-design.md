@@ -1,7 +1,7 @@
 # Share to Raft: three-platform product and launch contract
 
-Status: proposed for task #360. This document freezes the product flow and the
-cross-platform authority boundaries before implementation.
+Status: shared foundation is on `main`; final shared launch/consume wiring is in
+follow-up. Android/OHOS/iOS system intake and physical runtime remain pending.
 
 ## Product flow
 
@@ -69,9 +69,12 @@ The platform intake must:
   TTL expiry.
 
 The handoff from the native one-shot envelope to the shared draft is a durable
-two-phase transfer: save the draft with `envelopeConsumed=false`, delete the
-native envelope, then save `envelopeConsumed=true`. On restart, an incomplete
-transfer resumes the delete before any product state is shown. A durable draft
+two-phase transfer: save the account-scoped draft with
+`envelopeConsumed=false`, call the native repository's idempotent
+`consume(token, consumptionId)`, then save `envelopeConsumed=true`. The stable
+consumption id lets a restart retry the marker write without physically
+consuming the native envelope twice. On restart, an incomplete transfer resumes
+the same consume transaction before any product state is shown. A durable draft
 always wins over a redelivered route token, so the same native payload cannot
 create a second share flow.
 
@@ -99,7 +102,7 @@ Error(retryable, code)
 Required intents:
 
 ```text
-Load(token)
+Load(token, canonicalServerId)
 Search(query)
 ToggleTarget(identity)
 Continue
@@ -122,6 +125,15 @@ explicit failed target. Manual retry reuses the same `deliveryId`, which the
 normal composer sender must bind to its idempotent client message identity.
 This closes the response-loss window where the server accepted a send but the
 client died before persisting the terminal receipt.
+
+The AppShell parser recognizes only `intent=open_share_to_raft` and a bounded,
+path-free opaque `externalShareToken`. It rejects raw content/auth fields and
+derives account/server from the canonical shell session. The production shared
+assembly uses an account-scoped durable draft repository, the platform-installed
+native envelope repository, `ForwardMessageTargetRepository`, and the normal
+authority-bound attachment/message sender. One mounted launch coordinator emits
+one `Load`; a new coordinator after process restoration emits one new `Load` so
+the durable draft can restore without auto-sending.
 
 There is no cross-target atomicity in the current API. The UI therefore reports
 partial success explicitly rather than claiming all-or-nothing delivery.
