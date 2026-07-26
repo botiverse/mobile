@@ -35,6 +35,7 @@ object SlockAndroidLocalDiagnostics {
     fun init(context: Context) {
         SlockGeneralLogRing.init(context.applicationContext)
         SlockAuthCriticalJournal.init(context.applicationContext)
+        AndroidHistoricalProcessExitDiagnostics.recordLatest(context.applicationContext)
         SlockAppLog.d(
             Tag,
             "initialized appVersion=${BuildConfig.VERSION_NAME} debug=${BuildConfig.DEBUG} backend=jsonl quiver=crash"

@@ -21,6 +21,21 @@ internal data class AndroidRealtimeSessionRegistrySnapshot(
     val releasePending: Boolean
 )
 
+internal data class AndroidCurrentRealtimeServerSelection(
+    val serverId: ServerId?,
+    val normalizedServerCount: Int,
+    val rejectedMultipleServers: Boolean
+)
+
+internal fun selectAndroidCurrentRealtimeServer(serverIds: Set<String>): AndroidCurrentRealtimeServerSelection {
+    val normalized = serverIds.map(String::trim).filter(String::isNotEmpty).toSet()
+    return AndroidCurrentRealtimeServerSelection(
+        serverId = normalized.singleOrNull()?.let(::ServerId),
+        normalizedServerCount = normalized.size,
+        rejectedMultipleServers = normalized.size > 1
+    )
+}
+
 /** Tracks visible Android shells without letting one paused window background another. */
 internal class AndroidVisibleShellOwners {
     private val owners = linkedSetOf<String>()
@@ -68,6 +83,20 @@ internal class AndroidRealtimeSessionRegistry<RuntimeT>(
         entry.pendingRelease = null
         entry.owners += cleanShellId
         return entry.runtime
+    }
+
+    @Synchronized
+    fun acquireCurrent(
+        serverId: ServerId,
+        shellInstanceId: String,
+        disconnectReason: String
+    ): RuntimeT {
+        entries.toList()
+            .filterNot { (existingServerId, _) -> existingServerId == serverId }
+            .forEach { (staleServerId, staleEntry) ->
+                disconnectAndRemove(staleServerId, staleEntry, disconnectReason)
+            }
+        return acquire(serverId, shellInstanceId)
     }
 
     @Synchronized
