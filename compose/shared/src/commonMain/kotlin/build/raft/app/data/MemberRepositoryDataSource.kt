@@ -82,7 +82,46 @@ interface SlockNetworkClient {
         file: MultipartFile
     ): HomeNetworkResponse =
         HomeNetworkResponse(code = 501, bodyText = null)
+
+    suspend fun requestMultipart(
+        priority: DataRequestPriority,
+        path: String,
+        fields: Map<String, String>,
+        files: List<MultipartFile>
+    ): HomeNetworkResponse =
+        HomeNetworkResponse(code = 501, bodyText = null)
+
+    suspend fun snapshotMultipartFiles(
+        priority: DataRequestPriority,
+        ownerKey: String,
+        scopeKey: String,
+        files: List<MultipartFile>
+    ): DataResult<List<MultipartFile>> =
+        DataResult.Error(ScreenError("platform_file_snapshot_unsupported"))
+
+    suspend fun retireMultipartFileScope(
+        priority: DataRequestPriority,
+        ownerKey: String,
+        scopeKey: String
+    ): Boolean = false
+
+    suspend fun retireMultipartFileOwner(
+        priority: DataRequestPriority,
+        ownerKey: String
+    ): Boolean = false
+
+    suspend fun requestBinary(
+        priority: DataRequestPriority,
+        path: String,
+        maxBytes: Long
+    ): SlockBinaryNetworkResponse =
+        SlockBinaryNetworkResponse(HomeNetworkResponse(code = 501, bodyText = null))
 }
+
+data class SlockBinaryNetworkResponse(
+    val response: HomeNetworkResponse,
+    val bytes: ByteArray = ByteArray(0)
+)
 
 internal interface AuthorityBoundSlockNetworkClient {
     suspend fun uploadAttachmentsBound(

@@ -14,6 +14,9 @@ import build.raft.app.network.SlockRequestPriority
 import build.raft.app.network.SlockRequestScheduler
 import build.raft.app.network.hasStreamingFileRefParts
 import build.raft.app.network.SlockRequestTimeoutException
+import build.raft.app.network.SharedBinaryDownloader
+import build.raft.app.network.SharedDownloadedBytes
+import build.raft.app.network.BinaryDownloadHttpException
 import build.raft.app.network.createPlatformSlockHttpExecutor
 import build.raft.app.network.toSafeDiagnosticsToken
 import kotlin.time.TimeSource
@@ -44,7 +47,9 @@ internal class SharedSlockNetworkClient(
     private val terminalAuthLossReporter: suspend (StoredAuthSession, String) -> Unit = { _, _ -> },
     private val requestScheduler: SlockRequestScheduler = SlockRequestScheduler(),
     private val platformFileResolver: SlockPlatformFileResolver? = null,
-    private val executor: SlockHttpExecutor = createPlatformSlockHttpExecutor(warningLogger)
+    private val executor: SlockHttpExecutor = createPlatformSlockHttpExecutor(warningLogger),
+    private val binaryFetcher: suspend (String, Map<String, String>, Long) -> SharedDownloadedBytes =
+        { url, headers, maxBytes -> SharedBinaryDownloader.fetchBytes(url, headers, maxBytes) }
 ) : SlockNetworkClient, AuthorityBoundSlockNetworkClient {
     private fun authMiddleware(): SlockNetworkAuthMiddleware =
         SlockNetworkAuthMiddleware(
@@ -254,6 +259,120 @@ internal class SharedSlockNetworkClient(
             requestBytes = resolvedFile.bytes.size.toLong(),
             key = path
         )
+    }
+
+    override suspend fun requestMultipart(
+        priority: DataRequestPriority,
+        path: String,
+        fields: Map<String, String>,
+        files: List<MultipartFile>
+    ): HomeNetworkResponse {
+        val resolvedFiles = files.preparePlatformFileStreams().getOrElse { return it }
+        val normalizedPath = path.networkDiagnosticsPath()
+        return uploadMultipart(
+            priority = priority,
+            path = path,
+            category = path.networkDiagnosticsCategory(),
+            diagnosticPath = normalizedPath,
+            fields = fields,
+            files = resolvedFiles,
+            requestBytes = resolvedFiles.uploadByteEstimate(),
+            key = path
+        )
+    }
+
+    override suspend fun snapshotMultipartFiles(
+        priority: DataRequestPriority,
+        ownerKey: String,
+        scopeKey: String,
+        files: List<MultipartFile>
+    ): DataResult<List<MultipartFile>> {
+        val resolved = files.resolvePlatformFileRefs()
+        if (resolved is ResolvedPlatformFiles.Error) {
+            return DataResult.Error(ScreenError("platform_file_snapshot_failed", retryable = true))
+        }
+        val resolvedFiles = (resolved as ResolvedPlatformFiles.Content).files
+        if (resolvedFiles.isEmpty()) return DataResult.Content(emptyList())
+        val resolver = platformFileResolver
+            ?: return DataResult.Error(ScreenError("platform_file_snapshot_unsupported"))
+        val frozen = mutableListOf<MultipartFile>()
+        resolvedFiles.forEachIndexed { index, file ->
+            val persisted = resolver.persistImmutableFile(ownerKey, scopeKey, index, file.bytes)
+            if (!persisted.success) {
+                resolver.retireImmutableScope(ownerKey, scopeKey)
+                return DataResult.Error(ScreenError("platform_file_snapshot_failed", retryable = true))
+            }
+            frozen +=
+                file.copy(
+                    bytes = file.bytes.copyOf(),
+                    fileRef = persisted.fileRef,
+                    streamOpener = null,
+                    sizeBytes = file.bytes.size.toLong()
+                )
+        }
+        return DataResult.Content(frozen)
+    }
+
+    override suspend fun retireMultipartFileScope(
+        priority: DataRequestPriority,
+        ownerKey: String,
+        scopeKey: String
+    ): Boolean = platformFileResolver?.retireImmutableScope(ownerKey, scopeKey) ?: true
+
+    override suspend fun retireMultipartFileOwner(
+        priority: DataRequestPriority,
+        ownerKey: String
+    ): Boolean = platformFileResolver?.retireImmutableOwner(ownerKey) ?: true
+
+    override suspend fun requestBinary(
+        priority: DataRequestPriority,
+        path: String,
+        maxBytes: Long
+    ): SlockBinaryNetworkResponse {
+        var downloadedBytes = ByteArray(0)
+        val response = try {
+            requestScheduler.run(
+                priority = priority.toNetworkPriority(),
+                key = path,
+                reason = "binary"
+            ) {
+                authMiddleware().request(caller = "shared_network:${path.networkDiagnosticsPath()}") { auth ->
+                    downloadedBytes = ByteArray(0)
+                    try {
+                        val downloaded =
+                            binaryFetcher(
+                                absoluteUrl(path),
+                                mapOf(
+                                    HEADER_AUTHORIZATION to auth.authorization,
+                                    HEADER_SERVER_ID to auth.serverId
+                                ),
+                                maxBytes
+                            )
+                        downloadedBytes = downloaded.bytes
+                        HomeNetworkResponse(
+                            code = 200,
+                            bodyText = null,
+                            responseHeaders = downloaded.responseHeaders
+                        )
+                    } catch (error: BinaryDownloadHttpException) {
+                        HomeNetworkResponse(code = error.statusCode, bodyText = null)
+                    } catch (error: IllegalStateException) {
+                        HomeNetworkResponse(code = 0, bodyText = null, errorBodyText = error.message)
+                    }
+                }
+            }
+        } catch (timeout: SlockRequestTimeoutException) {
+            downloadedBytes = ByteArray(0)
+            timeout.toTimeoutNetworkResponse(
+                category = path.networkDiagnosticsCategory(),
+                path = path.networkDiagnosticsPath(),
+                method = "GET",
+                requestBytes = 0,
+                durationMs = 0,
+                warningLogger = warningLogger
+            )
+        }
+        return SlockBinaryNetworkResponse(response, downloadedBytes)
     }
 
     private suspend fun List<MultipartFile>.preparePlatformFileStreams(): ResolvedPlatformFiles {

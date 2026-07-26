@@ -1286,6 +1286,13 @@ internal class SlockSharedStoreProvider private constructor(
             }
             val platformFileResolverBinding = SlockSharedPlatformFileResolverProvider.createBinding()
             val platformFileResolver = platformFileResolverBinding.resolver
+            val productFeedbackCacheLifecycle = ProductFeedbackImmutableCacheLifecycle(platformFileResolver)
+            CoroutineScope(SupervisorJob()).launch {
+                productFeedbackCacheLifecycle.initialize(authStore.readSession()?.user?.id)
+                authStore.authSessionEvents.collect { event ->
+                    productFeedbackCacheLifecycle.onSessionEvent(event, authStore.readSession()?.user?.id)
+                }
+            }
             bridge.logSharedAuthDiagnostic(
                 "shared_network_file_resolver",
                 "storage_scope=${platformFileResolverBinding.scope}"

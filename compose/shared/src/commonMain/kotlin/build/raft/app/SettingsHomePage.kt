@@ -287,6 +287,13 @@ import build.raft.app.data.AgentProfileUpdateRequest
 import build.raft.app.data.AgentResetMode
 import build.raft.app.data.AgentResetRequest
 import build.raft.app.data.PlatformFile
+import build.raft.app.data.ProductFeedbackRepository
+import build.raft.app.data.ProductFeedbackStore
+import build.raft.app.data.ProductFeedbackIntent
+import build.raft.app.data.ProductFeedbackResult
+import build.raft.app.data.ProductFeedbackFailure
+import build.raft.app.data.ProductFeedbackSubmissionSnapshot
+import build.raft.app.data.ProductFeedbackAuthorType
 import build.raft.app.data.AttachmentUploadRequest
 import build.raft.app.data.EmptyReason
 import build.raft.app.data.SettingsQuiverFeedbackSubmission
@@ -933,17 +940,20 @@ private fun rememberHomeSecondaryRouteEnvironment(
     val bridgeCallScope = rememberCoroutineScope()
     val linkNavigator = rememberSlockLinkNavigator(pager, bridge)
     val copiedMessage = stringResource(MR.strings.common_copied)
+    val authStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
+    val networkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
     val settingsCapabilities =
-        remember(bridge, bridgeCallScope, linkNavigator, copiedMessage) {
+        remember(bridge, bridgeCallScope, linkNavigator, copiedMessage, authStore, networkClient) {
             BridgeSettingsPlatformCapabilities(
                 bridge = bridge,
                 copiedMessage = copiedMessage,
                 bridgeCallContext = bridgeCallScope.kuiklyBridgeCallContext(),
+                productFeedbackRepositoryFactory = { accountId ->
+                    ProductFeedbackRepository(accountId, authStore, networkClient)
+                },
                 openUrlHandler = { url -> linkNavigator.open(url) }
             )
         }
-    val authStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
-    val networkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
     val serverMembersStore = remember(sharedStores, storeScope) { sharedStores.serverMembersStore(storeScope) }
     val sharedPreferenceStore = remember { slockSharedPreferenceStore() }
     val chatLayoutPreferenceRepository =
@@ -2672,11 +2682,14 @@ internal fun SlockAppShellContent(
     val linkNavigator = rememberSlockLinkNavigator(pager, bridge)
     val copiedMessage = stringResource(MR.strings.common_copied)
     val settingsCapabilities =
-        remember(bridge, appShellCoroutineScope, linkNavigator, copiedMessage) {
+        remember(bridge, appShellCoroutineScope, linkNavigator, copiedMessage, shellAuthStore, appShellNetworkClient) {
             BridgeSettingsPlatformCapabilities(
                 bridge = bridge,
                 copiedMessage = copiedMessage,
                 bridgeCallContext = appShellCoroutineScope.kuiklyBridgeCallContext(),
+                productFeedbackRepositoryFactory = { accountId ->
+                    ProductFeedbackRepository(accountId, shellAuthStore, appShellNetworkClient)
+                },
                 openUrlHandler = { url -> linkNavigator.open(url) }
             )
         }
@@ -11070,10 +11083,18 @@ private fun SharedQuiverFeedbackContent(
     visualFixture: SettingsQuiverFeedbackVisualFixture? = null,
     bottomContentPadding: Dp = SlockSpacing.Lg
 ) {
-    val attachmentMaxBytes = slockFeedbackAttachmentMaxBytes()
+    val attachmentMaxBytes = 10L * 1024L * 1024L
     val attachmentMaxLabel = settingsFeedbackAttachmentMaxLabel(attachmentMaxBytes)
     val copy = settingsQuiverFeedbackCopy(attachmentMaxLabel)
     val scope = rememberCoroutineScope()
+    val latestAccountId by rememberUpdatedState(accountId)
+    val productFeedbackRepository =
+        remember(settingsCapabilities, accountId, visualFixture) {
+            if (visualFixture == null) settingsCapabilities.productFeedbackRepository(accountId) else null
+        }
+    val productFeedbackStore =
+        remember(productFeedbackRepository) { productFeedbackRepository?.let(::ProductFeedbackStore) }
+    val productFeedbackState = productFeedbackStore?.state?.collectAsState()?.value
     val listState = rememberLazyListState()
     val chatLayoutPreferenceStore =
         remember {
@@ -11083,6 +11104,10 @@ private fun SharedQuiverFeedbackContent(
         remember {
             SettingsQuiverFeedbackDraftStore(slockSharedPreferenceStore())
         }
+    val feedbackCleanupStore = remember { build.raft.app.data.productFeedbackCleanupStore() }
+    LaunchedEffect(feedbackCleanupStore, accountId) {
+        feedbackCleanupStore.activateAccount(accountId)
+    }
     val restoredDraft =
         remember(feedbackDraftStore, accountId, visualFixture) {
             visualFixture?.draft ?: feedbackDraftStore.read(accountId)
@@ -11101,13 +11126,15 @@ private fun SharedQuiverFeedbackContent(
     val message = messageFieldValue.text
     var attachments by remember(accountId) { mutableStateOf(restoredDraft.attachments) }
     val latestAttachmentsForPersistence by rememberUpdatedState(attachments)
-    var busy by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var pendingRetryRequest by remember { mutableStateOf<SettingsQuiverFeedbackRetryRequest?>(null) }
-    var composerSyncNonce by remember { mutableStateOf(0) }
-    var nextEntryId by remember { mutableStateOf(1) }
+    var pendingSubmissionId by remember(accountId) { mutableStateOf(restoredDraft.pendingSubmissionId) }
+    val latestPendingSubmissionId by rememberUpdatedState(pendingSubmissionId)
+    var busy by remember(accountId) { mutableStateOf(false) }
+    var error by remember(accountId) { mutableStateOf<String?>(null) }
+    var pendingRetryRequest by remember(accountId) { mutableStateOf<SettingsQuiverFeedbackRetryRequest?>(null) }
+    var composerSyncNonce by remember(accountId) { mutableStateOf(0) }
+    var nextEntryId by remember(accountId) { mutableStateOf(1) }
     var visualAutoSubmitted by remember(accountId, visualFixture) { mutableStateOf(false) }
-    var entries by remember {
+    var entries by remember(accountId) {
         mutableStateOf(
             listOf(
                 SettingsQuiverFeedbackEntry(
@@ -11124,16 +11151,67 @@ private fun SharedQuiverFeedbackContent(
     }
     var allowBottomAnchor by remember(accountId) { mutableStateOf(true) }
     val feedbackEntryIds = remember(entries) { entries.map(SettingsQuiverFeedbackEntry::id) }
-    // task #92 close-out: server + Hands SDKs support 9 files with presigned
-    // large-file upload; the per-file byte cap is platform-dependent (OHOS SDK
-    // still caps at 50MB).
-    val attachmentLimit = 9
+    val attachmentLimit = 3
     val remainingSlots = attachmentLimit - attachments.size
     val normalizedMessage = message.trim()
 
-    LaunchedEffect(feedbackDraftStore, accountId, draftTextForPersistence, attachments) {
+    LaunchedEffect(productFeedbackStore, accountId) {
+        productFeedbackStore?.dispatch(ProductFeedbackIntent.Refresh)
+    }
+
+    LaunchedEffect(productFeedbackState?.tickets, productFeedbackState?.selectedTicket) {
+        val state = productFeedbackState ?: return@LaunchedEffect
+        val detail = state.selectedTicket
+        entries =
+            if (detail == null) {
+                listOf(
+                    SettingsQuiverFeedbackEntry(
+                        id = 0,
+                        kind = SettingsQuiverFeedbackEntryKind.Quiver,
+                        title = copy.title,
+                        body = copy.introduction
+                    )
+                ) + state.tickets.mapIndexed { index, ticket ->
+                    SettingsQuiverFeedbackEntry(
+                        id = 10_000 + index,
+                        kind = SettingsQuiverFeedbackEntryKind.Quiver,
+                        title = ticket.status.name.replace('_', ' '),
+                        body = ticket.message,
+                        detail = if (ticket.unread) "${ticket.unreadCount} unread" else null,
+                        ticketId = ticket.id
+                    )
+                }
+            } else {
+                listOf(
+                    SettingsQuiverFeedbackEntry(
+                        id = detail.ticket.id.hashCode(),
+                        kind = SettingsQuiverFeedbackEntryKind.User,
+                        title = copy.you,
+                        body = detail.ticket.message,
+                        detail = detail.attachments.takeIf { it.isNotEmpty() }?.joinToString { it.filename },
+                        ticketId = detail.ticket.id
+                    )
+                ) + detail.comments.mapIndexed { index, comment ->
+                    SettingsQuiverFeedbackEntry(
+                        id = comment.id.hashCode() + index,
+                        kind =
+                            if (comment.authorType == ProductFeedbackAuthorType.Reporter) {
+                                SettingsQuiverFeedbackEntryKind.User
+                            } else {
+                                SettingsQuiverFeedbackEntryKind.Quiver
+                            },
+                        title =
+                            if (comment.authorType == ProductFeedbackAuthorType.Reporter) copy.you else copy.title,
+                        body = comment.body,
+                        ticketId = detail.ticket.id
+                    )
+                }
+            }
+    }
+
+    LaunchedEffect(feedbackDraftStore, accountId, draftTextForPersistence, attachments, pendingSubmissionId) {
         delay(250L)
-        feedbackDraftStore.save(accountId, draftTextForPersistence, attachments)
+        feedbackDraftStore.save(accountId, draftTextForPersistence, attachments, pendingSubmissionId)
     }
 
     DisposableEffect(feedbackDraftStore, accountId) {
@@ -11141,7 +11219,8 @@ private fun SharedQuiverFeedbackContent(
             feedbackDraftStore.save(
                 accountId = accountId,
                 text = latestDraftTextForPersistence,
-                attachments = latestAttachmentsForPersistence
+                attachments = latestAttachmentsForPersistence,
+                pendingSubmissionId = latestPendingSubmissionId
             )
         }
     }
@@ -11195,16 +11274,23 @@ private fun SharedQuiverFeedbackContent(
         }
         busy = true
         error = null
+        val pickerAccountId = accountId
         scope.launch {
-            when (val result = settingsCapabilities.pickFeedbackAttachment(imageOnly)) {
+            val result = settingsCapabilities.pickFeedbackAttachment(imageOnly)
+            if (latestAccountId != pickerAccountId) return@launch
+            when (result) {
                 is DataResult.Content -> {
-                    val accepted = result.data.filter { file -> (file.sizeBytes ?: 0L) <= attachmentMaxBytes }
+                    val accepted = result.data.filter { file ->
+                        (file.sizeBytes ?: 0L) <= attachmentMaxBytes &&
+                            file.mimeType?.lowercase() in setOf("image/gif", "image/jpeg", "image/png", "image/webp")
+                    }
                     val rejectedCount = result.data.size - accepted.size
                     val merged =
                         (attachments + accepted)
                             .distinctBy { it.fileRef ?: it.id }
                             .take(attachmentLimit)
                     attachments = merged
+                    pendingSubmissionId = null
                     error = when {
                         rejectedCount > 0 -> copy.attachmentTooLarge(attachmentMaxLabel)
                         accepted.size > remainingSlots -> copy.attachmentLimitTrimmed(attachmentLimit)
@@ -11240,6 +11326,100 @@ private fun SharedQuiverFeedbackContent(
         if (submittedMessage.isBlank()) {
             settingsCapabilities.log("settings_quiver_feedback_submit_blocked reason=blank_message")
             error = copy.messageRequired
+            return
+        }
+        if (productFeedbackRepository != null && productFeedbackStore != null) {
+            busy = true
+            error = null
+            val submissionAccountId = accountId
+            scope.launch {
+                val prepared =
+                    retryRequest?.submissionSnapshot?.let { ProductFeedbackResult.Success(it) }
+                        ?: productFeedbackRepository.prepareSubmission(
+                            body = submittedMessage,
+                            files = submittedAttachments,
+                            submissionId = pendingSubmissionId ?: build.raft.app.data.productFeedbackUuidV4()
+                        )
+                val snapshot = (prepared as? ProductFeedbackResult.Success<ProductFeedbackSubmissionSnapshot>)?.value
+                if (latestAccountId != submissionAccountId) return@launch
+                if (snapshot == null) {
+                    val failure = (prepared as? ProductFeedbackResult.Failure)?.error
+                    val presentation = copy.productFeedbackFailure(failure)
+                    error = presentation.composerStatus
+                    pendingRetryRequest = null
+                    entries = entries + SettingsQuiverFeedbackEntry(
+                        id = nextConversationEntryId(),
+                        kind = SettingsQuiverFeedbackEntryKind.Error,
+                        title = presentation.title,
+                        body = presentation.body
+                    )
+                    busy = false
+                    return@launch
+                }
+                val selectedTicketId = productFeedbackState?.selectedTicket?.ticket?.id
+                val frozenAttachments = snapshot.toRetryPlatformFiles()
+                if (retryRequest == null) {
+                    productFeedbackRepository.retireCachedAttachments(
+                        files = submittedAttachments,
+                        keepingScopeKey = snapshot.immutableScopeKey
+                    )
+                }
+                pendingSubmissionId = snapshot.submissionId
+                attachments = frozenAttachments
+                feedbackDraftStore.save(accountId, submittedMessage, frozenAttachments, snapshot.submissionId)
+                productFeedbackStore.dispatch(
+                    if (selectedTicketId == null) {
+                        ProductFeedbackIntent.Create(snapshot)
+                    } else {
+                        ProductFeedbackIntent.Reply(selectedTicketId, snapshot)
+                    }
+                )
+                if (latestAccountId != submissionAccountId) return@launch
+                val finalState = productFeedbackStore.state.value
+                val failure = finalState.failure
+                if (failure == null) {
+                    pendingRetryRequest = null
+                    pendingSubmissionId = null
+                    messageFieldValue = TextFieldValue("")
+                    draftTextForPersistence = ""
+                    feedbackDraftStore.clear(accountId)
+                    attachments = emptyList()
+                } else {
+                    val presentation = copy.productFeedbackFailure(failure)
+                    val retry =
+                        SettingsQuiverFeedbackRetryRequest(
+                            message = submittedMessage,
+                            attachments = frozenAttachments,
+                            submissionSnapshot = snapshot
+                        ).takeIf { failure.retryable }
+                    pendingRetryRequest = retry
+                    if (!failure.retryable) {
+                        pendingSubmissionId = null
+                        attachments = emptyList()
+                        feedbackDraftStore.save(accountId, submittedMessage, emptyList(), null)
+                    }
+                    error = presentation.composerStatus
+                    entries = entries + SettingsQuiverFeedbackEntry(
+                        id = nextConversationEntryId(),
+                        kind = SettingsQuiverFeedbackEntryKind.Error,
+                        title = presentation.title,
+                        body = presentation.body,
+                        retryRequest = retry
+                    )
+                }
+                busy = false
+            }
+            return
+        }
+        if (visualFixture == null) {
+            val failure = copy.submissionPermissionFailure()
+            error = failure.composerStatus
+            entries = entries + SettingsQuiverFeedbackEntry(
+                id = nextConversationEntryId(),
+                kind = SettingsQuiverFeedbackEntryKind.Error,
+                title = failure.title,
+                body = failure.body
+            )
             return
         }
         settingsCapabilities.log("settings_quiver_feedback_submit_enter")
@@ -11365,7 +11545,39 @@ private fun SharedQuiverFeedbackContent(
                         onCopy = { shareText ->
                             settingsCapabilities.bridgeCopyToClipboard(shareText)
                         },
-                        onRetry = { request -> submitFeedback(request) }
+                        onRetry = { request -> submitFeedback(request) },
+                        onOpen = { ticketId ->
+                            productFeedbackStore?.let { store ->
+                                scope.launch { store.dispatch(ProductFeedbackIntent.OpenTicket(ticketId)) }
+                            }
+                        }
+                    )
+                }
+            }
+            val canLoadMore =
+                productFeedbackState?.selectedTicket?.nextCommentCursor != null ||
+                    (productFeedbackState?.selectedTicket == null && productFeedbackState?.nextCursor != null)
+            if (canLoadMore) {
+                item(key = "feedback-load-more") {
+                    SlockBrutalActionButton(
+                        label = stringResource(MR.strings.saved_action_load_more),
+                        onClick = {
+                            productFeedbackStore?.let { store ->
+                                scope.launch {
+                                    val selected = store.state.value.selectedTicket
+                                    store.dispatch(
+                                        if (selected == null) {
+                                            ProductFeedbackIntent.LoadMore
+                                        } else {
+                                            ProductFeedbackIntent.LoadMoreComments(selected.ticket.id)
+                                        }
+                                    )
+                                }
+                            }
+                        },
+                        leadingIcon = SlockLucideIconName.RefreshCw,
+                        modifier = Modifier.fillMaxWidth(),
+                        minWidth = 0.dp
                     )
                 }
             }
@@ -11381,7 +11593,8 @@ private fun SharedQuiverFeedbackContent(
                             ),
                         copy = copy,
                         onCopy = {},
-                        onRetry = {}
+                        onRetry = {},
+                        onOpen = {}
                     )
                 }
             }
@@ -11420,6 +11633,7 @@ private fun SharedQuiverFeedbackContent(
                         "change" -> {
                             messageFieldValue = TextFieldValue(value.orEmpty())
                             draftTextForPersistence = value.orEmpty()
+                            pendingSubmissionId = null
                             error = null
                         }
                         "send" -> {
@@ -11427,13 +11641,25 @@ private fun SharedQuiverFeedbackContent(
                             submitFeedback()
                         }
                         "attachImage" -> pickAttachment(imageOnly = true)
-                        "attachFile" -> pickAttachment(imageOnly = false)
+                        "attachFile" -> pickAttachment(imageOnly = true)
                         "removeAttachment" ->
                             attachmentId?.let { id ->
-                                attachments =
+                                val previousAttachments = attachments
+                                val remainingAttachments =
                                     attachments.filterNot { file ->
                                         file.feedbackComposerAttachmentId() == id
                                     }
+                                attachments = remainingAttachments
+                                pendingSubmissionId = null
+                                val remainingScopes =
+                                    remainingAttachments.mapNotNull(PlatformFile::immutableScopeKey).toSet()
+                                val orphaned =
+                                    previousAttachments.filter { file ->
+                                        file.immutableScopeKey != null && file.immutableScopeKey !in remainingScopes
+                                    }
+                                if (orphaned.isNotEmpty() && productFeedbackRepository != null) {
+                                    scope.launch { productFeedbackRepository.retireCachedAttachments(orphaned) }
+                                }
                             }
                         "previewAttachment", "retryAttachments", "blur", "toggleAsTask" -> Unit
                     }
@@ -11590,6 +11816,21 @@ internal fun SettingsQuiverFeedbackCopy.submissionFailure(
     )
 }
 
+private fun SettingsQuiverFeedbackCopy.productFeedbackFailure(
+    failure: ProductFeedbackFailure?
+): SettingsQuiverFeedbackFailurePresentation =
+    when (failure) {
+        is ProductFeedbackFailure.Invalid -> submissionFailure("settings_feedback_attachment_read_failed", false)
+        ProductFeedbackFailure.NotFound -> submissionFailure(retryable = false)
+        ProductFeedbackFailure.Conflict -> submissionFailure(retryable = false)
+        is ProductFeedbackFailure.RateLimited -> submissionFailure("settings_feedback_rate_limited", true)
+        ProductFeedbackFailure.Unavailable -> submissionFailure("settings_feedback_server_unavailable", true)
+        ProductFeedbackFailure.Unauthorized -> submissionFailure("settings_feedback_auth_failed", false)
+        ProductFeedbackFailure.Offline -> submissionFailure("settings_feedback_network_failed", true)
+        ProductFeedbackFailure.Cancelled -> submissionFailure(retryable = false)
+        null -> submissionFailure()
+    }
+
 internal fun SettingsQuiverFeedbackCopy.submissionUnavailableFailure(): SettingsQuiverFeedbackFailurePresentation =
     SettingsQuiverFeedbackFailurePresentation(
         composerStatus = submissionUnavailable,
@@ -11649,7 +11890,8 @@ private fun settingsQuiverFeedbackCopy(attachmentMaxLabel: String): SettingsQuiv
 
 internal data class SettingsQuiverFeedbackRetryRequest(
     val message: String,
-    val attachments: List<PlatformFile>
+    val attachments: List<PlatformFile>,
+    val submissionSnapshot: ProductFeedbackSubmissionSnapshot? = null
 )
 
 internal fun SettingsQuiverFeedbackRetryRequest.matches(
@@ -11709,7 +11951,8 @@ private fun SettingsQuiverFeedbackConversationRow(
     entry: SettingsQuiverFeedbackEntry,
     copy: SettingsQuiverFeedbackCopy,
     onCopy: (String) -> Unit,
-    onRetry: (SettingsQuiverFeedbackRetryRequest) -> Unit
+    onRetry: (SettingsQuiverFeedbackRetryRequest) -> Unit,
+    onOpen: (String) -> Unit = {}
 ) {
     val isUser = entry.kind == SettingsQuiverFeedbackEntryKind.User
     Row(
@@ -11720,6 +11963,11 @@ private fun SettingsQuiverFeedbackConversationRow(
             modifier =
                 Modifier
                     .widthIn(max = 560.dp)
+                    .then(
+                        entry.ticketId?.let { ticketId ->
+                            Modifier.clickable { onOpen(ticketId) }
+                        } ?: Modifier
+                    )
                     .background(
                         when (entry.kind) {
                             SettingsQuiverFeedbackEntryKind.User -> SlockColor.BrandYellow

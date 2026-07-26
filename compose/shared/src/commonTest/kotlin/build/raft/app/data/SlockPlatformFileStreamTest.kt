@@ -85,6 +85,117 @@ class SlockPlatformFileStreamTest {
         assertEquals(1, source.closeCount)
     }
 
+    @Test
+    fun feedbackCacheLifecycleRetiresAnonymousLogoutAndPreviousAccountOnly() = runBlocking {
+        val anonymousPreferences = InMemorySlockKeyValueStore()
+        val anonymousResolver = RecordingRetirementResolver()
+        ProductFeedbackImmutableCacheLifecycle(
+            anonymousResolver,
+            ProductFeedbackCleanupStore(anonymousPreferences)
+        ).initialize(null)
+        assertEquals(1, anonymousResolver.retireAllCalls)
+
+        val preferences = InMemorySlockKeyValueStore()
+        val draftStore = SettingsQuiverFeedbackDraftStore(preferences)
+        draftStore.save("account-a", "A private draft")
+        draftStore.save("account-b", "B private draft")
+        val cleanupStore = ProductFeedbackCleanupStore(preferences, draftStore)
+        val resolver = RecordingRetirementResolver()
+        val lifecycle = ProductFeedbackImmutableCacheLifecycle(resolver, cleanupStore)
+        lifecycle.initialize("account-a")
+        lifecycle.onSessionEvent(AuthSessionEvent.TokensRotated(1), "account-a")
+        lifecycle.onSessionEvent(AuthSessionEvent.Authenticated(2), "account-b")
+
+        assertEquals(listOf(productFeedbackImmutableOwnerKey("account-a")), resolver.retiredOwners)
+        assertEquals(0, resolver.retireAllCalls)
+        assertEquals(SettingsQuiverFeedbackDraftSnapshot(), draftStore.read("account-a"))
+        assertEquals("B private draft", draftStore.read("account-b").text)
+
+        lifecycle.onSessionEvent(AuthSessionEvent.Cleared(3, AuthSessionClearReason.Logout), null)
+        assertEquals(1, resolver.retireAllCalls)
+        assertEquals(SettingsQuiverFeedbackDraftSnapshot(), draftStore.read("account-b"))
+        draftStore.save("account-b", "stale dispose write")
+        assertEquals(SettingsQuiverFeedbackDraftSnapshot(), draftStore.read("account-b"))
+        cleanupStore.activateAccount("account-b")
+        draftStore.save("account-b", "fresh login draft")
+        assertEquals("fresh login draft", draftStore.read("account-b").text)
+    }
+
+    @Test
+    fun feedbackCacheLifecyclePersistsFailedLogoutAndRetriesBeforeClearingDraft() = runBlocking {
+        val preferences = InMemorySlockKeyValueStore()
+        val draftStore = SettingsQuiverFeedbackDraftStore(preferences)
+        draftStore.save("account-a", "Keep until bytes are deleted")
+        val cleanupStore = ProductFeedbackCleanupStore(preferences, draftStore)
+        val resolver = RecordingRetirementResolver(retirementSucceeds = false)
+        val lifecycle = ProductFeedbackImmutableCacheLifecycle(resolver, cleanupStore)
+        lifecycle.initialize("account-a")
+
+        lifecycle.onSessionEvent(AuthSessionEvent.Cleared(1, AuthSessionClearReason.Logout), null)
+
+        assertEquals(SettingsQuiverFeedbackDraftSnapshot(), draftStore.read("account-a"))
+        assertEquals(1, cleanupStore.pendingOwnerCount())
+        assertTrue(!cleanupStore.activateAccount("account-a"))
+        draftStore.save("account-a", "must not resurrect")
+        assertEquals(SettingsQuiverFeedbackDraftSnapshot(), draftStore.read("account-a"))
+
+        resolver.retirementSucceeds = true
+        lifecycle.initialize(null)
+
+        assertEquals(SettingsQuiverFeedbackDraftSnapshot(), draftStore.read("account-a"))
+        assertEquals(0, cleanupStore.pendingOwnerCount())
+        assertTrue(cleanupStore.activateAccount("account-a"))
+        assertEquals(SettingsQuiverFeedbackDraftSnapshot(), draftStore.read("account-a"))
+        draftStore.save("account-a", "fresh after cleanup")
+        assertEquals("fresh after cleanup", draftStore.read("account-a").text)
+    }
+
+    @Test
+    fun ownerJournalSurvivesCrashBeforeDraftBlockWrite() = runBlocking {
+        val preferences = InMemorySlockKeyValueStore()
+        SettingsQuiverFeedbackDraftStore(preferences).save("account-a", "private")
+        val interruptedStore = FailAtWriteStore(preferences, failAtWrite = 2)
+        val interruptedCleanup = ProductFeedbackCleanupStore(interruptedStore)
+
+        assertIs<SimulatedPreferenceCrash>(failureOf {
+            interruptedCleanup.retireOwner(
+                "account-a",
+                productFeedbackImmutableOwnerKey("account-a")
+            ) { true }
+        })
+
+        val resolver = RecordingRetirementResolver()
+        val restartedDraftStore = SettingsQuiverFeedbackDraftStore(preferences)
+        val restartedCleanup = ProductFeedbackCleanupStore(preferences, restartedDraftStore)
+        assertEquals(1, restartedCleanup.pendingOwnerCount())
+        restartedCleanup.drain(resolver)
+
+        assertEquals(listOf(productFeedbackImmutableOwnerKey("account-a")), resolver.retiredOwners)
+        assertEquals(0, restartedCleanup.pendingOwnerCount())
+        assertTrue(restartedCleanup.activateAccount("account-a"))
+        assertEquals(SettingsQuiverFeedbackDraftSnapshot(), restartedDraftStore.read("account-a"))
+    }
+
+    @Test
+    fun draftIndexSurvivesCrashBeforeDraftRecordWrite() = runBlocking {
+        val preferences = InMemorySlockKeyValueStore()
+        val interruptedStore = FailAtWriteStore(preferences, failAtWrite = 2)
+
+        assertIs<SimulatedPreferenceCrash>(failureOf {
+            SettingsQuiverFeedbackDraftStore(interruptedStore).save("account-a", "private")
+        })
+
+        val restartedDraftStore = SettingsQuiverFeedbackDraftStore(preferences)
+        assertEquals(setOf("account-a"), restartedDraftStore.accountIds())
+        val resolver = RecordingRetirementResolver()
+        ProductFeedbackImmutableCacheLifecycle(
+            resolver,
+            ProductFeedbackCleanupStore(preferences, restartedDraftStore)
+        ).initialize(null)
+        assertEquals(listOf(productFeedbackImmutableOwnerKey("account-a")), resolver.retiredOwners)
+        assertTrue(restartedDraftStore.accountIds().isEmpty())
+    }
+
     private object DiscardingSink : NetworkByteStreamSink {
         override suspend fun write(bytes: ByteArray) = Unit
     }
@@ -114,4 +225,49 @@ class SlockPlatformFileStreamTest {
             closeCount += 1
         }
     }
+
+    private class RecordingRetirementResolver(
+        var retirementSucceeds: Boolean = true
+    ) : SlockPlatformFileResolver {
+        val retiredOwners = mutableListOf<String>()
+        var retireAllCalls = 0
+
+        override suspend fun readFile(fileRef: String): SlockPlatformFileReadResult = error("unused")
+
+        override suspend fun statFile(fileRef: String): SlockPlatformFileStatResult = error("unused")
+
+        override suspend fun openFileStream(
+            fileRef: String,
+            expectedSizeBytes: Long
+        ): SlockPlatformFileChunkSource = error("unused")
+
+        override suspend fun retireImmutableOwner(ownerKey: String): Boolean {
+            if (!retirementSucceeds) return false
+            retiredOwners += ownerKey
+            return true
+        }
+
+        override suspend fun retireAllImmutableOwners(): Boolean {
+            if (!retirementSucceeds) return false
+            retireAllCalls += 1
+            return true
+        }
+    }
+
+    private class FailAtWriteStore(
+        private val delegate: SharedPreferenceStore,
+        private val failAtWrite: Int
+    ) : SharedPreferenceStore {
+        private var writes = 0
+
+        override fun getString(key: String): String? = delegate.getString(key)
+
+        override fun putString(key: String, value: String?) {
+            writes += 1
+            if (writes == failAtWrite) throw SimulatedPreferenceCrash()
+            delegate.putString(key, value)
+        }
+    }
+
+    private class SimulatedPreferenceCrash : RuntimeException()
 }

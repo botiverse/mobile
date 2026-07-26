@@ -147,7 +147,6 @@ import com.tencent.kuikly.core.render.android.expand.component.KRTextAreaView
 import com.tencent.kuikly.core.render.android.expand.component.KRTextFieldView
 import com.caverock.androidsvg.SVG
 import build.hands.update.HandsDeviceId
-import build.hands.update.HandsFeedback
 import build.hands.update.UpdateChecker
 import build.hands.update.internal.HandsClient
 import build.hands.update.models.UpdateCheckResponse
@@ -4425,120 +4424,13 @@ internal class SlockKuiklyBridgeModule(
 
     private data class DiagnosticsFeedbackFile(val file: File, val summaryText: String)
 
-    /**
-     * Submit in-app feedback to the Quiver ticket system (kind=bug) with the
-     * diagnostics archive attached. Returns status=ok when the ticket was
-     * created so the settings UI can confirm.
-     */
+    /** Legacy host entry point retained fail-closed for old callers. */
     private suspend fun submitFeedbackToQuiver(request: JSONObject? = null): Map<String, Any> {
-        SlockAppLog.record(
-                "SlockDiagnostics",
-                "quiver_feedback_submit_enter source=${if (request != null) "shared" else "native_prompt"} " +
-                        "messageLength=${request?.optString("message")?.length ?: 0} " +
-                        "fileCount=${request?.optJSONArray("files")?.length() ?: 0}"
+        SlockAppLog.record("SlockDiagnostics", "native_feedback_submit_rejected authority=raft_server")
+        return mapOf(
+                "status" to "unsupported",
+                "code" to "settings_feedback_shared_transport_required"
         )
-        val description = request?.optString("message")?.trim()?.takeIf { it.isNotBlank() }
-            ?: promptFeedbackDescription()
-            ?: return mapOf("status" to "cancelled").also {
-                SlockAppLog.record("SlockDiagnostics", "quiver_feedback_submit_cancelled reason=blank_or_cancelled")
-            }
-        val userFilesResult =
-                withContext(Dispatchers.IO) {
-                    runCatching { request?.optJSONArray("files").toFeedbackAttachmentFiles() }
-                }
-        val userFiles =
-                userFilesResult.getOrElse { throwable ->
-                    SlockAppLog.record(
-                            "SlockDiagnostics",
-                            "quiver_feedback_attachment_prepare_failed error=${throwable.javaClass.simpleName} message=${throwable.message ?: "-"}"
-                    )
-                    return mapOf<String, Any>(
-                            "status" to "error",
-                            "code" to feedbackAttachmentPrepareErrorCode(throwable),
-                            "message" to (throwable.message ?: "Unable to read feedback attachment")
-                    )
-                }
-        val diagnosticsFile =
-                if (HandsFeedbackAttachmentPolicy.canAttachDiagnostics(userFiles)) {
-                    withContext(Dispatchers.IO) { prepareOptionalDiagnosticsFeedbackFile() }
-                } else {
-                    null
-                }
-        var attachments = HandsFeedbackAttachmentPolicy.selectAttachments(userFiles, diagnosticsFile)
-        SlockAppLog.record(
-                "SlockDiagnostics",
-                "quiver_feedback_submit_prepared messageLength=${description.length} " +
-                        "userAttachmentCount=${userFiles.size} diagnosticsAttached=${diagnosticsFile != null} " +
-                        "attachmentCount=${attachments.size}"
-        )
-        return runCatching {
-            val feedbackClient = HandsFeedback(
-                    context = appContext,
-                    baseUrl = BuildConfig.QUIVER_BASE_URL,
-                    appSlug = BuildConfig.QUIVER_APP_SLUG,
-                    versionName = BuildConfig.VERSION_NAME,
-                    versionCode = BuildConfig.VERSION_CODE.toLong(),
-                    channel = BuildConfig.QUIVER_CHANNEL,
-                    clientKey = BuildConfig.QUIVER_CLIENT_KEY,
-            )
-            val ticketId =
-                    try {
-                        attachments =
-                                attachments.map(HandsFeedbackAttachmentPolicy::requireValidFile)
-                        feedbackClient.submit(
-                                message = description,
-                                kind = "bug",
-                                attachments = attachments,
-                        )
-                    } catch (throwable: Throwable) {
-                        if (diagnosticsFile == null ||
-                                !shouldRetryHandsFeedbackWithoutDiagnostics(throwable, diagnosticsFile)
-                        ) {
-                            throw throwable
-                        }
-                        attachments =
-                                userFiles
-                                        .take(HandsFeedbackAttachmentPolicy.maxAttachments)
-                                        .map(HandsFeedbackAttachmentPolicy::requireValidFile)
-                        SlockAppLog.record(
-                                "SlockDiagnostics",
-                                "quiver_feedback_diagnostics_submit_skipped error=${throwable.javaClass.simpleName} " +
-                                        "message=${throwable.message ?: "-"} retryAttachmentCount=${attachments.size}"
-                        )
-                        feedbackClient.submit(
-                                message = description,
-                                kind = "bug",
-                                attachments = attachments,
-                        )
-                    }
-            // Shareable reference the user can paste into the community channel.
-            val attachmentNames = handsFeedbackAttachmentNames(attachments.map(File::getName))
-            val shareText = buildQuiverFeedbackShareText(ticketId, description, attachmentNames)
-            withContext(Dispatchers.Main) {
-                copyText("Hands feedback", shareText)
-                Toast.makeText(appContext, SlockHostStrings.feedbackCopiedMessage(), Toast.LENGTH_LONG).show()
-            }
-            SlockAppLog.record("SlockDiagnostics", "quiver_feedback_submitted ticket=${ticketId.take(8)}")
-            mapOf<String, Any>(
-                    "status" to "ok",
-                    "ticketId" to ticketId,
-                    "shareText" to shareText,
-                    "attachment_names" to attachmentNames
-            )
-        }.getOrElse {
-            SlockAppLog.record(
-                    "SlockDiagnostics",
-                    "quiver_feedback_submit_failed error=${it.javaClass.simpleName} message=${it.message ?: "-"}"
-            )
-            withContext(Dispatchers.Main) {
-                Toast.makeText(appContext, SlockHostStrings.feedbackFailedMessage(it.message), Toast.LENGTH_LONG).show()
-            }
-            mapOf<String, Any>(
-                    "status" to "error",
-                    "code" to handsFeedbackSubmitErrorCode(it),
-                    "message" to (it.message ?: "feedback submission failed"),
-            )
-        }
     }
 
     private fun buildQuiverFeedbackShareText(

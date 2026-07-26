@@ -12,8 +12,12 @@ import kotlin.time.TimeSource
 
 data class SharedDownloadedBytes(
     val bytes: ByteArray,
-    val contentType: String?
+    val contentType: String?,
+    val responseHeaders: Map<String, List<String>> = emptyMap()
 )
+
+internal class BinaryDownloadHttpException(val statusCode: Int) :
+    IllegalStateException("Download failed: HTTP $statusCode")
 
 fun interface BinaryDownloadDiagnosticsLogger {
     fun record(tag: String, message: String)
@@ -53,22 +57,44 @@ object SharedBinaryDownloader {
     }
 
     suspend fun fetchBytes(url: String): SharedDownloadedBytes {
+        return fetchBytes(url, emptyMap(), Long.MAX_VALUE)
+    }
+
+    internal suspend fun fetchBytes(
+        url: String,
+        headers: Map<String, String>,
+        maxBytes: Long
+    ): SharedDownloadedBytes {
         val chunks = mutableListOf<ByteArray>()
         var totalBytes = 0
+        var responseHeaders: Map<String, List<String>> = emptyMap()
+        var validationFailure: String? = null
         val contentType =
             streamDownload(
                 url = url,
                 operation = "fetch_bytes",
                 failurePrefix = "Download failed",
-                onStart = {},
+                headers = headers,
+                onResponseStart = { contentLength, receivedHeaders ->
+                    if (contentLength != null && contentLength > maxBytes) {
+                        validationFailure = "Download exceeded maximum size"
+                    }
+                    responseHeaders = receivedHeaders
+                },
                 onChunk = { bytes, _, _ ->
-                    totalBytes += bytes.size
-                    chunks += bytes.copyOf()
+                    if (totalBytes.toLong() + bytes.size > maxBytes) {
+                        validationFailure = "Download exceeded maximum size"
+                    } else if (validationFailure == null) {
+                        totalBytes += bytes.size
+                        chunks += bytes.copyOf()
+                    }
                 }
             )
+        validationFailure?.let { throw IllegalStateException(it) }
         return SharedDownloadedBytes(
             bytes = combineDownloadedChunks(chunks, totalBytes),
-            contentType = contentType
+            contentType = contentType,
+            responseHeaders = responseHeaders
         )
     }
 
@@ -82,7 +108,7 @@ object SharedBinaryDownloader {
             url = url,
             operation = "download_stream",
             failurePrefix = "Attachment download failed",
-            onStart = onStart,
+            onResponseStart = { totalBytes, _ -> onStart(totalBytes) },
             beforeRead = beforeRead,
             onChunk = onChunk
         )
@@ -91,7 +117,8 @@ object SharedBinaryDownloader {
         url: String,
         operation: String,
         failurePrefix: String,
-        onStart: (totalBytes: Long?) -> Unit,
+        headers: Map<String, String> = emptyMap(),
+        onResponseStart: (totalBytes: Long?, headers: Map<String, List<String>>) -> Unit,
         beforeRead: () -> Unit = {},
         onChunk: (bytes: ByteArray, downloadedBytes: Long, totalBytes: Long?) -> Unit
     ): String? {
@@ -114,13 +141,14 @@ object SharedBinaryDownloader {
                             policy = NetworkRequestPolicy(timeoutMillis = DOWNLOAD_TIMEOUT_MILLIS)
                         ).apply {
                             setHeader("Accept", "*/*")
+                            headers.forEach { (name, value) -> setHeader(name, value) }
                         },
-                    onResponseStart = { _, contentLength, _ ->
+                    onResponseStart = { _, contentLength, responseHeaders ->
                         totalBytes = contentLength?.takeIf { it > 0L }
                         recordDiagnostics(
                             "operation=$operation status=response_start expectedBytes=${totalBytes ?: "unknown"} $urlSummary"
                         )
-                        onStart(totalBytes)
+                        onResponseStart(totalBytes, responseHeaders)
                     },
                     onChunk = { chunk ->
                         beforeRead()
@@ -140,12 +168,7 @@ object SharedBinaryDownloader {
                                     "errorRawCode=${response.error?.rawCode ?: response.rawResponse?.errorCode ?: "none"} " +
                                     "message=$safeErrorMessage $urlSummary"
                             )
-                            continuation.resumeWithException(
-                                IllegalStateException(
-                                    "$failurePrefix: HTTP ${status ?: 0}" +
-                                        safeErrorMessage.takeUnless { it == "none" }?.let { " ($it)" }.orEmpty()
-                                )
-                            )
+                            continuation.resumeWithException(BinaryDownloadHttpException(status ?: 0))
                         } else {
                             val contentType = response.contentTypeHeader()
                             recordDiagnostics(

@@ -11,6 +11,30 @@ interface SlockPlatformFileResolver {
 
     /** Every call owns a fresh platform source for one HTTP attempt. */
     suspend fun openFileStream(fileRef: String, expectedSizeBytes: Long): SlockPlatformFileChunkSource
+
+    suspend fun persistImmutableFile(
+        ownerKey: String,
+        scopeKey: String,
+        index: Int,
+        bytes: ByteArray
+    ): SlockPlatformFilePersistResult =
+        SlockPlatformFilePersistResult(501, errorCode = "immutable_file_persist_unsupported")
+
+    suspend fun retireImmutableScope(ownerKey: String, scopeKey: String): Boolean = false
+
+    suspend fun retireImmutableOwner(ownerKey: String): Boolean = false
+
+    suspend fun retireAllImmutableOwners(): Boolean = false
+}
+
+data class SlockPlatformFilePersistResult(
+    val code: Int,
+    val fileRef: String? = null,
+    val errorCode: String = "",
+    val message: String = ""
+) {
+    val success: Boolean
+        get() = code in 200..299 && !fileRef.isNullOrBlank()
 }
 
 data class SlockPlatformFileReadResult(
@@ -126,5 +150,39 @@ internal data class SlockPlatformFileResolverBinding(
     val resolver: SlockPlatformFileResolver?,
     val scope: String
 )
+
+internal class ProductFeedbackImmutableCacheLifecycle(
+    private val resolver: SlockPlatformFileResolver?,
+    private val cleanupStore: ProductFeedbackCleanupStore = productFeedbackCleanupStore()
+) {
+    private var previousAccountId: String? = null
+
+    suspend fun initialize(accountId: String?) {
+        previousAccountId = accountId
+        cleanupStore.drain(resolver)
+        if (accountId == null) cleanupStore.retireAllDraftOwners(resolver)
+    }
+
+    suspend fun onSessionEvent(event: AuthSessionEvent, currentAccountId: String?) {
+        when (event) {
+            is AuthSessionEvent.Authenticated -> {
+                val previous = previousAccountId
+                if (previous != null && previous != currentAccountId) {
+                    val ownerKey = productFeedbackImmutableOwnerKey(previous)
+                    cleanupStore.retireOwner(previous, ownerKey) {
+                        resolver?.retireImmutableOwner(ownerKey) ?: true
+                    }
+                }
+                previousAccountId = currentAccountId
+            }
+            is AuthSessionEvent.Cleared -> {
+                cleanupStore.retireAllDraftOwners(resolver)
+                previousAccountId = null
+            }
+            is AuthSessionEvent.BindingMetadataChanged,
+            is AuthSessionEvent.TokensRotated -> Unit
+        }
+    }
+}
 
 internal expect fun createDefaultPlatformFileResolver(): SlockPlatformFileResolver?

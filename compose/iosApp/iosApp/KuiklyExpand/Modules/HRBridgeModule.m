@@ -3250,9 +3250,8 @@ static NSString *SlockPickedAttachmentDisplayName(NSString *suggestedName,
         return [self slock_prepareDiagnosticsFeedbackDraft];
     }
     if ([action isEqualToString:@"sendFeedback"]) {
-        [self slock_promptAndSubmitHandsFeedback];
-        SlockDiagnosticsRecord(@"info", @"SlockDiagnostics", @"quiver_feedback_prompt_opened");
-        return @{ @"status" : @"ok" };
+        return [self slock_unsupportedResultWithCode:@"settings_feedback_shared_transport_required"
+                                             message:@"Feedback is owned by the authenticated shared Raft transport"];
     }
     if ([action isEqualToString:@"submitFeedback"]) {
         NSString *description = [SlockBridgeString(params[@"message"])
@@ -3261,9 +3260,8 @@ static NSString *SlockPickedAttachmentDisplayName(NSString *suggestedName,
             return [self slock_unsupportedResultWithCode:@"settings_feedback_message_required"
                                                  message:@"Feedback message is required"];
         }
-        [self slock_submitHandsFeedbackWithDescription:description];
-        SlockDiagnosticsRecord(@"info", @"SlockDiagnostics", @"quiver_feedback_submit_started");
-        return @{ @"status" : @"ok", @"ticketId" : @"", @"shareText" : @"" };
+        return [self slock_unsupportedResultWithCode:@"settings_feedback_shared_transport_required"
+                                             message:@"Feedback is owned by the authenticated shared Raft transport"];
     }
     if ([action isEqualToString:@"clearStorage"]) {
         return [self slock_unsupportedResultWithCode:@"settings_capability_unsupported"
@@ -3296,10 +3294,7 @@ static NSString *SlockPickedAttachmentDisplayName(NSString *suggestedName,
     });
 }
 
-/// Hands feedback flow (parity with the Android host): prompt for a
-/// description, submit a kind=bug ticket with the diagnostics export
-/// attached, then copy a shareable "Hands feedback <id>" reference to the
-/// clipboard so the user can paste it in the community.
+/// Legacy host prompt retained fail-closed; shared Raft transport owns submission.
 - (void)slock_promptAndSubmitHandsFeedback {
     SlockBridgeRunOnMain(^{
         UIViewController *controller = [self slock_currentViewController];
@@ -3332,55 +3327,7 @@ static NSString *SlockPickedAttachmentDisplayName(NSString *suggestedName,
 }
 
 - (void)slock_submitHandsFeedbackWithDescription:(NSString *)description {
-    dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
-        NSDictionary *draft = [self slock_prepareDiagnosticsFeedbackDraft];
-        NSArray *draftPaths = [draft[@"attachmentPaths"] isKindOfClass:NSArray.class] ? draft[@"attachmentPaths"] : @[];
-        NSString *path = SlockBridgeString(draft[@"filePath"]);
-        NSArray<NSString *> *attachments = draftPaths.count > 0 ? draftPaths : (path.length > 0 ? @[ path ] : @[]);
-        [Hands submitFeedback:description
-                           kind:@"bug"
-                attachmentPaths:attachments
-                         extras:nil
-                     completion:^(NSString *ticketId, NSError *error) {
-            SlockBridgeRunOnMain(^{
-                UIViewController *controller = [self slock_currentViewController];
-                if (error || ticketId.length == 0) {
-                    SlockDiagnosticsRecord(@"warn", @"SlockDiagnostics",
-                        [NSString stringWithFormat:@"quiver_feedback_submit_failed error=%@", error.localizedDescription ?: @"unknown"]);
-                    UIAlertController *failed =
-                        [UIAlertController alertControllerWithTitle:SharedSlockHostStrings.shared.feedbackFailedTitle
-                                                            message:error.localizedDescription ?: SharedSlockHostStrings.shared.feedbackErrorUnknown
-                                                     preferredStyle:UIAlertControllerStyleAlert];
-                    [failed addAction:[UIAlertAction actionWithTitle:SharedSlockHostStrings.shared.ok style:UIAlertActionStyleDefault handler:nil]];
-                    [controller presentViewController:failed animated:YES completion:nil];
-                    return;
-                }
-                NSString *shortId = [ticketId substringToIndex:MIN(ticketId.length, (NSUInteger)8)];
-                NSString *environment = SlockDiagnosticsEnvironmentSectionFromExportText(
-                    SlockDiagnosticsBuildExportText([self slock_settingsCapabilityResultForAction:@"loadAbout" params:@{}])
-                );
-                NSString *attachmentBlock = SlockHandsFeedbackAttachmentBlock(attachments);
-                NSString *attachmentSection = attachmentBlock.length > 0
-                    ? [NSString stringWithFormat:@"\n%@", attachmentBlock]
-                    : @"";
-                NSString *shareText = [NSString stringWithFormat:@"Hands feedback %@\nTicket: %@%@\n\nEnvironment:\n%@\n\nFeedback:\n%@",
-                    shortId,
-                    ticketId,
-                    attachmentSection,
-                    environment.length > 0 ? environment : @"--",
-                    description];
-                UIPasteboard.generalPasteboard.string = shareText;
-                SlockDiagnosticsRecord(@"info", @"SlockDiagnostics",
-                    [NSString stringWithFormat:@"quiver_feedback_submitted ticket=%@", shortId]);
-                UIAlertController *done =
-                    [UIAlertController alertControllerWithTitle:SharedSlockHostStrings.shared.feedbackSentTitle
-                                                        message:SharedSlockHostStrings.shared.feedbackCopiedMessage
-                                                 preferredStyle:UIAlertControllerStyleAlert];
-                [done addAction:[UIAlertAction actionWithTitle:SharedSlockHostStrings.shared.ok style:UIAlertActionStyleDefault handler:nil]];
-                [controller presentViewController:done animated:YES completion:nil];
-            });
-        }];
-    });
+    SlockDiagnosticsRecord(@"warn", @"SlockDiagnostics", @"native_feedback_submit_rejected authority=raft_server");
 }
 
 - (NSDictionary *)slock_prepareDiagnosticsFeedbackDraft {

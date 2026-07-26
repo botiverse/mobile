@@ -4,6 +4,8 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.ServerId
 import build.raft.app.network.HEADER_SERVER_ID
 import build.raft.app.network.MultipartFile
+import build.raft.app.network.BinaryDownloadHttpException
+import build.raft.app.network.SharedDownloadedBytes
 import build.raft.app.network.SlockHttpExecutor
 import build.raft.app.network.SlockHttpExecutorResponse
 import build.raft.app.network.SlockRequestPriority
@@ -15,6 +17,9 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNotSame
 import kotlin.test.assertTrue
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 
@@ -238,6 +243,211 @@ class SharedSlockNetworkClientTest {
         assertEquals("https://api.slock.test/api/servers/server-override/members?limit=20", request.url)
         assertEquals("Bearer access-token", request.headers["Authorization"])
         assertEquals("server-override", request.headers[HEADER_SERVER_ID])
+    }
+
+    @Test
+    fun binaryRequestUsesExactAuthHeadersAndServerId() = runBlocking {
+        val observed = mutableListOf<Triple<String, Map<String, String>, Long>>()
+        val client =
+            SharedSlockNetworkClient(
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                baseUrl = "https://api.slock.test/api",
+                executor = RecordingExecutor { error("unexpected executor request: $it") },
+                binaryFetcher = { url, headers, maxBytes ->
+                    observed += Triple(url, headers, maxBytes)
+                    SharedDownloadedBytes(
+                        bytes = byteArrayOf(1, 2, 3),
+                        contentType = "image/png",
+                        responseHeaders = mapOf("Content-Length" to listOf("3"))
+                    )
+                }
+            )
+
+        val response =
+            client.requestBinary(
+                priority = DataRequestPriority.Foreground,
+                path = "product-feedback/tickets/ticket/attachments/attachment",
+                maxBytes = 10L
+            )
+
+        assertEquals(200, response.response.code)
+        assertEquals(listOf<Byte>(1, 2, 3), response.bytes.toList())
+        val (url, headers, maxBytes) = observed.single()
+        assertEquals(
+            "https://api.slock.test/api/product-feedback/tickets/ticket/attachments/attachment",
+            url
+        )
+        assertEquals("Bearer access-token", headers["Authorization"])
+        assertEquals("server-1", headers[HEADER_SERVER_ID])
+        assertEquals(10L, maxBytes)
+    }
+
+    @Test
+    fun emptyMultipartSnapshotDoesNotRequirePlatformResolver() = runBlocking {
+        val client =
+            SharedSlockNetworkClient(
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                baseUrl = "https://api.slock.test/api",
+                executor = RecordingExecutor { error("unexpected executor request: $it") }
+            )
+
+        val result =
+            client.snapshotMultipartFiles(
+                priority = DataRequestPriority.Foreground,
+                ownerKey = "b".repeat(64),
+                scopeKey = "a".repeat(64),
+                files = emptyList()
+            )
+
+        assertTrue(result is DataResult.Content && result.data.isEmpty())
+    }
+
+    @Test
+    fun immutableSnapshotResolverRetiresOnlyExactScopeAndOwner() = runBlocking {
+        val resolver = ImmutableRecordingResolver()
+        val client =
+            SharedSlockNetworkClient(
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                baseUrl = "https://api.slock.test/api",
+                platformFileResolver = resolver,
+                executor = RecordingExecutor { error("unexpected executor request: $it") }
+            )
+        val ownerA = "a".repeat(64)
+        val ownerB = "b".repeat(64)
+        val scopeOne = "1".repeat(64)
+        val scopeTwo = "2".repeat(64)
+        suspend fun persist(owner: String, scope: String, value: Byte) {
+            assertTrue(
+                client.snapshotMultipartFiles(
+                    DataRequestPriority.Foreground,
+                    owner,
+                    scope,
+                    listOf(MultipartFile("attachments", "shot.png", "image/png", byteArrayOf(value)))
+                ) is DataResult.Content
+            )
+        }
+
+        persist(ownerA, scopeOne, 1)
+        persist(ownerA, scopeTwo, 2)
+        persist(ownerB, scopeOne, 3)
+        assertEquals(3, resolver.files.size)
+
+        assertTrue(client.retireMultipartFileScope(DataRequestPriority.Background, ownerA, scopeOne))
+        assertEquals(setOf(ownerA to scopeTwo, ownerB to scopeOne), resolver.files.keys.map { it.first to it.second }.toSet())
+
+        assertTrue(client.retireMultipartFileOwner(DataRequestPriority.Background, ownerA))
+        assertEquals(setOf(ownerB to scopeOne), resolver.files.keys.map { it.first to it.second }.toSet())
+    }
+
+    @Test
+    fun binary401RefreshesExactlyOnceAndRetriesWithFreshToken() = runBlocking {
+        val executor =
+            RecordingExecutor { url ->
+                assertTrue(url.endsWith("/auth/refresh"))
+                ok("""{"accessToken":"access-token-2","refreshToken":"refresh-token-2"}""")
+            }
+        val authorizations = mutableListOf<String?>()
+        var fetchAttempts = 0
+        val client =
+            SharedSlockNetworkClient(
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                baseUrl = "https://api.slock.test/api",
+                executor = executor,
+                binaryFetcher = { _, headers, _ ->
+                    authorizations += headers["Authorization"]
+                    fetchAttempts += 1
+                    if (fetchAttempts == 1) throw BinaryDownloadHttpException(401)
+                    SharedDownloadedBytes(byteArrayOf(7), "image/png")
+                }
+            )
+
+        val response = client.requestBinary(DataRequestPriority.Foreground, "product-feedback/binary", 10L)
+
+        assertEquals(200, response.response.code)
+        assertEquals(listOf<Byte>(7), response.bytes.toList())
+        assertEquals(listOf<String?>("Bearer access-token", "Bearer access-token-2"), authorizations)
+        assertEquals(1, executor.requests.count { it.url.endsWith("/auth/refresh") })
+    }
+
+    @Test
+    fun binaryCallerCancellationCancelsFetcherWithoutLateSuccess() = runTest {
+        var fetchCancelled = false
+        var terminalSuccesses = 0
+        val client =
+            SharedSlockNetworkClient(
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                baseUrl = "https://api.slock.test/api",
+                executor = RecordingExecutor { error("unexpected executor request: $it") },
+                binaryFetcher = { _, _, _ ->
+                    try {
+                        awaitCancellation()
+                    } finally {
+                        fetchCancelled = true
+                    }
+                }
+            )
+        val job = launch {
+            client.requestBinary(DataRequestPriority.Foreground, "product-feedback/binary", 10L)
+            terminalSuccesses += 1
+        }
+
+        testScheduler.runCurrent()
+        job.cancelAndJoin()
+
+        assertTrue(fetchCancelled)
+        assertEquals(0, terminalSuccesses)
+    }
+
+    @Test
+    fun binarySchedulerTimeoutCancelsFetcherAndReturnsClosedFailure() = runTest {
+        var fetchCancelled = false
+        var lateSuccesses = 0
+        val client =
+            SharedSlockNetworkClient(
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                baseUrl = "https://api.slock.test/api",
+                requestScheduler = SlockRequestScheduler(requestTimeoutMillis = 10L),
+                executor = RecordingExecutor { error("unexpected executor request: $it") },
+                binaryFetcher = { _, _, _ ->
+                    try {
+                        delay(100L)
+                        lateSuccesses += 1
+                        SharedDownloadedBytes(byteArrayOf(9), "image/png")
+                    } finally {
+                        fetchCancelled = true
+                    }
+                }
+            )
+
+        val response = client.requestBinary(DataRequestPriority.Foreground, "product-feedback/binary", 10L)
+
+        assertEquals(0, response.response.code)
+        assertTrue(response.response.errorBodyText.orEmpty().contains("network_timeout"))
+        assertTrue(fetchCancelled)
+        assertEquals(0, lateSuccesses)
+        assertTrue(response.bytes.isEmpty())
+    }
+
+    @Test
+    fun binarySizeFailureReturnsNoPartialBytes() = runBlocking {
+        var observedMaxBytes = -1L
+        val client =
+            SharedSlockNetworkClient(
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                baseUrl = "https://api.slock.test/api",
+                executor = RecordingExecutor { error("unexpected executor request: $it") },
+                binaryFetcher = { _, _, maxBytes ->
+                    observedMaxBytes = maxBytes
+                    throw IllegalStateException("Download exceeded maximum size")
+                }
+            )
+
+        val response = client.requestBinary(DataRequestPriority.Foreground, "product-feedback/binary", 3L)
+
+        assertEquals(3L, observedMaxBytes)
+        assertEquals(0, response.response.code)
+        assertTrue(response.bytes.isEmpty())
+        assertContains(response.response.errorBodyText.orEmpty(), "maximum size")
     }
 
     @Test
@@ -625,6 +835,44 @@ class SharedSlockNetworkClientTest {
         ): SlockPlatformFileChunkSource {
             openCalls += fileRef
             return virtualChunkSource(expectedSizeBytes)
+        }
+    }
+
+    private class ImmutableRecordingResolver : SlockPlatformFileResolver {
+        val files = mutableMapOf<Triple<String, String, Int>, ByteArray>()
+
+        override suspend fun readFile(fileRef: String): SlockPlatformFileReadResult = error("unused")
+
+        override suspend fun statFile(fileRef: String): SlockPlatformFileStatResult = error("unused")
+
+        override suspend fun openFileStream(
+            fileRef: String,
+            expectedSizeBytes: Long
+        ): SlockPlatformFileChunkSource = error("unused")
+
+        override suspend fun persistImmutableFile(
+            ownerKey: String,
+            scopeKey: String,
+            index: Int,
+            bytes: ByteArray
+        ): SlockPlatformFilePersistResult {
+            val key = Triple(ownerKey, scopeKey, index)
+            val existing = files[key]
+            if (existing != null && !existing.contentEquals(bytes)) {
+                return SlockPlatformFilePersistResult(409, errorCode = "immutable_conflict")
+            }
+            files[key] = bytes.copyOf()
+            return SlockPlatformFilePersistResult(200, "file:///$ownerKey/$scopeKey/$index.bin")
+        }
+
+        override suspend fun retireImmutableScope(ownerKey: String, scopeKey: String): Boolean {
+            files.keys.filter { it.first == ownerKey && it.second == scopeKey }.forEach(files::remove)
+            return true
+        }
+
+        override suspend fun retireImmutableOwner(ownerKey: String): Boolean {
+            files.keys.filter { it.first == ownerKey }.forEach(files::remove)
+            return true
         }
     }
 

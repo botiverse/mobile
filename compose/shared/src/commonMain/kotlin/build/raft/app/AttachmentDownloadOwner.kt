@@ -135,7 +135,7 @@ internal fun attachmentPrincipalKey(
     serverId: String
 ): AttachmentPrincipalKey =
     AttachmentPrincipalKey(
-        sha256Hex(
+        slockSha256Hex(
             canonicalIdentityBytes(
                 listOf(environmentId.trim(), accountId.trim(), serverId.trim())
             )
@@ -143,7 +143,7 @@ internal fun attachmentPrincipalKey(
     )
 
 private fun attachmentAccountKey(environmentId: String, accountId: String): String =
-    sha256Hex(canonicalIdentityBytes(listOf(environmentId.trim(), accountId.trim())))
+    slockSha256Hex(canonicalIdentityBytes(listOf(environmentId.trim(), accountId.trim())))
 
 private fun canonicalIdentityBytes(parts: List<String>): ByteArray {
     val encoded = parts.map(String::encodeToByteArray)
@@ -161,7 +161,7 @@ private fun canonicalIdentityBytes(parts: List<String>): ByteArray {
     return result
 }
 
-private fun sha256Hex(input: ByteArray): String {
+internal fun slockSha256Hex(input: ByteArray): String {
     val initial = intArrayOf(
         0x6a09e667, 0xbb67ae85.toInt(), 0x3c6ef372, 0xa54ff53a.toInt(),
         0x510e527f, 0x9b05688c.toInt(), 0x1f83d9ab, 0x5be0cd19

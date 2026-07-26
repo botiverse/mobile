@@ -6,14 +6,25 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.convert
 import kotlinx.cinterop.usePinned
+import platform.Foundation.NSApplicationSupportDirectory
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSFileSize
 import platform.Foundation.NSNumber
+import platform.Foundation.NSUUID
 import platform.Foundation.NSURL
+import platform.Foundation.NSSearchPathForDirectoriesInDomains
+import platform.Foundation.NSUserDomainMask
+import platform.posix.O_CREAT
+import platform.posix.O_EXCL
 import platform.posix.O_RDONLY
+import platform.posix.O_WRONLY
 import platform.posix.close as posixClose
+import platform.posix.fsync as posixFsync
+import platform.posix.link as posixLink
 import platform.posix.open as posixOpen
 import platform.posix.read as posixRead
+import platform.posix.unlink as posixUnlink
+import platform.posix.write as posixWrite
 
 internal actual fun createDefaultPlatformFileResolver(): SlockPlatformFileResolver? =
     SlockIosPlatformFileResolver()
@@ -90,6 +101,50 @@ private class SlockIosPlatformFileResolver : SlockPlatformFileResolver {
         }
     }
 
+    override suspend fun persistImmutableFile(
+        ownerKey: String,
+        scopeKey: String,
+        index: Int,
+        bytes: ByteArray
+    ): SlockPlatformFilePersistResult =
+        runCatching {
+            require(ownerKey.isImmutableFeedbackKey())
+            require(scopeKey.isImmutableFeedbackKey())
+            require(index in 0..2)
+            require(bytes.isNotEmpty())
+            val directory = "${immutableFeedbackRoot()}/$ownerKey/$scopeKey"
+            val fileManager = NSFileManager.defaultManager
+            if (!fileManager.fileExistsAtPath(directory)) {
+                check(fileManager.createDirectoryAtPath(directory, true, null, null))
+            }
+            val target = "$directory/$index.bin"
+            if (fileManager.fileExistsAtPath(target)) {
+                check(readWholeFile(target).contentEquals(bytes)) { "Immutable feedback snapshot conflict" }
+            } else {
+                writeWholeFileAtomically(target, bytes)
+            }
+            SlockPlatformFilePersistResult(200, NSURL.fileURLWithPath(target).absoluteString)
+        }.getOrElse { throwable ->
+            SlockPlatformFilePersistResult(
+                code = 400,
+                errorCode = "immutable_file_persist_failed",
+                message = throwable.message ?: "Unable to persist feedback snapshot"
+            )
+        }
+
+    override suspend fun retireImmutableScope(ownerKey: String, scopeKey: String): Boolean {
+        if (!ownerKey.isImmutableFeedbackKey() || !scopeKey.isImmutableFeedbackKey()) return false
+        return removeImmutableFeedbackPath("${immutableFeedbackRoot()}/$ownerKey/$scopeKey")
+    }
+
+    override suspend fun retireImmutableOwner(ownerKey: String): Boolean {
+        if (!ownerKey.isImmutableFeedbackKey()) return false
+        return removeImmutableFeedbackPath("${immutableFeedbackRoot()}/$ownerKey")
+    }
+
+    override suspend fun retireAllImmutableOwners(): Boolean =
+        removeImmutableFeedbackPath(immutableFeedbackRoot())
+
     private fun failed(errorCode: String, message: String): SlockPlatformFileStatResult =
         SlockPlatformFileStatResult(
             code = 400,
@@ -110,6 +165,22 @@ private class SlockIosPlatformFileResolver : SlockPlatformFileResolver {
             ?.longLongValue
             ?.takeIf { it > 0L }
 }
+
+private fun immutableFeedbackRoot(): String {
+    val applicationSupport =
+        NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, true)
+            .firstOrNull() as? String
+            ?: error("Application Support is unavailable")
+    return "$applicationSupport/Raft/product-feedback-retry"
+}
+
+private fun removeImmutableFeedbackPath(path: String): Boolean {
+    val fileManager = NSFileManager.defaultManager
+    return !fileManager.fileExistsAtPath(path) || fileManager.removeItemAtPath(path, error = null)
+}
+
+private fun String.isImmutableFeedbackKey(): Boolean =
+    length == 64 && all { it in '0'..'9' || it in 'a'..'f' }
 
 private data class ScopedFileUrl(
     val url: NSURL,
@@ -175,5 +246,37 @@ private fun readWholeFile(path: String): ByteArray {
         result
     } finally {
         posixClose(descriptor)
+    }
+}
+
+@OptIn(ExperimentalForeignApi::class)
+private fun writeWholeFileAtomically(target: String, bytes: ByteArray) {
+    val temporary = "$target.${NSUUID.UUID().UUIDString}.tmp"
+    val descriptor = posixOpen(temporary, O_WRONLY or O_CREAT or O_EXCL, 0x180)
+    if (descriptor < 0) error("Unable to create immutable snapshot")
+    try {
+        var offset = 0
+        while (offset < bytes.size) {
+            val count =
+                bytes.usePinned { pinned ->
+                    posixWrite(
+                        descriptor,
+                        pinned.addressOf(offset),
+                        (bytes.size - offset).convert()
+                    ).toInt()
+                }
+            if (count <= 0) error("Unable to write immutable snapshot")
+            offset += count
+        }
+        if (posixFsync(descriptor) != 0) error("Unable to sync immutable snapshot")
+    } finally {
+        posixClose(descriptor)
+    }
+    try {
+        if (posixLink(temporary, target) != 0) {
+            check(readWholeFile(target).contentEquals(bytes)) { "Immutable feedback snapshot conflict" }
+        }
+    } finally {
+        posixUnlink(temporary)
     }
 }

@@ -32,8 +32,12 @@ internal class BridgeSettingsPlatformCapabilities(
     private val copiedMessage: String,
     private val bridgeCallContext: CoroutineContext = EmptyCoroutineContext,
     private val feedbackVisualSubmission: SettingsQuiverFeedbackSubmission? = null,
+    private val productFeedbackRepositoryFactory: ((String) -> ProductFeedbackRepository?)? = null,
     private val openUrlHandler: ((String) -> Unit)? = null
 ) : SharedSettingsPlatformCapabilities {
+    fun productFeedbackRepository(accountId: String): ProductFeedbackRepository? =
+        accountId.takeIf(String::isNotBlank)?.let { productFeedbackRepositoryFactory?.invoke(it) }
+
     fun bridgeCopyToClipboard(content: String) {
         bridge.copyToPasteboard(content)
         bridge.toast(copiedMessage)
@@ -372,39 +376,9 @@ internal class BridgeSettingsPlatformCapabilities(
             )
             return DataResult.Content(submission)
         }
-        bridge.log("settings_quiver_feedback_bridge_request_prepared")
-        flushSlockPlatformLogs()
-        if (!flushSlockPlatformDiagnosticsDownstream()) {
-            return DataResult.Error(ScreenError("settings_diagnostics_flush_failed", retryable = true))
-        }
-        val response =
-            settingsCapability(
-                JSONObject()
-                    .put("action", "submitFeedback")
-                    .put("message", message)
-                    .put("files", attachments.toFeedbackFilesJson())
-            )
-        bridge.log(
-            "settings_quiver_feedback_submit_response status=${response?.optString("status").orEmpty()} " +
-                "code=${response?.optString("code").orEmpty()} " +
-                "ticket=${response?.optString("ticketId").orEmpty().take(8)}"
+        return DataResult.Error(
+            ScreenError("settings_feedback_shared_transport_required", retryable = false)
         )
-        return when (response?.optString("status")) {
-            "ok" ->
-                DataResult.Content(
-                    SettingsQuiverFeedbackSubmission(
-                        ticketId = response.optString("ticketId"),
-                        shareText = response.optString("shareText")
-                    )
-                )
-            "unsupported" -> DataResult.Empty(EmptyReason.NoSettingsAvailable)
-            else -> {
-                val code = response?.optString("code").orEmpty()
-                    .ifBlank { response?.optString("message").orEmpty() }
-                    .ifBlank { "settings_feedback_submit_failed" }
-                DataResult.Error(ScreenError(code, retryable = true))
-            }
-        }
     }
 
     override suspend fun loadSystemNotificationPermission(): SettingsMobileActionSnapshot? {
@@ -475,28 +449,6 @@ internal class BridgeSettingsPlatformCapabilities(
         } else {
             withContext(bridgeCallContext) {
                 block()
-            }
-        }
-
-    @OptIn(ExperimentalEncodingApi::class)
-    private fun List<PlatformFile>.toFeedbackFilesJson(): JSONArray =
-        JSONArray().also { array ->
-            take(3).forEach { file ->
-                array.put(
-                    JSONObject()
-                        .put("id", file.id)
-                        .put("fileName", file.fileName)
-                        .put("mimeType", file.mimeType.orEmpty())
-                        .put("sizeBytes", file.sizeBytes ?: file.bytes.size.toLong())
-                        .put("previewUri", file.previewUri.orEmpty())
-                        .put("fileRef", file.fileRef.orEmpty())
-                        .put("source", file.source)
-                        .also { item ->
-                            if (file.bytes.isNotEmpty()) {
-                                item.put("bodyBase64", Base64.encode(file.bytes))
-                            }
-                        }
-                )
             }
         }
 

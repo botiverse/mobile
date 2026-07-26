@@ -6,6 +6,7 @@ import android.provider.OpenableColumns
 import build.raft.app.data.SlockPlatformFileChunkSource
 import build.raft.app.data.SlockPlatformFileReadResult
 import build.raft.app.data.SlockPlatformFileResolver
+import build.raft.app.data.SlockPlatformFilePersistResult
 import build.raft.app.data.SlockPlatformFileStatResult
 import build.raft.app.data.SlockSharedPlatformFileResolverProvider
 import java.io.File
@@ -54,6 +55,56 @@ internal class AndroidPlatformFileResolver(
             }
         }
 
+    override suspend fun persistImmutableFile(
+        ownerKey: String,
+        scopeKey: String,
+        index: Int,
+        bytes: ByteArray
+    ): SlockPlatformFilePersistResult =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                require(ownerKey.isImmutableFeedbackKey())
+                require(scopeKey.isImmutableFeedbackKey())
+                require(index in 0..2)
+                require(bytes.isNotEmpty())
+                val directory = immutableFeedbackScopeDirectory(ownerKey, scopeKey).apply { mkdirs() }
+                val target = File(directory, "$index.bin")
+                if (target.isFile) {
+                    require(target.readBytes().contentEquals(bytes)) { "Immutable feedback snapshot conflict" }
+                } else {
+                    val temporary = File(directory, ".$index-${System.nanoTime()}.tmp")
+                    try {
+                        temporary.outputStream().use { it.write(bytes) }
+                        require(temporary.renameTo(target)) { "Unable to commit feedback snapshot" }
+                    } finally {
+                        temporary.delete()
+                    }
+                }
+                SlockPlatformFilePersistResult(200, Uri.fromFile(target).toString())
+            }.getOrElse { throwable ->
+                SlockPlatformFilePersistResult(
+                    code = 400,
+                    errorCode = "immutable_file_persist_failed",
+                    message = throwable.message ?: "Unable to persist feedback snapshot"
+                )
+            }
+        }
+
+    override suspend fun retireImmutableScope(ownerKey: String, scopeKey: String): Boolean =
+        withContext(Dispatchers.IO) {
+            if (!ownerKey.isImmutableFeedbackKey() || !scopeKey.isImmutableFeedbackKey()) return@withContext false
+            immutableFeedbackScopeDirectory(ownerKey, scopeKey).deleteRecursively()
+        }
+
+    override suspend fun retireImmutableOwner(ownerKey: String): Boolean =
+        withContext(Dispatchers.IO) {
+            if (!ownerKey.isImmutableFeedbackKey()) return@withContext false
+            File(immutableFeedbackRoot(), ownerKey).deleteRecursively()
+        }
+
+    override suspend fun retireAllImmutableOwners(): Boolean =
+        withContext(Dispatchers.IO) { immutableFeedbackRoot().deleteRecursively() }
+
     override suspend fun openFileStream(
         fileRef: String,
         expectedSizeBytes: Long
@@ -99,7 +150,15 @@ internal class AndroidPlatformFileResolver(
                         }
                     }
         }
+
+    private fun immutableFeedbackRoot(): File = File(appContext.filesDir, "product-feedback-retry")
+
+    private fun immutableFeedbackScopeDirectory(ownerKey: String, scopeKey: String): File =
+        File(File(immutableFeedbackRoot(), ownerKey), scopeKey)
 }
+
+private fun String.isImmutableFeedbackKey(): Boolean =
+    length == 64 && all { it in '0'..'9' || it in 'a'..'f' }
 
 internal fun InputStream.toSlockPlatformFileChunkSource(): SlockPlatformFileChunkSource {
     val input = this

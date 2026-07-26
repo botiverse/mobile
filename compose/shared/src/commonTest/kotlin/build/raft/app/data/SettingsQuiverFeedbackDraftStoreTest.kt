@@ -19,9 +19,13 @@ class SettingsQuiverFeedbackDraftStoreTest {
                         sizeBytes = 2048,
                         previewUri = "file:///cache/screen.png",
                         fileRef = "file:///cache/screen.png",
-                        source = "platform_picker"
+                        source = "product_feedback_frozen",
+                        contentSha256 = "a".repeat(64),
+                        immutableOwnerKey = "b".repeat(64),
+                        immutableScopeKey = "c".repeat(64)
                     )
-                )
+                ),
+            pendingSubmissionId = "22222222-2222-4222-8222-222222222222"
         )
 
         val restored = SettingsQuiverFeedbackDraftStore(preferences).read("user-1")
@@ -30,6 +34,10 @@ class SettingsQuiverFeedbackDraftStoreTest {
         assertEquals(1, restored.attachments.size)
         assertEquals("screen.png", restored.attachments.single().fileName)
         assertEquals("file:///cache/screen.png", restored.attachments.single().fileRef)
+        assertEquals("a".repeat(64), restored.attachments.single().contentSha256)
+        assertEquals("b".repeat(64), restored.attachments.single().immutableOwnerKey)
+        assertEquals("c".repeat(64), restored.attachments.single().immutableScopeKey)
+        assertEquals("22222222-2222-4222-8222-222222222222", restored.pendingSubmissionId)
     }
 
     @Test

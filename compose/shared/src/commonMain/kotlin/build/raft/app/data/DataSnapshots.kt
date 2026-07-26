@@ -386,7 +386,10 @@ data class PlatformFile(
     val previewUri: String? = null,
     val bytes: ByteArray = ByteArray(0),
     val fileRef: String? = null,
-    val source: String = ""
+    val source: String = "",
+    val contentSha256: String? = null,
+    val immutableOwnerKey: String? = null,
+    val immutableScopeKey: String? = null
 )
 
 data class AttachmentUploadResult(
