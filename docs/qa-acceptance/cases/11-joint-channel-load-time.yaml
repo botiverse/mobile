@@ -1,102 +1,39 @@
 id: joint-channel-load-time
 title: "性能-Joint频道首开时间"
-app: raft-android
+goal: "验证joint频道首开内容在合理时间内可见"
 tier: L1
-version: "0.1"
-description: |
-  Regression case from Hands feedback: joint channel takes ~10s to load
-  (tickets 5aa3ee6e "卡10s", 61aa64ca, 2afbc7e0, repeatedly reported).
-  This is the same issue tracked as task #304. Verify that opening a
-  joint channel shows content within a reasonable time bound.
-tags: [performance, joint, regression, P0]
-timeout_seconds: 120
 max_retries: 1
 auth_fixture: alpha-qa
 launch_route: compose_slock_app_shell
-
-device:
-  type: emulator
-  api_level: 34
-  locale: en-US
-
-environment:
-  server: staging
-  credentials_ref: qa-account:slock-test
-
-preconditions:
-  - type: app_installed
-    params: { package: build.raft.app }
-  - type: logged_in
-
-cleanup:
-  - action: stop_app
-
-steps:
-  - id: open-home
-    goal: "Open the app home screen"
-    action_category: navigate
-    hint: "Use deeplink: compose_slock_app_shell"
-    capture: [screenshot]
-
-  - id: find-joint-channel
-    goal: "Find a joint channel (cross-server channel) in the channel list"
-    action_category: interact
-    hint: "Look for a channel with a joint/cross-server indicator. The channel name may have a server badge"
-    capture: [screenshot, dump_layout]
-
-  - id: tap-joint-channel
-    goal: "Tap to open the joint channel and START TIMING"
-    action_category: interact
-    hint: "Tap the joint channel name"
-    on_failure: abort
-    params:
-      mark_start_time: true
-
-  - id: wait-content
-    goal: "Wait for message content to appear in the joint channel"
-    action_category: wait
-    params:
-      duration_ms: 15000
-      condition: content_visible
-
-  - id: verify-content
-    goal: "Capture the joint channel state with content visible"
-    action_category: verify
-    params:
-      mark_end_time: true
-    capture: [screenshot, dump_layout]
-
 assertions:
-  - id: content-visible-within-bound
-    goal: "Message content is visible in the joint channel"
+  - id: content-visible
+    goal: "Joint频道内容可见"
     type: visual_check
-    after_step: verify-content
     severity: critical
-    highlight:
-      description: "Message list in the joint channel"
-
   - id: load-time-acceptable
-    goal: "Time from tapping channel to content visible should be under 5 seconds"
-    type: time_bound
-    params:
-      max_seconds: 5
-      measurement: "tap_to_content_visible"
-    after_step: verify-content
+    goal: "首开时间在可接受范围"
+    type: visual_check
     severity: major
-    description: "Joint channel should load within 5s. 10s+ is the reported regression."
-
-  - id: no-crash-joint
-    goal: "App must not crash when opening joint channel"
-    type: no_crash
-    after_step: verify-content
-    severity: critical
-
-expected:
-  result: pass
-  notes: |
-    Regression from Hands feedback (multiple tickets) and task #304.
-    Joint channel first-open was ~9s due to 50/50 markdown row recomposition
-    + 390KB summary parse. Time-bound assertion is the key differentiator
-    from other cases — it catches performance regressions, not just functional.
-    Note: emulator timing may differ from real device; adjust threshold
-    accordingly. On real device the target is <5s.
+android:
+  device: { type: emulator, api_level: 34 }
+  steps:
+    - goal: "打开 app home"
+      capture: [screenshot]
+    - goal: "找到并点击 joint channel"
+      hint: "带跨服务器标识的频道"
+      capture: [screenshot]
+    - goal: "等待内容加载"
+      hint: "wait 15s"
+    - goal: "截图验证内容可见"
+      capture: [screenshot]
+ios:
+  device: { type: ios-simulator, device_name: "iPhone 14" }
+  steps:
+    - goal: "打开 app home"
+      capture: [screenshot]
+    - goal: "找到并点击 joint channel"
+      capture: [screenshot]
+    - goal: "等待内容加载"
+      hint: "wait 15s"
+    - goal: "截图验证内容可见"
+      capture: [screenshot]

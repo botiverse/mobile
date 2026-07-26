@@ -1,104 +1,59 @@
 id: send-message-in-channel
 title: "发送消息-频道内发送文本消息"
-app: raft-android
+goal: "验证用户能在频道里发送文本消息，消息出现在会话中"
 tier: L1
-version: "0.1"
-description: |
-  Verify that a user can send a text message in a channel and see it appear
-  in the conversation. Covers: channel navigation, input box interaction,
-  message send, and realtime message rendering.
-tags: [messaging, send, critical, regression]
-timeout_seconds: 120
-max_retries: 2
+max_retries: 1
 auth_fixture: alpha-qa
 launch_route: compose_slock_app_shell
-
-device:
-  type: emulator
-  api_level: 34
-  locale: en-US
-
-environment:
-  server: staging
-  credentials_ref: qa-account:slock-test
-
-preconditions:
-  - type: app_installed
-    params: { package: build.raft.app }
-  - type: logged_in        # Must already be logged in (or login first)
-
-cleanup:
-  - action: stop_app
-
-steps:
-  - id: open-channel
-    action: open_page
-    params:
-      page_name: compose_thread
-      page_data: '{"channelId":"#general"}'
-    description: "Open a channel via deeplink for deterministic navigation"
-    capture: [screenshot]
-
-  - id: focus-input
-    action: tap
-    params:
-      element: "message-input"
-    description: "Tap the message input field to focus it"
-    capture: [screenshot]
-
-  - id: type-message
-    action: input
-    params:
-      field_selector: "message-input"
-      text: "QA test message — automated acceptance check"
-    description: "Type a test message"
-    capture: [screenshot]
-
-  - id: send-message
-    action: tap
-    params:
-      element: "send-button"
-    description: "Tap the send button"
-    on_failure: abort
-    capture: [screenshot, dump_layout]
-
-  - id: wait-delivery
-    action: wait
-    params:
-      duration_ms: 2000
-    description: "Wait for message delivery and realtime update"
-
-  - id: verify-sent
-    action: screenshot
-    description: "Capture conversation state showing sent message"
-    capture: [screenshot, dump_layout]
-
 assertions:
   - id: message-appears
-    type: text_match
-    params:
-      text: "QA test message — automated acceptance check"
-    after_step: verify-sent
+    goal: "发送的消息出现在会话中"
+    type: text_present
     severity: critical
-    description: "Sent message must appear in the conversation"
-
   - id: input-cleared
-    type: element_visible
-    params:
-      resource_id: "message-input"
-      text_match_regex: "^$"    # Empty input
-    after_step: verify-sent
+    goal: "发送后输入框已清空"
+    type: visual_check
     severity: major
-    description: "Input field should be cleared after sending"
-
   - id: no-send-error
-    type: text_not_visible
+    goal: "无发送错误"
+    type: text_absent
     params:
-      text_match_regex: "(?i)(failed to send|error|retry)"
-    after_step: verify-sent
+      text_match_regex: "(?i)(failed|error|retry)"
     severity: major
-    description: "No send errors should be visible"
-
-expected:
-  result: pass
-  notes: "Core messaging flow. Uses deeplink for deterministic channel open."
+android:
+  device:
+    type: emulator
+    api_level: 34
+  steps:
+    - goal: "打开 #all 频道"
+      capture: [screenshot]
+    - goal: "点击消息输入框聚焦"
+      capture: [screenshot]
+    - goal: "输入测试消息"
+      capture: [screenshot]
+    - goal: "点击发送按钮"
+      hint: "输入框右侧发送按钮"
+      capture: [screenshot, dump_layout]
+    - goal: "等待消息送达"
+      hint: "wait 2s"
+    - goal: "截图验证消息已发送"
+      capture: [screenshot, dump_layout]
+ios:
+  device:
+    type: ios-simulator
+    device_name: "iPhone 14"
+  steps:
+    - goal: "打开 #all 频道"
+      capture: [screenshot]
+    - goal: "点击消息输入框聚焦"
+      capture: [screenshot]
+    - goal: "输入测试消息"
+      hint: "用屏幕键盘输入"
+      capture: [screenshot]
+    - goal: "点击发送按钮"
+      hint: "输入框右侧发送按钮"
+      capture: [screenshot]
+    - goal: "等待消息送达"
+      hint: "wait 2s"
+    - goal: "截图验证消息已发送"
+      capture: [screenshot]

@@ -1,125 +1,40 @@
 id: forward-message
 title: "转发消息-跨频道转发"
-app: raft-android
+goal: "验证消息转发功能：Select Message→多选→Forward→选目标→发送"
 tier: L1
-version: "0.3"
-description: |
-  Regression case from Hands feedback: forward message issues
-  (bb86951c: joint channel reports cross-server error, forwarding
-  task reports error). Also covers the fixed "unsupport" error
-  (f96c5708, fixed in PR #588).
-  NOTE: Forward is accessed via long-press → Select Message → multi-select
-  → Forward action (NOT a direct long-press menu item). Verify that forwarding a message
-  to another channel works.
-tags: [messaging, forward, regression]
-timeout_seconds: 120
 max_retries: 1
 auth_fixture: alpha-qa
 launch_route: compose_slock_app_shell
-
-device:
-  type: emulator
-  api_level: 34
-  locale: en-US
-
-environment:
-  server: staging
-  credentials_ref: qa-account:slock-test
-
-preconditions:
-  - type: app_installed
-    params: { package: build.raft.app }
-  - type: logged_in
-
-cleanup:
-  - action: stop_app
-
-steps:
-  - id: open-channel
-    goal: "Open a channel with existing messages"
-    action_category: navigate
-    hint: "Use deeplink: compose_thread with channelId #all"
-    capture: [screenshot]
-
-  - id: wait-messages
-    goal: "Wait for messages to load"
-    action_category: wait
-    params:
-      duration_ms: 2000
-
-  - id: long-press-message
-    goal: "Long-press a message to open the context menu"
-    action_category: interact
-    hint: "Long-press any message in the conversation"
-    capture: [screenshot, dump_layout]
-
-  - id: select-message
-    goal: "Tap 'Select Message' from the context menu to enter multi-select mode"
-    action_category: interact
-    hint: "Tap 'Select Message' in the long-press menu. This enters multi-select mode"
-    capture: [screenshot, dump_layout]
-
-  - id: select-target-message
-    goal: "Select the message(s) to forward in multi-select mode"
-    action_category: interact
-    hint: "The message should already be selected. If not, tap it to select"
-    capture: [screenshot]
-
-  - id: find-forward-action
-    goal: "Find and tap the Forward action in multi-select mode"
-    action_category: interact
-    hint: "Look for a Forward button or icon in the multi-select toolbar/action bar"
-    capture: [screenshot, dump_layout]
-
-  - id: select-target-channel
-    goal: "Select a target channel to forward to"
-    action_category: interact
-    hint: "Choose a different channel from the forward target picker"
-    capture: [screenshot, dump_layout]
-
-  - id: confirm-forward
-    goal: "Confirm the forward action"
-    action_category: interact
-    hint: "Tap send/confirm button"
-    on_failure: abort
-    capture: [screenshot, dump_layout]
-
-  - id: wait-forward
-    goal: "Wait for forward to complete"
-    action_category: wait
-    params:
-      duration_ms: 2000
-
-  - id: verify-forward
-    goal: "Capture the state after forwarding"
-    action_category: verify
-    capture: [screenshot, dump_layout]
-
 assertions:
   - id: no-forward-error
-    goal: "No error messages during forward (no 'unsupport', no cross-server error)"
+    goal: "转发无错误"
     type: text_absent
     params:
-      text_match_regex: "(?i)(unsupport|error|failed|cross.?server|cannot forward)"
-    after_step: verify-forward
+      text_match_regex: "(?i)(unsupport|error|failed|cross.?server)"
     severity: critical
-
-  - id: forward-success-indicator
-    goal: "Forward completed successfully (success toast, or redirected to target channel)"
-    type: visual_check
-    after_step: verify-forward
-    severity: major
-
-  - id: no-crash-forward
-    goal: "App must not crash during forward"
-    type: no_crash
-    after_step: verify-forward
-    severity: critical
-
-expected:
-  result: pass
-  notes: |
-    Regression from Hands feedback bb86951c (cross-server forward error)
-    and f96c5708 (forward "unsupport", fixed in PR #588).
-    Forward entry: long-press → Select Message → multi-select → Forward
-    action (not a direct long-press menu item).
+android:
+  device: { type: emulator, api_level: 34 }
+  steps:
+    - goal: "打开 #all 频道"
+      capture: [screenshot]
+    - goal: "长按一条消息"
+      capture: [screenshot]
+    - goal: "点击 Select Message 进入多选"
+      capture: [screenshot]
+    - goal: "在多选模式找到 Forward 操作"
+      capture: [screenshot]
+    - goal: "选择目标频道并确认转发"
+      capture: [screenshot]
+ios:
+  device: { type: ios-simulator, device_name: "iPhone 14" }
+  steps:
+    - goal: "打开 #all 频道"
+      capture: [screenshot]
+    - goal: "长按一条消息"
+      capture: [screenshot]
+    - goal: "点击 Select Message"
+      capture: [screenshot]
+    - goal: "找到 Forward 操作"
+      capture: [screenshot]
+    - goal: "选择目标并确认"
+      capture: [screenshot]

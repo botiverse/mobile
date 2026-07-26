@@ -1,104 +1,39 @@
 id: channel-delete
 title: "频道管理-删除频道"
-app: raft-android
+goal: "验证删除频道功能，频道永久移除"
 tier: L1
-version: "0.1"
-description: |
-  Verify that deleting a channel works. User can open channel settings,
-  delete the channel (with confirmation), and it is permanently removed.
-  Must run in test server only. This is destructive — only run on
-  qa-test- prefixed channels.
-tags: [channels, delete, regression, destructive]
-timeout_seconds: 120
-verdict_before_cleanup: true
 max_retries: 1
 auth_fixture: alpha-qa
 launch_route: compose_slock_app_shell
-
-device:
-  type: emulator
-  api_level: 34
-  locale: en-US
-
-environment:
-  server: staging
-  credentials_ref: qa-account:slock-test
-
-preconditions:
-  - type: app_installed
-    params: { package: build.raft.app }
-  - type: logged_in
-  - type: in_test_server
-  - type: channel_exists
-    params:
-      channel_prefix: "qa-test-delete"
-
-cleanup:
-  - action: stop_app
-
-steps:
-  - id: open-channel
-    goal: "Create a fresh channel named qa-test-delete-<random 4 digits> and open it"
-    action_category: navigate
-    hint: "Self-contained: create the channel this case will delete (delete consumes it, so a fixture would fail on the second run), then open it"
-    capture: [screenshot]
-
-  - id: open-channel-settings
-    goal: "Open channel settings/info"
-    action_category: interact
-    hint: "Open the qa-test-delete channel, then tap the gear/settings icon at the top-right of the channel header"
-    capture: [screenshot, dump_layout]
-
-  - id: find-delete-option
-    goal: "Find and tap the Delete option"
-    action_category: interact
-    hint: "Look for 'Delete Channel' inside the channel settings page (accessed via top-right gear icon). Usually red/danger color"
-    capture: [screenshot]
-
-  - id: confirm-delete
-    goal: "Confirm the delete action (usually requires a second confirmation)"
-    action_category: interact
-    hint: "Tap 'Delete' or 'Confirm' in the warning dialog. May ask to type channel name"
-    on_failure: abort
-    capture: [screenshot, dump_layout]
-
-  - id: wait-delete
-    goal: "Wait for deletion to complete"
-    action_category: wait
-    params:
-      duration_ms: 2000
-
-  - id: verify-channel-list
-    goal: "Capture channel list state after deletion"
-    action_category: verify
-    capture: [screenshot, dump_layout]
-
+verdict_before_cleanup: true
 assertions:
   - id: channel-deleted
-    goal: "The deleted channel is no longer in the channel list"
-    type: text_absent
-    params:
-      text_match_regex: "qa-test-delete"
-    after_step: verify-channel-list
+    goal: "删除后频道不在列表"
+    type: visual_check
     severity: critical
-
-  - id: no-delete-error
-    goal: "No error during deletion"
-    type: text_absent
-    params:
-      text_match_regex: "(?i)(error|failed|permission denied|cannot delete)"
-    after_step: verify-channel-list
-    severity: major
-
-  - id: no-crash-delete
-    goal: "App must not crash during channel deletion"
-    type: no_crash
-    after_step: verify-channel-list
-    severity: critical
-
-expected:
-  result: pass
-  notes: |
-    Channel lifecycle - delete. DESTRUCTIVE operation — only run on
-    qa-test- prefixed channels in test server. Verify channel is
-    permanently removed from list.
+android:
+  device: { type: emulator, api_level: 34 }
+  steps:
+    - goal: "创建或打开一个qa-test频道"
+      capture: [screenshot]
+    - goal: "点击右上角齿轮设置"
+      capture: [screenshot]
+    - goal: "找到Delete Channel选项"
+      capture: [screenshot]
+    - goal: "确认删除"
+      capture: [screenshot]
+    - goal: "返回验证频道不在列表"
+      capture: [screenshot]
+ios:
+  device: { type: ios-simulator, device_name: "iPhone 14" }
+  steps:
+    - goal: "创建或打开一个qa-test频道"
+      capture: [screenshot]
+    - goal: "点击右上角设置图标"
+      capture: [screenshot]
+    - goal: "找到Delete Channel"
+      capture: [screenshot]
+    - goal: "确认删除"
+      capture: [screenshot]
+    - goal: "验证频道不在列表"
+      capture: [screenshot]

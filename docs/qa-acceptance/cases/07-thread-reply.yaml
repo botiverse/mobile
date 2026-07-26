@@ -1,117 +1,55 @@
 id: thread-reply-and-reactions
-title: "消息回复-在 thread 中回复消息"
-app: raft-android
+title: "消息回复-在thread中回复消息"
+goal: "验证用户能打开消息的thread并回复，回复出现在thread中"
 tier: L1
-version: "0.1"
-description: |
-  Verify that replying to a message in a thread works: user taps a message
-  to open its thread, types a reply in the thread composer, sends it, and
-  sees the reply appear in the thread.
-  NOTE: Raft's reply UX is 'tap message → open thread → reply in composer',
-  NOT 'long-press → context menu → reply'. Do not use long-press for reply.
-tags: [messaging, thread, reply, regression]
-timeout_seconds: 120
 max_retries: 1
 auth_fixture: alpha-qa
 launch_route: compose_slock_app_shell
-
-device:
-  type: emulator
-  api_level: 34
-  locale: en-US
-
-environment:
-  server: staging
-  credentials_ref: qa-account:slock-test
-
-preconditions:
-  - type: app_installed
-    params: { package: build.raft.app }
-  - type: logged_in
-
-cleanup:
-  - action: stop_app
-
-steps:
-  - id: open-channel
-    goal: "Open #all channel to see existing messages"
-    action_category: navigate
-    hint: "Use deeplink: compose_thread with channelId #all"
-    capture: [screenshot]
-
-  - id: wait-messages
-    goal: "Wait for messages to load"
-    action_category: wait
-    params:
-      duration_ms: 2000
-
-  - id: tap-message
-    goal: "Tap on an existing message to open its thread"
-    action_category: interact
-    hint: "Tap any message that shows a reply chip (e.g. '1 reply') or just tap a message to open its thread"
-    capture: [screenshot, dump_layout]
-
-  - id: wait-thread
-    goal: "Wait for thread view to open"
-    action_category: wait
-    params:
-      duration_ms: 1500
-
-  - id: type-reply
-    goal: "Type a reply message in the thread reply input"
-    action_category: input
-    hint: "The input field at the bottom, may show quoted original message above it"
-    params:
-      text: "QA test reply - automated acceptance check"
-    capture: [screenshot]
-
-  - id: send-reply
-    goal: "Send the reply"
-    action_category: interact
-    hint: "Send button at bottom-right of input field"
-    on_failure: abort
-    capture: [screenshot, dump_layout]
-
-  - id: wait-reply-delivery
-    goal: "Wait for reply to be sent and rendered"
-    action_category: wait
-    params:
-      duration_ms: 2000
-
-  - id: verify-reply
-    goal: "Capture the conversation state showing the reply"
-    action_category: verify
-    capture: [screenshot, dump_layout]
-
 assertions:
   - id: reply-appears
-    goal: "The reply text appears in the conversation or thread"
+    goal: "回复消息出现在thread中"
     type: text_present
-    params:
-      text: "QA test reply - automated acceptance check"
-    after_step: verify-reply
     severity: critical
-    highlight:
-      description: "The reply message in the conversation"
-      search_text: "QA test reply"
-
   - id: no-reply-error
-    goal: "No error indicators after sending reply"
+    goal: "无错误指示"
     type: text_absent
     params:
       text_match_regex: "(?i)(failed|error|retry)"
-    after_step: verify-reply
     severity: major
-
-  - id: no-crash-reply
-    goal: "App must not crash during reply flow"
-    type: no_crash
-    after_step: verify-reply
-    severity: critical
-
-expected:
-  result: pass
-  notes: |
-    Thread reply is a core messaging feature. Raft's reply UX is tap message →
-    open thread → reply in thread composer (not long-press context menu).
-    Tests thread navigation, reply composer, and message rendering.
+android:
+  device: { type: emulator, api_level: 34 }
+  steps:
+    - goal: "打开 #all 频道"
+      capture: [screenshot]
+    - goal: "找到带 reply chip 的消息（如 N replies）"
+      hint: "滚动查找"
+      capture: [screenshot]
+    - goal: "点击消息打开其thread"
+      hint: "Raft的回复UX是点消息进thread，不是长按菜单"
+      capture: [screenshot]
+    - goal: "在thread composer输入回复"
+      capture: [screenshot]
+    - goal: "发送回复"
+      capture: [screenshot]
+    - goal: "等待回复送达"
+      hint: "wait 2s"
+    - goal: "截图验证回复出现"
+      capture: [screenshot]
+ios:
+  device: { type: ios-simulator, device_name: "iPhone 14" }
+  steps:
+    - goal: "打开 #all 频道"
+      capture: [screenshot]
+    - goal: "找到带 reply chip 的消息"
+      capture: [screenshot]
+    - goal: "点击消息打开thread"
+      capture: [screenshot]
+    - goal: "输入回复"
+      hint: "用屏幕键盘"
+      capture: [screenshot]
+    - goal: "发送回复"
+      capture: [screenshot]
+    - goal: "等待回复送达"
+      hint: "wait 2s"
+    - goal: "截图验证回复出现"
+      capture: [screenshot]

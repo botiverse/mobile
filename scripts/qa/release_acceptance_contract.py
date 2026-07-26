@@ -143,6 +143,18 @@ def load_contract(case_dir: Path = DEFAULT_CASE_DIR) -> ReleaseAcceptanceContrac
             raise ContractError(f"{path.name}: automated case must launch compose_slock_app_shell")
         if "manual-only" in (source.get("tags") or []):
             raise ContractError(f"{path.name}: manual-only case cannot enter the automated set")
+        ios_variant = source.get("ios")
+        declared_platforms = source.get("platforms")
+        has_ios_variant = isinstance(ios_variant, dict)
+        has_unified_platform_matrix = (
+            isinstance(declared_platforms, list)
+            and "android" in declared_platforms
+            and "ios" in declared_platforms
+        )
+        if not has_ios_variant and not has_unified_platform_matrix:
+            raise ContractError(
+                f"{path.name}: automated case must preserve the unified Android/iOS contract",
+            )
 
     path, server_create = sources["server-create"]
     if server_create.get("auth_fixture") != "none":

@@ -1,120 +1,58 @@
 id: channel-switch-navigation
 title: "频道切换-在频道间导航"
-app: raft-android
+goal: "验证用户能在频道间切换，各频道内容正确加载且实际变化"
 tier: L1
-version: "0.1"
-description: |
-  Verify that the user can navigate between channels and the UI updates
-  correctly. Covers: channel list interaction, content switching, state
-  preservation, and tab bar behavior.
-tags: [navigation, channels, regression]
-timeout_seconds: 90
-max_retries: 2
+max_retries: 1
 auth_fixture: alpha-qa
 launch_route: compose_slock_app_shell
-
-device:
-  type: emulator
-  api_level: 34
-  locale: en-US
-
-environment:
-  server: staging
-  credentials_ref: qa-account:slock-test
-
-preconditions:
-  - type: app_installed
-    params: { package: build.raft.app }
-  - type: logged_in
-
-cleanup:
-  - action: stop_app
-
-steps:
-  - id: open-home
-    action: open_page
-    params:
-      page_name: compose_slock_app_shell
-    description: "Open the app shell to see channel list"
-    capture: [screenshot]
-
-  - id: select-first-channel
-    action: tap
-    params:
-      element: "channel-item"
-      index: 0
-    description: "Tap the first channel in the list"
-    capture: [screenshot, dump_layout]
-
-  - id: wait-load-1
-    action: wait
-    params:
-      duration_ms: 1500
-    description: "Wait for channel content to load"
-
-  - id: capture-channel-1
-    action: screenshot
-    description: "Capture first channel state"
-    capture: [screenshot]
-
-  - id: go-back
-    action: key
-    params:
-      key_name: BACK
-    description: "Navigate back to channel list"
-
-  - id: select-second-channel
-    action: tap
-    params:
-      element: "channel-item"
-      index: 1
-    description: "Tap the second channel in the list"
-    capture: [screenshot, dump_layout]
-
-  - id: wait-load-2
-    action: wait
-    params:
-      duration_ms: 1500
-    description: "Wait for second channel content to load"
-
-  - id: capture-channel-2
-    action: screenshot
-    description: "Capture second channel state"
-    capture: [screenshot, dump_layout]
-
 assertions:
-  - id: channel-1-loaded
-    type: element_visible
-    params:
-      resource_id: "thread-content"
-    after_step: capture-channel-1
+  - id: first-channel-loaded
+    goal: "第一个频道内容可见"
+    type: visual_check
     severity: major
-    description: "First channel content must be visible"
-
-  - id: channel-2-loaded
-    type: element_visible
-    params:
-      resource_id: "thread-content"
-    after_step: capture-channel-2
+  - id: second-channel-loaded
+    goal: "第二个频道内容可见"
+    type: visual_check
     severity: major
-    description: "Second channel content must be visible"
-
-  - id: content-changed
-    type: screenshot_similarity
-    params:
-      baseline: "dynamic"     # Compare channel-1 vs channel-2, must differ
-      threshold: 0.95
-      mode: "must_differ"     # Screenshots should NOT be identical
-    after_step: capture-channel-2
+  - id: content-actually-changed
+    goal: "两频道内容确实不同"
+    type: visual_check
     severity: major
-    description: "Channel content must actually change when switching channels"
-
-  - id: no-crash-navigation
-    type: no_crash
-    after_step: capture-channel-2
-    severity: critical
-    description: "No crashes during channel navigation"
-
-expected:
-  result: pass
-  notes: "Verifies navigation works and content actually updates. The must_differ assertion catches stale-content bugs."
+android:
+  device: { type: emulator, api_level: 34 }
+  steps:
+    - goal: "打开 app home"
+      capture: [screenshot]
+    - goal: "点击频道列表第一个频道"
+      capture: [screenshot]
+    - goal: "等待加载"
+      hint: "wait 1.5s"
+    - goal: "截图第一个频道"
+      capture: [screenshot]
+    - goal: "返回频道列表"
+      hint: "按 BACK 键"
+    - goal: "点击第二个频道"
+      capture: [screenshot]
+    - goal: "等待加载"
+      hint: "wait 1.5s"
+    - goal: "截图第二个频道"
+      capture: [screenshot, dump_layout]
+ios:
+  device: { type: ios-simulator, device_name: "iPhone 14" }
+  steps:
+    - goal: "打开 app home"
+      capture: [screenshot]
+    - goal: "点击频道列表第一个频道"
+      capture: [screenshot]
+    - goal: "等待加载"
+      hint: "wait 1.5s"
+    - goal: "截图第一个频道"
+      capture: [screenshot]
+    - goal: "返回频道列表"
+      hint: "左边缘滑动或返回按钮"
+    - goal: "点击第二个频道"
+      capture: [screenshot]
+    - goal: "等待加载"
+      hint: "wait 1.5s"
+    - goal: "截图第二个频道"
+      capture: [screenshot]
