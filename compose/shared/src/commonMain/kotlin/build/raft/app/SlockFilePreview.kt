@@ -5363,6 +5363,7 @@ internal fun SlockFilePreviewMarkdownPanel(
                     textStyle = textStyle ?: SlockType.Body,
                     onOpenUrl = onOpenUrl,
                     modifier = Modifier.fillMaxWidth(),
+                    softLineBreaksAsNewLines = false,
                     performanceKey = performanceKey
                 )
             }
@@ -5395,6 +5396,7 @@ internal fun SlockFilePreviewMarkdownPanel(
                             textStyle = textStyle ?: SlockType.Body,
                             onOpenUrl = onOpenUrl,
                             modifier = Modifier.fillMaxWidth(),
+                            softLineBreaksAsNewLines = false,
                             performanceKey = performanceKey
                         )
                     }

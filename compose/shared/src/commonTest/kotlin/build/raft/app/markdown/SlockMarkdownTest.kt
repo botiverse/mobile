@@ -489,6 +489,49 @@ class SlockMarkdownTest {
     }
 
     @Test
+    fun documentPreviewSoftLineBreaksCollapseToSpacesForViewportWrapping() {
+        val body = "Treat the first source line\nas one ordinary paragraph."
+
+        val annotated =
+            buildSlockMarkdownParagraphAnnotatedString(
+                content = body,
+                annotator =
+                    slockMarkdownAnnotator(
+                        content = body,
+                        softLineBreaksAsNewLines = false
+                    )
+            )
+
+        assertEquals("Treat the first source line as one ordinary paragraph.", annotated.text)
+    }
+
+    @Test
+    fun threadMarkdownKeepsLegacySoftLineBreakRenderingByDefault() {
+        val body = "Keep the first message line\non its authored line."
+
+        val annotated = buildSlockMarkdownParagraphAnnotatedString(content = body)
+
+        assertEquals("Keep the first message line\non its authored line.", annotated.text)
+    }
+
+    @Test
+    fun documentPreviewKeepsExplicitMarkdownHardLineBreaks() {
+        val body = "Keep this explicit break.  \nStart the next line."
+
+        val annotated =
+            buildSlockMarkdownParagraphAnnotatedString(
+                content = body,
+                annotator =
+                    slockMarkdownAnnotator(
+                        content = body,
+                        softLineBreaksAsNewLines = false
+                    )
+            )
+
+        assertEquals("Keep this explicit break.\nStart the next line.", annotated.text)
+    }
+
+    @Test
     fun inlineCodeStaysInMarkdownRendererInsteadOfSlockPlaceholders() {
         val shortCode = "inline-code"
         val longCode = "very-long-inline-code-value-that-should-wrap-normally"

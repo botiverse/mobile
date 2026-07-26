@@ -610,6 +610,7 @@ internal fun slockMarkdownAnnotator(
     onOpenTag: (ThreadMarkdownTag) -> Unit = {},
     resolveTagLabel: ((ThreadMarkdownTag) -> String)? = null,
     onDiagnostics: ((Int, Int, Long) -> Unit)? = null,
+    softLineBreaksAsNewLines: Boolean = true,
     tokenPlan: MarkdownInlineTokenPlan =
         SlockMarkdownInlineTokenRegistry.plan(
             content,
@@ -633,7 +634,8 @@ internal fun slockMarkdownAnnotator(
             resolveTagLabel?.let { resolver ->
                 { action: SlockRichTextAction -> resolver(action.toThreadMarkdownTag()) }
             },
-        onDiagnostics = onDiagnostics
+        onDiagnostics = onDiagnostics,
+        softLineBreaksAsNewLines = softLineBreaksAsNewLines
     )
 }
 
@@ -642,7 +644,8 @@ internal fun slockMarkdownAnnotator(
     onOpenAction: (SlockRichTextAction) -> Unit = {},
     resolveActionLabel: ((SlockRichTextAction) -> String?)? = null,
     onDiagnostics: ((Int, Int, Long) -> Unit)? = null,
-    capabilities: SlockRichTextCapabilities = SlockMarkdownRendererRichTextCapabilities
+    capabilities: SlockRichTextCapabilities = SlockMarkdownRendererRichTextCapabilities,
+    softLineBreaksAsNewLines: Boolean = true
 ): MarkdownAnnotator {
     val diagnosticsStartedAt = onDiagnostics?.let { TimeSource.Monotonic.markNow() }
     val rendererInput = SlockRichTextRendererInput(document, capabilities)
@@ -685,7 +688,7 @@ internal fun slockMarkdownAnnotator(
             )
         },
         inlineContent = { emptyMap() },
-        config = markdownAnnotatorConfig(eolAsNewLine = true)
+        config = markdownAnnotatorConfig(eolAsNewLine = softLineBreaksAsNewLines)
     )
 }
 
@@ -1647,6 +1650,7 @@ fun SlockMarkdownBody(
     activeTagKey: String? = null,
     sectionHeadingTopPadding: Dp = 0.dp,
     onSectionHeadingPositioned: ((Rect) -> Unit)? = null,
+    softLineBreaksAsNewLines: Boolean = true,
     performanceKey: String? = null,
     performanceLogger: (String) -> Unit = {},
     // task #800: right-aligned own messages wrap short paragraphs so a brief
@@ -1807,7 +1811,7 @@ fun SlockMarkdownBody(
             }
         )
     }
-    val annotator: MarkdownAnnotator = remember(richTextDocument, performanceKey) {
+    val annotator: MarkdownAnnotator = remember(richTextDocument, performanceKey, softLineBreaksAsNewLines) {
         slockMarkdownAnnotator(
             document = richTextDocument,
             onOpenAction = { action: SlockRichTextAction -> currentOnOpenTag(action.toThreadMarkdownTag()) },
@@ -1825,7 +1829,8 @@ fun SlockMarkdownBody(
                             )
                         }
                     }
-                }
+                },
+            softLineBreaksAsNewLines = softLineBreaksAsNewLines
         )
     }
     if (DEBUG_SLOCK_MARKDOWN_PERF_LOG && performanceKey != null) {
