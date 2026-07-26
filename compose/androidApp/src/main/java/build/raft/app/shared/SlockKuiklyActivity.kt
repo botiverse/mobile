@@ -274,8 +274,10 @@ internal fun formatHandsFeedbackShareText(
     environment: String,
     utcTime: String,
     localTime: String,
-    appSlug: String,
-    channel: String,
+    feedbackAppSlug: String,
+    feedbackChannel: String,
+    updateRoute: HandsUpdateRoute,
+    deviceId: String,
     attachmentNames: List<String>
 ): String =
     buildString {
@@ -286,7 +288,13 @@ internal fun formatHandsFeedbackShareText(
         handsFeedbackAttachmentBlock(attachmentNames)?.let { block -> appendLine(block) }
         append("Submitted: ").append(utcTime).append(" (local ").append(localTime).append(")")
         appendLine()
-        append("Hands: slug=").append(appSlug).append(", channel=").append(channel)
+        append("Hands feedback route: slug=").append(feedbackAppSlug)
+            .append(", channel=").append(feedbackChannel)
+        appendLine()
+        append("SlockHandsUpdate request: mode=").append(updateRoute.mode)
+            .append(", slug=").append(updateRoute.appSlug)
+            .append(", channel=").append(updateRoute.channel)
+            .append(", device_id=").append(deviceId.ifBlank { "--" })
         appendLine()
         appendLine()
         appendLine("Environment:")
@@ -3881,11 +3889,11 @@ internal class SlockKuiklyBridgeModule(
         )
     }
 
-    private fun loadSettingsDeveloper(feedback: String? = null): Map<String, Any> {
+    private fun loadSettingsDeveloper(
+            feedback: String? = null,
+            updateRoute: HandsUpdateRoute = handsUpdateRouteForRuntime()
+    ): Map<String, Any> {
         val current = AndroidApiServerEnvironmentStore(appContext).current()
-        val alphaDeltaEnabled = handsDeltaUpdateAllowedForRuntime()
-        val updateChannel =
-                if (alphaDeltaEnabled) BuildConfig.HANDS_DELTA_CHANNEL else BuildConfig.HANDS_CHANNEL
         val options =
                 JSONArray().also { array ->
                     AndroidApiServerEnvironmentStore.predefined.forEach { environment ->
@@ -3908,7 +3916,7 @@ internal class SlockKuiklyBridgeModule(
                 "webUrl" to current.webUrl,
                 "updateCheckSupported" to true,
                 "updateCheckStatusLabel" to "Ready",
-                "updateCheckDetail" to "Check Hands channel $updateChannel for a newer Android APK.",
+                "updateCheckDetail" to "Check Hands channel ${updateRoute.channel} for a newer Android APK.",
                 // Serialized like entriesJson (#484): options cross the render
                 // bridge as a primitive string, independent of container
                 // marshal support. OHOS/iOS hosts still send structured
@@ -3920,26 +3928,23 @@ internal class SlockKuiklyBridgeModule(
 
     private suspend fun checkHandsUpdate(install: Boolean = true): Map<String, Any> {
         val arch = Build.SUPPORTED_ABIS.firstOrNull { it.isNotBlank() }
-        val alphaDeltaEnabled = handsDeltaUpdateAllowedForRuntime()
-        val appSlug =
-                if (alphaDeltaEnabled) BuildConfig.HANDS_DELTA_APP_SLUG else BuildConfig.HANDS_APP_SLUG
-        val channel =
-                if (alphaDeltaEnabled) BuildConfig.HANDS_DELTA_CHANNEL else BuildConfig.HANDS_CHANNEL
+        val updateRoute = handsUpdateRouteForRuntime()
+        val deviceId = HandsDeviceId.get(appContext)
         var alphaInstallStartedThisCall = false
         val ownedResponse =
                 alphaHandsUpdateCallOwner.runIfEligible(
-                        eligible = alphaDeltaEnabled && install
+                        eligible = updateRoute.deltaEnabled && install
                 ) {
                     UpdateChecker(
                             context = appContext,
                             baseUrl = BuildConfig.HANDS_BASE_URL,
-                            appSlug = appSlug,
+                            appSlug = updateRoute.appSlug,
                             installedVersionCode = BuildConfig.VERSION_CODE.toLong(),
-                            channel = channel,
+                            channel = updateRoute.channel,
                             productType = "android-apk",
                             platform = "android",
                             arch = arch,
-                            deviceId = HandsDeviceId.get(appContext),
+                            deviceId = deviceId,
                             deltaApplyEnabled = true
                     ).checkAndInstall()
                 }
@@ -3950,27 +3955,28 @@ internal class SlockKuiklyBridgeModule(
                 } else {
                     HandsClient(BuildConfig.HANDS_BASE_URL)
                             .checkForUpdate(
-                                    slug = appSlug,
-                                    channel = channel,
+                                    slug = updateRoute.appSlug,
+                                    channel = updateRoute.channel,
                                     currentVersionCode = BuildConfig.VERSION_CODE.toLong(),
                                     productType = "android-apk",
                                     platform = "android",
                                     arch = arch,
                                     filetype = "apk",
-                                    deviceId = HandsDeviceId.get(appContext)
+                                    deviceId = deviceId
                             )
                 }
         val updateAvailable = response.requireUpdate() != null
         SlockAppLog.record(
                 "SlockHandsUpdate",
-                "check status=ok mode=${if (alphaDeltaEnabled) "alpha_delta" else "full_apk"} " +
+                "check status=ok mode=${updateRoute.mode} " +
                         "action=${if (install) "install" else "status"} started=$alphaInstallStartedThisCall " +
-                        "slug=$appSlug channel=$channel current=${BuildConfig.VERSION_CODE} " +
+                        "slug=${updateRoute.appSlug} channel=${updateRoute.channel} device_id=$deviceId " +
+                        "current=${BuildConfig.VERSION_CODE} " +
                         "latest=${response.latest?.version_code ?: response.latest_version_code ?: 0} available=$updateAvailable"
         )
         val installResult =
                 when {
-                    alphaDeltaEnabled &&
+                    updateRoute.deltaEnabled &&
                         updateAvailable &&
                         (alphaInstallStartedThisCall || alphaHandsUpdateCallOwner.isRunning()) ->
                             HandsInstallResult(
@@ -3978,7 +3984,7 @@ internal class SlockKuiklyBridgeModule(
                                     detail = "Android is preparing the update. Follow the installer or download notification.",
                                     actionLabel = "Installing"
                             )
-                    alphaDeltaEnabled -> HandsInstallResult()
+                    updateRoute.deltaEnabled -> HandsInstallResult()
                     install && updateAvailable -> installHandsUpdate(response, arch)
                     updateAvailable -> currentHandsDownloadResult(response, arch)
                     else -> HandsInstallResult()
@@ -3988,9 +3994,9 @@ internal class SlockKuiklyBridgeModule(
         val feedback =
                 when {
                     updateAvailable -> "Update available: ${response.latest?.version?.ifBlank { null } ?: "version code ${response.latest?.version_code ?: 0L}"}."
-                    else -> "No Hands update available on $channel."
+                    else -> "No Hands update available on ${updateRoute.channel}."
                 }
-        return loadSettingsDeveloper(feedback = feedback) +
+        return loadSettingsDeveloper(feedback = feedback, updateRoute = updateRoute) +
                 mapOf(
                         "updateCheckSupported" to true,
                         "updateCheckStatusLabel" to updateStatusLabel,
@@ -4026,6 +4032,15 @@ internal class SlockKuiklyBridgeModule(
         }
         return allowed
     }
+
+    private fun handsUpdateRouteForRuntime(): HandsUpdateRoute =
+            resolveHandsUpdateRoute(
+                    alphaDeltaEnabled = handsDeltaUpdateAllowedForRuntime(),
+                    defaultAppSlug = BuildConfig.HANDS_APP_SLUG,
+                    defaultChannel = BuildConfig.HANDS_CHANNEL,
+                    deltaAppSlug = BuildConfig.HANDS_DELTA_APP_SLUG,
+                    deltaChannel = BuildConfig.HANDS_DELTA_CHANNEL
+            )
 
     private suspend fun installHandsUpdate(
             response: UpdateCheckResponse,
@@ -4547,6 +4562,7 @@ internal class SlockKuiklyBridgeModule(
             description: String,
             attachmentNames: List<String>
     ): String {
+        val updateRoute = handsUpdateRouteForRuntime()
         val environment = settingsFeedbackShareEnvironmentSection(buildMergedSettingsDiagnosticsExportText())
         val utcTime =
                 SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US)
@@ -4561,8 +4577,10 @@ internal class SlockKuiklyBridgeModule(
                 environment = environment,
                 utcTime = utcTime,
                 localTime = localTime,
-                appSlug = BuildConfig.HANDS_APP_SLUG,
-                channel = BuildConfig.HANDS_CHANNEL,
+                feedbackAppSlug = BuildConfig.HANDS_APP_SLUG,
+                feedbackChannel = BuildConfig.HANDS_CHANNEL,
+                updateRoute = updateRoute,
+                deviceId = HandsDeviceId.get(appContext),
                 attachmentNames = attachmentNames
         )
     }
