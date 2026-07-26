@@ -140,8 +140,11 @@ private fun AppUpdateScreen() {
             }
         )
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            val changelog = appUpdateInlineChangelog(snapshot)
             val versionCode = snapshot?.latestVersionCode?.takeIf { it > 0L }?.toString().orEmpty()
-            if (versionCode.isNotBlank()) {
+            if (changelog != null) {
+                ReleaseNotesMarkdownBody(changelog)
+            } else if (versionCode.isNotBlank()) {
                 ReleaseNotesNativeBody(versionCode)
             } else {
                 ReleaseNotesLoadingCover()
@@ -149,6 +152,9 @@ private fun AppUpdateScreen() {
         }
     }
 }
+
+internal fun appUpdateInlineChangelog(snapshot: SharedSettingsUpdateCheckSnapshot?): String? =
+    snapshot?.latestChangelog?.takeIf(String::isNotBlank)
 
 @Composable
 internal fun AppUpdateSummary(

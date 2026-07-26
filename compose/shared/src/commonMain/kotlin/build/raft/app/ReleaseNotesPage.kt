@@ -247,7 +247,6 @@ internal fun ReleaseNotesNativeBody(versionCode: String) {
     }
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
-    val linkNavigator = rememberSlockLinkNavigator(pager, bridge)
     val resolvedResourceLocaleTag = stringResource(MR.strings.app_locale_request_tag)
     val requestLocaleTag = remember(resolvedResourceLocaleTag) {
         releaseNotesRequestLocaleTag(resolvedResourceLocaleTag)
@@ -278,34 +277,39 @@ internal fun ReleaseNotesNativeBody(versionCode: String) {
 
     when (val current = state) {
         ReleaseNotesBodyState.Loading -> ReleaseNotesLoadingCover()
-        is ReleaseNotesBodyState.Content ->
-            LazyColumn(
-                modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceCream),
-                contentPadding = PaddingValues(
-                    start = SlockSpacing.Md,
-                    top = SlockSpacing.Md,
-                    end = SlockSpacing.Md,
-                    bottom = SlockSpacing.Lg + slockBottomSafeAreaPadding()
-                ),
-                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
-            ) {
-                item {
-                    SlockMarkdownBody(
-                        body = current.document.markdown,
-                        modifier = Modifier.fillMaxWidth(),
-                        // Top-level Kuikly Markdown nodes are otherwise
-                        // adjacent. Keep a document-style section gap so an
-                        // inline-code box cannot paint into the next H2/H3 at
-                        // enlarged system font scales (notably zh-CN 1.3x).
-                        sectionHeadingTopPadding = SlockSpacing.Sm,
-                        onOpenUrl = { url -> linkNavigator.open(url) }
-                    )
-                }
-            }
+        is ReleaseNotesBodyState.Content -> ReleaseNotesMarkdownBody(current.document.markdown)
         is ReleaseNotesBodyState.Error ->
             ReleaseNotesErrorState(
                 onRetry = { releaseNotesViewModel.dispatch(ReleaseNotesIntent.Retry) }
             )
+    }
+}
+
+@Composable
+internal fun ReleaseNotesMarkdownBody(markdown: String) {
+    val pager = LocalActivity.current.getPager() as Pager
+    val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
+    val linkNavigator = rememberSlockLinkNavigator(pager, bridge)
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceCream),
+        contentPadding = PaddingValues(
+            start = SlockSpacing.Md,
+            top = SlockSpacing.Md,
+            end = SlockSpacing.Md,
+            bottom = SlockSpacing.Lg + slockBottomSafeAreaPadding()
+        ),
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+    ) {
+        item {
+            SlockMarkdownBody(
+                body = markdown,
+                modifier = Modifier.fillMaxWidth(),
+                // Keep a document-style gap so enlarged inline code cannot
+                // paint into a following section heading.
+                sectionHeadingTopPadding = SlockSpacing.Sm,
+                onOpenUrl = { url -> linkNavigator.open(url) }
+            )
+        }
     }
 }
 

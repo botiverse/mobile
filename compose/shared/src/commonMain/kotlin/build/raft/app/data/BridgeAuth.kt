@@ -650,6 +650,7 @@ internal fun JSONObject.toDeveloperSnapshot(): SharedSettingsDeveloperSnapshot {
                 currentVersionCode = optLong("currentVersionCode", 0L),
                 latestVersionLabel = optString("latestVersionLabel"),
                 latestVersionCode = optLong("latestVersionCode", 0L),
+                latestChangelog = optString("latestChangelog"),
                 downloadUrl = optString("updateDownloadUrl"),
                 checkedAtLabel = optString("updateCheckedAtLabel"),
                 errorCode = optString("updateCheckErrorCode")

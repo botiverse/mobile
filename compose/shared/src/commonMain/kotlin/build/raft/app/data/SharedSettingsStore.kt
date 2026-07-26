@@ -196,6 +196,7 @@ data class SharedSettingsUpdateCheckSnapshot(
     val currentVersionCode: Long = 0L,
     val latestVersionLabel: String = "",
     val latestVersionCode: Long = 0L,
+    val latestChangelog: String = "",
     val downloadUrl: String = "",
     val checkedAtLabel: String = "",
     val errorCode: String = ""

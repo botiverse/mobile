@@ -83,6 +83,22 @@ class BridgeSettingsSnapshotParserTest {
         assertEquals(sharedSettingsDefaultApiEnvironmentOptions(), snapshot.options)
     }
 
+    @Test
+    fun developerCarriesScopedHandsChangelogIntoUpdateSnapshot() {
+        val markdown = "# D / 1000004\n\n- Dedicated Alpha notes"
+        val response =
+            JSONObject()
+                .put("status", "ok")
+                .put("updateAvailable", true)
+                .put("latestVersionCode", 1_000_004L)
+                .put("latestChangelog", markdown)
+
+        val update = response.toDeveloperSnapshot().updateCheck
+
+        assertEquals(1_000_004L, update.latestVersionCode)
+        assertEquals(markdown, update.latestChangelog)
+    }
+
     private fun storageRowsJson(target: String): JSONArray =
         JSONArray().apply {
             put(

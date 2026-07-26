@@ -8,6 +8,21 @@ import kotlin.test.assertTrue
 
 class AppUpdatePageTest {
     @Test
+    fun appUpdateUsesScopedHandsChangelogWithoutRewritingMarkdown() {
+        val markdown = "# D / 1000004\n\n- **Dedicated** Alpha notes"
+        assertEquals(
+            markdown,
+            appUpdateInlineChangelog(
+                SharedSettingsUpdateCheckSnapshot(
+                    latestVersionCode = 1_000_004L,
+                    latestChangelog = markdown
+                )
+            )
+        )
+        assertEquals(null, appUpdateInlineChangelog(SharedSettingsUpdateCheckSnapshot(latestVersionCode = 1_000_004L)))
+    }
+
+    @Test
     fun skippedVersionSuppressesOnlyMatchingHandsBuild() {
         val version160 =
             SharedSettingsUpdateCheckSnapshot(
