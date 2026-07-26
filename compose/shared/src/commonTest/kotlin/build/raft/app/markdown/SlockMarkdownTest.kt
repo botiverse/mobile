@@ -1070,10 +1070,11 @@ class SlockMarkdownTest {
         assertEquals(2.sp, ordinaryMention.textDecorationThickness)
     }
 
-    // Product ruling: inline code uses the surrounding product typography and
-    // exactly one distinct chrome painter.
+    // Product ruling (task #816): message prose keeps the shared product font;
+    // only inline-code glyphs use Web's Space Mono typography. Chrome remains
+    // a single painter and carries Web's taller inline box.
     @Test
-    fun inlineCodeUsesBodyTypographyAndSingleNeutralChrome() {
+    fun inlineCodeUsesMonoWithoutLeakingIntoBodyAndSingleNeutralChrome() {
         val inlineCodeStyle = slockMarkdownInlineCodeTextStyle(SlockType.Body)
         val inlineCodeStyleFromBoldText =
             slockMarkdownInlineCodeTextStyle(SlockType.Body.withSlockFontWeight(FontWeight.Bold))
@@ -1081,16 +1082,16 @@ class SlockMarkdownTest {
         val leadingEdge = slockMarkdownInlineCodeEdgeStyle(leading = true)
         val trailingEdge = slockMarkdownInlineCodeEdgeStyle(leading = false)
 
-        assertEquals(slockFontFamilyForWeight(FontWeight.Normal), inlineCodeStyle.fontFamily)
+        assertEquals(slockMonoFamilyForWeight(FontWeight.Normal), inlineCodeStyle.fontFamily)
         assertEquals(FontWeight.Normal, inlineCodeStyle.fontWeight)
         assertEquals(SlockType.Body.fontSize, inlineCodeStyle.fontSize)
         assertEquals(SlockType.Body.lineHeight, inlineCodeStyle.lineHeight)
         assertEquals(SlockType.Body.letterSpacing, inlineCodeStyle.letterSpacing)
-        assertFalse(inlineCodeStyle.fontFamily == FontFamily.Monospace)
-        assertEquals(slockFontFamilyForWeight(FontWeight.Normal), inlineCodeStyleFromBoldText.fontFamily)
+        assertFalse(inlineCodeStyle.fontFamily == slockFontFamilyForWeight(FontWeight.Normal))
+        assertEquals(slockMonoFamilyForWeight(FontWeight.Normal), inlineCodeStyleFromBoldText.fontFamily)
         assertEquals(FontWeight.Normal, inlineCodeStyleFromBoldText.fontWeight)
         assertEquals("inlineCode", SlockRichTextChromeKind.InlineCode.styleToken.id)
-        assertEquals(SlockRichTextFontFamilyToken.SlockUi, SlockRichTextChromeKind.InlineCode.styleToken.fontFamily)
+        assertEquals(SlockRichTextFontFamilyToken.SlockMono, SlockRichTextChromeKind.InlineCode.styleToken.fontFamily)
         assertEquals(SlockRichTextFontWeightToken.Normal, SlockRichTextChromeKind.InlineCode.styleToken.fontWeight)
         assertEquals(null, SlockRichTextChromeKind.InlineCode.styleToken.background)
         assertEquals(SlockRichTextColorToken.Black5, SlockRichTextChromeKind.InlineCode.styleToken.chipFill)
@@ -1098,8 +1099,8 @@ class SlockMarkdownTest {
         assertEquals(0.dp, inlineBox.borderWidth)
         assertEquals(4.dp, inlineBox.paddingStart)
         assertEquals(4.dp, inlineBox.paddingEnd)
-        assertEquals(0.dp, inlineBox.paddingTop)
-        assertEquals(0.dp, inlineBox.paddingBottom)
+        assertEquals(1.dp, inlineBox.paddingTop)
+        assertEquals(1.dp, inlineBox.paddingBottom)
         assertEquals(0.dp, inlineBox.marginStart)
         assertEquals(0.dp, inlineBox.marginEnd)
         assertEquals(0.dp, inlineBox.cornerRadius)
@@ -1107,31 +1108,45 @@ class SlockMarkdownTest {
         assertEquals(0.dp, leadingEdge.paddingEnd)
         assertEquals(0.dp, trailingEdge.paddingStart)
         assertEquals(4.dp, trailingEdge.paddingEnd)
+        assertEquals(1.dp, leadingEdge.paddingTop)
+        assertEquals(1.dp, leadingEdge.paddingBottom)
+        assertEquals(1.dp, trailingEdge.paddingTop)
+        assertEquals(1.dp, trailingEdge.paddingBottom)
         assertEquals(SlockColor.TextBlack.copy(alpha = 0.05f), leadingEdge.backgroundColor)
         assertEquals(SlockColor.TextBlack.copy(alpha = 0.05f), trailingEdge.backgroundColor)
 
-        val body = "`effective-family`"
+        val body = "before `effective-family` after"
         val rendered =
             buildSlockMarkdownParagraphAnnotatedString(
                 content = body,
                 annotator = slockMarkdownAnnotator(body),
                 codeSpanStyle = inlineCodeStyle.toSpanStyle(),
             ).withSlockMarkdownSpanFonts(SlockType.Body)
-        val effectiveAtFirstGlyph =
+        val codeStart = rendered.text.indexOf("effective-family")
+        val codeEnd = codeStart + "effective-family".length
+        fun effectiveSpanStyleAt(index: Int): SpanStyle =
             rendered.spanStyles
-                .filter { range -> range.start <= 0 && range.end > 0 }
+                .filter { range -> range.start <= index && range.end > index }
                 .fold(SpanStyle()) { style, range -> style.merge(range.item) }
-        assertEquals(slockFontFamilyForWeight(FontWeight.Normal), effectiveAtFirstGlyph.fontFamily)
-        assertEquals(FontWeight.Normal, effectiveAtFirstGlyph.fontWeight)
-        assertEquals(SlockType.Body.fontSize, effectiveAtFirstGlyph.fontSize)
-        assertEquals(SlockType.Body.letterSpacing, effectiveAtFirstGlyph.letterSpacing)
+        val effectiveAtCode = effectiveSpanStyleAt(codeStart)
+        assertEquals(slockMonoFamilyForWeight(FontWeight.Normal), effectiveAtCode.fontFamily)
+        assertEquals(FontWeight.Normal, effectiveAtCode.fontWeight)
+        assertEquals(SlockType.Body.fontSize, effectiveAtCode.fontSize)
+        assertEquals(SlockType.Body.letterSpacing, effectiveAtCode.letterSpacing)
+        assertTrue(
+            rendered.spanStyles.none { range ->
+                range.item.fontFamily == slockMonoFamilyForWeight(FontWeight.Normal) &&
+                    (range.start < codeStart || range.end > codeEnd)
+            }
+        )
+        assertFalse(effectiveSpanStyleAt(codeStart - 1).fontFamily == slockMonoFamilyForWeight(FontWeight.Normal))
+        assertFalse(effectiveSpanStyleAt(codeEnd).fontFamily == slockMonoFamilyForWeight(FontWeight.Normal))
     }
 
     @Test
     fun releaseNotesSectionGapClearsInlineCodeChromePaintOverflow() {
-        // Web parity removes inline-code vertical padding and border, so the
-        // chrome no longer paints outside the text line.
-        assertTrue(slockMarkdownSectionHeadingGapClearsInlineCodeChrome(0.dp))
+        // Web's 18px visible box paints 1dp beyond each Mobile text edge.
+        assertFalse(slockMarkdownSectionHeadingGapClearsInlineCodeChrome(0.dp))
         assertTrue(slockMarkdownSectionHeadingGapClearsInlineCodeChrome(8.dp))
     }
 
