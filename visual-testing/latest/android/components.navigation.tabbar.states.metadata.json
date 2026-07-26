@@ -3,6 +3,8 @@
               "providerType": "android-kuikly-shared-page",
               "source": "kmp-shared",
               "caseId": "components.navigation.tabbar.states",
+              "appLocale": null,
+              "stringDescLocale": null,
               "route": {"pageName":"compose_bottom_tabbar_visual","realProductRoute":false},
               "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.navigation.tabbar.states.png",
               "viewport": { "width": 1170, "height": 159, "density": 1 },
@@ -34,16 +36,16 @@
     "laidOutViews": 36,
     "visibleContentLeafViews": 0,
     "targetPackage": "build.raft.app.connectedtest",
-    "processId": 4008,
+    "processId": 4397,
     "processUid": 10192
 },
               "captureIdentity": {
                 "attempt": 1,
-                "generation": "b14f097c0087ba710e77225b3c3609c4",
-                "bootId": "031eb5ca-2291-4b6f-ab3a-552add3893f3",
-                "capturedAtEpochMs": 1784930364749,
-                "capturedAtMonotonicNs": 106290759195
+                "generation": "f4da8c21cd162edf2d04dfb9d76a1ac2",
+                "bootId": "6814aa69-c828-4d3b-abc6-3f1ab454f4c8",
+                "capturedAtEpochMs": 1785041229612,
+                "capturedAtMonotonicNs": 66065886112
               },
               "clampedToShortWindow": false,
-              "capturedAt": "1784930364749"
+              "capturedAt": "1785041229612"
             }

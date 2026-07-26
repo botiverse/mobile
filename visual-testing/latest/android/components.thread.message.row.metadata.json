@@ -3,6 +3,8 @@
               "providerType": "android-kuikly-shared-page",
               "source": "kmp-shared",
               "caseId": "components.thread.message.row",
+              "appLocale": null,
+              "stringDescLocale": null,
               "route": {"pageName":"compose_thread_message_row_visual","realProductRoute":false},
               "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.thread.message.row.png",
               "viewport": { "width": 1122, "height": 324, "density": 1 },
@@ -17,8 +19,8 @@
                 "fullscreen": true,
                 "systemBars": "hidden",
                 "validation": {
-                  "uniqueColors": 549,
-                  "dominantRatio": 0.8244427
+                  "uniqueColors": 547,
+                  "dominantRatio": 0.82404655
                 },
                 "readyTokenObserved": false,
                 "stableFrameCount": 1
@@ -30,20 +32,20 @@
     "rootWidthPx": 1170,
     "rootHeightPx": 2532,
     "hardwareAccelerated": true,
-    "totalViews": 51,
-    "laidOutViews": 50,
+    "totalViews": 52,
+    "laidOutViews": 51,
     "visibleContentLeafViews": 2,
     "targetPackage": "build.raft.app.connectedtest",
-    "processId": 4008,
+    "processId": 4746,
     "processUid": 10192
 },
               "captureIdentity": {
                 "attempt": 1,
-                "generation": "b14f097c0087ba710e77225b3c3609c4",
-                "bootId": "031eb5ca-2291-4b6f-ab3a-552add3893f3",
-                "capturedAtEpochMs": 1784930370707,
-                "capturedAtMonotonicNs": 112248125163
+                "generation": "b9c768b232913bd55cb600d8d3da054f",
+                "bootId": "a0126945-dea9-4f34-8af0-d2ffbf6cf798",
+                "capturedAtEpochMs": 1785041239097,
+                "capturedAtMonotonicNs": 75134595848
               },
               "clampedToShortWindow": false,
-              "capturedAt": "1784930370707"
+              "capturedAt": "1785041239097"
             }

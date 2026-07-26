@@ -1,27 +1,27 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-07-24T22:28:31.741Z",
-  "latestRunId": "91f78973-20260724222236",
+  "generatedAt": "2026-07-26T05:02:37.724Z",
+  "latestRunId": "ffcf4337-20260726050045",
   "latest": {
-    "runId": "91f78973-20260724222236",
-    "commit": "91f78973-20260724222236",
-    "commitSubject": "fix(qa): bootstrap canonical release cases (#1563)",
-    "generatedAt": "2026-07-24T22:28:31.741Z",
+    "runId": "ffcf4337-20260726050045",
+    "commit": "ffcf4337-20260726050045",
+    "commitSubject": "fix(ci): preserve v2 signing after minSdk bump (#1616)",
+    "generatedAt": "2026-07-26T05:02:37.724Z",
     "baseline": "react",
     "current": "android",
     "summary": {
-      "total": 79,
+      "total": 80,
       "same": 0,
       "pass": 0,
       "basic-pass": 0,
-      "different": 78,
+      "different": 79,
       "missing": 1
     },
     "analysisSummary": {
-      "total": 79,
-      "ready": 78,
-      "pending": 1
+      "total": 80,
+      "ready": 65,
+      "pending": 15
     },
     "comparisons": [
       "react__android",
@@ -29,14 +29,14 @@
       "android__ios"
     ],
     "componentMatrixSummary": {
-      "total": 107,
-      "active": 88,
+      "total": 108,
+      "active": 89,
       "pending": 16,
       "skipped": 3,
       "captureTypes": {
         "component-fixture": {
-          "total": 81,
-          "active": 77,
+          "total": 82,
+          "active": 78,
           "pending": 2,
           "skipped": 2
         },
@@ -49,22 +49,22 @@
       },
       "providers": {
         "react": {
-          "active": 88,
+          "active": 89,
           "pending": 13,
           "unsupported": 0,
-          "total": 101
+          "total": 102
         },
         "android": {
-          "active": 82,
+          "active": 83,
           "pending": 19,
           "unsupported": 0,
-          "total": 101
+          "total": 102
         },
         "harmony": {
           "active": 0,
-          "pending": 81,
+          "pending": 82,
           "unsupported": 0,
-          "total": 81
+          "total": 82
         },
         "ios": {
           "active": 0,
@@ -74,19 +74,19 @@
         }
       }
     },
-    "href": "runs/91f78973-20260724222236/",
-    "componentMatrix": "runs/91f78973-20260724222236/component-matrix.json",
-    "llms": "runs/91f78973-20260724222236/metadata.json"
+    "href": "runs/ffcf4337-20260726050045/",
+    "componentMatrix": "runs/ffcf4337-20260726050045/component-matrix.json",
+    "llms": "runs/ffcf4337-20260726050045/metadata.json"
   },
   "componentMatrixSummary": {
-    "total": 107,
-    "active": 88,
+    "total": 108,
+    "active": 89,
     "pending": 16,
     "skipped": 3,
     "captureTypes": {
       "component-fixture": {
-        "total": 81,
-        "active": 77,
+        "total": 82,
+        "active": 78,
         "pending": 2,
         "skipped": 2
       },
@@ -99,22 +99,22 @@
     },
     "providers": {
       "react": {
-        "active": 88,
+        "active": 89,
         "pending": 13,
         "unsupported": 0,
-        "total": 101
+        "total": 102
       },
       "android": {
-        "active": 82,
+        "active": 83,
         "pending": 19,
         "unsupported": 0,
-        "total": 101
+        "total": 102
       },
       "harmony": {
         "active": 0,
-        "pending": 81,
+        "pending": 82,
         "unsupported": 0,
-        "total": 81
+        "total": 82
       },
       "ios": {
         "active": 0,
@@ -125,6 +125,81 @@
     }
   },
   "runs": [
+    {
+      "runId": "ffcf4337-20260726050045",
+      "commit": "ffcf4337-20260726050045",
+      "commitSubject": "fix(ci): preserve v2 signing after minSdk bump (#1616)",
+      "generatedAt": "2026-07-26T05:02:37.724Z",
+      "baseline": "react",
+      "current": "android",
+      "summary": {
+        "total": 80,
+        "same": 0,
+        "pass": 0,
+        "basic-pass": 0,
+        "different": 79,
+        "missing": 1
+      },
+      "analysisSummary": {
+        "total": 80,
+        "ready": 65,
+        "pending": 15
+      },
+      "comparisons": [
+        "react__android",
+        "react__ios",
+        "android__ios"
+      ],
+      "componentMatrixSummary": {
+        "total": 108,
+        "active": 89,
+        "pending": 16,
+        "skipped": 3,
+        "captureTypes": {
+          "component-fixture": {
+            "total": 82,
+            "active": 78,
+            "pending": 2,
+            "skipped": 2
+          },
+          "real-screen": {
+            "total": 26,
+            "active": 11,
+            "pending": 14,
+            "skipped": 1
+          }
+        },
+        "providers": {
+          "react": {
+            "active": 89,
+            "pending": 13,
+            "unsupported": 0,
+            "total": 102
+          },
+          "android": {
+            "active": 83,
+            "pending": 19,
+            "unsupported": 0,
+            "total": 102
+          },
+          "harmony": {
+            "active": 0,
+            "pending": 82,
+            "unsupported": 0,
+            "total": 82
+          },
+          "ios": {
+            "active": 0,
+            "pending": 1,
+            "unsupported": 0,
+            "total": 1
+          }
+        }
+      },
+      "href": "runs/ffcf4337-20260726050045/",
+      "componentMatrix": "runs/ffcf4337-20260726050045/component-matrix.json",
+      "llms": "runs/ffcf4337-20260726050045/metadata.json"
+    },
     {
       "runId": "91f78973-20260724222236",
       "commit": "91f78973-20260724222236",

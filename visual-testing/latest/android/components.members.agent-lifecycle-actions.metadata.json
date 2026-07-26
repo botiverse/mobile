@@ -3,6 +3,8 @@
               "providerType": "android-kuikly-shared-page",
               "source": "kmp-shared",
               "caseId": "components.members.agent-lifecycle-actions",
+              "appLocale": null,
+              "stringDescLocale": null,
               "route": {"pageName":"compose_members_agent_detail_visual","realProductRoute":false},
               "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.members.agent-lifecycle-actions.png",
               "viewport": { "width": 1170, "height": 2532, "density": 1 },
@@ -17,8 +19,8 @@
                 "fullscreen": true,
                 "systemBars": "hidden",
                 "validation": {
-                  "uniqueColors": 542,
-                  "dominantRatio": 0.8856301
+                  "uniqueColors": 543,
+                  "dominantRatio": 0.88631064
                 },
                 "readyTokenObserved": false,
                 "stableFrameCount": 1
@@ -30,20 +32,20 @@
     "rootWidthPx": 1170,
     "rootHeightPx": 2532,
     "hardwareAccelerated": true,
-    "totalViews": 291,
-    "laidOutViews": 285,
+    "totalViews": 275,
+    "laidOutViews": 269,
     "visibleContentLeafViews": 2,
     "targetPackage": "build.raft.app.connectedtest",
-    "processId": 4101,
+    "processId": 4431,
     "processUid": 10192
 },
               "captureIdentity": {
                 "attempt": 1,
-                "generation": "a5b99be4e82bcc8368a6578fc472c007",
-                "bootId": "276f39ee-6a77-4018-bd60-10f264389906",
-                "capturedAtEpochMs": 1784930346156,
-                "capturedAtMonotonicNs": 102701998139
+                "generation": "1514bfc71f2dadc0e4e0d143a1225998",
+                "bootId": "d1d640ac-2bd1-41ca-9938-0c07bc49e4b2",
+                "capturedAtEpochMs": 1785041192499,
+                "capturedAtMonotonicNs": 63683221675
               },
               "clampedToShortWindow": false,
-              "capturedAt": "1784930346156"
+              "capturedAt": "1785041192499"
             }

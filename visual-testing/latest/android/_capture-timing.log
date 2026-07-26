@@ -1,40 +1,44 @@
-41672 START captureThreadForwardNote
-47046 OK captureThreadForwardNote durationMs=5375
-47098 START captureRaftUiSelectStates
-51722 OK captureRaftUiSelectStates durationMs=4625
-51769 START captureSettingsAccountErrorState
-56691 OK captureSettingsAccountErrorState durationMs=4921
-56728 START captureSettingsServerDangerModal
-60269 OK captureSettingsServerDangerModal durationMs=3547
-60378 START captureThreadMessageRowMdWrapSlice1
-64205 OK captureThreadMessageRowMdWrapSlice1 durationMs=3827
-64577 START captureHomeTitlebarStates
-67549 OK captureHomeTitlebarStates durationMs=2972
-67605 START captureThreadMessageMenuTask
-73693 OK captureThreadMessageMenuTask durationMs=6088
-74049 START captureHomeActivityResults
-80313 OK captureHomeActivityResults durationMs=6271
-80586 START captureUiSelectStates
-83470 OK captureUiSelectStates durationMs=2884
-83693 START captureThreadComposerPendingMentionActions
-86541 OK captureThreadComposerPendingMentionActions durationMs=2849
-86924 START captureHomeSearchChannelPinMenu
-97990 OK captureHomeSearchChannelPinMenu durationMs=11067
-98264 START captureFilePreviewImageActions
-101313 OK captureFilePreviewImageActions durationMs=3049
-101541 START captureUiCheckMarkerStates
-104143 OK captureUiCheckMarkerStates durationMs=2603
-104345 START captureThreadMessageSharePreview
-106984 OK captureThreadMessageSharePreview durationMs=2640
-107061 START captureMembersAgentIssueReport
-116126 OK captureMembersAgentIssueReport durationMs=9047
-116480 START captureThreadMessageRowMdCodeEmail
-119473 OK captureThreadMessageRowMdCodeEmail durationMs=2988
-119635 START captureRaftUiEmptyStateStates
-122756 OK captureRaftUiEmptyStateStates durationMs=3121
-122919 START captureThreadApproveLoginActionCardPending
-126004 OK captureThreadApproveLoginActionCardPending durationMs=3084
-126176 START captureMembersHumanDetailProfileScreen
-130206 OK captureMembersHumanDetailProfileScreen durationMs=4032
-130469 START captureAuthLoginInputsInvalid
-136590 OK captureAuthLoginInputsInvalid durationMs=6120
+39993 START captureAuthLoginSigning
+48156 OK captureAuthLoginSigning durationMs=8160
+48387 START captureRaftUiWipToggleGroupStates
+51064 OK captureRaftUiWipToggleGroupStates durationMs=2677
+51120 START captureThreadMessageRowMdWrapSlice1
+55645 OK captureThreadMessageRowMdWrapSlice1 durationMs=4525
+55774 START captureHomeTitlebarServerSwitchIdentity
+60866 OK captureHomeTitlebarServerSwitchIdentity durationMs=5092
+60926 START captureThreadComposerStates
+63561 OK captureThreadComposerStates durationMs=2635
+63621 START captureUiSelectStates
+66594 OK captureUiSelectStates durationMs=2972
+66864 START captureSettingsRowStates
+69893 OK captureSettingsRowStates durationMs=3029
+70204 START captureThreadMessageRow
+75519 OK captureThreadMessageRow durationMs=5316
+75573 START captureTask797ThreadHeaderSafeArea24
+81367 OK captureTask797ThreadHeaderSafeArea24 durationMs=5794
+81584 START captureUiCheckMarkerStates
+84175 OK captureUiCheckMarkerStates durationMs=2592
+84246 START captureThreadMessageSharePreview
+86655 OK captureThreadMessageSharePreview durationMs=2409
+86845 START captureAppUpdateDetails
+89356 OK captureAppUpdateDetails durationMs=2512
+89538 START captureHomeSearchError
+95198 OK captureHomeSearchError durationMs=5665
+95349 START captureHomeCreateChannelDialog
+99689 OK captureHomeCreateChannelDialog durationMs=4340
+99798 START captureFilePreviewImageEditorTextIme
+105743 OK captureFilePreviewImageEditorTextIme durationMs=5945
+105816 START captureRaftUiSegmentedControlStates
+108220 OK captureRaftUiSegmentedControlStates durationMs=2405
+108350 START captureMembersCreateAgentCodexDialog
+112269 OK captureMembersCreateAgentCodexDialog durationMs=3920
+112293 START captureThreadMessageRowMdCodeUrl
+115034 OK captureThreadMessageRowMdCodeUrl durationMs=2733
+115215 START captureThreadCommentAnchor
+118465 OK captureThreadCommentAnchor durationMs=3249
+118571 START captureMembersAgentDetailWorkspaceScreen
+122236 OK captureMembersAgentDetailWorkspaceScreen durationMs=3664
+122462 START captureRaftUiControlledOpenOverlays
+125018 OK captureRaftUiControlledOpenOverlays durationMs=2556
+125080 START captureThreadHeaderStates
+127784 OK captureThreadHeaderStates durationMs=2705

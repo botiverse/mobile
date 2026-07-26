@@ -3,6 +3,8 @@
               "providerType": "android-kuikly-shared-page",
               "source": "kmp-shared",
               "caseId": "components.settings.account.error-state",
+              "appLocale": null,
+              "stringDescLocale": null,
               "route": {"pageName":"compose_settings_page_visual","realProductRoute":false},
               "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.settings.account.error-state.png",
               "viewport": { "width": 1170, "height": 2532, "density": 1 },
@@ -34,16 +36,16 @@
     "laidOutViews": 176,
     "visibleContentLeafViews": 6,
     "targetPackage": "build.raft.app.connectedtest",
-    "processId": 4156,
+    "processId": 4390,
     "processUid": 10192
 },
               "captureIdentity": {
                 "attempt": 1,
-                "generation": "4b02918e717d191ee9478449c9b905a6",
-                "bootId": "a359ab8c-33ec-4689-b1c6-4c1c10a81449",
-                "capturedAtEpochMs": 1784930334045,
-                "capturedAtMonotonicNs": 55288359432
+                "generation": "9dd81eef9450fdb11d75475cd9ac074c",
+                "bootId": "45fc1644-1fcd-4b25-ba70-6437c95e6ca5",
+                "capturedAtEpochMs": 1785041210907,
+                "capturedAtMonotonicNs": 47092339872
               },
               "clampedToShortWindow": false,
-              "capturedAt": "1784930334045"
+              "capturedAt": "1785041210907"
             }

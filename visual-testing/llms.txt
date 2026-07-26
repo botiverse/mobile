@@ -1,31 +1,31 @@
 # Raft Visual Testing
 
-Generated: 2026-07-24 22:28:31 UTC
-Latest run: 91f78973-20260724222236
-Latest commit: 91f78973-20260724222236
-Commit subject: fix(qa): bootstrap canonical release cases (#1563)
+Generated: 2026-07-26 05:02:37 UTC
+Latest run: ffcf4337-20260726050045
+Latest commit: ffcf4337-20260726050045
+Commit subject: fix(ci): preserve v2 signing after minSdk bump (#1616)
 Providers: react vs android, react vs ios, android vs ios
-Summary: total 79, same 0, pass 0, basic-pass 0, different 78, missing 1
-AI analysis: ready 78 / total 79, pending 1
-Visual coverage matrix: active 88 / total 107, pending 16, skipped 3
+Summary: total 80, same 0, pass 0, basic-pass 0, different 79, missing 1
+AI analysis: ready 65 / total 80, pending 15
+Visual coverage matrix: active 89 / total 108, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Comparisons
 
-- react__android: total 79, same 0, pass 0, basic-pass 0, different 78, missing 1
-- react__ios: total 79, same 0, pass 13, basic-pass 10, different 50, missing 6
-- android__ios: total 79, same 0, pass 14, basic-pass 17, different 43, missing 5
+- react__android: total 80, same 0, pass 0, basic-pass 0, different 79, missing 1
+- react__ios: total 80, same 0, pass 12, basic-pass 10, different 52, missing 6
+- android__ios: total 80, same 0, pass 14, basic-pass 17, different 44, missing 5
 
 ## Capture Type Coverage
 
-- Components Parity (component-fixture): active 77, pending 2, total 81
+- Components Parity (component-fixture): active 78, pending 2, total 82
 - Screens Parity (real-screen): active 11, pending 14, total 26
 
 ## Provider Coverage
 
-- react: active 88, pending 13, unsupported 0
-- android: active 82, pending 19, unsupported 0
-- harmony: active 0, pending 81, unsupported 0
+- react: active 89, pending 13, unsupported 0
+- android: active 83, pending 19, unsupported 0
+- harmony: active 0, pending 82, unsupported 0
 - ios: active 0, pending 1, unsupported 0
 
 ## Pending Coverage Rows
@@ -39,6 +39,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 - components.thread.message-row.deleted-human: Real React MessageItem vs Android shared ThreadMessageCard fixture for deleted human authors. Protects muted uploaded-avatar styling and gray-border Deleted sender tag.
 - components.thread.message-row.long-inline-code: Inline-code cross-platform net (task #400): real React MessageItem vs Android shared long_inline_code thread fixture. Covers compact short inline-code chips, char-level wrapping of long paths/commands (#58), trailing-edge inline-code border (#228), and markdown flow around code spans. OHOS leg pending self-hosted capture harness.
 - components.thread.message-row.md-latest-release: Real mixed-markdown status message requested by artin (task #502): leading horizontal rule, Chinese prose, bold emphasis, inline-code angle-bracket placeholders, and a plain PR reference. React and KMP bodies are byte-for-byte identical; OHOS capture remains pending until the provider lane is available.
+- components.thread.message-row.md-link-ref: Raft Markdown dialect net (task #519, guarding task #517): real React MessageItem vs Android shared md_link_ref thread fixture. Refs inside a Markdown link label/destination stay part of one external link; standalone refs outside links chip.
 - components.thread.message-row.md-wrap-adjacent: Adjacent-chip acceptance (task #60): real React MessageItem vs Android md_wrap_adjacent fixture; '#31 / #521' two chips + slash on one line. OHOS leg pending self-hosted capture harness.
 - components.thread.message-row.md-wrap-clarify: Narrow (260px) markdown message-row wrap net: real React MessageItem vs Android shared md_wrap_clarify thread fixture. Reproduces the Android inline-box line-wrap bug where a task chip wraps to the next line. OHOS leg pending self-hosted capture harness.
 - components.thread.message-row.md-wrap-slice1: Narrow (260px) markdown message-row wrap net: real React MessageItem vs Android shared md_wrap_slice1 thread fixture. Reproduces the Android inline-box line-wrap bug where a channel/task chip wraps to the next line. OHOS leg pending self-hosted capture harness.
@@ -115,6 +116,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- ffcf4337-20260726050045: react vs android, total 80, pass 0, basic-pass 0, different 79, matrix runs/ffcf4337-20260726050045/component-matrix.json, page runs/ffcf4337-20260726050045/
 - 91f78973-20260724222236: react vs android, total 79, pass 0, basic-pass 0, different 78, matrix runs/91f78973-20260724222236/component-matrix.json, page runs/91f78973-20260724222236/
 - 37df1bb1-20260723224841: react vs android, total 79, pass 0, basic-pass 0, different 78, matrix runs/37df1bb1-20260723224841/component-matrix.json, page runs/37df1bb1-20260723224841/
 - 785f4dc-20260722221033: react vs android, total 85, pass 0, basic-pass 1, different 83, matrix runs/785f4dc-20260722221033/component-matrix.json, page runs/785f4dc-20260722221033/

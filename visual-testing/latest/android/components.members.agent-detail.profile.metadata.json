@@ -3,6 +3,8 @@
               "providerType": "android-kuikly-shared-page",
               "source": "kmp-shared",
               "caseId": "components.members.agent-detail.profile",
+              "appLocale": null,
+              "stringDescLocale": null,
               "route": {"pageName":"compose_members_agent_detail_visual","realProductRoute":false},
               "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.members.agent-detail.profile.png",
               "viewport": { "width": 1170, "height": 2532, "density": 1 },
@@ -17,8 +19,8 @@
                 "fullscreen": true,
                 "systemBars": "hidden",
                 "validation": {
-                  "uniqueColors": 529,
-                  "dominantRatio": 0.8902054
+                  "uniqueColors": 530,
+                  "dominantRatio": 0.8908859
                 },
                 "readyTokenObserved": false,
                 "stableFrameCount": 1
@@ -30,20 +32,20 @@
     "rootWidthPx": 1170,
     "rootHeightPx": 2532,
     "hardwareAccelerated": true,
-    "totalViews": 269,
-    "laidOutViews": 263,
+    "totalViews": 253,
+    "laidOutViews": 247,
     "visibleContentLeafViews": 2,
     "targetPackage": "build.raft.app.connectedtest",
-    "processId": 3926,
+    "processId": 4430,
     "processUid": 10192
 },
               "captureIdentity": {
                 "attempt": 1,
-                "generation": "9ed5bde91407678b391aabfe414707e3",
-                "bootId": "ed99a6bd-5d11-481c-b495-f36eb0405df6",
-                "capturedAtEpochMs": 1784930500098,
-                "capturedAtMonotonicNs": 166226334802
+                "generation": "4942f5e604f2c8228e77adf26b2e822d",
+                "bootId": "3edbf195-5805-4b8d-bb5c-34055806846f",
+                "capturedAtEpochMs": 1785041258062,
+                "capturedAtMonotonicNs": 119552210667
               },
               "clampedToShortWindow": false,
-              "capturedAt": "1784930500098"
+              "capturedAt": "1785041258062"
             }

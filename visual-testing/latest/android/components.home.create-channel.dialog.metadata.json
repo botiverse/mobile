@@ -3,6 +3,8 @@
               "providerType": "android-kuikly-shared-page",
               "source": "kmp-shared",
               "caseId": "components.home.create-channel.dialog",
+              "appLocale": null,
+              "stringDescLocale": null,
               "route": {"pageName":"compose_home_create_channel_dialog_visual","realProductRoute":false},
               "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.home.create-channel.dialog.png",
               "viewport": { "width": 1170, "height": 2532, "density": 1 },
@@ -34,16 +36,16 @@
     "laidOutViews": 132,
     "visibleContentLeafViews": 5,
     "targetPackage": "build.raft.app.connectedtest",
-    "processId": 4101,
+    "processId": 4746,
     "processUid": 10192
 },
               "captureIdentity": {
                 "attempt": 1,
-                "generation": "a5b99be4e82bcc8368a6578fc472c007",
-                "bootId": "276f39ee-6a77-4018-bd60-10f264389906",
-                "capturedAtEpochMs": 1784930362378,
-                "capturedAtMonotonicNs": 118923611228
+                "generation": "b9c768b232913bd55cb600d8d3da054f",
+                "bootId": "a0126945-dea9-4f34-8af0-d2ffbf6cf798",
+                "capturedAtEpochMs": 1785041263289,
+                "capturedAtMonotonicNs": 99326319359
               },
               "clampedToShortWindow": false,
-              "capturedAt": "1784930362378"
+              "capturedAt": "1785041263289"
             }
