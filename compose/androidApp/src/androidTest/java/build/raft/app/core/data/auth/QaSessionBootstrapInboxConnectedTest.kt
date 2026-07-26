@@ -50,6 +50,31 @@ class QaSessionBootstrapInboxConnectedTest {
     }
 
     @Test
+    fun detailedRejectionsExposeOnlyFixedBoundaryCodes() {
+        val missing = requestFile("missing")
+        assertRejected("missing", QaSessionBootstrapInbox.consumeFileDetailed(missing))
+
+        val empty = requestFile("empty")
+        empty.writeBytes(byteArrayOf())
+        Os.chmod(empty.absolutePath, 0b110000000)
+        assertRejected("size", QaSessionBootstrapInbox.consumeFileDetailed(empty))
+
+        val wrongMode = requestFile("wrong-mode")
+        wrongMode.writeBytes("ticket".encodeToByteArray())
+        Os.chmod(wrongMode.absolutePath, 0b100000000)
+        assertRejected("mode", QaSessionBootstrapInbox.consumeFileDetailed(wrongMode))
+
+        assertRejected(
+            "request_id",
+            QaSessionBootstrapInbox.consumeDetailed(context, "invalid/request", "session")
+        )
+        assertRejected(
+            "suffix",
+            QaSessionBootstrapInbox.consumeDetailed(context, "request", "unknown")
+        )
+    }
+
+    @Test
     fun rejects0600FilesWithAnySpecialModeBit() {
         listOf(
             0x980, // POSIX 04600: setuid + 0600
@@ -98,5 +123,14 @@ class QaSessionBootstrapInboxConnectedTest {
     private fun requestFile(name: String): File {
         inbox.mkdirs()
         return File(inbox, "${name}-${System.nanoTime()}.ticket").also { it.delete() }
+    }
+
+    private fun assertRejected(
+        expectedCode: String,
+        result: QaSessionBootstrapInbox.ConsumeResult
+    ) {
+        assertTrue(result is QaSessionBootstrapInbox.ConsumeResult.Rejected)
+        result as QaSessionBootstrapInbox.ConsumeResult.Rejected
+        assertTrue("code=${result.code.wire}", result.code.wire == expectedCode)
     }
 }

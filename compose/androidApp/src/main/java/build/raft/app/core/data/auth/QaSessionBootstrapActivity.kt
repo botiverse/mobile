@@ -40,9 +40,16 @@ class QaSessionBootstrapActivity : ComponentActivity() {
     }
 
     private suspend fun consumeLoginEnvelope(requestId: String, expectedDigest: String) {
-        val rawBytes = withContext(Dispatchers.IO) {
-            QaSessionBootstrapInbox.consume(applicationContext, requestId, "session")
-        } ?: return abort("inbox_consume", "missing_or_invalid")
+        val consumed = withContext(Dispatchers.IO) {
+            QaSessionBootstrapInbox.consumeDetailed(applicationContext, requestId, "session")
+        }
+        val rawBytes = when (consumed) {
+            is QaSessionBootstrapInbox.ConsumeResult.Consumed -> consumed.bytes
+            is QaSessionBootstrapInbox.ConsumeResult.Rejected -> {
+                abort("inbox_consume", consumed.code.wire)
+                return
+            }
+        }
         stage("inbox_consumed")
         try {
             if ("sha256:${sha256(rawBytes)}" != expectedDigest) {
