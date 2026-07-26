@@ -384,6 +384,7 @@
     <string name="home_refresh_failed">服务器刷新失败</string>
     <string name="home_refresh_failed_detail">无法刷新此服务器。错误：%1$s</string>
     <string name="share_sheet_unavailable_toast">无法打开分享面板</string>
+    <string name="external_share_import_failed_toast">Raft 无法导入此分享内容</string>
     <string name="open_link_no_app_toast">没有可打开此链接的应用</string>
     <string name="open_link_failed_toast">无法打开链接</string>
     <string name="settings_update_ready_status">可检查</string>
