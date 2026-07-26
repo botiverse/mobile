@@ -109,7 +109,7 @@ object SlockRichTextChromeStyleTokens {
             foreground = SlockRichTextColorToken.TextBlack,
             background = null,
             chipFill = SlockRichTextColorToken.Black5,
-            fontFamily = SlockRichTextFontFamilyToken.SlockUi,
+            fontFamily = SlockRichTextFontFamilyToken.SlockMono,
             fontWeight = SlockRichTextFontWeightToken.Normal
         )
     val Channel =

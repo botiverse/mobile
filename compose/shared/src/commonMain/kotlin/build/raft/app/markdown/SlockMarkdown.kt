@@ -1290,7 +1290,7 @@ internal fun AnnotatedString.withSlockMarkdownSpanFonts(baseStyle: TextStyle): A
     inlineCodeRanges.forEach { range ->
         builder.addStyle(
             SpanStyle(
-                fontFamily = slockFontFamilyForWeight(FontWeight.Normal),
+                fontFamily = slockMonoFamilyForWeight(FontWeight.Normal),
                 fontWeight = FontWeight.Normal,
             ),
             range.start,
@@ -2202,8 +2202,9 @@ internal fun slockMarkdownInlineChipWidthSp(
         .coerceAtLeast(40f)
         .sp
 
-// Inline code uses the same resolved product typography as the surrounding
-// message. Its chrome remains distinct, but its glyph metrics must not drift.
+// Web's canonical InlineCode uses Space Mono while inheriting the surrounding
+// font size. Keep that override scoped to the semantic code range so adjacent
+// message prose remains on the resolved Slock UI family (task #816).
 internal fun slockMarkdownInlineCodeTextStyle(base: TextStyle): TextStyle =
     SlockRichTextChromeKind.InlineCode.styleToken.applyToTextStyle(base)
 
@@ -2424,8 +2425,8 @@ internal fun slockMarkdownInlineCodeEdgeStyle(
         borderWidth = 0.dp,
         paddingStart = if (leading) 4.dp else 0.dp,
         paddingEnd = if (trailing) 4.dp else 0.dp,
-        paddingTop = 0.dp,
-        paddingBottom = 0.dp,
+        paddingTop = SlockRichTextInlineBoxVerticalPaddingDp.dp,
+        paddingBottom = SlockRichTextInlineBoxVerticalPaddingDp.dp,
         marginStart = 0.dp,
         marginEnd = 0.dp,
         cornerRadius = 0.dp,
@@ -2441,8 +2442,8 @@ private fun SlockRichTextChromeStyleToken.toInlineBoxSpanStyle(): InlineBoxSpanS
         borderWidth = if (isInlineCode) 0.dp else SlockRichTextInlineBoxBorderWidthDp.dp,
         paddingStart = 4.dp,
         paddingEnd = 4.dp,
-        paddingTop = if (isInlineCode) 0.dp else SlockRichTextInlineBoxVerticalPaddingDp.dp,
-        paddingBottom = if (isInlineCode) 0.dp else SlockRichTextInlineBoxVerticalPaddingDp.dp,
+        paddingTop = SlockRichTextInlineBoxVerticalPaddingDp.dp,
+        paddingBottom = SlockRichTextInlineBoxVerticalPaddingDp.dp,
         marginStart = if (isInlineCode) 0.dp else 2.dp,
         marginEnd = if (isInlineCode) 0.dp else 2.dp,
         cornerRadius = 0.dp
