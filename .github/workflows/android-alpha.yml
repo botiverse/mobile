@@ -103,7 +103,7 @@ jobs:
       - name: Build alpha debug APK
         working-directory: compose
         env:
-          SLOCK_QUIVER_CHANNEL: debug
+          SLOCK_HANDS_CHANNEL: debug
           ALPHA_VERSION_BUILD: ${{ github.event_name == 'workflow_dispatch' && inputs.version_build || '0' }}
         shell: bash
         run: |

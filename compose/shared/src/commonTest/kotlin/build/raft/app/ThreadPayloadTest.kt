@@ -6142,7 +6142,7 @@ class ThreadPayloadTest {
                                     senderId = "agent-cindy",
                                     senderName = "Cindy",
                                     messageType = "chat",
-                                    content = "Approve Quiver for @KMP-专家",
+                                    content = "Approve Hands for @KMP-专家",
                                     createdAt = "2026-07-07T03:00:00Z",
                                     actionMetadata =
                                         WireActionCardMetadata(
@@ -6155,8 +6155,8 @@ class ThreadPayloadTest {
                                                     agentId = "agent-1",
                                                     agentName = "KMP-专家",
                                                     clientId = "client-1",
-                                                    clientKey = "quiver",
-                                                    clientName = "Quiver",
+                                                    clientKey = "hands",
+                                                    clientName = "Hands",
                                                     scopes = listOf("identity", "profile"),
                                                     draftHint = "KMP-专家 is requesting human approval."
                                                 ).toWireJsonObject()
@@ -6175,8 +6175,8 @@ class ThreadPayloadTest {
         assertEquals("agent-1", card?.agentId)
         assertEquals("KMP-专家", card?.agentName)
         assertEquals("client-1", card?.clientId)
-        assertEquals("quiver", card?.clientKey)
-        assertEquals("Quiver", card?.clientName)
+        assertEquals("hands", card?.clientKey)
+        assertEquals("Hands", card?.clientName)
         assertEquals(listOf("identity", "profile"), card?.scopes)
         assertEquals("KMP-专家 is requesting human approval.", card?.draftHint)
         assertEquals(null, card?.actionCardDraftHint())

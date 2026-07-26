@@ -8,10 +8,9 @@ VERSION_Y="${SLOCK_ANDROID_VERSION_MINOR:-0}"
 VERSION_Z="${SLOCK_ANDROID_VERSION_PATCH:-1}"
 VERSION_BUILD="${SLOCK_ANDROID_VERSION_BUILD:-0}"
 VERSION_SUFFIX="${SLOCK_ANDROID_VERSION_SUFFIX:-}"
-CHANNEL="${SLOCK_HANDS_CHANNEL:-${SLOCK_QUIVER_CHANNEL:-main}}"
+CHANNEL="${SLOCK_HANDS_CHANNEL:-main}"
 VARIANT="${SLOCK_ANDROID_VARIANT:-release}"
 PUBLISH_HANDS_RAW="${SLOCK_PUBLISH_HANDS:-}"
-PUBLISH_QUIVER_RAW="${SLOCK_PUBLISH_QUIVER:-}"
 RELEASE_MODE="${SLOCK_RELEASE_MODE:-draft}"
 CREATE_SHARE_PAGE="${SLOCK_CREATE_SHARE_PAGE:-true}"
 SHARE_TTL_SECONDS="${SLOCK_SHARE_TTL_SECONDS:-604800}"
@@ -71,7 +70,6 @@ Options:
                           Offline diagnostic only; prohibited for main.
   --build-only            Build workflow artifact only; do not create a Hands draft.
   --no-publish-hands      Alias for --build-only.
-  --no-publish-quiver     Deprecated alias for --build-only (remove after 2026-08-31).
   --no-share-page         Create the Hands draft but skip share page creation.
   --share-ttl <seconds>   Share page TTL. Default: 604800 (7 days).
   --wait                  Wait for the GitHub Actions run to finish.
@@ -127,7 +125,6 @@ json_bool() {
 PUBLISH_HANDS="$(
   bash "${ROOT_DIR}/scripts/resolve_android_publish_hands_input.sh" \
     "${PUBLISH_HANDS_RAW}" \
-    "${PUBLISH_QUIVER_RAW}" \
     true
 )"
 
@@ -248,11 +245,6 @@ while [ "$#" -gt 0 ]; do
       PUBLISH_HANDS=false
       shift
       ;;
-    --no-publish-quiver)
-      echo "warning: --no-publish-quiver is deprecated; use --no-publish-hands before 2026-08-31" >&2
-      PUBLISH_HANDS=false
-      shift
-      ;;
     --no-share-page)
       CREATE_SHARE_PAGE=false
       shift
@@ -353,7 +345,7 @@ gh workflow run android-release.yml \
     -f "version_patch=${VERSION_Z}" \
     -f "version_build=${VERSION_BUILD}" \
     -f "version_suffix=${VERSION_SUFFIX}" \
-    -f "quiver_channel=${CHANNEL}" \
+    -f "hands_channel=${CHANNEL}" \
     -f "android_variant=${VARIANT}" \
     -f "release_mode=${RELEASE_MODE}" \
     -f "publish_hands=${publish_hands}" \

@@ -2867,7 +2867,7 @@ class SlockAppShellTest {
         assertEquals(listOf("visible_conversation"), suppressed)
     }
 
-    // task #441 (Quiver feedback 20d596f9): the thread's own row is not in the directory
+    // task #441 (Hands feedback 20d596f9): the thread's own row is not in the directory
     // and the parent CHANNEL row is. With the parent/anchor lookup tail deleted, the parent
     // row can no longer be hit at all — the Activity source rebuilds a correct Thread
     // identity from its trusted typed parent kind.

@@ -5777,8 +5777,8 @@ class SharedThreadStoreTest {
                 agentId = "agent-1",
                 agentName = "KMP-专家",
                 clientId = "client-1",
-                clientKey = "quiver",
-                clientName = "Quiver",
+                clientKey = "hands",
+                clientName = "Hands",
                 scopes = listOf("identity", "profile")
             )
 
@@ -5788,7 +5788,7 @@ class SharedThreadStoreTest {
         assertEquals("executed", executedCard.state)
         assertEquals("agent-integration-login", executedCard.resultKind)
         assertEquals("grant-1", executedCard.resultId)
-        assertEquals("Quiver", executedCard.resultName)
+        assertEquals("Hands", executedCard.resultName)
         assertEquals("artin", executedCard.executedByUserName)
         assertEquals(
             listOf("""POST actions/m-card/execute body={"expectedState":"prepared"}"""),
@@ -13186,14 +13186,14 @@ class SharedThreadStoreTest {
                           "agentId":"agent-1",
                           "agentName":"KMP-专家",
                           "clientId":"client-1",
-                          "clientKey":"quiver",
-                          "clientName":"Quiver",
+                          "clientKey":"hands",
+                          "clientName":"Hands",
                           "scopes":["identity","profile"]
                         },
                         "result":{
                           "kind":"agent-integration-login",
                           "id":"grant-1",
-                          "name":"Quiver"
+                          "name":"Hands"
                         }
                       }
                     }

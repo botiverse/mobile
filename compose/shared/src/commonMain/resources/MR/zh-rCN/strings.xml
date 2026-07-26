@@ -152,7 +152,7 @@
     <string name="settings_feedback_placeholder">分享反馈</string>
     <string name="settings_feedback_copy_result">复制结果</string>
     <string name="settings_members_title">成员</string>
-    <string name="settings_quiver_title">Hands</string>
+    <string name="settings_hands_title">Hands</string>
     <string name="settings_onboarding_title">入门</string>
     <string name="settings_language_region_title">语言与地区</string>
     <string name="settings_language_region_subtitle">语言、时区、翻译</string>

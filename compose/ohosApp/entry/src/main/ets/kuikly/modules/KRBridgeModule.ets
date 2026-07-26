@@ -89,8 +89,8 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   static readonly THREAD_ATTACHMENT_UPLOAD = "threadAttachmentUpload";
   static readonly ATTACHMENT_CACHE_MAX_FILES = 80;
   static readonly ATTACHMENT_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
-  static readonly QUIVER_FEEDBACK_MAX_ATTACHMENTS = 3;
-  static readonly QUIVER_FEEDBACK_MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+  static readonly HANDS_FEEDBACK_MAX_ATTACHMENTS = 3;
+  static readonly HANDS_FEEDBACK_MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
   private activePhotoExportDownloadId: string = "";
   private activePhotoExportOperationId: string = "";
   private activePhotoExportGeneration: number = 0;
@@ -1102,12 +1102,12 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         [archivePath],
         [],
       );
-      SlockOhosDiagnostics.record("Settings", `quiver_feedback_submitted ticket=${ticketId.slice(0, 8)}`);
+      SlockOhosDiagnostics.record("Settings", `hands_feedback_submitted ticket=${ticketId.slice(0, 8)}`);
       return { "status": "ok", "ticketId": ticketId };
     } catch (error) {
       const message = String(error);
-      SlockOhosDiagnostics.record("Settings", `quiver_feedback_submit_failed ${message}`);
-      return { "status": "error", "code": "quiver_feedback_failed", "message": message };
+      SlockOhosDiagnostics.record("Settings", `hands_feedback_submit_failed ${message}`);
+      return { "status": "error", "code": "hands_feedback_failed", "message": message };
     }
   }
 
@@ -1119,21 +1119,21 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       }
       const context = getContext(this) as common.UIAbilityContext;
       const userAttachmentPaths = this.feedbackAttachmentPaths(records["files"])
-        .slice(0, KRBridgeModule.QUIVER_FEEDBACK_MAX_ATTACHMENTS);
-      const attachmentPaths = userAttachmentPaths.slice(0, KRBridgeModule.QUIVER_FEEDBACK_MAX_ATTACHMENTS);
-      if (attachmentPaths.length < KRBridgeModule.QUIVER_FEEDBACK_MAX_ATTACHMENTS) {
+        .slice(0, KRBridgeModule.HANDS_FEEDBACK_MAX_ATTACHMENTS);
+      const attachmentPaths = userAttachmentPaths.slice(0, KRBridgeModule.HANDS_FEEDBACK_MAX_ATTACHMENTS);
+      if (attachmentPaths.length < KRBridgeModule.HANDS_FEEDBACK_MAX_ATTACHMENTS) {
         const archivePath = await SlockOhosAppDiagnostics.prepareFeedbackArchivePath(context);
         if (this.feedbackAttachmentFits(archivePath)) {
           attachmentPaths.push(archivePath);
         } else {
-          SlockOhosDiagnostics.record("Settings", `quiver_feedback_diagnostics_attachment_skipped path=${archivePath}`);
+          SlockOhosDiagnostics.record("Settings", `hands_feedback_diagnostics_attachment_skipped path=${archivePath}`);
         }
       }
       const ticketId = await HandsFeedbackClient.submit(
         context,
         message,
         'bug',
-        attachmentPaths.slice(0, KRBridgeModule.QUIVER_FEEDBACK_MAX_ATTACHMENTS),
+        attachmentPaths.slice(0, KRBridgeModule.HANDS_FEEDBACK_MAX_ATTACHMENTS),
         [],
       );
       const shortId = ticketId.slice(0, 8);
@@ -1144,7 +1144,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         : '';
       const shareText = `Hands feedback ${shortId}\nTicket: ${ticketId}${attachmentSection}\n\nEnvironment:\n${environmentText}\n\nFeedback:\n${message}`;
       SlockOhosClipboard.copyText(shareText);
-      SlockOhosDiagnostics.record("Settings", `quiver_feedback_submitted ticket=${shortId}`);
+      SlockOhosDiagnostics.record("Settings", `hands_feedback_submitted ticket=${shortId}`);
       return {
         "status": "ok",
         "ticketId": ticketId,
@@ -1153,7 +1153,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       };
     } catch (error) {
       const message = String(error);
-      SlockOhosDiagnostics.record("Settings", `quiver_feedback_submit_failed ${message}`);
+      SlockOhosDiagnostics.record("Settings", `hands_feedback_submit_failed ${message}`);
       return { "status": "error", "code": "settings_feedback_submit_failed", "message": message };
     }
   }
@@ -1171,7 +1171,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         }
       }
     });
-    return paths.slice(0, KRBridgeModule.QUIVER_FEEDBACK_MAX_ATTACHMENTS);
+    return paths.slice(0, KRBridgeModule.HANDS_FEEDBACK_MAX_ATTACHMENTS);
   }
 
   private feedbackAttachmentNames(paths: Array<string>): Array<string> {
@@ -1183,13 +1183,13 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         return fileName.replace(/[\r\n]+/g, ' ').trim();
       })
       .filter((fileName: string): boolean => fileName.length > 0)
-      .slice(0, KRBridgeModule.QUIVER_FEEDBACK_MAX_ATTACHMENTS);
+      .slice(0, KRBridgeModule.HANDS_FEEDBACK_MAX_ATTACHMENTS);
   }
 
   private feedbackAttachmentFits(path: string): boolean {
     try {
       const stat = fs.statSync(path);
-      return stat.isFile() && stat.size > 0 && stat.size <= KRBridgeModule.QUIVER_FEEDBACK_MAX_ATTACHMENT_BYTES;
+      return stat.isFile() && stat.size > 0 && stat.size <= KRBridgeModule.HANDS_FEEDBACK_MAX_ATTACHMENT_BYTES;
     } catch (_error) {
       return false;
     }

@@ -443,7 +443,7 @@ sealed interface SharedSettingsIntent {
     data class ClearStorage(val target: String) : SharedSettingsIntent
     data class SetApiEnvironment(val environmentKey: String) : SharedSettingsIntent
     data class SaveApiEnvironment(val request: SharedSettingsApiEnvironmentRequest) : SharedSettingsIntent
-    data object CheckQuiverUpdate : SharedSettingsIntent
+    data object CheckHandsUpdate : SharedSettingsIntent
     data class CompleteStorageClear(
         val target: String,
         val ok: Boolean,
@@ -510,14 +510,14 @@ interface SharedSettingsPlatformCapabilities {
     suspend fun saveApiEnvironment(request: SharedSettingsApiEnvironmentRequest): DataResult<SharedSettingsDeveloperSnapshot> =
         setApiEnvironment(request.key)
 
-    suspend fun checkQuiverUpdate(): DataResult<SharedSettingsDeveloperSnapshot> =
-        DataResult.Error(ScreenError("settings_quiver_update_check_unavailable", retryable = false))
+    suspend fun checkHandsUpdate(): DataResult<SharedSettingsDeveloperSnapshot> =
+        DataResult.Error(ScreenError("settings_hands_update_check_unavailable", retryable = false))
 
-    suspend fun checkQuiverUpdateStatus(): DataResult<SharedSettingsUpdateCheckSnapshot> =
-        DataResult.Error(ScreenError("settings_quiver_update_status_unavailable", retryable = false))
+    suspend fun checkHandsUpdateStatus(): DataResult<SharedSettingsUpdateCheckSnapshot> =
+        DataResult.Error(ScreenError("settings_hands_update_status_unavailable", retryable = false))
 
-    suspend fun installQuiverUpdate(): DataResult<SharedSettingsUpdateCheckSnapshot> =
-        DataResult.Error(ScreenError("settings_quiver_update_install_unavailable", retryable = false))
+    suspend fun installHandsUpdate(): DataResult<SharedSettingsUpdateCheckSnapshot> =
+        DataResult.Error(ScreenError("settings_hands_update_install_unavailable", retryable = false))
 
     suspend fun prefetchReleaseNotes(url: String): DataResult<Unit> =
         DataResult.Empty(EmptyReason.NoSettingsAvailable)
@@ -1152,14 +1152,14 @@ class SharedSettingsDataSource(
             return applyApiEnvironmentChange(store, before, after)
         } ?: platformCapabilities.saveApiEnvironment(request)
 
-    suspend fun checkQuiverUpdate(): DataResult<SharedSettingsDeveloperSnapshot> =
-        platformCapabilities.checkQuiverUpdate()
+    suspend fun checkHandsUpdate(): DataResult<SharedSettingsDeveloperSnapshot> =
+        platformCapabilities.checkHandsUpdate()
 
-    suspend fun checkQuiverUpdateStatus(): DataResult<SharedSettingsUpdateCheckSnapshot> =
-        platformCapabilities.checkQuiverUpdateStatus()
+    suspend fun checkHandsUpdateStatus(): DataResult<SharedSettingsUpdateCheckSnapshot> =
+        platformCapabilities.checkHandsUpdateStatus()
 
-    suspend fun installQuiverUpdate(): DataResult<SharedSettingsUpdateCheckSnapshot> =
-        platformCapabilities.installQuiverUpdate()
+    suspend fun installHandsUpdate(): DataResult<SharedSettingsUpdateCheckSnapshot> =
+        platformCapabilities.installHandsUpdate()
 
     private suspend fun applyApiEnvironmentChange(
         store: SharedApiEnvironmentStore,
@@ -2213,10 +2213,10 @@ class SharedSettingsStore(
                         )
                 }
             }
-            SharedSettingsIntent.CheckQuiverUpdate -> {
-                runAction(DEVELOPER_ACTION_QUIVER_UPDATE_CHECK) {
-                    dataSource.checkQuiverUpdate()
-                        .applyDeveloperActionResult(DEVELOPER_ACTION_QUIVER_UPDATE_CHECK)
+            SharedSettingsIntent.CheckHandsUpdate -> {
+                runAction(DEVELOPER_ACTION_HANDS_UPDATE_CHECK) {
+                    dataSource.checkHandsUpdate()
+                        .applyDeveloperActionResult(DEVELOPER_ACTION_HANDS_UPDATE_CHECK)
                 }
             }
             is SharedSettingsIntent.CompleteStorageClear ->
@@ -2353,7 +2353,7 @@ class SharedSettingsStore(
 
     private suspend fun loadAboutWithUpdateStatus() {
         dataSource.loadAbout().applyToState(SharedSettingsDestination.About) { copy(about = it) }
-        val updateResult = dataSource.checkQuiverUpdateStatus()
+        val updateResult = dataSource.checkHandsUpdateStatus()
         when (val developerResult = dataSource.loadDeveloper()) {
             is DataResult.Content -> {
                 val developer =
@@ -3389,7 +3389,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.ClearStorage,
             is SharedSettingsIntent.SetApiEnvironment,
             is SharedSettingsIntent.SaveApiEnvironment,
-            SharedSettingsIntent.CheckQuiverUpdate,
+            SharedSettingsIntent.CheckHandsUpdate,
             is SharedSettingsIntent.CompleteStorageClear,
             SharedSettingsIntent.CopyDiagnostics,
             SharedSettingsIntent.ShareDiagnostics,
@@ -3544,7 +3544,7 @@ internal const val MOBILE_ACTION_PUSH_PREVIEW_MODE = "pushPreviewMode"
 internal const val MOBILE_ACTION_PERMISSION = "notificationPermission"
 internal const val MOBILE_ACTION_SETTINGS = "openNotificationSettings"
 internal const val DEVELOPER_ACTION_API_ENVIRONMENT = "apiEnvironment"
-internal const val DEVELOPER_ACTION_QUIVER_UPDATE_CHECK = "quiverUpdateCheck"
+internal const val DEVELOPER_ACTION_HANDS_UPDATE_CHECK = "handsUpdateCheck"
 internal const val MOBILE_ACTION_TEST_NOTIFICATION = "sendTestNotification"
 internal const val MOBILE_ACTION_LANGUAGE = "language"
 internal const val MOBILE_ACTION_MESSAGE_ALIGNMENT = "messageAlignment"

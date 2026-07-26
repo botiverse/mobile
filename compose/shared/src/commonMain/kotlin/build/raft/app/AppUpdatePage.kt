@@ -83,7 +83,7 @@ private fun AppUpdateScreen() {
     fun refresh() {
         scope.launch {
             loading = snapshot == null
-            when (val result = environment.settingsCapabilities.checkQuiverUpdateStatus()) {
+            when (val result = environment.settingsCapabilities.checkHandsUpdateStatus()) {
                 is DataResult.Content -> {
                     snapshot = result.data
                     errorCode = result.data.errorCode.takeIf { it.isNotBlank() }
@@ -129,7 +129,7 @@ private fun AppUpdateScreen() {
                 scope.launch {
                     actionRunning = true
                     errorCode = null
-                    when (val result = environment.settingsCapabilities.installQuiverUpdate()) {
+                    when (val result = environment.settingsCapabilities.installHandsUpdate()) {
                         is DataResult.Content -> snapshot = result.data
                         is DataResult.Empty -> errorCode = "app_update_unavailable"
                         is DataResult.Error -> errorCode = result.error.code

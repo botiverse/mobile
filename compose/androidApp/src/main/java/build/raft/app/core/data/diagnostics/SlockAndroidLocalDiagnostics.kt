@@ -13,7 +13,7 @@ import org.json.JSONObject
 /**
  * Android local-diagnostics coordinator: logcat routing, persistent sinks, and feedback exports.
  *
- * External crash reporting moved (crash/native/ANR reporting is handled by the Quiver SDK;
+ * External crash reporting moved (crash/native/ANR reporting is handled by the Hands SDK;
  * telemetry/scene/user-context reporting is dropped). This object keeps its
  * public API so callers are unchanged, but the reporting methods are now
  * no-ops; only local logging and the feedback archive remain.
@@ -38,11 +38,11 @@ object SlockAndroidLocalDiagnostics {
         AndroidHistoricalProcessExitDiagnostics.recordLatest(context.applicationContext)
         SlockAppLog.d(
             Tag,
-            "initialized appVersion=${BuildConfig.VERSION_NAME} debug=${BuildConfig.DEBUG} backend=jsonl quiver=crash"
+            "initialized appVersion=${BuildConfig.VERSION_NAME} debug=${BuildConfig.DEBUG} backend=jsonl hands=crash"
         )
     }
 
-    /** Crash/telemetry reporting moved to the Quiver SDK — nothing here now. */
+    /** Crash/telemetry reporting moved to the Hands SDK — nothing here now. */
     fun isInitialized(): Boolean = false
 
     fun isDiagnoseInitialized(): Boolean = false
@@ -264,7 +264,7 @@ object SlockAndroidLocalDiagnostics {
     }
 
     fun testCrash(kind: String = "java"): Boolean {
-        SlockAppLog.d(Tag, "test_crash kind=$kind ignored=quiver_only")
+        SlockAppLog.d(Tag, "test_crash kind=$kind ignored=hands_only")
         return false
     }
 

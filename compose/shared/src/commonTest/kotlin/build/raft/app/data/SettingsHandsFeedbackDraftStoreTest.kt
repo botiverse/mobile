@@ -3,11 +3,11 @@ package build.raft.app.data
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-class SettingsQuiverFeedbackDraftStoreTest {
+class SettingsHandsFeedbackDraftStoreTest {
     @Test
     fun textAndCachedAttachmentsSurviveStoreRecreationForSameAccount() {
         val preferences = InMemorySlockKeyValueStore()
-        SettingsQuiverFeedbackDraftStore(preferences).save(
+        SettingsHandsFeedbackDraftStore(preferences).save(
             accountId = "user-1",
             text = "Repro steps\nExpected result",
             attachments =
@@ -24,7 +24,7 @@ class SettingsQuiverFeedbackDraftStoreTest {
                 )
         )
 
-        val restored = SettingsQuiverFeedbackDraftStore(preferences).read("user-1")
+        val restored = SettingsHandsFeedbackDraftStore(preferences).read("user-1")
 
         assertEquals("Repro steps\nExpected result", restored.text)
         assertEquals(1, restored.attachments.size)
@@ -35,7 +35,7 @@ class SettingsQuiverFeedbackDraftStoreTest {
     @Test
     fun draftsAreAccountScopedAndBlankContentClearsPersistedValue() {
         val preferences = InMemorySlockKeyValueStore()
-        val store = SettingsQuiverFeedbackDraftStore(preferences)
+        val store = SettingsHandsFeedbackDraftStore(preferences)
         store.save("user-1", "First account draft")
         store.save("user-2", "Second account draft")
 
@@ -44,14 +44,14 @@ class SettingsQuiverFeedbackDraftStoreTest {
 
         store.save("user-1", "   ")
 
-        assertEquals(SettingsQuiverFeedbackDraftSnapshot(), store.read("user-1"))
+        assertEquals(SettingsHandsFeedbackDraftSnapshot(), store.read("user-1"))
         assertEquals("Second account draft", store.read("user-2").text)
     }
 
     @Test
     fun transientByteOnlyAttachmentsAreNotRestoredAsBrokenFiles() {
         val preferences = InMemorySlockKeyValueStore()
-        val store = SettingsQuiverFeedbackDraftStore(preferences)
+        val store = SettingsHandsFeedbackDraftStore(preferences)
         store.save(
             accountId = "user-1",
             text = "Keep the text",
@@ -75,7 +75,7 @@ class SettingsQuiverFeedbackDraftStoreTest {
     @Test
     fun successfulSubmissionClearsTextAndAttachments() {
         val preferences = InMemorySlockKeyValueStore()
-        val store = SettingsQuiverFeedbackDraftStore(preferences)
+        val store = SettingsHandsFeedbackDraftStore(preferences)
         store.save(
             accountId = "user-1",
             text = "Submitted feedback",
@@ -91,6 +91,6 @@ class SettingsQuiverFeedbackDraftStoreTest {
 
         store.clear("user-1")
 
-        assertEquals(SettingsQuiverFeedbackDraftSnapshot(), store.read("user-1"))
+        assertEquals(SettingsHandsFeedbackDraftSnapshot(), store.read("user-1"))
     }
 }

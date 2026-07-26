@@ -2,10 +2,10 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-HANDS_CLI="${HANDS_CLI:-${QUIVER_CLI:-hands}}"
-HANDS_CLI_PACKAGE="${HANDS_CLI_PACKAGE:-${QUIVER_CLI_PACKAGE:-@botiverse/hands-cli@0.4.0}}"
-APP_SLUG="${HANDS_APP_SLUG:-${QUIVER_APP_SLUG:-raft-ios}}"
-CHANNEL="${HANDS_CHANNEL:-${QUIVER_CHANNEL:-main}}"
+HANDS_CLI="${HANDS_CLI:-hands}"
+HANDS_CLI_PACKAGE="${HANDS_CLI_PACKAGE:-@botiverse/hands-cli@0.4.0}"
+APP_SLUG="${HANDS_APP_SLUG:-raft-ios}"
+CHANNEL="${HANDS_CHANNEL:-main}"
 IPA_PATH="${SLOCK_IOS_IPA_PATH:-}"
 DSYM_PATH="${SLOCK_IOS_DSYM_PATH:-}"
 VERSION_NAME="${RAFT_IOS_VERSION_NAME:-}"

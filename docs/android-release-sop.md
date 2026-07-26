@@ -144,9 +144,7 @@ scripts/release_android_hands_github.sh \
 ```
 
 The canonical workflow switch is `publish_hands=true|false`, and the wrapper
-sets it through `SLOCK_PUBLISH_HANDS`. The deprecated `publish_quiver` alias is
-accepted only through 2026-08-31; if both inputs are set to different values,
-the resolve job fails before any build or publish job starts. See
+sets it through `SLOCK_PUBLISH_HANDS`. Legacy publish aliases are rejected. See
 [Android Hands release input migration](android-hands-release-migration-2026-07-24.md).
 
 Expected workflow output:

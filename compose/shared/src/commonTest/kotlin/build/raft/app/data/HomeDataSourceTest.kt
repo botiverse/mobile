@@ -127,7 +127,7 @@ class HomeDataSourceTest {
     }
 
     @Test
-    fun loadNotificationsAddsAppUpdateWhenNewerQuiverBuildExists() = runBlocking {
+    fun loadNotificationsAddsAppUpdateWhenNewerHandsBuildExists() = runBlocking {
         val source =
             SharedHomeDataSource(
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),

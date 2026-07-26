@@ -2582,7 +2582,7 @@ class KmpVisualScreenshotCaptureTest {
             pageName = "compose_settings_route_visual",
             pageData =
                 JSONObject()
-                    .put("destination", "quiver-feedback")
+                    .put("destination", "hands-feedback")
                     .put("fixtureKey", "feedback-two-attachments"),
             crop = FULL_VIEWPORT_CROP,
             settleMs = 2_000
@@ -2596,7 +2596,7 @@ class KmpVisualScreenshotCaptureTest {
             pageName = "compose_settings_route_visual",
             pageData =
                 JSONObject()
-                    .put("destination", "quiver-feedback")
+                    .put("destination", "hands-feedback")
                     .put("fixtureKey", "feedback-submit-success")
                     .put("task139ReuseTrace", true),
             crop = FULL_VIEWPORT_CROP,
@@ -3078,23 +3078,23 @@ class KmpVisualScreenshotCaptureTest {
         }
 
         // Depending on retained-view assignment, the stale attachment radius
-        // can land on either the inserted User row or the following Quiver
+        // can land on either the inserted User row or the following Hands
         // success row. Find the latter's top outline at the shared center x
         // and require both top corners to be square as well.
         val centerX = (bounds[0] + bounds[2]) / 2
-        val quiverTop =
+        val handsTop =
             requireNotNull(
                 ((bounds[3] + 8).coerceAtMost(maxY - 1) until maxY).firstOrNull { y ->
                     isBorderBlack(bitmap.getPixel(centerX, y))
                 }
-            ) { "No Quiver success row top border found below User row" }
-        val quiverTopCornerHits =
-            listOf(bounds[0] to quiverTop, bounds[2] to quiverTop).map { (x, y) ->
+            ) { "No Hands success row top border found below User row" }
+        val handsTopCornerHits =
+            listOf(bounds[0] to handsTop, bounds[2] to handsTop).map { (x, y) ->
                 borderBlackHitsNear(x, y)
             }
-        require(quiverTopCornerHits.all { it >= 4 }) {
-            "Quiver success row retained rounded corners: userBounds=${bounds.joinToString()} " +
-                "quiverTop=$quiverTop topCornerBorderBlackHits=${quiverTopCornerHits.joinToString()}"
+        require(handsTopCornerHits.all { it >= 4 }) {
+            "Hands success row retained rounded corners: userBounds=${bounds.joinToString()} " +
+                "handsTop=$handsTop topCornerBorderBlackHits=${handsTopCornerHits.joinToString()}"
         }
     }
 

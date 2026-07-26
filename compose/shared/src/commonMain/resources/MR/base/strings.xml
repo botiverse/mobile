@@ -152,7 +152,7 @@
     <string name="settings_feedback_placeholder">Share feedback</string>
     <string name="settings_feedback_copy_result">Copy result</string>
     <string name="settings_members_title">Members</string>
-    <string name="settings_quiver_title">Hands</string>
+    <string name="settings_hands_title">Hands</string>
     <string name="settings_onboarding_title">Onboarding</string>
     <string name="settings_language_region_title">Language &amp; Region</string>
     <string name="settings_language_region_subtitle">Language, timezone, translation</string>

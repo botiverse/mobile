@@ -297,7 +297,7 @@ internal fun String.isMachineHomeNotificationId(): Boolean =
 internal fun String.isAppUpdateHomeNotificationId(): Boolean =
     startsWith(APP_UPDATE_HOME_NOTIFICATION_ID)
 
-internal const val APP_UPDATE_HOME_NOTIFICATION_ID = "app-update:quiver"
+internal const val APP_UPDATE_HOME_NOTIFICATION_ID = "app-update:hands"
 
 internal fun SharedSettingsUpdateCheckSnapshot.toSharedHomeAppUpdateNotification(): SharedHomeNotification? {
     if (!supported || !updateAvailable || latestVersionCode <= 0L) return null

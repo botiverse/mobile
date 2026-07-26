@@ -146,7 +146,7 @@ class SharedSettingsStoreContract(
                 is SharedSettingsIntent.UpdateAppearance -> MviActionKey(APPEARANCE_ACTION_MESSAGE_FONT_SIZE)
                 is SharedSettingsIntent.SetApiEnvironment -> MviActionKey("${DEVELOPER_ACTION_API_ENVIRONMENT}:$environmentKey")
                 is SharedSettingsIntent.SaveApiEnvironment -> MviActionKey("${DEVELOPER_ACTION_API_ENVIRONMENT}:${request.key}")
-                SharedSettingsIntent.CheckQuiverUpdate -> MviActionKey(DEVELOPER_ACTION_QUIVER_UPDATE_CHECK)
+                SharedSettingsIntent.CheckHandsUpdate -> MviActionKey(DEVELOPER_ACTION_HANDS_UPDATE_CHECK)
                 else -> null
             }
     }

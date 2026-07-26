@@ -18,7 +18,7 @@ fi
 plist_buddy="/usr/libexec/PlistBuddy"
 # HandsBuildCommit is what the Hands iOS SDK (HandsFeedbackClient) reads to
 # attribute feedback/crash reports to a build commit. (Renamed from the legacy
-# QuiverBuildCommit, which nothing read after the SDK moved to HandsBuildCommit.)
+# the obsolete pre-Hands build-commit key, which nothing reads.)
 "${plist_buddy}" -c "Set :HandsBuildCommit ${git_commit}" "${plist_path}" 2>/dev/null \
   || "${plist_buddy}" -c "Add :HandsBuildCommit string ${git_commit}" "${plist_path}"
 

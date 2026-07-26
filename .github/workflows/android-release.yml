@@ -35,7 +35,7 @@ on:
         required: false
         type: string
         default: ""
-      quiver_channel:
+      hands_channel:
         required: false
         type: string
         default: "main"
@@ -52,11 +52,6 @@ on:
         required: false
         type: string
         default: "false"
-      publish_quiver:
-        description: "Deprecated compatibility alias; reusable callers should leave this empty"
-        required: false
-        type: string
-        default: ""
       create_share_page:
         required: false
         type: boolean
@@ -133,7 +128,7 @@ on:
         required: false
         type: string
         default: ""
-      quiver_channel:
+      hands_channel:
         description: "Hands channel: main | preview | nightly | debug"
         required: true
         type: choice
@@ -158,16 +153,8 @@ on:
         default: "draft"
         options:
           - draft
-      # These remain optional strings during the compatibility window so the
-      # resolver can distinguish "omitted" from an explicit false and reject
-      # conflicting canonical/legacy values deterministically.
       publish_hands:
         description: "Canonical Hands draft switch: true | false. Blank defaults to false."
-        required: false
-        type: string
-        default: ""
-      publish_quiver:
-        description: "Deprecated compatibility alias for publish_hands; remove after 2026-08-31."
         required: false
         type: string
         default: ""
@@ -204,7 +191,7 @@ jobs:
       version_build: ${{ steps.p.outputs.version_build }}
       version_suffix: ${{ steps.p.outputs.version_suffix }}
       version_name: ${{ steps.p.outputs.version_name }}
-      quiver_channel: ${{ steps.p.outputs.quiver_channel }}
+      hands_channel: ${{ steps.p.outputs.hands_channel }}
       android_variant: ${{ steps.p.outputs.android_variant }}
       release_mode: ${{ steps.p.outputs.release_mode }}
       publish_hands: ${{ steps.p.outputs.publish_hands }}
@@ -218,7 +205,6 @@ jobs:
         shell: bash
         env:
           INPUT_PUBLISH_HANDS: ${{ inputs.publish_hands }}
-          INPUT_PUBLISH_QUIVER: ${{ inputs.publish_quiver }}
         run: |
           set -euo pipefail
           VERSION_NAME="${{ inputs.version_major }}.${{ inputs.version_minor }}.${{ inputs.version_patch }}"
@@ -226,7 +212,6 @@ jobs:
           PUBLISH_HANDS="$(
             scripts/resolve_android_publish_hands_input.sh \
               "${INPUT_PUBLISH_HANDS}" \
-              "${INPUT_PUBLISH_QUIVER}" \
               false
           )"
           {
@@ -236,7 +221,7 @@ jobs:
             echo "version_build=${{ inputs.version_build }}"
             echo "version_suffix=${{ inputs.version_suffix }}"
             echo "version_name=${VERSION_NAME}"
-            echo "quiver_channel=${{ inputs.quiver_channel }}"
+            echo "hands_channel=${{ inputs.hands_channel }}"
             echo "android_variant=${{ inputs.android_variant }}"
             echo "release_mode=draft"
             echo "publish_hands=${PUBLISH_HANDS}"
@@ -369,7 +354,7 @@ jobs:
       - name: Gradle build (assembleRelease / assembleDebug)
         working-directory: compose
         env:
-          SLOCK_QUIVER_CHANNEL: ${{ needs.resolve.outputs.quiver_channel }}
+          SLOCK_HANDS_CHANNEL: ${{ needs.resolve.outputs.hands_channel }}
         shell: bash
         run: |
           GRADLE_ARGS=(
@@ -561,7 +546,7 @@ jobs:
             echo "| **APK** | \`${{ steps.locate.outputs.apk_path }}\` |"
             echo "| **size (bytes)** | \`${{ steps.verify.outputs.size }}\` |"
             echo "| **sha256** | \`${{ steps.verify.outputs.sha256 }}\` |"
-            echo "| **Hands channel target** | \`${{ needs.resolve.outputs.quiver_channel }}\` |"
+            echo "| **Hands channel target** | \`${{ needs.resolve.outputs.hands_channel }}\` |"
             echo "| **Create Hands draft** | \`${{ needs.resolve.outputs.publish_hands }}\` |"
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -581,13 +566,13 @@ jobs:
       # Optional: enforce manual approval for `production` env in repo settings.
     env:
       HANDS_APP_SLUG: raft-android
-      # The repository secret retains its legacy storage key during the input
-      # migration; runtime consumers receive only Hands-named variables.
+      # The external repository secret keeps its existing storage key; runtime
+      # consumers receive only Hands-named variables.
       HANDS_BEARER_TOKEN: ${{ secrets.QUIVER_BEARER_TOKEN }}
       HANDS_AUTH_TOKEN: ${{ secrets.QUIVER_BEARER_TOKEN }}
       HANDS_API: https://hands.build
-      SLOCK_HANDS_CHANNEL: ${{ needs.resolve.outputs.quiver_channel }}
-      HANDS_CHANNEL: ${{ needs.resolve.outputs.quiver_channel }}
+      SLOCK_HANDS_CHANNEL: ${{ needs.resolve.outputs.hands_channel }}
+      HANDS_CHANNEL: ${{ needs.resolve.outputs.hands_channel }}
       SLOCK_ANDROID_VARIANT: ${{ needs.resolve.outputs.android_variant }}
       SLOCK_ANDROID_VERSION_MAJOR: ${{ needs.resolve.outputs.version_major }}
       SLOCK_ANDROID_VERSION_MINOR: ${{ needs.resolve.outputs.version_minor }}
@@ -715,8 +700,8 @@ jobs:
         id: create-share-page
         if: needs.resolve.outputs.create_share_page == 'true'
         env:
-          SLOCK_HANDS_CHANNEL: ${{ needs.resolve.outputs.quiver_channel }}
-          HANDS_CHANNEL: ${{ needs.resolve.outputs.quiver_channel }}
+          SLOCK_HANDS_CHANNEL: ${{ needs.resolve.outputs.hands_channel }}
+          HANDS_CHANNEL: ${{ needs.resolve.outputs.hands_channel }}
         shell: bash
         run: |
           set -euo pipefail
@@ -754,7 +739,7 @@ jobs:
             echo "|---|---|"
             echo "| **APK** | \`${{ needs.build_android_release.outputs.apk_path }}\` |"
             echo "| **APK sha256** | \`${{ needs.build_android_release.outputs.apk_sha256 }}\` |"
-            echo "| **Hands channel** | \`${{ needs.resolve.outputs.quiver_channel }}\` |"
+            echo "| **Hands channel** | \`${{ needs.resolve.outputs.hands_channel }}\` |"
             echo "| **Release mode** | \`${{ needs.resolve.outputs.release_mode }}\` |"
             echo "| **Release id** | \`${{ steps.publish-hands-release.outputs.release_id || '(none)' }}\` |"
             echo "| **Share URL** | ${{ steps.create-share-page.outputs.share_url || '(skipped)' }} |"

@@ -15,7 +15,7 @@ internal data class SlockReleaseNotesDocument(
 
 /**
  * Release notes are treated as immutable per versionCode and URL. Disk hits are
- * served without background revalidation; if Quiver ever supports editing an
+ * served without background revalidation; if Hands ever supports editing an
  * already-published note for the same version, this is the single place to add
  * serve-from-disk plus async refresh semantics.
  */

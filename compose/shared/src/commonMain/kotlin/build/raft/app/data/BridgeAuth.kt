@@ -22,7 +22,7 @@ class SettingsDiagnosticsFeedbackDraft(
     val bytes: ByteArray
 )
 
-class SettingsQuiverFeedbackSubmission(
+class SettingsHandsFeedbackSubmission(
     val ticketId: String,
     val shareText: String
 )
@@ -31,7 +31,7 @@ internal class BridgeSettingsPlatformCapabilities(
     private val bridge: BridgeModule,
     private val copiedMessage: String,
     private val bridgeCallContext: CoroutineContext = EmptyCoroutineContext,
-    private val feedbackVisualSubmission: SettingsQuiverFeedbackSubmission? = null,
+    private val feedbackVisualSubmission: SettingsHandsFeedbackSubmission? = null,
     private val openUrlHandler: ((String) -> Unit)? = null
 ) : SharedSettingsPlatformCapabilities {
     fun bridgeCopyToClipboard(content: String) {
@@ -204,19 +204,19 @@ internal class BridgeSettingsPlatformCapabilities(
         return DataResult.Content(response.toDeveloperSnapshot())
     }
 
-    override suspend fun checkQuiverUpdate(): DataResult<SharedSettingsDeveloperSnapshot> {
-        val response = settingsCapability(JSONObject().put("action", "quiverUpdateCheck"))
+    override suspend fun checkHandsUpdate(): DataResult<SharedSettingsDeveloperSnapshot> {
+        val response = settingsCapability(JSONObject().put("action", "handsUpdateCheck"))
         if (response?.optString("status") != "ok") {
-            return DataResult.Error(ScreenError(response?.optString("code").orEmpty().ifBlank { "settings_quiver_update_check_failed" }))
+            return DataResult.Error(ScreenError(response?.optString("code").orEmpty().ifBlank { "settings_hands_update_check_failed" }))
         }
         return DataResult.Content(response.toDeveloperSnapshot())
     }
 
-    override suspend fun checkQuiverUpdateStatus(): DataResult<SharedSettingsUpdateCheckSnapshot> =
-        quiverUpdateAction("quiverUpdateStatus")
+    override suspend fun checkHandsUpdateStatus(): DataResult<SharedSettingsUpdateCheckSnapshot> =
+        handsUpdateAction("handsUpdateStatus")
 
-    override suspend fun installQuiverUpdate(): DataResult<SharedSettingsUpdateCheckSnapshot> =
-        quiverUpdateAction("quiverUpdateInstall")
+    override suspend fun installHandsUpdate(): DataResult<SharedSettingsUpdateCheckSnapshot> =
+        handsUpdateAction("handsUpdateInstall")
 
     override suspend fun prefetchReleaseNotes(url: String): DataResult<Unit> {
         if (url.isBlank()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
@@ -343,7 +343,7 @@ internal class BridgeSettingsPlatformCapabilities(
             ?.toDiagnosticsFeedbackDraft()
 
     suspend fun pickFeedbackAttachment(imageOnly: Boolean): DataResult<List<PlatformFile>> {
-        val response = bridge.threadAttachmentUpload(channelId = "settings-quiver-feedback", imageOnly = imageOnly)
+        val response = bridge.threadAttachmentUpload(channelId = "settings-hands-feedback", imageOnly = imageOnly)
         val code = response?.optInt("code", 0) ?: 0
         if (code == 204) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
         if (code !in 200..299) {
@@ -357,22 +357,22 @@ internal class BridgeSettingsPlatformCapabilities(
         return DataResult.Content(files)
     }
 
-    suspend fun submitQuiverFeedback(
+    suspend fun submitHandsFeedback(
         message: String,
         attachments: List<PlatformFile>
-    ): DataResult<SettingsQuiverFeedbackSubmission> {
+    ): DataResult<SettingsHandsFeedbackSubmission> {
         bridge.log(
-            "settings_quiver_feedback_submit_start messageLength=${message.length} " +
+            "settings_hands_feedback_submit_start messageLength=${message.length} " +
                 "attachmentCount=${attachments.size}"
         )
         feedbackVisualSubmission?.let { submission ->
             bridge.log(
-                "settings_quiver_feedback_visual_submit_success attachmentCount=${attachments.size} " +
+                "settings_hands_feedback_visual_submit_success attachmentCount=${attachments.size} " +
                     "ticket=${submission.ticketId.take(8)}"
             )
             return DataResult.Content(submission)
         }
-        bridge.log("settings_quiver_feedback_bridge_request_prepared")
+        bridge.log("settings_hands_feedback_bridge_request_prepared")
         flushSlockPlatformLogs()
         if (!flushSlockPlatformDiagnosticsDownstream()) {
             return DataResult.Error(ScreenError("settings_diagnostics_flush_failed", retryable = true))
@@ -385,14 +385,14 @@ internal class BridgeSettingsPlatformCapabilities(
                     .put("files", attachments.toFeedbackFilesJson())
             )
         bridge.log(
-            "settings_quiver_feedback_submit_response status=${response?.optString("status").orEmpty()} " +
+            "settings_hands_feedback_submit_response status=${response?.optString("status").orEmpty()} " +
                 "code=${response?.optString("code").orEmpty()} " +
                 "ticket=${response?.optString("ticketId").orEmpty().take(8)}"
         )
         return when (response?.optString("status")) {
             "ok" ->
                 DataResult.Content(
-                    SettingsQuiverFeedbackSubmission(
+                    SettingsHandsFeedbackSubmission(
                         ticketId = response.optString("ticketId"),
                         shareText = response.optString("shareText")
                     )
@@ -444,10 +444,10 @@ internal class BridgeSettingsPlatformCapabilities(
         return response.toSystemNotificationActionResult()
     }
 
-    private suspend fun quiverUpdateAction(action: String): DataResult<SharedSettingsUpdateCheckSnapshot> {
+    private suspend fun handsUpdateAction(action: String): DataResult<SharedSettingsUpdateCheckSnapshot> {
         val response = settingsCapability(JSONObject().put("action", action))
         if (response?.optString("status") != "ok") {
-            return DataResult.Error(ScreenError(response?.optString("code").orEmpty().ifBlank { "settings_quiver_update_failed" }))
+            return DataResult.Error(ScreenError(response?.optString("code").orEmpty().ifBlank { "settings_hands_update_failed" }))
         }
         return DataResult.Content(response.toDeveloperSnapshot().updateCheck)
     }

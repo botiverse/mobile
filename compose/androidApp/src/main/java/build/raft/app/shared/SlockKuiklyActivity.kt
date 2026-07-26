@@ -758,7 +758,7 @@ open class SlockKuiklyActivity :
         )
         SlockActivityWidgetProvider.refreshAllWidgets(applicationContext)
         SlockAgentStatusWidgetProvider.refreshAllWidgets(applicationContext)
-        SlockKuiklyBridgeModule.resumePendingQuiverAutoInstall(applicationContext)
+        SlockKuiklyBridgeModule.resumePendingHandsAutoInstall(applicationContext)
     }
 
     private fun reportRealtimeVisibility(
@@ -2697,7 +2697,7 @@ internal class SlockKuiklyBridgeModule(
         private val appContext: Context,
 ) : KuiklyRenderBaseModule() {
     internal suspend fun submitNativeFeedback(request: JSONObject): Map<String, Any> =
-            submitFeedbackToQuiver(request)
+            submitFeedbackToHands(request)
 
     override fun call(method: String, params: String?, callback: KuiklyRenderCallback?): Any? {
         return when (method) {
@@ -3303,24 +3303,24 @@ internal class SlockKuiklyBridgeModule(
     private fun settingsCapability(params: String?, callback: KuiklyRenderCallback?) {
         val request = JSONObject(params ?: "{}")
         val action = request.optString("action")
-        if (action == "quiverUpdateCheck" || action == "quiverUpdateStatus" || action == "quiverUpdateInstall") {
+        if (action == "handsUpdateCheck" || action == "handsUpdateStatus" || action == "handsUpdateInstall") {
             val scope = (activity as? ComponentActivity)?.lifecycleScope ?: CoroutineScope(Dispatchers.Main)
             scope.launch {
                 val result =
                         runCatching {
-                                    val install = action != "quiverUpdateStatus"
-                                    checkQuiverUpdate(install = install)
+                                    val install = action != "handsUpdateStatus"
+                                    checkHandsUpdate(install = install)
                                 }
                                 .getOrElse { throwable ->
                                     SlockAppLog.record(
-                                            "SlockQuiverUpdate",
-                                            "check_failed action=$action base=${BuildConfig.QUIVER_BASE_URL} " +
+                                            "SlockHandsUpdate",
+                                            "check_failed action=$action base=${BuildConfig.HANDS_BASE_URL} " +
                                                     "error=${throwable.javaClass.simpleName} message=${throwable.message ?: "-"}"
                                     )
                                     mapOf(
                                             "status" to "error",
-                                            "code" to "settings_quiver_update_check_failed",
-                                            "message" to (throwable.message ?: "Quiver update check failed")
+                                            "code" to "settings_hands_update_check_failed",
+                                            "message" to (throwable.message ?: "Hands update check failed")
                                     )
                                 }
                 callback?.invoke(result)
@@ -3335,7 +3335,7 @@ internal class SlockKuiklyBridgeModule(
             )
             val scope = (activity as? ComponentActivity)?.lifecycleScope ?: CoroutineScope(Dispatchers.Main)
             scope.launch {
-                val result = submitFeedbackToQuiver(request.takeIf { action == "submitFeedback" })
+                val result = submitFeedbackToHands(request.takeIf { action == "submitFeedback" })
                 SlockAppLog.record(
                         "SlockDiagnostics",
                         "settings_capability_feedback_result action=$action status=${result["status"]} code=${result["code"] ?: "-"}"
@@ -3403,7 +3403,7 @@ internal class SlockKuiklyBridgeModule(
                         }
                         "prepareDiagnosticsFeedback" -> {
                             // Raft-channel upload flow retired: feedback goes to
-                            // Quiver via sendFeedback. A non-draft response skips
+                            // Hands via sendFeedback. A non-draft response skips
                             // the channel picker in the shared settings UI.
                             mapOf("status" to "unsupported")
                         }
@@ -3885,7 +3885,7 @@ internal class SlockKuiklyBridgeModule(
         val current = AndroidApiServerEnvironmentStore(appContext).current()
         val alphaDeltaEnabled = handsDeltaUpdateAllowedForRuntime()
         val updateChannel =
-                if (alphaDeltaEnabled) BuildConfig.HANDS_DELTA_CHANNEL else BuildConfig.QUIVER_CHANNEL
+                if (alphaDeltaEnabled) BuildConfig.HANDS_DELTA_CHANNEL else BuildConfig.HANDS_CHANNEL
         val options =
                 JSONArray().also { array ->
                     AndroidApiServerEnvironmentStore.predefined.forEach { environment ->
@@ -3918,13 +3918,13 @@ internal class SlockKuiklyBridgeModule(
         )
     }
 
-    private suspend fun checkQuiverUpdate(install: Boolean = true): Map<String, Any> {
+    private suspend fun checkHandsUpdate(install: Boolean = true): Map<String, Any> {
         val arch = Build.SUPPORTED_ABIS.firstOrNull { it.isNotBlank() }
         val alphaDeltaEnabled = handsDeltaUpdateAllowedForRuntime()
         val appSlug =
-                if (alphaDeltaEnabled) BuildConfig.HANDS_DELTA_APP_SLUG else BuildConfig.QUIVER_APP_SLUG
+                if (alphaDeltaEnabled) BuildConfig.HANDS_DELTA_APP_SLUG else BuildConfig.HANDS_APP_SLUG
         val channel =
-                if (alphaDeltaEnabled) BuildConfig.HANDS_DELTA_CHANNEL else BuildConfig.QUIVER_CHANNEL
+                if (alphaDeltaEnabled) BuildConfig.HANDS_DELTA_CHANNEL else BuildConfig.HANDS_CHANNEL
         var alphaInstallStartedThisCall = false
         val ownedResponse =
                 alphaHandsUpdateCallOwner.runIfEligible(
@@ -3932,7 +3932,7 @@ internal class SlockKuiklyBridgeModule(
                 ) {
                     UpdateChecker(
                             context = appContext,
-                            baseUrl = BuildConfig.QUIVER_BASE_URL,
+                            baseUrl = BuildConfig.HANDS_BASE_URL,
                             appSlug = appSlug,
                             installedVersionCode = BuildConfig.VERSION_CODE.toLong(),
                             channel = channel,
@@ -3948,7 +3948,7 @@ internal class SlockKuiklyBridgeModule(
                     alphaInstallStartedThisCall = true
                     ownedResponse
                 } else {
-                    HandsClient(BuildConfig.QUIVER_BASE_URL)
+                    HandsClient(BuildConfig.HANDS_BASE_URL)
                             .checkForUpdate(
                                     slug = appSlug,
                                     channel = channel,
@@ -3962,7 +3962,7 @@ internal class SlockKuiklyBridgeModule(
                 }
         val updateAvailable = response.requireUpdate() != null
         SlockAppLog.record(
-                "SlockQuiverUpdate",
+                "SlockHandsUpdate",
                 "check status=ok mode=${if (alphaDeltaEnabled) "alpha_delta" else "full_apk"} " +
                         "action=${if (install) "install" else "status"} started=$alphaInstallStartedThisCall " +
                         "slug=$appSlug channel=$channel current=${BuildConfig.VERSION_CODE} " +
@@ -3973,18 +3973,18 @@ internal class SlockKuiklyBridgeModule(
                     alphaDeltaEnabled &&
                         updateAvailable &&
                         (alphaInstallStartedThisCall || alphaHandsUpdateCallOwner.isRunning()) ->
-                            QuiverInstallResult(
+                            HandsInstallResult(
                                     statusLabel = "Installing",
                                     detail = "Android is preparing the update. Follow the installer or download notification.",
                                     actionLabel = "Installing"
                             )
-                    alphaDeltaEnabled -> QuiverInstallResult()
-                    install && updateAvailable -> installQuiverUpdate(response, arch)
-                    updateAvailable -> currentQuiverDownloadResult(response, arch)
-                    else -> QuiverInstallResult()
+                    alphaDeltaEnabled -> HandsInstallResult()
+                    install && updateAvailable -> installHandsUpdate(response, arch)
+                    updateAvailable -> currentHandsDownloadResult(response, arch)
+                    else -> HandsInstallResult()
                 }
-        val updateStatusLabel = installResult.statusLabel.ifBlank { response.quiverStatusLabel() }
-        val updateDetail = installResult.detail.ifBlank { response.quiverDetail() }
+        val updateStatusLabel = installResult.statusLabel.ifBlank { response.handsStatusLabel() }
+        val updateDetail = installResult.detail.ifBlank { response.handsDetail() }
         val feedback =
                 when {
                     updateAvailable -> "Update available: ${response.latest?.version?.ifBlank { null } ?: "version code ${response.latest?.version_code ?: 0L}"}."
@@ -4018,7 +4018,7 @@ internal class SlockKuiklyBridgeModule(
                 )
         if (BuildConfig.HANDS_DELTA_UPDATE_ENABLED && !allowed) {
             SlockAppLog.record(
-                    "SlockQuiverUpdate",
+                    "SlockHandsUpdate",
                     "alpha_delta_gate_denied buildApplicationId=${BuildConfig.APPLICATION_ID} " +
                             "runtimePackageName=${appContext.packageName}"
             )
@@ -4026,13 +4026,13 @@ internal class SlockKuiklyBridgeModule(
         return allowed
     }
 
-    private suspend fun installQuiverUpdate(
+    private suspend fun installHandsUpdate(
             response: UpdateCheckResponse,
             arch: String?
-    ): QuiverInstallResult {
+    ): HandsInstallResult {
         return runCatching {
-                    synchronized(quiverUpdateDownloadLock) {
-                        val tracked = currentQuiverDownload(response, arch)
+                    synchronized(handsUpdateDownloadLock) {
+                        val tracked = currentHandsDownload(response, arch)
                         if (tracked != null) {
                             val status = tracked.status()
                             when (status) {
@@ -4043,39 +4043,39 @@ internal class SlockKuiklyBridgeModule(
                                 DownloadManager.STATUS_PENDING,
                                 DownloadManager.STATUS_RUNNING,
                                 DownloadManager.STATUS_PAUSED -> {
-                                    QuiverInstallResult(
+                                    HandsInstallResult(
                                             statusLabel = "Downloading",
                                             detail = "Raft is downloading the update APK. The button will change to Install when the download is ready.",
                                             actionLabel = "Downloading"
                                     )
                                 }
                                 else -> {
-                                    quiverUpdateDownloads.remove(tracked.key)
-                                    enqueueQuiverApkInstall(response, arch).toDownloadingInstallResult(response)
+                                    handsUpdateDownloads.remove(tracked.key)
+                                    enqueueHandsApkInstall(response, arch).toDownloadingInstallResult(response)
                                 }
                             }
                         } else {
-                            enqueueQuiverApkInstall(response, arch).toDownloadingInstallResult(response)
+                            enqueueHandsApkInstall(response, arch).toDownloadingInstallResult(response)
                         }
                     }
                 }
                 .getOrElse { error ->
                     SlockAppLog.record(
-                            "SlockQuiverUpdate",
-                            "install_failed slug=${BuildConfig.QUIVER_APP_SLUG} latest=${response.latest?.version_code ?: 0} error=${error.javaClass.simpleName}"
+                            "SlockHandsUpdate",
+                            "install_failed slug=${BuildConfig.HANDS_APP_SLUG} latest=${response.latest?.version_code ?: 0} error=${error.javaClass.simpleName}"
                     )
-                    QuiverInstallResult(
+                    HandsInstallResult(
                             statusLabel = "Install failed",
-                            detail = error.message ?: "Unable to download or install the Quiver APK.",
+                            detail = error.message ?: "Unable to download or install the Hands APK.",
                             actionLabel = "Download",
                             errorCode = error.javaClass.simpleName
                     )
                 }
     }
 
-    private fun enqueueQuiverApkInstall(response: UpdateCheckResponse, arch: String?): QuiverUpdateDownload {
-        val latest = response.latest ?: error("Quiver response did not include a latest release.")
-        val asset = response.asset ?: error("Quiver response did not include an APK asset.")
+    private fun enqueueHandsApkInstall(response: UpdateCheckResponse, arch: String?): HandsUpdateDownload {
+        val latest = response.latest ?: error("Hands response did not include a latest release.")
+        val asset = response.asset ?: error("Hands response did not include an APK asset.")
         val downloadUrl = asset.download_url
         require(downloadUrl.startsWith("http://") || downloadUrl.startsWith("https://")) {
             "Can only download HTTP/HTTPS URIs: $downloadUrl"
@@ -4083,8 +4083,8 @@ internal class SlockKuiklyBridgeModule(
         val downloadManager =
                 ContextCompat.getSystemService(appContext, DownloadManager::class.java)
                         ?: error("DownloadManager not available")
-        val fileName = "raft-quiver-${latest.version_code}.apk"
-        val key = response.quiverDownloadKey(arch)
+        val fileName = "raft-hands-${latest.version_code}.apk"
+        val key = response.handsDownloadKey(arch)
         val title =
                 buildString {
                     append("Raft")
@@ -4106,28 +4106,28 @@ internal class SlockKuiklyBridgeModule(
                         val completedId = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1L)
                         if (completedId != downloadId) return
                         runCatching { appContext.unregisterReceiver(this) }
-                        val status = quiverDownloadStatus(downloadManager, completedId)
+                        val status = handsDownloadStatus(downloadManager, completedId)
                         if (status == DownloadManager.STATUS_SUCCESSFUL) {
-                            quiverUpdateDownloads[key]?.completed = true
+                            handsUpdateDownloads[key]?.completed = true
                             SlockAppLog.record(
-                                    "SlockQuiverUpdate",
+                                    "SlockHandsUpdate",
                                     "download_ready downloadId=$completedId latest=${latest.version_code}"
                             )
-                            quiverUpdateDownloads[key]?.let { download ->
-                                openQuiverDownloadedApkOrRequestPermission(
+                            handsUpdateDownloads[key]?.let { download ->
+                                openHandsDownloadedApkOrRequestPermission(
                                         context = appContext,
                                         download = download,
                                         source = "download_complete"
                                 )
                             }
                         } else {
-                            quiverUpdateDownloads[key]?.failed = true
+                            handsUpdateDownloads[key]?.failed = true
                             SlockAppLog.record(
-                                    "SlockQuiverUpdate",
+                                    "SlockHandsUpdate",
                                     "download_failed downloadId=$completedId status=$status"
                             )
                         }
-                        emitQuiverUpdateStatusEvent()
+                        emitHandsUpdateStatusEvent()
                     }
                 }
         ContextCompat.registerReceiver(
@@ -4138,7 +4138,7 @@ internal class SlockKuiklyBridgeModule(
         )
         try {
             downloadId = downloadManager.enqueue(request)
-            return QuiverUpdateDownload(
+            return HandsUpdateDownload(
                     key = key,
                     versionCode = latest.version_code,
                     downloadId = downloadId,
@@ -4147,7 +4147,7 @@ internal class SlockKuiklyBridgeModule(
                     arch = arch.orEmpty(),
                     downloadManager = downloadManager
             ).also { download ->
-                quiverUpdateDownloads[key] = download
+                handsUpdateDownloads[key] = download
             }
         } catch (error: Throwable) {
             runCatching { appContext.unregisterReceiver(receiver) }
@@ -4155,12 +4155,12 @@ internal class SlockKuiklyBridgeModule(
         }
     }
 
-    private fun currentQuiverDownloadResult(response: UpdateCheckResponse, arch: String?): QuiverInstallResult {
-        val tracked = currentQuiverDownload(response, arch) ?: return QuiverInstallResult()
+    private fun currentHandsDownloadResult(response: UpdateCheckResponse, arch: String?): HandsInstallResult {
+        val tracked = currentHandsDownload(response, arch) ?: return HandsInstallResult()
         return when (tracked.status()) {
             DownloadManager.STATUS_SUCCESSFUL -> {
                 tracked.completed = true
-                QuiverInstallResult(
+                HandsInstallResult(
                         statusLabel = "Install",
                         detail = "Raft update downloaded. Tap Install to open Android installer.",
                         actionLabel = "Install"
@@ -4169,83 +4169,83 @@ internal class SlockKuiklyBridgeModule(
             DownloadManager.STATUS_PENDING,
             DownloadManager.STATUS_RUNNING,
             DownloadManager.STATUS_PAUSED ->
-                QuiverInstallResult(
+                HandsInstallResult(
                         statusLabel = "Downloading",
                         detail = "Raft is downloading the update APK. The button will change to Install when the download is ready.",
                         actionLabel = "Downloading"
                 )
             else -> {
-                quiverUpdateDownloads.remove(tracked.key)
-                QuiverInstallResult()
+                handsUpdateDownloads.remove(tracked.key)
+                HandsInstallResult()
             }
         }
     }
 
-    private fun currentQuiverDownload(response: UpdateCheckResponse, arch: String?): QuiverUpdateDownload? {
-        val key = response.quiverDownloadKey(arch)
+    private fun currentHandsDownload(response: UpdateCheckResponse, arch: String?): HandsUpdateDownload? {
+        val key = response.handsDownloadKey(arch)
         val tracked =
-                quiverUpdateDownloads[key]
+                handsUpdateDownloads[key]
                         ?: run {
-                            if (quiverUpdateDownloads.isNotEmpty()) {
+                            if (handsUpdateDownloads.isNotEmpty()) {
                                 SlockAppLog.record(
-                                        "SlockQuiverUpdate",
-                                        "download_state_miss key=$key tracked=${quiverUpdateDownloads.size}"
+                                        "SlockHandsUpdate",
+                                        "download_state_miss key=$key tracked=${handsUpdateDownloads.size}"
                                 )
                             }
                             return null
                         }
         if (tracked.failed) {
-            quiverUpdateDownloads.remove(key)
+            handsUpdateDownloads.remove(key)
             return null
         }
         return tracked
     }
 
-    private fun QuiverUpdateDownload.toDownloadingInstallResult(response: UpdateCheckResponse): QuiverInstallResult {
+    private fun HandsUpdateDownload.toDownloadingInstallResult(response: UpdateCheckResponse): HandsInstallResult {
         SlockAppLog.record(
-                "SlockQuiverUpdate",
-                "download_queued slug=${BuildConfig.QUIVER_APP_SLUG} latest=${response.latest?.version_code ?: 0} assetSize=${response.asset?.size_bytes ?: 0} downloadId=$downloadId"
+                "SlockHandsUpdate",
+                "download_queued slug=${BuildConfig.HANDS_APP_SLUG} latest=${response.latest?.version_code ?: 0} assetSize=${response.asset?.size_bytes ?: 0} downloadId=$downloadId"
         )
-        emitQuiverUpdateStatusEvent()
-        return QuiverInstallResult(
+        emitHandsUpdateStatusEvent()
+        return HandsInstallResult(
                 statusLabel = "Downloading",
                 detail = "Raft update download started. The button will change to Install when the APK is ready.",
                 actionLabel = "Downloading"
         )
     }
 
-    private fun UpdateCheckResponse.quiverDownloadKey(arch: String?): String =
-            quiverUpdateDownloadKey(
-                    slug = BuildConfig.QUIVER_APP_SLUG,
+    private fun UpdateCheckResponse.handsDownloadKey(arch: String?): String =
+            handsUpdateDownloadKey(
+                    slug = BuildConfig.HANDS_APP_SLUG,
                     channel = channel,
                     versionCode = latest?.version_code ?: latest_version_code ?: 0L,
                     arch = arch
             )
 
-    private fun emitQuiverUpdateStatusEvent() {
+    private fun emitHandsUpdateStatusEvent() {
         postAndroidAppScopeEvent(
                 eventName = SLOCK_APP_UPDATE_EVENT,
                 eventData = JSONObject().put("source", "android")
         )
     }
 
-    private fun QuiverUpdateDownload.toInstallResult(context: Context, source: String): QuiverInstallResult =
-            when (openQuiverDownloadedApkOrRequestPermission(context, this, source)) {
-                QUIVER_INSTALL_OPENED ->
-                    QuiverInstallResult(
+    private fun HandsUpdateDownload.toInstallResult(context: Context, source: String): HandsInstallResult =
+            when (openHandsDownloadedApkOrRequestPermission(context, this, source)) {
+                HANDS_INSTALL_OPENED ->
+                    HandsInstallResult(
                             statusLabel = "Install",
                             detail = "Android installer opened for the downloaded Raft update.",
                             actionLabel = "Install"
                     )
-                QUIVER_INSTALL_PERMISSION_REQUIRED ->
-                    QuiverInstallResult(
+                HANDS_INSTALL_PERMISSION_REQUIRED ->
+                    HandsInstallResult(
                             statusLabel = "Permission required",
                             detail = "Raft update is downloaded. Allow Raft to install unknown apps, then return to continue installation.",
                             actionLabel = "Install",
                             errorCode = "install_permission_required"
                     )
                 else ->
-                    QuiverInstallResult(
+                    HandsInstallResult(
                             statusLabel = "Install failed",
                             detail = "Raft update is downloaded, but Android installer could not be opened.",
                             actionLabel = "Install",
@@ -4253,7 +4253,7 @@ internal class SlockKuiklyBridgeModule(
                     )
             }
 
-    private fun quiverDownloadStatus(downloadManager: DownloadManager, downloadId: Long): Int {
+    private fun handsDownloadStatus(downloadManager: DownloadManager, downloadId: Long): Int {
         val cursor = downloadManager.query(DownloadManager.Query().setFilterById(downloadId)) ?: return DownloadManager.STATUS_FAILED
         cursor.use {
             if (!it.moveToFirst()) return DownloadManager.STATUS_FAILED
@@ -4262,29 +4262,29 @@ internal class SlockKuiklyBridgeModule(
         }
     }
 
-    private data class QuiverInstallResult(
+    private data class HandsInstallResult(
             val statusLabel: String = "",
             val detail: String = "",
             val actionLabel: String = "",
             val errorCode: String? = null
     )
 
-    private fun UpdateCheckResponse.quiverStatusLabel(): String =
+    private fun UpdateCheckResponse.handsStatusLabel(): String =
             if (requireUpdate() != null) "Update available" else "Current"
 
-    private fun UpdateCheckResponse.quiverDetail(): String =
+    private fun UpdateCheckResponse.handsDetail(): String =
             if (requireUpdate() != null) {
                 val version = latest?.version?.takeIf { it.isNotBlank() } ?: "version code ${latest?.version_code ?: 0L}"
                 val size = asset?.size_bytes?.takeIf { it > 0L }?.formatStorageSizeLabel()
                 buildString {
-                    append("Quiver has ")
+                    append("Hands has ")
                     append(version)
                     append(" on ")
                     append(channel)
                     size?.let { append(" (").append(it).append(" APK).") } ?: append(".")
                 }
             } else {
-                "No Quiver update is available on $channel for version code $current_version_code."
+                "No Hands update is available on $channel for version code $current_version_code."
             }
 
     private fun setApiEnvironment(request: JSONObject): Map<String, Any> {
@@ -4426,21 +4426,21 @@ internal class SlockKuiklyBridgeModule(
     private data class DiagnosticsFeedbackFile(val file: File, val summaryText: String)
 
     /**
-     * Submit in-app feedback to the Quiver ticket system (kind=bug) with the
+     * Submit in-app feedback to the Hands ticket system (kind=bug) with the
      * diagnostics archive attached. Returns status=ok when the ticket was
      * created so the settings UI can confirm.
      */
-    private suspend fun submitFeedbackToQuiver(request: JSONObject? = null): Map<String, Any> {
+    private suspend fun submitFeedbackToHands(request: JSONObject? = null): Map<String, Any> {
         SlockAppLog.record(
                 "SlockDiagnostics",
-                "quiver_feedback_submit_enter source=${if (request != null) "shared" else "native_prompt"} " +
+                "hands_feedback_submit_enter source=${if (request != null) "shared" else "native_prompt"} " +
                         "messageLength=${request?.optString("message")?.length ?: 0} " +
                         "fileCount=${request?.optJSONArray("files")?.length() ?: 0}"
         )
         val description = request?.optString("message")?.trim()?.takeIf { it.isNotBlank() }
             ?: promptFeedbackDescription()
             ?: return mapOf("status" to "cancelled").also {
-                SlockAppLog.record("SlockDiagnostics", "quiver_feedback_submit_cancelled reason=blank_or_cancelled")
+                SlockAppLog.record("SlockDiagnostics", "hands_feedback_submit_cancelled reason=blank_or_cancelled")
             }
         val userFilesResult =
                 withContext(Dispatchers.IO) {
@@ -4450,7 +4450,7 @@ internal class SlockKuiklyBridgeModule(
                 userFilesResult.getOrElse { throwable ->
                     SlockAppLog.record(
                             "SlockDiagnostics",
-                            "quiver_feedback_attachment_prepare_failed error=${throwable.javaClass.simpleName} message=${throwable.message ?: "-"}"
+                            "hands_feedback_attachment_prepare_failed error=${throwable.javaClass.simpleName} message=${throwable.message ?: "-"}"
                     )
                     return mapOf<String, Any>(
                             "status" to "error",
@@ -4467,19 +4467,19 @@ internal class SlockKuiklyBridgeModule(
         var attachments = HandsFeedbackAttachmentPolicy.selectAttachments(userFiles, diagnosticsFile)
         SlockAppLog.record(
                 "SlockDiagnostics",
-                "quiver_feedback_submit_prepared messageLength=${description.length} " +
+                "hands_feedback_submit_prepared messageLength=${description.length} " +
                         "userAttachmentCount=${userFiles.size} diagnosticsAttached=${diagnosticsFile != null} " +
                         "attachmentCount=${attachments.size}"
         )
         return runCatching {
             val feedbackClient = HandsFeedback(
                     context = appContext,
-                    baseUrl = BuildConfig.QUIVER_BASE_URL,
-                    appSlug = BuildConfig.QUIVER_APP_SLUG,
+                    baseUrl = BuildConfig.HANDS_BASE_URL,
+                    appSlug = BuildConfig.HANDS_APP_SLUG,
                     versionName = BuildConfig.VERSION_NAME,
                     versionCode = BuildConfig.VERSION_CODE.toLong(),
-                    channel = BuildConfig.QUIVER_CHANNEL,
-                    clientKey = BuildConfig.QUIVER_CLIENT_KEY,
+                    channel = BuildConfig.HANDS_CHANNEL,
+                    clientKey = BuildConfig.HANDS_CLIENT_KEY,
             )
             val ticketId =
                     try {
@@ -4502,7 +4502,7 @@ internal class SlockKuiklyBridgeModule(
                                         .map(HandsFeedbackAttachmentPolicy::requireValidFile)
                         SlockAppLog.record(
                                 "SlockDiagnostics",
-                                "quiver_feedback_diagnostics_submit_skipped error=${throwable.javaClass.simpleName} " +
+                                "hands_feedback_diagnostics_submit_skipped error=${throwable.javaClass.simpleName} " +
                                         "message=${throwable.message ?: "-"} retryAttachmentCount=${attachments.size}"
                         )
                         feedbackClient.submit(
@@ -4513,12 +4513,12 @@ internal class SlockKuiklyBridgeModule(
                     }
             // Shareable reference the user can paste into the community channel.
             val attachmentNames = handsFeedbackAttachmentNames(attachments.map(File::getName))
-            val shareText = buildQuiverFeedbackShareText(ticketId, description, attachmentNames)
+            val shareText = buildHandsFeedbackShareText(ticketId, description, attachmentNames)
             withContext(Dispatchers.Main) {
                 copyText("Hands feedback", shareText)
                 Toast.makeText(appContext, SlockHostStrings.feedbackCopiedMessage(), Toast.LENGTH_LONG).show()
             }
-            SlockAppLog.record("SlockDiagnostics", "quiver_feedback_submitted ticket=${ticketId.take(8)}")
+            SlockAppLog.record("SlockDiagnostics", "hands_feedback_submitted ticket=${ticketId.take(8)}")
             mapOf<String, Any>(
                     "status" to "ok",
                     "ticketId" to ticketId,
@@ -4528,7 +4528,7 @@ internal class SlockKuiklyBridgeModule(
         }.getOrElse {
             SlockAppLog.record(
                     "SlockDiagnostics",
-                    "quiver_feedback_submit_failed error=${it.javaClass.simpleName} message=${it.message ?: "-"}"
+                    "hands_feedback_submit_failed error=${it.javaClass.simpleName} message=${it.message ?: "-"}"
             )
             withContext(Dispatchers.Main) {
                 Toast.makeText(appContext, SlockHostStrings.feedbackFailedMessage(it.message), Toast.LENGTH_LONG).show()
@@ -4541,7 +4541,7 @@ internal class SlockKuiklyBridgeModule(
         }
     }
 
-    private fun buildQuiverFeedbackShareText(
+    private fun buildHandsFeedbackShareText(
             ticketId: String,
             description: String,
             attachmentNames: List<String>
@@ -4560,8 +4560,8 @@ internal class SlockKuiklyBridgeModule(
                 environment = environment,
                 utcTime = utcTime,
                 localTime = localTime,
-                appSlug = BuildConfig.QUIVER_APP_SLUG,
-                channel = BuildConfig.QUIVER_CHANNEL,
+                appSlug = BuildConfig.HANDS_APP_SLUG,
+                channel = BuildConfig.HANDS_CHANNEL,
                 attachmentNames = attachmentNames
         )
     }
@@ -4615,7 +4615,7 @@ internal class SlockKuiklyBridgeModule(
                 .getOrElse { throwable ->
                     SlockAppLog.record(
                             "SlockDiagnostics",
-                            "quiver_feedback_diagnostics_prepare_skipped error=${throwable.javaClass.simpleName} message=${throwable.message ?: "-"}"
+                            "hands_feedback_diagnostics_prepare_skipped error=${throwable.javaClass.simpleName} message=${throwable.message ?: "-"}"
                     )
                     null
                 }
@@ -4624,7 +4624,7 @@ internal class SlockKuiklyBridgeModule(
                     if (!fits) {
                         SlockAppLog.record(
                                 "SlockDiagnostics",
-                                "quiver_feedback_diagnostics_attachment_skipped bytes=${file.length()} " +
+                                "hands_feedback_diagnostics_attachment_skipped bytes=${file.length()} " +
                                         "max=${HandsFeedbackAttachmentPolicy.maxAttachmentBytes}"
                         )
                     }
@@ -4645,14 +4645,14 @@ internal class SlockKuiklyBridgeModule(
             val file =
                     when {
                         bodyBase64 != null ->
-                            writeQuiverFeedbackBase64TempFile(
+                            writeHandsFeedbackBase64TempFile(
                                     fileName = fileName,
                                     mimeType = mimeType,
                                     bodyBase64 = bodyBase64,
                                     index = index
                             )
                         fileRef != null ->
-                            copyQuiverFeedbackFileRef(
+                            copyHandsFeedbackFileRef(
                                     fileRef = fileRef,
                                     fileName = fileName,
                                     mimeType = mimeType,
@@ -4665,7 +4665,7 @@ internal class SlockKuiklyBridgeModule(
         return files
     }
 
-    private fun copyQuiverFeedbackFileRef(
+    private fun copyHandsFeedbackFileRef(
             fileRef: String,
             fileName: String,
             mimeType: String,
@@ -4677,9 +4677,9 @@ internal class SlockKuiklyBridgeModule(
                 ?: throw FeedbackAttachmentReadException("No file path")
             return HandsFeedbackAttachmentPolicy.requireValidFile(File(path))
         }
-        val target = createQuiverFeedbackTempFile(fileName, mimeType, index)
+        val target = createHandsFeedbackTempFile(fileName, mimeType, index)
         return try {
-            openQuiverFeedbackFileRefStream(uri).use { input ->
+            openHandsFeedbackFileRefStream(uri).use { input ->
                 target.outputStream().use { output ->
                     HandsFeedbackAttachmentPolicy.copyBounded(input, output)
                 }
@@ -4691,7 +4691,7 @@ internal class SlockKuiklyBridgeModule(
         }
     }
 
-    private fun openQuiverFeedbackFileRefStream(uri: Uri): java.io.InputStream {
+    private fun openHandsFeedbackFileRefStream(uri: Uri): java.io.InputStream {
         if (uri.toString().isBlank()) throw IOException("No readable feedback attachment")
         return if (uri.scheme.equals("file", ignoreCase = true)) {
             val path = uri.path ?: throw IOException("No file path")
@@ -4703,7 +4703,7 @@ internal class SlockKuiklyBridgeModule(
         }
     }
 
-    private fun writeQuiverFeedbackBase64TempFile(
+    private fun writeHandsFeedbackBase64TempFile(
             fileName: String,
             mimeType: String,
             bodyBase64: String,
@@ -4714,7 +4714,7 @@ internal class SlockKuiklyBridgeModule(
         ) {
             throw FeedbackAttachmentTooLargeException(HandsFeedbackAttachmentPolicy.maxAttachmentBytes)
         }
-        val target = createQuiverFeedbackTempFile(fileName, mimeType, index)
+        val target = createHandsFeedbackTempFile(fileName, mimeType, index)
         return try {
             Base64InputStream(Base64StringInputStream(bodyBase64), Base64.DEFAULT).use { input ->
                 target.outputStream().use { output ->
@@ -4728,18 +4728,18 @@ internal class SlockKuiklyBridgeModule(
         }
     }
 
-    private fun createQuiverFeedbackTempFile(
+    private fun createHandsFeedbackTempFile(
             fileName: String,
             mimeType: String,
             index: Int
     ): File {
-        val cacheDir = File(appContext.cacheDir, QUIVER_FEEDBACK_ATTACHMENT_CACHE_DIR_NAME).apply { mkdirs() }
-        cleanupQuiverFeedbackAttachmentCache(cacheDir)
-        val safeName = sanitizeQuiverFeedbackFileName(fileName, mimeType, index)
+        val cacheDir = File(appContext.cacheDir, HANDS_FEEDBACK_ATTACHMENT_CACHE_DIR_NAME).apply { mkdirs() }
+        cleanupHandsFeedbackAttachmentCache(cacheDir)
+        val safeName = sanitizeHandsFeedbackFileName(fileName, mimeType, index)
         return File(cacheDir, "${System.currentTimeMillis()}-${System.nanoTime()}-$safeName")
     }
 
-    private fun sanitizeQuiverFeedbackFileName(fileName: String, mimeType: String, index: Int): String {
+    private fun sanitizeHandsFeedbackFileName(fileName: String, mimeType: String, index: Int): String {
         val cleaned = fileName.substringAfterLast('/').substringAfterLast('\\')
                 .replace(Regex("[^A-Za-z0-9._-]"), "_")
                 .trim('_', '.', '-')
@@ -4752,10 +4752,10 @@ internal class SlockKuiklyBridgeModule(
         return if (extension.isBlank()) base else "$base.$extension"
     }
 
-    private fun cleanupQuiverFeedbackAttachmentCache(cacheDir: File) {
+    private fun cleanupHandsFeedbackAttachmentCache(cacheDir: File) {
         val now = System.currentTimeMillis()
         cacheDir.listFiles()
-                ?.filter { file -> now - file.lastModified() > QUIVER_FEEDBACK_ATTACHMENT_CACHE_MAX_AGE_MS }
+                ?.filter { file -> now - file.lastModified() > HANDS_FEEDBACK_ATTACHMENT_CACHE_MAX_AGE_MS }
                 ?.forEach { file -> runCatching { file.delete() } }
     }
 
@@ -6197,69 +6197,69 @@ internal class SlockKuiklyBridgeModule(
 
     companion object {
         const val MODULE_NAME = "HRBridgeModule"
-        private val quiverUpdateDownloads = ConcurrentHashMap<String, QuiverUpdateDownload>()
-        private val quiverUpdateDownloadLock = Any()
+        private val handsUpdateDownloads = ConcurrentHashMap<String, HandsUpdateDownload>()
+        private val handsUpdateDownloadLock = Any()
         private val alphaHandsUpdateCallOwner = HandsDeltaUpdateCallOwner()
-        @Volatile private var pendingQuiverAutoInstallKey: String? = null
+        @Volatile private var pendingHandsAutoInstallKey: String? = null
         private const val REQUEST_NOTIFICATIONS_CODE = 4207
         private const val ATTACHMENT_CACHE_MAX_FILES = 80
         private const val ATTACHMENT_CACHE_MAX_AGE_MS = 24L * 60L * 60L * 1000L
         private const val THREAD_SHARE_IMAGE_CACHE_DIR_NAME = "slock-share-images"
         private const val THREAD_SHARE_IMAGE_CACHE_MAX_AGE_MS = 24L * 60L * 60L * 1000L
-        private const val QUIVER_FEEDBACK_ATTACHMENT_CACHE_DIR_NAME = "quiver-feedback-attachments"
-        private const val QUIVER_FEEDBACK_ATTACHMENT_CACHE_MAX_AGE_MS = 24L * 60L * 60L * 1000L
+        private const val HANDS_FEEDBACK_ATTACHMENT_CACHE_DIR_NAME = "hands-feedback-attachments"
+        private const val HANDS_FEEDBACK_ATTACHMENT_CACHE_MAX_AGE_MS = 24L * 60L * 60L * 1000L
         private const val ANDROID_PACKAGE_ARCHIVE_MIME_TYPE = "application/vnd.android.package-archive"
-        private const val QUIVER_INSTALL_OPENED = "opened"
-        private const val QUIVER_INSTALL_PERMISSION_REQUIRED = "permission_required"
-        private const val QUIVER_INSTALL_FAILED = "failed"
+        private const val HANDS_INSTALL_OPENED = "opened"
+        private const val HANDS_INSTALL_PERMISSION_REQUIRED = "permission_required"
+        private const val HANDS_INSTALL_FAILED = "failed"
 
-        internal fun resumePendingQuiverAutoInstall(context: Context) {
-            val key = pendingQuiverAutoInstallKey ?: return
+        internal fun resumePendingHandsAutoInstall(context: Context) {
+            val key = pendingHandsAutoInstallKey ?: return
             val download =
-                    quiverUpdateDownloads[key]
+                    handsUpdateDownloads[key]
                             ?: run {
-                                pendingQuiverAutoInstallKey = null
+                                pendingHandsAutoInstallKey = null
                                 return
                             }
             if (download.failed || download.status() != DownloadManager.STATUS_SUCCESSFUL) return
             if (!canRequestPackageInstalls(context)) return
-            openQuiverDownloadedApkOrRequestPermission(
+            openHandsDownloadedApkOrRequestPermission(
                     context = context,
                     download = download,
                     source = "permission_resume"
             )
         }
 
-        private fun openQuiverDownloadedApkOrRequestPermission(
+        private fun openHandsDownloadedApkOrRequestPermission(
                 context: Context,
-                download: QuiverUpdateDownload,
+                download: HandsUpdateDownload,
                 source: String
         ): String {
             if (!canRequestPackageInstalls(context)) {
-                pendingQuiverAutoInstallKey = download.key
+                pendingHandsAutoInstallKey = download.key
                 openUnknownAppSourcesSettings(context)
                 SlockAppLog.record(
-                        "SlockQuiverUpdate",
+                        "SlockHandsUpdate",
                         "install_permission_required source=$source key=${download.key} downloadId=${download.downloadId}"
                 )
-                return QUIVER_INSTALL_PERMISSION_REQUIRED
+                return HANDS_INSTALL_PERMISSION_REQUIRED
             }
-            pendingQuiverAutoInstallKey = download.key
+            pendingHandsAutoInstallKey = download.key
             return runCatching {
-                        openDownloadedQuiverApk(context, download.downloadManager, download.downloadId, download.fileName)
-                        pendingQuiverAutoInstallKey = null
-                        QUIVER_INSTALL_OPENED
+                        openDownloadedHandsApk(context, download.downloadManager, download.downloadId, download.fileName)
+                        pendingHandsAutoInstallKey = null
+                        HANDS_INSTALL_OPENED
                     }
                     .getOrElse { error ->
                         SlockAppLog.record(
-                                "SlockQuiverUpdate",
+                                "SlockHandsUpdate",
                                 "install_intent_failed source=$source key=${download.key} downloadId=${download.downloadId} error=${error.javaClass.simpleName}"
                         )
-                        QUIVER_INSTALL_FAILED
+                        HANDS_INSTALL_FAILED
                     }
         }
 
-        private fun openDownloadedQuiverApk(
+        private fun openDownloadedHandsApk(
                 context: Context,
                 downloadManager: DownloadManager,
                 downloadId: Long,
@@ -6267,7 +6267,7 @@ internal class SlockKuiklyBridgeModule(
         ) {
             val downloadedUri =
                     downloadManager.getUriForDownloadedFile(downloadId)
-                            ?: queryDownloadedQuiverApkFile(downloadManager, downloadId)?.let { file ->
+                            ?: queryDownloadedHandsApkFile(downloadManager, downloadId)?.let { file ->
                                 FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
                             }
                             ?: error("Downloaded APK URI unavailable")
@@ -6281,12 +6281,12 @@ internal class SlockKuiklyBridgeModule(
                     }
             context.startActivity(installIntent)
             SlockAppLog.record(
-                    "SlockQuiverUpdate",
+                    "SlockHandsUpdate",
                     "install_intent_opened downloadId=$downloadId uriScheme=${downloadedUri.scheme.orEmpty()}"
             )
         }
 
-        private fun queryDownloadedQuiverApkFile(downloadManager: DownloadManager, downloadId: Long): File? {
+        private fun queryDownloadedHandsApkFile(downloadManager: DownloadManager, downloadId: Long): File? {
             val cursor = downloadManager.query(DownloadManager.Query().setFilterById(downloadId)) ?: return null
             cursor.use {
                 if (!it.moveToFirst()) return null
@@ -6493,7 +6493,7 @@ internal fun publicDownloadDisplayName(requestedFileName: String, fallbackExtens
     return if (extension.isNullOrBlank()) baseName else "$baseName.$extension"
 }
 
-private data class QuiverUpdateDownload(
+private data class HandsUpdateDownload(
         val key: String,
         val versionCode: Long,
         val downloadId: Long,
@@ -6522,7 +6522,7 @@ private data class QuiverUpdateDownload(
     }
 }
 
-internal fun quiverUpdateDownloadKey(
+internal fun handsUpdateDownloadKey(
         slug: String,
         channel: String?,
         versionCode: Long,

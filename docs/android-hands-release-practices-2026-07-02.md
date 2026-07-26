@@ -23,9 +23,7 @@ Current channels:
 
 Debug builds should default to `debug`. Release/prod builds should default to
 `main`. Keep `SLOCK_HANDS_CHANNEL` as the release-helper override so QA can
-force `preview`, `nightly`, or `debug` independent of build type. The app build
-still accepts the legacy `SLOCK_QUIVER_CHANNEL` identifier until its updater
-SDK configuration is migrated separately.
+force `preview`, `nightly`, or `debug` independent of build type.
 
 ## Update Check Model
 

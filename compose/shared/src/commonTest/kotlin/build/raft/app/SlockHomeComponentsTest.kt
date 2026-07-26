@@ -1814,7 +1814,7 @@ class SlockHomeComponentsTest {
         val notifications =
             listOf(
                 SlockHomeNotificationItem(
-                    id = "app-update:quiver",
+                    id = "app-update:hands",
                     title = "App update available",
                     body = "Current version 1.0.0. Latest version 1.0.1.",
                     kind = SlockHomeNotificationKind.Info,

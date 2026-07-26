@@ -10,6 +10,6 @@
         name="slock_share_images"
         path="slock-share-images/" />
     <external-files-path
-        name="slock_quiver_updates"
+        name="slock_hands_updates"
         path="Download/" />
 </paths>

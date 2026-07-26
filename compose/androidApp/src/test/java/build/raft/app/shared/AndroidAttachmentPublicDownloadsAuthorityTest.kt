@@ -284,17 +284,17 @@ class AndroidAttachmentPublicDownloadsAuthorityTest {
     }
 
     @Test
-    fun deleteRemovesOnlyMappedExactUriAndLeavesQuiverRowUntouched() {
+    fun deleteRemovesOnlyMappedExactUriAndLeavesHandsRowUntouched() {
         val store = FakeRecordStore()
         val backend = FakeUriBackend()
         val identity = identity()
         val authority = AndroidAttachmentPublicDownloadsAuthority(store, backend)
         commit(authority, backend, identity, URI)
-        backend.rows[QUIVER_URI] = state(AndroidAttachmentPublicUriAvailability.Published).copy(displayName = "raft-update.apk")
+        backend.rows[HANDS_URI] = state(AndroidAttachmentPublicUriAvailability.Published).copy(displayName = "raft-update.apk")
 
         assertTrue(authority.delete(identity))
         assertFalse(backend.rows.containsKey(URI))
-        assertTrue(backend.rows.containsKey(QUIVER_URI))
+        assertTrue(backend.rows.containsKey(HANDS_URI))
         assertEquals(listOf(URI), backend.deletedUris)
     }
 
@@ -520,7 +520,7 @@ class AndroidAttachmentPublicDownloadsAuthorityTest {
 
     private companion object {
         const val URI = "content://downloads/public_downloads/41"
-        const val QUIVER_URI = "content://downloads/public_downloads/99"
+        const val HANDS_URI = "content://downloads/public_downloads/99"
         const val DISPLAY_NAME = "report.pdf"
         const val MIME_TYPE = "application/pdf"
         const val SIZE_BYTES = 4096L
