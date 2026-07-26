@@ -13,6 +13,7 @@ import platform.Foundation.NSFileManager
 import platform.Foundation.NSFileSize
 import platform.Foundation.NSNumber
 import platform.Foundation.NSURL
+import platform.Foundation.timeIntervalSince1970
 import platform.posix.O_RDONLY
 import platform.posix.S_IRUSR
 import platform.posix.S_IWUSR
