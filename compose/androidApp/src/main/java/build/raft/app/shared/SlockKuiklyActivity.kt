@@ -158,6 +158,7 @@ import java.io.IOException
 import java.net.URL
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
+import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -305,6 +306,41 @@ internal fun formatHandsFeedbackShareText(
         appendLine()
         append(description)
     }
+
+internal fun formatStorageSizeLabel(
+    bytes: Long,
+    languageTag: String?,
+    systemLocale: Locale = Locale.getDefault()
+): String {
+    if (bytes <= 0L) return "0 B"
+    val locale =
+        languageTag
+            ?.takeIf { it.isNotBlank() }
+            ?.let(Locale::forLanguageTag)
+            ?.takeIf { it.language.isNotBlank() }
+            ?: systemLocale
+    val units = listOf("B", "KB", "MB", "GB")
+    var value = bytes.toDouble()
+    var index = 0
+    while (value >= 1024.0 && index < units.lastIndex) {
+        value /= 1024.0
+        index++
+    }
+    val number =
+        if (index == 0) {
+            NumberFormat
+                .getIntegerInstance(locale)
+                .apply { isGroupingUsed = false }
+                .format(value.toLong())
+        } else {
+            NumberFormat.getNumberInstance(locale).apply {
+                isGroupingUsed = false
+                minimumFractionDigits = 1
+                maximumFractionDigits = 1
+            }.format(value)
+        }
+    return "$number ${units[index]}"
+}
 
 private fun Map<String, Any>.diagnosticsStringValue(key: String): String =
         this[key]?.toString().orEmpty()
@@ -3636,21 +3672,11 @@ internal class SlockKuiklyBridgeModule(
                     .put("sizeLabel", sizeLabel)
                     .put("clearEnabled", clearEnabled)
 
-    private fun Long.formatStorageSizeLabel(): String {
-        if (this <= 0L) return "0 B"
-        val units = listOf("B", "KB", "MB", "GB")
-        var value = toDouble()
-        var index = 0
-        while (value >= 1024.0 && index < units.lastIndex) {
-            value /= 1024.0
-            index++
-        }
-        return if (index == 0) {
-            "${value.toLong()} ${units[index]}"
-        } else {
-            String.format(Locale.US, "%.1f %s", value, units[index])
-        }
-    }
+    private fun Long.formatStorageSizeLabel(): String =
+            formatStorageSizeLabel(
+                    bytes = this,
+                    languageTag = SlockHostStrings.appLocaleLanguageTag()
+            )
 
     private fun requestNotificationPermissionCapability(): Map<String, Any> {
         if (hasNotificationPermission()) {
@@ -4289,19 +4315,10 @@ internal class SlockKuiklyBridgeModule(
             if (requireUpdate() != null) "Update available" else "Current"
 
     private fun UpdateCheckResponse.handsDetail(): String =
-            if (requireUpdate() != null) {
-                val version = latest?.version?.takeIf { it.isNotBlank() } ?: "version code ${latest?.version_code ?: 0L}"
-                val size = asset?.size_bytes?.takeIf { it > 0L }?.formatStorageSizeLabel()
-                buildString {
-                    append("Hands has ")
-                    append(version)
-                    append(" on ")
-                    append(channel)
-                    size?.let { append(" (").append(it).append(" APK).") } ?: append(".")
-                }
-            } else {
-                "No Hands update is available on $channel for version code $current_version_code."
-            }
+            SlockHostStrings.appUpdateDetail(
+                    updateAvailable = requireUpdate() != null,
+                    sizeLabel = asset?.size_bytes?.takeIf { it > 0L }?.formatStorageSizeLabel()
+            )
 
     private fun setApiEnvironment(request: JSONObject): Map<String, Any> {
         val environmentKey = request.optString("environmentKey")

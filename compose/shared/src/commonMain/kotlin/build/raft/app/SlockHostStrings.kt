@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.app.data.AppLocale
+import build.raft.app.data.kmmResourceLocaleTag
 import build.raft.app.data.stringDescLocaleType
 import build.raft.app.resources.MR
 import com.tencent.tmm.kmmresource.resource.StringResource
@@ -8,6 +10,16 @@ import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 import com.tencent.tmm.kmmresource.resource.format
 
 internal expect fun slockResolveHostString(desc: StringDesc): String
+
+internal fun appUpdateDetailStringDesc(
+    updateAvailable: Boolean,
+    sizeLabel: String?
+): StringDesc =
+    when {
+        !updateAvailable -> StringDesc.Resource(MR.strings.app_update_detail_current)
+        sizeLabel.isNullOrBlank() -> StringDesc.Resource(MR.strings.app_update_detail_available)
+        else -> MR.strings.app_update_detail_available_with_size.format(listOf(sizeLabel))
+    }
 
 /**
  * Localized strings for native host layers.
@@ -43,6 +55,12 @@ object SlockHostStrings {
     fun feedbackSentTitle(): String = resolve(MR.strings.host_feedback_sent_title)
 
     fun feedbackCopiedMessage(): String = resolve(MR.strings.host_feedback_copied_message)
+
+    fun appUpdateDetail(updateAvailable: Boolean, sizeLabel: String?): String =
+        resolve(appUpdateDetailStringDesc(updateAvailable, sizeLabel))
+
+    fun appLocaleLanguageTag(): String? =
+        (KmmResourceLocaleRuntime.locale.value ?: AppLocale.Default).kmmResourceLocaleTag
 
     fun ok(): String = resolve(MR.strings.common_ok)
 

@@ -986,13 +986,39 @@ class KmmResourceI18nTest {
             MR.strings.host_feedback_sent_title,
             MR.strings.host_feedback_copied_message,
             MR.strings.host_feedback_failed_message,
-            MR.strings.host_feedback_error_unknown
+            MR.strings.host_feedback_error_unknown,
+            MR.strings.app_update_detail_available,
+            MR.strings.app_update_detail_current
         ).forEach { resource ->
             assertTrue(
                 resource.desc() is ResourceStringDesc,
                 "host-layer copy must produce ResourceStringDesc entries"
             )
         }
+    }
+
+    @Test
+    fun appUpdateHostDetailSelectsStaticAndFormattedLocalizedResources() {
+        assertTrue(
+            appUpdateDetailStringDesc(updateAvailable = false, sizeLabel = null) is
+                ResourceStringDesc,
+            "current update detail must resolve from a localized static resource"
+        )
+        assertTrue(
+            appUpdateDetailStringDesc(updateAvailable = true, sizeLabel = null) is
+                ResourceStringDesc,
+            "size-less update detail must resolve from a localized static resource"
+        )
+        assertTrue(
+            appUpdateDetailStringDesc(updateAvailable = true, sizeLabel = "89.6 MB") is
+                ResourceFormattedStringDesc,
+            "sized update detail must resolve from a localized formatted resource"
+        )
+        assertTrue(
+            MR.strings.app_update_detail_available_with_size
+                .format(listOf("89.6 MB")) is ResourceFormattedStringDesc,
+            "formatted update copy must be generated for every resource locale"
+        )
     }
 
     @Test
