@@ -378,7 +378,9 @@ final class SlockIosAppDelegate: NSObject, UIApplicationDelegate, UNUserNotifica
         }
         if let url = launchOptions?[.url] as? URL {
             DispatchQueue.main.async {
-                _ = SlockIosMobileOAuthHost.shared.acceptCallbackURL(url, source: "cold_launch")
+                if !SlockIosExternalShareLaunch.accept(url, source: "cold_launch") {
+                    _ = SlockIosMobileOAuthHost.shared.acceptCallbackURL(url, source: "cold_launch")
+                }
             }
         }
         return true
@@ -389,7 +391,8 @@ final class SlockIosAppDelegate: NSObject, UIApplicationDelegate, UNUserNotifica
         open url: URL,
         options: [UIApplication.OpenURLOptionsKey: Any] = [:]
     ) -> Bool {
-        SlockIosMobileOAuthHost.shared.acceptCallbackURL(url, source: "app_delegate")
+        SlockIosExternalShareLaunch.accept(url, source: "app_delegate") ||
+            SlockIosMobileOAuthHost.shared.acceptCallbackURL(url, source: "app_delegate")
     }
 
     func application(
@@ -490,6 +493,7 @@ struct iOSApp: App {
         // render blank on iOS (UIImage has no native SVG support).
         SDImageCodersManager.shared.addCoder(SDImageSVGCoder.shared)
         SlockIosAppScopeMMKV.install()
+        SlockIosExternalShareLaunch.resumePendingIfNeeded()
         let curlCaPath = slockCurlCaBundlePath()
         let curlBootstrap = SlockIosNetworkTransportBootstrapKt
             .installIosSlockNetworkTransportAtStartup(caBundlePath: curlCaPath)

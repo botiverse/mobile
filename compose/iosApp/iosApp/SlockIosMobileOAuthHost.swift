@@ -99,6 +99,21 @@ final class SlockIosOAuthRouteStore: ObservableObject {
         }
     }
 
+    func openExternalShare(token: String) {
+        guard SlockExternalShareEnvelopeStorage.isSafeToken(token) else { return }
+        runOnMain { [weak self] in
+            guard let self, self.destination.pageData["externalShareToken"] as? String != token else { return }
+            self.replace(
+                pageName: slockIosOAuthAppShellPage,
+                pageData: [
+                    "pageName": slockIosOAuthAppShellPage,
+                    "intent": "open_share_to_raft",
+                    "externalShareToken": token,
+                ]
+            )
+        }
+    }
+
     private func replaceWithLoginError(_ message: String) {
         replace(
             pageName: slockIosOAuthLoginPage,

@@ -70,12 +70,15 @@ object SlockExternalShareEnvelopeHostProvider {
 internal object SlockExternalShareEnvelopeRepositoryProvider {
     internal fun create(): ExternalShareEnvelopeRepository =
         SlockExternalShareEnvelopeHostProvider.create()?.let(::HostExternalShareEnvelopeRepository)
+            ?: createDefaultExternalShareEnvelopeRepository()
             ?: UnavailableExternalShareEnvelopeRepository
 
     internal fun clearAppScopeRepositoryForTests() {
         SlockExternalShareEnvelopeHostProvider.clearForTests()
     }
 }
+
+internal expect fun createDefaultExternalShareEnvelopeRepository(): ExternalShareEnvelopeRepository?
 
 private class HostExternalShareEnvelopeRepository(
     private val host: SlockExternalShareEnvelopeHost

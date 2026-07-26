@@ -38,9 +38,12 @@ struct ContentView: View {
                 .id(destination.revision)
                 .ignoresSafeArea()
                 .onOpenURL { url in
-                    _ = SlockIosMobileOAuthHost.shared.acceptCallbackURL(url, source: "swiftui_open_url")
+                    if !SlockIosExternalShareLaunch.accept(url, source: "swiftui_open_url") {
+                        _ = SlockIosMobileOAuthHost.shared.acceptCallbackURL(url, source: "swiftui_open_url")
+                    }
                 }
                 .onAppear {
+                    SlockIosExternalShareLaunch.resumePendingIfNeeded()
                     SlockIosMobileOAuthHost.shared.resumeDeferredCallbackIfNeeded()
                 }
         }
