@@ -423,7 +423,11 @@ internal data class KuiklyPendingAttachmentItem(
     val previewUri: String? = null,
     val status: String = "ready",
     val uploadProgress: Int = 0,
-    val errorCode: String? = null
+    val errorCode: String? = null,
+    val source: String? = null,
+    val externalShareToken: String? = null,
+    val externalShareAccountId: String? = null,
+    val externalShareServerId: String? = null
 )
 
 @Serializable
@@ -516,7 +520,14 @@ data class SharedThreadComposerAttachment(
     val mimeType: String? = null,
     val previewUri: String? = null,
     val status: String = "ready",
-    val errorCode: String? = null
+    val errorCode: String? = null,
+    val fileRef: String? = null,
+    val source: String? = null,
+    val externalShareToken: String? = null,
+    val externalShareAccountId: String? = null,
+    val externalShareServerId: String? = null,
+    val uploadBytesTransferred: Long = 0L,
+    val uploadBytesTotal: Long? = null
 )
 
 /** Composer UI formatting boundary; raw bytes win over old persisted display labels. */
@@ -1976,8 +1987,7 @@ internal fun List<KuiklyPendingAttachmentItem>.hasBlockingThreadAttachmentUpload
 internal fun List<KuiklyPendingAttachmentItem>.hasUploadingThreadAttachment(): Boolean =
     any { attachment ->
         attachment.id.isNotBlank() &&
-            attachment.status != "failed" &&
-            !attachment.isReadyThreadAttachmentForSend()
+            attachment.status == "uploading"
     }
 
 internal fun List<KuiklyPendingAttachmentItem>.hasFailedThreadAttachmentUpload(): Boolean =
@@ -1987,7 +1997,11 @@ internal fun KuiklyPendingAttachmentItem.isReadyThreadAttachmentForSend(): Boole
     id.isNotBlank() && status == "ready" && !id.startsWith("picked-")
 
 internal fun KuiklyPendingAttachmentItem.canOpenComposerAttachmentPreview(composerEnabled: Boolean): Boolean =
-    composerEnabled && isReadyThreadAttachmentForSend()
+    composerEnabled &&
+        (
+            isReadyThreadAttachmentForSend() ||
+                (status == "queued" && source == "external_share" && !previewUri.isNullOrBlank())
+        )
 
 internal fun KuiklyPendingMentionActionItem.supportsMentionAction(verb: String): Boolean =
     availableActions.any { action ->
@@ -2666,7 +2680,7 @@ private fun ComposerAttachmentPreviewChip(
     onRetry: () -> Unit
 ) {
     val isFailed = attachment.status == "failed"
-    val isUploading = attachment.status != "ready" && !isFailed
+    val isUploading = attachment.status == "uploading"
     val isImage = attachment.isComposerImageAttachment()
     val imagePreviewUri = attachment.previewUri?.takeIf { it.isNotBlank() }
     val canPreview = attachment.canOpenComposerAttachmentPreview(previewEnabled)

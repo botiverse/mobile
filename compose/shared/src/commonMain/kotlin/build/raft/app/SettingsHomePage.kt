@@ -288,6 +288,7 @@ import build.raft.app.data.AgentResetMode
 import build.raft.app.data.AgentResetRequest
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.ForwardMessageTarget
+import build.raft.app.data.externalShareComposerText
 import build.raft.app.data.AttachmentUploadRequest
 import build.raft.app.data.EmptyReason
 import build.raft.app.data.SettingsHandsFeedbackSubmission
@@ -4720,58 +4721,102 @@ internal fun SlockAppShellContent(
         }
     }
 
-    fun openExternalShareSentTarget(target: ForwardMessageTarget) {
+    suspend fun openExternalShareComposer(
+        handoff: build.raft.app.data.ExternalShareComposerHandoff
+    ): Boolean {
+        val target = handoff.target
         val normalizedServerId = target.serverId.value.trim().takeIf { it.isNotBlank() }
         val identity = target.toExternalShareConversationIdentityOrNull()
         if (normalizedServerId == null || identity == null) {
-            bridge.logWarn("external_share_open_rejected reason=destination_identity_missing")
+            bridge.logWarn("external_share_composer_open_rejected reason=destination_identity_missing")
             bridge.toast(conversationUnavailableMessage)
-            return
+            return false
         }
-        appShellCoroutineScope.launch {
-            val session = latestReadySession
-            val selectedServer = session?.servers?.firstOrNull { it.id == normalizedServerId }
-            val selectedSession = session?.withAppShellSelectedServer(normalizedServerId)
-            if (selectedServer == null || selectedSession == null) {
-                bridge.logWarn(
-                    "external_share_open_rejected serverId=$normalizedServerId " +
-                        "conversationId=${identity.threadId.value} reason=server_unavailable"
-                )
-                bridge.toast(conversationUnavailableMessage)
-                return@launch
-            }
-            if (selectedServerStore.selectedServerId.value != normalizedServerId) {
-                shellAuthStore.updateSelectedServer(normalizedServerId, selectedServer.slug)
-                authGateViewModel.dispatch(SharedAuthGateIntent.ServerReady(selectedSession))
-                homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.SelectServer(normalizedServerId)))
-            }
-            val payload =
-                buildStandaloneConversationThreadLaunchPayload(
-                    conversation = identity,
-                    timeContext = threadTimeContext,
-                    alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
-                    compactConsecutiveMessages = compactConsecutiveMessages,
-                    threadRowAffordances = threadRowAffordances,
-                    onWarn = bridge::logWarn
-                ) ?: run {
-                    bridge.toast(conversationUnavailableMessage)
-                    return@launch
-                }
-            selectAppShellTab("home")
-            retainedAppShellTabs = retainedAppShellTabs + "home"
-            homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
-            homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(identity.threadId.value))
-            val targetStoreScope =
-                SlockShellStoreScope.create(
-                    shellInstanceId = storeScope.shellInstanceId,
-                    initialServerId = normalizedServerId
-                )
-            pager.openStandaloneThreadLaunchPayload(payload, targetStoreScope)
-            bridge.log(
-                "external_share_open_sent_target serverId=$normalizedServerId " +
-                    "threadId=${identity.threadId.value} kind=${identity.kind.name}"
+        val session = latestReadySession
+        val selectedServer = session?.servers?.firstOrNull { it.id == normalizedServerId }
+        val selectedSession = session?.withAppShellSelectedServer(normalizedServerId)
+        if (
+            session == null ||
+            session.user.id != handoff.accountId ||
+            selectedServer == null ||
+            selectedSession == null ||
+            normalizedServerId != handoff.serverId
+        ) {
+            bridge.logWarn(
+                "external_share_composer_open_rejected serverId=$normalizedServerId " +
+                    "conversationId=${identity.threadId.value} reason=authority_changed"
             )
+            bridge.toast(conversationUnavailableMessage)
+            return false
         }
+        val payload =
+            buildStandaloneConversationThreadLaunchPayload(
+                conversation = identity,
+                timeContext = threadTimeContext,
+                alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
+                compactConsecutiveMessages = compactConsecutiveMessages,
+                threadRowAffordances = threadRowAffordances,
+                onWarn = bridge::logWarn
+            ) ?: run {
+                bridge.toast(conversationUnavailableMessage)
+                return false
+            }
+        val attachments =
+            handoff.envelope.items.mapIndexed { index, item ->
+                SharedThreadComposerAttachment(
+                    id = "external-share-${handoff.envelope.token}-$index",
+                    fileName = item.displayName,
+                    sizeBytes = item.sizeBytes,
+                    mimeType = item.mimeType.takeIf(String::isNotBlank),
+                    previewUri = item.localRef,
+                    status = "queued",
+                    fileRef = item.localRef,
+                    source = "external_share",
+                    externalShareToken = handoff.envelope.token,
+                    externalShareAccountId = handoff.accountId,
+                    externalShareServerId = handoff.serverId,
+                    uploadBytesTotal = item.sizeBytes.takeIf { it > 0L }
+                )
+            }
+        val stageResult =
+            composerDraftPersistSlice.stageExternalShareDraft(
+                draftKey = payload.threadComposerDraftKey(),
+                text = handoff.envelope.externalShareComposerText(),
+                attachments = attachments,
+                source =
+                    SharedThreadComposerExternalShareSource(
+                        token = handoff.envelope.token,
+                        accountId = handoff.accountId,
+                        serverId = handoff.serverId
+                    )
+            )
+        if (stageResult !is ExternalShareComposerDraftStageResult.Staged) {
+            val code = (stageResult as ExternalShareComposerDraftStageResult.Rejected).code
+            bridge.logWarn("external_share_composer_stage_rejected code=$code")
+            bridge.toast(conversationUnavailableMessage)
+            return false
+        }
+        if (selectedServerStore.selectedServerId.value != normalizedServerId) {
+            shellAuthStore.updateSelectedServer(normalizedServerId, selectedServer.slug)
+            authGateViewModel.dispatch(SharedAuthGateIntent.ServerReady(selectedSession))
+            homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.SelectServer(normalizedServerId)))
+        }
+        selectAppShellTab("home")
+        retainedAppShellTabs = retainedAppShellTabs + "home"
+        homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
+        homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(identity.threadId.value))
+        val targetStoreScope =
+            SlockShellStoreScope.create(
+                shellInstanceId = storeScope.shellInstanceId,
+                initialServerId = normalizedServerId
+            )
+        pager.openStandaloneThreadLaunchPayload(payload, targetStoreScope)
+        bridge.log(
+            "external_share_composer_opened serverId=$normalizedServerId " +
+                "threadId=${identity.threadId.value} kind=${identity.kind.name} " +
+                "attachments=${attachments.size} upload=0 send=0"
+        )
+        return true
     }
 
     val mainRouteSurface: @Composable () -> Unit = {
@@ -5359,7 +5404,7 @@ internal fun SlockAppShellContent(
                     )
                 },
             bridge = bridge,
-            onOpenSentTarget = ::openExternalShareSentTarget
+            onOpenComposer = ::openExternalShareComposer
         )
     }
 }

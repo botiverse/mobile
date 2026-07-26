@@ -52,6 +52,13 @@ internal class RealConversationAuthorityBoundAttachmentUploader(
         repository.uploadAttachmentsBound(request, expectedAuthority)
 }
 
+internal fun interface ProgressiveConversationAttachmentUploader {
+    suspend fun uploadAttachmentsWithProgress(
+        request: AttachmentUploadRequest,
+        onProgress: (build.raft.app.network.SlockTransferProgress) -> Unit
+    ): DataResult<AttachmentUploadResult>
+}
+
 private fun DataResult<*>.conversationDiagnosticsResult(): String =
     when (this) {
         is DataResult.Content -> "content"
@@ -222,7 +229,7 @@ class RealConversationRepository(
     private val networkClient: SlockNetworkClient,
     private val routeServerIdProvider: (() -> String?)? = null,
     private val warningLogger: (String) -> Unit = projectionRejectingDiagnosticsLogger
-) : ConversationRepository {
+) : ConversationRepository, ProgressiveConversationAttachmentUploader {
     override suspend fun getThread(
         threadId: ThreadId,
         includeFollowedSummaries: Boolean,
@@ -606,17 +613,40 @@ class RealConversationRepository(
             networkClient.markThreadUndone(DataRequestPriority.Foreground, threadChannelId.toThreadActionBody())
         }
 
-    override suspend fun uploadAttachments(request: AttachmentUploadRequest): DataResult<AttachmentUploadResult> {
+    override suspend fun uploadAttachments(request: AttachmentUploadRequest): DataResult<AttachmentUploadResult> =
+        uploadAttachmentsInternal(request, onProgress = null)
+
+    override suspend fun uploadAttachmentsWithProgress(
+        request: AttachmentUploadRequest,
+        onProgress: (build.raft.app.network.SlockTransferProgress) -> Unit
+    ): DataResult<AttachmentUploadResult> =
+        uploadAttachmentsInternal(request, onProgress)
+
+    private suspend fun uploadAttachmentsInternal(
+        request: AttachmentUploadRequest,
+        onProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)?
+    ): DataResult<AttachmentUploadResult> {
         currentContext() ?: return authRequired()
         if (request.files.isEmpty()) return DataResult.Empty(EmptyReason.NoMessages)
         return executeConversation(
             emptyReason = EmptyReason.NoMessages,
             block = {
-                networkClient.uploadAttachments(
-                    priority = DataRequestPriority.Foreground,
-                    channelId = request.channelId,
-                    files = request.files.map { it.toMultipartFile() }
-                )
+                val files = request.files.map { it.toMultipartFile() }
+                val progressive = networkClient as? ProgressiveAttachmentNetworkClient
+                if (onProgress != null && progressive != null) {
+                    progressive.uploadAttachmentsWithProgress(
+                        priority = DataRequestPriority.Foreground,
+                        channelId = request.channelId,
+                        files = files,
+                        onProgress = onProgress
+                    )
+                } else {
+                    networkClient.uploadAttachments(
+                        priority = DataRequestPriority.Foreground,
+                        channelId = request.channelId,
+                        files = files
+                    )
+                }
             },
             source = "attachments_upload",
             mapper = { bodyText -> parseSharedAttachmentUploadResult(bodyText) },

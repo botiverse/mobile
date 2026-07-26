@@ -5,6 +5,7 @@ import com.tencent.kmm.network.export.NetworkMultipartPart
 import com.tencent.kmm.network.export.NetworkPriority
 import com.tencent.kmm.network.export.NetworkRequest
 import com.tencent.kmm.network.export.NetworkRequestPolicy
+import com.tencent.kmm.network.export.NetworkProgressCallbacks
 import com.tencent.kmm.network.export.NetworkResponse
 import com.tencent.kmm.network.export.VBTransportResultCode
 import com.tencent.kmm.network.export.VBTransportMethod
@@ -168,7 +169,8 @@ internal class NetworkKmmSlockHttpExecutor(
         url: String,
         fields: Map<String, String>,
         files: List<MultipartFile>,
-        headers: Map<String, String>
+        headers: Map<String, String>,
+        onUploadProgress: ((SlockTransferProgress) -> Unit)?
     ): SlockHttpExecutorResponse {
         val startedAt = TimeSource.Monotonic.markNow()
         val path = url.substringBefore('?')
@@ -211,6 +213,17 @@ internal class NetworkKmmSlockHttpExecutor(
                         )
                 )
             traceHeaders.forEach { (name, value) -> request.setHeader(name, value) }
+            request.progress =
+                NetworkProgressCallbacks(
+                    uploadProgress = { progress ->
+                        onUploadProgress?.invoke(
+                            SlockTransferProgress(
+                                bytesTransferred = progress.bytesTransferred,
+                                bytesTotal = progress.bytesTotal
+                            )
+                        )
+                    }
+                )
             val response =
                 multipartTransportOverride
                     ?.invoke(request)

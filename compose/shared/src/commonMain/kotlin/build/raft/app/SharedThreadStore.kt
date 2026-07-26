@@ -22,6 +22,8 @@ import build.raft.app.data.buildMarkChannelMembersActionExecutedBody
 import build.raft.app.data.ChannelFilesSnapshot
 import build.raft.app.data.ChannelMemberActionResult
 import build.raft.app.data.ConversationRepository
+import build.raft.app.data.ProgressiveConversationAttachmentUploader
+import build.raft.app.data.SlockExpectedAuthBinding
 import build.raft.app.data.AddChannelMemberRequest
 import build.raft.app.data.ChannelRepository
 import build.raft.app.data.ChannelProfileUpdateRequest
@@ -2841,7 +2843,8 @@ internal class SharedThreadDataSource(
 
     suspend fun uploadAttachments(
         channelId: String,
-        files: List<PlatformFile>
+        files: List<PlatformFile>,
+        onProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)? = null
     ): DataResult<AttachmentUploadResult> {
         val repository =
             conversationRepository
@@ -2852,12 +2855,38 @@ internal class SharedThreadDataSource(
         if (files.isEmpty()) {
             return DataResult.Error(ScreenError(code = "attachment_read_failed", retryable = false))
         }
-        return repository.uploadAttachments(
+        val request =
             AttachmentUploadRequest(
                 channelId = ChannelId(channelId),
                 files = files
             )
+        val progressive = repository as? ProgressiveConversationAttachmentUploader
+        return if (onProgress != null && progressive != null) {
+            progressive.uploadAttachmentsWithProgress(request, onProgress)
+        } else {
+            repository.uploadAttachments(request)
+        }
+    }
+
+    suspend fun captureExternalShareSendAuthority(): SlockExpectedAuthBinding? {
+        val session = sessionStore.readSession() ?: return null
+        val serverId = session.currentServerId?.takeIf(String::isNotBlank) ?: return null
+        if (session.servers.none { server -> server.id == serverId }) return null
+        return SlockExpectedAuthBinding(
+            accountId = session.user.id,
+            accessToken = session.accessToken,
+            refreshToken = session.refreshToken,
+            serverId = serverId
         )
+    }
+
+    suspend fun matchesExternalShareSendAuthority(expected: SlockExpectedAuthBinding): Boolean {
+        val session = sessionStore.readSession() ?: return false
+        return session.user.id == expected.accountId &&
+            session.accessToken == expected.accessToken &&
+            session.refreshToken == expected.refreshToken &&
+            session.currentServerId == expected.serverId &&
+            session.servers.any { server -> server.id == expected.serverId }
     }
 
     suspend fun attachmentUrl(attachmentId: String, disposition: String? = null): ThreadApiResult<ThreadAttachmentOpenTarget> =

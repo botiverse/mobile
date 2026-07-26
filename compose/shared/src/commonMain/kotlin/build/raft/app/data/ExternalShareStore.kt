@@ -1,9 +1,6 @@
 package build.raft.app.data
 
-import build.raft.app.model.AttachmentId
-import build.raft.app.model.ChannelId
 import build.raft.app.model.ServerId
-import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -12,7 +9,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 
-internal const val ExternalShareMaximumTargetCount = 9
+internal const val ExternalShareMaximumTargetCount = 1
 
 internal data class ExternalShareServerOption(
     val id: String,
@@ -44,220 +41,24 @@ internal data class ExternalShareEnvelope(
 internal interface ExternalShareEnvelopeRepository {
     suspend fun load(token: String): DataResult<ExternalShareEnvelope>
 
-    /** Idempotent by [consumptionId]; retries must not consume the native envelope twice. */
+    /** Marks the native envelope claimed without deleting its private files. */
     suspend fun consume(token: String, consumptionId: String): DataResult<Unit>
 
-    /** Explicit user discard. This is not the successful two-phase consume path. */
+    /** Deletes the native envelope and its private files after send or explicit discard. */
     suspend fun delete(token: String)
 }
 
+/**
+ * Confirming and Delivering remain decodable only so pre-task-376 drafts fail closed instead of
+ * replaying an old upload/send side effect. New drafts use SelectingTargets or ComposerHandoff.
+ */
 @Serializable
 internal enum class ExternalShareDraftStage {
     SelectingTargets,
+    ComposerHandoff,
     Confirming,
     Delivering
 }
-
-@Serializable
-internal data class ExternalShareDraft(
-    val envelope: ExternalShareEnvelope,
-    val serverId: String,
-    val stage: ExternalShareDraftStage,
-    val selectedTargets: List<ForwardMessageTarget> = emptyList(),
-    val comment: String = "",
-    val deliveries: List<ExternalShareDelivery> = emptyList(),
-    val envelopeConsumed: Boolean = false
-)
-
-internal interface ExternalShareDraftRepository {
-    suspend fun load(token: String): DataResult<ExternalShareDraft>
-
-    suspend fun save(draft: ExternalShareDraft): DataResult<Unit>
-
-    suspend fun delete(token: String): DataResult<Unit>
-}
-
-internal data class ExternalShareSendRequest(
-    val attemptId: Long,
-    val deliveryId: String,
-    val sourceServerId: String,
-    val envelope: ExternalShareEnvelope,
-    val target: ForwardMessageTarget,
-    val comment: String
-)
-
-internal data class ExternalShareSendAuthority(
-    val accountId: String,
-    val accessToken: String,
-    val refreshToken: String,
-    val serverId: String
-)
-
-internal interface ExternalShareSender {
-    suspend fun send(request: ExternalShareSendRequest): DataResult<Unit>
-}
-
-internal class ExternalShareSourceServerBinding(initialServerId: String? = null) {
-    private val serverId = atomic(initialServerId?.trim()?.takeIf { it.isNotBlank() })
-
-    fun bind(value: String) {
-        serverId.value = value.trim().takeIf { it.isNotBlank() }
-    }
-
-    fun current(): String? = serverId.value
-}
-
-/**
- * Production adapter for the normal composer upload/send path. Target resolution remains owned by
- * [ForwardMessageTargetRepository]; no directory or routing logic is duplicated here.
- */
-internal class RealExternalShareSender(
-    private val targetRepository: ForwardMessageTargetRepository,
-    private val uploadAttachments: suspend (
-        AttachmentUploadRequest,
-        ExternalShareSendAuthority
-    ) -> DataResult<AttachmentUploadResult>,
-    private val sendMessage: suspend (ChannelId, String, List<AttachmentId>, String) -> DataResult<SendMessageResult>,
-    private val currentAuthority: suspend () -> ExternalShareSendAuthority?,
-    private val bindSourceServer: (String) -> Unit = {}
-) : ExternalShareSender {
-    constructor(
-        targetRepository: ForwardMessageTargetRepository,
-        conversationRepository: ConversationRepository,
-        authorityBoundUploader: AuthorityBoundAttachmentUploader,
-        sessionStore: SlockAuthSessionStore,
-        sourceServerBinding: ExternalShareSourceServerBinding
-    ) : this(
-        targetRepository = targetRepository,
-        uploadAttachments = { request, authority ->
-            authorityBoundUploader.uploadAttachmentsBound(request, authority.toExpectedAuthBinding())
-        },
-        sendMessage = { channelId, body, attachmentIds, randomId ->
-            conversationRepository.sendMessage(
-                channelId = channelId,
-                body = body,
-                attachmentIds = attachmentIds,
-                randomId = randomId
-            )
-        },
-        bindSourceServer = sourceServerBinding::bind,
-        currentAuthority = {
-            sessionStore.readSession()?.let { session ->
-                val serverId = sourceServerBinding.current()?.takeIf(String::isNotBlank) ?: return@let null
-                if (session.servers.none { it.id == serverId }) return@let null
-                ExternalShareSendAuthority(
-                    accountId = session.user.id,
-                    accessToken = session.accessToken,
-                    refreshToken = session.refreshToken,
-                    serverId = serverId
-                )
-            }
-        }
-    )
-
-    override suspend fun send(request: ExternalShareSendRequest): DataResult<Unit> {
-        val sourceServerId = request.sourceServerId.trim().takeIf { it.isNotBlank() }
-            ?: return DataResult.Error(ScreenError("external_share_source_server_invalid", retryable = false))
-        bindSourceServer(sourceServerId)
-        val authority = currentAuthority()?.takeIf { it.serverId == sourceServerId }
-            ?: return DataResult.Error(ScreenError("external_share_authority_changed", retryable = true))
-        val resolved =
-            targetRepository.resolveTargetChannel(
-                sourceServerId = ServerId(sourceServerId),
-                target = request.target,
-                allowJoin = false
-            )
-        val destination =
-            when (resolved) {
-                is DataResult.Content -> resolved.data
-                is DataResult.Empty -> return DataResult.Empty(resolved.reason)
-                is DataResult.Error -> return DataResult.Error(resolved.error)
-                is DataResult.NoPermission -> return DataResult.NoPermission(resolved.blocker)
-            }
-        if (currentAuthority() != authority) {
-            return DataResult.Error(ScreenError("external_share_authority_changed", retryable = true))
-        }
-        val attachmentIds =
-            if (request.envelope.items.isEmpty()) {
-                emptyList()
-            } else {
-                when (
-                    val uploaded =
-                        uploadAttachments(
-                            AttachmentUploadRequest(
-                                channelId = destination.channelId,
-                                files = request.envelope.items.mapIndexed { index, item ->
-                                    item.toExternalSharePlatformFile(request.deliveryId, index)
-                                }
-                            ),
-                            authority
-                        )
-                ) {
-                    is DataResult.Content -> uploaded.data.attachmentIds
-                    is DataResult.Empty -> return DataResult.Empty(uploaded.reason)
-                    is DataResult.Error -> return DataResult.Error(uploaded.error)
-                    is DataResult.NoPermission -> return DataResult.NoPermission(uploaded.blocker)
-                }
-            }
-        if (currentAuthority() != authority) {
-            return DataResult.Error(ScreenError("external_share_authority_changed", retryable = true))
-        }
-        val sendDestination =
-            when (
-                val refreshed =
-                    targetRepository.resolveTargetChannel(
-                        sourceServerId = ServerId(sourceServerId),
-                        target = request.target,
-                        allowJoin = false
-                    )
-            ) {
-                is DataResult.Content -> refreshed.data
-                is DataResult.Empty -> return DataResult.Empty(refreshed.reason)
-                is DataResult.Error -> return DataResult.Error(refreshed.error)
-                is DataResult.NoPermission -> return DataResult.NoPermission(refreshed.blocker)
-            }
-        if (sendDestination != destination || currentAuthority() != authority) {
-            return DataResult.Error(ScreenError("external_share_authority_changed", retryable = true))
-        }
-        val sent = sendMessage(
-            sendDestination.channelId,
-            request.externalShareMessageBody(),
-            attachmentIds,
-            request.deliveryId
-        )
-        return when (sent) {
-            is DataResult.Content -> DataResult.Content(Unit)
-            is DataResult.Empty -> DataResult.Empty(sent.reason)
-            is DataResult.Error -> DataResult.Error(sent.error)
-            is DataResult.NoPermission -> DataResult.NoPermission(sent.blocker)
-        }
-    }
-}
-
-private fun ExternalShareSendAuthority.toExpectedAuthBinding(): SlockExpectedAuthBinding =
-    SlockExpectedAuthBinding(
-        accountId = accountId,
-        accessToken = accessToken,
-        refreshToken = refreshToken,
-        serverId = serverId
-    )
-
-private fun ExternalShareItem.toExternalSharePlatformFile(deliveryId: String, index: Int): PlatformFile =
-    PlatformFile(
-        id = "external-share-$deliveryId-$index",
-        fileName = displayName,
-        mimeType = mimeType,
-        sizeBytes = sizeBytes,
-        fileRef = localRef,
-        source = "external_share"
-    )
-
-internal fun ExternalShareSendRequest.externalShareMessageBody(): String =
-    listOf(comment, envelope.subject, envelope.text)
-        .map(String::trim)
-        .filter(String::isNotBlank)
-        .distinct()
-        .joinToString("\n\n")
 
 @Serializable
 internal enum class ExternalShareDeliveryStatus {
@@ -275,6 +76,35 @@ internal data class ExternalShareDelivery(
     val errorCode: String? = null
 )
 
+@Serializable
+internal data class ExternalShareDraft(
+    val envelope: ExternalShareEnvelope,
+    val serverId: String,
+    val stage: ExternalShareDraftStage,
+    val selectedTargets: List<ForwardMessageTarget> = emptyList(),
+    // Legacy fields retained for backwards-compatible decoding only.
+    val comment: String = "",
+    val deliveries: List<ExternalShareDelivery> = emptyList(),
+    val envelopeConsumed: Boolean = false
+)
+
+internal interface ExternalShareDraftRepository {
+    suspend fun load(token: String): DataResult<ExternalShareDraft>
+
+    suspend fun save(draft: ExternalShareDraft): DataResult<Unit>
+
+    suspend fun delete(token: String): DataResult<Unit>
+}
+
+/** Content-bearing in-process handoff. It is never serialized into route/pageData. */
+internal data class ExternalShareComposerHandoff(
+    val envelope: ExternalShareEnvelope,
+    val accountId: String,
+    val serverId: String,
+    val target: ForwardMessageTarget,
+    val handoffId: Long
+)
+
 internal sealed interface ExternalShareState {
     data object Idle : ExternalShareState
 
@@ -282,6 +112,7 @@ internal sealed interface ExternalShareState {
 
     data class SelectingTargets(
         val envelope: ExternalShareEnvelope,
+        val accountId: String,
         val serverId: String,
         val serverOptions: List<ExternalShareServerOption> = emptyList(),
         val query: String = "",
@@ -289,41 +120,16 @@ internal sealed interface ExternalShareState {
         val selectedTargets: List<ForwardMessageTarget> = emptyList(),
         val loading: Boolean = false,
         val appending: Boolean = false,
+        val handoffInProgress: Boolean = false,
         val requestGeneration: Int = 0,
         val nextCursor: ForwardMessageTargetDirectoryCursor? = null,
         val errorCode: String? = null,
         val selectionErrorCode: String? = null
     ) : ExternalShareState
 
-    data class Confirming(
-        val envelope: ExternalShareEnvelope,
-        val serverId: String,
-        val serverOptions: List<ExternalShareServerOption> = emptyList(),
-        val selectedTargets: List<ForwardMessageTarget>,
-        val comment: String = ""
+    data class ReadyForComposer(
+        val handoff: ExternalShareComposerHandoff
     ) : ExternalShareState
-
-    data class Sending(
-        val envelope: ExternalShareEnvelope,
-        val serverId: String,
-        val comment: String,
-        val attemptId: Long,
-        val deliveries: List<ExternalShareDelivery>
-    ) : ExternalShareState
-
-    data class Completed(
-        val envelope: ExternalShareEnvelope,
-        val serverId: String,
-        val comment: String,
-        val attemptId: Long,
-        val deliveries: List<ExternalShareDelivery>
-    ) : ExternalShareState {
-        val failedTargets: List<ForwardMessageTarget>
-            get() = deliveries.filter { it.status == ExternalShareDeliveryStatus.Failed }.map { it.target }
-
-        val sentTargets: List<ForwardMessageTarget>
-            get() = deliveries.filter { it.status == ExternalShareDeliveryStatus.Sent }.map { it.target }
-    }
 
     data class Error(
         val token: String,
@@ -336,6 +142,7 @@ internal sealed interface ExternalShareState {
 internal sealed interface ExternalShareIntent {
     data class Load(
         val token: String,
+        val accountId: String,
         val serverId: String,
         val serverOptions: List<ExternalShareServerOption> =
             listOf(ExternalShareServerOption(id = serverId, title = serverId))
@@ -355,15 +162,9 @@ internal sealed interface ExternalShareIntent {
 
     data object Continue : ExternalShareIntent
 
-    data class RemoveTarget(val targetKey: String) : ExternalShareIntent
+    data class HandoffCompleted(val handoffId: Long) : ExternalShareIntent
 
-    data class ChangeComment(val value: String) : ExternalShareIntent
-
-    data object Send : ExternalShareIntent
-
-    data object RetryFailed : ExternalShareIntent
-
-    data object BackToTargets : ExternalShareIntent
+    data class HandoffFailed(val handoffId: Long) : ExternalShareIntent
 
     data object Cancel : ExternalShareIntent
 }
@@ -372,12 +173,7 @@ internal class ExternalShareStore(
     private val envelopeRepository: ExternalShareEnvelopeRepository,
     private val draftRepository: ExternalShareDraftRepository,
     private val targetRepository: ForwardMessageTargetRepository,
-    private val sender: ExternalShareSender,
     private val scope: CoroutineScope,
-    private val maximumTargetCount: Int = ExternalShareMaximumTargetCount,
-    private val deliveryIdFactory: (token: String, targetKey: String) -> String = { token, targetKey ->
-        "$token:$targetKey"
-    },
     private val diagnosticsLogger: (String) -> Unit = {}
 ) {
     private val _state = MutableStateFlow<ExternalShareState>(ExternalShareState.Idle)
@@ -385,26 +181,23 @@ internal class ExternalShareStore(
 
     private var loadGeneration = 0L
     private var targetGeneration = 0L
-    private var sendAttemptId = 0L
+    private var handoffGeneration = 0L
     private var loadJob: Job? = null
     private var targetJob: Job? = null
-    private var sendJob: Job? = null
+    private var handoffJob: Job? = null
     private var draftWriteTail: Job? = null
     private var authorizedServerOptions: List<ExternalShareServerOption> = emptyList()
 
     fun dispatch(intent: ExternalShareIntent) {
         when (intent) {
-            is ExternalShareIntent.Load -> load(intent.token, intent.serverId, intent.serverOptions)
+            is ExternalShareIntent.Load -> load(intent)
             is ExternalShareIntent.SelectServer -> selectServer(intent.serverId)
             is ExternalShareIntent.Search -> search(intent.query)
             ExternalShareIntent.LoadMore -> loadMore()
             is ExternalShareIntent.ToggleTarget -> toggleTarget(intent)
-            ExternalShareIntent.Continue -> continueToConfirmation()
-            is ExternalShareIntent.RemoveTarget -> removeTarget(intent.targetKey)
-            is ExternalShareIntent.ChangeComment -> changeComment(intent.value)
-            ExternalShareIntent.Send -> sendSelected(retryFailedOnly = false)
-            ExternalShareIntent.RetryFailed -> sendSelected(retryFailedOnly = true)
-            ExternalShareIntent.BackToTargets -> backToTargets()
+            ExternalShareIntent.Continue -> continueToComposer()
+            is ExternalShareIntent.HandoffCompleted -> completeHandoff(intent.handoffId)
+            is ExternalShareIntent.HandoffFailed -> failReadyHandoff(intent.handoffId)
             ExternalShareIntent.Cancel -> cancelAndDiscard()
         }
     }
@@ -415,26 +208,28 @@ internal class ExternalShareStore(
         }
         loadGeneration += 1
         targetGeneration += 1
-        sendAttemptId += 1
+        handoffGeneration += 1
         loadJob?.cancel()
         targetJob?.cancel()
-        sendJob?.cancel()
+        handoffJob?.cancel()
         loadJob = null
         targetJob = null
-        sendJob = null
+        handoffJob = null
         authorizedServerOptions = emptyList()
         _state.value = ExternalShareState.Idle
     }
 
-    private fun load(
-        rawToken: String,
-        rawServerId: String,
-        rawServerOptions: List<ExternalShareServerOption>
-    ) {
-        val token = rawToken.trim()
-        val serverId = rawServerId.trim()
-        val serverOptions = rawServerOptions.normalizedExternalShareServerOptions()
-        if (token.isBlank() || serverId.isBlank() || serverOptions.none { it.id == serverId }) {
+    private fun load(intent: ExternalShareIntent.Load) {
+        val token = intent.token.trim()
+        val accountId = intent.accountId.trim()
+        val serverId = intent.serverId.trim()
+        val serverOptions = intent.serverOptions.normalizedExternalShareServerOptions()
+        if (
+            token.externalShareOpaqueTokenOrNull() == null ||
+            accountId.isBlank() ||
+            serverId.isBlank() ||
+            serverOptions.none { it.id == serverId }
+        ) {
             authorizedServerOptions = emptyList()
             _state.value =
                 ExternalShareState.Error(
@@ -450,22 +245,20 @@ internal class ExternalShareStore(
         val generation = loadGeneration
         loadJob?.cancel()
         targetJob?.cancel()
-        sendJob?.cancel()
+        handoffJob?.cancel()
         _state.value = ExternalShareState.LoadingEnvelope(token)
         loadJob =
             scope.launch {
                 when (val draftResult = draftRepository.load(token)) {
-                    is DataResult.Content -> restoreDraft(draftResult.data, token, serverId, generation)
-                    is DataResult.Empty -> loadFreshEnvelope(token, serverId, generation)
-                    is DataResult.Error ->
-                        setLoadError(token, serverId, draftResult.error.code, draftResult.error.retryable, generation)
-                    is DataResult.NoPermission ->
-                        setLoadError(token, serverId, draftResult.blocker.code, false, generation)
+                    is DataResult.Content -> restoreDraft(draftResult.data, token, accountId, serverId, generation)
+                    is DataResult.Empty -> loadFreshEnvelope(token, accountId, serverId, generation)
+                    is DataResult.Error -> setLoadError(token, serverId, draftResult.error.code, draftResult.error.retryable, generation)
+                    is DataResult.NoPermission -> setLoadError(token, serverId, draftResult.blocker.code, false, generation)
                 }
             }
     }
 
-    private suspend fun loadFreshEnvelope(token: String, serverId: String, generation: Long) {
+    private suspend fun loadFreshEnvelope(token: String, accountId: String, serverId: String, generation: Long) {
         when (val result = envelopeRepository.load(token)) {
             is DataResult.Content -> {
                 if (generation != loadGeneration) return
@@ -474,20 +267,12 @@ internal class ExternalShareStore(
                     setLoadError(token, serverId, "external_share_envelope_invalid", false, generation)
                     return
                 }
-                val draft =
-                    ExternalShareDraft(
-                        envelope = envelope,
-                        serverId = serverId,
-                        stage = ExternalShareDraftStage.SelectingTargets
-                    )
+                val draft = ExternalShareDraft(envelope, serverId, ExternalShareDraftStage.SelectingTargets)
                 when (val transfer = persistAndConsumeEnvelope(draft)) {
-                    is DataResult.Content -> restoreDraft(transfer.data, token, serverId, generation)
-                    is DataResult.Empty ->
-                        setLoadError(token, serverId, "external_share_draft_persist_empty", true, generation)
-                    is DataResult.Error ->
-                        setLoadError(token, serverId, transfer.error.code, transfer.error.retryable, generation)
-                    is DataResult.NoPermission ->
-                        setLoadError(token, serverId, transfer.blocker.code, false, generation)
+                    is DataResult.Content -> restoreDraft(transfer.data, token, accountId, serverId, generation)
+                    is DataResult.Empty -> setLoadError(token, serverId, "external_share_draft_persist_empty", true, generation)
+                    is DataResult.Error -> setLoadError(token, serverId, transfer.error.code, transfer.error.retryable, generation)
+                    is DataResult.NoPermission -> setLoadError(token, serverId, transfer.blocker.code, false, generation)
                 }
             }
             is DataResult.Empty -> setLoadError(token, serverId, "external_share_not_found", false, generation)
@@ -508,37 +293,35 @@ internal class ExternalShareStore(
                     )
                 } catch (cancellation: CancellationException) {
                     throw cancellation
-                } catch (throwable: Throwable) {
+                } catch (_: Throwable) {
                     DataResult.Error(ScreenError("external_share_envelope_consume_failed", retryable = true))
                 }
             when (consume) {
                 is DataResult.Content -> Unit
-                is DataResult.Empty ->
-                    return DataResult.Error(
-                        ScreenError("external_share_envelope_consume_empty", retryable = true)
-                    )
+                is DataResult.Empty -> return DataResult.Error(ScreenError("external_share_envelope_consume_empty", true))
                 is DataResult.Error -> return consume
                 is DataResult.NoPermission -> return consume
             }
         }
         val consumedDraft = draft.copy(envelopeConsumed = true)
-        return when (val consumedSave = draftRepository.save(consumedDraft)) {
+        return when (val save = draftRepository.save(consumedDraft)) {
             is DataResult.Content -> DataResult.Content(consumedDraft)
-            is DataResult.Empty -> DataResult.Error(ScreenError("external_share_draft_persist_empty", retryable = true))
-            is DataResult.Error -> consumedSave
-            is DataResult.NoPermission -> consumedSave
+            is DataResult.Empty -> DataResult.Error(ScreenError("external_share_draft_persist_empty", true))
+            is DataResult.Error -> save
+            is DataResult.NoPermission -> save
         }
     }
 
     private suspend fun restoreDraft(
         draft: ExternalShareDraft,
         token: String,
-        serverId: String,
+        accountId: String,
+        requestedServerId: String,
         generation: Long
     ) {
         if (generation != loadGeneration) return
-        if (!draft.isValidFor(token, authorizedServerOptions.mapTo(linkedSetOf()) { it.id }, maximumTargetCount)) {
-            setLoadError(token, serverId, "external_share_draft_invalid", false, generation)
+        if (!draft.isValidFor(token, authorizedServerOptions.mapTo(linkedSetOf()) { it.id })) {
+            setLoadError(token, requestedServerId, "external_share_draft_invalid", false, generation)
             return
         }
         val readyDraft =
@@ -548,15 +331,15 @@ internal class ExternalShareStore(
                 when (val transfer = persistAndConsumeEnvelope(draft)) {
                     is DataResult.Content -> transfer.data
                     is DataResult.Empty -> {
-                        setLoadError(token, serverId, "external_share_draft_persist_empty", true, generation)
+                        setLoadError(token, requestedServerId, "external_share_draft_persist_empty", true, generation)
                         return
                     }
                     is DataResult.Error -> {
-                        setLoadError(token, serverId, transfer.error.code, transfer.error.retryable, generation)
+                        setLoadError(token, requestedServerId, transfer.error.code, transfer.error.retryable, generation)
                         return
                     }
                     is DataResult.NoPermission -> {
-                        setLoadError(token, serverId, transfer.blocker.code, false, generation)
+                        setLoadError(token, requestedServerId, transfer.blocker.code, false, generation)
                         return
                     }
                 }
@@ -567,23 +350,24 @@ internal class ExternalShareStore(
                 _state.value =
                     ExternalShareState.SelectingTargets(
                         envelope = readyDraft.envelope,
+                        accountId = accountId,
                         serverId = readyDraft.serverId,
                         serverOptions = authorizedServerOptions,
                         selectedTargets = readyDraft.selectedTargets
                     )
                 search("")
             }
+            ExternalShareDraftStage.ComposerHandoff,
             ExternalShareDraftStage.Confirming -> {
-                _state.value =
-                    ExternalShareState.Confirming(
-                        envelope = readyDraft.envelope,
-                        serverId = readyDraft.serverId,
-                        serverOptions = authorizedServerOptions,
-                        selectedTargets = readyDraft.selectedTargets,
-                        comment = readyDraft.comment
-                    )
+                if (readyDraft.selectedTargets.size != 1 || readyDraft.deliveries.isNotEmpty()) {
+                    setLoadError(token, requestedServerId, "external_share_legacy_draft_unsupported", false, generation)
+                    return
+                }
+                val migrated = readyDraft.copy(stage = ExternalShareDraftStage.ComposerHandoff, comment = "")
+                resolveComposerHandoff(migrated, accountId, generation)
             }
-            ExternalShareDraftStage.Delivering -> restoreDeliveriesWithoutReplay(readyDraft, generation)
+            ExternalShareDraftStage.Delivering ->
+                setLoadError(token, requestedServerId, "external_share_legacy_delivery_not_replayed", false, generation)
         }
     }
 
@@ -594,87 +378,9 @@ internal class ExternalShareStore(
         retryable: Boolean,
         generation: Long
     ) {
-        if (generation != loadGeneration) return
-        _state.value = ExternalShareState.Error(token, serverId, errorCode, retryable)
-    }
-
-    private suspend fun restoreDeliveriesWithoutReplay(draft: ExternalShareDraft, generation: Long) {
-        if (generation != loadGeneration) return
-        val restoredDeliveries =
-            draft.deliveries.map { delivery ->
-                if (delivery.status == ExternalShareDeliveryStatus.Sent) {
-                    delivery
-                } else {
-                    delivery.copy(
-                        status = ExternalShareDeliveryStatus.Failed,
-                        errorCode = delivery.errorCode ?: "external_share_send_interrupted"
-                    )
-                }
-            }
-        val restoredDraft = draft.copy(deliveries = restoredDeliveries)
-        if (restoredDraft != draft) {
-            when (val result = draftRepository.save(restoredDraft)) {
-                is DataResult.Content -> Unit
-                is DataResult.Empty -> {
-                    setLoadError(
-                        draft.envelope.token,
-                        draft.serverId,
-                        "external_share_draft_persist_empty",
-                        true,
-                        generation
-                    )
-                    return
-                }
-                is DataResult.Error -> {
-                    setLoadError(
-                        draft.envelope.token,
-                        draft.serverId,
-                        result.error.code,
-                        result.error.retryable,
-                        generation
-                    )
-                    return
-                }
-                is DataResult.NoPermission -> {
-                    setLoadError(
-                        draft.envelope.token,
-                        draft.serverId,
-                        result.blocker.code,
-                        false,
-                        generation
-                    )
-                    return
-                }
-            }
+        if (generation == loadGeneration) {
+            _state.value = ExternalShareState.Error(token, serverId, errorCode, retryable)
         }
-        if (generation != loadGeneration) return
-        val attemptId = (sendAttemptId + 1).also { sendAttemptId = it }
-        _state.value =
-            ExternalShareState.Completed(
-                envelope = restoredDraft.envelope,
-                serverId = restoredDraft.serverId,
-                comment = restoredDraft.comment,
-                attemptId = attemptId,
-                deliveries = restoredDeliveries
-            )
-    }
-
-    private fun persistCurrentDraft() {
-        val draft = _state.value.toExternalShareDraft() ?: return
-        val previousWrite = draftWriteTail
-        draftWriteTail =
-            scope.launch {
-                previousWrite?.join()
-                when (val result = draftRepository.save(draft)) {
-                    is DataResult.Content -> Unit
-                    is DataResult.Empty ->
-                        diagnosticsLogger("external_share_draft_save_failed code=external_share_draft_persist_empty")
-                    is DataResult.Error ->
-                        diagnosticsLogger("external_share_draft_save_failed code=${result.error.code}")
-                    is DataResult.NoPermission ->
-                        diagnosticsLogger("external_share_draft_save_failed code=${result.blocker.code}")
-                }
-            }
     }
 
     private fun selectServer(rawServerId: String) {
@@ -684,7 +390,7 @@ internal class ExternalShareStore(
             _state.value = current.copy(selectionErrorCode = "external_share_server_unavailable")
             return
         }
-        if (serverId == current.serverId) return
+        if (serverId == current.serverId || current.handoffInProgress) return
         targetGeneration += 1
         targetJob?.cancel()
         targetRepository.releaseDirectorySnapshot(current.externalShareDirectorySessionId())
@@ -708,6 +414,7 @@ internal class ExternalShareStore(
 
     private fun search(rawQuery: String, append: Boolean = false) {
         val current = _state.value as? ExternalShareState.SelectingTargets ?: return
+        if (current.handoffInProgress) return
         val query = rawQuery.trimStart()
         if (append && (query.isNotBlank() || current.nextCursor == null || current.loading)) return
         if (!append && current.query != query && current.query.isBlank()) {
@@ -738,8 +445,7 @@ internal class ExternalShareStore(
                         )
                     } else {
                         when (val searched = targetRepository.searchTargets(ServerId(current.serverId), query, 40)) {
-                            is DataResult.Content ->
-                                DataResult.Content(ForwardMessageTargetDirectoryPage(items = searched.data))
+                            is DataResult.Content -> DataResult.Content(ForwardMessageTargetDirectoryPage(items = searched.data))
                             is DataResult.Empty -> DataResult.Empty(searched.reason)
                             is DataResult.Error -> DataResult.Error(searched.error)
                             is DataResult.NoPermission -> DataResult.NoPermission(searched.blocker)
@@ -750,20 +456,24 @@ internal class ExternalShareStore(
                 if (latest.envelope.token != current.envelope.token || latest.serverId != current.serverId) return@launch
                 _state.value =
                     when (result) {
-                        is DataResult.Content ->
-                            latest.copy(
-                                targets =
-                                    if (append && !result.data.reset) {
-                                        (latest.targets + result.data.items).distinctBy { it.externalShareSelectionKey() }
-                                    } else {
-                                        result.data.items.distinctBy { it.externalShareSelectionKey() }
-                                    },
-                                loading = false,
-                                appending = false,
-                                nextCursor = result.data.nextCursor,
-                                errorCode = null
-                            )
-                        is DataResult.Empty -> latest.copy(targets = if (append) latest.targets else emptyList(), loading = false, appending = false, nextCursor = null, errorCode = null)
+                        is DataResult.Content -> latest.copy(
+                            targets = if (append && !result.data.reset) {
+                                (latest.targets + result.data.items).distinctBy { it.externalShareSelectionKey() }
+                            } else {
+                                result.data.items.distinctBy { it.externalShareSelectionKey() }
+                            },
+                            loading = false,
+                            appending = false,
+                            nextCursor = result.data.nextCursor,
+                            errorCode = null
+                        )
+                        is DataResult.Empty -> latest.copy(
+                            targets = if (append) latest.targets else emptyList(),
+                            loading = false,
+                            appending = false,
+                            nextCursor = null,
+                            errorCode = null
+                        )
                         is DataResult.Error -> latest.copy(loading = false, appending = false, errorCode = result.error.code)
                         is DataResult.NoPermission -> latest.copy(loading = false, appending = false, errorCode = result.blocker.code)
                     }
@@ -782,292 +492,181 @@ internal class ExternalShareStore(
             intent.sessionId != current.externalShareDirectorySessionId() ||
             intent.renderGeneration != current.requestGeneration ||
             current.loading ||
+            current.handoffInProgress ||
             current.errorCode != null
-        ) {
-            return
-        }
+        ) return
         if (target.serverId.value != current.serverId) {
             _state.value = current.copy(selectionErrorCode = "external_share_target_server_mismatch")
             return
         }
         val key = target.externalShareSelectionKey()
-        val selected = current.selectedTargets
         val liveTarget = current.targets.firstOrNull { it.externalShareSelectionKey() == key }
-        val selectedTarget = selected.firstOrNull { it.externalShareSelectionKey() == key }
+        val selectedTarget = current.selectedTargets.singleOrNull()
         if (target != liveTarget && target != selectedTarget) return
-        if (target.requiredAction == ForwardMessageTargetRequiredAction.JoinChannel && selectedTarget == null) {
+        if (target.requiredAction == ForwardMessageTargetRequiredAction.JoinChannel && selectedTarget != target) {
             _state.value = current.copy(selectionErrorCode = "external_share_join_confirmation_required")
             return
         }
         _state.value =
-            if (selected.any { it.externalShareSelectionKey() == key }) {
-                current.copy(
-                    selectedTargets = selected.filterNot { it.externalShareSelectionKey() == key },
-                    selectionErrorCode = null
-                )
-            } else if (selected.size >= maximumTargetCount) {
-                current.copy(selectionErrorCode = "external_share_target_limit")
+            if (selectedTarget?.externalShareSelectionKey() == key) {
+                current.copy(selectedTargets = emptyList(), selectionErrorCode = null)
             } else {
-                current.copy(selectedTargets = selected + target, selectionErrorCode = null)
+                current.copy(selectedTargets = listOf(target), selectionErrorCode = null)
             }
         persistCurrentDraft()
     }
 
-    private fun continueToConfirmation() {
+    private fun continueToComposer() {
         val current = _state.value as? ExternalShareState.SelectingTargets ?: return
-        if (current.selectedTargets.isEmpty()) {
-            _state.value = current.copy(selectionErrorCode = "external_share_no_targets")
+        val target = current.selectedTargets.singleOrNull()
+        if (target == null) {
+            _state.value = current.copy(selectionErrorCode = "external_share_single_target_required")
             return
         }
+        if (current.loading || current.handoffInProgress || current.errorCode != null) return
         targetGeneration += 1
         targetJob?.cancel()
         targetRepository.releaseDirectorySnapshot(current.externalShareDirectorySessionId())
-        _state.value =
-            ExternalShareState.Confirming(
+        _state.value = current.copy(handoffInProgress = true, selectionErrorCode = null)
+        handoffGeneration += 1
+        val generation = handoffGeneration
+        val draft =
+            ExternalShareDraft(
                 envelope = current.envelope,
                 serverId = current.serverId,
-                serverOptions = current.serverOptions,
-                selectedTargets = current.selectedTargets
+                stage = ExternalShareDraftStage.ComposerHandoff,
+                selectedTargets = listOf(target),
+                envelopeConsumed = true
             )
-        persistCurrentDraft()
-    }
-
-    private fun removeTarget(targetKey: String) {
-        val current = _state.value as? ExternalShareState.Confirming ?: return
-        val nextTargets = current.selectedTargets.filterNot { it.externalShareSelectionKey() == targetKey }
-        _state.value =
-            if (nextTargets.isEmpty()) {
-                ExternalShareState.SelectingTargets(
-                    envelope = current.envelope,
-                    serverId = current.serverId,
-                    serverOptions = current.serverOptions
-                )
-            } else {
-                current.copy(selectedTargets = nextTargets)
-            }
-        persistCurrentDraft()
-    }
-
-    private fun changeComment(value: String) {
-        val current = _state.value as? ExternalShareState.Confirming ?: return
-        _state.value = current.copy(comment = value)
-        persistCurrentDraft()
-    }
-
-    private fun backToTargets() {
-        val current = _state.value as? ExternalShareState.Confirming ?: return
-        _state.value =
-            ExternalShareState.SelectingTargets(
-                envelope = current.envelope,
-                serverId = current.serverId,
-                serverOptions = current.serverOptions,
-                selectedTargets = current.selectedTargets
-            )
-        persistCurrentDraft()
-        search("")
-    }
-
-    private fun sendSelected(retryFailedOnly: Boolean) {
-        val initialDeliveries: List<ExternalShareDelivery>
-        val envelope: ExternalShareEnvelope
-        val serverId: String
-        val comment: String
-        when (val current = _state.value) {
-            is ExternalShareState.Confirming -> {
-                if (retryFailedOnly || current.selectedTargets.isEmpty()) return
-                envelope = current.envelope
-                serverId = current.serverId
-                comment = current.comment
-                initialDeliveries =
-                    current.selectedTargets.map { target ->
-                        ExternalShareDelivery(
-                            target = target,
-                            deliveryId = deliveryIdFactory(
-                                current.envelope.token,
-                                target.externalShareSelectionKey()
-                            )
-                        )
-                    }
-            }
-            is ExternalShareState.Completed -> {
-                if (!retryFailedOnly || current.failedTargets.isEmpty()) return
-                envelope = current.envelope
-                serverId = current.serverId
-                comment = current.comment
-                initialDeliveries = current.deliveries
-            }
-            else -> return
-        }
-
-        sendAttemptId += 1
-        val attemptId = sendAttemptId
-        sendJob?.cancel()
-        _state.value =
-            ExternalShareState.Sending(
-                envelope = envelope,
-                serverId = serverId,
-                comment = comment,
-                attemptId = attemptId,
-                deliveries = initialDeliveries
-            )
-        sendJob =
+        handoffJob?.cancel()
+        handoffJob =
             scope.launch {
-                var deliveries = initialDeliveries
-                draftWriteTail?.join()
-                val initialDraft =
-                    ExternalShareDraft(
-                        envelope = envelope,
-                        serverId = serverId,
-                        stage = ExternalShareDraftStage.Delivering,
-                        selectedTargets = deliveries.map { it.target },
-                        comment = comment,
-                        deliveries = deliveries,
-                        envelopeConsumed = true
-                    )
-                if (!saveDeliveryDraftOrFail(initialDraft, attemptId)) return@launch
-                val targetKeys =
-                    if (retryFailedOnly) {
-                        deliveries.filter { it.status == ExternalShareDeliveryStatus.Failed }
-                    } else {
-                        deliveries
-                    }.map { it.target.externalShareSelectionKey() }.toSet()
-                for (index in deliveries.indices) {
-                    val delivery = deliveries[index]
-                    val key = delivery.target.externalShareSelectionKey()
-                    if (key !in targetKeys) continue
-                    if (attemptId != sendAttemptId) return@launch
-                    deliveries =
-                        deliveries.replaceDelivery(
-                            key,
-                            delivery.copy(
-                                status = ExternalShareDeliveryStatus.Sending,
-                                errorCode = null
-                            )
-                        )
-                    _state.value = ExternalShareState.Sending(envelope, serverId, comment, attemptId, deliveries)
-                    val sendingDraft = initialDraft.copy(deliveries = deliveries)
-                    if (!saveDeliveryDraftOrFail(sendingDraft, attemptId)) return@launch
-                    val result =
-                        try {
-                            sender.send(
-                                ExternalShareSendRequest(
-                                    attemptId = attemptId,
-                                    deliveryId = delivery.deliveryId,
-                                    sourceServerId = serverId,
-                                    envelope = envelope,
-                                    target = delivery.target,
-                                    comment = comment
-                                )
-                            )
-                        } catch (cancellation: CancellationException) {
-                            throw cancellation
-                        } catch (throwable: Throwable) {
-                            DataResult.Error(ScreenError("external_share_send_exception", retryable = true))
-                        }
-                    if (attemptId != sendAttemptId) return@launch
-                    val terminal =
-                        when (result) {
-                            is DataResult.Content ->
-                                delivery.copy(
-                                    status = ExternalShareDeliveryStatus.Sent,
-                                    errorCode = null
-                                )
-                            is DataResult.Empty ->
-                                delivery.copy(
-                                    status = ExternalShareDeliveryStatus.Failed,
-                                    errorCode = "external_share_send_empty"
-                                )
-                            is DataResult.Error ->
-                                delivery.copy(
-                                    status = ExternalShareDeliveryStatus.Failed,
-                                    errorCode = result.error.code
-                                )
-                            is DataResult.NoPermission ->
-                                delivery.copy(
-                                    status = ExternalShareDeliveryStatus.Failed,
-                                    errorCode = result.blocker.code
-                                )
-                        }
-                    deliveries = deliveries.replaceDelivery(key, terminal)
-                    _state.value = ExternalShareState.Sending(envelope, serverId, comment, attemptId, deliveries)
-                    if (!saveDeliveryDraftOrFail(initialDraft.copy(deliveries = deliveries), attemptId)) return@launch
+                when (val save = draftRepository.save(draft)) {
+                    is DataResult.Content -> resolveComposerHandoff(draft, current.accountId, loadGeneration)
+                    is DataResult.Empty -> failHandoff(current, generation, "external_share_draft_persist_empty")
+                    is DataResult.Error -> failHandoff(current, generation, save.error.code)
+                    is DataResult.NoPermission -> failHandoff(current, generation, save.blocker.code)
                 }
-                if (attemptId != sendAttemptId) return@launch
-                _state.value = ExternalShareState.Completed(envelope, serverId, comment, attemptId, deliveries)
-                if (deliveries.none { it.status == ExternalShareDeliveryStatus.Failed }) {
-                    when (val deleteResult = draftRepository.delete(envelope.token)) {
-                        is DataResult.Content -> Unit
-                        is DataResult.Empty ->
-                            diagnosticsLogger("external_share_draft_delete_empty token=${envelope.token}")
-                        is DataResult.Error ->
-                            diagnosticsLogger("external_share_draft_delete_failed code=${deleteResult.error.code}")
-                        is DataResult.NoPermission ->
-                            diagnosticsLogger("external_share_draft_delete_failed code=${deleteResult.blocker.code}")
-                    }
-                }
-                diagnosticsLogger(
-                    "external_share_send_complete attempt=$attemptId " +
-                        "sent=${deliveries.count { it.status == ExternalShareDeliveryStatus.Sent }} " +
-                        "failed=${deliveries.count { it.status == ExternalShareDeliveryStatus.Failed }}"
-                )
             }
     }
 
-    private suspend fun saveDeliveryDraftOrFail(draft: ExternalShareDraft, attemptId: Long): Boolean {
-        return when (val result = draftRepository.save(draft)) {
-            is DataResult.Content -> true
-            is DataResult.Empty -> {
-                failDeliveryPersistence(draft, attemptId, "external_share_draft_persist_empty")
-                false
+    private suspend fun resolveComposerHandoff(draft: ExternalShareDraft, accountId: String, loadAtStart: Long) {
+        val target = draft.selectedTargets.singleOrNull() ?: return
+        val resolution =
+            try {
+                targetRepository.resolveTargetChannel(
+                    sourceServerId = ServerId(draft.serverId),
+                    target = target,
+                    allowJoin = false
+                )
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Throwable) {
+                DataResult.Error(ScreenError("external_share_target_resolution_failed", true))
             }
-            is DataResult.Error -> {
-                failDeliveryPersistence(draft, attemptId, result.error.code)
-                false
+        if (loadAtStart != loadGeneration) return
+        when (resolution) {
+            is DataResult.Content -> {
+                val destination = resolution.data
+                val resolvedTarget =
+                    target.copy(
+                        channelId = destination.channelId,
+                        channelKind = destination.channelKind,
+                        requiredAction = ForwardMessageTargetRequiredAction.None,
+                        canForwardNow = true
+                    )
+                val resolvedDraft = draft.copy(selectedTargets = listOf(resolvedTarget))
+                when (val save = draftRepository.save(resolvedDraft)) {
+                    is DataResult.Content -> {
+                        handoffGeneration += 1
+                        val handoffId = handoffGeneration
+                        _state.value =
+                            ExternalShareState.ReadyForComposer(
+                                ExternalShareComposerHandoff(
+                                    envelope = draft.envelope,
+                                    accountId = accountId,
+                                    serverId = draft.serverId,
+                                    target = resolvedTarget,
+                                    handoffId = handoffId
+                                )
+                            )
+                    }
+                    is DataResult.Empty -> setLoadError(draft.envelope.token, draft.serverId, "external_share_draft_persist_empty", true, loadAtStart)
+                    is DataResult.Error -> setLoadError(draft.envelope.token, draft.serverId, save.error.code, save.error.retryable, loadAtStart)
+                    is DataResult.NoPermission -> setLoadError(draft.envelope.token, draft.serverId, save.blocker.code, false, loadAtStart)
+                }
             }
-            is DataResult.NoPermission -> {
-                failDeliveryPersistence(draft, attemptId, result.blocker.code)
-                false
-            }
+            is DataResult.Empty -> setLoadError(draft.envelope.token, draft.serverId, "external_share_target_resolution_empty", true, loadAtStart)
+            is DataResult.Error -> setLoadError(draft.envelope.token, draft.serverId, resolution.error.code, resolution.error.retryable, loadAtStart)
+            is DataResult.NoPermission -> setLoadError(draft.envelope.token, draft.serverId, resolution.blocker.code, false, loadAtStart)
         }
     }
 
-    private fun failDeliveryPersistence(draft: ExternalShareDraft, attemptId: Long, errorCode: String) {
-        val failedDeliveries =
-            draft.deliveries.map { delivery ->
-                if (delivery.status == ExternalShareDeliveryStatus.Sent) {
-                    delivery
-                } else {
-                    delivery.copy(
-                        status = ExternalShareDeliveryStatus.Failed,
-                        errorCode = errorCode
-                    )
+    private fun failHandoff(current: ExternalShareState.SelectingTargets, generation: Long, errorCode: String) {
+        if (generation == handoffGeneration) {
+            _state.value = current.copy(handoffInProgress = false, selectionErrorCode = errorCode)
+        }
+    }
+
+    private fun completeHandoff(handoffId: Long) {
+        val current = (_state.value as? ExternalShareState.ReadyForComposer)?.handoff ?: return
+        if (current.handoffId != handoffId) return
+        _state.value = ExternalShareState.Idle
+        draftWriteTail =
+            scope.launch {
+                when (val result = draftRepository.delete(current.envelope.token)) {
+                    is DataResult.Content -> Unit
+                    is DataResult.Empty -> diagnosticsLogger("external_share_handoff_draft_delete_empty")
+                    is DataResult.Error -> diagnosticsLogger("external_share_handoff_draft_delete_failed code=${result.error.code}")
+                    is DataResult.NoPermission -> diagnosticsLogger("external_share_handoff_draft_delete_failed code=${result.blocker.code}")
                 }
             }
+    }
+
+    private fun failReadyHandoff(handoffId: Long) {
+        val current = (_state.value as? ExternalShareState.ReadyForComposer)?.handoff ?: return
+        if (current.handoffId != handoffId) return
         _state.value =
-            ExternalShareState.Completed(
-                envelope = draft.envelope,
-                serverId = draft.serverId,
-                comment = draft.comment,
-                attemptId = attemptId,
-                deliveries = failedDeliveries
+            ExternalShareState.Error(
+                token = current.envelope.token,
+                serverId = current.serverId,
+                errorCode = "external_share_composer_handoff_rejected",
+                retryable = true
             )
-        diagnosticsLogger("external_share_draft_save_failed code=$errorCode")
+    }
+
+    private fun persistCurrentDraft() {
+        val current = _state.value as? ExternalShareState.SelectingTargets ?: return
+        val draft =
+            ExternalShareDraft(
+                envelope = current.envelope,
+                serverId = current.serverId,
+                stage = ExternalShareDraftStage.SelectingTargets,
+                selectedTargets = current.selectedTargets,
+                envelopeConsumed = true
+            )
+        val previous = draftWriteTail
+        draftWriteTail =
+            scope.launch {
+                previous?.join()
+                when (val result = draftRepository.save(draft)) {
+                    is DataResult.Content -> Unit
+                    is DataResult.Empty -> diagnosticsLogger("external_share_draft_save_failed code=external_share_draft_persist_empty")
+                    is DataResult.Error -> diagnosticsLogger("external_share_draft_save_failed code=${result.error.code}")
+                    is DataResult.NoPermission -> diagnosticsLogger("external_share_draft_save_failed code=${result.blocker.code}")
+                }
+            }
     }
 
     private fun cancelAndDiscard() {
-        val current = _state.value
-        val token = current.externalShareTokenOrNull()
-        val discardNativeEnvelope =
-            current is ExternalShareState.LoadingEnvelope || current is ExternalShareState.Error
+        val token = _state.value.externalShareTokenOrNull()
         clear()
-        token?.takeIf { it.isNotBlank() }?.let { discardedToken ->
-            val previousWrite = draftWriteTail
+        token?.let { discardedToken ->
+            val previous = draftWriteTail
             draftWriteTail =
                 scope.launch {
-                    previousWrite?.join()
-                    if (discardNativeEnvelope) {
-                        runCatching { envelopeRepository.delete(discardedToken) }
-                    }
+                    previous?.join()
+                    runCatching { envelopeRepository.delete(discardedToken) }
                     draftRepository.delete(discardedToken)
                 }
         }
@@ -1078,9 +677,7 @@ private fun ExternalShareState.externalShareTokenOrNull(): String? =
     when (this) {
         is ExternalShareState.LoadingEnvelope -> token
         is ExternalShareState.SelectingTargets -> envelope.token
-        is ExternalShareState.Confirming -> envelope.token
-        is ExternalShareState.Sending -> envelope.token
-        is ExternalShareState.Completed -> envelope.token
+        is ExternalShareState.ReadyForComposer -> handoff.envelope.token
         is ExternalShareState.Error -> token
         ExternalShareState.Idle -> null
     }
@@ -1094,98 +691,41 @@ internal fun ForwardMessageTarget.externalShareSelectionKey(): String =
 internal fun ExternalShareState.SelectingTargets.externalShareDirectorySessionId(): String =
     "external-share:${envelope.token}:$serverId"
 
-private fun List<ExternalShareDelivery>.replaceDelivery(
-    targetKey: String,
-    replacement: ExternalShareDelivery
-): List<ExternalShareDelivery> =
-    map { delivery ->
-        if (delivery.target.externalShareSelectionKey() == targetKey) replacement else delivery
-    }
+internal fun ExternalShareEnvelope.externalShareComposerText(): String =
+    listOf(subject, text)
+        .map(String::trim)
+        .filter(String::isNotBlank)
+        .distinct()
+        .joinToString("\n\n")
 
 private fun DataResult<Unit>.mapDraftFailure(): DataResult<ExternalShareDraft> =
     when (this) {
-        is DataResult.Content ->
-            DataResult.Error(ScreenError("external_share_draft_persist_invalid", retryable = true))
+        is DataResult.Content -> DataResult.Error(ScreenError("external_share_draft_persist_invalid", true))
         is DataResult.Empty -> this
         is DataResult.Error -> this
         is DataResult.NoPermission -> this
     }
 
-private fun ExternalShareDraft.isValidFor(
-    token: String,
-    authorizedServerIds: Set<String>,
-    maximumTargetCount: Int
-): Boolean {
+private fun ExternalShareDraft.isValidFor(token: String, authorizedServerIds: Set<String>): Boolean {
     if (envelope.token != token || !envelope.hasContent()) return false
     if (serverId.isBlank() || serverId !in authorizedServerIds) return false
-    if (selectedTargets.size > maximumTargetCount) return false
-    val selectedKeys = selectedTargets.map { it.externalShareSelectionKey() }
-    if (selectedKeys.size != selectedKeys.toSet().size) return false
+    if (selectedTargets.size > ExternalShareMaximumTargetCount) return false
     if (selectedTargets.any { it.id.isBlank() || it.serverId.value != serverId }) return false
     if (selectedTargets.any { it.requiredAction == ForwardMessageTargetRequiredAction.JoinChannel }) return false
     return when (stage) {
         ExternalShareDraftStage.SelectingTargets -> deliveries.isEmpty()
-        ExternalShareDraftStage.Confirming -> selectedTargets.isNotEmpty() && deliveries.isEmpty()
-        ExternalShareDraftStage.Delivering -> {
-            if (selectedTargets.isEmpty() || deliveries.isEmpty()) return false
-            val deliveryKeys = deliveries.map { it.target.externalShareSelectionKey() }
-            deliveryKeys == selectedKeys &&
-                deliveries.all { it.deliveryId.isNotBlank() } &&
-                deliveries.map { it.deliveryId }.distinct().size == deliveries.size
-        }
+        ExternalShareDraftStage.ComposerHandoff,
+        ExternalShareDraftStage.Confirming -> selectedTargets.size == 1 && deliveries.isEmpty()
+        ExternalShareDraftStage.Delivering -> false
     }
 }
 
-private fun ExternalShareState.toExternalShareDraft(): ExternalShareDraft? =
-    when (this) {
-        is ExternalShareState.SelectingTargets ->
-            ExternalShareDraft(
-                envelope = envelope,
-                serverId = serverId,
-                stage = ExternalShareDraftStage.SelectingTargets,
-                selectedTargets = selectedTargets,
-                envelopeConsumed = true
-            )
-        is ExternalShareState.Confirming ->
-            ExternalShareDraft(
-                envelope = envelope,
-                serverId = serverId,
-                stage = ExternalShareDraftStage.Confirming,
-                selectedTargets = selectedTargets,
-                comment = comment,
-                envelopeConsumed = true
-            )
-        is ExternalShareState.Sending ->
-            ExternalShareDraft(
-                envelope = envelope,
-                serverId = serverId,
-                stage = ExternalShareDraftStage.Delivering,
-                selectedTargets = deliveries.map { it.target },
-                comment = comment,
-                deliveries = deliveries,
-                envelopeConsumed = true
-            )
-        is ExternalShareState.Completed ->
-            ExternalShareDraft(
-                envelope = envelope,
-                serverId = serverId,
-                stage = ExternalShareDraftStage.Delivering,
-                selectedTargets = deliveries.map { it.target },
-                comment = comment,
-                deliveries = deliveries,
-                envelopeConsumed = true
-            )
-        ExternalShareState.Idle,
-        is ExternalShareState.LoadingEnvelope,
-        is ExternalShareState.Error -> null
-    }
-
 private fun List<ExternalShareServerOption>.normalizedExternalShareServerOptions(): List<ExternalShareServerOption> =
     mapNotNull { option ->
-        val id = option.id.trim().takeIf { it.isNotBlank() } ?: return@mapNotNull null
+        val id = option.id.trim().takeIf(String::isNotBlank) ?: return@mapNotNull null
         ExternalShareServerOption(
             id = id,
-            title = option.title.trim().takeIf { it.isNotBlank() } ?: id,
-            slug = option.slug?.trim()?.takeIf { it.isNotBlank() }
+            title = option.title.trim().takeIf(String::isNotBlank) ?: id,
+            slug = option.slug?.trim()?.takeIf(String::isNotBlank)
         )
     }.distinctBy { it.id }

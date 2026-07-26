@@ -45,7 +45,7 @@ internal class SharedSlockNetworkClient(
     private val requestScheduler: SlockRequestScheduler = SlockRequestScheduler(),
     private val platformFileResolver: SlockPlatformFileResolver? = null,
     private val executor: SlockHttpExecutor = createPlatformSlockHttpExecutor(warningLogger)
-) : SlockNetworkClient, AuthorityBoundSlockNetworkClient {
+) : SlockNetworkClient, AuthorityBoundSlockNetworkClient, ProgressiveAttachmentNetworkClient {
     private fun authMiddleware(): SlockNetworkAuthMiddleware =
         SlockNetworkAuthMiddleware(
             sessionStore = sessionStore,
@@ -171,7 +171,21 @@ internal class SharedSlockNetworkClient(
         channelId: ChannelId,
         files: List<MultipartFile>
     ): HomeNetworkResponse =
-        uploadAttachmentsInternal(priority, channelId, files, expectedAuthority = null)
+        uploadAttachmentsInternal(priority, channelId, files, expectedAuthority = null, onProgress = null)
+
+    override suspend fun uploadAttachmentsWithProgress(
+        priority: DataRequestPriority,
+        channelId: ChannelId,
+        files: List<MultipartFile>,
+        onProgress: (build.raft.app.network.SlockTransferProgress) -> Unit
+    ): HomeNetworkResponse =
+        uploadAttachmentsInternal(
+            priority = priority,
+            channelId = channelId,
+            files = files,
+            expectedAuthority = null,
+            onProgress = onProgress
+        )
 
     override suspend fun uploadAttachmentsBound(
         priority: DataRequestPriority,
@@ -179,13 +193,14 @@ internal class SharedSlockNetworkClient(
         files: List<MultipartFile>,
         expectedAuthority: SlockExpectedAuthBinding
     ): HomeNetworkResponse =
-        uploadAttachmentsInternal(priority, channelId, files, expectedAuthority)
+        uploadAttachmentsInternal(priority, channelId, files, expectedAuthority, onProgress = null)
 
     private suspend fun uploadAttachmentsInternal(
         priority: DataRequestPriority,
         channelId: ChannelId,
         files: List<MultipartFile>,
-        expectedAuthority: SlockExpectedAuthBinding?
+        expectedAuthority: SlockExpectedAuthBinding?,
+        onProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)?
     ): HomeNetworkResponse {
         val resolvedFiles = files.preparePlatformFileStreams().getOrElse { return it }
         return uploadMultipart(
@@ -197,7 +212,8 @@ internal class SharedSlockNetworkClient(
             files = resolvedFiles,
             requestBytes = resolvedFiles.uploadByteEstimate(),
             key = "attachments/upload",
-            expectedAuthority = expectedAuthority
+            expectedAuthority = expectedAuthority,
+            onUploadProgress = onProgress
         )
     }
 
@@ -356,7 +372,8 @@ internal class SharedSlockNetworkClient(
         files: List<MultipartFile>,
         requestBytes: Long,
         key: String,
-        expectedAuthority: SlockExpectedAuthBinding? = null
+        expectedAuthority: SlockExpectedAuthBinding? = null,
+        onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)? = null
     ): HomeNetworkResponse {
         val startedAt = TimeSource.Monotonic.markNow()
         // task #788: same files instance and same predicate the executor uses.
@@ -387,7 +404,8 @@ internal class SharedSlockNetworkClient(
                                 mapOf(
                                     HEADER_AUTHORIZATION to auth.authorization,
                                     HEADER_SERVER_ID to auth.serverId
-                                )
+                                ),
+                            onUploadProgress = onUploadProgress
                         ).toHomeNetworkResponse()
                     }
                 warningLogger(

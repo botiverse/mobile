@@ -84,6 +84,15 @@ interface SlockNetworkClient {
         HomeNetworkResponse(code = 501, bodyText = null)
 }
 
+internal fun interface ProgressiveAttachmentNetworkClient {
+    suspend fun uploadAttachmentsWithProgress(
+        priority: DataRequestPriority,
+        channelId: ChannelId,
+        files: List<MultipartFile>,
+        onProgress: (build.raft.app.network.SlockTransferProgress) -> Unit
+    ): HomeNetworkResponse
+}
+
 internal interface AuthorityBoundSlockNetworkClient {
     suspend fun uploadAttachmentsBound(
         priority: DataRequestPriority,

@@ -58,7 +58,16 @@ class ExternalShareLaunchTest {
             ExternalShareLaunchDecision.Dispatched,
             coordinator.reconcile(ExternalShareLaunchAuthority("account-a", "server-a"))
         )
-        assertEquals(listOf(ExternalShareIntent.Load(request.token, "server-a")), loads)
+        assertEquals(
+            listOf(
+                ExternalShareIntent.Load(
+                    token = request.token,
+                    accountId = "account-a",
+                    serverId = "server-a"
+                )
+            ),
+            loads
+        )
         assertEquals(ExternalShareLaunchDecision.Duplicate, coordinator.accept(request))
         assertEquals(ExternalShareLaunchDecision.NoLaunch, coordinator.reconcile(null))
         assertEquals(1, loads.size)
@@ -79,12 +88,12 @@ class ExternalShareLaunchTest {
 
         assertEquals(
             listOf<ExternalShareIntent>(
-                ExternalShareIntent.Load(request.token, "server-a"),
-                ExternalShareIntent.Load(request.token, "server-a")
+                ExternalShareIntent.Load(request.token, "account-a", "server-a"),
+                ExternalShareIntent.Load(request.token, "account-a", "server-a")
             ),
             intents
         )
-        assertEquals(false, intents.any { it === ExternalShareIntent.Send })
+        assertEquals(false, intents.any { it === ExternalShareIntent.Continue })
     }
 
     @Test
@@ -106,7 +115,10 @@ class ExternalShareLaunchTest {
             ExternalShareLaunchDecision.NoLaunch,
             coordinator.reconcile(ExternalShareLaunchAuthority("account-a", "server-b"))
         )
-        assertEquals(listOf(ExternalShareIntent.Load(request.token, "server-a")), loads)
+        assertEquals(
+            listOf(ExternalShareIntent.Load(request.token, "account-a", "server-a")),
+            loads
+        )
     }
 
     @Test
@@ -133,7 +145,7 @@ class ExternalShareLaunchTest {
         )
 
         assertEquals(
-            listOf(ExternalShareIntent.Load(request.token, "server-a", servers)),
+            listOf(ExternalShareIntent.Load(request.token, "account-a", "server-a", servers)),
             loads
         )
     }

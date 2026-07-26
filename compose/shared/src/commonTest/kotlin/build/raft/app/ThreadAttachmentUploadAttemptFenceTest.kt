@@ -58,4 +58,14 @@ class ThreadAttachmentUploadAttemptFenceTest {
 
         assertFalse(removed.accepts("picked-local-1", admission.attemptToken))
     }
+
+    @Test
+    fun removedOrRetriedAttachmentRejectsLateProgressFromPreviousAttempt() {
+        val first = ThreadAttachmentUploadAttemptFence().begin("external-share-local")
+        val removed = first.fence.terminate(setOf("external-share-local"))
+        val retry = removed.begin("external-share-local")
+
+        assertFalse(retry.fence.accepts("external-share-local", first.attemptToken))
+        assertTrue(retry.fence.accepts("external-share-local", retry.attemptToken))
+    }
 }

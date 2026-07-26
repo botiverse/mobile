@@ -90,7 +90,7 @@ internal fun ExternalShareState.SelectingTargets.toExternalSharePickerSurface(
                 errorCode = errorCode,
                 canLoadMore = nextCursor != null,
                 appending = appending,
-                interactive = !queryPending && !loading && errorCode == null,
+                interactive = !queryPending && !loading && !handoffInProgress && errorCode == null,
                 dismissEnabled = true,
                 requestGeneration = requestGeneration
             ),
@@ -111,7 +111,9 @@ internal fun ExternalShareState.SelectingTargets.toExternalShareIntent(
         SlockForwardTargetPickerIntent.LoadMore -> ExternalShareIntent.LoadMore
         SlockForwardTargetPickerIntent.Dismiss -> ExternalShareIntent.Cancel
         SlockForwardTargetPickerIntent.Continue ->
-            ExternalShareIntent.Continue.takeIf { selectedTargets.isNotEmpty() && !loading && errorCode == null }
+            ExternalShareIntent.Continue.takeIf {
+                selectedTargets.size == 1 && !loading && !handoffInProgress && errorCode == null
+            }
         is SlockForwardTargetPickerIntent.RemoveSelection ->
             selectedTargets
                 .firstOrNull { it.externalShareSelectionKey() == intent.stableKey }
@@ -123,7 +125,7 @@ internal fun ExternalShareState.SelectingTargets.toExternalShareIntent(
                     )
                 }
         is SlockForwardTargetPickerIntent.TargetSelected -> {
-            if (loading || errorCode != null || intent.renderGeneration != requestGeneration) {
+            if (loading || handoffInProgress || errorCode != null || intent.renderGeneration != requestGeneration) {
                 null
             } else {
                 val live = targets.firstOrNull { it.externalShareSelectionKey() == intent.item.stableKey }
@@ -139,23 +141,3 @@ internal fun ExternalShareState.SelectingTargets.toExternalShareIntent(
             }
         }
     }
-
-internal data class ExternalShareConfirmationUiState(
-    val selectedTargets: List<SlockForwardTargetPickerItem<build.raft.app.data.ForwardMessageTarget>>,
-    val contentLines: List<String>,
-    val comment: String,
-    val canSend: Boolean
-)
-
-internal fun ExternalShareState.Confirming.toExternalShareConfirmationUiState(): ExternalShareConfirmationUiState =
-    ExternalShareConfirmationUiState(
-        selectedTargets = selectedTargets.map { it.toSlockForwardTargetPickerItem() },
-        contentLines =
-            buildList {
-                envelope.subject.trim().takeIf(String::isNotBlank)?.let(::add)
-                envelope.text.trim().takeIf(String::isNotBlank)?.let(::add)
-                envelope.items.forEach { item -> add(item.displayName) }
-            },
-        comment = comment,
-        canSend = selectedTargets.isNotEmpty() && envelope.hasContent()
-    )

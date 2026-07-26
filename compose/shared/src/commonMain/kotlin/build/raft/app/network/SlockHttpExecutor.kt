@@ -14,6 +14,11 @@ internal data class SlockHttpExecutorResponse(
     val isSuccessful: Boolean get() = code in 200..299
 }
 
+data class SlockTransferProgress(
+    val bytesTransferred: Long,
+    val bytesTotal: Long? = null
+)
+
 /**
  * The single seam between Slock's shared network semantics (auth middleware,
  * refresh, scheduling, diagnostics, URL assembly, fileRef resolution — all in
@@ -45,6 +50,7 @@ internal interface SlockHttpExecutor {
         url: String,
         fields: Map<String, String>,
         files: List<MultipartFile>,
-        headers: Map<String, String>
+        headers: Map<String, String>,
+        onUploadProgress: ((SlockTransferProgress) -> Unit)? = null
     ): SlockHttpExecutorResponse
 }
