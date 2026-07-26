@@ -2,8 +2,6 @@ package build.raft.app
 
 import build.raft.app.data.ExternalShareEnvelope
 import build.raft.app.data.ExternalShareIntent
-import build.raft.app.data.ExternalShareDelivery
-import build.raft.app.data.ExternalShareDeliveryStatus
 import build.raft.app.data.ExternalShareState
 import build.raft.app.data.ForwardMessageTarget
 import build.raft.app.data.ForwardMessageTargetKind
@@ -13,13 +11,12 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
-import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ExternalSharePickerAdapterTest {
     @Test
-    fun multiSelectionProjectsThroughLandedPickerContract() {
+    fun singleSelectionProjectsThroughLandedPickerContract() {
         val first = target("channel-a")
         val second = target("channel-b")
         val selecting = state(targets = listOf(first, second), selected = listOf(first), generation = 7)
@@ -84,83 +81,12 @@ class ExternalSharePickerAdapterTest {
     }
 
     @Test
-    fun confirmationProjectionKeepsRecipientsContentAndComment() {
-        val first = target("channel-a")
-        val confirming =
-            ExternalShareState.Confirming(
-                envelope =
-                    ExternalShareEnvelope(
-                        "token",
-                        1L,
-                        "android",
-                        text = "Body",
-                        subject = "Subject"
-                    ),
-                serverId = "server",
-                selectedTargets = listOf(first),
-                comment = "Comment"
-            )
-
-        val projection = confirming.toExternalShareConfirmationUiState()
-
-        assertEquals(listOf(first.externalKey()), projection.selectedTargets.map { it.stableKey })
-        assertEquals(listOf("Subject", "Body"), projection.contentLines)
-        assertEquals("Comment", projection.comment)
-        assertTrue(projection.canSend)
-    }
-
-    @Test
-    fun singleSuccessfulDeliveryNavigatesToTypedConversation() {
+    fun concreteTargetMapsToTypedConversation() {
         val destination = target("channel-a")
-        val completed =
-            ExternalShareState.Completed(
-                envelope = ExternalShareEnvelope("token", 1L, "android", text = "hello"),
-                serverId = "server",
-                comment = "",
-                attemptId = 4L,
-                deliveries =
-                    listOf(
-                        ExternalShareDelivery(
-                            target = destination,
-                            deliveryId = "delivery",
-                            status = ExternalShareDeliveryStatus.Sent
-                        )
-                    )
-            )
-
-        assertEquals(destination, completed.singleSuccessfulNavigationTargetOrNull())
-        val identity = assertNotNull(destination.toExternalShareConversationIdentityOrNull())
+        val identity = destination.toExternalShareConversationIdentityOrNull()
+            ?: error("expected identity")
         assertEquals(ChannelId("channel-a"), identity.channelId)
         assertEquals(destination.channelKind, identity.kind)
-    }
-
-    @Test
-    fun partialOrMultipleDeliveryDoesNotGuessNavigationTarget() {
-        val first = target("channel-a")
-        val second = target("channel-b")
-        val envelope = ExternalShareEnvelope("token", 1L, "android", text = "hello")
-        val partial =
-            ExternalShareState.Completed(
-                envelope,
-                "server",
-                "",
-                5L,
-                listOf(
-                    ExternalShareDelivery(first, "first", ExternalShareDeliveryStatus.Sent),
-                    ExternalShareDelivery(second, "second", ExternalShareDeliveryStatus.Failed, "failed")
-                )
-            )
-        val multiple =
-            partial.copy(
-                deliveries =
-                    listOf(
-                        ExternalShareDelivery(first, "first", ExternalShareDeliveryStatus.Sent),
-                        ExternalShareDelivery(second, "second", ExternalShareDeliveryStatus.Sent)
-                    )
-            )
-
-        assertNull(partial.singleSuccessfulNavigationTargetOrNull())
-        assertNull(multiple.singleSuccessfulNavigationTargetOrNull())
     }
 
     private fun state(
@@ -170,6 +96,7 @@ class ExternalSharePickerAdapterTest {
     ): ExternalShareState.SelectingTargets =
         ExternalShareState.SelectingTargets(
             envelope = ExternalShareEnvelope("token", 1L, "android", text = "hello"),
+            accountId = "account",
             serverId = "server",
             targets = targets,
             selectedTargets = selected,

@@ -6,6 +6,7 @@ import com.tencent.kmm.network.export.NetworkErrorKind
 import com.tencent.kmm.network.export.NetworkRequest
 import com.tencent.kmm.network.export.NetworkResponse
 import com.tencent.kmm.network.export.NetworkResponseBody
+import com.tencent.kmm.network.export.NetworkTransferProgress
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -119,6 +120,34 @@ class NetworkKmmUploadTimeoutTest {
             30_000L,
             assertNotNull(captured).policy.timeoutMillis,
             "in-memory bytes multipart keeps the ordinary request bound"
+        )
+    }
+
+    @Test
+    fun multipartForwardsTransportByteProgressWithoutSynthesizingPercentages() = runTest {
+        val observed = mutableListOf<SlockTransferProgress>()
+        val executor =
+            NetworkKmmSlockHttpExecutor(
+                warningLogger = {},
+                multipartTransportOverride = { request ->
+                    request.progress.uploadProgress?.invoke(NetworkTransferProgress(64L, 256L))
+                    request.progress.uploadProgress?.invoke(NetworkTransferProgress(256L, 256L))
+                    okResponse(request)
+                }
+            )
+
+        executor.executeMultipart(
+            priority = SlockRequestPriority.Foreground,
+            url = "https://api.test/api/attachments/upload",
+            fields = emptyMap(),
+            files = listOf(bytesFile()),
+            headers = emptyMap(),
+            onUploadProgress = observed::add
+        )
+
+        assertEquals(
+            listOf(SlockTransferProgress(64L, 256L), SlockTransferProgress(256L, 256L)),
+            observed
         )
     }
 

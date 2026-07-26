@@ -225,7 +225,8 @@ class SharedApiEnvironmentNetworkClientTest {
             url: String,
             fields: Map<String, String>,
             files: List<MultipartFile>,
-            headers: Map<String, String>
+            headers: Map<String, String>,
+            onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)?
         ): SlockHttpExecutorResponse {
             multipartCalls += 1
             urls += url

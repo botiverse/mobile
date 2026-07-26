@@ -46,7 +46,7 @@ class SharedThreadComposerDraftStoreTest {
         scheduler.runPending()
 
         assertEquals("abc", persistence.read(draftKey)?.text)
-        assertEquals(4, storage.writeCount)
+        assertEquals(5, storage.writeCount)
         assertEquals(1, scheduler.executedTaskCount)
     }
 
@@ -69,11 +69,11 @@ class SharedThreadComposerDraftStoreTest {
         store.dispatch(SharedThreadComposerDraftIntent.Flush)
 
         assertEquals("persist on blur", persistence.read(draftKey)?.text)
-        assertEquals(4, storage.writeCount)
+        assertEquals(5, storage.writeCount)
 
         scheduler.runPending()
 
-        assertEquals(4, storage.writeCount)
+        assertEquals(5, storage.writeCount)
         assertEquals(0, scheduler.executedTaskCount)
     }
 
@@ -1507,6 +1507,145 @@ class SharedThreadComposerDraftStoreTest {
         assertEquals(listOf(pending), store.state.value.pendingMentionActions)
         assertEquals(null, store.state.value.mentionActionNotice)
     }
+
+    @Test
+    fun externalShareStagesDurableQueuedDraftIntoCanonicalRootComposer() {
+        val persistence = SharedThreadComposerDraftPersistence(InMemorySlockKeyValueStore())
+        val persistSlice = SharedThreadComposerDraftPersistSlice(persistence)
+        val draftKey = "send=channel-share|parent=_|mention=channel-share"
+        val source = SharedThreadComposerExternalShareSource("token", "account", "server")
+        val attachment = externalShareAttachment(status = "queued")
+
+        assertEquals(
+            ExternalShareComposerDraftStageResult.Staged,
+            persistSlice.stageExternalShareDraft(
+                draftKey = draftKey,
+                text = "Subject\n\nBody",
+                attachments = listOf(attachment),
+                source = source
+            )
+        )
+
+        val restoredStore = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
+        restoredStore.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = KuiklyThreadComposerPayload(instanceId = "composer-share"),
+                draftKey = draftKey
+            )
+        )
+        assertEquals("Subject\n\nBody", restoredStore.state.value.seedText)
+        assertEquals(listOf(attachment), restoredStore.state.value.uploadedAttachments)
+        assertEquals(listOf(source), restoredStore.state.value.externalShareSources)
+        assertTrue(persistSlice.activeDraftRecordsState.value.any { it.key == draftKey })
+    }
+
+    @Test
+    fun interruptedExternalShareUploadRestoresAsQueuedAfterProcessDeath() {
+        val persistence = SharedThreadComposerDraftPersistence(InMemorySlockKeyValueStore())
+        val draftKey = "send=channel-share|parent=_|mention=channel-share"
+        persistence.save(
+            key = draftKey,
+            text = "Body",
+            asTask = false,
+            uploadedAttachments = listOf(externalShareAttachment(status = "uploading")),
+            externalShareSources = listOf(SharedThreadComposerExternalShareSource("token", "account", "server"))
+        )
+
+        val restored = persistence.read(draftKey) ?: error("expected draft")
+
+        assertEquals("queued", restored.uploadedAttachments.single().status)
+        assertEquals(0L, restored.uploadedAttachments.single().uploadBytesTransferred)
+        assertEquals("private://image", restored.uploadedAttachments.single().fileRef)
+    }
+
+    @Test
+    fun uploadProgressIsMonotonicClampedAndIgnoredAfterTerminalReplacement() {
+        val store = SharedThreadComposerDraftStore()
+        store.dispatch(
+            SharedThreadComposerDraftIntent.AddLocalAttachments(
+                listOf(externalShareAttachment(status = "uploading"))
+            )
+        )
+        store.dispatch(SharedThreadComposerDraftIntent.UpdateAttachmentUploadProgress("local", 70L, 100L))
+        store.dispatch(SharedThreadComposerDraftIntent.UpdateAttachmentUploadProgress("local", 30L, 100L))
+        store.dispatch(SharedThreadComposerDraftIntent.UpdateAttachmentUploadProgress("local", 150L, 100L))
+        assertEquals(100L, store.state.value.uploadedAttachments.single().uploadBytesTransferred)
+        assertEquals(100, store.state.value.uploadedAttachments.single().threadComposerUploadProgressPercent())
+
+        store.dispatch(
+            SharedThreadComposerDraftIntent.AddUploadedAttachments(
+                attachments = listOf(SharedThreadComposerAttachment("remote", "image.jpg")),
+                replacedAttachmentIds = setOf("local"),
+                replacedAttachmentIdsByUploadedId = mapOf("remote" to "local")
+            )
+        )
+        store.dispatch(SharedThreadComposerDraftIntent.UpdateAttachmentUploadProgress("local", 99L, 100L))
+        assertEquals(listOf("remote"), store.state.value.uploadedAttachments.map { it.id })
+    }
+
+    @Test
+    fun externalShareStagingRejectsReplyComposerAndUnboundFileReference() {
+        val persistSlice =
+            SharedThreadComposerDraftPersistSlice(
+                SharedThreadComposerDraftPersistence(InMemorySlockKeyValueStore())
+            )
+        val source = SharedThreadComposerExternalShareSource("token", "account", "server")
+        val reply =
+            persistSlice.stageExternalShareDraft(
+                draftKey = "send=channel|parent=message|mention=channel",
+                text = "Body",
+                attachments = emptyList(),
+                source = source
+            )
+        val invalidAttachment =
+            persistSlice.stageExternalShareDraft(
+                draftKey = "send=channel|parent=_|mention=channel",
+                text = "Body",
+                attachments = listOf(externalShareAttachment(status = "queued").copy(fileRef = null)),
+                source = source
+            )
+
+        assertEquals(
+            "external_share_reply_composer_not_supported",
+            (reply as ExternalShareComposerDraftStageResult.Rejected).code
+        )
+        assertEquals(
+            "external_share_attachment_invalid",
+            (invalidAttachment as ExternalShareComposerDraftStageResult.Rejected).code
+        )
+    }
+
+    @Test
+    fun queuedExternalShareAttachmentWaitsForExplicitSendWithoutPretendingUploadStarted() {
+        val queued =
+            KuiklyPendingAttachmentItem(
+                id = "local",
+                fileName = "image.jpg",
+                status = "queued",
+                previewUri = "private://image",
+                source = "external_share"
+            )
+
+        assertFalse(listOf(queued).hasUploadingThreadAttachment())
+        assertTrue(listOf(queued).hasBlockingThreadAttachmentUpload())
+        assertFalse(queued.isReadyThreadAttachmentForSend())
+        assertTrue(queued.canOpenComposerAttachmentPreview(composerEnabled = true))
+    }
+
+    private fun externalShareAttachment(status: String) =
+        SharedThreadComposerAttachment(
+            id = "local",
+            fileName = "image.jpg",
+            sizeBytes = 100L,
+            mimeType = "image/jpeg",
+            status = status,
+            fileRef = "private://image",
+            source = "external_share",
+            externalShareToken = "token",
+            externalShareAccountId = "account",
+            externalShareServerId = "server",
+            uploadBytesTotal = 100L
+        )
 }
 
 private class CountingSharedPreferenceStore : build.raft.app.data.SharedPreferenceStore {

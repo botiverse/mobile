@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlin.coroutines.EmptyCoroutineContext
 
@@ -35,6 +36,7 @@ internal data class SharedThreadComposerDraftState(
     val failureLabel: String? = null,
     val removedAttachmentIds: Set<String> = emptySet(),
     val uploadedAttachments: List<SharedThreadComposerAttachment> = emptyList(),
+    val externalShareSources: List<SharedThreadComposerExternalShareSource> = emptyList(),
     val pendingMentionActions: List<KuiklyPendingMentionActionItem> = emptyList(),
     val mentionActionNotice: String? = null,
     val mentionActionStates: Map<String, String> = emptyMap(),
@@ -46,7 +48,15 @@ internal data class SharedThreadComposerDraftState(
 internal data class SharedThreadComposerPersistedDraft(
     val text: String = "",
     val asTask: Boolean = false,
-    val uploadedAttachments: List<SharedThreadComposerAttachment> = emptyList()
+    val uploadedAttachments: List<SharedThreadComposerAttachment> = emptyList(),
+    val externalShareSources: List<SharedThreadComposerExternalShareSource> = emptyList()
+)
+
+@Serializable
+internal data class SharedThreadComposerExternalShareSource(
+    val token: String,
+    val accountId: String,
+    val serverId: String
 )
 
 internal data class SharedThreadComposerDraftRecord(
@@ -74,6 +84,11 @@ internal data class SharedThreadComposerDraftRecord(
             val otherMention = other.mentionChannelId?.takeIf { it.isNotBlank() }
             parent != null && parent == otherParent && mention != null && mention == otherMention
         }
+}
+
+internal sealed interface ExternalShareComposerDraftStageResult {
+    data object Staged : ExternalShareComposerDraftStageResult
+    data class Rejected(val code: String) : ExternalShareComposerDraftStageResult
 }
 
 internal data class SharedThreadComposerDraftProjection(
@@ -135,7 +150,8 @@ internal class SharedThreadComposerDraftPersistence(
         SharedThreadComposerPersistedDraft(
             text = text,
             asTask = store.getString(asTaskKey(key)) == "true",
-            uploadedAttachments = readUploadedAttachments(key)
+            uploadedAttachments = readUploadedAttachments(key),
+            externalShareSources = readExternalShareSources(key)
         )
     }
 
@@ -153,7 +169,8 @@ internal class SharedThreadComposerDraftPersistence(
         key: String,
         text: String,
         asTask: Boolean,
-        uploadedAttachments: List<SharedThreadComposerAttachment> = emptyList()
+        uploadedAttachments: List<SharedThreadComposerAttachment> = emptyList(),
+        externalShareSources: List<SharedThreadComposerExternalShareSource> = emptyList()
     ) {
         synchronized(lock) {
             val persistedAttachments = uploadedAttachments.persistableThreadComposerDraftAttachments()
@@ -162,7 +179,8 @@ internal class SharedThreadComposerDraftPersistence(
                     "textBlank=${text.isBlank()} asTask=$asTask attachments=${persistedAttachments.size} " +
                     "activeBefore=${activeKeys().sorted().joinToString(separator = ",")}"
             )
-            if (text.isBlank() && !asTask && persistedAttachments.isEmpty()) {
+            val persistedSources = externalShareSources.validExternalShareComposerSources()
+            if (text.isBlank() && !asTask && persistedAttachments.isEmpty() && persistedSources.isEmpty()) {
                 clearUnlocked(key)
                 return@synchronized
             }
@@ -174,11 +192,86 @@ internal class SharedThreadComposerDraftPersistence(
                     .takeIf { it.isNotEmpty() }
                     ?.let { attachments -> ComposerDraftJson.encodeToString(attachments) }
             )
+            store.putString(
+                sourcesKey(key),
+                persistedSources.takeIf { it.isNotEmpty() }
+                    ?.let { sources -> ComposerDraftJson.encodeToString(sources) }
+            )
             addActiveKey(key)
             diagnosticsLogger?.invoke(
                 "thread_composer_draft_persist_saved key=$key activeAfter=${activeKeys().sorted().joinToString(separator = ",")}"
             )
         }
+    }
+
+    /**
+     * Atomically merges an External Share handoff into the canonical conversation draft. The
+     * route contains only conversation identity; text and private file references enter through
+     * this store-owned persistence boundary before navigation.
+     */
+    fun stageExternalShare(
+        key: String,
+        text: String,
+        attachments: List<SharedThreadComposerAttachment>,
+        source: SharedThreadComposerExternalShareSource
+    ): ExternalShareComposerDraftStageResult = synchronized(lock) {
+        val record = key.toSharedThreadComposerDraftRecord()
+            ?: return@synchronized ExternalShareComposerDraftStageResult.Rejected(
+                "external_share_composer_key_invalid"
+            )
+        if (!record.isRootComposer) {
+            return@synchronized ExternalShareComposerDraftStageResult.Rejected(
+                "external_share_reply_composer_not_supported"
+            )
+        }
+        val normalizedAttachments = attachments.persistableThreadComposerDraftAttachments()
+        if (listOf(source).validExternalShareComposerSources().size != 1) {
+            return@synchronized ExternalShareComposerDraftStageResult.Rejected(
+                "external_share_source_invalid"
+            )
+        }
+        if (
+            normalizedAttachments.size != attachments.size ||
+            normalizedAttachments.any { attachment -> !attachment.isValidExternalShareQueuedAttachment() }
+        ) {
+            return@synchronized ExternalShareComposerDraftStageResult.Rejected(
+                "external_share_attachment_invalid"
+            )
+        }
+        val current = readUnlocked(key)
+        val nextText =
+            listOf(current?.text.orEmpty(), text.trim())
+                .filter(String::isNotBlank)
+                .distinct()
+                .joinToString("\n\n")
+        val nextAttachments =
+            (current?.uploadedAttachments.orEmpty() + normalizedAttachments)
+                .distinctBy { attachment -> attachment.id }
+                .persistableThreadComposerDraftAttachments()
+        val nextSources =
+            (current?.externalShareSources.orEmpty() + source)
+                .validExternalShareComposerSources()
+        if (nextText.isBlank() && nextAttachments.isEmpty()) {
+            return@synchronized ExternalShareComposerDraftStageResult.Rejected(
+                "external_share_composer_draft_empty"
+            )
+        }
+        store.putString(textKey(key), nextText)
+        store.putString(asTaskKey(key), (current?.asTask == true).toString())
+        store.putString(
+            attachmentsKey(key),
+            nextAttachments.takeIf { it.isNotEmpty() }?.let { ComposerDraftJson.encodeToString(nextAttachments) }
+        )
+        store.putString(
+            sourcesKey(key),
+            ComposerDraftJson.encodeToString(nextSources)
+        )
+        addActiveKey(key)
+        diagnosticsLogger?.invoke(
+            "thread_composer_external_share_staged key=$key textLen=${nextText.length} " +
+                "attachments=${normalizedAttachments.size}"
+        )
+        ExternalShareComposerDraftStageResult.Staged
     }
 
     fun clear(key: String) = synchronized(lock) {
@@ -197,7 +290,8 @@ internal class SharedThreadComposerDraftPersistence(
         return SharedThreadComposerPersistedDraft(
             text = text,
             asTask = store.getString(asTaskKey(key)) == "true",
-            uploadedAttachments = readUploadedAttachments(key)
+            uploadedAttachments = readUploadedAttachments(key),
+            externalShareSources = readExternalShareSources(key)
         )
     }
 
@@ -208,6 +302,7 @@ internal class SharedThreadComposerDraftPersistence(
         store.putString(textKey(key), null)
         store.putString(asTaskKey(key), null)
         store.putString(attachmentsKey(key), null)
+        store.putString(sourcesKey(key), null)
         removeActiveKey(key)
         diagnosticsLogger?.invoke(
             "thread_composer_draft_persist_cleared key=$key activeAfter=${activeKeys().sorted().joinToString(separator = ",")}"
@@ -222,6 +317,17 @@ internal class SharedThreadComposerDraftPersistence(
     private fun textKey(key: String): String = "threadComposerDraft:v1:$key:text"
     private fun asTaskKey(key: String): String = "threadComposerDraft:v1:$key:asTask"
     private fun attachmentsKey(key: String): String = "threadComposerDraft:v1:$key:attachments"
+    private fun sourcesKey(key: String): String = "threadComposerDraft:v1:$key:externalShareSources"
+
+    private fun readExternalShareSources(key: String): List<SharedThreadComposerExternalShareSource> =
+        store.getString(sourcesKey(key))
+            ?.let { encoded ->
+                runCatching {
+                    ComposerDraftJson.decodeFromString<List<SharedThreadComposerExternalShareSource>>(encoded)
+                }.getOrNull()
+            }
+            .orEmpty()
+            .validExternalShareComposerSources()
 
     private fun readUploadedAttachments(key: String): List<SharedThreadComposerAttachment> =
         store.getString(attachmentsKey(key))
@@ -232,6 +338,17 @@ internal class SharedThreadComposerDraftPersistence(
             }
             .orEmpty()
             .persistableThreadComposerDraftAttachments()
+            .map { attachment ->
+                if (attachment.source == "external_share" && attachment.status == "uploading") {
+                    attachment.copy(
+                        status = "queued",
+                        errorCode = null,
+                        uploadBytesTransferred = 0L
+                    )
+                } else {
+                    attachment
+                }
+            }
 
     private fun activeKeys(): Set<String> =
         readActiveKeysFromStore()
@@ -381,7 +498,8 @@ internal class SharedThreadComposerDraftPersistSlice(
                             reduced.copy(
                                 seedText = persistedDraft.text,
                                 seedAsTask = persistedDraft.asTask,
-                                uploadedAttachments = persistedDraft.uploadedAttachments
+                                uploadedAttachments = persistedDraft.uploadedAttachments,
+                                externalShareSources = persistedDraft.externalShareSources
                             )
                         }
                         ?: reduced
@@ -421,7 +539,8 @@ internal class SharedThreadComposerDraftPersistSlice(
                                 key = key,
                                 text = next.seedText,
                                 asTask = next.seedAsTask,
-                                uploadedAttachments = next.visiblePersistableThreadComposerDraftAttachments()
+                                uploadedAttachments = next.visiblePersistableThreadComposerDraftAttachments(),
+                                externalShareSources = next.externalShareSources
                             )
                             persistence.clear(fallbackSourceKey)
                             refreshActiveDraftRecords(reason = "StartFallbackRestore")
@@ -435,6 +554,7 @@ internal class SharedThreadComposerDraftPersistSlice(
             is SharedThreadComposerDraftIntent.InsertMention,
             is SharedThreadComposerDraftIntent.RestoreAfterFailure,
             is SharedThreadComposerDraftIntent.AddUploadedAttachments,
+            is SharedThreadComposerDraftIntent.MarkAttachmentsFailed,
             is SharedThreadComposerDraftIntent.RemoveAttachment ->
                 next.draftKey?.let { key ->
                     cancelPendingWrite(key)
@@ -528,7 +648,8 @@ internal class SharedThreadComposerDraftPersistSlice(
                 key = key,
                 text = state.seedText,
                 asTask = state.seedAsTask,
-                uploadedAttachments = state.visiblePersistableThreadComposerDraftAttachments()
+                uploadedAttachments = state.visiblePersistableThreadComposerDraftAttachments(),
+                externalShareSources = state.externalShareSources
             )
             refreshActiveDraftRecords(reason = reason)
         }
@@ -548,7 +669,8 @@ internal class SharedThreadComposerDraftPersistSlice(
                 key = key,
                 text = state.seedText,
                 asTask = state.seedAsTask,
-                uploadedAttachments = state.visiblePersistableThreadComposerDraftAttachments()
+                uploadedAttachments = state.visiblePersistableThreadComposerDraftAttachments(),
+                externalShareSources = state.externalShareSources
             )
             refreshActiveDraftRecords(reason = "ChangeDebounced")
         }
@@ -585,6 +707,24 @@ internal class SharedThreadComposerDraftPersistSlice(
                 .distinctBy { attachment -> attachment.id }
     }
 
+    fun stageExternalShareDraft(
+        draftKey: String?,
+        text: String,
+        attachments: List<SharedThreadComposerAttachment>,
+        source: SharedThreadComposerExternalShareSource
+    ): ExternalShareComposerDraftStageResult {
+        val key = draftKey?.takeIf(String::isNotBlank)
+            ?: return ExternalShareComposerDraftStageResult.Rejected(
+                "external_share_composer_key_missing"
+            )
+        flushPendingWrite(key)
+        val result = persistence.stageExternalShare(key, text, attachments, source)
+        if (result is ExternalShareComposerDraftStageResult.Staged) {
+            refreshActiveDraftRecords(reason = "external_share_stage")
+        }
+        return result
+    }
+
     private fun consumeStagedUploadedAttachments(draftKey: String?): List<SharedThreadComposerAttachment> {
         val key = draftKey?.takeIf { it.isNotBlank() } ?: return emptyList()
         return stagedUploadedAttachmentsByDraftKey.remove(key).orEmpty()
@@ -599,7 +739,8 @@ internal class SharedThreadComposerDraftPersistSlice(
 private fun SharedThreadComposerDraftState.hasPersistableThreadComposerDraft(): Boolean =
     seedText.isNotBlank() ||
         seedAsTask ||
-        visiblePersistableThreadComposerDraftAttachments().isNotEmpty()
+        visiblePersistableThreadComposerDraftAttachments().isNotEmpty() ||
+        externalShareSources.isNotEmpty()
 
 private fun SharedThreadComposerDraftState.requiresComposerHostSync(
     previous: SharedThreadComposerDraftState
@@ -634,6 +775,7 @@ private fun SharedThreadComposerDraftIntent.toThreadComposerDraftIntentDiagnosti
         is SharedThreadComposerDraftIntent.AddUploadedAttachments -> "AddUploadedAttachments"
         is SharedThreadComposerDraftIntent.AddLocalAttachments -> "AddLocalAttachments"
         is SharedThreadComposerDraftIntent.MarkAttachmentsFailed -> "MarkAttachmentsFailed"
+        is SharedThreadComposerDraftIntent.UpdateAttachmentUploadProgress -> "UpdateAttachmentUploadProgress"
         is SharedThreadComposerDraftIntent.RemoveAttachment -> "RemoveAttachment"
         is SharedThreadComposerDraftIntent.RetryAttachment -> "RetryAttachment"
     }
@@ -695,6 +837,11 @@ internal sealed interface SharedThreadComposerDraftIntent {
         val attachmentIds: Set<String>,
         val errorCode: String
     ) : SharedThreadComposerDraftIntent
+    data class UpdateAttachmentUploadProgress(
+        val attachmentId: String,
+        val bytesTransferred: Long,
+        val bytesTotal: Long?
+    ) : SharedThreadComposerDraftIntent
     data class RemoveAttachment(val id: String) : SharedThreadComposerDraftIntent
     data class RetryAttachment(val id: String) : SharedThreadComposerDraftIntent
 }
@@ -731,12 +878,25 @@ internal class SharedThreadComposerDraftStore(
                     focusRequestNonce = intent.composer.focusRequestNonce
                 )
             is SharedThreadComposerDraftIntent.Change ->
-                current.copy(
-                    seedText = intent.seedText ?: current.seedText,
-                    seedAsTask = intent.seedAsTask ?: current.seedAsTask,
-                    sending = false,
-                    failureLabel = null
-                )
+                (intent.seedText ?: current.seedText).let { nextText ->
+                    current.copy(
+                        seedText = nextText,
+                        seedAsTask = intent.seedAsTask ?: current.seedAsTask,
+                        sending = false,
+                        failureLabel = null,
+                        externalShareSources =
+                            if (
+                                nextText.isBlank() &&
+                                current.visibleSessionThreadComposerDraftAttachments().none { attachment ->
+                                    attachment.source == "external_share"
+                                }
+                            ) {
+                                emptyList()
+                            } else {
+                                current.externalShareSources
+                            }
+                    )
+                }
             is SharedThreadComposerDraftIntent.InsertMention ->
                 current.copy(
                     seedText = current.seedText.withInsertedThreadMention(intent.handle),
@@ -762,6 +922,7 @@ internal class SharedThreadComposerDraftStore(
                     failureLabel = null,
                     removedAttachmentIds = emptySet(),
                     uploadedAttachments = emptyList(),
+                    externalShareSources = emptyList(),
                     mentionActionNotice = null,
                     mentionActionStates = emptyMap(),
                     removingMentionActionIds = emptySet(),
@@ -786,6 +947,7 @@ internal class SharedThreadComposerDraftStore(
                     failureLabel = null,
                     removedAttachmentIds = if (shouldClearComposer) emptySet() else current.removedAttachmentIds,
                     uploadedAttachments = if (shouldClearComposer) emptyList() else current.uploadedAttachments,
+                    externalShareSources = if (shouldClearComposer) emptyList() else current.externalShareSources,
                     mentionActionNotice = null,
                     mentionActionStates = emptyMap(),
                     removingMentionActionIds = emptySet(),
@@ -803,6 +965,7 @@ internal class SharedThreadComposerDraftStore(
                     failureLabel = null,
                     removedAttachmentIds = if (shouldClearComposer) emptySet() else current.removedAttachmentIds,
                     uploadedAttachments = if (shouldClearComposer) emptyList() else current.uploadedAttachments,
+                    externalShareSources = if (shouldClearComposer) emptyList() else current.externalShareSources,
                     pendingMentionActions = intent.pendingMentionActions,
                     mentionActionNotice = null,
                     mentionActionStates = emptyMap(),
@@ -948,12 +1111,48 @@ internal class SharedThreadComposerDraftStore(
                             }
                         }
                 )
-            is SharedThreadComposerDraftIntent.RemoveAttachment ->
+            is SharedThreadComposerDraftIntent.UpdateAttachmentUploadProgress ->
                 current.copy(
                     syncNonce = current.syncNonce + 1,
-                    sending = false,
-                    removedAttachmentIds = current.removedAttachmentIds + intent.id
+                    uploadedAttachments =
+                        current.uploadedAttachments.map { attachment ->
+                            if (
+                                attachment.id == intent.attachmentId &&
+                                attachment.status == "uploading"
+                            ) {
+                                val total = intent.bytesTotal?.takeIf { it > 0L }
+                                    ?: attachment.uploadBytesTotal?.takeIf { it > 0L }
+                                val transferred =
+                                    maxOf(attachment.uploadBytesTransferred, intent.bytesTransferred.coerceAtLeast(0L))
+                                        .let { value -> if (total != null) value.coerceAtMost(total) else value }
+                                attachment.copy(
+                                    uploadBytesTransferred = transferred,
+                                    uploadBytesTotal = total
+                                )
+                            } else {
+                                attachment
+                            }
+                        }
                 )
+            is SharedThreadComposerDraftIntent.RemoveAttachment ->
+                (current.removedAttachmentIds + intent.id).let { removedIds ->
+                    current.copy(
+                        syncNonce = current.syncNonce + 1,
+                        sending = false,
+                        removedAttachmentIds = removedIds,
+                        externalShareSources =
+                            if (
+                                current.seedText.isBlank() &&
+                                current.uploadedAttachments.none { attachment ->
+                                    attachment.source == "external_share" && attachment.id !in removedIds
+                                }
+                            ) {
+                                emptyList()
+                            } else {
+                                current.externalShareSources
+                            }
+                    )
+                }
             is SharedThreadComposerDraftIntent.RetryAttachment ->
                 current.copy(
                     syncNonce = current.syncNonce + 1,
@@ -971,8 +1170,33 @@ private fun SharedThreadComposerDraftState.visiblePersistableThreadComposerDraft
 private fun List<SharedThreadComposerAttachment>.persistableThreadComposerDraftAttachments(): List<SharedThreadComposerAttachment> =
     asSequence()
         .filter { attachment -> attachment.id.isNotBlank() }
-        .filter { attachment -> attachment.status == "ready" }
+        .filter { attachment ->
+            attachment.status == "ready" || attachment.isValidExternalShareQueuedAttachment()
+        }
         .distinctBy { attachment -> attachment.id }
+        .toList()
+
+private fun SharedThreadComposerAttachment.isValidExternalShareQueuedAttachment(): Boolean =
+    source == "external_share" &&
+        status in setOf("queued", "uploading", "failed") &&
+        !fileRef.isNullOrBlank() &&
+        !externalShareToken.isNullOrBlank() &&
+        !externalShareAccountId.isNullOrBlank() &&
+        !externalShareServerId.isNullOrBlank()
+
+private fun List<SharedThreadComposerExternalShareSource>.validExternalShareComposerSources(): List<SharedThreadComposerExternalShareSource> =
+    asSequence()
+        .map { source ->
+            source.copy(
+                token = source.token.trim(),
+                accountId = source.accountId.trim(),
+                serverId = source.serverId.trim()
+            )
+        }
+        .filter { source ->
+            source.token.isNotBlank() && source.accountId.isNotBlank() && source.serverId.isNotBlank()
+        }
+        .distinctBy { source -> source.token }
         .toList()
 
 internal fun String.withInsertedThreadMention(handle: String): String {

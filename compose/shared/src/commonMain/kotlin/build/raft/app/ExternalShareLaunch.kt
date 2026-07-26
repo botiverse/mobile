@@ -102,6 +102,7 @@ internal class ExternalShareLaunchCoordinator(
         dispatch(
             ExternalShareIntent.Load(
                 token = request.token,
+                accountId = ready.accountId,
                 serverId = ready.serverId,
                 serverOptions = ready.servers
             )
