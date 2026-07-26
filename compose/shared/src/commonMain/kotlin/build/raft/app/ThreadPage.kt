@@ -5093,7 +5093,9 @@ internal fun SharedThreadRouteContent(
     // Mirrors the MOBILE_ACTIVITY_STABLE_ORDER wiring (SharedInboxPanel).
     // Identity comes from the reply-cache provenance (the server the route
     // actually renders), never from session.currentServerId alone; an
-    // un-captured provenance fails closed to OFF.
+    // un-captured provenance fails closed to OFF. gateInputs carries the
+    // authority epoch, so the decision remember below re-fires when the same
+    // identity triple rotates to a new generation.
     val markdownLightPathOverrideRevision by
         ProcessDiagnosticFeatureFlagOverrides.registry
             .revisionFor(THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY)

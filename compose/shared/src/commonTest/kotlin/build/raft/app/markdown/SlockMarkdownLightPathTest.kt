@@ -359,9 +359,45 @@ class SlockMarkdownLightPathTest {
                 environmentId = "https://api-b.example/",
                 accountId = "principal-b",
                 serverId = "server-b",
+                authorityEpoch = 7L,
             ),
             threadMarkdownLightGateInputsOrNull(provenanceB),
         )
+    }
+
+    @Test
+    fun sameTripleDifferentGenerationFormsNewGateEpoch() {
+        // Round 2 tooth: with an identical environment/principal/server
+        // triple, a generation rotation must produce DIFFERENT gate inputs —
+        // otherwise the route-level remember(overrideRevision, gateInputs)
+        // keeps a stale decision across an authority rotation. The remember
+        // itself is Compose machinery; this locks the key it consumes.
+        val gen7 =
+            threadMarkdownLightGateInputsOrNull(
+                ReplyCacheProvenance(
+                    environmentId = "https://api-b.example/",
+                    principalId = "principal-b",
+                    serverId = "server-b",
+                    generation = 7L,
+                )
+            )
+        val gen8 =
+            threadMarkdownLightGateInputsOrNull(
+                ReplyCacheProvenance(
+                    environmentId = "https://api-b.example/",
+                    principalId = "principal-b",
+                    serverId = "server-b",
+                    generation = 8L,
+                )
+            )
+        assertNotNull(gen7)
+        assertNotNull(gen8)
+        assertTrue(gen7 != gen8, "generation rotation must change the gate epoch key")
+        assertEquals(7L, gen7!!.authorityEpoch)
+        assertEquals(8L, gen8!!.authorityEpoch)
+        assertEquals(gen7.environmentId, gen8.environmentId)
+        assertEquals(gen7.accountId, gen8.accountId)
+        assertEquals(gen7.serverId, gen8.serverId)
     }
 
     @Test
@@ -388,6 +424,51 @@ class SlockMarkdownLightPathTest {
                 )
             )
         )
+    }
+
+    @Test
+    fun gateDecisionBindsProvenanceScopeAndNeverInheritsAcrossServers() {
+        // Round 1 tooth at the DECISION level (not just the DTO helper):
+        // provenance-derived inputs drive the resolver, and the registry
+        // observes exactly that server scope — a later A-scoped decision does
+        // not leak into B's.
+        val registry =
+            DiagnosticFeatureFlagOverrideRegistry(
+                nowMillis = { 1_000L },
+                readStateController = ReadStateV1DiagnosticOverrideController { 1_000L },
+            )
+        registry.configureEntitlement(true)
+        val provenanceB =
+            ReplyCacheProvenance(
+                environmentId = "https://api-b.example/",
+                principalId = "principal-b",
+                serverId = "server-b",
+                generation = 7L,
+            )
+        val inputsB = threadMarkdownLightGateInputsOrNull(provenanceB)!!
+        resolveThreadMarkdownSingleParagraphLightPathEnabled(
+            registry = registry,
+            serverEffective = true,
+            environmentId = inputsB.environmentId,
+            accountId = inputsB.accountId,
+            serverId = inputsB.serverId,
+        )
+        val observed = registry.snapshot(THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY).observedScope
+        assertEquals("principal-b", observed?.accountId)
+        assertEquals("server-b", observed?.serverId)
+
+        // An A-scoped decision on the same registry replaces the observed
+        // scope rather than mixing with B's — no cross-server inheritance.
+        resolveThreadMarkdownSingleParagraphLightPathEnabled(
+            registry = registry,
+            serverEffective = false,
+            environmentId = "https://api-a.example/",
+            accountId = "principal-a",
+            serverId = "server-a",
+        )
+        val observedAfter = registry.snapshot(THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY).observedScope
+        assertEquals("principal-a", observedAfter?.accountId)
+        assertEquals("server-a", observedAfter?.serverId)
     }
 
     // ---------- helpers ----------

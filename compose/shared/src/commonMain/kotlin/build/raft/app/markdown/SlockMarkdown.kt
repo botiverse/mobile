@@ -1717,6 +1717,12 @@ internal data class ThreadMarkdownLightGateInputs(
     val environmentId: String,
     val accountId: String,
     val serverId: String,
+    // Authority epoch: the provenance's `generation`. The per-route
+    // `remember(overrideRevision, gateInputs)` decision cache must re-fire
+    // when the same identity triple rotates to a new generation — without
+    // this field the data class compares equal and the stale decision is
+    // reused (review round 2).
+    val authorityEpoch: Long,
 )
 
 internal fun threadMarkdownLightGateInputsOrNull(
@@ -1728,6 +1734,7 @@ internal fun threadMarkdownLightGateInputsOrNull(
                 environmentId = it.environmentId,
                 accountId = it.principalId,
                 serverId = it.serverId,
+                authorityEpoch = it.generation,
             )
         } ?: return null
     return inputs.takeIf {
