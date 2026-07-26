@@ -77,7 +77,7 @@ class ExternalShareLaunchTest {
         }
 
         assertEquals(
-            listOf(
+            listOf<ExternalShareIntent>(
                 ExternalShareIntent.Load(request.token, "server-a"),
                 ExternalShareIntent.Load(request.token, "server-a")
             ),
