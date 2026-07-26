@@ -1249,6 +1249,12 @@ internal fun AnnotatedString.withSlockMarkdownSpanFonts(baseStyle: TextStyle): A
     if (spanStyles.isEmpty()) return this
 
     val resolvedBase = baseStyle.withResolvedSlockFontFamily()
+    val inlineCodeRanges =
+        getStringAnnotations(
+            SLOCK_RICHTEXT_INLINE_CODE_ANNOTATION_TAG,
+            start = 0,
+            end = length,
+        )
     val builder = AnnotatedString.Builder(length)
     builder.append(this)
     spanStyles.forEach { range ->
@@ -1280,6 +1286,16 @@ internal fun AnnotatedString.withSlockMarkdownSpanFonts(baseStyle: TextStyle): A
                 range.end
             )
         }
+    }
+    inlineCodeRanges.forEach { range ->
+        builder.addStyle(
+            SpanStyle(
+                fontFamily = slockFontFamilyForWeight(FontWeight.Normal),
+                fontWeight = FontWeight.Normal,
+            ),
+            range.start,
+            range.end,
+        )
     }
     return builder.toAnnotatedString()
 }
@@ -2186,25 +2202,10 @@ internal fun slockMarkdownInlineChipWidthSp(
         .coerceAtLeast(40f)
         .sp
 
-// Keep inline code on the product typeface while preserving the web-relative
-// size and line-height contract.
+// Inline code uses the same resolved product typography as the surrounding
+// message. Its chrome remains distinct, but its glyph metrics must not drift.
 internal fun slockMarkdownInlineCodeTextStyle(base: TextStyle): TextStyle =
-    SlockRichTextChromeKind.InlineCode.styleToken
-        .applyToTextStyle(base)
-        .copy(
-            fontSize =
-                base.fontSize
-                    .takeIf { it.isSpecified }
-                    ?.let { (it.value * SlockMarkdownInlineCodeFontScale).sp }
-                    ?: TextUnit.Unspecified,
-            lineHeight =
-                base.lineHeight
-                    .takeIf { it.isSpecified && it.value > SlockMarkdownInlineCodeLineHeight.value }
-                    ?: SlockMarkdownInlineCodeLineHeight
-        )
-
-private const val SlockMarkdownInlineCodeFontScale = 0.875f
-private val SlockMarkdownInlineCodeLineHeight = 23.sp
+    SlockRichTextChromeKind.InlineCode.styleToken.applyToTextStyle(base)
 
 private fun String.slockInlineTextWidthUnits(): Int =
     fold(0) { total, char ->

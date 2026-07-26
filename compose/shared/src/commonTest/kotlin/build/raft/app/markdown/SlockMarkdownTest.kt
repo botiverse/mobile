@@ -1070,10 +1070,10 @@ class SlockMarkdownTest {
         assertEquals(2.sp, ordinaryMention.textDecorationThickness)
     }
 
-    // Product ruling: inline code keeps the relative code metrics but uses the
-    // same UI family as surrounding text and has exactly one chrome painter.
+    // Product ruling: inline code uses the surrounding product typography and
+    // exactly one distinct chrome painter.
     @Test
-    fun inlineCodeUsesProductFontWebRelativeMetricsAndSingleNeutralChrome() {
+    fun inlineCodeUsesBodyTypographyAndSingleNeutralChrome() {
         val inlineCodeStyle = slockMarkdownInlineCodeTextStyle(SlockType.Body)
         val inlineCodeStyleFromBoldText =
             slockMarkdownInlineCodeTextStyle(SlockType.Body.withSlockFontWeight(FontWeight.Bold))
@@ -1083,8 +1083,9 @@ class SlockMarkdownTest {
 
         assertEquals(slockFontFamilyForWeight(FontWeight.Normal), inlineCodeStyle.fontFamily)
         assertEquals(FontWeight.Normal, inlineCodeStyle.fontWeight)
-        assertEquals(12.25.sp, inlineCodeStyle.fontSize)
-        assertEquals(23.sp, inlineCodeStyle.lineHeight)
+        assertEquals(SlockType.Body.fontSize, inlineCodeStyle.fontSize)
+        assertEquals(SlockType.Body.lineHeight, inlineCodeStyle.lineHeight)
+        assertEquals(SlockType.Body.letterSpacing, inlineCodeStyle.letterSpacing)
         assertFalse(inlineCodeStyle.fontFamily == FontFamily.Monospace)
         assertEquals(slockFontFamilyForWeight(FontWeight.Normal), inlineCodeStyleFromBoldText.fontFamily)
         assertEquals(FontWeight.Normal, inlineCodeStyleFromBoldText.fontWeight)
@@ -1108,6 +1109,22 @@ class SlockMarkdownTest {
         assertEquals(4.dp, trailingEdge.paddingEnd)
         assertEquals(SlockColor.TextBlack.copy(alpha = 0.05f), leadingEdge.backgroundColor)
         assertEquals(SlockColor.TextBlack.copy(alpha = 0.05f), trailingEdge.backgroundColor)
+
+        val body = "`effective-family`"
+        val rendered =
+            buildSlockMarkdownParagraphAnnotatedString(
+                content = body,
+                annotator = slockMarkdownAnnotator(body),
+                codeSpanStyle = inlineCodeStyle.toSpanStyle(),
+            ).withSlockMarkdownSpanFonts(SlockType.Body)
+        val effectiveAtFirstGlyph =
+            rendered.spanStyles
+                .filter { range -> range.start <= 0 && range.end > 0 }
+                .fold(SpanStyle()) { style, range -> style.merge(range.item) }
+        assertEquals(slockFontFamilyForWeight(FontWeight.Normal), effectiveAtFirstGlyph.fontFamily)
+        assertEquals(FontWeight.Normal, effectiveAtFirstGlyph.fontWeight)
+        assertEquals(SlockType.Body.fontSize, effectiveAtFirstGlyph.fontSize)
+        assertEquals(SlockType.Body.letterSpacing, effectiveAtFirstGlyph.letterSpacing)
     }
 
     @Test
@@ -1128,7 +1145,9 @@ class SlockMarkdownTest {
         assertEquals(22.sp, resolvedStyle.lineHeight)
         assertEquals(22.sp, typography.text.lineHeight)
         assertEquals(22.sp, typography.paragraph.lineHeight)
-        assertEquals(23.sp, typography.inlineCode.lineHeight)
+        assertEquals(22.sp, typography.inlineCode.lineHeight)
+        assertEquals(14.sp, typography.inlineCode.fontSize)
+        assertEquals(0.sp, typography.inlineCode.letterSpacing)
         assertEquals(SlockType.Body.fontFamily, resolvedStyle.fontFamily)
     }
 
@@ -2025,7 +2044,8 @@ class SlockMarkdownTest {
     private fun buildSlockMarkdownParagraphAnnotatedString(
         content: String,
         annotator: MarkdownAnnotator,
-        linkInteractionListener: LinkInteractionListener? = null
+        linkInteractionListener: LinkInteractionListener? = null,
+        codeSpanStyle: SpanStyle = SpanStyle(),
     ): AnnotatedString {
         val parserContent = MarkdownParserContent.from(content).parserContent
         val parsedTree = MarkdownParser(SlockGFMFlavourDescriptor()).buildMarkdownTreeFromString(parserContent)
@@ -2033,7 +2053,7 @@ class SlockMarkdownTest {
         val settings =
             DefaultAnnotatorSettings(
                 linkTextSpanStyle = TextLinkStyles(style = slockMarkdownLinkSpanStyle(SlockType.Body)),
-                codeSpanStyle = SpanStyle(),
+                codeSpanStyle = codeSpanStyle,
                 annotator = annotator,
                 linkInteractionListener = linkInteractionListener
         )
