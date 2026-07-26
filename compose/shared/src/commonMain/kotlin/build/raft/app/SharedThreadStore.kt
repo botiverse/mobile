@@ -4851,6 +4851,7 @@ internal class SharedThreadStore(
             repliesProjectedResult
                 ?.preserveStableTimelineFrom(
                     previous = latest,
+                    preserveAuxiliaryProjectionFromPrevious = true,
                 )
                 ?.asLoadedEmptyReplyThreadPayload()
         val nextPayload =
@@ -4886,6 +4887,7 @@ internal class SharedThreadStore(
                     if (result is DataResult.Content) {
                         nextPayload.preserveStableTimelineFrom(
                             previous = currentPayload,
+                            preserveAuxiliaryProjectionFromPrevious = true,
                             refreshObservedMessageIds = refreshObservedMessageIds,
                             sendEchoMatchPolicy = ThreadSendEchoMatchPolicy.ExactRandomId
                         )
@@ -7498,6 +7500,7 @@ private fun KuiklyThreadScreenPayload.withResolvedReplyThreadAction(
 internal fun KuiklyThreadScreenPayload.preserveStableTimelineFrom(
     previous: KuiklyThreadScreenPayload,
     preserveSelectedReactions: Boolean = true,
+    preserveAuxiliaryProjectionFromPrevious: Boolean = false,
     refreshObservedMessageIds: Set<String>? = null,
     sendEchoMatchPolicy: ThreadSendEchoMatchPolicy = ThreadSendEchoMatchPolicy.LegacyCompatible
 ): KuiklyThreadScreenPayload {
@@ -7531,6 +7534,13 @@ internal fun KuiklyThreadScreenPayload.preserveStableTimelineFrom(
         timelineMessages
             .withRetainedLocalFailedMessagesFrom(previous.messages)
             .withSelectedReactionsFrom(previous.messages, preserveSelectedReactions)
+            .let { messages ->
+                if (preserveAuxiliaryProjectionFromPrevious) {
+                    messages.withAcceptedAuxiliaryProjectionFrom(previous.messages)
+                } else {
+                    messages
+                }
+            }
             .preserveStableItemsFrom(previous.messages) { item -> item.id }
     val stableStatus =
         if (stableMessages.any { it.isTransientLocalSendingMessage() } && status == "empty") {
@@ -7548,6 +7558,14 @@ internal fun KuiklyThreadScreenPayload.preserveStableTimelineFrom(
     val reactionStableOrigin =
         stableOrigin
             ?.withSelectedReactionsFrom(previous.originMessage, preserveSelectedReactions)
+            ?.let { origin ->
+                val acceptedOrigin = previous.originMessage
+                if (preserveAuxiliaryProjectionFromPrevious && acceptedOrigin?.id == origin.id) {
+                    origin.withAcceptedAuxiliaryProjectionFrom(acceptedOrigin)
+                } else {
+                    origin
+                }
+            }
     val stableTasks =
         tasks
             .preserveStableItemsFrom(previous.tasks) { item -> item.id }
@@ -7589,6 +7607,50 @@ internal fun KuiklyThreadScreenPayload.preserveStableTimelineFrom(
         originStatus = stableOriginStatus,
         originErrorCode = stableOriginErrorCode,
         tasks = stableTasks
+    )
+}
+
+/**
+ * Saved membership and linked-task facts are auxiliary Store projections, not canonical facts from
+ * the messages response. A primary timeline refresh therefore cannot replace an already accepted
+ * projection with the response defaults while the Saved/Tasks authorities are still refreshing.
+ *
+ * This bridge is deliberately used only by the primary refresh commit. The later Saved lookup and
+ * SharedTasksDataStore projection remain authoritative and may replace or remove these retained
+ * facts. Identity is exact message id; unmatched rows never inherit another row's projection.
+ */
+private fun List<KuiklyThreadMessageItem>.withAcceptedAuxiliaryProjectionFrom(
+    previous: List<KuiklyThreadMessageItem>
+): List<KuiklyThreadMessageItem> {
+    if (isEmpty() || previous.isEmpty()) return this
+    val previousById = previous.associateBy { message -> message.id }
+    return map { message ->
+        previousById[message.id]
+            ?.takeIf { accepted -> accepted.id.isNotBlank() }
+            ?.let(message::withAcceptedAuxiliaryProjectionFrom)
+            ?: message
+    }
+}
+
+private fun KuiklyThreadMessageItem.withAcceptedAuxiliaryProjectionFrom(
+    previous: KuiklyThreadMessageItem
+): KuiklyThreadMessageItem {
+    if (id.isBlank() || id != previous.id) return this
+    val previousHasTaskProjection =
+        previous.taskId != null ||
+            previous.taskNumber != null ||
+            previous.taskStatus != null ||
+            previous.taskAssigneeKind != null ||
+            previous.taskAssigneeId != null ||
+            previous.taskAssigneeName != null
+    return copy(
+        isSaved = previous.isSaved,
+        taskId = if (previousHasTaskProjection) previous.taskId else taskId,
+        taskNumber = if (previousHasTaskProjection) previous.taskNumber else taskNumber,
+        taskStatus = if (previousHasTaskProjection) previous.taskStatus else taskStatus,
+        taskAssigneeKind = if (previousHasTaskProjection) previous.taskAssigneeKind else taskAssigneeKind,
+        taskAssigneeId = if (previousHasTaskProjection) previous.taskAssigneeId else taskAssigneeId,
+        taskAssigneeName = if (previousHasTaskProjection) previous.taskAssigneeName else taskAssigneeName
     )
 }
 

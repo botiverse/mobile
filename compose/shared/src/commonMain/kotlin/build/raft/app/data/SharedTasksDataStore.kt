@@ -39,6 +39,8 @@ private data class SharedTasksChannelKey(
 )
 
 private data class SharedTasksDataStoreState(
+    val ownerIdentityBound: Boolean = false,
+    val ownerIdentity: String? = null,
     val serverSnapshots: Map<String, TaskSnapshot> = emptyMap(),
     val serverSnapshotStatuses: Map<String, SharedTasksDataStoreStatus> = emptyMap(),
     val serverSnapshotRevisions: Map<String, Long> = emptyMap(),
@@ -89,6 +91,11 @@ internal class SharedTasksDataStore(
             clearOwnerDataLocked()
             ownerIdentity = nextIdentity
             ownerIdentityBound = true
+            state.value =
+                state.value.copy(
+                    ownerIdentityBound = true,
+                    ownerIdentity = nextIdentity
+                )
         }
     }
 
@@ -528,6 +535,33 @@ internal class SharedTasksDataStore(
                     channelName = null
                 )
         }
+
+    /**
+     * Synchronous first-frame projection for an already-bound Store owner. Production Compose
+     * consumers use this as collectAsState's initial value so a warm accepted task status does not
+     * briefly fall back to stale message payload data before the owner-bound Flow emits.
+     *
+     * A missing/unbound/mismatched owner returns null. This prevents a prior principal or API
+     * environment from becoming launch state while the asynchronous owner bind is still pending.
+     */
+    fun projectionForOwner(
+        expectedOwnerIdentity: String?,
+        serverId: String?,
+        scope: SharedTasksScope
+    ): SharedTasksProjectionSlice? {
+        val normalizedOwner = expectedOwnerIdentity?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        val current = state.value
+        if (!current.ownerIdentityBound || current.ownerIdentity != normalizedOwner) return null
+        return when (scope) {
+            SharedTasksScope.Server -> current.selectServerProjection(serverId)
+            is SharedTasksScope.Channel ->
+                current.selectChannelProjection(
+                    serverId = serverId,
+                    channelId = scope.channelId.value,
+                    channelName = null
+                )
+        }
+    }
 
     private fun SharedTasksDataStoreState.selectServerProjection(serverId: String?): SharedTasksProjectionSlice {
         val normalizedServerId = serverId.normalizedTasksStoreId() ?: return SharedTasksProjectionSlice()

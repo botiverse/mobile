@@ -5206,6 +5206,15 @@ internal fun SharedThreadRouteContent(
     val memberSuggestionScopeChannelId = memberSuggestionScopePayload.threadComposerMentionScopeChannelId()
     val memberSuggestionScopedMentions = memberSuggestionScopePayload.threadComposerMemberScopedMentions()
     val currentServerId = currentSession?.currentServerId?.trim()?.takeIf { it.isNotBlank() }
+    val taskProjectionOwnerIdentity =
+        remember(sharedStores.apiEnvironmentStore, currentSession?.user?.id) {
+            currentSession?.user?.id
+                ?.trim()
+                ?.takeIf { it.isNotBlank() }
+                ?.let { userId ->
+                    "${sharedStores.apiEnvironmentStore.current().apiBaseUrl.trimEnd('/')}|$userId"
+                }
+        }
     val threadMembersServerId = currentServerId?.let(::ServerId)
     val threadMembersChannelId = baseRenderedPayload.sourceThreadId?.trim()?.takeIf { it.isNotBlank() }?.let(::ChannelId)
     val threadServerMembersEntry by remember(serverMembersStore, threadMembersServerId) {
@@ -5262,6 +5271,19 @@ internal fun SharedThreadRouteContent(
         remember(timelineSlice) {
             timelineSlice.threadLinkedTaskReferences()
         }
+    val initialTaskProjectionSlice =
+        remember(tasksDataStore, taskProjectionOwnerIdentity, currentServerId, taskChannelId?.value) {
+            val channelId = taskChannelId
+            if (tasksDataStore != null && channelId != null) {
+                tasksDataStore.projectionForOwner(
+                    expectedOwnerIdentity = taskProjectionOwnerIdentity,
+                    serverId = currentServerId,
+                    scope = SharedTasksScope.Channel(channelId)
+                )
+            } else {
+                null
+            } ?: SharedTasksProjectionSlice()
+        }
     val taskProjectionSlice by remember(
         tasksDataStore,
         currentServerId,
@@ -5276,7 +5298,15 @@ internal fun SharedThreadRouteContent(
             )
             ?.distinctUntilChanged()
             ?: MutableStateFlow(SharedTasksProjectionSlice())
-    }.collectAsState(SharedTasksProjectionSlice())
+    }.collectAsState(initialTaskProjectionSlice)
+    val initialServerTaskProjectionSlice =
+        remember(tasksDataStore, taskProjectionOwnerIdentity, currentServerId) {
+            tasksDataStore?.projectionForOwner(
+                expectedOwnerIdentity = taskProjectionOwnerIdentity,
+                serverId = currentServerId,
+                scope = SharedTasksScope.Server
+            ) ?: SharedTasksProjectionSlice()
+        }
     val serverTaskProjectionSlice by remember(tasksDataStore, currentServerId) {
         tasksDataStore
             ?.projectionFlow(
@@ -5285,7 +5315,7 @@ internal fun SharedThreadRouteContent(
             )
             ?.distinctUntilChanged()
             ?: MutableStateFlow(SharedTasksProjectionSlice())
-    }.collectAsState(SharedTasksProjectionSlice())
+    }.collectAsState(initialServerTaskProjectionSlice)
     var refreshedTaskProjectionChannelId by remember(threadInstanceKey, currentServerId) {
         mutableStateOf<String?>(null)
     }

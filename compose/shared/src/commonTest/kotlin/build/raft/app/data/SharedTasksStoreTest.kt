@@ -31,6 +31,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class SharedTasksStoreTest {
@@ -1108,6 +1109,58 @@ class SharedTasksStoreTest {
             store.projection("server-1", SharedTasksScope.Channel(ChannelId("channel-1")))
         )
         appScope.cancel()
+    }
+
+    @Test
+    fun sharedTasksDataStoreFirstFrameProjectionRequiresExactBoundOwner() = runBlocking {
+        var ownerIdentity = "https://api.example.test|user-a"
+        val store = SharedTasksDataStore(ownerIdentityProvider = { ownerIdentity })
+        store.bindCurrentOwnerIdentity()
+        store.publishSnapshot(
+            serverId = "server-1",
+            scope = SharedTasksScope.Channel(ChannelId("channel-1")),
+            snapshot =
+                TaskSnapshot(
+                    tasks = listOf(task("task-a", TaskStatus.InReview, channelId = ChannelId("channel-1"))),
+                    summaryCounts = emptyMap()
+                )
+        )
+
+        val accepted =
+            store.projectionForOwner(
+                expectedOwnerIdentity = "https://api.example.test|user-a",
+                serverId = "server-1",
+                scope = SharedTasksScope.Channel(ChannelId("channel-1"))
+            )
+
+        assertEquals(listOf("task-a"), accepted?.tasks?.map { task -> task.id.value })
+        assertEquals(SharedTasksDataStoreStatus.Loaded, accepted?.status)
+        assertNull(
+            store.projectionForOwner(
+                expectedOwnerIdentity = "https://api.example.test|user-b",
+                serverId = "server-1",
+                scope = SharedTasksScope.Channel(ChannelId("channel-1"))
+            )
+        )
+
+        ownerIdentity = "https://api.example.test|user-b"
+        store.bindCurrentOwnerIdentity()
+
+        assertNull(
+            store.projectionForOwner(
+                expectedOwnerIdentity = "https://api.example.test|user-a",
+                serverId = "server-1",
+                scope = SharedTasksScope.Channel(ChannelId("channel-1"))
+            )
+        )
+        assertEquals(
+            SharedTasksProjectionSlice(),
+            store.projectionForOwner(
+                expectedOwnerIdentity = "https://api.example.test|user-b",
+                serverId = "server-1",
+                scope = SharedTasksScope.Channel(ChannelId("channel-1"))
+            )
+        )
     }
 
     @Test
