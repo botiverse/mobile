@@ -4,6 +4,7 @@ import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.lifecycle.lifecycleScope
 import build.raft.app.BuildConfig
@@ -22,9 +23,10 @@ class QaSessionBootstrapActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (!qaBootstrapRuntimeEnabled()) {
-            finish()
+            abort("runtime_gate", "disabled")
             return
         }
+        stage("activity_created")
         val requestId = intent.getStringExtra(EXTRA_REQUEST_ID)
         val expectedEnvelopeDigest = intent.getStringExtra(EXTRA_ENVELOPE_DIGEST)
         setIntent(Intent(this, QaSessionBootstrapActivity::class.java))
@@ -40,11 +42,16 @@ class QaSessionBootstrapActivity : ComponentActivity() {
     private suspend fun consumeLoginEnvelope(requestId: String, expectedDigest: String) {
         val rawBytes = withContext(Dispatchers.IO) {
             QaSessionBootstrapInbox.consume(applicationContext, requestId, "session")
-        } ?: return finish()
+        } ?: return abort("inbox_consume", "missing_or_invalid")
+        stage("inbox_consumed")
         try {
-            if ("sha256:${sha256(rawBytes)}" != expectedDigest) return finish()
+            if ("sha256:${sha256(rawBytes)}" != expectedDigest) {
+                abort("envelope_digest", "mismatch")
+                return
+            }
+            stage("envelope_validated")
             when (
-                withContext(Dispatchers.IO) {
+                val result = withContext(Dispatchers.IO) {
                     authDataSource().consumeQaLoginBootstrap(
                         envelopeJson = rawBytes.decodeToString(),
                         envelopeDigest = expectedDigest,
@@ -54,8 +61,12 @@ class QaSessionBootstrapActivity : ComponentActivity() {
                     )
                 }
             ) {
-                is SharedAuthResult.Success -> openShell()
-                else -> finish()
+                is SharedAuthResult.Success -> {
+                    stage("session_persisted")
+                    openShell()
+                }
+                SharedAuthResult.Unauthenticated -> abort("login_consume", "unauthenticated")
+                is SharedAuthResult.Failure -> abort("login_consume", result.code.name.lowercase())
             }
         } finally {
             rawBytes.fill(0)
@@ -65,7 +76,8 @@ class QaSessionBootstrapActivity : ComponentActivity() {
     private suspend fun recoverExistingSession() {
         val source = authDataSource()
         val session = withContext(Dispatchers.IO) { source.readStoredSession() }
-        if (session?.qaBootstrap == null) return finish()
+        if (session?.qaBootstrap == null) return abort("recovery_session", "missing")
+        stage("recovery_session_loaded")
         when (val status = withContext(Dispatchers.IO) { source.statusQaBootstrap() }) {
             is SharedAuthResult.Success -> {
                 if (status.data.status == "consumed_pending_ready" || status.data.status == "ready") {
@@ -73,16 +85,22 @@ class QaSessionBootstrapActivity : ComponentActivity() {
                         val applied = source.applyQaBootstrapStatus(status.data) ?: return@withContext null
                         source.authorizeQaBootstrapLaunch(applied)
                     }
-                    if (updated?.qaBootstrap != null) openShell() else finish()
+                    if (updated?.qaBootstrap != null) {
+                        stage("recovery_authorized")
+                        openShell()
+                    } else {
+                        abort("recovery_authorize", "binding_changed")
+                    }
                 } else {
                     withContext(Dispatchers.IO) {
                         KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(applicationContext))
                             .clearSession(reason = "qa_bootstrap_terminal", source = "qa_bootstrap_recovery")
                     }
-                    finish()
+                    abort("recovery_status", "terminal")
                 }
             }
-            else -> finish()
+            SharedAuthResult.Unauthenticated -> abort("recovery_status", "unauthenticated")
+            is SharedAuthResult.Failure -> abort("recovery_status", status.code.name.lowercase())
         }
     }
 
@@ -93,7 +111,17 @@ class QaSessionBootstrapActivity : ComponentActivity() {
         )
 
     private fun openShell() {
+        stage("shell_launch_requested")
         SlockKuiklyActivity.startAppShell(this, pageData = postLoginAppShellPageData(), clearTask = true)
+        finish()
+    }
+
+    private fun stage(stage: String) {
+        Log.i(LOG_TAG, "QA_BOOTSTRAP_STAGE stage=$stage")
+    }
+
+    private fun abort(stage: String, code: String) {
+        Log.i(LOG_TAG, "QA_BOOTSTRAP_FAILURE stage=$stage code=$code")
         finish()
     }
 
@@ -114,6 +142,7 @@ class QaSessionBootstrapActivity : ComponentActivity() {
     }
 
     companion object {
+        private const val LOG_TAG = "SlockQaBootstrap"
         const val EXTRA_REQUEST_ID = "qaBootstrapRequestId"
         const val EXTRA_ENVELOPE_DIGEST = "qaBootstrapEnvelopeDigest"
     }

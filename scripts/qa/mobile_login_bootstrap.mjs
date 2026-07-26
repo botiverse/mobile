@@ -4,6 +4,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import {
   apksignerVerifyArgs,
+  parseBootstrapDiagnostics,
   parseReadyLine,
   readyPayload,
   selectApkSigningCertificateSha256,
@@ -162,7 +163,11 @@ async function prepare() {
     }
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
-  throw new Error("exact-bound QA_BOOTSTRAP_READY was not observed before timeout");
+  const diagnosticLog = run("adb", ["logcat", "-d", "-v", "brief", "SlockQaBootstrap:I", "*:S"]).stdout;
+  const diagnostics = parseBootstrapDiagnostics(diagnosticLog);
+  throw new Error(
+    `exact-bound QA_BOOTSTRAP_READY was not observed before timeout; stages=${diagnostics.join(",") || "none"}`,
+  );
 }
 
 function cleanup() {
