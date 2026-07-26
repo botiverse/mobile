@@ -8,6 +8,7 @@ import {
   adbRunAsShellArgs,
   apksignerVerifyArgs,
   canonicalJson,
+  normalizeAndroidUserId,
   parseBootstrapDiagnostics,
   parseReadyLine,
   readyPayload,
@@ -28,8 +29,8 @@ test("pre-READY subprocesses are bounded and phase-observable", () => {
   assert.match(source, /private envelope installed/);
   assert.match(source, /launching bootstrap activity/);
   assert.match(source, /bootstrap activity launched; polling READY/);
-  assert.match(source, /adbRunAsShellArgs\("exec-in", applicationId, script\)/);
-  assert.match(agentSource, /adbRunAsShellArgs\("exec-in", opts\.appPackage, installScript\)/);
+  assert.match(source, /adbRunAsShellArgs\("exec-in", applicationId, androidUserId, script\)/);
+  assert.match(agentSource, /adbRunAsShellArgs\("exec-in", opts\.appPackage, androidUserId, installScript\)/);
   assert.doesNotMatch(agentSource, /"exec-out", "run-as", opts\.appPackage/);
 });
 
@@ -38,17 +39,52 @@ test("run-as keeps the complete remote script in one shell-quoted ADB command", 
     adbRunAsShellArgs(
       "exec-in",
       "build.raft.app.alpha",
+      "10",
       "set -eu; tmp='files/request.session.tmp'; cat >\"$tmp\"; mv \"$tmp\" files/request.session",
     ),
     [
       "exec-in",
-      "run-as 'build.raft.app.alpha' sh -c 'set -eu; tmp='\"'\"'files/request.session.tmp'\"'\"'; cat >\"$tmp\"; mv \"$tmp\" files/request.session'",
+      "run-as 'build.raft.app.alpha' --user 10 sh -c 'root='\"'\"'/data/user/10/build.raft.app.alpha'\"'\"'; test \"$(pwd -P)\" = \"$root\"; cd \"$root\"; set -eu; tmp='\"'\"'files/request.session.tmp'\"'\"'; cat >\"$tmp\"; mv \"$tmp\" files/request.session'",
     ],
   );
   assert.throws(
-    () => adbRunAsShellArgs("exec-in", "build.raft.app;id", "true"),
+    () => adbRunAsShellArgs("exec-in", "build.raft.app;id", "0", "true"),
     /application id is invalid/,
   );
+  assert.throws(
+    () => adbRunAsShellArgs("exec-in", "build.raft.app", "-1", "true"),
+    /Android user id is invalid/,
+  );
+  assert.equal(normalizeAndroidUserId(" 0\n"), "0");
+});
+
+test("real run-as probe verifies bytes then exercises the production Activity consume path", () => {
+  const source = fs.readFileSync(
+    path.resolve("scripts/qa/android_run_as_user_root_probe.mjs"),
+    "utf8",
+  );
+  assert.match(source, /stat -c %a/);
+  assert.match(source, /wc -c/);
+  assert.match(source, /sha256sum/);
+  assert.match(source, /crypto\.createHash\("sha256"\)/);
+  assert.doesNotMatch(source, /const verified = execFileSync/);
+  assert.match(source, /"pm", "create-user", "--ephemeral"/);
+  assert.match(source, /probeUserId === originalUserId/);
+  assert.match(source, /"package", "install-existing", "--user", probeUserId/);
+  assert.match(source, /"am", "switch-user", probeUserId/);
+  assert.match(source, /waitForCurrentUnlockedUser\(probeUserId/);
+  assert.match(source, /QaSessionBootstrapActivity/);
+  assert.match(source, /"am", "start", "--user", probeUserId/);
+  assert.match(source, /QA_BOOTSTRAP_STAGE stage=inbox_consumed/);
+  assert.match(source, /"am", "force-stop", "--user", probeUserId/);
+  assert.match(source, /"pm", "clear", "--user", probeUserId/);
+  assert.match(source, /"am", "switch-user", originalUserId/);
+  assert.match(source, /"pm", "remove-user", probeUserId/);
+  assert.match(source, /"pm", "list", "users"/);
+  assert.match(source, /UserInfo\\\\\{/);
+  assert.match(source, /waitForUserAbsent\(probeUserId, 30_000\)/);
+  assert.match(source, /cleanupFailures\.join\(","\)/);
+  assert.match(source, /qa-bootstrap-run-as-probe: activity-consumed/);
 });
 
 test("a hung pre-READY ADB command is killed before the outer fuse", () => {
@@ -96,7 +132,11 @@ test("private envelope uses ADB exec-in, observes stdin EOF, and never stages on
   const capturedVerifyArgs = path.join(root, "captured-verify-args.txt");
   const response = loginResponse();
   fs.writeFileSync(responseFile, JSON.stringify(response));
-  fs.writeFileSync(bindingFile, JSON.stringify({ signing_cert_sha256: digestA, boot_generation: digestB }));
+  fs.writeFileSync(bindingFile, JSON.stringify({
+    signing_cert_sha256: digestA,
+    boot_generation: digestB,
+    android_user_id: "0",
+  }));
   const readyLine = [
     "I/SlockQaBootstrap: QA_BOOTSTRAP_READY",
     `envelopeDigest=${response.envelope_digest}`,
@@ -121,7 +161,7 @@ test("private envelope uses ADB exec-in, observes stdin EOF, and never stages on
     "fi",
     "case \"$*\" in",
     "  'logcat -c') exit 0 ;;",
-    "  'shell am start -W '*) exit 0 ;;",
+    "  'shell am start --user 0 -W '*) exit 0 ;;",
     "  'logcat -d -v brief SlockQaBootstrap:I *:S') printf '%s\\n' \"$READY_LINE\"; exit 0 ;;",
     "esac",
     "exit 9",
@@ -146,11 +186,13 @@ test("private envelope uses ADB exec-in, observes stdin EOF, and never stages on
     assert.equal(result.status, 0, result.stderr);
     assert.equal(fs.readFileSync(capturedBytes, "utf8"), canonicalJson(response.envelope));
     const args = fs.readFileSync(capturedArgs, "utf8");
-    assert.match(args, /^exec-in run-as 'build\.raft\.app\.alpha' sh -c '/);
+    assert.match(args, /^exec-in run-as 'build\.raft\.app\.alpha' --user 0 sh -c '/);
+    assert.match(args, /data\/user\/0\/build\.raft\.app\.alpha/);
+    assert.match(args, /test \"\$\(pwd -P\)\" = \"\$root\"/);
     assert.match(args, /files\/qa-bootstrap\/inbox\/request-1\.session\.tmp/);
     assert.doesNotMatch(args, /sdcard|storage\/emulated|data\/local\/tmp/i);
     const verifyArgs = fs.readFileSync(capturedVerifyArgs, "utf8");
-    assert.match(verifyArgs, /^exec-out run-as 'build\.raft\.app\.alpha' sh -c '/);
+    assert.match(verifyArgs, /^exec-out run-as 'build\.raft\.app\.alpha' --user 0 sh -c '/);
     assert.match(verifyArgs, /stat -c %a/);
     assert.match(verifyArgs, /wc -c/);
     assert.match(verifyArgs, /sha256sum/);
@@ -201,6 +243,7 @@ function runBindingWithBuildTools37(deviceSdk, signerOutput) {
     [
       `if [ \"$*\" = \"shell getprop ro.build.version.sdk\" ]; then printf '%s\\n' ${deviceSdk}; exit 0; fi`,
       "if [ \"$*\" = \"shell cat /proc/sys/kernel/random/boot_id\" ]; then printf '%s\\n' 12345678-1234-1234-1234-123456789abc; exit 0; fi",
+      "if [ \"$*\" = \"shell am get-current-user\" ]; then printf '%s\\n' 0; exit 0; fi",
       "exit 9",
     ].join("\n"),
   );
@@ -287,6 +330,7 @@ test("binding command matches build-tools 37 targeted signer output on API 31 an
     `V3.0 Signer: certificate SHA-256 digest: ${rotatedLegacyDigest.slice(7)}`,
   );
   assert.equal(api31.signing_cert_sha256, rotatedLegacyDigest);
+  assert.equal(api31.android_user_id, "0");
 
   const api34 = runBindingWithBuildTools37(34, rotatedSignerOutput);
   assert.equal(api34.signing_cert_sha256, rotatedCurrentDigest);

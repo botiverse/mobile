@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 
 const DIGEST = /^sha256:[a-f0-9]{64}$/;
 const REQUEST_ID = /^[A-Za-z0-9._-]{1,80}$/;
+const ANDROID_USER_ID = /^(?:0|[1-9][0-9]{0,9})$/;
 const APK_SIGNER_SHA256 =
   /^(?:V[0-9]+(?:\.[0-9]+)? )?Signer:?(?: #[1-9][0-9]*)?(?: \(minSdkVersion=([0-9]+), maxSdkVersion=([0-9]+)\))? certificate SHA-256 digest:\s*([A-Fa-f0-9]{64})$/;
 const APK_SIGNER_PREFIX = /^(?:V[0-9]+(?:\.[0-9]+)? )?Signer\b/;
@@ -10,7 +11,15 @@ function quotePosixShellWord(value) {
   return `'${String(value).replaceAll("'", `'"'"'`)}'`;
 }
 
-export function adbRunAsShellArgs(direction, applicationId, script) {
+export function normalizeAndroidUserId(value) {
+  const normalized = String(value ?? "").trim();
+  if (!ANDROID_USER_ID.test(normalized)) {
+    throw new Error("Android user id is invalid");
+  }
+  return normalized;
+}
+
+export function adbRunAsShellArgs(direction, applicationId, androidUserId, script) {
   if (direction !== "exec-in" && direction !== "exec-out") {
     throw new Error("ADB run-as direction is invalid");
   }
@@ -20,12 +29,17 @@ export function adbRunAsShellArgs(direction, applicationId, script) {
   if (typeof script !== "string" || !script) {
     throw new Error("ADB run-as script is invalid");
   }
+  const userId = normalizeAndroidUserId(androidUserId);
+  const dataRoot = `/data/user/${userId}/${applicationId}`;
+  const rootedScript = `root=${quotePosixShellWord(dataRoot)}; test "$(pwd -P)" = "$root"; cd "$root"; ${script}`;
   // exec-in/exec-out flattens the remote command to a shell string. Keep the
   // complete sh -c program in one quoted remote argument; otherwise commands
   // after the first semicolon can run as the shell user outside run-as.
+  // Android run-as parses the package as argv[1] and only accepts --user
+  // immediately after it: run-as <package> [--user <id>] <command>.
   return [
     direction,
-    `run-as ${quotePosixShellWord(applicationId)} sh -c ${quotePosixShellWord(script)}`,
+    `run-as ${quotePosixShellWord(applicationId)} --user ${userId} sh -c ${quotePosixShellWord(rootedScript)}`,
   ];
 }
 

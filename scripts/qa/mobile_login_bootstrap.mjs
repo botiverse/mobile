@@ -8,6 +8,7 @@ import {
   parseBootstrapDiagnostics,
   parseReadyLine,
   readyPayload,
+  normalizeAndroidUserId,
   selectApkSigningCertificateSha256,
   sha256Digest,
   validateLoginResponse,
@@ -84,14 +85,18 @@ function binding() {
   const signingCertSha256 = selectApkSigningCertificateSha256(signer, deviceSdk);
   const bootId = run("adb", ["shell", "cat", "/proc/sys/kernel/random/boot_id"]).stdout.trim();
   if (!/^[a-f0-9-]{36}$/i.test(bootId)) throw new Error("device boot id is unavailable");
+  const androidUserId = normalizeAndroidUserId(
+    run("adb", ["shell", "am", "get-current-user"]).stdout,
+  );
   writePrivateJson(output, {
     signing_cert_sha256: signingCertSha256,
     boot_generation: sha256Digest(Buffer.from(bootId, "utf8")),
+    android_user_id: androidUserId,
   });
   console.log(`qa-login-bootstrap: device binding ready package=${applicationId}`);
 }
 
-function installPrivateEnvelope(applicationId, requestId, bytes) {
+function installPrivateEnvelope(applicationId, androidUserId, requestId, bytes) {
   const expectedDigest = sha256Digest(bytes).slice("sha256:".length);
   const script = [
     "set -eu", "umask 077", "mkdir -p files/qa-bootstrap/inbox",
@@ -103,7 +108,7 @@ function installPrivateEnvelope(applicationId, requestId, bytes) {
   // exec-in is the ADB service whose contract is host stdin -> remote stdin.
   // exec-out is intended for the opposite direction and can keep the remote
   // reader waiting after Node has supplied its input buffer on hosted runners.
-  run("adb", adbRunAsShellArgs("exec-in", applicationId, script), { input: bytes });
+  run("adb", adbRunAsShellArgs("exec-in", applicationId, androidUserId, script), { input: bytes });
   const verifyScript = [
     "set -eu",
     `dst=files/qa-bootstrap/inbox/${requestId}.session`,
@@ -112,18 +117,19 @@ function installPrivateEnvelope(applicationId, requestId, bytes) {
     `test "$(wc -c <\"$dst\")" = ${bytes.length}`,
     `test "$(sha256sum \"$dst\" | cut -d' ' -f1)" = ${expectedDigest}`,
   ].join("; ");
-  run("adb", adbRunAsShellArgs("exec-out", applicationId, verifyScript));
+  run("adb", adbRunAsShellArgs("exec-out", applicationId, androidUserId, verifyScript));
 }
 
 function expectedLogin(responseFile, bindingFile, runCaseId, ciJobRef) {
   const response = JSON.parse(fs.readFileSync(responseFile, "utf8"));
   const device = JSON.parse(fs.readFileSync(bindingFile, "utf8"));
   const applicationId = response.envelope?.application_id;
-  return validateLoginResponse(response, {
+  const login = validateLoginResponse(response, {
     runCaseId, ciJobRef, applicationId,
     signingCertSha256: device.signing_cert_sha256,
     bootGeneration: device.boot_generation,
   });
+  return { ...login, androidUserId: normalizeAndroidUserId(device.android_user_id) };
 }
 
 async function prepare() {
@@ -138,7 +144,7 @@ async function prepare() {
   const envelope = login.envelope;
   try {
     console.log("qa-login-bootstrap: installing private envelope");
-    installPrivateEnvelope(envelope.application_id, login.requestId, login.bytes);
+    installPrivateEnvelope(envelope.application_id, login.androidUserId, login.requestId, login.bytes);
     console.log("qa-login-bootstrap: private envelope installed");
   } finally {
     login.bytes.fill(0);
@@ -146,7 +152,7 @@ async function prepare() {
   run("adb", ["logcat", "-c"]);
   console.log("qa-login-bootstrap: launching bootstrap activity");
   run("adb", [
-    "shell", "am", "start", "-W",
+    "shell", "am", "start", "--user", login.androidUserId, "-W",
     "-n", `${envelope.application_id}/build.raft.app.core.data.auth.QaSessionBootstrapActivity`,
     "--es", "qaBootstrapRequestId", login.requestId,
     "--es", "qaBootstrapEnvelopeDigest", login.envelopeDigest,
@@ -199,11 +205,15 @@ function cleanup() {
     throw new Error("completed cleanup requires the exact READY process binding");
   }
   const applicationId = login.envelope.application_id;
-  run("adb", ["shell", "am", "force-stop", applicationId]);
+  run("adb", ["shell", "am", "force-stop", "--user", login.androidUserId, applicationId]);
   const pid = run("adb", ["shell", "pidof", applicationId], { allowFailure: true }).stdout.trim();
   if (pid) throw new Error("app process remained alive after force-stop");
-  run("adb", ["exec-out", "run-as", applicationId, "rm", "-rf", "files/qa-bootstrap"], { allowFailure: true });
-  const cleared = run("adb", ["shell", "pm", "clear", applicationId]);
+  run(
+    "adb",
+    adbRunAsShellArgs("exec-out", applicationId, login.androidUserId, "rm -rf files/qa-bootstrap"),
+    { allowFailure: true },
+  );
+  const cleared = run("adb", ["shell", "pm", "clear", "--user", login.androidUserId, applicationId]);
   if (!cleared.stdout.includes("Success")) throw new Error("package data clear was not confirmed");
   writePrivateJson(output, {
     application_id: applicationId,
