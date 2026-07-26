@@ -3389,7 +3389,15 @@ private fun ThreadMessageVisualScreenContent() {
         }
         return
     }
-    val baseMessage = payload.toThreadTimelineSlice().messages.firstOrNull()
+    val visualMessages = payload.toThreadTimelineSlice().messages
+    val baseMessage =
+        if (visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_LONG_INLINE_CODE) {
+            visualMessages.firstOrNull { it.id == "msg_long_inline_code_visual" }
+        } else {
+            visualMessages.firstOrNull()
+        }
+    val plainInlineCodeControl =
+        visualMessages.firstOrNull { it.id == "msg_inline_code_plain_control" }
     val message =
         remember(baseMessage, menuVariant, interactionProbe) {
             if (
@@ -3493,6 +3501,32 @@ private fun ThreadMessageVisualScreenContent() {
                     .background(SlockColor.SurfaceWhite)
                     .padding(SlockSpacing.Md)
         ) {
+            if (plainInlineCodeControl != null) {
+                ThreadMessageCard(
+                    message = plainInlineCodeControl,
+                    replyMetadata = visualReplyMetadataByParentId.threadReplyMetadataFor(plainInlineCodeControl),
+                    highlightedMentions = highlightedMentions,
+                    alignOwnMessageRight = false,
+                    showReplyAction = false,
+                    taskOpenEnabled = false,
+                    taskStatusActionsEnabled = false,
+                    showReactionAddAction = false,
+                    timestampLabel = payload.formatTimestampLabel(plainInlineCodeControl.timestampLabel),
+                    onShowActions = {},
+                    onOpenMember = {},
+                    onOpenThread = {},
+                    onOpenTask = {},
+                    onOpenTaskStatusMenu = {},
+                    isMarkdownTagValid = isMarkdownTagValid,
+                    markdownTagContextSignature = markdownTagContextSignature,
+                    onToggleReaction = {},
+                    onOpenAttachment = {},
+                    onOpenMarkdownTag = {},
+                    onOpenMarkdownUrl = {},
+                    outerPadding = 0.dp
+                )
+                Spacer(Modifier.height(SlockSpacing.Sm))
+            }
             if (message != null) {
                 if (
                     visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_MARKDOWN_LINK_CHILD ||
@@ -9875,6 +9909,16 @@ internal fun threadVisualFixture(
                 knownMarkdownTaskNumbers = listOf(42, 43),
                 messages =
                     listOf(
+                        KuiklyThreadMessageItem(
+                            id = "msg_inline_code_plain_control",
+                            authorId = "visual-user",
+                            authorName = "artin",
+                            authorKind = "human",
+                            avatarLabel = "AR",
+                            timestampLabel = "06/25 05:54",
+                            messageType = "Chat",
+                            body = "Plain same-channel control: regular body typography stays identical across messages."
+                        ),
                         KuiklyThreadMessageItem(
                             id = "msg_long_inline_code_visual",
                             authorId = "agent-cindy",
