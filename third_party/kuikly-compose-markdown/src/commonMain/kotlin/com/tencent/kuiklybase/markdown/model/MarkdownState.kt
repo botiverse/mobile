@@ -161,6 +161,32 @@ fun parseMarkdownInlineSyntax(
 }
 
 /**
+ * Slock (#367 light path): top-level parsed nodes for [content] from the SAME
+ * cached parse result consumed by [MarkdownState] and [parseMarkdownInlineSyntax].
+ * A cache miss performs the canonical flavour parse once and publishes it for
+ * the renderer; there is no second cache and no second parse. Returned nodes
+ * are the cache-shared AST — identity-stable per content (safe as remember
+ * keys) and must not be mutated. Same thread-safety contract as
+ * [parseMarkdownInlineSyntax]: call from the Kuikly/Compose coroutine thread.
+ */
+internal fun parseMarkdownTopLevelNodes(
+    content: String,
+    lookupLinks: Boolean = true,
+): List<ASTNode> {
+    val key = MarkdownParseResultCacheKey(content, lookupLinks)
+    val (cached, _) =
+        MarkdownParseResultCache.getOrPut(key) {
+            val flavour = SlockGFMFlavourDescriptor()
+            parseMarkdownContent(
+                content = content,
+                lookupLinks = lookupLinks,
+                parser = MarkdownParser(flavour),
+            )
+        }
+    return cached.nodes.map { it.node }
+}
+
+/**
  * A [MarkdownState] that that executes the parsing of the markdown content with the [MarkdownParser] asynchronously.
  */
 @Stable

@@ -6,6 +6,10 @@ import build.raft.app.SlockLucideIconName
 import build.raft.app.SlockMessagePermalinkTarget
 import build.raft.app.SlockSpacing
 import build.raft.app.SlockType
+import build.raft.app.ReplyCacheProvenance
+import build.raft.app.data.THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY
+import build.raft.app.network.sync.DiagnosticFeatureFlagOverrideRegistry
+import build.raft.app.network.sync.DiagnosticFeatureFlagScope
 import build.raft.app.toSlockMessagePermalinkTarget
 import build.raft.app.slockFontFamilyForWeight
 import build.raft.app.slockMonoFamilyForWeight
@@ -74,10 +78,24 @@ import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuiklybase.markdown.annotator.LocalUriHandler
 import com.tencent.kuiklybase.markdown.annotator.UriHandler
 import com.tencent.kuiklybase.markdown.compose.Markdown
+import com.tencent.kuiklybase.markdown.compose.LocalImageLinkHandler
+import com.tencent.kuiklybase.markdown.compose.LocalImageTransformer
+import com.tencent.kuiklybase.markdown.compose.LocalMarkdownAnimations
+import com.tencent.kuiklybase.markdown.compose.LocalMarkdownAnnotator
+import com.tencent.kuiklybase.markdown.compose.LocalMarkdownColors
+import com.tencent.kuiklybase.markdown.compose.LocalMarkdownExtendedSpans
+import com.tencent.kuiklybase.markdown.compose.LocalMarkdownTypography
+import com.tencent.kuiklybase.markdown.compose.LocalReferenceLinkHandler
+import com.tencent.kuiklybase.markdown.compose.LocalSlockMarkdownRenderTiming
 import com.tencent.kuiklybase.markdown.compose.LocalTextProvider
+import com.tencent.kuiklybase.markdown.compose.SlockMarkdownVendorTraceThresholdUs
+import com.tencent.kuiklybase.markdown.compose.slockMarkdownLogSubTrace
+import com.tencent.kuiklybase.markdown.compose.slockMarkdownMonotonicNanosSince
+import com.tencent.kuiklybase.markdown.compose.slockMarkdownRenderTimingOrNull
 import com.tencent.kuiklybase.markdown.compose.components.markdownComponents
 import com.tencent.kuiklybase.markdown.model.DefaultMarkdownColors
 import com.tencent.kuiklybase.markdown.model.DefaultMarkdownTypography
+import com.tencent.kuiklybase.markdown.model.ImageLinkHandlerImpl
 import com.tencent.kuiklybase.markdown.model.MarkdownAnnotator
 import com.tencent.kuiklybase.markdown.compose.LocalSlockMarkdownAnnotationRevision
 import com.tencent.kuiklybase.markdown.compose.LocalSlockMarkdownParagraphFillWidth
@@ -86,15 +104,21 @@ import com.tencent.kuiklybase.markdown.compose.SlockMarkdownNodeTrace
 import com.tencent.kuiklybase.markdown.compose.SlockMarkdownNodeTraceSink
 import com.tencent.kuiklybase.markdown.compose.SlockMarkdownSubTrace
 import com.tencent.kuiklybase.markdown.model.MarkdownParserContent
+import com.tencent.kuiklybase.markdown.model.NoOpImageTransformerImpl
 import com.tencent.kuiklybase.markdown.model.RaftMarkdownTokenTypes
+import com.tencent.kuiklybase.markdown.model.ReferenceLinkHandlerImpl
 import com.tencent.kuiklybase.markdown.model.TextProvider
+import com.tencent.kuiklybase.markdown.model.markdownAnimations
 import com.tencent.kuiklybase.markdown.model.markdownAnnotator
 import com.tencent.kuiklybase.markdown.model.markdownAnnotatorConfig
+import com.tencent.kuiklybase.markdown.model.markdownExtendedSpans
 import com.tencent.kuiklybase.markdown.model.parseMarkdownInlineSyntax
+import com.tencent.kuiklybase.markdown.model.parseMarkdownTopLevelNodes
 import com.tencent.kuiklybase.markdown.compose.elements.MarkdownCode
 import com.tencent.kuiklybase.markdown.compose.elements.MarkdownCodeBlock
 import com.tencent.kuiklybase.markdown.compose.elements.MarkdownCodeFence
 import com.tencent.kuiklybase.markdown.compose.elements.MarkdownHeader
+import com.tencent.kuiklybase.markdown.compose.elements.MarkdownParagraph
 import com.tencent.kuiklybase.markdown.model.MarkdownDimens
 import com.tencent.kuiklybase.markdown.model.markdownPadding
 import com.tencent.kuiklybase.markdown.model.prepareMarkdownContent
@@ -106,8 +130,11 @@ import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.MarkdownTokenTypes
+import org.intellij.markdown.IElementType
 import org.intellij.markdown.ast.ASTNode
 import org.intellij.markdown.ast.getTextInNode
+import org.intellij.markdown.flavours.gfm.GFMElementTypes
+import org.intellij.markdown.flavours.gfm.GFMTokenTypes
 import kotlin.time.TimeSource
 
 data class ThreadMarkdownTag(
@@ -125,6 +152,10 @@ internal val LocalSlockMessagePermalinkLabelResolver =
 
 internal data class SlockMarkdownRenderConfig(
     val renderMessagePermalinksAsTag: Boolean = false,
+    // #367 light path (diagnostic override, default OFF): single-paragraph
+    // text-only bodies may skip the MarkdownSuccess scaffold — see
+    // slockMarkdownSingleParagraphLightNodeOrNull.
+    val singleParagraphLightPath: Boolean = false,
 )
 
 internal val LocalSlockMarkdownRenderConfig =
@@ -1648,6 +1679,139 @@ private val SlockMarkdownBodyLineHeight = 22.sp
 private const val SlockMarkdownBodyClickTag = "slock-markdown-body-click"
 private val LocalSlockMarkdownBodyClick = compositionLocalOf<(() -> Unit)?> { null }
 
+/**
+ * #367 light-path override resolution, mirroring resolveActivityStableOrderEnabled:
+ * the diagnostics "Local Feature Overrides" latch wins over the (default-off)
+ * server evaluation; an unresolved server and no latch means OFF.
+ */
+internal fun resolveThreadMarkdownSingleParagraphLightPathEnabled(
+    registry: DiagnosticFeatureFlagOverrideRegistry,
+    serverEffective: Boolean,
+    environmentId: String,
+    accountId: String,
+    serverId: String,
+): Boolean =
+    registry.decide(
+        key = THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY,
+        serverEffective = serverEffective,
+        scope =
+            DiagnosticFeatureFlagScope(
+                environmentId = environmentId.trim().trimEnd('/'),
+                accountId = accountId,
+                serverId = serverId,
+            ),
+    ).finalEffective
+
+/**
+ * #367 gate identity (review round 1): the route renders the REPLY-CACHE
+ * provenance's server — `selectedServerStore.selectedServerId ?:
+ * session.currentServerId` — so the flag query and the ServerExact
+ * diagnostics scope must be built from that same provenance, never from
+ * `session.currentServerId` alone. When the shell selects B while the session
+ * current is A, deciding A's flag while rendering B would open/close the
+ * experiment on the wrong server. Fail CLOSED: provenance not yet captured
+ * (or any identity field blank) means no gate decision at all — the override
+ * ForceOn latch must not fire with an empty principal/server scope.
+ */
+internal data class ThreadMarkdownLightGateInputs(
+    val environmentId: String,
+    val accountId: String,
+    val serverId: String,
+    // Authority epoch: the provenance's `generation`. The per-route
+    // `remember(overrideRevision, gateInputs)` decision cache must re-fire
+    // when the same identity triple rotates to a new generation — without
+    // this field the data class compares equal and the stale decision is
+    // reused (review round 2).
+    val authorityEpoch: Long,
+)
+
+internal fun threadMarkdownLightGateInputsOrNull(
+    provenance: ReplyCacheProvenance?,
+): ThreadMarkdownLightGateInputs? {
+    val inputs =
+        provenance?.let {
+            ThreadMarkdownLightGateInputs(
+                environmentId = it.environmentId,
+                accountId = it.principalId,
+                serverId = it.serverId,
+                authorityEpoch = it.generation,
+            )
+        } ?: return null
+    return inputs.takeIf {
+        it.environmentId.isNotBlank() && it.accountId.isNotBlank() && it.serverId.isNotBlank()
+    }
+}
+
+/**
+ * #367 light-path eligibility, decided from the PARSED node tree — never
+ * raw-string heuristics ("*not a paragraph*", fenced code and friends must
+ * not be misdetected). Exactly one top-level PARAGRAPH whose subtree holds
+ * only inline node types that render through the plain
+ * paragraph → MarkdownText → MarkdownBasicText chain qualifies. Anything
+ * that could need the full scaffold — inline images (placeholder span +
+ * container-size plumbing), inline HTML that survived the parser-input
+ * escaping, reference-style links (SHORT_/FULL_REFERENCE_LINK nodes appear
+ * even for undefined references and their resolution belongs to the full
+ * scaffold, so they stay excluded on principle), or any node type not
+ * enumerated — falls back to the full path.
+ * Over-rejecting is safe (full path is always correct); a wrong admission is
+ * the failure mode.
+ *
+ * The lookup runs through the renderer's own content-hash parse cache
+ * (parseMarkdownTopLevelNodes), so a cold row pays exactly one parse — the
+ * same parse MarkdownState would run — and a warm row pays a map lookup.
+ */
+internal fun slockMarkdownSingleParagraphLightNodeOrNull(parserContent: String): ASTNode? {
+    val nodes = parseMarkdownTopLevelNodes(parserContent)
+    val single = nodes.singleOrNull() ?: return null
+    if (single.type != MarkdownElementTypes.PARAGRAPH) return null
+    return single.takeIf { slockMarkdownLightParagraphSubtreeSafe(it) }
+}
+
+private fun slockMarkdownLightParagraphSubtreeSafe(root: ASTNode): Boolean {
+    if (root.type !in SlockMarkdownLightSubtreeAllowedTypes) return false
+    root.children.forEach { child ->
+        if (!slockMarkdownLightParagraphSubtreeSafe(child)) return false
+    }
+    return true
+}
+
+private val SlockMarkdownLightSubtreeAllowedTypes: Set<IElementType> =
+    setOf(
+        MarkdownElementTypes.PARAGRAPH,
+        MarkdownElementTypes.EMPH,
+        MarkdownElementTypes.STRONG,
+        MarkdownElementTypes.CODE_SPAN,
+        MarkdownElementTypes.INLINE_LINK,
+        MarkdownElementTypes.LINK_TEXT,
+        MarkdownElementTypes.LINK_DESTINATION,
+        MarkdownElementTypes.LINK_TITLE,
+        MarkdownElementTypes.AUTOLINK,
+        GFMElementTypes.STRIKETHROUGH,
+        MarkdownTokenTypes.TEXT,
+        MarkdownTokenTypes.WHITE_SPACE,
+        MarkdownTokenTypes.EOL,
+        MarkdownTokenTypes.HARD_LINE_BREAK,
+        MarkdownTokenTypes.EMPH,
+        MarkdownTokenTypes.BACKTICK,
+        MarkdownTokenTypes.ESCAPED_BACKTICKS,
+        MarkdownTokenTypes.LBRACKET,
+        MarkdownTokenTypes.RBRACKET,
+        MarkdownTokenTypes.LPAREN,
+        MarkdownTokenTypes.RPAREN,
+        MarkdownTokenTypes.COLON,
+        MarkdownTokenTypes.EXCLAMATION_MARK,
+        MarkdownTokenTypes.SINGLE_QUOTE,
+        MarkdownTokenTypes.DOUBLE_QUOTE,
+        MarkdownTokenTypes.LT,
+        MarkdownTokenTypes.GT,
+        MarkdownTokenTypes.AUTOLINK,
+        MarkdownTokenTypes.EMAIL_AUTOLINK,
+        GFMTokenTypes.TILDE,
+        GFMTokenTypes.GFM_AUTOLINK,
+        RaftMarkdownTokenTypes.REFERENCE,
+    )
+
 @Composable
 fun SlockMarkdownBody(
     body: String,
@@ -1770,6 +1934,17 @@ fun SlockMarkdownBody(
         MarkdownParserContent.from(content)
     }
     val parserContent = markdownParserContent.parserContent
+    // #367 light path (override-gated, default OFF): gate-first — with the
+    // override OFF the ambient read is the only added work, the tree lookup
+    // never runs, and the render below is byte-identical to the full path.
+    val lightParagraphNode =
+        if (LocalSlockMarkdownRenderConfig.current.singleParagraphLightPath) {
+            remember(markdownParserContent) {
+                slockMarkdownSingleParagraphLightNodeOrNull(parserContent)
+            }
+        } else {
+            null
+        }
     val tokenPlan =
         remember(
             markdownParserContent,
@@ -1959,60 +2134,184 @@ fun SlockMarkdownBody(
                 }
             }
         }
-    // OFF-zero-work provider set (reviewed round 4): with diagnostics OFF the
-    // census Local is NOT part of the vararg at all — the base array is used
-    // by identity, so the production provider scope is unchanged by P1.
-    val markdownProvidedValues = slockMarkdownProvidedValuesWith(
+    if (lightParagraphNode != null) {
+        // #367 light path: render the single eligible paragraph directly. The
+        // same LAYOUT / LAYOUT_BLOCK trace sections wrap the render so phase
+        // attribution stays comparable with the full path during A/B.
+        traceMarkdownSection(SlockMarkdownTraceNames.LAYOUT, body.length) {
+            traceMarkdownSection(SlockMarkdownTraceNames.LAYOUT_BLOCK, body.length) {
+                SlockMarkdownSingleParagraphLightBody(
+                    content = parserContent,
+                    paragraphNode = lightParagraphNode,
+                    colors = colors,
+                    typography = typography,
+                    annotator = annotator,
+                    markdownModifier = markdownModifier,
+                    fillWidth = fillWidth,
+                    annotationRevision = annotationRevision,
+                    onClick = onClick,
+                    uriHandler = uriHandler,
+                    rowCensusToken = rowCensusToken
+                )
+            }
+        }
+    } else {
+        // OFF-zero-work provider set (reviewed round 4): with diagnostics OFF the
+        // census Local is NOT part of the vararg at all — the base array is used
+        // by identity, so the production provider scope is unchanged by P1.
+        val markdownProvidedValues = slockMarkdownProvidedValuesWith(
+            arrayOf(
+                LocalTextProvider provides SlockMarkdownTextProvider,
+                LocalUriHandler provides uriHandler,
+                LocalSlockMarkdownBodyClick provides onClick,
+                LocalSlockMarkdownAnnotationRevision provides annotationRevision,
+                // task #800: top-level paragraphs wrap when the body opts out of
+                // fill (right-aligned bubbles); list/quote paragraphs pin fill.
+                LocalSlockMarkdownParagraphFillWidth provides fillWidth
+            ),
+            LocalSlockMarkdownRowRenderCostSink,
+            rowCensusToken
+        )
+        CompositionLocalProvider(*markdownProvidedValues) {
+            traceMarkdownSection(SlockMarkdownTraceNames.LAYOUT, body.length) {
+                // #192 long-body sub-trace: split layout phase into pre-block setup
+                // vs the third-party `Markdown()` call so 5-10ms spikes can be
+                // localized. Fires only when the wrapped block exceeds the
+                // MarkdownSpikeThresholdUs (200us default), keeping logcat clean for
+                // short bodies. Wrap in `traceMarkdownSection` (not non-composable)
+                // because the call is inside an existing @Composable scope.
+                traceMarkdownSection(SlockMarkdownTraceNames.LAYOUT_INNER, body.length) {
+                    // Local-reference assignments: cheap but measuring them is useful
+                    // to confirm KuiklyText-measure is the dominant cost. The
+                    // assignment is a single val read; the sub-trace will be near
+                    // zero unless something heavier is being done implicitly.
+                    val refContent = content
+                    val refTypography = typography
+                    val refAnnotator = annotator
+                    val refPadding = padding
+                    val refComponents = components
+                    val refModifier = markdownModifier
+                    val refColors = colors
+                    val refTextProvider = SlockMarkdownTextProvider
+                    // Pass-through, no-op; just to keep the locals from being flagged unused.
+                    @Suppress("UNUSED_EXPRESSION") refContent; refTypography; refAnnotator; refPadding; refComponents; refModifier; refColors; refTextProvider
+                }
+                traceMarkdownSection(SlockMarkdownTraceNames.LAYOUT_BLOCK, body.length) {
+                    Markdown(
+                        content = markdownParserContent,
+                        colors = colors,
+                        typography = typography,
+                        textProvider = SlockMarkdownTextProvider,
+                        annotator = annotator,
+                        padding = padding,
+                        dimens = SlockMarkdownDimens,
+                        components = components,
+                        modifier = markdownModifier
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * #367 single-paragraph light body (override-gated via
+ * [SlockMarkdownRenderConfig.singleParagraphLightPath], default OFF).
+ *
+ * Renders the ONE eligible paragraph node directly, skipping the scaffold the
+ * full path pays per row: the MarkdownSuccess wrapper Column, the
+ * handleElement dispatch loop, the per-document MarkdownState object, and the
+ * 12-slot vendor provider scope. The single provider scope below carries
+ * exactly the locals the paragraph → MarkdownText → MarkdownBasicText chain
+ * reads transitively (verified against the vendored sources):
+ * typography/colors/extendedSpans/animations/imageTransformer/imageLinkHandler,
+ * annotator + reference link handler + uri handler + text provider, and the
+ * Slock locals bodyClick/annotationRevision/paragraphFillWidth/renderTiming.
+ * LocalMarkdownPadding/LocalMarkdownDimens/LocalMarkdownComponents are
+ * deliberately absent — the chain never reads them (padding is only consumed
+ * by handleElement's spacer path, dimens by code/quote/table leaves,
+ * components by the dispatch loop this skips). Two further locals the chain
+ * reads via SlockMarkdownTextProvider — LocalSlockMarkdownRenderConfig
+ * (permalink projection + this very gate) and
+ * LocalSlockMessagePermalinkLabelResolver — are intentionally NOT shadowed:
+ * they flow in ambiently from the page provider, exactly as on the full path.
+ *
+ * Parity contracts mirrored from Markdown()/MarkdownSuccess:
+ * - the reference link handler is remembered per node (per document), never
+ *   hoisted — the impl carries a mutable stored map;
+ * - the render timing / row-census forward fires STRICTLY on the valid
+ *   finishRender path; with the diagnostics sink absent nodeTiming is null
+ *   and the forward is skipped, same as MarkdownSuccess;
+ * - the 套娃 Column inside MarkdownParagraph stays (documented placeholder-span
+ *   fix) — only the outer MarkdownSuccess Column is skipped;
+ * - markdownModifier carries fillMaxWidth in the same fillWidth cases the
+ *   full path's outer Column had it; Thread-row callers pass no extra
+ *   modifier, so the text-node placement is layout-identical.
+ */
+@Composable
+private fun SlockMarkdownSingleParagraphLightBody(
+    content: String,
+    paragraphNode: ASTNode,
+    colors: DefaultMarkdownColors,
+    typography: DefaultMarkdownTypography,
+    annotator: MarkdownAnnotator,
+    markdownModifier: Modifier,
+    fillWidth: Boolean,
+    annotationRevision: List<String?>,
+    onClick: (() -> Unit)?,
+    uriHandler: UriHandler,
+    rowCensusToken: SlockMarkdownRowCensusToken?,
+) {
+    val referenceLinkHandler = remember(paragraphNode) { ReferenceLinkHandlerImpl() }
+    val extendedSpans = markdownExtendedSpans()
+    val animations = markdownAnimations()
+    val imageTransformer = remember { NoOpImageTransformerImpl() }
+    val imageLinkHandler = remember { ImageLinkHandlerImpl() }
+    val nodeTiming = slockMarkdownRenderTimingOrNull()
+    val renderStartMark = TimeSource.Monotonic.markNow()
+    slockMarkdownLogSubTrace {
+        "phase=markdown.success_light.compose contentHash=${content.hashCode().toString(16)} " +
+            "contentLength=${content.length} nodeListSize=1"
+    }
+    val lightProvidedValues = slockMarkdownProvidedValuesWith(
         arrayOf(
+            LocalMarkdownColors provides colors,
+            LocalMarkdownTypography provides typography,
+            LocalMarkdownExtendedSpans provides extendedSpans,
+            LocalMarkdownAnimations provides animations,
+            LocalImageTransformer provides imageTransformer,
+            LocalImageLinkHandler provides imageLinkHandler,
+            LocalMarkdownAnnotator provides annotator,
+            LocalReferenceLinkHandler provides referenceLinkHandler,
             LocalTextProvider provides SlockMarkdownTextProvider,
             LocalUriHandler provides uriHandler,
             LocalSlockMarkdownBodyClick provides onClick,
             LocalSlockMarkdownAnnotationRevision provides annotationRevision,
-            // task #800: top-level paragraphs wrap when the body opts out of
-            // fill (right-aligned bubbles); list/quote paragraphs pin fill.
-            LocalSlockMarkdownParagraphFillWidth provides fillWidth
+            LocalSlockMarkdownParagraphFillWidth provides fillWidth,
+            LocalSlockMarkdownRenderTiming provides nodeTiming
         ),
         LocalSlockMarkdownRowRenderCostSink,
         rowCensusToken
     )
-    CompositionLocalProvider(*markdownProvidedValues) {
-        traceMarkdownSection(SlockMarkdownTraceNames.LAYOUT, body.length) {
-            // #192 long-body sub-trace: split layout phase into pre-block setup
-            // vs the third-party `Markdown()` call so 5-10ms spikes can be
-            // localized. Fires only when the wrapped block exceeds the
-            // MarkdownSpikeThresholdUs (200us default), keeping logcat clean for
-            // short bodies. Wrap in `traceMarkdownSection` (not non-composable)
-            // because the call is inside an existing @Composable scope.
-            traceMarkdownSection(SlockMarkdownTraceNames.LAYOUT_INNER, body.length) {
-                // Local-reference assignments: cheap but measuring them is useful
-                // to confirm KuiklyText-measure is the dominant cost. The
-                // assignment is a single val read; the sub-trace will be near
-                // zero unless something heavier is being done implicitly.
-                val refContent = content
-                val refTypography = typography
-                val refAnnotator = annotator
-                val refPadding = padding
-                val refComponents = components
-                val refModifier = markdownModifier
-                val refColors = colors
-                val refTextProvider = SlockMarkdownTextProvider
-                // Pass-through, no-op; just to keep the locals from being flagged unused.
-                @Suppress("UNUSED_EXPRESSION") refContent; refTypography; refAnnotator; refPadding; refComponents; refModifier; refColors; refTextProvider
-            }
-            traceMarkdownSection(SlockMarkdownTraceNames.LAYOUT_BLOCK, body.length) {
-                Markdown(
-                    content = markdownParserContent,
-                    colors = colors,
-                    typography = typography,
-                    textProvider = SlockMarkdownTextProvider,
-                    annotator = annotator,
-                    padding = padding,
-                    dimens = SlockMarkdownDimens,
-                    components = components,
-                    modifier = markdownModifier
-                )
-            }
+    CompositionLocalProvider(*lightProvidedValues) {
+        nodeTiming?.enterNode(paragraphNode.type.name)
+        MarkdownParagraph(
+            content = content,
+            node = paragraphNode,
+            modifier = markdownModifier,
+            style = typography.paragraph,
+        )
+        nodeTiming?.exitNode()
+    }
+    val renderDurationUs = slockMarkdownMonotonicNanosSince(renderStartMark) / 1_000L
+    if (renderDurationUs >= SlockMarkdownVendorTraceThresholdUs) {
+        slockMarkdownLogSubTrace {
+            "phase=markdown.layout.render_nodes durationUs=$renderDurationUs nodeCount=1"
         }
+    }
+    val renderValid = nodeTiming?.finishRender(renderDurationUs)
+    if (renderValid == true) {
+        rowCensusToken?.recordValidRender(renderDurationUs)
     }
 }
 
