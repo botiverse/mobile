@@ -1,6 +1,7 @@
 package build.raft.app.core.data.auth
 
 import android.content.Context
+import android.system.ErrnoException
 import android.system.Os
 import android.system.OsConstants
 import java.io.File
@@ -23,6 +24,8 @@ internal object QaSessionBootstrapInbox {
         Directory("directory"),
         Parent("parent"),
         Missing("missing"),
+        StatDenied("stat_denied"),
+        StatError("stat_error"),
         NotRegular("not_regular"),
         Size("size"),
         Mode("mode"),
@@ -59,8 +62,11 @@ internal object QaSessionBootstrapInbox {
         beforeOpenForTests: (() -> Unit)? = null
     ): ConsumeResult {
         val initial =
-            runCatching { Os.lstat(file.absolutePath) }.getOrNull()
-                ?: return ConsumeResult.Rejected(RejectionCode.Missing)
+            try {
+                Os.lstat(file.absolutePath)
+            } catch (error: Throwable) {
+                return ConsumeResult.Rejected(rejectionForLstatFailure(error))
+            }
         rejectionForStat(initial.st_mode, initial.st_size)?.let {
             return ConsumeResult.Rejected(it)
         }
@@ -101,6 +107,14 @@ internal object QaSessionBootstrapInbox {
             mode and PermissionAndSpecialModeBits !=
                 (OsConstants.S_IRUSR or OsConstants.S_IWUSR) -> RejectionCode.Mode
             else -> null
+        }
+
+    internal fun rejectionForLstatFailure(error: Throwable): RejectionCode =
+        when ((error as? ErrnoException)?.errno) {
+            OsConstants.ENOENT -> RejectionCode.Missing
+            OsConstants.EACCES,
+            OsConstants.EPERM -> RejectionCode.StatDenied
+            else -> RejectionCode.StatError
         }
 
     private fun readExact(descriptor: FileDescriptor, size: Int): ByteArray? {

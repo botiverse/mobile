@@ -1,6 +1,8 @@
 package build.raft.app.core.data.auth
 
+import android.system.ErrnoException
 import android.system.Os
+import android.system.OsConstants
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
 import org.junit.Assert.assertArrayEquals
@@ -71,6 +73,35 @@ class QaSessionBootstrapInboxConnectedTest {
         assertRejected(
             "suffix",
             QaSessionBootstrapInbox.consumeDetailed(context, "request", "unknown")
+        )
+    }
+
+    @Test
+    fun lstatFailuresDistinguishAbsenceFromAccessAndOtherErrors() {
+        assertTrue(
+            QaSessionBootstrapInbox.rejectionForLstatFailure(
+                ErrnoException("lstat", OsConstants.ENOENT)
+            ).wire == "missing"
+        )
+        assertTrue(
+            QaSessionBootstrapInbox.rejectionForLstatFailure(
+                ErrnoException("lstat", OsConstants.EACCES)
+            ).wire == "stat_denied"
+        )
+        assertTrue(
+            QaSessionBootstrapInbox.rejectionForLstatFailure(
+                ErrnoException("lstat", OsConstants.EPERM)
+            ).wire == "stat_denied"
+        )
+        assertTrue(
+            QaSessionBootstrapInbox.rejectionForLstatFailure(
+                ErrnoException("lstat", OsConstants.EIO)
+            ).wire == "stat_error"
+        )
+        assertTrue(
+            QaSessionBootstrapInbox.rejectionForLstatFailure(
+                IllegalStateException("redacted")
+            ).wire == "stat_error"
         )
     }
 
