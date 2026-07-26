@@ -144,6 +144,7 @@ import build.raft.app.markdown.LocalSlockMarkdownRenderConfig
 import build.raft.app.markdown.SlockMarkdownBody
 import build.raft.app.markdown.LocalSlockMarkdownPlainCandidateSession
 import build.raft.app.markdown.SlockMarkdownPlainCandidateSession
+import build.raft.app.markdown.resolveThreadMarkdownSingleParagraphLightPathEnabled
 import build.raft.app.markdown.slockMarkdownProvidedValuesWith
 import build.raft.app.markdown.slockTraceDiagnosticsEnabled
 import build.raft.app.markdown.SlockMarkdownRenderConfig
@@ -167,6 +168,8 @@ import build.raft.app.model.TaskUpdated
 import build.raft.app.model.formatSlockTimestampEpochMillis
 import build.raft.app.model.formatSlockTimestampLabel
 import build.raft.app.network.sync.ThreadRepliesReadModel
+import build.raft.app.network.sync.ProcessDiagnosticFeatureFlagOverrides
+import build.raft.app.data.THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY
 import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
 import build.raft.app.model.resolveAvatarSlot
 import build.raft.app.model.slockEpochMillisUtcIso
@@ -5083,6 +5086,32 @@ internal fun SharedThreadRouteContent(
         } else {
             null
         }
+    // #367 markdown light-path gate (default OFF): resolved ONCE per thread
+    // route and provided as an ambient render config — the row-level
+    // SlockMarkdownBody performs no registry or StateFlow work of its own.
+    // Mirrors the MOBILE_ACTIVITY_STABLE_ORDER wiring (SharedInboxPanel).
+    val markdownLightPathOverrideRevision by
+        ProcessDiagnosticFeatureFlagOverrides.registry
+            .revisionFor(THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY)
+            .collectAsState()
+    val singleParagraphLightPathEnabled =
+        remember(
+            markdownLightPathOverrideRevision,
+            currentSession?.currentServerId,
+            currentSession?.user?.id
+        ) {
+            resolveThreadMarkdownSingleParagraphLightPathEnabled(
+                registry = ProcessDiagnosticFeatureFlagOverrides.registry,
+                serverEffective =
+                    sharedStores.serverFeatureFlags.isEnabled(
+                        currentSession?.currentServerId?.let(::ServerId),
+                        THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY
+                    ),
+                environmentId = sharedStores.apiEnvironmentStore.current().apiBaseUrl,
+                accountId = currentSession?.user?.id.orEmpty(),
+                serverId = currentSession?.currentServerId.orEmpty()
+            )
+        }
 
     LaunchedEffect(threadInstanceKey, threadTimelineKey, timelineSlice.status, timelineSlice.messages.size) {
         if (payload.isReadyForThreadPerformanceGate() && firstContentLoggedThreadId != threadInstanceKey) {
@@ -6664,6 +6693,8 @@ internal fun SharedThreadRouteContent(
                         requestFallback = ::requestInlineImageFallback
                     ),
                 LocalSlockMessagePermalinkLabelResolver provides messagePermalinkLabelResolver,
+                LocalSlockMarkdownRenderConfig provides
+                    SlockMarkdownRenderConfig(singleParagraphLightPath = singleParagraphLightPathEnabled),
                 LocalThreadMessagePointerSessionKey provides threadPointerSessionKey,
                 LocalThreadPendingReactionKeys provides pendingReactionKeys,
                 LocalThreadPendingReactionVisuals provides pendingReactionVisuals,
