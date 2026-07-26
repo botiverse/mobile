@@ -10,6 +10,38 @@ import org.junit.Test
 
 class AndroidRealtimeSessionRegistryTest {
     @Test
+    fun currentServerSelectionNormalizesOneServerAndClearsOnBlankInput() {
+        assertEquals(
+            AndroidCurrentRealtimeServerSelection(
+                serverId = ServerId("server-a"),
+                normalizedServerCount = 1,
+                rejectedMultipleServers = false
+            ),
+            selectAndroidCurrentRealtimeServer(setOf(" server-a ", "server-a"))
+        )
+        assertEquals(
+            AndroidCurrentRealtimeServerSelection(
+                serverId = null,
+                normalizedServerCount = 0,
+                rejectedMultipleServers = false
+            ),
+            selectAndroidCurrentRealtimeServer(setOf("", "  "))
+        )
+    }
+
+    @Test
+    fun currentServerSelectionRejectsMultipleServersWithoutChoosingOne() {
+        assertEquals(
+            AndroidCurrentRealtimeServerSelection(
+                serverId = null,
+                normalizedServerCount = 2,
+                rejectedMultipleServers = true
+            ),
+            selectAndroidCurrentRealtimeServer(setOf("server-b", "server-a"))
+        )
+    }
+
+    @Test
     fun visibleShellsOnlyBackgroundAfterLastOwnerHides() {
         val owners = AndroidVisibleShellOwners()
 
@@ -87,6 +119,34 @@ class AndroidRealtimeSessionRegistryTest {
         assertEquals(listOf("server-a:last_owner_explicit_close"), fixture.disconnected)
         assertEquals(null, fixture.registry.runtime(ServerId("server-a")))
         assertTrue(fixture.registry.runtime(ServerId("server-b")) != null)
+    }
+
+    @Test
+    fun serverSwitchDisconnectsOldRuntimeBeforeCreatingNewRuntime() {
+        val events = mutableListOf<String>()
+        val registry =
+            AndroidRealtimeSessionRegistry(
+                createRuntime = { serverId ->
+                    events += "create:${serverId.value}"
+                    FakeRuntime(serverId)
+                },
+                disconnectRuntime = { serverId, _, _ -> events += "disconnect:${serverId.value}" },
+                releaseScheduler = ManualScheduler(),
+                replaceGraceMillis = 1_000L
+            )
+
+        registry.acquire(ServerId("server-a"), "process")
+        registry.acquireCurrent(
+            serverId = ServerId("server-b"),
+            shellInstanceId = "process",
+            disconnectReason = "server_switch"
+        )
+
+        assertEquals(
+            listOf("create:server-a", "disconnect:server-a", "create:server-b"),
+            events
+        )
+        assertEquals(listOf(ServerId("server-b")), registry.snapshots().map { it.serverId })
     }
 
     @Test
