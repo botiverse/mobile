@@ -568,6 +568,12 @@
     <string name="thread_forward_public_channel">公开频道</string>
     <string name="thread_forward_member">成员</string>
     <string name="thread_forward_agent">Agent</string>
+    <string name="external_share_title">分享到 Raft</string>
+    <string name="external_share_preparing">正在准备分享内容…</string>
+    <string name="external_share_opening_target">正在打开 %1$s…</string>
+    <string name="external_share_error_title">无法打开分享内容</string>
+    <string name="external_share_error_detail">请重试，或关闭后重新分享内容。</string>
+    <string name="external_share_retry_failed">重试失败项</string>
     <string name="thread_share_preview_title">分享预览</string>
     <string name="thread_share_export_failed">图片导出失败</string>
     <string name="thread_share_export_failed_detail">请在所选消息可见后重试。</string>

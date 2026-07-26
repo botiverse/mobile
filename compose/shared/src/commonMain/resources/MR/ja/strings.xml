@@ -568,6 +568,12 @@
     <string name="thread_forward_public_channel">公開チャンネル</string>
     <string name="thread_forward_member">メンバー</string>
     <string name="thread_forward_agent">エージェント</string>
+    <string name="external_share_title">Raft に共有</string>
+    <string name="external_share_preparing">共有コンテンツを準備しています…</string>
+    <string name="external_share_opening_target">%1$s を開いています…</string>
+    <string name="external_share_error_title">共有コンテンツを開けませんでした</string>
+    <string name="external_share_error_detail">もう一度試すか、閉じて共有し直してください。</string>
+    <string name="external_share_retry_failed">失敗した項目を再試行</string>
     <string name="thread_share_preview_title">共有プレビュー</string>
     <string name="thread_share_export_failed">画像の書き出しに失敗しました</string>
     <string name="thread_share_export_failed_detail">選択したメッセージが表示されている状態で、もう一度お試しください。</string>

@@ -3,10 +3,9 @@ package build.raft.app.data
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ServerId
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.test.advanceUntilIdle
-import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.test.TestScope
+import build.raft.app.runPortableCoroutineTest
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.yield
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -14,19 +13,17 @@ import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-@OptIn(ExperimentalCoroutinesApi::class)
 class ExternalShareStoreTest {
     @Test
-    fun freshEnvelopeIsPersistedBeforeNativeClaimAndRestoresPicker() = runTest {
+    fun freshEnvelopeIsPersistedBeforeNativeClaimAndRestoresPicker() = runPortableCoroutineTest {
         val envelope = envelope()
         val native = FakeEnvelopeRepository(envelope)
         val drafts = FakeDraftRepository()
         val store = store(native, drafts, FakeTargetRepository(listOf(target("one"))))
 
         store.dispatch(load())
-        advanceUntilIdle()
 
-        val state = assertIs<ExternalShareState.SelectingTargets>(store.state.value)
+        val state = store.awaitState<ExternalShareState.SelectingTargets> { !it.loading && it.targets.isNotEmpty() }
         assertEquals("account", state.accountId)
         assertEquals(listOf("one"), state.targets.map { it.id })
         assertEquals(listOf("save:SelectingTargets:false", "save:SelectingTargets:true"), drafts.events)
@@ -35,7 +32,7 @@ class ExternalShareStoreTest {
     }
 
     @Test
-    fun selectingAnotherTargetReplacesPreviousAndContinueOnlyCreatesDurableHandoff() = runTest {
+    fun selectingAnotherTargetReplacesPreviousAndContinueOnlyCreatesDurableHandoff() = runPortableCoroutineTest {
         val first = target("one")
         val second = target("two")
         val native = FakeEnvelopeRepository(envelope())
@@ -43,16 +40,15 @@ class ExternalShareStoreTest {
         val targets = FakeTargetRepository(listOf(first, second))
         val store = store(native, drafts, targets)
         store.dispatch(load())
-        advanceUntilIdle()
+        store.awaitState<ExternalShareState.SelectingTargets> { !it.loading && it.targets.size == 2 }
 
         select(store, first)
         select(store, second)
         assertEquals(listOf(second), assertIs<ExternalShareState.SelectingTargets>(store.state.value).selectedTargets)
 
         store.dispatch(ExternalShareIntent.Continue)
-        advanceUntilIdle()
 
-        val ready = assertIs<ExternalShareState.ReadyForComposer>(store.state.value)
+        val ready = store.awaitState<ExternalShareState.ReadyForComposer>()
         assertEquals(second.id, ready.handoff.target.id)
         assertEquals(ChannelId("resolved-two"), ready.handoff.target.channelId)
         assertEquals(1, targets.resolveCalls)
@@ -62,7 +58,7 @@ class ExternalShareStoreTest {
     }
 
     @Test
-    fun legacySingleTargetConfirmationMigratesWithoutUploadOrSendReplay() = runTest {
+    fun legacySingleTargetConfirmationMigratesWithoutUploadOrSendReplay() = runPortableCoroutineTest {
         val legacy =
             ExternalShareDraft(
                 envelope = envelope(),
@@ -77,9 +73,8 @@ class ExternalShareStoreTest {
         val store = store(FakeEnvelopeRepository(envelope()), drafts, targets)
 
         store.dispatch(load())
-        advanceUntilIdle()
 
-        val ready = assertIs<ExternalShareState.ReadyForComposer>(store.state.value)
+        val ready = store.awaitState<ExternalShareState.ReadyForComposer>()
         assertEquals("one", ready.handoff.target.id)
         assertEquals(1, targets.resolveCalls)
         assertEquals(ExternalShareDraftStage.ComposerHandoff, drafts.draft?.stage)
@@ -87,7 +82,7 @@ class ExternalShareStoreTest {
     }
 
     @Test
-    fun legacyDeliveryFailsClosedAndNeverResolvesOrReplays() = runTest {
+    fun legacyDeliveryFailsClosedAndNeverResolvesOrReplays() = runPortableCoroutineTest {
         val destination = target("one")
         val legacy =
             ExternalShareDraft(
@@ -102,15 +97,14 @@ class ExternalShareStoreTest {
         val store = store(FakeEnvelopeRepository(envelope()), FakeDraftRepository(legacy), targets)
 
         store.dispatch(load())
-        advanceUntilIdle()
 
-        val error = assertIs<ExternalShareState.Error>(store.state.value)
+        val error = store.awaitState<ExternalShareState.Error>()
         assertEquals("external_share_draft_invalid", error.errorCode)
         assertEquals(0, targets.resolveCalls)
     }
 
     @Test
-    fun restoredComposerHandoffReemitsTypedHandoffAfterProcessDeath() = runTest {
+    fun restoredComposerHandoffReemitsTypedHandoffAfterProcessDeath() = runPortableCoroutineTest {
         val persisted =
             ExternalShareDraft(
                 envelope = envelope(),
@@ -123,26 +117,25 @@ class ExternalShareStoreTest {
         val store = store(FakeEnvelopeRepository(envelope()), drafts, FakeTargetRepository(emptyList()))
 
         store.dispatch(load())
-        advanceUntilIdle()
 
-        assertIs<ExternalShareState.ReadyForComposer>(store.state.value)
+        store.awaitState<ExternalShareState.ReadyForComposer>()
         assertEquals(ExternalShareDraftStage.ComposerHandoff, drafts.draft?.stage)
     }
 
     @Test
-    fun acknowledgedHandoffDeletesOnlyPickerDraftWhileCancelDeletesPrivateSource() = runTest {
+    fun acknowledgedHandoffDeletesOnlyPickerDraftWhileCancelDeletesPrivateSource() = runPortableCoroutineTest {
         val native = FakeEnvelopeRepository(envelope())
         val drafts = FakeDraftRepository()
         val store = store(native, drafts, FakeTargetRepository(listOf(target("one"))))
         store.dispatch(load())
-        advanceUntilIdle()
+        store.awaitState<ExternalShareState.SelectingTargets> { !it.loading && it.targets.isNotEmpty() }
         select(store, target("one"))
         store.dispatch(ExternalShareIntent.Continue)
-        advanceUntilIdle()
-        val handoff = assertIs<ExternalShareState.ReadyForComposer>(store.state.value).handoff
+        val handoff = store.awaitState<ExternalShareState.ReadyForComposer>().handoff
 
         store.dispatch(ExternalShareIntent.HandoffCompleted(handoff.handoffId))
-        advanceUntilIdle()
+        store.awaitState<ExternalShareState.Idle>()
+        awaitCondition { drafts.draft == null }
 
         assertIs<ExternalShareState.Idle>(store.state.value)
         assertNull(drafts.draft)
@@ -152,14 +145,14 @@ class ExternalShareStoreTest {
         val cancelDrafts = FakeDraftRepository()
         val cancelStore = store(cancelNative, cancelDrafts, FakeTargetRepository(emptyList()))
         cancelStore.dispatch(load("cancel-token_1234567890"))
-        advanceUntilIdle()
+        cancelStore.awaitState<ExternalShareState.SelectingTargets> { !it.loading }
         cancelStore.dispatch(ExternalShareIntent.Cancel)
-        advanceUntilIdle()
+        awaitCondition { cancelNative.deleted && cancelDrafts.draft == null }
         assertTrue(cancelNative.deleted)
         assertNull(cancelDrafts.draft)
     }
 
-    private fun TestScope.store(
+    private fun CoroutineScope.store(
         native: FakeEnvelopeRepository,
         drafts: FakeDraftRepository,
         targets: FakeTargetRepository
@@ -169,6 +162,25 @@ class ExternalShareStoreTest {
         targetRepository = targets,
         scope = this
     )
+
+    private suspend inline fun <reified T : ExternalShareState> ExternalShareStore.awaitState(
+        predicate: (T) -> Boolean = { true }
+    ): T {
+        repeat(100) {
+            val current = state.value
+            if (current is T && predicate(current)) return current
+            yield()
+        }
+        error("ExternalShareStore did not reach ${T::class.simpleName}; current=${state.value}")
+    }
+
+    private suspend fun awaitCondition(predicate: () -> Boolean) {
+        repeat(100) {
+            if (predicate()) return
+            yield()
+        }
+        error("ExternalShareStore side effect did not settle")
+    }
 
     private fun load(token: String = "opaque-token_1234567890") =
         ExternalShareIntent.Load(

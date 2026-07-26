@@ -22,6 +22,7 @@ import build.raft.app.data.SlockAuthSessionStore
 import build.raft.app.data.SlockExternalShareEnvelopeRepositoryProvider
 import build.raft.app.data.SlockNetworkClient
 import build.raft.app.data.slockSharedPreferenceStore
+import build.raft.app.resources.MR
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
@@ -35,6 +36,7 @@ import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.zIndex
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import com.tencent.tmm.kmmresource.compose.stringResource
 
 @Composable
 internal fun ExternalShareLaunchHost(
@@ -128,8 +130,8 @@ private fun ExternalShareSurface(
         is ExternalShareState.SelectingTargets -> ExternalShareTargetPickerSurface(state, onIntent)
         is ExternalShareState.LoadingEnvelope ->
             ExternalShareStatusSurface(
-                title = "Share to Raft",
-                message = "Preparing shared content…",
+                title = stringResource(MR.strings.external_share_title),
+                message = stringResource(MR.strings.external_share_preparing),
                 onClose = { onIntent(ExternalShareIntent.Cancel) }
             )
         is ExternalShareState.ReadyForComposer -> {
@@ -141,15 +143,15 @@ private fun ExternalShareSurface(
                 }
             }
             ExternalShareStatusSurface(
-                title = "Share to Raft",
-                message = "Opening ${state.handoff.target.title}…",
+                title = stringResource(MR.strings.external_share_title),
+                message = stringResource(MR.strings.external_share_opening_target, state.handoff.target.title),
                 onClose = null
             )
         }
         is ExternalShareState.Error ->
             ExternalShareStatusSurface(
-                title = "Could not open shared content",
-                message = state.errorCode,
+                title = stringResource(MR.strings.external_share_error_title),
+                message = stringResource(MR.strings.external_share_error_detail),
                 onClose = { onIntent(ExternalShareIntent.Cancel) }
             )
     }
@@ -189,14 +191,14 @@ private fun ExternalShareStatusSurface(
             )
             retry?.let {
                 SlockModalActionButton(
-                    label = "Retry failed",
+                    label = stringResource(MR.strings.external_share_retry_failed),
                     icon = SlockLucideIconName.RefreshCw,
                     onClick = it
                 )
             }
             onClose?.let {
                 SlockModalActionButton(
-                    label = "Close",
+                    label = stringResource(MR.strings.common_close),
                     icon = SlockLucideIconName.X,
                     onClick = it
                 )

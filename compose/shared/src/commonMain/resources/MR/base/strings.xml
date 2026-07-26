@@ -568,6 +568,12 @@
     <string name="thread_forward_public_channel">Public channel</string>
     <string name="thread_forward_member">Member</string>
     <string name="thread_forward_agent">Agent</string>
+    <string name="external_share_title">Share to Raft</string>
+    <string name="external_share_preparing">Preparing shared content…</string>
+    <string name="external_share_opening_target">Opening %1$s…</string>
+    <string name="external_share_error_title">Could not open shared content</string>
+    <string name="external_share_error_detail">Try again, or close and share the content again.</string>
+    <string name="external_share_retry_failed">Retry failed items</string>
     <string name="thread_share_preview_title">Share preview</string>
     <string name="thread_share_export_failed">IMAGE EXPORT FAILED</string>
     <string name="thread_share_export_failed_detail">TRY AGAIN AFTER THE SELECTED MESSAGES ARE VISIBLE.</string>
