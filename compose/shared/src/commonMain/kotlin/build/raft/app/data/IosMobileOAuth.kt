@@ -621,8 +621,15 @@ internal fun iosMobileOAuthProviderErrorMessage(
             }
         "expired", "request_not_pending", "handoff_code_expired", "handoff_code_consumed" ->
             "Sign-in request expired. Try again."
-        "account_conflict" -> accountConflictMessage(providerName)
-        "provider_conflict" -> providerConflictMessage(providerName)
+        // Delegated to the shared mapper so Android resolves the identical
+        // branch and copy; see MobileOAuthConflictMessages.kt.
+        "account_conflict", "provider_conflict" ->
+            mobileOAuthConflictMessageOrNull(
+                providerName = providerName,
+                error = error,
+                accountConflictMessage = accountConflictMessage,
+                providerConflictMessage = providerConflictMessage,
+            ) ?: iosMobileOAuthActionFailedMessage(provider, mode)
         "registration_disabled" ->
             "New account registration is currently unavailable."
         "runtime_not_ready" ->
