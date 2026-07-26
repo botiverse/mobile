@@ -79,7 +79,24 @@ ruby -e '
   raise "update manifest lacks ordered signer lineage" unless manifest_run.include?("signer_lineage_sha256")
   raise "update manifest lacks v3.1 verification" unless manifest_run.include?("verified_v31: true")
 
-  release_verify = jobs.fetch("build_android_release").fetch("steps").find { |step| step["name"] == "Verify APK" }.fetch("run")
+  release_steps = jobs.fetch("build_android_release").fetch("steps")
+  stage_index = release_steps.index { |step| step["name"] == "Stage workflow-owned release implementations" }
+  product_index = release_steps.index { |step| step["name"] == "Checkout immutable product source" }
+  restore_index = release_steps.index { |step| step["name"] == "Restore workflow-owned release implementations" }
+  verify_index = release_steps.index { |step| step["name"] == "Verify APK" }
+  raise "release workflow lacks workflow-owned staging" unless stage_index
+  raise "release workflow lacks immutable product checkout" unless product_index
+  raise "release workflow lacks workflow-owned restore" unless restore_index
+  raise "release workflow staging order is unsafe" unless stage_index < product_index && product_index < restore_index && restore_index < verify_index
+  stage_run = release_steps.fetch(stage_index).fetch("run")
+  unless stage_run.include?("scripts/verify_android_apk_with_rotation.sh")
+    raise "release workflow does not stage the canonical rotation verifier"
+  end
+
+  release_verify = release_steps.fetch(verify_index).fetch("run")
+  unless release_verify.include?("scripts/verify_android_apk_with_rotation.sh")
+    raise "release workflow bypasses the canonical API 24-32 rotation verifier"
+  end
   raise "release identity output does not canonicalize lineage oldest-to-current" unless release_verify.include?("| reverse")
 
   fixture_schema = JSON.parse(File.read("docs/qa-acceptance/android-app-update/android-app-update-fixture.v1.schema.json"))

@@ -268,11 +268,33 @@ jobs:
       verified_v3: ${{ steps.verify.outputs.verified_v3 }}
       verified_v31: ${{ steps.verify.outputs.verified_v31 }}
     steps:
-      - name: Checkout
+      - name: Checkout workflow base
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Stage workflow-owned release implementations
+        shell: bash
+        run: |
+          tar -C . -cf "$RUNNER_TEMP/android-release-workflow-files.tar" \
+            .github/actions/gradle-cache-policy \
+            .github/actions/gradle-failure-diagnostics \
+            .github/gradle-cache-epoch \
+            .github/gradle-cache-quarantine \
+            scripts/sign_android_apk_with_rotation.sh \
+            scripts/verify_android_apk_with_rotation.sh \
+            scripts/verify_android_native_symbols.sh
+
+      - name: Checkout immutable product source
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
           ref: ${{ inputs.source_sha || github.sha }}
+
+      - name: Restore workflow-owned release implementations
+        shell: bash
+        run: tar -C . -xf "$RUNNER_TEMP/android-release-workflow-files.tar"
 
       - name: Verify immutable source
         id: source
@@ -465,8 +487,10 @@ jobs:
           set -euo pipefail
           BT="${ANDROID_HOME}/build-tools/36.0.0"
           APK="${{ steps.locate.outputs.apk_path }}"
-          "${BT}/zipalign" -c -p 4 "${APK}"
-          "${BT}/apksigner" verify --verbose --print-certs "${APK}" 2>&1 | tee apksigner-verify.log
+          scripts/verify_android_apk_with_rotation.sh \
+            --apk "${APK}" \
+            --build-tools-dir "${BT}" \
+            --verify-log apksigner-verify.log
           "${BT}/aapt" dump badging "${APK}" 2>&1 | tee aapt-badging.log
           PACKAGE_ID="$(sed -n "s/^package: name='\([^']*\)'.*/\1/p" aapt-badging.log | head -n 1)"
           [ -n "${PACKAGE_ID}" ] || { echo "Unable to read package id" >&2; exit 1; }
