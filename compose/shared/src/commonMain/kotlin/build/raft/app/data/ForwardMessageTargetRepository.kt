@@ -22,6 +22,7 @@ private val forwardTargetJson = Json {
     coerceInputValues = true
 }
 
+@Serializable
 enum class ForwardMessageTargetKind {
     RecentChannel,
     RecentDirectMessage,
@@ -30,6 +31,7 @@ enum class ForwardMessageTargetKind {
     AgentDirectMessageCandidate
 }
 
+@Serializable
 enum class ForwardMessageTargetRequiredAction(val wireValue: String?) {
     None(null),
     JoinChannel("join_channel"),
@@ -41,6 +43,7 @@ enum class ForwardMessageSendMode(val wireValue: String) {
     Individual("individual")
 }
 
+@Serializable
 data class ForwardMessageTarget(
     val serverId: ServerId,
     val kind: ForwardMessageTargetKind,

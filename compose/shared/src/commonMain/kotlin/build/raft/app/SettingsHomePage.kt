@@ -5273,6 +5273,19 @@ internal fun SlockAppShellContent(
         ) {
             key("route-main") { mainRouteContent() }
         }
+        ExternalShareLaunchHost(
+            pageData = pager.pageData.params,
+            authStore = shellAuthStore,
+            networkClient = appShellNetworkClient,
+            authority =
+                readySession?.let { session ->
+                    ExternalShareLaunchAuthority(
+                        accountId = session.user.id,
+                        serverId = session.currentServerId.orEmpty()
+                    )
+                },
+            bridge = bridge
+        )
     }
 }
 
