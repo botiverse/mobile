@@ -867,10 +867,10 @@ internal fun threadHeaderDisplayTitle(
     threadHeaderSafeTitleOrNull(title) ?: threadHeaderFallbackTitle(surfaceKind)
 
 @Page(THREAD_PAGE, supportInLocal = true)
-internal class ComposeThreadPage : build.raft.app.base.BasePager() {
+internal class ComposeThreadPage : AuthenticatedProductPager(AuthenticatedProductRoute.Thread) {
     override fun willInit() {
         super.willInit()
-        setContent {
+        setAuthenticatedContent {
             SlockInputFocusDismissHost { focusDismissModifier ->
                 Box(modifier = focusDismissModifier.fillMaxSize()) {
                     ThreadPageScreen(
@@ -884,10 +884,10 @@ internal class ComposeThreadPage : build.raft.app.base.BasePager() {
 }
 
 @Page(THREAD_MEMBERS_PAGE, supportInLocal = true)
-internal class ComposeThreadMembersPage : build.raft.app.base.BasePager() {
+internal class ComposeThreadMembersPage : AuthenticatedProductPager(AuthenticatedProductRoute.ThreadMembers) {
     override fun willInit() {
         super.willInit()
-        setContent { ThreadMembersPageScreen() }
+        setAuthenticatedContent { ThreadMembersPageScreen() }
     }
 }
 
@@ -2559,6 +2559,9 @@ private fun ThreadPageScreen(
     }
     val storeScope = remember(params.toString(), pager.pagerId) {
         params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
+    }
+    val hasExplicitShellScope = remember(params.toString()) {
+        params.slockShellStoreScopeOrNull() != null
     }
     val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
     val authStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
@@ -22877,10 +22880,10 @@ internal fun Pager.openThreadForwardBundlePage(route: ThreadForwardBundleRoute) 
 }
 
 @Page(THREAD_FORWARD_BUNDLE_PAGE, supportInLocal = true)
-internal class ComposeThreadForwardBundlePage : build.raft.app.base.BasePager() {
+internal class ComposeThreadForwardBundlePage : AuthenticatedProductPager(AuthenticatedProductRoute.ThreadForwardBundle) {
     override fun willInit() {
         super.willInit()
-        setContent { ThreadForwardBundleScreen() }
+        setAuthenticatedContent { ThreadForwardBundleScreen() }
     }
 }
 

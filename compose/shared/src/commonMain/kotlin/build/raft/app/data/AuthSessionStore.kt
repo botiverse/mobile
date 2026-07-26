@@ -240,6 +240,27 @@ interface SlockAuthSessionEventSource {
     val authSessionEvents: SharedFlow<AuthSessionEvent>
 }
 
+data class AuthSessionTerminalSnapshot(
+    val generation: Long,
+    val session: StoredAuthSession?,
+)
+
+/**
+ * Process-auth revision authority used by terminal route/cleanup consumers.
+ * The conditional commit executes while the canonical session mutation lock is held, so a
+ * successor login cannot land between the final absent-session check and the terminal action.
+ */
+internal interface SlockAuthSessionTerminalSource {
+    val authSessionTerminalEvents: SharedFlow<AuthSessionEvent>
+
+    suspend fun readAuthSessionTerminalSnapshot(): AuthSessionTerminalSnapshot
+
+    suspend fun runIfAuthSessionTerminalRevision(
+        expectedGeneration: Long,
+        action: () -> Unit,
+    ): Boolean
+}
+
 @Serializable
 data class StoredAuthServerSelection(
     val serverId: String,
@@ -597,7 +618,8 @@ class KeyValueAuthSessionStore(
     private val store: SlockKeyValueStore,
     private val diagnosticsLogger: (String) -> Unit = {},
     private val criticalDiagnosticsLogger: (String) -> Unit = diagnosticsLogger
-) : SlockAuthSessionStore, SlockAuthSessionInvalidationSource, SlockAuthSessionChangeSource, SlockAuthSessionEventSource, SlockAuthServerSelectionMemory {
+) : SlockAuthSessionStore, SlockAuthSessionInvalidationSource, SlockAuthSessionChangeSource,
+    SlockAuthSessionEventSource, SlockAuthSessionTerminalSource, SlockAuthServerSelectionMemory {
     // #466: the serialization lock is SHARED across every KeyValueAuthSessionStore instance
     // (they all back the same MMKV namespace), so cross-instance / cross-subsystem session
     // read-modify-writes can never lose an update. Delegating the existing `mutex` to the
@@ -611,6 +633,7 @@ class KeyValueAuthSessionStore(
     override val sessionInvalidations: SharedFlow<Unit> = invalidations.asSharedFlow()
     override val sessionChanges: SharedFlow<String> = changes.asSharedFlow()
     override val authSessionEvents: SharedFlow<AuthSessionEvent> = storeEvents.asSharedFlow()
+    override val authSessionTerminalEvents: SharedFlow<AuthSessionEvent> = authSessionEvents
 
     // Backing read/write of the session record — NOT locked; callers MUST hold [mutex]/[storeMutex].
     // The durable JSON is loaded once per app-scope store. Every repository/network consumer then
@@ -656,6 +679,26 @@ class KeyValueAuthSessionStore(
                 decodeFailure = null
             )
     }
+
+    override suspend fun readAuthSessionTerminalSnapshot(): AuthSessionTerminalSnapshot =
+        mutex.withLock {
+            AuthSessionTerminalSnapshot(
+                generation = storeGeneration,
+                session = readSessionRecordLocked(),
+            )
+        }
+
+    override suspend fun runIfAuthSessionTerminalRevision(
+        expectedGeneration: Long,
+        action: () -> Unit,
+    ): Boolean =
+        mutex.withLock {
+            if (storeGeneration != expectedGeneration || readSessionRecordLocked() != null) {
+                return@withLock false
+            }
+            action()
+            true
+        }
 
     override suspend fun replaceAuthenticatedSession(session: StoredAuthSession) {
         val fingerprint = session.authSessionClearFingerprint()

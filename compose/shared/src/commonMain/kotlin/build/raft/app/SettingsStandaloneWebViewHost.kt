@@ -33,7 +33,6 @@ import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.material3.Text
-import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.draw.alpha
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
@@ -55,10 +54,10 @@ internal const val SETTINGS_WEB_VIEW_SURFACE = "settingsWebViewSurface"
 internal const val SETTINGS_WEB_VIEW_VERSION_CODE = "versionCode"
 
 @Page(SETTINGS_WEB_VIEW_PAGE, supportInLocal = true)
-internal class ComposeSettingsWebViewPage : build.raft.app.base.BasePager() {
+internal class ComposeSettingsWebViewPage : AuthenticatedProductPager(AuthenticatedProductRoute.SettingsWebView) {
     override fun willInit() {
         super.willInit()
-        setContent { SettingsWebViewScreen() }
+        setAuthenticatedContent { SettingsWebViewScreen() }
     }
 }
 
