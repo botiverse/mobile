@@ -40,7 +40,11 @@ function run(command, args, { input, allowFailure = false, timeoutMs = commandTi
   });
   if (!allowFailure && (result.error || result.status !== 0)) {
     const stderr = Buffer.isBuffer(result.stderr) ? result.stderr.toString("utf8") : result.stderr;
-    throw new Error(`${command} failed (${result.status ?? "spawn"}): ${String(stderr ?? "").trim()}`);
+    const detail = String(stderr ?? "").trim().slice(0, 2_048);
+    const code = result.error && "code" in result.error ? String(result.error.code) : "none";
+    throw new Error(
+      `${command} failed (status=${result.status ?? "none"}, signal=${result.signal ?? "none"}, code=${code})${detail ? `: ${detail}` : ""}`,
+    );
   }
   return {
     status: result.status ?? -1,
@@ -93,7 +97,10 @@ function installPrivateEnvelope(applicationId, requestId, bytes) {
     "trap 'rm -f \"$tmp\"' EXIT", "cat > \"$tmp\"", "chmod 600 \"$tmp\"",
     "mv -f \"$tmp\" \"$dst\"", "trap - EXIT",
   ].join("; ");
-  run("adb", ["exec-out", "run-as", applicationId, "sh", "-c", script], { input: bytes });
+  // exec-in is the ADB service whose contract is host stdin -> remote stdin.
+  // exec-out is intended for the opposite direction and can keep the remote
+  // reader waiting after Node has supplied its input buffer on hosted runners.
+  run("adb", ["exec-in", "run-as", applicationId, "sh", "-c", script], { input: bytes });
 }
 
 function expectedLogin(responseFile, bindingFile, runCaseId, ciJobRef) {
