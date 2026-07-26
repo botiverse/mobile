@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-26T22:11:08.118Z",
+  "generatedAt": "2026-07-26T22:15:32.776Z",
   "runId": "d27f2622-20260726220916",
   "commit": "d27f2622-20260726220916",
   "commitSubject": "chore(android): bump Hands SDK to 0.12.2 (#1654)",
@@ -27,8 +27,8 @@
       },
       "analysisSummary": {
         "total": 80,
-        "ready": 65,
-        "pending": 15
+        "ready": 79,
+        "pending": 1
       }
     },
     {
@@ -51,8 +51,8 @@
       },
       "analysisSummary": {
         "total": 80,
-        "ready": 61,
-        "pending": 19
+        "ready": 74,
+        "pending": 6
       }
     },
     {
@@ -75,8 +75,8 @@
       },
       "analysisSummary": {
         "total": 80,
-        "ready": 66,
-        "pending": 14
+        "ready": 75,
+        "pending": 5
       }
     }
   ],
@@ -90,8 +90,8 @@
   },
   "analysisSummary": {
     "total": 80,
-    "ready": 65,
-    "pending": 15
+    "ready": 79,
+    "pending": 1
   },
   "componentMatrixSummary": {
     "total": 108,

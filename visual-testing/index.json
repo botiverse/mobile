@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-07-26T22:11:08.118Z",
+  "generatedAt": "2026-07-26T22:15:32.776Z",
   "latestRunId": "d27f2622-20260726220916",
   "latest": {
     "runId": "d27f2622-20260726220916",
     "commit": "d27f2622-20260726220916",
     "commitSubject": "chore(android): bump Hands SDK to 0.12.2 (#1654)",
-    "generatedAt": "2026-07-26T22:11:08.118Z",
+    "generatedAt": "2026-07-26T22:15:32.776Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -20,8 +20,8 @@
     },
     "analysisSummary": {
       "total": 80,
-      "ready": 65,
-      "pending": 15
+      "ready": 79,
+      "pending": 1
     },
     "comparisons": [
       "react__android",
@@ -129,7 +129,7 @@
       "runId": "d27f2622-20260726220916",
       "commit": "d27f2622-20260726220916",
       "commitSubject": "chore(android): bump Hands SDK to 0.12.2 (#1654)",
-      "generatedAt": "2026-07-26T22:11:08.118Z",
+      "generatedAt": "2026-07-26T22:15:32.776Z",
       "baseline": "react",
       "current": "android",
       "summary": {
@@ -142,8 +142,8 @@
       },
       "analysisSummary": {
         "total": 80,
-        "ready": 65,
-        "pending": 15
+        "ready": 79,
+        "pending": 1
       },
       "comparisons": [
         "react__android",

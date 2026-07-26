@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-07-26 22:11:08 UTC
+Generated: 2026-07-26 22:15:32 UTC
 Latest run: d27f2622-20260726220916
 Latest commit: d27f2622-20260726220916
 Commit subject: chore(android): bump Hands SDK to 0.12.2 (#1654)
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 80, same 0, pass 0, basic-pass 0, different 79, missing 1
-AI analysis: ready 65 / total 80, pending 15
+AI analysis: ready 79 / total 80, pending 1
 Visual coverage matrix: active 89 / total 108, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
