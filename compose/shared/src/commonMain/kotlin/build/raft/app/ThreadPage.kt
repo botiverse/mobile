@@ -3314,7 +3314,7 @@ private fun ThreadMessageVisualScreenContent() {
                     markdownTagContextSignature = markdownTagContextSignature,
                     onToggleReaction = {},
                     onOpenAttachment = {},
-                    onOpenMarkdownTag = {},
+                    onOpenMarkdownTag = { _, _ -> },
                     onOpenMarkdownUrl = {},
                     outerPadding = 0.dp
                 )
@@ -3380,7 +3380,7 @@ private fun ThreadMessageVisualScreenContent() {
                     markdownTagContextSignature = markdownTagContextSignature,
                     onToggleReaction = {},
                     onOpenAttachment = {},
-                    onOpenMarkdownTag = {},
+                    onOpenMarkdownTag = { _, _ -> },
                     onOpenMarkdownUrl = {},
                     outerPadding = 0.dp
                 )
@@ -3567,7 +3567,7 @@ private fun ThreadMessageVisualScreenContent() {
                     onOpenTaskStatusMenu = {},
                     onToggleReaction = {},
                     onOpenAttachment = {},
-                    onOpenMarkdownTag = { tag ->
+                    onOpenMarkdownTag = { tag, _ ->
                         if (tag.kind == ThreadMarkdownTagKind.UserMention) {
                             openedVisualMentionCount += 1
                         }
@@ -11416,7 +11416,6 @@ private fun ThreadDeferredLoadingRouteContent(
     }
 }
 
-@Composable
 private class ThreadEventHandler(
     private val dispatch: (
         action: String,
@@ -11437,6 +11436,7 @@ private class ThreadEventHandler(
     }
 }
 
+@Composable
 private fun ThreadPageContent(
     threadInstanceKey: String,
     payload: KuiklyThreadScreenPayload,
@@ -22983,7 +22983,7 @@ private fun ThreadForwardBundleScreen() {
                                 onOpenTaskStatusMenu = {},
                                 onToggleReaction = {},
                                 onOpenAttachment = {},
-                                onOpenMarkdownTag = {},
+                                onOpenMarkdownTag = { _, _ -> },
                                 onOpenMarkdownUrl = { url -> linkNavigator.open(url) },
                                 showReplyAction = false,
                                 showSaveAction = false,
@@ -24689,7 +24689,7 @@ internal fun ThreadAlignRightVisualScreen() {
                     onOpenTaskStatusMenu = {},
                     onToggleReaction = {},
                     onOpenAttachment = {},
-                    onOpenMarkdownTag = {},
+                    onOpenMarkdownTag = { _, _ -> },
                     onOpenMarkdownUrl = {}
                 )
             }
