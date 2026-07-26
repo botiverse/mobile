@@ -579,6 +579,53 @@ class RealtimeEventMapperTest {
     }
 
     @Test
+    fun threadUpdatedProjectsExistingRepliesSyncCoreV1Envelope() {
+        val event =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.ThreadUpdated,
+                """
+                {
+                  "parentMessageId": "parent-1",
+                  "threadChannelId": "thread-1",
+                  "replyCount": 1,
+                  "syncCoreReplyWindow": {
+                    "producer": "message-service.thread-replies-window.v1",
+                    "discussion": {
+                      "root": { "kind": "message", "serverId": "server-1", "id": "parent-1" },
+                      "relation": { "kind": "replies" },
+                      "parentScopeKey": {
+                        "serverId": "server-1",
+                        "scopeKind": "channel",
+                        "scopeId": "channel-1"
+                      },
+                      "backing": "sync-scope"
+                    },
+                    "window": { "kind": "sync-scope-window", "scopeCursor": null, "epoch": null }
+                  },
+                  "latestReply": {
+                    "id": "reply-1",
+                    "seq": 1,
+                    "content": "hello",
+                    "senderId": "user-1",
+                    "senderType": "user",
+                    "senderName": "user-1",
+                    "createdAt": "2026-07-25T00:00:00Z"
+                  }
+                }
+                """.trimIndent(),
+            )
+
+        val envelope = assertIs<ThreadUpdated>(event).syncCoreReplyWindow
+        assertEquals("message-service.thread-replies-window.v1", envelope?.producer)
+        assertEquals("server-1", envelope?.rootServerId)
+        assertEquals("parent-1", envelope?.rootMessageId)
+        assertEquals("channel", envelope?.parentScopeKind)
+        assertEquals("channel-1", envelope?.parentScopeId)
+        assertNull(envelope?.scopeCursor)
+        assertNull(envelope?.epoch)
+    }
+
+    @Test
     fun agentActivityPreservesServerSeq() {
         val event =
             RealtimeEventMapper().map(

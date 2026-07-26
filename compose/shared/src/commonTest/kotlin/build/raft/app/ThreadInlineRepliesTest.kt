@@ -1,7 +1,7 @@
 package build.raft.app
 
+import build.raft.app.data.ThreadSnapshot
 import build.raft.app.network.sync.ReplyPreview
-import build.raft.app.network.sync.applyReplyFrame
 import build.raft.app.network.sync.initialThreadRepliesReadModel
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -10,7 +10,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
-import kotlin.test.assertSame
 
 class ThreadInlineRepliesTest {
     @Test
@@ -74,7 +73,18 @@ class ThreadInlineRepliesTest {
     }
 
     @Test
-    fun noReplyAndSystemOnlyStatesDoNotCreateInlineSurface() {
+    fun inlineReplyRowHeightKeepsBreathingRoomAtDefaultAndLargeFontScales() {
+        assertEquals(20f, threadInlineReplyRowHeightDp(fontScale = 1f))
+        assertEquals(
+            24.8f,
+            threadInlineReplyRowHeightDp(fontScale = 1.3f),
+            absoluteTolerance = 0.001f,
+        )
+        assertEquals(20f, threadInlineReplyRowHeightDp(fontScale = 0.85f))
+    }
+
+    @Test
+    fun zeroReplyCountHasNoSurfaceAndCachedPreviewCannotAdmitGeometry() {
         assertNull(
             threadInlineReplyPresentation(
                 model = null,
@@ -82,6 +92,23 @@ class ThreadInlineRepliesTest {
                 hasDraft = true,
             )
         )
+        val staleCachedPreview =
+            initialThreadRepliesReadModel(
+                replies = listOf(reply("reply-9", 9)),
+                replyCount = 9,
+                limit = 3,
+            )
+        assertNull(
+            threadInlineReplyPresentation(
+                model = staleCachedPreview,
+                replyMetadata = metadata(replyCount = 0),
+                hasDraft = false,
+            )
+        )
+    }
+
+    @Test
+    fun systemOnlyPreviewHasNoInlineSurface() {
         val systemOnly =
             initialThreadRepliesReadModel(
                 replies = listOf(reply("system-1", 1, senderType = "system")),
@@ -120,26 +147,12 @@ class ThreadInlineRepliesTest {
     }
 
     @Test
-    fun staleSnapshotDoesNotReplaceNewerRealtimePreview() {
-        val realtime =
-            initialThreadRepliesReadModel(
-                replies = listOf(reply("reply-10", 10)),
-                replyCount = 10,
-                limit = 3,
-            ).applyReplyFrame(
-                reply = reply("reply-11", 11),
-                frameReplyCount = 11,
-                limit = 3,
-            )
-        val staleSnapshot =
-            initialThreadRepliesReadModel(
-                replies = listOf(reply("reply-8", 8), reply("reply-9", 9)),
-                replyCount = 9,
-                limit = 3,
-            )
+    fun pageCoherentReplySummariesStayOutsideSerializableThreadSnapshotState() {
+        val descriptor = ThreadSnapshot.serializer().descriptor
+        val serializedFields =
+            (0 until descriptor.elementsCount).map { index -> descriptor.getElementName(index) }
 
-        assertSame(realtime, realtime.adoptNewerSnapshot(staleSnapshot))
-        assertEquals(listOf("reply-10", "reply-11"), realtime.replies.map { it.messageId })
+        assertFalse("replySummaries" in serializedFields)
     }
 
     private fun reply(

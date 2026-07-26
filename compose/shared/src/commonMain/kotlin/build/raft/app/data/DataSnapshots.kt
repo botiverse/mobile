@@ -333,7 +333,17 @@ data class ThreadSnapshot(
     val historyLimited: Boolean = false,
     val highlightedMessageId: MessageId? = null,
     val newUpdateCount: Int = 0,
-    val lastSeq: Long = messages.maxOfOrNull { it.seq ?: 0L } ?: 0L
+    val lastSeq: Long = messages.maxOfOrNull { it.seq ?: 0L } ?: 0L,
+    /** Page-coherent inline reply summaries returned with the same canonical message response. */
+    @Transient
+    val replySummaries: ThreadReplySummariesSnapshot = ThreadReplySummariesSnapshot(emptyList()),
+    /**
+     * Provenance for [replySummaries]. Missing is distinct from an authoritative empty result:
+     * old Servers omit the embedded field and must use the targeted-summary compatibility
+     * request before a replies-domain rebaseline can publish.
+     */
+    @Transient
+    val replySummariesAuthority: ThreadReplySummariesAuthority = ThreadReplySummariesAuthority.Unavailable,
 )
 
 data class ThreadListSnapshot(
@@ -348,6 +358,13 @@ data class ThreadReplySummariesSnapshot(
     val threads: List<InboxItem>,
     val followedThreadKeys: Set<String> = emptySet()
 )
+
+enum class ThreadReplySummariesAuthority {
+    Unavailable,
+    EmbeddedInvalid,
+    Embedded,
+    Targeted,
+}
 
 data class AttachmentUploadRequest(
     val channelId: ChannelId,

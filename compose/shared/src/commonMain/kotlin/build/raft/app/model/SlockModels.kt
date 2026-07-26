@@ -521,6 +521,8 @@ data class ThreadUpdated(
     val firstUnreadMessageId: MessageId? = null,
     /** Server-derived bounded reply-window delta; not canonical message authority. */
     val latestReply: ReplyPreview? = null,
+    /** Existing replies SyncCore v1 producer envelope; validated again against local identity by the domain host. */
+    val syncCoreReplyWindow: build.raft.app.network.sync.ThreadRepliesSyncWindowEnvelope? = null,
 ) : RealtimeEvent
 
 @Serializable

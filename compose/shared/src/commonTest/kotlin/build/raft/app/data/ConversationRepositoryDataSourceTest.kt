@@ -232,13 +232,39 @@ class ConversationRepositoryDataSourceTest {
     }
 
     @Test
-    fun getThreadInitialLoadReturnsCanonicalMessagesWithoutThreadSummaryDependency() = runBlocking {
+    fun getThreadInitialLoadAdmitsEmbeddedThreadSummaryWithoutSecondRequest() = runBlocking {
         val network =
             FakeConversationNetworkClient(
                 responses =
                     mapOf(
                         "GET messages/channel/channel-1" to
-                            """{"messages":[${messageJson("parent-1", "channel-1", threadId = "thread-1")}],"historyLimited":false}""",
+                            """
+                            {
+                              "messages":[${messageJson("parent-1", "channel-1")}],
+                              "threadSummariesByParentMessageId": {
+                                "parent-1": {
+                                  "threadChannelId":"thread-1",
+                                  "replyCount":4,
+                                  "unreadCount":1,
+                                  "firstUnreadMessageId":"reply-4",
+                                  "latestReplies":[
+                                    {
+                                      "messageId":"reply-4",
+                                      "seq":4,
+                                      "preview":"first-frame preview",
+                                      "senderId":"agent-1",
+                                      "senderType":"agent",
+                                      "senderName":"MingQi",
+                                      "senderDisplayName":"明启",
+                                      "senderAvatarUrl":null,
+                                      "createdAt":"2026-07-25T14:01:00.000Z"
+                                    }
+                                  ]
+                                }
+                              },
+                              "historyLimited":false
+                            }
+                            """.trimIndent(),
                     )
             )
         val repository = RealConversationRepository(sampleStore(), network)
@@ -249,16 +275,73 @@ class ConversationRepositoryDataSourceTest {
         val message = snapshot.messages.single()
         assertEquals("parent-1", message.id.value)
         assertEquals("thread-1", message.threadChannelId?.value)
-        assertEquals(0, message.replyCount)
-        assertEquals(0, message.unreadReplyCount)
-        assertEquals(null, message.firstUnreadReplyMessageId?.value)
+        assertEquals(4, message.replyCount)
+        assertEquals(1, message.unreadReplyCount)
+        assertEquals("reply-4", message.firstUnreadReplyMessageId?.value)
         assertFalse(message.isThreadFollowed)
+        val summary = snapshot.replySummaries.threads.single()
+        assertEquals("parent-1", summary.parentMessageId?.value)
+        assertEquals(listOf("reply-4"), summary.latestReplies.map { it.messageId })
+        assertEquals("明启", summary.latestReplies.single().senderDisplayName)
         assertEquals(
             listOf(
                 RecordedConversationRequest(DataRequestPriority.Foreground, "GET", "messages/channel/channel-1", listOf("limit" to "30"))
             ),
             network.requests
         )
+    }
+
+    @Test
+    fun malformedEmbeddedSummaryFallsBackToTargetedSummary() = runBlocking {
+        val network =
+            FakeConversationNetworkClient(
+                responses =
+                    mapOf(
+                        "GET messages/channel/channel-1" to
+                            """{
+                              "messages":[${messageJson("parent-1", "channel-1")}],
+                              "threadSummariesByParentMessageId":{"parent-1":{"threadChannelId":"","replyCount":4}}
+                            }""",
+                        "GET channels/channel-1/threads" to
+                            """{"parent-1":{"threadChannelId":"thread-1","replyCount":4,"latestReplies":[]}}""",
+                    ),
+            )
+        val repository = RealConversationRepository(sampleStore(), network)
+
+        val snapshot = assertIs<DataResult.Content<ThreadSnapshot>>(repository.getThread(ThreadId("channel-1"))).data
+
+        assertEquals(ThreadReplySummariesAuthority.Targeted, snapshot.replySummariesAuthority)
+        assertEquals("thread-1", snapshot.messages.single().threadChannelId?.value)
+        assertTrue(network.requests.any { it.path == "channels/channel-1/threads" })
+    }
+
+    @Test
+    fun malformedEmbeddedAndFailedSummaryFallbacksRemainUnavailable() = runBlocking {
+        val network =
+            FakeConversationNetworkClient(
+                responses =
+                    mapOf(
+                        "GET messages/channel/channel-1" to
+                            """{
+                              "messages":[${messageJson("parent-1", "channel-1")}],
+                              "threadSummariesByParentMessageId":[]
+                            }""",
+                    ),
+            )
+        val repository = RealConversationRepository(sampleStore(), network)
+
+        val snapshot =
+            assertIs<DataResult.Content<ThreadSnapshot>>(
+                repository.getThread(
+                    ThreadId("channel-1"),
+                    includeFollowedSummaries = true,
+                )
+            ).data
+
+        assertEquals(ThreadReplySummariesAuthority.Unavailable, snapshot.replySummariesAuthority)
+        assertTrue(snapshot.replySummaries.threads.isEmpty())
+        assertTrue(network.requests.any { it.path == "channels/channel-1/threads" })
+        assertTrue(network.requests.any { it.path == "channels/threads/followed" })
     }
 
     @Test

@@ -454,6 +454,46 @@ private data class ThreadUpdatedDto(
     val unreadCount: Int? = null,
     val firstUnreadMessageId: String? = null,
     val latestReply: ThreadLatestReplyDto? = null,
+    val syncCoreReplyWindow: ThreadRepliesSyncWindowEnvelopeDto? = null,
+)
+
+@Serializable
+private data class ThreadRepliesSyncWindowEnvelopeDto(
+    val producer: String = "",
+    val discussion: ThreadRepliesDiscussionDto? = null,
+    val window: ThreadRepliesSyncWindowDto? = null,
+)
+
+@Serializable
+private data class ThreadRepliesDiscussionDto(
+    val root: ThreadRepliesRootDto? = null,
+    val relation: ThreadRepliesRelationDto? = null,
+    val parentScopeKey: ThreadRepliesParentScopeDto? = null,
+    val backing: String = "",
+)
+
+@Serializable
+private data class ThreadRepliesRootDto(
+    val kind: String = "",
+    val serverId: String = "",
+    val id: String = "",
+)
+
+@Serializable
+private data class ThreadRepliesRelationDto(val kind: String = "")
+
+@Serializable
+private data class ThreadRepliesParentScopeDto(
+    val serverId: String = "",
+    val scopeKind: String = "",
+    val scopeId: String = "",
+)
+
+@Serializable
+private data class ThreadRepliesSyncWindowDto(
+    val kind: String = "",
+    val scopeCursor: String? = null,
+    val epoch: String? = null,
 )
 
 @Serializable
@@ -778,6 +818,43 @@ private fun ThreadUpdatedDto.toDomain(): ThreadUpdated? {
         unreadCount = unreadCount,
         firstUnreadMessageId = firstUnreadMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
         latestReply = latestReply?.toReplyPreview(),
+        syncCoreReplyWindow = syncCoreReplyWindow?.toDomain(),
+    )
+}
+
+private fun ThreadRepliesSyncWindowEnvelopeDto.toDomain(): build.raft.app.network.sync.ThreadRepliesSyncWindowEnvelope? {
+    val discussion = discussion ?: return null
+    val root = discussion.root ?: return null
+    val relation = discussion.relation ?: return null
+    val parentScope = discussion.parentScopeKey ?: return null
+    val window = window ?: return null
+    if (
+        producer.isBlank() ||
+        root.kind.isBlank() ||
+        root.serverId.isBlank() ||
+        root.id.isBlank() ||
+        relation.kind.isBlank() ||
+        parentScope.serverId.isBlank() ||
+        parentScope.scopeKind.isBlank() ||
+        parentScope.scopeId.isBlank() ||
+        discussion.backing.isBlank() ||
+        window.kind.isBlank()
+    ) {
+        return null
+    }
+    return build.raft.app.network.sync.ThreadRepliesSyncWindowEnvelope(
+        producer = producer,
+        rootKind = root.kind,
+        rootServerId = root.serverId,
+        rootMessageId = root.id,
+        relationKind = relation.kind,
+        parentScopeServerId = parentScope.serverId,
+        parentScopeKind = parentScope.scopeKind,
+        parentScopeId = parentScope.scopeId,
+        backing = discussion.backing,
+        windowKind = window.kind,
+        scopeCursor = window.scopeCursor,
+        epoch = window.epoch,
     )
 }
 

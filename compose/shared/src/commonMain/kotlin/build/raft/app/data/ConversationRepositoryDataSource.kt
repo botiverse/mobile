@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.projectionRejectingDiagnosticsLogger
+import build.raft.app.strictProjectionDiagnosticsLogger
 import build.raft.app.KuiklyThreadSurfaceKind
 import build.raft.app.normalizedThreadChannelKind
 import build.raft.app.model.AttachmentId
@@ -373,7 +374,8 @@ class RealConversationRepository(
                     threadId = resolvedThreadId,
                     canLoadMoreBefore = payload.hasOlder,
                     canLoadMoreAfter = payload.hasNewer,
-                    highlightedMessageId = payload.targetMessageId ?: messageId
+                    highlightedMessageId = payload.targetMessageId ?: messageId,
+                    diagnostics = warningLogger,
                 )
             }
         )
@@ -470,7 +472,8 @@ class RealConversationRepository(
                 buildSharedThreadSnapshot(
                     payload = payload,
                     threadId = threadId,
-                    canLoadMoreAfter = payload.messages.size >= messageLimit
+                    canLoadMoreAfter = payload.messages.size >= messageLimit,
+                    diagnostics = warningLogger,
                 )
             }
         )
@@ -501,7 +504,8 @@ class RealConversationRepository(
                 buildSharedThreadSnapshot(
                     payload = payload,
                     threadId = threadId,
-                    canLoadMoreAfter = payload.messages.size >= messageLimit
+                    canLoadMoreAfter = payload.messages.size >= messageLimit,
+                    diagnostics = warningLogger,
                 )
             }
         )
@@ -782,7 +786,8 @@ class RealConversationRepository(
                     hasNewer = (messagesResult as? DataResult.Content)?.data?.hasNewer ?: false
                 ),
                 threadId = ThreadId(resolvedThreadChannelId.value),
-                canLoadMoreBefore = rawMessages.size >= messageLimit
+                canLoadMoreBefore = rawMessages.size >= messageLimit,
+                diagnostics = warningLogger,
             ).withReplyThreadConversation(
                 parentChannelId = parentChannelId,
                 parentMessageId = parentMessageId,
@@ -831,7 +836,8 @@ class RealConversationRepository(
                         buildSharedThreadSnapshot(
                             payload = payload,
                             threadId = threadId,
-                            canLoadMoreBefore = payload.messages.size >= messageLimit
+                            canLoadMoreBefore = payload.messages.size >= messageLimit,
+                            diagnostics = warningLogger,
                         )
                     }
                 )
@@ -851,8 +857,13 @@ class RealConversationRepository(
                 ?.messages
                 ?.map { it.id }
                 .orEmpty()
+        val embeddedSummariesAvailable =
+            (messagesResult as? DataResult.Content)
+                ?.data
+                ?.replySummariesAuthority == ThreadReplySummariesAuthority.Embedded
+        val shouldFetchTargetedSummaries = includeChannelSummaries || !embeddedSummariesAvailable
         val threadSummariesDeferred =
-            if (includeChannelSummaries && visibleParentMessageIds.isNotEmpty()) {
+            if (shouldFetchTargetedSummaries && visibleParentMessageIds.isNotEmpty()) {
                 async {
                     val branchStartedAt = TimeSource.Monotonic.markNow()
                     val result = executeConversation(
@@ -879,7 +890,12 @@ class RealConversationRepository(
                     result
                 }
             } else {
-                val reason = if (includeChannelSummaries) "no_visible_messages" else "disabled"
+                val reason =
+                    when {
+                        visibleParentMessageIds.isEmpty() -> "no_visible_messages"
+                        embeddedSummariesAvailable -> "embedded"
+                        else -> "disabled"
+                    }
                 warningLogger(
                     "thread_load_branch source=$source branch=channel_thread_summaries " +
                         "result=skipped:$reason parentMessageIds=${visibleParentMessageIds.size} threads=0 durationMs=0"
@@ -953,7 +969,18 @@ class RealConversationRepository(
                         "channel_code=${threadSummaries.error.code} " +
                         "followed_code=${followedSummaries.error.code}"
                 )
-                messagesResult
+                if (
+                    messagesResult.data.replySummariesAuthority ==
+                    ThreadReplySummariesAuthority.EmbeddedInvalid
+                ) {
+                    DataResult.Content(
+                        messagesResult.data.copy(
+                            replySummariesAuthority = ThreadReplySummariesAuthority.Unavailable,
+                        )
+                    )
+                } else {
+                    messagesResult
+                }
             } else {
                 warningLogger(
                     "thread_summaries_loaded source=$source " +
@@ -965,7 +992,27 @@ class RealConversationRepository(
                                 (t.parentMessageId?.value?.take(8) ?: "null")
                         }}"
                 )
-                DataResult.Content(messagesResult.data.withReplySummaries(mergedThreads, followedThreadKeys, warningLogger))
+                val authority =
+                    when {
+                        threadSummaries is DataResult.Content -> ThreadReplySummariesAuthority.Targeted
+                        messagesResult.data.replySummariesAuthority == ThreadReplySummariesAuthority.Embedded ->
+                            ThreadReplySummariesAuthority.Embedded
+                        else -> ThreadReplySummariesAuthority.Unavailable
+                    }
+                val authoritativeThreads =
+                    if (authority == ThreadReplySummariesAuthority.Targeted) {
+                        mergedThreads
+                    } else {
+                        messagesResult.data.replySummaries.threads
+                    }
+                DataResult.Content(
+                    messagesResult.data.withReplySummaries(
+                        threads = authoritativeThreads,
+                        followedThreadKeys = followedThreadKeys,
+                        authority = authority,
+                        logger = warningLogger,
+                    )
+                )
             }
         }
     }
@@ -1080,7 +1127,8 @@ private fun buildSharedThreadSnapshot(
     threadId: ThreadId,
     canLoadMoreBefore: Boolean = false,
     canLoadMoreAfter: Boolean = false,
-    highlightedMessageId: MessageId? = null
+    highlightedMessageId: MessageId? = null,
+    diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
 ): ThreadSnapshot {
     val highlighted = highlightedMessageId?.let { id -> payload.messages.firstOrNull { it.id == id } }
     val baseConversation =
@@ -1115,11 +1163,18 @@ private fun buildSharedThreadSnapshot(
     return ThreadSnapshot(
         conversation = conversation,
         messages = payload.messages,
+        replySummaries = payload.threadSummaries,
+        replySummariesAuthority = payload.replySummariesAuthority,
         parentMessage = highlighted,
         canLoadMoreBefore = canLoadMoreBefore,
         canLoadMoreAfter = canLoadMoreAfter,
         historyLimited = payload.historyLimited,
         highlightedMessageId = highlightedMessageId
+    ).withReplySummaries(
+        threads = payload.threadSummaries.threads,
+        followedThreadKeys = payload.threadSummaries.followedThreadKeys,
+        authority = payload.replySummariesAuthority,
+        logger = diagnostics,
     )
 }
 
@@ -1179,9 +1234,12 @@ private fun buildDefaultConversation(threadId: ThreadId, name: String): Conversa
 private fun ThreadSnapshot.withReplySummaries(
     threads: List<InboxItem>,
     followedThreadKeys: Set<String> = emptySet(),
+    authority: ThreadReplySummariesAuthority = ThreadReplySummariesAuthority.Targeted,
     logger: (String) -> Unit
 ): ThreadSnapshot {
-    if (threads.isEmpty()) return this
+    if (threads.isEmpty()) {
+        return if (replySummariesAuthority == authority) this else copy(replySummariesAuthority = authority)
+    }
     val summariesByParentMessageId =
         threads
             .asSequence()
@@ -1228,7 +1286,7 @@ private fun ThreadSnapshot.withReplySummaries(
             )
             message.copy(
                 threadChannelId = message.threadChannelId ?: summaryThreadChannelId,
-                replyCount = maxOf(message.replyCount, summary.replyCount),
+                replyCount = summary.replyCount.coerceAtLeast(0),
                 unreadReplyCount = maxOf(message.unreadReplyCount, summary.unreadCount),
                 firstUnreadReplyMessageId = message.firstUnreadReplyMessageId ?: summary.firstUnreadMessageId,
                 isThreadFollowed = message.isThreadFollowed || summary.key in followedThreadKeys
@@ -1247,7 +1305,15 @@ private fun ThreadSnapshot.withReplySummaries(
                 "threadCandidates=[$candidates] source=channel_threads"
         )
     }
-    return copy(messages = updatedMessages)
+    return copy(
+        messages = updatedMessages,
+        replySummaries =
+            ThreadReplySummariesSnapshot(
+                threads = threads,
+                followedThreadKeys = followedThreadKeys,
+            ),
+        replySummariesAuthority = authority,
+    )
 }
 
 private fun InboxItem.matchesParentMessage(messageId: MessageId): Boolean {

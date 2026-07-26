@@ -26,6 +26,9 @@ import build.raft.app.model.TaskSummary
 import build.raft.app.model.ThreadId
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.decodeFromJsonElement
 
 /**
  * Strict parser for the `/api/messages` endpoints.
@@ -34,7 +37,8 @@ import kotlinx.serialization.json.Json
  * `services/messageService.ts`):
  *
  * - `GET /api/messages/channel/:channelId`
- *     → `{ messages: WireMessage[], historyLimited: boolean }`
+ *     → `{ messages: WireMessage[], historyLimited: boolean,
+ *          threadSummariesByParentMessageId: Record<messageId, ThreadSummary> }`
  *
  * - `GET /api/messages/context/:messageId`
  *     → `{ channelId, targetMessageId, hasOlder, hasNewer,
@@ -141,6 +145,7 @@ private data class MessagesWireThreadSummary(
 private data class MessagesWireChannelResponse(
     val messages: List<MessagesWireMessage> = emptyList(),
     val historyLimited: Boolean = false,
+    val threadSummariesByParentMessageId: JsonElement? = null,
 )
 
 @Serializable
@@ -204,6 +209,8 @@ private data class MessagesWireMentionActionExecuteResult(
  */
 data class SharedMessagesPayload(
     val messages: List<Message>,
+    val threadSummaries: ThreadReplySummariesSnapshot = ThreadReplySummariesSnapshot(emptyList()),
+    val replySummariesAuthority: ThreadReplySummariesAuthority = ThreadReplySummariesAuthority.Unavailable,
     val channelId: ChannelId? = null,
     val targetMessageId: MessageId? = null,
     val canonicalTarget: SharedMessagesCanonicalTarget? = null,
@@ -233,11 +240,34 @@ fun parseSharedChannelMessages(
     diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
 ): SharedMessagesPayload {
     if (bodyText.isBlank()) return SharedMessagesPayload(emptyList())
+    val responseRoot =
+        runCatching { messagesJson.parseToJsonElement(bodyText) as? JsonObject }.getOrNull()
+            ?: return SharedMessagesPayload(emptyList())
     val response = runCatching {
-        messagesJson.decodeFromString(MessagesWireChannelResponse.serializer(), bodyText)
+        messagesJson.decodeFromJsonElement(MessagesWireChannelResponse.serializer(), responseRoot)
     }.getOrNull() ?: return SharedMessagesPayload(emptyList())
+    val embeddedFieldPresent = "threadSummariesByParentMessageId" in responseRoot
+    val embeddedElement =
+        response.threadSummariesByParentMessageId
+            ?: responseRoot["threadSummariesByParentMessageId"]
+    val embeddedSummaries =
+        when (embeddedElement) {
+            is JsonObject -> parseChannelThreadSummaryRecordElement(embeddedElement, diagnostics)
+            else -> null
+        }
+    val embeddedAuthority =
+        when {
+            !embeddedFieldPresent -> ThreadReplySummariesAuthority.Unavailable
+            embeddedSummaries != null -> ThreadReplySummariesAuthority.Embedded
+            else -> ThreadReplySummariesAuthority.EmbeddedInvalid
+        }
     return SharedMessagesPayload(
         messages = response.messages.mapNotNull { it.toDomain(fallbackThreadId, diagnostics) },
+        threadSummaries =
+            ThreadReplySummariesSnapshot(
+                threads = embeddedSummaries?.items.orEmpty(),
+            ),
+        replySummariesAuthority = embeddedAuthority,
         historyLimited = response.historyLimited,
     )
 }

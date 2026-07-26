@@ -6720,6 +6720,80 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun initialMessagePageSummaryAdmitsInlinePreviewBeforeFirstContentReady() = runBlocking {
+        val firstFrameSummary =
+            ThreadReplySummariesSnapshot(
+                threads =
+                    listOf(
+                        InboxItem(
+                            key = "thread:m1",
+                            kind = InboxItemKind.Thread,
+                            channelId = ChannelId("thread-m1"),
+                            channelName = "reply thread",
+                            threadChannelId = ChannelId("thread-m1"),
+                            parentChannelId = ChannelId("channel-1"),
+                            parentMessageId = MessageId("m1"),
+                            replyCount = 5,
+                            unreadCount = 1,
+                            firstUnreadMessageId = MessageId("reply-5"),
+                            latestReplies =
+                                listOf(
+                                    ReplyPreview(
+                                        messageId = "reply-5",
+                                        seq = 5,
+                                        content = "first-frame preview",
+                                        senderId = "agent-1",
+                                        senderType = "agent",
+                                        senderName = "MingQi",
+                                        senderDisplayName = "明启",
+                                        senderAvatarUrl = null,
+                                        createdAt = "2026-07-25T14:01:00Z",
+                                    )
+                                ),
+                        )
+                    )
+            )
+        val repository =
+            FakeConversationRepository(
+                threadResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            messages =
+                                listOf(
+                                    message(
+                                        threadId = "channel-1",
+                                        id = "m1",
+                                        seq = 10,
+                                        body = "initial body",
+                                    )
+                                ),
+                            replySummaries = firstFrameSummary,
+                        )
+                    )
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository,
+            )
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        val firstVisibleMessage = store.state.value.payload.messages.single()
+        assertEquals("thread-m1", firstVisibleMessage.threadChannelId)
+        assertEquals(5, firstVisibleMessage.replyCount)
+        assertEquals(1, firstVisibleMessage.unreadReplyCount)
+        assertEquals("reply-5", firstVisibleMessage.firstUnreadReplyMessageId)
+        assertEquals(listOf("reply-5"), firstVisibleMessage.inlineReplies?.replies?.map { it.messageId })
+        assertEquals("明启", firstVisibleMessage.inlineReplies?.replies?.single()?.senderDisplayName)
+        assertTrue(repository.getThreadReplySummariesRequests.isEmpty())
+        scope.cancel()
+    }
+
+    @Test
     fun secondaryRefreshBackfillsFollowedSummariesWithoutBlockingInitialFetch() = runBlocking {
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
         val repository =
@@ -10202,7 +10276,20 @@ class SharedThreadStoreTest {
                             senderAvatarUrl = null,
                             createdAt = "2026-05-19T16:10:00Z",
                             senderDisplayName = "明启",
-                        )
+                        ),
+                    syncCoreReplyWindow =
+                        build.raft.app.network.sync.ThreadRepliesSyncWindowEnvelope(
+                            producer = build.raft.app.network.sync.ThreadRepliesSyncWindowProducer,
+                            rootKind = "message",
+                            rootServerId = "server-1",
+                            rootMessageId = "m1",
+                            relationKind = "replies",
+                            parentScopeServerId = "server-1",
+                            parentScopeKind = "channel",
+                            parentScopeId = "channel-1",
+                            backing = "sync-scope",
+                            windowKind = "sync-scope-window",
+                        ),
                 )
             )
         )
@@ -14135,12 +14222,20 @@ class SharedThreadStoreTest {
             id: String = "m1",
             seq: Long = 10,
             messages: List<Message> = listOf(message(threadId = threadId, id = id, seq = seq, body = body)),
+            replySummaries: ThreadReplySummariesSnapshot = ThreadReplySummariesSnapshot(emptyList()),
             parentMessage: Message? = null,
             conversation: ConversationSummary = conversationSummary(threadId)
         ): ThreadSnapshot =
             ThreadSnapshot(
                 conversation = conversation,
                 messages = messages,
+                replySummaries = replySummaries,
+                replySummariesAuthority =
+                    if (replySummaries.threads.isEmpty()) {
+                        build.raft.app.data.ThreadReplySummariesAuthority.Unavailable
+                    } else {
+                        build.raft.app.data.ThreadReplySummariesAuthority.Embedded
+                    },
                 parentMessage = parentMessage
             )
 

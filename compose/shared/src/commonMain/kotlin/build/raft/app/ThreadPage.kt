@@ -959,7 +959,11 @@ internal data class KuiklyThreadScreenPayload(
     val dmPeerAvatarLabel: String? = null,
     val activityMuted: Boolean = false,
     val muteFromSeq: Long? = null,
-    val activityMuteSupported: Boolean = false
+    val activityMuteSupported: Boolean = false,
+    /** In-process transport provenance; never route/pageData state. */
+    @Transient
+    val replySummariesAuthority: build.raft.app.data.ThreadReplySummariesAuthority =
+        build.raft.app.data.ThreadReplySummariesAuthority.Unavailable,
 )
 
 internal data class ThreadMembersPageRoute(
@@ -19712,11 +19716,19 @@ internal fun threadInlineReplyPresentation(
     replyMetadata: ThreadReplyMetadata,
     hasDraft: Boolean,
 ): ThreadInlineReplyPresentation? {
-    val replies = model?.replies.orEmpty().filterNot { it.senderType.equals("system", ignoreCase = true) }
+    if (replyMetadata.replyCount <= 0) return null
+    val replies =
+        model
+            ?.replies
+            .orEmpty()
+            .filterNot { it.senderType.equals("system", ignoreCase = true) }
+            .takeLast(build.raft.app.network.sync.InlineThreadReplyPreviewLimit)
+    // PR #5157: geometry belongs to actual conversation rows. Total replyCount includes
+    // system history only for the label and must never reserve an empty/system-only footprint.
+    if (replies.isEmpty()) return null
     val authoritativeReplyCount = maxOf(replyMetadata.replyCount, model?.replyCount ?: 0)
-    if (authoritativeReplyCount <= 0 || replies.isEmpty()) return null
     return ThreadInlineReplyPresentation(
-        replies = replies.takeLast(build.raft.app.network.sync.InlineThreadReplyPreviewLimit),
+        replies = replies,
         replyCount = authoritativeReplyCount,
         unreadCount = replyMetadata.unreadReplyCount.coerceAtLeast(0),
         hasDraft = hasDraft,
@@ -19731,6 +19743,7 @@ private fun ThreadInlineRepliesSurface(
     timeContext: SlockTimeContext?,
     onOpenThread: () -> Unit,
 ) {
+    val replyRowHeight = threadInlineReplyRowHeightDp(LocalDensity.current.fontScale).dp
     val countLabel =
         if (presentation.replyCount > build.raft.app.network.sync.InlineThreadReplyPreviewLimit) {
             stringResource(
@@ -19785,6 +19798,7 @@ private fun ThreadInlineRepliesSurface(
                     participant = participantsById[reply.senderId],
                     memberAvatarResolver = memberAvatarResolver,
                     timeContext = timeContext,
+                    rowHeight = replyRowHeight,
                 )
             }
         }
@@ -19797,6 +19811,7 @@ private fun ThreadInlineReplyRow(
     participant: KuiklyThreadMemberItem?,
     memberAvatarResolver: SlockMemberAvatarResolver,
     timeContext: SlockTimeContext?,
+    rowHeight: Dp,
 ) {
     val resolvedAvatar = rememberSlockMemberAvatarWireValue(memberAvatarResolver, reply.senderId)
     val displayName =
@@ -19808,7 +19823,10 @@ private fun ThreadInlineReplyRow(
             ?: participant?.avatarUrl?.takeIf { it.isNotBlank() }
             ?: reply.senderAvatarUrl?.takeIf { it.isNotBlank() }
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .height(rowHeight),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
@@ -19822,7 +19840,11 @@ private fun ThreadInlineReplyRow(
             text = displayName,
             style =
                 SlockType.Caption
-                    .copy(fontSize = 12.5.sp, lineHeight = 16.sp, color = SlockColor.TextBlack.copy(alpha = 0.72f))
+                    .copy(
+                        fontSize = 12.5.sp,
+                        lineHeight = ThreadInlineReplyContentLineHeightSp.sp,
+                        color = SlockColor.TextBlack.copy(alpha = 0.72f),
+                    )
                     .withSlockFontWeight(FontWeight.Bold),
             color = SlockColor.TextBlack.copy(alpha = 0.72f),
             maxLines = 1,
@@ -19830,7 +19852,11 @@ private fun ThreadInlineReplyRow(
         Text(
             text = reply.content,
             modifier = Modifier.weight(1f),
-            style = SlockType.Caption.copy(fontSize = 12.5.sp, lineHeight = 16.sp),
+            style =
+                SlockType.Caption.copy(
+                    fontSize = 12.5.sp,
+                    lineHeight = ThreadInlineReplyContentLineHeightSp.sp,
+                ),
             color = SlockColor.TextBlack.copy(alpha = 0.62f),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -19846,6 +19872,22 @@ private fun ThreadInlineReplyRow(
         }
     }
 }
+
+/**
+ * Keeps the original 20dp row at the default scale while preserving its 4dp breathing room when
+ * the user's font scale grows. Kuikly's linear SP conversion is `sp * fontScale` in DP space.
+ */
+internal fun threadInlineReplyRowHeightDp(fontScale: Float): Float {
+    val resolvedFontScale = fontScale.coerceAtLeast(1f)
+    return maxOf(
+        ThreadInlineReplyRowMinHeightDp,
+        ThreadInlineReplyContentLineHeightSp * resolvedFontScale + ThreadInlineReplyRowVerticalAllowanceDp,
+    )
+}
+
+private const val ThreadInlineReplyContentLineHeightSp = 16f
+private const val ThreadInlineReplyRowMinHeightDp = 20f
+private const val ThreadInlineReplyRowVerticalAllowanceDp = 4f
 
 @Composable
 private fun ThreadMessageFooterMeta(
