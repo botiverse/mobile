@@ -13,6 +13,48 @@ import kotlin.test.assertNull
 
 class ThreadInlineRepliesTest {
     @Test
+    fun inlineRepliesAreVisibleWithoutAFeatureFlagWhenReplyActionsAreAvailable() {
+        val model =
+            initialThreadRepliesReadModel(
+                replies = listOf(reply("r-1", 1)),
+                replyCount = 1,
+                limit = 3,
+            )
+
+        val presentation =
+            assertNotNull(
+                threadInlineReplyPresentationForMessage(
+                    model = model,
+                    replyMetadata = metadata(replyCount = 1),
+                    hasDraft = false,
+                    showReplyAction = true,
+                )
+            )
+
+        assertEquals(listOf("r-1"), presentation.replies.map { it.messageId })
+        assertNull(
+            threadInlineReplyPresentationForMessage(
+                model = model,
+                replyMetadata = metadata(replyCount = 1),
+                hasDraft = false,
+                showReplyAction = false,
+            )
+        )
+    }
+
+    @Test
+    fun replyMetadataDoesNotQualifyForTheRetiredFooterChip() {
+        assertFalse(
+            KuiklyThreadMessageItem(
+                id = "parent-1",
+                authorId = "user-1",
+                authorName = "User",
+                replyCount = 1,
+            ).hasThreadFooterMeta()
+        )
+    }
+
+    @Test
     fun metaChipsRenderBeforeInlineRepliesWhenBothAreVisible() {
         assertEquals(
             listOf(

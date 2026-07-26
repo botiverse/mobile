@@ -5622,7 +5622,6 @@ class ThreadPayloadTest {
         assertEquals("in_review", payload.messages.first().taskStatus)
         assertEquals("Android-Developer-2", payload.messages.first().taskAssigneeName)
         assertEquals("#42", threadMessageTaskMetaLabel(payload.messages.first()))
-        assertEquals("3 replies · 2 new", threadMessageRepliesMetaLabel(payload.messages.first().toThreadReplyMetadata()))
         assertEquals("👍", payload.messages.first().reactions.first().emoji)
         assertEquals(2, payload.messages.first().reactions.first().count)
         assertEquals(true, payload.messages.first().reactions.first().selected)
@@ -6334,7 +6333,6 @@ class ThreadPayloadTest {
         assertEquals("Android-Developer-2", message.taskAssigneeName)
         assertEquals(2, message.replyCount)
         assertEquals("#163", threadMessageTaskMetaLabel(message))
-        assertEquals("2 replies", threadMessageRepliesMetaLabel(message.toThreadReplyMetadata()))
     }
 
     @Test
