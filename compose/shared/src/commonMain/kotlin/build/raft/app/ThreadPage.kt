@@ -324,6 +324,7 @@ private const val ThreadComposerMentionActionFadeDelayMs = 450L
 private const val ThreadComposerMentionActionRemoveDelayMs = 750L
 private const val ThreadMarkdownAttachmentPreviewMaxChars = 80_000
 private const val ThreadSendSilentRetryDelayMs = 900L
+private const val ThreadSendMaxSilentRetries = 2
 private const val ThreadLocalizedFeedbackPlaceholder = "__RAFT_VALUE__"
 private const val ThreadAttachmentUploadConcurrencyLimit = 12
 
@@ -6269,7 +6270,7 @@ internal fun SharedThreadRouteContent(
                             "channelId=${context.channelId} errorType=$errorType " +
                             "mapped=$errorCode attempt=$attempt durationMs=$durationMs"
                     )
-                    if (attempt == 1 && threadSendShouldSilentlyRetry(errorCode)) {
+                    if (attempt <= ThreadSendMaxSilentRetries && threadSendShouldSilentlyRetry(errorCode)) {
                         bridge.log(
                             "thread_send_silent_retry localMessageId=$localMessageId " +
                                 "channelId=${context.channelId} reason=$errorCode attempt=$attempt"
@@ -6305,7 +6306,7 @@ internal fun SharedThreadRouteContent(
                                     ?: threadFailureDiagnosticCode(sendResponse.errorBodyText)
                                     ?: "http_${sendResponse.code}"
                             val errorMessage = threadFailureReasonMessage(sendResponse.errorBodyText)
-                            if (attempt == 1 && threadSendShouldSilentlyRetry(errorCode, sendResponse.code)) {
+                            if (attempt <= ThreadSendMaxSilentRetries && threadSendShouldSilentlyRetry(errorCode, sendResponse.code)) {
                                 bridge.log(
                                     "thread_send_silent_retry localMessageId=$localMessageId " +
                                         "channelId=${context.channelId} reason=$errorCode httpCode=${sendResponse.code} attempt=$attempt"
@@ -6335,7 +6336,7 @@ internal fun SharedThreadRouteContent(
                         }
                     }
                 if (sentPage.messages.isEmpty()) {
-                    if (attempt == 1) {
+                    if (attempt <= ThreadSendMaxSilentRetries) {
                         bridge.log(
                             "thread_send_silent_retry localMessageId=$localMessageId " +
                                 "channelId=${context.channelId} reason=empty_response attempt=$attempt"
@@ -18061,32 +18062,6 @@ private fun ThreadMessageLocalSendStatus(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f, fill = false)
             )
-            if (isFailed && retryEnabled) {
-                Button(
-                    onClick = { if (message.canRetryLocalSend()) onRetry() },
-                    enabled = message.canRetryLocalSend(),
-                    pressFeedback = message.canRetryLocalSend(),
-                    modifier =
-                        Modifier.heightIn(min = 28.dp)
-                            .background(LocalThreadMessageGeometryTints.current?.retryTint ?: Color.Transparent)
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(3.dp)
-                    ) {
-                        SlockLucideIcon(
-                            SlockLucideIconName.RefreshCw,
-                            modifier = Modifier.size(12.dp),
-                            color = "#FFF97264"
-                        )
-                        Text(
-                            text = stringResource(MR.strings.thread_send_failure_retry),
-                            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
-                            color = SlockColor.AccentRed
-                        )
-                    }
-                }
-            }
         }
         if (isFailed && detail != null) {
             Row(
@@ -18123,6 +18098,32 @@ private fun ThreadMessageLocalSendStatus(
                     .background(SlockColor.SurfaceWhite)
                     .padding(8.dp)
             )
+        }
+        if (isFailed && retryEnabled) {
+            Button(
+                onClick = { if (message.canRetryLocalSend()) onRetry() },
+                enabled = message.canRetryLocalSend(),
+                pressFeedback = message.canRetryLocalSend(),
+                modifier =
+                    Modifier.heightIn(min = 28.dp)
+                        .background(LocalThreadMessageGeometryTints.current?.retryTint ?: Color.Transparent)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(3.dp)
+                ) {
+                    SlockLucideIcon(
+                        SlockLucideIconName.RefreshCw,
+                        modifier = Modifier.size(12.dp),
+                        color = "#FFF97264"
+                    )
+                    Text(
+                        text = stringResource(MR.strings.thread_send_failure_retry),
+                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
+                        color = SlockColor.AccentRed
+                    )
+                }
+            }
         }
     }
 }
