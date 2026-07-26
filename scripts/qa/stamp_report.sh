@@ -83,6 +83,7 @@ fi
 
 CLAIM_TOKEN=""; [ -f "$CLAIM_TOKEN_FILE" ] && CLAIM_TOKEN=$(cat "$CLAIM_TOKEN_FILE")
 CLAIM_HEADER="X-Stamp-Claim-Token: $CLAIM_TOKEN"
+BOOTSTRAP_CURL_TIMEOUTS=(--connect-timeout 10 --max-time 30)
 
 if [ "$PHASE" = "credential-receipt" ]; then
   [ -s "$BOOTSTRAP_SPEC_FILE" ] || { echo "stamp: bootstrap spec missing" >&2; exit 1; }
@@ -113,7 +114,7 @@ if [ "$PHASE" = "bootstrap-login" ]; then
   ENDPOINT=$(node -e 'const v=require(process.argv[1]);if(v.required!==true||v.contract_version!=="qa-bootstrap-login/v1"||typeof v.login_endpoint!=="string")process.exit(2);process.stdout.write(v.login_endpoint)' "$BOOTSTRAP_SPEC_FILE") \
     || { echo "stamp: bootstrap login contract unavailable" >&2; exit 1; }
   install -m 600 /dev/null "$BOOTSTRAP_LOGIN_RESPONSE_FILE"
-  if curl -sfS --retry 2 --retry-all-errors -X POST "${STAMP_URL%/}$ENDPOINT" \
+  if curl -sfS "${BOOTSTRAP_CURL_TIMEOUTS[@]}" --retry 2 --retry-all-errors -X POST "${STAMP_URL%/}$ENDPOINT" \
     -H "$AUTH" -H "$JOB_HEADER" -H "$CLAIM_HEADER" -H 'content-type: application/json' \
     --data-binary @"$BINDING_FILE" -o "$BOOTSTRAP_LOGIN_RESPONSE_FILE"; then
     chmod 600 "$BOOTSTRAP_LOGIN_RESPONSE_FILE"
@@ -133,7 +134,7 @@ if [ "$PHASE" = "bootstrap-ready" ]; then
   ENDPOINT=$(node -e 'const v=require(process.argv[1]);if(v.required!==true||typeof v.ready_endpoint!=="string")process.exit(2);process.stdout.write(v.ready_endpoint)' "$BOOTSTRAP_SPEC_FILE") \
     || { echo "stamp: bootstrap READY contract unavailable" >&2; exit 1; }
   install -m 600 /dev/null "$BOOTSTRAP_READY_RESPONSE_FILE"
-  if curl -sfS --retry 2 --retry-all-errors -X POST "${STAMP_URL%/}$ENDPOINT" \
+  if curl -sfS "${BOOTSTRAP_CURL_TIMEOUTS[@]}" --retry 2 --retry-all-errors -X POST "${STAMP_URL%/}$ENDPOINT" \
     -H "$AUTH" -H "$JOB_HEADER" -H "$CLAIM_HEADER" -H 'content-type: application/json' \
     --data-binary @"$READY_FILE" -o "$BOOTSTRAP_READY_RESPONSE_FILE"; then
     chmod 600 "$BOOTSTRAP_READY_RESPONSE_FILE"
@@ -184,7 +185,7 @@ if [ "$PHASE" = "bootstrap-status" ]; then
   ENDPOINT=$(node -e 'const v=require(process.argv[1]);if(v.required!==true||typeof v.status_endpoint!=="string")process.exit(2);process.stdout.write(v.status_endpoint)' "$BOOTSTRAP_SPEC_FILE") \
     || { echo "stamp: bootstrap status contract unavailable" >&2; exit 1; }
   install -m 600 /dev/null "$STATUS_FILE"
-  if curl -sfS --retry 2 --retry-all-errors -X GET "${STAMP_URL%/}$ENDPOINT" \
+  if curl -sfS "${BOOTSTRAP_CURL_TIMEOUTS[@]}" --retry 2 --retry-all-errors -X GET "${STAMP_URL%/}$ENDPOINT" \
     -H "$AUTH" -H "$JOB_HEADER" -H "$CLAIM_HEADER" -o "$STATUS_FILE"; then
     chmod 600 "$STATUS_FILE"
     node -e 'const v=require(process.argv[1]);if(v.contract_version!=="qa-bootstrap-login/v1"||v.required!==true||!["issued","ready","torn_down","aborted","failed","error"].includes(v.status))process.exit(2)' "$STATUS_FILE" \
@@ -210,7 +211,7 @@ if [ "$PHASE" = "bootstrap-failure-terminal" ]; then
     node -e 'const fs=require("fs"),v=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if(typeof v.signing_cert_sha256!=="string"||!/^sha256:[a-f0-9]{64}$/.test(v.signing_cert_sha256)||typeof v.boot_generation!=="string"||!v.boot_generation||v.boot_generation!==v.boot_generation.trim())process.exit(2);fs.writeFileSync(process.argv[2],JSON.stringify({signing_cert_sha256:v.signing_cert_sha256,boot_generation:v.boot_generation}),{mode:0o600})' "$BINDING_FILE" "$FAILURE_PAYLOAD" \
       || { rm -f "$FAILURE_PAYLOAD"; echo "stamp: no-material failure terminal payload invalid" >&2; exit 1; }
     rc=0
-    curl -sfS --retry 2 --retry-all-errors -X POST "${STAMP_URL%/}$FAILURE_ENDPOINT" \
+    curl -sfS "${BOOTSTRAP_CURL_TIMEOUTS[@]}" --retry 2 --retry-all-errors -X POST "${STAMP_URL%/}$FAILURE_ENDPOINT" \
       -H "$AUTH" -H "$JOB_HEADER" -H "$CLAIM_HEADER" -H 'content-type: application/json' \
       --data-binary @"$FAILURE_PAYLOAD" >/dev/null || rc=$?
     rm -f "$FAILURE_PAYLOAD" "$BOOTSTRAP_READY_RESPONSE_FILE" "$BOOTSTRAP_CAPTURE_CONTEXT_FILE" "$BOOTSTRAP_CAPTURE_ENV_FILE"
@@ -275,7 +276,7 @@ if [ "$PHASE" = "bootstrap-terminal" ]; then
     "$BOOTSTRAP_LOGIN_RESPONSE_FILE" "$CLEANUP_FILE" "$TERMINAL_PAYLOAD" \
     || { rm -f "$BOOTSTRAP_LOGIN_RESPONSE_FILE" "$BOOTSTRAP_READY_RESPONSE_FILE" "$TERMINAL_PAYLOAD"; echo "stamp: bootstrap terminal payload invalid" >&2; exit 1; }
   rc=0
-  curl -sfS --retry 2 --retry-all-errors -X POST "${STAMP_URL%/}$ENDPOINT" \
+  curl -sfS "${BOOTSTRAP_CURL_TIMEOUTS[@]}" --retry 2 --retry-all-errors -X POST "${STAMP_URL%/}$ENDPOINT" \
     -H "$AUTH" -H "$JOB_HEADER" -H "$CLAIM_HEADER" -H 'content-type: application/json' \
     --data-binary @"$TERMINAL_PAYLOAD" >/dev/null || rc=$?
   rm -f "$BOOTSTRAP_LOGIN_RESPONSE_FILE" "$BOOTSTRAP_READY_RESPONSE_FILE" "$BOOTSTRAP_CAPTURE_CONTEXT_FILE" "$BOOTSTRAP_CAPTURE_ENV_FILE" "$TERMINAL_PAYLOAD"

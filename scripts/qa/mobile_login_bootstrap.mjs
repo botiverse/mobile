@@ -11,6 +11,13 @@ import {
   validateLoginResponse,
 } from "./mobile_login_bootstrap_lib.mjs";
 
+const commandTimeoutMs = process.env.NODE_ENV === "test"
+  ? Number(process.env.QA_BOOTSTRAP_COMMAND_TIMEOUT_MS ?? "15000")
+  : 15_000;
+if (!Number.isInteger(commandTimeoutMs) || commandTimeoutMs < 10 || commandTimeoutMs > 15_000) {
+  fail("QA bootstrap command timeout is invalid");
+}
+
 function fail(message) {
   console.error(`qa-login-bootstrap: ${message}`);
   process.exit(2);
@@ -23,8 +30,14 @@ function argument(name, required = true) {
   return value;
 }
 
-function run(command, args, { input, allowFailure = false } = {}) {
-  const result = spawnSync(command, args, { input, encoding: input ? undefined : "utf8", maxBuffer: 16 * 1024 * 1024 });
+function run(command, args, { input, allowFailure = false, timeoutMs = commandTimeoutMs } = {}) {
+  const result = spawnSync(command, args, {
+    input,
+    encoding: input ? undefined : "utf8",
+    maxBuffer: 16 * 1024 * 1024,
+    timeout: timeoutMs,
+    killSignal: "SIGKILL",
+  });
   if (!allowFailure && (result.error || result.status !== 0)) {
     const stderr = Buffer.isBuffer(result.stderr) ? result.stderr.toString("utf8") : result.stderr;
     throw new Error(`${command} failed (${result.status ?? "spawn"}): ${String(stderr ?? "").trim()}`);
@@ -105,17 +118,21 @@ async function prepare() {
   const login = expectedLogin(responseFile, bindingFile, runCaseId, ciJobRef);
   const envelope = login.envelope;
   try {
+    console.log("qa-login-bootstrap: installing private envelope");
     installPrivateEnvelope(envelope.application_id, login.requestId, login.bytes);
+    console.log("qa-login-bootstrap: private envelope installed");
   } finally {
     login.bytes.fill(0);
   }
   run("adb", ["logcat", "-c"]);
+  console.log("qa-login-bootstrap: launching bootstrap activity");
   run("adb", [
     "shell", "am", "start", "-W",
     "-n", `${envelope.application_id}/build.raft.app.core.data.auth.QaSessionBootstrapActivity`,
     "--es", "qaBootstrapRequestId", login.requestId,
     "--es", "qaBootstrapEnvelopeDigest", login.envelopeDigest,
   ]);
+  console.log("qa-login-bootstrap: bootstrap activity launched; polling READY");
   const expected = {
     envelopeDigest: login.envelopeDigest,
     runCaseId: envelope.run_case_id,

@@ -14,6 +14,50 @@ import {
   validateLoginResponse,
 } from "./mobile_login_bootstrap_lib.mjs";
 
+test("pre-READY subprocesses are bounded and phase-observable", () => {
+  const source = fs.readFileSync(path.resolve("scripts/qa/mobile_login_bootstrap.mjs"), "utf8");
+  assert.match(source, /timeoutMs = commandTimeoutMs/);
+  assert.match(source, /timeout: timeoutMs/);
+  assert.match(source, /killSignal: "SIGKILL"/);
+  assert.match(source, /installing private envelope/);
+  assert.match(source, /private envelope installed/);
+  assert.match(source, /launching bootstrap activity/);
+  assert.match(source, /bootstrap activity launched; polling READY/);
+});
+
+test("a hung pre-READY ADB command is killed before the outer fuse", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "qa-bootstrap-timeout-"));
+  const bin = path.join(root, "bin");
+  const tools = path.join(root, "android-sdk", "build-tools", "37.0.0");
+  fs.mkdirSync(bin, { recursive: true });
+  fs.mkdirSync(tools, { recursive: true });
+  const apk = path.join(root, "app.apk");
+  fs.writeFileSync(apk, "apk");
+  writeExecutable(path.join(tools, "aapt"), "printf \"package: name='build.raft.app.alpha'\\n\"");
+  writeExecutable(path.join(bin, "adb"), "sleep 5");
+  const started = Date.now();
+  const result = spawnSync(process.execPath, [
+    path.resolve("scripts/qa/mobile_login_bootstrap.mjs"), "binding",
+    "--apk", apk, "--output", path.join(root, "binding.json"),
+  ], {
+    cwd: path.resolve("."), encoding: "utf8",
+    env: {
+      ...process.env,
+      NODE_ENV: "test",
+      QA_BOOTSTRAP_COMMAND_TIMEOUT_MS: "50",
+      ANDROID_HOME: path.join(root, "android-sdk"),
+      PATH: `${bin}:${process.env.PATH ?? ""}`,
+    },
+  });
+  try {
+    assert.notEqual(result.status, 0);
+    assert.ok(Date.now() - started < 2_000, "hung adb exceeded the bounded test timeout");
+    assert.match(result.stderr, /adb failed|timed out|ETIMEDOUT/i);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 const digestA = `sha256:${"a".repeat(64)}`;
 const digestB = `sha256:${"b".repeat(64)}`;
 const rotatedLegacyDigest = "sha256:b4919381d8f9cede4f8eb8f6d132f6dfe0d6d15bf6d1f63057d5eba045161a45";

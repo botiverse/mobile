@@ -766,8 +766,16 @@ esac
 
   const workflow = fs.readFileSync(path.resolve(".github/workflows/qa-acceptance.yml"), "utf8");
   assert.match(workflow, /- name: Report verdict\n[\s\S]*?if: \$\{\{ always\(\) && !failure\(\) \}\}/);
+  assert.match(workflow, /timeout --kill-after=10s 180s node scripts\/qa\/mobile_login_bootstrap\.mjs prepare/);
+  assert.match(workflow, /timeout --kill-after=10s 120s bash scripts\/qa\/stamp_report\.sh bootstrap-failure-terminal/);
+  assert.match(workflow, /bootstrap-operator-recovery-required\.json/);
+  assert.match(workflow, /qa-bootstrap-operator-recovery\/v1/);
+  assert.match(workflow, /product_verdict\":\"NOT_RUN/);
   assert.match(workflow, /bootstrap-failure-terminal "\$RUNNER_TEMP\/stamp-bootstrap-device-binding\.json" "\$RUNNER_TEMP\/stamp-bootstrap-ready\.json"/);
   assert.match(workflow, /bash scripts\/qa\/stamp_report\.sh workflow-error/);
+  const reporterSource = fs.readFileSync(new URL("./stamp_report.sh", import.meta.url), "utf8");
+  assert.match(reporterSource, /BOOTSTRAP_CURL_TIMEOUTS=\(--connect-timeout 10 --max-time 30\)/);
+  assert.equal((reporterSource.match(/"\$\{BOOTSTRAP_CURL_TIMEOUTS\[@\]\}"/g) ?? []).length, 5);
 });
 
 test("READY response loss resolves server authority before choosing completed versus aborted cleanup", () => {
