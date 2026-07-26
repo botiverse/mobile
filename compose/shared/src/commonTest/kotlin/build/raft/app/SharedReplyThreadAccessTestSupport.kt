@@ -9,8 +9,10 @@ import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
 import build.raft.app.data.ScreenError
 import build.raft.app.data.SendMessageResult
+import build.raft.app.data.SlockAuthSessionStore
 import build.raft.app.data.ThreadActionResult
 import build.raft.app.data.ThreadListSnapshot
+import build.raft.app.data.ThreadReplyCacheIdentitySnapshot
 import build.raft.app.data.ThreadSnapshot
 import build.raft.app.model.AttachmentId
 import build.raft.app.model.ChannelId
@@ -29,10 +31,15 @@ import kotlinx.coroutines.CompletableDeferred
 
 internal class ReplyThreadAccessConversationRepositoryRecorder(
     var replyResult: DataResult<ThreadSnapshot>,
-    var releaseReply: CompletableDeferred<Unit>? = null
+    var releaseReply: CompletableDeferred<Unit>? = null,
+    var parentResult: DataResult<ThreadSnapshot> =
+        DataResult.Error(ScreenError(code = "reply_access_parent_context_unavailable", retryable = false)),
+    var releaseParent: CompletableDeferred<Unit>? = null,
 ) : ConversationRepository {
     val replyStarted = CompletableDeferred<Unit>()
+    val parentStarted = CompletableDeferred<Unit>()
     val replyRequests = mutableListOf<Pair<ChannelId, MessageId>>()
+    val parentRequests = mutableListOf<Pair<MessageId, ChannelId?>>()
     val replyPriorities = mutableListOf<DataRequestPriority>()
 
     override suspend fun getReplyThread(
@@ -61,8 +68,12 @@ internal class ReplyThreadAccessConversationRepositoryRecorder(
     override suspend fun getMessageContext(
         messageId: MessageId,
         channelId: ChannelId?
-    ): DataResult<ThreadSnapshot> =
-        DataResult.Error(ScreenError(code = "reply_access_parent_context_unavailable", retryable = false))
+    ): DataResult<ThreadSnapshot> {
+        parentRequests += messageId to channelId
+        parentStarted.complete(Unit)
+        releaseParent?.await()
+        return parentResult
+    }
 
     override suspend fun getThread(
         threadId: ThreadId,
@@ -151,6 +162,22 @@ internal fun unresolvedReplyThreadAccessPayload(
         showReplyActions = false,
         canSend = true
     )
+
+internal fun replyThreadAccessIdentityAuthority(
+    sessionStore: SlockAuthSessionStore,
+    environmentId: String,
+): suspend () -> ThreadReplyCacheIdentitySnapshot? = {
+    sessionStore.readSession()?.let { session ->
+        ThreadReplyCacheIdentitySnapshot(
+            session = session,
+            environmentId = environmentId,
+            principalId = session.user.id,
+            serverId = session.currentServerId.orEmpty(),
+            authGeneration = 0L,
+            selectionGeneration = 0L,
+        )
+    }
+}
 
 internal fun replyThreadAccessSnapshot(
     body: String = "reply body"
