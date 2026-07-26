@@ -2425,8 +2425,8 @@ internal fun slockMarkdownInlineCodeEdgeStyle(
         borderWidth = 0.dp,
         paddingStart = if (leading) 4.dp else 0.dp,
         paddingEnd = if (trailing) 4.dp else 0.dp,
-        paddingTop = SlockRichTextInlineBoxVerticalPaddingDp.dp,
-        paddingBottom = SlockRichTextInlineBoxVerticalPaddingDp.dp,
+        paddingTop = SlockRichTextInlineCodeVerticalPaddingDp.dp,
+        paddingBottom = SlockRichTextInlineCodeVerticalPaddingDp.dp,
         marginStart = 0.dp,
         marginEnd = 0.dp,
         cornerRadius = 0.dp,
@@ -2436,14 +2436,17 @@ private fun SlockRichTextChromeStyleToken.toInlineBoxSpanStyle(): InlineBoxSpanS
     if (id == SlockRichTextChromeStyleTokens.OrdinaryMention.id) return null
     val fill = chipFill ?: return null
     val isInlineCode = id == SlockRichTextChromeStyleTokens.InlineCode.id
+    val verticalPadding =
+        if (isInlineCode) SlockRichTextInlineCodeVerticalPaddingDp
+        else SlockRichTextInlineBoxVerticalPaddingDp
     return InlineBoxSpanStyle(
         backgroundColor = fill.toSlockMarkdownColor(),
         borderColor = if (isInlineCode) Color.Transparent else SlockColor.BorderBlack,
         borderWidth = if (isInlineCode) 0.dp else SlockRichTextInlineBoxBorderWidthDp.dp,
         paddingStart = 4.dp,
         paddingEnd = 4.dp,
-        paddingTop = SlockRichTextInlineBoxVerticalPaddingDp.dp,
-        paddingBottom = SlockRichTextInlineBoxVerticalPaddingDp.dp,
+        paddingTop = verticalPadding.dp,
+        paddingBottom = verticalPadding.dp,
         marginStart = if (isInlineCode) 0.dp else 2.dp,
         marginEnd = if (isInlineCode) 0.dp else 2.dp,
         cornerRadius = 0.dp
@@ -2451,6 +2454,7 @@ private fun SlockRichTextChromeStyleToken.toInlineBoxSpanStyle(): InlineBoxSpanS
 }
 
 private const val SlockRichTextInlineBoxBorderWidthDp = 1f
+private const val SlockRichTextInlineCodeVerticalPaddingDp = 1f
 private const val SlockRichTextInlineBoxVerticalPaddingDp = 2f
 
 /**

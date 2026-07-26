@@ -1099,8 +1099,8 @@ class SlockMarkdownTest {
         assertEquals(0.dp, inlineBox.borderWidth)
         assertEquals(4.dp, inlineBox.paddingStart)
         assertEquals(4.dp, inlineBox.paddingEnd)
-        assertEquals(2.dp, inlineBox.paddingTop)
-        assertEquals(2.dp, inlineBox.paddingBottom)
+        assertEquals(1.dp, inlineBox.paddingTop)
+        assertEquals(1.dp, inlineBox.paddingBottom)
         assertEquals(0.dp, inlineBox.marginStart)
         assertEquals(0.dp, inlineBox.marginEnd)
         assertEquals(0.dp, inlineBox.cornerRadius)
@@ -1108,10 +1108,10 @@ class SlockMarkdownTest {
         assertEquals(0.dp, leadingEdge.paddingEnd)
         assertEquals(0.dp, trailingEdge.paddingStart)
         assertEquals(4.dp, trailingEdge.paddingEnd)
-        assertEquals(2.dp, leadingEdge.paddingTop)
-        assertEquals(2.dp, leadingEdge.paddingBottom)
-        assertEquals(2.dp, trailingEdge.paddingTop)
-        assertEquals(2.dp, trailingEdge.paddingBottom)
+        assertEquals(1.dp, leadingEdge.paddingTop)
+        assertEquals(1.dp, leadingEdge.paddingBottom)
+        assertEquals(1.dp, trailingEdge.paddingTop)
+        assertEquals(1.dp, trailingEdge.paddingBottom)
         assertEquals(SlockColor.TextBlack.copy(alpha = 0.05f), leadingEdge.backgroundColor)
         assertEquals(SlockColor.TextBlack.copy(alpha = 0.05f), trailingEdge.backgroundColor)
 
@@ -1145,7 +1145,7 @@ class SlockMarkdownTest {
 
     @Test
     fun releaseNotesSectionGapClearsInlineCodeChromePaintOverflow() {
-        // Web's taller inline-code box now paints 2dp beyond each text edge.
+        // Web's 18px visible box paints 1dp beyond each Mobile text edge.
         assertFalse(slockMarkdownSectionHeadingGapClearsInlineCodeChrome(0.dp))
         assertTrue(slockMarkdownSectionHeadingGapClearsInlineCodeChrome(8.dp))
     }
