@@ -45,7 +45,7 @@ done
 [[ -x "$build_tools_dir/apksigner" ]] || { echo "apksigner not found under $build_tools_dir" >&2; exit 1; }
 
 mkdir -p "$(dirname "$verify_log")"
-"$build_tools_dir/zipalign" -c -p 4 "$apk"
+"$build_tools_dir/zipalign" -c -P 16 4 "$apk"
 # Verify the frozen API 24-32 v2 contract even when the manifest minSdk is 29.
 "$build_tools_dir/apksigner" verify \
   --min-sdk-version 24 \

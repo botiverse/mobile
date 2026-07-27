@@ -85,7 +85,7 @@ in any channel (usually `#artifacts`). Lane assumptions:
    SIGNED=<worktree>/compose/androidApp/build/outputs/apk/release/androidApp-release.apk
    BT=/Users/artin/Library/Android/sdk/build-tools/36.0.0
 
-   $BT/zipalign -p -f 4 "$UNSIGNED" "$ALIGNED"
+   $BT/zipalign -P 16 -f 4 "$UNSIGNED" "$ALIGNED"
 
    unset HISTFILE
    ( $BT/apksigner sign \
@@ -99,7 +99,7 @@ in any channel (usually `#artifacts`). Lane assumptions:
        "$ALIGNED" )
    unset HISTFILE
 
-   $BT/zipalign -c -p 4 "$SIGNED"     # verify
+   $BT/zipalign -c -P 16 4 "$SIGNED"  # verify
    $BT/apksigner verify --verbose --print-certs "$SIGNED"
    $BT/aapt dump badging "$SIGNED"
    shasum -a 256 "$SIGNED"

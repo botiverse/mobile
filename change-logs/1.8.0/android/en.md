@@ -1,6 +1,6 @@
 ✨ **New**
 
-- Added a complete Japanese interface that can be selected from Settings
+- Expanded Japanese support across the main signed-in interface; select Japanese from Settings after signing in
 - Text, images, and files can now be shared to Raft from the Android system share sheet; choose a server and conversation, then review the content in the composer before sending
 - Sent images can now be saved directly to the system photo library
 - Messages now show recent replies, the total reply count, unread state, and draft state, with direct access to the reply thread

@@ -20,6 +20,8 @@ for script in \
 done
 
 scripts/test_resolve_android_publish_hands_input.sh
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/test_verify_android_dex_packaging.py
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/test_verify_android_elf_alignment.py
 
 env -u SLOCK_PUBLISH_HANDS \
   scripts/release_android_hands_github.sh --help |
@@ -38,8 +40,31 @@ ruby -e '
 
   inputs = workflow.fetch(true).fetch("workflow_dispatch").fetch("inputs")
   raise "missing publish_hands input" unless inputs.key?("publish_hands")
+  dex_input = inputs.fetch("dex_packaging")
+  raise "release workflow does not default to compressed DEX" unless dex_input.fetch("default") == "compressed"
+  raise "release workflow DEX choices drifted" unless dex_input.fetch("options") == %w[current compressed mmap]
+  jni_input = inputs.fetch("jni_packaging")
+  raise "release workflow does not default to the current JNI control" unless jni_input.fetch("default") == "current"
+  raise "release workflow JNI choices drifted" unless jni_input.fetch("options") == %w[current legacy modern]
 
   jobs = workflow.fetch("jobs")
+  resolve_job = jobs.fetch("resolve")
+  resolve_input_step = resolve_job.fetch("steps").find { |step| step["id"] == "p" }
+  raise "missing canonical release input resolver step" unless resolve_input_step
+  resolve_env = resolve_input_step.fetch("env")
+  unless resolve_env.fetch("INPUT_DEX_PACKAGING") == "${{ inputs.dex_packaging }}" &&
+      resolve_env.fetch("INPUT_JNI_PACKAGING") == "${{ inputs.jni_packaging }}"
+    raise "packaging inputs must cross into the resolver through step env"
+  end
+  resolve_run = resolve_input_step.fetch("run")
+  unless resolve_run.include?("DEX_PACKAGING=\"${INPUT_DEX_PACKAGING}\"") &&
+      resolve_run.include?("JNI_PACKAGING=\"${INPUT_JNI_PACKAGING}\"")
+    raise "packaging resolver does not read env-bound inputs"
+  end
+  if resolve_run.include?("DEX_PACKAGING=\"${{ inputs.dex_packaging }}\"") ||
+      resolve_run.include?("JNI_PACKAGING=\"${{ inputs.jni_packaging }}\"")
+    raise "packaging input expression is injected into shell source"
+  end
   raise "missing publish_hands job" unless jobs.key?("publish_hands")
   publish_job = jobs.fetch("publish_hands")
   unless publish_job.fetch("if").include?("needs.resolve.outputs.publish_hands == '\''true'\''")
@@ -59,6 +84,8 @@ ruby -e '
   call_inputs = workflow.fetch(true).fetch("workflow_call").fetch("inputs")
   raise "reusable release workflow lacks source_sha" unless call_inputs.key?("source_sha")
   raise "reusable release workflow lacks unique artifact_name" unless call_inputs.key?("artifact_name")
+  raise "reusable release workflow does not default compressed DEX" unless call_inputs.fetch("dex_packaging").fetch("default") == "compressed"
+  raise "reusable JNI control does not default current" unless call_inputs.fetch("jni_packaging").fetch("default") == "current"
 
   update_inputs = update_workflow.fetch(true).fetch("workflow_dispatch").fetch("inputs")
   raise "update workflow lacks required source_sha" unless update_inputs.fetch("source_sha").fetch("required")
@@ -93,12 +120,51 @@ ruby -e '
   unless stage_run.include?("scripts/verify_android_apk_with_rotation.sh")
     raise "release workflow does not stage the canonical rotation verifier"
   end
+  unless stage_run.include?("scripts/verify_android_dex_packaging.py")
+    raise "release workflow does not stage the DEX packaging verifier"
+  end
+  unless stage_run.include?("scripts/verify_android_elf_alignment.py")
+    raise "release workflow does not stage the 16 KB ELF verifier"
+  end
 
   release_verify = release_steps.fetch(verify_index).fetch("run")
   unless release_verify.include?("scripts/verify_android_apk_with_rotation.sh")
     raise "release workflow bypasses the canonical API 24-32 rotation verifier"
   end
+  unless release_verify.include?("scripts/verify_android_dex_packaging.py") &&
+      release_verify.include?("--expect-dex-method deflated") &&
+      release_verify.include?("--expect-dex-method stored") &&
+      release_verify.include?("--max-apk-size-bytes 47185920") &&
+      release_verify.include?("--max-dex-compression-ratio 0.60")
+    raise "release workflow bypasses the DEX compression and size contract"
+  end
+  unless release_verify.include?("scripts/verify_android_elf_alignment.py") &&
+      release_verify.include?("--expect-native-method") &&
+      release_verify.include?("--require-abi arm64-v8a") &&
+      release_verify.include?("--require-abi x86_64")
+    raise "release workflow bypasses the 16 KB ELF/native packaging contract"
+  end
   raise "release identity output does not canonicalize lineage oldest-to-current" unless release_verify.include?("| reverse")
+
+  android_gradle = File.read("compose/androidApp/build.gradle.kts")
+  unless android_gradle.include?("providers.gradleProperty(\"raftDexUseLegacyPackaging\")") &&
+      android_gradle.include?("providers.gradleProperty(\"raftJniUseLegacyPackaging\")") &&
+      android_gradle.match?(/packaging\s*\{.*?dex\s*\{.*?useLegacyPackaging\s*=\s*raftDexUseLegacyPackaging\.orNull/m) &&
+      android_gradle.match?(/jniLibs\s*\{.*?useLegacyPackaging\s*=\s*raftJniUseLegacyPackaging\.orNull\s*\?:\s*true/m)
+    raise "Android packaging does not expose the exact DEX/JNI matrix properties"
+  end
+
+  contract_paths = YAML.load_file(".github/workflows/android-release-contract.yml").fetch(true)
+  %w[pull_request push].each do |event|
+    paths = contract_paths.fetch(event).fetch("paths")
+    unless paths.include?("compose/androidApp/build.gradle.kts") &&
+        paths.include?("scripts/verify_android_dex_packaging.py") &&
+        paths.include?("scripts/test_verify_android_dex_packaging.py") &&
+        paths.include?("scripts/verify_android_elf_alignment.py") &&
+        paths.include?("scripts/test_verify_android_elf_alignment.py")
+      raise "Android release contract does not watch packaging/alignment inputs"
+    end
+  end
 
   fixture_schema = JSON.parse(File.read("docs/qa-acceptance/android-app-update/android-app-update-fixture.v1.schema.json"))
   required = fixture_schema.fetch("required")
@@ -178,6 +244,10 @@ grep -Eq 'needs\.resolve\.outputs\.publish_hands' .github/workflows/android-rele
   fail "publish job is not gated by the canonical publish_hands output"
 grep -Eq -- '-f "publish_hands=\$\{publish_hands\}"' scripts/release_android_hands_github.sh ||
   fail "canonical dispatch wrapper does not send publish_hands"
+grep -Eq -- '-f "dex_packaging=\$\{DEX_PACKAGING\}"' scripts/release_android_hands_github.sh ||
+  fail "canonical dispatch wrapper does not send dex_packaging"
+grep -Eq -- '-f "jni_packaging=\$\{JNI_PACKAGING\}"' scripts/release_android_hands_github.sh ||
+  fail "canonical dispatch wrapper does not send jni_packaging"
 
 for canonical_path in \
   docs/android-hands-release-practices-2026-07-02.md \
