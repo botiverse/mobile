@@ -21,11 +21,13 @@ import com.tencent.kuikly.compose.foundation.layout.offset
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.layout.width
+import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
+import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
@@ -107,9 +109,8 @@ internal fun slockAppBottomTabBarContentInset(bottomSafeArea: Dp): Dp {
         // Native floating docks are overlays. Content should keep filling the screen behind them.
         SlockAppTabBarRenderer.OhosHdsImmersive,
         SlockAppTabBarRenderer.IosLiquidGlass -> bottomSafeArea + SlockSpacing.Lg
-        // Android keeps the Slock visual in a floating dock; scroll containers need enough trailing
-        // inset for their last rows to clear the overlay.
-        SlockAppTabBarRenderer.AndroidFloating -> SlockOhosHdsBottomTabBarHostHeight + bottomSafeArea
+        SlockAppTabBarRenderer.AndroidFloating ->
+            slockFloatingDockBottomTabBarHostHeight(bottomSafeArea)
         SlockAppTabBarRenderer.SharedCompose -> slockSharedBottomTabBarContentInset(bottomSafeArea)
     }
 }
@@ -130,7 +131,7 @@ internal fun slockSharedBottomTabBarHostHeight(bottomSafeArea: Dp): Dp =
 internal fun slockSharedBottomTabBarContentInset(bottomSafeArea: Dp): Dp =
     slockSharedBottomTabBarHostHeight(bottomSafeArea) + SlockSpacing.Lg
 
-internal fun slockAndroidFloatingBottomTabBarHostHeight(bottomSafeArea: Dp): Dp =
+internal fun slockFloatingDockBottomTabBarHostHeight(bottomSafeArea: Dp): Dp =
     SlockOhosHdsBottomTabBarHostHeight + bottomSafeArea
 
 internal val SlockVerticalTabSectionTextStyle =
@@ -290,7 +291,12 @@ internal fun SlockAppBottomTabBarHost(
             return
         }
         SlockAppTabBarRenderer.AndroidFloating -> {
-            SlockNativeFloatingBottomTabBarHost(items = items, onSelect = onSelect, modifier = hostModifier, bottomSafeArea = bottomSafeArea)
+            SlockSharedAndroidFloatingBottomTabBarHost(
+                items = items,
+                onSelect = onSelect,
+                modifier = hostModifier,
+                bottomSafeArea = bottomSafeArea
+            )
             return
         }
         SlockAppTabBarRenderer.SharedCompose -> Unit
@@ -309,6 +315,76 @@ internal fun SlockAppBottomTabBarHost(
                 .fillMaxWidth()
                 .align(Alignment.TopCenter)
         )
+    }
+}
+
+@Composable
+private fun SlockSharedAndroidFloatingBottomTabBarHost(
+    items: List<SlockBottomTabItemPayload>,
+    onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    bottomSafeArea: Dp = 0.dp
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(slockFloatingDockBottomTabBarHostHeight(bottomSafeArea))
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                // The old Android ComposeView received the dock band's exact
+                // 92dp parent constraint, so its nominal 56dp Row expanded to
+                // the full band. Preserve that rendered geometry in Kuikly.
+                .height(SlockOhosHdsBottomTabBarHostHeight)
+                .padding(horizontal = 18.dp)
+                .background(SlockColor.SurfaceWhite.copy(alpha = 0.94f), RoundedCornerShape(28.dp))
+                .padding(horizontal = 8.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            items.forEach { item ->
+                val selected = item.selected
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .background(
+                            if (selected) SlockColor.BrandYellow.copy(alpha = 0.2f) else Color.Transparent,
+                            RoundedCornerShape(16.dp)
+                        )
+                        .clickable(enabled = item.enabled) { onSelect(item.key) }
+                        .padding(horizontal = 2.dp, vertical = 2.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    SlockLucideIcon(
+                        name = item.iconName,
+                        color = when {
+                            !item.enabled -> "#42000000"
+                            selected -> "#FF000000"
+                            else -> "#73000000"
+                        },
+                        modifier = Modifier.size(17.dp)
+                    )
+                    Text(
+                        text = item.label.uppercase(),
+                        style = SlockType.Caption.copy(
+                            color = when {
+                                !item.enabled -> Color.Black.copy(alpha = 0.26f)
+                                selected -> Color.Black
+                                else -> Color.Black.copy(alpha = 0.45f)
+                            },
+                            fontSize = 9.sp,
+                            lineHeight = 11.sp,
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -490,7 +566,7 @@ internal fun SlockFloatingDockTabBar(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(slockAndroidFloatingBottomTabBarHostHeight(bottomSafeArea))
+            .height(slockFloatingDockBottomTabBarHostHeight(bottomSafeArea))
             .clickable(onClick = {})
     ) {
         Box(

@@ -187,6 +187,61 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureAndroidFloatingTabbarStates() {
+        captureKmpComponentCase(
+            caseId = "components.navigation.tabbar.android-floating",
+            pageName = "compose_android_floating_tabbar_visual",
+            pageData = JSONObject().put("slockNativeTabBarRenderer", "androidFloating"),
+            crop = ANDROID_FLOATING_TABBAR_CROP
+        )
+        captureKmpComponentCase(
+            caseId = "components.navigation.tabbar.android-floating.tasks-selected",
+            pageName = "compose_android_floating_tabbar_visual",
+            pageData =
+                JSONObject()
+                    .put("slockNativeTabBarRenderer", "androidFloating")
+                    .put("selectedKey", "tasks"),
+            crop = ANDROID_FLOATING_TABBAR_CROP
+        )
+        captureKmpComponentCase(
+            caseId = "components.navigation.tabbar.android-floating.disabled",
+            pageName = "compose_android_floating_tabbar_visual",
+            pageData =
+                JSONObject()
+                    .put("slockNativeTabBarRenderer", "androidFloating")
+                    .put("disabledKey", "settings"),
+            crop = ANDROID_FLOATING_TABBAR_CROP
+        )
+        captureKmpComponentCase(
+            caseId = "components.navigation.tabbar.android-floating.safe-area",
+            pageName = "compose_android_floating_tabbar_visual",
+            pageData =
+                JSONObject()
+                    .put("slockNativeTabBarRenderer", "androidFloating")
+                    .put("bottomSafeAreaDp", 24),
+            crop = ANDROID_FLOATING_TABBAR_SAFE_AREA_CROP
+        )
+    }
+
+    @Test
+    fun captureLucideCatalogAtlas() {
+        captureKmpComponentCase(
+            caseId = "components.icons.lucide.catalog-atlas",
+            pageName = "compose_lucide_catalog_atlas_visual",
+            crop = LUCIDE_CATALOG_ATLAS_CROP,
+        )
+    }
+
+    @Test
+    fun captureLucideStateAtlas() {
+        captureKmpComponentCase(
+            caseId = "components.icons.lucide.state-atlas",
+            pageName = "compose_lucide_state_atlas_visual",
+            crop = LUCIDE_STATE_ATLAS_CROP,
+        )
+    }
+
+    @Test
     fun captureForegroundBannerContextVariants() {
         captureKmpComponentCase(
             caseId = "components.shell.foreground-banner.context-variants",
@@ -4247,6 +4302,34 @@ class KmpVisualScreenshotCaptureTest {
                 topDp = 0,
                 widthDp = 390,
                 heightDp = 53
+            )
+        private val ANDROID_FLOATING_TABBAR_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 390,
+                heightDp = 92
+            )
+        private val ANDROID_FLOATING_TABBAR_SAFE_AREA_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 390,
+                heightDp = 116
+            )
+        private val LUCIDE_CATALOG_ATLAS_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 390,
+                heightDp = 798,
+            )
+        private val LUCIDE_STATE_ATLAS_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 390,
+                heightDp = 84,
             )
         private val FOREGROUND_BANNER_CONTEXT_CROP =
             VisualCrop(

@@ -2,7 +2,10 @@ package build.raft.app
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import build.raft.app.base.BasePager
 import build.raft.app.data.AppLocale
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
@@ -21,6 +24,16 @@ import build.raft.app.data.SharedRuntimeFormDefinitionRef
 import build.raft.app.data.stringDescLocaleType
 import build.raft.app.data.slockSharedPreferenceStore
 import com.tencent.kuikly.compose.setContent
+import com.tencent.kuikly.compose.foundation.background
+import com.tencent.kuikly.compose.foundation.layout.Arrangement
+import com.tencent.kuikly.compose.foundation.layout.Box
+import com.tencent.kuikly.compose.foundation.layout.Column
+import com.tencent.kuikly.compose.foundation.layout.Row
+import com.tencent.kuikly.compose.foundation.layout.height
+import com.tencent.kuikly.compose.foundation.layout.size
+import com.tencent.kuikly.compose.foundation.layout.width
+import com.tencent.kuikly.compose.ui.Alignment
+import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.tmm.kmmresource.resource.desc.StringDesc
@@ -248,6 +261,151 @@ internal class ComposeBottomTabBarVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
         setContent { BottomTabBarVisualContent() }
+    }
+}
+
+@Page("compose_android_floating_tabbar_visual", supportInLocal = true)
+internal class ComposeAndroidFloatingTabBarVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        val initialSelectedKey = pageData.params.optString("selectedKey").ifBlank { "home" }
+        val disabledKey = pageData.params.optString("disabledKey")
+        val bottomSafeArea = pageData.params.optInt("bottomSafeAreaDp").dp
+        setContent {
+            var selectedKey by remember { mutableStateOf(initialSelectedKey) }
+            SlockAppBottomTabBarHost(
+                items =
+                    listOf(
+                        SlockBottomTabItemPayload(
+                            "home",
+                            "Home",
+                            SlockLucideIconName.House,
+                            selected = selectedKey == "home",
+                            enabled = disabledKey != "home"
+                        ),
+                        SlockBottomTabItemPayload(
+                            "tasks",
+                            "Tasks",
+                            SlockLucideIconName.SquareCheckBig,
+                            selected = selectedKey == "tasks",
+                            enabled = disabledKey != "tasks"
+                        ),
+                        SlockBottomTabItemPayload(
+                            "members",
+                            "Members",
+                            SlockLucideIconName.Users,
+                            selected = selectedKey == "members",
+                            enabled = disabledKey != "members"
+                        ),
+                        SlockBottomTabItemPayload(
+                            "settings",
+                            "Settings",
+                            SlockLucideIconName.Settings,
+                            selected = selectedKey == "settings",
+                            enabled = disabledKey != "settings"
+                        )
+                    ),
+                onSelect = { selectedKey = it },
+                modifier = Modifier.width(390.dp),
+                bottomSafeArea = bottomSafeArea
+            )
+        }
+    }
+}
+
+@Page("compose_lucide_catalog_atlas_visual", supportInLocal = true)
+internal class ComposeLucideCatalogAtlasVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent {
+            Column(
+                modifier =
+                    Modifier
+                        .width(390.dp)
+                        .height(798.dp)
+                        .background(SlockColor.SurfaceWhite),
+            ) {
+                SlockLucideIcons.Names.chunked(10).forEach { rowNames ->
+                    Row(
+                        modifier = Modifier.width(390.dp).height(42.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        rowNames.forEach { name ->
+                            Box(
+                                modifier = Modifier.width(39.dp).height(42.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                SlockLucideIcon(name = name, modifier = Modifier.size(24.dp))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Page("compose_lucide_state_atlas_visual", supportInLocal = true)
+internal class ComposeLucideStateAtlasVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent {
+            Row(
+                modifier =
+                    Modifier
+                        .width(390.dp)
+                        .height(84.dp)
+                        .background(SlockColor.SurfaceWhite),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                LucideStateAtlasCell { SlockLucideIcon(SlockLucideIconName.Bookmark, Modifier.size(24.dp)) }
+                LucideStateAtlasCell {
+                    SlockLucideIcon(
+                        SlockLucideIconName.Bookmark,
+                        Modifier.size(24.dp),
+                        fill = SlockColor.TextBlackArgb,
+                    )
+                }
+                LucideStateAtlasCell {
+                    SlockLucideIcon(SlockLucideIconName.Check, Modifier.size(24.dp), strokeWidth = 2f)
+                }
+                LucideStateAtlasCell {
+                    SlockLucideIcon(SlockLucideIconName.Check, Modifier.size(24.dp), strokeWidth = 4f)
+                }
+                LucideStateAtlasCell {
+                    SlockLucideIcon(SlockLucideIconName.Check, Modifier.size(24.dp), strokeWidth = 6f)
+                }
+                listOf(0f, 90f, 180f, 270f).forEach { rotation ->
+                    LucideStateAtlasCell {
+                        SlockLucideIcon(
+                            SlockLucideIconName.ArrowLeft,
+                            Modifier.size(24.dp),
+                            color = if (rotation == 0f) SlockColor.AccentRedArgb else SlockColor.TextBlackArgb,
+                            rotationDegrees = rotation,
+                        )
+                    }
+                }
+                LucideStateAtlasCell {
+                    SlockLucideIcon(
+                        SlockLucideIconName.CircleArrowUp,
+                        Modifier.size(24.dp),
+                        verticalOffsetDp = 4f,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LucideStateAtlasCell(content: @Composable () -> Unit) {
+    Box(
+        modifier = Modifier.width(39.dp).height(84.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        content()
     }
 }
 

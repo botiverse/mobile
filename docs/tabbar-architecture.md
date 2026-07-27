@@ -38,7 +38,7 @@ explicitly opts into a native renderer.
 | ----------------------------------- | ------------------- | -------------------------------------- |
 | `ohosHdsImmersive` / `hdsImmersive` | `OhosHdsImmersive`  | OHOS native `HdsTabs` (HDS material)   |
 | `iosLiquidGlass` / `iosNativeFloating` | `IosLiquidGlass` | iOS native `UITabBar` (Liquid Glass)   |
-| `androidFloating` / `androidNativeFloating` | `AndroidFloating` | Android native floating tab bar view |
+| `androidFloating` / `androidNativeFloating` | `AndroidFloating` | shared Kuikly floating dock |
 | anything else / absent              | `SharedCompose`     | shared Compose `SlockBottomTabBar`     |
 
 Each host decides its own param:
@@ -52,15 +52,15 @@ Each host decides its own param:
   renderer values to `iosLiquidGlass`, because post-auth/server-selection
   Router launches create a new app-shell page without inheriting root
   pageData.
-- **Android**: default (`sharedCompose`) unless the floating variant is
-  configured.
+- **Android**: uses `sharedCompose` by default. The old floating aliases keep
+  their floating presentation through a shared Kuikly renderer.
 
 The `SharedCompose` fallback guarantees a working bar everywhere, so the native
 paths can assume their platform capability is present.
 
 ## Shared → native contract
 
-All three native renderers share **one** view name and **one** prop/event
+Both native renderers share **one** view name and **one** prop/event
 contract, defined in `SlockTabBar.kt` (`SlockNativeFloatingTabBar` /
 `SlockNativeFloatingTabBarAttr`):
 
@@ -80,7 +80,6 @@ Native implementations:
   for the native adaptive-material floating dock.
 - iOS: `compose/iosApp/iosApp/KuiklyExpand/Components/SlockNativeFloatingTabBarView.m`
   wraps a UIKit `UITabBar` (system Liquid Glass on iOS 26).
-- Android: `compose/androidApp/src/main/java/build/raft/app/shared/SlockNativeFloatingTabBarRenderView.kt`.
 
 Because the contract is identical, swapping a platform's *look* only touches
 that platform's native file — the shared host, insets, and z-index are
@@ -108,7 +107,9 @@ Different platforms need different tap containment:
 - **iOS `UITabBar`** consumes touches within its own bounds — no extra work.
   (The previous hand-rolled dock relied on a `pointInside:` override; the real
   `UITabBar` makes that unnecessary.)
-- **Android** native view consumes its own touches.
+- **Android** `AndroidFloating` and `SharedCompose` are both shared Kuikly
+  renderers. Their standard Compose hit testing consumes tab-item taps; there
+  is no Android native tab-bar view or separate native touch path.
 - **OHOS is the tricky one.** Custom native views are hosted by
   `KRForwardArkTSView`, which the Kuikly OHOS renderer initializes with
   `ARKUI_HIT_TEST_MODE_TRANSPARENT` ("ForwardArkTSView 不会遮挡同层级事件").
