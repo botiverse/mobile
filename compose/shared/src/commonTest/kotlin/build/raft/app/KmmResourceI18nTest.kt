@@ -642,7 +642,9 @@ class KmmResourceI18nTest {
             MR.strings.auth_error_provider_unavailable,
             MR.strings.auth_error_provider_setup,
             MR.strings.auth_error_provider_failed,
-            MR.strings.auth_provider_cancelled
+            MR.strings.auth_provider_cancelled,
+            MR.strings.auth_error_mobile_oauth_account_conflict,
+            MR.strings.auth_error_mobile_oauth_provider_conflict
         ).forEach { resource ->
             assertTrue(
                 resource.format(listOf("Google")) is ResourceFormattedStringDesc,

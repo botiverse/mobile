@@ -12,6 +12,7 @@ import build.raft.app.shared.resolveAndroidShellLaunchTarget
 import build.raft.app.shared.taskLaunchPlan
 import build.raft.app.shared.withAndroidShellLaunchTarget
 import build.raft.app.data.KeyValueAuthSessionStore
+import build.raft.app.data.mobileOAuthConflictMessageOrNull
 import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.SharedAuthErrorCode
 import build.raft.app.data.SharedAuthResult
@@ -317,7 +318,15 @@ class MainActivity : ComponentActivity() {
         val error = uri.getQueryParameter("error") ?: uri.getQueryParameter("error_description")
         if (!error.isNullOrBlank()) {
             pendingStore.clear()
-            openAfterMobileOAuthError(error, pending.mode)
+            // Map the typed conflict codes through the shared mapper before
+            // surfacing anything. Previously the raw code was toasted, so a user
+            // whose email simply already had a password account saw the literal
+            // string "account_conflict" with no idea what to do next. Any other
+            // code keeps the existing passthrough.
+            openAfterMobileOAuthError(
+                mobileOAuthConflictMessageOrNull(providerName, error) ?: error,
+                pending.mode,
+            )
             return true
         }
         val handoffCode = uri.getQueryParameter("code")

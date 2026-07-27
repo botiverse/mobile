@@ -381,6 +381,29 @@ class MainActivityLaunchTest {
         assertEquals("google,github", pageData.getString("slockSocialAuthProviders"))
     }
 
+    @Test
+    fun androidOAuthCallbackRoutesTypedConflictCodesThroughTheSharedMapper() {
+        // Source-wiring regression. The Android callback used to hand the raw
+        // query value straight to the toast, so `account_conflict` reached the
+        // user verbatim. This asserts the mapper sits between them and that the
+        // non-conflict passthrough survives, which unit-testing MainActivity
+        // directly cannot reach.
+        val source = mainActivitySource()
+
+        assertTrue(
+            "MainActivity must import the shared conflict mapper",
+            source.contains("import build.raft.app.data.mobileOAuthConflictMessageOrNull")
+        )
+        assertTrue(
+            "the OAuth callback error must be mapped before it is surfaced",
+            source.contains("mobileOAuthConflictMessageOrNull(providerName, error) ?: error")
+        )
+        assertFalse(
+            "the raw error code must not be toasted directly any more",
+            source.contains("openAfterMobileOAuthError(error, pending.mode)")
+        )
+    }
+
     private fun mainActivitySource(): String {
         var current = File(requireNotNull(System.getProperty("user.dir"))).absoluteFile
         repeat(8) {

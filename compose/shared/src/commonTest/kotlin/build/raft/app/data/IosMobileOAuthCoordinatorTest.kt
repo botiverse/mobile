@@ -124,6 +124,22 @@ class IosMobileOAuthCoordinatorTest {
     }
 
     @Test
+    fun typedConflictCodesKeepExistingAccountGuidanceDistinctFromOtherUserConflict() {
+        fun message(error: String, provider: String = "google"): String =
+            iosMobileOAuthProviderErrorMessage(
+                provider = provider,
+                mode = "login",
+                error = error,
+                accountConflictMessage = { providerName -> "password_then_settings:$providerName" },
+                providerConflictMessage = { providerName -> "other_user:$providerName" },
+            )
+
+        assertEquals("password_then_settings:Google", message("account_conflict"))
+        assertEquals("other_user:Google", message("provider_conflict"))
+        assertEquals("password_then_settings:Social", message("account_conflict", "unexpected"))
+    }
+
+    @Test
     fun legalAcceptanceKeepsCredentialsOnlyInTheInProcessRouteResult() = runBlocking {
         val runtime = FakeRuntime(environmentKey = "production").apply {
             loginOutcome = IosMobileOAuthLoginOutcome.LegalAcceptanceRequired("accept terms")
