@@ -73,6 +73,26 @@ class ThreadForwardFlowTest {
     }
 
     @Test
+    fun composerPreparationResolvesFrozenDestinationWithoutSending() = runBlocking {
+        val selected = target("selected", ForwardMessageTargetKind.RecentChannel, ChannelId("channel-selected"))
+        val repository = RecordingForwardRepository()
+
+        val preparation =
+            prepareThreadForwardComposer(
+                repository = repository,
+                liveSourceServerId = sourceServerId,
+                sourceChannelId = ChannelId("source"),
+                receipt = selected.receiptAt(generation = 7),
+                currentDirectoryGeneration = 7
+            )
+
+        assertEquals(ChannelId("channel-selected"), preparation.destination?.channelId)
+        assertEquals(null, preparation.failureCode)
+        assertEquals(1, repository.resolveCalls)
+        assertEquals(emptyList(), repository.requests)
+    }
+
+    @Test
     fun singleTargetForwardReportsFailureWithoutRetrying() = runBlocking {
         val selected = target("selected", ForwardMessageTargetKind.RecentDirectMessage, ChannelId("channel-selected"))
         val repository =

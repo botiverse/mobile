@@ -35,6 +35,7 @@ import build.raft.app.data.ForwardMessageTargetDirectoryCursor
 import build.raft.app.data.ForwardMessageTargetKind
 import build.raft.app.data.ForwardMessageTargetRepository
 import build.raft.app.data.ForwardMessageTargetRequiredAction
+import build.raft.app.data.AuthorityBoundForwardMessageTargetRepository
 import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.NetworkSlockTasksApi
 import build.raft.app.data.NetworkSlockThreadApi
@@ -5038,6 +5039,8 @@ internal fun SharedThreadRouteContent(
     val imageSavedLabel = stringResource(MR.strings.thread_feedback_image_saved)
     val unableToExportImageLabel = stringResource(MR.strings.thread_error_export_image)
     val unableToForwardLabel = stringResource(MR.strings.thread_error_forward)
+    val forwardAuthorityChangedLabel = stringResource(MR.strings.thread_forward_authority_changed)
+    val forwardDraftUnavailableLabel = stringResource(MR.strings.thread_forward_draft_unavailable)
     val unableToSaveMessageLabel = stringResource(MR.strings.thread_error_save_message)
     val unableToRemoveSavedMessageLabel = stringResource(MR.strings.thread_error_remove_saved_message)
     val attachmentSkippedOneLabel = stringResource(MR.strings.thread_attachment_skipped_one)
@@ -5525,14 +5528,7 @@ internal fun SharedThreadRouteContent(
             renderedPayload
                 .resolveThreadComposer(displayName = headerDisplayModel.title)
                 .copy(streamChannelId = resolvedAuxiliaryThreadId)
-        val draftKey =
-            composer
-                .toThreadComposerSurface(
-                    channelId = resolvedAuxiliaryThreadId.orEmpty(),
-                    parentChannelId = renderedPayload.parentChannelId,
-                    memberSuggestionHeadersVisible = renderedPayload.threadComposerMemberSuggestionHeadersVisible()
-                )
-                .threadComposerDraftKey()
+        val draftKey = renderedPayload.threadComposerDraftKey()
         composerDraftViewModel.dispatch(
             SharedThreadComposerDraftIntent.Start(
                 composer = composer,
@@ -7020,6 +7016,11 @@ internal fun SharedThreadRouteContent(
                 },
             forwardServerId = headerProjectionServerId,
             forwardTargetRepository = forwardTargetRepository,
+            captureForwardAuthority = dataSource::captureExternalShareSendAuthority,
+            onOpenForwardThreadPayload = onOpenThreadPayload,
+            unableToForwardLabel = unableToForwardLabel,
+            forwardAuthorityChangedLabel = forwardAuthorityChangedLabel,
+            forwardDraftUnavailableLabel = forwardDraftUnavailableLabel,
             contentExtrasVisible = true,
             onTasksIntent = { intent ->
                 if (
@@ -8195,6 +8196,69 @@ internal fun SharedThreadRouteContent(
                     )
                 }
                 "send" -> {
+                    val internalForward = currentDraftState.internalForwardSource
+                    if (internalForward != null) {
+                        if (currentDraftState.sending) return@ThreadPageContent
+                        coroutineScope.launch {
+                            val authority = dataSource.captureExternalShareSendAuthority()
+                            val sendChannelId = composerSurface.sendChannelId
+                            val kind = runCatching { ConversationKind.valueOf(internalForward.destinationKind) }.getOrNull()
+                            val authorityMatches =
+                                authority != null &&
+                                    authority.accountId == internalForward.accountId &&
+                                    authority.serverId == internalForward.serverId &&
+                                    sendChannelId == internalForward.destinationChannelId &&
+                                    kind != null
+                            if (!authorityMatches) {
+                                bridge.logWarn("thread_internal_forward_send_rejected reason=authority_changed")
+                                bridge.toast(forwardAuthorityChangedLabel)
+                                return@launch
+                            }
+                            val repository = forwardTargetRepository as? AuthorityBoundForwardMessageTargetRepository
+                            if (repository == null) {
+                                bridge.toast(unableToForwardLabel)
+                                return@launch
+                            }
+                            composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.BeginInternalForwardSend)
+                            val result =
+                                repository.forwardMessagesBound(
+                                    ForwardMessageExecuteRequest(
+                                        sourceServerId = ServerId(internalForward.serverId),
+                                        sourceChannelId = ChannelId(internalForward.sourceChannelId),
+                                        destination =
+                                            build.raft.app.data.ForwardMessageDestination(
+                                                serverId = ServerId(internalForward.serverId),
+                                                channelId = ChannelId(internalForward.destinationChannelId),
+                                                channelKind = kind!!,
+                                                jointChannelId = internalForward.destinationJointChannelId,
+                                                resolvedMemberId = internalForward.destinationResolvedMemberId?.let(::MemberId)
+                                            ),
+                                        messageIds = internalForward.messageIds,
+                                        mode = internalForward.mode.toForwardMessageSendMode(),
+                                        note = currentDraftState.seedText
+                                    ),
+                                    expectedAuthority = authority!!
+                                )
+                            val succeeded = result is DataResult.Content
+                            composerDraftViewModel.dispatch(
+                                SharedThreadComposerDraftIntent.FinishInternalForwardSend(
+                                    succeeded = succeeded,
+                                    failureLabel = if (succeeded) null else unableToForwardLabel
+                                )
+                            )
+                            if (succeeded) {
+                                bridge.toast(
+                                    localizedForwardCompleted(
+                                        localizedForwardModeLabel(internalForward.mode),
+                                        internalForward.destinationLabel.ifBlank { internalForward.destinationChannelId }
+                                    )
+                                )
+                            } else {
+                                bridge.toast(result.threadForwardFailureCode("forward_failed").threadForwardErrorMessage())
+                            }
+                        }
+                        return@ThreadPageContent
+                    }
                     if (externalShareSendRequested) {
                         bridge.log("external_share_send_duplicate_drop reason=upload_chain_active")
                         return@ThreadPageContent
@@ -8258,6 +8322,9 @@ internal fun SharedThreadRouteContent(
                     value?.takeIf { it.isNotBlank() }?.let { resolutionId ->
                         composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.DismissMentionAction(resolutionId))
                     }
+                }
+                "removeInternalForward" -> {
+                    composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.RemoveInternalForward)
                 }
                 "dismissMentionNotice" -> {
                     composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.ClearMentionActionNotice)
@@ -11638,6 +11705,14 @@ private fun KuiklyThreadComposerPayload.withThreadComposerDraftState(
         syncNonce = draftState.syncNonce,
         focusRequestNonce = draftState.focusRequestNonce,
         pendingAttachments = pendingAttachmentItems,
+        pendingInternalForward =
+            draftState.internalForwardSource?.let { source ->
+                KuiklyPendingInternalForward(
+                    sourceLabel = source.sourceLabel,
+                    messageCount = source.messageIds.size,
+                    attachmentCount = source.attachmentCount
+                )
+            },
         composerMode =
             when {
                 composerMode == "failed" -> "failed"
@@ -11751,6 +11826,11 @@ private fun ThreadPageContent(
     onToggleChannelPin: (() -> Unit)? = null,
     forwardServerId: ServerId?,
     forwardTargetRepository: ForwardMessageTargetRepository?,
+    captureForwardAuthority: suspend () -> build.raft.app.data.SlockExpectedAuthBinding?,
+    onOpenForwardThreadPayload: (KuiklyThreadScreenPayload) -> Unit,
+    unableToForwardLabel: String,
+    forwardAuthorityChangedLabel: String,
+    forwardDraftUnavailableLabel: String,
     contentExtrasVisible: Boolean,
     onTasksIntent: (SharedTasksRouteIntent) -> Unit,
     onFilesAuthRequired: (String?) -> Unit,
@@ -11883,7 +11963,6 @@ private fun ThreadPageContent(
     var forwardDirectoryGeneration by remember(threadInstanceKey) { mutableStateOf(0) }
     var forwardDirectoryNextCursor by remember(threadInstanceKey) { mutableStateOf<ForwardMessageTargetDirectoryCursor?>(null) }
     var forwardOperationNonce by remember(threadInstanceKey) { mutableStateOf(0) }
-    var forwardNote by remember(threadInstanceKey) { mutableStateOf("") }
     var insertMentionRequestNonce by remember(threadInstanceKey) { mutableStateOf(0) }
     var insertMentionRequest by remember(threadInstanceKey) { mutableStateOf<ThreadComposerInsertMentionRequest?>(null) }
     val shareSelectionActive = selectedShareMessageIds.isNotEmpty() && selectedTab == KuiklyThreadTab.Chat
@@ -12604,7 +12683,6 @@ private fun ThreadPageContent(
                                 forwardTargets = emptyList()
                                 forwardDirectoryNextCursor = null
                                 forwardSelectedReceipt = null
-                                forwardNote = ""
                                 activeModal = "forwardTargets"
                             }
                         },
@@ -12716,7 +12794,7 @@ private fun ThreadPageContent(
             }
         }
         val visibleForwardPickerSession = forwardPickerFlow.sessionKey
-        if ((activeModal == "forwardTargets" || activeModal == "forwardNote") && visibleForwardPickerSession != null) {
+        if (activeModal == "forwardTargets" && visibleForwardPickerSession != null) {
                 SlockForwardTargetPicker(
                     messageCount = forwardMessageSelection.forwardableMessages.size,
                     skippedCount = forwardMessageSelection.skippedCount,
@@ -12788,88 +12866,108 @@ private fun ThreadPageContent(
                                     forwardPickerFlow = nextFlow
                                     val selected = intent.item.payload
                                     forwardOperationNonce += 1
-                                    forwardSelectedReceipt =
+                                    val receipt =
                                         selected.toThreadForwardDestinationReceipt(
                                             operationId = "$threadInstanceKey-fwd-$forwardOperationNonce",
                                             sourceServerId = sourceServerId,
                                             directoryGeneration = forwardDirectoryGeneration
                                         )
-                                    activeModal = "forwardNote"
-                                }
-                            }
-                        }
-                    }
-                )
-        }
-        if (activeModal == "forwardNote") {
-                ThreadForwardNoteDialog(
-                    messageCount = forwardMessageSelection.forwardableMessages.size,
-                    selectedTarget = forwardSelectedReceipt?.target,
-                    note = forwardNote,
-                    sending = forwardSending,
-                    onNoteChange = { forwardNote = it },
-                    onDismiss = {
-                        forwardPickerFlow = forwardPickerFlow.reduce(SlockForwardPickerFlowEvent.NoteBack)
-                        activeModal = "forwardTargets"
-                    },
-                    onSend = {
-                        if (!writeActionsEnabled) return@ThreadForwardNoteDialog
-                        val repository = forwardTargetRepository
-                        // task #803: the gate needs the LIVE server authority at
-                        // confirm time — forwardServerId is the live projection;
-                        // forwardSourceServerId is the frozen picker-open copy
-                        // already inside the receipt.
-                        val liveServerId = forwardServerId
-                        val sourceChannelId = forwardSourceChannelId
-                        val selectedReceipt = forwardSelectedReceipt
-                        when {
-                            repository == null ->
-                                onThreadEvent("forwardMessagesFailed", "Forward API unavailable", null, null)
-                            sourceChannelId == null ->
-                                onThreadEvent("forwardMessagesFailed", "Source conversation unavailable", null, null)
-                            selectedReceipt == null ->
-                                onThreadEvent("forwardMessagesFailed", "Forward target unavailable", null, null)
-                            !forwardSending -> {
-                                forwardSending = true
-                                shareExportScope.launch {
-                                    try {
-                                        val outcome =
-                                            executeThreadForward(
-                                                repository = repository,
-                                                liveSourceServerId = liveServerId,
-                                                sourceChannelId = sourceChannelId,
-                                                receipt = selectedReceipt,
-                                                currentDirectoryGeneration = forwardDirectoryGeneration,
-                                                messageIds = forwardMessageSelection.forwardableMessages.map { it.id },
-                                                mode = activeForwardSelectionMode.toForwardMessageSendMode(),
-                                                note = forwardNote
-                                            )
-                                        if (outcome.failureCode == null) {
-                                            activeModal = null
-                                            forwardPickerFlow.sessionKey?.let { session ->
-                                                forwardTargetRepository?.releaseDirectorySnapshot(session.directorySessionId())
+                                    forwardSelectedReceipt = receipt
+                                    val repository = forwardTargetRepository
+                                    val sourceChannelId = forwardSourceChannelId
+                                    val messageIds = forwardMessageSelection.forwardableMessages.map { it.id }
+                                    val attachmentCount = forwardMessageSelection.forwardableMessages.sumOf { it.attachments.size }
+                                    val sourceLabel = headerDisplay.title
+                                    if (repository == null || sourceChannelId == null || messageIds.isEmpty()) {
+                                        onThreadEvent("forwardMessagesFailed", unableToForwardLabel, null, null)
+                                    } else if (!forwardSending) {
+                                        forwardSending = true
+                                        activeModal = null
+                                        shareExportScope.launch {
+                                            try {
+                                                val preparation =
+                                                    prepareThreadForwardComposer(
+                                                        repository = repository,
+                                                        liveSourceServerId = forwardServerId,
+                                                        sourceChannelId = sourceChannelId,
+                                                        receipt = receipt,
+                                                        currentDirectoryGeneration = forwardDirectoryGeneration
+                                                    )
+                                                val destination = preparation.destination
+                                                val authority = captureForwardAuthority()
+                                                if (
+                                                    destination == null ||
+                                                    authority == null ||
+                                                    authority.serverId != receipt.sourceServerId.value
+                                                ) {
+                                                    onThreadEvent(
+                                                        "forwardMessagesFailed",
+                                                        preparation.failureCode?.threadForwardErrorMessage()
+                                                            ?: forwardAuthorityChangedLabel,
+                                                        null,
+                                                        null
+                                                    )
+                                                    return@launch
+                                                }
+                                                val targetIdentity =
+                                                    buildThreadLaunchConversationIdentity(
+                                                        kind = destination.channelKind,
+                                                        channelId = destination.channelId
+                                                    )
+                                                val targetPayload =
+                                                    buildAppShellThreadPayload(
+                                                        conversation = targetIdentity,
+                                                        timeContext = payload.toSlockTimeContext(),
+                                                        alignOwnMessagesRight = payload.alignOwnMessagesRight,
+                                                        compactConsecutiveMessages = payload.compactConsecutiveMessages,
+                                                        threadRowAffordances =
+                                                            listOfNotNull(
+                                                                ThreadRowAffordancePreference.Reactions.takeIf { payload.showReactionActions },
+                                                                ThreadRowAffordancePreference.Saved.takeIf { payload.showInlineSaveAction }
+                                                            ).toSet(),
+                                                        onWarn = diagnosticsLogger
+                                                    )
+                                                val staged =
+                                                    targetPayload?.let { nextPayload ->
+                                                        composerDraftPersistSlice.stageInternalForwardDraft(
+                                                            draftKey = nextPayload.threadComposerDraftKey(),
+                                                            source =
+                                                                SharedThreadComposerInternalForwardSource(
+                                                                    operationId = receipt.operationId,
+                                                                    accountId = authority.accountId,
+                                                                    serverId = receipt.sourceServerId.value,
+                                                                    sourceChannelId = sourceChannelId.value,
+                                                                    destinationChannelId = destination.channelId.value,
+                                                                    destinationKind = destination.channelKind.name,
+                                                                    destinationJointChannelId = destination.jointChannelId,
+                                                                    destinationResolvedMemberId = destination.resolvedMemberId?.value,
+                                                                    messageIds = messageIds,
+                                                                    mode = activeForwardSelectionMode.wireValue,
+                                                                    sourceLabel = sourceLabel,
+                                                                    destinationLabel = receipt.displayedTitle,
+                                                                    attachmentCount = attachmentCount
+                                                                )
+                                                        )
+                                                    }
+                                                if (targetPayload == null || staged !is InternalForwardComposerDraftStageResult.Staged) {
+                                                    onThreadEvent("forwardMessagesFailed", forwardDraftUnavailableLabel, null, null)
+                                                    return@launch
+                                                }
+                                                forwardPickerFlow.sessionKey?.let { session ->
+                                                    repository.releaseDirectorySnapshot(session.directorySessionId())
+                                                }
+                                                forwardPickerFlow = forwardPickerFlow.reduce(SlockForwardPickerFlowEvent.Dismiss)
+                                                forwardSelectedReceipt = null
+                                                clearShareSelection()
+                                                diagnosticsLogger(
+                                                    "thread_forward_composer_open operation=${receipt.operationId} " +
+                                                        "messages=${messageIds.size} attachments=$attachmentCount upload=0 send=0"
+                                                )
+                                                onOpenForwardThreadPayload(targetPayload)
+                                            } finally {
+                                                forwardSending = false
                                             }
-                                            forwardPickerFlow =
-                                                forwardPickerFlow.reduce(SlockForwardPickerFlowEvent.Dismiss)
-                                            forwardSelectedReceipt = null
-                                            forwardNote = ""
-                                            clearShareSelection()
-                                            onThreadEvent(
-                                                "forwardMessagesSent",
-                                                selectedReceipt.displayedTitle,
-                                                null,
-                                                activeForwardSelectionMode.wireValue
-                                            )
-                                        } else {
-                                            onThreadEvent(
-                                                "forwardMessagesFailed",
-                                                outcome.failureCode.threadForwardErrorMessage(),
-                                                null,
-                                                null
-                                            )
                                         }
-                                    } finally {
-                                        forwardSending = false
                                     }
                                 }
                             }
@@ -22814,7 +22912,19 @@ private fun ThreadForwardSelectionMode.toForwardMessageSendMode(): ForwardMessag
         ThreadForwardSelectionMode.Individual -> ForwardMessageSendMode.Individual
     }
 
+private fun String.toForwardMessageSendMode(): ForwardMessageSendMode =
+    if (equals(ThreadForwardSelectionMode.Individual.wireValue, ignoreCase = true)) {
+        ForwardMessageSendMode.Individual
+    } else {
+        ForwardMessageSendMode.Merged
+    }
+
 internal data class ThreadForwardOutcome(
+    val failureCode: String? = null
+)
+
+internal data class ThreadForwardComposerPreparation(
+    val destination: build.raft.app.data.ForwardMessageDestination? = null,
     val failureCode: String? = null
 )
 
@@ -22884,6 +22994,34 @@ internal suspend fun executeThreadForward(
     } else {
         ThreadForwardOutcome(failureCode = forwarded.threadForwardFailureCode("forward_failed"))
     }
+}
+
+internal suspend fun prepareThreadForwardComposer(
+    repository: ForwardMessageTargetRepository,
+    liveSourceServerId: ServerId?,
+    sourceChannelId: ChannelId,
+    receipt: ThreadForwardDestinationReceipt,
+    currentDirectoryGeneration: Int
+): ThreadForwardComposerPreparation {
+    receipt.preResolveFailureCode(liveSourceServerId, currentDirectoryGeneration)?.let {
+        return ThreadForwardComposerPreparation(failureCode = it)
+    }
+    val resolved = repository.resolveTargetChannel(receipt.sourceServerId, receipt.target)
+    val destination =
+        when (resolved) {
+            is DataResult.Content -> resolved.data
+            else ->
+                return ThreadForwardComposerPreparation(
+                    failureCode = resolved.threadForwardFailureCode("forward_target_unavailable")
+                )
+        }
+    receipt.postResolveFailureCode(destination)?.let {
+        return ThreadForwardComposerPreparation(failureCode = it)
+    }
+    if (destination.serverId == receipt.sourceServerId && destination.channelId == sourceChannelId) {
+        return ThreadForwardComposerPreparation(failureCode = "forward_source_target_forbidden")
+    }
+    return ThreadForwardComposerPreparation(destination = destination)
 }
 
 private fun DataResult<*>.threadForwardFailureCode(fallback: String): String =

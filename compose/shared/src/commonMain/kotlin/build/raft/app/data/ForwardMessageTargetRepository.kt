@@ -175,14 +175,21 @@ interface ForwardMessageTargetRepository {
     suspend fun forwardMessages(request: ForwardMessageExecuteRequest): DataResult<Unit>
 }
 
-class RealForwardMessageTargetRepository(
+internal interface AuthorityBoundForwardMessageTargetRepository {
+    suspend fun forwardMessagesBound(
+        request: ForwardMessageExecuteRequest,
+        expectedAuthority: SlockExpectedAuthBinding
+    ): DataResult<Unit>
+}
+
+internal class RealForwardMessageTargetRepository(
     private val sessionStore: SlockAuthSessionStore,
     private val networkClient: SlockNetworkClient,
     private val channelRepository: ChannelRepository,
     private val memberRepository: MemberRepository,
     private val nowMillis: () -> Long = ::defaultNowMillis,
     private val warningLogger: (String) -> Unit = {}
-) : ForwardMessageTargetRepository {
+) : ForwardMessageTargetRepository, AuthorityBoundForwardMessageTargetRepository {
     private var nextDirectorySnapshotId = 0L
     private val directorySnapshots = mutableMapOf<String, ForwardMessageTargetDirectorySnapshot>()
 
@@ -351,6 +358,33 @@ class RealForwardMessageTargetRepository(
                     method = "POST",
                     serverIdOverride = request.destination.serverId,
                     bodyText = forwardTargetJson.encodeToString(request.toWireBody())
+                )
+            },
+            mapper = { Unit }
+        )
+    }
+
+    override suspend fun forwardMessagesBound(
+        request: ForwardMessageExecuteRequest,
+        expectedAuthority: SlockExpectedAuthBinding
+    ): DataResult<Unit> {
+        val session = currentSession() ?: return forwardAuthRequired()
+        if (!session.matchesExpectedAuthority(expectedAuthority, request.destination.serverId.value)) {
+            return DataResult.Error(ScreenError(code = "forward_authority_changed", retryable = false))
+        }
+        if (request.messageIds.isEmpty()) return DataResult.Empty(EmptyReason.NoMessages)
+        val bound = networkClient as? AuthorityBoundSlockNetworkClient
+            ?: return DataResult.Error(ScreenError(code = "forward_authority_binding_unavailable", retryable = false))
+        return executeForwardTargets(
+            source = "forward_messages_bound",
+            block = {
+                bound.requestBound(
+                    priority = DataRequestPriority.Foreground,
+                    path = "messages/forward",
+                    method = "POST",
+                    serverIdOverride = request.destination.serverId,
+                    bodyText = forwardTargetJson.encodeToString(request.toWireBody()),
+                    expectedAuthority = expectedAuthority
                 )
             },
             mapper = { Unit }

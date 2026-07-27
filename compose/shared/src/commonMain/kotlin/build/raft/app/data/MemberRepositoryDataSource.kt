@@ -94,6 +94,16 @@ internal fun interface ProgressiveAttachmentNetworkClient {
 }
 
 internal interface AuthorityBoundSlockNetworkClient {
+    suspend fun requestBound(
+        priority: DataRequestPriority,
+        path: String,
+        method: String = "GET",
+        query: List<Pair<String, String>> = emptyList(),
+        serverIdOverride: ServerId? = null,
+        bodyText: String? = null,
+        expectedAuthority: SlockExpectedAuthBinding
+    ): HomeNetworkResponse = HomeNetworkResponse(code = 501, bodyText = null)
+
     suspend fun uploadAttachmentsBound(
         priority: DataRequestPriority,
         channelId: ChannelId,

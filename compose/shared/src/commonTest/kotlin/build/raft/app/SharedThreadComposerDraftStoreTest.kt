@@ -46,7 +46,7 @@ class SharedThreadComposerDraftStoreTest {
         scheduler.runPending()
 
         assertEquals("abc", persistence.read(draftKey)?.text)
-        assertEquals(5, storage.writeCount)
+        assertEquals(6, storage.writeCount)
         assertEquals(1, scheduler.executedTaskCount)
     }
 
@@ -69,11 +69,11 @@ class SharedThreadComposerDraftStoreTest {
         store.dispatch(SharedThreadComposerDraftIntent.Flush)
 
         assertEquals("persist on blur", persistence.read(draftKey)?.text)
-        assertEquals(5, storage.writeCount)
+        assertEquals(6, storage.writeCount)
 
         scheduler.runPending()
 
-        assertEquals(5, storage.writeCount)
+        assertEquals(6, storage.writeCount)
         assertEquals(0, scheduler.executedTaskCount)
     }
 
@@ -1645,6 +1645,155 @@ class SharedThreadComposerDraftStoreTest {
             externalShareAccountId = "account",
             externalShareServerId = "server",
             uploadBytesTotal = 100L
+        )
+
+    @Test
+    fun internalForwardDraftRestoresAndClearsOnlyAfterExplicitSuccessfulSend() {
+        val persistence = SharedThreadComposerDraftPersistence(CountingSharedPreferenceStore())
+        val persistSlice = SharedThreadComposerDraftPersistSlice(persistence)
+        val draftKey = "send=destination|parent=_|mention=destination"
+        val source =
+            SharedThreadComposerInternalForwardSource(
+                operationId = "forward-1",
+                accountId = "account-a",
+                serverId = "server-a",
+                sourceChannelId = "source",
+                destinationChannelId = "destination",
+                destinationKind = "Channel",
+                messageIds = listOf("message-1"),
+                mode = "merged",
+                sourceLabel = "Source channel",
+                attachmentCount = 2
+            )
+
+        assertEquals(
+            InternalForwardComposerDraftStageResult.Staged,
+            persistSlice.stageInternalForwardDraft(draftKey, source)
+        )
+        val restored = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
+        restored.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = KuiklyThreadComposerPayload(instanceId = "destination-composer"),
+                draftKey = draftKey
+            )
+        )
+        assertEquals(source, restored.state.value.internalForwardSource)
+        assertEquals("", restored.state.value.seedText)
+
+        restored.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "Optional note"))
+        restored.dispatch(SharedThreadComposerDraftIntent.BeginInternalForwardSend)
+        restored.dispatch(
+            SharedThreadComposerDraftIntent.FinishInternalForwardSend(
+                succeeded = false,
+                failureLabel = "network_failed"
+            )
+        )
+        assertEquals(source, restored.state.value.internalForwardSource)
+        assertEquals("Optional note", restored.state.value.seedText)
+
+        restored.dispatch(SharedThreadComposerDraftIntent.BeginInternalForwardSend)
+        restored.dispatch(SharedThreadComposerDraftIntent.FinishInternalForwardSend(succeeded = true))
+        assertEquals(null, restored.state.value.internalForwardSource)
+        assertEquals(null, persistence.read(draftKey))
+    }
+
+    @Test
+    fun internalForwardPolicyExhaustivelyClassifiesEveryPersistedDraftDimension() {
+        val policies =
+            enumValues<SharedThreadComposerPersistedDraftDimension>().associateWith(::internalForwardDraftMergePolicy)
+
+        assertEquals(
+            mapOf(
+                SharedThreadComposerPersistedDraftDimension.Text to
+                    InternalForwardDraftMergePolicy.PreserveAsUserNote,
+                SharedThreadComposerPersistedDraftDimension.AsTask to
+                    InternalForwardDraftMergePolicy.RejectDestinationDraft,
+                SharedThreadComposerPersistedDraftDimension.UploadedAttachments to
+                    InternalForwardDraftMergePolicy.RejectDestinationDraft,
+                SharedThreadComposerPersistedDraftDimension.ExternalShareSources to
+                    InternalForwardDraftMergePolicy.RejectDestinationDraft,
+                SharedThreadComposerPersistedDraftDimension.InternalForwardSource to
+                    InternalForwardDraftMergePolicy.RejectDestinationDraft
+            ),
+            policies
+        )
+    }
+
+    @Test
+    fun activeDimensionDetectorCoversEveryPersistedDraftDimension() {
+        val active =
+            SharedThreadComposerPersistedDraft(
+                text = "note",
+                asTask = true,
+                uploadedAttachments =
+                    listOf(
+                        SharedThreadComposerAttachment(
+                            id = "attachment",
+                            fileName = "draft.txt",
+                            status = "ready"
+                        )
+                    ),
+                externalShareSources =
+                    listOf(SharedThreadComposerExternalShareSource("token", "account", "server")),
+                internalForwardSource = internalForwardSource(destinationChannelId = "destination")
+            ).activeDimensions()
+
+        assertEquals(enumValues<SharedThreadComposerPersistedDraftDimension>().toSet(), active)
+    }
+
+    @Test
+    fun internalForwardPreservesTextAndRejectsEveryOtherPersistedDraftDimension() {
+        val persistence = SharedThreadComposerDraftPersistence(InMemorySlockKeyValueStore())
+        val source = internalForwardSource(destinationChannelId = "destination")
+        val textKey = "send=destination|parent=_|mention=destination"
+        persistence.save(key = textKey, text = "Keep my note", asTask = false)
+
+        assertEquals(
+            InternalForwardComposerDraftStageResult.Staged,
+            persistence.stageInternalForward(textKey, source)
+        )
+        assertEquals("Keep my note", persistence.read(textKey)?.text)
+
+        val attachment =
+            SharedThreadComposerAttachment(
+                id = "attachment-1",
+                fileName = "draft.txt",
+                sizeBytes = 4L,
+                mimeType = "text/plain",
+                status = "ready",
+                fileRef = "private://draft"
+            )
+        val externalSource = SharedThreadComposerExternalShareSource("token", "account", "server")
+        val rejectedDrafts =
+            listOf<(String) -> Unit>(
+                { key -> persistence.save(key, text = "", asTask = true) },
+                { key -> persistence.save(key, text = "", asTask = false, uploadedAttachments = listOf(attachment)) },
+                { key -> persistence.save(key, text = "", asTask = false, externalShareSources = listOf(externalSource)) },
+                { key -> persistence.save(key, text = "", asTask = false, internalForwardSource = source) }
+            )
+
+        rejectedDrafts.forEachIndexed { index, seedDraft ->
+            val key = "send=destination|parent=_|mention=destination-$index"
+            seedDraft(key)
+            assertEquals(
+                InternalForwardComposerDraftStageResult.Rejected("internal_forward_destination_draft_conflict"),
+                persistence.stageInternalForward(key, source),
+                "persisted dimension index $index must fail closed"
+            )
+        }
+    }
+
+    private fun internalForwardSource(destinationChannelId: String) =
+        SharedThreadComposerInternalForwardSource(
+            operationId = "forward-policy",
+            accountId = "account",
+            serverId = "server",
+            sourceChannelId = "source",
+            destinationChannelId = destinationChannelId,
+            destinationKind = "Channel",
+            messageIds = listOf("message"),
+            mode = "merged",
+            sourceLabel = "Source"
         )
 }
 

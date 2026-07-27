@@ -548,6 +548,11 @@
     <string name="thread_forward_destinations">目标位置</string>
     <string name="thread_forward_destination">目标位置</string>
     <string name="thread_forward_messages_selected">已选择 %1$d 条消息</string>
+    <string name="thread_forward_composer_source">转发自 %1$s</string>
+    <string name="thread_forward_composer_summary_with_attachments">%1$d 条消息 · %2$d 个附件</string>
+    <string name="thread_forward_composer_remove">移除转发消息</string>
+    <string name="thread_forward_authority_changed">此转发属于另一个账号或服务器，请切换回去后再发送。</string>
+    <string name="thread_forward_draft_unavailable">目标输入框已有不兼容的附件，请先发送或移除后再转发。</string>
     <string name="thread_forward_destinations_selected">已选择 %1$d 个目标</string>
     <string name="thread_forward_add_note">添加备注</string>
     <string name="thread_forward_search_results">搜索结果</string>

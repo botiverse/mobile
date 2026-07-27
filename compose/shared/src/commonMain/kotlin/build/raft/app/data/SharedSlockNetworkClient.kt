@@ -119,6 +119,38 @@ internal class SharedSlockNetworkClient(
         }
     }
 
+    override suspend fun requestBound(
+        priority: DataRequestPriority,
+        path: String,
+        method: String,
+        query: List<Pair<String, String>>,
+        serverIdOverride: ServerId?,
+        bodyText: String?,
+        expectedAuthority: SlockExpectedAuthBinding
+    ): HomeNetworkResponse {
+        val normalizedPath = path.networkDiagnosticsPath()
+        return requestScheduler.run(
+            priority = priority.toNetworkPriority(),
+            key = path,
+            reason = "${method.uppercase()}:authority_bound"
+        ) {
+            authMiddleware().request(
+                serverIdOverride = serverIdOverride,
+                expectedAuthority = expectedAuthority,
+                caller = "shared_network:$normalizedPath"
+            ) { auth ->
+                executor.execute(
+                    priority = priority.toNetworkPriority(),
+                    url = absoluteUrl(path, query),
+                    method = method.uppercase(),
+                    headers = mapOf(HEADER_AUTHORIZATION to auth.authorization, HEADER_SERVER_ID to auth.serverId),
+                    bodyText = bodyText,
+                    jsonBody = bodyText != null
+                ).toHomeNetworkResponse()
+            }
+        }
+    }
+
     override suspend fun requestRawAbsoluteUrl(
         priority: DataRequestPriority,
         url: String,

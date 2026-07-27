@@ -548,6 +548,11 @@
     <string name="thread_forward_destinations">転送先</string>
     <string name="thread_forward_destination">転送先</string>
     <string name="thread_forward_messages_selected">%1$d 件のメッセージを選択中</string>
+    <string name="thread_forward_composer_source">%1$s から転送</string>
+    <string name="thread_forward_composer_summary_with_attachments">%1$d 件のメッセージ · 添付 %2$d 件</string>
+    <string name="thread_forward_composer_remove">転送メッセージを削除</string>
+    <string name="thread_forward_authority_changed">この転送は別のアカウントまたはサーバーに属しています。元に戻してから送信してください。</string>
+    <string name="thread_forward_draft_unavailable">転送先の入力欄に互換性のない添付があります。送信または削除してから転送してください。</string>
     <string name="thread_forward_destinations_selected">%1$d 件の転送先を選択中</string>
     <string name="thread_forward_add_note">メモを追加</string>
     <string name="thread_forward_search_results">検索結果</string>

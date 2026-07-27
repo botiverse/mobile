@@ -392,13 +392,19 @@ internal fun WireThreadLaunchPayload.threadComposerDraftKey(
     fallbackInstanceId: String = instanceId
 ): String? {
     val initialPayload = toInitialPayload(fallbackInstanceId)
-    val resolvedAuxiliaryThreadId = initialPayload.resolvedAuxiliaryThreadId()
-    return initialPayload
+    return initialPayload.threadComposerDraftKey()
+}
+
+/** Canonical key derivation shared by pre-navigation staging and the mounted target composer. */
+internal fun KuiklyThreadScreenPayload.threadComposerDraftKey(): String? {
+    val auxiliaryThreadId = resolvedAuxiliaryThreadId()
+    return this
         .resolveThreadComposer()
-        .copy(streamChannelId = resolvedAuxiliaryThreadId)
+        .copy(streamChannelId = auxiliaryThreadId)
         .toThreadComposerSurface(
-            channelId = resolvedAuxiliaryThreadId.orEmpty(),
-            parentChannelId = initialPayload.parentChannelId
+            channelId = auxiliaryThreadId.orEmpty(),
+            parentChannelId = parentChannelId,
+            memberSuggestionHeadersVisible = threadComposerMemberSuggestionHeadersVisible()
         )
         .threadComposerDraftKey()
 }

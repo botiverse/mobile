@@ -548,6 +548,11 @@
     <string name="thread_forward_destinations">Destinations</string>
     <string name="thread_forward_destination">Destination</string>
     <string name="thread_forward_messages_selected">%1$d messages selected</string>
+    <string name="thread_forward_composer_source">Forward from %1$s</string>
+    <string name="thread_forward_composer_summary_with_attachments">%1$d messages · %2$d attachments</string>
+    <string name="thread_forward_composer_remove">Remove forwarded messages</string>
+    <string name="thread_forward_authority_changed">This forward belongs to another account or server. Switch back to send it.</string>
+    <string name="thread_forward_draft_unavailable">The target Composer already has incompatible attachments. Finish or remove them before forwarding.</string>
     <string name="thread_forward_destinations_selected">%1$d destinations selected</string>
     <string name="thread_forward_add_note">Add a note</string>
     <string name="thread_forward_search_results">Search results</string>

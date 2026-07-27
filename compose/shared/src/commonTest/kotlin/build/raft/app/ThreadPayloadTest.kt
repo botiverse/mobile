@@ -8818,6 +8818,49 @@ class ThreadPayloadTest {
             anchorMessageId = anchorMessageId
         ))
 
+    @Test
+    fun forwardStagingAndMountedComposerShareCanonicalDraftKeyForChannelDmAndJointTargets() {
+        val targets =
+            listOf(
+                KuiklyThreadScreenPayload(
+                    instanceId = "channel-target",
+                    status = "content",
+                    surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                    channelKind = "channel",
+                    sourceThreadId = "channel-1",
+                    streamChannelId = "channel-1"
+                ),
+                KuiklyThreadScreenPayload(
+                    instanceId = "dm-target",
+                    status = "content",
+                    surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+                    channelKind = "direct_message",
+                    sourceThreadId = "member-1",
+                    streamChannelId = "dm-channel-1"
+                ),
+                KuiklyThreadScreenPayload(
+                    instanceId = "joint-target",
+                    status = "content",
+                    surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                    channelKind = "joint",
+                    sourceThreadId = "joint-route-1",
+                    streamChannelId = "joint-channel-1"
+                )
+            )
+
+        targets.forEach { target ->
+            assertEquals(
+                target.toWireThreadLaunchPayload().threadComposerDraftKey(),
+                target.threadComposerDraftKey(),
+                "staging and mounted composer keys must match for ${target.instanceId}"
+            )
+        }
+        assertEquals(
+            "send=joint-channel-1|parent=_|mention=joint-channel-1",
+            targets.last().threadComposerDraftKey()
+        )
+    }
+
     private class FakeMarkdownTaskNumberApi(
         private val channelTaskBody: String,
         private val serverTasksBody: String

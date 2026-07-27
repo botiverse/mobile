@@ -123,6 +123,7 @@ private val threadComposerContentPayloadKeys =
         "composerMode",
         "statusLabel",
         "pendingAttachments",
+        "pendingInternalForward",
         "pendingMentionActions",
         "mentionActionNotice",
         "mentionActionStates",
@@ -147,6 +148,7 @@ internal data class KuiklyThreadComposerPayload(
     val composerMode: String = "idle",
     val statusLabel: String? = null,
     val pendingAttachments: List<KuiklyPendingAttachmentItem> = emptyList(),
+    val pendingInternalForward: KuiklyPendingInternalForward? = null,
     val pendingMentionActions: List<KuiklyPendingMentionActionItem> = emptyList(),
     val mentionActionNotice: String? = null,
     val mentionActionStates: Map<String, String> = emptyMap(),
@@ -161,6 +163,13 @@ internal data class KuiklyThreadComposerPayload(
     val parentMessageId: String? = null,
     val streamChannelId: String? = null,
     val hookLabels: List<String> = emptyList()
+)
+
+@Serializable
+internal data class KuiklyPendingInternalForward(
+    val sourceLabel: String,
+    val messageCount: Int,
+    val attachmentCount: Int = 0
 )
 
 @Serializable
@@ -230,6 +239,7 @@ internal data class ThreadComposerUiState(
     val composerMode: String = "idle",
     val statusLabel: String? = null,
     val pendingAttachments: List<KuiklyPendingAttachmentItem> = emptyList(),
+    val pendingInternalForward: KuiklyPendingInternalForward? = null,
     val pendingMentionActions: List<KuiklyPendingMentionActionItem> = emptyList(),
     val mentionActionNotice: String? = null,
     val mentionActionStates: Map<String, String> = emptyMap(),
@@ -910,6 +920,7 @@ internal fun KuiklyThreadComposerPayload.toThreadComposerUiState(): ThreadCompos
         composerMode = composerMode,
         statusLabel = statusLabel,
         pendingAttachments = pendingAttachments,
+        pendingInternalForward = pendingInternalForward,
         pendingMentionActions = pendingMentionActions,
         mentionActionNotice = mentionActionNotice,
         mentionActionStates = mentionActionStates,
@@ -1315,7 +1326,7 @@ internal fun ThreadComposerContent(
             state.composerMode != "uploading" &&
             state.composerMode != "no_permission" &&
             !state.pendingAttachments.hasFailedThreadAttachmentUpload() &&
-            (text.isNotBlank() || state.pendingAttachments.isNotEmpty())
+            (text.isNotBlank() || state.pendingAttachments.isNotEmpty() || state.pendingInternalForward != null)
     val composerKeyboardOptions =
         if (composerSendKeyEnabled) {
             KeyboardOptions(imeAction = ImeAction.Send)
@@ -1476,6 +1487,13 @@ internal fun ThreadComposerContent(
                     color = if (state.composerMode == "failed") SlockColor.AccentRed else SlockColor.TextMutedGray,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
+                )
+            }
+            state.pendingInternalForward?.let { forward ->
+                ComposerInternalForwardSourceCard(
+                    source = forward,
+                    enabled = state.enabled,
+                    onRemove = { onEvent("removeInternalForward", null, null, null) }
                 )
             }
             if (state.pendingAttachments.isNotEmpty()) {
@@ -2707,6 +2725,62 @@ private fun ComposerAttachmentPreviewChip(
         }
         if (enabled) {
             ComposerAttachmentRemoveButton(onRemove = onRemove)
+        }
+    }
+}
+
+@Composable
+private fun ComposerInternalForwardSourceCard(
+    source: KuiklyPendingInternalForward,
+    enabled: Boolean,
+    onRemove: () -> Unit
+) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .slockSquareCorners()
+                .background(SlockColor.SurfaceWhite)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        SlockLucideIcon(SlockLucideIconName.Share2, modifier = Modifier.size(16.dp), color = SlockColor.TextBlackArgb)
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                text = stringResource(MR.strings.thread_forward_composer_source, source.sourceLabel),
+                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
+                color = SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text =
+                    if (source.attachmentCount > 0) {
+                        stringResource(
+                            MR.strings.thread_forward_composer_summary_with_attachments,
+                            source.messageCount,
+                            source.attachmentCount
+                        )
+                    } else {
+                        stringResource(MR.strings.thread_forward_messages_selected, source.messageCount)
+                    },
+                style = SlockType.Caption,
+                color = SlockColor.TextMutedGray,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        Box(
+            modifier = Modifier.size(28.dp).clickable(enabled = enabled, onClick = onRemove),
+            contentAlignment = Alignment.Center
+        ) {
+            SlockLucideIcon(
+                SlockLucideIconName.X,
+                modifier = Modifier.size(16.dp),
+                color = if (enabled) SlockColor.TextBlackArgb else SlockColor.TextMutedGrayArgb
+            )
         }
     }
 }
