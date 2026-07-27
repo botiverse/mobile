@@ -3962,6 +3962,48 @@ internal fun ThreadReactionAtlasVisualScreen() {
                     ThreadReactionChip(KuiklyThreadReactionItem(emoji = "✅", count = 1, selected = true), loading = true, onClick = {})
                 }
             }
+            ThreadReactionVisualSection("Meta chips (idle + loading)") {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+                ) {
+                    SlockAnchoredMetaChip(
+                        label = "#88 @Nathan",
+                        iconName = SlockLucideIconName.Circle,
+                        color = SlockColor.AccentCyan,
+                        onClick = {}
+                    )
+                    SlockAnchoredMetaChip(
+                        label = "#88 @Nathan",
+                        iconName = SlockLucideIconName.Circle,
+                        color = SlockColor.AccentCyan,
+                        loading = true,
+                        onClick = {}
+                    )
+                }
+            }
+            ThreadReactionVisualSection("Toolbar chips (idle + loading)") {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+                ) {
+                    SlockToolbarChip(
+                        label = "Status",
+                        iconName = SlockLucideIconName.Check,
+                        trailingIconName = SlockLucideIconName.ChevronDown,
+                        onClick = {}
+                    )
+                    SlockToolbarChip(
+                        label = "Status",
+                        iconName = SlockLucideIconName.Check,
+                        trailingIconName = SlockLucideIconName.ChevronDown,
+                        loading = true,
+                        onClick = {}
+                    )
+                }
+            }
             ThreadReactionVisualSection("Fallback") {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -19194,23 +19236,22 @@ private fun ThreadReactionChip(
             .background(background, RoundedCornerShape(SlockRadius.Sm))
             .padding(horizontal = 6.dp, vertical = 3.dp)
     val chipContent: @Composable () -> Unit = {
-        Box(contentAlignment = Alignment.Center) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                modifier = Modifier.alpha(if (loading) 0f else 1f)
-            ) {
-                ThreadQuickReactionGlyph(threadDisplayReactionEmoji(reaction.emoji), modifier = Modifier.size(15.dp))
-                if (reaction.count > 0) {
-                    Text(
-                        text = reaction.count.toString(),
-                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 14.sp),
-                        color = SlockColor.TextBlack,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            ThreadQuickReactionGlyph(threadDisplayReactionEmoji(reaction.emoji), modifier = Modifier.size(15.dp))
+            if (reaction.count > 0) {
+                Text(
+                    text = reaction.count.toString(),
+                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 14.sp),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
+            // No idle reservation: pending feedback intentionally appends and
+            // widens the compact chip while preserving emoji + count context.
             if (loading) {
                 SlockChipLoadingIndicator(size = 12.dp)
             }

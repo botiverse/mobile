@@ -248,12 +248,13 @@ internal fun SlockAnchoredMetaChip(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
+            trailingIconName?.let {
+                SlockLucideIcon(it, modifier = Modifier.size(trailingIconSize), color = SlockColor.TextMutedGrayArgb)
+            }
+            // Loading is deliberately additive: keep the chip's semantic
+            // content visible and let the transient spinner widen the chip.
             if (loading) {
                 SlockChipLoadingIndicator(size = trailingIconSize)
-            } else {
-                trailingIconName?.let {
-                    SlockLucideIcon(it, modifier = Modifier.size(trailingIconSize), color = SlockColor.TextMutedGrayArgb)
-                }
             }
         }
     }
@@ -1196,12 +1197,13 @@ internal fun SlockToolbarChip(
                         )
                     }
                 }
+                trailingIconName?.let {
+                    SlockLucideIcon(it, modifier = Modifier.size(12.dp), color = "#FF000000")
+                }
+                // Match meta/action chips: loading appends feedback instead of
+                // replacing the content or reserving idle space.
                 if (loading) {
                     SlockChipLoadingIndicator(size = 12.dp)
-                } else {
-                    trailingIconName?.let {
-                        SlockLucideIcon(it, modifier = Modifier.size(12.dp), color = "#FF000000")
-                    }
                 }
             }
         }
