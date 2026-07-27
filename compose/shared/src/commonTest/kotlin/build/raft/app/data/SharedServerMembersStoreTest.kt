@@ -880,7 +880,7 @@ class SharedServerMembersStoreTest {
     }
 
     @Test
-    fun jointChannelLoadKeepsRemoteParticipantsOutOfServerRoster() = runBlocking {
+    fun jointChannelLoadKeepsParticipantsScopedAndRemoteProfilesOutOfServerCache() = runBlocking {
         val repository = FakeMemberRepository()
         repository.channelMembersByChannel["joint-1"] =
             listOf(
@@ -898,8 +898,12 @@ class SharedServerMembersStoreTest {
             store.currentChannelMembers(ServerId("server-1"), ChannelId("joint-1")).map { it.id.value }
         )
         assertEquals(
-            listOf("local"),
+            emptyList(),
             store.currentServerMembers(ServerId("server-1")).map { it.id.value }
+        )
+        assertEquals(
+            setOf("local"),
+            store.currentKnownMemberProfilesById(ServerId("server-1")).keys,
         )
     }
 
