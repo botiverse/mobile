@@ -97,8 +97,14 @@ interface LocalePreferenceStore {
 class KeyValueLocalePreferenceStore(
     private val store: SharedPreferenceStore
 ) : LocalePreferenceStore {
-    override fun readLocaleSync(): AppLocale =
-        AppLocale.fromStorageKey(store.getString(KEY_LOCALE))
+    override fun readLocaleSync(): AppLocale {
+        val storedLocale = store.getString(KEY_LOCALE)
+        return if (storedLocale.isNullOrBlank()) {
+            AppLocale.System
+        } else {
+            AppLocale.fromStorageKey(storedLocale)
+        }
+    }
 
     override suspend fun readLocale(): AppLocale = readLocaleSync()
 

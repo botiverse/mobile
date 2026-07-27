@@ -68,8 +68,8 @@ internal fun rememberKmmResourceLocaleSeed(pager: Pager, refreshTick: Int = 0) {
                 } catch (cancellation: kotlinx.coroutines.CancellationException) {
                     throw cancellation
                 } catch (_: Throwable) {
-                    // Missing or unreadable state falls back to the app default.
-                    AppLocale.Default
+                    // Unreadable state must not override the platform locale.
+                    AppLocale.System
                 }
             KmmResourceLocaleRuntime.seedIfEmpty(locale)
         }

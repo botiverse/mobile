@@ -1053,6 +1053,15 @@
     <string name="auth_label_name">名称</string>
     <string name="auth_password_min_length">至少 8 个字符</string>
     <string name="auth_password_pattern">字母、数字、连字符、下划线</string>
+    <string name="auth_validation_invalid_email">请输入有效的邮箱地址。</string>
+    <string name="auth_validation_password_required">请输入密码。</string>
+    <string name="auth_validation_password_min_length">密码至少需要 %1$s 个字符。</string>
+    <string name="auth_validation_username_min_length">用户名至少需要 %1$s 个字符。</string>
+    <string name="auth_validation_username_max_length">用户名最多可包含 %1$s 个字符。</string>
+    <string name="auth_validation_username_format">用户名必须以字母开头，且只能包含字母、数字、连字符和下划线。</string>
+    <string name="auth_validation_username_reserved">此用户名已被保留，请选择其他名称。</string>
+    <string name="auth_validation_display_name_required">请输入显示名称。</string>
+    <string name="auth_validation_display_name_max_length">显示名称最多可包含 %1$s 个字符。</string>
     <string name="auth_title_sign_in">登录</string>
     <string name="auth_action_sign_in">登录</string>
     <string name="auth_state_signing_in">登录中…</string>

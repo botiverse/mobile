@@ -1055,6 +1055,15 @@
     <string name="auth_label_name">名前</string>
     <string name="auth_password_min_length">8 文字以上</string>
     <string name="auth_password_pattern">英字、数字、ハイフン、アンダースコア</string>
+    <string name="auth_validation_invalid_email">有効なメールアドレスを入力してください。</string>
+    <string name="auth_validation_password_required">パスワードを入力してください。</string>
+    <string name="auth_validation_password_min_length">パスワードは %1$s 文字以上で入力してください。</string>
+    <string name="auth_validation_username_min_length">ユーザー名は %1$s 文字以上で入力してください。</string>
+    <string name="auth_validation_username_max_length">ユーザー名は %1$s 文字以内で入力してください。</string>
+    <string name="auth_validation_username_format">ユーザー名は英字で始め、英字、数字、ハイフン、アンダースコアのみを使用してください。</string>
+    <string name="auth_validation_username_reserved">このユーザー名は予約されています。別の名前を選択してください。</string>
+    <string name="auth_validation_display_name_required">表示名を入力してください。</string>
+    <string name="auth_validation_display_name_max_length">表示名は %1$s 文字以内で入力してください。</string>
     <string name="auth_title_sign_in">ログイン</string>
     <string name="auth_action_sign_in">ログイン</string>
     <string name="auth_state_signing_in">ログイン中…</string>

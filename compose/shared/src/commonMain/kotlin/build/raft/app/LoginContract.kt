@@ -5,8 +5,8 @@ data class LoginFormState(
     val password: String = "",
     val submitting: Boolean = false,
     val errorMessage: String? = null,
-    val emailFormatError: String? = null,
-    val passwordError: String? = null
+    val emailFormatError: AuthValidationError? = null,
+    val passwordError: AuthValidationError? = null
 ) {
     val normalizedEmail: String
         get() = email.trim()
@@ -24,8 +24,8 @@ data class CreateAccountFormState(
     val password: String = "",
     val submitting: Boolean = false,
     val errorMessage: String? = null,
-    val emailFormatError: String? = null,
-    val passwordError: String? = null
+    val emailFormatError: AuthValidationError? = null,
+    val passwordError: AuthValidationError? = null
 ) {
     val normalizedEmail: String
         get() = email.trim()
@@ -38,33 +38,46 @@ data class CreateAccountFormState(
             !submitting
 }
 
-private const val AUTH_IDENTITY_NAME_MIN_LENGTH = 5
-private const val AUTH_IDENTITY_NAME_MAX_LENGTH = 32
-private const val AUTH_IDENTITY_DISPLAY_NAME_MAX_LENGTH = 80
+internal const val AUTH_IDENTITY_NAME_MIN_LENGTH = 5
+internal const val AUTH_IDENTITY_NAME_MAX_LENGTH = 32
+internal const val AUTH_IDENTITY_DISPLAY_NAME_MAX_LENGTH = 80
+internal const val AUTH_PASSWORD_MIN_LENGTH = 8
 private val AUTH_IDENTITY_RESERVED_NAMES =
     setOf("all", "human", "humans", "agent", "agents", "here", "idle", "busy", "system")
 
-internal fun identityHandleValidationError(value: String): String? {
+enum class AuthValidationError {
+    InvalidEmailFormat,
+    PasswordRequired,
+    PasswordTooShort,
+    UsernameTooShort,
+    UsernameTooLong,
+    UsernameInvalidFormat,
+    UsernameReserved,
+    DisplayNameRequired,
+    DisplayNameTooLong
+}
+
+internal fun identityHandleValidationError(value: String): AuthValidationError? {
     val handle = value.trim().removePrefix("@")
     return when {
         handle.length < AUTH_IDENTITY_NAME_MIN_LENGTH ->
-            "Username must be at least $AUTH_IDENTITY_NAME_MIN_LENGTH characters"
+            AuthValidationError.UsernameTooShort
         handle.length > AUTH_IDENTITY_NAME_MAX_LENGTH ->
-            "Username must be at most $AUTH_IDENTITY_NAME_MAX_LENGTH characters"
+            AuthValidationError.UsernameTooLong
         !handle.isCanonicalIdentityHandle() ->
-            "Username must start with a letter and can only contain letters, numbers, hyphens, and underscores"
+            AuthValidationError.UsernameInvalidFormat
         handle.lowercase().startsWith("pending_") || handle.lowercase() in AUTH_IDENTITY_RESERVED_NAMES ->
-            "This username is reserved. Choose another name."
+            AuthValidationError.UsernameReserved
         else -> null
     }
 }
 
-internal fun identityDisplayNameValidationError(value: String): String? {
+internal fun identityDisplayNameValidationError(value: String): AuthValidationError? {
     val displayName = value.trim()
     return when {
-        displayName.isEmpty() -> "Display name is required"
+        displayName.isEmpty() -> AuthValidationError.DisplayNameRequired
         displayName.length > AUTH_IDENTITY_DISPLAY_NAME_MAX_LENGTH ->
-            "Display name must be at most $AUTH_IDENTITY_DISPLAY_NAME_MAX_LENGTH characters"
+            AuthValidationError.DisplayNameTooLong
         else -> null
     }
 }
@@ -74,7 +87,7 @@ data class ForgotPasswordFormState(
     val submitting: Boolean = false,
     val sent: Boolean = false,
     val errorMessage: String? = null,
-    val emailFormatError: String? = null
+    val emailFormatError: AuthValidationError? = null
 ) {
     val normalizedEmail: String
         get() = email.trim()
@@ -126,7 +139,7 @@ class LoginFormReducer {
                         LoginFormUpdate(
                             state = state.copy(
                                 errorMessage = null,
-                                emailFormatError = AUTH_INVALID_EMAIL_FORMAT,
+                                emailFormatError = AuthValidationError.InvalidEmailFormat,
                                 passwordError = null
                             ),
                             effect = LoginFormEffect.FocusEmail
@@ -136,7 +149,7 @@ class LoginFormReducer {
                             state = state.copy(
                                 errorMessage = null,
                                 emailFormatError = null,
-                                passwordError = AUTH_PASSWORD_REQUIRED
+                                passwordError = AuthValidationError.PasswordRequired
                             ),
                             effect = LoginFormEffect.FocusPassword
                         )
@@ -154,11 +167,7 @@ class LoginFormReducer {
                             )
                         )
 
-                    else ->
-                        LoginFormUpdate(
-                            state = state.copy(errorMessage = "Email and password are required."),
-                            effect = LoginFormEffect.FocusEmail
-                        )
+                    else -> LoginFormUpdate(state)
                 }
 
             LoginFormEvent.ForgotPassword,
@@ -250,17 +259,17 @@ class CreateAccountFormReducer {
                         CreateAccountFormUpdate(
                             state.copy(
                                 errorMessage = null,
-                                emailFormatError = AUTH_INVALID_EMAIL_FORMAT,
+                                emailFormatError = AuthValidationError.InvalidEmailFormat,
                                 passwordError = null
                             ),
                             CreateAccountFormEffect.FocusEmail
                         )
-                    state.password.length < 8 ->
+                    state.password.length < AUTH_PASSWORD_MIN_LENGTH ->
                         CreateAccountFormUpdate(
                             state.copy(
                                 errorMessage = null,
                                 emailFormatError = null,
-                                passwordError = AUTH_PASSWORD_TOO_SHORT
+                                passwordError = AuthValidationError.PasswordTooShort
                             ),
                             CreateAccountFormEffect.FocusPassword
                         )
@@ -286,8 +295,8 @@ data class IdentitySetupFormState(
     val displayName: String = "",
     val submitting: Boolean = false,
     val errorMessage: String? = null,
-    val handleError: String? = null,
-    val displayNameError: String? = null
+    val handleError: AuthValidationError? = null,
+    val displayNameError: AuthValidationError? = null
 ) {
     val normalizedHandle: String
         get() = handle.trim().removePrefix("@")
@@ -383,7 +392,7 @@ class ForgotPasswordFormReducer {
                     )
                 } else {
                     ForgotPasswordFormUpdate(
-                        state.copy(errorMessage = null, emailFormatError = AUTH_INVALID_EMAIL_FORMAT),
+                        state.copy(errorMessage = null, emailFormatError = AuthValidationError.InvalidEmailFormat),
                         ForgotPasswordFormEffect.FocusEmail
                     )
                 }

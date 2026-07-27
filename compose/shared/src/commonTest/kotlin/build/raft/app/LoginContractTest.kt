@@ -9,7 +9,7 @@ class LoginContractTest {
         val update = LoginFormReducer().reduce(LoginFormState(), LoginFormEvent.Submit)
 
         assertEquals(null, update.state.errorMessage)
-        assertEquals("Invalid email format", update.state.emailFormatError)
+        assertEquals(AuthValidationError.InvalidEmailFormat, update.state.emailFormatError)
         assertEquals(LoginFormEffect.FocusEmail, update.effect)
     }
 
@@ -22,7 +22,7 @@ class LoginContractTest {
             )
 
         assertEquals(null, update.state.errorMessage)
-        assertEquals("Invalid email format", update.state.emailFormatError)
+        assertEquals(AuthValidationError.InvalidEmailFormat, update.state.emailFormatError)
         assertEquals(LoginFormEffect.FocusEmail, update.effect)
     }
 
@@ -35,7 +35,7 @@ class LoginContractTest {
             )
 
         assertEquals(null, update.state.errorMessage)
-        assertEquals("Password is required", update.state.passwordError)
+        assertEquals(AuthValidationError.PasswordRequired, update.state.passwordError)
         assertEquals(LoginFormEffect.FocusPassword, update.effect)
     }
 
@@ -161,7 +161,7 @@ class LoginContractTest {
             )
 
         assertEquals(null, update.state.errorMessage)
-        assertEquals("Invalid email format", update.state.emailFormatError)
+        assertEquals(AuthValidationError.InvalidEmailFormat, update.state.emailFormatError)
         assertEquals(CreateAccountFormEffect.FocusEmail, update.effect)
     }
 
@@ -174,7 +174,7 @@ class LoginContractTest {
             )
 
         assertEquals(null, update.state.errorMessage)
-        assertEquals("Username must be at least 5 characters", update.state.handleError)
+        assertEquals(AuthValidationError.UsernameTooShort, update.state.handleError)
         assertEquals(IdentitySetupFormEffect.FocusHandle, update.effect)
     }
 
@@ -186,7 +186,7 @@ class LoginContractTest {
                 IdentitySetupFormEvent.Submit
             )
         assertEquals(
-            "Username must start with a letter and can only contain letters, numbers, hyphens, and underscores",
+            AuthValidationError.UsernameInvalidFormat,
             invalid.state.handleError
         )
         assertEquals(IdentitySetupFormEffect.FocusHandle, invalid.effect)
@@ -196,7 +196,7 @@ class LoginContractTest {
                 IdentitySetupFormState(handle = "pending_user", displayName = "Artin User"),
                 IdentitySetupFormEvent.Submit
             )
-        assertEquals("This username is reserved. Choose another name.", reserved.state.handleError)
+        assertEquals(AuthValidationError.UsernameReserved, reserved.state.handleError)
         assertEquals(IdentitySetupFormEffect.FocusHandle, reserved.effect)
     }
 
@@ -212,15 +212,15 @@ class LoginContractTest {
         assertEquals(null, identityHandleValidationError("𑯀user"))
         assertEquals(null, identityHandleValidationError("Artin𐵀"))
         assertEquals(
-            "Username must start with a letter and can only contain letters, numbers, hyphens, and underscores",
+            AuthValidationError.UsernameInvalidFormat,
             identityHandleValidationError("Artin🙂")
         )
         assertEquals(
-            "Username must start with a letter and can only contain letters, numbers, hyphens, and underscores",
+            AuthValidationError.UsernameInvalidFormat,
             identityHandleValidationError("²Artin")
         )
         assertEquals(
-            "Username must start with a letter and can only contain letters, numbers, hyphens, and underscores",
+            AuthValidationError.UsernameInvalidFormat,
             identityHandleValidationError("\uD800user")
         )
     }
@@ -233,7 +233,7 @@ class LoginContractTest {
                 IdentitySetupFormEvent.Submit
             )
 
-        assertEquals("Display name must be at most 80 characters", update.state.displayNameError)
+        assertEquals(AuthValidationError.DisplayNameTooLong, update.state.displayNameError)
         assertEquals(IdentitySetupFormEffect.FocusDisplayName, update.effect)
     }
 
@@ -246,7 +246,7 @@ class LoginContractTest {
             )
 
         assertEquals(null, update.state.errorMessage)
-        assertEquals("Password must be at least 8 characters", update.state.passwordError)
+        assertEquals(AuthValidationError.PasswordTooShort, update.state.passwordError)
         assertEquals(CreateAccountFormEffect.FocusPassword, update.effect)
     }
 
@@ -273,7 +273,7 @@ class LoginContractTest {
             )
 
         assertEquals(null, update.state.errorMessage)
-        assertEquals("Invalid email format", update.state.emailFormatError)
+        assertEquals(AuthValidationError.InvalidEmailFormat, update.state.emailFormatError)
         assertEquals(ForgotPasswordFormEffect.FocusEmail, update.effect)
     }
 
