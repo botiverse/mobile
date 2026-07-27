@@ -3,7 +3,6 @@ package build.raft.app.base
 import build.raft.app.slockLogError
 import build.raft.app.slockLogInfo
 import build.raft.app.SlockAdaptivePanePagerEvent
-import build.raft.app.prepareSlockPlatformSnapshotConsumption
 import build.raft.app.slockPlatformConsumesSnapshotsFromKuikly
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -135,6 +134,5 @@ internal abstract class BasePager : ComposeContainer() {
 }
 
 internal fun configureSlockComposeSnapshotConsumption() {
-    prepareSlockPlatformSnapshotConsumption()
     ComposeContainer.enableConsumeSnapshot = slockPlatformConsumesSnapshotsFromKuikly()
 }

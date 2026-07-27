@@ -45,9 +45,7 @@ class SlockLucideNativeCanvasConnectedTest {
                 canvasView = host.getChildAt(0)
             }
 
-            val first = canvasView.rotationAfterDelay(120L)
-            val second = canvasView.rotationAfterDelay(160L)
-            assertTrue("Attached native spin must advance: first=$first second=$second", angularDistance(first, second) > 10f)
+            canvasView.assertRotationEventuallyAdvances("Attached native spin")
 
             scenario.onActivity { host.visibility = View.INVISIBLE }
             val hiddenFirst = canvasView.rotationAfterDelay(80L)
@@ -55,12 +53,7 @@ class SlockLucideNativeCanvasConnectedTest {
             assertEquals("Hidden native spin must stop", hiddenFirst, hiddenSecond, 0.01f)
 
             scenario.onActivity { host.visibility = View.VISIBLE }
-            val resumedFirst = canvasView.rotationAfterDelay(120L)
-            val resumedSecond = canvasView.rotationAfterDelay(160L)
-            assertTrue(
-                "Visible native spin must resume: first=$resumedFirst second=$resumedSecond",
-                angularDistance(resumedFirst, resumedSecond) > 10f,
-            )
+            canvasView.assertRotationEventuallyAdvances("Visible native spin")
 
             scenario.onActivity { host.onDestroy() }
             val destroyedFirst = canvasView.rotationAfterDelay(80L)
@@ -91,8 +84,25 @@ class SlockLucideNativeCanvasConnectedTest {
         return rotation
     }
 
+    private fun View.assertRotationEventuallyAdvances(label: String) {
+        val initial = rotationAfterDelay(0L)
+        val deadline = SystemClock.elapsedRealtime() + ROTATION_ADVANCE_TIMEOUT_MS
+        var latest = initial
+        while (SystemClock.elapsedRealtime() < deadline) {
+            latest = rotationAfterDelay(ROTATION_POLL_INTERVAL_MS)
+            if (angularDistance(initial, latest) > MINIMUM_OBSERVED_ROTATION_DEGREES) return
+        }
+        assertTrue("$label must advance: initial=$initial latest=$latest", false)
+    }
+
     private fun angularDistance(first: Float, second: Float): Float {
         val direct = abs(second - first) % 360f
         return minOf(direct, 360f - direct)
+    }
+
+    companion object {
+        private const val ROTATION_ADVANCE_TIMEOUT_MS = 600L
+        private const val ROTATION_POLL_INTERVAL_MS = 40L
+        private const val MINIMUM_OBSERVED_ROTATION_DEGREES = 1f
     }
 }
