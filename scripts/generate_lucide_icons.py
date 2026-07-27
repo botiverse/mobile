@@ -35,7 +35,7 @@ LUCIDE_SOURCE_COMMITS = {
 }
 ANDROID_FLOAT_MAX = Decimal("3.4028234663852886e38")
 ANDROID_FLOAT_MIN_POSITIVE = Decimal("1.401298464324817e-45")
-DEFAULT_TARGETS = "android,android-path,ohos,ios,shared,brand-assets"
+DEFAULT_TARGETS = "android-path,ohos,ios,shared,brand-assets"
 DEFAULT_LUCIDE_CACHE_DIR = os.path.join(os.path.expanduser("~"), ".cache", "slock-lucide")
 LUCIDE_REPO_URL = "https://github.com/lucide-icons/lucide.git"
 LUCIDE_RAW_URL = "https://raw.githubusercontent.com/lucide-icons/lucide"

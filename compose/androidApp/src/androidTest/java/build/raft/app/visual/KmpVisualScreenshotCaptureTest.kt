@@ -224,6 +224,24 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureLucideCatalogAtlas() {
+        captureKmpComponentCase(
+            caseId = "components.icons.lucide.catalog-atlas",
+            pageName = "compose_lucide_catalog_atlas_visual",
+            crop = LUCIDE_CATALOG_ATLAS_CROP,
+        )
+    }
+
+    @Test
+    fun captureLucideStateAtlas() {
+        captureKmpComponentCase(
+            caseId = "components.icons.lucide.state-atlas",
+            pageName = "compose_lucide_state_atlas_visual",
+            crop = LUCIDE_STATE_ATLAS_CROP,
+        )
+    }
+
+    @Test
     fun captureForegroundBannerContextVariants() {
         captureKmpComponentCase(
             caseId = "components.shell.foreground-banner.context-variants",
@@ -4298,6 +4316,20 @@ class KmpVisualScreenshotCaptureTest {
                 topDp = 0,
                 widthDp = 390,
                 heightDp = 116
+            )
+        private val LUCIDE_CATALOG_ATLAS_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 390,
+                heightDp = 798,
+            )
+        private val LUCIDE_STATE_ATLAS_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 390,
+                heightDp = 84,
             )
         private val FOREGROUND_BANNER_CONTEXT_CROP =
             VisualCrop(

@@ -24,7 +24,15 @@ import build.raft.app.data.SharedRuntimeFormDefinitionRef
 import build.raft.app.data.stringDescLocaleType
 import build.raft.app.data.slockSharedPreferenceStore
 import com.tencent.kuikly.compose.setContent
+import com.tencent.kuikly.compose.foundation.background
+import com.tencent.kuikly.compose.foundation.layout.Arrangement
+import com.tencent.kuikly.compose.foundation.layout.Box
+import com.tencent.kuikly.compose.foundation.layout.Column
+import com.tencent.kuikly.compose.foundation.layout.Row
+import com.tencent.kuikly.compose.foundation.layout.height
+import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.layout.width
+import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.core.annotations.Page
@@ -302,6 +310,102 @@ internal class ComposeAndroidFloatingTabBarVisualPage : BasePager() {
                 bottomSafeArea = bottomSafeArea
             )
         }
+    }
+}
+
+@Page("compose_lucide_catalog_atlas_visual", supportInLocal = true)
+internal class ComposeLucideCatalogAtlasVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent {
+            Column(
+                modifier =
+                    Modifier
+                        .width(390.dp)
+                        .height(798.dp)
+                        .background(SlockColor.SurfaceWhite),
+            ) {
+                SlockLucideIcons.Names.chunked(10).forEach { rowNames ->
+                    Row(
+                        modifier = Modifier.width(390.dp).height(42.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        rowNames.forEach { name ->
+                            Box(
+                                modifier = Modifier.width(39.dp).height(42.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                SlockLucideIcon(name = name, modifier = Modifier.size(24.dp))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Page("compose_lucide_state_atlas_visual", supportInLocal = true)
+internal class ComposeLucideStateAtlasVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent {
+            Row(
+                modifier =
+                    Modifier
+                        .width(390.dp)
+                        .height(84.dp)
+                        .background(SlockColor.SurfaceWhite),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                LucideStateAtlasCell { SlockLucideIcon(SlockLucideIconName.Bookmark, Modifier.size(24.dp)) }
+                LucideStateAtlasCell {
+                    SlockLucideIcon(
+                        SlockLucideIconName.Bookmark,
+                        Modifier.size(24.dp),
+                        fill = SlockColor.TextBlackArgb,
+                    )
+                }
+                LucideStateAtlasCell {
+                    SlockLucideIcon(SlockLucideIconName.Check, Modifier.size(24.dp), strokeWidth = 2f)
+                }
+                LucideStateAtlasCell {
+                    SlockLucideIcon(SlockLucideIconName.Check, Modifier.size(24.dp), strokeWidth = 4f)
+                }
+                LucideStateAtlasCell {
+                    SlockLucideIcon(SlockLucideIconName.Check, Modifier.size(24.dp), strokeWidth = 6f)
+                }
+                listOf(0f, 90f, 180f, 270f).forEach { rotation ->
+                    LucideStateAtlasCell {
+                        SlockLucideIcon(
+                            SlockLucideIconName.ArrowLeft,
+                            Modifier.size(24.dp),
+                            color = if (rotation == 0f) SlockColor.AccentRedArgb else SlockColor.TextBlackArgb,
+                            rotationDegrees = rotation,
+                        )
+                    }
+                }
+                LucideStateAtlasCell {
+                    SlockLucideIcon(
+                        SlockLucideIconName.CircleArrowUp,
+                        Modifier.size(24.dp),
+                        verticalOffsetDp = 4f,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LucideStateAtlasCell(content: @Composable () -> Unit) {
+    Box(
+        modifier = Modifier.width(39.dp).height(84.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        content()
     }
 }
 
