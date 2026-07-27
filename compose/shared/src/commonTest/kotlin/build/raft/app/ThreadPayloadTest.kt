@@ -635,8 +635,7 @@ class ThreadPayloadTest {
                 localOffsetMinutes = 0
             )
         )
-        assertEquals(
-            "23:50",
+        val twelveHourRenderConfig =
             ThreadTimelineRenderConfig(
                 backgroundRefreshing = false,
                 errorCode = null,
@@ -644,12 +643,26 @@ class ThreadPayloadTest {
                 originErrorCode = null,
                 timeContext =
                     SlockTimeContext(
-                        localOffsetMinutes = 0,
-                        todayEpochDay = slockEpochDayForDate(2026, 6, 28)
+                        localOffsetMinutes = 480,
+                        todayEpochDay = slockEpochDayForDate(2026, 6, 28),
+                        timeFormat = SlockTimeFormat12Hour
                     ),
                 members = emptyList()
-            ).formatCompactTimestampLabel("2026-06-27T23:50:00Z")
-        )
+            )
+        val compactTimestamp =
+            twelveHourRenderConfig.formatCompactTimestampLabel(
+                KuiklyThreadMessageItem(
+                    id = "message-24h",
+                    authorId = "user-1",
+                    authorName = "User",
+                    timestampLabel = "2026-06-27T12:34:00Z"
+                )
+            )
+
+        assertEquals("20:34", compactTimestamp)
+        assertFalse(compactTimestamp.contains("Z"))
+        assertFalse(compactTimestamp.contains("AM"))
+        assertFalse(compactTimestamp.contains("PM"))
     }
 
     @Test

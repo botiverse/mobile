@@ -2071,7 +2071,8 @@ internal fun ThreadTimelineRenderConfig.dateDividerTimeContext(liveTodayEpochDay
         nowEpochMillis = null
     )
 
-internal fun ThreadTimelineRenderConfig.formatCompactTimestampLabel(value: String): String {
+internal fun ThreadTimelineRenderConfig.formatCompactTimestampLabel(message: KuiklyThreadMessageItem): String {
+    val value = message.timestampLabel
     val epochMillis =
         parseSlockTimestampEpochMillisOrNull(value, timeContext.localOffsetMinutes)
             ?: return formatTimestampLabel(value)
@@ -2080,7 +2081,7 @@ internal fun ThreadTimelineRenderConfig.formatCompactTimestampLabel(value: Strin
         epochMillis = epochMillis,
         localOffsetMinutes = timeContext.localOffsetMinutes,
         todayEpochDay = localEpochDay,
-        timeFormat = timeContext.timeFormat
+        timeFormat = SlockTimeFormat24Hour
     )
 }
 
@@ -16025,7 +16026,7 @@ private fun ThreadMessagesList(
                                 showReactionAddAction = renderPayload.showReactionActions && !message.hasLocalSendState(),
                                 onOpenCommentHost = { onThreadEvent("openCommentHost", message.id, null, null) },
                                 timestampLabel = message.timestampLabel,
-                                compactTimestampLabel = message.timestampLabel,
+                                compactTimestampLabel = renderConfig.formatCompactTimestampLabel(message),
                                 onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) },
                                 attachmentCommentsEnabled = attachmentCommentsEnabled,
                                 onOpenAttachmentComments = { onThreadEvent("openAttachmentComments", message.id, it, null) },
