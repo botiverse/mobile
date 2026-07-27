@@ -19,9 +19,11 @@ internal data class AuthLossSignal(
 
 internal sealed interface AuthPendingOpenRequest {
     val serverId: String
+    val accountPrincipalId: String
 
     data class Thread(
         override val serverId: String,
+        override val accountPrincipalId: String,
         val surfaceKind: String,
         val channelKind: String?,
         val threadId: String?,
@@ -71,10 +73,19 @@ internal class SharedAuthLossFunnel(
             resolve(signal.normalized())
         }
 
-    suspend fun consumePendingOpenRequest(serverId: String): AuthPendingOpenRequest? =
+    suspend fun consumePendingOpenRequest(
+        serverId: String,
+        currentAccountPrincipalId: String,
+    ): AuthPendingOpenRequest? =
         mutex.withLock {
-            pendingOpenRequest
-                ?.takeIf { it.serverId == serverId.trim() }
+            val pending = pendingOpenRequest ?: return@withLock null
+            val principalId = currentAccountPrincipalId.trim()
+            if (principalId.isBlank() || pending.accountPrincipalId != principalId) {
+                pendingOpenRequest = null
+                return@withLock null
+            }
+            pending
+                .takeIf { it.serverId == serverId.trim() }
                 ?.also { pendingOpenRequest = null }
         }
 

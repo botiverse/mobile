@@ -123,10 +123,88 @@ class SharedAuthLossFunnelTest {
             listOf("auth_loss_unavailable" to "auth_loss_funnel:thread:thread-1"),
             clearCalls
         )
-        assertNull(funnel.consumePendingOpenRequest("server-2"))
-        val pending = assertIs<AuthPendingOpenRequest.Thread>(funnel.consumePendingOpenRequest("server-1"))
+        assertNull(
+            funnel.consumePendingOpenRequest(
+                serverId = "server-2",
+                currentAccountPrincipalId = "user-1",
+            )
+        )
+        val pending =
+            assertIs<AuthPendingOpenRequest.Thread>(
+                funnel.consumePendingOpenRequest(
+                    serverId = "server-1",
+                    currentAccountPrincipalId = "user-1",
+                )
+            )
         assertEquals("thread-1", pending.sourceThreadId)
-        assertNull(funnel.consumePendingOpenRequest("server-1"))
+        assertNull(
+            funnel.consumePendingOpenRequest(
+                serverId = "server-1",
+                currentAccountPrincipalId = "user-1",
+            )
+        )
+        scope.cancel()
+    }
+
+    @Test
+    fun pendingRouteIsAtomicallyDroppedWhenDifferentAccountSelectsSameServer() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob())
+        val funnel =
+            SharedAuthLossFunnel(
+                restoreSession = { SharedAuthResult.Unauthenticated },
+                clearSession = { _, _ -> Unit },
+                scope = scope,
+            )
+
+        assertIs<AuthLossDecision.AuthRequired>(
+            funnel.report(
+                AuthLossSignal(
+                    source = "thread",
+                    tokenFingerprint = "old-token",
+                    pendingOpenRequest = pendingThreadRequest(),
+                )
+            ).await()
+        )
+
+        assertNull(
+            funnel.consumePendingOpenRequest(
+                serverId = "server-1",
+                currentAccountPrincipalId = "user-2",
+            )
+        )
+        assertNull(funnel.peekPendingOpenRequest())
+        scope.cancel()
+    }
+
+    @Test
+    fun pendingRouteCanResumeForSameAccountAfterTokensChange() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob())
+        val funnel =
+            SharedAuthLossFunnel(
+                restoreSession = { SharedAuthResult.Unauthenticated },
+                clearSession = { _, _ -> Unit },
+                scope = scope,
+            )
+
+        assertIs<AuthLossDecision.AuthRequired>(
+            funnel.report(
+                AuthLossSignal(
+                    source = "thread",
+                    tokenFingerprint = "old-token",
+                    pendingOpenRequest = pendingThreadRequest(),
+                )
+            ).await()
+        )
+
+        val resumed =
+            assertIs<AuthPendingOpenRequest.Thread>(
+                funnel.consumePendingOpenRequest(
+                    serverId = "server-1",
+                    currentAccountPrincipalId = "user-1",
+                )
+            )
+        assertEquals("thread-1", resumed.sourceThreadId)
+        assertNull(funnel.peekPendingOpenRequest())
         scope.cancel()
     }
 
@@ -152,6 +230,7 @@ class SharedAuthLossFunnelTest {
     private fun pendingThreadRequest(): AuthPendingOpenRequest.Thread =
         AuthPendingOpenRequest.Thread(
             serverId = "server-1",
+            accountPrincipalId = "user-1",
             surfaceKind = "channel",
             channelKind = "channel",
             threadId = "thread-1",

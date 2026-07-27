@@ -1457,10 +1457,14 @@ class ThreadPayloadTest {
                 originFallbackPreview = "display content must not survive",
                 originFallbackSenderId = "member-1",
                 originFallbackSenderKind = MemberKind.Human
-            ).toAuthPendingOpenRequest("server-1")
+            ).toAuthPendingOpenRequest(
+                serverId = "server-1",
+                accountPrincipalId = "user-1",
+            )
 
         val threadPending = assertIs<AuthPendingOpenRequest.Thread>(pending)
         assertEquals("server-1", threadPending.serverId)
+        assertEquals("user-1", threadPending.accountPrincipalId)
         assertEquals("reply-stream", threadPending.sourceThreadId)
         assertEquals("message-parent", threadPending.parentMessageId)
         assertEquals("message-reply", threadPending.focusedMessageId)

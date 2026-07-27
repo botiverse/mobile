@@ -3635,7 +3635,13 @@ internal fun SlockAppShellContent(
 
     LaunchedEffect(readyServerId, authGateState) {
         val serverId = readyServerId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
-        when (val request = sharedStores.authLossFunnel.consumePendingOpenRequest(serverId)) {
+        when (
+            val request =
+                sharedStores.authLossFunnel.consumePendingOpenRequest(
+                    serverId = serverId,
+                    currentAccountPrincipalId = readySession?.user?.id.orEmpty(),
+                )
+        ) {
             is AuthPendingOpenRequest.Thread -> {
                 bridge.log(
                     "app_shell_auth_pending_open_consume type=thread serverId=$serverId " +
