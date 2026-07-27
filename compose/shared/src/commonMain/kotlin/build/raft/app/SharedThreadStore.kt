@@ -105,7 +105,6 @@ import build.raft.app.model.ThreadId
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.model.SyncResumeResponse
 import build.raft.app.model.avatarWireValueForAvatarSlot
-import build.raft.app.model.formatSlockTimestampLabel
 import build.raft.app.network.sync.InlineThreadReplyPreviewLimit
 import build.raft.app.network.sync.ThreadRepliesAcceptedProjection
 import build.raft.app.network.sync.ThreadRepliesAuthoritativeSnapshot
@@ -8010,7 +8009,7 @@ private fun ChannelFilesSnapshot.toKuiklyThreadFilesPayload(
             name = attachment.name,
             sizeBytes = attachment.sizeBytes,
             sizeLabel = attachment.sizeLabel,
-            createdAtLabel = basePayload.formatFilesTimestampLabel(item.createdAt.orEmpty()),
+            createdAtLabel = threadFileCreatedAtValue(item.createdAt),
             sourceLabel = item.filesSourceLabel(),
             sourceType = item.sourceType.orEmpty(),
             sourceChannelId = item.sourceChannelId?.value.orEmpty(),
@@ -8121,9 +8120,6 @@ private fun build.raft.app.data.ChannelFileItem.filesSourceLabel(): String =
             ?.takeIf { it.isNotBlank() }
             ?.replaceFirstChar { char -> char.uppercaseChar() }
             .orEmpty()
-
-private fun KuiklyThreadScreenPayload.formatFilesTimestampLabel(value: String): String =
-    formatSlockTimestampLabel(value, toSlockTimeContext())
 
 private fun KuiklyThreadScreenPayload.hasRenderableThreadContent(): Boolean =
     messages.isNotEmpty() || originMessage != null || tasks.isNotEmpty()

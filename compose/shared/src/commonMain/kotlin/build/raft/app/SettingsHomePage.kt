@@ -406,6 +406,7 @@ import build.raft.app.model.slockEpochMillisUtcIso
 import build.raft.app.model.slockStartOfDayUtcIso
 import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -906,6 +907,7 @@ private data class HomeSecondaryRouteEnvironment(
     val composerDraftPersistSlice: SharedThreadComposerDraftPersistSlice,
     val settingsCapabilities: BridgeSettingsPlatformCapabilities,
     val homeSavedStateCache: SharedHomeSavedStateCache,
+    val timeContextProvider: SlockTimeContextProvider,
     val timeContext: AppShellThreadTimeContext?,
     val alignOwnMessagesRight: Boolean,
     val compactConsecutiveMessages: Boolean,
@@ -971,11 +973,24 @@ private fun rememberHomeSecondaryRouteEnvironment(
         activitySenderAvatarsEnabled = chatLayout.activitySenderAvatarsEnabled
         threadRowAffordances = chatLayout.threadRowAffordances
     }
-    val seedTimeContext =
+    val timeCapabilities =
         remember(pager.pageData.params.toString()) {
-            pager.pageData.params.threadTimeContext()
+            pager.pageData.params.threadTimeCapabilities()
         }
-    val timeContext = rememberLiveSlockTimeContext(seedTimeContext, routeVisibleTick)
+    val timeContextProvider =
+        rememberLiveSlockTimeContext(
+            capabilities = timeCapabilities,
+            pageVisibleTick = routeVisibleTick
+        )
+    val timeContext =
+        remember(timeCapabilities) {
+            timeCapabilities?.let {
+                SlockTimeContext(
+                    localOffsetMinutes = it.localOffsetMinutes,
+                    timeFormat = it.timeFormat
+                )
+            }
+        }
     val shellScope = rememberSlockAppShellScope()
     return remember(
         pager,
@@ -986,6 +1001,7 @@ private fun rememberHomeSecondaryRouteEnvironment(
         serverMembersStore,
         sharedStores.composerDraftPersistSlice,
         sharedStores.homeSavedStateCache,
+        timeContextProvider,
         timeContext,
         myMessageAlignment,
         compactConsecutiveMessages,
@@ -1006,6 +1022,7 @@ private fun rememberHomeSecondaryRouteEnvironment(
             composerDraftPersistSlice = sharedStores.composerDraftPersistSlice,
             settingsCapabilities = settingsCapabilities,
             homeSavedStateCache = sharedStores.homeSavedStateCache,
+            timeContextProvider = timeContextProvider,
             timeContext = timeContext,
             alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
             compactConsecutiveMessages = compactConsecutiveMessages,
@@ -1039,18 +1056,20 @@ private fun HomeSecondaryRouterContent(
         sceneName = retainedDestination?.let(::homeSecondaryPerformanceRoute) ?: "kuikly_home_secondary",
         active = true
     )
-    when (retainedDestination) {
-        HomeDestinationActivity -> HomeActivityRouterContent(environment, routeVisibleTick)
-        HomeDestinationSearch ->
-            HomeSearchRouterContent(
-                environment,
-                routeVisibleTick,
-                initialChannelId = initialSearchChannelId,
-                initialOpenFilterId = initialSearchOpenFilterId,
-                initialFocusInput = initialSearchFocusInput
-            )
-        HomeDestinationSaved -> HomeSavedRouterContent(environment, routeVisibleTick)
-        else -> SlockCenteredLoading(message = stringResource(MR.strings.auth_state_opening_server))
+    CompositionLocalProvider(LocalSlockTimeContextProvider provides environment.timeContextProvider) {
+        when (retainedDestination) {
+            HomeDestinationActivity -> HomeActivityRouterContent(environment, routeVisibleTick)
+            HomeDestinationSearch ->
+                HomeSearchRouterContent(
+                    environment,
+                    routeVisibleTick,
+                    initialChannelId = initialSearchChannelId,
+                    initialOpenFilterId = initialSearchOpenFilterId,
+                    initialFocusInput = initialSearchFocusInput
+                )
+            HomeDestinationSaved -> HomeSavedRouterContent(environment, routeVisibleTick)
+            else -> SlockCenteredLoading(message = stringResource(MR.strings.auth_state_opening_server))
+        }
     }
 }
 
@@ -3002,11 +3021,15 @@ internal fun SlockAppShellContent(
     val diagnosticsDraftReadyToast = stringResource(MR.strings.settings_diagnostics_feedback_draft_ready)
     val diagnosticsUploadFailedPrefix = stringResource(MR.strings.settings_diagnostics_feedback_upload_failed_prefix)
     val diagnosticsComposerSeed = stringResource(MR.strings.settings_diagnostics_feedback_composer_seed)
-    val hostThreadTimeContextSeed = remember(pager.pageData.params.toString()) {
-        pager.pageData.params.threadTimeContext()
+    val hostThreadTimeCapabilities = remember(pager.pageData.params.toString()) {
+        pager.pageData.params.threadTimeCapabilities()
     }
-    val hostThreadTimeContext = rememberLiveSlockTimeContext(hostThreadTimeContextSeed, pageVisibleTick)
-    val currentHostThreadTimeContext = rememberUpdatedState(hostThreadTimeContext)
+    val hostThreadTimeContextProvider =
+        rememberLiveSlockTimeContext(
+            capabilities = hostThreadTimeCapabilities,
+            pageVisibleTick = pageVisibleTick
+        )
+    val currentHostThreadTimeContextProvider = rememberUpdatedState(hostThreadTimeContextProvider)
     val notificationWindowNavigationIntent =
         remember(pager.pageData.params.toString()) {
             pager.pageData.params.appShellWindowNavigationIntent(
@@ -3057,7 +3080,7 @@ internal fun SlockAppShellContent(
                 savedStateCache = sharedStores.homeSavedStateCache,
                 readReceiptCoordinator = sharedStores.processReadReceiptCoordinator(),
                 readReceiptOwnerFactory = sharedStores::readReceiptOwner,
-                timeRangeBoundsProvider = { range -> currentHostThreadTimeContext.value.toSearchIsoBounds(range) },
+                timeRangeBoundsProvider = { range -> currentHostThreadTimeContextProvider.value.current.toSearchIsoBounds(range) },
                 diagnosticsLogger = slockLogger("SlockHomeSearchSaved", "shared_home_search_saved")
             )
         }
@@ -3352,8 +3375,15 @@ internal fun SlockAppShellContent(
         (settingsState.languageRegion as? ScreenLoadState.Content)?.data?.timeFormat?.selectedKey
     val sessionTimeFormat = readySession?.user?.preferredTimeFormat ?: readySession?.user?.timeFormat
     val threadTimeContext =
-        remember(hostThreadTimeContext, loadedSettingsTimeFormat, sessionTimeFormat) {
-            hostThreadTimeContext.withTimeFormat(loadedSettingsTimeFormat ?: sessionTimeFormat)
+        remember(hostThreadTimeCapabilities, loadedSettingsTimeFormat, sessionTimeFormat) {
+            hostThreadTimeCapabilities
+                ?.let {
+                    SlockTimeContext(
+                        localOffsetMinutes = it.localOffsetMinutes,
+                        timeFormat = it.timeFormat
+                    )
+                }
+                .withTimeFormat(loadedSettingsTimeFormat ?: sessionTimeFormat)
         }
     fun selectAppShellTab(nextTab: String, directChildSwitch: Boolean = false) {
         prewarmAdmissionGate.invalidate("tab_select:$nextTab")
@@ -5252,11 +5282,13 @@ internal fun SlockAppShellContent(
                                     "homeRealtimeDirty=${homeState.homeRealtimeDirty}"
                             )
                         }
-                        when (tab) {
-                            "tasks" -> tasksTabContent(active)
-                            "members" -> membersTabContent(active)
-                            "settings" -> settingsTabContent(active)
-                            else -> homeTabContent(active)
+                        CompositionLocalProvider(LocalSlockTimeContextProvider provides hostThreadTimeContextProvider) {
+                            when (tab) {
+                                "tasks" -> tasksTabContent(active)
+                                "members" -> membersTabContent(active)
+                                "settings" -> settingsTabContent(active)
+                                else -> homeTabContent(active)
+                            }
                         }
                     }
                     val childTabRegistration =
@@ -5306,9 +5338,11 @@ internal fun SlockAppShellContent(
                         childTabSwitchEpoch = childTabSwitchEpoch,
                         log = { bridge.log(it) }
                     ) { tab, active ->
-                        when (tab) {
-                            "settings" -> settingsTabContent(active)
-                            else -> childTabRenderer(tab, active)
+                        CompositionLocalProvider(LocalSlockTimeContextProvider provides hostThreadTimeContextProvider) {
+                            when (tab) {
+                                "settings" -> settingsTabContent(active)
+                                else -> childTabRenderer(tab, active)
+                            }
                         }
                     }
             Box(modifier = Modifier.fillMaxSize()) {
@@ -10300,7 +10334,7 @@ private fun SettingsServerInvitesCard(
                     detail =
                         listOfNotNull(
                             invite.inviterName?.let { MR.strings.settings_server_invited_by.format(listOf(it)).localized() },
-                            formatSettingsTimestampLabel(invite.createdAtLabel, timeContext)
+                            relativeSettingsTimestampLabel(invite.createdAtLabel, timeContext)
                         ).joinToString(" · "),
                     buttonLabel = actionState.serverLocalizedStatusFor(SERVER_ACTION_INVITE_REVOKE, stringResource(MR.strings.settings_server_action_revoke), invite.id),
                     buttonIcon = SlockLucideIconName.X,
@@ -10382,7 +10416,7 @@ private fun SettingsServerJoinLinksCard(
                         listOfNotNull(
                             link.maxUsesLabel,
                             link.usageLabel,
-                            formatSettingsTimestampLabel(link.expiresAtLabel, timeContext)
+                            relativeSettingsTimestampLabel(link.expiresAtLabel, timeContext)
                         ).joinToString(" · "),
                     buttonLabel = actionState.serverLocalizedStatusFor(SERVER_ACTION_JOIN_LINK_REVOKE, stringResource(MR.strings.settings_server_action_revoke), link.id),
                     buttonIcon = SlockLucideIconName.Unlink,
@@ -12638,6 +12672,7 @@ private fun List<SettingsServerAdminSnapshot>?.toAdminRows(
     }
 }
 
+@Composable
 private fun List<SettingsServerInviteSnapshot>?.toInviteRows(
     section: SettingsServerSectionSnapshot?,
     sectionTitle: String,
@@ -12659,7 +12694,7 @@ private fun List<SettingsServerInviteSnapshot>?.toInviteRows(
                 detail =
                     listOfNotNull(
                         invite.inviterName?.let { "Invited by $it" },
-                        formatSettingsTimestampLabel(invite.createdAtLabel, timeContext)
+                        relativeSettingsTimestampLabel(invite.createdAtLabel, timeContext)
                     ).joinToString(" · "),
                 status = "Pending",
                 enabled = false
@@ -12677,6 +12712,7 @@ private fun List<SettingsServerInviteSnapshot>?.toInviteRows(
     }
 }
 
+@Composable
 private fun List<SettingsServerJoinLinkSnapshot>?.toJoinLinkRows(
     section: SettingsServerSectionSnapshot?,
     sectionTitle: String,
@@ -12706,7 +12742,7 @@ private fun List<SettingsServerJoinLinkSnapshot>?.toJoinLinkRows(
                     listOfNotNull(
                         link.url,
                         link.maxUsesLabel,
-                        formatSettingsTimestampLabel(link.expiresAtLabel, timeContext)
+                        relativeSettingsTimestampLabel(link.expiresAtLabel, timeContext)
                     ).joinToString(" · "),
                 status = link.usageLabel.orEmpty(),
                 enabled = false
@@ -19616,8 +19652,18 @@ private fun Presence?.toSharedPresence(): SlockPresence? =
 internal typealias AppShellTimeContext = SlockTimeContext
 internal typealias AppShellThreadTimeContext = SlockTimeContext
 
+@Composable
 private fun String.formatSavedTimestamp(timeContext: AppShellThreadTimeContext?): String =
-    timeContext?.formatTimestampLabel(this) ?: this
+    slockRelativeTimestampLabel(this, timeContext)
+
+@Composable
+private fun relativeSettingsTimestampLabel(
+    value: String?,
+    timeContext: SlockTimeContext?
+): String? {
+    val trimmed = value?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    return slockRelativeTimestampLabel(trimmed, timeContext).takeIf { it.isNotBlank() }
+}
 
 internal fun formatSettingsTimestampLabel(
     value: String?,
@@ -19633,11 +19679,12 @@ private fun String.formatSettingsBillingUsageValue(timeContext: SlockTimeContext
 private fun AppShellTimeContext?.withTimeFormat(timeFormat: String?): AppShellTimeContext? =
     this?.withTimeFormat(timeFormat)
 
-private fun com.tencent.kuikly.core.nvi.serialization.json.JSONObject.threadTimeContext(): AppShellThreadTimeContext? {
+private fun com.tencent.kuikly.core.nvi.serialization.json.JSONObject.threadTimeCapabilities(): SlockTimeCapabilities? {
     val offset = optString("localOffsetMinutes").toIntOrNull() ?: return null
-    val today = optString("todayEpochDay").toLongOrNull()
-    val now = optString("nowEpochMillis").toLongOrNull()
-    return AppShellTimeContext(offset, today, now).withTimeFormat(optString("timeFormat").takeIf { it.isNotBlank() })
+    return SlockTimeContext(
+        localOffsetMinutes = offset,
+        timeFormat = optString("timeFormat").takeIf { it.isNotBlank() } ?: SlockTimeFormat24Hour
+    ).toSlockTimeCapabilities()
 }
 
 internal data class AppShellNotificationThreadLaunchRequest(

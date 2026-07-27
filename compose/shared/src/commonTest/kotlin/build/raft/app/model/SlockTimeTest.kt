@@ -3,8 +3,69 @@ package build.raft.app.model
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertIs
 
 class SlockTimeTest {
+    @Test
+    fun relativeTimeMatchesWebMinuteProgressionWithInjectedClock() {
+        val sentAt = parseSlockTimestampEpochMillisOrNull("2026-07-27T12:00:00Z")!!
+        val seed = SlockTimeContext(localOffsetMinutes = 0, nowEpochMillis = sentAt)
+
+        assertEquals(
+            SlockRelativeTimeLabel.Relative(0, SlockRelativeTimeUnit.Minute),
+            resolveSlockRelativeTimeLabel("2026-07-27T12:00:00Z", seed)
+        )
+        assertEquals(
+            SlockRelativeTimeLabel.Relative(-1, SlockRelativeTimeUnit.Minute),
+            resolveSlockRelativeTimeLabel("2026-07-27T12:00:00Z", seed.refreshedAt(sentAt + 60_000L))
+        )
+        assertEquals(
+            SlockRelativeTimeLabel.Relative(-2, SlockRelativeTimeUnit.Minute),
+            resolveSlockRelativeTimeLabel("2026-07-27T12:00:00Z", seed.refreshedAt(sentAt + 120_000L))
+        )
+    }
+
+    @Test
+    fun relativeTimeMatchesWebBucketsFutureAndInvalidFallback() {
+        val now = parseSlockTimestampEpochMillisOrNull("2026-07-27T12:00:00Z")!!
+        val context = SlockTimeContext(localOffsetMinutes = 0, nowEpochMillis = now)
+
+        assertEquals(
+            SlockRelativeTimeLabel.Relative(59, SlockRelativeTimeUnit.Minute),
+            resolveSlockRelativeTimeLabel("2026-07-27T12:59:29Z", context)
+        )
+        assertEquals(
+            SlockRelativeTimeLabel.Relative(1, SlockRelativeTimeUnit.Hour),
+            resolveSlockRelativeTimeLabel("2026-07-27T13:00:00Z", context)
+        )
+        assertEquals(
+            SlockRelativeTimeLabel.Relative(-1, SlockRelativeTimeUnit.Day),
+            resolveSlockRelativeTimeLabel("2026-07-26T12:00:00Z", context)
+        )
+        assertEquals(SlockRelativeTimeLabel.Unknown, resolveSlockRelativeTimeLabel("not-a-date", context))
+        assertEquals(SlockRelativeTimeLabel.Literal("10:38"), resolveSlockRelativeTimeLabel("10:38", context))
+        assertEquals(
+            SlockRelativeTimeLabel.Unknown,
+            resolveSlockRelativeTimeLabel("2026-07-27T12:00:00Z", null)
+        )
+        assertIs<SlockRelativeTimeLabel.Literal>(resolveSlockRelativeTimeLabel("Active", null))
+    }
+
+    @Test
+    fun relativeTimeUsesJavaScriptNegativeHalfRounding() {
+        val now = parseSlockTimestampEpochMillisOrNull("2026-07-27T12:00:30Z")!!
+        val context = SlockTimeContext(localOffsetMinutes = 0, nowEpochMillis = now)
+
+        assertEquals(
+            SlockRelativeTimeLabel.Relative(0, SlockRelativeTimeUnit.Minute),
+            resolveSlockRelativeTimeLabel("2026-07-27T12:00:00Z", context)
+        )
+        assertEquals(
+            SlockRelativeTimeLabel.Relative(-1, SlockRelativeTimeUnit.Minute),
+            resolveSlockRelativeTimeLabel("2026-07-27T11:59:00Z", context)
+        )
+    }
+
     @Test
     fun formatsTodayAsCompactTime() {
         val today = slockEpochDayForDate(2026, 5, 9)

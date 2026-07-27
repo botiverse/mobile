@@ -2,6 +2,8 @@ package build.raft.app
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -21,18 +23,61 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+internal val LocalSlockTimeContextProvider = compositionLocalOf<SlockTimeContextProvider?> { null }
+
+@Stable
+internal class SlockTimeContextProvider(initial: SlockTimeContext?) {
+    var current by mutableStateOf(initial)
+        private set
+    var todayEpochDay by mutableStateOf(initial?.todayEpochDay)
+        private set
+
+    fun update(value: SlockTimeContext?) {
+        current = value
+        todayEpochDay = value?.todayEpochDay
+    }
+}
+
+internal data class SlockTimeCapabilities(
+    val localOffsetMinutes: Int,
+    val timeFormat: String
+) {
+    fun staticContext(): SlockTimeContext =
+        SlockTimeContext(
+            localOffsetMinutes = localOffsetMinutes,
+            timeFormat = timeFormat
+        )
+
+    fun contextAt(nowEpochMillis: Long): SlockTimeContext =
+        staticContext().refreshedAt(nowEpochMillis)
+}
+
+internal fun SlockTimeContext.toSlockTimeCapabilities(): SlockTimeCapabilities =
+    SlockTimeCapabilities(
+        localOffsetMinutes = localOffsetMinutes,
+        timeFormat = timeFormat
+    )
+
+internal fun interface SlockTimeClock {
+    fun nowEpochMillis(): Long
+}
+
+private val SlockSystemTimeClock = SlockTimeClock(::defaultNowMillis)
+
 @Composable
 internal fun rememberLiveSlockTimeContext(
-    seed: SlockTimeContext?,
-    pageVisibleTick: Int = 0
-): SlockTimeContext? {
+    capabilities: SlockTimeCapabilities?,
+    pageVisibleTick: Int = 0,
+    active: Boolean = true,
+    clock: SlockTimeClock = SlockSystemTimeClock
+): SlockTimeContextProvider {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember(pager) { build.raft.app.base.Utils.bridgeModule(pager.pagerId) }
     val composeScope = rememberCoroutineScope()
-    var current by remember(seed) {
-        mutableStateOf(seed?.refreshedAt(defaultNowMillis()))
+    val provider = remember(capabilities, clock) {
+        SlockTimeContextProvider(capabilities?.contextAt(clock.nowEpochMillis()))
     }
-    DisposableEffect(pager, seed, pageVisibleTick) {
+    DisposableEffect(pager, capabilities, pageVisibleTick, active, clock) {
         val timeoutScheduler =
             SlockIndependentTimeoutScheduler(
                 timerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
@@ -40,11 +85,11 @@ internal fun rememberLiveSlockTimeContext(
             )
         val controller =
             SlockTimeContextRefreshController(
-                seed = seed,
-                nowEpochMillis = ::defaultNowMillis,
+                capabilities = capabilities,
+                clock = clock,
                 scheduleTimeout = timeoutScheduler::schedule,
                 onRefresh = { refreshed ->
-                    val previousDay = current?.todayEpochDay
+                    val previousDay = provider.current?.todayEpochDay
                     val refreshedDay = refreshed?.todayEpochDay
                     if (previousDay != null && refreshedDay != null && previousDay != refreshedDay) {
                         bridge.log(
@@ -53,7 +98,7 @@ internal fun rememberLiveSlockTimeContext(
                                 "nowEpochMillis=${refreshed.nowEpochMillis}"
                         )
                     }
-                    current = refreshed
+                    provider.update(refreshed)
                 },
                 onTimeoutScheduled = { generation, delayMillis, armedAt ->
                     bridge.log(
@@ -69,13 +114,13 @@ internal fun rememberLiveSlockTimeContext(
                     )
                 }
             )
-        controller.start()
+        if (active) controller.start()
         onDispose {
             controller.stop()
             timeoutScheduler.close()
         }
     }
-    return current
+    return provider
 }
 
 internal fun interface SlockTimeoutHandle {
@@ -114,8 +159,8 @@ internal class SlockIndependentTimeoutScheduler(
 }
 
 internal class SlockTimeContextRefreshController(
-    private val seed: SlockTimeContext?,
-    private val nowEpochMillis: () -> Long,
+    private val capabilities: SlockTimeCapabilities?,
+    private val clock: SlockTimeClock,
     private val scheduleTimeout: (Int, () -> Unit) -> SlockTimeoutHandle,
     onRefresh: (SlockTimeContext?) -> Unit,
     private val onTimeoutScheduled: (Long, Int, Long) -> Unit = { _, _, _ -> },
@@ -140,8 +185,8 @@ internal class SlockTimeContextRefreshController(
 
     private fun refreshAndSchedule() {
         if (!running) return
-        val now = nowEpochMillis()
-        onRefresh(seed?.refreshedAt(now))
+        val now = clock.nowEpochMillis()
+        onRefresh(capabilities?.contextAt(now))
         val delayMillis =
             slockTimeContextRefreshDelayMillis(now)
                 .coerceIn(1L, Int.MAX_VALUE.toLong())
@@ -153,7 +198,7 @@ internal class SlockTimeContextRefreshController(
             scheduleTimeout(delayMillis) {
                 timeoutHandle = null
                 if (!running) return@scheduleTimeout
-                onTimeoutDelivered(generation, nowEpochMillis())
+                onTimeoutDelivered(generation, clock.nowEpochMillis())
                 refreshAndSchedule()
             }
     }

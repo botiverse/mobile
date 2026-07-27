@@ -54,6 +54,33 @@ class KmmResourceI18nTest {
     }
 
     @Test
+    fun relativeTimeResourcesAndPlaceholdersAreGenerated() {
+        listOf(
+            MR.strings.thread_timestamp_now,
+            MR.strings.relative_time_unknown,
+            MR.strings.relative_time_hour_now,
+            MR.strings.relative_time_day_before_yesterday,
+            MR.strings.relative_time_day_yesterday,
+            MR.strings.relative_time_day_today,
+            MR.strings.relative_time_day_tomorrow,
+            MR.strings.relative_time_day_after_tomorrow
+        ).forEach { resource ->
+            assertTrue(resource.desc() is ResourceStringDesc)
+        }
+
+        listOf(
+            MR.strings.relative_time_minute_past_many,
+            MR.strings.relative_time_minute_future_many,
+            MR.strings.relative_time_hour_past_many,
+            MR.strings.relative_time_hour_future_many,
+            MR.strings.relative_time_day_past_many,
+            MR.strings.relative_time_day_future_many
+        ).forEach { resource ->
+            assertTrue(resource.format(listOf(2)) is ResourceFormattedStringDesc)
+        }
+    }
+
+    @Test
     fun userVisibleLoadingAndToastFallbackResourcesAreGenerated() {
         listOf(
             MR.strings.common_loading,

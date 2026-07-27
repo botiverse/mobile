@@ -635,8 +635,7 @@ class ThreadPayloadTest {
                 localOffsetMinutes = 0
             )
         )
-        assertEquals(
-            "23:50",
+        val twelveHourRenderConfig =
             ThreadTimelineRenderConfig(
                 backgroundRefreshing = false,
                 errorCode = null,
@@ -644,12 +643,26 @@ class ThreadPayloadTest {
                 originErrorCode = null,
                 timeContext =
                     SlockTimeContext(
-                        localOffsetMinutes = 0,
-                        todayEpochDay = slockEpochDayForDate(2026, 6, 28)
+                        localOffsetMinutes = 480,
+                        todayEpochDay = slockEpochDayForDate(2026, 6, 28),
+                        timeFormat = SlockTimeFormat12Hour
                     ),
                 members = emptyList()
-            ).formatCompactTimestampLabel("2026-06-27T23:50:00Z")
-        )
+            )
+        val compactTimestamp =
+            twelveHourRenderConfig.formatCompactTimestampLabel(
+                KuiklyThreadMessageItem(
+                    id = "message-24h",
+                    authorId = "user-1",
+                    authorName = "User",
+                    timestampLabel = "2026-06-27T12:34:00Z"
+                )
+            )
+
+        assertEquals("20:34", compactTimestamp)
+        assertFalse(compactTimestamp.contains("Z"))
+        assertFalse(compactTimestamp.contains("AM"))
+        assertFalse(compactTimestamp.contains("PM"))
     }
 
     @Test
@@ -691,16 +704,24 @@ class ThreadPayloadTest {
                 id = "m2",
                 timestampLabel = "2026-07-23T00:01:00+08:00"
             )
-        val launchContext =
-            SlockTimeContext(
-                localOffsetMinutes = 480,
-                todayEpochDay = slockEpochDayForDate(2026, 7, 22),
-                nowEpochMillis = parseSlockTimestampEpochMillisOrNull("2026-07-22T23:59:30+08:00")
+        val provider =
+            SlockTimeContextProvider(
+                SlockTimeCapabilities(localOffsetMinutes = 480, timeFormat = "24h").contextAt(
+                    parseSlockTimestampEpochMillisOrNull("2026-07-22T23:59:30+08:00")!!
+                )
             )
-        val refreshedContext =
-            launchContext.refreshedAt(
+        val renderConfig =
+            KuiklyThreadScreenPayload(localOffsetMinutes = 480).toThreadTimelineRenderConfig()
+        val launchDividerContext = renderConfig.dateDividerTimeContext(provider.todayEpochDay)
+
+        assertEquals("TODAY", threadDateDividerLabel(null, previousDayMessage, launchDividerContext))
+
+        provider.update(
+            SlockTimeCapabilities(localOffsetMinutes = 480, timeFormat = "24h").contextAt(
                 parseSlockTimestampEpochMillisOrNull("2026-07-23T00:01:05+08:00")!!
             )
+        )
+        val refreshedContext = renderConfig.dateDividerTimeContext(provider.todayEpochDay)
 
         assertEquals("YESTERDAY", threadDateDividerLabel(null, previousDayMessage, refreshedContext))
         assertEquals("TODAY", threadDateDividerLabel(previousDayMessage, currentDayMessage, refreshedContext))
@@ -8328,28 +8349,9 @@ class ThreadPayloadTest {
         assertEquals("member_joined", message.systemEventType)
         assertEquals("Cindy", message.metadata["actor"])
         assertEquals("invite", message.metadata["source"]?.sanitizeThreadSystemText())
-        assertEquals("10:00 Cindy joined\nthe channel", message.collapsedSystemSummary("10:00"))
         assertEquals("Cindy joined\nthe channel", message.systemContentSummary())
         assertEquals("Cindy joined\nthe channel\nType: member_joined\nactor: Cindy\nsource: invite", message.expandedSystemContent())
         assertEquals("Type: member_joined\nactor: Cindy\nsource: invite", message.expandedSystemDetails())
-    }
-
-    @Test
-    fun systemMessageTimestampUsesMonoWithoutChangingBodyFont() {
-        val annotated =
-            buildThreadSystemMessageAnnotatedBody(
-                systemBody = "10:00 Cindy joined the channel",
-                timestampLabel = "10:00"
-            )
-
-        assertEquals("10:00 Cindy joined the channel", annotated.text)
-        assertEquals(2, annotated.spanStyles.size)
-        assertEquals(0, annotated.spanStyles[0].start)
-        assertEquals(5, annotated.spanStyles[0].end)
-        assertEquals(SlockMonoFamily, annotated.spanStyles[0].item.fontFamily)
-        assertEquals(6, annotated.spanStyles[1].start)
-        assertEquals(30, annotated.spanStyles[1].end)
-        assertEquals(null, annotated.spanStyles[1].item.fontFamily)
     }
 
     @Test

@@ -254,11 +254,8 @@ import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.semantics.contentDescription
 import com.tencent.kuikly.compose.ui.semantics.semantics
-import com.tencent.kuikly.compose.ui.text.AnnotatedString
-import com.tencent.kuikly.compose.ui.text.SpanStyle
 import com.tencent.kuikly.compose.ui.text.TextRange
 import com.tencent.kuikly.compose.ui.text.TextStyle
-import com.tencent.kuikly.compose.ui.text.buildAnnotatedString
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
@@ -330,6 +327,29 @@ private const val ThreadSendSilentRetryDelayMs = 900L
 private const val ThreadSendMaxSilentRetries = 2
 private const val ThreadLocalizedFeedbackPlaceholder = "__RAFT_VALUE__"
 private const val ThreadAttachmentUploadConcurrencyLimit = 12
+internal const val ThreadRelativeTimestampSlotWidthDp = 112f
+
+internal data class ThreadMessageMetadataSlotLayout(
+    val widthDp: Float,
+    val heightDp: Float,
+    val timestampVisible: Boolean
+)
+
+internal fun threadMessageMetadataSlotLayout(
+    showAvatar: Boolean,
+    compactTimestampGutter: Boolean,
+    showTimestamp: Boolean
+): ThreadMessageMetadataSlotLayout =
+    ThreadMessageMetadataSlotLayout(
+        widthDp = 36f,
+        heightDp =
+            when {
+                showAvatar -> 40f
+                compactTimestampGutter -> 18f
+                else -> 0f
+            },
+        timestampVisible = !showAvatar && compactTimestampGutter && showTimestamp
+    )
 
 internal enum class ThreadPickedAttachmentComposerAction {
     None,
@@ -2045,7 +2065,14 @@ internal fun KuiklyThreadScreenPayload.toThreadTimelineRenderConfig(): ThreadTim
 internal fun ThreadTimelineRenderConfig.formatTimestampLabel(value: String): String =
     formatSlockTimestampLabel(value, timeContext)
 
-internal fun ThreadTimelineRenderConfig.formatCompactTimestampLabel(value: String): String {
+internal fun ThreadTimelineRenderConfig.dateDividerTimeContext(liveTodayEpochDay: Long?): SlockTimeContext =
+    timeContext.copy(
+        todayEpochDay = liveTodayEpochDay ?: timeContext.todayEpochDay,
+        nowEpochMillis = null
+    )
+
+internal fun ThreadTimelineRenderConfig.formatCompactTimestampLabel(message: KuiklyThreadMessageItem): String {
+    val value = message.timestampLabel
     val epochMillis =
         parseSlockTimestampEpochMillisOrNull(value, timeContext.localOffsetMinutes)
             ?: return formatTimestampLabel(value)
@@ -2054,7 +2081,7 @@ internal fun ThreadTimelineRenderConfig.formatCompactTimestampLabel(value: Strin
         epochMillis = epochMillis,
         localOffsetMinutes = timeContext.localOffsetMinutes,
         todayEpochDay = localEpochDay,
-        timeFormat = timeContext.timeFormat
+        timeFormat = SlockTimeFormat24Hour
     )
 }
 
@@ -2537,20 +2564,13 @@ private fun ThreadPageScreen(
         )
     }
     val parsedPayload = payloadTrace.payload
-    val liveTimeContext =
+    val liveTimeContextProvider =
         rememberLiveSlockTimeContext(
-            seed = parsedPayload.toSlockTimeContext(),
-            pageVisibleTick = pageVisibleTick
+            capabilities = parsedPayload.toSlockTimeCapabilities(),
+            pageVisibleTick = pageVisibleTick,
+            active = pageVisible
         )
-    val payload =
-        remember(parsedPayload, liveTimeContext) {
-            parsedPayload.copy(
-                localOffsetMinutes = liveTimeContext?.localOffsetMinutes ?: parsedPayload.localOffsetMinutes,
-                todayEpochDay = liveTimeContext?.todayEpochDay ?: parsedPayload.todayEpochDay,
-                nowEpochMillis = liveTimeContext?.nowEpochMillis ?: parsedPayload.nowEpochMillis,
-                timeFormat = liveTimeContext?.timeFormat ?: parsedPayload.timeFormat
-            )
-        }
+    val payload = parsedPayload
     LaunchedEffect(payloadText, instanceId) {
         bridge.log(
             "thread_launch_payload_parse source=pageData result=${payloadTrace.result} " +
@@ -2752,6 +2772,7 @@ private fun ThreadPageScreen(
     }
     SharedThreadRouteContent(
         initialPayload = payload,
+        timeContextProvider = liveTimeContextProvider,
         bridge = bridge,
         dataSource = dataSource,
         forwardTargetRepository = forwardTargetRepository,
@@ -2783,7 +2804,7 @@ private fun ThreadPageScreen(
             val parentPayload =
                 buildAppShellThreadPayload(
                     conversation = request.conversationIdentity,
-                    timeContext = currentPayload.toSlockTimeContext(),
+                    timeContext = currentPayload.toSlockTimeCapabilities().staticContext(),
                     alignOwnMessagesRight = currentPayload.alignOwnMessagesRight,
                     compactConsecutiveMessages = currentPayload.compactConsecutiveMessages,
                     threadRowAffordances =
@@ -3312,7 +3333,7 @@ private fun ThreadMessageVisualScreenContent() {
                     taskOpenEnabled = payload.showTaskOpenActions,
                     taskStatusActionsEnabled = payload.showTaskStatusActions,
                     showReactionAddAction = payload.showReactionActions,
-                    timestampLabel = payload.formatTimestampLabel(selectedMessage.timestampLabel),
+                    timestampLabel = selectedMessage.timestampLabel,
                     onShowActions = {},
                     onOpenMember = {},
                     onOpenThread = {},
@@ -3378,7 +3399,7 @@ private fun ThreadMessageVisualScreenContent() {
                     taskOpenEnabled = false,
                     taskStatusActionsEnabled = false,
                     showReactionAddAction = false,
-                    timestampLabel = payload.formatTimestampLabel(visualMessage.timestampLabel),
+                    timestampLabel = visualMessage.timestampLabel,
                     onShowActions = {},
                     onOpenMember = {},
                     onOpenThread = {},
@@ -3549,7 +3570,6 @@ private fun ThreadMessageVisualScreenContent() {
                     replyMetadata = visualReplyMetadataByParentId.threadReplyMetadataFor(message),
                     highlightedMentions = highlightedMentions,
                     inlineReplyParticipantsById = payload.members.associateBy(KuiklyThreadMemberItem::id),
-                    replyTimeContext = payload.toSlockTimeContext(),
                     hasReplyDraft = visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_REPLIES,
                     alignOwnMessageRight = payload.alignOwnMessagesRight && message.isOwn,
                     showReplyAction = payload.showReplyActions,
@@ -3567,7 +3587,7 @@ private fun ThreadMessageVisualScreenContent() {
                     showReactionAddAction = payload.showReactionActions,
                     isMarkdownTagValid = isMarkdownTagValid,
                     markdownTagContextSignature = markdownTagContextSignature,
-                    timestampLabel = payload.formatTimestampLabel(message.timestampLabel),
+                    timestampLabel = message.timestampLabel,
                     onShowActions = { actionsMenuVisible = true },
                     onOpenMember = {},
                     onOpenThread = { openedVisualThreadMessageId = it },
@@ -4229,6 +4249,7 @@ private fun ThreadMessageVisualCard(
 @Composable
 internal fun SharedThreadRouteContent(
     initialPayload: KuiklyThreadScreenPayload,
+    timeContextProvider: SlockTimeContextProvider,
     bridge: build.raft.app.base.BridgeModule,
     dataSource: SharedThreadDataSource,
     forwardTargetRepository: ForwardMessageTargetRepository? = null,
@@ -6925,7 +6946,7 @@ internal fun SharedThreadRouteContent(
             val bannerPayload =
                 buildAppShellThreadPayload(
                     conversation = request.conversationIdentity,
-                    timeContext = renderedPayload.toSlockTimeContext(),
+                    timeContext = renderedPayload.toSlockTimeCapabilities().staticContext(),
                     alignOwnMessagesRight = renderedPayload.alignOwnMessagesRight,
                     compactConsecutiveMessages = renderedPayload.compactConsecutiveMessages,
                     threadRowAffordances =
@@ -6967,7 +6988,8 @@ internal fun SharedThreadRouteContent(
                 LocalThreadMessagePointerSessionKey provides threadPointerSessionKey,
                 LocalThreadPendingReactionKeys provides pendingReactionKeys,
                 LocalThreadPendingReactionVisuals provides pendingReactionVisuals,
-                LocalThreadPendingTaskId provides threadTasksState.statusUpdatingTaskId
+                LocalThreadPendingTaskId provides threadTasksState.statusUpdatingTaskId,
+                LocalSlockTimeContextProvider provides timeContextProvider
             ),
             LocalSlockMarkdownPlainCandidateSession,
             plainCandidateCensusSession
@@ -7703,7 +7725,7 @@ internal fun SharedThreadRouteContent(
                         val loadingPayload = request?.let { openRequest ->
                             buildAppShellThreadPayload(
                                 conversation = openRequest.conversationIdentity,
-                                timeContext = renderedThread.toSlockTimeContext(),
+                                timeContext = renderedThread.toSlockTimeCapabilities().staticContext(),
                                 alignOwnMessagesRight = renderedThread.alignOwnMessagesRight,
                                 compactConsecutiveMessages = renderedThread.compactConsecutiveMessages,
                                 threadRowAffordances =
@@ -12463,7 +12485,7 @@ private fun ThreadPageContent(
                         channelId = taskPanelChannelId,
                         openTaskEnabled = payload.showTaskOpenActions,
                         draftProjection = draftProjection,
-                        timeContext = payload.toSlockTimeContext(),
+                        timeContext = payload.toSlockTimeCapabilities().staticContext(),
                         onOpenTask = { onThreadEvent("openTask", it, null, null) },
                         onIntent = onTasksIntent
                     )
@@ -15872,18 +15894,18 @@ private fun ThreadMessagesList(
                 val captureShareBounds =
                     (shareSelectionActive || shareSelectionCaptureActive) &&
                         message.id in selectedShareMessageIds
+                val liveTodayEpochDay = LocalSlockTimeContextProvider.current?.todayEpochDay
                 val dateDividerLabel =
                     remember(
                         previousMessage?.timestampLabel,
                         message.timestampLabel,
                         renderConfig.timeContext.localOffsetMinutes,
-                        renderConfig.timeContext.todayEpochDay,
-                        renderConfig.timeContext.nowEpochMillis
+                        liveTodayEpochDay
                     ) {
                         threadDateDividerLabel(
                             previous = previousMessage,
                             next = message,
-                            timeContext = renderConfig.timeContext
+                            timeContext = renderConfig.dateDividerTimeContext(liveTodayEpochDay)
                         )
                     }
                 Column(
@@ -15936,7 +15958,7 @@ private fun ThreadMessagesList(
                         if (isSystemMessage && actionCard == null) {
                             ThreadSystemMessageRow(
                                 message = displayMessage,
-                                timestampLabel = renderConfig.formatTimestampLabel(message.timestampLabel)
+                                timestampValue = message.timestampLabel
                             )
                         } else {
                             val translationUi =
@@ -15956,7 +15978,6 @@ private fun ThreadMessagesList(
                                 agentStatusResolver = agentStatusResolver,
                                 memberAvatarResolver = memberAvatarResolver,
                                 inlineReplyParticipantsById = inlineReplyParticipantsById,
-                                replyTimeContext = renderConfig.timeContext,
                                 focused = activeFocusedMessageId == message.id || activeInlineSearchMessageId == message.id,
                                 shareSelectionActive = shareSelectionActive,
                                 selectedForShare = message.id in selectedShareMessageIds,
@@ -16004,8 +16025,8 @@ private fun ThreadMessagesList(
                                 },
                                 showReactionAddAction = renderPayload.showReactionActions && !message.hasLocalSendState(),
                                 onOpenCommentHost = { onThreadEvent("openCommentHost", message.id, null, null) },
-                                timestampLabel = renderConfig.formatTimestampLabel(message.timestampLabel),
-                                compactTimestampLabel = renderConfig.formatCompactTimestampLabel(message.timestampLabel),
+                                timestampLabel = message.timestampLabel,
+                                compactTimestampLabel = renderConfig.formatCompactTimestampLabel(message),
                                 onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) },
                                 attachmentCommentsEnabled = attachmentCommentsEnabled,
                                 onOpenAttachmentComments = { onThreadEvent("openAttachmentComments", message.id, it, null) },
@@ -17157,6 +17178,12 @@ internal fun KuiklyThreadScreenPayload.toSlockTimeContext(): SlockTimeContext =
         timeFormat = timeFormat
     )
 
+internal fun KuiklyThreadScreenPayload.toSlockTimeCapabilities(): SlockTimeCapabilities =
+    SlockTimeCapabilities(
+        localOffsetMinutes = localOffsetMinutes,
+        timeFormat = timeFormat
+    )
+
 internal fun KuiklyThreadScreenPayload.formatTimestampLabel(value: String): String =
     formatSlockTimestampLabel(value, toSlockTimeContext())
 
@@ -17496,62 +17523,46 @@ private const val ThreadShareCaptureGeometryTolerancePx = 2f
 private val ThreadSystemMessageTimeColor = SlockColor.TextBlack.copy(alpha = 0.4f)
 private val ThreadSystemMessageBodyColor = SlockColor.TextBlack.copy(alpha = 0.5f)
 
-internal fun buildThreadSystemMessageAnnotatedBody(
-    systemBody: String,
-    timestampLabel: String
-): AnnotatedString =
-    buildAnnotatedString {
-        pushStyle(
-            SpanStyle(
-                color = ThreadSystemMessageTimeColor,
-                fontFamily = SlockMonoFamily
-            )
-        )
-        append(timestampLabel)
-        pop()
-        val body = systemBody.removePrefix(timestampLabel).trimStart()
-        if (body.isNotBlank()) {
-            append(" ")
-            pushStyle(SpanStyle(color = ThreadSystemMessageBodyColor))
-            append(body)
-            pop()
-        }
-    }
-
 @Composable
 private fun ThreadSystemMessageRow(
     message: KuiklyThreadMessageItem,
-    timestampLabel: String
+    timestampValue: String
 ) {
     var expanded by remember(message.id) { mutableStateOf(false) }
     val systemBody =
-        remember(message.body, message.metadata, message.systemEventType, timestampLabel, expanded) {
+        remember(message.body, message.metadata, message.systemEventType, expanded) {
             if (expanded) {
-                message.expandedSystemSummary(timestampLabel)
+                message.expandedSystemContent()
             } else {
-                message.collapsedSystemSummary(timestampLabel)
+                message.systemContentSummary()
             }
         }
-    val annotatedSystemBody =
-        remember(systemBody, timestampLabel) {
-            buildThreadSystemMessageAnnotatedBody(systemBody, timestampLabel)
-        }
-    Column(
+    Row(
         modifier =
             Modifier.fillMaxWidth()
                 .background(SlockColor.SurfaceWhite)
                 .clickable { expanded = !expanded }
                 .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Xs),
-        horizontalAlignment = Alignment.CenterHorizontally
+        verticalAlignment = Alignment.Top
     ) {
         Text(
-            text = annotatedSystemBody,
+            text = slockRelativeTimestampLabel(timestampValue),
+            style = SlockType.Caption.copy(color = ThreadSystemMessageTimeColor, fontFamily = SlockMonoFamily),
+            color = ThreadSystemMessageTimeColor,
+            textAlign = TextAlign.End,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.width(ThreadRelativeTimestampSlotWidthDp.dp)
+        )
+        Spacer(modifier = Modifier.width(SlockSpacing.Sm))
+        Text(
+            text = systemBody,
             style = SlockType.Caption.copy(color = ThreadSystemMessageBodyColor),
             color = ThreadSystemMessageBodyColor,
-            textAlign = TextAlign.Center,
+            textAlign = TextAlign.Start,
             maxLines = if (expanded) Int.MAX_VALUE else 1,
             overflow = if (expanded) TextOverflow.Clip else TextOverflow.Ellipsis,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.weight(1f)
         )
     }
 }
@@ -17771,7 +17782,6 @@ private fun ThreadMessageCard(
     isMessageListScrolling: () -> Boolean = { false },
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     inlineReplyParticipantsById: Map<String, KuiklyThreadMemberItem> = emptyMap(),
-    replyTimeContext: SlockTimeContext? = null,
     shareSelectionActive: Boolean = false,
     selectedForShare: Boolean = false,
     onToggleShareSelection: () -> Unit = {},
@@ -17790,8 +17800,6 @@ private fun ThreadMessageCard(
         } else {
             message.authorName
         }
-    val localizedTimestampLabel = localizedThreadTimestampLabel(timestampLabel)
-    val localizedCompactTimestampLabel = localizedThreadTimestampLabel(compactTimestampLabel)
     val pointerSessionKey = LocalThreadMessagePointerSessionKey.current
     val horizontalArrangement =
         if (alignOwnMessageRight) Arrangement.spacedBy(12.dp, Alignment.End) else Arrangement.spacedBy(12.dp)
@@ -17845,6 +17853,7 @@ private fun ThreadMessageCard(
     val showTimestampInHeader = !compactConsecutiveMessages || showAuthorChrome
     val showTimestampInAvatarSlot =
         compactConsecutiveMessages && !showAuthorChrome && pressed && compactTimestampLabel.isNotBlank()
+    val compactTimestampGutter = compactConsecutiveMessages
     val hasThreadAttachments = richContentEnabled && message.attachments.isNotEmpty()
     val showSavedBadge =
         shouldShowThreadMessageSavedBadge(
@@ -17968,7 +17977,10 @@ private fun ThreadMessageCard(
                         interactionIdentity = authorGestureIdentity,
                         showAvatar = showAuthorChrome,
                         showTimestamp = showTimestampInAvatarSlot,
-                        timestampLabel = localizedCompactTimestampLabel,
+                        compactTimestampGutter = compactTimestampGutter,
+                        timestampLabel = compactTimestampLabel,
+                        timestampAlignment = Alignment.TopStart,
+                        timestampTextAlign = TextAlign.Start,
                         avatarLabel = message.avatarLabel,
                         avatarWireValue = avatarWireValue,
                         status = agentStatus,
@@ -18035,7 +18047,7 @@ private fun ThreadMessageCard(
                                         )
                                     }
                                     if (showTimestampInHeader) {
-                                        ThreadMessageTimestampLabel(localizedTimestampLabel)
+                                        ThreadMessageTimestampLabel(timestampLabel)
                                     }
                                 }
                             }
@@ -18249,7 +18261,6 @@ private fun ThreadMessageCard(
                                                 presentation = presentation,
                                                 participantsById = inlineReplyParticipantsById,
                                                 memberAvatarResolver = memberAvatarResolver,
-                                                timeContext = replyTimeContext,
                                                 onOpenThread = { onOpenThread(message.id) }
                                             )
                                         }
@@ -18271,7 +18282,10 @@ private fun ThreadMessageCard(
                         interactionIdentity = authorGestureIdentity,
                         showAvatar = showAuthorChrome,
                         showTimestamp = showTimestampInAvatarSlot,
+                        compactTimestampGutter = compactTimestampGutter,
                         timestampLabel = compactTimestampLabel,
+                        timestampAlignment = Alignment.TopEnd,
+                        timestampTextAlign = TextAlign.End,
                         avatarLabel = message.avatarLabel,
                         avatarWireValue = avatarWireValue,
                         status = agentStatus,
@@ -20114,7 +20128,6 @@ private fun ThreadInlineRepliesSurface(
     presentation: ThreadInlineReplyPresentation,
     participantsById: Map<String, KuiklyThreadMemberItem>,
     memberAvatarResolver: SlockMemberAvatarResolver,
-    timeContext: SlockTimeContext?,
     onOpenThread: () -> Unit,
 ) {
     val replyRowHeight = threadInlineReplyRowHeightDp(LocalDensity.current.fontScale).dp
@@ -20171,7 +20184,6 @@ private fun ThreadInlineRepliesSurface(
                     reply = reply,
                     participant = participantsById[reply.senderId],
                     memberAvatarResolver = memberAvatarResolver,
-                    timeContext = timeContext,
                     rowHeight = replyRowHeight,
                 )
             }
@@ -20184,7 +20196,6 @@ private fun ThreadInlineReplyRow(
     reply: build.raft.app.network.sync.ReplyPreview,
     participant: KuiklyThreadMemberItem?,
     memberAvatarResolver: SlockMemberAvatarResolver,
-    timeContext: SlockTimeContext?,
     rowHeight: Dp,
 ) {
     val resolvedAvatar = rememberSlockMemberAvatarWireValue(memberAvatarResolver, reply.senderId)
@@ -20235,7 +20246,7 @@ private fun ThreadInlineReplyRow(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        val timeLabel = formatSlockTimestampLabel(reply.createdAt, timeContext)
+        val timeLabel = slockRelativeTimestampLabel(reply.createdAt)
         if (timeLabel.isNotBlank()) {
             Text(
                 text = timeLabel,
@@ -20554,21 +20565,11 @@ internal fun KuiklyThreadScreenPayload.threadReactionToggleTarget(
     )
 }
 
-internal fun KuiklyThreadMessageItem.collapsedSystemSummary(timestamp: String): String =
-    listOf(timestamp, body.sanitizeThreadSystemText())
-        .filter { it.isNotBlank() }
-        .joinToString(" ")
-
 internal fun KuiklyThreadMessageItem.systemContentSummary(): String =
     body.sanitizeThreadSystemText()
 
 internal fun KuiklyThreadMessageItem.expandedSystemContent(): String =
     listOf(systemContentSummary(), expandedSystemDetails())
-        .filter { it.isNotBlank() }
-        .joinToString("\n")
-
-internal fun KuiklyThreadMessageItem.expandedSystemSummary(timestamp: String): String =
-    listOf(collapsedSystemSummary(timestamp), expandedSystemDetails())
         .filter { it.isNotBlank() }
         .joinToString("\n")
 
@@ -21329,7 +21330,7 @@ private fun ThreadOriginCard(
                     if (displayOrigin.isSystemMessage() && originActionCard == null) {
                         ThreadSystemMessageRow(
                             message = displayOrigin,
-                            timestampLabel = renderConfig.formatTimestampLabel(origin.timestampLabel)
+                            timestampValue = origin.timestampLabel
                         )
                     } else {
                         ThreadMessageCard(
@@ -21366,7 +21367,7 @@ private fun ThreadOriginCard(
                             onShowReactionDetails = onShowReactionDetails,
                             showReactionAddAction = timelineSlice.showReactionActions && contentExtrasVisible,
                             onOpenCommentHost = { onThreadEvent("openCommentHost", origin.id, null, null) },
-                            timestampLabel = renderConfig.formatTimestampLabel(origin.timestampLabel),
+                            timestampLabel = origin.timestampLabel,
                             onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) },
                             attachmentCommentsEnabled = attachmentCommentsEnabled,
                             onOpenAttachmentComments = { onThreadEvent("openAttachmentComments", origin.id, it, null) },
@@ -21419,7 +21420,7 @@ private fun ThreadMessageAuthorSubtitle(description: String, modifier: Modifier 
 @Composable
 private fun ThreadMessageTimestampLabel(timestampLabel: String) {
     Text(
-        text = timestampLabel,
+        text = slockRelativeTimestampLabel(timestampLabel),
         style =
             SlockType.Caption.copy(
                 fontFamily = SlockMonoFamily,
@@ -21427,24 +21428,21 @@ private fun ThreadMessageTimestampLabel(timestampLabel: String) {
             ),
         color = SlockColor.TextBlack.copy(alpha = 0.4f),
         maxLines = 1,
-        overflow = TextOverflow.Ellipsis
+        overflow = TextOverflow.Ellipsis,
+        textAlign = TextAlign.End,
+        modifier = Modifier.width(ThreadRelativeTimestampSlotWidthDp.dp)
     )
 }
-
-@Composable
-private fun localizedThreadTimestampLabel(value: String): String =
-    if (value == "Now") {
-        stringResource(MR.strings.thread_timestamp_now)
-    } else {
-        value
-    }
 
 @Composable
 private fun ThreadMessageAvatarSlot(
     interactionIdentity: String,
     showAvatar: Boolean,
     showTimestamp: Boolean,
+    compactTimestampGutter: Boolean,
     timestampLabel: String,
+    timestampAlignment: Alignment,
+    timestampTextAlign: TextAlign,
     avatarLabel: String,
     avatarWireValue: String?,
     status: SlockAgentStatusIndicatorState?,
@@ -21453,15 +21451,10 @@ private fun ThreadMessageAvatarSlot(
     onClick: () -> Unit,
     onLongPress: () -> Unit = {}
 ) {
-    val slotHeight =
-        when {
-            showAvatar -> 40.dp
-            showTimestamp -> 18.dp
-            else -> 0.dp
-        }
+    val slotLayout = threadMessageMetadataSlotLayout(showAvatar, compactTimestampGutter, showTimestamp)
     Box(
-        modifier = Modifier.width(36.dp).height(slotHeight),
-        contentAlignment = Alignment.TopCenter
+        modifier = Modifier.width(slotLayout.widthDp.dp).height(slotLayout.heightDp.dp),
+        contentAlignment = timestampAlignment
     ) {
         when {
             showAvatar ->
@@ -21479,7 +21472,7 @@ private fun ThreadMessageAvatarSlot(
                         onLongPress = onLongPress
                     )
                 }
-            showTimestamp ->
+            slotLayout.timestampVisible ->
                 Text(
                     text = timestampLabel,
                     style =
@@ -21492,7 +21485,11 @@ private fun ThreadMessageAvatarSlot(
                     color = SlockColor.TextBlack.copy(alpha = 0.38f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.align(Alignment.TopCenter)
+                    textAlign = timestampTextAlign,
+                    modifier =
+                        Modifier
+                            .width(slotLayout.widthDp.dp)
+                            .align(timestampAlignment)
                 )
         }
     }
@@ -22711,11 +22708,13 @@ private fun ThreadForwardBundleCard(
                     )
                     item.timestampLabel.takeIf { it.isNotBlank() }?.let { timestamp ->
                         Text(
-                            text = timestamp,
+                            text = slockRelativeTimestampLabel(timestamp),
                             style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 10.sp, lineHeight = 13.sp),
                             color = SlockColor.TextMutedGray,
                             maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.End,
+                            modifier = Modifier.width(ThreadRelativeTimestampSlotWidthDp.dp)
                         )
                     }
                 }
