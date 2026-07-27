@@ -3298,6 +3298,11 @@ class SharedHomeStoreTest {
         assertEquals(8, after.snapshot.unreadTotal)
         assertEquals(8, after.baseSnapshot.channels.single().unreadCount)
         assertEquals(8, after.baseSnapshot.unreadTotal)
+        // withRealtimeMessagesForStream sets serverUnreadCounts[server.id] in the
+        // same copy, and applyRealtimeHomeEventLocally writes it back to top-level
+        // — the last unread write face must also increment from the frozen 7.
+        assertEquals(8, after.baseSnapshot.serverUnreadCounts["server-1"])
+        assertEquals(8, store.state.value.serverUnreadCounts["server-1"])
         assertEquals(8, store.state.value.appBadgeCount.count)
         scope.cancel()
     }
