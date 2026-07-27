@@ -8,6 +8,20 @@ internal actual fun slockPlatformSupportsKuiklyPullToRefreshItem(): Boolean = tr
 
 internal actual fun slockPlatformUsesNativeLucideIconRotation(): Boolean = true
 
+internal actual fun prepareSlockPlatformSnapshotConsumption() {
+    checkNotNull(androidXSnapshotDispatcherStarter) {
+        "AndroidX snapshot dispatcher must be installed before Kuikly page initialization"
+    }.invoke()
+}
+
+private var androidXSnapshotDispatcherStarter: (() -> Unit)? = null
+
+fun installSlockAndroidXSnapshotDispatcherStarter(starter: () -> Unit) {
+    androidXSnapshotDispatcherStarter = starter
+}
+
+internal actual fun slockPlatformConsumesSnapshotsFromKuikly(): Boolean = false
+
 internal actual fun slockPlatformAppShellChildPagePrewarmMode(): AppShellChildPagePrewarmMode =
     AppShellChildPagePrewarmMode.Canary
 

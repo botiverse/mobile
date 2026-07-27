@@ -4,6 +4,13 @@ internal expect fun slockPlatformSupportsKuiklyPullToRefreshItem(): Boolean
 
 internal expect fun slockPlatformUsesNativeLucideIconRotation(): Boolean
 
+// Android embeds official ComposeView surfaces in Kuikly pages. Kuikly's
+// compatibility contract requires its snapshot consumer to stay disabled in
+// that mixed runtime so only AndroidX dispatches apply notifications.
+internal expect fun prepareSlockPlatformSnapshotConsumption()
+
+internal expect fun slockPlatformConsumesSnapshotsFromKuikly(): Boolean
+
 // The common idle pipeline is shared by every platform. OHOS enables the full
 // measured prewarm set; Android/iOS run a one-controller canary until their
 // cold-tab CPU/frame/memory evidence justifies enabling the complete set.
