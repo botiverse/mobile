@@ -1937,6 +1937,16 @@ class SlockHomeComponentsTest {
                 hasPullToRefreshItem = false
             )
         )
+        assertEquals(
+            4,
+            membersLazyItemCount(
+                agents = agents,
+                humansCount = 2,
+                agentsExpanded = false,
+                humansExpanded = true,
+                showHumanDirectory = false
+            )
+        )
     }
 
     @Test

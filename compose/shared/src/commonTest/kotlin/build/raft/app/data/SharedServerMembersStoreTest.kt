@@ -304,10 +304,98 @@ class SharedServerMembersStoreTest {
 
         val entry = store.state.value.entryFor(ServerId("server-1"))
         assertEquals(SharedServerMembersLoadStatus.Idle, entry?.status)
-        val member = entry?.members?.single()
+        assertEquals(emptyList(), entry?.members)
+        val member = store.state.value.memberProfile(ServerId("server-1"), "agent-1")
         assertEquals("agent-1", member?.id?.value)
         assertEquals("https://cdn.slock.ai/agent.png", member?.avatarUrl)
         assertEquals(0, repository.getMembersCalls)
+    }
+
+    @Test
+    fun directMessageProfileSeedDoesNotExpandCanonicalServerDirectory() {
+        val store = SharedServerMembersStore(FakeMemberRepository())
+        val agent = member("agent-1", "Build Agent").copy(kind = MemberKind.Agent)
+        store.seed(MemberSnapshot(server("server-1"), listOf(member("self", "Self"), agent)))
+
+        store.seedProfiles(
+            serverId = ServerId("server-1"),
+            profiles = listOf(member("dm-peer", "DM Peer")),
+        )
+
+        assertEquals(
+            listOf("self", "agent-1"),
+            store.currentServerMembers(ServerId("server-1")).map { it.id.value },
+        )
+        assertEquals("DM Peer", store.state.value.memberProfile(ServerId("server-1"), "dm-peer")?.displayName)
+    }
+
+    @Test
+    fun channelMemberLoadDoesNotExpandCanonicalServerDirectory() = runBlocking {
+        val repository =
+            FakeMemberRepository().apply {
+                channelMembersByChannel["channel-1"] = listOf(member("channel-peer", "Channel Peer"))
+            }
+        val store = SharedServerMembersStore(repository)
+        store.seed(MemberSnapshot(server("server-1"), listOf(member("self", "Self"))))
+
+        assertIs<DataResult.Content<ChannelMemberSnapshot>>(
+            store.loadChannelMembers(ServerId("server-1"), ChannelId("channel-1"), force = true),
+        )
+
+        assertEquals(
+            listOf("self"),
+            store.currentServerMembers(ServerId("server-1")).map { it.id.value },
+        )
+        assertEquals(
+            listOf("channel-peer"),
+            store.currentChannelMembers(ServerId("server-1"), ChannelId("channel-1")).map { it.id.value },
+        )
+    }
+
+    @Test
+    fun hiddenHumanDirectoryReadEdgesExposeAgentsOnlyForMemberRole() = runBlocking {
+        val hiddenServer =
+            server("server-1").copy(
+                role = "member",
+                hideHumansFromMembers = true,
+            )
+        val agent = member("agent-1", "Build Agent").copy(kind = MemberKind.Agent)
+        val store = SharedServerMembersStore(FakeMemberRepository())
+        store.seed(
+            MemberSnapshot(
+                hiddenServer,
+                listOf(member("self", "Self"), member("other", "Other"), agent),
+            ),
+        )
+
+        assertEquals(listOf("agent-1"), store.currentServerMembers(ServerId("server-1")).map { it.id.value })
+        assertEquals(
+            listOf("agent-1"),
+            store.serverMembersEntryFlow(ServerId("server-1")).first().members.map { it.id.value },
+        )
+        assertEquals(1, store.currentServerMemberCount(ServerId("server-1")))
+        assertEquals(setOf("agent-1"), store.currentServerMemberProfilesById(ServerId("server-1")).keys)
+        assertEquals(
+            setOf("self", "other", "agent-1"),
+            store.currentKnownMemberProfilesById(ServerId("server-1")).keys,
+        )
+        assertEquals("Self", store.state.value.memberProfile(ServerId("server-1"), "self")?.displayName)
+    }
+
+    @Test
+    fun hiddenHumanDirectorySettingDoesNotHideHumansFromAdmins() {
+        val adminServer =
+            server("server-1").copy(
+                role = "admin",
+                hideHumansFromMembers = true,
+            )
+        val store = SharedServerMembersStore(FakeMemberRepository())
+        store.seed(MemberSnapshot(adminServer, listOf(member("admin", "Admin"), member("other", "Other"))))
+
+        assertEquals(
+            listOf("admin", "other"),
+            store.currentServerMembers(ServerId("server-1")).map { it.id.value },
+        )
     }
 
     @Test

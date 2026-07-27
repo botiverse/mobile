@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.base.putIfAbsent
 import build.raft.app.model.ChannelId
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberProfile
@@ -10,6 +11,7 @@ import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.avatarSlotResolution
+import build.raft.app.model.hidesHumanDirectoryForViewer
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -70,6 +72,15 @@ data class SharedServerChannelMembersSlice(
 
 data class SharedServerMembersState(
     val entriesByServerId: Map<String, SharedServerMembersEntry> = emptyMap(),
+    /**
+     * Conversation/profile metadata is not server-directory membership.
+     *
+     * Home DM peers and channel-local members may be visible in their owning
+     * conversation even when the server-wide human directory is hidden. Keep
+     * those profiles available to avatar/detail resolvers without unioning them
+     * into [entriesByServerId].
+     */
+    val profileCacheByServerId: Map<String, Map<String, MemberProfile>> = emptyMap(),
     val memberSuggestionSlices: Map<SharedMembersMentionScope, SharedMembersMemberSuggestionSlice> = emptyMap(),
     val channelMemberSlices: Map<SharedServerChannelMembersScope, SharedServerChannelMembersSlice> = emptyMap()
 ) {
@@ -80,14 +91,23 @@ data class SharedServerMembersState(
         serverId: ServerId,
         mentionChannelId: String? = null,
         memberScopedMentions: Boolean = false
-    ): SharedMembersMemberSuggestionSlice =
-        memberSuggestionSlices[
-            SharedMembersMentionScope(
-                serverId = serverId.value.trim(),
-                mentionChannelId = mentionChannelId.normalizedServerMembersId(),
-                memberScopedMentions = memberScopedMentions
-            )
-        ] ?: SharedMembersMemberSuggestionSlice()
+    ): SharedMembersMemberSuggestionSlice {
+        val serverKey = serverId.value.trim()
+        val channelKey = mentionChannelId.normalizedServerMembersId()
+        val slice =
+            memberSuggestionSlices[
+                SharedMembersMentionScope(
+                    serverId = serverKey,
+                    mentionChannelId = channelKey,
+                    memberScopedMentions = memberScopedMentions
+                )
+            ] ?: SharedMembersMemberSuggestionSlice()
+        return if (channelKey == null && entriesByServerId[serverKey]?.server.hidesHumanDirectoryFromViewer()) {
+            slice.copy(suggestions = slice.suggestions.filter { it.kind == MemberKind.Agent })
+        } else {
+            slice
+        }
+    }
 
     fun channelMemberSlice(
         serverId: ServerId,
@@ -125,6 +145,11 @@ data class SharedServerMembersState(
                     .filter { cleanServerId == null || it.serverId?.trim() == cleanServerId }
                     .flatMap { it.members.asSequence() }
                     .firstOrNull { it.kind == MemberKind.Agent && it.id.value.trim() == cleanMemberId }
+                ?: profileCacheByServerId
+                    .asSequence()
+                    .filter { cleanServerId == null || it.key == cleanServerId }
+                    .mapNotNull { it.value[cleanMemberId] }
+                    .firstOrNull { it.kind == MemberKind.Agent }
         // task #136: presence facts live ONLY in the process registry — the
         // state carries rosters; status reads go through the store's
         // registry-backed APIs (memberStatusFlow / memberStatus).
@@ -151,7 +176,12 @@ data class SharedServerMembersState(
                 .asSequence()
                 .filter { cleanServerId == null || it.serverId?.trim() == cleanServerId }
                 .flatMap { it.members.asSequence() }
-                    .firstOrNull { it.id.value.trim() == cleanMemberId }
+                .firstOrNull { it.id.value.trim() == cleanMemberId }
+            ?: profileCacheByServerId
+                .asSequence()
+                .filter { cleanServerId == null || it.key == cleanServerId }
+                .mapNotNull { it.value[cleanMemberId] }
+                .firstOrNull()
     }
 
     fun canonicalMentionHandle(
@@ -179,7 +209,7 @@ data class SharedServerMembersState(
                 ?.firstOrNull()
         if (channelHandle != null) return channelHandle
         return entriesByServerId[cleanServerId]
-            ?.members
+            ?.visibleDirectoryMembers()
             ?.asSequence()
             ?.filter { member -> member.id.value.trim() == cleanMemberId }
             ?.mapNotNull { member -> member.handle.canonicalServerMembersMentionHandle(member.id.value) }
@@ -211,6 +241,20 @@ private fun SharedServerMembersState.scopedMemberProfile(
         ?.members
         ?.firstOrNull { it.id.value.trim() == memberId }
         ?: channelMemberProfile(serverId, memberId)
+        ?: profileCacheByServerId[serverId.value.trim()]?.get(memberId)
+
+private fun ServerSummary?.hidesHumanDirectoryFromViewer(): Boolean =
+    this?.hidesHumanDirectoryForViewer() == true
+
+private fun SharedServerMembersEntry.visibleDirectoryMembers(): List<MemberProfile> =
+    if (server.hidesHumanDirectoryFromViewer()) {
+        members.filter { it.kind == MemberKind.Agent }
+    } else {
+        members
+    }
+
+private fun SharedServerMembersEntry.visibleDirectoryEntry(): SharedServerMembersEntry =
+    if (server.hidesHumanDirectoryFromViewer()) copy(members = visibleDirectoryMembers()) else this
 
 private fun MemberProfile?.toSharedServerMemberStatus(
     presenceFact: MemberPresenceUpdated?
@@ -308,6 +352,7 @@ class SharedServerMembersStore internal constructor(
             state
                 .map { current ->
                     current.entryFor(serverId)
+                        ?.visibleDirectoryEntry()
                         ?: SharedServerMembersEntry(serverId = serverId.value.trim())
                 }
                 .distinctUntilChanged()
@@ -322,16 +367,34 @@ class SharedServerMembersStore internal constructor(
     }
 
     fun currentServerMembers(serverId: ServerId): List<MemberProfile> =
-        _state.value.entryFor(serverId)?.members.orEmpty()
+        _state.value.entryFor(serverId)?.visibleDirectoryMembers().orEmpty()
             .withServerMemberPresenceFacts(presenceFactsNow(serverId))
 
     fun currentServerMemberCount(serverId: ServerId): Int =
-        _state.value.entryFor(serverId)?.members.orEmpty().size
+        currentServerMembers(serverId).size
 
     fun currentServerMemberProfilesById(serverId: ServerId): Map<String, MemberProfile> =
         currentServerMembers(serverId)
             .filter { it.id.value.trim().isNotBlank() }
             .associateBy { it.id.value.trim() }
+
+    /** Profiles already disclosed by an owning conversation or directory response. */
+    fun currentKnownMemberProfilesById(serverId: ServerId): Map<String, MemberProfile> =
+        buildMap {
+            currentServerMembers(serverId).forEach { member ->
+                member.id.value.trim().takeIf { it.isNotBlank() }?.let { put(it, member) }
+            }
+            _state.value.channelMemberSlices.values
+                .asSequence()
+                .filter { it.serverId?.trim() == serverId.value.trim() }
+                .flatMap { it.members.asSequence() }
+                .forEach { member ->
+                    member.id.value.trim().takeIf { it.isNotBlank() }?.let { put(it, member) }
+                }
+            _state.value.profileCacheByServerId[serverId.value.trim()].orEmpty().forEach { (memberId, member) ->
+                putIfAbsent(memberId, member)
+            }
+        }
 
     fun currentChannelMembers(
         serverId: ServerId,
@@ -359,7 +422,7 @@ class SharedServerMembersStore internal constructor(
         val server = entry?.server ?: fallbackServer ?: return null
         return MemberSnapshot(
             server = server,
-            members = entry?.members.orEmpty().withServerMemberPresenceFacts(presenceFactsNow(serverId))
+            members = entry?.visibleDirectoryMembers().orEmpty().withServerMemberPresenceFacts(presenceFactsNow(serverId))
         )
     }
 
@@ -454,11 +517,12 @@ class SharedServerMembersStore internal constructor(
                         if (rosterMember != null) {
                             flowOf(rosterMember)
                         } else {
-                            // A channel-local slice can arrive before the full server roster.
-                            // Keep that fallback until the roster contains this member, while
-                            // keeping normal Members rows off the whole-state hot path.
+                            // Conversation/profile metadata can arrive before the canonical
+                            // server directory. Observe that scoped cache without turning it
+                            // into directory membership; normal Members rows remain on the
+                            // narrow entry flow once the roster contains this member.
                             state
-                                .map { current -> current.channelMemberProfile(serverId, memberId) }
+                                .map { current -> current.scopedMemberProfile(serverId, memberId) }
                                 .distinctUntilChanged()
                         }
                     }
@@ -468,15 +532,17 @@ class SharedServerMembersStore internal constructor(
     fun seed(snapshot: MemberSnapshot) {
         val key = snapshot.server.id.value.trim()
         if (key.isBlank()) return
+        val directoryMembers =
+            snapshot.members
+                .filterServerRosterMembers(key)
+                .filterDeletedAgents(key)
+        cacheProfiles(key, directoryMembers)
         putEntry(
             key,
             SharedServerMembersEntry(
                 serverId = key,
                 server = snapshot.server,
-                members =
-                    snapshot.members
-                        .filterServerRosterMembers(key)
-                        .filterDeletedAgents(key),
+                members = directoryMembers,
                 status = SharedServerMembersLoadStatus.Loaded,
                 errorCode = null
             )
@@ -490,27 +556,42 @@ class SharedServerMembersStore internal constructor(
     ) {
         val key = serverId.value.trim()
         if (key.isBlank() || profiles.isEmpty()) return
-        val current = _state.value
-        val previous = current.entriesByServerId[key]
-        val merged = LinkedHashMap<String, MemberProfile>()
-        previous?.members.orEmpty().forEach { member ->
-            merged[member.id.value.trim()] = member
-        }
-        profiles
+        val eligibleProfiles =
+            profiles
             .filter { it.id.value.trim().isNotBlank() }
             .filterServerRosterMembers(key)
             .filterNot { it.isDeletedAgentProfile(key) }
-            .forEach { profile ->
-                val profileKey = profile.id.value.trim()
-                merged[profileKey] = merged[profileKey]?.mergeSeedProfile(profile) ?: profile
+        if (eligibleProfiles.isEmpty()) return
+        cacheProfiles(key, eligibleProfiles)
+        val previous = _state.value.entriesByServerId[key]
+        val incomingById = eligibleProfiles.associateBy { it.id.value.trim() }
+        val enrichedDirectory =
+            previous?.members.orEmpty().map { member ->
+                incomingById[member.id.value.trim()]?.let(member::mergeSeedProfile) ?: member
             }
         putEntry(
             key,
             (previous ?: SharedServerMembersEntry(serverId = key)).copy(
                 server = previous?.server ?: server,
-                members = merged.values.toList()
+                members = enrichedDirectory
             )
         )
+    }
+
+    private fun cacheProfiles(key: String, profiles: List<MemberProfile>) {
+        if (key.isBlank() || profiles.isEmpty()) return
+        val current = _state.value
+        val merged = current.profileCacheByServerId[key].orEmpty().toMutableMap()
+        profiles.forEach { profile ->
+            val profileKey = profile.id.value.trim()
+            if (profileKey.isNotBlank()) {
+                merged[profileKey] = merged[profileKey]?.mergeSeedProfile(profile) ?: profile
+            }
+        }
+        _state.value =
+            current.copy(
+                profileCacheByServerId = current.profileCacheByServerId + (key to merged)
+            )
     }
 
     fun removeMember(
@@ -571,6 +652,18 @@ class SharedServerMembersStore internal constructor(
                     }
                 }
             }
+        val nextProfileCache =
+            current.profileCacheByServerId[serverKey]
+                ?.let { cache ->
+                    val cached = cache[memberKey]
+                    if (cached != null && (memberKind == null || cached.kind == memberKind)) {
+                        changed = true
+                        current.profileCacheByServerId + (serverKey to (cache - memberKey))
+                    } else {
+                        current.profileCacheByServerId
+                    }
+                }
+                ?: current.profileCacheByServerId
         // task #136: presence lives only in the registry — evict the deleted
         // member's fact from THIS server's owner partition (never cross-server).
         presenceOwner(serverId)?.let { owner -> presenceRegistry.evict(owner, memberKey) }
@@ -578,6 +671,7 @@ class SharedServerMembersStore internal constructor(
         _state.value =
             current.copy(
                 entriesByServerId = nextEntries,
+                profileCacheByServerId = nextProfileCache,
                 memberSuggestionSlices = nextSuggestionSlices,
                 channelMemberSlices = nextChannelSlices
             )
@@ -879,6 +973,7 @@ class SharedServerMembersStore internal constructor(
                                             .filterDeletedAgents(normalizedKey)
 
                                 )
+                            cacheProfiles(normalizedKey, snapshot.members)
                             putEntry(
                                 normalizedKey,
                                 SharedServerMembersEntry(
@@ -1580,7 +1675,8 @@ class SharedServerMembersStore internal constructor(
     private fun removeEntry(key: String) {
         _state.value =
             _state.value.copy(
-                entriesByServerId = _state.value.entriesByServerId - key
+                entriesByServerId = _state.value.entriesByServerId - key,
+                profileCacheByServerId = _state.value.profileCacheByServerId - key,
             )
     }
 

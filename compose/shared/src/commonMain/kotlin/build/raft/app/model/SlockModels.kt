@@ -26,7 +26,8 @@ data class ServerSummary(
     val description: String? = null,
     val avatarUrl: String? = null,
     val unreadCount: Int = 0,
-    val permissions: ServerPermissions = ServerPermissions()
+    val permissions: ServerPermissions = ServerPermissions(),
+    val hideHumansFromMembers: Boolean = false
 )
 
 @Serializable
@@ -44,6 +45,9 @@ internal fun serverPermissionsForRole(role: String?): ServerPermissions {
         canManageMachines = canAdministerServer
     )
 }
+
+fun ServerSummary.hidesHumanDirectoryForViewer(): Boolean =
+    hideHumansFromMembers && role != "owner" && role != "admin"
 
 // Conversation Models
 @Serializable

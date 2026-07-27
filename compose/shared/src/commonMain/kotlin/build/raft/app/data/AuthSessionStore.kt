@@ -424,6 +424,7 @@ data class StoredAuthServer(
             onboardingAgentId = onboardingAgentId,
             description = slug?.let { "/$it" },
             avatarUrl = avatarUrl,
+            hideHumansFromMembers = hideHumansFromMembers,
             permissions = serverPermissionsForRole(role)
         )
 }
