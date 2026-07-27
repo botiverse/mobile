@@ -20051,10 +20051,27 @@ internal data class ThreadInlineReplyPresentation(
     val replyCount: Int,
     val unreadCount: Int,
     val hasDraft: Boolean,
+)
+
+/**
+ * Header label for the inline-replies surface: ALWAYS the authoritative total, never
+ * total-minus-visible previews. The retired "View N earlier replies" branch subtracted the
+ * visible rows, which read as if only the undisplayed remainder existed (Web #5486 / cindyz
+ * ruling: always show `n replies`, n = total reply count).
+ */
+internal data class ThreadInlineReplyCountLabel(
+    val kind: Kind,
+    val count: Int,
 ) {
-    val undisplayedReplyCount: Int
-        get() = (replyCount - replies.size).coerceAtLeast(0)
+    enum class Kind { One, Many }
 }
+
+internal fun ThreadInlineReplyPresentation.countLabel(): ThreadInlineReplyCountLabel =
+    if (replyCount == 1) {
+        ThreadInlineReplyCountLabel(ThreadInlineReplyCountLabel.Kind.One, 1)
+    } else {
+        ThreadInlineReplyCountLabel(ThreadInlineReplyCountLabel.Kind.Many, replyCount)
+    }
 
 internal fun threadInlineReplyPresentation(
     model: ThreadRepliesReadModel?,
@@ -20103,16 +20120,13 @@ private fun ThreadInlineRepliesSurface(
     val replyRowHeight = threadInlineReplyRowHeightDp(LocalDensity.current.fontScale).dp
     val hoverInteractionSource = remember { MutableInteractionSource() }
     val isHovered by hoverInteractionSource.collectIsHoveredAsState()
+    val countLabelSpec = presentation.countLabel()
     val countLabel =
-        if (presentation.replyCount > build.raft.app.network.sync.InlineThreadReplyPreviewLimit) {
-            stringResource(
-                MR.strings.thread_inline_earlier_replies,
-                presentation.undisplayedReplyCount,
-            )
-        } else if (presentation.replyCount == 1) {
-            stringResource(MR.strings.thread_inline_reply_count_one)
-        } else {
-            stringResource(MR.strings.thread_inline_reply_count_many, presentation.replyCount)
+        when (countLabelSpec.kind) {
+            ThreadInlineReplyCountLabel.Kind.One ->
+                stringResource(MR.strings.thread_inline_reply_count_one)
+            ThreadInlineReplyCountLabel.Kind.Many ->
+                stringResource(MR.strings.thread_inline_reply_count_many, countLabelSpec.count)
         }
     val unreadLabel =
         presentation.unreadCount.takeIf { it > 0 }?.let { count ->

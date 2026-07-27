@@ -132,9 +132,74 @@ class ThreadInlineRepliesTest {
 
         assertEquals(listOf("r-2", "r-3", "r-4"), presentation.replies.map { it.messageId })
         assertEquals(9, presentation.replyCount)
-        assertEquals(6, presentation.undisplayedReplyCount)
+        assertEquals(
+            ThreadInlineReplyCountLabel(ThreadInlineReplyCountLabel.Kind.Many, 9),
+            presentation.countLabel(),
+        )
         assertEquals(2, presentation.unreadCount)
         assertEquals(true, presentation.hasDraft)
+    }
+
+    @Test
+    fun countLabelIsAlwaysTheAuthoritativeTotalNeverTotalMinusVisiblePreviews() {
+        // 3 visible rows of a 9-total thread: label must stay the full total 9. The retired
+        // "earlier replies" branch derived 9 - 3 = 6; that mutation must fail here.
+        val overflow =
+            assertNotNull(
+                threadInlineReplyPresentation(
+                    model =
+                        initialThreadRepliesReadModel(
+                            replies = (1L..9L).map { reply("r-$it", it) },
+                            replyCount = 9,
+                            limit = 3,
+                        ),
+                    replyMetadata = metadata(replyCount = 9),
+                    hasDraft = false,
+                )
+            )
+        assertEquals(3, overflow.replies.size)
+        assertEquals(
+            ThreadInlineReplyCountLabel(ThreadInlineReplyCountLabel.Kind.Many, 9),
+            overflow.countLabel(),
+        )
+
+        // Fully visible thread (3 of 3): same total label, no special branch.
+        val exact =
+            assertNotNull(
+                threadInlineReplyPresentation(
+                    model =
+                        initialThreadRepliesReadModel(
+                            replies = (1L..3L).map { reply("r-$it", it) },
+                            replyCount = 3,
+                            limit = 3,
+                        ),
+                    replyMetadata = metadata(replyCount = 3),
+                    hasDraft = false,
+                )
+            )
+        assertEquals(
+            ThreadInlineReplyCountLabel(ThreadInlineReplyCountLabel.Kind.Many, 3),
+            exact.countLabel(),
+        )
+
+        // Single reply keeps the singular key.
+        val single =
+            assertNotNull(
+                threadInlineReplyPresentation(
+                    model =
+                        initialThreadRepliesReadModel(
+                            replies = listOf(reply("r-1", 1)),
+                            replyCount = 1,
+                            limit = 3,
+                        ),
+                    replyMetadata = metadata(replyCount = 1),
+                    hasDraft = false,
+                )
+            )
+        assertEquals(
+            ThreadInlineReplyCountLabel(ThreadInlineReplyCountLabel.Kind.One, 1),
+            single.countLabel(),
+        )
     }
 
     @Test
