@@ -195,6 +195,34 @@ class HomeDataSourceTest {
     }
 
     @Test
+    fun appUpdateNotificationUsesTransactionStateInsteadOfLocalizedHostLabels() {
+        val ready =
+            SharedSettingsUpdateCheckSnapshot(
+                supported = true,
+                transactionState = SharedSettingsUpdateTransactionState.ReadyToInstall,
+                statusLabel = "已准备好",
+                actionLabel = "立即安装",
+                updateAvailable = true,
+                currentVersionCode = 1_000_000L,
+                latestVersionCode = 1_000_100L
+            ).toSharedHomeAppUpdateNotification()
+        val downloading =
+            SharedSettingsUpdateCheckSnapshot(
+                supported = true,
+                transactionState = SharedSettingsUpdateTransactionState.Patching,
+                statusLabel = "准备中",
+                updateAvailable = true,
+                currentVersionCode = 1_000_000L,
+                latestVersionCode = 1_000_100L
+            ).toSharedHomeAppUpdateNotification()
+
+        assertEquals("Install", ready?.actionLabel)
+        assertTrue(ready?.actionLabelDesc != null)
+        assertEquals("Downloading", downloading?.actionLabel)
+        assertTrue(downloading?.actionLabelDesc != null)
+    }
+
+    @Test
     fun loadNotificationsSkipsAppUpdateWhenLatestCodeDoesNotBeatCurrentCode() = runBlocking {
         val source =
             SharedHomeDataSource(

@@ -99,6 +99,36 @@ class BridgeSettingsSnapshotParserTest {
         assertEquals(markdown, update.latestChangelog)
     }
 
+    @Test
+    fun developerParsesHandsTransactionStateWithoutTrustingDisplayLabels() {
+        val response =
+            JSONObject()
+                .put("status", "ok")
+                .put("updateTransactionState", "ready_to_install")
+                .put("updateTransactionTargetVersionCode", 1_000_011L)
+                .put("updateTransactionRetryable", true)
+                .put("updateCheckStatusLabel", "已准备好")
+
+        val update = response.toDeveloperSnapshot().updateCheck
+
+        assertEquals(SharedSettingsUpdateTransactionState.ReadyToInstall, update.transactionState)
+        assertEquals(1_000_011L, update.transactionTargetVersionCode)
+        assertTrue(update.transactionRetryable)
+        assertEquals("已准备好", update.statusLabel)
+    }
+
+    @Test
+    fun developerFailsUnknownHandsTransactionStateClosedToLegacyMapping() {
+        val update =
+            JSONObject()
+                .put("status", "ok")
+                .put("updateTransactionState", "future_state")
+                .toDeveloperSnapshot()
+                .updateCheck
+
+        assertEquals(SharedSettingsUpdateTransactionState.Unknown, update.transactionState)
+    }
+
     private fun storageRowsJson(target: String): JSONArray =
         JSONArray().apply {
             put(

@@ -1266,10 +1266,13 @@
     <string name="app_update_retry">Retry</string>
     <string name="app_locale_request_tag">en</string>
     <string name="app_update_working">Working...</string>
+    <string name="app_update_checking">Checking</string>
+    <string name="app_update_preparing">Preparing</string>
     <string name="app_update_download">Download</string>
     <string name="app_update_downloading">Downloading</string>
     <string name="app_update_installing">Installing</string>
     <string name="app_update_install">Install</string>
+    <string name="app_update_installed">Installed</string>
     <string name="app_update_unavailable">Update information is temporarily unavailable.</string>
     <string name="app_update_detail_available_with_size">Raft has an update (%1$s APK).</string>
     <string name="app_update_detail_available">Raft has an update.</string>

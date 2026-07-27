@@ -188,6 +188,9 @@ data class SharedSettingsDeveloperSnapshot(
 
 data class SharedSettingsUpdateCheckSnapshot(
     val supported: Boolean = false,
+    val transactionState: SharedSettingsUpdateTransactionState = SharedSettingsUpdateTransactionState.Unknown,
+    val transactionTargetVersionCode: Long = 0L,
+    val transactionRetryable: Boolean = false,
     val statusLabel: String = "",
     val detail: String = "",
     val actionLabel: String = "",
@@ -201,6 +204,26 @@ data class SharedSettingsUpdateCheckSnapshot(
     val checkedAtLabel: String = "",
     val errorCode: String = ""
 )
+
+enum class SharedSettingsUpdateTransactionState(val wireValue: String) {
+    Unknown(""),
+    Idle("idle"),
+    Checking("checking"),
+    Patching("patching"),
+    Downloading("downloading"),
+    ReadyToInstall("ready_to_install"),
+    InstallerOpened("installer_opened"),
+    Failed("failed"),
+    Stale("stale"),
+    Installed("installed");
+
+    companion object {
+        fun fromWire(value: String?): SharedSettingsUpdateTransactionState =
+            entries.firstOrNull { state ->
+                state != Unknown && state.wireValue == value?.trim()?.lowercase()
+            } ?: Unknown
+    }
+}
 
 data class SharedSettingsApiEnvironmentOption(
     val key: String,
