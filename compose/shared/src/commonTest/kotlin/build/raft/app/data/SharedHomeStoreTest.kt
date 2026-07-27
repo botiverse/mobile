@@ -3228,6 +3228,81 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun unavailableUnreadKeepsCurrentServerRealtimeBaselineRowAggregateAndBadge() = runBlocking {
+        // task #831 blocker (current-server write boundary): the delayed clobber
+        // lived in applyRealtimeHomeEventLocally, which pushes the new message
+        // through content.baseSnapshot.withRealtimeMessages(...) then writes the
+        // row/unreadTotal/server-count/badge back to top-level. If the frozen
+        // baseSnapshot had been zeroed, a current-server message would increment
+        // from 0 (→1). With unread frozen to prior 7, it must increment to 8.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val serverId = ServerId("server-1")
+        val availableWithRowUnread =
+            sampleHome(serverId).copy(
+                channels = listOf(channel("channel-1", "general").copy(unreadCount = 7, unreadCountKnown = true)),
+                unreadTotal = 7,
+                unreadSource = AppBadgeSource.SERVER_UNREAD_SUMMARY,
+                serverUnreadCounts = mapOf("server-1" to 7),
+                unreadEnrichmentAvailable = true
+            )
+        val unavailable =
+            sampleHome(serverId).copy(
+                channels = listOf(channel("channel-1", "general")),
+                unreadTotal = 0,
+                unreadSource = AppBadgeSource.CHANNEL_DM_FALLBACK,
+                serverUnreadCounts = emptyMap(),
+                unreadEnrichmentAvailable = false
+            )
+        val snapshots = listOf(availableWithRowUnread, unavailable)
+        var index = 0
+        val dataSource =
+            SharedHomeDataSource(
+                sessionStore = sessionStore,
+                api = RecordingHomeApi(),
+                parseHome = { _, _ -> DataResult.Content(snapshots[minOf(index++, snapshots.lastIndex)]) }
+            )
+        val store = SharedHomeStore(authStore = sessionStore, dataSource = dataSource, scope = scope)
+
+        store.accept(SharedHomeIntent.Start)
+        assertEquals(7, (store.state.value.content as SharedHomeContentState.Content).snapshot.channels.single().unreadCount)
+        assertEquals(7, store.state.value.appBadgeCount.count)
+
+        store.accept(SharedHomeIntent.Refresh)
+        val frozen = store.state.value.content as SharedHomeContentState.Content
+        assertEquals(7, frozen.baseSnapshot.channels.single().unreadCount)
+        assertEquals(7, frozen.baseSnapshot.unreadTotal)
+        assertEquals(7, store.state.value.appBadgeCount.count)
+
+        // Current-server realtime message: increments from the frozen 7, not 0.
+        val peer = sampleMember().copy(id = MemberId("member-2"), displayName = "Peer")
+        store.accept(
+            SharedHomeIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event =
+                    MessageNew(
+                        Message(
+                            id = MessageId("rt-unread-8"),
+                            threadId = ThreadId("channel-1"),
+                            channelId = ChannelId("channel-1"),
+                            seq = 8,
+                            author = peer,
+                            timestampLabel = "12:03",
+                            body = "live current-server update",
+                        )
+                    )
+            )
+        )
+        val after = store.state.value.content as SharedHomeContentState.Content
+        assertEquals(8, after.snapshot.channels.single().unreadCount)
+        assertEquals(8, after.snapshot.unreadTotal)
+        assertEquals(8, after.baseSnapshot.channels.single().unreadCount)
+        assertEquals(8, after.baseSnapshot.unreadTotal)
+        assertEquals(8, store.state.value.appBadgeCount.count)
+        scope.cancel()
+    }
+
+    @Test
     fun appBadgeSourceIsDisabledOnServerSwitch() = runBlocking {
         // Server switch must immediately clear the badge to DISABLED with
         // count = 0 so the host stops showing a stale count from the
