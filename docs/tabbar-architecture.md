@@ -107,7 +107,9 @@ Different platforms need different tap containment:
 - **iOS `UITabBar`** consumes touches within its own bounds — no extra work.
   (The previous hand-rolled dock relied on a `pointInside:` override; the real
   `UITabBar` makes that unnecessary.)
-- **Android** native view consumes its own touches.
+- **Android** `AndroidFloating` and `SharedCompose` are both shared Kuikly
+  renderers. Their standard Compose hit testing consumes tab-item taps; there
+  is no Android native tab-bar view or separate native touch path.
 - **OHOS is the tricky one.** Custom native views are hosted by
   `KRForwardArkTSView`, which the Kuikly OHOS renderer initializes with
   `ARKUI_HIT_TEST_MODE_TRANSPARENT` ("ForwardArkTSView 不会遮挡同层级事件").

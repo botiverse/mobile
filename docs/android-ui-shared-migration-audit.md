@@ -88,6 +88,27 @@ callers. Future chevrons should use Lucide `chevron-down` through shared route
 components, or through the temporary generated Android Lucide bridge only while
 a legacy native route still exists.
 
+## 2026-07-27 Lucide Migration Closure
+
+The Android `ImageVector` bridge described in the dated sections above is now
+retired. Those sections remain as migration history, but their instructions to
+keep `ui/icons/LucideIcons.kt` are superseded.
+
+Current Android product rendering uses:
+
+- the shared `SlockLucideIcon` contract and generated icon-name inventory;
+- the pinned generated Android path registry under `shared/generated`;
+- one native Canvas render view that parses each path and paint once into a
+  first-use cache, then draws without Compose, `ImageVector`, or per-frame path
+  and paint parsing.
+
+`compose/androidApp/src/main/java/build/raft/app/ui/icons/LucideIcons.kt` has
+been deleted. Android production inventory must remain free of `ComposeView`,
+`ImageVector`, `LucideIcons`, and `androidx.compose.ui.graphics.vector` icon
+runtime dependencies. Do not restore the old bridge for legacy routes or tests;
+route all product Lucide rendering through the shared contract and native
+Canvas adapter.
+
 ### Current Runtime Callers To Remove Or Replace
 
 These are the main remaining runtime roots that keep Android product theme alive:
@@ -151,7 +172,8 @@ The Android `compose/androidApp/src/main/java/build/raft/app/ui` tree still cont
 
 - `ui/theme`: native Material theme, Android font resources, hard-shadow helpers, colors, spacing, stroke, radius, size.
 - `ui/components`: native buttons, text fields, bottom tab/scaffold, feedback states, modals, member/task/thread widgets, pull refresh, previews.
-- `ui/icons`: generated Android `ImageVector` Lucide icon set.
+- `ui/icons`: the generated Android `ImageVector` set is retired; Lucide product
+  icons use the shared contract plus generated Android paths/native Canvas.
 - `ui/system`: Android status-bar color helper.
 
 Shared already has equivalents for the long-term product path:
@@ -224,7 +246,9 @@ These are platform/host-specific and should not move into common UI:
 - `ui/system/SystemBarColor.kt`: Android status-bar side effect. Shared should request safe area/status treatment through host capability/pageData, not own Android window APIs.
 - Android `SlockTheme`: can remain only for legacy/native fallback screens and connected Android component tests. Product shared shell should not depend on MaterialTheme.
 - Android font resource binding in `Type.kt`: shared uses Kuikly font declarations in `SlockDesignTokens.kt`; Android resources are platform fallback.
-- `ui/icons/LucideIcons.kt`: keep only while native Android legacy/test UI still uses `ImageVector`; product shared path should use `SlockLucideIcon`.
+- `ui/icons/LucideIcons.kt`: retired and deleted; do not restore it. Native
+  Android legacy/test paths must use `SlockLucideIcon` and the native Canvas
+  adapter.
 
 ### Still Blocking Full Removal
 
