@@ -188,23 +188,38 @@ function classifyPhotoPicker(nodes) {
 // Cancel and Done are small TOP nodes; exact Photos + Collections are a small
 // same-row tab pair of similar height (the fullscreen "Photos" window node
 // does NOT count); exact Select Photos is a small BOTTOM node.
-function hasIos26PickerChrome(nodes) {
+function chromeGeometry(nodes) {
   const maxW = Math.max(...nodes.map((n) => n.x2));
   const maxH = Math.max(...nodes.map((n) => n.y2));
   const small = (n) => (n.x2 - n.x1) <= maxW * 0.5 && (n.y2 - n.y1) <= maxH * 0.25;
-  const smallTop = (n) => small(n) && n.y2 <= maxH * 0.25;
-  const smallBottom = (n) => small(n) && n.y1 >= maxH * 0.75;
-  const exact = (re) => nodes.filter((n) => re.test(n.label.trim()));
+  return {
+    smallTop: (n) => small(n) && n.y2 <= maxH * 0.25,
+    smallBottom: (n) => small(n) && n.y1 >= maxH * 0.75,
+  };
+}
 
-  if (!exact(/^cancel$/i).some(smallTop)) return false;
-  if (!exact(/^done$/i).some(smallTop)) return false;
-  if (!exact(/^select photos$/i).some(smallBottom)) return false;
-  const photosTabs = exact(/^photos$/i).filter(smallTop);
-  const collectionsTabs = exact(/^collections$/i).filter(smallTop);
+function exactNodes(nodes, re) {
+  return nodes.filter((n) => re.test(String(n.label ?? "").trim()));
+}
+
+// Shared top chrome: exact Cancel as a small top node + the Photos/
+// Collections small same-row tab pair (used by both the unselected and the
+// selected iOS 26 picker contracts).
+function hasIos26TopChrome(nodes, geo) {
+  if (!exactNodes(nodes, /^cancel$/i).some(geo.smallTop)) return false;
+  const photosTabs = exactNodes(nodes, /^photos$/i).filter(geo.smallTop);
+  const collectionsTabs = exactNodes(nodes, /^collections$/i).filter(geo.smallTop);
   return photosTabs.some((p) => collectionsTabs.some((c) => (
     Math.abs(p.y1 - c.y1) <= 24
     && Math.abs((p.y2 - p.y1) - (c.y2 - c.y1)) <= 24
   )));
+}
+
+function hasIos26PickerChrome(nodes) {
+  const geo = chromeGeometry(nodes);
+  if (!hasIos26TopChrome(nodes, geo)) return false;
+  if (!exactNodes(nodes, /^done$/i).some(geo.smallTop)) return false;
+  return exactNodes(nodes, /^select photos$/i).some(geo.smallBottom);
 }
 
 // iOS 26 per-asset cells carry a single "Photo, <date>" label. The aggregate
@@ -419,4 +434,77 @@ export function targetTrackingCandidates(afterNodes, targetNode) {
     || (Array.isArray(node?.bounds) && node.bounds.length === 4
       && bounds.length === 4 && node.bounds.every((v, i) => v === bounds[i]))
   ));
+}
+
+// Geometry view of a STRUCTURED driver node (describeUiNodes output, bounds
+// px [x1,y1,x2,y2]) so the picker chrome predicates work on structured
+// snapshots, not only on parsed text dumps.
+function structuredGeom(node) {
+  const b = Array.isArray(node?.bounds) ? node.bounds : [0, 0, 0, 0];
+  return { label: String(node?.label ?? ""), x1: b[0], y1: b[1], x2: b[2], y2: b[3] };
+}
+
+// iOS 26 SELECTED picker contract (task #26, frozen from run 29662453310
+// structured evidence — defined on STRUCTURED nodes, not the text matcher):
+//   - the original small-top chrome (exact Cancel + Photos/Collections
+//     same-row tab pair);
+//   - EXACTLY ONE independent single-asset Photo image with selected=true
+//     (near-square, label starts "Photo, ", not the multi-asset aggregate —
+//     the active "Photos" TAB also reads selected=true but is a button, so
+//     it can never satisfy this);
+//   - EXACTLY ONE enabled small-top button {identifier:Add, label:Done};
+//   - EXACTLY ONE small-bottom exact "1 Photo" button.
+// Any duplicate/extra selected cell, duplicate/disabled/misplaced Done, or
+// missing bottom state fails closed (returns null).
+export function classifySelectedPhotoPicker(nodes) {
+  const list = (nodes || []).filter((n) => Array.isArray(n?.bounds) && n.bounds.length === 4);
+  if (!list.length) return null;
+  const geomNodes = list.map(structuredGeom);
+  const geo = chromeGeometry(geomNodes);
+  if (!hasIos26TopChrome(geomNodes, geo)) return null;
+
+  const selectedCells = list.filter((n) => (
+    n.selected === true
+    && n.type === "image"
+    && /^photo, /i.test(String(n.label ?? "").trim())
+    && !/, photo, /i.test(String(n.label ?? "").trim())
+    && isNearSquareCell(structuredGeom(n))
+  ));
+  if (selectedCells.length !== 1) return null;
+
+  const doneButtons = list.filter((n) => (
+    String(n.identifier ?? "").trim() === "Add"
+    && String(n.label ?? "").trim() === "Done"
+    && n.type === "button"
+    && n.enabled === true
+    && geo.smallTop(structuredGeom(n))
+  ));
+  if (doneButtons.length !== 1) return null;
+
+  const onePhoto = list.filter((n) => (
+    String(n.label ?? "").trim() === "1 Photo"
+    && n.type === "button"
+    && geo.smallBottom(structuredGeom(n))
+  ));
+  if (onePhoto.length !== 1) return null;
+
+  return { variant: "ios26-selected", selectedCell: selectedCells[0], doneNode: doneButtons[0] };
+}
+
+// The unique Done tap target of a PROVEN ios26-selected picker (task #26
+// static review: no tapText, no fuzzy match, no coordinate constants — the
+// target comes only from the frozen contract above).
+export function findSelectedPhotoDoneTarget(nodes) {
+  const picker = classifySelectedPhotoPicker(nodes);
+  if (!picker) {
+    throw new Error("no proven ios26-selected picker — need Cancel + tab pair + exactly one selected Photo image + exactly one enabled Add/Done top button + bottom 1 Photo button");
+  }
+  const b = picker.doneNode.bounds;
+  return {
+    x: Math.round((b[0] + b[2]) / 2),
+    y: Math.round((b[1] + b[3]) / 2),
+    label: picker.doneNode.label,
+    identifier: picker.doneNode.identifier,
+    bounds: [...b],
+  };
 }

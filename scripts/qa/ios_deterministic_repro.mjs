@@ -27,6 +27,14 @@
 //                    composer preview (iOS 26's picker is multi-select style;
 //                    the selection-state contract must be reviewable before
 //                    Done/preview is attempted).
+//   --sampling-done  Done-transition discovery phase: freeze the plain-channel
+//                    structured tree BEFORE the composer image tap, select one
+//                    proven Photo cell, require the frozen ios26-selected
+//                    structured contract, tap its unique enabled Add/Done
+//                    button exactly once, then capture the after-Done tree,
+//                    dump, screenshot, liveness, and full plain→after diff.
+//                    Stops as sample: never sends and never calls a generic
+//                    composer-preview matcher.
 //
 // Usage:
 //   node scripts/qa/ios_deterministic_repro.mjs \
@@ -39,16 +47,19 @@ import path from "node:path";
 import { createIosDriver } from "./ios_driver.mjs";
 import {
   composerHasNewPreview,
+  classifySelectedPhotoPicker,
   countThreadImageNodes,
   diffUiNodeStates,
   exactCellCandidates,
   findAllChannelTarget,
   findComposerImageTarget,
   findPhotoCellTarget,
+  findSelectedPhotoDoneTarget,
   hasPhotoPickerGate,
   hasRealPhotoPicker,
   redactEditableValues,
   targetTrackingCandidates,
+  uiNodeSignature,
 } from "./ios_navigation_matcher.mjs";
 
 const arg = (f, d) => { const i = process.argv.indexOf(f); return i >= 0 ? process.argv[i + 1] : d; };
@@ -65,6 +76,14 @@ const sampling = process.argv.includes("--sampling");
 // one picker-cell tap with selection-state evidence; no Done tap, no preview
 // judgment, no chain verdict.
 const cellSampling = process.argv.includes("--sampling-cell");
+// --sampling-done: selected-picker → exact Done transition discovery only.
+// It records facts needed to define a future preview identity contract but
+// does not itself decide preview PASS and cannot reach send/readback.
+const doneSampling = process.argv.includes("--sampling-done");
+if ([sampling, cellSampling, doneSampling].filter(Boolean).length > 1) {
+  console.error("choose exactly one sampling mode: --sampling, --sampling-cell, or --sampling-done");
+  process.exit(2);
+}
 if (!ioDir) { console.error("--ios-io-dir / QA_LOOP_IO_DIR required"); process.exit(2); }
 
 fs.mkdirSync(outDir, { recursive: true });
@@ -216,6 +235,15 @@ try {
   if (!dump.includes('"Message #all"')) { writeVerdict("fail", "#all composer placeholder not visible after open"); process.exit(1); }
   rec("#all open, composer visible");
   fs.writeFileSync(path.join(outDir, "channel-dump.txt"), redactEditableValues(dump));
+  // The Done-transition discovery sample compares the post-Done tree against
+  // the real plain channel/composer state that existed BEFORE opening Photos.
+  // This is deliberately structured (not a text-only dump), and values from
+  // editable nodes are already redacted by describeUiNodes().
+  let plainChannelNodes = null;
+  if (doneSampling) {
+    plainChannelNodes = await drv.describeUiNodes();
+    fs.writeFileSync(path.join(outDir, "plain-channel-nodes.json"), JSON.stringify(plainChannelNodes, null, 2));
+  }
   await shot("step-01-channel.png");
 
   // Assert the image button and mark the process state before the single tap.
@@ -381,11 +409,6 @@ try {
       doneNodesBefore: doneNodes(beforeNodes),
       doneNodesAfter: doneNodes(afterNodes),
       stateDiff: diffUiNodeStates(beforeNodes, afterNodes),
-      // Whether the full picker matcher still matches the after-tap TEXT dump.
-      // This is a detector statement, NOT proof the picker UI is still
-      // visible — visibility is judged by a human from the screenshot/chrome
-      // dump/liveness above (a detector false is not a UI false).
-      pickerContractStillMatchesAfterCellTap: hasRealPhotoPicker(afterCellText),
       evidenceRefs: [
         "selection-sample.json",
         "before-cell-nodes.json", "after-cell-nodes.json",
@@ -394,6 +417,150 @@ try {
       ],
     }, null, 2));
     writeVerdict("sample", `single cell tap issued on proven ${sampleTarget.variant} picker at [${sampleTarget.x},${sampleTarget.y}] — cell-selection sampling ends here by contract (no Done tap, no preview judgment, no chain verdict)`);
+    process.exit(0);
+  }
+
+  // ── Done-transition discovery sampling (task #26) ─────────────────────
+  // This phase first performs the already-proven single cell selection, then
+  // requires the independent STRUCTURED ios26-selected contract before it
+  // derives the unique Add/Done target. The exact Done tap is the only new
+  // action. The phase stops immediately after collecting post-transition
+  // facts; it never calls composerHasNewPreview, sends, or reads back.
+  if (doneSampling) {
+    if (!plainChannelNodes) {
+      writeVerdict("fail", "Done sampling invariant failed: missing pre-picker plain-channel structured snapshot");
+      process.exit(1);
+    }
+
+    const beforeCellText = redactEditableValues(after);
+    fs.writeFileSync(path.join(outDir, "before-done-cell-dump.txt"), beforeCellText);
+    const beforeCellNodes = await drv.describeUiNodes();
+    fs.writeFileSync(path.join(outDir, "before-done-cell-nodes.json"), JSON.stringify(beforeCellNodes, null, 2));
+
+    let cellTarget;
+    try {
+      cellTarget = findPhotoCellTarget(after);
+    } catch (error) {
+      writeVerdict("fail", `Done sampling photo-cell precondition failed: ${String(error)}`);
+      process.exit(1);
+    }
+    const exactBefore = exactCellCandidates(beforeCellNodes, cellTarget);
+    if (exactBefore.length !== 1) {
+      writeVerdict("fail", `Done sampling cell identity failed: expected exactly one structured node with exact label+bounds for "${cellTarget.label}" ${JSON.stringify(cellTarget.bounds)}, found ${exactBefore.length}`);
+      process.exit(1);
+    }
+
+    const aliveBeforeCellTap = processAlive();
+    rec(`done-sampling: single cell tap on proven ${cellTarget.variant} target at [${cellTarget.x},${cellTarget.y}] (alive before: ${aliveBeforeCellTap})`);
+    await drv.tap(cellTarget.x, cellTarget.y);
+    await new Promise((r) => setTimeout(r, 3000));
+
+    const aliveAfterCellTap = processAlive();
+    const selectedNodes = await drv.describeUiNodes();
+    fs.writeFileSync(path.join(outDir, "selected-picker-nodes.json"), JSON.stringify(selectedNodes, null, 2));
+    const selectedText = redactEditableValues(await drv.dumpUi());
+    fs.writeFileSync(path.join(outDir, "selected-picker-dump.txt"), selectedText);
+    await shot("step-04-selected-picker.png");
+
+    const selectedPicker = classifySelectedPhotoPicker(selectedNodes);
+    if (!selectedPicker) {
+      writeVerdict("fail", "Done sampling selected-picker precondition failed: need original top chrome + exactly one selected Photo image + exactly one enabled Add/Done top button + bottom 1 Photo button");
+      process.exit(1);
+    }
+
+    let doneTarget;
+    try {
+      doneTarget = findSelectedPhotoDoneTarget(selectedNodes);
+    } catch (error) {
+      writeVerdict("fail", `Done sampling target resolution failed: ${String(error)}`);
+      process.exit(1);
+    }
+    // Bind the returned target back to the same STRUCTURED snapshot by exact
+    // identity + label + bounds before issuing the tap. This makes the tap
+    // auditable and fail-closed even if a later matcher refactor accidentally
+    // returns a coordinate whose source node is missing or duplicated.
+    const exactDoneCandidates = selectedNodes.filter((n) => (
+      n.identifier === doneTarget.identifier
+      && n.type === "button"
+      && n.label === doneTarget.label
+      && n.enabled === true
+      && Array.isArray(n.bounds)
+      && n.bounds.length === 4
+      && n.bounds.every((v, i) => v === doneTarget.bounds[i])
+    ));
+    if (exactDoneCandidates.length !== 1) {
+      writeVerdict("fail", `Done sampling exact target binding failed: expected 1 Add/Done label+bounds candidate, found ${exactDoneCandidates.length}`);
+      process.exit(1);
+    }
+    const containsDoneTap = (n) => Array.isArray(n.bounds) && n.bounds.length === 4
+      && n.bounds[0] <= doneTarget.x && doneTarget.x <= n.bounds[2]
+      && n.bounds[1] <= doneTarget.y && doneTarget.y <= n.bounds[3];
+    const nodesAtTapBefore = selectedNodes.filter(containsDoneTap);
+    rec(`done-sampling: exactly-one structured Add/Done tap at [${doneTarget.x},${doneTarget.y}] from ${JSON.stringify(doneTarget.bounds)}`);
+    const aliveBeforeDoneTap = processAlive();
+    await drv.tap(doneTarget.x, doneTarget.y);
+    await new Promise((r) => setTimeout(r, 4000));
+
+    const aliveAfterDoneTap = processAlive();
+    const afterDoneNodes = await drv.describeUiNodes();
+    fs.writeFileSync(path.join(outDir, "after-done-nodes.json"), JSON.stringify(afterDoneNodes, null, 2));
+    const afterDoneText = redactEditableValues(await drv.dumpUi());
+    fs.writeFileSync(path.join(outDir, "after-done-dump.txt"), afterDoneText);
+    await shot("step-05-after-done.png");
+
+    const nodeState = (n) => ({
+      identifier: n.identifier, type: n.type, label: n.label, value: n.value,
+      bounds: n.bounds, enabled: n.enabled, selected: n.selected,
+    });
+    const plainToAfterDoneDiff = diffUiNodeStates(plainChannelNodes, afterDoneNodes);
+    const doneTrackingPool = targetTrackingCandidates(afterDoneNodes, selectedPicker.doneNode);
+    const doneTargetTrackingAmbiguous = doneTrackingPool.length > 1;
+    const doneTargetAfter = doneTrackingPool.length === 1 ? doneTrackingPool[0] : null;
+    const addedSignatures = new Set(plainToAfterDoneDiff.added);
+    const isImageOrAttachmentDiscoveryNode = (n) => (
+      n.type === "image"
+      || /image|photo|attachment/i.test(`${n.identifier ?? ""} ${n.label ?? ""}`)
+    );
+    const imageOrAttachmentNodesAfterDone = afterDoneNodes
+      .filter(isImageOrAttachmentDiscoveryNode)
+      .map(nodeState);
+    const addedImageOrAttachmentNodes = afterDoneNodes
+      .filter((n) => addedSignatures.has(uiNodeSignature(n)) && isImageOrAttachmentDiscoveryNode(n))
+      .map(nodeState);
+
+    fs.writeFileSync(path.join(outDir, "done-transition-sample.json"), JSON.stringify({
+      cellTap: 1,
+      doneTap: 1,
+      cellTarget,
+      doneTarget,
+      selectedPickerVariant: selectedPicker.variant,
+      selectedCell: nodeState(selectedPicker.selectedCell),
+      selectedDoneNode: nodeState(selectedPicker.doneNode),
+      exactDoneCandidateCount: exactDoneCandidates.length,
+      nodesAtTapBefore: nodesAtTapBefore.map(nodeState),
+      nodesAtTapAfter: afterDoneNodes.filter(containsDoneTap).map(nodeState),
+      doneTargetAfter: doneTargetAfter ? nodeState(doneTargetAfter) : null,
+      doneTargetTrackingAmbiguous,
+      doneTargetTrackingCandidates: doneTrackingPool.map(nodeState),
+      aliveBeforeCellTap,
+      aliveAfterCellTap,
+      aliveBeforeDoneTap,
+      aliveAfterDoneTap,
+      // Discovery facts only. Neither boolean is promoted to preview PASS.
+      selectedPickerContractAfterDone: classifySelectedPhotoPicker(afterDoneNodes) !== null,
+      composerPlaceholderVisibleAfterDone: afterDoneText.includes('"Message #all"'),
+      plainToAfterDoneDiff,
+      imageOrAttachmentNodesAfterDone,
+      addedImageOrAttachmentNodes,
+      evidenceRefs: [
+        "done-transition-sample.json",
+        "plain-channel-nodes.json", "channel-dump.txt", "step-01-channel.png",
+        "before-done-cell-nodes.json", "before-done-cell-dump.txt",
+        "selected-picker-nodes.json", "selected-picker-dump.txt", "step-04-selected-picker.png",
+        "after-done-nodes.json", "after-done-dump.txt", "step-05-after-done.png",
+      ],
+    }, null, 2));
+    writeVerdict("sample", `exactly one cell tap + exactly one structured Add/Done tap completed; Done-transition discovery ends here (no generic preview verdict, send, or readback)`);
     process.exit(0);
   }
 

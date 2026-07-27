@@ -2,12 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   composerHasNewPreview,
+  classifySelectedPhotoPicker,
   countThreadImageNodes,
   diffUiNodeStates,
   exactCellCandidates,
   findAllChannelTarget,
   findComposerImageTarget,
   findPhotoCellTarget,
+  findSelectedPhotoDoneTarget,
   hasPhotoPickerGate,
   hasRealPhotoPicker,
   photosFullAccessAlertDecision,
@@ -434,6 +436,94 @@ test("targetTrackingCandidates tracks an anonymous cell through a label flip via
   const found = targetTrackingCandidates([after], before);
   assert.equal(found.length, 1);
   assert.equal(found[0], after);
+});
+
+const structuredNode = (overrides = {}) => ({
+  identifier: "", type: "other", typeRaw: null, label: "", value: "",
+  bounds: [0, 0, 1, 1], enabled: true, selected: false,
+  editable: false, clickable: false, focused: false,
+  ...overrides,
+});
+
+const ios26SelectedStructuredNodes = () => [
+  structuredNode({ identifier: "RaftRoot", label: "Raft", bounds: [0, 0, 1170, 2532] }),
+  structuredNode({ type: "button", label: "Cancel", bounds: [60, 231, 168, 339], clickable: true }),
+  structuredNode({ type: "button", label: "Photos", bounds: [300, 213, 585, 357], selected: true, clickable: true }),
+  structuredNode({ type: "button", label: "Collections", bounds: [585, 213, 870, 357], clickable: true }),
+  structuredNode({ identifier: "PXGGridLayout-Info", type: "image", label: "Photo, March 30, 2018, 7:14 PM", bounds: [0, 405, 387, 792], selected: true, clickable: true }),
+  structuredNode({ identifier: "Add", type: "button", label: "Done", bounds: [1002, 231, 1110, 339], enabled: true, clickable: true }),
+  structuredNode({ type: "button", label: "1 Photo", bounds: [437, 2349, 734, 2403], enabled: true, clickable: true }),
+];
+
+test("classifySelectedPhotoPicker accepts the frozen iOS 26 selected contract", () => {
+  const nodes = ios26SelectedStructuredNodes();
+  const picker = classifySelectedPhotoPicker(nodes);
+  assert.equal(picker.variant, "ios26-selected");
+  assert.equal(picker.selectedCell.identifier, "PXGGridLayout-Info");
+  assert.equal(picker.doneNode.identifier, "Add");
+  assert.deepEqual(findSelectedPhotoDoneTarget(nodes), {
+    x: 1056,
+    y: 285,
+    label: "Done",
+    identifier: "Add",
+    bounds: [1002, 231, 1110, 339],
+  });
+});
+
+test("classifySelectedPhotoPicker ignores selected Photos tab and requires exactly one selected Photo image", () => {
+  const nodes = ios26SelectedStructuredNodes();
+  assert.equal(classifySelectedPhotoPicker(nodes).selectedCell.type, "image");
+  const withoutSelectedCell = nodes.filter((n) => n.identifier !== "PXGGridLayout-Info");
+  assert.equal(classifySelectedPhotoPicker(withoutSelectedCell), null);
+});
+
+test("classifySelectedPhotoPicker fails closed on duplicate selected Photo images", () => {
+  const nodes = ios26SelectedStructuredNodes();
+  nodes.push(structuredNode({
+    identifier: "PXGGridLayout-Info-2", type: "image",
+    label: "Photo, August 08, 2012, 9:55 PM",
+    bounds: [392, 405, 778, 792], selected: true, clickable: true,
+  }));
+  assert.equal(classifySelectedPhotoPicker(nodes), null);
+});
+
+test("classifySelectedPhotoPicker fails closed on duplicate Add/Done buttons", () => {
+  const nodes = ios26SelectedStructuredNodes();
+  nodes.push(structuredNode({ identifier: "Add", type: "button", label: "Done", bounds: [900, 231, 990, 339], enabled: true }));
+  assert.equal(classifySelectedPhotoPicker(nodes), null);
+  assert.throws(() => findSelectedPhotoDoneTarget(nodes), /no proven ios26-selected picker/);
+});
+
+test("classifySelectedPhotoPicker fails closed on disabled or misplaced Add/Done", () => {
+  const disabled = ios26SelectedStructuredNodes();
+  disabled.find((n) => n.identifier === "Add").enabled = false;
+  assert.equal(classifySelectedPhotoPicker(disabled), null);
+
+  const misplaced = ios26SelectedStructuredNodes();
+  misplaced.find((n) => n.identifier === "Add").bounds = [1002, 2000, 1110, 2108];
+  assert.equal(classifySelectedPhotoPicker(misplaced), null);
+});
+
+test("classifySelectedPhotoPicker requires the exact bottom 1 Photo button", () => {
+  const missing = ios26SelectedStructuredNodes().filter((n) => n.label !== "1 Photo");
+  assert.equal(classifySelectedPhotoPicker(missing), null);
+
+  const wrongType = ios26SelectedStructuredNodes();
+  wrongType.find((n) => n.label === "1 Photo").type = "staticText";
+  assert.equal(classifySelectedPhotoPicker(wrongType), null);
+
+  const wrongCount = ios26SelectedStructuredNodes();
+  wrongCount.push(structuredNode({ type: "button", label: "1 Photo", bounds: [400, 2280, 700, 2340] }));
+  assert.equal(classifySelectedPhotoPicker(wrongCount), null);
+});
+
+test("classifySelectedPhotoPicker requires the original Cancel + Photos/Collections top chrome", () => {
+  const noCancel = ios26SelectedStructuredNodes().filter((n) => n.label !== "Cancel");
+  assert.equal(classifySelectedPhotoPicker(noCancel), null);
+
+  const splitTabs = ios26SelectedStructuredNodes();
+  splitTabs.find((n) => n.label === "Collections").bounds = [585, 600, 870, 744];
+  assert.equal(classifySelectedPhotoPicker(splitTabs), null);
 });
 
 test("composerHasNewPreview only accepts a NEW node inside the composer", () => {
