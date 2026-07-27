@@ -272,7 +272,7 @@ if [ -n "${REPORT_PATH}" ]; then
       printf -- '- Hands active versionCode on `%s`: none returned; candidate can establish the first active version\n' "${CHANNEL}"
     fi
     echo
-    echo "Next: dispatch a **draft** Android Release, rewrite the raw changelog into reviewed zh-CN/en notes, smoke the draft, then have the owner explicitly approve activation."
+    echo "Next: dispatch a **draft** Android Release, rewrite the raw changelog into reviewed zh-CN/en/ja notes, smoke the draft, then have the owner explicitly approve activation."
   } >"${REPORT_PATH}"
 fi
 

@@ -14,6 +14,7 @@ for script in \
   scripts/test_resolve_android_publish_hands_input.sh \
   scripts/release_android_hands_github.sh \
   scripts/publish_android_hands_release.sh \
+  scripts/finalize_android_hands_release.sh \
   scripts/prepare_android_hands_symbols.sh; do
   bash -n "${script}"
 done
@@ -29,7 +30,11 @@ ruby -e '
   require "yaml"
   workflow = YAML.load_file(".github/workflows/android-release.yml")
   update_workflow = YAML.load_file(".github/workflows/android-update-qa.yml")
+  signoff_workflow = YAML.load_file(".github/workflows/commit-signoff.yml")
   YAML.load_file(".github/workflows/android-release-contract.yml")
+
+  signoff_branches = signoff_workflow.fetch(true).fetch("push").fetch("branches")
+  raise "Commit Sign-off does not cover release branches" unless signoff_branches.include?("main") && signoff_branches.include?("release-*")
 
   inputs = workflow.fetch(true).fetch("workflow_dispatch").fetch("inputs")
   raise "missing publish_hands input" unless inputs.key?("publish_hands")
@@ -45,6 +50,11 @@ ruby -e '
   unless share_step.fetch("if") == "needs.resolve.outputs.create_share_page == '\''true'\''"
     raise "share step is not independently gated"
   end
+  publish_step = publish_job.fetch("steps").find { |step| step["id"] == "publish-hands-release" }
+  publish_run = publish_step.fetch("run")
+  raise "release workflow does not require reviewed Japanese notes" unless publish_run.include?("/ja.md") && publish_run.include?("SLOCK_RELEASE_CHANGELOG_JA_FILE")
+  summary_run = publish_job.fetch("steps").find { |step| step["name"] == "Step summary" }.fetch("run")
+  raise "release workflow summary drops Japanese notes" unless summary_run.include?("--changelog-file ja=ja.md")
 
   call_inputs = workflow.fetch(true).fetch("workflow_call").fetch("inputs")
   raise "reusable release workflow lacks source_sha" unless call_inputs.key?("source_sha")
@@ -133,6 +143,31 @@ ruby -e '
   %w[download-failure-actionable-retry retry-target-b-exact].each do |id|
     raise "full update case missing #{id} assertion" unless assertion_ids.include?(id)
   end
+
+  publish_script = File.read("scripts/publish_android_hands_release.sh")
+  raise "Hands publisher drops Japanese notes" unless publish_script.include?("--changelog-file \"ja=${SLOCK_RELEASE_CHANGELOG_JA_FILE}\"")
+  finalizer = File.read("scripts/finalize_android_hands_release.sh")
+  raise "Hands finalizer does not require Japanese notes" unless finalizer.include?("--ja-notes") && finalizer.include?("--changelog-file \"ja=${JA_NOTES}\"")
+  sop = File.read("docs/android-release-sop.md")
+  raise "Android release SOP does not document Japanese notes" unless sop.include?("change-logs/1.2.2/android/ja.md")
+
+  release_note_headers = {
+    "zh-CN" => ["✨ **新功能**", "🔧 **改进**", "🐛 **修复**"],
+    "en" => ["✨ **New**", "🔧 **Improved**", "🐛 **Fixed**"],
+    "ja" => ["✨ **新機能**", "🔧 **改善**", "🐛 **修正**"],
+  }
+  release_note_counts = release_note_headers.map do |locale, headers|
+    path = "change-logs/1.8.0/android/#{locale}.md"
+    lines = File.readlines(path, chomp: true)
+    indexes = headers.map { |header| lines.index(header) }
+    raise "#{path} has missing or reordered sections" unless indexes.all? && indexes == indexes.sort
+    headers.each_index.map do |index|
+      finish = indexes[index + 1] || lines.length
+      lines[(indexes[index] + 1)...finish].count { |line| line.start_with?("- ") }
+    end
+  end
+  raise "1.8.0 release-note locales do not carry matching section claims" unless release_note_counts.uniq.length == 1
+  raise "1.8.0 release notes contain an empty section" unless release_note_counts.first.all?(&:positive?)
 '
 
 grep -Eq '^      publish_hands:$' .github/workflows/android-release.yml ||
@@ -148,6 +183,7 @@ for canonical_path in \
   docs/android-hands-release-practices-2026-07-02.md \
   scripts/release_android_hands_github.sh \
   scripts/publish_android_hands_release.sh \
+  scripts/finalize_android_hands_release.sh \
   scripts/prepare_android_hands_symbols.sh; do
   [ -e "${canonical_path}" ] || fail "missing canonical Hands path: ${canonical_path}"
 done

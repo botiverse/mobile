@@ -161,23 +161,25 @@ trigger or a way to bypass the draft gate.
 ## 4. Write And Review Notes
 
 Use the workflow's raw changelog and the selected PR list as source material,
-then create reviewed notes in two files. Do not paste raw commit subjects into
+then create reviewed notes in three files. Do not paste raw commit subjects into
 the release.
 
 ```text
 change-logs/1.2.2/android/zh-CN.md
 change-logs/1.2.2/android/en.md
+change-logs/1.2.2/android/ja.md
 ```
 
-The Android workflow prefers this platform directory. It falls back to the
-historical `change-logs/<version>/{zh-CN,en}.md` layout only for older releases
-that predate platform-specific notes.
+The Android workflow requires all three files in this platform directory. It
+falls back to the historical `change-logs/<version>/{zh-CN,en}.md` layout only
+for older releases that predate platform-specific notes; a legacy Japanese file
+is included when present.
 
 Apply the house format from the release-practices document:
 
 - user-visible changes only;
 - sectioned New / Improved / Fixed content, omitting empty sections;
-- zh-CN and English carry the same claims;
+- zh-CN, English, and Japanese carry the same claims;
 - exclude PR numbers, implementation detail, CI history, and unshipped work.
 
 The release owner must approve these files before activation.
@@ -201,7 +203,7 @@ artifact before asking for activation.
 
 Once the owner has reviewed the notes and smoke evidence and explicitly asked
 to publish, run the finalizer. It verifies the supplied draft reports the
-expected versionCode, writes the bilingual notes, activates that draft, and
+expected versionCode, writes the three reviewed locales, activates that draft, and
 requires the public update endpoint to return the exact new versionCode.
 
 ### Authenticate Hands For Finalization
@@ -255,6 +257,7 @@ scripts/finalize_android_hands_release.sh \
   --channel main \
   --zh-notes change-logs/1.2.2/android/zh-CN.md \
   --en-notes change-logs/1.2.2/android/en.md \
+  --ja-notes change-logs/1.2.2/android/ja.md \
   --confirm-publish
 ```
 

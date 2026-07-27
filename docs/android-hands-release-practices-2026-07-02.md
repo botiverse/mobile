@@ -270,29 +270,29 @@ User-facing release notes follow one house format. CI/dispatch creates the draft
 with a raw commit-derived changelog; a release owner rewrites it into this
 format, writes it onto the Hands draft, and only then publishes.
 
-**Sectioned, emoji-headed, bilingual.** Up to three sections, each a bold header
+**Sectioned, emoji-headed, trilingual.** Up to three sections, each a bold header
 followed by bullets. Keep this order; omit a section if it has nothing.
 
-| Section | zh-CN header | en header |
-| --- | --- | --- |
-| New features | `✨ **新功能**` | `✨ **New**` |
-| Improvements | `🔧 **改进**` | `🔧 **Improved**` |
-| Fixes | `🐛 **修复**` | `🐛 **Fixed**` |
+| Section | zh-CN header | en header | ja header |
+| --- | --- | --- | --- |
+| New features | `✨ **新功能**` | `✨ **New**` | `✨ **新機能**` |
+| Improvements | `🔧 **改进**` | `🔧 **Improved**` | `🔧 **改善**` |
+| Fixes | `🐛 **修复**` | `🐛 **Fixed**` | `🐛 **修正**` |
 
-**Bilingual storage.** The changelog is a JSON object keyed by locale:
+**Trilingual storage.** The changelog is a JSON object keyed by locale:
 
 ```json
-{ "zh-CN": "✨ **新功能**\n- …", "en": "✨ **New**\n- …" }
+{ "zh-CN": "✨ **新功能**\n- …", "en": "✨ **New**\n- …", "ja": "✨ **新機能**\n- …" }
 ```
 
 Clients receive the note matching their system locale; keys are normalized
-(`zh` / `cn` / `zh-cn` → `zh-CN`, `en` → `en`) and fall back to English, then to
+(`zh` / `cn` / `zh-cn` → `zh-CN`, `en` → `en`, `ja` → `ja`) and fall back to English, then to
 the first entry. Write it with the Hands CLI
-(`hands releases update <app> <releaseId> --changelog-file zh-CN=zh.md --changelog-file en=en.md`)
+(`hands releases update <app> <releaseId> --changelog-file zh-CN=zh.md --changelog-file en=en.md --changelog-file ja=ja.md`)
 or `PATCH /api/apps/:appId/releases/:id` with a `release_notes` object.
 
-**Platform-owned source files.** New releases store the reviewed Android pair
-at `change-logs/<version>/android/{zh-CN,en}.md`. The Android release workflow
+**Platform-owned source files.** New releases store the reviewed Android set at
+`change-logs/<version>/android/{zh-CN,en,ja}.md`. The Android release workflow
 uses that directory first and reads the old root-level pair only as a fallback
 for historical versions. Because the file already identifies the platform,
 bullets describe the behavior directly instead of repeating "Android" on each
