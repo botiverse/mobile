@@ -11,14 +11,18 @@ import com.tencent.tmm.kmmresource.compose.stringResource
 @Composable
 internal fun slockRelativeTimestampLabel(
     value: String?,
-    timeContext: SlockTimeContext? = LocalSlockTimeContext.current
-): String =
-    when (val label = resolveSlockRelativeTimeLabel(value, timeContext)) {
+    timeContext: SlockTimeContext? = null
+): String {
+    val effectiveContext =
+        timeContext?.takeIf { it.nowEpochMillis != null }
+            ?: LocalSlockTimeContextProvider.current?.current
+    return when (val label = resolveSlockRelativeTimeLabel(value, effectiveContext)) {
         SlockRelativeTimeLabel.Empty -> ""
         SlockRelativeTimeLabel.Unknown -> stringResource(MR.strings.relative_time_unknown)
         is SlockRelativeTimeLabel.Literal -> label.value
         is SlockRelativeTimeLabel.Relative -> label.localized()
     }
+}
 
 @Composable
 private fun SlockRelativeTimeLabel.Relative.localized(): String =

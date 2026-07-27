@@ -248,18 +248,14 @@ import com.tencent.kuikly.compose.ui.graphics.ImageBitmap
 import com.tencent.kuikly.compose.ui.graphics.drawscope.Fill
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.layout.ContentScale
-import com.tencent.kuikly.compose.ui.layout.layout
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.semantics.contentDescription
 import com.tencent.kuikly.compose.ui.semantics.semantics
-import com.tencent.kuikly.compose.ui.text.AnnotatedString
-import com.tencent.kuikly.compose.ui.text.SpanStyle
 import com.tencent.kuikly.compose.ui.text.TextRange
 import com.tencent.kuikly.compose.ui.text.TextStyle
-import com.tencent.kuikly.compose.ui.text.buildAnnotatedString
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
@@ -332,6 +328,9 @@ private const val ThreadSendMaxSilentRetries = 2
 private const val ThreadLocalizedFeedbackPlaceholder = "__RAFT_VALUE__"
 private const val ThreadAttachmentUploadConcurrencyLimit = 12
 internal const val ThreadRelativeTimestampSlotWidthDp = 112f
+
+internal fun threadMessageAvatarSlotWidthDp(showTimestamp: Boolean): Float =
+    if (showTimestamp) ThreadRelativeTimestampSlotWidthDp else 36f
 
 internal enum class ThreadPickedAttachmentComposerAction {
     None,
@@ -2539,25 +2538,13 @@ private fun ThreadPageScreen(
         )
     }
     val parsedPayload = payloadTrace.payload
-    val liveTimeContext =
+    val liveTimeContextProvider =
         rememberLiveSlockTimeContext(
             capabilities = parsedPayload.toSlockTimeCapabilities(),
             pageVisibleTick = pageVisibleTick,
             active = pageVisible
         )
-    val payload =
-        remember(
-            parsedPayload,
-            liveTimeContext?.localOffsetMinutes,
-            liveTimeContext?.todayEpochDay,
-            liveTimeContext?.timeFormat
-        ) {
-            parsedPayload.copy(
-                localOffsetMinutes = liveTimeContext?.localOffsetMinutes ?: parsedPayload.localOffsetMinutes,
-                todayEpochDay = liveTimeContext?.todayEpochDay ?: parsedPayload.todayEpochDay,
-                timeFormat = liveTimeContext?.timeFormat ?: parsedPayload.timeFormat
-            )
-        }
+    val payload = parsedPayload
     LaunchedEffect(payloadText, instanceId) {
         bridge.log(
             "thread_launch_payload_parse source=pageData result=${payloadTrace.result} " +
@@ -2759,7 +2746,7 @@ private fun ThreadPageScreen(
     }
     SharedThreadRouteContent(
         initialPayload = payload,
-        timeContext = liveTimeContext,
+        timeContextProvider = liveTimeContextProvider,
         bridge = bridge,
         dataSource = dataSource,
         forwardTargetRepository = forwardTargetRepository,
@@ -2791,7 +2778,7 @@ private fun ThreadPageScreen(
             val parentPayload =
                 buildAppShellThreadPayload(
                     conversation = request.conversationIdentity,
-                    timeContext = currentPayload.toSlockTimeContext(),
+                    timeContext = currentPayload.toSlockTimeCapabilities().staticContext(),
                     alignOwnMessagesRight = currentPayload.alignOwnMessagesRight,
                     compactConsecutiveMessages = currentPayload.compactConsecutiveMessages,
                     threadRowAffordances =
@@ -4236,7 +4223,7 @@ private fun ThreadMessageVisualCard(
 @Composable
 internal fun SharedThreadRouteContent(
     initialPayload: KuiklyThreadScreenPayload,
-    timeContext: SlockTimeContext? = null,
+    timeContextProvider: SlockTimeContextProvider,
     bridge: build.raft.app.base.BridgeModule,
     dataSource: SharedThreadDataSource,
     forwardTargetRepository: ForwardMessageTargetRepository? = null,
@@ -6933,7 +6920,7 @@ internal fun SharedThreadRouteContent(
             val bannerPayload =
                 buildAppShellThreadPayload(
                     conversation = request.conversationIdentity,
-                    timeContext = renderedPayload.toSlockTimeContext(),
+                    timeContext = renderedPayload.toSlockTimeCapabilities().staticContext(),
                     alignOwnMessagesRight = renderedPayload.alignOwnMessagesRight,
                     compactConsecutiveMessages = renderedPayload.compactConsecutiveMessages,
                     threadRowAffordances =
@@ -6976,7 +6963,7 @@ internal fun SharedThreadRouteContent(
                 LocalThreadPendingReactionKeys provides pendingReactionKeys,
                 LocalThreadPendingReactionVisuals provides pendingReactionVisuals,
                 LocalThreadPendingTaskId provides threadTasksState.statusUpdatingTaskId,
-                LocalSlockTimeContext provides (timeContext ?: renderedThread.toSlockTimeContext())
+                LocalSlockTimeContextProvider provides timeContextProvider
             ),
             LocalSlockMarkdownPlainCandidateSession,
             plainCandidateCensusSession
@@ -7712,7 +7699,7 @@ internal fun SharedThreadRouteContent(
                         val loadingPayload = request?.let { openRequest ->
                             buildAppShellThreadPayload(
                                 conversation = openRequest.conversationIdentity,
-                                timeContext = renderedThread.toSlockTimeContext(),
+                                timeContext = renderedThread.toSlockTimeCapabilities().staticContext(),
                                 alignOwnMessagesRight = renderedThread.alignOwnMessagesRight,
                                 compactConsecutiveMessages = renderedThread.compactConsecutiveMessages,
                                 threadRowAffordances =
@@ -12472,7 +12459,7 @@ private fun ThreadPageContent(
                         channelId = taskPanelChannelId,
                         openTaskEnabled = payload.showTaskOpenActions,
                         draftProjection = draftProjection,
-                        timeContext = payload.toSlockTimeContext(),
+                        timeContext = payload.toSlockTimeCapabilities().staticContext(),
                         onOpenTask = { onThreadEvent("openTask", it, null, null) },
                         onIntent = onTasksIntent
                     )
@@ -17510,63 +17497,46 @@ private const val ThreadShareCaptureGeometryTolerancePx = 2f
 private val ThreadSystemMessageTimeColor = SlockColor.TextBlack.copy(alpha = 0.4f)
 private val ThreadSystemMessageBodyColor = SlockColor.TextBlack.copy(alpha = 0.5f)
 
-internal fun buildThreadSystemMessageAnnotatedBody(
-    systemBody: String,
-    timestampLabel: String
-): AnnotatedString =
-    buildAnnotatedString {
-        pushStyle(
-            SpanStyle(
-                color = ThreadSystemMessageTimeColor,
-                fontFamily = SlockMonoFamily
-            )
-        )
-        append(timestampLabel)
-        pop()
-        val body = systemBody.removePrefix(timestampLabel).trimStart()
-        if (body.isNotBlank()) {
-            append(" ")
-            pushStyle(SpanStyle(color = ThreadSystemMessageBodyColor))
-            append(body)
-            pop()
-        }
-    }
-
 @Composable
 private fun ThreadSystemMessageRow(
     message: KuiklyThreadMessageItem,
     timestampValue: String
 ) {
-    val timestampLabel = slockRelativeTimestampLabel(timestampValue)
     var expanded by remember(message.id) { mutableStateOf(false) }
     val systemBody =
-        remember(message.body, message.metadata, message.systemEventType, timestampLabel, expanded) {
+        remember(message.body, message.metadata, message.systemEventType, expanded) {
             if (expanded) {
-                message.expandedSystemSummary(timestampLabel)
+                message.expandedSystemContent()
             } else {
-                message.collapsedSystemSummary(timestampLabel)
+                message.systemContentSummary()
             }
         }
-    val annotatedSystemBody =
-        remember(systemBody, timestampLabel) {
-            buildThreadSystemMessageAnnotatedBody(systemBody, timestampLabel)
-        }
-    Column(
+    Row(
         modifier =
             Modifier.fillMaxWidth()
                 .background(SlockColor.SurfaceWhite)
                 .clickable { expanded = !expanded }
                 .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Xs),
-        horizontalAlignment = Alignment.CenterHorizontally
+        verticalAlignment = Alignment.Top
     ) {
         Text(
-            text = annotatedSystemBody,
+            text = slockRelativeTimestampLabel(timestampValue),
+            style = SlockType.Caption.copy(color = ThreadSystemMessageTimeColor, fontFamily = SlockMonoFamily),
+            color = ThreadSystemMessageTimeColor,
+            textAlign = TextAlign.End,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.width(ThreadRelativeTimestampSlotWidthDp.dp)
+        )
+        Spacer(modifier = Modifier.width(SlockSpacing.Sm))
+        Text(
+            text = systemBody,
             style = SlockType.Caption.copy(color = ThreadSystemMessageBodyColor),
             color = ThreadSystemMessageBodyColor,
-            textAlign = TextAlign.Center,
+            textAlign = TextAlign.Start,
             maxLines = if (expanded) Int.MAX_VALUE else 1,
             overflow = if (expanded) TextOverflow.Clip else TextOverflow.Ellipsis,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.weight(1f)
         )
     }
 }
@@ -20566,21 +20536,11 @@ internal fun KuiklyThreadScreenPayload.threadReactionToggleTarget(
     )
 }
 
-internal fun KuiklyThreadMessageItem.collapsedSystemSummary(timestamp: String): String =
-    listOf(timestamp, body.sanitizeThreadSystemText())
-        .filter { it.isNotBlank() }
-        .joinToString(" ")
-
 internal fun KuiklyThreadMessageItem.systemContentSummary(): String =
     body.sanitizeThreadSystemText()
 
 internal fun KuiklyThreadMessageItem.expandedSystemContent(): String =
     listOf(systemContentSummary(), expandedSystemDetails())
-        .filter { it.isNotBlank() }
-        .joinToString("\n")
-
-internal fun KuiklyThreadMessageItem.expandedSystemSummary(timestamp: String): String =
-    listOf(collapsedSystemSummary(timestamp), expandedSystemDetails())
         .filter { it.isNotBlank() }
         .joinToString("\n")
 
@@ -21467,8 +21427,9 @@ private fun ThreadMessageAvatarSlot(
             showTimestamp -> 18.dp
             else -> 0.dp
         }
+    val slotWidth = threadMessageAvatarSlotWidthDp(showTimestamp).dp
     Box(
-        modifier = Modifier.width(36.dp).height(slotHeight),
+        modifier = Modifier.width(slotWidth).height(slotHeight),
         contentAlignment = Alignment.TopCenter
     ) {
         when {
@@ -21503,30 +21464,12 @@ private fun ThreadMessageAvatarSlot(
                     textAlign = timestampTextAlign,
                     modifier =
                         Modifier
-                            .threadTimestampOverlayLayout(timestampTextAlign == TextAlign.End)
+                            .width(ThreadRelativeTimestampSlotWidthDp.dp)
                             .align(timestampAlignment)
-                            .background(SlockColor.SurfaceWhite)
-                            .zIndex(1f)
                 )
         }
     }
 }
-
-private fun Modifier.threadTimestampOverlayLayout(alignEnd: Boolean): Modifier =
-    layout { measurable, constraints ->
-        val overlayWidth = ThreadRelativeTimestampSlotWidthDp.dp.roundToPx()
-        val placeable =
-            measurable.measure(
-                constraints.copy(
-                    minWidth = overlayWidth,
-                    maxWidth = overlayWidth
-                )
-            )
-        val slotWidth = constraints.maxWidth
-        layout(slotWidth, placeable.height) {
-            placeable.place(x = if (alignEnd) slotWidth - overlayWidth else 0, y = 0)
-        }
-    }
 
 @Composable
 private fun ThreadMessageAvatar(

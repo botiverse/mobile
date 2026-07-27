@@ -15,5 +15,7 @@ class SlockRelativeTimeConsumerTest {
     @Test
     fun compactAndHeaderTimestampsShareStableReadableWidth() {
         assertEquals(112f, ThreadRelativeTimestampSlotWidthDp)
+        assertEquals(112f, threadMessageAvatarSlotWidthDp(showTimestamp = true))
+        assertEquals(36f, threadMessageAvatarSlotWidthDp(showTimestamp = false))
     }
 }

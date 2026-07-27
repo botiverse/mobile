@@ -8328,28 +8328,9 @@ class ThreadPayloadTest {
         assertEquals("member_joined", message.systemEventType)
         assertEquals("Cindy", message.metadata["actor"])
         assertEquals("invite", message.metadata["source"]?.sanitizeThreadSystemText())
-        assertEquals("10:00 Cindy joined\nthe channel", message.collapsedSystemSummary("10:00"))
         assertEquals("Cindy joined\nthe channel", message.systemContentSummary())
         assertEquals("Cindy joined\nthe channel\nType: member_joined\nactor: Cindy\nsource: invite", message.expandedSystemContent())
         assertEquals("Type: member_joined\nactor: Cindy\nsource: invite", message.expandedSystemDetails())
-    }
-
-    @Test
-    fun systemMessageTimestampUsesMonoWithoutChangingBodyFont() {
-        val annotated =
-            buildThreadSystemMessageAnnotatedBody(
-                systemBody = "10:00 Cindy joined the channel",
-                timestampLabel = "10:00"
-            )
-
-        assertEquals("10:00 Cindy joined the channel", annotated.text)
-        assertEquals(2, annotated.spanStyles.size)
-        assertEquals(0, annotated.spanStyles[0].start)
-        assertEquals(5, annotated.spanStyles[0].end)
-        assertEquals(SlockMonoFamily, annotated.spanStyles[0].item.fontFamily)
-        assertEquals(6, annotated.spanStyles[1].start)
-        assertEquals(30, annotated.spanStyles[1].end)
-        assertEquals(null, annotated.spanStyles[1].item.fontFamily)
     }
 
     @Test

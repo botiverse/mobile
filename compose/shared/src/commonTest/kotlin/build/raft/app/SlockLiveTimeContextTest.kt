@@ -17,6 +17,17 @@ import kotlinx.coroutines.withTimeout
 
 class SlockLiveTimeContextTest {
     @Test
+    fun stableProviderKeepsIdentityAcrossMinuteUpdates() {
+        val first = epochMillis("2026-07-27T12:00:00Z")
+        val second = first + 60_000L
+        val provider = SlockTimeContextProvider(SlockTimeCapabilities(0, "24h").contextAt(first))
+
+        provider.update(SlockTimeCapabilities(0, "24h").contextAt(second))
+
+        assertEquals(second, provider.current?.nowEpochMillis)
+    }
+
+    @Test
     fun liveCapabilitiesDiscardHostSnapshotTime() {
         val staleHostNow = epochMillis("2026-07-26T08:00:00Z")
         val liveNow = epochMillis("2026-07-27T12:00:00Z")
@@ -32,6 +43,23 @@ class SlockLiveTimeContextTest {
 
         assertEquals(liveNow, context.nowEpochMillis)
         assertEquals(slockEpochDayForDate(2026, 7, 27), context.todayEpochDay)
+        assertEquals(480, context.localOffsetMinutes)
+        assertEquals("12h", context.timeFormat)
+    }
+
+    @Test
+    fun staticCapabilityContextCannotCarryRouteSnapshotTime() {
+        val staleHostNow = epochMillis("2026-07-26T08:00:00Z")
+        val context =
+            SlockTimeContext(
+                localOffsetMinutes = 480,
+                todayEpochDay = slockEpochDayForDate(2026, 7, 26),
+                nowEpochMillis = staleHostNow,
+                timeFormat = "12h"
+            ).toSlockTimeCapabilities().staticContext()
+
+        assertEquals(null, context.nowEpochMillis)
+        assertEquals(null, context.todayEpochDay)
         assertEquals(480, context.localOffsetMinutes)
         assertEquals("12h", context.timeFormat)
     }

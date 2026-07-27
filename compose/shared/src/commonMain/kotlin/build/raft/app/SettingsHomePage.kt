@@ -406,6 +406,7 @@ import build.raft.app.model.slockEpochMillisUtcIso
 import build.raft.app.model.slockStartOfDayUtcIso
 import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -906,6 +907,7 @@ private data class HomeSecondaryRouteEnvironment(
     val composerDraftPersistSlice: SharedThreadComposerDraftPersistSlice,
     val settingsCapabilities: BridgeSettingsPlatformCapabilities,
     val homeSavedStateCache: SharedHomeSavedStateCache,
+    val timeContextProvider: SlockTimeContextProvider,
     val timeContext: AppShellThreadTimeContext?,
     val alignOwnMessagesRight: Boolean,
     val compactConsecutiveMessages: Boolean,
@@ -975,11 +977,20 @@ private fun rememberHomeSecondaryRouteEnvironment(
         remember(pager.pageData.params.toString()) {
             pager.pageData.params.threadTimeCapabilities()
         }
-    val timeContext =
+    val timeContextProvider =
         rememberLiveSlockTimeContext(
             capabilities = timeCapabilities,
             pageVisibleTick = routeVisibleTick
         )
+    val timeContext =
+        remember(timeCapabilities) {
+            timeCapabilities?.let {
+                SlockTimeContext(
+                    localOffsetMinutes = it.localOffsetMinutes,
+                    timeFormat = it.timeFormat
+                )
+            }
+        }
     val shellScope = rememberSlockAppShellScope()
     return remember(
         pager,
@@ -990,6 +1001,7 @@ private fun rememberHomeSecondaryRouteEnvironment(
         serverMembersStore,
         sharedStores.composerDraftPersistSlice,
         sharedStores.homeSavedStateCache,
+        timeContextProvider,
         timeContext,
         myMessageAlignment,
         compactConsecutiveMessages,
@@ -1010,6 +1022,7 @@ private fun rememberHomeSecondaryRouteEnvironment(
             composerDraftPersistSlice = sharedStores.composerDraftPersistSlice,
             settingsCapabilities = settingsCapabilities,
             homeSavedStateCache = sharedStores.homeSavedStateCache,
+            timeContextProvider = timeContextProvider,
             timeContext = timeContext,
             alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
             compactConsecutiveMessages = compactConsecutiveMessages,
@@ -1043,18 +1056,20 @@ private fun HomeSecondaryRouterContent(
         sceneName = retainedDestination?.let(::homeSecondaryPerformanceRoute) ?: "kuikly_home_secondary",
         active = true
     )
-    when (retainedDestination) {
-        HomeDestinationActivity -> HomeActivityRouterContent(environment, routeVisibleTick)
-        HomeDestinationSearch ->
-            HomeSearchRouterContent(
-                environment,
-                routeVisibleTick,
-                initialChannelId = initialSearchChannelId,
-                initialOpenFilterId = initialSearchOpenFilterId,
-                initialFocusInput = initialSearchFocusInput
-            )
-        HomeDestinationSaved -> HomeSavedRouterContent(environment, routeVisibleTick)
-        else -> SlockCenteredLoading(message = stringResource(MR.strings.auth_state_opening_server))
+    CompositionLocalProvider(LocalSlockTimeContextProvider provides environment.timeContextProvider) {
+        when (retainedDestination) {
+            HomeDestinationActivity -> HomeActivityRouterContent(environment, routeVisibleTick)
+            HomeDestinationSearch ->
+                HomeSearchRouterContent(
+                    environment,
+                    routeVisibleTick,
+                    initialChannelId = initialSearchChannelId,
+                    initialOpenFilterId = initialSearchOpenFilterId,
+                    initialFocusInput = initialSearchFocusInput
+                )
+            HomeDestinationSaved -> HomeSavedRouterContent(environment, routeVisibleTick)
+            else -> SlockCenteredLoading(message = stringResource(MR.strings.auth_state_opening_server))
+        }
     }
 }
 
@@ -3009,12 +3024,12 @@ internal fun SlockAppShellContent(
     val hostThreadTimeCapabilities = remember(pager.pageData.params.toString()) {
         pager.pageData.params.threadTimeCapabilities()
     }
-    val hostThreadTimeContext =
+    val hostThreadTimeContextProvider =
         rememberLiveSlockTimeContext(
             capabilities = hostThreadTimeCapabilities,
             pageVisibleTick = pageVisibleTick
         )
-    val currentHostThreadTimeContext = rememberUpdatedState(hostThreadTimeContext)
+    val currentHostThreadTimeContextProvider = rememberUpdatedState(hostThreadTimeContextProvider)
     val notificationWindowNavigationIntent =
         remember(pager.pageData.params.toString()) {
             pager.pageData.params.appShellWindowNavigationIntent(
@@ -3065,7 +3080,7 @@ internal fun SlockAppShellContent(
                 savedStateCache = sharedStores.homeSavedStateCache,
                 readReceiptCoordinator = sharedStores.processReadReceiptCoordinator(),
                 readReceiptOwnerFactory = sharedStores::readReceiptOwner,
-                timeRangeBoundsProvider = { range -> currentHostThreadTimeContext.value.toSearchIsoBounds(range) },
+                timeRangeBoundsProvider = { range -> currentHostThreadTimeContextProvider.value.current.toSearchIsoBounds(range) },
                 diagnosticsLogger = slockLogger("SlockHomeSearchSaved", "shared_home_search_saved")
             )
         }
@@ -3360,8 +3375,15 @@ internal fun SlockAppShellContent(
         (settingsState.languageRegion as? ScreenLoadState.Content)?.data?.timeFormat?.selectedKey
     val sessionTimeFormat = readySession?.user?.preferredTimeFormat ?: readySession?.user?.timeFormat
     val threadTimeContext =
-        remember(hostThreadTimeContext, loadedSettingsTimeFormat, sessionTimeFormat) {
-            hostThreadTimeContext.withTimeFormat(loadedSettingsTimeFormat ?: sessionTimeFormat)
+        remember(hostThreadTimeCapabilities, loadedSettingsTimeFormat, sessionTimeFormat) {
+            hostThreadTimeCapabilities
+                ?.let {
+                    SlockTimeContext(
+                        localOffsetMinutes = it.localOffsetMinutes,
+                        timeFormat = it.timeFormat
+                    )
+                }
+                .withTimeFormat(loadedSettingsTimeFormat ?: sessionTimeFormat)
         }
     fun selectAppShellTab(nextTab: String, directChildSwitch: Boolean = false) {
         prewarmAdmissionGate.invalidate("tab_select:$nextTab")
@@ -5260,11 +5282,13 @@ internal fun SlockAppShellContent(
                                     "homeRealtimeDirty=${homeState.homeRealtimeDirty}"
                             )
                         }
-                        when (tab) {
-                            "tasks" -> tasksTabContent(active)
-                            "members" -> membersTabContent(active)
-                            "settings" -> settingsTabContent(active)
-                            else -> homeTabContent(active)
+                        CompositionLocalProvider(LocalSlockTimeContextProvider provides hostThreadTimeContextProvider) {
+                            when (tab) {
+                                "tasks" -> tasksTabContent(active)
+                                "members" -> membersTabContent(active)
+                                "settings" -> settingsTabContent(active)
+                                else -> homeTabContent(active)
+                            }
                         }
                     }
                     val childTabRegistration =
@@ -5314,9 +5338,11 @@ internal fun SlockAppShellContent(
                         childTabSwitchEpoch = childTabSwitchEpoch,
                         log = { bridge.log(it) }
                     ) { tab, active ->
-                        when (tab) {
-                            "settings" -> settingsTabContent(active)
-                            else -> childTabRenderer(tab, active)
+                        CompositionLocalProvider(LocalSlockTimeContextProvider provides hostThreadTimeContextProvider) {
+                            when (tab) {
+                                "settings" -> settingsTabContent(active)
+                                else -> childTabRenderer(tab, active)
+                            }
                         }
                     }
             Box(modifier = Modifier.fillMaxSize()) {
