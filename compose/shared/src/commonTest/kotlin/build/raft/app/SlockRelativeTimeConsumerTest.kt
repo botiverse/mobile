@@ -17,18 +17,18 @@ class SlockRelativeTimeConsumerTest {
         val beforePress =
             threadMessageMetadataSlotLayout(
                 showAvatar = false,
-                reserveTimestampSpace = true,
+                compactTimestampGutter = true,
                 showTimestamp = false
             )
         val duringPress =
             threadMessageMetadataSlotLayout(
                 showAvatar = false,
-                reserveTimestampSpace = true,
+                compactTimestampGutter = true,
                 showTimestamp = true
             )
 
         assertEquals(112f, ThreadRelativeTimestampSlotWidthDp)
-        assertEquals(112f, beforePress.widthDp)
+        assertEquals(36f, beforePress.widthDp)
         assertEquals(18f, beforePress.heightDp)
         assertEquals(false, beforePress.timestampVisible)
         assertEquals(beforePress.widthDp, duringPress.widthDp)
@@ -38,7 +38,7 @@ class SlockRelativeTimeConsumerTest {
         val compactAuthorSlot =
             threadMessageMetadataSlotLayout(
                 showAvatar = true,
-                reserveTimestampSpace = true,
+                compactTimestampGutter = true,
                 showTimestamp = false
             )
         assertEquals(beforePress.widthDp, compactAuthorSlot.widthDp)
@@ -47,7 +47,7 @@ class SlockRelativeTimeConsumerTest {
         val normalAuthorSlot =
             threadMessageMetadataSlotLayout(
                 showAvatar = true,
-                reserveTimestampSpace = false,
+                compactTimestampGutter = false,
                 showTimestamp = false
             )
         assertEquals(36f, normalAuthorSlot.widthDp)

@@ -337,18 +337,18 @@ internal data class ThreadMessageMetadataSlotLayout(
 
 internal fun threadMessageMetadataSlotLayout(
     showAvatar: Boolean,
-    reserveTimestampSpace: Boolean,
+    compactTimestampGutter: Boolean,
     showTimestamp: Boolean
 ): ThreadMessageMetadataSlotLayout =
     ThreadMessageMetadataSlotLayout(
-        widthDp = if (reserveTimestampSpace) ThreadRelativeTimestampSlotWidthDp else 36f,
+        widthDp = 36f,
         heightDp =
             when {
                 showAvatar -> 40f
-                reserveTimestampSpace -> 18f
+                compactTimestampGutter -> 18f
                 else -> 0f
             },
-        timestampVisible = !showAvatar && reserveTimestampSpace && showTimestamp
+        timestampVisible = !showAvatar && compactTimestampGutter && showTimestamp
     )
 
 internal enum class ThreadPickedAttachmentComposerAction {
@@ -17852,7 +17852,7 @@ private fun ThreadMessageCard(
     val showTimestampInHeader = !compactConsecutiveMessages || showAuthorChrome
     val showTimestampInAvatarSlot =
         compactConsecutiveMessages && !showAuthorChrome && pressed && compactTimestampLabel.isNotBlank()
-    val reserveTimestampSpace = compactConsecutiveMessages
+    val compactTimestampGutter = compactConsecutiveMessages
     val hasThreadAttachments = richContentEnabled && message.attachments.isNotEmpty()
     val showSavedBadge =
         shouldShowThreadMessageSavedBadge(
@@ -17976,7 +17976,7 @@ private fun ThreadMessageCard(
                         interactionIdentity = authorGestureIdentity,
                         showAvatar = showAuthorChrome,
                         showTimestamp = showTimestampInAvatarSlot,
-                        reserveTimestampSpace = reserveTimestampSpace,
+                        compactTimestampGutter = compactTimestampGutter,
                         timestampLabel = compactTimestampLabel,
                         timestampAlignment = Alignment.TopStart,
                         timestampTextAlign = TextAlign.Start,
@@ -18281,7 +18281,7 @@ private fun ThreadMessageCard(
                         interactionIdentity = authorGestureIdentity,
                         showAvatar = showAuthorChrome,
                         showTimestamp = showTimestampInAvatarSlot,
-                        reserveTimestampSpace = reserveTimestampSpace,
+                        compactTimestampGutter = compactTimestampGutter,
                         timestampLabel = compactTimestampLabel,
                         timestampAlignment = Alignment.TopEnd,
                         timestampTextAlign = TextAlign.End,
@@ -21438,7 +21438,7 @@ private fun ThreadMessageAvatarSlot(
     interactionIdentity: String,
     showAvatar: Boolean,
     showTimestamp: Boolean,
-    reserveTimestampSpace: Boolean,
+    compactTimestampGutter: Boolean,
     timestampLabel: String,
     timestampAlignment: Alignment,
     timestampTextAlign: TextAlign,
@@ -21450,7 +21450,7 @@ private fun ThreadMessageAvatarSlot(
     onClick: () -> Unit,
     onLongPress: () -> Unit = {}
 ) {
-    val slotLayout = threadMessageMetadataSlotLayout(showAvatar, reserveTimestampSpace, showTimestamp)
+    val slotLayout = threadMessageMetadataSlotLayout(showAvatar, compactTimestampGutter, showTimestamp)
     Box(
         modifier = Modifier.width(slotLayout.widthDp.dp).height(slotLayout.heightDp.dp),
         contentAlignment = timestampAlignment
@@ -21473,7 +21473,7 @@ private fun ThreadMessageAvatarSlot(
                 }
             slotLayout.timestampVisible ->
                 Text(
-                    text = slockRelativeTimestampLabel(timestampLabel),
+                    text = timestampLabel,
                     style =
                         SlockType.Caption.copy(
                             fontFamily = SlockMonoFamily,
@@ -21487,7 +21487,7 @@ private fun ThreadMessageAvatarSlot(
                     textAlign = timestampTextAlign,
                     modifier =
                         Modifier
-                            .width(ThreadRelativeTimestampSlotWidthDp.dp)
+                            .width(slotLayout.widthDp.dp)
                             .align(timestampAlignment)
                 )
         }
