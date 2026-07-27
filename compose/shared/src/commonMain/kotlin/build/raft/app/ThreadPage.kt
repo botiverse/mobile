@@ -2838,6 +2838,7 @@ private fun ThreadPageScreen(
                                 AuthLossSignal(
                                     source = "thread:${payload.instanceId}",
                                     tokenFingerprint = session?.accessToken.authLossTokenFingerprint(),
+                                    capturedSession = session,
                                     pendingOpenRequest = pendingOpenRequest
                                 )
                             ).await()

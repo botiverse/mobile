@@ -608,6 +608,28 @@ internal class SlockShellAuthSessionStore(
         return cleared
     }
 
+    override suspend fun clearSessionIfMatchesOutcome(
+        expectedAccountId: String,
+        expectedAccessToken: String,
+        expectedRefreshToken: String,
+        reason: String,
+        source: String,
+    ): AuthSessionClearOutcome {
+        val outcome =
+            delegate.clearSessionIfMatchesOutcome(
+                expectedAccountId = expectedAccountId,
+                expectedAccessToken = expectedAccessToken,
+                expectedRefreshToken = expectedRefreshToken,
+                reason = reason,
+                source = source,
+            )
+        if (outcome == AuthSessionClearOutcome.Cleared) {
+            selectedServerStore.clearSelection()
+            onProcessSessionCleared()
+        }
+        return outcome
+    }
+
     private suspend fun emitAuthSessionEvent(
         create: (Long) -> AuthSessionEvent
     ) {

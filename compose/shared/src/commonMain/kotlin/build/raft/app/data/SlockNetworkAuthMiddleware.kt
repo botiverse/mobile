@@ -61,13 +61,13 @@ internal class SlockNetworkAuthMiddleware(
                 is SharedAuthRefreshResult.Failure -> {
                     if (result.response.code == 401 || result.response.code == 403) {
                         terminalAuthLossReporter(session, caller)
+                    } else {
+                        return result.response.toNetworkResponse()
                     }
                     null
                 }
                 SharedAuthRefreshResult.Unavailable -> {
-                    if (session.refreshToken.isBlank()) {
-                        terminalAuthLossReporter(session, caller)
-                    }
+                    terminalAuthLossReporter(session, caller)
                     null
                 }
             }
@@ -84,6 +84,7 @@ internal class SlockNetworkAuthMiddleware(
 
         val retry = block(refreshed.toRequestContext(retryServerId))
         if (retry.requiresTokenRefresh()) {
+            terminalAuthLossReporter(refreshed, caller)
             return retry.asSessionExpired()
         }
         return retry
@@ -163,4 +164,11 @@ private fun HomeNetworkResponse.asSessionExpired(): HomeNetworkResponse =
         errorBodyText = errorBodyText.takeUnless { it.isNullOrBlank() } ?: SESSION_EXPIRED_ERROR,
         transportDiagnostics = transportDiagnostics,
         responseHeaders = responseHeaders
+    )
+
+private fun AuthApiResult.Failure.toNetworkResponse(): HomeNetworkResponse =
+    HomeNetworkResponse(
+        code = code,
+        bodyText = null,
+        errorBodyText = errorBodyText,
     )

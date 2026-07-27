@@ -13,6 +13,8 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonPrimitive
 
+internal const val AuthAuthorityChangedMessage = "auth_authority_changed"
+
 private val authJson = Json {
     ignoreUnknownKeys = true
     encodeDefaults = true
@@ -822,11 +824,11 @@ class SharedAuthDataSource(
                         is AuthApiResult.Failure -> {
                             if (retryResponse.code == 401) {
                                 diagnosticsLogger("auth_servers_load_result result=unauthenticated source=refresh_retry")
-                                sessionStore.clearSession(
+                                return terminalUnauthorizedForCapturedSession(
+                                    session = updated,
                                     reason = "servers_refresh_retry_http_401",
-                                    source = "auth_data_source_load_servers"
+                                    source = "auth_data_source_load_servers",
                                 )
-                                return SharedAuthResult.Unauthenticated
                             }
                             val failure = retryResponse.toSharedAuthFailure()
                             diagnosticsLogger("auth_servers_load_result result=failure source=refresh_retry code=${failure.code}")
@@ -844,6 +846,47 @@ class SharedAuthDataSource(
                 return refreshed
             }
         }
+    }
+
+    private suspend fun terminalUnauthorizedForCapturedSession(
+        session: StoredAuthSession,
+        reason: String,
+        source: String,
+    ): SharedAuthResult<StoredAuthSession> {
+        val cleared =
+            sessionStore.clearSessionIfMatches(
+                expectedAccountId = session.user.id,
+                expectedAccessToken = session.accessToken,
+                expectedRefreshToken = session.refreshToken,
+                reason = reason,
+                source = source,
+            )
+        if (cleared) return SharedAuthResult.Unauthenticated
+        return sessionStore.readSession()
+            ?.let { SharedAuthResult.Success(it) }
+            ?: SharedAuthResult.Unauthenticated
+    }
+
+    private suspend fun terminalMutationUnauthorizedForCapturedSession(
+        session: StoredAuthSession,
+        reason: String,
+        source: String,
+    ): SharedAuthResult<StoredAuthSession> {
+        val cleared =
+            sessionStore.clearSessionIfMatches(
+                expectedAccountId = session.user.id,
+                expectedAccessToken = session.accessToken,
+                expectedRefreshToken = session.refreshToken,
+                reason = reason,
+                source = source,
+            )
+        if (cleared || sessionStore.readSession() == null) {
+            return SharedAuthResult.Unauthenticated
+        }
+        return SharedAuthResult.Failure(
+            SharedAuthErrorCode.Unknown,
+            AuthAuthorityChangedMessage,
+        )
     }
 
     private suspend fun persistLoadedServers(
@@ -893,7 +936,7 @@ class SharedAuthDataSource(
         slug: String? = null,
         region: String? = null
     ): SharedAuthResult<StoredAuthSession> {
-        val session = sessionStore.readSession() ?: return SharedAuthResult.Unauthenticated
+        var session = sessionStore.readSession() ?: return SharedAuthResult.Unauthenticated
         val normalizedName = name.trim()
         if (normalizedName.isBlank()) {
             return SharedAuthResult.Failure(SharedAuthErrorCode.Validation, "Server name is required.")
@@ -906,13 +949,41 @@ class SharedAuthDataSource(
                     region = region?.trim()?.takeIf { it.isNotBlank() }
                 )
             )
+        var createResponse = api.createServer(session.bearer(), body)
+        if (createResponse is AuthApiResult.Failure && createResponse.code == 401) {
+            when (
+                val refreshed =
+                    refreshAfterUnauthorized(
+                        failedSession = session,
+                        clearOnUnauthorized = true,
+                        reason = "create_server_http_401",
+                        caller = "auth_data_source_create_server",
+                    )
+            ) {
+                is SharedAuthResult.Success -> {
+                    if (refreshed.data.user.id != session.user.id) {
+                        return SharedAuthResult.Failure(
+                            SharedAuthErrorCode.Unknown,
+                            AuthAuthorityChangedMessage,
+                        )
+                    }
+                    session = refreshed.data
+                    createResponse = api.createServer(session.bearer(), body)
+                }
+                is SharedAuthResult.Failure -> return refreshed
+                SharedAuthResult.Unauthenticated -> return SharedAuthResult.Unauthenticated
+            }
+        }
         val created =
-            when (val response = api.createServer(session.bearer(), body)) {
+            when (val response = createResponse) {
                 is AuthApiResult.Success -> response.data
                 is AuthApiResult.Failure -> {
                     if (response.code == 401) {
-                        sessionStore.clearSession(reason = "create_server_http_401", source = "auth_data_source_create_server")
-                        return SharedAuthResult.Unauthenticated
+                        return terminalMutationUnauthorizedForCapturedSession(
+                            session = session,
+                            reason = "create_server_refresh_retry_http_401",
+                            source = "auth_data_source_create_server",
+                        )
                     }
                     return response.toSharedAuthFailure()
                 }

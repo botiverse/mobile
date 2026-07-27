@@ -1128,6 +1128,7 @@
     <string name="auth_error_restore_session">Could not restore your session.</string>
     <string name="auth_error_load_servers">Could not load servers.</string>
     <string name="auth_error_session_refresh_choose_server">Your session needs to be refreshed before choosing a server. Try again, or sign out and sign in again.</string>
+    <string name="auth_error_session_changed_retry_create_server">Your session changed. Try creating the server again.</string>
     <string name="auth_server_title_create">Create server</string>
     <string name="auth_server_title_checking">Checking servers</string>
     <string name="auth_server_title_first">Create your first server</string>

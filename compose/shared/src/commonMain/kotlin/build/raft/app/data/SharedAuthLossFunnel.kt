@@ -14,6 +14,7 @@ internal data class AuthLossSignal(
     val source: String,
     val requestId: String? = null,
     val tokenFingerprint: String,
+    val capturedSession: StoredAuthSession? = null,
     val pendingOpenRequest: AuthPendingOpenRequest? = null
 )
 
@@ -47,24 +48,37 @@ internal sealed interface AuthLossDecision {
 
 internal data class AuthLossResolution(
     val signal: AuthLossSignal,
-    val decision: AuthLossDecision
+    val decision: AuthLossDecision,
+    val pendingOpenRequest: AuthPendingOpenRequest? = null,
 )
 
 internal class SharedAuthLossFunnel(
     private val restoreSession: suspend () -> SharedAuthResult<StoredAuthSession>,
-    private val clearSession: suspend (reason: String, source: String) -> Unit,
+    private val clearSessionIfMatches: suspend (StoredAuthSession, String, String) -> AuthSessionClearOutcome,
     private val scope: CoroutineScope,
     private val diagnosticsLogger: (String) -> Unit = {}
 ) {
+    private data class AuthorityKey(
+        val accountId: String?,
+        val accessToken: String?,
+        val refreshToken: String?,
+        val fallbackFingerprint: String?,
+    )
+
     private data class InFlight(
         val signal: AuthLossSignal,
         val decision: Deferred<AuthLossDecision>
     )
 
+    private data class PendingOpenRequestRecord(
+        val authorityKey: AuthorityKey,
+        val request: AuthPendingOpenRequest,
+    )
+
     private val mutex = Mutex()
-    private val inFlightByToken = mutableMapOf<String, InFlight>()
-    private val pendingCandidatesByToken = mutableMapOf<String, AuthPendingOpenRequest>()
-    private var pendingOpenRequest: AuthPendingOpenRequest? = null
+    private val inFlightByAuthority = mutableMapOf<AuthorityKey, InFlight>()
+    private val pendingCandidatesByAuthority = mutableMapOf<AuthorityKey, AuthPendingOpenRequest>()
+    private var pendingOpenRequest: PendingOpenRequestRecord? = null
     private val _resolutions = MutableSharedFlow<AuthLossResolution>(extraBufferCapacity = 8)
     val resolutions: SharedFlow<AuthLossResolution> = _resolutions.asSharedFlow()
 
@@ -80,26 +94,53 @@ internal class SharedAuthLossFunnel(
         mutex.withLock {
             val pending = pendingOpenRequest ?: return@withLock null
             val principalId = currentAccountPrincipalId.trim()
-            if (principalId.isBlank() || pending.accountPrincipalId != principalId) {
+            if (principalId.isBlank() || pending.request.accountPrincipalId != principalId) {
                 pendingOpenRequest = null
                 return@withLock null
             }
             pending
-                .takeIf { it.serverId == serverId.trim() }
+                .takeIf { it.request.serverId == serverId.trim() }
                 ?.also { pendingOpenRequest = null }
+                ?.request
         }
 
     internal suspend fun peekPendingOpenRequest(): AuthPendingOpenRequest? =
-        mutex.withLock { pendingOpenRequest }
+        mutex.withLock { pendingOpenRequest?.request }
+
+    internal suspend fun activatePendingOpenRequest(resolution: AuthLossResolution) {
+        val request = resolution.pendingOpenRequest ?: return
+        if (resolution.decision !is AuthLossDecision.AuthRequired) return
+        val expected =
+            PendingOpenRequestRecord(
+                authorityKey = resolution.signal.authorityKey(),
+                request = request,
+            )
+        mutex.withLock {
+            pendingOpenRequest = expected
+        }
+    }
+
+    internal suspend fun discardPendingOpenRequest(resolution: AuthLossResolution) {
+        val request = resolution.pendingOpenRequest ?: return
+        val authorityKey = resolution.signal.authorityKey()
+        mutex.withLock {
+            if (
+                pendingOpenRequest?.authorityKey == authorityKey &&
+                pendingOpenRequest?.request == request
+            ) {
+                pendingOpenRequest = null
+            }
+        }
+    }
 
     private suspend fun resolve(signal: AuthLossSignal): AuthLossDecision {
-        val tokenKey = signal.tokenFingerprint
+        val authorityKey = signal.authorityKey()
         val (inFlight, owner) =
             mutex.withLock {
                 signal.pendingOpenRequest?.let { request ->
-                    pendingCandidatesByToken.putIfAbsent(tokenKey, request)
+                    pendingCandidatesByAuthority.putIfAbsent(authorityKey, request)
                 }
-                val existing = inFlightByToken[tokenKey]
+                val existing = inFlightByAuthority[authorityKey]
                 if (existing != null) {
                     existing to false
                 } else {
@@ -108,30 +149,54 @@ internal class SharedAuthLossFunnel(
                             signal = signal,
                             decision = scope.async { resolveOnce(signal) }
                         )
-                    inFlightByToken[tokenKey] = created
+                    inFlightByAuthority[authorityKey] = created
                     created to true
                 }
             }
         if (!owner) {
             diagnosticsLogger(
-                "auth_loss_join source=${signal.source} token=$tokenKey " +
+                "auth_loss_join source=${signal.source} token=${signal.tokenFingerprint} " +
                     "ownerSource=${inFlight.signal.source}"
             )
         }
         val decision = inFlight.decision.await()
         if (owner) {
-            mutex.withLock {
-                if (inFlightByToken[tokenKey] === inFlight) {
-                    inFlightByToken.remove(tokenKey)
+            val selectedPendingOpenRequest =
+                mutex.withLock {
+                    if (inFlightByAuthority[authorityKey] === inFlight) {
+                        inFlightByAuthority.remove(authorityKey)
+                    }
+                    val candidate = pendingCandidatesByAuthority.remove(authorityKey)
+                    candidate.takeIf { decision is AuthLossDecision.AuthRequired }
                 }
-                val candidate = pendingCandidatesByToken.remove(tokenKey)
-                if (decision is AuthLossDecision.AuthRequired && candidate != null) {
-                    pendingOpenRequest = candidate
-                }
-            }
-            _resolutions.emit(AuthLossResolution(signal = inFlight.signal, decision = decision))
+            _resolutions.emit(
+                AuthLossResolution(
+                    signal = inFlight.signal,
+                    decision = decision,
+                    pendingOpenRequest = selectedPendingOpenRequest,
+                )
+            )
         }
         return decision
+    }
+
+    private fun AuthLossSignal.authorityKey(): AuthorityKey {
+        val session = capturedSession
+        return if (session != null) {
+            AuthorityKey(
+                accountId = session.user.id,
+                accessToken = session.accessToken,
+                refreshToken = session.refreshToken,
+                fallbackFingerprint = null,
+            )
+        } else {
+            AuthorityKey(
+                accountId = null,
+                accessToken = null,
+                refreshToken = null,
+                fallbackFingerprint = tokenFingerprint,
+            )
+        }
     }
 
     private suspend fun resolveOnce(signal: AuthLossSignal): AuthLossDecision {
@@ -159,18 +224,31 @@ internal class SharedAuthLossFunnel(
                 AuthLossDecision.SessionPreserved("restore_failure_${result.code.name.lowercase()}")
             }
             SharedAuthResult.Unauthenticated -> {
-                runCatchingPreservingCancellation {
-                    clearSession(
-                        "auth_loss_unavailable",
-                        "auth_loss_funnel:${signal.source}"
-                    )
-                }.onFailure { throwable ->
-                    diagnosticsLogger(
-                        "auth_loss_clear_exception source=${signal.source} " +
-                            "error=${throwable::class.simpleName.orEmpty()}"
-                    )
+                val capturedSession = signal.capturedSession
+                val authorityStillOwned =
+                    if (capturedSession != null) {
+                        val cleared =
+                            runCatchingPreservingCancellation {
+                                clearSessionIfMatches(
+                                    capturedSession,
+                                    "auth_loss_unavailable",
+                                    "auth_loss_funnel:${signal.source}"
+                                )
+                            }.onFailure { throwable ->
+                                diagnosticsLogger(
+                                    "auth_loss_clear_exception source=${signal.source} " +
+                                        "error=${throwable::class.simpleName.orEmpty()}"
+                                )
+                            }.getOrNull()
+                        cleared != AuthSessionClearOutcome.AuthorityChanged
+                    } else {
+                        true
+                    }
+                if (authorityStillOwned) {
+                    AuthLossDecision.AuthRequired("restore_unauthenticated")
+                } else {
+                    AuthLossDecision.SessionPreserved("auth_authority_changed")
                 }
-                AuthLossDecision.AuthRequired("restore_unauthenticated")
             }
         }.also { decision ->
             diagnosticsLogger(
