@@ -1834,7 +1834,7 @@ class SharedActivityStore internal constructor(
             val profilesById =
                 serverMembersStore?.let { store ->
                     when (store.refreshMembers(serverId, DataRequestPriority.Visible)) {
-                        is DataResult.Content -> store.currentServerMemberProfilesById(serverId)
+                        is DataResult.Content -> store.currentKnownMemberProfilesById(serverId)
                         else -> emptyMap()
                     }
                 } ?: when (val result = memberRepository?.getMembers(DataRequestPriority.Visible, serverId)) {
@@ -1851,7 +1851,7 @@ class SharedActivityStore internal constructor(
 
     private fun currentSenderProfiles(serverId: ServerId): Map<String, SharedActivitySenderProfile> =
         serverMembersStore
-            ?.currentServerMemberProfilesById(serverId)
+            ?.currentKnownMemberProfilesById(serverId)
             ?.toActivitySenderProfiles()
             .orEmpty()
 

@@ -120,6 +120,7 @@ import build.raft.app.model.SlockTimeFormat24Hour
 import build.raft.app.model.ThreadId
 import build.raft.app.model.avatarWireValueForAvatarSlot
 import build.raft.app.model.formatSlockTimestampClockWithSeconds
+import build.raft.app.model.hidesHumanDirectoryForViewer
 import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
 import build.raft.app.model.toMemberProfile
 import build.raft.app.resources.MR
@@ -891,7 +892,9 @@ data class KuiklyMembersPayload(
      * from server capabilities. When false, the humans "+" is hidden and the
      * invite dialog cannot be opened from this page.
      */
-    val canInviteHumans: Boolean = true
+    val canInviteHumans: Boolean = true,
+    /** Server-wide human directory visibility; conversation member lists are separate. */
+    val showHumanDirectory: Boolean = true
 )
 
 internal data class KuiklyMemberDetailPayload(
@@ -1608,7 +1611,12 @@ internal fun MembersPageContent() {
         } else {
             payload.agentPanelTabOrder
         }
-    val membersPayload = payload.copy(members = localMembers, agentPanelTabOrder = agentPanelTabOrder)
+    val membersPayload =
+        payload.copy(
+            members = localMembers,
+            agentPanelTabOrder = agentPanelTabOrder,
+            showHumanDirectory = serverMembersEntry.server?.hidesHumanDirectoryForViewer() != true,
+        )
 
     MembersRouteContent(
         payload = membersPayload,
@@ -3727,6 +3735,7 @@ internal fun MembersListContent(
             humansCount = humans.size,
             agentsExpanded = agentsExpanded,
             humansExpanded = humansExpanded,
+            showHumanDirectory = payload.showHumanDirectory,
             hasPullToRefreshItem = showPullToRefreshItem
         )
 
@@ -3854,38 +3863,40 @@ internal fun MembersListContent(
                     }
                 }
             }
-            item {
-                Spacer(Modifier.height(SlockSpacing.Sm))
-                SlockCollapsibleSectionHeader(
-                    label = displayHumansLabel,
-                    count = humans.size,
-                    expanded = humansExpanded,
-                    onExpandedChange = { humansExpanded = it },
-                    modifier = Modifier.padding(horizontal = MembersListHorizontalInset),
-                    minHeight = MembersListSectionHeaderMinHeight,
-                    trailingContent = {
-                        if (canInviteHumans) {
-                            SlockSectionHeaderIconAction(
-                                icon = SlockLucideIconName.Plus,
-                                contentDescription = stringResource(MR.strings.member_action_invite_human),
-                                size = MembersListSectionAddActionSize,
-                                iconSize = MembersListSectionAddActionIconSize,
-                                onClick = { activeInviteHuman = true }
-                            )
-                        }
-                    }
-                )
-            }
-            if (humansExpanded) {
-                items(humans.size, key = { "human_${humans[it].id.value}" }) { index ->
-                    val member = humans[index]
-                    MembersListRow(
-                        member = member,
-                        agentStatusResolver = agentStatusResolver,
-                        memberAvatarResolver = memberAvatarResolver,
+            if (payload.showHumanDirectory) {
+                item {
+                    Spacer(Modifier.height(SlockSpacing.Sm))
+                    SlockCollapsibleSectionHeader(
+                        label = displayHumansLabel,
+                        count = humans.size,
+                        expanded = humansExpanded,
+                        onExpandedChange = { humansExpanded = it },
                         modifier = Modifier.padding(horizontal = MembersListHorizontalInset),
-                        onClick = { onOpenMember(member) }
+                        minHeight = MembersListSectionHeaderMinHeight,
+                        trailingContent = {
+                            if (canInviteHumans) {
+                                SlockSectionHeaderIconAction(
+                                    icon = SlockLucideIconName.Plus,
+                                    contentDescription = stringResource(MR.strings.member_action_invite_human),
+                                    size = MembersListSectionAddActionSize,
+                                    iconSize = MembersListSectionAddActionIconSize,
+                                    onClick = { activeInviteHuman = true }
+                                )
+                            }
+                        }
                     )
+                }
+                if (humansExpanded) {
+                    items(humans.size, key = { "human_${humans[it].id.value}" }) { index ->
+                        val member = humans[index]
+                        MembersListRow(
+                            member = member,
+                            agentStatusResolver = agentStatusResolver,
+                            memberAvatarResolver = memberAvatarResolver,
+                            modifier = Modifier.padding(horizontal = MembersListHorizontalInset),
+                            onClick = { onOpenMember(member) }
+                        )
+                    }
                 }
             }
             item { Spacer(Modifier.height(bottomContentPadding)) }
@@ -3993,13 +4004,14 @@ internal fun membersLazyItemCount(
     humansCount: Int,
     agentsExpanded: Boolean,
     humansExpanded: Boolean,
+    showHumanDirectory: Boolean = true,
     hasPullToRefreshItem: Boolean = true
 ): Int {
     val fixedItems =
         (if (hasPullToRefreshItem) 1 else 0) +
             1 + // top spacer
             1 + // agents header
-            1 + // humans header
+            (if (showHumanDirectory) 1 else 0) + // humans header
             1 // bottom spacer
     val agentItems =
         if (agentsExpanded) {
@@ -4007,7 +4019,7 @@ internal fun membersLazyItemCount(
         } else {
             0
         }
-    return fixedItems + agentItems + (if (humansExpanded) humansCount else 0)
+    return fixedItems + agentItems + (if (showHumanDirectory && humansExpanded) humansCount else 0)
 }
 
 @Composable

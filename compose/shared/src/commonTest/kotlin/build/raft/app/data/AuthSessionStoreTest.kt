@@ -38,6 +38,20 @@ class AuthSessionStoreTest {
     }
 
     @Test
+    fun serverSummaryCarriesHumanDirectoryPolicy() {
+        val summary =
+            StoredAuthServer(
+                id = "server-1",
+                name = "Server One",
+                role = "member",
+                hideHumansFromMembers = true,
+            ).toServerSummary()
+
+        assertTrue(summary.hideHumansFromMembers)
+        assertEquals("member", summary.role)
+    }
+
+    @Test
     fun storedSessionExposesSharedSnapshotAndAuthTokens() = runBlocking {
         val store = InMemorySlockAuthSessionStore(sampleSession())
 
