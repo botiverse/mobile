@@ -7818,6 +7818,9 @@ private fun MembersAgentProfileTab(
         // RUNTIME CONFIG section — mirrors React `AgentDetailPanel` runtime block:
         // key/value rows with brutal semantic chips, env vars embedded in the same
         // section, and a pencil entry point for the shared runtime-config editor.
+        // No catalog-retry affordance in this read-only view (React parity): a failed
+        // model-catalog prefetch only matters inside the editor dialog, which
+        // re-requests on open and renders its own error + Retry (task #96).
         Column(
             modifier = Modifier.fillMaxWidth().padding(top = SlockSpacing.Sm),
             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
@@ -7840,17 +7843,6 @@ private fun MembersAgentProfileTab(
             }
             MembersAgentRuntimeConfigRows(runtimeConfigResolution)
             MembersAgentRuntimeEnvVars(summary)
-            canonicalRuntimeId
-                ?.takeIf { agentRuntimeModelErrorsByRuntime[it] != null }
-                ?.let { failedRuntime ->
-                    SlockBrutalActionButton(
-                        label = stringResource(MR.strings.common_retry),
-                        leadingIcon = SlockLucideIconName.RefreshCw,
-                        enabled = failedRuntime !in agentRuntimeModelLoadsInFlight,
-                        backgroundColor = SlockColor.SurfaceWhite,
-                        onClick = { onAgentRuntimeModelsRequest(failedRuntime, true) }
-                    )
-                }
         }
 
         if (editingRuntimeConfig && canonicalRuntimeConfig != null) {
