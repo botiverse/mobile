@@ -1123,6 +1123,7 @@ internal class SharedThreadDataSource(
     private val readReceiptCoordinator: ReadReceiptCoordinator? = null,
     private val readReceiptOwnerFactory: ((String, String) -> ReadReceiptOwner)? = null,
     private val threadPageSizeProvider: (ServerId?) -> Int? = { null },
+    private val replyOriginHydrationGraceMillis: Long = SharedThreadZeroReplyOriginHydrationGraceMillis,
     private val diagnosticsLogger: (String) -> Unit = projectionRejectingDiagnosticsLogger,
     /**
      * Task #43: shared create-agent coordinator used by the action-card
@@ -1167,6 +1168,7 @@ internal class SharedThreadDataSource(
         readReceiptCoordinator: ReadReceiptCoordinator? = null,
         readReceiptOwnerFactory: ((String, String) -> ReadReceiptOwner)? = null,
         threadPageSizeProvider: (ServerId?) -> Int? = { null },
+        replyOriginHydrationGraceMillis: Long = SharedThreadZeroReplyOriginHydrationGraceMillis,
         createAgentCoordinator: build.raft.app.data.SharedCreateAgentCoordinator? = null,
         diagnosticsLogger: (String) -> Unit = projectionRejectingDiagnosticsLogger
     ) : this(
@@ -1190,6 +1192,7 @@ internal class SharedThreadDataSource(
         readReceiptCoordinator = readReceiptCoordinator,
         readReceiptOwnerFactory = readReceiptOwnerFactory,
         threadPageSizeProvider = threadPageSizeProvider,
+        replyOriginHydrationGraceMillis = replyOriginHydrationGraceMillis,
         diagnosticsLogger = diagnosticsLogger,
         createAgentCoordinator = createAgentCoordinator
     )
@@ -3603,6 +3606,7 @@ internal class SharedThreadDataSource(
         if (focusedContext != null) {
             return@coroutineScope focusedContext
         }
+        val parentContextStartedAt = TimeSource.Monotonic.markNow()
         val parentContextDeferred =
             async {
                 getReplyParentMessageFromStore(
@@ -3667,21 +3671,26 @@ internal class SharedThreadDataSource(
             is DataResult.Content -> {
                 onReplyThreadAccessValidatedForTest?.invoke()
                 val hasReplyContent = initialResult.data.hasRenderableReplyThreadMessages(basePayload)
+                val parentContextRemainingGraceMillis =
+                    (replyOriginHydrationGraceMillis -
+                        parentContextStartedAt.elapsedNow().inWholeMilliseconds)
+                        .coerceAtLeast(0L)
                 val parentMessage =
-                    if (hasReplyContent) {
+                    if (parentContextDeferred.isCompleted) {
                         parentContextDeferred.await()
                     } else {
-                        withTimeoutOrNull(SharedThreadZeroReplyOriginHydrationGraceMillis) {
+                        withTimeoutOrNull(parentContextRemainingGraceMillis) {
                             parentContextDeferred.await()
                         }
                     }
-                val parentContextTimedOut = !hasReplyContent && !parentContextDeferred.isCompleted
+                val parentContextTimedOut = !parentContextDeferred.isCompleted
                 if (parentContextTimedOut) {
                     parentContextDeferred.cancel()
                     diagnosticsLogger(
                         "thread_parent_context_grace_expired parentChannelId=$parentChannelId " +
                             "parentMessageId=$parentMessageId " +
-                            "graceMs=$SharedThreadZeroReplyOriginHydrationGraceMillis"
+                            "graceMs=$replyOriginHydrationGraceMillis " +
+                            "hasReplyContent=$hasReplyContent"
                     )
                 }
                 val resolvedThreadId =
