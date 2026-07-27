@@ -47,6 +47,7 @@ public object ThreadNewerAutoPaginationVisualFixtureProbe {
     private val lock = SynchronizedObject()
     private var activeRunNonce: String = ""
     private var initialRequests: Int = 0
+    private var sentRequests: Int = 0
     private val afterRequests = mutableListOf<ThreadNewerAutoAfterRequest>()
     private val afterResponseGates = mutableMapOf<Int, CompletableDeferred<ThreadNewerAutoFixtureResponse>>()
     private val returnedAfterCalls = mutableSetOf<Int>()
@@ -55,6 +56,7 @@ public object ThreadNewerAutoPaginationVisualFixtureProbe {
         synchronized(lock) {
             activeRunNonce = runNonce
             initialRequests = 0
+            sentRequests = 0
             afterRequests.clear()
             afterResponseGates.values.forEach { gate ->
                 gate.cancel()
@@ -70,6 +72,18 @@ public object ThreadNewerAutoPaginationVisualFixtureProbe {
             initialRequests += 1
         }
     }
+
+    internal fun recordSentRequest(runNonce: String) {
+        synchronized(lock) {
+            check(runNonce == activeRunNonce) { "stale thread newer auto send run $runNonce" }
+            sentRequests += 1
+        }
+    }
+
+    public fun sentRequestCount(runNonce: String): Int =
+        synchronized(lock) {
+            if (runNonce == activeRunNonce) sentRequests else 0
+        }
 
     internal suspend fun awaitAfterResponse(
         runNonce: String,
@@ -166,12 +180,13 @@ internal class ThreadNewerAutoPaginationVisualPage : BasePager() {
         val runNonce = pageData.params.optString("runNonce").trim()
         require(runNonce.isNotBlank()) { "thread newer auto-pagination runNonce is required" }
         ThreadNewerAutoPaginationVisualFixtureProbe.beginRun(runNonce)
-        setContent { ThreadNewerAutoPaginationVisualContent(runNonce) }
+        val showComposer = pageData.params.optBoolean("showComposer", false)
+        setContent { ThreadNewerAutoPaginationVisualContent(runNonce, showComposer) }
     }
 }
 
 @Composable
-private fun ThreadNewerAutoPaginationVisualContent(runNonce: String) {
+private fun ThreadNewerAutoPaginationVisualContent(runNonce: String, showComposer: Boolean) {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
     val provider = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
@@ -209,8 +224,8 @@ private fun ThreadNewerAutoPaginationVisualContent(runNonce: String) {
                 focusedMessageRequestNonce = 1,
                 canLoadMoreAfter = true,
                 showModeTabs = false,
-                showComposer = false,
-                canSend = false,
+                showComposer = showComposer,
+                canSend = showComposer,
                 showMembersAction = false,
                 showSettingsAction = false,
             )
@@ -241,6 +256,8 @@ private fun ThreadNewerAutoPaginationVisualContent(runNonce: String) {
 private class ThreadNewerAutoPaginationNetworkApi(
     private val runNonce: String,
 ) : SharedThreadNetworkApi {
+    private var sentMessageSequence = 100L
+
     override suspend fun channelMessages(
         threadId: String,
         limit: Int,
@@ -289,7 +306,30 @@ private class ThreadNewerAutoPaginationNetworkApi(
         asTask: Boolean,
         attachmentIds: List<String>,
         randomId: String?,
-    ): HomeNetworkResponse = HomeNetworkResponse(code = 501, bodyText = null)
+    ): HomeNetworkResponse {
+        check(channelId == ThreadNewerAutoChannelId) { "unexpected fixture send channel $channelId" }
+        ThreadNewerAutoPaginationVisualFixtureProbe.recordSentRequest(runNonce)
+        sentMessageSequence += 1L
+        val seq = sentMessageSequence
+        return HomeNetworkResponse(
+            code = 200,
+            bodyText =
+                """
+                {
+                  "id":"${threadNewerAutoMessageId(seq)}",
+                  "seq":$seq,
+                  "channelId":"$ThreadNewerAutoChannelId",
+                  "content":"$body",
+                  "createdAt":"2026-07-27T06:00:00Z",
+                  "senderId":"thread-newer-auto-user",
+                  "senderName":"Thread Pagination Fixture",
+                  "senderType":"user",
+                  "messageType":"chat",
+                  "randomId":"${randomId.orEmpty()}"
+                }
+                """.trimIndent(),
+        )
+    }
 
     override suspend fun executePendingMentionActions(
         action: String,

@@ -4,6 +4,10 @@ internal actual fun slockPlatformSupportsKuiklyPullToRefreshItem(): Boolean = tr
 
 internal actual fun slockPlatformUsesNativeLucideIconRotation(): Boolean = true
 
+internal actual fun prepareSlockPlatformSnapshotConsumption() = Unit
+
+internal actual fun slockPlatformConsumesSnapshotsFromKuikly(): Boolean = true
+
 internal actual fun slockPlatformAppShellChildPagePrewarmMode(): AppShellChildPagePrewarmMode =
     AppShellChildPagePrewarmMode.Enabled
 

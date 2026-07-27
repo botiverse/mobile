@@ -3,6 +3,8 @@ package build.raft.app.base
 import build.raft.app.slockLogError
 import build.raft.app.slockLogInfo
 import build.raft.app.SlockAdaptivePanePagerEvent
+import build.raft.app.prepareSlockPlatformSnapshotConsumption
+import build.raft.app.slockPlatformConsumesSnapshotsFromKuikly
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -32,12 +34,6 @@ internal abstract class BasePager : ComposeContainer() {
         registerSlockExternalModuleCreators()
         super.willInit()
         configureKuiklyThreadVerification()
-    }
-
-    private fun configureSlockComposeSnapshotConsumption() {
-        // iOS also needs snapshot consumption so async state transitions
-        // render without waiting for the next touch event.
-        ComposeContainer.enableConsumeSnapshot = true
     }
 
     private fun registerSlockExternalModuleCreators() {
@@ -136,4 +132,9 @@ internal abstract class BasePager : ComposeContainer() {
         private const val TAG_VERIFY = "SlockKuiklyVerify"
     }
 
+}
+
+internal fun configureSlockComposeSnapshotConsumption() {
+    prepareSlockPlatformSnapshotConsumption()
+    ComposeContainer.enableConsumeSnapshot = slockPlatformConsumesSnapshotsFromKuikly()
 }

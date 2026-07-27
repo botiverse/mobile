@@ -98,6 +98,7 @@ import build.raft.app.data.SlockInProcessNotifyModule
 import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.SLOCK_APP_UPDATE_EVENT
+import build.raft.app.installSlockAndroidXSnapshotDispatcherStarter
 import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.SharedAuthResult
 import build.raft.app.data.installAndroidAppScopeEventBus
@@ -409,6 +410,7 @@ open class SlockKuiklyActivity :
         get() = resolvedPageName(intent)
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        installAndroidXSnapshotDispatcherStarter()
         prepareHomeColdStartSplashIfNeeded()
         super.onCreate(savedInstanceState)
         onBackPressedDispatcher.addCallback(this, kuiklySystemBackCallback)
@@ -423,6 +425,16 @@ open class SlockKuiklyActivity :
             attachKuiklyHostAfterHoldFirstDraw()
         } else {
             attachKuiklyHost()
+        }
+    }
+
+    @Suppress("INVISIBLE_MEMBER", "INVISIBLE_REFERENCE")
+    private fun installAndroidXSnapshotDispatcherStarter() {
+        installSlockAndroidXSnapshotDispatcherStarter {
+            // Kuikly roots can write snapshot state before the first native
+            // ComposeView mounts. Start AndroidX's process singleton eagerly
+            // so it remains the sole apply-notification dispatcher.
+            androidx.compose.ui.platform.GlobalSnapshotManager.ensureStarted()
         }
     }
 

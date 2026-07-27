@@ -10,6 +10,11 @@ import kotlin.test.assertTrue
 
 class SlockKuiklyPlatformCapabilitiesIosTest {
     @Test
+    fun kuiklyRemainsTheSnapshotConsumerWithoutAndroidxCompose() {
+        assertTrue(slockPlatformConsumesSnapshotsFromKuikly())
+    }
+
+    @Test
     fun liquidGlassDefaultIsRuntimeGatedAcrossRouteRebuilds() {
         assertEquals("sharedCompose", slockIosAppTabBarRendererForMajorVersion(18L))
         assertEquals("sharedCompose", slockIosAppTabBarRendererForMajorVersion(25L))
