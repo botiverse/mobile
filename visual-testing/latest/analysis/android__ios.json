@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-26T22:15:31.082Z",
+  "generatedAt": "2026-07-27T22:17:40.807Z",
   "baseline": "android",
   "current": "ios",
   "comparison": "android__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 80,
-    "ready": 75,
-    "pending": 5
+    "ready": 72,
+    "pending": 8
   },
   "cases": [
     {
@@ -250,7 +250,7 @@
     {
       "id": "components.ui.status-dot.states",
       "status": "ready",
-      "imageHash": "p1:0000000007fc0ffe03fc07fe43fc87fe0000fffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00001",
+      "imageHash": "p1:0000000007fc0ffe03fc07fe03fc87fe0000fffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00001",
       "generatedAt": "2026-07-19T05:32:01.618Z",
       "severity": "low",
       "summary": [
@@ -277,7 +277,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.002998204183038311
+      "metricMismatch": 0.002999216861776066
     },
     {
       "id": "components.ui.progress-bar.states",
@@ -557,7 +557,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.00953234495888522
+      "metricMismatch": 0.00953200739930593
     },
     {
       "id": "components.ui.surface-list-item.states",
@@ -940,7 +940,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.05944727994491028
+      "metricMismatch": 0.05945335601733703
     },
     {
       "id": "components.thread.header.states",
@@ -966,40 +966,20 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.014713209381455816
+      "metricMismatch": 0.014723336168833812
     },
     {
       "id": "components.thread.message.row",
-      "status": "ready",
-      "imageHash": "p1:0804000407f81ffe00020002400200024000c0020000c3fefffeeffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff81fff",
-      "generatedAt": "2026-07-26T22:13:52.682Z",
-      "severity": "medium",
-      "summary": [
-        "iOS renders a full message row with reaction (👍 1) and add-reaction (+) controls; Android (baseline) is cropped to the header line only, so the reaction row is missing on the left side.",
-        "Timestamp/subtitle on iOS is truncated with an ellipsis ('Keeps visual testing…') while Android shows the full text ('Keeps visual testing …') — iOS is applying an extra ellipsis on top of the existing one.",
-        "Avatar on iOS is slightly larger and the orange status badge is positioned at bottom-right of the avatar; on Android the badge sits slightly lower/right with a different relative offset due to smaller avatar size.",
-        "Body text vertical spacing on iOS is tighter: the 'parity.' line sits closer to the line above; Android has more leading between wrapped lines.",
-        "Code chip '#product:f8e569cb' has the same highlight color on both, but iOS chip has visibly larger horizontal padding, increasing its bounds compared to Android."
-      ],
-      "likelyCauses": [
-        "Android baseline crop is set to header/avatar+title bounds only and did not include the reaction row (incorrect contract rect height/width).",
-        "iOS text container is applying numberOfLines / Text-overflow ellipsis to the subtitle while Android renders unwrapped, leading to a double ellipsis on iOS.",
-        "Default text line-height and paragraph spacing differ between the Kuikly iOS renderer and Android renderer for the body Text component.",
-        "iOS uses native UITextView/UIView paddings for inline code chips whereas Android uses a different measurement, producing larger chip padding on iOS."
-      ],
-      "suggestedOwner": "Kuikly rendering / cross-platform parity team (message-thread component owner)",
-      "suggestedFixes": [
-        "Recapture the Android baseline with a crop rect that includes the reaction row and ensure contract uses 'component-bounds' covering avatar → reactions.",
-        "Unify subtitle text-overflow behavior: either both ends truncate with a single ellipsis or both wrap; remove the extra '…' on iOS so it matches Android's 'Keeps visual testing …' rendering.",
-        "Normalize line-height/paragraph spacing for the body Text on iOS to match Android's leading (apply explicit lineHeight or remove platform default).",
-        "Standardize inline code-chip padding via a shared token (e.g., 6dp horizontal) so chip bounds are identical across Android and iOS.",
-        "Verify avatar size and status badge anchor: use a shared DP size and bottom-right offset to remove the slight size/position drift."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.04034984674795106
+      "status": "pending",
+      "imageHash": "p1:0804000407de1ffe00060002400200024000c0020000c3fefffeeffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff80fff",
+      "generatedAt": "2026-07-27T22:17:39.354Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.03996975466169783
     },
     {
       "id": "components.thread.message-row.deleted-human",
@@ -1034,7 +1014,7 @@
     {
       "id": "components.thread.message-menu.default",
       "status": "ready",
-      "imageHash": "p1:01fc01fcfffe7ffe87fe07ee80020002e0026002e7fe6ffe803e001e801e001e809e001ea7de27de81de019e87de07de87de07de81de01dea3de239e83de03de83de03de83de03de83de039e81de2bde801e001ec03e003efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00004000fffa3fff",
+      "imageHash": "p1:01fc01fcfffe7ffe87ee07fe80020002e0026002e7fe6ffe803e001e801e001e809e001ea7de27de81de019e87de07de87de07de81de01dea3de239e83de03de83de03de83de03de83de039e81de2bde801e001ec03e003efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00004000fffa1fff",
       "generatedAt": "2026-07-26T22:13:52.742Z",
       "severity": "high",
       "summary": [
@@ -1063,12 +1043,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.37035315483182785
+      "metricMismatch": 0.3694137265227313
     },
     {
       "id": "components.thread.message-menu.task",
       "status": "ready",
-      "imageHash": "p1:01fc01fefffe7ffe87fe07fe80020002e0426006e0fe60fec03e401e801f001e809f009ea7df27de81df01de87df07de87df07de81df01dea3df23de83df03de83df03dea3df03de83df039e83df03de801f001edc3e003efffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe7ffe00006002fffe3fff",
+      "imageHash": "p1:01fc01fefffe7ffe87fe07fe80020006e0426006e0fe60fec03e401e801f001e809f009ea7df27de81df01de87df07de87df07de81df01dea3df23de83df03de83df03dea3df03de83df039e83df03de801f001edc3e003efffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe7ffe00006002fffe3fff",
       "generatedAt": "2026-07-26T22:13:52.755Z",
       "severity": "medium",
       "summary": [
@@ -1094,12 +1074,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.37262729371734116
+      "metricMismatch": 0.3716878654082445
     },
     {
       "id": "components.thread.message-share.selection",
       "status": "ready",
-      "imageHash": "p1:07fc07fcfffe7ffe81fe01fec0024002f0267002fffe7ffe83fe83fec0024002f8027002f0064006800100008001000080020000fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00004000fff83fff",
+      "imageHash": "p1:07fc07fcfffe7ffe81fe01fec0024002f0267002fffe7ffe83fe83fec0024002f8027002f0064006800100008001000080020000fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00004000fff81fff",
       "generatedAt": "2026-07-10T22:13:31.380Z",
       "severity": "high",
       "summary": [
@@ -1128,7 +1108,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.6440822430158923
+      "metricMismatch": 0.6438918594131864
     },
     {
       "id": "components.thread.forward-modal",
@@ -1156,7 +1136,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.059766948866474934
+      "metricMismatch": 0.059775725415535885
     },
     {
       "id": "components.thread.comment-anchor",
@@ -1190,7 +1170,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.07256855835054887
+      "metricMismatch": 0.07256248227812212
     },
     {
       "id": "components.home.titlebar.states",
@@ -1223,7 +1203,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.48061226556487224
+      "metricMismatch": 0.48060483925412834
     },
     {
       "id": "components.home.notification-center.states",
@@ -1256,7 +1236,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.6569493390583439
+      "metricMismatch": 0.656949676617923
     },
     {
       "id": "components.home.search.results",
@@ -1287,7 +1267,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.0805305761466899
+      "metricMismatch": 0.08053023858711061
     },
     {
       "id": "components.home.search.channel-dropdown",
@@ -1320,7 +1300,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.09582202508742788
+      "metricMismatch": 0.09582607580237912
     },
     {
       "id": "components.home.saved.results",
@@ -1353,7 +1333,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.071557567410648
+      "metricMismatch": 0.07157275759171489
     },
     {
       "id": "components.home.activity.results",
@@ -1386,12 +1366,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.06273848584275121
+      "metricMismatch": 0.06273679804485488
     },
     {
       "id": "components.tasks.panel.states",
       "status": "ready",
-      "imageHash": "p1:bffe7ffe000000000000000080070006ffffffefffc1ffc1dfc1ffc19fff9fff9ffd9ffd9ffc9ffc87fc87f4bffcfffcbfe1ffe08801880187ff87ff87ff87ffbffdbffc80348014bfe1bfe18001800187ff87ff8fff8fff9ffdbffc80c5808cb3e1b7e1800180019fff9fff9ffd9ffd887c807c9fe1ffe180010000ffffffff",
+      "imageHash": "p1:bffe7ffe000000000000000080070006ffffffefffc1ffc1dfc1ffc19fff9fff9ffd9ffd9ff49ff487fc87f4bffcfffcbfe1ffe08801880187ff87ff87ff87ffbffdbffc80348014bfe1bfe18001800187ff87ff8fff8fff9ffdbffc80c5808cb3e1b7e1800180019fff9fff9ffd9ffd887c807c9fe1ffe180010000ffffffff",
       "generatedAt": "2026-07-18T07:41:15.942Z",
       "severity": "low",
       "summary": [
@@ -1419,7 +1399,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.10854160759374032
+      "metricMismatch": 0.10811965811965807
     },
     {
       "id": "components.tasks.status-menu",
@@ -1488,32 +1468,16 @@
     },
     {
       "id": "components.members.create-agent.dialog",
-      "status": "ready",
-      "imageHash": "p1:ffffffff000000003dfc3dfc2df82df83e0c3e7c00ec00cc3ffc3ffc3ffc3ffc39fc39fc3ffc1ffc3ffc1ffc23fc21fc03fc03fc03fc03fc3ffc3ffc3ffc3ffc3ff43ff43ffc7ffc3ffc3ffc27fc80013ffcdef33ffcffff27fcffff27fcffff3ffcbff82ffc3ff83ffc8ff03ffc0ff03f7c81013800800100008001ffffffff",
-      "generatedAt": "2026-07-26T22:13:53.177Z",
-      "severity": "high",
-      "summary": [
-        "iOS side shows an active on-screen keyboard occupying the bottom half of the viewport, which is not present on Android; the Android side renders the full form including Runtime, Model, Reasoning, Mode, Cancel, and Create Agent controls.",
-        "Reasoning select ('Default') and Mode section are clipped/hidden behind the keyboard on iOS, while they are fully visible on Android.",
-        "Cancel and Create Agent action buttons are visible on Android but fully occluded on iOS by the keyboard suggestion bar and keys."
-      ],
-      "likelyCauses": [
-        "Soft keyboard is open on iOS at screenshot time but closed on Android, causing the layout to not reserve space for the keyboard or the screenshot to include it.",
-        "Viewport / safe-area / IME inset handling differs between Android and iOS renders in Kuikly.",
-        "Test harness state divergence: the Name field on iOS has focus (cursor visible) while Android does not, triggering keyboard on iOS only."
-      ],
-      "suggestedOwner": "Mobile / Kuikly rendering + create-agent-dialog module owner",
-      "suggestedFixes": [
-        "Dismiss the soft keyboard (tap outside or blur the Name field) before capturing the iOS screenshot, or focus a non-text control.",
-        "Ensure IME insets are applied so the dialog is scrollable above the keyboard and lower controls remain reachable on iOS.",
-        "Take screenshots in a deterministic state (no focus, no keyboard) and compare layout rather than transient input state.",
-        "Review Cancel/Create Agent button placement — they should be pinned above the keyboard or inside the scrollable area with proper inset handling."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.31147567545671806
+      "status": "pending",
+      "imageHash": "p1:ffffffff000000003dfc3dfc2df82df83e0c3e7c00ec00cc3ffc3ffc3ffc3ffc39fc39fc3ffc1ffc3ffc1ffc3ffc21fc3ffc03fc03fc03fc3ffc3ffc3ffc3ffc3ff43ff43ffc7ffc3ffc3ffc27fc80013ffcdef33ffcffff27fcffff27fcffff3ffcbff82ffc3ff83ffc8ff03ffc0ff03f7c81013800800100008001ffffffff",
+      "generatedAt": "2026-07-27T22:17:39.966Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.3133714100538745
     },
     {
       "id": "components.members.create-agent.claude-dialog",
@@ -1616,7 +1580,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.08794000891157294
+      "metricMismatch": 0.08794709766273745
     },
     {
       "id": "components.channel.settings.panel",
@@ -1707,7 +1671,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.02898522839281137
+      "metricMismatch": 0.028985565952390546
     },
     {
       "id": "components.settings.account.page",
@@ -1735,7 +1699,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1882191706836257
+      "metricMismatch": 0.18822760967310725
     },
     {
       "id": "components.settings.account.error-state",
@@ -1764,7 +1728,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19417068362565992
+      "metricMismatch": 0.1941710211852392
     },
     {
       "id": "components.settings.server.profile",
@@ -1796,7 +1760,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1672273531278271
+      "metricMismatch": 0.16722600288950995
     },
     {
       "id": "components.settings.appearance.page",
@@ -1828,7 +1792,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.03344270263701543
+      "metricMismatch": 0.033442027517856854
     },
     {
       "id": "components.settings.notifications.page",
@@ -1860,41 +1824,20 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.10904895964137673
+      "metricMismatch": 0.10905301035632786
     },
     {
       "id": "screens.auth.login.signing",
-      "status": "ready",
-      "imageHash": "p1:9ffe3ffe000000000000000000000000ffff0000fe7ffffffe7ffe7ffe7ffe7ffffffe7fc7ffffffc1fbc7ffc003c0fbdfffcfffc003dfffc003c003c003c003c183c003fc19fffbc003f81bc0018003c0038003fdbfc003fffff18fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-      "generatedAt": "2026-07-12T22:11:51.223Z",
-      "severity": "medium",
-      "summary": [
-        "Typography: iOS renders all text (labels, headings, inputs, buttons, link text) with a noticeably heavier/bolder weight than Android, particularly visible in 'Sign In', 'Email', 'Password', button labels, and the 'Terms of Service' / 'Privacy Policy' / 'Create One' link row.",
-        "Input field height: password field on iOS is taller (more vertical padding) than on Android; email field border weights also look heavier on iOS.",
-        "Button geometry: 'Continue with Google' and 'Continue with GitHub' buttons appear taller and have heavier borders/strokes on iOS compared to Android.",
-        "Vertical spacing: spacing between form rows (Email → Password → Sign In button → OR divider → Google → GitHub → legal text → Forgot Password → Create One) is tighter on iOS, compressing the overall form into less vertical room relative to the viewport.",
-        "Header band: the yellow RAFT header occupies a larger proportional height on iOS, pushing the sign-in icon and form content lower."
-      ],
-      "likelyCauses": [
-        "Kuikly text style not normalizing font-weight / font-family across Android and iOS (system font SF Pro on iOS vs Roboto on Android producing different perceived weight at the same dp).",
-        "Container padding/margin tokens not shared across platforms (dp-to-pt conversion or per-platform style overrides).",
-        "Button and input component styles specifying fixed pixel heights instead of density-independent values, causing different heights at the 390×844 vs 1170×2532 canvas.",
-        "Platform-specific stroke/border thickness defaults being applied differently on iOS.",
-        "Missing baseline alignment contract so no single source of truth for spacing tokens."
-      ],
-      "suggestedOwner": "ui-platform / Kuikly cross-platform team",
-      "suggestedFixes": [
-        "Define font-weight explicitly (e.g., 400/500/600) in the shared style sheet so SF Pro and Roboto map to visually equivalent weights.",
-        "Convert all input/button heights and paddings to density-independent units and apply a shared spacing token (e.g., 8/12/16/24 dp) verified on both ends.",
-        "Audit border/stroke widths on TextField and Button components; unify to a single tokenized border width.",
-        "Normalize the header banner height with a fixed dp value or percentage token rather than letting it scale with raw pixels.",
-        "Run a side-by-side diff at identical dp (not raw px) so future regressions surface as ratio, not pixel mismatch."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.1952063164148472
+      "status": "pending",
+      "imageHash": "p1:9ffe3ffe000000000000000000000000ffff0000fe7ffffffe7ffe7ffe7ffe7ffffffe7fc7ffffffc1fbc7ffc003c0fbdfffcfffc003dfffc003c003c003c003c183c003fc19fffbc003f81bc0018003c0038003ff7fc007fffffb1fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "generatedAt": "2026-07-27T22:17:40.311Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.1939948150848625
     },
     {
       "id": "screens.auth.profile-setup",
@@ -1936,7 +1879,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-26T22:15:30.659Z",
+      "generatedAt": "2026-07-27T22:17:40.131Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1949,7 +1892,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-26T22:15:30.659Z",
+      "generatedAt": "2026-07-27T22:17:40.131Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1962,7 +1905,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-26T22:15:30.659Z",
+      "generatedAt": "2026-07-27T22:17:40.131Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1975,7 +1918,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-26T22:15:30.659Z",
+      "generatedAt": "2026-07-27T22:17:40.131Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1988,7 +1931,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-26T22:15:30.659Z",
+      "generatedAt": "2026-07-27T22:17:40.131Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2057,7 +2000,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.09199612481603003
+      "metricMismatch": 0.09200321356719465
     },
     {
       "id": "components.members.avatar-management",
@@ -2089,7 +2032,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.09118125599168259
+      "metricMismatch": 0.0911883447428471
     },
     {
       "id": "screens.settings.server-danger-modal",
@@ -2120,7 +2063,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.10810210502153628
+      "metricMismatch": 0.10809062799584124
     },
     {
       "id": "screens.home.loading",
@@ -2152,7 +2095,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.10895916879329204
+      "metricMismatch": 0.10894836688675547
     },
     {
       "id": "components.thread.message-row.rich-content",
@@ -2189,7 +2132,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.037509620448009096
+      "metricMismatch": 0.036728845141167366
     },
     {
       "id": "components.thread.message-row.long-inline-code",
@@ -2224,12 +2167,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.291916123195744
+      "metricMismatch": 0.29093517505839783
     },
     {
       "id": "components.thread.message-row.md-link-ref",
       "status": "ready",
-      "imageHash": "p1:03fc03fc7ffe7ffe83f203f280000000e0026000e0026002e0026002e0026002e1fe61fee1fe61fefffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffefffe7ffe00000000fff81fff",
+      "imageHash": "p1:03fc03fc7ffe7ffe83e603f680000000e0006000e0026002e0026002e0026002e1fe61fee1fe61fefffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffefffe7ffe00000000fff81fff",
       "generatedAt": "2026-07-26T05:06:24.954Z",
       "severity": "low",
       "summary": [
@@ -2253,7 +2196,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.7239967729304222
+      "metricMismatch": 0.7230337154507771
     },
     {
       "id": "components.thread.message-row.md-latest-release",
@@ -2287,12 +2230,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.7162437045138467
+      "metricMismatch": 0.715293811857793
     },
     {
       "id": "components.thread.message-row.md-wrap-slice1",
       "status": "ready",
-      "imageHash": "p1:01e00ffcfff7fffe83f41bfe803401fef05782fef01780fef817807ef017807ef017807ef01780fef03781fef07783fef837c1fef01780fef01780fef837c1fef8f780fef01781fef3f782fef05780fef01780fef01780fef817c1fef81781fef07780fef01780fef077807ef0378ffef01780fef1f783fef00380feffffffff",
+      "imageHash": "p1:01e00ffcfff7fffe83f41ffe803401fef05782fef01780fef817807ef017807ef017807ef01780fef03781fef07783fef837c1fef01780fef01780fef837c1fef8f780fef01781fef3f782fef05780fef01780fef01780fef817c1fef81781fef07780fef01780fef077807ef0378ffef01780fef1f783fef00380feffffffff",
       "generatedAt": "2026-07-26T22:14:02.371Z",
       "severity": "medium",
       "summary": [
@@ -2319,12 +2262,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.12841002686974246
+      "metricMismatch": 0.12805964002646464
     },
     {
       "id": "components.thread.message-row.md-wrap-clarify",
       "status": "ready",
-      "imageHash": "p1:00e007fcfff3fffe821410fe821400fef03704fee1d700fee01703fef07783fef01700fee01701fee03700fee01700fee01703fee07701fee03700fee01700fee01703fee077fffefff7fffefff7fffefff7fffefff7fffefff7fffefff7fffefff7fffefff7fffefff7fffefff7fffefff7fffefff7fffe00020000fffc1fff",
+      "imageHash": "p1:00e007fcfff3fffe823411fe821400fef03704fee1d700fee01703fef07783fef01700fee01701fee03700fee01700fee01703fee07701fee03700fee01700fee01703fee077fffefff7fffefff7fffefff7fffefff7fffefff7fffefff7fffefff7fffefff7fffefff7fffefff7fffefff7fffefff7fffe00020000fffc1fff",
       "generatedAt": "2026-07-19T22:10:41.975Z",
       "severity": "high",
       "summary": [
@@ -2356,12 +2299,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.3509569814072184
+      "metricMismatch": 0.3506119955172088
     },
     {
       "id": "components.thread.message-row.md-wrap-adjacent",
       "status": "ready",
-      "imageHash": "p1:01fc01fc7ffe7ffe801a0012801e001ee0026002e60266027ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe00000000fff81fff",
+      "imageHash": "p1:01fc01fc7ffe7ffe80060016801e001ee0026002e60266027ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe00000000fff81fff",
       "generatedAt": "2026-07-13T22:12:36.528Z",
       "severity": "high",
       "summary": [
@@ -2392,12 +2335,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.8485123749341759
+      "metricMismatch": 0.8475665329930733
     },
     {
       "id": "components.thread.message-row.md-wrap-status606",
       "status": "ready",
-      "imageHash": "p1:03fc03fcfffe7ffe8016002690020002e00e600ee0006001e0026002e0026002e00e601ee006600ee0026002e0026002ec6e6cfefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00004000fff81fff",
+      "imageHash": "p1:03fc03fcfffe7ffe8026003690020002e00e600ee0006001e0026002e0026002e00e601ee006600ee0026002e0026002ec6e6cfefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00004000fff81fff",
       "generatedAt": "2026-07-26T22:14:03.989Z",
       "severity": "high",
       "summary": [
@@ -2425,7 +2368,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.6398678116687595
+      "metricMismatch": 0.6389594388409554
     },
     {
       "id": "components.thread.message-row.md-wrap-task607",
@@ -2458,7 +2401,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.395175598493134
+      "metricMismatch": 0.39483803891386826
     }
   ]
 }

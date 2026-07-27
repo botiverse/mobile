@@ -17,5 +17,16 @@
     "density": 1
   },
   "device": "iPhone 14",
-  "systemBars": "status-hidden-home-indicator-visible"
+  "systemBars": "status-hidden-home-indicator-visible",
+  "richTextCapabilities": {
+    "inlineCodeChrome": true,
+    "slockRefChrome": true,
+    "reactionAtlas": true
+  },
+  "declaredDivergences": [
+    {
+      "id": "ios-chip-box-advance-approximate",
+      "description": "Slock reference fill/border paints past the glyphs without reserving the box width in layout, so the border-to-neighbor gap approximates React's inline-block advance (atomic box rewrite tracked as task #448)."
+    }
+  ]
 }

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-26T22:15:24.952Z",
+  "generatedAt": "2026-07-27T22:17:30.419Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 80,
-    "ready": 79,
-    "pending": 1
+    "ready": 78,
+    "pending": 2
   },
   "cases": [
     {
@@ -364,7 +364,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.41496209659952354
+      "metricMismatch": 0.4149707602339181
     },
     {
       "id": "components.ui.spinner.states",
@@ -1045,7 +1045,7 @@
     {
       "id": "components.thread.message.row",
       "status": "ready",
-      "imageHash": "p1:ffffffff00000000fffcfffc0ffe1ffc1fff1fffffffffffffffffffffffffff1fff1fff030f03b307ff07ff1fff3fff00073fff000300071fff0007ffffefffc000c07fe000c003fffec003e01fc07fc007e0ffc003efffc007cfffe01fffffffffffff0000000000000000fffffffffffffffffff81fffffffffffffffffff",
+      "imageHash": "p1:ffffffff00000000fffcfffc0ffe1ffc1fff1fffffffffffffffffffffffffff1fff1fff030f03d707ff07ff1fff3fff00073fff000300071fff0007ffffefffc000c07fe000c003fffec003e01fc07fc007e0ffc003efffc007cfffe01fffffffffffff0000000000000000fffffffffffffffffff81fffffffffffffffffff",
       "generatedAt": "2026-07-11T22:10:16.850Z",
       "severity": "high",
       "summary": [
@@ -1077,7 +1077,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.3399435531788473
+      "metricMismatch": 0.33888448757729805
     },
     {
       "id": "components.thread.message-row.deleted-human",
@@ -1117,7 +1117,7 @@
     {
       "id": "components.thread.message-menu.default",
       "status": "ready",
-      "imageHash": "p1:01fe01fc80007ffe800e07fe800000022000e002803ceffefc1e403efc0e001efc00009efc1e27defc1e019efc1e07defc0c07defc0001defc00239effff03defffe03deffff03deffff039effff01defffe001efffe403efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00020000fff83fff",
+      "imageHash": "p1:01fe01fc80007ffe800e07ee800000022000e002803ceffefc1e403efc0e001efc00009efc1e27defc1e019efc1e07defc0c07defc0001defc00239effff03defffe03deffff03deffff039effff01defffe001efffe403efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00020000fff83fff",
       "generatedAt": "2026-07-26T22:12:50.062Z",
       "severity": "high",
       "summary": [
@@ -1149,7 +1149,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.41418796667611835
+      "metricMismatch": 0.4140576686785218
     },
     {
       "id": "components.thread.message-menu.task",
@@ -1185,12 +1185,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.424223950527268
+      "metricMismatch": 0.42409399008925075
     },
     {
       "id": "components.thread.message-share.selection",
       "status": "ready",
-      "imageHash": "p1:07fe07fcfffe7ffe805e01fec0024002f0fe7006f1fe7ffe83fe83fe80024002f8fe7002fffe5006fffe0001fffe0001fffe0002fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00007ffe00000000fffe3fff",
+      "imageHash": "p1:07fe07fcfffe7ffe805e01f6c0024002f0fe7006f1fe7ffe83fe83fe80024002f8fe7002fffe5006fffe0001fffe0001fffe0002fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00007ffe00000000fffe3fff",
       "generatedAt": "2026-07-10T22:12:07.352Z",
       "severity": "high",
       "summary": [
@@ -1222,7 +1222,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.7067613183726928
+      "metricMismatch": 0.7065675591741942
     },
     {
       "id": "components.thread.forward-modal",
@@ -1325,7 +1325,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.6818264673714911
+      "metricMismatch": 0.6818072264754729
     },
     {
       "id": "components.home.notification-center.states",
@@ -1394,7 +1394,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2670825400683221
+      "metricMismatch": 0.267087603462011
     },
     {
       "id": "components.home.search.channel-dropdown",
@@ -1427,12 +1427,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.26687696628454927
+      "metricMismatch": 0.2668813545590797
     },
     {
       "id": "components.home.saved.results",
       "status": "ready",
-      "imageHash": "p1:0ffc1ffc3ffe3ffe83fe83fe87fe83fe08000000f3f8e3f2c1398032c0188012c00e807ec0fefffefffafffedc79fdfecc7888f2801e8012c01e801ecffecffefffafffef0f9fffec1f9e1f2c00ec1f2c01ec072fffe803ec1f8dffec039fffec00efc3ec0fefc3ec0fefffefff8fffecc79fffec018fffe00040000fffa3fff",
+      "imageHash": "p1:0ffc1ffc3ffe3ffe83fe83fe87fe83fe08000000f3f8e3f2c1398032c0188012c00e807ec0fefffefffafffedc79fdfecc7888f2801e8012c01e801ecffecffefffafffef0f9fffec1f9e1f2c00ec1f2c01ec072fffe803ec1f8dffec039fffec00efc3ec0fefc3ec0fefffefff8fffecc79fffec018fffe00040000fffa7fff",
       "generatedAt": "2026-07-26T05:05:15.521Z",
       "severity": "medium",
       "summary": [
@@ -1463,7 +1463,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1906736674422017
+      "metricMismatch": 0.19063436668133893
     },
     {
       "id": "components.home.activity.results",
@@ -1497,12 +1497,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.18698673206313277
+      "metricMismatch": 0.18711511454861762
     },
     {
       "id": "components.tasks.panel.states",
       "status": "ready",
-      "imageHash": "p1:3ffe3ffe000000000000000080060006ffffffefef80ff818f801f819fff9fff9ffc9ffd9ffc97f483a487f49ffefffcfff0ffe0bfa0800187ff841f87ff87ffbffc9ffc80368014bff4bfe0ffc08001800187ff8fff8fff9ffc9ffc8efe8084ffe0b3c0a00080019fff9fff9fff1ff4fffc807c803c9fe0bff00000ffffffff",
+      "imageHash": "p1:3ffe3ffe000000000000000080060006ffffffefef80ff818f801f819fff9fff9ffc9ffd9ffc97f483a487f49ffefffcfff0ffe0bfa0800187ff841f87ff87ffbffc9ffc80368014bff4bfe0ffc08001800187ff8fff8fff9ffc9ffc8efe8084ffe0b3c0a00080019fff9fff9fff1ffcfffc807c803c9fe0bff00000ffffffff",
       "generatedAt": "2026-07-10T22:12:21.277Z",
       "severity": "low",
       "summary": [
@@ -1533,7 +1533,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.20001316482359133
+      "metricMismatch": 0.19985619961923284
     },
     {
       "id": "components.tasks.status-menu",
@@ -1607,37 +1607,16 @@
     },
     {
       "id": "components.members.create-agent.dialog",
-      "status": "ready",
-      "imageHash": "p1:ffffffff0000000000007ffc3ffc7ff83ffc3ffc3ffc01fc006c7ffc21fc7ffc3ffc3ffc3ffc7ffc39fc3ffc3ffc3bfc3ffc47fc3ffc0ffc27fc3ffc3ffc3ffc3ffc7ffc3ffc7ffc3ffc7ffc3ffc07fc2ffc7ffc3ffc7ffc2ffc17fc3ffc67fc37fc7ffc3ffc1ffc3ffc7ffc3f047ffc38047f7c0000380400000000ffffffff",
-      "generatedAt": "2026-07-26T22:12:50.456Z",
-      "severity": "high",
-      "summary": [
-        "Dialog on Android is significantly larger and extends beyond the visible viewport, causing cropping of the MODE field at the bottom",
-        "Android version is missing the '> MORE' expandable section visible in the React baseline",
-        "Runtime field shows different selected value: 'Select...' placeholder on React vs 'Codex CLI' on Android",
-        "Model field shows different selected value: 'Claude Opus' on React vs 'GPT-5.6 Sol' on Android",
-        "Create Agent button on Android appears disabled (greyed out) with lower contrast vs pink/active state on React"
-      ],
-      "likelyCauses": [
-        "Android dialog lacks a scrollable container or uses fixed-height layout causing content overflow",
-        "Android implementation uses different default form state values for Runtime and Model selectors",
-        "Differing button enable/disable logic between platforms (likely related to form validation)",
-        "More options accordion/section not yet implemented on Android",
-        "Larger font sizes, padding, or component heights on Android inflating overall dialog dimensions"
-      ],
-      "suggestedOwner": "android-eng",
-      "suggestedFixes": [
-        "Wrap Android dialog content in a ScrollView/ScrollableColumn to prevent bottom cropping of MODE and action buttons",
-        "Align Runtime and Model default values with React baseline ('Codex CLI' / 'Claude Opus') or ensure both use consistent default state",
-        "Verify Create Agent button disabled state matches React; check form validation parity across platforms",
-        "Implement the '> MORE' expandable section on Android to match React feature parity",
-        "Reduce Android field heights, padding, or font size to bring overall dialog height within 844px viewport"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.32064008047420367
+      "status": "pending",
+      "imageHash": "p1:ffffffff0000000000007ffc3ffc7ff83ffc3ffc3ffc01fc006c7ffc21fc7ffc3ffc3ffc3ffc7ffc39fc1ffc3ffc3ffc3ffc7ffc3ffc0ffc27fc3ffc3ffc3ffc3ffc7ffc3ffc7ffc3ffc7ffc3ffc07fc2ffc7ffc3ffc7ffc2ffc17fc3ffc67fc37fc7ffc3ffc1ffc3ffc7ffc3f047ffc38047f7c0000380400000000ffffffff",
+      "generatedAt": "2026-07-27T22:17:29.289Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.3187686501667545
     },
     {
       "id": "components.members.create-agent.claude-dialog",
@@ -1676,7 +1655,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-26T22:15:24.222Z",
+      "generatedAt": "2026-07-27T22:17:29.184Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1963,7 +1942,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19651604758239827
+      "metricMismatch": 0.1964981569246972
     },
     {
       "id": "components.settings.notifications.page",
@@ -2003,7 +1982,7 @@
     {
       "id": "screens.auth.login.signing",
       "status": "ready",
-      "imageHash": "p1:3ffe1ffe0000000000000000f0000000ffff7ffefffffe7ffffffe7ffe7ffe7ffe7ffffffe7fc1fbffffc0fb8bfec00381f4dfff8c03c0038ffec0038000c0038001c1838001fc1bdffbc003fffe80038000c0038000f18f900cffffce03ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "imageHash": "p1:3ffe1ffe0000000000000000f0000000ffff7ffefffffe7ffffffe7ffe7ffe7ffe7ffffffe7fc1fbffffc0fb8bfec00381f4dfff8c03c0038ffec0038000c0038001c1838001fc1bdffbc003fffe80038000c0038000fb1f900cffffce03ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
       "generatedAt": "2026-07-26T22:12:57.492Z",
       "severity": "medium",
       "summary": [
@@ -2033,7 +2012,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.23705121453936617
+      "metricMismatch": 0.23653643618098597
     },
     {
       "id": "screens.auth.profile-setup",
@@ -2072,7 +2051,7 @@
     {
       "id": "screens.members.agent-detail.profile",
       "status": "ready",
-      "imageHash": "p1:1ffe3ffe801000318010082100000000001206e2817f0f7f8fff001f8fff0fffffffdfff83ffe7ffffffdfff81fbdfff803f81ffffffffffffffffff8fff1fff8fff0fff80fff87f80fff1fffffff1ffd47fffffffffffffd7ff0c3f80010c3f80010c7f80ff0007807f0003807ff7ffffff97ffdfff97ff80781802ffffffff",
+      "imageHash": "p1:1ffe3ffe801000318010082100000000001206e281ff0f7f8fff001f8fff0fffffffdfff83ffe7ffffffdfff81fbdfff803f81ffffffffffffffffff8fff1fff8fff0fff80fff87f80fff1fffffff1ffd47fffffffffffffd7ff0c3f80010c3f80010c7f80ff0007807f0003807ff7ffffff97ffdfff97ff80781802ffffffff",
       "generatedAt": "2026-07-26T05:05:16.996Z",
       "severity": "high",
       "summary": [
@@ -2137,7 +2116,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.0596656809926952
+      "metricMismatch": 0.05968255897165853
     },
     {
       "id": "screens.members.agent-detail.workspace",
@@ -2407,7 +2386,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.15672013610402236
+      "metricMismatch": 0.15670123276758352
     },
     {
       "id": "components.thread.message-row.rich-content",
@@ -2441,7 +2420,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.23757681004541809
+      "metricMismatch": 0.23741601606950258
     },
     {
       "id": "components.thread.message-row.long-inline-code",
@@ -2476,12 +2455,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.34473744615924706
+      "metricMismatch": 0.34457339220372396
     },
     {
       "id": "components.thread.message-row.md-link-ref",
       "status": "ready",
-      "imageHash": "p1:03fc03fc07fe7ffe000207f2c0020000c1c06002c0006002c0026002c11a6002c1fe41fe0000e1fefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fff81fff",
+      "imageHash": "p1:03fc03fc07fe7ffe000207f6c0020000c1c06002c0006002c0026002c11a6002c1fe41fe0000e1fefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fff81fff",
       "generatedAt": "2026-07-26T05:05:25.200Z",
       "severity": "low",
       "summary": [
@@ -2509,7 +2488,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.7742874117281701
+      "metricMismatch": 0.7740322166862451
     },
     {
       "id": "components.thread.message-row.md-latest-release",
@@ -2544,12 +2523,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.7545887849205385
+      "metricMismatch": 0.7544399211460823
     },
     {
       "id": "components.thread.message-row.md-wrap-slice1",
       "status": "ready",
-      "imageHash": "p1:207c007c83fe7ffe800281cef00e8006f0f6f012f800f802f800fc02f800f802f902f802f802f802f80af806f80af80ef82ef80efffef806f1fef802fffff806fffff87efffff806fffff9fefffff812fffff802fffff806fffff806fffff802fffff81efffff802fffff81efffff80efffff802fffff8feffff7002ffff7fff",
+      "imageHash": "p1:207c007c83fe7ffe8002814ef00e8006f0f6f012f800f802f800fc02f800f802f902f802f802f802f80af806f80af80ef82ef80efffef806f1fef802fffff806fffff87efffff806fffff9fefffff812fffff802fffff806fffff806fffff802fffff81efffff802fffff81efffff80efffff802fffff8feffff7002ffff7fff",
       "generatedAt": "2026-07-26T22:13:02.907Z",
       "severity": "high",
       "summary": [
@@ -2577,12 +2556,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.21269392797828812
+      "metricMismatch": 0.21234556649248593
     },
     {
       "id": "components.thread.message-row.md-wrap-clarify",
       "status": "ready",
-      "imageHash": "p1:207c007c03fe7ffe80068186f04e8106f002f14ef05ef0f6f002f006f000f01ef002f80af002f002f002f00ef002f002f006f002f5fef01e71fef00efffff016fffff006fffff01efffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fffe3fff",
+      "imageHash": "p1:207c007c03fe7ffe80068106f04e8106f002f14ef05ef0f6f002f006f000f01ef002f80af002f002f002f00ef002f002f006f002f5fef01e71fef00efffff016fffff006fffff01efffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fffe3fff",
       "generatedAt": "2026-07-26T22:13:03.366Z",
       "severity": "high",
       "summary": [
@@ -2611,12 +2590,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.5502465872726536
+      "metricMismatch": 0.5499124032891806
     },
     {
       "id": "components.thread.message-row.md-wrap-adjacent",
       "status": "ready",
-      "imageHash": "p1:01fc01fc01fe7ffe003e0012400e001e4006600200006402fffffffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffefffffffeffff0000fff81fff",
+      "imageHash": "p1:01fc01fc01fe7ffe003e0006400e001e4006600200006402fffffffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffefffffffeffff0000fff81fff",
       "generatedAt": "2026-07-13T22:11:43.968Z",
       "severity": "medium",
       "summary": [
@@ -2647,7 +2626,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.8718856753216943
+      "metricMismatch": 0.8716952917189884
     },
     {
       "id": "components.thread.message-row.md-wrap-status606",
@@ -2681,12 +2660,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.7024824131459202
+      "metricMismatch": 0.7023311864544093
     },
     {
       "id": "components.thread.message-row.md-wrap-task607",
       "status": "ready",
-      "imageHash": "p1:203c003c03fe7ffe800680fef0008006f0007002f00277fef0027006f0007006f0007002f0007002f3fe70060004f002fffff006fffff3fefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fffe0fff",
+      "imageHash": "p1:203c003c03fe7ffe800681eef0008006f0007002f00277fef0027006f0007006f0007002f0007002f3fe70060004f002fffff006fffff3fefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fffe0fff",
       "generatedAt": "2026-07-19T22:09:49.441Z",
       "severity": "medium",
       "summary": [
@@ -2717,7 +2696,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.640026633450804
+      "metricMismatch": 0.6396721958925751
     }
   ]
 }

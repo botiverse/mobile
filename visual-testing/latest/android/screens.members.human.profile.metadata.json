@@ -19,7 +19,7 @@
                 "fullscreen": true,
                 "systemBars": "hidden",
                 "validation": {
-                  "uniqueColors": 298,
+                  "uniqueColors": 285,
                   "dominantRatio": 0.9528952
                 },
                 "readyTokenObserved": false,
@@ -32,20 +32,20 @@
     "rootWidthPx": 1170,
     "rootHeightPx": 2532,
     "hardwareAccelerated": true,
-    "totalViews": 79,
-    "laidOutViews": 76,
-    "visibleContentLeafViews": 0,
+    "totalViews": 74,
+    "laidOutViews": 71,
+    "visibleContentLeafViews": 5,
     "targetPackage": "build.raft.app.connectedtest",
-    "processId": 4342,
+    "processId": 4120,
     "processUid": 10192
 },
               "captureIdentity": {
                 "attempt": 1,
-                "generation": "59d391f30131da014dfcc072b24529e9",
-                "bootId": "8e2a734e-f3dc-42ba-b12a-35b3093ea6ac",
-                "capturedAtEpochMs": 1785102880006,
-                "capturedAtMonotonicNs": 94643764909
+                "generation": "69ff4ad5da47c13dbadd10375321c71e",
+                "bootId": "094e0cf1-31e2-4257-be56-298e9d1295b1",
+                "capturedAtEpochMs": 1785189770090,
+                "capturedAtMonotonicNs": 133735426652
               },
               "clampedToShortWindow": false,
-              "capturedAt": "1785102880006"
+              "capturedAt": "1785189770090"
             }

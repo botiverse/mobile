@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-26T22:15:27.780Z",
+  "generatedAt": "2026-07-27T22:17:35.139Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
@@ -364,7 +364,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.062097122642146285
+      "metricMismatch": 0.06209779776130486
     },
     {
       "id": "components.ui.spinner.states",
@@ -1063,7 +1063,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.041290962854943936
+      "metricMismatch": 0.04108943978612223
     },
     {
       "id": "components.thread.message-row.deleted-human",
@@ -1103,7 +1103,7 @@
     {
       "id": "components.thread.message-menu.default",
       "status": "ready",
-      "imageHash": "p1:01fe01fc80007ffe800e07ee800000022000e002803ceffefc1e001efc0e001efc00001efc1e27defc1e019efc1e07defc0c07defc0001defc00239effff03defffe03deffff03deffff039effff2bdefffe001efffe003efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff83fff",
+      "imageHash": "p1:01fe01fc80007ffe800e07fe800000022000e002803ceffefc1e001efc0e001efc00001efc1e27defc1e019efc1e07defc0c07defc0001defc00239effff03defffe03deffff03deffff039effff2bdefffe001efffe003efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff83fff",
       "generatedAt": "2026-07-26T22:13:25.584Z",
       "severity": "medium",
       "summary": [
@@ -1131,12 +1131,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.09241166065810613
+      "metricMismatch": 0.09222161461497957
     },
     {
       "id": "components.thread.message-menu.task",
       "status": "ready",
-      "imageHash": "p1:01fe01fc80087ffe802207ee800000022000e0028020e0fefc1e001efc0e001efc0c001efc1427defc1e019efc1e07defc0c07defc0001defc00239effff03defffe03deffff03deffff039effff03defffe001efffe003efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff81fff",
+      "imageHash": "p1:01fe01fc80087ffe802207fe800000022000e0028020e0fefc1e001efc0e001efc0c001efc1427defc1e019efc1e07defc0c07defc0001defc00239effff03defffe03deffff03deffff039effff03defffe001efffe003efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff83fff",
       "generatedAt": "2026-07-26T22:13:25.596Z",
       "severity": "high",
       "summary": [
@@ -1165,12 +1165,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1026498426972361
+      "metricMismatch": 0.102460471773268
     },
     {
       "id": "components.thread.message-share.selection",
       "status": "ready",
-      "imageHash": "p1:07fc07fcfffe7ffe801e01f2c0024002f0fe7002f1fe7ffe83fe03fe80024002f8fe7002fffe4006fffe0000fffe0000fffe0000fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe0000fffe00000000fffe1fff",
+      "imageHash": "p1:07fc07fcfffe7ffe801e01dec0024002f0fe7002f1fe7ffe83fe03fe80024002f8fe7002fffe4006fffe0000fffe0000fffe0000fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe0000fffe00000000fffe1fff",
       "generatedAt": "2026-07-09T22:21:33.592Z",
       "severity": "medium",
       "summary": [
@@ -1198,7 +1198,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.16753284454706252
+      "metricMismatch": 0.16729486504368019
     },
     {
       "id": "components.thread.forward-modal",
@@ -1301,7 +1301,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.25823307813829144
+      "metricMismatch": 0.2582141748018525
     },
     {
       "id": "components.home.notification-center.states",
@@ -1369,7 +1369,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.26783293501302985
+      "metricMismatch": 0.2678363106088224
     },
     {
       "id": "components.home.search.channel-dropdown",
@@ -1405,7 +1405,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.26762601099093986
+      "metricMismatch": 0.2676293865867325
     },
     {
       "id": "components.home.saved.results",
@@ -1440,7 +1440,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.11156816678143688
+      "metricMismatch": 0.11154723808752243
     },
     {
       "id": "components.home.activity.results",
@@ -1476,12 +1476,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.10767914286871638
+      "metricMismatch": 0.10776184496563646
     },
     {
       "id": "components.tasks.panel.states",
       "status": "ready",
-      "imageHash": "p1:3ffe7ffe0000000000000000801e0006ffffffefef80ffc18f80df809fff9fff9ffc9ffd9ffc9ffc87e487d49ffebffcfff0ffe0bfe0800187ff85ff87ff87ffbffcbffc80368014bff4bfe0ffc08001800187ff8fff8fff9ffc9ffc8efe808cffe0b3e1a00080019fff9fff9fff9ffdfffc807c803cbfe0bff00000ffffffff",
+      "imageHash": "p1:3ffe7ffe0000000000000000801e0006ffffffefef80ffc18f80df809fff9fff9ffc9ffd9ffc9ff487e487d49ffebffcfff0ffe0bfe0800187ff85ff87ff87ffbffcbffc80368014bff4bfe0ffc08001800187ff8fff8fff9ffc9ffc8efe808cffe0b3e1a00080019fff9fff9fff9ffdfffc807c803cbfe0bff00000ffffffff",
       "generatedAt": "2026-07-09T08:43:43.198Z",
       "severity": "low",
       "summary": [
@@ -1507,7 +1507,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.18170629616127243
+      "metricMismatch": 0.18146190302588405
     },
     {
       "id": "components.tasks.status-menu",
@@ -1652,7 +1652,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-26T22:15:27.106Z",
+      "generatedAt": "2026-07-27T22:17:34.132Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1942,7 +1942,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19599350535369497
+      "metricMismatch": 0.19597595225557307
     },
     {
       "id": "components.settings.notifications.page",
@@ -1982,7 +1982,7 @@
     {
       "id": "screens.auth.login.signing",
       "status": "ready",
-      "imageHash": "p1:3ffe1ffe0000000000000000f0000000ffff0000fffffffffffffe7ffe7ffe7ffe7ffe7ffe7fdfffffffc1ff8bfec00381f4cfff8c03dfff8ffec0038000c0038001c0038001dffbdffbd81bffff8003800080038000c003900cf18fce03ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "imageHash": "p1:3ffe1ffe0000000000000000f0000000ffff0000fffffffffffffe7ffe7ffe7ffe7ffe7ffe7fdfffffffc1ff8bfec00381f4cfff8c03dfff8ffec0038000c0038001c0038001dffbdffbd81bffff8003800080038000c003900cfb1fce03ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
       "generatedAt": "2026-07-26T22:13:33.011Z",
       "severity": "medium",
       "summary": [
@@ -2012,7 +2012,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.248290260731019
+      "metricMismatch": 0.24819000553597714
     },
     {
       "id": "screens.auth.profile-setup",
@@ -2054,7 +2054,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-26T22:15:27.363Z",
+      "generatedAt": "2026-07-27T22:17:34.554Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2067,7 +2067,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-26T22:15:27.363Z",
+      "generatedAt": "2026-07-27T22:17:34.554Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2080,7 +2080,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-26T22:15:27.363Z",
+      "generatedAt": "2026-07-27T22:17:34.554Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2093,7 +2093,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-26T22:15:27.363Z",
+      "generatedAt": "2026-07-27T22:17:34.554Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2106,7 +2106,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-26T22:15:27.363Z",
+      "generatedAt": "2026-07-27T22:17:34.554Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2216,7 +2216,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.23587751988225925
+      "metricMismatch": 0.23587785744183853
     },
     {
       "id": "screens.settings.server-danger-modal",
@@ -2282,7 +2282,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19295310622324835
+      "metricMismatch": 0.19295243110408988
     },
     {
       "id": "components.thread.message-row.rich-content",
@@ -2316,7 +2316,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.0970433156452114
+      "metricMismatch": 0.09683065311027395
     },
     {
       "id": "components.thread.message-row.long-inline-code",
@@ -2352,12 +2352,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.41273443512780006
+      "metricMismatch": 0.41255755390826476
     },
     {
       "id": "components.thread.message-row.md-link-ref",
       "status": "ready",
-      "imageHash": "p1:03fc03fc07fe7ffe000202b2c0020000c0c06000c0006002c0026002c11a6002c1fe41fe0000e1fefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fff81fff",
+      "imageHash": "p1:03fc03fc07fe7ffe000202e6c0020000c0c06000c0006002c0026002c11a6002c1fe41fe0000e1fefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fff81fff",
       "generatedAt": "2026-07-26T05:05:56.556Z",
       "severity": "low",
       "summary": [
@@ -2386,7 +2386,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.07810487301008628
+      "metricMismatch": 0.07788647196230136
     },
     {
       "id": "components.thread.message-row.md-latest-release",
@@ -2420,12 +2420,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.08231086536773735
+      "metricMismatch": 0.08215727575917153
     },
     {
       "id": "components.thread.message-row.md-wrap-slice1",
       "status": "ready",
-      "imageHash": "p1:00e00ffc07f7fffe00041bfee03401fee1d702fef00780fef007807ef007807ef207807ef00780fef01781fef00783fef07781fefff780fee3f780feffff81feffff80feffff81feffff82feffff80feffff80feffff80feffff81feffff81feffff80feffff80feffff807effff8ffeffff80feffff81fefffa8002fffc3fff",
+      "imageHash": "p1:00e00ffc07f7fffe000419fee03401fee1d700fef00780fef007807ef007807ef207807ef00780fef01781fef00783fef07781fefff780fee3f780feffff81feffff80feffff81feffff82feffff80feffff80feffff80feffff81feffff81feffff80feffff80feffff807effff8ffeffff80feffff81fefffa8002fffc3fff",
       "generatedAt": "2026-07-26T22:13:35.794Z",
       "severity": "high",
       "summary": [
@@ -2456,7 +2456,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.143829073331443
+      "metricMismatch": 0.14363936484789563
     },
     {
       "id": "components.thread.message-row.md-wrap-clarify",
@@ -2490,7 +2490,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.09297639783421774
+      "metricMismatch": 0.0927360554137805
     },
     {
       "id": "components.thread.message-row.md-wrap-adjacent",
@@ -2525,12 +2525,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.042362714519112665
+      "metricMismatch": 0.042166592403559244
     },
     {
       "id": "components.thread.message-row.md-wrap-status606",
       "status": "ready",
-      "imageHash": "p1:03fc03fc07fe7ffe00000006e0000002e000600ec0006000c0006002c03e6002e006600ee0026006c002600240fe6002fffeecfefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fffe1fff",
+      "imageHash": "p1:03fc03fc07fe7ffe00000026e0000002e000600ec0006000c0006002c03e6002e006600ee0026006c002600240fe6002fffeecfefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fffe1fff",
       "generatedAt": "2026-07-26T22:13:41.980Z",
       "severity": "medium",
       "summary": [
@@ -2558,12 +2558,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1444592970659322
+      "metricMismatch": 0.14428511632303098
     },
     {
       "id": "components.thread.message-row.md-wrap-task607",
       "status": "ready",
-      "imageHash": "p1:00e007fc03f3fffe00340dfee00400fee003007ee0033ffee01300fee00300fee003007ee00300fee6f300fe000700feffff00feffff3ffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefff80000fff81fff",
+      "imageHash": "p1:00e007fc03f3fffe00340ffee00400fee003007ee0033ffee01300fee00300fee003007ee00300fee6f300fe000700feffff00feffff3ffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefff80000fff81fff",
       "generatedAt": "2026-07-19T22:09:59.542Z",
       "severity": "medium",
       "summary": [
@@ -2594,7 +2594,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.06754027085780645
+      "metricMismatch": 0.06738094273639295
     }
   ]
 }
