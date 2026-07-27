@@ -187,6 +187,16 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureAndroidFloatingTabbarStates() {
+        captureKmpComponentCase(
+            caseId = "components.navigation.tabbar.android-floating",
+            pageName = "compose_android_floating_tabbar_visual",
+            pageData = JSONObject().put("slockNativeTabBarRenderer", "androidFloating"),
+            crop = ANDROID_FLOATING_TABBAR_CROP
+        )
+    }
+
+    @Test
     fun captureForegroundBannerContextVariants() {
         captureKmpComponentCase(
             caseId = "components.shell.foreground-banner.context-variants",
@@ -4247,6 +4257,13 @@ class KmpVisualScreenshotCaptureTest {
                 topDp = 0,
                 widthDp = 390,
                 heightDp = 53
+            )
+        private val ANDROID_FLOATING_TABBAR_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 390,
+                heightDp = 92
             )
         private val FOREGROUND_BANNER_CONTEXT_CROP =
             VisualCrop(

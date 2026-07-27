@@ -1400,10 +1400,6 @@ open class SlockKuiklyActivity :
             renderViewExportCreator = { context -> SlockKuiklyPageRenderView(context, this) }
         )
         kuiklyRenderExport.renderViewExport(
-            SlockNativeFloatingTabBarRenderView.VIEW_NAME,
-            renderViewExportCreator = { context -> SlockNativeFloatingTabBarRenderView(context) }
-        )
-        kuiklyRenderExport.renderViewExport(
             SlockNativeTiltedBadgeChromeRenderView.VIEW_NAME,
             renderViewExportCreator = { context -> SlockNativeTiltedBadgeChromeRenderView(context) }
         )

@@ -21,6 +21,8 @@ import build.raft.app.data.SharedRuntimeFormDefinitionRef
 import build.raft.app.data.stringDescLocaleType
 import build.raft.app.data.slockSharedPreferenceStore
 import com.tencent.kuikly.compose.setContent
+import com.tencent.kuikly.compose.foundation.layout.width
+import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.tmm.kmmresource.resource.desc.StringDesc
@@ -248,6 +250,27 @@ internal class ComposeBottomTabBarVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
         setContent { BottomTabBarVisualContent() }
+    }
+}
+
+@Page("compose_android_floating_tabbar_visual", supportInLocal = true)
+internal class ComposeAndroidFloatingTabBarVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent {
+            SlockAppBottomTabBarHost(
+                items =
+                    listOf(
+                        SlockBottomTabItemPayload("home", "Home", SlockLucideIconName.House, selected = true),
+                        SlockBottomTabItemPayload("tasks", "Tasks", SlockLucideIconName.SquareCheckBig),
+                        SlockBottomTabItemPayload("members", "Members", SlockLucideIconName.Users),
+                        SlockBottomTabItemPayload("settings", "Settings", SlockLucideIconName.Settings)
+                    ),
+                onSelect = {},
+                modifier = Modifier.width(390.dp),
+                bottomSafeArea = 0.dp
+            )
+        }
     }
 }
 

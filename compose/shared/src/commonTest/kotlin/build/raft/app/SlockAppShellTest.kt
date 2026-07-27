@@ -495,6 +495,24 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun legacyAndroidFloatingValuesKeepTheirSharedKuiklyPresentation() {
+        assertEquals(
+            SlockAppTabBarRenderer.AndroidFloating,
+            resolveSlockAppTabBarRenderer(
+                explicitRenderer = "androidFloating",
+                platformDefaultRenderer = null
+            )
+        )
+        assertEquals(
+            SlockAppTabBarRenderer.AndroidFloating,
+            resolveSlockAppTabBarRenderer(
+                explicitRenderer = "androidNativeFloating",
+                platformDefaultRenderer = null
+            )
+        )
+    }
+
+    @Test
     fun sharedBottomTabBarKeepsChildPageSeamSquare() {
         assertNull(appShellChildPageGlassStyle(bottomTabBarOverlaysContent = false))
         assertEquals("liquid", appShellChildPageGlassStyle(bottomTabBarOverlaysContent = true))
@@ -698,6 +716,12 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun sharedKuiklyFloatingDockCoversOverlayTouchRegion() {
+        assertEquals(92.dp, slockFloatingDockBottomTabBarHostHeight(0.dp))
+        assertEquals(110.dp, slockFloatingDockBottomTabBarHostHeight(18.dp))
+    }
+
+    @Test
     fun createAgentDialogRegistersGlobalHostRoute() {
         assertTrue(SharedCreateAgentDialogHostRoute.isNotBlank())
         assertTrue(SharedCreateAgentDialogHostRoute != SlockUnifiedDialogGenericHostRoute)
@@ -708,12 +732,6 @@ class SlockAppShellTest {
 
         assertEquals(1, hostState.entries.size)
         assertEquals(SharedCreateAgentDialogHostRoute, hostState.entries.single().route)
-    }
-
-    @Test
-    fun androidFloatingBottomTabHostCoversOverlayTouchRegion() {
-        assertEquals(92.dp, slockAndroidFloatingBottomTabBarHostHeight(0.dp))
-        assertEquals(110.dp, slockAndroidFloatingBottomTabBarHostHeight(18.dp))
     }
 
     @Test
