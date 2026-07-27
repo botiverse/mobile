@@ -14,6 +14,7 @@ VERSION=""
 VERSION_BUILD=0
 ZH_NOTES=""
 EN_NOTES=""
+JA_NOTES=""
 CONFIRM_PUBLISH=0
 
 die() {
@@ -25,7 +26,8 @@ usage() {
   cat <<'USAGE'
 Usage: scripts/finalize_android_hands_release.sh [options]
 
-Writes the reviewed bilingual notes to an existing Hands Android draft, then
+Writes the reviewed zh-CN, English, and Japanese notes to an existing Hands
+Android draft, then
 activates it only when --confirm-publish is supplied. This is the final owner-
 approved step of docs/android-release-sop.md; it never builds an APK.
 
@@ -34,6 +36,7 @@ Required:
   --version <x.y.z>       Expected candidate semantic version.
   --zh-notes <path>       Reviewed zh-CN release notes.
   --en-notes <path>       Reviewed English release notes.
+  --ja-notes <path>       Reviewed Japanese release notes.
   --confirm-publish       Explicit acknowledgement that the owner approved it.
 
 Options:
@@ -94,6 +97,11 @@ while [ "$#" -gt 0 ]; do
       EN_NOTES="$2"
       shift 2
       ;;
+    --ja-notes)
+      [ "$#" -ge 2 ] || die "--ja-notes requires a path"
+      JA_NOTES="$2"
+      shift 2
+      ;;
     --confirm-publish)
       CONFIRM_PUBLISH=1
       shift
@@ -112,6 +120,7 @@ done
 [ -n "${VERSION}" ] || die "--version is required"
 [ -s "${ZH_NOTES}" ] || die "--zh-notes must name a non-empty file"
 [ -s "${EN_NOTES}" ] || die "--en-notes must name a non-empty file"
+[ -s "${JA_NOTES}" ] || die "--ja-notes must name a non-empty file"
 [ "${CONFIRM_PUBLISH}" = "1" ] || die "--confirm-publish is required; keep the draft until the owner explicitly approves activation"
 
 EXPECTED_CODE="$(version_code)"
@@ -151,7 +160,8 @@ PY
 
 run_hands releases update "${HANDS_APP_SLUG}" "${RELEASE_ID}" \
   --changelog-file "zh-CN=${ZH_NOTES}" \
-  --changelog-file "en=${EN_NOTES}"
+  --changelog-file "en=${EN_NOTES}" \
+  --changelog-file "ja=${JA_NOTES}"
 run_hands releases publish "${HANDS_APP_SLUG}" "${RELEASE_ID}"
 
 curl --fail --silent --show-error \

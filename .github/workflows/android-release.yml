@@ -655,16 +655,25 @@ jobs:
           SLOCK_RELEASE_CHANGELOG_LEGACY_DIR: ${{ github.workspace }}/change-logs/${{ needs.resolve.outputs.version_name }}
         run: |
           set -euo pipefail
-          if [ -s "${SLOCK_RELEASE_CHANGELOG_PLATFORM_DIR}/zh-CN.md" ] && [ -s "${SLOCK_RELEASE_CHANGELOG_PLATFORM_DIR}/en.md" ]; then
+          if [ -s "${SLOCK_RELEASE_CHANGELOG_PLATFORM_DIR}/zh-CN.md" ] && [ -s "${SLOCK_RELEASE_CHANGELOG_PLATFORM_DIR}/en.md" ] && [ -s "${SLOCK_RELEASE_CHANGELOG_PLATFORM_DIR}/ja.md" ]; then
             export SLOCK_RELEASE_CHANGELOG_ZH_FILE="${SLOCK_RELEASE_CHANGELOG_PLATFORM_DIR}/zh-CN.md"
             export SLOCK_RELEASE_CHANGELOG_EN_FILE="${SLOCK_RELEASE_CHANGELOG_PLATFORM_DIR}/en.md"
+            export SLOCK_RELEASE_CHANGELOG_JA_FILE="${SLOCK_RELEASE_CHANGELOG_PLATFORM_DIR}/ja.md"
             echo "Using reviewed Android changelog from change-logs/${{ needs.resolve.outputs.version_name }}/android/"
+          elif find "${SLOCK_RELEASE_CHANGELOG_PLATFORM_DIR}" -maxdepth 1 -type f \( -name 'zh-CN.md' -o -name 'en.md' -o -name 'ja.md' \) -print -quit 2>/dev/null | grep -q .; then
+            echo "Reviewed Android changelog is incomplete; zh-CN.md, en.md, and ja.md are all required." >&2
+            exit 1
           elif [ -s "${SLOCK_RELEASE_CHANGELOG_LEGACY_DIR}/zh-CN.md" ] && [ -s "${SLOCK_RELEASE_CHANGELOG_LEGACY_DIR}/en.md" ]; then
             export SLOCK_RELEASE_CHANGELOG_ZH_FILE="${SLOCK_RELEASE_CHANGELOG_LEGACY_DIR}/zh-CN.md"
             export SLOCK_RELEASE_CHANGELOG_EN_FILE="${SLOCK_RELEASE_CHANGELOG_LEGACY_DIR}/en.md"
+            if [ -s "${SLOCK_RELEASE_CHANGELOG_LEGACY_DIR}/ja.md" ]; then
+              export SLOCK_RELEASE_CHANGELOG_JA_FILE="${SLOCK_RELEASE_CHANGELOG_LEGACY_DIR}/ja.md"
+            else
+              unset SLOCK_RELEASE_CHANGELOG_JA_FILE
+            fi
             echo "Using legacy reviewed changelog from change-logs/${{ needs.resolve.outputs.version_name }}/"
           else
-            unset SLOCK_RELEASE_CHANGELOG_ZH_FILE SLOCK_RELEASE_CHANGELOG_EN_FILE
+            unset SLOCK_RELEASE_CHANGELOG_ZH_FILE SLOCK_RELEASE_CHANGELOG_EN_FILE SLOCK_RELEASE_CHANGELOG_JA_FILE
             echo "Reviewed Android changelog not found; falling back to generated git history."
           fi
           # The release helper handles metadata.json generation, channel
@@ -757,7 +766,7 @@ jobs:
               echo
               echo '\`\`\`sh'
               echo "hands releases show raft-android ${{ steps.publish-hands-release.outputs.release_id }}"
-              echo "hands releases update raft-android ${{ steps.publish-hands-release.outputs.release_id }} --changelog-file zh-CN=zh-CN.md --changelog-file en=en.md"
+              echo "hands releases update raft-android ${{ steps.publish-hands-release.outputs.release_id }} --changelog-file zh-CN=zh-CN.md --changelog-file en=en.md --changelog-file ja=ja.md"
               echo "hands releases publish raft-android ${{ steps.publish-hands-release.outputs.release_id }}"
               echo '\`\`\`'
             fi

@@ -47,7 +47,8 @@ Defaults create a Hands **draft** release with release preflight enforced:
   create_share_page=true
 
 This script never activates a release. Review the generated draft, replace the
-raw changelog with the approved bilingual notes, smoke it, and use the explicit
+raw changelog with the approved zh-CN, English, and Japanese notes, smoke it,
+and use the explicit
 Hands release publish step only after the release owner says to publish.
 
 By default, the draft workflow is dispatched first and the full preflight runs
