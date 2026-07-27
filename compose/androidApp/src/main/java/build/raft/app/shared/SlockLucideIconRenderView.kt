@@ -121,6 +121,7 @@ private class SlockLucideCanvasView(context: Context) : View(context) {
     private var renderedIcon: SlockRenderedLucideIcon? = null
     private var renderedIconKey: String? = null
     private var spinAnimator: ObjectAnimator? = null
+    private var destroyed = false
 
     var iconName: String = ""
         set(value) {
@@ -227,6 +228,8 @@ private class SlockLucideCanvasView(context: Context) : View(context) {
     }
 
     fun destroy() {
+        if (destroyed) return
+        destroyed = true
         stopSpinAnimator()
         renderedIcon = null
         renderedIconKey = null
@@ -255,7 +258,7 @@ private class SlockLucideCanvasView(context: Context) : View(context) {
     }
 
     private fun configureFillPaint(paintValue: String, tint: Int, opacity: Float) {
-        val color = resolvePaintColor(paintValue, tint)
+        val color = resolveLucidePaintColor(paintValue, tint)
         fillPaint.color = color
         fillPaint.alpha = resolvedAlpha(color, opacity)
     }
@@ -268,7 +271,7 @@ private class SlockLucideCanvasView(context: Context) : View(context) {
         cap: SlockLucideStrokeLineCap,
         join: SlockLucideStrokeLineJoin,
     ) {
-        val color = resolvePaintColor(paintValue, tint)
+        val color = resolveLucidePaintColor(paintValue, tint)
         strokePaint.color = color
         strokePaint.alpha = resolvedAlpha(color, opacity)
         strokePaint.strokeWidth = width
@@ -277,6 +280,10 @@ private class SlockLucideCanvasView(context: Context) : View(context) {
     }
 
     private fun syncRotationAnimation() {
+        if (destroyed) {
+            stopSpinAnimator()
+            return
+        }
         val shouldSpin =
             spinning && isAttachedToWindow && visibility == VISIBLE && windowVisibility == VISIBLE && isShown
         if (!shouldSpin) {
@@ -343,8 +350,21 @@ private object SlockLucidePathCache {
     }
 }
 
-private fun resolvePaintColor(value: String, tint: Int): Int =
-    if (value == "currentColor") tint else Color.parseColor(value)
+internal fun resolveLucidePaintColor(value: String, tint: Int): Int =
+    when {
+        value == "currentColor" -> tint
+        value.length == 4 && value[0] == '#' ->
+            Color.parseColor(
+                buildString(7) {
+                    append('#')
+                    value.drop(1).forEach { digit ->
+                        append(digit)
+                        append(digit)
+                    }
+                },
+            )
+        else -> Color.parseColor(value)
+    }
 
 private fun resolvedAlpha(color: Int, opacity: Float): Int =
     (Color.alpha(color) * opacity.coerceIn(0f, 1f)).toInt().coerceIn(0, 255)
