@@ -3192,6 +3192,12 @@ class SharedHomeStoreTest {
         assertEquals(7, store.state.value.appBadgeCount.count)
         assertEquals(true, store.state.value.appBadgeCount.isStale)
         assertEquals(3, store.state.value.serverUnreadCounts["server-2"])
+        // task #831 blocker: the COMMITTED snapshot / baseSnapshot (the realtime
+        // unread delta baseline) must also freeze to prior unread, or the next
+        // realtime message would rebuild from zero and clobber 7 down to 1.
+        val committed = store.state.value.content as SharedHomeContentState.Content
+        assertEquals(7, committed.baseSnapshot.unreadTotal)
+        assertEquals(mapOf("server-1" to 7, "server-2" to 3), committed.baseSnapshot.serverUnreadCounts)
 
         store.accept(SharedHomeIntent.Refresh)
         // Fresh available unread recovers the value.

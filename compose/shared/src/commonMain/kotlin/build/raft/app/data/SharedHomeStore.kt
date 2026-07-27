@@ -1622,7 +1622,21 @@ internal class SharedHomeStore(
             (dataResult as? DataResult.Content)?.data?.let { snapshot ->
                 prepareReadStateV1Hydrates(snapshot)
             }
-        val freshSnapshot = preparedHydrates?.snapshot
+        val rawSnapshot = preparedHydrates?.snapshot
+        // task #831: when the unread enrichment was unavailable, atomically
+        // freeze ALL unread-bearing fields (per-row channel/DM unread, aggregate
+        // total/source, server counts) to the prior committed baseline. Fresh
+        // channel/DM identity + content still apply, but the committed snapshot
+        // (and therefore the realtime unread delta baseline) is never reset to a
+        // fake zero — otherwise the next realtime message would rebuild from 0
+        // and clobber the real count. Only a truly available response
+        // (including a real 200-empty) advances unread.
+        val freshSnapshot =
+            if (rawSnapshot != null && !rawSnapshot.unreadEnrichmentAvailable && previousContent != null) {
+                rawSnapshot.frozenUnreadFrom(previousContent.baseSnapshot)
+            } else {
+                rawSnapshot
+            }
         val result =
             when (dataResult) {
                 is DataResult.Content ->
@@ -1825,7 +1839,15 @@ internal class SharedHomeStore(
             // cold start/reconnect/refresh. Drop only the local count-only
             // deltas after the exact-witness destination has admitted the
             // final publication.
-            backgroundUnreadByScope.clear()
+            //
+            // task #831: but only when the unread enrichment was actually
+            // available. If it was unavailable the snapshot froze unread to the
+            // prior baseline, so the accumulated background deltas must be kept
+            // — clearing them here would drop the very count we just preserved
+            // and let the next realtime message rebuild from zero.
+            if (freshSnapshot.unreadEnrichmentAvailable) {
+                backgroundUnreadByScope.clear()
+            }
             (nextState.content as? SharedHomeContentState.Content)?.let(::commitDurableContent)
         }
         reduceState(nextState)
@@ -1835,6 +1857,45 @@ internal class SharedHomeStore(
         content.snapshot.sidebarOrder?.let { sidebarOrderByServer[content.snapshot.server.id] = it }
         contentByServer[content.baseSnapshot.server.id] = content
         updateConversationIdentity(content.baseSnapshot)
+    }
+
+    /**
+     * task #831: returns this fresh snapshot with every unread-bearing field
+     * (per-row channel/DM unread + mention counts, aggregate total/source, and
+     * cross-server counts) replaced by [prior]'s values, matched by channel id.
+     * Fresh channel/DM identity and content are kept. Used when the unread
+     * enrichment was unavailable, so the committed snapshot — and the realtime
+     * unread delta baseline built from it — freezes at the prior count instead
+     * of a fake zero.
+     */
+    private fun HomeSnapshot.frozenUnreadFrom(prior: HomeSnapshot): HomeSnapshot {
+        val priorChannels = prior.channels.associateBy { it.channelId }
+        val priorDirectMessages = prior.directMessages.associateBy { it.channelId }
+        return copy(
+            channels =
+                channels.map { row ->
+                    val priorRow = priorChannels[row.channelId] ?: return@map row
+                    row.copy(
+                        unreadCount = priorRow.unreadCount,
+                        unreadCountKnown = priorRow.unreadCountKnown,
+                        mentionCount = priorRow.mentionCount,
+                        mentionCountKnown = priorRow.mentionCountKnown,
+                    )
+                },
+            directMessages =
+                directMessages.map { row ->
+                    val priorRow = priorDirectMessages[row.channelId] ?: return@map row
+                    row.copy(
+                        unreadCount = priorRow.unreadCount,
+                        unreadCountKnown = priorRow.unreadCountKnown,
+                        mentionCount = priorRow.mentionCount,
+                        mentionCountKnown = priorRow.mentionCountKnown,
+                    )
+                },
+            unreadTotal = prior.unreadTotal,
+            unreadSource = prior.unreadSource,
+            serverUnreadCounts = prior.serverUnreadCounts,
+        )
     }
 
     private fun createHomeContent(
