@@ -26,8 +26,10 @@ import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 import com.tencent.tmm.kmmresource.resource.desc.desc
 import com.tencent.tmm.kmmresource.resource.format
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.supervisorScope
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerializationException
@@ -299,6 +301,12 @@ internal fun String.isAppUpdateHomeNotificationId(): Boolean =
 
 internal const val APP_UPDATE_HOME_NOTIFICATION_ID = "app-update:hands"
 
+// task #831: how long the canonical Home load will wait on an auxiliary unread
+// endpoint before rendering an honest partial (unread-less) state. Bounded so a
+// slow/hung unread endpoint can never suspend channels/DMs; the next
+// generation-fenced home refresh refills unread.
+private const val HOME_UNREAD_ENRICHMENT_BUDGET_MS = 3_000L
+
 internal fun SharedSettingsUpdateCheckSnapshot.toSharedHomeAppUpdateNotification(): SharedHomeNotification? {
     if (!supported || !updateAvailable || latestVersionCode <= 0L) return null
     if (currentVersionCode > 0L && latestVersionCode <= currentVersionCode) return null
@@ -497,7 +505,7 @@ internal class SlockHomeApiClient(
     suspend fun homePayload(
         serverId: ServerId,
         priority: DataRequestPriority
-    ): DataResult<HomeNetworkPayload> = coroutineScope {
+    ): DataResult<HomeNetworkPayload> = supervisorScope {
         val channelsDeferred =
             async {
                 requestHomeSection(
@@ -539,34 +547,37 @@ internal class SlockHomeApiClient(
                 }
             }
 
+        // Canonical Home surface: channels and DMs are required. A failure/empty
+        // here is the Home's terminal state, so it still aborts early.
         val channels =
             when (val result = channelsDeferred.await()) {
                 is DataResult.Content -> result.data
-                is DataResult.Empty -> return@coroutineScope DataResult.Empty(result.reason)
-                is DataResult.Error -> return@coroutineScope DataResult.Error(result.error)
-                is DataResult.NoPermission -> return@coroutineScope DataResult.NoPermission(result.blocker)
+                is DataResult.Empty -> return@supervisorScope DataResult.Empty(result.reason)
+                is DataResult.Error -> return@supervisorScope DataResult.Error(result.error)
+                is DataResult.NoPermission -> return@supervisorScope DataResult.NoPermission(result.blocker)
             }
         val directMessages =
             when (val result = directMessagesDeferred.await()) {
                 is DataResult.Content -> result.data
-                is DataResult.Empty -> return@coroutineScope DataResult.Empty(result.reason)
-                is DataResult.Error -> return@coroutineScope DataResult.Error(result.error)
-                is DataResult.NoPermission -> return@coroutineScope DataResult.NoPermission(result.blocker)
+                is DataResult.Empty -> return@supervisorScope DataResult.Empty(result.reason)
+                is DataResult.Error -> return@supervisorScope DataResult.Error(result.error)
+                is DataResult.NoPermission -> return@supervisorScope DataResult.NoPermission(result.blocker)
             }
+
+        // task #831: the auxiliary unread endpoints are enrichment, not canonical.
+        // Under supervisorScope a failing unread request can no longer cancel the
+        // Home load, and awaitBestEffortHomeSection bounds + abandons a hung one.
+        // When unread is unavailable the payload carries an honest empty (no fake
+        // badges); the next generation-fenced home refresh refills it.
         val unreadCounts =
-            when (val result = unreadCountsDeferred.await()) {
-                is DataResult.Content -> result.data.mapKeys { (key, _) -> ChannelId(key) }
-                is DataResult.Empty -> return@coroutineScope DataResult.Empty(result.reason)
-                is DataResult.Error -> return@coroutineScope DataResult.Error(result.error)
-                is DataResult.NoPermission -> return@coroutineScope DataResult.NoPermission(result.blocker)
-            }
+            (unreadCountsDeferred.awaitBestEffortHomeSection() as? DataResult.Content)
+                ?.data?.mapKeys { (key, _) -> ChannelId(key) }
+                ?: emptyMap()
         val serverUnreadSummary =
-            when (val result = serverUnreadSummaryDeferred.await()) {
-                is DataResult.Content -> result.data
-                is DataResult.Empty -> return@coroutineScope DataResult.Empty(result.reason)
-                is DataResult.Error -> return@coroutineScope DataResult.Error(result.error)
-                is DataResult.NoPermission -> return@coroutineScope DataResult.NoPermission(result.blocker)
-            }
+            (serverUnreadSummaryDeferred.awaitBestEffortHomeSection() as? DataResult.Content)
+                ?.data
+                ?: emptyList()
+
         DataResult.Content(
             HomeNetworkPayload(
                 serverId = serverId,
@@ -576,6 +587,26 @@ internal class SlockHomeApiClient(
                 serverUnreadSummary = serverUnreadSummary
             )
         )
+    }
+
+    /**
+     * Awaits an auxiliary (non-canonical) home section without ever letting it
+     * block or fail the canonical Home load (task #831): a bounded wait returns
+     * null on timeout, an erroring section is swallowed to null, and the still
+     * running request is abandoned so the enclosing supervisor scope completes.
+     * Real cancellation of the caller is preserved.
+     */
+    private suspend fun <T> Deferred<DataResult<T>>.awaitBestEffortHomeSection(): DataResult<T>? {
+        val result =
+            try {
+                withTimeoutOrNull(HOME_UNREAD_ENRICHMENT_BUDGET_MS) { await() }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (throwable: Throwable) {
+                null
+            }
+        cancel()
+        return result
     }
 
     private suspend fun <T> requestHomeSection(

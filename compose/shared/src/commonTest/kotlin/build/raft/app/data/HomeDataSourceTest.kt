@@ -503,34 +503,52 @@ class HomeDataSourceTest {
         assertEquals("home_direct_messages_contract_mismatch", result.error.code)
     }
 
+    // task #831: a contract-mismatched unread section is still rejected (never
+    // mis-accepted as data — it does not reach the payload), but per the Home
+    // decoupling it must no longer abort the canonical channels/DMs. Previously
+    // these asserted the whole Home returned Error on a guessed unread wrapper.
     @Test
-    fun loadHomeRejectsGuessedUnreadCountWrappersBeforeParser() = runBlocking {
+    fun guessedUnreadCountWrapperIsRejectedWithoutBlockingCanonicalHome() = runBlocking {
         val source =
             SharedHomeDataSource(
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 api = FakeHomeApi(unreadCountsBody = """[{"channelId":"channel-1","unreadCount":1}]"""),
-                parseHome = { _, _ -> error("typed home api should reject unread array before parser") }
+                parseHome = { payload, session ->
+                    // Guessed array shape rejected → not mis-accepted as unread data.
+                    assertEquals(emptyMap(), payload.unreadCounts)
+                    DataResult.Content(sampleHome(ServerId(session.currentServerId!!)))
+                }
             )
 
         val result = source.loadHome(priority = DataRequestPriority.Visible)
 
-        assertTrue(result is DataResult.Error)
-        assertEquals("home_unread_counts_contract_mismatch", result.error.code)
+        assertTrue(
+            result is DataResult.Content,
+            "canonical Home must load even when the unread-counts wire shape is rejected"
+        )
+        assertEquals(1, result.data.channels.size)
     }
 
     @Test
-    fun loadHomeRejectsGuessedServerUnreadSummaryWrapperBeforeParser() = runBlocking {
+    fun guessedServerUnreadSummaryWrapperIsRejectedWithoutBlockingCanonicalHome() = runBlocking {
         val source =
             SharedHomeDataSource(
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 api = FakeHomeApi(serverUnreadSummaryBody = """{"unreadCount":24}"""),
-                parseHome = { _, _ -> error("typed home api should reject summary object before parser") }
+                parseHome = { payload, session ->
+                    // Guessed object shape rejected → not mis-accepted as summary data.
+                    assertEquals(emptyList(), payload.serverUnreadSummary)
+                    DataResult.Content(sampleHome(ServerId(session.currentServerId!!)))
+                }
             )
 
         val result = source.loadHome(priority = DataRequestPriority.Visible)
 
-        assertTrue(result is DataResult.Error)
-        assertEquals("home_server_unread_summary_contract_mismatch", result.error.code)
+        assertTrue(
+            result is DataResult.Content,
+            "canonical Home must load even when the server-unread-summary wire shape is rejected"
+        )
+        assertEquals(1, result.data.channels.size)
     }
 
     @Test
