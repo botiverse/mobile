@@ -8,9 +8,10 @@ import build.raft.app.model.MessageId
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.test.runCurrent
-import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.runBlocking
 import kotlin.coroutines.Continuation
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
@@ -19,7 +20,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-@OptIn(ExperimentalCoroutinesApi::class)
 class SharedHomeSearchSenderIdentityTest {
     @Test
     fun memberProjectionUsesRequestServerAndRejectsContradictoryOrMissingIdentity() {
@@ -41,46 +41,44 @@ class SharedHomeSearchSenderIdentityTest {
     }
 
     @Test
-    fun accountAndServerSwitchDiscardsCompletionFromOldOwnerWithoutASecondLoad() = runTest {
+    fun accountAndServerSwitchDiscardsCompletionFromOldOwnerWithoutASecondLoad() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val authStore = InMemorySlockAuthSessionStore(sessionFixture("user-a", "server-a"))
         val members = DeferredMemberRepository()
-        val store = store(backgroundScope, authStore, members)
+        val store = store(scope, authStore, members)
 
         store.dispatch(SharedHomeSearchSavedIntent.OpenSearch)
-        runCurrent()
         assertEquals(listOf(ServerId("server-a")), members.requestedServers())
         authStore.saveSession(sessionFixture("user-b", "server-b"))
 
         members.complete("server-a", listOf(member("user-a", "Same Name")))
-        runCurrent()
 
         assertEquals(emptyList(), store.state.value.search.senderFilters)
         assertFalse(store.state.value.search.senderFiltersLoading)
+        scope.cancel()
     }
 
     @Test
-    fun successorLoadWinsWhenSameHandleExistsOnTwoServersAndOldProducerIgnoresCancellation() = runTest {
+    fun successorLoadWinsWhenSameHandleExistsOnTwoServersAndOldProducerIgnoresCancellation() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val authStore = InMemorySlockAuthSessionStore(sessionFixture("user-a", "server-a"))
         val members = DeferredMemberRepository()
-        val store = store(backgroundScope, authStore, members)
+        val store = store(scope, authStore, members)
 
         store.dispatch(SharedHomeSearchSavedIntent.OpenSearch)
-        runCurrent()
         authStore.saveSession(sessionFixture("user-b", "server-b"))
         store.dispatch(SharedHomeSearchSavedIntent.OpenSearch)
-        runCurrent()
         assertEquals(listOf(ServerId("server-a"), ServerId("server-b")), members.requestedServers())
 
         members.complete("server-b", listOf(member("user-b", "Same Name", handle = "same")))
-        runCurrent()
         members.complete("server-a", listOf(member("user-a", "Same Name", handle = "same")))
-        runCurrent()
 
         val filter = store.state.value.search.senderFilters.single()
         assertEquals("user-b", filter.id)
         assertEquals("same", filter.handle)
         assertEquals(ServerId("server-b"), filter.sourceServerId)
         assertTrue(filter.isSelf)
+        scope.cancel()
     }
 
     private fun store(
@@ -117,7 +115,10 @@ class SharedHomeSearchSenderIdentityTest {
             serverId = explicitServerId?.let(::ServerId),
         )
 
-    /** Intentionally ignores coroutine cancellation so request-token fencing is exercised. */
+    /**
+     * OHOS commonTest has no kotlinx-coroutines-test KLIB. The continuation is the explicit
+     * interleaving barrier and intentionally ignores cancellation so request-token fencing runs.
+     */
     private class DeferredMemberRepository : MemberRepository {
         private data class Request(
             val serverId: ServerId,
