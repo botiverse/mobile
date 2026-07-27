@@ -16,6 +16,7 @@ printf 'lineage\n' > "$fixture_root/lineage.bin"
 cat > "$fixture_root/build-tools/zipalign" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
+printf '%s\n' "$*" >> "$ZIPALIGN_ARGS_LOG"
 if [[ "$1" == "-c" ]]; then
   exit 0
 fi
@@ -53,6 +54,7 @@ chmod +x "$fixture_root/build-tools/zipalign" "$fixture_root/build-tools/apksign
 
 export SIGN_ARGS_LOG="$fixture_root/sign-args.log"
 export VERIFY_ARGS_LOG="$fixture_root/verify-args.log"
+export ZIPALIGN_ARGS_LOG="$fixture_root/zipalign-args.log"
 export SLOCK_LEGACY_KEYSTORE_FILE="$fixture_root/legacy.jks"
 export SLOCK_LEGACY_KEYSTORE_PASS="legacy-store-pass"
 export SLOCK_LEGACY_KEY_ALIAS="upload"
@@ -79,6 +81,8 @@ grep -Fxq -- "--rotation-min-sdk-version" "$fixture_root/sign-args.log"
 grep -Fxq -- "33" "$fixture_root/sign-args.log"
 grep -Fxq -- "env:SLOCK_LEGACY_KEYSTORE_PASS" "$fixture_root/sign-args.log"
 grep -Fxq -- "env:SLOCK_ROTATED_KEYSTORE_PASS" "$fixture_root/sign-args.log"
+grep -Eq '^-P 16 -f 4 ' "$fixture_root/zipalign-args.log"
+grep -Eq '^-c -P 16 4 ' "$fixture_root/zipalign-args.log"
 
 if env -u SLOCK_SIGNING_LINEAGE_FILE "$signer" \
   --input "$fixture_root/input.apk" \

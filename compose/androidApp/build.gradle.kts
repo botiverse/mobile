@@ -79,6 +79,22 @@ val handsAlphaDeltaDeviceGroupId = handsAlphaDeltaMetadataString("handsDeviceGro
 val handsAlphaDeltaDeviceGroupName = handsAlphaDeltaMetadataString("handsDeviceGroupName")
 val slockAndroidApplicationId = "build.raft.app"
 val handsAlphaDeltaApplicationIdSuffix = ".alpha"
+val raftDexUseLegacyPackaging =
+    providers.gradleProperty("raftDexUseLegacyPackaging")
+        .map { value ->
+            value.toBooleanStrictOrNull()
+                ?: throw GradleException(
+                    "raftDexUseLegacyPackaging must be exactly true or false: $value"
+                )
+        }
+val raftJniUseLegacyPackaging =
+    providers.gradleProperty("raftJniUseLegacyPackaging")
+        .map { value ->
+            value.toBooleanStrictOrNull()
+                ?: throw GradleException(
+                    "raftJniUseLegacyPackaging must be exactly true or false: $value"
+                )
+        }
 
 if (handsAlphaDeltaMetadata["schemaVersion"]?.toString() != "1") {
     throw GradleException("Unsupported Hands Alpha delta metadata schema")
@@ -633,8 +649,11 @@ android {
         buildConfig = true
     }
     packaging {
+        dex {
+            useLegacyPackaging = raftDexUseLegacyPackaging.orNull
+        }
         jniLibs {
-            useLegacyPackaging = true
+            useLegacyPackaging = raftJniUseLegacyPackaging.orNull ?: true
         }
     }
     sourceSets {

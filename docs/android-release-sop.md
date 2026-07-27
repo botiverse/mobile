@@ -147,6 +147,14 @@ The canonical workflow switch is `publish_hands=true|false`, and the wrapper
 sets it through `SLOCK_PUBLISH_HANDS`. Legacy publish aliases are rejected. See
 [Android Hands release input migration](android-hands-release-migration-2026-07-24.md).
 
+Android 1.8 production dispatches default to `dex_packaging=compressed` and
+`jni_packaging=current`. The DEX choice is admitted only with the 45 MiB APK
+cap, 0.60 aggregate DEX compression-ratio cap, 16 KB ELF/ZIP admission,
+signing, install, and functional gates. `current|mmap` DEX and `legacy|modern`
+JNI remain explicit diagnostic choices; they are not alternate production
+recommendations. R8/resource shrinking remains off, no Baseline Profile is
+added, and performance was not specially benchmarked for this release.
+
 Expected workflow output:
 
 - signed, aligned APK with a verified SHA-256;

@@ -10,6 +10,8 @@ VERSION_BUILD="${SLOCK_ANDROID_VERSION_BUILD:-0}"
 VERSION_SUFFIX="${SLOCK_ANDROID_VERSION_SUFFIX:-}"
 CHANNEL="${SLOCK_HANDS_CHANNEL:-main}"
 VARIANT="${SLOCK_ANDROID_VARIANT:-release}"
+DEX_PACKAGING="${SLOCK_ANDROID_DEX_PACKAGING:-compressed}"
+JNI_PACKAGING="${SLOCK_ANDROID_JNI_PACKAGING:-current}"
 PUBLISH_HANDS_RAW="${SLOCK_PUBLISH_HANDS:-}"
 RELEASE_MODE="${SLOCK_RELEASE_MODE:-draft}"
 CREATE_SHARE_PAGE="${SLOCK_CREATE_SHARE_PAGE:-true}"
@@ -42,6 +44,8 @@ Defaults create a Hands **draft** release with release preflight enforced:
   versionCode=1000100
   channel=main
   variant=release
+  dex_packaging=compressed
+  jni_packaging=current
   release_mode=draft
   publish_hands=true
   create_share_page=true
@@ -61,6 +65,8 @@ Options:
   --suffix <value>        Version name suffix, e.g. rc1.
   --channel <slug>        Hands channel. Default: main.
   --variant <name>        Android variant: release or debug. Default: release.
+  --dex-packaging <mode>  current, compressed, or mmap. Default: compressed.
+  --jni-packaging <mode>  current, legacy, or modern. Default: current.
   --required-pr <number>  Candidate PR included in this release; repeatable.
   --preflight-report <p>  Write the release-preflight Markdown report to p.
   --parallel-preflight    Dispatch the draft workflow, then run preflight and
@@ -82,6 +88,8 @@ Environment overrides:
   SLOCK_KUIKLY_REMOTE=origin
   SLOCK_KUIKLY_BRANCH=staging2
   SLOCK_HANDS_CHANNEL=main
+  SLOCK_ANDROID_DEX_PACKAGING=compressed
+  SLOCK_ANDROID_JNI_PACKAGING=current
   SLOCK_PUBLISH_HANDS=true
   SLOCK_RELEASE_MODE=draft
   SLOCK_RELEASE_WAIT=1
@@ -220,6 +228,16 @@ while [ "$#" -gt 0 ]; do
       VARIANT="$2"
       shift 2
       ;;
+    --dex-packaging)
+      [ "$#" -ge 2 ] || die "--dex-packaging requires value"
+      DEX_PACKAGING="$2"
+      shift 2
+      ;;
+    --jni-packaging)
+      [ "$#" -ge 2 ] || die "--jni-packaging requires value"
+      JNI_PACKAGING="$2"
+      shift 2
+      ;;
     --required-pr)
       [ "$#" -ge 2 ] || die "--required-pr requires value"
       PREFLIGHT_REQUIRED_PRS+=("$2")
@@ -287,6 +305,16 @@ case "${PARALLEL_PREFLIGHT}" in
   *) die "SLOCK_RELEASE_PARALLEL_PREFLIGHT must be 0 or 1" ;;
 esac
 
+case "${DEX_PACKAGING}" in
+  current|compressed|mmap) ;;
+  *) die "dex packaging must be current, compressed, or mmap" ;;
+esac
+
+case "${JNI_PACKAGING}" in
+  current|legacy|modern) ;;
+  *) die "JNI packaging must be current, legacy, or modern" ;;
+esac
+
 current_branch="$(git rev-parse --abbrev-ref HEAD)"
 [ "${current_branch}" = "${PUSH_BRANCH}" ] ||
   die "expected branch ${PUSH_BRANCH}, current branch is ${current_branch}"
@@ -325,6 +353,8 @@ echo "    version: ${release_version}"
 echo "    versionCode: ${release_code}"
 echo "    channel: ${CHANNEL}"
 echo "    variant: ${VARIANT}"
+echo "    dex_packaging: ${DEX_PACKAGING}"
+echo "    jni_packaging: ${JNI_PACKAGING}"
 echo "    release_mode: ${RELEASE_MODE}"
 echo "    publish_hands: ${publish_hands}"
 echo "    create_share_page: ${create_share_page}"
@@ -348,6 +378,8 @@ gh workflow run android-release.yml \
     -f "version_suffix=${VERSION_SUFFIX}" \
     -f "hands_channel=${CHANNEL}" \
     -f "android_variant=${VARIANT}" \
+    -f "dex_packaging=${DEX_PACKAGING}" \
+    -f "jni_packaging=${JNI_PACKAGING}" \
     -f "release_mode=${RELEASE_MODE}" \
     -f "publish_hands=${publish_hands}" \
     -f "create_share_page=${create_share_page}" \
