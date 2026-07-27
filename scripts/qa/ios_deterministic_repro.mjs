@@ -41,6 +41,13 @@
 //                    Raft image review/editor contract, tap its unique bottom
 //                    Done exactly once, capture after-transition structured
 //                    evidence and stop. Never judges preview or sends.
+//   --sampling-composer-tile
+//                    Composer attachment-tile discovery phase: perform the
+//                    same proven chain through the unique review Done, then
+//                    require the exact filename-bound tile + adjacent close
+//                    structure and classify only frozen failure/uploading or
+//                    unproven state. Never taps Retry, sends, or reads back;
+//                    absence of a failure/uploading overlay is NOT success.
 //
 // Usage:
 //   node scripts/qa/ios_deterministic_repro.mjs \
@@ -52,6 +59,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createIosDriver } from "./ios_driver.mjs";
 import {
+  classifyComposerAttachmentTile,
   composerHasNewPreview,
   classifyImageReviewEditor,
   classifySelectedPhotoPicker,
@@ -91,8 +99,12 @@ const doneSampling = process.argv.includes("--sampling-done");
 // --sampling-review-done: first prove the review/editor page created by the
 // picker Done, then issue exactly one structured second-Done tap and stop.
 const reviewDoneSampling = process.argv.includes("--sampling-review-done");
-if ([sampling, cellSampling, doneSampling, reviewDoneSampling].filter(Boolean).length > 1) {
-  console.error("choose exactly one sampling mode: --sampling, --sampling-cell, --sampling-done, or --sampling-review-done");
+// --sampling-composer-tile: repeat the already-proven path only when a future
+// exact-bound QA authorization is granted, then structurally classify the
+// composer tile and stop. It has no retry/send/readback action.
+const composerTileSampling = process.argv.includes("--sampling-composer-tile");
+if ([sampling, cellSampling, doneSampling, reviewDoneSampling, composerTileSampling].filter(Boolean).length > 1) {
+  console.error("choose exactly one sampling mode: --sampling, --sampling-cell, --sampling-done, --sampling-review-done, or --sampling-composer-tile");
   process.exit(2);
 }
 if (!ioDir) { console.error("--ios-io-dir / QA_LOOP_IO_DIR required"); process.exit(2); }
@@ -251,7 +263,7 @@ try {
   // This is deliberately structured (not a text-only dump), and values from
   // editable nodes are already redacted by describeUiNodes().
   let plainChannelNodes = null;
-  if (doneSampling || reviewDoneSampling) {
+  if (doneSampling || reviewDoneSampling || composerTileSampling) {
     plainChannelNodes = await drv.describeUiNodes();
     fs.writeFileSync(path.join(outDir, "plain-channel-nodes.json"), JSON.stringify(plainChannelNodes, null, 2));
   }
@@ -437,7 +449,7 @@ try {
   // derives the unique Add/Done target. The exact Done tap is the only new
   // action. The phase stops immediately after collecting post-transition
   // facts; it never calls composerHasNewPreview, sends, or reads back.
-  if (doneSampling || reviewDoneSampling) {
+  if (doneSampling || reviewDoneSampling || composerTileSampling) {
     if (!plainChannelNodes) {
       writeVerdict("fail", "Done sampling invariant failed: missing pre-picker plain-channel structured snapshot");
       process.exit(1);
@@ -638,6 +650,24 @@ try {
     const addedImageAttachmentPreviewNodes = afterReviewDoneNodes
       .filter((n) => addedReviewSignatures.has(uiNodeSignature(n)) && isImageAttachmentPreviewDiscoveryNode(n))
       .map(nodeState);
+    const composerAttachmentTile = classifyComposerAttachmentTile(afterReviewDoneNodes, {
+      expectedFileName: reviewEditor.imageNode.label,
+    });
+    const composerAttachmentTileState = composerAttachmentTile ? {
+      variant: composerAttachmentTile.variant,
+      state: composerAttachmentTile.state,
+      successProven: composerAttachmentTile.successProven,
+      expectedFileName: reviewEditor.imageNode.label,
+      filenameNode: nodeState(composerAttachmentTile.filenameNode),
+      statusNode: composerAttachmentTile.statusNode ? nodeState(composerAttachmentTile.statusNode) : null,
+      closeNode: nodeState(composerAttachmentTile.closeNode),
+      composerNode: nodeState(composerAttachmentTile.composerNode),
+      exactFilenameCandidateCount: composerAttachmentTile.exactFilenameCandidateCount,
+      exactFailureStatusCandidateCount: composerAttachmentTile.exactFailureStatusCandidateCount,
+      exactUploadingStatusCandidateCount: composerAttachmentTile.exactUploadingStatusCandidateCount,
+      exactCloseCandidateCount: composerAttachmentTile.exactCloseCandidateCount,
+      terminalFailure: composerAttachmentTile.state === "failure",
+    } : null;
 
     fs.writeFileSync(path.join(outDir, "review-editor-transition-sample.json"), JSON.stringify({
       composerTap: 1,
@@ -665,12 +695,44 @@ try {
       reviewToAfterDiff,
       imageAttachmentPreviewNodesAfter,
       addedImageAttachmentPreviewNodes,
+      // Structured replacement for the old keyword inventory. `unproven`
+      // explicitly means no success authority has been frozen.
+      composerAttachmentTileAfterReviewDone: composerAttachmentTileState,
       evidenceRefs: [
         "review-editor-transition-sample.json",
         "after-done-nodes.json", "after-done-dump.txt", "step-05-after-done.png",
         "after-review-done-nodes.json", "after-review-done-dump.txt", "step-06-after-review-done.png",
       ],
     }, null, 2));
+    if (composerTileSampling) {
+      if (!composerAttachmentTileState) {
+        writeVerdict("fail", `composer-tile sampling precondition failed: no unique exact-filename tile + adjacent close structure for ${JSON.stringify(reviewEditor.imageNode.label)}`);
+        process.exit(1);
+      }
+      fs.writeFileSync(path.join(outDir, "composer-attachment-tile-sample.json"), JSON.stringify({
+        composerTap: 1,
+        cellTap: 1,
+        pickerDoneTap: 1,
+        reviewDoneTap: 1,
+        retryTap: 0,
+        sendTap: 0,
+        readbackAction: 0,
+        aliveBeforeReviewDoneTap,
+        aliveAfterReviewDoneTap,
+        ...composerAttachmentTileState,
+        // A real successful node tree plus upload/readback authority is still
+        // required before any state may set this true.
+        successAuthorityFrozen: false,
+        evidenceRefs: [
+          "composer-attachment-tile-sample.json",
+          "review-editor-transition-sample.json",
+          "after-review-done-nodes.json", "after-review-done-dump.txt", "step-06-after-review-done.png",
+          "system-log-raft.txt",
+        ],
+      }, null, 2));
+      writeVerdict("sample", `structured composer attachment tile classified state=${composerAttachmentTileState.state}; terminalFailure=${composerAttachmentTileState.terminalFailure}; successProven=false; sampling stops with retryTap=0 sendTap=0 readbackAction=0`);
+      process.exit(0);
+    }
     writeVerdict("sample", "exactly one structured review/editor Done tap completed; review/editor→composer discovery ends here (no generic preview verdict, send, or readback)");
     process.exit(0);
   }
