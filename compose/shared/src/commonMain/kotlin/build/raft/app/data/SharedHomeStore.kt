@@ -1892,6 +1892,11 @@ internal class SharedHomeStore(
                         mentionCountKnown = priorRow.mentionCountKnown,
                     )
                 },
+            // server.unreadCount is itself an unread-bearing surface:
+            // withRealtimeMessagesForStream derives nextServerUnreadCount from it,
+            // so it must freeze to prior too or the next realtime message would
+            // increment from a stale zero.
+            server = server.copy(unreadCount = prior.server.unreadCount),
             unreadTotal = prior.unreadTotal,
             unreadSource = prior.unreadSource,
             serverUnreadCounts = prior.serverUnreadCounts,

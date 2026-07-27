@@ -3239,13 +3239,16 @@ class SharedHomeStoreTest {
         val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
         val serverId = ServerId("server-1")
         val availableWithRowUnread =
-            sampleHome(serverId).copy(
-                channels = listOf(channel("channel-1", "general").copy(unreadCount = 7, unreadCountKnown = true)),
-                unreadTotal = 7,
-                unreadSource = AppBadgeSource.SERVER_UNREAD_SUMMARY,
-                serverUnreadCounts = mapOf("server-1" to 7),
-                unreadEnrichmentAvailable = true
-            )
+            sampleHome(serverId).let { base ->
+                base.copy(
+                    server = base.server.copy(unreadCount = 7),
+                    channels = listOf(channel("channel-1", "general").copy(unreadCount = 7, unreadCountKnown = true)),
+                    unreadTotal = 7,
+                    unreadSource = AppBadgeSource.SERVER_UNREAD_SUMMARY,
+                    serverUnreadCounts = mapOf("server-1" to 7),
+                    unreadEnrichmentAvailable = true
+                )
+            }
         val unavailable =
             sampleHome(serverId).copy(
                 channels = listOf(channel("channel-1", "general")),
