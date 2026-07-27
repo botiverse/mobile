@@ -56,6 +56,10 @@ class AndroidLucideNativeRendererTest(unittest.TestCase):
         )[0]
         self.assertNotIn("PathParser", on_draw)
         self.assertNotIn("Path()", on_draw)
+        self.assertNotIn("Color.parseColor", on_draw)
+        self.assertNotIn("compileLucidePaint", on_draw)
+        self.assertNotIn("parseLucideDirectPaintColor", on_draw)
+        self.assertNotIn("buildString", on_draw)
 
     def test_renderer_preserves_props_and_animation_lifecycle(self):
         with open(RENDERER_PATH, encoding="utf-8") as file:

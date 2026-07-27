@@ -188,11 +188,11 @@ private class SlockLucideCanvasView(context: Context) : View(context) {
         canvas.scale(scale, scale)
         icon.paths.forEach { renderedPath ->
             val spec = renderedPath.spec
-            spec.fillPaint?.let { paintValue ->
+            renderedPath.fillPaint?.let { paintValue ->
                 configureFillPaint(paintValue, drawTint, spec.fillOpacity)
                 canvas.drawPath(renderedPath.path, fillPaint)
             }
-            spec.strokePaint?.let { paintValue ->
+            renderedPath.strokePaint?.let { paintValue ->
                 configureStrokePaint(
                     paintValue = paintValue,
                     tint = drawTint,
@@ -257,21 +257,21 @@ private class SlockLucideCanvasView(context: Context) : View(context) {
         return if (iconName == CHECK_ICON_NAME && override != null && override > 0f) override else spec.strokeWidth
     }
 
-    private fun configureFillPaint(paintValue: String, tint: Int, opacity: Float) {
-        val color = resolveLucidePaintColor(paintValue, tint)
+    private fun configureFillPaint(paintValue: SlockCompiledLucidePaint, tint: Int, opacity: Float) {
+        val color = paintValue.resolve(tint)
         fillPaint.color = color
         fillPaint.alpha = resolvedAlpha(color, opacity)
     }
 
     private fun configureStrokePaint(
-        paintValue: String,
+        paintValue: SlockCompiledLucidePaint,
         tint: Int,
         opacity: Float,
         width: Float,
         cap: SlockLucideStrokeLineCap,
         join: SlockLucideStrokeLineJoin,
     ) {
-        val color = resolveLucidePaintColor(paintValue, tint)
+        val color = paintValue.resolve(tint)
         strokePaint.color = color
         strokePaint.alpha = resolvedAlpha(color, opacity)
         strokePaint.strokeWidth = width
@@ -319,6 +319,8 @@ private class SlockLucideCanvasView(context: Context) : View(context) {
 private data class SlockRenderedLucidePath(
     val spec: SlockLucidePathSpec,
     val path: Path,
+    val fillPaint: SlockCompiledLucidePaint?,
+    val strokePaint: SlockCompiledLucidePaint?,
 )
 
 private data class SlockRenderedLucideIcon(
@@ -344,26 +346,45 @@ private object SlockLucidePathCache {
                         SlockLucideFillRule.NonZero -> Path.FillType.WINDING
                         SlockLucideFillRule.EvenOdd -> Path.FillType.EVEN_ODD
                     }
-                SlockRenderedLucidePath(pathSpec, path)
+                SlockRenderedLucidePath(
+                    spec = pathSpec,
+                    path = path,
+                    fillPaint = pathSpec.fillPaint?.let(::compileLucidePaint),
+                    strokePaint = pathSpec.strokePaint?.let(::compileLucidePaint),
+                )
             }
         return SlockRenderedLucideIcon(spec, paths)
     }
 }
 
-internal fun resolveLucidePaintColor(value: String, tint: Int): Int =
-    when {
-        value == "currentColor" -> tint
-        value.length == 4 && value[0] == '#' ->
-            Color.parseColor(
-                buildString(7) {
-                    append('#')
-                    value.drop(1).forEach { digit ->
-                        append(digit)
-                        append(digit)
-                    }
-                },
-            )
-        else -> Color.parseColor(value)
+private sealed interface SlockCompiledLucidePaint {
+    data object CurrentColor : SlockCompiledLucidePaint
+
+    @JvmInline
+    value class Direct(val argb: Int) : SlockCompiledLucidePaint
+}
+
+private fun compileLucidePaint(value: String): SlockCompiledLucidePaint =
+    if (value == "currentColor") {
+        SlockCompiledLucidePaint.CurrentColor
+    } else {
+        SlockCompiledLucidePaint.Direct(parseLucideDirectPaintColor(value))
+    }
+
+internal fun parseLucideDirectPaintColor(value: String): Int {
+    val expanded =
+        if (value.length == 4 && value[0] == '#') {
+            charArrayOf('#', value[1], value[1], value[2], value[2], value[3], value[3]).concatToString()
+        } else {
+            value
+        }
+    return Color.parseColor(expanded)
+}
+
+private fun SlockCompiledLucidePaint.resolve(tint: Int): Int =
+    when (this) {
+        SlockCompiledLucidePaint.CurrentColor -> tint
+        is SlockCompiledLucidePaint.Direct -> argb
     }
 
 private fun resolvedAlpha(color: Int, opacity: Float): Int =

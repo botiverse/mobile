@@ -17,8 +17,8 @@ import kotlin.math.abs
 class SlockLucideNativeCanvasConnectedTest {
     @Test
     fun cssShorthandPaintExpandsToOpaqueAndroidColor() {
-        assertEquals(Color.rgb(0x11, 0x22, 0x33), resolveLucidePaintColor("#123", Color.RED))
-        assertEquals(Color.RED, resolveLucidePaintColor("currentColor", Color.RED))
+        assertEquals(Color.rgb(0x11, 0x22, 0x33), parseLucideDirectPaintColor("#123"))
+        assertEquals(Color.rgb(0x12, 0x34, 0x56), parseLucideDirectPaintColor("#123456"))
     }
 
     @Test
