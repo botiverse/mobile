@@ -19179,12 +19179,28 @@ internal data class SearchEntityResult(
     val title: String,
     val subtitle: String,
     val threadId: String?,
-    val memberId: String?,
+    val memberIdentity: MemberDetailIdentity?,
     val conversationIdentity: ThreadLaunchConversationIdentity?,
     val avatarWireValue: String? = null,
     val showPresence: Boolean = false,
     val archived: Boolean = false
-)
+) {
+    val memberId: String?
+        get() = memberIdentity?.memberId?.value
+}
+
+internal sealed interface HomeSearchEntityDestination {
+    data class Conversation(val identity: ThreadLaunchConversationIdentity) : HomeSearchEntityDestination
+    data class Member(val identity: MemberDetailIdentity) : HomeSearchEntityDestination
+}
+
+internal fun SearchEntityResult.destinationOrNull(): HomeSearchEntityDestination? {
+    conversationIdentity?.let { return HomeSearchEntityDestination.Conversation(it) }
+    val identity = memberIdentity ?: return null
+    if (identity.memberId.value.isBlank() || identity.sourceServerId?.value.isNullOrBlank()) return null
+    if (identity.kind != MemberKind.Human && identity.kind != MemberKind.Agent) return null
+    return HomeSearchEntityDestination.Member(identity)
+}
 
 private sealed interface HomeSearchResultGroup {
     data class Message(val item: InboxItem) : HomeSearchResultGroup
@@ -19285,7 +19301,7 @@ private fun homeSearchEntityResults(
                 title = if (type == SearchEntityType.Channel) "#${conversation.name}" else conversation.name,
                 subtitle = conversation.subtitle?.takeIf { it.isNotBlank() } ?: if (type == SearchEntityType.Channel) channelLabel else dmLabel,
                 threadId = conversation.threadId.value,
-                memberId = conversation.presenceMemberId?.value,
+                memberIdentity = conversation.toThreadLaunchConversationIdentity().dmPeerIdentity,
                 conversationIdentity = conversation.toThreadLaunchConversationIdentity(),
                 avatarWireValue = null,
                 showPresence = conversation.isAgentDirectMessage(),
@@ -19296,26 +19312,42 @@ private fun homeSearchEntityResults(
         senderFilters.mapNotNull { sender ->
             if (!sender.searchMatches(normalizedQuery)) return@mapNotNull null
             val conversation = byPresenceMemberId[sender.id]
-            SearchEntityResult(
-                key = "sender:${sender.kind}:${sender.id}",
-                type = if (sender.kind == MemberKind.Agent) SearchEntityType.Agent else SearchEntityType.Human,
-                title = sender.displayLabel,
-                subtitle =
-                    buildString {
-                        append(if (sender.kind == MemberKind.Agent) agentLabel else personLabel)
-                        if (sender.handle.isNotBlank()) append(" · @${sender.handle}")
-                        if (conversation == null) append(" · $membersLabel")
-                    },
-                threadId = conversation?.threadId?.value,
-                memberId = sender.id,
+            sender.toHomeSearchEntityResult(
                 conversationIdentity = conversation,
-                avatarWireValue = sender.avatarWireValue ?: AvatarReference.Random(sender.id).wireValue,
-                showPresence = sender.kind == MemberKind.Agent
+                agentLabel = agentLabel,
+                personLabel = personLabel,
+                membersLabel = membersLabel,
             )
         }
     return (conversationResults + memberResults)
         .distinctBy { it.key }
         .take(5)
+}
+
+internal fun SearchSenderFilterItem.toHomeSearchEntityResult(
+    conversationIdentity: ThreadLaunchConversationIdentity?,
+    agentLabel: String,
+    personLabel: String,
+    membersLabel: String,
+): SearchEntityResult? {
+    if (kind != MemberKind.Agent && kind != MemberKind.Human) return null
+    val identity = memberDetailIdentity(id, kind, sourceServerId.value) ?: return null
+    return SearchEntityResult(
+        key = "sender:${sourceServerId.value}:$kind:${identity.memberId.value}",
+        type = if (kind == MemberKind.Agent) SearchEntityType.Agent else SearchEntityType.Human,
+        title = displayLabel,
+        subtitle =
+            buildString {
+                append(if (kind == MemberKind.Agent) agentLabel else personLabel)
+                if (handle.isNotBlank()) append(" · @$handle")
+                if (conversationIdentity == null) append(" · $membersLabel")
+            },
+        threadId = conversationIdentity?.threadId?.value,
+        memberIdentity = identity,
+        conversationIdentity = conversationIdentity,
+        avatarWireValue = avatarWireValue ?: AvatarReference.Random(identity.memberId.value).wireValue,
+        showPresence = kind == MemberKind.Agent,
+    )
 }
 
 private fun HomeDirectMessageRow.isAgentDirectMessage(): Boolean =
@@ -20122,26 +20154,44 @@ private fun Pager.openHomeSearchEntity(
     threadRowAffordances: Set<ThreadRowAffordancePreference>,
     storeScope: SlockShellStoreScope
 ) {
-    val conversation = entity.conversationIdentity
-    if (conversation != null) {
-        openStandaloneHomeConversation(
-            bridge = bridge,
-            conversation = conversation,
-            source = "home_search_entity",
-            timeContext = timeContext,
-            alignOwnMessagesRight = alignOwnMessagesRight,
-            compactConsecutiveMessages = compactConsecutiveMessages,
-            threadRowAffordances = threadRowAffordances,
-            storeScope = storeScope
-        )
-        return
+    when (val destination = entity.destinationOrNull()) {
+        is HomeSearchEntityDestination.Conversation -> {
+            openStandaloneHomeConversation(
+                bridge = bridge,
+                conversation = destination.identity,
+                source = "home_search_entity",
+                timeContext = timeContext,
+                alignOwnMessagesRight = alignOwnMessagesRight,
+                compactConsecutiveMessages = compactConsecutiveMessages,
+                threadRowAffordances = threadRowAffordances,
+                storeScope = storeScope
+            )
+        }
+        is HomeSearchEntityDestination.Member -> {
+            val pageData = homeSearchMemberDetailPageData(destination.identity, timeContext) ?: return
+            openSlockPage(
+                pageName = MEMBER_DETAIL_PAGE,
+                pageData = pageData,
+                storeScopeOverride = storeScope
+            )
+        }
+        null -> Unit
     }
-    val memberId = entity.memberId?.takeIf { it.isNotBlank() } ?: return
+}
+
+internal fun homeSearchMemberDetailPageData(
+    identity: MemberDetailIdentity,
+    timeContext: AppShellThreadTimeContext?,
+): JSONObject? {
+    val memberId = identity.memberId.value.trim().takeIf { it.isNotBlank() } ?: return null
+    val sourceServerId = identity.sourceServerId?.value?.trim()?.takeIf { it.isNotBlank() } ?: return null
     val instanceId = "home-search-member-$memberId"
     val payload =
         JSONObject().apply {
             put("instanceId", instanceId)
             put("memberId", memberId)
+            put("memberKind", identity.kind.memberKindWireValue())
+            put("sourceServerId", sourceServerId)
             put("localOffsetMinutes", timeContext?.localOffsetMinutes ?: 0)
             timeContext?.todayEpochDay?.let { put("todayEpochDay", it) }
             timeContext?.nowEpochMillis?.let { put("nowEpochMillis", it) }
@@ -20153,11 +20203,7 @@ private fun Pager.openHomeSearchEntity(
             put("payload", payload.toString())
             put("instanceId", instanceId)
         }
-    openSlockPage(
-        pageName = MEMBER_DETAIL_PAGE,
-        pageData = pageData,
-        storeScopeOverride = storeScope
-    )
+    return pageData
 }
 
 internal fun buildStandaloneConversationThreadLaunchPayload(
@@ -21693,6 +21739,7 @@ private val homeSearchVisualSearchState = SharedHomeSearchPanelState(
                 label = "Artin",
                 handle = "artin",
                 kind = MemberKind.Human,
+                sourceServerId = ServerId("server_visual"),
                 isSelf = true,
                 avatarWireValue = AvatarReference.Random("artin").wireValue,
                 presence = Presence.Active
@@ -21702,6 +21749,7 @@ private val homeSearchVisualSearchState = SharedHomeSearchPanelState(
                 label = "Android Developer",
                 handle = "Android-Developer",
                 kind = MemberKind.Agent,
+                sourceServerId = ServerId("server_visual"),
                 avatarWireValue = AvatarReference.Random("android-developer").wireValue,
                 presence = Presence.Active,
                 agentStatus = AgentStatus.Working
@@ -21711,6 +21759,7 @@ private val homeSearchVisualSearchState = SharedHomeSearchPanelState(
                 label = "Pin Human",
                 handle = "pin-human",
                 kind = MemberKind.Human,
+                sourceServerId = ServerId("server_visual"),
                 avatarWireValue = AvatarReference.Random("pin-human").wireValue,
                 presence = Presence.Active
             )
