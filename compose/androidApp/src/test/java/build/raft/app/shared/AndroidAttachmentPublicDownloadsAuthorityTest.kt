@@ -728,11 +728,49 @@ class AndroidAttachmentPublicDownloadsAuthorityTest {
             val target = directory.resolve("report.pdf").apply { writeText("private final") }
             val part = directory.resolve("report.pdf.part-attempt").apply { writeText("private part") }
 
-            assertTrue(clearAndroidAttachmentPrivateStaging(directory))
+            assertTrue(recoverAndroidAttachmentPrivateStaging(directory))
 
             assertFalse(target.exists())
             assertFalse(part.exists())
             assertTrue(directory.listFiles().orEmpty().isEmpty())
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun processRestartPreservesFreshPrivateOpenFinalAndRemovesStagingOrExpiredBytes() {
+        val directory = Files.createTempDirectory("private-open-recovery").toFile()
+        val nowMillis = System.currentTimeMillis()
+        try {
+            val openDirectory = directory.resolve(ANDROID_ATTACHMENT_PRIVATE_OPEN_DIR_NAME).apply { mkdirs() }
+            val freshIdentity = identity(attachmentId = "fresh-private-open")
+            val staleIdentity = identity(attachmentId = "stale-private-open")
+            val fresh =
+                openDirectory
+                    .resolve(androidAttachmentPrivateCacheFileName(freshIdentity))
+                    .apply {
+                        writeText("fresh private open")
+                        setLastModified(nowMillis)
+                    }
+            val stale =
+                openDirectory
+                    .resolve(androidAttachmentPrivateCacheFileName(staleIdentity))
+                    .apply {
+                        writeText("stale private open")
+                        setLastModified(nowMillis - ANDROID_ATTACHMENT_PRIVATE_OPEN_MAX_AGE_MS - 1L)
+                    }
+            val interruptedPart =
+                openDirectory.resolve("${fresh.name}.part-attempt").apply { writeText("partial") }
+            val publicSaveStaging = directory.resolve("published-copy.txt").apply { writeText("staging") }
+
+            assertTrue(recoverAndroidAttachmentPrivateStaging(directory, nowMillis))
+
+            assertTrue(fresh.isFile)
+            assertEquals("fresh private open", fresh.readText())
+            assertFalse(stale.exists())
+            assertFalse(interruptedPart.exists())
+            assertFalse(publicSaveStaging.exists())
         } finally {
             directory.deleteRecursively()
         }
@@ -764,14 +802,20 @@ class AndroidAttachmentPublicDownloadsAuthorityTest {
         val authority = AndroidAttachmentPublicDownloadsAuthority(store, backend)
         val committed = commit(authority, backend, identity(), URI)
 
-        val open = androidAttachmentPublicOpenSpec(committed, packageArchive = false)
-        val install = androidAttachmentPublicOpenSpec(committed.copy(mimeType = "application/vnd.android.package-archive"), packageArchive = true)
+        val open = androidAttachmentOpenLaunchSpec(androidAttachmentPublicOpenSource(committed), packageArchive = false)
+        val install =
+            androidAttachmentOpenLaunchSpec(
+                androidAttachmentPublicOpenSource(
+                    committed.copy(mimeType = "application/vnd.android.package-archive")
+                ),
+                packageArchive = true
+            )
 
-        assertEquals(URI, open.uri)
-        assertEquals("android.intent.action.VIEW", open.action)
+        assertEquals(URI, open.source.contentUri)
+        assertEquals(AndroidAttachmentOpenIntentAction.View, open.action)
         assertTrue(open.grantsReadPermission)
-        assertEquals(URI, install.uri)
-        assertEquals("android.intent.action.INSTALL_PACKAGE", install.action)
+        assertEquals(URI, install.source.contentUri)
+        assertEquals(AndroidAttachmentOpenIntentAction.InstallPackage, install.action)
         assertTrue(install.grantsReadPermission)
     }
 

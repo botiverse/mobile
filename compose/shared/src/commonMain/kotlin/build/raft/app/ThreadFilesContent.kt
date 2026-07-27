@@ -398,6 +398,7 @@ internal fun ThreadAttachmentOpenUiState?.localizedThreadAttachmentStatusLabel()
     when (this?.status) {
         "downloading", "paused" -> slockFilePreviewLocalizedActiveDownloadStatusLabel(progress, this.status)
         "cancelled" -> stringResource(MR.strings.file_preview_download_stopped)
+        "missing" -> stringResource(MR.strings.file_preview_error_download_attachment)
         "no_app" -> stringResource(MR.strings.file_preview_error_no_app)
         "storage_failed" -> stringResource(MR.strings.file_preview_error_storage_unavailable)
         "failed" -> stringResource(MR.strings.file_preview_download_failed)

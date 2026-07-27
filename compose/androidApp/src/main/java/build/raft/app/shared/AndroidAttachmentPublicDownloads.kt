@@ -20,12 +20,37 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 internal const val ANDROID_ATTACHMENT_PRIVATE_STAGING_DIR_NAME = "slock-attachments"
+internal const val ANDROID_ATTACHMENT_PRIVATE_OPEN_DIR_NAME = "open"
+internal const val ANDROID_ATTACHMENT_PRIVATE_OPEN_MAX_AGE_MS = 24L * 60L * 60L * 1_000L
+internal val AndroidAttachmentPrincipalKeyPattern = Regex("[0-9a-f]{64}")
 
-internal fun clearAndroidAttachmentPrivateStaging(directory: File): Boolean {
+internal fun recoverAndroidAttachmentPrivateStaging(
+    directory: File,
+    nowMillis: Long = System.currentTimeMillis()
+): Boolean {
     if (!directory.exists()) return true
     if (!directory.isDirectory) return directory.delete() || !directory.exists()
     val children = directory.listFiles() ?: return false
-    return children.all { child -> child.deleteRecursively() || !child.exists() }
+    return children.all { child ->
+        if (child.name == ANDROID_ATTACHMENT_PRIVATE_OPEN_DIR_NAME && child.isDirectory) {
+            recoverAndroidAttachmentPrivateOpenCache(child, nowMillis)
+        } else {
+            child.deleteRecursively() || !child.exists()
+        }
+    }
+}
+
+private fun recoverAndroidAttachmentPrivateOpenCache(directory: File, nowMillis: Long): Boolean {
+    val children = directory.listFiles() ?: return false
+    return children.all { child ->
+        val ageMillis = (nowMillis - child.lastModified()).coerceAtLeast(0L)
+        val validFinal =
+            child.isFile &&
+                child.length() > 0L &&
+                child.name.matches(Regex("[0-9a-f]{64}-[0-9a-f]{64}")) &&
+                ageMillis <= ANDROID_ATTACHMENT_PRIVATE_OPEN_MAX_AGE_MS
+        validFinal || child.deleteRecursively() || !child.exists()
+    }
 }
 
 internal data class AndroidAttachmentPublicIdentity(
@@ -33,7 +58,7 @@ internal data class AndroidAttachmentPublicIdentity(
     val attachmentId: String
 ) {
     init {
-        require(principalKey.length == 64)
+        require(principalKey.matches(AndroidAttachmentPrincipalKeyPattern))
         require(attachmentId.isNotBlank())
     }
 
@@ -140,26 +165,6 @@ internal interface AndroidAttachmentPublicUriBackend {
     fun inspectExact(uri: String): AndroidAttachmentPublicUriState
     fun deleteExact(uri: String): Boolean
 }
-
-internal data class AndroidAttachmentPublicOpenSpec(
-    val uri: String,
-    val mimeType: String,
-    val displayName: String,
-    val action: String,
-    val grantsReadPermission: Boolean
-)
-
-internal fun androidAttachmentPublicOpenSpec(
-    record: AndroidAttachmentPublicRecord,
-    packageArchive: Boolean
-): AndroidAttachmentPublicOpenSpec =
-    AndroidAttachmentPublicOpenSpec(
-        uri = checkNotNull(record.uri),
-        mimeType = record.mimeType,
-        displayName = record.displayName,
-        action = if (packageArchive) "android.intent.action.INSTALL_PACKAGE" else "android.intent.action.VIEW",
-        grantsReadPermission = true
-    )
 
 /**
  * Durable authority for the one public attachment copy.
@@ -828,7 +833,7 @@ internal object ProcessAndroidAttachmentPublicDownloads {
         recoveryWorker.execute {
             try {
                 val privateStagingCleared =
-                    clearAndroidAttachmentPrivateStaging(
+                    recoverAndroidAttachmentPrivateStaging(
                         File(appContext.cacheDir, ANDROID_ATTACHMENT_PRIVATE_STAGING_DIR_NAME)
                     )
                 val preparedRecovered = resolved.recoverPrepared()
