@@ -10300,7 +10300,7 @@ private fun SettingsServerInvitesCard(
                     detail =
                         listOfNotNull(
                             invite.inviterName?.let { MR.strings.settings_server_invited_by.format(listOf(it)).localized() },
-                            formatSettingsTimestampLabel(invite.createdAtLabel, timeContext)
+                            relativeSettingsTimestampLabel(invite.createdAtLabel, timeContext)
                         ).joinToString(" · "),
                     buttonLabel = actionState.serverLocalizedStatusFor(SERVER_ACTION_INVITE_REVOKE, stringResource(MR.strings.settings_server_action_revoke), invite.id),
                     buttonIcon = SlockLucideIconName.X,
@@ -10382,7 +10382,7 @@ private fun SettingsServerJoinLinksCard(
                         listOfNotNull(
                             link.maxUsesLabel,
                             link.usageLabel,
-                            formatSettingsTimestampLabel(link.expiresAtLabel, timeContext)
+                            relativeSettingsTimestampLabel(link.expiresAtLabel, timeContext)
                         ).joinToString(" · "),
                     buttonLabel = actionState.serverLocalizedStatusFor(SERVER_ACTION_JOIN_LINK_REVOKE, stringResource(MR.strings.settings_server_action_revoke), link.id),
                     buttonIcon = SlockLucideIconName.Unlink,
@@ -12638,6 +12638,7 @@ private fun List<SettingsServerAdminSnapshot>?.toAdminRows(
     }
 }
 
+@Composable
 private fun List<SettingsServerInviteSnapshot>?.toInviteRows(
     section: SettingsServerSectionSnapshot?,
     sectionTitle: String,
@@ -12659,7 +12660,7 @@ private fun List<SettingsServerInviteSnapshot>?.toInviteRows(
                 detail =
                     listOfNotNull(
                         invite.inviterName?.let { "Invited by $it" },
-                        formatSettingsTimestampLabel(invite.createdAtLabel, timeContext)
+                        relativeSettingsTimestampLabel(invite.createdAtLabel, timeContext)
                     ).joinToString(" · "),
                 status = "Pending",
                 enabled = false
@@ -12677,6 +12678,7 @@ private fun List<SettingsServerInviteSnapshot>?.toInviteRows(
     }
 }
 
+@Composable
 private fun List<SettingsServerJoinLinkSnapshot>?.toJoinLinkRows(
     section: SettingsServerSectionSnapshot?,
     sectionTitle: String,
@@ -12706,7 +12708,7 @@ private fun List<SettingsServerJoinLinkSnapshot>?.toJoinLinkRows(
                     listOfNotNull(
                         link.url,
                         link.maxUsesLabel,
-                        formatSettingsTimestampLabel(link.expiresAtLabel, timeContext)
+                        relativeSettingsTimestampLabel(link.expiresAtLabel, timeContext)
                     ).joinToString(" · "),
                 status = link.usageLabel.orEmpty(),
                 enabled = false
@@ -19616,8 +19618,18 @@ private fun Presence?.toSharedPresence(): SlockPresence? =
 internal typealias AppShellTimeContext = SlockTimeContext
 internal typealias AppShellThreadTimeContext = SlockTimeContext
 
+@Composable
 private fun String.formatSavedTimestamp(timeContext: AppShellThreadTimeContext?): String =
-    timeContext?.formatTimestampLabel(this) ?: this
+    slockRelativeTimestampLabel(this, timeContext)
+
+@Composable
+private fun relativeSettingsTimestampLabel(
+    value: String?,
+    timeContext: SlockTimeContext?
+): String? {
+    val trimmed = value?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    return slockRelativeTimestampLabel(trimmed, timeContext).takeIf { it.isNotBlank() }
+}
 
 internal fun formatSettingsTimestampLabel(
     value: String?,

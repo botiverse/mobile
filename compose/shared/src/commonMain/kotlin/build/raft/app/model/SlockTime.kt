@@ -5,6 +5,25 @@ private const val MillisPerMinute = 60_000L
 private const val MillisPerHour = 3_600_000L
 private const val MillisPerDay = 86_400_000L
 
+internal enum class SlockRelativeTimeUnit {
+    Minute,
+    Hour,
+    Day
+}
+
+internal sealed interface SlockRelativeTimeLabel {
+    data object Empty : SlockRelativeTimeLabel
+
+    data object Unknown : SlockRelativeTimeLabel
+
+    data class Literal(val value: String) : SlockRelativeTimeLabel
+
+    data class Relative(
+        val value: Int,
+        val unit: SlockRelativeTimeUnit
+    ) : SlockRelativeTimeLabel
+}
+
 const val SlockTimeFormat12Hour = "12h"
 const val SlockTimeFormat24Hour = "24h"
 
@@ -37,6 +56,46 @@ data class SlockTimeContext(
 fun slockTimeContextRefreshDelayMillis(nowEpochMillis: Long): Long {
     val millisIntoMinute = floorMod(nowEpochMillis, MillisPerMinute)
     return MillisPerMinute - millisIntoMinute
+}
+
+internal fun resolveSlockRelativeTimeLabel(
+    value: String?,
+    context: SlockTimeContext?
+): SlockRelativeTimeLabel {
+    val trimmed = value?.trim().orEmpty()
+    if (trimmed.isEmpty()) return SlockRelativeTimeLabel.Empty
+    if (trimmed.equals("Now", ignoreCase = true)) {
+        return SlockRelativeTimeLabel.Relative(0, SlockRelativeTimeUnit.Minute)
+    }
+    if (SlockDisplayClockRegex.matches(trimmed)) {
+        return SlockRelativeTimeLabel.Literal(trimmed)
+    }
+    val timeContext = context ?: return SlockRelativeTimeLabel.Literal(trimmed)
+    val now = timeContext.nowEpochMillis ?: return SlockRelativeTimeLabel.Literal(trimmed)
+    val timestamp =
+        parseSlockTimestampEpochMillisOrNull(trimmed, timeContext.localOffsetMinutes)
+            ?: return SlockRelativeTimeLabel.Unknown
+    val diffMillis = timestamp.toDouble() - now.toDouble()
+    val absoluteMillis = kotlin.math.abs(diffMillis)
+    val unit =
+        when {
+            absoluteMillis < MillisPerHour -> SlockRelativeTimeUnit.Minute
+            absoluteMillis < MillisPerDay -> SlockRelativeTimeUnit.Hour
+            else -> SlockRelativeTimeUnit.Day
+        }
+    val divisor =
+        when (unit) {
+            SlockRelativeTimeUnit.Minute -> MillisPerMinute
+            SlockRelativeTimeUnit.Hour -> MillisPerHour
+            SlockRelativeTimeUnit.Day -> MillisPerDay
+        }
+    // JavaScript Math.round is floor(x + 0.5), including negative half values.
+    // Match Web exactly instead of Kotlin's ties-to-even round().
+    val rounded = kotlin.math.floor(diffMillis / divisor.toDouble() + 0.5)
+    return SlockRelativeTimeLabel.Relative(
+        value = rounded.coerceIn(Int.MIN_VALUE.toDouble(), Int.MAX_VALUE.toDouble()).toInt(),
+        unit = unit
+    )
 }
 
 fun normalizeSlockTimeFormatPreference(value: String?): String =
@@ -161,6 +220,9 @@ private fun Long.toLocalEpochDay(localOffsetMinutes: Int): Long =
 
 private val SlockTimestampRegex =
     Regex("""^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,9}))?)?(?:\s*(Z|[+-]\d{2}(?::?\d{2})?))?)?$""")
+
+private val SlockDisplayClockRegex =
+    Regex("""^\d{1,2}:\d{2}(?::\d{2})?(?:\s[AP]M)?$""", RegexOption.IGNORE_CASE)
 
 private data class SlockCivilDate(
     val year: Int,

@@ -2540,14 +2540,19 @@ private fun ThreadPageScreen(
     val liveTimeContext =
         rememberLiveSlockTimeContext(
             seed = parsedPayload.toSlockTimeContext(),
-            pageVisibleTick = pageVisibleTick
+            pageVisibleTick = pageVisibleTick,
+            active = pageVisible
         )
     val payload =
-        remember(parsedPayload, liveTimeContext) {
+        remember(
+            parsedPayload,
+            liveTimeContext?.localOffsetMinutes,
+            liveTimeContext?.todayEpochDay,
+            liveTimeContext?.timeFormat
+        ) {
             parsedPayload.copy(
                 localOffsetMinutes = liveTimeContext?.localOffsetMinutes ?: parsedPayload.localOffsetMinutes,
                 todayEpochDay = liveTimeContext?.todayEpochDay ?: parsedPayload.todayEpochDay,
-                nowEpochMillis = liveTimeContext?.nowEpochMillis ?: parsedPayload.nowEpochMillis,
                 timeFormat = liveTimeContext?.timeFormat ?: parsedPayload.timeFormat
             )
         }
@@ -2752,6 +2757,7 @@ private fun ThreadPageScreen(
     }
     SharedThreadRouteContent(
         initialPayload = payload,
+        timeContext = liveTimeContext,
         bridge = bridge,
         dataSource = dataSource,
         forwardTargetRepository = forwardTargetRepository,
@@ -3312,7 +3318,7 @@ private fun ThreadMessageVisualScreenContent() {
                     taskOpenEnabled = payload.showTaskOpenActions,
                     taskStatusActionsEnabled = payload.showTaskStatusActions,
                     showReactionAddAction = payload.showReactionActions,
-                    timestampLabel = payload.formatTimestampLabel(selectedMessage.timestampLabel),
+                    timestampLabel = selectedMessage.timestampLabel,
                     onShowActions = {},
                     onOpenMember = {},
                     onOpenThread = {},
@@ -3378,7 +3384,7 @@ private fun ThreadMessageVisualScreenContent() {
                     taskOpenEnabled = false,
                     taskStatusActionsEnabled = false,
                     showReactionAddAction = false,
-                    timestampLabel = payload.formatTimestampLabel(visualMessage.timestampLabel),
+                    timestampLabel = visualMessage.timestampLabel,
                     onShowActions = {},
                     onOpenMember = {},
                     onOpenThread = {},
@@ -3567,7 +3573,7 @@ private fun ThreadMessageVisualScreenContent() {
                     showReactionAddAction = payload.showReactionActions,
                     isMarkdownTagValid = isMarkdownTagValid,
                     markdownTagContextSignature = markdownTagContextSignature,
-                    timestampLabel = payload.formatTimestampLabel(message.timestampLabel),
+                    timestampLabel = message.timestampLabel,
                     onShowActions = { actionsMenuVisible = true },
                     onOpenMember = {},
                     onOpenThread = { openedVisualThreadMessageId = it },
@@ -4229,6 +4235,7 @@ private fun ThreadMessageVisualCard(
 @Composable
 internal fun SharedThreadRouteContent(
     initialPayload: KuiklyThreadScreenPayload,
+    timeContext: SlockTimeContext? = null,
     bridge: build.raft.app.base.BridgeModule,
     dataSource: SharedThreadDataSource,
     forwardTargetRepository: ForwardMessageTargetRepository? = null,
@@ -6967,7 +6974,8 @@ internal fun SharedThreadRouteContent(
                 LocalThreadMessagePointerSessionKey provides threadPointerSessionKey,
                 LocalThreadPendingReactionKeys provides pendingReactionKeys,
                 LocalThreadPendingReactionVisuals provides pendingReactionVisuals,
-                LocalThreadPendingTaskId provides threadTasksState.statusUpdatingTaskId
+                LocalThreadPendingTaskId provides threadTasksState.statusUpdatingTaskId,
+                LocalSlockTimeContext provides (timeContext ?: renderedThread.toSlockTimeContext())
             ),
             LocalSlockMarkdownPlainCandidateSession,
             plainCandidateCensusSession
@@ -15936,7 +15944,7 @@ private fun ThreadMessagesList(
                         if (isSystemMessage && actionCard == null) {
                             ThreadSystemMessageRow(
                                 message = displayMessage,
-                                timestampLabel = renderConfig.formatTimestampLabel(message.timestampLabel)
+                                timestampLabel = slockRelativeTimestampLabel(message.timestampLabel)
                             )
                         } else {
                             val translationUi =
@@ -16004,8 +16012,8 @@ private fun ThreadMessagesList(
                                 },
                                 showReactionAddAction = renderPayload.showReactionActions && !message.hasLocalSendState(),
                                 onOpenCommentHost = { onThreadEvent("openCommentHost", message.id, null, null) },
-                                timestampLabel = renderConfig.formatTimestampLabel(message.timestampLabel),
-                                compactTimestampLabel = renderConfig.formatCompactTimestampLabel(message.timestampLabel),
+                                timestampLabel = message.timestampLabel,
+                                compactTimestampLabel = message.timestampLabel,
                                 onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) },
                                 attachmentCommentsEnabled = attachmentCommentsEnabled,
                                 onOpenAttachmentComments = { onThreadEvent("openAttachmentComments", message.id, it, null) },
@@ -17790,8 +17798,6 @@ private fun ThreadMessageCard(
         } else {
             message.authorName
         }
-    val localizedTimestampLabel = localizedThreadTimestampLabel(timestampLabel)
-    val localizedCompactTimestampLabel = localizedThreadTimestampLabel(compactTimestampLabel)
     val pointerSessionKey = LocalThreadMessagePointerSessionKey.current
     val horizontalArrangement =
         if (alignOwnMessageRight) Arrangement.spacedBy(12.dp, Alignment.End) else Arrangement.spacedBy(12.dp)
@@ -17968,7 +17974,7 @@ private fun ThreadMessageCard(
                         interactionIdentity = authorGestureIdentity,
                         showAvatar = showAuthorChrome,
                         showTimestamp = showTimestampInAvatarSlot,
-                        timestampLabel = localizedCompactTimestampLabel,
+                        timestampLabel = compactTimestampLabel,
                         avatarLabel = message.avatarLabel,
                         avatarWireValue = avatarWireValue,
                         status = agentStatus,
@@ -18035,7 +18041,7 @@ private fun ThreadMessageCard(
                                         )
                                     }
                                     if (showTimestampInHeader) {
-                                        ThreadMessageTimestampLabel(localizedTimestampLabel)
+                                        ThreadMessageTimestampLabel(timestampLabel)
                                     }
                                 }
                             }
@@ -20235,7 +20241,7 @@ private fun ThreadInlineReplyRow(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        val timeLabel = formatSlockTimestampLabel(reply.createdAt, timeContext)
+        val timeLabel = slockRelativeTimestampLabel(reply.createdAt, timeContext)
         if (timeLabel.isNotBlank()) {
             Text(
                 text = timeLabel,
@@ -21329,7 +21335,7 @@ private fun ThreadOriginCard(
                     if (displayOrigin.isSystemMessage() && originActionCard == null) {
                         ThreadSystemMessageRow(
                             message = displayOrigin,
-                            timestampLabel = renderConfig.formatTimestampLabel(origin.timestampLabel)
+                            timestampLabel = slockRelativeTimestampLabel(origin.timestampLabel)
                         )
                     } else {
                         ThreadMessageCard(
@@ -21366,7 +21372,7 @@ private fun ThreadOriginCard(
                             onShowReactionDetails = onShowReactionDetails,
                             showReactionAddAction = timelineSlice.showReactionActions && contentExtrasVisible,
                             onOpenCommentHost = { onThreadEvent("openCommentHost", origin.id, null, null) },
-                            timestampLabel = renderConfig.formatTimestampLabel(origin.timestampLabel),
+                            timestampLabel = origin.timestampLabel,
                             onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) },
                             attachmentCommentsEnabled = attachmentCommentsEnabled,
                             onOpenAttachmentComments = { onThreadEvent("openAttachmentComments", origin.id, it, null) },
@@ -21419,7 +21425,7 @@ private fun ThreadMessageAuthorSubtitle(description: String, modifier: Modifier 
 @Composable
 private fun ThreadMessageTimestampLabel(timestampLabel: String) {
     Text(
-        text = timestampLabel,
+        text = slockRelativeTimestampLabel(timestampLabel),
         style =
             SlockType.Caption.copy(
                 fontFamily = SlockMonoFamily,
@@ -21427,17 +21433,11 @@ private fun ThreadMessageTimestampLabel(timestampLabel: String) {
             ),
         color = SlockColor.TextBlack.copy(alpha = 0.4f),
         maxLines = 1,
-        overflow = TextOverflow.Ellipsis
+        overflow = TextOverflow.Ellipsis,
+        textAlign = TextAlign.End,
+        modifier = Modifier.width(112.dp)
     )
 }
-
-@Composable
-private fun localizedThreadTimestampLabel(value: String): String =
-    if (value == "Now") {
-        stringResource(MR.strings.thread_timestamp_now)
-    } else {
-        value
-    }
 
 @Composable
 private fun ThreadMessageAvatarSlot(
@@ -21481,7 +21481,7 @@ private fun ThreadMessageAvatarSlot(
                 }
             showTimestamp ->
                 Text(
-                    text = timestampLabel,
+                    text = slockRelativeTimestampLabel(timestampLabel),
                     style =
                         SlockType.Caption.copy(
                             fontFamily = SlockMonoFamily,
@@ -22711,11 +22711,13 @@ private fun ThreadForwardBundleCard(
                     )
                     item.timestampLabel.takeIf { it.isNotBlank() }?.let { timestamp ->
                         Text(
-                            text = timestamp,
+                            text = slockRelativeTimestampLabel(timestamp),
                             style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 10.sp, lineHeight = 13.sp),
                             color = SlockColor.TextMutedGray,
                             maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.End,
+                            modifier = Modifier.width(112.dp)
                         )
                     }
                 }

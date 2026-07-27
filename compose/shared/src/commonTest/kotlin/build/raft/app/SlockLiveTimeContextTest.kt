@@ -1,7 +1,10 @@
 package build.raft.app
 
 import build.raft.app.model.SlockTimeContext
+import build.raft.app.model.SlockRelativeTimeLabel
+import build.raft.app.model.SlockRelativeTimeUnit
 import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
+import build.raft.app.model.resolveSlockRelativeTimeLabel
 import build.raft.app.model.slockEpochDayForDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -13,6 +16,43 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 
 class SlockLiveTimeContextTest {
+    @Test
+    fun sharedMinuteTickerAdvancesRelativeLabelWithoutConversationReload() {
+        val sentAt = epochMillis("2026-07-27T12:00:00Z")
+        var now = sentAt
+        val scheduled = mutableListOf<() -> Unit>()
+        val labels = mutableListOf<SlockRelativeTimeLabel>()
+        val seed = SlockTimeContext(localOffsetMinutes = 0, nowEpochMillis = sentAt)
+        val controller =
+            SlockTimeContextRefreshController(
+                seed = seed,
+                nowEpochMillis = { now },
+                scheduleTimeout = { _, callback ->
+                    scheduled += callback
+                    SlockTimeoutHandle {}
+                },
+                onRefresh = { context ->
+                    labels += resolveSlockRelativeTimeLabel("2026-07-27T12:00:00Z", context)
+                }
+            )
+
+        controller.start()
+        now += 60_000L
+        scheduled.removeAt(0).invoke()
+        now += 60_000L
+        scheduled.removeAt(0).invoke()
+
+        assertEquals(
+            listOf<SlockRelativeTimeLabel>(
+                SlockRelativeTimeLabel.Relative(0, SlockRelativeTimeUnit.Minute),
+                SlockRelativeTimeLabel.Relative(-1, SlockRelativeTimeUnit.Minute),
+                SlockRelativeTimeLabel.Relative(-2, SlockRelativeTimeUnit.Minute)
+            ),
+            labels
+        )
+        controller.stop()
+    }
+
     @Test
     fun nativeTimerControllerCrossesMidnightAndResumeRestartRecalculatesDelay() {
         val beforeMidnight = epochMillis("2026-07-22T23:59:30+08:00")

@@ -1327,7 +1327,11 @@ private fun SharedActivityRow(
                         modifier = Modifier.weight(1f).padding(end = 10.dp)
                     )
                     Text(
-                        text = item.activityTimeLabel(timeContext),
+                        text =
+                            slockRelativeTimestampLabel(
+                                item.latestActivityAt ?: item.lastMessageAt,
+                                timeContext
+                            ),
                         style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, fontFamily = SlockMonoFamily),
                         color = SlockColor.TextBlack.copy(alpha = 0.4f),
                         maxLines = 1,

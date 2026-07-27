@@ -2,6 +2,7 @@ package build.raft.app
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -21,10 +22,13 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+internal val LocalSlockTimeContext = compositionLocalOf<SlockTimeContext?> { null }
+
 @Composable
 internal fun rememberLiveSlockTimeContext(
     seed: SlockTimeContext?,
-    pageVisibleTick: Int = 0
+    pageVisibleTick: Int = 0,
+    active: Boolean = true
 ): SlockTimeContext? {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember(pager) { build.raft.app.base.Utils.bridgeModule(pager.pagerId) }
@@ -32,7 +36,7 @@ internal fun rememberLiveSlockTimeContext(
     var current by remember(seed) {
         mutableStateOf(seed?.refreshedAt(defaultNowMillis()))
     }
-    DisposableEffect(pager, seed, pageVisibleTick) {
+    DisposableEffect(pager, seed, pageVisibleTick, active) {
         val timeoutScheduler =
             SlockIndependentTimeoutScheduler(
                 timerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
@@ -69,7 +73,7 @@ internal fun rememberLiveSlockTimeContext(
                     )
                 }
             )
-        controller.start()
+        if (active) controller.start()
         onDispose {
             controller.stop()
             timeoutScheduler.close()
