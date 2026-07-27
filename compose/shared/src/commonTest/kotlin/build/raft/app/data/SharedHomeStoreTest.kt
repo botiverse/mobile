@@ -3142,6 +3142,66 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun unavailableUnreadKeepsPriorBadgesThenRecoversOnNextGeneration() = runBlocking {
+        // task #831: when channels/DMs are fresh but the unread enrichment was
+        // unavailable (error/timeout/hung/contract-mismatch, flagged by
+        // unreadEnrichmentAvailable = false), the Home must keep the prior badge
+        // + drawer counts (only flip isStale) instead of zeroing them. A later
+        // generation with available unread recovers the fresh value.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val serverId = ServerId("server-1")
+        val availableWithBadges =
+            sampleHome(serverId).copy(
+                unreadTotal = 7,
+                unreadSource = AppBadgeSource.SERVER_UNREAD_SUMMARY,
+                serverUnreadCounts = mapOf("server-1" to 7, "server-2" to 3),
+                unreadEnrichmentAvailable = true
+            )
+        val unavailableHonestEmpty =
+            sampleHome(serverId).copy(
+                unreadTotal = 0,
+                unreadSource = AppBadgeSource.CHANNEL_DM_FALLBACK,
+                serverUnreadCounts = emptyMap(),
+                unreadEnrichmentAvailable = false
+            )
+        val recovered =
+            sampleHome(serverId).copy(
+                unreadTotal = 2,
+                unreadSource = AppBadgeSource.SERVER_UNREAD_SUMMARY,
+                serverUnreadCounts = mapOf("server-1" to 2, "server-2" to 5),
+                unreadEnrichmentAvailable = true
+            )
+        val snapshots = listOf(availableWithBadges, unavailableHonestEmpty, recovered)
+        var index = 0
+        val dataSource =
+            SharedHomeDataSource(
+                sessionStore = sessionStore,
+                api = RecordingHomeApi(),
+                parseHome = { _, _ -> DataResult.Content(snapshots[minOf(index++, snapshots.lastIndex)]) }
+            )
+        val store = SharedHomeStore(authStore = sessionStore, dataSource = dataSource, scope = scope)
+
+        store.accept(SharedHomeIntent.Start)
+        assertEquals(7, store.state.value.appBadgeCount.count)
+        assertEquals(false, store.state.value.appBadgeCount.isStale)
+        assertEquals(3, store.state.value.serverUnreadCounts["server-2"])
+
+        store.accept(SharedHomeIntent.Refresh)
+        // Prior badge kept, only marked stale — NOT zeroed.
+        assertEquals(7, store.state.value.appBadgeCount.count)
+        assertEquals(true, store.state.value.appBadgeCount.isStale)
+        assertEquals(3, store.state.value.serverUnreadCounts["server-2"])
+
+        store.accept(SharedHomeIntent.Refresh)
+        // Fresh available unread recovers the value.
+        assertEquals(2, store.state.value.appBadgeCount.count)
+        assertEquals(false, store.state.value.appBadgeCount.isStale)
+        assertEquals(5, store.state.value.serverUnreadCounts["server-2"])
+        scope.cancel()
+    }
+
+    @Test
     fun appBadgeSourceIsDisabledOnServerSwitch() = runBlocking {
         // Server switch must immediately clear the badge to DISABLED with
         // count = 0 so the host stops showing a stale count from the

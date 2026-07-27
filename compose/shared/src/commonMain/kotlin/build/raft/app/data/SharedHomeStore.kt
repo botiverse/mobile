@@ -1667,8 +1667,15 @@ internal class SharedHomeStore(
             // would mis-classify the failure as a fresh success and skip
             // `isStale = true`. The original `dataResult` is the source of
             // truth for whether the network actually succeeded.
+            // task #831: only a snapshot whose unread enrichment was actually
+            // available may drive the badge to a fresh (possibly zero) value.
+            // When channels/DMs are fresh but unread was unavailable
+            // (error/timeout/hung/contract-mismatch), keep the prior badge and
+            // only flip isStale — never zero it, or a slow/hung unread endpoint
+            // would fake "all read".
+            val unreadEnrichmentAvailable = freshSnapshot?.unreadEnrichmentAvailable == true
             val nextBadge =
-                if (freshSnapshot != null) {
+                if (freshSnapshot != null && unreadEnrichmentAvailable) {
                     val next =
                         snapshotToBadgeCount(
                             snapshot = freshSnapshot,
@@ -1707,7 +1714,16 @@ internal class SharedHomeStore(
                         } else {
                             latestSwitch
                         },
-                    serverUnreadCounts = freshSnapshot?.serverUnreadCounts ?: _state.value.serverUnreadCounts,
+                    // task #831: keep the prior drawer unread when unread was
+                    // unavailable, so a slow/hung unread endpoint can't blank the
+                    // multi-server switcher badges. Only a fresh, available
+                    // projection replaces them.
+                    serverUnreadCounts =
+                        if (freshSnapshot != null && unreadEnrichmentAvailable) {
+                            freshSnapshot.serverUnreadCounts
+                        } else {
+                            _state.value.serverUnreadCounts
+                        },
                     appBadgeCount = nextBadge
                 )
             val published =

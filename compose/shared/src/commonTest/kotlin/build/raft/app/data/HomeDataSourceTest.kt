@@ -642,7 +642,12 @@ class HomeDataSourceTest {
             SharedHomeDataSource(
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 api = UnreadAuxiliaryHomeApi(hangSummary = true),
-                parseHome = { _, session -> DataResult.Content(sampleHome(ServerId(session.currentServerId!!))) }
+                parseHome = { payload, session ->
+                    // task #831: a hung/unavailable unread section flags the
+                    // payload so the Store keeps prior badges instead of zeroing.
+                    assertFalse(payload.unreadEnrichmentAvailable)
+                    DataResult.Content(sampleHome(ServerId(session.currentServerId!!)))
+                }
             )
 
         // Before the decoupling homePayload hard-awaited the unread deferred, so a

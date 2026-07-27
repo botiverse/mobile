@@ -484,7 +484,12 @@ data class HomeNetworkPayload(
     val channels: List<HomeChannelWireDto>,
     val directMessages: List<HomeDirectMessageWireDto>,
     val unreadCounts: Map<ChannelId, Int>,
-    val serverUnreadSummary: List<ServerUnreadSummaryDto>
+    val serverUnreadSummary: List<ServerUnreadSummaryDto>,
+    // task #831: false when the auxiliary unread endpoints were unavailable
+    // (error/timeout/hung/contract-mismatch) so unreadCounts/serverUnreadSummary
+    // are an honest empty, NOT an authoritative zero. Consumers must keep the
+    // prior unread badges instead of clobbering them to read.
+    val unreadEnrichmentAvailable: Boolean = true
 )
 
 data class HomeNetworkResponse(
@@ -506,6 +511,11 @@ internal class SlockHomeApiClient(
         serverId: ServerId,
         priority: DataRequestPriority
     ): DataResult<HomeNetworkPayload> = supervisorScope {
+        // task #831: the unread grace is measured from the concurrent launch, so
+        // time already spent awaiting the canonical channels/DMs is deducted and
+        // the total Home block stays ~max(canonical, budget), not canonical +
+        // budget.
+        val startMark = TimeSource.Monotonic.markNow()
         val channelsDeferred =
             async {
                 requestHomeSection(
@@ -567,15 +577,18 @@ internal class SlockHomeApiClient(
         // task #831: the auxiliary unread endpoints are enrichment, not canonical.
         // Under supervisorScope a failing unread request can no longer cancel the
         // Home load, and awaitBestEffortHomeSection bounds + abandons a hung one.
-        // When unread is unavailable the payload carries an honest empty (no fake
-        // badges); the next generation-fenced home refresh refills it.
+        // When any unread section is unavailable the payload is flagged so the
+        // Store keeps the prior badges (never fake zero); the next
+        // generation-fenced home refresh refills unread.
+        val unreadCountsResult = unreadCountsDeferred.awaitBestEffortHomeSection(startMark)
+        val serverUnreadSummaryResult = serverUnreadSummaryDeferred.awaitBestEffortHomeSection(startMark)
+        val unreadEnrichmentAvailable =
+            unreadCountsResult is DataResult.Content && serverUnreadSummaryResult is DataResult.Content
         val unreadCounts =
-            (unreadCountsDeferred.awaitBestEffortHomeSection() as? DataResult.Content)
-                ?.data?.mapKeys { (key, _) -> ChannelId(key) }
+            (unreadCountsResult as? DataResult.Content)?.data?.mapKeys { (key, _) -> ChannelId(key) }
                 ?: emptyMap()
         val serverUnreadSummary =
-            (serverUnreadSummaryDeferred.awaitBestEffortHomeSection() as? DataResult.Content)
-                ?.data
+            (serverUnreadSummaryResult as? DataResult.Content)?.data
                 ?: emptyList()
 
         DataResult.Content(
@@ -584,22 +597,33 @@ internal class SlockHomeApiClient(
                 channels = channels,
                 directMessages = directMessages,
                 unreadCounts = unreadCounts,
-                serverUnreadSummary = serverUnreadSummary
+                serverUnreadSummary = serverUnreadSummary,
+                unreadEnrichmentAvailable = unreadEnrichmentAvailable
             )
         )
     }
 
     /**
      * Awaits an auxiliary (non-canonical) home section without ever letting it
-     * block or fail the canonical Home load (task #831): a bounded wait returns
-     * null on timeout, an erroring section is swallowed to null, and the still
-     * running request is abandoned so the enclosing supervisor scope completes.
-     * Real cancellation of the caller is preserved.
+     * block or fail the canonical Home load (task #831): the wait is bounded by
+     * the unread grace remaining since [startMark] (so it can't add on top of
+     * the canonical fetch time), an erroring/timed-out section returns null, and
+     * the still running request is abandoned so the enclosing supervisor scope
+     * completes. Real cancellation of the caller is preserved. A null result
+     * means "unread unavailable" — the caller flags the payload so badges are
+     * kept, not zeroed.
      */
-    private suspend fun <T> Deferred<DataResult<T>>.awaitBestEffortHomeSection(): DataResult<T>? {
+    private suspend fun <T> Deferred<DataResult<T>>.awaitBestEffortHomeSection(
+        startMark: TimeSource.Monotonic.ValueTimeMark
+    ): DataResult<T>? {
+        val remainingMs = HOME_UNREAD_ENRICHMENT_BUDGET_MS - startMark.elapsedNow().inWholeMilliseconds
+        if (remainingMs <= 0L) {
+            cancel()
+            return null
+        }
         val result =
             try {
-                withTimeoutOrNull(HOME_UNREAD_ENRICHMENT_BUDGET_MS) { await() }
+                withTimeoutOrNull(remainingMs) { await() }
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (throwable: Throwable) {
