@@ -1046,8 +1046,10 @@ private fun RealtimeCanonicalFinalActualHostContent(run: ActualHostRun) {
 
 @Composable
 private fun ActualThreadContent(host: ActualThreadHost) {
+    val timeContextProvider = rememberLiveSlockTimeContext(host.payload.toSlockTimeCapabilities())
     SharedThreadRouteContent(
         initialPayload = host.payload,
+        timeContextProvider = timeContextProvider,
         bridge = host.bridge,
         dataSource = host.dataSource,
         forwardTargetRepository = host.forwardTargetRepository,

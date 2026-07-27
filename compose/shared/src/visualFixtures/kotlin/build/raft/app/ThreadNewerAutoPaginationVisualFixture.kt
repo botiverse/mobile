@@ -236,9 +236,11 @@ private fun ThreadNewerAutoPaginationVisualContent(runNonce: String, showCompose
             provider.releaseShellStoreScope(storeScope)
         }
     }
+    val timeContextProvider = rememberLiveSlockTimeContext(initialPayload.toSlockTimeCapabilities())
 
     SharedThreadRouteContent(
         initialPayload = initialPayload,
+        timeContextProvider = timeContextProvider,
         bridge = bridge,
         dataSource = dataSource,
         threadSendScope = provider.threadSendScope,
