@@ -3199,6 +3199,26 @@ class SharedHomeStoreTest {
         assertEquals(7, committed.baseSnapshot.unreadTotal)
         assertEquals(mapOf("server-1" to 7, "server-2" to 3), committed.baseSnapshot.serverUnreadCounts)
 
+        // End-to-end: a realtime unread-increment for a non-current server after
+        // the unavailable refresh must increment from the FROZEN baseline (3),
+        // not from a clobbered zero. applyBackgroundUnreadMessages adds to
+        // current.serverUnreadCounts[serverId]; with the delayed-clobber bug that
+        // baseline was 0, so this would have been 1 instead of 4.
+        val backgroundMessage =
+            MessageNew(
+                Message(
+                    id = MessageId("bg-unread-201"),
+                    threadId = ThreadId("channel-b"),
+                    channelId = ChannelId("channel-b"),
+                    seq = 201,
+                    author = sampleMember().copy(id = MemberId("member-2"), displayName = "Peer"),
+                    timestampLabel = "12:02",
+                    body = "background update after unavailable refresh",
+                )
+            )
+        store.accept(SharedHomeIntent.ApplyBackgroundServerUnreadEvent("server-2", backgroundMessage))
+        assertEquals(4, store.state.value.serverUnreadCounts["server-2"])
+
         store.accept(SharedHomeIntent.Refresh)
         // Fresh available unread recovers the value.
         assertEquals(2, store.state.value.appBadgeCount.count)
