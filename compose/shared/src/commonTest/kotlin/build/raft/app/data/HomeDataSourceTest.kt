@@ -577,6 +577,94 @@ class HomeDataSourceTest {
         assertEquals(null, latest.complete(latestGeneration, ServerId("server-b")).pendingServerId)
     }
 
+    // task #831: the canonical Home surface (channels + DMs) must not be blocked
+    // or failed by the auxiliary unread endpoints (channelUnreadCounts /
+    // serverUnreadSummary). Historically homePayload awaited all four sections
+    // and returned the aggregate terminal state, so a hung or erroring unread
+    // endpoint aborted/hung the whole Home even after channels/DMs had loaded.
+    @Test
+    fun erroringServerUnreadSummaryMustNotBlockCanonicalHome() = runBlocking {
+        val source =
+            SharedHomeDataSource(
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                api = UnreadAuxiliaryHomeApi(errorSummary = true),
+                parseHome = { _, session -> DataResult.Content(sampleHome(ServerId(session.currentServerId!!))) }
+            )
+
+        val result = withTimeout(5_000L) { source.loadHome() }
+
+        assertTrue(
+            result is DataResult.Content,
+            "canonical Home must still load when the server-unread-summary endpoint errors"
+        )
+        assertEquals(1, result.data.channels.size)
+    }
+
+    @Test
+    fun erroringChannelUnreadCountsMustNotBlockCanonicalHome() = runBlocking {
+        val source =
+            SharedHomeDataSource(
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                api = UnreadAuxiliaryHomeApi(errorCounts = true),
+                parseHome = { _, session -> DataResult.Content(sampleHome(ServerId(session.currentServerId!!))) }
+            )
+
+        val result = withTimeout(5_000L) { source.loadHome() }
+
+        assertTrue(
+            result is DataResult.Content,
+            "canonical Home must still load when the channel-unread-counts endpoint errors"
+        )
+        assertEquals(1, result.data.channels.size)
+    }
+
+    @Test
+    fun hungUnreadEndpointMustNotBlockCanonicalHome() = runBlocking {
+        val source =
+            SharedHomeDataSource(
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                api = UnreadAuxiliaryHomeApi(hangSummary = true),
+                parseHome = { _, session -> DataResult.Content(sampleHome(ServerId(session.currentServerId!!))) }
+            )
+
+        // Before the decoupling homePayload hard-awaited the unread deferred, so a
+        // never-completing unread endpoint suspended the whole load and this
+        // bounded wait timed out.
+        val result = withTimeout(5_000L) { source.loadHome() }
+
+        assertTrue(
+            result is DataResult.Content,
+            "canonical Home must still load when an unread endpoint hangs indefinitely"
+        )
+        assertEquals(1, result.data.channels.size)
+    }
+
+    private class UnreadAuxiliaryHomeApi(
+        private val errorSummary: Boolean = false,
+        private val errorCounts: Boolean = false,
+        private val hangSummary: Boolean = false,
+        private val hangCounts: Boolean = false,
+    ) : SlockHomeApi {
+        private val neverCompletes = CompletableDeferred<HomeNetworkResponse>()
+
+        override suspend fun channels(priority: DataRequestPriority): HomeNetworkResponse = ok("[]")
+        override suspend fun directMessages(priority: DataRequestPriority): HomeNetworkResponse = ok("[]")
+
+        override suspend fun channelUnreadCounts(priority: DataRequestPriority): HomeNetworkResponse {
+            if (hangCounts) return neverCompletes.await()
+            if (errorCounts) throw RuntimeException("simulated channel_unread_counts failure")
+            return ok("{}")
+        }
+
+        override suspend fun serverUnreadSummary(priority: DataRequestPriority): HomeNetworkResponse {
+            if (hangSummary) return neverCompletes.await()
+            if (errorSummary) throw RuntimeException("simulated server_unread_summary failure")
+            return ok("[]")
+        }
+
+        private fun ok(body: String): HomeNetworkResponse = HomeNetworkResponse(code = 200, bodyText = body)
+    }
+
     private class FakeHomeApi(
         private val channelsBody: String = "[]",
         private val directMessagesBody: String = "[]",
