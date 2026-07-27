@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>59776b7e-20260727221416</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-07-27T22:17:43.120Z" data-timestamp="2026-07-27T22:17:43.120Z" title="2026-07-27T22:17:43.120Z">2026-07-27 22:17:43 UTC</time></p>
+    <p class="runMeta"><code>59776b7e-20260727221416</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-07-27T22:21:36.384Z" data-timestamp="2026-07-27T22:21:36.384Z" title="2026-07-27T22:21:36.384Z">2026-07-27 22:21:36 UTC</time></p>
     <p class="runMeta">Comparisons: <a href="index.html">React vs Android</a> · <a href="react__ios.html">React vs iOS</a> · <strong>Android vs iOS</strong></p>
     <div class="summary">
       <span class="pill">Total 80</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 19</span>
       <span class="pill">Different 42</span>
       <span class="pill">Missing 5</span>
-      <span class="pill">AI 72/80 ready</span>
+      <span class="pill">AI 75/80 ready</span>
       <span class="pill">Matrix 89/108 active</span>
       <span class="pill">Components Parity 78/82 active</span><span class="pill">Screens Parity 11/26 active</span>
     </div>
@@ -2125,7 +2125,12 @@
       <p><code>RGB 90.5%</code><br/><code>Pixel 96.00%</code><br/><code>Mismatch 4.00%</code><br/><code>Raw 1122×324 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       <p class="cropInfo">basic pass: pixel perfect 96.00% &gt; 96% · raw different</p>
       <p class="cropInfo"><code>Crop component-bounds 374×108 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · kuikly-cross-platform / components-thread</summary>
+    <ul><li>Reaction row (👍 1 and + buttons) is visible on iOS but missing/clipped on Android baseline</li><li>iOS avatar renders with a visible yellow status badge; Android avatar's badge appears clipped or less prominent</li><li>iOS body text wraps differently — line break after 'Captured the Android visual artifact for' sits lower, pushing #product token down slightly</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Re-enable or add the reaction row (emoji 👍 count + plus button) on Android so both ends render the same affordances</li><li>Apply the same component-bounds crop to the iOS canvas before comparison to avoid empty-canvas dominance in diff metrics</li><li>Verify avatar status badge component renders identically on both platforms (size, clipping, color)</li><li>Normalize font metrics / line-height across Android and iOS text renderers to align the highlighted token and body wrap</li><li>Confirm status='basic-pass' tolerance is appropriate given the missing reaction row — likely should be 'fail'</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="android/components.thread.message.row.png" data-current-src="ios/components.thread.message.row.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · Android under iOS</summary>
     <div class="overlayControls">
@@ -3729,7 +3734,12 @@
       <p><code>RGB 88.7%</code><br/><code>Pixel 68.66%</code><br/><code>Mismatch 31.34%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop viewport-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · mobile-platform</summary>
+    <ul><li>iOS view shows an on-screen keyboard taking up the lower half of the viewport, occluding the RUNTIME, MODEL, REASONING, MODE fields and Cancel/Create Agent buttons visible on Android.</li><li>Android view renders the full form including all dropdowns (Runtime, Model, Reasoning) and bottom action buttons; iOS view shows only down to the RUNTIME label before the keyboard appears.</li><li>iOS screenshot does not appear to be cropped/scrolled to match the Android viewport — the Android view shows the complete dialog while iOS is truncated by keyboard focus on the Name input.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Dismiss the iOS soft keyboard before capturing the screenshot, or focus a non-text element so the form below is visible.</li><li>Apply an identical viewport-bounds crop on iOS to match the Android crop region (0,0,390,844).</li><li>Normalize input focus state in the test harness so both platforms capture identical UI state.</li><li>If keyboard visibility is platform-intentional, add iOS-aware scroll-to-focused-field behavior so all form fields remain reachable.</li><li>Re-run the visual diff after capturing iOS with keyboard dismissed to verify residual divergence.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="android/components.members.create-agent.dialog.png" data-current-src="ios/components.members.create-agent.dialog.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · Android under iOS</summary>
     <div class="overlayControls">
@@ -4626,7 +4636,12 @@
       <p><code>RGB 88.1%</code><br/><code>Pixel 80.60%</code><br/><code>Mismatch 19.40%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop viewport-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · ui-platform / kuikly-renderer</summary>
+    <ul><li>Overall content layout and components are isomorphic, but the iOS render uses a noticeably larger scale/typography for nearly every element compared to Android.</li><li>iOS form fields, buttons, labels, and the yellow RAFT header band are all rendered taller and bolder, indicating a font/DP scaling or layout-dp divergence rather than per-element breakage.</li><li>The mutual vertical spacing between Email/Password labels, inputs, 'Signing in…' button, 'OR' separator, social buttons, and footer links is consistently larger on iOS, expanding the form region downward.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Audit the login screen's typography and spacing tokens on iOS; align fontSize, lineHeight, and input/button heights to match Android's dp values.</li><li>Ensure the iOS render uses the same theme (fontFamily, fontWeight, scale) as Android — verify the shared Kuikly theme is applied uniformly on both ends.</li><li>Normalize vertical spacing between Email/Password fields, the 'Signing in…' button, the OR divider, and the social buttons so the gap matches Android.</li><li>Rebaseline the iOS screenshot after fixing scaling so pixel-perfect similarity improves and the form region fits within the same vertical proportion as Android.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="android/screens.auth.login.signing.png" data-current-src="ios/screens.auth.login.signing.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · Android under iOS</summary>
     <div class="overlayControls">

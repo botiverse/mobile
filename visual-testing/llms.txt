@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-07-27 22:17:43 UTC
+Generated: 2026-07-27 22:21:36 UTC
 Latest run: 59776b7e-20260727221416
 Latest commit: 59776b7e-20260727221416
 Commit subject: fix(auth): localize fresh install entry (#1670)
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 80, same 0, pass 0, basic-pass 0, different 79, missing 1
-AI analysis: ready 78 / total 80, pending 2
+AI analysis: ready 79 / total 80, pending 1
 Visual coverage matrix: active 89 / total 108, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 

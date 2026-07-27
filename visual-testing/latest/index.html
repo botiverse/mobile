@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>59776b7e-20260727221416</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-07-27T22:17:43.120Z" data-timestamp="2026-07-27T22:17:43.120Z" title="2026-07-27T22:17:43.120Z">2026-07-27 22:17:43 UTC</time></p>
+    <p class="runMeta"><code>59776b7e-20260727221416</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-07-27T22:21:36.384Z" data-timestamp="2026-07-27T22:21:36.384Z" title="2026-07-27T22:21:36.384Z">2026-07-27 22:21:36 UTC</time></p>
     <p class="runMeta">Comparisons: <strong>React vs Android</strong> · <a href="react__ios.html">React vs iOS</a> · <a href="android__ios.html">Android vs iOS</a></p>
     <div class="summary">
       <span class="pill">Total 80</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 0</span>
       <span class="pill">Different 79</span>
       <span class="pill">Missing 1</span>
-      <span class="pill">AI 78/80 ready</span>
+      <span class="pill">AI 79/80 ready</span>
       <span class="pill">Matrix 89/108 active</span>
       <span class="pill">Components Parity 78/82 active</span><span class="pill">Screens Parity 11/26 active</span>
     </div>
@@ -3734,7 +3734,12 @@
       <p><code>RGB 81.9%</code><br/><code>Pixel 68.12%</code><br/><code>Mismatch 31.88%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop modal-viewport 390×844 / viewport-bounds 390×844</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · android-eng</summary>
+    <ul><li>Android dialog has additional REASONING and MODE select fields not present in React baseline</li><li>React baseline shows Runtime as 'Select...' placeholder while Android pre-fills 'Codex CLI'</li><li>React shows Model 'Claude Opus' while Android shows 'GPT-5.6 Sol'</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Conditionally hide REASONING and MODE sections on Android to match React baseline field set</li><li>Wrap Android dialog body in a ScrollView so Cancel/Create Agent remain reachable</li><li>Align default Runtime to empty 'Select...' and Model to 'Claude Opus' for parity</li><li>Remove or align the '&gt; MORE' disclosure so both platforms render the same fields</li><li>Verify Create Agent disabled state styling (opacity/grey fill) matches React's pink disabled treatment</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.members.create-agent.dialog.png" data-current-src="android/components.members.create-agent.dialog.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">

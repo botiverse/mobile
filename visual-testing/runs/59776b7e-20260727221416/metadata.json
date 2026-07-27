@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-27T22:17:43.120Z",
+  "generatedAt": "2026-07-27T22:21:36.384Z",
   "runId": "59776b7e-20260727221416",
   "commit": "59776b7e-20260727221416",
   "commitSubject": "fix(auth): localize fresh install entry (#1670)",
@@ -27,8 +27,8 @@
       },
       "analysisSummary": {
         "total": 80,
-        "ready": 78,
-        "pending": 2
+        "ready": 79,
+        "pending": 1
       }
     },
     {
@@ -75,8 +75,8 @@
       },
       "analysisSummary": {
         "total": 80,
-        "ready": 72,
-        "pending": 8
+        "ready": 75,
+        "pending": 5
       }
     }
   ],
@@ -90,8 +90,8 @@
   },
   "analysisSummary": {
     "total": 80,
-    "ready": 78,
-    "pending": 2
+    "ready": 79,
+    "pending": 1
   },
   "componentMatrixSummary": {
     "total": 108,

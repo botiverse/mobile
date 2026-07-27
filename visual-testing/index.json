@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-07-27T22:17:43.120Z",
+  "generatedAt": "2026-07-27T22:21:36.384Z",
   "latestRunId": "59776b7e-20260727221416",
   "latest": {
     "runId": "59776b7e-20260727221416",
     "commit": "59776b7e-20260727221416",
     "commitSubject": "fix(auth): localize fresh install entry (#1670)",
-    "generatedAt": "2026-07-27T22:17:43.120Z",
+    "generatedAt": "2026-07-27T22:21:36.384Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -20,8 +20,8 @@
     },
     "analysisSummary": {
       "total": 80,
-      "ready": 78,
-      "pending": 2
+      "ready": 79,
+      "pending": 1
     },
     "comparisons": [
       "react__android",
@@ -129,7 +129,7 @@
       "runId": "59776b7e-20260727221416",
       "commit": "59776b7e-20260727221416",
       "commitSubject": "fix(auth): localize fresh install entry (#1670)",
-      "generatedAt": "2026-07-27T22:17:43.120Z",
+      "generatedAt": "2026-07-27T22:21:36.384Z",
       "baseline": "react",
       "current": "android",
       "summary": {
@@ -142,8 +142,8 @@
       },
       "analysisSummary": {
         "total": 80,
-        "ready": 78,
-        "pending": 2
+        "ready": 79,
+        "pending": 1
       },
       "comparisons": [
         "react__android",

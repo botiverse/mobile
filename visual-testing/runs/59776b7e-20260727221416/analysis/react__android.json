@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-27T22:17:30.419Z",
+  "generatedAt": "2026-07-27T22:21:28.802Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 80,
-    "ready": 78,
-    "pending": 2
+    "ready": 79,
+    "pending": 1
   },
   "cases": [
     {
@@ -1607,15 +1607,36 @@
     },
     {
       "id": "components.members.create-agent.dialog",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:ffffffff0000000000007ffc3ffc7ff83ffc3ffc3ffc01fc006c7ffc21fc7ffc3ffc3ffc3ffc7ffc39fc1ffc3ffc3ffc3ffc7ffc3ffc0ffc27fc3ffc3ffc3ffc3ffc7ffc3ffc7ffc3ffc7ffc3ffc07fc2ffc7ffc3ffc7ffc2ffc17fc3ffc67fc37fc7ffc3ffc1ffc3ffc7ffc3f047ffc38047f7c0000380400000000ffffffff",
-      "generatedAt": "2026-07-27T22:17:29.289Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-27T22:20:03.585Z",
+      "severity": "high",
+      "summary": [
+        "Android dialog has additional REASONING and MODE select fields not present in React baseline",
+        "React baseline shows Runtime as 'Select...' placeholder while Android pre-fills 'Codex CLI'",
+        "React shows Model 'Claude Opus' while Android shows 'GPT-5.6 Sol'",
+        "Android dialog content is clipped at the bottom — 'MODE' label and Cancel/Create Agent buttons are cut off / overflow viewport",
+        "React has a '> MORE' expandable section above footer actions; Android lacks this control"
+      ],
+      "likelyCauses": [
+        "Android implementation exposes extra form fields (Reasoning, Mode) not gated to React parity",
+        "Android modal lacks internal scroll container, causing vertical overflow clipping at viewport",
+        "Default form values differ between platforms (Runtime and Model pre-selections)",
+        "Button disabled state driven by validation logic not aligned across implementations",
+        "Missing 'More' disclosure affordance on Android"
+      ],
+      "suggestedOwner": "android-eng",
+      "suggestedFixes": [
+        "Conditionally hide REASONING and MODE sections on Android to match React baseline field set",
+        "Wrap Android dialog body in a ScrollView so Cancel/Create Agent remain reachable",
+        "Align default Runtime to empty 'Select...' and Model to 'Claude Opus' for parity",
+        "Remove or align the '> MORE' disclosure so both platforms render the same fields",
+        "Verify Create Agent disabled state styling (opacity/grey fill) matches React's pink disabled treatment"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.3187686501667545
     },
     {
@@ -1655,7 +1676,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-27T22:17:29.184Z",
+      "generatedAt": "2026-07-27T22:21:28.100Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

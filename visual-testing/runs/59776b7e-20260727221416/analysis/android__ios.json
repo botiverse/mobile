@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-27T22:17:40.807Z",
+  "generatedAt": "2026-07-27T22:21:34.770Z",
   "baseline": "android",
   "current": "ios",
   "comparison": "android__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 80,
-    "ready": 72,
-    "pending": 8
+    "ready": 75,
+    "pending": 5
   },
   "cases": [
     {
@@ -970,15 +970,34 @@
     },
     {
       "id": "components.thread.message.row",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0804000407de1ffe00060002400200024000c0020000c3fefffeeffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff80fff",
-      "generatedAt": "2026-07-27T22:17:39.354Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-27T22:20:13.090Z",
+      "severity": "medium",
+      "summary": [
+        "Reaction row (👍 1 and + buttons) is visible on iOS but missing/clipped on Android baseline",
+        "iOS avatar renders with a visible yellow status badge; Android avatar's badge appears clipped or less prominent",
+        "iOS body text wraps differently — line break after 'Captured the Android visual artifact for' sits lower, pushing #product token down slightly",
+        "iOS crop extends well beyond the component (full 1170×2532 canvas) while Android is tightly cropped to 374×108, making direct scale comparison misleading"
+      ],
+      "likelyCauses": [
+        "Reaction/emoji toolbar conditionally rendered only on iOS branch of the thread message row",
+        "Crop mismatch: baseline uses manual-rect (component-bounds) while current has no crop, so the iOS frame includes large empty space below the component",
+        "Avatar status badge uses different sizing/clipping logic between Android and iOS renderers",
+        "Text line-height or font-metrics differ between Android and iOS text engines, causing vertical offset of the highlighted token"
+      ],
+      "suggestedOwner": "kuikly-cross-platform / components-thread",
+      "suggestedFixes": [
+        "Re-enable or add the reaction row (emoji 👍 count + plus button) on Android so both ends render the same affordances",
+        "Apply the same component-bounds crop to the iOS canvas before comparison to avoid empty-canvas dominance in diff metrics",
+        "Verify avatar status badge component renders identically on both platforms (size, clipping, color)",
+        "Normalize font metrics / line-height across Android and iOS text renderers to align the highlighted token and body wrap",
+        "Confirm status='basic-pass' tolerance is appropriate given the missing reaction row — likely should be 'fail'"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.03996975466169783
     },
     {
@@ -1468,15 +1487,33 @@
     },
     {
       "id": "components.members.create-agent.dialog",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:ffffffff000000003dfc3dfc2df82df83e0c3e7c00ec00cc3ffc3ffc3ffc3ffc39fc39fc3ffc1ffc3ffc1ffc3ffc21fc3ffc03fc03fc03fc3ffc3ffc3ffc3ffc3ff43ff43ffc7ffc3ffc3ffc27fc80013ffcdef33ffcffff27fcffff27fcffff3ffcbff82ffc3ff83ffc8ff03ffc0ff03f7c81013800800100008001ffffffff",
-      "generatedAt": "2026-07-27T22:17:39.966Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-27T22:20:13.519Z",
+      "severity": "high",
+      "summary": [
+        "iOS view shows an on-screen keyboard taking up the lower half of the viewport, occluding the RUNTIME, MODEL, REASONING, MODE fields and Cancel/Create Agent buttons visible on Android.",
+        "Android view renders the full form including all dropdowns (Runtime, Model, Reasoning) and bottom action buttons; iOS view shows only down to the RUNTIME label before the keyboard appears.",
+        "iOS screenshot does not appear to be cropped/scrolled to match the Android viewport — the Android view shows the complete dialog while iOS is truncated by keyboard focus on the Name input.",
+        "Visible components above the keyboard (title, alert banner, COMPUTER, NAME, DESCRIPTION) appear visually consistent in layout, typography weight and spacing between the two ends."
+      ],
+      "likelyCauses": [
+        "iOS rendered with keyboard focus active on Name input, while Android screenshot was captured with keyboard dismissed.",
+        "Comparison did not normalize for soft-keyboard presence; baseline viewport-bounds crop on Android excludes keyboard region but iOS crop is null, causing mismatch.",
+        "Possible difference in screenshot capture timing or focus state between the two platform runs."
+      ],
+      "suggestedOwner": "mobile-platform",
+      "suggestedFixes": [
+        "Dismiss the iOS soft keyboard before capturing the screenshot, or focus a non-text element so the form below is visible.",
+        "Apply an identical viewport-bounds crop on iOS to match the Android crop region (0,0,390,844).",
+        "Normalize input focus state in the test harness so both platforms capture identical UI state.",
+        "If keyboard visibility is platform-intentional, add iOS-aware scroll-to-focused-field behavior so all form fields remain reachable.",
+        "Re-run the visual diff after capturing iOS with keyboard dismissed to verify residual divergence."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.3133714100538745
     },
     {
@@ -1828,15 +1865,31 @@
     },
     {
       "id": "screens.auth.login.signing",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:9ffe3ffe000000000000000000000000ffff0000fe7ffffffe7ffe7ffe7ffe7ffffffe7fc7ffffffc1fbc7ffc003c0fbdfffcfffc003dfffc003c003c003c003c183c003fc19fffbc003f81bc0018003c0038003ff7fc007fffffb1fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-      "generatedAt": "2026-07-27T22:17:40.311Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-27T22:20:13.893Z",
+      "severity": "medium",
+      "summary": [
+        "Overall content layout and components are isomorphic, but the iOS render uses a noticeably larger scale/typography for nearly every element compared to Android.",
+        "iOS form fields, buttons, labels, and the yellow RAFT header band are all rendered taller and bolder, indicating a font/DP scaling or layout-dp divergence rather than per-element breakage.",
+        "The mutual vertical spacing between Email/Password labels, inputs, 'Signing in…' button, 'OR' separator, social buttons, and footer links is consistently larger on iOS, expanding the form region downward."
+      ],
+      "likelyCauses": [
+        "iOS Kuikly renderer applying a larger text scale or using different default font metrics than Android (e.g., SF/system font vs Roboto at a different dp scale).",
+        "Layout dimensions in dp not being normalized before render — iOS canvas (1170×2532) vs Android (390×844) effectively the same logical size, but per-element size or line-height tokens differ.",
+        "Possible missing or different `fontSize`/`lineHeight`/padding tokens between the two platform themes in the Kuikly DSL."
+      ],
+      "suggestedOwner": "ui-platform / kuikly-renderer",
+      "suggestedFixes": [
+        "Audit the login screen's typography and spacing tokens on iOS; align fontSize, lineHeight, and input/button heights to match Android's dp values.",
+        "Ensure the iOS render uses the same theme (fontFamily, fontWeight, scale) as Android — verify the shared Kuikly theme is applied uniformly on both ends.",
+        "Normalize vertical spacing between Email/Password fields, the 'Signing in…' button, the OR divider, and the social buttons so the gap matches Android.",
+        "Rebaseline the iOS screenshot after fixing scaling so pixel-perfect similarity improves and the form region fits within the same vertical proportion as Android."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.1939948150848625
     },
     {
@@ -1879,7 +1932,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-27T22:17:40.131Z",
+      "generatedAt": "2026-07-27T22:21:34.364Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1892,7 +1945,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-27T22:17:40.131Z",
+      "generatedAt": "2026-07-27T22:21:34.364Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1905,7 +1958,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-27T22:17:40.131Z",
+      "generatedAt": "2026-07-27T22:21:34.364Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1918,7 +1971,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-27T22:17:40.131Z",
+      "generatedAt": "2026-07-27T22:21:34.364Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1931,7 +1984,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-27T22:17:40.131Z",
+      "generatedAt": "2026-07-27T22:21:34.364Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
