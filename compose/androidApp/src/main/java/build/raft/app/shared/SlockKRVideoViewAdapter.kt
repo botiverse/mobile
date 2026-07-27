@@ -86,8 +86,7 @@ private class SlockKRVideoView(
         object : Runnable {
             override fun run() {
                 if (stopped) return
-                val duration = player.duration.takeIf { it > 0 } ?: 0L
-                listener.playTimeDidChangedWithCurrentTime(player.currentPosition, duration)
+                reportProgress(player.currentPosition, player.duration)
                 mainHandler.postDelayed(this, PROGRESS_TICK_MS)
             }
         }
@@ -101,31 +100,54 @@ private class SlockKRVideoView(
 
                 override fun onPlaybackStateChanged(playbackState: Int) {
                     when (playbackState) {
-                        Player.STATE_BUFFERING ->
-                            reportState(KRVideoPlayState.KRVideoPlayStateCaching)
-                        Player.STATE_READY ->
-                            reportState(
-                                if (player.playWhenReady) {
-                                    KRVideoPlayState.KRVideoPlayStatePlaying
-                                } else {
-                                    KRVideoPlayState.KRVideoPlayStatePaused
-                                }
-                            )
-                        Player.STATE_ENDED ->
+                        Player.STATE_BUFFERING -> {
+                            val progress = slockVideoProgressSnapshot(player.currentPosition, player.duration)
+                            if (!shouldSuppressTerminalClampState(lastReportedState, player.playWhenReady, progress)) {
+                                reportState(KRVideoPlayState.KRVideoPlayStateCaching)
+                            }
+                        }
+                        Player.STATE_READY -> {
+                            val terminal = slockVideoProgressSnapshot(player.currentPosition, player.duration)
+                            val terminalClampSettled =
+                                shouldSuppressTerminalClampState(
+                                    lastReportedState = lastReportedState,
+                                    playWhenReady = player.playWhenReady,
+                                    progress = terminal
+                                )
+                            if (!terminalClampSettled) {
+                                reportState(
+                                    if (player.playWhenReady) {
+                                        KRVideoPlayState.KRVideoPlayStatePlaying
+                                    } else {
+                                        KRVideoPlayState.KRVideoPlayStatePaused
+                                    }
+                                )
+                            }
+                        }
+                        Player.STATE_ENDED -> {
+                            val terminal = slockVideoProgressSnapshot(player.currentPosition, player.duration)
+                            reportProgress(terminal.positionMs, terminal.durationMs)
                             reportState(KRVideoPlayState.KRVideoPlayStatePlayEnd)
+                            if (terminal.durationMs > 0L && player.currentPosition != terminal.durationMs) {
+                                player.seekTo(terminal.durationMs)
+                            }
+                        }
                         Player.STATE_IDLE -> Unit
                     }
                 }
 
                 override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
                     if (player.playbackState == Player.STATE_READY) {
-                        reportState(
-                            if (playWhenReady) {
-                                KRVideoPlayState.KRVideoPlayStatePlaying
-                            } else {
-                                KRVideoPlayState.KRVideoPlayStatePaused
-                            }
-                        )
+                        val progress = slockVideoProgressSnapshot(player.currentPosition, player.duration)
+                        if (!shouldSuppressTerminalClampState(lastReportedState, playWhenReady, progress)) {
+                            reportState(
+                                if (playWhenReady) {
+                                    KRVideoPlayState.KRVideoPlayStatePlaying
+                                } else {
+                                    KRVideoPlayState.KRVideoPlayStatePaused
+                                }
+                            )
+                        }
                     }
                 }
 
@@ -154,6 +176,7 @@ private class SlockKRVideoView(
         if (stopped) return
         if (player.playbackState == Player.STATE_ENDED) {
             player.seekTo(0L)
+            reportProgress(0L, player.duration)
         }
         player.play()
     }
@@ -194,7 +217,9 @@ private class SlockKRVideoView(
 
     override fun seekToTime(seekToTimeMs: Long) {
         if (stopped) return
-        player.seekTo(seekToTimeMs.coerceAtLeast(0L))
+        val target = slockVideoProgressSnapshot(seekToTimeMs, player.duration)
+        player.seekTo(target.positionMs)
+        reportProgress(target.positionMs, target.durationMs)
     }
 
     override fun setProp(propKey: String, propValue: Any): Boolean =
@@ -266,12 +291,46 @@ private class SlockKRVideoView(
         listener.videoPlayStateDidChangedWithState(state, extInfo)
     }
 
+    private fun reportProgress(positionMs: Long, durationMs: Long) {
+        val snapshot = slockVideoProgressSnapshot(positionMs, durationMs)
+        listener.playTimeDidChangedWithCurrentTime(snapshot.positionMs, snapshot.durationMs)
+    }
+
     companion object {
         private const val PROGRESS_TICK_MS = 500L
         private const val SEEK_JUMP_MS = 10_000L
         private const val FULLSCREEN_BACKGROUND = 0xFF000000.toInt()
     }
 }
+
+internal data class SlockVideoProgressSnapshot(
+    val positionMs: Long,
+    val durationMs: Long
+)
+
+internal fun slockVideoProgressSnapshot(positionMs: Long, durationMs: Long): SlockVideoProgressSnapshot {
+    val normalizedDuration = durationMs.coerceAtLeast(0L)
+    val normalizedPosition =
+        if (normalizedDuration > 0L) {
+            positionMs.coerceIn(0L, normalizedDuration)
+        } else {
+            positionMs.coerceAtLeast(0L)
+        }
+    return SlockVideoProgressSnapshot(
+        positionMs = normalizedPosition,
+        durationMs = normalizedDuration
+    )
+}
+
+internal fun shouldSuppressTerminalClampState(
+    lastReportedState: KRVideoPlayState?,
+    playWhenReady: Boolean,
+    progress: SlockVideoProgressSnapshot
+): Boolean =
+    lastReportedState == KRVideoPlayState.KRVideoPlayStatePlayEnd &&
+        !playWhenReady &&
+        progress.durationMs > 0L &&
+        progress.positionMs == progress.durationMs
 
 private const val SLOCK_VIDEO_SEEK_TO_TIME_MS_PROP = "seekToTimeMs"
 

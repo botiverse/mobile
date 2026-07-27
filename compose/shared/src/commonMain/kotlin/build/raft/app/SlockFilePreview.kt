@@ -3938,14 +3938,13 @@ private fun SlockFilePreviewVideoPanel(
     modifier: Modifier = Modifier
 ) {
     var playControl by remember(source) { mutableStateOf(VideoPlayControl.PREPLAY) }
-    var playState by remember(source) { mutableStateOf(PlayState.NONE) }
+    var playback by remember(source) { mutableStateOf(SlockFilePreviewVideoPlaybackState()) }
     var firstFrameVisible by remember(source) { mutableStateOf(false) }
-    var currentTimeMs by remember(source) { mutableStateOf(0) }
-    var totalTimeMs by remember(source) { mutableStateOf(0) }
     var seekRequest by remember(source) { mutableStateOf<SlockFilePreviewVideoSeekRequest?>(null) }
     val canPlay = source.isNotBlank()
-    val isPlaying = playState == PlayState.PLAYING
+    val isPlaying = playback.playState == PlayState.PLAYING
     val nativeController = slockPlatformUsesNativeVideoController()
+    val callbackGeneration = playback.generation
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -3969,10 +3968,11 @@ private fun SlockFilePreviewVideoPanel(
                     source = source,
                     playControl = playControl,
                     seekRequest = seekRequest,
-                    onPlayStateChanged = { playState = it },
+                    onPlayStateChanged = { state ->
+                        playback = playback.withPlayState(callbackGeneration, state)
+                    },
                     onPlayTimeChanged = { current, total ->
-                        currentTimeMs = current
-                        totalTimeMs = total
+                        playback = playback.withProgress(callbackGeneration, current, total)
                     },
                     onFirstFrame = {
                         firstFrameVisible = true
@@ -4008,21 +4008,27 @@ private fun SlockFilePreviewVideoPanel(
                 SlockFilePreviewVideoControls(
                     isPlaying = isPlaying,
                     canPlay = canPlay,
-                    currentTimeMs = currentTimeMs,
-                    totalTimeMs = totalTimeMs,
-                    playState = playState,
+                    currentTimeMs = playback.currentTimeMs,
+                    totalTimeMs = playback.totalTimeMs,
+                    playState = playback.playState,
                     onTogglePlay = {
-                        playControl = if (isPlaying) VideoPlayControl.PAUSE else VideoPlayControl.PLAY
+                        if (playback.playState == PlayState.PLAY_END) {
+                            playback = playback.replay()
+                            seekRequest =
+                                SlockFilePreviewVideoSeekRequest(
+                                    id = (seekRequest?.id ?: 0) + 1,
+                                    timeMs = 0
+                                )
+                            playControl = VideoPlayControl.PLAY
+                        } else {
+                            playControl = if (isPlaying) VideoPlayControl.PAUSE else VideoPlayControl.PLAY
+                        }
                     },
                     onSeek = { seekTimeMs ->
-                        val nextTime = seekTimeMs.coerceIn(0, totalTimeMs.coerceAtLeast(0))
-                        currentTimeMs = nextTime
-                        if (playState == PlayState.PLAY_END) {
-                            playState = PlayState.PAUSED
-                        }
+                        playback = playback.seekTo(seekTimeMs)
                         seekRequest = SlockFilePreviewVideoSeekRequest(
                             id = (seekRequest?.id ?: 0) + 1,
-                            timeMs = nextTime
+                            timeMs = playback.currentTimeMs
                         )
                     },
                     modifier = Modifier.align(Alignment.BottomCenter)
@@ -4219,8 +4225,8 @@ internal fun SlockFilePreviewKuiklyVideo(
                 resizeModeToContain()
                 muted(false)
                 rate(1f)
-                playControl(playControl)
                 seekRequest?.let { seekToTimeMs(it) }
+                playControl(playControl)
             }
             view.getViewEvent().apply {
                 playStateDidChanged { state, _ -> onPlayStateChanged(state) }
@@ -4233,6 +4239,61 @@ internal fun SlockFilePreviewKuiklyVideo(
 
 private fun com.tencent.kuikly.core.views.VideoAttr.seekToTimeMs(request: SlockFilePreviewVideoSeekRequest) {
     setProp(SlockFilePreviewVideoSeekProp, "${request.id}:${request.timeMs}")
+}
+
+internal data class SlockFilePreviewVideoPlaybackState(
+    val generation: Int = 0,
+    val currentTimeMs: Int = 0,
+    val totalTimeMs: Int = 0,
+    val playState: PlayState = PlayState.NONE
+) {
+    fun withProgress(eventGeneration: Int, currentTimeMs: Int, totalTimeMs: Int): SlockFilePreviewVideoPlaybackState {
+        if (eventGeneration != generation) return this
+        val nextTotal = totalTimeMs.takeIf { it > 0 } ?: this.totalTimeMs
+        val nextCurrent =
+            if (nextTotal > 0) {
+                currentTimeMs.coerceIn(0, nextTotal)
+            } else {
+                currentTimeMs.coerceAtLeast(0)
+            }
+        return copy(currentTimeMs = nextCurrent, totalTimeMs = nextTotal.coerceAtLeast(0))
+    }
+
+    fun withPlayState(eventGeneration: Int, playState: PlayState): SlockFilePreviewVideoPlaybackState {
+        if (eventGeneration != generation) return this
+        if (this.playState == PlayState.PLAY_END && playState == PlayState.PLAYING) {
+            return copy(
+                generation = generation + 1,
+                currentTimeMs = 0,
+                playState = playState
+            )
+        }
+        return if (playState == PlayState.PLAY_END && totalTimeMs > 0) {
+            copy(currentTimeMs = totalTimeMs, playState = playState)
+        } else {
+            copy(playState = playState)
+        }
+    }
+
+    fun replay(): SlockFilePreviewVideoPlaybackState =
+        copy(
+            generation = generation + 1,
+            currentTimeMs = 0,
+            playState = PlayState.PAUSED
+        )
+
+    fun seekTo(requestedTimeMs: Int): SlockFilePreviewVideoPlaybackState {
+        val nextTime =
+            if (totalTimeMs > 0) {
+                requestedTimeMs.coerceIn(0, totalTimeMs)
+            } else {
+                0
+            }
+        return copy(
+            currentTimeMs = nextTime,
+            playState = if (playState == PlayState.PLAY_END) PlayState.PAUSED else playState
+        )
+    }
 }
 
 internal data class SlockFilePreviewVideoStateTerms(
