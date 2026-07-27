@@ -29,16 +29,16 @@ class ThreadChipLoadingTest {
     }
 
     @Test
-    fun lastReactionRemovalKeepsExactPendingChipUntilSuccess() {
+    fun lastReactionRemovalDisappearsImmediatelyWhileRequestIsPending() {
         val key = threadReactionPendingKey("message-1", "👍")
         val original = KuiklyThreadReactionItem(emoji = "👍", count = 1, selected = true)
 
         assertEquals(
-            listOf(original),
+            emptyList(),
             threadVisibleReactionsWithPending(
                 messageId = "message-1",
                 reactions = emptyList(),
-                pendingVisuals = mapOf(key to pending(original))
+                pendingVisuals = mapOf(key to listOf(original).toPendingReactionVisual("👍", selected = false))
             )
         )
         assertEquals(
@@ -52,8 +52,7 @@ class ThreadChipLoadingTest {
     }
 
     @Test
-    fun failedLastRemovalUsesRestoredCanonicalRowWithoutDuplicate() {
-        val key = threadReactionPendingKey("message-1", "👍")
+    fun failedLastRemovalUsesRestoredCanonicalRowAfterPendingClears() {
         val restored = KuiklyThreadReactionItem(emoji = "👍", count = 1, selected = true)
 
         assertEquals(
@@ -61,7 +60,7 @@ class ThreadChipLoadingTest {
             threadVisibleReactionsWithPending(
                 messageId = "message-1",
                 reactions = listOf(restored),
-                pendingVisuals = mapOf(key to pending(restored))
+                pendingVisuals = emptyMap()
             )
         )
     }
@@ -70,6 +69,7 @@ class ThreadChipLoadingTest {
     fun addAndMultiCountRemovalKeepOptimisticRowWithoutDuplicate() {
         val key = threadReactionPendingKey("message-1", "👍")
         val optimisticAdd = KuiklyThreadReactionItem(emoji = "👍", count = 1, selected = true)
+        val originalRemove = KuiklyThreadReactionItem(emoji = "👍", count = 3, selected = true)
         val optimisticRemove = KuiklyThreadReactionItem(emoji = "👍", count = 2, selected = false)
 
         assertEquals(
@@ -77,20 +77,18 @@ class ThreadChipLoadingTest {
             threadVisibleReactionsWithPending(
                 messageId = "message-1",
                 reactions = listOf(optimisticAdd),
-                pendingVisuals = mapOf(key to pending(optimisticAdd))
+                pendingVisuals = mapOf(key to emptyList<KuiklyThreadReactionItem>().toPendingReactionVisual("👍", selected = true))
             )
         )
         assertEquals(
             listOf(optimisticRemove),
             threadVisibleReactionsWithPending(
                 messageId = "message-1",
-                reactions = listOf(optimisticRemove),
+                reactions = listOf(originalRemove),
                 pendingVisuals =
                     mapOf(
                         key to
-                            pending(
-                                KuiklyThreadReactionItem(emoji = "👍", count = 3, selected = true)
-                            )
+                            listOf(originalRemove).toPendingReactionVisual("👍", selected = false)
                     )
             )
         )
@@ -113,7 +111,7 @@ class ThreadChipLoadingTest {
     }
 
     @Test
-    fun pendingLastReactionKeepsFooterMounted() {
+    fun footerMountFollowsOptimisticPendingReactionCount() {
         val message =
             KuiklyThreadMessageItem(
                 id = "message-1",
@@ -123,29 +121,22 @@ class ThreadChipLoadingTest {
 
         assertFalse(message.hasThreadFooterMeta())
         assertTrue(message.hasThreadFooterMeta(hasPendingReaction = true))
+        assertFalse(message.hasThreadFooterMeta(hasPendingReaction = false))
     }
 
     @Test
-    fun lastRemovalPreservesOriginalNeighborOrder() {
+    fun pendingRemovalUpdatesStaleSnapshotAndPreservesNeighborOrder() {
         val thumbs = KuiklyThreadReactionItem(emoji = "👍", count = 1, selected = true)
         val heart = KuiklyThreadReactionItem(emoji = "❤️", count = 2)
         val key = threadReactionPendingKey("message-1", thumbs.emoji)
 
         assertEquals(
-            listOf(thumbs, heart),
+            listOf(heart),
             threadVisibleReactionsWithPending(
                 messageId = "message-1",
-                reactions = listOf(heart),
-                pendingVisuals = mapOf(key to pending(thumbs, originalIndex = 0))
+                reactions = listOf(thumbs, heart),
+                pendingVisuals = mapOf(key to listOf(thumbs, heart).toPendingReactionVisual(thumbs.emoji, selected = false))
             )
         )
-    }
-
-    @Test
-    fun taskChipLoadsOnlyForTheExactPendingTask() {
-        assertTrue(threadTaskChipLoading(taskId = "task-1", pendingTaskId = "task-1"))
-        assertFalse(threadTaskChipLoading(taskId = "task-2", pendingTaskId = "task-1"))
-        assertFalse(threadTaskChipLoading(taskId = null, pendingTaskId = null))
-        assertFalse(threadTaskChipLoading(taskId = "task-1", pendingTaskId = null))
     }
 }

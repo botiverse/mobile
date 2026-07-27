@@ -4260,7 +4260,7 @@ class KmpVisualScreenshotCaptureTest {
                 leftDp = 0,
                 topDp = 0,
                 widthDp = 342,
-                heightDp = 270
+                heightDp = 430
             )
         private val HOME_ACTIVITY_RESULTS_CROP =
             VisualCrop(
