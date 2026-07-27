@@ -1206,6 +1206,7 @@ internal class SharedThreadDataSource(
     private var latestPublishedReplyCacheCapture = 0L
     internal var onReplyCacheIdentitySourceCapturedForTest: (suspend () -> Unit)? = null
     internal var onMarkdownReplyCacheScopeCapturedForTest: (suspend () -> Unit)? = null
+    internal var onReplyThreadAccessValidatedForTest: (suspend () -> Unit)? = null
 
     private fun threadPageSize(serverId: String?): Int =
         SharedThreadPaging.resolve(
@@ -3664,6 +3665,7 @@ internal class SharedThreadDataSource(
             }
         return@coroutineScope when (initialResult) {
             is DataResult.Content -> {
+                onReplyThreadAccessValidatedForTest?.invoke()
                 val hasReplyContent = initialResult.data.hasRenderableReplyThreadMessages(basePayload)
                 val parentMessage =
                     if (hasReplyContent) {
