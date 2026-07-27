@@ -736,10 +736,14 @@ jobs:
           retention-days: 7
 
   android-minimum-supported-attachment-runtime:
-    name: Android attachment authority (API 29 emulator)
+    name: Android attachment authority (API ${{ matrix.api-level }} emulator)
     runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: android
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        api-level: [29, 31, 34]
     steps:
       - name: Free runner disk space for emulator
         run: |
@@ -781,10 +785,10 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Run exact public-download authority on Android 10
+      - name: Run exact public-download authority on API ${{ matrix.api-level }}
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 29
+          api-level: ${{ matrix.api-level }}
           arch: x86_64
           target: google_apis
           profile: pixel_6_pro
@@ -797,17 +801,17 @@ jobs:
             adb wait-for-device
             adb install -r "$(find android-connected-test-apks -type f -name '*connectedTest.apk' -not -name '*androidTest*' | head -n 1)"
             adb install -r "$(find android-connected-test-apks -type f -name '*androidTest.apk' | head -n 1)"
-            adb shell am instrument -w -r -e class build.raft.app.shared.AndroidAttachmentPublicDownloadsConnectedTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner | tee attachment-public-downloads-api29-instrumentation.txt
-            scripts/ci/assert-instrumentation-ok.sh attachment-public-downloads-api29-instrumentation.txt 1
+            adb shell am instrument -w -r -e class build.raft.app.shared.AndroidAttachmentPublicDownloadsConnectedTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner | tee attachment-public-downloads-api${{ matrix.api-level }}-instrumentation.txt
+            scripts/ci/assert-instrumentation-ok.sh attachment-public-downloads-api${{ matrix.api-level }}-instrumentation.txt 1
 
-      - name: Upload Android 10 attachment evidence
+      - name: Upload API ${{ matrix.api-level }} attachment evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: attachment-public-downloads-api29-evidence
+          name: attachment-public-downloads-api${{ matrix.api-level }}-evidence
           path: |
             api29-connectedtest-app-badging.txt
-            attachment-public-downloads-api29-instrumentation.txt
+            attachment-public-downloads-api${{ matrix.api-level }}-instrumentation.txt
           if-no-files-found: warn
           retention-days: 7
 

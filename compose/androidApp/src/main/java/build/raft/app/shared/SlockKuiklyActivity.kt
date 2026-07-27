@@ -5967,7 +5967,10 @@ internal class SlockKuiklyBridgeModule(
         SlockAppLog.record(
                 "SlockAttachmentExport",
                 "phase=terminal keyHash=${downloadId.hashCode().toString(16)} status=${finalResult.status} " +
-                        "failurePhase=${finalResult.failurePhase.orEmpty()} sizeBytes=${finalResult.sizeBytes}"
+                        "failurePhase=${finalResult.failurePhase.orEmpty()} sizeBytes=${finalResult.sizeBytes} " +
+                        "storageCode=${finalResult.storageDiagnosticCode.orEmpty()} " +
+                        "storageVerifyInspections=${finalResult.storageVerificationAttempts} " +
+                        "storageCommitInspections=${finalResult.storageCommitAttempts}"
         )
         return buildMap {
             put("status", finalResult.status)
