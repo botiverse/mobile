@@ -32,6 +32,7 @@ internal data class SlockLucideIconSpec(
 
 internal object SlockLucidePathIcons {
     const val Version: String = "1.14.0"
+    const val SourceCommit: String = "56e49f12166312f04af4cfd862621c93cf583979"
 
     private val Activity: SlockLucideIconSpec by lazy {
         SlockLucideIconSpec(

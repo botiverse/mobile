@@ -15,8 +15,8 @@ Requirements for Android generation:
 
 import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from decimal import Decimal, InvalidOperation
 import json
-import math
 import os
 import re
 import shutil
@@ -30,6 +30,11 @@ from xml.etree import ElementTree as ET
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, ".."))
 DEFAULT_VERSION = "1.14.0"
+LUCIDE_SOURCE_COMMITS = {
+    "1.14.0": "56e49f12166312f04af4cfd862621c93cf583979",
+}
+ANDROID_FLOAT_MAX = Decimal("3.4028234663852886e38")
+ANDROID_FLOAT_MIN_POSITIVE = Decimal("1.401298464324817e-45")
 DEFAULT_TARGETS = "android,android-path,ohos,ios,shared,brand-assets"
 DEFAULT_LUCIDE_CACHE_DIR = os.path.join(os.path.expanduser("~"), ".cache", "slock-lucide")
 LUCIDE_REPO_URL = "https://github.com/lucide-icons/lucide.git"
@@ -440,6 +445,25 @@ def checkout_matches_version(repo_dir, version):
         return False
 
 
+def verify_android_path_source_checkout(repo_dir, version):
+    if not repo_dir or not os.path.isdir(os.path.join(repo_dir, ".git")):
+        raise RuntimeError("Android path generation requires a git-backed Lucide checkout")
+    expected_commit = LUCIDE_SOURCE_COMMITS.get(version)
+    if not expected_commit:
+        raise RuntimeError(f"Android path generation has no pinned commit for Lucide {version}")
+    actual_commit = checkout_head(repo_dir)
+    if actual_commit != expected_commit:
+        raise RuntimeError(
+            f"Android path generation requires Lucide {version} commit {expected_commit}, "
+            f"found {actual_commit}"
+        )
+    if not checkout_matches_version(repo_dir, version):
+        raise RuntimeError(
+            f"Android path generation requires Lucide checkout at exact tag {version}: {repo_dir}"
+        )
+    return expected_commit
+
+
 def verify_lucide_checkout(repo_dir, version, expected_commit=None):
     icons_dir = os.path.join(repo_dir, "icons")
     if not os.path.isdir(icons_dir):
@@ -753,12 +777,17 @@ STRICT_ROOT_ATTRIBUTES = {"width", "height", "viewBox"} | STRICT_PRESENTATION_AT
 
 def strict_float(value, label):
     try:
-        result = float(value)
-    except (TypeError, ValueError) as error:
+        decimal_value = Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError) as error:
         raise RuntimeError(f"Invalid numeric SVG attribute {label}={value!r}") from error
-    if not math.isfinite(result):
+    if not decimal_value.is_finite():
         raise RuntimeError(f"Non-finite SVG attribute {label}={value!r}")
-    return result
+    magnitude = abs(decimal_value)
+    if magnitude > ANDROID_FLOAT_MAX:
+        raise RuntimeError(f"SVG number exceeds Android Float range: {label}={value!r}")
+    if decimal_value != 0 and magnitude < ANDROID_FLOAT_MIN_POSITIVE:
+        raise RuntimeError(f"SVG number underflows Android Float range: {label}={value!r}")
+    return float(decimal_value)
 
 
 def strict_opacity(value, label):
@@ -837,6 +866,7 @@ def validate_strict_path_data(path_data):
         else:
             if command is None or command.upper() == "Z":
                 raise RuntimeError(f"SVG path values have no command: {path_data!r}")
+            strict_float(token, "pathData")
             values.append(token)
     validate_values(command, values)
 
@@ -1163,7 +1193,15 @@ def generate_android(icons, version, output, fallback_dir, lucide_source_dir):
 
 
 def kotlin_float(value):
-    return f"{format_number(float(value))}f"
+    number = float(value)
+    if number == 0.0:
+        number = 0.0
+    if number.is_integer() and abs(number) <= 16_777_216:
+        return f"{int(number)}f"
+    text = format(number, ".9g")
+    if "." not in text and "e" not in text.lower():
+        text += ".0"
+    return f"{text}f"
 
 
 def kotlin_nullable_string(value):
@@ -1229,6 +1267,9 @@ def android_path_icon_expr(icon, parsed):
 def android_path_catalog_source(icons, version, fallback_dir, lucide_source_dir):
     if not lucide_source_dir:
         raise RuntimeError("Android path generation requires a pinned Lucide source checkout")
+    source_commit = LUCIDE_SOURCE_COMMITS.get(version)
+    if not source_commit:
+        raise RuntimeError(f"Android path generation has no pinned commit for Lucide {version}")
     entries = []
     for icon in icons:
         source_path = os.path.join(lucide_source_dir, "icons", f"{normalize_icon_name(icon)}.svg")
@@ -1283,6 +1324,7 @@ def android_path_catalog_source(icons, version, fallback_dir, lucide_source_dir)
         "",
         "internal object SlockLucidePathIcons {",
         f'    const val Version: String = "{kotlin_string(version)}"',
+        f'    const val SourceCommit: String = "{source_commit}"',
         "",
     ]
     for icon, parsed in all_entries:
@@ -1339,12 +1381,7 @@ def android_path_catalog_source(icons, version, fallback_dir, lucide_source_dir)
 
 
 def generate_android_paths(icons, version, output, fallback_dir, lucide_source_dir):
-    if not lucide_source_dir or not os.path.isdir(os.path.join(lucide_source_dir, ".git")):
-        raise RuntimeError("Android path generation requires a git-backed Lucide checkout")
-    if not checkout_matches_version(lucide_source_dir, version):
-        raise RuntimeError(
-            f"Android path generation requires Lucide checkout at exact tag {version}: {lucide_source_dir}"
-        )
+    verify_android_path_source_checkout(lucide_source_dir, version)
     source = android_path_catalog_source(
         icons,
         version,

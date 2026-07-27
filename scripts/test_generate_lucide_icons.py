@@ -4,6 +4,7 @@ import os
 import re
 import tempfile
 import unittest
+from unittest import mock
 
 
 SCRIPT_PATH = os.path.join(os.path.dirname(__file__), "generate_lucide_icons.py")
@@ -147,6 +148,9 @@ class GenerateLucideIconsTest(unittest.TestCase):
             '<path d="M 1" />',
             '<path d="M 0 0 A 1 1 0 2 0 3 3" />',
             '<path d="M 0 0 A -1 1 0 0 0 3 3" />',
+            '<path d="M 1e999 0 L 1 1" />',
+            '<path d="M 0 0 A 1e999 1 0 0 0 2 2" />',
+            '<path d="M 1e-999 0 L 1 1" />',
             '<circle cx="1" cy="1" r="-1" />',
             '<ellipse cx="1" cy="1" rx="1" ry="-1" />',
             '<rect width="-1" height="1" />',
@@ -179,6 +183,17 @@ class GenerateLucideIconsTest(unittest.TestCase):
         )
         self.assertEqual(1, len(parsed["paths"]))
         self.assertEqual("M 0 0 L 1 1", parsed["paths"][0]["pathData"])
+
+    def test_strict_svg_parser_accepts_finite_scientific_path_numbers(self):
+        parsed = GENERATOR.parse_svg_strict(
+            """
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+              <path d="M 1e2 1e-2 L 2.5e1 -3e0" />
+            </svg>
+            """
+        )
+        self.assertEqual("M 1e2 1e-2 L 2.5e1 -3e0", parsed["paths"][0]["pathData"])
+        self.assertNotEqual("0.0f", GENERATOR.kotlin_float(1e-5))
     def test_android_path_catalog_matches_shared_enum(self):
         with open(GENERATOR.DEFAULT_SHARED_CATALOG_OUTPUT, encoding="utf-8") as file:
             shared_catalog = file.read()
@@ -214,6 +229,10 @@ class GenerateLucideIconsTest(unittest.TestCase):
         self.assertIn('"filled-bookmark" -> FilledBookmark', first)
         self.assertIn('"bookmark" -> "filled-bookmark"', first)
         self.assertIn("fun filledByName", first)
+        self.assertIn(
+            f'const val SourceCommit: String = "{GENERATOR.LUCIDE_SOURCE_COMMITS[GENERATOR.DEFAULT_VERSION]}"',
+            first,
+        )
         filled_block = first.split("private val FilledBookmark", 1)[1].split("private val", 1)[0]
         self.assertIn('fillPaint = "currentColor"', filled_block)
 
@@ -242,6 +261,31 @@ class GenerateLucideIconsTest(unittest.TestCase):
                     os.path.join(output, "SlockLucidePathIcons.kt"),
                     None,
                     checkout,
+                )
+
+    def test_android_path_source_requires_exact_commit_and_tag(self):
+        expected_commit = GENERATOR.LUCIDE_SOURCE_COMMITS[GENERATOR.DEFAULT_VERSION]
+        with tempfile.TemporaryDirectory() as checkout:
+            os.makedirs(os.path.join(checkout, ".git"))
+            with mock.patch.object(GENERATOR, "checkout_head", return_value="0" * 40), \
+                 mock.patch.object(GENERATOR, "checkout_matches_version", return_value=True):
+                with self.assertRaisesRegex(RuntimeError, "requires Lucide 1.14.0 commit"):
+                    GENERATOR.verify_android_path_source_checkout(
+                        checkout, GENERATOR.DEFAULT_VERSION
+                    )
+            with mock.patch.object(GENERATOR, "checkout_head", return_value=expected_commit), \
+                 mock.patch.object(GENERATOR, "checkout_matches_version", return_value=False):
+                with self.assertRaisesRegex(RuntimeError, "exact tag 1.14.0"):
+                    GENERATOR.verify_android_path_source_checkout(
+                        checkout, GENERATOR.DEFAULT_VERSION
+                    )
+            with mock.patch.object(GENERATOR, "checkout_head", return_value=expected_commit), \
+                 mock.patch.object(GENERATOR, "checkout_matches_version", return_value=True):
+                self.assertEqual(
+                    expected_commit,
+                    GENERATOR.verify_android_path_source_checkout(
+                        checkout, GENERATOR.DEFAULT_VERSION
+                    ),
                 )
 
 
