@@ -10179,6 +10179,33 @@ internal object SlockLucidePathIcons {
         )
     }
 
+    private val FilledBookmark: SlockLucideIconSpec by lazy {
+        SlockLucideIconSpec(
+            name = "filled-bookmark",
+            viewBox =
+                SlockLucideViewBox(
+                    minX = 0f,
+                    minY = 0f,
+                    width = 24f,
+                    height = 24f,
+                ),
+            paths =
+                listOf(
+            SlockLucidePathSpec(
+                pathData = "M17 3a2 2 0 0 1 2 2v15a1 1 0 0 1-1.496.868l-4.512-2.578a2 2 0 0 0-1.984 0l-4.512 2.578A1 1 0 0 1 5 20V5a2 2 0 0 1 2-2z",
+                fillPaint = "currentColor",
+                strokePaint = "currentColor",
+                fillOpacity = 1f,
+                strokeOpacity = 1f,
+                strokeWidth = 2f,
+                strokeLineCap = SlockLucideStrokeLineCap.Round,
+                strokeLineJoin = SlockLucideStrokeLineJoin.Round,
+                fillRule = SlockLucideFillRule.NonZero,
+            ),
+                ),
+        )
+    }
+
     val Names: List<String> =
         listOf(
             "activity",
@@ -10373,6 +10400,11 @@ internal object SlockLucidePathIcons {
             "x",
         )
 
+    val VariantNames: List<String> =
+        listOf(
+            "filled-bookmark",
+        )
+
     fun byName(name: String): SlockLucideIconSpec? =
         when (name.toIconKey()) {
             "activity" -> Activity
@@ -10565,8 +10597,18 @@ internal object SlockLucidePathIcons {
             "wand" -> Wand
             "waypoints" -> Waypoints
             "x" -> X
+            "filled-bookmark" -> FilledBookmark
             else -> null
         }
+
+    fun filledVariantName(name: String): String? =
+        when (name.toIconKey()) {
+            "bookmark" -> "filled-bookmark"
+            else -> null
+        }
+
+    fun filledByName(name: String): SlockLucideIconSpec? =
+        filledVariantName(name)?.let(::byName)
 
     private fun String.toIconKey(): String =
         trim()

@@ -110,6 +110,18 @@ class GenerateLucideIconsTest(unittest.TestCase):
                         """
                     )
 
+    def test_strict_svg_parser_rejects_unmodeled_paints(self):
+        for paint in ("url(#gradient)", "rgb(0, 0, 0)", "var(--icon-color)", "#000000FF"):
+            with self.subTest(paint=paint):
+                with self.assertRaisesRegex(RuntimeError, "Unsupported SVG fill paint"):
+                    GENERATOR.parse_svg_strict(
+                        f"""
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                          <path d="M 0 0 L 1 1" fill="{paint}" />
+                        </svg>
+                        """
+                    )
+
     def test_strict_svg_parser_rejects_unknown_elements_and_enum_values(self):
         with self.assertRaisesRegex(RuntimeError, "Unsupported SVG element"):
             GENERATOR.parse_svg_strict(
@@ -134,7 +146,14 @@ class GenerateLucideIconsTest(unittest.TestCase):
             '<path d="L 1 2" />',
             '<path d="M 1" />',
             '<path d="M 0 0 A 1 1 0 2 0 3 3" />',
+            '<path d="M 0 0 A -1 1 0 0 0 3 3" />',
+            '<circle cx="1" cy="1" r="-1" />',
+            '<ellipse cx="1" cy="1" rx="1" ry="-1" />',
+            '<rect width="-1" height="1" />',
+            '<rect width="1" height="1" rx="-1" />',
             '<polyline points="0,0 1" />',
+            '<polyline points="0,0" />',
+            '<polygon points="0,0 1,1" />',
         ]
         for geometry in invalid_geometry:
             with self.subTest(geometry=geometry):
@@ -146,7 +165,21 @@ class GenerateLucideIconsTest(unittest.TestCase):
                         </svg>
                         """
                     )
-    def test_android_path_catalog_matches_shared_enum_and_regenerates_identically(self):
+
+    def test_strict_svg_parser_skips_explicit_zero_area_primitives(self):
+        parsed = GENERATOR.parse_svg_strict(
+            """
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+              <circle cx="1" cy="1" r="0" />
+              <ellipse cx="1" cy="1" rx="0" ry="1" />
+              <rect width="0" height="1" />
+              <path d="M 0 0 L 1 1" />
+            </svg>
+            """
+        )
+        self.assertEqual(1, len(parsed["paths"]))
+        self.assertEqual("M 0 0 L 1 1", parsed["paths"][0]["pathData"])
+    def test_android_path_catalog_matches_shared_enum(self):
         with open(GENERATOR.DEFAULT_SHARED_CATALOG_OUTPUT, encoding="utf-8") as file:
             shared_catalog = file.read()
         shared_names = re.findall(
@@ -156,21 +189,60 @@ class GenerateLucideIconsTest(unittest.TestCase):
         )
         self.assertEqual(GENERATOR.LUCIDE_ICONS, shared_names)
 
-        first = GENERATOR.android_path_catalog_source(
-            GENERATOR.LUCIDE_ICONS,
-            GENERATOR.DEFAULT_VERSION,
-            GENERATOR.DEFAULT_OHOS_RESFILE_OUTPUT,
-            None,
-        )
-        second = GENERATOR.android_path_catalog_source(
-            GENERATOR.LUCIDE_ICONS,
-            GENERATOR.DEFAULT_VERSION,
-            GENERATOR.DEFAULT_OHOS_RESFILE_OUTPUT,
-            None,
-        )
+    def test_android_path_catalog_is_deterministic_and_carries_filled_variant(self):
+        with tempfile.TemporaryDirectory() as checkout:
+            icons_dir = os.path.join(checkout, "icons")
+            os.makedirs(icons_dir)
+            with open(os.path.join(icons_dir, "bookmark.svg"), "w", encoding="utf-8") as file:
+                file.write(
+                    """
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
+                         fill="none" stroke="currentColor" stroke-width="2"
+                         stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M 5 3 L 19 3 L 19 21 L 12 17 L 5 21 Z" />
+                    </svg>
+                    """
+                )
+            first = GENERATOR.android_path_catalog_source(
+                ["bookmark"], GENERATOR.DEFAULT_VERSION, None, checkout
+            )
+            second = GENERATOR.android_path_catalog_source(
+                ["bookmark"], GENERATOR.DEFAULT_VERSION, None, checkout
+            )
+
         self.assertEqual(first, second)
+        self.assertIn('"filled-bookmark" -> FilledBookmark', first)
+        self.assertIn('"bookmark" -> "filled-bookmark"', first)
+        self.assertIn("fun filledByName", first)
+        filled_block = first.split("private val FilledBookmark", 1)[1].split("private val", 1)[0]
+        self.assertIn('fillPaint = "currentColor"', filled_block)
+
+    def test_repository_android_path_catalog_matches_pinned_checkout_when_available(self):
+        checkout = GENERATOR.find_cached_lucide_checkout(
+            GENERATOR.DEFAULT_VERSION,
+            GENERATOR.DEFAULT_LUCIDE_CACHE_DIR,
+        )
+        if checkout is None:
+            self.skipTest("Pinned Lucide checkout is not cached")
+        regenerated = GENERATOR.android_path_catalog_source(
+            GENERATOR.LUCIDE_ICONS,
+            GENERATOR.DEFAULT_VERSION,
+            None,
+            checkout,
+        )
         with open(GENERATOR.DEFAULT_ANDROID_PATH_OUTPUT, encoding="utf-8") as file:
-            self.assertEqual(first, file.read())
+            self.assertEqual(regenerated, file.read())
+
+    def test_android_path_writer_rejects_non_git_source_directory(self):
+        with tempfile.TemporaryDirectory() as checkout, tempfile.TemporaryDirectory() as output:
+            with self.assertRaisesRegex(RuntimeError, "git-backed Lucide checkout"):
+                GENERATOR.generate_android_paths(
+                    [],
+                    GENERATOR.DEFAULT_VERSION,
+                    os.path.join(output, "SlockLucidePathIcons.kt"),
+                    None,
+                    checkout,
+                )
 
 
 if __name__ == "__main__":

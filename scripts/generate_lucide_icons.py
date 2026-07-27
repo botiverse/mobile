@@ -774,6 +774,19 @@ def strict_enum(value, label, allowed):
     return value
 
 
+def strict_paint(value, label):
+    if value is None:
+        return None
+    normalized = value.strip()
+    if normalized in ("none", "transparent"):
+        return None
+    if normalized == "currentColor":
+        return normalized
+    if re.fullmatch(r"#[0-9A-Fa-f]{3}|#[0-9A-Fa-f]{6}", normalized):
+        return normalized
+    raise RuntimeError(f"Unsupported SVG {label} paint={value!r}")
+
+
 def validate_strict_attributes(element, tag, allowed):
     unknown = sorted(set(element.attrib) - allowed)
     if unknown:
@@ -811,6 +824,8 @@ def validate_strict_path_data(path_data):
             raise RuntimeError(f"SVG path command {active_command} has invalid arity: {path_data!r}")
         if active_command.upper() == "A":
             for offset in range(0, len(active_values), arity):
+                if float(active_values[offset]) < 0.0 or float(active_values[offset + 1]) < 0.0:
+                    raise RuntimeError(f"SVG arc radii cannot be negative: {path_data!r}")
                 if active_values[offset + 3] not in ("0", "1") or active_values[offset + 4] not in ("0", "1"):
                     raise RuntimeError(f"SVG arc flags must be 0 or 1: {path_data!r}")
 
@@ -835,11 +850,15 @@ def strict_number_list(value, label):
     return [strict_float(token, label) for token in tokens]
 
 
-def strict_points_to_path(points, close):
+def strict_points_to_path(points, close, minimum_points):
     coords = strict_number_list(points, "points")
     if len(coords) < 2 or len(coords) % 2 != 0:
         raise RuntimeError(f"SVG points must contain coordinate pairs: {points!r}")
     pairs = [(coords[index], coords[index + 1]) for index in range(0, len(coords), 2)]
+    if len(pairs) < minimum_points:
+        raise RuntimeError(
+            f"SVG {'polygon' if close else 'polyline'} requires at least {minimum_points} points: {points!r}"
+        )
     data = f"M {pairs[0][0]} {pairs[0][1]}"
     for px, py in pairs[1:]:
         data += f" L {px} {py}"
@@ -898,21 +917,30 @@ def parse_svg_strict(svg_text):
         )
 
         if tag in STRICT_GEOMETRY_ATTRIBUTES:
+            if list(element):
+                raise RuntimeError(f"SVG geometry <{tag}> cannot contain child elements")
             if tag == "path":
                 path_data = element.get("d", "")
             elif tag == "circle":
+                radius = strict_float(element.get("r", "0"), "r")
+                if radius < 0.0:
+                    raise RuntimeError("SVG circle radius cannot be negative")
                 path_data = circle_to_path(
                     strict_float(element.get("cx", "0"), "cx"),
                     strict_float(element.get("cy", "0"), "cy"),
-                    strict_float(element.get("r", "0"), "r"),
-                )
+                    radius,
+                ) if radius > 0.0 else None
             elif tag == "ellipse":
+                radius_x = strict_float(element.get("rx", "0"), "rx")
+                radius_y = strict_float(element.get("ry", "0"), "ry")
+                if radius_x < 0.0 or radius_y < 0.0:
+                    raise RuntimeError("SVG ellipse radii cannot be negative")
                 path_data = ellipse_to_path(
                     strict_float(element.get("cx", "0"), "cx"),
                     strict_float(element.get("cy", "0"), "cy"),
-                    strict_float(element.get("rx", "0"), "rx"),
-                    strict_float(element.get("ry", "0"), "ry"),
-                )
+                    radius_x,
+                    radius_y,
+                ) if radius_x > 0.0 and radius_y > 0.0 else None
             elif tag == "line":
                 path_data = line_to_path(
                     strict_float(element.get("x1", "0"), "x1"),
@@ -923,22 +951,36 @@ def parse_svg_strict(svg_text):
             elif tag == "rect":
                 rx = element.get("rx", element.get("ry", "0"))
                 ry = element.get("ry", rx)
-                path_data = rect_to_path(
-                    strict_float(element.get("x", "0"), "x"),
-                    strict_float(element.get("y", "0"), "y"),
-                    strict_float(element.get("width", "0"), "width"),
-                    strict_float(element.get("height", "0"), "height"),
-                    strict_float(rx, "rx"),
-                    strict_float(ry, "ry"),
+                width = strict_float(element.get("width", "0"), "width")
+                height = strict_float(element.get("height", "0"), "height")
+                radius_x = strict_float(rx, "rx")
+                radius_y = strict_float(ry, "ry")
+                if min(width, height, radius_x, radius_y) < 0.0:
+                    raise RuntimeError("SVG rect dimensions and radii cannot be negative")
+                path_data = (
+                    rect_to_path(
+                        strict_float(element.get("x", "0"), "x"),
+                        strict_float(element.get("y", "0"), "y"),
+                        width,
+                        height,
+                        radius_x,
+                        radius_y,
+                    )
+                    if width > 0.0 and height > 0.0
+                    else None
                 )
             else:
                 path_data = strict_points_to_path(
-                    element.get("points", ""), close=tag == "polygon"
+                    element.get("points", ""),
+                    close=tag == "polygon",
+                    minimum_points=3 if tag == "polygon" else 2,
                 )
 
+            if path_data is None:
+                return
             validate_strict_path_data(path_data)
-            fill = resolve_paint(context["fill"])
-            stroke = resolve_paint(context["stroke"])
+            fill = strict_paint(context["fill"], "fill")
+            stroke = strict_paint(context["stroke"], "stroke")
             fill_opacity = strict_opacity(context["fill-opacity"], "fill-opacity") * context["opacity"]
             stroke_opacity = strict_opacity(context["stroke-opacity"], "stroke-opacity") * context["opacity"]
             stroke_width_value = strict_float(context["stroke-width"], "stroke-width")
@@ -1185,19 +1227,26 @@ def android_path_icon_expr(icon, parsed):
 
 
 def android_path_catalog_source(icons, version, fallback_dir, lucide_source_dir):
+    if not lucide_source_dir:
+        raise RuntimeError("Android path generation requires a pinned Lucide source checkout")
     entries = []
     for icon in icons:
-        svg = read_lucide_svg(
-            icon,
-            version,
-            fallback_dir=fallback_dir,
-            lucide_source_dir=lucide_source_dir,
-        )
-        # Checked-in OHOS/iOS template assets canonicalize currentColor to black.
-        # Restore Lucide's source paint so offline regeneration matches the pinned checkout.
-        svg = svg.replace('stroke="#000000"', 'stroke="currentColor"')
-        svg = svg.replace('fill="#000000"', 'fill="currentColor"')
+        source_path = os.path.join(lucide_source_dir, "icons", f"{normalize_icon_name(icon)}.svg")
+        if not os.path.isfile(source_path):
+            raise RuntimeError(f"Pinned Lucide source is missing icon: {source_path}")
+        with open(source_path, encoding="utf-8") as file:
+            svg = file.read().strip()
         entries.append((icon, parse_svg_strict(svg)))
+
+    variant_entries = []
+    for source_name, variant_name in ANDROID_FILLED_ICON_VARIANTS.items():
+        if source_name not in icons:
+            continue
+        source_path = os.path.join(lucide_source_dir, "icons", f"{source_name}.svg")
+        with open(source_path, encoding="utf-8") as file:
+            variant_svg = android_filled_variant_svg(source_name, file.read().strip())
+        variant_entries.append((variant_name, parse_svg_strict(variant_svg)))
+    all_entries = [*entries, *variant_entries]
 
     lines = [
         "package build.raft.app.shared.generated",
@@ -1236,7 +1285,7 @@ def android_path_catalog_source(icons, version, fallback_dir, lucide_source_dir)
         f'    const val Version: String = "{kotlin_string(version)}"',
         "",
     ]
-    for icon, parsed in entries:
+    for icon, parsed in all_entries:
         expression = android_path_icon_expr(icon, parsed)
         lines.append(f"    private val {pascal_name(icon)}: SlockLucideIconSpec by lazy {{")
         lines.extend(expression.splitlines())
@@ -1248,16 +1297,34 @@ def android_path_catalog_source(icons, version, fallback_dir, lucide_source_dir)
             *[f'            "{kotlin_string(icon)}",' for icon, _ in entries],
             "        )",
             "",
+            "    val VariantNames: List<String> =",
+            "        listOf(",
+            *[f'            "{kotlin_string(icon)}",' for icon, _ in variant_entries],
+            "        )",
+            "",
             "    fun byName(name: String): SlockLucideIconSpec? =",
             "        when (name.toIconKey()) {",
         ]
     )
-    for icon, _ in entries:
+    for icon, _ in all_entries:
         lines.append(f'            "{kotlin_string(icon)}" -> {pascal_name(icon)}')
     lines.extend(
         [
             "            else -> null",
             "        }",
+            "",
+            "    fun filledVariantName(name: String): String? =",
+            "        when (name.toIconKey()) {",
+            *[
+                f'            "{kotlin_string(source_name)}" -> "{kotlin_string(variant_name)}"'
+                for source_name, variant_name in ANDROID_FILLED_ICON_VARIANTS.items()
+                if source_name in icons
+            ],
+            "            else -> null",
+            "        }",
+            "",
+            "    fun filledByName(name: String): SlockLucideIconSpec? =",
+            "        filledVariantName(name)?.let(::byName)",
             "",
             "    private fun String.toIconKey(): String =",
             "        trim()",
@@ -1272,6 +1339,12 @@ def android_path_catalog_source(icons, version, fallback_dir, lucide_source_dir)
 
 
 def generate_android_paths(icons, version, output, fallback_dir, lucide_source_dir):
+    if not lucide_source_dir or not os.path.isdir(os.path.join(lucide_source_dir, ".git")):
+        raise RuntimeError("Android path generation requires a git-backed Lucide checkout")
+    if not checkout_matches_version(lucide_source_dir, version):
+        raise RuntimeError(
+            f"Android path generation requires Lucide checkout at exact tag {version}: {lucide_source_dir}"
+        )
     source = android_path_catalog_source(
         icons,
         version,
