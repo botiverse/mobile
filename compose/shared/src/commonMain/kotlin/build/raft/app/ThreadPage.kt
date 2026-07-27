@@ -7,7 +7,6 @@ import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.components.SlockBrutalSearchField
 import build.raft.app.components.SlockBrutalTextField
-import build.raft.app.components.SlockChipLoadingIndicator
 import build.raft.app.components.SlockRaftUiBanner
 import build.raft.app.components.SlockRaftUiBannerSize
 import build.raft.app.components.SlockRaftUiBannerStatus
@@ -3951,18 +3950,17 @@ internal fun ThreadReactionAtlasVisualScreen() {
                     ThreadReactionChip(KuiklyThreadReactionItem(emoji = "✅", count = 1, selected = true))
                 }
             }
-            ThreadReactionVisualSection("Chips (clickable + loading)") {
+            ThreadReactionVisualSection("Reaction chips (before + optimistic)") {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
                 ) {
+                    ThreadReactionChip(KuiklyThreadReactionItem(emoji = "👍", count = 2, selected = false), onClick = {})
                     ThreadReactionChip(KuiklyThreadReactionItem(emoji = "👍", count = 3, selected = true), onClick = {})
-                    ThreadReactionChip(KuiklyThreadReactionItem(emoji = "❤️", count = 2, selected = false), onClick = {})
-                    ThreadReactionChip(KuiklyThreadReactionItem(emoji = "✅", count = 1, selected = true), loading = true, onClick = {})
                 }
             }
-            ThreadReactionVisualSection("Meta chips (idle + loading)") {
+            ThreadReactionVisualSection("Task meta (before + optimistic)") {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -3970,36 +3968,34 @@ internal fun ThreadReactionAtlasVisualScreen() {
                 ) {
                     SlockAnchoredMetaChip(
                         label = "#88 @Nathan",
-                        iconName = SlockLucideIconName.Circle,
+                        iconName = SlockLucideIconName.CircleDashed,
                         color = SlockColor.AccentCyan,
                         onClick = {}
                     )
                     SlockAnchoredMetaChip(
                         label = "#88 @Nathan",
-                        iconName = SlockLucideIconName.Circle,
-                        color = SlockColor.AccentCyan,
-                        loading = true,
+                        iconName = SlockLucideIconName.CircleCheck,
+                        color = SlockColor.AccentLime,
                         onClick = {}
                     )
                 }
             }
-            ThreadReactionVisualSection("Toolbar chips (idle + loading)") {
+            ThreadReactionVisualSection("Toolbar state (before + optimistic)") {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
                 ) {
                     SlockToolbarChip(
-                        label = "Status",
-                        iconName = SlockLucideIconName.Check,
+                        label = "Todo",
+                        iconName = SlockLucideIconName.CircleDashed,
                         trailingIconName = SlockLucideIconName.ChevronDown,
                         onClick = {}
                     )
                     SlockToolbarChip(
-                        label = "Status",
-                        iconName = SlockLucideIconName.Check,
+                        label = "In progress",
+                        iconName = SlockLucideIconName.CircleCheck,
                         trailingIconName = SlockLucideIconName.ChevronDown,
-                        loading = true,
                         onClick = {}
                     )
                 }
@@ -5258,11 +5254,6 @@ internal fun SharedThreadRouteContent(
                 )
             }
         }
-    val emptyThreadTasksState = remember { MutableStateFlow(TasksUiState(ScreenLoadState.Loading)) }
-    val threadTasksState by
-        remember(tasksViewModel, emptyThreadTasksState) {
-            tasksViewModel?.state ?: emptyThreadTasksState
-        }.collectAsState()
     val memberSuggestionScopePayload =
         if (
             payload.threadComposerMentionScopeChannelId() != null ||
@@ -7018,9 +7009,7 @@ internal fun SharedThreadRouteContent(
                 LocalSlockMarkdownRenderConfig provides
                     SlockMarkdownRenderConfig(singleParagraphLightPath = singleParagraphLightPathEnabled),
                 LocalThreadMessagePointerSessionKey provides threadPointerSessionKey,
-                LocalThreadPendingReactionKeys provides pendingReactionKeys,
-                LocalThreadPendingReactionVisuals provides pendingReactionVisuals,
-                LocalThreadPendingTaskId provides threadTasksState.statusUpdatingTaskId
+                LocalThreadPendingReactionVisuals provides pendingReactionVisuals
             ),
             LocalSlockMarkdownPlainCandidateSession,
             plainCandidateCensusSession
@@ -17908,7 +17897,9 @@ private fun ThreadMessageCard(
         )
     val reserveInlineTrailingSpace = richContentEnabled && message.isSendingLocalSend() && !alignOwnMessageRight
     val hasPendingReaction =
-        LocalThreadPendingReactionVisuals.current.keys.any { key -> key.messageId == message.id }
+        LocalThreadPendingReactionVisuals.current.any { (key, visual) ->
+            key.messageId == message.id && visual.reaction.count > 0
+        }
     val inlineReplyPresentation =
         remember(message.inlineReplies, replyMetadata, hasReplyDraft, showReplyAction) {
             threadInlineReplyPresentationForMessage(
@@ -19221,11 +19212,10 @@ private fun threadCreateAgentMachinesErrorCopy(code: String): String =
 private fun ThreadReactionChip(
     reaction: KuiklyThreadReactionItem,
     interactionIdentity: Any = "reaction:${reaction.emoji}",
-    loading: Boolean = false,
     onClick: (() -> Unit)? = null,
     onLongPress: ((SlockPopoverAnchor) -> Unit)? = null
 ) {
-    val currentOnClick by rememberUpdatedState(onClick.takeUnless { loading })
+    val currentOnClick by rememberUpdatedState(onClick)
     val currentOnLongPress by rememberUpdatedState(onLongPress)
     val hoverInteractionSource = remember(interactionIdentity) { MutableInteractionSource() }
     val isHovered by hoverInteractionSource.collectIsHoveredAsState()
@@ -19249,11 +19239,6 @@ private fun ThreadReactionChip(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-            }
-            // No idle reservation: pending feedback intentionally appends and
-            // widens the compact chip while preserving emoji + count context.
-            if (loading) {
-                SlockChipLoadingIndicator(size = 12.dp)
             }
         }
     }
@@ -19282,7 +19267,7 @@ private fun ThreadReactionChip(
         ) {
             chipContent()
         }
-    } else if (onClick != null && !loading) {
+    } else if (onClick != null) {
         Button(onClick = onClick, pressFeedback = false) {
             Box(
                 modifier = chipModifier,
@@ -20326,9 +20311,7 @@ private fun ThreadMessageFooterMeta(
     onToggleReaction: ((String) -> Unit)? = null,
     onShowReactionDetails: ((KuiklyThreadReactionItem, SlockPopoverAnchor) -> Unit)? = null
 ) {
-    val pendingReactionKeys = LocalThreadPendingReactionKeys.current
     val pendingReactionVisuals = LocalThreadPendingReactionVisuals.current
-    val pendingTaskId = LocalThreadPendingTaskId.current
     val hasTask = message.hasThreadTaskFooterMeta()
     val visibleReactions =
         threadVisibleReactionsWithPending(
@@ -20370,7 +20353,6 @@ private fun ThreadMessageFooterMeta(
                 modifier = Modifier.weight(1f, fill = false).widthIn(max = 260.dp),
                 clickIdentity = taskClickIdentity,
                 anchorOwnerIdentity = threadMessageMenuOwnerIdentity(message.id),
-                loading = threadTaskChipLoading(message.taskId, pendingTaskId),
                 onClick = taskChipClick
             )
         }
@@ -20394,7 +20376,6 @@ private fun ThreadMessageFooterMeta(
                     ThreadReactionChip(
                         reaction = reaction,
                         interactionIdentity = "thread_reaction:${message.id}:${reaction.emoji}",
-                        loading = threadReactionPendingKey(message.id, reaction.emoji) in pendingReactionKeys,
                         onClick = onToggleReaction?.let { callback -> { callback(reaction.emoji) } },
                         onLongPress =
                             onShowReactionDetails?.let { callback ->
@@ -20428,10 +20409,27 @@ internal fun List<KuiklyThreadReactionItem>.toPendingReactionVisual(
     selected: Boolean
 ): ThreadReactionPendingVisual {
     val originalIndex = indexOfFirst { reaction -> reaction.emoji == emoji }
+    val original = getOrNull(originalIndex)
+    val optimistic =
+        if (original == null) {
+            KuiklyThreadReactionItem(
+                emoji = emoji,
+                count = if (selected) 1 else 0,
+                selected = selected
+            )
+        } else {
+            original.copy(
+                count =
+                    when {
+                        selected && !original.selected -> original.count + 1
+                        !selected && original.selected -> (original.count - 1).coerceAtLeast(0)
+                        else -> original.count
+                    },
+                selected = selected
+            )
+        }
     return ThreadReactionPendingVisual(
-        reaction =
-            getOrNull(originalIndex)
-                ?: KuiklyThreadReactionItem(emoji = emoji, count = 1, selected = selected),
+        reaction = optimistic,
         originalIndex = originalIndex.takeIf { it >= 0 } ?: size
     )
 }
@@ -20447,23 +20445,20 @@ internal fun threadVisibleReactionsWithPending(
         .toList()
         .sortedBy { (_, visual) -> visual.originalIndex }
         .forEach { (key, visual) ->
-            if (visible.none { reaction -> reaction.emoji == key.emoji }) {
-                visible.add(
-                    index = visual.originalIndex.coerceIn(0, visible.size),
-                    element = visual.reaction
-                )
+            val currentIndex = visible.indexOfFirst { reaction -> reaction.emoji == key.emoji }
+            if (visual.reaction.count <= 0) {
+                if (currentIndex >= 0) visible.removeAt(currentIndex)
+            } else if (currentIndex >= 0) {
+                visible[currentIndex] = visual.reaction
+            } else {
+                visible.add(visual.originalIndex.coerceIn(0, visible.size), visual.reaction)
             }
         }
     return visible
 }
 
-internal fun threadTaskChipLoading(taskId: String?, pendingTaskId: String?): Boolean =
-    pendingTaskId != null && taskId == pendingTaskId
-
-internal val LocalThreadPendingReactionKeys = compositionLocalOf<Set<ThreadReactionPendingKey>> { emptySet() }
 internal val LocalThreadPendingReactionVisuals =
     compositionLocalOf<Map<ThreadReactionPendingKey, ThreadReactionPendingVisual>> { emptyMap() }
-internal val LocalThreadPendingTaskId = compositionLocalOf<String?> { null }
 
 internal fun KuiklyThreadMessageItem.hasThreadFooterMeta(
     showSavedBadge: Boolean = false,

@@ -2,8 +2,6 @@ package build.raft.app.components
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
 
 class SlockAnchoredMetaChipTest {
     @Test
@@ -29,17 +27,13 @@ class SlockAnchoredMetaChipTest {
     }
 
     @Test
-    fun loadingChipDisablesPlainAndAnchoredClickDispatch() {
+    fun plainClickTakesPriorityWhenBothDispatchesExist() {
         assertEquals(
-            SlockMetaChipClickDispatch.Disabled,
+            SlockMetaChipClickDispatch.Plain,
             resolveSlockMetaChipClickDispatch(
                 hasPlainClick = true,
-                hasAnchoredClick = true,
-                loading = true
+                hasAnchoredClick = true
             )
         )
-        assertFalse(slockChipInteractionEnabled(enabled = true, loading = true))
-        assertTrue(slockChipInteractionEnabled(enabled = true, loading = false))
-        assertFalse(slockChipInteractionEnabled(enabled = false, loading = false))
     }
 }

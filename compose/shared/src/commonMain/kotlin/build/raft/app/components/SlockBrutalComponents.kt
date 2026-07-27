@@ -122,18 +122,13 @@ internal enum class SlockMetaChipClickDispatch {
 
 internal fun resolveSlockMetaChipClickDispatch(
     hasPlainClick: Boolean,
-    hasAnchoredClick: Boolean,
-    loading: Boolean = false
+    hasAnchoredClick: Boolean
 ): SlockMetaChipClickDispatch =
     when {
-        loading -> SlockMetaChipClickDispatch.Disabled
         hasPlainClick -> SlockMetaChipClickDispatch.Plain
         hasAnchoredClick -> SlockMetaChipClickDispatch.Anchored
         else -> SlockMetaChipClickDispatch.Disabled
     }
-
-internal fun slockChipInteractionEnabled(enabled: Boolean, loading: Boolean): Boolean =
-    enabled && !loading
 
 @Composable
 internal fun SlockChipLoadingIndicator(
@@ -169,8 +164,7 @@ internal fun SlockAnchoredMetaChip(
     verticalPadding: Dp = 2.dp,
     labelFontSize: TextUnit = 10.sp,
     labelLineHeight: TextUnit = 12.sp,
-    loading: Boolean = false,
-    pressFeedback: Boolean = !loading && (onClick != null || onClickWithoutAnchor != null),
+    pressFeedback: Boolean = onClick != null || onClickWithoutAnchor != null,
     anchorPlacement: SlockAnchorPlacement = SlockAnchorPlacement.Tap,
     clickIdentity: Any? = null,
     anchorOwnerIdentity: Any? = null
@@ -178,8 +172,7 @@ internal fun SlockAnchoredMetaChip(
     val clickDispatch =
         resolveSlockMetaChipClickDispatch(
             hasPlainClick = onClickWithoutAnchor != null,
-            hasAnchoredClick = onClick != null,
-            loading = loading
+            hasAnchoredClick = onClick != null
         )
     val resolvedAnchorOwnerIdentity = anchorOwnerIdentity ?: clickIdentity ?: "anchored_meta_chip:$label"
     val geometryAnchor =
@@ -250,11 +243,6 @@ internal fun SlockAnchoredMetaChip(
             )
             trailingIconName?.let {
                 SlockLucideIcon(it, modifier = Modifier.size(trailingIconSize), color = SlockColor.TextMutedGrayArgb)
-            }
-            // Loading is deliberately additive: keep the chip's semantic
-            // content visible and let the transient spinner widen the chip.
-            if (loading) {
-                SlockChipLoadingIndicator(size = trailingIconSize)
             }
         }
     }
@@ -1115,7 +1103,6 @@ internal fun SlockToolbarChip(
     trailingIconName: SlockLucideIconName? = null,
     active: Boolean = false,
     enabled: Boolean = true,
-    loading: Boolean = false,
     uppercase: Boolean = true,
     count: Int? = null,
     activeBackgroundColor: Color = SlockColor.AccentCyan,
@@ -1126,8 +1113,7 @@ internal fun SlockToolbarChip(
     reserveActiveShadowSpace: Boolean = false,
     activeShadowColor: Color = SlockColor.ShadowBlack
 ) {
-    val interactionEnabled = slockChipInteractionEnabled(enabled, loading)
-    val shouldDrawShadow = interactionEnabled && active && activeShadowOffset > 0.dp
+    val shouldDrawShadow = enabled && active && activeShadowOffset > 0.dp
     val reservedShadowOffset =
         if (shouldDrawShadow || reserveActiveShadowSpace) {
             activeShadowOffset
@@ -1136,7 +1122,7 @@ internal fun SlockToolbarChip(
         }
     val resolvedBorderColor =
         when {
-            !interactionEnabled -> disabledBorderColor
+            !enabled -> disabledBorderColor
             active -> SlockColor.BorderBlack
             else -> borderColor
         }
@@ -1162,7 +1148,7 @@ internal fun SlockToolbarChip(
                     .background(if (active) activeBackgroundColor else inactiveBackgroundColor, RectangleShape)
                     .border(SlockStroke.Default, resolvedBorderColor, RectangleShape)
                     .slockSquareCorners()
-                    .clickable(enabled = interactionEnabled, onClick = onClick)
+                    .clickable(enabled = enabled, onClick = onClick)
                     .padding(horizontal = 10.dp, vertical = 6.dp),
             contentAlignment = Alignment.Center
         ) {
@@ -1176,7 +1162,7 @@ internal fun SlockToolbarChip(
                 Text(
                     text = if (uppercase) label.uppercase() else label,
                     style = SlockType.TabLabel.copy(fontSize = 11.sp, lineHeight = 14.sp),
-                    color = if (interactionEnabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
+                    color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -1200,11 +1186,6 @@ internal fun SlockToolbarChip(
                 trailingIconName?.let {
                     SlockLucideIcon(it, modifier = Modifier.size(12.dp), color = "#FF000000")
                 }
-                // Match meta/action chips: loading appends feedback instead of
-                // replacing the content or reserving idle space.
-                if (loading) {
-                    SlockChipLoadingIndicator(size = 12.dp)
-                }
             }
         }
     }
@@ -1220,7 +1201,6 @@ internal fun SlockAnchoredToolbarChip(
     trailingIconName: SlockLucideIconName? = SlockLucideIconName.ChevronDown,
     active: Boolean = false,
     enabled: Boolean = true,
-    loading: Boolean = false,
     uppercase: Boolean = true,
     count: Int? = null,
     activeBackgroundColor: Color = SlockColor.AccentCyan,
@@ -1251,7 +1231,6 @@ internal fun SlockAnchoredToolbarChip(
             trailingIconName = trailingIconName,
             active = active,
             enabled = enabled,
-            loading = loading,
             uppercase = uppercase,
             count = count,
             activeBackgroundColor = activeBackgroundColor,

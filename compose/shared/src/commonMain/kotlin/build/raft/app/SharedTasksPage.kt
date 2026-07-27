@@ -675,7 +675,6 @@ private fun SharedTasksLoadedBodyContent(
                                     totalCount = column.totalCount,
                                     tasks = column.tasks,
                                     collapsed = column.status in collapsedStatuses,
-                                    updatingTaskId = state.statusUpdatingTaskId,
                                     onToggleCollapsed = {
                                         presentationState =
                                             presentationState.reduce(
@@ -747,7 +746,6 @@ private fun SharedTasksLoadedBodyContent(
                                             val task = column.tasks[index]
                                             SharedTaskCard(
                                                 task = task,
-                                                updating = state.statusUpdatingTaskId == task.id.value,
                                                 hasDraft = draftProjection.hasDraftForTask(task),
                                                 captureLongPressAnchor = !listModeListState.isScrollInProgress,
                                                 timeContext = timeContext,
@@ -1062,7 +1060,6 @@ private fun SharedTasksBoardColumn(
     totalCount: Int,
     tasks: List<TaskSummary>,
     collapsed: Boolean,
-    updatingTaskId: String?,
     onToggleCollapsed: () -> Unit,
     onOpenTask: ((TaskSummary) -> Unit)?,
     timeContext: SlockTimeContext?,
@@ -1119,7 +1116,6 @@ private fun SharedTasksBoardColumn(
                         val task = tasks[index]
                         SharedTaskCard(
                             task = task,
-                            updating = updatingTaskId == task.id.value,
                             hasDraft = draftProjection.hasDraftForTask(task),
                             captureLongPressAnchor = !columnListState.isScrollInProgress,
                             timeContext = timeContext,
@@ -1178,7 +1174,6 @@ private fun BoardSectionHeader(
 @Composable
 private fun SharedTaskCard(
     task: TaskSummary,
-    updating: Boolean,
     hasDraft: Boolean,
     captureLongPressAnchor: Boolean = true,
     timeContext: SlockTimeContext? = null,
@@ -1215,16 +1210,14 @@ private fun SharedTaskCard(
                 .fillMaxWidth()
                 .background(SlockColor.SurfaceWhite)
                 .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .pointerInput(task.id.value, updating) {
+                .pointerInput(task.id.value) {
                     // tap = open task; long-press = open status menu. Wrapping both in the
                     // same pointerInput keeps gesture semantics consistent and avoids
                     // clickable() swallowing the long-press.
                     detectTapGestures(
-                        onTap = { if (!updating) currentOnClick() },
+                        onTap = { currentOnClick() },
                         onLongPress = { localOffset ->
-                            if (!updating) {
-                                rootAnchor.resolve(SlockPopoverLocalPoint.Exact(localOffset))?.let(currentOnLongPress)
-                            }
+                            rootAnchor.resolve(SlockPopoverLocalPoint.Exact(localOffset))?.let(currentOnLongPress)
                         }
                     )
                 }
@@ -1308,19 +1301,14 @@ private fun SharedTaskCard(
                 // Sentence-case label + trailing pencil mirror React's editable status
                 // badge (InlineBadgeEditor with uppercase={false}).
                 SlockAnchoredMetaChip(
-                    label = if (updating) {
-                        stringResource(MR.strings.tasks_state_updating)
-                    } else {
-                        task.status.localizedLabel()
-                    },
+                    label = task.status.localizedLabel(),
                     iconName = null,
                     color = task.status.color,
-                    onClick = if (updating) null else onStatusBadgeClick,
-                    loading = updating,
+                    onClick = onStatusBadgeClick,
                     clickIdentity = tasksStatusChipClickIdentity(task.id.value, task.status),
                     anchorOwnerIdentity = tasksStatusMenuOwnerIdentity(task.id.value),
                     modifier = Modifier.widthIn(min = SharedTaskCardStatusChipMinWidth),
-                    trailingIconName = SlockLucideIconName.Pencil.takeIf { !updating },
+                    trailingIconName = SlockLucideIconName.Pencil,
                     // react's card status badge (InlineBadgeEditor, text-xs/leading-4 +
                     // py-0.5 + border-2) measures a 24dp box / 20dp fill; 22dp min + 14sp
                     // line rendered ~22dp box / 18dp fill. 24dp min + 16sp line matches (#373).
@@ -1653,7 +1641,6 @@ private fun TasksCreateDialog(
                         iconName = SlockLucideIconName.Check,
                         active = true,
                         enabled = anyNonBlank && !loading,
-                        loading = loading,
                         onClick = { onSubmit(titles) }
                     )
                 }
