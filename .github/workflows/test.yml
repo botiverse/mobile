@@ -673,7 +673,8 @@ jobs:
             adb shell settings put system screen_off_timeout 2147483647
             adb install -r "$(find android-connected-test-apks -type f -name '*connectedTest.apk' -not -name '*androidTest*' | head -n 1)"
             adb install -r "$(find android-connected-test-apks -type f -name '*androidTest.apk' | head -n 1)"
-            node scripts/qa/android_run_as_user_root_probe.mjs --package build.raft.app.connectedtest | tee qa-bootstrap-run-as-user-root-activity.txt
+            node scripts/qa/android_run_as_user_root_probe.mjs --package build.raft.app.connectedtest > qa-bootstrap-run-as-user-root-activity.txt
+            cat qa-bootstrap-run-as-user-root-activity.txt
             grep -Fxq 'qa-bootstrap-run-as-probe: activity-consumed' qa-bootstrap-run-as-user-root-activity.txt
             adb shell am instrument -w -r -e class build.raft.app.shared.SlockComposerFirstCharacterBaselineTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner > first-character-baseline-instrumentation.txt
             cat first-character-baseline-instrumentation.txt

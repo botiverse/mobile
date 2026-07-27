@@ -63,6 +63,7 @@ test("real run-as probe verifies bytes then exercises the production Activity co
     path.resolve("scripts/qa/android_run_as_user_root_probe.mjs"),
     "utf8",
   );
+  const workflow = fs.readFileSync(path.resolve(".github/workflows/test.yml"), "utf8");
   assert.match(source, /stat -c %a/);
   assert.match(source, /wc -c/);
   assert.match(source, /sha256sum/);
@@ -83,8 +84,133 @@ test("real run-as probe verifies bytes then exercises the production Activity co
   assert.match(source, /"pm", "list", "users"/);
   assert.match(source, /UserInfo\\\\\{/);
   assert.match(source, /waitForUserAbsent\(probeUserId, 30_000\)/);
-  assert.match(source, /cleanupFailures\.join\(","\)/);
+  assert.match(source, /cleanupFailures\.join\("_and_"\)/);
+  assert.match(source, /wait-for-device/);
+  assert.match(source, /lastObservation === "state" \? "state_timeout" : "read_unavailable"/);
+  assert.match(source, /lastObservation === "present" \? "present_timeout" : "read_unavailable"/);
+  assert.match(source, /phase=\$\{phase\} outcome=\$\{outcome\}/);
+  assert.match(source, /emitPhase\("cleanup_terminal", "pass"\)/);
+  assert.match(source, /primaryFailure \|\| !consumed/);
   assert.match(source, /qa-bootstrap-run-as-probe: activity-consumed/);
+  assert.match(
+    workflow,
+    /node scripts\/qa\/android_run_as_user_root_probe\.mjs --package build\.raft\.app\.connectedtest > qa-bootstrap-run-as-user-root-activity\.txt/,
+  );
+  assert.doesNotMatch(
+    workflow,
+    /android_run_as_user_root_probe\.mjs[^\n]*\| tee/,
+  );
+});
+
+test("real probe retries ADB user-switch transport loss and preserves consume evidence", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "qa-run-as-probe-"));
+  const bin = path.join(root, "bin");
+  const state = path.join(root, "state");
+  fs.mkdirSync(bin, { recursive: true });
+  fs.mkdirSync(state, { recursive: true });
+  fs.writeFileSync(path.join(state, "current"), "0\n");
+  fs.writeFileSync(path.join(state, "present"), "0\n");
+  writeExecutable(
+    path.join(bin, "adb"),
+    [
+      'state="$QA_PROBE_FAKE_STATE"',
+      'case "$1" in',
+      '  wait-for-device)',
+      '    if [ -f "$state/offline-once" ]; then rm -f "$state/offline-once"; exit 1; fi',
+      '    exit 0',
+      '    ;;',
+      '  exec-in)',
+      '    cat >/dev/null',
+      '    exit 0',
+      '    ;;',
+      '  exec-out)',
+      '    exit 0',
+      '    ;;',
+      '  logcat)',
+      '    if [ "${2:-}" = "-c" ]; then exit 0; fi',
+      '    printf "%s\\n" "I/SlockQaBootstrap: QA_BOOTSTRAP_STAGE stage=inbox_consumed"',
+      '    exit 0',
+      '    ;;',
+      '  shell)',
+      '    case "$*" in',
+      '      "shell am get-current-user") cat "$state/current" ;;',
+      '      "shell pm create-user --ephemeral qa-bootstrap-probe")',
+      '        printf "1\\n" > "$state/present"',
+      '        printf "%s\\n" "Success: created user id 10"',
+      '        ;;',
+      '      "shell cmd package install-existing --user 10 build.raft.app.connectedtest") exit 0 ;;',
+      '      "shell am switch-user 10")',
+      '        printf "10\\n" > "$state/current"',
+      '        : > "$state/offline-once"',
+      '        ;;',
+      '      "shell am switch-user 0")',
+      '        printf "0\\n" > "$state/current"',
+      '        : > "$state/offline-once"',
+      '        ;;',
+      '      "shell cmd user is-user-unlocked 10"|"shell cmd user is-user-unlocked 0") printf "true\\n" ;;',
+      '      "shell am start --user 10 "*) exit 0 ;;',
+      '      "shell am force-stop --user 10 build.raft.app.connectedtest") exit 0 ;;',
+      '      "shell pm clear --user 10 build.raft.app.connectedtest")',
+      '        if [ "${QA_PROBE_FAIL_CLEAR:-0}" = "1" ]; then exit 1; fi',
+      '        exit 0',
+      '        ;;',
+      '      "shell pm remove-user 10")',
+      '        printf "0\\n" > "$state/present"',
+      '        : > "$state/offline-once"',
+      '        exit 1',
+      '        ;;',
+      '      "shell pm list users")',
+      '        if [ "$(cat "$state/present")" = "1" ]; then',
+      '          printf "%s\\n" "Users:" "UserInfo{10:qa-bootstrap-probe:410}"',
+      '        else',
+      '          printf "%s\\n" "Users:" "UserInfo{0:Owner:13}"',
+      '        fi',
+      '        ;;',
+      '      *) exit 0 ;;',
+      '    esac',
+      '    ;;',
+      '  *) exit 1 ;;',
+      'esac',
+    ].join("\n"),
+  );
+  const runProbe = (failClear) => spawnSync(
+    process.execPath,
+    [
+      path.resolve("scripts/qa/android_run_as_user_root_probe.mjs"),
+      "--package",
+      "build.raft.app.connectedtest",
+    ],
+    {
+      cwd: path.resolve("."),
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PATH: `${bin}:${process.env.PATH ?? ""}`,
+        QA_PROBE_FAKE_STATE: state,
+        QA_PROBE_FAIL_CLEAR: failClear ? "1" : "0",
+      },
+    },
+  );
+  try {
+    const passed = runProbe(false);
+    assert.equal(passed.status, 0, passed.stderr);
+    assert.match(passed.stdout, /phase=activity_consume outcome=pass/);
+    assert.match(passed.stdout, /phase=cleanup_wait_original outcome=pass/);
+    assert.match(passed.stdout, /phase=cleanup_user_absence outcome=pass/);
+    assert.match(passed.stdout, /phase=cleanup_terminal outcome=pass/);
+    assert.match(passed.stdout, /qa-bootstrap-run-as-probe: activity-consumed/);
+
+    fs.writeFileSync(path.join(state, "current"), "0\n");
+    fs.writeFileSync(path.join(state, "present"), "0\n");
+    const cleanupFailed = runProbe(true);
+    assert.notEqual(cleanupFailed.status, 0);
+    assert.match(cleanupFailed.stdout, /phase=activity_consume outcome=pass/);
+    assert.match(cleanupFailed.stdout, /phase=cleanup_package_clear outcome=fail code=command_failed/);
+    assert.match(cleanupFailed.stdout, /phase=cleanup_terminal outcome=fail/);
+    assert.doesNotMatch(cleanupFailed.stdout, /qa-bootstrap-run-as-probe: activity-consumed/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("a hung pre-READY ADB command is killed before the outer fuse", () => {
