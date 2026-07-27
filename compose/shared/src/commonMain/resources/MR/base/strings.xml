@@ -1099,7 +1099,7 @@
     <string name="auth_state_continuing">Continuing…</string>
     <string name="auth_action_continue">Continue</string>
     <string name="auth_legal_notice_prefix">By continuing, you agree to the&#160;</string>
-    <string name="auth_legal_notice_connector"> and </string>
+    <string name="auth_legal_notice_connector">&#160;and&#160;</string>
     <string name="auth_legal_notice_suffix">.</string>
     <string name="auth_terms_agreement_prefix">I agree to the </string>
     <string name="auth_terms_agreement_connector"> and</string>
