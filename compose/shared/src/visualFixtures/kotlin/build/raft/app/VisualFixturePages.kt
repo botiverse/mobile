@@ -2,7 +2,10 @@ package build.raft.app
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import build.raft.app.base.BasePager
 import build.raft.app.data.AppLocale
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
@@ -257,18 +260,46 @@ internal class ComposeBottomTabBarVisualPage : BasePager() {
 internal class ComposeAndroidFloatingTabBarVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
+        val initialSelectedKey = pageData.params.optString("selectedKey").ifBlank { "home" }
+        val disabledKey = pageData.params.optString("disabledKey")
+        val bottomSafeArea = pageData.params.optInt("bottomSafeAreaDp").dp
         setContent {
+            var selectedKey by remember { mutableStateOf(initialSelectedKey) }
             SlockAppBottomTabBarHost(
                 items =
                     listOf(
-                        SlockBottomTabItemPayload("home", "Home", SlockLucideIconName.House, selected = true),
-                        SlockBottomTabItemPayload("tasks", "Tasks", SlockLucideIconName.SquareCheckBig),
-                        SlockBottomTabItemPayload("members", "Members", SlockLucideIconName.Users),
-                        SlockBottomTabItemPayload("settings", "Settings", SlockLucideIconName.Settings)
+                        SlockBottomTabItemPayload(
+                            "home",
+                            "Home",
+                            SlockLucideIconName.House,
+                            selected = selectedKey == "home",
+                            enabled = disabledKey != "home"
+                        ),
+                        SlockBottomTabItemPayload(
+                            "tasks",
+                            "Tasks",
+                            SlockLucideIconName.SquareCheckBig,
+                            selected = selectedKey == "tasks",
+                            enabled = disabledKey != "tasks"
+                        ),
+                        SlockBottomTabItemPayload(
+                            "members",
+                            "Members",
+                            SlockLucideIconName.Users,
+                            selected = selectedKey == "members",
+                            enabled = disabledKey != "members"
+                        ),
+                        SlockBottomTabItemPayload(
+                            "settings",
+                            "Settings",
+                            SlockLucideIconName.Settings,
+                            selected = selectedKey == "settings",
+                            enabled = disabledKey != "settings"
+                        )
                     ),
-                onSelect = {},
+                onSelect = { selectedKey = it },
                 modifier = Modifier.width(390.dp),
-                bottomSafeArea = 0.dp
+                bottomSafeArea = bottomSafeArea
             )
         }
     }

@@ -194,6 +194,33 @@ class KmpVisualScreenshotCaptureTest {
             pageData = JSONObject().put("slockNativeTabBarRenderer", "androidFloating"),
             crop = ANDROID_FLOATING_TABBAR_CROP
         )
+        captureKmpComponentCase(
+            caseId = "components.navigation.tabbar.android-floating.tasks-selected",
+            pageName = "compose_android_floating_tabbar_visual",
+            pageData =
+                JSONObject()
+                    .put("slockNativeTabBarRenderer", "androidFloating")
+                    .put("selectedKey", "tasks"),
+            crop = ANDROID_FLOATING_TABBAR_CROP
+        )
+        captureKmpComponentCase(
+            caseId = "components.navigation.tabbar.android-floating.disabled",
+            pageName = "compose_android_floating_tabbar_visual",
+            pageData =
+                JSONObject()
+                    .put("slockNativeTabBarRenderer", "androidFloating")
+                    .put("disabledKey", "settings"),
+            crop = ANDROID_FLOATING_TABBAR_CROP
+        )
+        captureKmpComponentCase(
+            caseId = "components.navigation.tabbar.android-floating.safe-area",
+            pageName = "compose_android_floating_tabbar_visual",
+            pageData =
+                JSONObject()
+                    .put("slockNativeTabBarRenderer", "androidFloating")
+                    .put("bottomSafeAreaDp", 24),
+            crop = ANDROID_FLOATING_TABBAR_SAFE_AREA_CROP
+        )
     }
 
     @Test
@@ -4264,6 +4291,13 @@ class KmpVisualScreenshotCaptureTest {
                 topDp = 0,
                 widthDp = 390,
                 heightDp = 92
+            )
+        private val ANDROID_FLOATING_TABBAR_SAFE_AREA_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 390,
+                heightDp = 116
             )
         private val FOREGROUND_BANNER_CONTEXT_CROP =
             VisualCrop(
