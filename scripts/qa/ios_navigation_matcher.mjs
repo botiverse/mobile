@@ -639,3 +639,136 @@ export function findImageReviewDoneTarget(nodes) {
     bounds: [...b],
   };
 }
+
+// Composer attachment-tile contract discovered after the review/editor Done
+// in task #26 run 30297014531. This is intentionally keyed by the exact image
+// filename carried by the proven review/editor page; a historical message
+// attachment elsewhere in the channel must never impersonate the composer
+// tile. The frozen failure shape is:
+//   - one Raft root and one enabled Message #all composer;
+//   - exactly one enabled square-ish filename button immediately above it;
+//   - exactly one small enabled unlabeled close button adjacent to the tile's
+//     top-right corner;
+//   - for terminal failure, an enabled button with the exact combined label
+//     "Upload failed, Tap to retry" on the exact same bounds as the filename
+//     button.
+// The source contract also exposes an Uploading/progress text overlay, which
+// is reported as uploading when it is uniquely contained by the tile. Absence
+// of either frozen status is deliberately `unproven`, NEVER success: a real
+// successful iOS node tree plus upload/readback authority must be frozen before
+// this matcher may learn a success state.
+export function classifyComposerAttachmentTile(nodes, { expectedFileName = "" } = {}) {
+  const expected = String(expectedFileName ?? "").trim();
+  if (!expected) return null;
+  const list = (nodes || []).filter((n) => Array.isArray(n?.bounds) && n.bounds.length === 4);
+  if (!list.length) return null;
+
+  const maxW = Math.max(...list.map((n) => n.bounds[2]));
+  const maxH = Math.max(...list.map((n) => n.bounds[3]));
+  if (!(maxW > 0 && maxH > 0)) return null;
+  const width = (n) => n.bounds[2] - n.bounds[0];
+  const height = (n) => n.bounds[3] - n.bounds[1];
+  const sameBounds = (a, b) => a.bounds.every((value, index) => value === b.bounds[index]);
+  const containedBy = (inner, outer) => (
+    inner.bounds[0] >= outer.bounds[0]
+    && inner.bounds[1] >= outer.bounds[1]
+    && inner.bounds[2] <= outer.bounds[2]
+    && inner.bounds[3] <= outer.bounds[3]
+  );
+
+  const roots = list.filter((n) => (
+    n.type === "other"
+    && String(n.label ?? "").trim() === "Raft"
+    && width(n) >= maxW * 0.9
+    && height(n) >= maxH * 0.9
+  ));
+  if (roots.length !== 1) return null;
+
+  const composers = list.filter((n) => (
+    n.type === "button"
+    && String(n.label ?? "").trim() === "Message #all"
+    && n.enabled === true
+    && width(n) >= maxW * 0.7
+    && n.bounds[1] >= maxH * 0.65
+    && n.bounds[3] <= maxH
+  ));
+  if (composers.length !== 1) return null;
+  const composerNode = composers[0];
+
+  const filenameButtons = list.filter((n) => {
+    if (
+      n.type !== "button"
+      || String(n.label ?? "").trim() !== expected
+      || n.enabled !== true
+      || n.bounds[3] > composerNode.bounds[1] + 8
+      || n.bounds[1] < maxH * 0.5
+    ) return false;
+    const w = width(n);
+    const h = height(n);
+    return w >= maxW * 0.08
+      && w <= maxW * 0.35
+      && h >= maxH * 0.05
+      && h <= maxH * 0.2
+      && w / h >= 0.6
+      && w / h <= 1.4;
+  });
+  if (filenameButtons.length !== 1) return null;
+  const filenameNode = filenameButtons[0];
+  const tileW = width(filenameNode);
+  const tileH = height(filenameNode);
+
+  const closeButtons = list.filter((n) => (
+    n.type === "button"
+    && String(n.label ?? "").trim() === ""
+    && n.enabled === true
+    && width(n) > 0
+    && height(n) > 0
+    && width(n) <= tileW * 0.5
+    && height(n) <= tileH * 0.5
+    && n.bounds[0] >= filenameNode.bounds[0] + tileW * 0.5
+    && n.bounds[0] <= filenameNode.bounds[2]
+    && n.bounds[2] <= filenameNode.bounds[2] + tileW * 0.2
+    && n.bounds[1] >= filenameNode.bounds[1] - tileH * 0.2
+    && n.bounds[1] <= filenameNode.bounds[1] + tileH * 0.3
+  ));
+  if (closeButtons.length !== 1) return null;
+
+  const failureLabelButtons = list.filter((n) => (
+    n !== filenameNode
+    && n.type === "button"
+    && String(n.label ?? "").trim() === "Upload failed, Tap to retry"
+  ));
+  const failureStatusButtons = failureLabelButtons.filter((n) => (
+    n.enabled === true
+    && sameBounds(n, filenameNode)
+  ));
+  const uploadingStatusNodes = list.filter((n) => (
+    n !== filenameNode
+    && (n.type === "staticText" || n.type === "button")
+    && (/^Uploading$/i.test(String(n.label ?? "").trim()) || /^(?:100|[1-9]?\d)%$/.test(String(n.label ?? "").trim()))
+    && containedBy(n, filenameNode)
+  ));
+  if (failureLabelButtons.length > 0 && (failureLabelButtons.length !== 1 || failureStatusButtons.length !== 1)) return null;
+  if (failureStatusButtons.length > 1 || uploadingStatusNodes.length > 1) return null;
+  if (failureStatusButtons.length === 1 && uploadingStatusNodes.length === 1) return null;
+
+  const state = failureStatusButtons.length === 1
+    ? "failure"
+    : uploadingStatusNodes.length === 1
+      ? "uploading"
+      : "unproven";
+  return {
+    variant: "composer-attachment-tile",
+    state,
+    successProven: false,
+    rootNode: roots[0],
+    composerNode,
+    filenameNode,
+    statusNode: failureStatusButtons[0] ?? uploadingStatusNodes[0] ?? null,
+    closeNode: closeButtons[0],
+    exactFilenameCandidateCount: filenameButtons.length,
+    exactFailureStatusCandidateCount: failureStatusButtons.length,
+    exactUploadingStatusCandidateCount: uploadingStatusNodes.length,
+    exactCloseCandidateCount: closeButtons.length,
+  };
+}

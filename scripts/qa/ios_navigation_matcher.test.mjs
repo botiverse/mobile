@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   composerHasNewPreview,
+  classifyComposerAttachmentTile,
   classifyImageReviewEditor,
   classifySelectedPhotoPicker,
   countThreadImageNodes,
@@ -641,6 +642,108 @@ test("classifyImageReviewEditor requires unique review chrome root and top-left 
   const duplicateRoot = imageReviewStructuredNodes();
   duplicateRoot.push(structuredNode({ type: "other", label: "Raft", bounds: [0, 0, 1170, 2532] }));
   assert.equal(classifyImageReviewEditor(duplicateRoot), null);
+});
+
+const composerAttachmentStructuredNodes = () => [
+  structuredNode({ type: "other", label: "Raft", bounds: [0, 0, 1170, 2532] }),
+  // Historical channel content deliberately contains unrelated attachment
+  // labels and unlabeled buttons; the expected filename + composer geometry
+  // must keep them out of the tile contract.
+  structuredNode({ type: "staticText", label: "Video preview", bounds: [536, 1176, 779, 1224] }),
+  structuredNode({ type: "button", label: "IMG_OLD", bounds: [180, 800, 372, 992], enabled: true }),
+  structuredNode({ type: "button", label: "", bounds: [550, 1236, 652, 1338], enabled: true }),
+  structuredNode({ type: "button", label: "IMG_0111", bounds: [24, 1951, 216, 2143], enabled: true, clickable: true }),
+  structuredNode({ type: "button", label: "Upload failed, Tap to retry", bounds: [24, 1951, 216, 2143], enabled: true, clickable: true }),
+  structuredNode({ type: "button", label: "", bounds: [165, 1936, 231, 2002], enabled: true, clickable: true }),
+  structuredNode({ type: "button", label: "Message #all", bounds: [24, 2161, 1140, 2382], enabled: true, clickable: true }),
+];
+
+test("classifyComposerAttachmentTile freezes the real terminal failure structure", () => {
+  const tile = classifyComposerAttachmentTile(composerAttachmentStructuredNodes(), { expectedFileName: "IMG_0111" });
+  assert.equal(tile.variant, "composer-attachment-tile");
+  assert.equal(tile.state, "failure");
+  assert.equal(tile.successProven, false);
+  assert.equal(tile.filenameNode.label, "IMG_0111");
+  assert.equal(tile.statusNode.label, "Upload failed, Tap to retry");
+  assert.deepEqual(tile.filenameNode.bounds, tile.statusNode.bounds);
+  assert.deepEqual(tile.closeNode.bounds, [165, 1936, 231, 2002]);
+  assert.equal(tile.exactFilenameCandidateCount, 1);
+  assert.equal(tile.exactFailureStatusCandidateCount, 1);
+  assert.equal(tile.exactUploadingStatusCandidateCount, 0);
+  assert.equal(tile.exactCloseCandidateCount, 1);
+});
+
+test("classifyComposerAttachmentTile is exact-filename bound", () => {
+  assert.equal(classifyComposerAttachmentTile(composerAttachmentStructuredNodes()), null);
+  assert.equal(
+    classifyComposerAttachmentTile(composerAttachmentStructuredNodes(), { expectedFileName: "IMG_OLD" }),
+    null,
+  );
+});
+
+test("classifyComposerAttachmentTile fails closed on duplicate filename or composer nodes", () => {
+  const duplicateFilename = composerAttachmentStructuredNodes();
+  duplicateFilename.push(structuredNode({
+    type: "button", label: "IMG_0111", bounds: [240, 1951, 432, 2143], enabled: true,
+  }));
+  assert.equal(classifyComposerAttachmentTile(duplicateFilename, { expectedFileName: "IMG_0111" }), null);
+
+  const duplicateComposer = composerAttachmentStructuredNodes();
+  duplicateComposer.push(structuredNode({
+    type: "button", label: "Message #all", bounds: [24, 1700, 1140, 1921], enabled: true,
+  }));
+  assert.equal(classifyComposerAttachmentTile(duplicateComposer, { expectedFileName: "IMG_0111" }), null);
+});
+
+test("classifyComposerAttachmentTile requires the exact same-bounds terminal failure button", () => {
+  const wrongBounds = composerAttachmentStructuredNodes();
+  wrongBounds.find((n) => n.label === "Upload failed, Tap to retry").bounds = [30, 1951, 216, 2143];
+  assert.equal(classifyComposerAttachmentTile(wrongBounds, { expectedFileName: "IMG_0111" }), null);
+
+  const disabled = composerAttachmentStructuredNodes();
+  disabled.find((n) => n.label === "Upload failed, Tap to retry").enabled = false;
+  assert.equal(classifyComposerAttachmentTile(disabled, { expectedFileName: "IMG_0111" }), null);
+
+  const duplicateFailure = composerAttachmentStructuredNodes();
+  duplicateFailure.push(structuredNode({
+    type: "button", label: "Upload failed, Tap to retry", bounds: [24, 1951, 216, 2143], enabled: true,
+  }));
+  assert.equal(classifyComposerAttachmentTile(duplicateFailure, { expectedFileName: "IMG_0111" }), null);
+});
+
+test("classifyComposerAttachmentTile requires one adjacent close button", () => {
+  const missing = composerAttachmentStructuredNodes().filter((n) => !(
+    n.type === "button" && n.label === "" && n.bounds[0] === 165
+  ));
+  assert.equal(classifyComposerAttachmentTile(missing, { expectedFileName: "IMG_0111" }), null);
+
+  const duplicate = composerAttachmentStructuredNodes();
+  duplicate.push(structuredNode({ type: "button", label: "", bounds: [140, 1940, 200, 2000], enabled: true }));
+  assert.equal(classifyComposerAttachmentTile(duplicate, { expectedFileName: "IMG_0111" }), null);
+
+  const distant = composerAttachmentStructuredNodes();
+  distant.find((n) => n.type === "button" && n.label === "" && n.bounds[0] === 165).bounds = [500, 1900, 566, 1966];
+  assert.equal(classifyComposerAttachmentTile(distant, { expectedFileName: "IMG_0111" }), null);
+});
+
+test("classifyComposerAttachmentTile distinguishes source-defined uploading without guessing success", () => {
+  const uploading = composerAttachmentStructuredNodes().filter((n) => n.label !== "Upload failed, Tap to retry");
+  uploading.push(structuredNode({ type: "staticText", label: "Uploading", bounds: [70, 2020, 170, 2060] }));
+  const uploadingTile = classifyComposerAttachmentTile(uploading, { expectedFileName: "IMG_0111" });
+  assert.equal(uploadingTile.state, "uploading");
+  assert.equal(uploadingTile.successProven, false);
+
+  const noStatus = uploading.filter((n) => n.label !== "Uploading");
+  const unprovenTile = classifyComposerAttachmentTile(noStatus, { expectedFileName: "IMG_0111" });
+  assert.equal(unprovenTile.state, "unproven");
+  assert.equal(unprovenTile.successProven, false);
+  assert.equal(unprovenTile.statusNode, null);
+});
+
+test("classifyComposerAttachmentTile rejects conflicting failure and uploading states", () => {
+  const conflicting = composerAttachmentStructuredNodes();
+  conflicting.push(structuredNode({ type: "staticText", label: "37%", bounds: [70, 2020, 170, 2060] }));
+  assert.equal(classifyComposerAttachmentTile(conflicting, { expectedFileName: "IMG_0111" }), null);
 });
 
 test("composerHasNewPreview only accepts a NEW node inside the composer", () => {
