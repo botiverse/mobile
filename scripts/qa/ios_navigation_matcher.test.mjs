@@ -2,12 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   composerHasNewPreview,
+  classifyImageReviewEditor,
   classifySelectedPhotoPicker,
   countThreadImageNodes,
   diffUiNodeStates,
   exactCellCandidates,
   findAllChannelTarget,
   findComposerImageTarget,
+  findImageReviewDoneTarget,
   findPhotoCellTarget,
   findSelectedPhotoDoneTarget,
   hasPhotoPickerGate,
@@ -524,6 +526,121 @@ test("classifySelectedPhotoPicker requires the original Cancel + Photos/Collecti
   const splitTabs = ios26SelectedStructuredNodes();
   splitTabs.find((n) => n.label === "Collections").bounds = [585, 600, 870, 744];
   assert.equal(classifySelectedPhotoPicker(splitTabs), null);
+});
+
+const imageReviewStructuredNodes = () => [
+  structuredNode({ type: "other", label: "Raft", bounds: [0, 0, 1170, 2532] }),
+  structuredNode({ type: "button", label: "", bounds: [66, 183, 156, 273], enabled: true, clickable: true }),
+  structuredNode({ type: "staticText", label: "IMG_0111", bounds: [204, 171, 444, 237] }),
+  structuredNode({ type: "staticText", label: "2.6 MB", bounds: [204, 243, 339, 291] }),
+  structuredNode({ type: "image", label: "IMG_0111", bounds: [0, 327, 1170, 2232] }),
+  structuredNode({ type: "button", label: "Edit", bounds: [48, 2304, 267, 2400], enabled: true, clickable: true }),
+  structuredNode({ type: "button", label: "Done", bounds: [873, 2304, 1116, 2400], enabled: true, clickable: true }),
+];
+
+test("classifyImageReviewEditor accepts the frozen Raft review/editor contract", () => {
+  const nodes = imageReviewStructuredNodes();
+  const review = classifyImageReviewEditor(nodes);
+  assert.equal(review.variant, "raft-image-review-editor");
+  assert.equal(review.imageNode.label, "IMG_0111");
+  assert.equal(review.filenameNode.label, review.imageNode.label);
+  assert.equal(review.sizeNode.label, "2.6 MB");
+  assert.deepEqual(findImageReviewDoneTarget(nodes), {
+    x: 995,
+    y: 2352,
+    label: "Done",
+    identifier: "",
+    type: "button",
+    enabled: true,
+    bounds: [873, 2304, 1116, 2400],
+  });
+});
+
+test("classifyImageReviewEditor fails closed on zero or multiple large review images", () => {
+  const none = imageReviewStructuredNodes().filter((n) => n.type !== "image");
+  assert.equal(classifyImageReviewEditor(none), null);
+
+  const duplicate = imageReviewStructuredNodes();
+  duplicate.push(structuredNode({ type: "image", label: "IMG_0111", bounds: [0, 340, 1170, 2200] }));
+  assert.equal(classifyImageReviewEditor(duplicate), null);
+});
+
+test("classifyImageReviewEditor excludes fullscreen image ancestors from the review-image role", () => {
+  const ancestorOnly = imageReviewStructuredNodes().filter((n) => n.type !== "image");
+  ancestorOnly.push(structuredNode({ type: "image", label: "IMG_0111", bounds: [0, 0, 1170, 2532] }));
+  assert.equal(classifyImageReviewEditor(ancestorOnly), null);
+
+  const withAncestor = imageReviewStructuredNodes();
+  withAncestor.push(structuredNode({ type: "image", label: "IMG_0111", bounds: [0, 0, 1170, 2532] }));
+  assert.equal(classifyImageReviewEditor(withAncestor).imageNode.bounds[1], 327);
+});
+
+test("classifyImageReviewEditor requires filename metadata to match the large image", () => {
+  const mismatch = imageReviewStructuredNodes();
+  mismatch.find((n) => n.type === "staticText" && n.label === "IMG_0111").label = "IMG_9999";
+  assert.equal(classifyImageReviewEditor(mismatch), null);
+
+  const duplicate = imageReviewStructuredNodes();
+  duplicate.push(structuredNode({ type: "staticText", label: "IMG_0111", bounds: [500, 171, 740, 237] }));
+  assert.equal(classifyImageReviewEditor(duplicate), null);
+});
+
+test("classifyImageReviewEditor requires unique adjacent size metadata", () => {
+  const missing = imageReviewStructuredNodes().filter((n) => n.label !== "2.6 MB");
+  assert.equal(classifyImageReviewEditor(missing), null);
+
+  const wrongGeometry = imageReviewStructuredNodes();
+  wrongGeometry.find((n) => n.label === "2.6 MB").bounds = [500, 243, 635, 291];
+  assert.equal(classifyImageReviewEditor(wrongGeometry), null);
+
+  const duplicate = imageReviewStructuredNodes();
+  duplicate.push(structuredNode({ type: "staticText", label: "2.6 MB", bounds: [204, 294, 339, 320] }));
+  assert.equal(classifyImageReviewEditor(duplicate), null);
+});
+
+test("classifyImageReviewEditor requires unique Edit and Done bottom actions", () => {
+  const noEdit = imageReviewStructuredNodes().filter((n) => n.label !== "Edit");
+  assert.equal(classifyImageReviewEditor(noEdit), null);
+
+  const disabledEdit = imageReviewStructuredNodes();
+  disabledEdit.find((n) => n.label === "Edit").enabled = false;
+  assert.equal(classifyImageReviewEditor(disabledEdit), null);
+
+  const duplicateEdit = imageReviewStructuredNodes();
+  duplicateEdit.push(structuredNode({ type: "button", label: "Edit", bounds: [300, 2304, 500, 2400], enabled: true }));
+  assert.equal(classifyImageReviewEditor(duplicateEdit), null);
+
+  const duplicateDone = imageReviewStructuredNodes();
+  duplicateDone.push(structuredNode({ type: "button", label: "Done", bounds: [600, 2304, 840, 2400], enabled: true }));
+  assert.equal(classifyImageReviewEditor(duplicateDone), null);
+  assert.throws(() => findImageReviewDoneTarget(duplicateDone), /no proven Raft image review\/editor/);
+});
+
+test("classifyImageReviewEditor fails closed on disabled or wrong-geometry second Done", () => {
+  const disabled = imageReviewStructuredNodes();
+  disabled.find((n) => n.label === "Done").enabled = false;
+  assert.equal(classifyImageReviewEditor(disabled), null);
+
+  const topDone = imageReviewStructuredNodes();
+  topDone.find((n) => n.label === "Done").bounds = [873, 183, 1116, 279];
+  assert.equal(classifyImageReviewEditor(topDone), null);
+
+  const overlappingRow = imageReviewStructuredNodes();
+  overlappingRow.find((n) => n.label === "Edit").bounds = [700, 2304, 950, 2400];
+  assert.equal(classifyImageReviewEditor(overlappingRow), null);
+});
+
+test("classifyImageReviewEditor requires unique review chrome root and top-left back", () => {
+  const noBack = imageReviewStructuredNodes().filter((n) => !(n.type === "button" && n.label === ""));
+  assert.equal(classifyImageReviewEditor(noBack), null);
+
+  const duplicateBack = imageReviewStructuredNodes();
+  duplicateBack.push(structuredNode({ type: "button", label: "", bounds: [170, 183, 260, 273], enabled: true }));
+  assert.equal(classifyImageReviewEditor(duplicateBack), null);
+
+  const duplicateRoot = imageReviewStructuredNodes();
+  duplicateRoot.push(structuredNode({ type: "other", label: "Raft", bounds: [0, 0, 1170, 2532] }));
+  assert.equal(classifyImageReviewEditor(duplicateRoot), null);
 });
 
 test("composerHasNewPreview only accepts a NEW node inside the composer", () => {

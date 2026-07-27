@@ -35,6 +35,12 @@
 //                    dump, screenshot, liveness, and full plain→after diff.
 //                    Stops as sample: never sends and never calls a generic
 //                    composer-preview matcher.
+//   --sampling-review-done
+//                    Review/editor→composer discovery phase: perform the
+//                    proven picker sequence, require the frozen structured
+//                    Raft image review/editor contract, tap its unique bottom
+//                    Done exactly once, capture after-transition structured
+//                    evidence and stop. Never judges preview or sends.
 //
 // Usage:
 //   node scripts/qa/ios_deterministic_repro.mjs \
@@ -47,12 +53,14 @@ import path from "node:path";
 import { createIosDriver } from "./ios_driver.mjs";
 import {
   composerHasNewPreview,
+  classifyImageReviewEditor,
   classifySelectedPhotoPicker,
   countThreadImageNodes,
   diffUiNodeStates,
   exactCellCandidates,
   findAllChannelTarget,
   findComposerImageTarget,
+  findImageReviewDoneTarget,
   findPhotoCellTarget,
   findSelectedPhotoDoneTarget,
   hasPhotoPickerGate,
@@ -80,8 +88,11 @@ const cellSampling = process.argv.includes("--sampling-cell");
 // It records facts needed to define a future preview identity contract but
 // does not itself decide preview PASS and cannot reach send/readback.
 const doneSampling = process.argv.includes("--sampling-done");
-if ([sampling, cellSampling, doneSampling].filter(Boolean).length > 1) {
-  console.error("choose exactly one sampling mode: --sampling, --sampling-cell, or --sampling-done");
+// --sampling-review-done: first prove the review/editor page created by the
+// picker Done, then issue exactly one structured second-Done tap and stop.
+const reviewDoneSampling = process.argv.includes("--sampling-review-done");
+if ([sampling, cellSampling, doneSampling, reviewDoneSampling].filter(Boolean).length > 1) {
+  console.error("choose exactly one sampling mode: --sampling, --sampling-cell, --sampling-done, or --sampling-review-done");
   process.exit(2);
 }
 if (!ioDir) { console.error("--ios-io-dir / QA_LOOP_IO_DIR required"); process.exit(2); }
@@ -240,7 +251,7 @@ try {
   // This is deliberately structured (not a text-only dump), and values from
   // editable nodes are already redacted by describeUiNodes().
   let plainChannelNodes = null;
-  if (doneSampling) {
+  if (doneSampling || reviewDoneSampling) {
     plainChannelNodes = await drv.describeUiNodes();
     fs.writeFileSync(path.join(outDir, "plain-channel-nodes.json"), JSON.stringify(plainChannelNodes, null, 2));
   }
@@ -426,7 +437,7 @@ try {
   // derives the unique Add/Done target. The exact Done tap is the only new
   // action. The phase stops immediately after collecting post-transition
   // facts; it never calls composerHasNewPreview, sends, or reads back.
-  if (doneSampling) {
+  if (doneSampling || reviewDoneSampling) {
     if (!plainChannelNodes) {
       writeVerdict("fail", "Done sampling invariant failed: missing pre-picker plain-channel structured snapshot");
       process.exit(1);
@@ -560,7 +571,107 @@ try {
         "after-done-nodes.json", "after-done-dump.txt", "step-05-after-done.png",
       ],
     }, null, 2));
-    writeVerdict("sample", `exactly one cell tap + exactly one structured Add/Done tap completed; Done-transition discovery ends here (no generic preview verdict, send, or readback)`);
+    if (doneSampling) {
+      writeVerdict("sample", `exactly one cell tap + exactly one structured Add/Done tap completed; Done-transition discovery ends here (no generic preview verdict, send, or readback)`);
+      process.exit(0);
+    }
+
+    // ── Review/editor→composer discovery sampling (task #26) ─────────────
+    // The first picker Done has produced afterDoneNodes. Prove the independent
+    // Raft review/editor contract, bind its second Done exactly, tap once, and
+    // collect discovery facts only. No generic preview matcher is invoked.
+    const reviewEditor = classifyImageReviewEditor(afterDoneNodes);
+    if (!reviewEditor) {
+      writeVerdict("fail", "review-Done sampling precondition failed: need unique Raft root/back/large image/matching filename+size/enabled Edit+Done bottom row");
+      process.exit(1);
+    }
+
+    let reviewDoneTarget;
+    try {
+      reviewDoneTarget = findImageReviewDoneTarget(afterDoneNodes);
+    } catch (error) {
+      writeVerdict("fail", `review-Done target resolution failed: ${String(error)}`);
+      process.exit(1);
+    }
+    const exactReviewDoneCandidates = afterDoneNodes.filter((n) => (
+      n.identifier === reviewDoneTarget.identifier
+      && n.type === reviewDoneTarget.type
+      && n.label === reviewDoneTarget.label
+      && n.enabled === reviewDoneTarget.enabled
+      && Array.isArray(n.bounds)
+      && n.bounds.length === 4
+      && n.bounds.every((v, i) => v === reviewDoneTarget.bounds[i])
+    ));
+    if (exactReviewDoneCandidates.length !== 1) {
+      writeVerdict("fail", `review-Done exact target binding failed: expected 1 identity/type/label/enabled/bounds candidate, found ${exactReviewDoneCandidates.length}`);
+      process.exit(1);
+    }
+
+    const containsReviewDoneTap = (n) => Array.isArray(n.bounds) && n.bounds.length === 4
+      && n.bounds[0] <= reviewDoneTarget.x && reviewDoneTarget.x <= n.bounds[2]
+      && n.bounds[1] <= reviewDoneTarget.y && reviewDoneTarget.y <= n.bounds[3];
+    const nodesAtReviewDoneTapBefore = afterDoneNodes.filter(containsReviewDoneTap);
+    const aliveBeforeReviewDoneTap = processAlive();
+    rec(`review-done-sampling: exactly-one structured review/editor Done tap at [${reviewDoneTarget.x},${reviewDoneTarget.y}] from ${JSON.stringify(reviewDoneTarget.bounds)}`);
+    await drv.tap(reviewDoneTarget.x, reviewDoneTarget.y);
+    await new Promise((r) => setTimeout(r, 4000));
+
+    const aliveAfterReviewDoneTap = processAlive();
+    const afterReviewDoneNodes = await drv.describeUiNodes();
+    fs.writeFileSync(path.join(outDir, "after-review-done-nodes.json"), JSON.stringify(afterReviewDoneNodes, null, 2));
+    const afterReviewDoneText = redactEditableValues(await drv.dumpUi());
+    fs.writeFileSync(path.join(outDir, "after-review-done-dump.txt"), afterReviewDoneText);
+    await shot("step-06-after-review-done.png");
+
+    const reviewToAfterDiff = diffUiNodeStates(afterDoneNodes, afterReviewDoneNodes);
+    const reviewDoneTrackingPool = targetTrackingCandidates(afterReviewDoneNodes, reviewEditor.doneNode);
+    const reviewDoneTargetTrackingAmbiguous = reviewDoneTrackingPool.length > 1;
+    const reviewDoneTargetAfter = reviewDoneTrackingPool.length === 1 ? reviewDoneTrackingPool[0] : null;
+    const addedReviewSignatures = new Set(reviewToAfterDiff.added);
+    const isImageAttachmentPreviewDiscoveryNode = (n) => (
+      n.type === "image"
+      || /image|photo|attachment|preview/i.test(`${n.identifier ?? ""} ${n.label ?? ""}`)
+    );
+    const imageAttachmentPreviewNodesAfter = afterReviewDoneNodes
+      .filter(isImageAttachmentPreviewDiscoveryNode)
+      .map(nodeState);
+    const addedImageAttachmentPreviewNodes = afterReviewDoneNodes
+      .filter((n) => addedReviewSignatures.has(uiNodeSignature(n)) && isImageAttachmentPreviewDiscoveryNode(n))
+      .map(nodeState);
+
+    fs.writeFileSync(path.join(outDir, "review-editor-transition-sample.json"), JSON.stringify({
+      composerTap: 1,
+      cellTap: 1,
+      pickerDoneTap: 1,
+      reviewDoneTap: 1,
+      reviewEditorVariant: reviewEditor.variant,
+      reviewImageNode: nodeState(reviewEditor.imageNode),
+      reviewFilenameNode: nodeState(reviewEditor.filenameNode),
+      reviewSizeNode: nodeState(reviewEditor.sizeNode),
+      reviewEditNode: nodeState(reviewEditor.editNode),
+      reviewDoneNode: nodeState(reviewEditor.doneNode),
+      reviewDoneTarget,
+      exactReviewDoneCandidateCount: exactReviewDoneCandidates.length,
+      nodesAtTapBefore: nodesAtReviewDoneTapBefore.map(nodeState),
+      nodesAtTapAfter: afterReviewDoneNodes.filter(containsReviewDoneTap).map(nodeState),
+      reviewDoneTargetAfter: reviewDoneTargetAfter ? nodeState(reviewDoneTargetAfter) : null,
+      reviewDoneTargetTrackingAmbiguous,
+      reviewDoneTargetTrackingCandidates: reviewDoneTrackingPool.map(nodeState),
+      aliveBeforeReviewDoneTap,
+      aliveAfterReviewDoneTap,
+      // Discovery statements only — neither promotes a composer preview PASS.
+      reviewEditorContractAfterSecondDone: classifyImageReviewEditor(afterReviewDoneNodes) !== null,
+      composerPlaceholderVisibleAfterReviewDone: afterReviewDoneText.includes('"Message #all"'),
+      reviewToAfterDiff,
+      imageAttachmentPreviewNodesAfter,
+      addedImageAttachmentPreviewNodes,
+      evidenceRefs: [
+        "review-editor-transition-sample.json",
+        "after-done-nodes.json", "after-done-dump.txt", "step-05-after-done.png",
+        "after-review-done-nodes.json", "after-review-done-dump.txt", "step-06-after-review-done.png",
+      ],
+    }, null, 2));
+    writeVerdict("sample", "exactly one structured review/editor Done tap completed; review/editor→composer discovery ends here (no generic preview verdict, send, or readback)");
     process.exit(0);
   }
 
