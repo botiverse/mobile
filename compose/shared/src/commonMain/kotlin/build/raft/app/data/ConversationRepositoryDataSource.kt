@@ -467,7 +467,7 @@ class RealConversationRepository(
                 )
             },
             source = "messages_channel_older",
-            includeChannelSummaries = true
+            includeChannelSummaries = false
         )
     }
 
@@ -935,7 +935,7 @@ class RealConversationRepository(
             (messagesResult as? DataResult.Content)
                 ?.data
                 ?.replySummariesAuthority == ThreadReplySummariesAuthority.Embedded
-        val shouldFetchTargetedSummaries = includeChannelSummaries || !embeddedSummariesAvailable
+        val shouldFetchTargetedSummaries = includeChannelSummaries
         val threadSummariesDeferred =
             if (shouldFetchTargetedSummaries && visibleParentMessageIds.isNotEmpty()) {
                 async {

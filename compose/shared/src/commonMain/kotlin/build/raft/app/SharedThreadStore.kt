@@ -5962,6 +5962,7 @@ internal class SharedThreadStore(
     private suspend fun loadOlder() {
         val existing = _state.value.payload
         if (!existing.canLoadMoreBefore || existing.olderMessagesStatus == "loading") return
+        val staleToken = routeStaleToken
         val beforeSeq = existing.messages.mapNotNull { it.seq }.minOrNull()
         if (beforeSeq == null) {
             reducePayloadPatch { currentPayload ->
@@ -6003,6 +6004,14 @@ internal class SharedThreadStore(
                 return@reducePayloadPatch currentPayload
             }
             currentPayload.withThreadContentProjectionFrom(nextPayload)
+        }
+        val applied = _state.value.payload
+        if (
+            result is DataResult.Content &&
+            staleToken.isCurrent(routeStaleToken) &&
+            routeStillCurrent(existing, "thread_page", "older_secondary", applied)
+        ) {
+            launchSecondaryTimelineRefresh(applied, staleToken)
         }
     }
 

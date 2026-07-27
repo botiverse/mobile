@@ -7,7 +7,9 @@ import build.raft.app.model.MessageId
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
 import build.raft.app.network.MultipartFile
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -15,6 +17,43 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class ConversationRepositoryDataSourceTest {
+    @Test
+    fun canonicalMessagesCompleteWithoutAwaitingUnavailableSummaryFallback() = runBlocking {
+        val releaseSummary = CompletableDeferred<Unit>()
+        val network =
+            FakeConversationNetworkClient(
+                responses =
+                    mapOf(
+                        "GET messages/channel/channel-1" to
+                            """{"messages":[${messageJson("parent-1", "channel-1")}],"historyLimited":false}""",
+                        "GET channels/channel-1/threads" to """{"threads":[]}""",
+                    ),
+                requestRelease = mapOf("GET channels/channel-1/threads" to releaseSummary),
+            )
+        val repository = RealConversationRepository(sampleStore(), network)
+
+        // The auxiliary summary endpoint is gated and never released. A default canonical
+        // load must terminate purely on the messages fetch and never await it; the pre-fix
+        // behavior awaits channels/:id/threads and blocks here until the timeout fires.
+        // Termination is scheduler-independent — no isCompleted snapshot, no yield count,
+        // no Unconfined: the fix simply never constructs the summary deferred.
+        val result =
+            withTimeout(5_000) {
+                repository.getThread(
+                    threadId = ThreadId("channel-1"),
+                    includeFollowedSummaries = false,
+                )
+            }
+
+        val snapshot = assertIs<DataResult.Content<ThreadSnapshot>>(result).data
+        releaseSummary.complete(Unit) // no-op cleanup on the fix path; nothing awaits it
+        assertEquals(listOf("parent-1"), snapshot.messages.map { it.id.value })
+        assertFalse(
+            network.requests.any { it.path == "channels/channel-1/threads" },
+            "default canonical load must defer targeted summaries to secondary enrichment",
+        )
+    }
+
     @Test
     fun routeScopedServerOverridesMutableSessionSelectionForThreadReads() = runBlocking {
         val authStore = routeScopedAuthStore()
@@ -292,7 +331,7 @@ class ConversationRepositoryDataSourceTest {
     }
 
     @Test
-    fun malformedEmbeddedSummaryFallsBackToTargetedSummary() = runBlocking {
+    fun malformedEmbeddedSummaryRemainsUnavailableUntilSecondaryEnrichment() = runBlocking {
         val network =
             FakeConversationNetworkClient(
                 responses =
@@ -310,9 +349,9 @@ class ConversationRepositoryDataSourceTest {
 
         val snapshot = assertIs<DataResult.Content<ThreadSnapshot>>(repository.getThread(ThreadId("channel-1"))).data
 
-        assertEquals(ThreadReplySummariesAuthority.Targeted, snapshot.replySummariesAuthority)
-        assertEquals("thread-1", snapshot.messages.single().threadChannelId?.value)
-        assertTrue(network.requests.any { it.path == "channels/channel-1/threads" })
+        assertEquals(ThreadReplySummariesAuthority.Unavailable, snapshot.replySummariesAuthority)
+        assertEquals(null, snapshot.messages.single().threadChannelId)
+        assertFalse(network.requests.any { it.path == "channels/channel-1/threads" })
     }
 
     @Test
@@ -750,24 +789,13 @@ class ConversationRepositoryDataSourceTest {
     }
 
     @Test
-    fun pagingContextFilesAndUploadConsumeCanonicalDtos() = runBlocking {
+    fun pagingContextFilesAndUploadConsumeCanonicalDtosWithoutJoiningSummaries() = runBlocking {
         val network =
             FakeConversationNetworkClient(
                 responses =
                     mapOf(
                         "GET messages/channel/channel-1" to
                             """{"messages":[${messageJson("older-1", "channel-1", seq = 7)}],"historyLimited":false}""",
-                        "GET channels/channel-1/threads" to
-                            """
-                            {
-                              "older-1": {
-                                "threadChannelId": "thread-older-1",
-                                "replyCount": 2,
-                                "unreadCount": 1,
-                                "firstUnreadMessageId": "reply-older-2"
-                              }
-                            }
-                            """.trimIndent(),
                         "GET messages/context/message-1" to
                             """{"channelId":"channel-1","targetMessageId":"message-1","hasOlder":true,"hasNewer":false,"messages":[${messageJson("message-1", "channel-1")}]}""",
                         "GET channels/channel-1/files" to
@@ -801,10 +829,10 @@ class ConversationRepositoryDataSourceTest {
 
         val olderMessage = assertIs<DataResult.Content<ThreadSnapshot>>(older).data.messages.single()
         assertEquals("older-1", olderMessage.id.value)
-        assertEquals("thread-older-1", olderMessage.threadChannelId?.value)
-        assertEquals(2, olderMessage.replyCount)
-        assertEquals(1, olderMessage.unreadReplyCount)
-        assertEquals("reply-older-2", olderMessage.firstUnreadReplyMessageId?.value)
+        assertEquals(null, olderMessage.threadChannelId)
+        assertEquals(0, olderMessage.replyCount)
+        assertEquals(0, olderMessage.unreadReplyCount)
+        assertEquals(null, olderMessage.firstUnreadReplyMessageId)
         assertEquals("message-1", assertIs<DataResult.Content<ThreadSnapshot>>(context).data.highlightedMessageId?.value)
         val fileSnapshot = assertIs<DataResult.Content<ChannelFilesSnapshot>>(files).data
         assertEquals("cursor-2", fileSnapshot.nextCursor)
@@ -825,11 +853,9 @@ class ConversationRepositoryDataSourceTest {
                     request.query == listOf("channelId" to "channel-1")
             }
         )
-        assertTrue(
-            network.requests.any { request ->
-                request.path == "channels/channel-1/threads" &&
-                    request.query == listOf("parentMessageIds" to "older-1")
-            }
+        assertFalse(
+            network.requests.any { request -> request.path == "channels/channel-1/threads" },
+            "older canonical messages must not join auxiliary summaries",
         )
     }
 
@@ -884,7 +910,9 @@ class ConversationRepositoryDataSourceTest {
     private class FakeConversationNetworkClient(
         private val responses: Map<String, String> = emptyMap(),
         private val failures: Map<String, String> = emptyMap(),
-        private val uploadBody: String = """{"attachments":[]}"""
+        private val uploadBody: String = """{"attachments":[]}""",
+        private val requestStarted: Map<String, CompletableDeferred<Unit>> = emptyMap(),
+        private val requestRelease: Map<String, CompletableDeferred<Unit>> = emptyMap(),
     ) : SlockNetworkClient {
         val requests = mutableListOf<RecordedConversationRequest>()
         val serverOverrides = mutableListOf<String?>()
@@ -900,13 +928,16 @@ class ConversationRepositoryDataSourceTest {
             bodyText: String?
         ): HomeNetworkResponse {
             val normalized = path.trim('/')
+            val requestKey = "$method $normalized"
             requests += RecordedConversationRequest(priority, method, normalized, query)
             serverOverrides += serverIdOverride?.value
             bodyText?.let { bodies += it }
-            failures["$method $normalized"]?.let { message ->
+            requestStarted[requestKey]?.complete(Unit)
+            requestRelease[requestKey]?.await()
+            failures[requestKey]?.let { message ->
                 return HomeNetworkResponse(code = 0, bodyText = null, errorBodyText = message)
             }
-            return HomeNetworkResponse(code = 200, bodyText = responses["$method $normalized"] ?: """{"threads":[]}""")
+            return HomeNetworkResponse(code = 200, bodyText = responses[requestKey] ?: """{"threads":[]}""")
         }
 
         override suspend fun uploadAttachments(
