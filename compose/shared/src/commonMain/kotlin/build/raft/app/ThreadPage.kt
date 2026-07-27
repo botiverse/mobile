@@ -5285,6 +5285,13 @@ internal fun SharedThreadRouteContent(
             MutableStateFlow(SharedServerMembersEntry(serverId = threadMembersServerId?.value.orEmpty()))
         }
     }.collectAsState(SharedServerMembersEntry(serverId = threadMembersServerId?.value.orEmpty()))
+    LaunchedEffect(selectedThreadTab, serverMembersStore, threadMembersServerId) {
+        val store = serverMembersStore ?: return@LaunchedEffect
+        val serverId = threadMembersServerId ?: return@LaunchedEffect
+        if (selectedThreadTab == KuiklyThreadTab.Tasks) {
+            store.refreshMembers(serverId, DataRequestPriority.Visible)
+        }
+    }
     val threadChannelMembersSlice by remember(
         serverMembersStore,
         threadMembersServerId,
@@ -7033,6 +7040,7 @@ internal fun SharedThreadRouteContent(
             resolvedAuxiliaryThreadId = resolvedAuxiliaryThreadId,
             tasksViewModel = tasksViewModel,
             taskChannelId = taskChannelId,
+            taskIdentityOptions = threadServerMembersEntry.members,
             linkedTasksProjection = linkedTasksProjection,
             filesViewModel = filesViewModel,
             memberSuggestionsFlow = memberSuggestionsFlow,
@@ -11779,6 +11787,7 @@ private fun ThreadPageContent(
     resolvedAuxiliaryThreadId: String?,
     tasksViewModel: SharedTasksViewModel?,
     taskChannelId: ChannelId?,
+    taskIdentityOptions: List<MemberProfile>,
     linkedTasksProjection: ThreadLinkedTasksProjection,
     filesViewModel: SharedThreadFilesViewModel?,
     memberSuggestionsFlow: Flow<SharedMembersMemberSuggestionSlice>,
@@ -12503,6 +12512,7 @@ private fun ThreadPageContent(
                     ThreadTasksTab(
                         tasksViewModel = tasksViewModel,
                         channelId = taskPanelChannelId,
+                        identityOptions = taskIdentityOptions,
                         openTaskEnabled = payload.showTaskOpenActions,
                         draftProjection = draftProjection,
                         timeContext = payload.toSlockTimeContext(),
@@ -22565,6 +22575,7 @@ private fun ThreadFilesTab(
 private fun ThreadTasksTab(
     tasksViewModel: SharedTasksViewModel?,
     channelId: ChannelId,
+    identityOptions: List<MemberProfile>,
     openTaskEnabled: Boolean,
     draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
     timeContext: SlockTimeContext? = null,
@@ -22584,6 +22595,7 @@ private fun ThreadTasksTab(
         showHeader = false,
         showChannelFilter = false,
         createTasksChannelId = channelId,
+        identityOptions = identityOptions,
         draftProjection = draftProjection,
         timeContext = timeContext,
         onOpenTask = if (openTaskEnabled) {

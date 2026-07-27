@@ -350,6 +350,7 @@ import build.raft.app.data.SettingsServerSnapshot
 import build.raft.app.data.SettingsServerTranslationSnapshot
 import build.raft.app.data.SettingsServerSystemChannelSnapshot
 import build.raft.app.data.SettingsServerTranslationUpdateRequest
+import build.raft.app.data.SharedServerMembersEntry
 import build.raft.app.data.SharedServerMembersState
 import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.MemberSnapshot
@@ -3140,6 +3141,14 @@ internal fun SlockAppShellContent(
     var consumedDiagnosticsDeepLinkId by remember { mutableStateOf<String?>(null) }
     val readySession = (authGateState as? SharedAuthGateState.Ready)?.session
     val readyServerId = selectedServerId
+    val tasksServerMembersEntry by remember(appShellServerMembersStore, readyServerId) {
+        val serverId = readyServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
+        if (serverId == null) {
+            MutableStateFlow(SharedServerMembersEntry(serverId = ""))
+        } else {
+            appShellServerMembersStore.serverMembersEntryFlow(serverId)
+        }
+    }.collectAsState(SharedServerMembersEntry(serverId = readyServerId.orEmpty()))
     LaunchedEffect(readySession?.qaBootstrap?.ticketDigest, homeState.content) {
         if (
             readySession?.qaBootstrap != null &&
@@ -4038,6 +4047,13 @@ internal fun SlockAppShellContent(
             tasksViewModel.dispatch(SharedTasksRouteIntent.Start)
         }
     }
+    LaunchedEffect(selectedTab, readyServerId, appShellServerMembersStore) {
+        val serverId = readyServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
+            ?: return@LaunchedEffect
+        if (selectedTab == "tasks") {
+            appShellServerMembersStore.refreshMembers(serverId, DataRequestPriority.Visible)
+        }
+    }
     LaunchedEffect(selectedTab, tasksState.loadState, tasksState.refreshing) {
         if (selectedTab != "tasks") {
             tasksFirstRenderLoggedKey = null
@@ -4894,6 +4910,7 @@ internal fun SlockAppShellContent(
                                 prewarmAdmissionGate.invalidate("tasks_scroll")
                                 tasksListPosition = it
                             },
+                            identityOptions = tasksServerMembersEntry.members,
                             timeContext = threadTimeContext,
                             onOpenTask = { task ->
                                 prewarmAdmissionGate.invalidate("tasks_open_task")

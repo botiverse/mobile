@@ -14,13 +14,15 @@ import build.raft.app.data.TasksContent
 import build.raft.app.data.TasksPresentationIntent
 import build.raft.app.data.TasksPresentationState
 import build.raft.app.data.TasksUiState
+import build.raft.app.data.TasksUnassignedAssigneeFilterId
 import build.raft.app.data.TasksVisibleContent
 import build.raft.app.data.TasksViewMode
-import build.raft.app.data.slockSharedPreferenceStore
-import build.raft.app.data.isCreatingTasksFor
 import build.raft.app.data.boardColumns
+import build.raft.app.data.isCreatingTasksFor
 import build.raft.app.data.reduce
+import build.raft.app.data.slockSharedPreferenceStore
 import build.raft.app.data.tasksAssigneeDisplayName
+import build.raft.app.data.tasksAvailableAssigneeFilterIds
 import build.raft.app.data.tasksDisplayTitle
 import build.raft.app.data.tasksIdentityFilterId
 import build.raft.app.data.tasksSourceLabel
@@ -95,6 +97,7 @@ internal fun SharedTasksScreen(
     draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
     initialListPosition: AppShellLazyListPosition = AppShellLazyListPosition(),
     onListPositionSnapshot: (AppShellLazyListPosition) -> Unit = {},
+    identityOptions: List<MemberProfile> = emptyList(),
     timeContext: SlockTimeContext? = null
 ) {
     SharedTasksPanel(
@@ -109,6 +112,7 @@ internal fun SharedTasksScreen(
         draftProjection = draftProjection,
         initialListPosition = initialListPosition,
         onListPositionSnapshot = onListPositionSnapshot,
+        identityOptions = identityOptions,
         timeContext = timeContext
     )
 }
@@ -135,6 +139,7 @@ internal fun SharedTasksPanel(
      *  components.tasks.panel.states visual case starts in List mode with Done expanded,
      *  mirroring the React capture's "Show Done" click (task #330/#353). */
     initialPresentationOverride: TasksPresentationState? = null,
+    identityOptions: List<MemberProfile> = emptyList(),
     timeContext: SlockTimeContext? = null
 ) {
     var lastContent by remember { mutableStateOf<TasksContent?>(null) }
@@ -148,37 +153,6 @@ internal fun SharedTasksPanel(
         } else {
             state.loadState
         }
-
-    // #no-task-new-btn: when the task list is empty (ScreenLoadState.Empty),
-    // the user still needs the New Task button and filter toolbar visible.
-    var emptyCreateDialogOpen by remember { mutableStateOf(false) }
-    var emptyCreateSubmitted by remember { mutableStateOf(false) }
-    var emptyCreateFailureVisible by remember { mutableStateOf(false) }
-    var emptyCreateBaselineAttempt by remember { mutableStateOf(state.createAttempt) }
-    var emptySelectedMode by remember { mutableStateOf(TasksViewMode.List) }
-    LaunchedEffect(
-        emptyCreateDialogOpen,
-        emptyCreateSubmitted,
-        emptyCreateBaselineAttempt,
-        state.createTerminalAttempt,
-        state.createErrorCode
-    ) {
-        val terminalAttempt = state.createTerminalAttempt ?: return@LaunchedEffect
-        if (
-            !emptyCreateDialogOpen ||
-            !emptyCreateSubmitted ||
-            terminalAttempt <= emptyCreateBaselineAttempt
-        ) {
-            return@LaunchedEffect
-        }
-        if (state.createErrorCode == null) {
-            emptyCreateDialogOpen = false
-            emptyCreateFailureVisible = false
-        } else {
-            emptyCreateFailureVisible = true
-        }
-        emptyCreateSubmitted = false
-    }
 
     Column(
         modifier = modifier
@@ -211,67 +185,47 @@ internal fun SharedTasksPanel(
                     initialListPosition = initialListPosition,
                     onListPositionSnapshot = onListPositionSnapshot,
                     initialPresentationOverride = initialPresentationOverride,
+                    identityOptions = identityOptions,
                     timeContext = timeContext
                 )
             is ScreenLoadState.Empty -> {
-                if (showHeader) {
-                    SharedTasksHeader(refreshing = state.refreshing)
-                }
                 val showEmptyToolbar = sharedTasksEmptyToolbarVisible(createTasksChannelId)
-                val emptyCopy =
-                    localizedSharedTasksEmptyStateCopy(
-                        hasAnyFilter = state.selectedFilter != null,
-                        isChannelMode = createTasksChannelId != null
-                    )
                 if (showEmptyToolbar) {
-                    // #no-task-new-btn: channel empty state still needs New Task.
-                    // Server-wide empty has no create action and no task rows, so
-                    // skip the disabled filter/view toolbar on the tab-switch path.
-                    SharedTasksToolbar(
-                        channelOptions = emptyList(),
-                        selectedChannels = emptySet(),
-                        creatorOptions = emptyList(),
-                        selectedCreatorIds = emptySet(),
-                        assigneeOptions = emptyList(),
-                        selectedAssigneeIds = emptySet(),
-                        selectedMode = emptySelectedMode,
+                    // Reuse the loaded body instead of maintaining a second toolbar
+                    // implementation: empty channel mode keeps the same live identity
+                    // popovers, whole-chip hit targets, create dialog, and prune rules.
+                    SharedTasksLoadedBody(
+                        state = state,
+                        content = TasksContent(summaryCounts = emptyMap(), tasks = emptyList()),
+                        showHeader = showHeader,
                         showChannelFilter = showChannelFilter,
-                        openFilterId = null,
-                        showCreateButton = true,
-                        onModeSelected = { mode -> emptySelectedMode = mode },
-                        onChannelChipClick = { },
-                        onCreatorChipClick = { },
-                        onAssigneeChipClick = { },
-                        onClearAll = { },
-                        onCreateClick = {
-                            emptyCreateBaselineAttempt = state.createAttempt
-                            emptyCreateSubmitted = false
-                            emptyCreateFailureVisible = false
-                            emptyCreateDialogOpen = true
-                        }
+                        createTasksChannelId = createTasksChannelId,
+                        onOpenTask = onOpenTask,
+                        onIntent = onIntent,
+                        scrollToTopRequest = scrollToTopRequest,
+                        bottomContentPadding = bottomContentPadding,
+                        draftProjection = draftProjection,
+                        initialListPosition = initialListPosition,
+                        onListPositionSnapshot = onListPositionSnapshot,
+                        initialPresentationOverride =
+                            initialPresentationOverride
+                                ?: TasksPresentationState.Default.copy(selectedMode = TasksViewMode.List),
+                        identityOptions = identityOptions,
+                        timeContext = timeContext
                     )
-                }
-                SharedTasksStateBody(
-                    title = emptyCopy.title,
-                    detail = emptyCopy.description,
-                    iconName = SlockLucideIconName.SquareCheckBig
-                )
-                if (emptyCreateDialogOpen && createTasksChannelId != null) {
-                    val createLoading =
-                        emptyCreateSubmitted || state.isCreatingTasksFor(createTasksChannelId)
-                    TasksCreateDialog(
-                        loading = createLoading,
-                        errorCode = state.createErrorCode.takeIf { emptyCreateFailureVisible && !createLoading },
-                        onDismiss = {
-                            if (!createLoading) emptyCreateDialogOpen = false
-                        },
-                        onSubmit = { titles ->
-                            if (!createLoading) {
-                                emptyCreateFailureVisible = false
-                                emptyCreateSubmitted = true
-                                onIntent(SharedTasksRouteIntent.CreateTasks(createTasksChannelId, titles))
-                            }
-                        }
+                } else {
+                    if (showHeader) {
+                        SharedTasksHeader(refreshing = state.refreshing)
+                    }
+                    val emptyCopy =
+                        localizedSharedTasksEmptyStateCopy(
+                            hasAnyFilter = state.selectedFilter != null,
+                            isChannelMode = false
+                        )
+                    SharedTasksStateBody(
+                        title = emptyCopy.title,
+                        detail = emptyCopy.description,
+                        iconName = SlockLucideIconName.SquareCheckBig
                     )
                 }
             }
@@ -406,6 +360,7 @@ private fun SharedTasksLoadedBody(
     initialListPosition: AppShellLazyListPosition,
     onListPositionSnapshot: (AppShellLazyListPosition) -> Unit,
     initialPresentationOverride: TasksPresentationState?,
+    identityOptions: List<MemberProfile>,
     timeContext: SlockTimeContext?
 ) {
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
@@ -424,6 +379,7 @@ private fun SharedTasksLoadedBody(
             initialListPosition = initialListPosition,
             onListPositionSnapshot = onListPositionSnapshot,
             initialPresentationOverride = initialPresentationOverride,
+            identityOptions = identityOptions,
             timeContext = timeContext
         )
     }
@@ -445,6 +401,7 @@ private fun SharedTasksLoadedBodyContent(
     initialListPosition: AppShellLazyListPosition,
     onListPositionSnapshot: (AppShellLazyListPosition) -> Unit,
     initialPresentationOverride: TasksPresentationState?,
+    identityOptions: List<MemberProfile>,
     timeContext: SlockTimeContext?
 ) {
     val pager = LocalActivity.current.getPager() as Pager
@@ -463,11 +420,12 @@ private fun SharedTasksLoadedBodyContent(
     val sortedContent = remember(content) {
         content.copy(tasks = content.tasks.sortedByTaskDisplayOrder())
     }
-    val visibleContent = remember(sortedContent, state.selectedFilter, presentationState) {
+    val visibleContent = remember(sortedContent, state.selectedFilter, presentationState, identityOptions) {
         sortedContent.visibleContent(
             selectedFilter = state.selectedFilter,
             presentationState = presentationState,
-            showChannelFilter = showChannelFilter
+            showChannelFilter = showChannelFilter,
+            identityOptions = identityOptions
         )
     }
     val availableChannelIds = remember(visibleContent.channelOptions) {
@@ -477,7 +435,7 @@ private fun SharedTasksLoadedBodyContent(
         visibleContent.creatorOptions.map { it.tasksIdentityFilterId() }.toSet()
     }
     val availableAssigneeIds = remember(visibleContent.assigneeOptions) {
-        visibleContent.assigneeOptions.map { it.id.value }.toSet()
+        tasksAvailableAssigneeFilterIds(visibleContent.assigneeOptions)
     }
     // Drop stale chip selections when the underlying option pool changes (e.g. a server
     // refresh removed a channel that was checked in the popover).
@@ -573,8 +531,9 @@ private fun SharedTasksLoadedBodyContent(
     val creatorFilterOptions = remember(visibleContent.creatorOptions) {
         visibleContent.creatorOptions.map { SlockFilterOption(id = it.tasksIdentityFilterId(), label = it.displayName, icon = SlockLucideIconName.CircleUser) }
     }
-    val assigneeFilterOptions = remember(visibleContent.assigneeOptions) {
-        visibleContent.assigneeOptions.map { SlockFilterOption(id = it.id.value, label = it.displayName, icon = SlockLucideIconName.User) }
+    val unassignedAssigneeLabel = stringResource(MR.strings.tasks_assignee_unassigned)
+    val assigneeFilterOptions = remember(visibleContent.assigneeOptions, unassignedAssigneeLabel) {
+        tasksAssigneeFilterOptions(visibleContent.assigneeOptions, unassignedAssigneeLabel)
     }
     SlockBackHandler(
         enabled = createDialogOpen || statusMenuTask != null || presentationState.openFilterId != null
@@ -610,9 +569,7 @@ private fun SharedTasksLoadedBodyContent(
                 SharedTasksToolbar(
                     channelOptions = visibleContent.channelOptions,
                     selectedChannels = visibleContent.selectedChannelNames,
-                    creatorOptions = visibleContent.creatorOptions,
                     selectedCreatorIds = visibleContent.selectedCreatorIds,
-                    assigneeOptions = visibleContent.assigneeOptions,
                     selectedAssigneeIds = visibleContent.selectedAssigneeIds,
                     selectedMode = presentationState.selectedMode,
                     showChannelFilter = showChannelFilter,
@@ -701,7 +658,7 @@ private fun SharedTasksLoadedBodyContent(
                     TasksViewMode.List -> {
                         if (visibleContent.filteredTasks.isEmpty()) {
                             val emptyCopy =
-                                sharedTasksEmptyStateCopy(
+                                localizedSharedTasksEmptyStateCopy(
                                     hasAnyFilter = state.selectedFilter != null || visibleContent.hasAnyPresentationFilter(),
                                     isChannelMode = createTasksChannelId != null
                                 )
@@ -855,6 +812,24 @@ private fun SharedTasksLoadedBodyContent(
     }
 }
 
+internal fun tasksAssigneeFilterOptions(
+    assignees: List<MemberProfile>,
+    unassignedLabel: String
+): List<SlockFilterOption> =
+    listOf(
+        SlockFilterOption(
+            id = TasksUnassignedAssigneeFilterId,
+            label = unassignedLabel,
+            icon = SlockLucideIconName.User
+        )
+    ) + assignees.map {
+        SlockFilterOption(
+            id = it.tasksIdentityFilterId(),
+            label = it.displayName,
+            icon = SlockLucideIconName.User
+        )
+    }
+
 internal fun sharedTasksLazyItemCount(
     mode: TasksViewMode,
     filteredTasksCount: Int,
@@ -885,9 +860,7 @@ private fun defaultTasksViewMode(maxWidth: Dp): TasksViewMode =
 private fun SharedTasksToolbar(
     channelOptions: List<String>,
     selectedChannels: Set<String>,
-    creatorOptions: List<MemberProfile>,
     selectedCreatorIds: Set<String>,
-    assigneeOptions: List<MemberProfile>,
     selectedAssigneeIds: Set<String>,
     selectedMode: TasksViewMode,
     showChannelFilter: Boolean,
@@ -923,7 +896,9 @@ private fun SharedTasksToolbar(
             iconName = SlockLucideIconName.CircleUser,
             uppercase = false,
             active = openFilterId == "creator" || selectedCreatorIds.isNotEmpty(),
-            enabled = creatorOptions.isNotEmpty(),
+            // Web leaves identity filters interactive while their server directory is
+            // loading; the popover can open empty and populate without changing chips.
+            enabled = true,
             onClick = onCreatorChipClick
         )
     }
@@ -934,7 +909,9 @@ private fun SharedTasksToolbar(
             iconName = SlockLucideIconName.User,
             uppercase = false,
             active = openFilterId == "assignee" || selectedAssigneeIds.isNotEmpty(),
-            enabled = assigneeOptions.isNotEmpty(),
+            // Web always exposes the localized Unassigned sentinel, even when the
+            // currently loaded task set contains no member identities.
+            enabled = true,
             onClick = onAssigneeChipClick
         )
     }
