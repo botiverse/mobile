@@ -903,7 +903,7 @@ class SharedServerMembersStoreTest {
         )
         assertEquals(
             setOf("local"),
-            store.currentKnownMemberProfilesById(ServerId("server-1")).keys,
+            store.state.value.profileCacheByServerId["server-1"].orEmpty().keys,
         )
     }
 
