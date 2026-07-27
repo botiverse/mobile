@@ -691,16 +691,24 @@ class ThreadPayloadTest {
                 id = "m2",
                 timestampLabel = "2026-07-23T00:01:00+08:00"
             )
-        val launchContext =
-            SlockTimeContext(
-                localOffsetMinutes = 480,
-                todayEpochDay = slockEpochDayForDate(2026, 7, 22),
-                nowEpochMillis = parseSlockTimestampEpochMillisOrNull("2026-07-22T23:59:30+08:00")
+        val provider =
+            SlockTimeContextProvider(
+                SlockTimeCapabilities(localOffsetMinutes = 480, timeFormat = "24h").contextAt(
+                    parseSlockTimestampEpochMillisOrNull("2026-07-22T23:59:30+08:00")!!
+                )
             )
-        val refreshedContext =
-            launchContext.refreshedAt(
+        val renderConfig =
+            KuiklyThreadScreenPayload(localOffsetMinutes = 480).toThreadTimelineRenderConfig()
+        val launchDividerContext = renderConfig.dateDividerTimeContext(provider.todayEpochDay)
+
+        assertEquals("TODAY", threadDateDividerLabel(null, previousDayMessage, launchDividerContext))
+
+        provider.update(
+            SlockTimeCapabilities(localOffsetMinutes = 480, timeFormat = "24h").contextAt(
                 parseSlockTimestampEpochMillisOrNull("2026-07-23T00:01:05+08:00")!!
             )
+        )
+        val refreshedContext = renderConfig.dateDividerTimeContext(provider.todayEpochDay)
 
         assertEquals("YESTERDAY", threadDateDividerLabel(null, previousDayMessage, refreshedContext))
         assertEquals("TODAY", threadDateDividerLabel(previousDayMessage, currentDayMessage, refreshedContext))

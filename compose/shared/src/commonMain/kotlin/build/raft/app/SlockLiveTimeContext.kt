@@ -29,9 +29,12 @@ internal val LocalSlockTimeContextProvider = compositionLocalOf<SlockTimeContext
 internal class SlockTimeContextProvider(initial: SlockTimeContext?) {
     var current by mutableStateOf(initial)
         private set
+    var todayEpochDay by mutableStateOf(initial?.todayEpochDay)
+        private set
 
     fun update(value: SlockTimeContext?) {
         current = value
+        todayEpochDay = value?.todayEpochDay
     }
 }
 

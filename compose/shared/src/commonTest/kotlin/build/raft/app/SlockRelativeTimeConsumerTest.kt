@@ -13,9 +13,44 @@ class SlockRelativeTimeConsumerTest {
     }
 
     @Test
-    fun compactAndHeaderTimestampsShareStableReadableWidth() {
+    fun compactMetadataSlotKeepsGeometryStableWhenTimestampAppears() {
+        val beforePress =
+            threadMessageMetadataSlotLayout(
+                showAvatar = false,
+                reserveTimestampSpace = true,
+                showTimestamp = false
+            )
+        val duringPress =
+            threadMessageMetadataSlotLayout(
+                showAvatar = false,
+                reserveTimestampSpace = true,
+                showTimestamp = true
+            )
+
         assertEquals(112f, ThreadRelativeTimestampSlotWidthDp)
-        assertEquals(112f, threadMessageAvatarSlotWidthDp(showTimestamp = true))
-        assertEquals(36f, threadMessageAvatarSlotWidthDp(showTimestamp = false))
+        assertEquals(112f, beforePress.widthDp)
+        assertEquals(18f, beforePress.heightDp)
+        assertEquals(false, beforePress.timestampVisible)
+        assertEquals(beforePress.widthDp, duringPress.widthDp)
+        assertEquals(beforePress.heightDp, duringPress.heightDp)
+        assertEquals(true, duringPress.timestampVisible)
+
+        val compactAuthorSlot =
+            threadMessageMetadataSlotLayout(
+                showAvatar = true,
+                reserveTimestampSpace = true,
+                showTimestamp = false
+            )
+        assertEquals(beforePress.widthDp, compactAuthorSlot.widthDp)
+        assertEquals(40f, compactAuthorSlot.heightDp)
+
+        val normalAuthorSlot =
+            threadMessageMetadataSlotLayout(
+                showAvatar = true,
+                reserveTimestampSpace = false,
+                showTimestamp = false
+            )
+        assertEquals(36f, normalAuthorSlot.widthDp)
+        assertEquals(40f, normalAuthorSlot.heightDp)
     }
 }

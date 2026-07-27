@@ -329,8 +329,27 @@ private const val ThreadLocalizedFeedbackPlaceholder = "__RAFT_VALUE__"
 private const val ThreadAttachmentUploadConcurrencyLimit = 12
 internal const val ThreadRelativeTimestampSlotWidthDp = 112f
 
-internal fun threadMessageAvatarSlotWidthDp(showTimestamp: Boolean): Float =
-    if (showTimestamp) ThreadRelativeTimestampSlotWidthDp else 36f
+internal data class ThreadMessageMetadataSlotLayout(
+    val widthDp: Float,
+    val heightDp: Float,
+    val timestampVisible: Boolean
+)
+
+internal fun threadMessageMetadataSlotLayout(
+    showAvatar: Boolean,
+    reserveTimestampSpace: Boolean,
+    showTimestamp: Boolean
+): ThreadMessageMetadataSlotLayout =
+    ThreadMessageMetadataSlotLayout(
+        widthDp = if (reserveTimestampSpace) ThreadRelativeTimestampSlotWidthDp else 36f,
+        heightDp =
+            when {
+                showAvatar -> 40f
+                reserveTimestampSpace -> 18f
+                else -> 0f
+            },
+        timestampVisible = !showAvatar && reserveTimestampSpace && showTimestamp
+    )
 
 internal enum class ThreadPickedAttachmentComposerAction {
     None,
@@ -2045,6 +2064,12 @@ internal fun KuiklyThreadScreenPayload.toThreadTimelineRenderConfig(): ThreadTim
 
 internal fun ThreadTimelineRenderConfig.formatTimestampLabel(value: String): String =
     formatSlockTimestampLabel(value, timeContext)
+
+internal fun ThreadTimelineRenderConfig.dateDividerTimeContext(liveTodayEpochDay: Long?): SlockTimeContext =
+    timeContext.copy(
+        todayEpochDay = liveTodayEpochDay ?: timeContext.todayEpochDay,
+        nowEpochMillis = null
+    )
 
 internal fun ThreadTimelineRenderConfig.formatCompactTimestampLabel(value: String): String {
     val epochMillis =
@@ -15868,18 +15893,18 @@ private fun ThreadMessagesList(
                 val captureShareBounds =
                     (shareSelectionActive || shareSelectionCaptureActive) &&
                         message.id in selectedShareMessageIds
+                val liveTodayEpochDay = LocalSlockTimeContextProvider.current?.todayEpochDay
                 val dateDividerLabel =
                     remember(
                         previousMessage?.timestampLabel,
                         message.timestampLabel,
                         renderConfig.timeContext.localOffsetMinutes,
-                        renderConfig.timeContext.todayEpochDay,
-                        renderConfig.timeContext.nowEpochMillis
+                        liveTodayEpochDay
                     ) {
                         threadDateDividerLabel(
                             previous = previousMessage,
                             next = message,
-                            timeContext = renderConfig.timeContext
+                            timeContext = renderConfig.dateDividerTimeContext(liveTodayEpochDay)
                         )
                     }
                 Column(
@@ -17827,6 +17852,7 @@ private fun ThreadMessageCard(
     val showTimestampInHeader = !compactConsecutiveMessages || showAuthorChrome
     val showTimestampInAvatarSlot =
         compactConsecutiveMessages && !showAuthorChrome && pressed && compactTimestampLabel.isNotBlank()
+    val reserveTimestampSpace = compactConsecutiveMessages
     val hasThreadAttachments = richContentEnabled && message.attachments.isNotEmpty()
     val showSavedBadge =
         shouldShowThreadMessageSavedBadge(
@@ -17950,6 +17976,7 @@ private fun ThreadMessageCard(
                         interactionIdentity = authorGestureIdentity,
                         showAvatar = showAuthorChrome,
                         showTimestamp = showTimestampInAvatarSlot,
+                        reserveTimestampSpace = reserveTimestampSpace,
                         timestampLabel = compactTimestampLabel,
                         timestampAlignment = Alignment.TopStart,
                         timestampTextAlign = TextAlign.Start,
@@ -18254,6 +18281,7 @@ private fun ThreadMessageCard(
                         interactionIdentity = authorGestureIdentity,
                         showAvatar = showAuthorChrome,
                         showTimestamp = showTimestampInAvatarSlot,
+                        reserveTimestampSpace = reserveTimestampSpace,
                         timestampLabel = compactTimestampLabel,
                         timestampAlignment = Alignment.TopEnd,
                         timestampTextAlign = TextAlign.End,
@@ -21410,6 +21438,7 @@ private fun ThreadMessageAvatarSlot(
     interactionIdentity: String,
     showAvatar: Boolean,
     showTimestamp: Boolean,
+    reserveTimestampSpace: Boolean,
     timestampLabel: String,
     timestampAlignment: Alignment,
     timestampTextAlign: TextAlign,
@@ -21421,16 +21450,10 @@ private fun ThreadMessageAvatarSlot(
     onClick: () -> Unit,
     onLongPress: () -> Unit = {}
 ) {
-    val slotHeight =
-        when {
-            showAvatar -> 40.dp
-            showTimestamp -> 18.dp
-            else -> 0.dp
-        }
-    val slotWidth = threadMessageAvatarSlotWidthDp(showTimestamp).dp
+    val slotLayout = threadMessageMetadataSlotLayout(showAvatar, reserveTimestampSpace, showTimestamp)
     Box(
-        modifier = Modifier.width(slotWidth).height(slotHeight),
-        contentAlignment = Alignment.TopCenter
+        modifier = Modifier.width(slotLayout.widthDp.dp).height(slotLayout.heightDp.dp),
+        contentAlignment = timestampAlignment
     ) {
         when {
             showAvatar ->
@@ -21448,7 +21471,7 @@ private fun ThreadMessageAvatarSlot(
                         onLongPress = onLongPress
                     )
                 }
-            showTimestamp ->
+            slotLayout.timestampVisible ->
                 Text(
                     text = slockRelativeTimestampLabel(timestampLabel),
                     style =

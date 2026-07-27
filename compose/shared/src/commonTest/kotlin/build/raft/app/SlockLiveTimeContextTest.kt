@@ -25,6 +25,7 @@ class SlockLiveTimeContextTest {
         provider.update(SlockTimeCapabilities(0, "24h").contextAt(second))
 
         assertEquals(second, provider.current?.nowEpochMillis)
+        assertEquals(provider.current?.todayEpochDay, provider.todayEpochDay)
     }
 
     @Test
