@@ -1072,6 +1072,15 @@
     <string name="auth_label_name">Name</string>
     <string name="auth_password_min_length">Min 8 characters</string>
     <string name="auth_password_pattern">Letters, numbers, hyphens, underscores</string>
+    <string name="auth_validation_invalid_email">Enter a valid email address.</string>
+    <string name="auth_validation_password_required">Enter your password.</string>
+    <string name="auth_validation_password_min_length">Password must be at least %1$s characters.</string>
+    <string name="auth_validation_username_min_length">Username must be at least %1$s characters.</string>
+    <string name="auth_validation_username_max_length">Username must be at most %1$s characters.</string>
+    <string name="auth_validation_username_format">Username must start with a letter and can only contain letters, numbers, hyphens, and underscores.</string>
+    <string name="auth_validation_username_reserved">This username is reserved. Choose another name.</string>
+    <string name="auth_validation_display_name_required">Enter a display name.</string>
+    <string name="auth_validation_display_name_max_length">Display name must be at most %1$s characters.</string>
     <string name="auth_title_sign_in">Sign In</string>
     <string name="auth_action_sign_in">Sign In</string>
     <string name="auth_state_signing_in">Signing in…</string>
@@ -1106,8 +1115,8 @@
     <string name="auth_hint_legal_acceptance">Review and accept Raft\'s Terms of Service and Privacy Policy to create this account.</string>
     <string name="auth_state_continuing">Continuing…</string>
     <string name="auth_action_continue">Continue</string>
-    <string name="auth_legal_notice_prefix">By continuing, you agree to the</string>
-    <string name="auth_legal_notice_connector"> and </string>
+    <string name="auth_legal_notice_prefix">By continuing, you agree to the&#160;</string>
+    <string name="auth_legal_notice_connector">&#160;and&#160;</string>
     <string name="auth_legal_notice_suffix">.</string>
     <string name="auth_terms_agreement_prefix">I agree to the </string>
     <string name="auth_terms_agreement_connector"> and</string>

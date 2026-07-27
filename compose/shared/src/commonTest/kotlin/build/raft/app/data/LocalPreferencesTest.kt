@@ -7,14 +7,14 @@ import kotlin.test.assertTrue
 
 class LocalPreferencesTest {
     @Test
-    fun localeDefaultsToEnglishWhenNoPreferenceExists() = runBlocking {
+    fun localeDefaultsToSystemWhenNoPreferenceExists() = runBlocking {
         val repository = PersistentLocaleRepository(
             KeyValueLocalePreferenceStore(InMemorySlockKeyValueStore())
         )
 
         val snapshot = repository.getLocale()
 
-        assertEquals(AppLocale.English, snapshot.current)
+        assertEquals(AppLocale.System, snapshot.current)
         assertEquals(
             listOf(
                 AppLocale.System,
@@ -47,6 +47,25 @@ class LocalPreferencesTest {
 
         assertEquals(AppLocale.System, repository.getLocale().current)
         assertEquals("system", store.getString("locale:app_locale"))
+    }
+
+    @Test
+    fun localeRestoresEveryExplicitSelectionWithoutTreatingEnglishAsMissing() = runBlocking {
+        val expectedLocales =
+            listOf(
+                AppLocale.System,
+                AppLocale.English,
+                AppLocale.SimplifiedChinese,
+                AppLocale.Japanese
+            )
+
+        expectedLocales.forEach { expected ->
+            val store = InMemorySlockKeyValueStore()
+            val preferences = KeyValueLocalePreferenceStore(store)
+            preferences.saveLocale(expected)
+
+            assertEquals(expected, preferences.readLocaleSync())
+        }
     }
 
     @Test

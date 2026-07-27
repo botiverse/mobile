@@ -60,6 +60,11 @@ import com.tencent.kuikly.compose.ui.input.key.KeyEventType
 import com.tencent.kuikly.compose.ui.input.key.onPreviewKeyEvent
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
+import com.tencent.kuikly.compose.ui.text.buildAnnotatedString
+import com.tencent.kuikly.compose.ui.text.LinkAnnotation
+import com.tencent.kuikly.compose.ui.text.LinkInteractionListener
+import com.tencent.kuikly.compose.ui.text.TextLinkStyles
+import com.tencent.kuikly.compose.ui.text.withLink
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
 import com.tencent.kuikly.compose.ui.text.style.TextDecoration
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
@@ -93,6 +98,7 @@ private const val AUTH_LEGAL_CODE_KEY = "slockAuthLegalCode"
 private const val AUTH_LEGAL_CODE_VERIFIER_KEY = "slockAuthLegalCodeVerifier"
 private const val AUTH_VISUAL_FIXTURE_KEY = "visualFixture"
 private const val AUTH_LOGIN_VISUAL_FIXTURE_SIGNING = "signing"
+private const val AUTH_LOGIN_VISUAL_FIXTURE_INVALID = "invalid"
 // Mirrors the react screens.auth.login.signing fill interactions
 // (packages/visual-testing/shared/sharedCases.json): same email and the same
 // 21-char password so both sides mask the same number of dots.
@@ -133,6 +139,40 @@ private fun AuthErrorPresentation?.localizedMessage(): String? =
         is AuthErrorPresentation.Static -> message.localized()
         null -> null
     }
+
+@Composable
+internal fun AuthValidationError?.localizedMessage(): String? {
+    val description =
+        when (this) {
+            AuthValidationError.InvalidEmailFormat -> MR.strings.auth_validation_invalid_email.desc()
+            AuthValidationError.PasswordRequired -> MR.strings.auth_validation_password_required.desc()
+            AuthValidationError.PasswordTooShort ->
+                StringDesc.ResourceFormatted(
+                    MR.strings.auth_validation_password_min_length,
+                    listOf(AUTH_PASSWORD_MIN_LENGTH.toString())
+                )
+            AuthValidationError.UsernameTooShort ->
+                StringDesc.ResourceFormatted(
+                    MR.strings.auth_validation_username_min_length,
+                    listOf(AUTH_IDENTITY_NAME_MIN_LENGTH.toString())
+                )
+            AuthValidationError.UsernameTooLong ->
+                StringDesc.ResourceFormatted(
+                    MR.strings.auth_validation_username_max_length,
+                    listOf(AUTH_IDENTITY_NAME_MAX_LENGTH.toString())
+                )
+            AuthValidationError.UsernameInvalidFormat -> MR.strings.auth_validation_username_format.desc()
+            AuthValidationError.UsernameReserved -> MR.strings.auth_validation_username_reserved.desc()
+            AuthValidationError.DisplayNameRequired -> MR.strings.auth_validation_display_name_required.desc()
+            AuthValidationError.DisplayNameTooLong ->
+                StringDesc.ResourceFormatted(
+                    MR.strings.auth_validation_display_name_max_length,
+                    listOf(AUTH_IDENTITY_DISPLAY_NAME_MAX_LENGTH.toString())
+                )
+            null -> null
+        }
+    return description?.localized()
+}
 
 @Page(LOGIN_PAGE, supportInLocal = true)
 internal class ComposeLoginPage : build.raft.app.base.BasePager() {
@@ -185,6 +225,7 @@ internal class ComposeAuthAboutPage : build.raft.app.base.BasePager() {
 @Composable
 private fun LoginScreen() {
     val pager = LocalActivity.current.getPager() as Pager
+    rememberKmmResourceLocaleSeed(pager)
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
     val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
     val paramsSignature = pager.pageData.params.toString()
@@ -326,8 +367,8 @@ private fun LoginScreen() {
         password = state.password,
         submitting = state.submitting,
         errorMessage = errorPresentation.localizedMessage() ?: state.errorMessage ?: routeMessage,
-        emailError = state.emailFormatError,
-        passwordError = state.passwordError,
+        emailError = state.emailFormatError.localizedMessage(),
+        passwordError = state.passwordError.localizedMessage(),
         socialProviders = socialProviders,
         socialSubmittingProvider = socialSubmittingProvider,
         onEmailChange = {
@@ -395,6 +436,7 @@ private data class PendingMobileOAuthLegalAcceptance(
 @Composable
 private fun AuthLegalAcceptanceScreen() {
     val pager = LocalActivity.current.getPager() as Pager
+    rememberKmmResourceLocaleSeed(pager)
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
     val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
     rememberAuthRuntimeCapabilities(
@@ -525,6 +567,7 @@ private fun AuthLegalAcceptanceScreen() {
 @Composable
 private fun RegisterScreen() {
     val pager = LocalActivity.current.getPager() as Pager
+    rememberKmmResourceLocaleSeed(pager)
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
     val reducer = remember { CreateAccountFormReducer() }
     var state by remember { mutableStateOf(CreateAccountFormState()) }
@@ -587,8 +630,8 @@ private fun RegisterScreen() {
         password = state.password,
         submitting = state.submitting,
         errorMessage = errorPresentation.localizedMessage() ?: state.errorMessage,
-        emailError = state.emailFormatError,
-        passwordError = state.passwordError,
+        emailError = state.emailFormatError.localizedMessage(),
+        passwordError = state.passwordError.localizedMessage(),
         onEmailChange = {
             errorPresentation = null
             state = reducer.reduce(state, CreateAccountFormEvent.EmailChanged(it)).state
@@ -622,6 +665,7 @@ private fun RegisterScreen() {
 @Composable
 private fun AuthProfileSetupScreen() {
     val pager = LocalActivity.current.getPager() as Pager
+    rememberKmmResourceLocaleSeed(pager)
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
     val reducer = remember { IdentitySetupFormReducer() }
     var state by remember { mutableStateOf(IdentitySetupFormState()) }
@@ -683,8 +727,8 @@ private fun AuthProfileSetupScreen() {
         displayName = state.displayName,
         submitting = state.submitting,
         errorMessage = errorPresentation.localizedMessage() ?: state.errorMessage,
-        handleError = state.handleError,
-        displayNameError = state.displayNameError,
+        handleError = state.handleError.localizedMessage(),
+        displayNameError = state.displayNameError.localizedMessage(),
         onHandleChange = {
             errorPresentation = null
             state = reducer.reduce(state, IdentitySetupFormEvent.HandleChanged(it)).state
@@ -716,6 +760,7 @@ private fun AuthProfileSetupScreen() {
 @Composable
 private fun ForgotPasswordScreen() {
     val pager = LocalActivity.current.getPager() as Pager
+    rememberKmmResourceLocaleSeed(pager)
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
     val reducer = remember { ForgotPasswordFormReducer() }
     var state by remember { mutableStateOf(ForgotPasswordFormState()) }
@@ -757,7 +802,7 @@ private fun ForgotPasswordScreen() {
         sending = state.submitting,
         sent = state.sent,
         errorMessage = errorPresentation.localizedMessage() ?: state.errorMessage,
-        emailError = state.emailFormatError,
+        emailError = state.emailFormatError.localizedMessage(),
         onEmailChange = {
             errorPresentation = null
             state = reducer.reduce(state, ForgotPasswordFormEvent.EmailChanged(it)).state
@@ -792,6 +837,7 @@ private enum class AuthAboutDestination {
 @Composable
 private fun AuthAboutScreen(initialDestination: AuthAboutDestination = AuthAboutDestination.About) {
     val pager = LocalActivity.current.getPager() as Pager
+    rememberKmmResourceLocaleSeed(pager)
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
     val linkNavigator =
         rememberSlockLinkNavigator(
@@ -1127,11 +1173,30 @@ internal fun AuthLoginInputsVisualScreen() {
     // empty/filled/invalid captures.
     val signing =
         pager.pageData.params.optString(AUTH_VISUAL_FIXTURE_KEY) == AUTH_LOGIN_VISUAL_FIXTURE_SIGNING
+    val invalid =
+        pager.pageData.params.optString(AUTH_VISUAL_FIXTURE_KEY) == AUTH_LOGIN_VISUAL_FIXTURE_INVALID
+    val email =
+        when {
+            invalid -> "invalid-email"
+            signing -> AUTH_LOGIN_VISUAL_SIGNING_EMAIL
+            else -> "artin@slock.test"
+        }
+    val emailError =
+        if (invalid) {
+            LoginFormReducer()
+                .reduce(LoginFormState(email = email, password = "password"), LoginFormEvent.Submit)
+                .state
+                .emailFormatError
+                .localizedMessage()
+        } else {
+            null
+        }
     LoginContent(
-        email = if (signing) AUTH_LOGIN_VISUAL_SIGNING_EMAIL else "artin@slock.test",
+        email = email,
         password = if (signing) AUTH_LOGIN_VISUAL_SIGNING_PASSWORD else "password",
         submitting = signing,
         errorMessage = null,
+        emailError = emailError,
         socialProviders = if (signing) setOf(AuthProvider.Google, AuthProvider.GitHub) else emptySet(),
         onEmailChange = {},
         onPasswordChange = {},
@@ -1699,54 +1764,43 @@ private fun AuthLegalNotice(
     onOpenTerms: () -> Unit,
     onOpenPrivacy: () -> Unit
 ) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(2.dp)
-    ) {
-        Text(
-            stringResource(MR.strings.auth_legal_notice_prefix),
-            style = AuthLegalNoticeTextStyle,
-            color = AuthLegalNoticeTextColor,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth().authPageStaticTextFocus()
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                stringResource(MR.strings.auth_link_terms_of_service),
-                style = AuthLegalNoticeLinkStyle,
-                color = SlockColor.TextBlack,
-                modifier = Modifier.clickable { onOpenTerms() }
-            )
-            // Kuikly Text trims leading/trailing whitespace, so the " and "
-            // resource rendered jammed ("Serviceand Privacy", #962). Explicit
-            // spacers restore react's word gaps, locale-safe.
-            Spacer(Modifier.width(4.dp))
-            Text(
-                stringResource(MR.strings.auth_legal_notice_connector),
-                style = AuthLegalNoticeTextStyle,
-                color = AuthLegalNoticeTextColor,
-                modifier = Modifier.authPageStaticTextFocus()
-            )
-            Spacer(Modifier.width(4.dp))
-            Text(
-                stringResource(MR.strings.auth_link_privacy_policy),
-                style = AuthLegalNoticeLinkStyle,
-                color = SlockColor.TextBlack,
-                modifier = Modifier.clickable { onOpenPrivacy() }
-            )
-            Text(
-                stringResource(MR.strings.auth_legal_notice_suffix),
-                style = AuthLegalNoticeTextStyle,
-                color = AuthLegalNoticeTextColor,
-                modifier = Modifier.authPageStaticTextFocus()
-            )
+    val linkStyles = TextLinkStyles(style = AuthLegalNoticeLinkStyle.toSpanStyle())
+    val prefix = stringResource(MR.strings.auth_legal_notice_prefix)
+    val terms = stringResource(MR.strings.auth_link_terms_of_service)
+    val connector = stringResource(MR.strings.auth_legal_notice_connector)
+    val privacy = stringResource(MR.strings.auth_link_privacy_policy)
+    val suffix = stringResource(MR.strings.auth_legal_notice_suffix)
+    val text =
+        buildAnnotatedString {
+            append(prefix)
+            withLink(
+                LinkAnnotation.Clickable(
+                    tag = "auth-terms",
+                    styles = linkStyles,
+                    linkInteractionListener = LinkInteractionListener { onOpenTerms() }
+                )
+            ) {
+                append(terms)
+            }
+            append(connector)
+            withLink(
+                LinkAnnotation.Clickable(
+                    tag = "auth-privacy",
+                    styles = linkStyles,
+                    linkInteractionListener = LinkInteractionListener { onOpenPrivacy() }
+                )
+            ) {
+                append(privacy)
+            }
+            append(suffix)
         }
-    }
+    Text(
+        text = text,
+        style = AuthLegalNoticeTextStyle,
+        color = AuthLegalNoticeTextColor,
+        textAlign = TextAlign.Center,
+        modifier = Modifier.fillMaxWidth().authPageStaticTextFocus()
+    )
 }
 
 @Composable
