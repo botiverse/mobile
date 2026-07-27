@@ -6,6 +6,7 @@ import build.raft.app.model.ForwardMessageBundle
 import build.raft.app.model.ForwardMessageItem
 import build.raft.app.model.MessageId
 import build.raft.app.model.ServerId
+import build.raft.app.model.SlockTimeFormat24Hour
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
@@ -30,6 +31,22 @@ class ThreadForwardBundleDetailStoreTest {
         assertEquals(ChannelId("channel-1"), route?.channelId)
         assertEquals(MessageId("message-1"), route?.messageId)
         assertNull(JSONObject().put("payload", "full-message-content").toThreadForwardBundleRouteOrNull())
+    }
+
+    @Test
+    fun pageDataCarriesOnlyIdentityAndReadsHostInjectedTimeContext() {
+        val route = threadForwardBundleRoute()
+        val pageData = route.toThreadForwardBundlePageData()
+
+        assertEquals(route, pageData.toThreadForwardBundleRouteOrNull())
+        assertFalse(pageData.has("localOffsetMinutes"), "route must not carry host time context")
+        listOf("payload", "messages", "bundle", "title", "timestampLabel").forEach { forbidden ->
+            assertFalse(pageData.has(forbidden), "$forbidden must stay outside forward-bundle pageData")
+        }
+
+        val hostInjectedPageData = JSONObject().put("localOffsetMinutes", 480)
+        assertEquals(480, hostInjectedPageData.threadForwardBundleTimeContextOrNull()?.localOffsetMinutes)
+        assertEquals(SlockTimeFormat24Hour, hostInjectedPageData.threadForwardBundleTimeContextOrNull()?.timeFormat)
     }
 
     @Test
