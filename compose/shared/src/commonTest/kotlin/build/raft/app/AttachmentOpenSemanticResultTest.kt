@@ -1,8 +1,10 @@
 package build.raft.app
 
+import build.raft.app.resources.MR
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -42,6 +44,31 @@ class AttachmentOpenSemanticResultTest {
         assertTrue(ThreadAttachmentOpenUiState(status = "paused").threadAttachmentIsOpening())
         assertFalse(ThreadAttachmentOpenUiState(status = "missing").threadAttachmentIsOpening())
         assertFalse(ThreadAttachmentOpenUiState(status = "failed").threadAttachmentIsOpening())
+    }
+
+    @Test
+    fun threadFileInlineStatusUsesOpenSpecificLocalizedResource() {
+        mapOf(
+            "cancelled" to MR.strings.file_preview_download_stopped,
+            "missing" to MR.strings.file_preview_error_download_attachment,
+            "no_app" to MR.strings.file_preview_error_no_app,
+            "storage_failed" to MR.strings.file_preview_error_storage_unavailable,
+            "failed" to MR.strings.file_preview_error_open_attachment
+        ).forEach { (status, expectedResource) ->
+            assertEquals(
+                expectedResource,
+                ThreadAttachmentOpenUiState(status = status).threadAttachmentTerminalStatusResource()
+            )
+        }
+        assertNotEquals(
+            MR.strings.file_preview_download_failed,
+            ThreadAttachmentOpenUiState(status = "failed").threadAttachmentTerminalStatusResource()
+        )
+        assertNull(ThreadAttachmentOpenUiState(status = "downloading").threadAttachmentTerminalStatusResource())
+        assertNull(ThreadAttachmentOpenUiState(status = "paused").threadAttachmentTerminalStatusResource())
+        assertNull(ThreadAttachmentOpenUiState(status = "opened").threadAttachmentTerminalStatusResource())
+        assertNull(ThreadAttachmentOpenUiState(status = "unexpected").threadAttachmentTerminalStatusResource())
+        assertNull(null.threadAttachmentTerminalStatusResource())
     }
 
     @Test
