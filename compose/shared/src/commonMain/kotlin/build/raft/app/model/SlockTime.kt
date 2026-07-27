@@ -70,11 +70,15 @@ internal fun resolveSlockRelativeTimeLabel(
     if (SlockDisplayClockRegex.matches(trimmed)) {
         return SlockRelativeTimeLabel.Literal(trimmed)
     }
-    val timeContext = context ?: return SlockRelativeTimeLabel.Literal(trimmed)
-    val now = timeContext.nowEpochMillis ?: return SlockRelativeTimeLabel.Literal(trimmed)
     val timestamp =
-        parseSlockTimestampEpochMillisOrNull(trimmed, timeContext.localOffsetMinutes)
-            ?: return SlockRelativeTimeLabel.Unknown
+        parseSlockTimestampEpochMillisOrNull(trimmed, context?.localOffsetMinutes ?: 0)
+            ?: return if (context?.nowEpochMillis != null) {
+                SlockRelativeTimeLabel.Unknown
+            } else {
+                SlockRelativeTimeLabel.Literal(trimmed)
+            }
+    val timeContext = context ?: return SlockRelativeTimeLabel.Unknown
+    val now = timeContext.nowEpochMillis ?: return SlockRelativeTimeLabel.Unknown
     val diffMillis = timestamp.toDouble() - now.toDouble()
     val absoluteMillis = kotlin.math.abs(diffMillis)
     val unit =

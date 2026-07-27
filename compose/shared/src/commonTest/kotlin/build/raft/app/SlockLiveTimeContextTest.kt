@@ -17,16 +17,36 @@ import kotlinx.coroutines.withTimeout
 
 class SlockLiveTimeContextTest {
     @Test
+    fun liveCapabilitiesDiscardHostSnapshotTime() {
+        val staleHostNow = epochMillis("2026-07-26T08:00:00Z")
+        val liveNow = epochMillis("2026-07-27T12:00:00Z")
+        val capabilities =
+            SlockTimeContext(
+                localOffsetMinutes = 480,
+                todayEpochDay = slockEpochDayForDate(2026, 7, 26),
+                nowEpochMillis = staleHostNow,
+                timeFormat = "12h"
+            ).toSlockTimeCapabilities()
+
+        val context = capabilities.contextAt(liveNow)
+
+        assertEquals(liveNow, context.nowEpochMillis)
+        assertEquals(slockEpochDayForDate(2026, 7, 27), context.todayEpochDay)
+        assertEquals(480, context.localOffsetMinutes)
+        assertEquals("12h", context.timeFormat)
+    }
+
+    @Test
     fun sharedMinuteTickerAdvancesRelativeLabelWithoutConversationReload() {
         val sentAt = epochMillis("2026-07-27T12:00:00Z")
         var now = sentAt
         val scheduled = mutableListOf<() -> Unit>()
         val labels = mutableListOf<SlockRelativeTimeLabel>()
-        val seed = SlockTimeContext(localOffsetMinutes = 0, nowEpochMillis = sentAt)
+        val capabilities = SlockTimeCapabilities(localOffsetMinutes = 0, timeFormat = "24h")
         val controller =
             SlockTimeContextRefreshController(
-                seed = seed,
-                nowEpochMillis = { now },
+                capabilities = capabilities,
+                clock = SlockTimeClock { now },
                 scheduleTimeout = { _, callback ->
                     scheduled += callback
                     SlockTimeoutHandle {}
@@ -57,12 +77,7 @@ class SlockLiveTimeContextTest {
     fun nativeTimerControllerCrossesMidnightAndResumeRestartRecalculatesDelay() {
         val beforeMidnight = epochMillis("2026-07-22T23:59:30+08:00")
         val afterMidnight = epochMillis("2026-07-23T00:00:05+08:00")
-        val seed =
-            SlockTimeContext(
-                localOffsetMinutes = 480,
-                todayEpochDay = slockEpochDayForDate(2026, 7, 22),
-                nowEpochMillis = beforeMidnight
-            )
+        val capabilities = SlockTimeCapabilities(localOffsetMinutes = 480, timeFormat = "24h")
         val activeRefreshes = mutableListOf<SlockTimeContext?>()
         val activeDelays = mutableListOf<Long>()
         var activeClockIndex = 0
@@ -72,8 +87,8 @@ class SlockLiveTimeContextTest {
         val activeDeliveredGenerations = mutableListOf<Long>()
         val activeController =
             SlockTimeContextRefreshController(
-                seed = seed,
-                nowEpochMillis = { listOf(beforeMidnight, afterMidnight)[activeClockIndex] },
+                capabilities = capabilities,
+                clock = SlockTimeClock { listOf(beforeMidnight, afterMidnight)[activeClockIndex] },
                 scheduleTimeout = { delayMillis, callback ->
                     activeDelays += delayMillis.toLong()
                     activeCallback = callback
@@ -114,8 +129,8 @@ class SlockLiveTimeContextTest {
         val resumedArmedGenerations = mutableListOf<Long>()
         val resumedController =
             SlockTimeContextRefreshController(
-                seed = seed,
-                nowEpochMillis = { afterMidnight },
+                capabilities = capabilities,
+                clock = SlockTimeClock { afterMidnight },
                 scheduleTimeout = { delayMillis, _ ->
                     resumedDelays += delayMillis.toLong()
                     SlockTimeoutHandle {}

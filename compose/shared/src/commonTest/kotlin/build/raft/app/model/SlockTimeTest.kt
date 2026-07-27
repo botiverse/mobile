@@ -44,7 +44,11 @@ class SlockTimeTest {
         )
         assertEquals(SlockRelativeTimeLabel.Unknown, resolveSlockRelativeTimeLabel("not-a-date", context))
         assertEquals(SlockRelativeTimeLabel.Literal("10:38"), resolveSlockRelativeTimeLabel("10:38", context))
-        assertIs<SlockRelativeTimeLabel.Literal>(resolveSlockRelativeTimeLabel("2026-07-27T12:00:00Z", null))
+        assertEquals(
+            SlockRelativeTimeLabel.Unknown,
+            resolveSlockRelativeTimeLabel("2026-07-27T12:00:00Z", null)
+        )
+        assertIs<SlockRelativeTimeLabel.Literal>(resolveSlockRelativeTimeLabel("Active", null))
     }
 
     @Test

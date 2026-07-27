@@ -971,11 +971,15 @@ private fun rememberHomeSecondaryRouteEnvironment(
         activitySenderAvatarsEnabled = chatLayout.activitySenderAvatarsEnabled
         threadRowAffordances = chatLayout.threadRowAffordances
     }
-    val seedTimeContext =
+    val timeCapabilities =
         remember(pager.pageData.params.toString()) {
-            pager.pageData.params.threadTimeContext()
+            pager.pageData.params.threadTimeCapabilities()
         }
-    val timeContext = rememberLiveSlockTimeContext(seedTimeContext, routeVisibleTick)
+    val timeContext =
+        rememberLiveSlockTimeContext(
+            capabilities = timeCapabilities,
+            pageVisibleTick = routeVisibleTick
+        )
     val shellScope = rememberSlockAppShellScope()
     return remember(
         pager,
@@ -3002,10 +3006,14 @@ internal fun SlockAppShellContent(
     val diagnosticsDraftReadyToast = stringResource(MR.strings.settings_diagnostics_feedback_draft_ready)
     val diagnosticsUploadFailedPrefix = stringResource(MR.strings.settings_diagnostics_feedback_upload_failed_prefix)
     val diagnosticsComposerSeed = stringResource(MR.strings.settings_diagnostics_feedback_composer_seed)
-    val hostThreadTimeContextSeed = remember(pager.pageData.params.toString()) {
-        pager.pageData.params.threadTimeContext()
+    val hostThreadTimeCapabilities = remember(pager.pageData.params.toString()) {
+        pager.pageData.params.threadTimeCapabilities()
     }
-    val hostThreadTimeContext = rememberLiveSlockTimeContext(hostThreadTimeContextSeed, pageVisibleTick)
+    val hostThreadTimeContext =
+        rememberLiveSlockTimeContext(
+            capabilities = hostThreadTimeCapabilities,
+            pageVisibleTick = pageVisibleTick
+        )
     val currentHostThreadTimeContext = rememberUpdatedState(hostThreadTimeContext)
     val notificationWindowNavigationIntent =
         remember(pager.pageData.params.toString()) {
@@ -19645,11 +19653,12 @@ private fun String.formatSettingsBillingUsageValue(timeContext: SlockTimeContext
 private fun AppShellTimeContext?.withTimeFormat(timeFormat: String?): AppShellTimeContext? =
     this?.withTimeFormat(timeFormat)
 
-private fun com.tencent.kuikly.core.nvi.serialization.json.JSONObject.threadTimeContext(): AppShellThreadTimeContext? {
+private fun com.tencent.kuikly.core.nvi.serialization.json.JSONObject.threadTimeCapabilities(): SlockTimeCapabilities? {
     val offset = optString("localOffsetMinutes").toIntOrNull() ?: return null
-    val today = optString("todayEpochDay").toLongOrNull()
-    val now = optString("nowEpochMillis").toLongOrNull()
-    return AppShellTimeContext(offset, today, now).withTimeFormat(optString("timeFormat").takeIf { it.isNotBlank() })
+    return SlockTimeContext(
+        localOffsetMinutes = offset,
+        timeFormat = optString("timeFormat").takeIf { it.isNotBlank() } ?: SlockTimeFormat24Hour
+    ).toSlockTimeCapabilities()
 }
 
 internal data class AppShellNotificationThreadLaunchRequest(

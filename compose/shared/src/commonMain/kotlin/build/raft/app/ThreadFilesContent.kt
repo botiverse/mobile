@@ -99,6 +99,8 @@ internal data class KuiklyThreadFileItem(
     val thumbnailUrl: String? = null
 )
 
+internal fun threadFileCreatedAtValue(value: String?): String = value.orEmpty()
+
 private fun threadFilesVisualPayload(): KuiklyThreadFilesPayload =
     KuiklyThreadFilesPayload(
         instanceId = "visual-thread-files-list",
@@ -463,7 +465,7 @@ private fun ThreadFileMetaLine(item: KuiklyThreadFileItem) {
                     color = SlockColor.TextMutedGrayArgb
                 )
                 Text(
-                    text = label,
+                    text = slockRelativeTimestampLabel(label),
                     style = SlockType.Input.copy(
                         fontSize = 11.sp,
                         lineHeight = 14.sp,
