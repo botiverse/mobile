@@ -13,6 +13,7 @@ import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.data.DataResult
 import build.raft.app.data.KuiklyAppUpdateEvents
 import build.raft.app.data.SharedSettingsUpdateCheckSnapshot
+import build.raft.app.data.SharedSettingsUpdateTransactionState
 import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.data.SharedPreferenceStore
@@ -51,7 +52,7 @@ const val APP_UPDATE_PAGE = "compose_app_update"
 internal class ComposeAppUpdatePage : build.raft.app.base.BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { AppUpdateScreen() }
+        setContent { AppUpdateScreen(slockPageVisibleResumeTick) }
     }
 }
 
@@ -67,7 +68,7 @@ internal fun Pager.openAppUpdatePage(storeScope: SlockShellStoreScope) {
 }
 
 @Composable
-private fun AppUpdateScreen() {
+private fun AppUpdateScreen(pageVisibleResumeTick: Int) {
     RememberKmmResourceLocaleSeedFromLocalActivity()
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
@@ -75,6 +76,7 @@ private fun AppUpdateScreen() {
     val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
     val appUpdateEvents = remember(sharedStores.eventBus) { KuiklyAppUpdateEvents(sharedStores.eventBus) }
     val scope = rememberCoroutineScope()
+    val refreshGate = remember { AppUpdateRefreshGate() }
     var snapshot by remember { mutableStateOf<SharedSettingsUpdateCheckSnapshot?>(null) }
     var loading by remember { mutableStateOf(true) }
     var actionRunning by remember { mutableStateOf(false) }
@@ -82,21 +84,33 @@ private fun AppUpdateScreen() {
 
     fun refresh() {
         scope.launch {
-            loading = snapshot == null
-            when (val result = environment.settingsCapabilities.checkHandsUpdateStatus()) {
-                is DataResult.Content -> {
-                    snapshot = result.data
-                    errorCode = result.data.errorCode.takeIf { it.isNotBlank() }
-                }
-                is DataResult.Empty -> errorCode = "app_update_unavailable"
-                is DataResult.Error -> errorCode = result.error.code
-                is DataResult.NoPermission -> errorCode = result.blocker.code
+            if (!refreshGate.tryStart()) return@launch
+            try {
+                loading = true
+                do {
+                    when (val result = environment.settingsCapabilities.checkHandsUpdateStatus()) {
+                        is DataResult.Content -> {
+                            snapshot = result.data.withAppUpdateDisplayFallback(snapshot)
+                            errorCode = result.data.errorCode.takeIf { it.isNotBlank() }
+                        }
+                        is DataResult.Empty -> errorCode = "app_update_unavailable"
+                        is DataResult.Error -> errorCode = result.error.code
+                        is DataResult.NoPermission -> errorCode = result.blocker.code
+                    }
+                } while (refreshGate.completeAndShouldContinue())
+            } finally {
+                loading = false
+                refreshGate.reset()
             }
-            loading = false
         }
     }
 
     LaunchedEffect(Unit) { refresh() }
+    LaunchedEffect(pageVisibleResumeTick) {
+        if (appUpdatePageShouldRefreshOnResume(pageVisibleResumeTick)) {
+            refresh()
+        }
+    }
     DisposableEffect(appUpdateEvents) {
         val listener = appUpdateEvents.addStatusListener { refresh() }
         onDispose { appUpdateEvents.removeStatusListener(listener) }
@@ -129,13 +143,19 @@ private fun AppUpdateScreen() {
                 scope.launch {
                     actionRunning = true
                     errorCode = null
-                    when (val result = environment.settingsCapabilities.installHandsUpdate()) {
-                        is DataResult.Content -> snapshot = result.data
-                        is DataResult.Empty -> errorCode = "app_update_unavailable"
-                        is DataResult.Error -> errorCode = result.error.code
-                        is DataResult.NoPermission -> errorCode = result.blocker.code
+                    try {
+                        when (val result = environment.settingsCapabilities.installHandsUpdate()) {
+                            is DataResult.Content -> {
+                                snapshot = result.data.withAppUpdateDisplayFallback(snapshot)
+                                errorCode = result.data.errorCode.takeIf { it.isNotBlank() }
+                            }
+                            is DataResult.Empty -> errorCode = "app_update_unavailable"
+                            is DataResult.Error -> errorCode = result.error.code
+                            is DataResult.NoPermission -> errorCode = result.blocker.code
+                        }
+                    } finally {
+                        actionRunning = false
                     }
-                    actionRunning = false
                 }
             }
         )
@@ -153,8 +173,65 @@ private fun AppUpdateScreen() {
     }
 }
 
+internal fun appUpdatePageShouldRefreshOnResume(pageVisibleResumeTick: Int): Boolean =
+    pageVisibleResumeTick > 0
+
+internal class AppUpdateRefreshGate {
+    private var inFlight = false
+    private var refreshPending = false
+
+    fun tryStart(): Boolean {
+        if (inFlight) {
+            refreshPending = true
+            return false
+        }
+        inFlight = true
+        return true
+    }
+
+    fun completeAndShouldContinue(): Boolean {
+        if (refreshPending) {
+            refreshPending = false
+            return true
+        }
+        inFlight = false
+        return false
+    }
+
+    fun reset() {
+        inFlight = false
+        refreshPending = false
+    }
+}
+
 internal fun appUpdateInlineChangelog(snapshot: SharedSettingsUpdateCheckSnapshot?): String? =
     snapshot?.latestChangelog?.takeIf(String::isNotBlank)
+
+internal fun SharedSettingsUpdateCheckSnapshot.withAppUpdateDisplayFallback(
+    previous: SharedSettingsUpdateCheckSnapshot?
+): SharedSettingsUpdateCheckSnapshot {
+    if (previous == null) return this
+    val responseTargetVersionCode =
+        latestVersionCode.takeIf { it > 0L }
+            ?: transactionTargetVersionCode.takeIf { it > 0L }
+    val previousTargetVersionCode =
+        previous.latestVersionCode.takeIf { it > 0L }
+            ?: previous.transactionTargetVersionCode.takeIf { it > 0L }
+    val resolvedVersionCode = responseTargetVersionCode ?: previous.latestVersionCode
+    if (
+        responseTargetVersionCode != null &&
+        previousTargetVersionCode != null &&
+        responseTargetVersionCode != previousTargetVersionCode
+    ) {
+        return this
+    }
+    return copy(
+        latestVersionCode = resolvedVersionCode,
+        latestVersionLabel = latestVersionLabel.ifBlank { previous.latestVersionLabel },
+        latestChangelog = latestChangelog.ifBlank { previous.latestChangelog },
+        downloadUrl = downloadUrl.ifBlank { previous.downloadUrl }
+    )
+}
 
 @Composable
 internal fun AppUpdateSummary(
@@ -174,10 +251,13 @@ internal fun AppUpdateSummary(
             actionRunning = actionRunning,
             retryLabel = stringResource(MR.strings.app_update_retry),
             workingLabel = stringResource(MR.strings.app_update_working),
+            checkingLabel = stringResource(MR.strings.app_update_checking),
+            preparingLabel = stringResource(MR.strings.app_update_preparing),
             downloadLabel = stringResource(MR.strings.app_update_download),
             downloadingLabel = stringResource(MR.strings.app_update_downloading),
             installingLabel = stringResource(MR.strings.app_update_installing),
-            installLabel = stringResource(MR.strings.app_update_install)
+            installLabel = stringResource(MR.strings.app_update_install),
+            installedLabel = stringResource(MR.strings.app_update_installed)
         )
     Column(
         modifier =
@@ -208,7 +288,7 @@ internal fun AppUpdateSummary(
                 )
                 Text(
                     text =
-                        if (errorCode != null) {
+                        if (errorCode != null && snapshot == null) {
                             stringResource(MR.strings.app_update_unavailable)
                         } else {
                             snapshot?.detail.orEmpty()
@@ -223,13 +303,13 @@ internal fun AppUpdateSummary(
                 label = actionLabel,
                 onClick = if (errorCode != null && snapshot == null) onRetry else onAction,
                 enabled = appUpdatePrimaryActionEnabled(snapshot, loading, actionRunning, errorCode),
-                leadingIcon = if (errorCode != null && snapshot == null) SlockLucideIconName.RefreshCw else SlockLucideIconName.Download,
+                leadingIcon = appUpdatePrimaryActionIcon(snapshot, errorCode),
                 minWidth = 96.dp,
                 backgroundColor = SlockColor.AccentPink
             )
         }
         Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
-        if (snapshot?.latestVersionCode?.let { it > 0L } == true) {
+        if (appUpdateCanSkipVersion(snapshot)) {
             Text(
                 text = stringResource(MR.strings.app_update_skip_version),
                 modifier = Modifier.align(Alignment.End).clickable(onClick = onSkipVersion).padding(vertical = 4.dp),
@@ -345,15 +425,27 @@ internal fun appUpdatePrimaryActionLabel(
     actionRunning: Boolean,
     retryLabel: String = "Retry",
     workingLabel: String = "Working...",
+    checkingLabel: String = "Checking",
+    preparingLabel: String = "Preparing",
     downloadLabel: String = "Download",
     downloadingLabel: String = "Downloading",
     installingLabel: String = "Installing",
-    installLabel: String = "Install"
+    installLabel: String = "Install",
+    installedLabel: String = "Installed"
 ): String =
     when {
         actionRunning && snapshot.isDownloadAction() -> downloadingLabel
         actionRunning -> workingLabel
         snapshot == null -> retryLabel
+        snapshot.transactionState == SharedSettingsUpdateTransactionState.Idle -> downloadLabel
+        snapshot.transactionState == SharedSettingsUpdateTransactionState.Checking -> checkingLabel
+        snapshot.transactionState == SharedSettingsUpdateTransactionState.Patching -> preparingLabel
+        snapshot.transactionState == SharedSettingsUpdateTransactionState.Downloading -> downloadingLabel
+        snapshot.transactionState == SharedSettingsUpdateTransactionState.ReadyToInstall -> installLabel
+        snapshot.transactionState == SharedSettingsUpdateTransactionState.InstallerOpened -> installLabel
+        snapshot.transactionState == SharedSettingsUpdateTransactionState.Failed -> downloadLabel
+        snapshot.transactionState == SharedSettingsUpdateTransactionState.Stale -> downloadLabel
+        snapshot.transactionState == SharedSettingsUpdateTransactionState.Installed -> installedLabel
         snapshot.actionLabel.equals("download", ignoreCase = true) -> downloadLabel
         snapshot.actionLabel.equals("downloading", ignoreCase = true) -> downloadingLabel
         snapshot.actionLabel.equals("installing", ignoreCase = true) -> installingLabel
@@ -366,23 +458,81 @@ internal fun appUpdatePrimaryActionLabel(
     }
 
 private fun SharedSettingsUpdateCheckSnapshot?.isDownloadAction(): Boolean =
-    this != null &&
-        (
+    when (this?.transactionState) {
+        SharedSettingsUpdateTransactionState.Idle,
+        SharedSettingsUpdateTransactionState.Failed,
+        SharedSettingsUpdateTransactionState.Stale -> true
+        SharedSettingsUpdateTransactionState.Unknown ->
             actionLabel.equals("download", ignoreCase = true) ||
                 (actionLabel.isBlank() && statusLabel.equals("download", ignoreCase = true))
-        )
+        else -> false
+    }
 
 internal fun appUpdatePrimaryActionEnabled(
     snapshot: SharedSettingsUpdateCheckSnapshot?,
     loading: Boolean,
     actionRunning: Boolean,
     errorCode: String?
-): Boolean =
-    when {
-        loading || actionRunning -> false
-        snapshot == null -> errorCode != null
-        !snapshot.supported || !snapshot.updateAvailable -> false
-        snapshot.statusLabel.equals("downloading", ignoreCase = true) ||
-            snapshot.statusLabel.equals("installing", ignoreCase = true) -> false
-        else -> true
+): Boolean {
+    if (loading || actionRunning) return false
+    if (snapshot == null) return errorCode != null
+    if (!snapshot.supported) return false
+    return when (snapshot.transactionState) {
+        SharedSettingsUpdateTransactionState.Idle -> snapshot.updateAvailable
+        SharedSettingsUpdateTransactionState.Failed,
+        SharedSettingsUpdateTransactionState.Stale ->
+            snapshot.transactionRetryable
+        SharedSettingsUpdateTransactionState.ReadyToInstall,
+        SharedSettingsUpdateTransactionState.InstallerOpened -> true
+        SharedSettingsUpdateTransactionState.Checking,
+        SharedSettingsUpdateTransactionState.Patching,
+        SharedSettingsUpdateTransactionState.Downloading,
+        SharedSettingsUpdateTransactionState.Installed -> false
+        SharedSettingsUpdateTransactionState.Unknown ->
+            snapshot.updateAvailable &&
+                !snapshot.statusLabel.equals("downloading", ignoreCase = true) &&
+                !snapshot.statusLabel.equals("installing", ignoreCase = true)
     }
+}
+
+internal fun appUpdatePrimaryActionIcon(
+    snapshot: SharedSettingsUpdateCheckSnapshot?,
+    errorCode: String?
+): SlockLucideIconName =
+    when {
+        snapshot == null && errorCode != null -> SlockLucideIconName.RefreshCw
+        snapshot?.transactionState == SharedSettingsUpdateTransactionState.ReadyToInstall ||
+            snapshot?.transactionState == SharedSettingsUpdateTransactionState.InstallerOpened ->
+            SlockLucideIconName.PackageCheck
+        snapshot?.transactionState == SharedSettingsUpdateTransactionState.Installed ->
+            SlockLucideIconName.CircleCheckBig
+        snapshot?.transactionRetryable == true &&
+            (snapshot.transactionState == SharedSettingsUpdateTransactionState.Failed ||
+                snapshot.transactionState == SharedSettingsUpdateTransactionState.Stale) ->
+            SlockLucideIconName.RefreshCw
+        else -> SlockLucideIconName.Download
+    }
+
+internal fun appUpdateCanSkipVersion(snapshot: SharedSettingsUpdateCheckSnapshot?): Boolean {
+    if (
+        snapshot == null ||
+        !snapshot.supported ||
+        !snapshot.updateAvailable ||
+        snapshot.latestVersionCode <= 0L ||
+        (snapshot.currentVersionCode > 0L && snapshot.latestVersionCode <= snapshot.currentVersionCode)
+    ) {
+        return false
+    }
+    return when (snapshot.transactionState) {
+        SharedSettingsUpdateTransactionState.Unknown,
+        SharedSettingsUpdateTransactionState.Idle,
+        SharedSettingsUpdateTransactionState.Failed,
+        SharedSettingsUpdateTransactionState.Stale -> true
+        SharedSettingsUpdateTransactionState.Checking,
+        SharedSettingsUpdateTransactionState.Patching,
+        SharedSettingsUpdateTransactionState.Downloading,
+        SharedSettingsUpdateTransactionState.ReadyToInstall,
+        SharedSettingsUpdateTransactionState.InstallerOpened,
+        SharedSettingsUpdateTransactionState.Installed -> false
+    }
+}

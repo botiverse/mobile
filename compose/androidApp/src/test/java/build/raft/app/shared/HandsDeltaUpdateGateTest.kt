@@ -1,6 +1,7 @@
 package build.raft.app.shared
 
 import build.raft.app.BuildConfig
+import build.raft.app.data.SharedSettingsUpdateTransactionState
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
@@ -15,6 +16,259 @@ import org.junit.Assert.fail
 import org.junit.Test
 
 class HandsDeltaUpdateGateTest {
+    @Test
+    fun explicitAppLanguageWinsOverTheSystemLocale() {
+        assertEquals("zh-CN", handsUpdateLanguageTag("zh-CN", "en-US"))
+        assertEquals("ja", handsUpdateLanguageTag("ja", "zh-CN"))
+    }
+
+    @Test
+    fun systemAppLanguageUsesTheResolvedSystemTag() {
+        assertEquals("ja-JP", handsUpdateLanguageTag(null, "ja_JP"))
+        assertEquals("zh-CN", handsUpdateLanguageTag("system", "zh-CN"))
+    }
+
+    @Test
+    fun unreadableLanguageStateFallsBackToEnglish() {
+        assertEquals("en", handsUpdateLanguageTag(" ", "POSIX"))
+        assertEquals("en", handsUpdateLanguageTag(null, null))
+    }
+
+    @Test
+    fun verifiedLocalApkRemainsInstallableWhenOfferStillMatches() {
+        val decision =
+            handsUpdateBridgeDecision(
+                sdkStateWire = "ready_to_install",
+                sdkTarget = updateTarget(1_000_011L),
+                sdkInstalledVersionCode = 1_000_010L,
+                sdkRetryable = false,
+                offerChecked = true,
+                offerAvailable = true,
+                offerTarget = updateTarget(1_000_011L)
+            )
+
+        assertEquals(SharedSettingsUpdateTransactionState.ReadyToInstall, decision.state)
+        assertEquals(1_000_011L, decision.targetVersionCode)
+        assertTrue(decision.updateAvailable)
+        assertFalse(decision.targetDrifted)
+    }
+
+    @Test
+    fun sameVersionReplacementWithDifferentBuildFailsOldLocalApkClosed() {
+        val decision =
+            handsUpdateBridgeDecision(
+                sdkStateWire = "ready_to_install",
+                sdkTarget = updateTarget(1_000_011L, buildId = "build-a"),
+                sdkInstalledVersionCode = 1_000_010L,
+                sdkRetryable = false,
+                offerChecked = true,
+                offerAvailable = true,
+                offerTarget = updateTarget(1_000_011L, buildId = "build-b")
+            )
+
+        assertEquals(SharedSettingsUpdateTransactionState.Stale, decision.state)
+        assertEquals(1_000_011L, decision.targetVersionCode)
+        assertTrue(decision.updateAvailable)
+        assertTrue(decision.retryable)
+        assertTrue(decision.targetDrifted)
+    }
+
+    @Test
+    fun buildIdentityRemainsCaseSensitiveLikeTheSdkAuthority() {
+        val decision =
+            handsUpdateBridgeDecision(
+                sdkStateWire = "ready_to_install",
+                sdkTarget = updateTarget(1_000_011L, buildId = "BUILD-A"),
+                sdkInstalledVersionCode = 1_000_010L,
+                sdkRetryable = false,
+                offerChecked = true,
+                offerAvailable = true,
+                offerTarget = updateTarget(1_000_011L, buildId = "build-a")
+            )
+
+        assertEquals(SharedSettingsUpdateTransactionState.Stale, decision.state)
+        assertTrue(decision.targetDrifted)
+    }
+
+    @Test
+    fun sameBuildReplacementWithDifferentTargetShaFailsOldLocalApkClosed() {
+        val decision =
+            handsUpdateBridgeDecision(
+                sdkStateWire = "installer_opened",
+                sdkTarget =
+                    updateTarget(
+                        versionCode = 1_000_011L,
+                        buildId = "build-a",
+                        assetSha256 = "a".repeat(64)
+                    ),
+                sdkInstalledVersionCode = 1_000_010L,
+                sdkRetryable = false,
+                offerChecked = true,
+                offerAvailable = true,
+                offerTarget =
+                    updateTarget(
+                        versionCode = 1_000_011L,
+                        buildId = "build-a",
+                        assetSha256 = "b".repeat(64)
+                    )
+            )
+
+        assertEquals(SharedSettingsUpdateTransactionState.Stale, decision.state)
+        assertTrue(decision.targetDrifted)
+    }
+
+    @Test
+    fun normalizedFullIdentityKeepsVerifiedLocalApkInstallable() {
+        val decision =
+            handsUpdateBridgeDecision(
+                sdkStateWire = "ready_to_install",
+                sdkTarget =
+                    updateTarget(
+                        versionCode = 1_000_011L,
+                        buildId = " build-a ",
+                        assetSha256 = "A".repeat(64)
+                    ),
+                sdkInstalledVersionCode = 1_000_010L,
+                sdkRetryable = false,
+                offerChecked = true,
+                offerAvailable = true,
+                offerTarget =
+                    updateTarget(
+                        versionCode = 1_000_011L,
+                        buildId = "build-a",
+                        assetSha256 = "a".repeat(64)
+                    )
+            )
+
+        assertEquals(SharedSettingsUpdateTransactionState.ReadyToInstall, decision.state)
+        assertFalse(decision.targetDrifted)
+    }
+
+    @Test
+    fun newerOrCancelledOfferFailsOldLocalApkClosedToStale() {
+        val newer =
+            handsUpdateBridgeDecision(
+                sdkStateWire = "installer_opened",
+                sdkTarget = updateTarget(1_000_011L),
+                sdkInstalledVersionCode = 1_000_010L,
+                sdkRetryable = false,
+                offerChecked = true,
+                offerAvailable = true,
+                offerTarget = updateTarget(1_000_012L)
+            )
+        val cancelled =
+            handsUpdateBridgeDecision(
+                sdkStateWire = "ready_to_install",
+                sdkTarget = updateTarget(1_000_011L),
+                sdkInstalledVersionCode = 1_000_010L,
+                sdkRetryable = false,
+                offerChecked = true,
+                offerAvailable = false,
+                offerTarget = updateTarget(null)
+            )
+
+        assertEquals(SharedSettingsUpdateTransactionState.Stale, newer.state)
+        assertEquals(1_000_012L, newer.targetVersionCode)
+        assertTrue(newer.updateAvailable)
+        assertTrue(newer.retryable)
+        assertTrue(newer.targetDrifted)
+        assertEquals(SharedSettingsUpdateTransactionState.Stale, cancelled.state)
+        assertFalse(cancelled.updateAvailable)
+        assertFalse(cancelled.retryable)
+        assertTrue(cancelled.targetDrifted)
+    }
+
+    @Test
+    fun offlineOfferCheckPreservesSdkTransactionWithoutGuessingDrift() {
+        val decision =
+            handsUpdateBridgeDecision(
+                sdkStateWire = "downloading",
+                sdkTarget = updateTarget(1_000_011L),
+                sdkInstalledVersionCode = 1_000_010L,
+                sdkRetryable = false,
+                offerChecked = false,
+                offerAvailable = false,
+                offerTarget = updateTarget(null)
+            )
+
+        assertEquals(SharedSettingsUpdateTransactionState.Downloading, decision.state)
+        assertTrue(decision.updateAvailable)
+        assertFalse(decision.targetDrifted)
+    }
+
+    @Test
+    fun checkingTransactionCanUseFreshOfferBeforeSdkPersistsItsTarget() {
+        val decision =
+            handsUpdateBridgeDecision(
+                sdkStateWire = "checking",
+                sdkTarget = updateTarget(null),
+                sdkInstalledVersionCode = 1_000_010L,
+                sdkRetryable = false,
+                offerChecked = true,
+                offerAvailable = true,
+                offerTarget = updateTarget(1_000_011L)
+            )
+
+        assertEquals(SharedSettingsUpdateTransactionState.Checking, decision.state)
+        assertEquals(1_000_011L, decision.targetVersionCode)
+        assertTrue(decision.updateAvailable)
+        assertFalse(decision.targetDrifted)
+    }
+
+    @Test
+    fun installedVersionWinsOverStaleProcessSnapshot() {
+        val decision =
+            handsUpdateBridgeDecision(
+                sdkStateWire = "installer_opened",
+                sdkTarget = updateTarget(1_000_011L),
+                sdkInstalledVersionCode = 1_000_011L,
+                sdkRetryable = true,
+                offerChecked = true,
+                offerAvailable = true,
+                offerTarget = updateTarget(1_000_011L)
+            )
+
+        assertEquals(SharedSettingsUpdateTransactionState.Installed, decision.state)
+        assertFalse(decision.updateAvailable)
+        assertFalse(decision.retryable)
+        assertFalse(decision.targetDrifted)
+    }
+
+    @Test
+    fun structuredUpdateEventsAreFeedbackSafeAndLocaleVisible() {
+        assertEquals(
+            "update_event name=patch_fallback state=downloading target=1000011 " +
+                "error=patch_apply_failed requested_lang=zh-CN resolved_lang=zh-CN",
+            handsUpdateEventLogLine(
+                name = "patch_fallback",
+                stateWire = "downloading",
+                targetVersionCode = 1_000_011L,
+                errorCode = "patch_apply_failed",
+                requestedLanguageTag = "zh-CN",
+                resolvedLanguageTag = "zh-CN"
+            )
+        )
+        assertEquals(
+            "update_event name=bad_line state=failed target=0 error=- requested_lang=- resolved_lang=-",
+            handsUpdateEventLogLine(
+                name = "bad\nline",
+                stateWire = "failed",
+                targetVersionCode = null,
+                errorCode = null,
+                requestedLanguageTag = null,
+                resolvedLanguageTag = null
+            )
+        )
+    }
+
+    @Test
+    fun onlyPersistedStateTransitionsRequestAnotherUiRefresh() {
+        assertTrue(handsUpdateEventShouldRefresh("state_changed"))
+        assertFalse(handsUpdateEventShouldRefresh("check_started"))
+        assertFalse(handsUpdateEventShouldRefresh("patch_fallback"))
+        assertFalse(handsUpdateEventShouldRefresh("cleanup_failed"))
+    }
+
     @Test
     fun generatedVariantConfigEnablesDeltaOnlyForExactAlphaApplication() {
         val isExactAlpha = BuildConfig.APPLICATION_ID == HANDS_DELTA_ALPHA_APPLICATION_ID
@@ -208,4 +462,15 @@ class HandsDeltaUpdateGateTest {
         assertFalse(invoked)
         assertFalse(owner.isRunning())
     }
+
+    private fun updateTarget(
+        versionCode: Long?,
+        buildId: String? = versionCode?.let { "build-$it" },
+        assetSha256: String? = versionCode?.toString(16)?.padStart(64, '0')
+    ): HandsUpdateTargetIdentity =
+        HandsUpdateTargetIdentity(
+            versionCode = versionCode,
+            buildId = buildId,
+            assetSha256 = assetSha256
+        )
 }

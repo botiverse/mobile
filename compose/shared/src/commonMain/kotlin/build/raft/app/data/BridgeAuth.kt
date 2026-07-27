@@ -632,6 +632,12 @@ internal fun JSONObject.toDeveloperSnapshot(): SharedSettingsDeveloperSnapshot {
         updateCheck =
             SharedSettingsUpdateCheckSnapshot(
                 supported = updateCheckSupported,
+                transactionState =
+                    SharedSettingsUpdateTransactionState.fromWire(
+                        optString("updateTransactionState")
+                    ),
+                transactionTargetVersionCode = optLong("updateTransactionTargetVersionCode", 0L),
+                transactionRetryable = optBoolean("updateTransactionRetryable", false),
                 statusLabel =
                     optString("updateCheckStatusLabel").ifBlank {
                         if (updateCheckSupported) "Check" else "Disabled"

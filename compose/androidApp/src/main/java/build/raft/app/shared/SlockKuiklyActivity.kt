@@ -100,6 +100,7 @@ import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.SLOCK_APP_UPDATE_EVENT
 import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.SharedAuthResult
+import build.raft.app.data.SharedSettingsUpdateTransactionState
 import build.raft.app.data.installAndroidAppScopeEventBus
 import build.raft.app.data.postAndroidAppScopeEvent
 import build.raft.app.data.slockSharedPreferenceStore
@@ -148,6 +149,7 @@ import com.tencent.kuikly.core.render.android.expand.component.KRTextFieldView
 import com.caverock.androidsvg.SVG
 import build.hands.update.HandsDeviceId
 import build.hands.update.HandsFeedback
+import build.hands.update.HandsUpdateEventListener
 import build.hands.update.UpdateChecker
 import build.hands.update.internal.HandsClient
 import build.hands.update.models.UpdateCheckResponse
@@ -3956,61 +3958,45 @@ internal class SlockKuiklyBridgeModule(
         val arch = Build.SUPPORTED_ABIS.firstOrNull { it.isNotBlank() }
         val updateRoute = handsUpdateRouteForRuntime()
         val deviceId = HandsDeviceId.get(appContext)
-        var alphaInstallStartedThisCall = false
-        val ownedResponse =
-                alphaHandsUpdateCallOwner.runIfEligible(
-                        eligible = updateRoute.deltaEnabled && install
-                ) {
-                    UpdateChecker(
-                            context = appContext,
-                            baseUrl = BuildConfig.HANDS_BASE_URL,
-                            appSlug = updateRoute.appSlug,
-                            installedVersionCode = BuildConfig.VERSION_CODE.toLong(),
-                            channel = updateRoute.channel,
-                            productType = "android-apk",
-                            platform = "android",
-                            arch = arch,
-                            deviceId = deviceId,
-                            deltaApplyEnabled = true
-                    ).checkAndInstall()
-                }
+        val languageTag =
+                handsUpdateLanguageTag(
+                        appLanguageTag = SlockHostStrings.appLocaleLanguageTag(),
+                        systemLanguageTag = Locale.getDefault().toLanguageTag()
+                )
+        if (updateRoute.deltaEnabled) {
+            return checkHandsDeltaUpdate(
+                    install = install,
+                    arch = arch,
+                    updateRoute = updateRoute,
+                    deviceId = deviceId,
+                    languageTag = languageTag
+            )
+        }
         val response =
-                if (ownedResponse != null) {
-                    alphaInstallStartedThisCall = true
-                    ownedResponse
-                } else {
-                    HandsClient(BuildConfig.HANDS_BASE_URL)
-                            .checkForUpdate(
-                                    slug = updateRoute.appSlug,
-                                    channel = updateRoute.channel,
-                                    currentVersionCode = BuildConfig.VERSION_CODE.toLong(),
-                                    productType = "android-apk",
-                                    platform = "android",
-                                    arch = arch,
-                                    filetype = "apk",
-                                    deviceId = deviceId
-                            )
-                }
+                HandsClient(BuildConfig.HANDS_BASE_URL)
+                        .checkForUpdate(
+                                slug = updateRoute.appSlug,
+                                channel = updateRoute.channel,
+                                currentVersionCode = BuildConfig.VERSION_CODE.toLong(),
+                                productType = "android-apk",
+                                platform = "android",
+                                arch = arch,
+                                filetype = "apk",
+                                deviceId = deviceId,
+                                languageTag = languageTag
+                        )
         val updateAvailable = response.requireUpdate() != null
         SlockAppLog.record(
                 "SlockHandsUpdate",
                 "check status=ok mode=${updateRoute.mode} " +
-                        "action=${if (install) "install" else "status"} started=$alphaInstallStartedThisCall " +
+                        "action=${if (install) "install" else "status"} " +
                         "slug=${updateRoute.appSlug} channel=${updateRoute.channel} device_id=$deviceId " +
+                        "language=${languageTag} " +
                         "current=${BuildConfig.VERSION_CODE} " +
                         "latest=${response.latest?.version_code ?: response.latest_version_code ?: 0} available=$updateAvailable"
         )
         val installResult =
                 when {
-                    updateRoute.deltaEnabled &&
-                        updateAvailable &&
-                        (alphaInstallStartedThisCall || alphaHandsUpdateCallOwner.isRunning()) ->
-                            HandsInstallResult(
-                                    statusLabel = "Installing",
-                                    detail = "Android is preparing the update. Follow the installer or download notification.",
-                                    actionLabel = "Installing"
-                            )
-                    updateRoute.deltaEnabled -> HandsInstallResult()
                     install && updateAvailable -> installHandsUpdate(response, arch)
                     updateAvailable -> currentHandsDownloadResult(response, arch)
                     else -> HandsInstallResult()
@@ -4039,6 +4025,180 @@ internal class SlockKuiklyBridgeModule(
                         "updateCheckErrorCode" to installResult.errorCode.orEmpty()
                 )
     }
+
+    private suspend fun checkHandsDeltaUpdate(
+            install: Boolean,
+            arch: String?,
+            updateRoute: HandsUpdateRoute,
+            deviceId: String,
+            languageTag: String
+    ): Map<String, Any> {
+        val checker =
+                UpdateChecker(
+                        context = appContext,
+                        baseUrl = BuildConfig.HANDS_BASE_URL,
+                        appSlug = updateRoute.appSlug,
+                        installedVersionCode = BuildConfig.VERSION_CODE.toLong(),
+                        channel = updateRoute.channel,
+                        productType = "android-apk",
+                        platform = "android",
+                        arch = arch,
+                        deviceId = deviceId,
+                        deltaApplyEnabled = true,
+                        languageTag = languageTag,
+                        eventListener =
+                                HandsUpdateEventListener { event ->
+                                    SlockAppLog.record(
+                                            "SlockHandsUpdate",
+                                            handsUpdateEventLogLine(
+                                                    name = event.name,
+                                                    stateWire = event.state.wireValue,
+                                                    targetVersionCode = event.targetVersionCode,
+                                                    errorCode = event.errorCode,
+                                                    requestedLanguageTag = event.requestedLanguageTag,
+                                                    resolvedLanguageTag = event.resolvedLanguageTag
+                                            )
+                                    )
+                                    if (handsUpdateEventShouldRefresh(event.name)) {
+                                        emitHandsUpdateStatusEvent()
+                                    }
+                                }
+                )
+        val status =
+                if (install) {
+                    alphaHandsUpdateCallOwner.runIfEligible(eligible = true) {
+                        checker.install(languageTag)
+                    } ?: checker.status()
+                } else {
+                    checker.status()
+                }
+        val currentVersionCode = status.installedVersionCode ?: BuildConfig.VERSION_CODE.toLong()
+        val offerResult =
+                runCatching {
+                    HandsClient(BuildConfig.HANDS_BASE_URL)
+                            .checkForUpdate(
+                                    slug = updateRoute.appSlug,
+                                    channel = updateRoute.channel,
+                                    currentVersionCode = currentVersionCode,
+                                    productType = "android-apk",
+                                    platform = "android",
+                                    arch = arch,
+                                    filetype = "apk",
+                                    deviceId = deviceId,
+                                    languageTag = languageTag
+                            )
+                }
+        val response = offerResult.getOrNull()
+        offerResult.exceptionOrNull()?.let { error ->
+            SlockAppLog.record(
+                    "SlockHandsUpdate",
+                    "offer_check_failed action=${if (install) "install" else "status"} " +
+                            "state=${status.state.wireValue} error=${error.javaClass.simpleName}"
+            )
+        }
+        val offerAvailable = response?.requireUpdate() != null
+        val offerTargetVersionCode =
+                response?.requireUpdate()?.first?.version_code
+                        ?: response?.latest?.version_code
+                        ?: response?.latest_version_code
+        val decision =
+                handsUpdateBridgeDecision(
+                        sdkStateWire = status.state.wireValue,
+                        sdkTarget =
+                                HandsUpdateTargetIdentity(
+                                        versionCode = status.targetVersionCode,
+                                        buildId = status.targetBuildId,
+                                        assetSha256 = status.assetSha256
+                                ),
+                        sdkInstalledVersionCode = status.installedVersionCode,
+                        sdkRetryable = status.retryable,
+                        offerChecked = offerResult.isSuccess,
+                        offerAvailable = offerAvailable,
+                        offerTarget =
+                                HandsUpdateTargetIdentity(
+                                        versionCode = offerTargetVersionCode,
+                                        buildId = response?.latest?.build_id,
+                                        assetSha256 = response?.asset?.sha256 ?: response?.patch?.target_sha256
+                                )
+                )
+        val errorCode =
+                when {
+                    decision.targetDrifted && offerAvailable -> "target_changed"
+                    decision.targetDrifted -> "offer_withdrawn"
+                    else -> status.errorCode
+                }
+        val installResult = decision.toHandsInstallResult(errorCode)
+        val latestVersionCode =
+                response?.latest?.version_code
+                        ?: response?.latest_version_code
+                        ?: decision.targetVersionCode
+                        ?: 0L
+        val updateDetail =
+                response?.handsDetail()
+                        ?: SlockHostStrings.appUpdateDetail(
+                                updateAvailable = decision.updateAvailable,
+                                sizeLabel = null
+                        )
+        val feedback =
+                if (decision.updateAvailable) {
+                    "Update available: ${response?.latest?.version?.ifBlank { null } ?: "version code $latestVersionCode"}."
+                } else {
+                    "No Hands update available on ${updateRoute.channel}."
+                }
+        SlockAppLog.record(
+                "SlockHandsUpdate",
+                "check status=ok mode=${updateRoute.mode} action=${if (install) "install" else "status"} " +
+                        "slug=${updateRoute.appSlug} channel=${updateRoute.channel} device_id=$deviceId " +
+                        "language=$languageTag state=${decision.state.wireValue} " +
+                        "current=$currentVersionCode latest=$latestVersionCode available=${decision.updateAvailable}"
+        )
+        return loadSettingsDeveloper(feedback = feedback, updateRoute = updateRoute) +
+                mapOf(
+                        "updateCheckSupported" to true,
+                        "updateTransactionState" to decision.state.wireValue,
+                        "updateTransactionTargetVersionCode" to (decision.targetVersionCode ?: 0L),
+                        "updateTransactionRetryable" to decision.retryable,
+                        "updateCheckStatusLabel" to installResult.statusLabel,
+                        "updateCheckDetail" to updateDetail,
+                        "updateCheckActionLabel" to installResult.actionLabel,
+                        "updateAvailable" to decision.updateAvailable,
+                        "currentVersionLabel" to
+                                if (currentVersionCode == BuildConfig.VERSION_CODE.toLong()) {
+                                    BuildConfig.VERSION_NAME.ifBlank { currentVersionCode.toString() }
+                                } else {
+                                    currentVersionCode.toString()
+                                },
+                        "currentVersionCode" to currentVersionCode,
+                        "latestVersionLabel" to response?.latest?.version.orEmpty(),
+                        "latestVersionCode" to latestVersionCode,
+                        "latestChangelog" to response?.latest?.changelog.orEmpty(),
+                        "updateDownloadUrl" to response?.asset?.download_url.orEmpty(),
+                        "updateCheckedAtLabel" to System.currentTimeMillis().toString(),
+                        "updateCheckErrorCode" to errorCode.orEmpty()
+                )
+    }
+
+    private fun HandsUpdateBridgeDecision.toHandsInstallResult(errorCode: String?): HandsInstallResult =
+            when (state) {
+                SharedSettingsUpdateTransactionState.Idle ->
+                        HandsInstallResult(statusLabel = "Ready", actionLabel = "Download", errorCode = errorCode)
+                SharedSettingsUpdateTransactionState.Checking ->
+                        HandsInstallResult(statusLabel = "Checking", actionLabel = "Checking", errorCode = errorCode)
+                SharedSettingsUpdateTransactionState.Patching ->
+                        HandsInstallResult(statusLabel = "Preparing", actionLabel = "Preparing", errorCode = errorCode)
+                SharedSettingsUpdateTransactionState.Downloading ->
+                        HandsInstallResult(statusLabel = "Downloading", actionLabel = "Downloading", errorCode = errorCode)
+                SharedSettingsUpdateTransactionState.ReadyToInstall,
+                SharedSettingsUpdateTransactionState.InstallerOpened ->
+                        HandsInstallResult(statusLabel = "Install", actionLabel = "Install", errorCode = errorCode)
+                SharedSettingsUpdateTransactionState.Failed,
+                SharedSettingsUpdateTransactionState.Stale ->
+                        HandsInstallResult(statusLabel = "Download", actionLabel = "Download", errorCode = errorCode)
+                SharedSettingsUpdateTransactionState.Installed ->
+                        HandsInstallResult(statusLabel = "Installed", actionLabel = "Installed", errorCode = errorCode)
+                SharedSettingsUpdateTransactionState.Unknown ->
+                        HandsInstallResult(statusLabel = "Ready", actionLabel = "Download", errorCode = errorCode)
+            }
 
     private fun handsDeltaUpdateAllowedForRuntime(): Boolean {
         val allowed =

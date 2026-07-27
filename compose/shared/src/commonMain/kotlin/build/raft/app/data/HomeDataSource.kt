@@ -330,15 +330,27 @@ internal fun SharedSettingsUpdateCheckSnapshot.toSharedHomeAppUpdateNotification
 }
 
 private fun SharedSettingsUpdateCheckSnapshot.appUpdateNotificationActionLabel(): String =
-    actionLabel.takeIf { it.isNotBlank() }
-        ?: when (statusLabel.lowercase()) {
-            "downloading" -> "Downloading"
-            "install" -> "Install"
-            else -> "Download"
-        }
+    when (transactionState) {
+        SharedSettingsUpdateTransactionState.Checking,
+        SharedSettingsUpdateTransactionState.Patching,
+        SharedSettingsUpdateTransactionState.Downloading -> "Downloading"
+        SharedSettingsUpdateTransactionState.ReadyToInstall,
+        SharedSettingsUpdateTransactionState.InstallerOpened -> "Install"
+        SharedSettingsUpdateTransactionState.Installed -> "Installed"
+        SharedSettingsUpdateTransactionState.Idle,
+        SharedSettingsUpdateTransactionState.Failed,
+        SharedSettingsUpdateTransactionState.Stale -> "Download"
+        SharedSettingsUpdateTransactionState.Unknown ->
+            actionLabel.takeIf { it.isNotBlank() }
+                ?: when (statusLabel.lowercase()) {
+                    "downloading" -> "Downloading"
+                    "install" -> "Install"
+                    else -> "Download"
+                }
+    }
 
 private fun SharedSettingsUpdateCheckSnapshot.appUpdateNotificationActionDesc(): StringDesc? =
-    (actionLabel.ifBlank { statusLabel }).trim().lowercase().let { action ->
+    appUpdateNotificationActionLabel().lowercase().let { action ->
         when (action) {
             "downloading" -> MR.strings.home_notification_action_downloading.desc()
             "install" -> MR.strings.home_notification_action_install.desc()

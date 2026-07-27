@@ -1,5 +1,6 @@
 package build.raft.app.shared
 
+import build.raft.app.data.SharedSettingsUpdateTransactionState
 import java.util.concurrent.atomic.AtomicBoolean
 
 internal const val HANDS_DELTA_ALPHA_APPLICATION_ID = "build.raft.app.alpha"
@@ -68,3 +69,158 @@ internal fun handsDeltaUpdateAllowed(
         runtimePackageName == HANDS_DELTA_ALPHA_APPLICATION_ID &&
         appSlug == HANDS_DELTA_ALPHA_APP_SLUG &&
         channel == HANDS_DELTA_ALPHA_CHANNEL
+
+internal fun handsUpdateLanguageTag(
+    appLanguageTag: String?,
+    systemLanguageTag: String?
+): String =
+    appLanguageTag.normalizedHandsLanguageTag()
+        ?: systemLanguageTag.normalizedHandsLanguageTag()
+        ?: "en"
+
+private fun String?.normalizedHandsLanguageTag(): String? =
+    this
+        ?.trim()
+        ?.replace('_', '-')
+        ?.takeIf {
+            it.isNotBlank() &&
+                !it.equals("system", ignoreCase = true) &&
+                !it.equals("C", ignoreCase = true) &&
+                !it.equals("POSIX", ignoreCase = true)
+        }
+
+internal data class HandsUpdateBridgeDecision(
+    val state: SharedSettingsUpdateTransactionState,
+    val targetVersionCode: Long?,
+    val installedVersionCode: Long?,
+    val updateAvailable: Boolean,
+    val retryable: Boolean,
+    val targetDrifted: Boolean
+)
+
+internal data class HandsUpdateTargetIdentity(
+    val versionCode: Long?,
+    val buildId: String?,
+    val assetSha256: String?
+) {
+    fun differsFrom(other: HandsUpdateTargetIdentity): Boolean {
+        if (versionCode == null || other.versionCode == null) return false
+        return versionCode != other.versionCode ||
+            normalizedBuildId(buildId).differsWhenComparable(normalizedBuildId(other.buildId)) ||
+            normalizedAssetSha256(assetSha256).differsWhenComparable(normalizedAssetSha256(other.assetSha256))
+    }
+}
+
+internal fun handsUpdateBridgeDecision(
+    sdkStateWire: String,
+    sdkTarget: HandsUpdateTargetIdentity,
+    sdkInstalledVersionCode: Long?,
+    sdkRetryable: Boolean,
+    offerChecked: Boolean,
+    offerAvailable: Boolean,
+    offerTarget: HandsUpdateTargetIdentity
+): HandsUpdateBridgeDecision {
+    val sdkState = SharedSettingsUpdateTransactionState.fromWire(sdkStateWire)
+    val installedTarget =
+        sdkTarget.versionCode != null &&
+            sdkInstalledVersionCode != null &&
+            sdkInstalledVersionCode >= sdkTarget.versionCode
+    val targetDrifted =
+        !installedTarget &&
+            sdkState.hasInFlightTarget() &&
+            sdkTarget.versionCode != null &&
+            offerChecked &&
+            (!offerAvailable || sdkTarget.differsFrom(offerTarget))
+    val state =
+        when {
+            installedTarget || sdkState == SharedSettingsUpdateTransactionState.Installed ->
+                SharedSettingsUpdateTransactionState.Installed
+            targetDrifted -> SharedSettingsUpdateTransactionState.Stale
+            else -> sdkState
+        }
+    val updateAvailable =
+        when {
+            state == SharedSettingsUpdateTransactionState.Installed -> false
+            targetDrifted ->
+                offerAvailable &&
+                    offerTarget.versionCode != null &&
+                    (sdkInstalledVersionCode == null || offerTarget.versionCode > sdkInstalledVersionCode)
+            sdkState.hasInFlightTarget() ->
+                (sdkTarget.versionCode ?: offerTarget.versionCode)?.let { target ->
+                    (!offerChecked || offerAvailable) &&
+                        (sdkInstalledVersionCode == null || target > sdkInstalledVersionCode)
+                } == true
+            offerChecked -> offerAvailable
+            else -> false
+        }
+    return HandsUpdateBridgeDecision(
+        state = state,
+        targetVersionCode =
+            if (targetDrifted && offerAvailable) {
+                offerTarget.versionCode
+            } else {
+                sdkTarget.versionCode ?: offerTarget.versionCode
+            },
+        installedVersionCode = sdkInstalledVersionCode,
+        updateAvailable = updateAvailable,
+        retryable =
+            when {
+                state == SharedSettingsUpdateTransactionState.Installed -> false
+                targetDrifted -> updateAvailable
+                else -> sdkRetryable
+            },
+        targetDrifted = targetDrifted
+    )
+}
+
+private fun normalizedBuildId(value: String?): String? =
+    value?.trim()?.takeIf(String::isNotBlank)
+
+private fun normalizedAssetSha256(value: String?): String? =
+    value?.trim()?.lowercase()?.takeIf(String::isNotBlank)
+
+private fun String?.differsWhenComparable(other: String?): Boolean =
+    this != null && other != null && this != other
+
+private fun SharedSettingsUpdateTransactionState.hasInFlightTarget(): Boolean =
+    when (this) {
+        SharedSettingsUpdateTransactionState.Checking,
+        SharedSettingsUpdateTransactionState.Patching,
+        SharedSettingsUpdateTransactionState.Downloading,
+        SharedSettingsUpdateTransactionState.ReadyToInstall,
+        SharedSettingsUpdateTransactionState.InstallerOpened -> true
+        SharedSettingsUpdateTransactionState.Unknown,
+        SharedSettingsUpdateTransactionState.Idle,
+        SharedSettingsUpdateTransactionState.Failed,
+        SharedSettingsUpdateTransactionState.Stale,
+        SharedSettingsUpdateTransactionState.Installed -> false
+    }
+
+internal fun handsUpdateEventLogLine(
+    name: String,
+    stateWire: String,
+    targetVersionCode: Long?,
+    errorCode: String?,
+    requestedLanguageTag: String?,
+    resolvedLanguageTag: String?
+): String =
+    "update_event " +
+        "name=${name.handsLogToken()} " +
+        "state=${stateWire.handsLogToken()} " +
+        "target=${targetVersionCode ?: 0L} " +
+        "error=${errorCode.handsLogToken()} " +
+        "requested_lang=${requestedLanguageTag.handsLogToken()} " +
+        "resolved_lang=${resolvedLanguageTag.handsLogToken()}"
+
+internal fun handsUpdateEventShouldRefresh(name: String): Boolean =
+    name == "state_changed"
+
+private fun String?.handsLogToken(): String =
+    this
+        ?.takeIf { it.isNotBlank() }
+        ?.map { character ->
+            if (character.isLetterOrDigit() || character in "._-") character else '_'
+        }
+        ?.joinToString("")
+        ?.take(80)
+        ?: "-"
