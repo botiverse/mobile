@@ -595,13 +595,13 @@ jobs:
           # so there is deliberately no pre-grant here — the deterministic
           # driver bootstraps the permission through the loop's XCUITest-native
           # system_alert_allow_photos_full_access action instead.
-          # --sampling-done keeps this head in the Done-transition discovery
-          # phase: one proven cell tap + one structured Add/Done tap, followed
-          # by plain-channel→after-Done evidence and sample-stop. It never
-          # judges preview, sends, reads back, or emits a full-chain PASS.
+          # --sampling-review-done performs the proven picker sequence, then
+          # requires the structured Raft image review/editor page and taps its
+          # unique bottom Done once. It records review→after discovery facts
+          # and sample-stops: no preview verdict, send, or readback.
           set +e
           node scripts/qa/ios_deterministic_repro.mjs \
-            --ios-io-dir "$QA_LOOP_IO_DIR" --ios-udid "$UDID" --package "$BUNDLE_ID" --out qa-evidence --sampling-done
+            --ios-io-dir "$QA_LOOP_IO_DIR" --ios-udid "$UDID" --package "$BUNDLE_ID" --out qa-evidence --sampling-review-done
           echo "$?" > qa-evidence/agent-rc.txt
           echo "deterministic repro exit code $(cat qa-evidence/agent-rc.txt)"
 

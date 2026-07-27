@@ -508,3 +508,134 @@ export function findSelectedPhotoDoneTarget(nodes) {
     bounds: [...b],
   };
 }
+
+// Raft image review/editor contract discovered by task #26 run 30294565343.
+// This contract is STRUCTURED and intentionally stricter than merely seeing
+// an image plus a Done label:
+//   - one Raft full-screen root and one enabled unlabeled top-left back button;
+//   - exactly one non-fullscreen, large review image;
+//   - exactly one top filename matching that image label and one adjacent
+//     size metadata node directly below it;
+//   - one enabled Edit and one enabled Done in the bottom action row, with
+//     Edit left of Done.
+// Fullscreen/aggregate image ancestors are excluded by the review-frame
+// geometry. Zero or multiple real image candidates, metadata, or actions
+// fail closed.
+export function classifyImageReviewEditor(nodes) {
+  const list = (nodes || []).filter((n) => Array.isArray(n?.bounds) && n.bounds.length === 4);
+  if (!list.length) return null;
+  const geoms = list.map(structuredGeom);
+  const maxW = Math.max(...geoms.map((n) => n.x2));
+  const maxH = Math.max(...geoms.map((n) => n.y2));
+  if (!(maxW > 0 && maxH > 0)) return null;
+
+  const width = (n) => n.bounds[2] - n.bounds[0];
+  const height = (n) => n.bounds[3] - n.bounds[1];
+  const top = (n) => n.bounds[3] <= maxH * 0.25;
+  const bottom = (n) => n.bounds[1] >= maxH * 0.75;
+
+  const roots = list.filter((n) => (
+    n.type === "other"
+    && String(n.label ?? "").trim() === "Raft"
+    && width(n) >= maxW * 0.9
+    && height(n) >= maxH * 0.9
+  ));
+  if (roots.length !== 1) return null;
+
+  const backButtons = list.filter((n) => (
+    n.type === "button"
+    && String(n.label ?? "").trim() === ""
+    && n.enabled === true
+    && top(n)
+    && n.bounds[2] <= maxW * 0.25
+    && width(n) <= maxW * 0.25
+  ));
+  if (backButtons.length !== 1) return null;
+
+  const images = list.filter((n) => (
+    n.type === "image"
+    && String(n.label ?? "").trim() !== ""
+    && width(n) >= maxW * 0.7
+    && height(n) >= maxH * 0.4
+    // Exclude fullscreen/aggregate ancestors: the real review image is
+    // inset below the header and above the bottom action band.
+    && n.bounds[1] >= maxH * 0.1
+    && n.bounds[3] <= maxH * 0.9
+    && n.bounds[0] <= maxW * 0.1
+    && n.bounds[2] >= maxW * 0.9
+  ));
+  if (images.length !== 1) return null;
+  const imageNode = images[0];
+
+  const filenameNodes = list.filter((n) => (
+    n.type === "staticText"
+    && String(n.label ?? "").trim() === String(imageNode.label).trim()
+    && top(n)
+    && n.bounds[0] > backButtons[0].bounds[0]
+    && n.bounds[3] <= imageNode.bounds[1]
+  ));
+  if (filenameNodes.length !== 1) return null;
+  const filenameNode = filenameNodes[0];
+
+  const sizeNodes = list.filter((n) => (
+    n.type === "staticText"
+    && /^\d+(?:\.\d+)?\s*(?:B|KB|MB|GB)$/i.test(String(n.label ?? "").trim())
+    && top(n)
+    && n.bounds[0] === filenameNode.bounds[0]
+    && n.bounds[1] >= filenameNode.bounds[3]
+    && n.bounds[3] <= imageNode.bounds[1]
+  ));
+  if (sizeNodes.length !== 1) return null;
+
+  const editButtons = list.filter((n) => (
+    n.type === "button"
+    && String(n.label ?? "").trim() === "Edit"
+    && n.enabled === true
+    && bottom(n)
+  ));
+  const doneButtons = list.filter((n) => (
+    n.type === "button"
+    && String(n.label ?? "").trim() === "Done"
+    && n.enabled === true
+    && bottom(n)
+  ));
+  if (editButtons.length !== 1 || doneButtons.length !== 1) return null;
+  const editNode = editButtons[0];
+  const doneNode = doneButtons[0];
+  if (
+    Math.abs(editNode.bounds[1] - doneNode.bounds[1]) > 24
+    || Math.abs(height(editNode) - height(doneNode)) > 24
+    || editNode.bounds[2] >= doneNode.bounds[0]
+    || imageNode.bounds[3] >= Math.min(editNode.bounds[1], doneNode.bounds[1])
+  ) return null;
+
+  return {
+    variant: "raft-image-review-editor",
+    rootNode: roots[0],
+    backNode: backButtons[0],
+    imageNode,
+    filenameNode,
+    sizeNode: sizeNodes[0],
+    editNode,
+    doneNode,
+  };
+}
+
+// Unique second-Done target from a PROVEN Raft image review/editor page.
+// No tapText, fuzzy label match, or coordinate constant is permitted.
+export function findImageReviewDoneTarget(nodes) {
+  const review = classifyImageReviewEditor(nodes);
+  if (!review) {
+    throw new Error("no proven Raft image review/editor — need unique root/back/large image/matching filename+size/Enabled Edit+Done bottom row");
+  }
+  const b = review.doneNode.bounds;
+  return {
+    x: Math.round((b[0] + b[2]) / 2),
+    y: Math.round((b[1] + b[3]) / 2),
+    label: review.doneNode.label,
+    identifier: review.doneNode.identifier,
+    type: review.doneNode.type,
+    enabled: review.doneNode.enabled,
+    bounds: [...b],
+  };
+}
