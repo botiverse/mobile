@@ -748,6 +748,7 @@ dependencies {
     implementation(libs.androidx.webkit)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.metrics.performance)
+    implementation(libs.androidx.profileinstaller)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
     // Kuikly 2.21 still calls CompositionObserverKt.observe. Runtime 1.8.3 keeps that ABI
@@ -778,6 +779,8 @@ dependencies {
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+    androidTestImplementation(libs.androidx.benchmark.macro.junit4)
+    androidTestImplementation(libs.androidx.uiautomator)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     "connectedTestImplementation"(libs.androidx.compose.ui.tooling)
