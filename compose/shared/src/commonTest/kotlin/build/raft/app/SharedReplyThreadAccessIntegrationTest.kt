@@ -222,6 +222,43 @@ class SharedReplyThreadAccessIntegrationTest {
     }
 
     @Test
+    fun readOnlyReplyContentBecomingEmptyCannotReenableParentWrites() = runBlocking {
+        withPortableAppScope { appScope ->
+            val repository =
+                ReplyThreadAccessConversationRepositoryRecorder(
+                    replyResult = DataResult.Content(replyThreadAccessSnapshot())
+                )
+            val dataSource =
+                replyThreadAccessDataSource(
+                    repository = repository,
+                    sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1")),
+                    payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L)
+                )
+            val store = SharedThreadStore(dataSource = dataSource, scope = appScope)
+
+            store.accept(SharedThreadIntent.Start(unresolvedReplyThreadAccessPayload()))
+            assertEquals(ThreadAccessResolution.Resolved, store.state.value.accessResolution)
+            assertFalse(store.state.value.writeActionsEnabled)
+
+            repository.replyResult = DataResult.Empty(build.raft.app.data.EmptyReason.NoMessages)
+            store.accept(SharedThreadIntent.Refresh)
+
+            assertEquals(ThreadAccessResolution.Error, store.state.value.accessResolution)
+            assertEquals("empty", store.state.value.payload.status)
+            assertTrue(store.state.value.payload.messages.isEmpty())
+            assertFalse(store.state.value.writeActionsEnabled)
+            assertFalse(store.state.value.payload.joined)
+            assertFalse(store.state.value.payload.canSend)
+            assertFalse(store.state.value.payload.composer.enabled)
+            assertNull(
+                store.state.value.payload.resolvedTaskLookupChannelId(
+                    writeActionsEnabled = store.state.value.writeActionsEnabled
+                )
+            )
+        }
+    }
+
+    @Test
     fun failureReentryRendersFailClosedErrorAndExplicitRetryStartsOneSuccessor() = runBlocking {
         withPortableAppScope { appScope ->
             val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L)

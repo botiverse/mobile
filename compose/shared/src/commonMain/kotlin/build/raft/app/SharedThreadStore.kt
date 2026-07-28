@@ -8680,7 +8680,9 @@ private fun ThreadAccessResolution.afterRefreshResult(
             }
         is DataResult.Empty ->
             when {
-                this == ThreadAccessResolution.Resolved -> ThreadAccessResolution.Resolved
+                this == ThreadAccessResolution.Resolved &&
+                    (!requiresParentAccessCandidate || homeAccessCandidate != null) ->
+                    ThreadAccessResolution.Resolved
                 result.reason == EmptyReason.NoMessages &&
                     canonicalAccessResolved &&
                     !requiresParentAccessCandidate ->
@@ -8747,6 +8749,14 @@ private fun KuiklyThreadScreenPayload.hasWriteAuthorityForAccess(
     homeAccessCandidate: ConversationAccessCandidate?
 ): Boolean =
     accessResolution == ThreadAccessResolution.Resolved &&
+        (
+            surfaceKind != KuiklyThreadSurfaceKind.ReplyThread ||
+                (
+                    homeLookupComplete &&
+                        homeAccessCandidate != null &&
+                        acceptsInitialConversationAccessCandidate(homeAccessCandidate)
+                )
+        ) &&
         !isReadOnlyReplyAccessFallback(homeLookupComplete, homeAccessCandidate)
 
 private fun KuiklyThreadScreenPayload.withTerminalAccessWriteAuthorityClosed(

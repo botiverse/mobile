@@ -117,6 +117,21 @@ class SharedInboxPanelTest {
         assertEquals(5, state.snapshot?.items?.size)
         assertEquals(9, state.totalCount)
         assertEquals(14, state.totalUnreadCount)
+
+        val processFactAlreadyExcludesUnsafeRow =
+            ActivityUnreadSummaryProjection(
+                serverId = "server-1",
+                totalCount = 8,
+                totalUnreadCount = 11,
+                hasValue = true,
+                source = "activity:load_initial"
+            )
+        val combined =
+            projectActivityStateWithoutUnopenableInternalJointRows(
+                projectActivityStateWithProcessSummary(state, processFactAlreadyExcludesUnsafeRow)
+            )
+        assertEquals(8, combined.totalCount)
+        assertEquals(11, combined.totalUnreadCount)
     }
 
     @Test

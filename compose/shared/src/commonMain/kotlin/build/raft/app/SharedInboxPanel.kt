@@ -394,7 +394,8 @@ internal fun projectActivityStateWithProcessSummary(
     if (
         snapshot == null ||
         state.selectedFilter != InboxFilter.All ||
-        !activitySummary.hasValue
+        !activitySummary.hasValue ||
+        snapshot.items.any { item -> item.hasUnopenableInternalJointParentSource() }
     ) {
         return state
     }
