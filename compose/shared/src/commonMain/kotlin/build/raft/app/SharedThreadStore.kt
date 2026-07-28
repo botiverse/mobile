@@ -5263,6 +5263,9 @@ internal class SharedThreadStore(
                                 ThreadAccessResolution.NoPermission
                             currentState.accessResolution == ThreadAccessResolution.Error ->
                                 ThreadAccessResolution.Error
+                            currentState.accessResolution == ThreadAccessResolution.Resolved &&
+                                currentState.canonicalAccessResolved ->
+                                ThreadAccessResolution.Resolved
                             projectedPayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
                                 currentState.canonicalAccessResolved &&
                                 (candidate != null || projectedPayload.hasReadableCanonicalReplyContent()) ->
@@ -8737,7 +8740,9 @@ private fun KuiklyThreadScreenPayload.isReadOnlyReplyAccessFallback(
     homeLookupComplete: Boolean,
     homeAccessCandidate: ConversationAccessCandidate?
 ): Boolean =
-    homeLookupComplete && homeAccessCandidate == null && hasReadableCanonicalReplyContent()
+    homeLookupComplete &&
+        homeAccessCandidate == null &&
+        surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
 
 // Write authority is a terminal access-state invariant, not an inference from
 // whichever payload fields survived the latest projection. In particular, a

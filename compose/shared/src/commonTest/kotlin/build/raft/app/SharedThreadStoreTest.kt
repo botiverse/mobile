@@ -3360,6 +3360,140 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun readOnlyReplyBecomingEmptyStaysWriteClosedInBothParentRefreshCompletionOrders() = runBlocking {
+        suspend fun verify(homeCompletesFirst: Boolean) {
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            val route =
+                activityReplyPayload(
+                    parentKind = ConversationKind.Channel,
+                    parentChannelId = "channel-1",
+                    parentMessageId = "m1",
+                    threadId = "thread-m1"
+                )
+            val retryHomeStarted = CompletableDeferred<Unit>()
+            val retryHomeFinished = CompletableDeferred<Unit>()
+            val releaseRetryHome = CompletableDeferred<Unit>()
+            val retryHomeMarker = "retry-home-${if (homeCompletesFirst) "first" else "last"}"
+            var homeAttempt = 0
+            val channelRepository =
+                FakeChannelRepository {
+                    homeAttempt += 1
+                    if (homeAttempt == 2) {
+                        retryHomeStarted.complete(Unit)
+                        if (!homeCompletesFirst) {
+                            releaseRetryHome.await()
+                        }
+                        retryHomeFinished.complete(Unit)
+                    }
+                    val home = replyChildOnlyHomeSnapshot(joined = true, canSend = true)
+                    DataResult.Content(
+                        if (homeAttempt == 2) {
+                            home.copy(
+                                channels =
+                                    home.channels +
+                                        ConversationSummary(
+                                            threadId = ThreadId(retryHomeMarker),
+                                            channelId = ChannelId(retryHomeMarker),
+                                            kind = ConversationKind.Channel,
+                                            name = retryHomeMarker
+                                        ).toHomeChannelRow()
+                            )
+                        } else {
+                            home
+                        }
+                    )
+                }
+            val repository =
+                FakeConversationRepository(
+                    threadResult =
+                        DataResult.Content(
+                            threadSnapshot(
+                                threadId = "thread-m1",
+                                body = "network reply",
+                                id = "reply-1",
+                                conversation = replyThreadConversation(joined = false, canSend = false)
+                            )
+                        )
+                )
+            val store =
+                SharedThreadStore(
+                    dataSource =
+                        SharedThreadDataSource(
+                            networkApi = FakeThreadApi(failChannelMessages = true),
+                            sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                            conversationRepository = repository,
+                            channelRepository = channelRepository
+                        ),
+                    scope = scope
+                )
+
+            store.dispatch(SharedThreadIntent.Start(route))
+            withTimeout(1_000) {
+                while (
+                    store.state.value.accessResolution != ThreadAccessResolution.Resolved ||
+                    store.state.value.writeActionsEnabled
+                ) {
+                    delay(10)
+                }
+            }
+
+            repository.threadResult = DataResult.Empty(EmptyReason.NoMessages)
+            if (homeCompletesFirst) {
+                repository.getReplyThreadStarted = CompletableDeferred()
+                repository.releaseGetReplyThread = CompletableDeferred()
+            }
+            store.dispatch(SharedThreadIntent.Refresh)
+            retryHomeStarted.await()
+            if (homeCompletesFirst) {
+                repository.getReplyThreadStarted?.await()
+                retryHomeFinished.await()
+                withTimeout(1_000) {
+                    while (retryHomeMarker !in store.state.value.payload.knownMarkdownChannelNames) {
+                        delay(10)
+                    }
+                }
+                assertEquals("content", store.state.value.payload.status)
+                assertFalse(store.state.value.writeActionsEnabled)
+                repository.releaseGetReplyThread?.complete(Unit)
+            } else {
+                withTimeout(1_000) {
+                    while (store.state.value.payload.status != "empty") {
+                        delay(10)
+                    }
+                }
+                assertFalse(store.state.value.writeActionsEnabled)
+                releaseRetryHome.complete(Unit)
+                retryHomeFinished.await()
+            }
+            withTimeout(1_000) {
+                while (
+                    store.state.value.payload.status != "empty" ||
+                    retryHomeMarker !in store.state.value.payload.knownMarkdownChannelNames
+                ) {
+                    delay(10)
+                }
+            }
+
+            val finalState = store.state.value
+            assertEquals(ThreadAccessResolution.Resolved, finalState.accessResolution)
+            assertFalse(finalState.writeActionsEnabled)
+            assertFalse(finalState.payload.joined)
+            assertFalse(finalState.payload.canSend)
+            assertFalse(finalState.payload.composer.enabled)
+            assertEquals(
+                null,
+                finalState.payload.resolvedTaskLookupChannelId(
+                    writeActionsEnabled = finalState.writeActionsEnabled
+                )
+            )
+            scope.cancel()
+        }
+
+        verify(homeCompletesFirst = true)
+        verify(homeCompletesFirst = false)
+    }
+
+    @Test
     fun activityReplyThreadUsesLoadedParentContextWhenHomeAccessLookupTimesOut() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val route = activityReplyPayload(

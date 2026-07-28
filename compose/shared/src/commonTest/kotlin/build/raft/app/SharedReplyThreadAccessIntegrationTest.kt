@@ -243,7 +243,7 @@ class SharedReplyThreadAccessIntegrationTest {
             repository.replyResult = DataResult.Empty(build.raft.app.data.EmptyReason.NoMessages)
             store.accept(SharedThreadIntent.Refresh)
 
-            assertEquals(ThreadAccessResolution.Error, store.state.value.accessResolution)
+            assertEquals(ThreadAccessResolution.Resolved, store.state.value.accessResolution)
             assertEquals("empty", store.state.value.payload.status)
             assertTrue(store.state.value.payload.messages.isEmpty())
             assertFalse(store.state.value.writeActionsEnabled)
