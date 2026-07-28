@@ -238,6 +238,10 @@ import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.resources.imageResource
 import com.tencent.kuikly.compose.setContent
+import com.tencent.kuikly.compose.text.SelectionContainer
+import com.tencent.kuikly.compose.text.SelectionContainerState
+import com.tencent.kuikly.compose.text.SelectionFrame
+import com.tencent.kuikly.compose.text.rememberSelectionContainerState
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.draw.alpha
@@ -328,12 +332,98 @@ private const val ThreadSendMaxSilentRetries = 2
 private const val ThreadLocalizedFeedbackPlaceholder = "__RAFT_VALUE__"
 private const val ThreadAttachmentUploadConcurrencyLimit = 12
 internal const val ThreadRelativeTimestampSlotWidthDp = 112f
+private val ThreadInlineSelectionToolbarGap = 6.dp
+private const val ThreadInlineSelectionToolbarZIndex = 30f
+private const val ThreadInlineSelectionMarkdownTriggerChars = "`*_#><|[]()~@&\\-+=:/"
+private val ThreadInlineSelectionOrderedListPrefix = Regex("""^\d+\. """)
 
 internal data class ThreadMessageMetadataSlotLayout(
     val widthDp: Float,
     val heightDp: Float,
     val timestampVisible: Boolean
 )
+
+internal fun threadInlineSelectionDemoBodyEligible(body: String): Boolean {
+    if (body.isBlank() || body != body.trim()) return false
+    if (body.any { it == '\n' || it == '\r' || it == '\t' }) return false
+    if (body.any { it in ThreadInlineSelectionMarkdownTriggerChars }) return false
+    return !ThreadInlineSelectionOrderedListPrefix.containsMatchIn(body)
+}
+
+internal fun threadInlineSelectionDemoEligible(
+    body: String,
+    hasAttachments: Boolean,
+    hasActionCard: Boolean,
+    hasForwardBundle: Boolean,
+    hasCommentReference: Boolean,
+    hasLocalSendState: Boolean,
+    translationPending: Boolean,
+    longMessageCollapseEnabled: Boolean
+): Boolean =
+    !hasAttachments &&
+        !hasActionCard &&
+        !hasForwardBundle &&
+        !hasCommentReference &&
+        !hasLocalSendState &&
+        !translationPending &&
+        !longMessageCollapseEnabled &&
+        threadInlineSelectionDemoBodyEligible(body)
+
+internal data class ThreadInlineSelectionToolbarPlacement(
+    val xPx: Int,
+    val yPx: Int,
+    val belowSelection: Boolean
+)
+
+internal fun threadInlineSelectionToolbarPlacement(
+    cardWidthPx: Int,
+    selectionContainerXInCardPx: Float,
+    selectionContainerYInCardPx: Float,
+    selectionFrame: SelectionFrame,
+    toolbarWidthPx: Int,
+    toolbarHeightPx: Int,
+    gapPx: Int
+): ThreadInlineSelectionToolbarPlacement {
+    val selectionCenterX =
+        selectionContainerXInCardPx + selectionFrame.x + selectionFrame.width / 2f
+    val maxX = (cardWidthPx - toolbarWidthPx).coerceAtLeast(0)
+    val x = (selectionCenterX - toolbarWidthPx / 2f).roundToInt().coerceIn(0, maxX)
+    val selectionTop = selectionContainerYInCardPx + selectionFrame.y
+    val aboveY = (selectionTop - toolbarHeightPx - gapPx).roundToInt()
+    val belowSelection = aboveY < 0
+    val y =
+        if (belowSelection) {
+            (selectionTop + selectionFrame.height + gapPx).roundToInt().coerceAtLeast(0)
+        } else {
+            aboveY
+        }
+    return ThreadInlineSelectionToolbarPlacement(xPx = x, yPx = y, belowSelection = belowSelection)
+}
+
+private class ThreadInlineSelectionController(
+    val selectionState: SelectionContainerState
+) {
+    var active by mutableStateOf(false)
+    var frame by mutableStateOf(SelectionFrame.Zero)
+    var containerRootPosition by mutableStateOf(Offset.Zero)
+    var cardRootPosition by mutableStateOf(Offset.Zero)
+    var cardWidthPx by mutableStateOf(0)
+    var toolbarSize by mutableStateOf(IntSize(0, 0))
+
+    fun clear() {
+        selectionState.clearSelection()
+        active = false
+        frame = SelectionFrame.Zero
+    }
+}
+
+@Composable
+private fun rememberThreadInlineSelectionController(messageId: String): ThreadInlineSelectionController {
+    val selectionState = rememberSelectionContainerState()
+    return remember(messageId, selectionState) {
+        ThreadInlineSelectionController(selectionState)
+    }
+}
 
 internal fun threadMessageMetadataSlotLayout(
     showAvatar: Boolean,
@@ -3605,6 +3695,10 @@ private fun ThreadMessageVisualScreenContent() {
                         }
                     },
                     onOpenMarkdownUrl = { openedVisualMarkdownUrlCount += 1 },
+                    inlineSelectionDemoEnabled =
+                        visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_SELECTION_DEMO,
+                    onInlineSelectionCopy = {},
+                    onInlineSelectionReply = { openedVisualThreadMessageId = message.id },
                     outerPadding = 0.dp
                 )
                 if (menuActions.isNotEmpty()) {
@@ -9675,6 +9769,7 @@ private fun String.toSharedThreadTaskStatus(): TaskStatus? =
     }
 
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT = "default"
+internal const val THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_SELECTION_DEMO = "inline_selection_demo"
 private const val THREAD_MESSAGE_VISUAL_FIXTURE_MARKDOWN_LINK_CHILD = "markdown_link_child"
 private const val THREAD_MESSAGE_VISUAL_FIXTURE_MARKDOWN_MENTION_CHILD = "markdown_mention_child"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_SAVED = "saved"
@@ -9725,6 +9820,26 @@ internal fun threadVisualFixture(
 ): KuiklyThreadScreenPayload {
     val resolvedInstanceId = instanceId.ifBlank { "visual-thread-$fixture" }
     return when (fixture) {
+        THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_SELECTION_DEMO -> {
+            val base = threadVisualFixture(THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT, resolvedInstanceId)
+            base.copy(
+                alignOwnMessagesRight = false,
+                messages =
+                    base.messages.take(1).map { message ->
+                        // Developer fixture copy stays deliberately plain so the demo proves
+                        // the first-phase text-only eligibility boundary.
+                        message.copy(
+                            body = "Long press this message to select all text and open the compact action toolbar.",
+                            authorDescription = null,
+                            reactions = emptyList(),
+                            replyCount = 0,
+                            unreadReplyCount = 0,
+                            firstUnreadReplyMessageId = null,
+                            threadChannelId = null
+                        )
+                    }
+            )
+        }
         THREAD_MESSAGE_VISUAL_FIXTURE_SAVED -> {
             val base = threadVisualFixture(THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT, resolvedInstanceId)
             base.copy(
@@ -17796,6 +17911,9 @@ private fun ThreadMessageCard(
     longMessageCollapseEnabled: Boolean = false,
     longMessageExpanded: Boolean = false,
     onToggleLongMessage: () -> Unit = {},
+    inlineSelectionDemoEnabled: Boolean = false,
+    onInlineSelectionCopy: () -> Unit = {},
+    onInlineSelectionReply: () -> Unit = {},
     outerPadding: com.tencent.kuikly.compose.ui.unit.Dp = SlockSpacing.Sm
 ) {
     val localizedAuthorName =
@@ -17859,6 +17977,46 @@ private fun ThreadMessageCard(
         compactConsecutiveMessages && !showAuthorChrome && pressed && compactTimestampLabel.isNotBlank()
     val compactTimestampGutter = compactConsecutiveMessages
     val hasThreadAttachments = richContentEnabled && message.attachments.isNotEmpty()
+    val inlineSelectionBody = translation?.displayBody ?: message.body
+    val inlineSelectionEligible =
+        inlineSelectionDemoEnabled &&
+            threadInlineSelectionDemoEligible(
+                body = inlineSelectionBody,
+                hasAttachments = hasThreadAttachments,
+                hasActionCard = actionCard != null,
+                hasForwardBundle = message.forwardBundle != null,
+                hasCommentReference = message.commentRef != null,
+                hasLocalSendState = message.hasLocalSendState(),
+                translationPending = translation?.pendingPlaceholder == true,
+                longMessageCollapseEnabled = longMessageCollapseEnabled
+            )
+    val inlineSelectionController =
+        if (inlineSelectionDemoEnabled) {
+            rememberThreadInlineSelectionController(message.id)
+        } else {
+            null
+        }
+    val inlineSelectionGapPx = with(LocalDensity.current) { ThreadInlineSelectionToolbarGap.roundToPx() }
+    val inlineSelectionToolbarPlacement =
+        inlineSelectionController?.let { controller ->
+            threadInlineSelectionToolbarPlacement(
+                cardWidthPx = controller.cardWidthPx,
+                selectionContainerXInCardPx =
+                    controller.containerRootPosition.x - controller.cardRootPosition.x,
+                selectionContainerYInCardPx =
+                    controller.containerRootPosition.y - controller.cardRootPosition.y,
+                selectionFrame = controller.frame,
+                toolbarWidthPx = controller.toolbarSize.width,
+                toolbarHeightPx = controller.toolbarSize.height,
+                gapPx = inlineSelectionGapPx
+            )
+        } ?: ThreadInlineSelectionToolbarPlacement(xPx = 0, yPx = 0, belowSelection = false)
+    val clearInlineSelection: () -> Unit = { inlineSelectionController?.clear() }
+    LaunchedEffect(message.id, inlineSelectionEligible) {
+        if (!inlineSelectionEligible) {
+            clearInlineSelection()
+        }
+    }
     val showSavedBadge =
         shouldShowThreadMessageSavedBadge(
             showSaveAction = showSaveAction,
@@ -17927,6 +18085,16 @@ private fun ThreadMessageCard(
                 .fillMaxWidth()
                 .background(SlockColor.SurfaceWhite)
                 .then(
+                    if (inlineSelectionDemoEnabled) {
+                        Modifier.onGloballyPositioned { coordinates ->
+                            inlineSelectionController?.cardRootPosition = coordinates.positionInRoot()
+                            inlineSelectionController?.cardWidthPx = coordinates.size.width
+                        }
+                    } else {
+                        Modifier
+                    }
+                )
+                .then(
                     if (threadMessageUsesFullRowLongPressActions(shareSelectionActive)) {
                         Modifier.threadMessageLongPressActions(
                             messageId = message.id,
@@ -17934,7 +18102,7 @@ private fun ThreadMessageCard(
                             tapMovementGate = tapMovementGate,
                             isScrollInProgress = isMessageListScrolling,
                             diagnosticsLogger = diagnosticsLogger,
-                            onTap = rowTapAction,
+                            onTap = if (inlineSelectionController?.active == true) clearInlineSelection else rowTapAction,
                             onTapRejected = { decision ->
                                 diagnosticsLogger(
                                     "thread_message_row_tap_rejected messageId=${message.id} " +
@@ -17942,6 +18110,17 @@ private fun ThreadMessageCard(
                                         "touchSlop=${decision.touchSlop} pointers=${decision.pointerCount}"
                                 )
                             },
+                            onSelectAllText =
+                                if (inlineSelectionEligible) {
+                                    {
+                                        diagnosticsLogger(
+                                            "thread_inline_selection_select_all messageId=${message.id}"
+                                        )
+                                        inlineSelectionController?.selectionState?.createSelectionAll()
+                                    }
+                                } else {
+                                    null
+                                },
                             onShowActions = onShowActions,
                             onPressChanged = { isPressed, position ->
                                 pressed = isPressed
@@ -18122,6 +18301,13 @@ private fun ThreadMessageCard(
                                         overflow = TextOverflow.Ellipsis,
                                         modifier = Modifier
                                     )
+                                } else if (inlineSelectionEligible) {
+                                    Text(
+                                        text = bodyForRender,
+                                        style = ThreadMessageBodyTextStyle,
+                                        color = SlockColor.TextBlack,
+                                        modifier = Modifier
+                                    )
                                 } else if (richContentEnabled) {
                                     val markdownRenderSignature =
                                         remember(message.id, bodyForRender) {
@@ -18172,6 +18358,42 @@ private fun ThreadMessageCard(
                                     )
                                 }
                                 }
+                                val selectableMessageBodyBlock: @Composable () -> Unit = {
+                                    if (inlineSelectionEligible) {
+                                        val controller = inlineSelectionController
+                                        if (controller != null) {
+                                            SelectionContainer(
+                                                state = controller.selectionState,
+                                                modifier =
+                                                    Modifier.onGloballyPositioned { coordinates ->
+                                                        controller.containerRootPosition = coordinates.positionInRoot()
+                                                    },
+                                                onSelectStart = { frame ->
+                                                    controller.frame = frame
+                                                    controller.active = true
+                                                },
+                                                onSelectChange = { frame ->
+                                                    controller.frame = frame
+                                                    controller.active = true
+                                                },
+                                                onSelectEnd = { frame ->
+                                                    controller.frame = frame
+                                                    controller.active = true
+                                                },
+                                                onSelectCancel = {
+                                                    controller.frame = SelectionFrame.Zero
+                                                    controller.active = false
+                                                }
+                                            ) {
+                                                messageBodyBlock()
+                                            }
+                                        } else {
+                                            messageBodyBlock()
+                                        }
+                                    } else {
+                                        messageBodyBlock()
+                                    }
+                                }
                                 if (alignOwnMessageRight) {
                                     Row(
                                         verticalAlignment = Alignment.Top,
@@ -18183,12 +18405,12 @@ private fun ThreadMessageCard(
                                             }
                                         }
                                         ThreadMessageGeometryTintBox(geometryTints?.bodyTint) {
-                                            messageBodyBlock()
+                                            selectableMessageBodyBlock()
                                         }
                                     }
                                 } else {
                                     ThreadMessageGeometryTintBox(geometryTints?.bodyTint) {
-                                        messageBodyBlock()
+                                        selectableMessageBodyBlock()
                                     }
                                 }
                                 if (showLongMessageToggle && translation?.pendingPlaceholder != true) {
@@ -18308,10 +18530,88 @@ private fun ThreadMessageCard(
                 }
             }
         }
+        if (inlineSelectionController?.active == true && inlineSelectionController.frame != SelectionFrame.Zero) {
+            ThreadInlineSelectionToolbar(
+                placement = inlineSelectionToolbarPlacement,
+                onMeasured = { size -> inlineSelectionController.toolbarSize = size },
+                onCopy = {
+                    tapMovementGate.rejectChildAction("inline_selection_copy")
+                    onInlineSelectionCopy()
+                    clearInlineSelection()
+                },
+                onReply = {
+                    tapMovementGate.rejectChildAction("inline_selection_reply")
+                    clearInlineSelection()
+                    onInlineSelectionReply()
+                },
+                onDismiss = {
+                    tapMovementGate.rejectChildAction("inline_selection_close")
+                    clearInlineSelection()
+                }
+            )
+        }
         ThreadMessagePressRipple(
             pressed = pressed,
             origin = pressRippleOrigin
         )
+    }
+}
+
+@Composable
+private fun ThreadInlineSelectionToolbar(
+    placement: ThreadInlineSelectionToolbarPlacement,
+    onMeasured: (IntSize) -> Unit,
+    onCopy: () -> Unit,
+    onReply: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    Box(
+        modifier =
+            Modifier
+                .offset { IntOffset(placement.xPx, placement.yPx) }
+                .zIndex(ThreadInlineSelectionToolbarZIndex)
+                .onGloballyPositioned { coordinates -> onMeasured(coordinates.size) }
+                .padding(end = SlockShadow.BrutalSmall, bottom = SlockShadow.BrutalSmall)
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .matchParentSize()
+                    .offset(x = SlockShadow.BrutalSmall, y = SlockShadow.BrutalSmall)
+                    .background(SlockColor.ShadowBlack)
+        )
+        Row(
+            modifier =
+                Modifier
+                    .background(SlockColor.SurfaceWhite)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .padding(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            SlockToolbarChip(
+                label = stringResource(MR.strings.thread_inline_selection_copy),
+                iconName = SlockLucideIconName.Copy,
+                uppercase = false,
+                borderColor = SlockColor.BorderBlack,
+                onClick = onCopy
+            )
+            SlockToolbarChip(
+                label = stringResource(MR.strings.thread_inline_selection_reply),
+                iconName = SlockLucideIconName.MessageSquare,
+                uppercase = false,
+                borderColor = SlockColor.BorderBlack,
+                onClick = onReply
+            )
+            SlockBrutalIconButton(
+                iconName = SlockLucideIconName.X,
+                contentDescription = stringResource(MR.strings.common_close),
+                onClick = onDismiss,
+                size = 30.dp,
+                iconSize = 14.dp,
+                shadowOffset = 0.dp
+            )
+        }
     }
 }
 
@@ -19526,12 +19826,14 @@ private fun Modifier.threadMessageLongPressActions(
     diagnosticsLogger: (String) -> Unit = {},
     onTap: (() -> Unit)? = null,
     onTapRejected: (ThreadMessageTapMovementDecision) -> Unit = {},
+    onSelectAllText: (() -> Unit)? = null,
     onShowActions: (SlockPopoverAnchor) -> Unit,
     onPressChanged: (Boolean, Offset?) -> Unit = { _, _ -> }
 ): Modifier {
     val currentOnShowActions by rememberUpdatedState(onShowActions)
     val currentOnTap by rememberUpdatedState(onTap)
     val currentOnTapRejected by rememberUpdatedState(onTapRejected)
+    val currentOnSelectAllText by rememberUpdatedState(onSelectAllText)
     val currentOnPressChanged by rememberUpdatedState(onPressChanged)
     val currentIsScrollInProgress by rememberUpdatedState(isScrollInProgress)
     val currentDiagnosticsLogger by rememberUpdatedState(diagnosticsLogger)
@@ -19611,6 +19913,14 @@ private fun Modifier.threadMessageLongPressActions(
                         "thread_message_long_press_admitted messageId=$messageId " +
                             "scrollInProgress=${dispatchDecision.scrollInProgress}"
                     )
+                    if (currentOnSelectAllText != null) {
+                        currentDiagnosticsLogger(
+                            "thread_message_long_press_select_all_emit messageId=$messageId " +
+                                "scrollInProgress=${dispatchDecision.scrollInProgress}"
+                        )
+                        currentOnSelectAllText?.invoke()
+                        return@detectTapGestures
+                    }
                     val anchor = rootAnchor.resolve(SlockPopoverLocalPoint.Exact(localOffset))
                     if (anchor == null) {
                         currentDiagnosticsLogger(

@@ -1020,6 +1020,78 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureThreadInlineSelectionDemo() {
+        var selectedArtifact: Bitmap? = null
+        captureKmpComponentCase(
+            caseId = "components.thread.inline-selection-demo",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-inline-selection-demo")
+                    .put("visualFixture", "inline_selection_demo")
+                    .put("singleTapOpensThreadEnabled", true),
+            crop = FULL_VIEWPORT_CROP,
+            suppressSoftKeyboard = false,
+            capturedBitmapAfterBeforeScreenshot = {
+                requireNotNull(selectedArtifact) {
+                    "Inline-selection interaction did not provide its validated artifact"
+                }.also { selectedArtifact = null }
+            },
+            beforeScreenshot = {
+                dismissCompatibilityDialog()
+                waitForIdleBounded()
+                var before: Bitmap? = null
+                var after: Bitmap? = null
+                try {
+                    before = captureActivityScreenshot("components.thread.inline-selection-demo.before")
+                    val yellowBefore = before.countThreadOpenProbeYellowSamplesInTopBand()
+                    val selectionBlueBefore = before.countThreadInlineSelectionBlueSamples()
+                    longPressDisplayDp(x = 300f, y = 70f)
+                    Thread.sleep(800)
+                    after = captureActivityScreenshot("components.thread.inline-selection-demo.after")
+                    val yellowAfter = after.countThreadOpenProbeYellowSamplesInTopBand()
+                    val selectionBlueAfter = after.countThreadInlineSelectionBlueSamples()
+                    val addedToolbarBlack = after.countNewNearBlackSamplesComparedWith(before)
+                    val changedRatio = before.fullBitmapChangedPixelRatio(after)
+                    assertTrue(
+                        "Long press must render the in-place selection and compact toolbar; changedRatio=$changedRatio",
+                        changedRatio >= THREAD_LONG_PRESS_MIN_CHANGED_RATIO
+                    )
+                    assertTrue(
+                        "Long press must render a blue selection; before=$selectionBlueBefore after=$selectionBlueAfter",
+                        selectionBlueAfter >=
+                            selectionBlueBefore + THREAD_INLINE_SELECTION_MIN_ADDED_BLUE_SAMPLES
+                    )
+                    assertTrue(
+                        "Long press must render the black toolbar chrome; addedNearBlack=$addedToolbarBlack",
+                        addedToolbarBlack >= THREAD_INLINE_SELECTION_MIN_ADDED_BLACK_SAMPLES
+                    )
+                    assertTrue(
+                        "Inline selection must not open the thread; yellowBefore=$yellowBefore yellowAfter=$yellowAfter",
+                        yellowAfter < yellowBefore + THREAD_TAP_PROBE_MIN_ADDED_YELLOW_SAMPLES
+                    )
+                    selectedArtifact = after
+                    after = null
+                } finally {
+                    before?.recycle()
+                    after?.recycle()
+                }
+            },
+            assertBitmap = { bitmap ->
+                val selectionBlue = bitmap.countThreadInlineSelectionBlueSamples()
+                assertTrue(
+                    "Final inline-selection artifact must preserve the selected text; selectionBlue=$selectionBlue",
+                    selectionBlue >= THREAD_INLINE_SELECTION_MIN_FINAL_BLUE_SAMPLES
+                )
+            },
+            afterScreenshot = {
+                selectedArtifact?.recycle()
+                selectedArtifact = null
+            }
+        )
+    }
+
+    @Test
     fun captureThreadMessageSavedBadge() {
         captureKmpComponentCase(
             caseId = "components.thread.message-row.saved-badge",
@@ -1328,6 +1400,59 @@ class KmpVisualScreenshotCaptureTest {
                 ) {
                     samples++
                 }
+                x += FORWARD_PROBE_PIXEL_STRIDE
+            }
+            y += FORWARD_PROBE_PIXEL_STRIDE
+        }
+        return samples
+    }
+
+    private fun Bitmap.countThreadInlineSelectionBlueSamples(): Int {
+        var samples = 0
+        var y = 0
+        while (y < height) {
+            var x = 0
+            while (x < width) {
+                val pixel = getPixel(x, y)
+                val red = Color.red(pixel)
+                val green = Color.green(pixel)
+                val blue = Color.blue(pixel)
+                if (
+                    red in 120..210 &&
+                    green in 155..235 &&
+                    blue in 220..255 &&
+                    green - red >= 15 &&
+                    blue - green >= 15
+                ) {
+                    samples++
+                }
+                x += FORWARD_PROBE_PIXEL_STRIDE
+            }
+            y += FORWARD_PROBE_PIXEL_STRIDE
+        }
+        return samples
+    }
+
+    private fun Bitmap.countNewNearBlackSamplesComparedWith(before: Bitmap): Int {
+        require(width == before.width && height == before.height) {
+            "Bitmap size changed: ${width}x$height vs ${before.width}x${before.height}"
+        }
+        var samples = 0
+        var y = 0
+        while (y < height) {
+            var x = 0
+            while (x < width) {
+                val afterPixel = getPixel(x, y)
+                val beforePixel = before.getPixel(x, y)
+                val afterNearBlack =
+                    Color.red(afterPixel) <= 45 &&
+                        Color.green(afterPixel) <= 45 &&
+                        Color.blue(afterPixel) <= 45
+                val beforeNearBlack =
+                    Color.red(beforePixel) <= 45 &&
+                        Color.green(beforePixel) <= 45 &&
+                        Color.blue(beforePixel) <= 45
+                if (afterNearBlack && !beforeNearBlack) samples++
                 x += FORWARD_PROBE_PIXEL_STRIDE
             }
             y += FORWARD_PROBE_PIXEL_STRIDE
@@ -2959,6 +3084,8 @@ class KmpVisualScreenshotCaptureTest {
         afterScreenshot: (() -> Unit)? = null,
         suppressSoftKeyboard: Boolean = true,
         captureSystemSurface: Boolean = false,
+        // Native transient surfaces may cancel on a second window read; preserve the validated interaction frame.
+        capturedBitmapAfterBeforeScreenshot: (() -> Bitmap)? = null,
         assertBitmap: ((Bitmap) -> Unit)? = null,
         readyToken: String? = null,
         // Full-height cases (#388) only know the crop height after the page
@@ -2978,7 +3105,9 @@ class KmpVisualScreenshotCaptureTest {
             waitForIdleBounded()
             Thread.sleep(settleMs)
             beforeScreenshot?.invoke()
-            waitForIdleBounded()
+            if (capturedBitmapAfterBeforeScreenshot == null) {
+                waitForIdleBounded()
+            }
             if (suppressSoftKeyboard) {
                 onActivityNoIdle { suppressVisualKeyboard(it) }
                 waitForIdleBounded()
@@ -2986,7 +3115,15 @@ class KmpVisualScreenshotCaptureTest {
             lastReadyTokenObserved = readyToken?.let { awaitVisualReadyToken(caseId, it) } ?: false
             val effectiveCrop = cropOverride?.invoke() ?: crop
             val normalized =
-                if (captureSystemSurface) {
+                if (capturedBitmapAfterBeforeScreenshot != null) {
+                    val screenshot = capturedBitmapAfterBeforeScreenshot.invoke()
+                    require(cropBoundsProblem(screenshot, effectiveCrop) == null) {
+                        cropBoundsProblem(screenshot, effectiveCrop).orEmpty()
+                    }
+                    screenshot.cropDp(effectiveCrop).also { cropped ->
+                        if (cropped !== screenshot) screenshot.recycle()
+                    }
+                } else if (captureSystemSurface) {
                     requireNotNull(captureUiAutomationFallbackBitmap(caseId, effectiveCrop)) {
                         "Unable to capture system surface for $caseId"
                     }
@@ -4894,6 +5031,9 @@ class KmpVisualScreenshotCaptureTest {
         private const val THREAD_CHILD_ACTION_PROBE_TOLERANCE = 12
         private const val THREAD_CHILD_ACTION_PROBE_MIN_ADDED_SAMPLES = 100
         private const val THREAD_LONG_PRESS_MIN_CHANGED_RATIO = 0.02f
+        private const val THREAD_INLINE_SELECTION_MIN_ADDED_BLUE_SAMPLES = 100
+        private const val THREAD_INLINE_SELECTION_MIN_ADDED_BLACK_SAMPLES = 40
+        private const val THREAD_INLINE_SELECTION_MIN_FINAL_BLUE_SAMPLES = 80
         private const val SEARCH_PIN_MENU_MIN_CHANGED_RATIO = 0.004f
         private const val THREAD_OPEN_PROBE_TOP_BAND_FRACTION = 0.15f
         private const val FORWARD_PROBE_SWIPE_STEPS = 12
