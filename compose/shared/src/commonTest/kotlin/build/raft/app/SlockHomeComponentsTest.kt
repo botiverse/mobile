@@ -897,28 +897,6 @@ class SlockHomeComponentsTest {
     }
 
     @Test
-    fun homeSearchChannelEntityMatchesWithOrWithoutHashPrefix() {
-        val channel =
-            HomeChannelRow(
-                threadId = ThreadId("channel-1"),
-                channelId = ChannelId("channel-1"),
-                kind = ConversationKind.Channel,
-                name = "proj-mobile"
-            )
-        val dm =
-            HomeDirectMessageRow(
-                threadId = ThreadId("dm-1"),
-                channelId = ChannelId("dm-1"),
-                kind = ConversationKind.DirectMessage,
-                name = "proj-mobile"
-            )
-
-        assertTrue(channel.searchMatches("proj-mobile"))
-        assertTrue(channel.searchMatches("#proj-mobile"))
-        assertFalse(dm.searchMatches("#proj-mobile"))
-    }
-
-    @Test
     fun localComposerDraftProjectionClearsStaleSnapshotDraftFlags() {
         val staleSnapshotItem = SlockHomeConversationItem(id = "channel-1", name = "home", hasDraft = true)
         val projection = emptySet<SharedThreadComposerDraftRecord>().toSharedThreadComposerDraftProjection()

@@ -19291,7 +19291,7 @@ private fun SharedHomeSearchPanelState.localizedSenderFilterLabel(): String {
 private val SearchSenderFilterItem.displayLabel: String
     get() = label.ifBlank { handle.ifBlank { id } }
 
-private fun homeSearchEntityResults(
+internal fun homeSearchEntityResults(
     query: String,
     homeState: SharedHomeState,
     senderFilters: List<SearchSenderFilterItem>,
@@ -19301,8 +19301,8 @@ private fun homeSearchEntityResults(
     personLabel: String,
     membersLabel: String
 ): List<SearchEntityResult> {
-    val normalizedQuery = query.trim().lowercase()
-    if (normalizedQuery.isBlank()) return emptyList()
+    val trimmedQuery = query.trim()
+    if (trimmedQuery.isBlank()) return emptyList()
     val snapshot = (homeState.content as? SharedHomeContentState.Content)?.snapshot ?: return emptyList()
     val conversations = snapshot.channels + snapshot.directMessages
     val byPresenceMemberId =
@@ -19312,50 +19312,83 @@ private fun homeSearchEntityResults(
                 memberId to conversation.toThreadLaunchConversationIdentity()
             }
             .toMap()
-    val conversationResults =
-        conversations.mapNotNull { conversation ->
-            if (!conversation.searchMatches(normalizedQuery)) return@mapNotNull null
+    val conversationEntries =
+        conversations.mapIndexed { index, conversation ->
             val type =
                 if (conversation.kind == ConversationKind.DirectMessage) {
                     SearchEntityType.DirectMessage
                 } else {
                     SearchEntityType.Channel
                 }
-            SearchEntityResult(
-                key = "conversation:${conversation.threadId.value}",
-                type = type,
-                title = if (type == SearchEntityType.Channel) "#${conversation.name}" else conversation.name,
-                subtitle = conversation.subtitle?.takeIf { it.isNotBlank() } ?: if (type == SearchEntityType.Channel) channelLabel else dmLabel,
-                threadId = conversation.threadId.value,
-                memberId = conversation.presenceMemberId?.value,
-                conversationIdentity = conversation.toThreadLaunchConversationIdentity(),
-                avatarWireValue = null,
-                showPresence = conversation.isAgentDirectMessage(),
-                archived = conversation.archived
+            ThreadComposerSuggestionSearchEntry(
+                index = index,
+                suggestion =
+                    SearchEntityResult(
+                        key = "conversation:${conversation.threadId.value}",
+                        type = type,
+                        title = if (type == SearchEntityType.Channel) "#${conversation.name}" else conversation.name,
+                        subtitle =
+                            conversation.subtitle?.takeIf { it.isNotBlank() }
+                                ?: if (type == SearchEntityType.Channel) channelLabel else dmLabel,
+                        threadId = conversation.threadId.value,
+                        memberId = conversation.presenceMemberId?.value,
+                        conversationIdentity = conversation.toThreadLaunchConversationIdentity(),
+                        avatarWireValue = null,
+                        showPresence = conversation.isAgentDirectMessage(),
+                        archived = conversation.archived
+                    ),
+                fields =
+                    listOf(
+                        ThreadComposerSuggestionSearchField(conversation.name, priority = 0),
+                        ThreadComposerSuggestionSearchField(conversation.subtitle.orEmpty(), priority = 3),
+                        ThreadComposerSuggestionSearchField(conversation.channelId?.value.orEmpty(), priority = 5),
+                        ThreadComposerSuggestionSearchField(conversation.threadId.value, priority = 5)
+                    )
             )
         }
-    val memberResults =
-        senderFilters.mapNotNull { sender ->
-            if (!sender.searchMatches(normalizedQuery)) return@mapNotNull null
+    val memberEntries =
+        senderFilters.mapIndexed { offset, sender ->
             val conversation = byPresenceMemberId[sender.id]
-            SearchEntityResult(
-                key = "sender:${sender.kind}:${sender.id}",
-                type = if (sender.kind == MemberKind.Agent) SearchEntityType.Agent else SearchEntityType.Human,
-                title = sender.displayLabel,
-                subtitle =
-                    buildString {
-                        append(if (sender.kind == MemberKind.Agent) agentLabel else personLabel)
-                        if (sender.handle.isNotBlank()) append(" · @${sender.handle}")
-                        if (conversation == null) append(" · $membersLabel")
-                    },
-                threadId = conversation?.threadId?.value,
-                memberId = sender.id,
-                conversationIdentity = conversation,
-                avatarWireValue = sender.avatarWireValue ?: AvatarReference.Random(sender.id).wireValue,
-                showPresence = sender.kind == MemberKind.Agent
+            ThreadComposerSuggestionSearchEntry(
+                index = conversationEntries.size + offset,
+                suggestion =
+                    SearchEntityResult(
+                        key = "sender:${sender.kind}:${sender.id}",
+                        type = if (sender.kind == MemberKind.Agent) SearchEntityType.Agent else SearchEntityType.Human,
+                        title = sender.displayLabel,
+                        subtitle =
+                            buildString {
+                                append(if (sender.kind == MemberKind.Agent) agentLabel else personLabel)
+                                if (sender.handle.isNotBlank()) append(" · @${sender.handle}")
+                                if (conversation == null) append(" · $membersLabel")
+                            },
+                        threadId = conversation?.threadId?.value,
+                        memberId = sender.id,
+                        conversationIdentity = conversation,
+                        avatarWireValue = sender.avatarWireValue ?: AvatarReference.Random(sender.id).wireValue,
+                        showPresence = sender.kind == MemberKind.Agent
+                    ),
+                fields =
+                    listOf(
+                        ThreadComposerSuggestionSearchField(sender.displayLabel, priority = 0),
+                        ThreadComposerSuggestionSearchField(sender.handle, priority = 1),
+                        ThreadComposerSuggestionSearchField(sender.id, priority = 5)
+                    )
             )
         }
-    return (conversationResults + memberResults)
+    val entries =
+        (conversationEntries + memberEntries).let { candidates ->
+            when (trimmedQuery.firstOrNull()) {
+                '#' -> candidates.filter { it.suggestion.type == SearchEntityType.Channel }
+                '@' ->
+                    candidates.filter {
+                        it.suggestion.type == SearchEntityType.Human ||
+                            it.suggestion.type == SearchEntityType.Agent
+                    }
+                else -> candidates
+            }
+        }
+    return rankThreadComposerSuggestionEntries(query = trimmedQuery, entries = entries)
         .distinctBy { it.key }
         .take(5)
 }
@@ -19404,19 +19437,6 @@ private val SearchSort.searchKey: String
             SearchSort.Relevance -> "relevance"
             SearchSort.Recent -> "recent"
         }
-
-internal fun HomeConversationRow.searchMatches(query: String): Boolean =
-    listOfNotNull(
-        name,
-        if (kind == ConversationKind.DirectMessage) null else "#${name.removePrefix("#")}",
-        subtitle.orEmpty(),
-        channelId?.value.orEmpty(),
-        threadId.value
-    )
-        .any { it.lowercase().contains(query) }
-
-private fun SearchSenderFilterItem.searchMatches(query: String): Boolean =
-    listOf(label, handle, id).any { it.lowercase().contains(query) }
 
 private fun String.searchAvatarSeed(): String =
     lowercase()
