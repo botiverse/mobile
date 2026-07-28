@@ -1,7 +1,10 @@
 package build.raft.app.shared
 
+import android.app.Instrumentation
 import android.content.Intent
 import android.graphics.Bitmap
+import android.os.ParcelFileDescriptor
+import android.os.PowerManager
 import android.os.SystemClock
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
@@ -40,6 +43,9 @@ class SlockChildPageVisibilityConnectedTest {
 
     private fun captureProbe(): Bitmap {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
+        // This class runs late in a serialized device job and can cross the
+        // emulator's screen timeout before its first screenshot.
+        ensureInteractiveDisplay(instrumentation)
         val context = instrumentation.targetContext
         val intent =
             Intent(context, SlockKuiklyActivity::class.java)
@@ -83,6 +89,26 @@ class SlockChildPageVisibilityConnectedTest {
         }
         return requireNotNull(bitmap) { "Failed to capture child page visibility probe screenshot" }
     }
+
+    private fun ensureInteractiveDisplay(instrumentation: Instrumentation) {
+        val powerManager = instrumentation.targetContext.getSystemService(PowerManager::class.java)
+        if (!powerManager.isInteractive) {
+            instrumentation.shell("input keyevent KEYCODE_WAKEUP")
+        }
+        instrumentation.shell("wm dismiss-keyguard")
+
+        val deadline = SystemClock.uptimeMillis() + 5_000
+        while (!powerManager.isInteractive && SystemClock.uptimeMillis() < deadline) {
+            SystemClock.sleep(100)
+        }
+        check(powerManager.isInteractive) { "Child page visibility probe display did not wake within 5s" }
+        instrumentation.waitForIdleSync()
+    }
+
+    private fun Instrumentation.shell(command: String): String =
+        ParcelFileDescriptor.AutoCloseInputStream(uiAutomation.executeShellCommand(command)).use { input ->
+            input.bufferedReader().readText()
+        }
 
     private fun captureScreenshot(): Bitmap =
         requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()) {
