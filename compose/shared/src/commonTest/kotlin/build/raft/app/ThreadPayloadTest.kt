@@ -5445,6 +5445,36 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun replyThreadTerminalEmptyProjectionCannotRegressToLoadingPresentation() {
+        val terminalEmpty =
+            KuiklyThreadScreenPayload(
+                status = "empty",
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                emptyTitle = "Loading...",
+                emptyDetail = "Stale loading detail"
+            ).toThreadTimelineSlice()
+        val loading =
+            KuiklyThreadScreenPayload(
+                status = "loading",
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                emptyTitle = "Loading..."
+            ).toThreadTimelineSlice()
+        val error =
+            KuiklyThreadScreenPayload(
+                status = "error",
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                emptyTitle = "Could not load replies",
+                emptyDetail = "Try again"
+            ).toThreadTimelineSlice()
+
+        assertEquals(ThreadReplyEmptyTitle, terminalEmpty.emptyTitle)
+        assertEquals(ThreadReplyEmptyDetail, terminalEmpty.emptyDetail)
+        assertEquals("Loading...", loading.emptyTitle)
+        assertEquals("Could not load replies", error.emptyTitle)
+        assertEquals("Try again", error.emptyDetail)
+    }
+
+    @Test
     fun replyThreadLoadingPayloadUsesKnownThreadChannelAsRouteIdentityOnly() {
         val parent =
             KuiklyThreadMessageItem(
