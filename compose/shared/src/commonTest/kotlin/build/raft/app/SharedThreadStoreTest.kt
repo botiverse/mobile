@@ -3274,7 +3274,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun activityReplyThreadFailsClosedWhenParentAccessCandidateIsMissing() = runBlocking {
+    fun activityReplyThreadKeepsCanonicalRepliesReadableWhenParentAccessCandidateIsMissing() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val route = activityReplyPayload(
             parentKind = ConversationKind.Channel,
@@ -3308,18 +3308,39 @@ class SharedThreadStoreTest {
 
         store.dispatch(SharedThreadIntent.Start(route))
         withTimeout(1_000) {
-            while (store.state.value.accessResolution != ThreadAccessResolution.Error) {
+            while (
+                store.state.value.accessResolution != ThreadAccessResolution.Resolved ||
+                store.state.value.writeActionsEnabled
+            ) {
                 delay(10)
             }
         }
 
-        val failedFrame = store.state.value
-        assertEquals(ThreadAccessResolution.Error, failedFrame.accessResolution)
-        assertTrue(failedFrame.accessResolution.shouldRenderThreadAccessRetry())
+        val degradedFrame = store.state.value
+        assertEquals(ThreadAccessResolution.Resolved, degradedFrame.accessResolution)
+        assertFalse(degradedFrame.accessResolution.shouldRenderThreadAccessRetry())
+        assertEquals(listOf("network reply"), degradedFrame.payload.messages.map { it.body })
+        assertFalse(degradedFrame.writeActionsEnabled)
+        assertFalse(degradedFrame.payload.joined)
+        assertFalse(degradedFrame.payload.canSend)
+        assertFalse(degradedFrame.payload.composer.enabled)
+        assertTrue(
+            degradedFrame.payload.isThreadPrimaryFooterReady(
+                timelineSlice = degradedFrame.timelineSlice,
+                accessResolution = degradedFrame.accessResolution
+            )
+        )
         assertFalse(
-            failedFrame.payload.isThreadPrimaryFooterReady(
-                timelineSlice = failedFrame.timelineSlice,
-                accessResolution = failedFrame.accessResolution
+            shouldShowThreadComposerForReadyContent(
+                joined = degradedFrame.payload.joined,
+                showComposer = degradedFrame.payload.showComposer,
+                selectedTab = degradedFrame.payload.selectedTab
+            )
+        )
+        assertEquals(
+            null,
+            degradedFrame.payload.resolvedTaskLookupChannelId(
+                writeActionsEnabled = degradedFrame.writeActionsEnabled
             )
         )
         scope.cancel()

@@ -141,6 +141,16 @@ class SharedReplyThreadAccessIntegrationTest {
             assertEquals("content", store.state.value.payload.status)
             assertEquals(listOf("reply body"), store.state.value.payload.messages.map { it.body })
             assertEquals("missing", store.state.value.payload.originStatus)
+            assertEquals(ThreadAccessResolution.Resolved, store.state.value.accessResolution)
+            assertFalse(store.state.value.writeActionsEnabled)
+            assertFalse(store.state.value.payload.joined)
+            assertFalse(store.state.value.payload.canSend)
+            assertFalse(store.state.value.payload.composer.enabled)
+            assertNull(
+                store.state.value.payload.resolvedTaskLookupChannelId(
+                    writeActionsEnabled = store.state.value.writeActionsEnabled
+                )
+            )
             assertEquals(1, repository.parentRequests.size)
             assertEquals(MessageId("m1"), repository.parentRequests.single().first)
             assertEquals(ChannelId("channel-1"), repository.parentRequests.single().second)
@@ -158,6 +168,47 @@ class SharedReplyThreadAccessIntegrationTest {
                         line.contains("messages=1")
                 }
             )
+        }
+    }
+
+    @Test
+    fun canonicalHistorySurvivesTransientRefreshButPermissionRevocationClearsIt() = runBlocking {
+        withPortableAppScope { appScope ->
+            val repository =
+                ReplyThreadAccessConversationRepositoryRecorder(
+                    replyResult = DataResult.Content(replyThreadAccessSnapshot())
+                )
+            val dataSource =
+                replyThreadAccessDataSource(
+                    repository = repository,
+                    sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1")),
+                    payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L)
+                )
+            val store = SharedThreadStore(dataSource = dataSource, scope = appScope)
+
+            store.accept(SharedThreadIntent.Start(unresolvedReplyThreadAccessPayload()))
+            assertEquals(ThreadAccessResolution.Resolved, store.state.value.accessResolution)
+            assertEquals(listOf("reply body"), store.state.value.payload.messages.map { it.body })
+
+            repository.replyResult =
+                DataResult.Error(
+                    ScreenError(code = "reply_refresh_offline", retryable = true)
+                )
+            store.accept(SharedThreadIntent.Refresh)
+
+            assertEquals(ThreadAccessResolution.Resolved, store.state.value.accessResolution)
+            assertEquals("content", store.state.value.payload.status)
+            assertEquals(listOf("reply body"), store.state.value.payload.messages.map { it.body })
+
+            repository.replyResult =
+                DataResult.NoPermission(
+                    build.raft.app.data.PermissionBlocker(code = "thread_forbidden")
+                )
+            store.accept(SharedThreadIntent.Refresh)
+
+            assertEquals(ThreadAccessResolution.NoPermission, store.state.value.accessResolution)
+            assertEquals("no_permission", store.state.value.payload.status)
+            assertTrue(store.state.value.payload.messages.isEmpty())
         }
     }
 

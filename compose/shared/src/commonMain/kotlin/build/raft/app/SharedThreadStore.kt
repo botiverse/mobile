@@ -4972,7 +4972,8 @@ internal class SharedThreadStore(
                             homeAccessCandidate = currentState.initialHomeAccessCandidate,
                             requiresParentAccessCandidate =
                                 projectedPayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread,
-                            hasReadableReplyParentContext = projectedPayload.hasReadableReplyParentContext()
+                            hasReadableCanonicalReplyContent =
+                                projectedPayload.hasReadableCanonicalReplyContent()
                         )
                     val didEmit =
                         reduceState(
@@ -5254,7 +5255,7 @@ internal class SharedThreadStore(
                                 ThreadAccessResolution.Error
                             projectedPayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
                                 currentState.canonicalAccessResolved &&
-                                (candidate != null || projectedPayload.hasReadableReplyParentContext()) ->
+                                (candidate != null || projectedPayload.hasReadableCanonicalReplyContent()) ->
                                 ThreadAccessResolution.Resolved
                             projectedPayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
                                 currentState.canonicalAccessResolved ->
@@ -8651,7 +8652,7 @@ private fun ThreadAccessResolution.afterRefreshResult(
     homeLookupComplete: Boolean,
     homeAccessCandidate: ConversationAccessCandidate?,
     requiresParentAccessCandidate: Boolean,
-    hasReadableReplyParentContext: Boolean
+    hasReadableCanonicalReplyContent: Boolean
 ): ThreadAccessResolution =
     when (result) {
         is DataResult.Content ->
@@ -8660,7 +8661,7 @@ private fun ThreadAccessResolution.afterRefreshResult(
                 !canonicalAccessResolved || !homeLookupComplete -> ThreadAccessResolution.Loading
                 requiresParentAccessCandidate &&
                     homeAccessCandidate == null &&
-                    !hasReadableReplyParentContext ->
+                    !hasReadableCanonicalReplyContent ->
                     ThreadAccessResolution.Error
                 else -> ThreadAccessResolution.Resolved
             }
@@ -8687,9 +8688,11 @@ private fun ThreadAccessResolution.afterRefreshResult(
         is DataResult.Error -> if (this == ThreadAccessResolution.Resolved) this else ThreadAccessResolution.Error
     }
 
-// Canonical reply content plus its exact loaded origin proves read access even
-// when the independent Home bootstrap cannot supply composer capabilities.
-private fun KuiklyThreadScreenPayload.hasReadableReplyParentContext(): Boolean {
+// Canonical reply content proves read access independently of parent/origin
+// enrichment. The complete reply identity keeps stale or unresolved route
+// candidates from acquiring access; parent context remains auxiliary and may
+// degrade inline without hiding the canonical timeline.
+internal fun KuiklyThreadScreenPayload.hasReadableCanonicalReplyContent(): Boolean {
     if (surfaceKind != KuiklyThreadSurfaceKind.ReplyThread || status != "content" || messages.isEmpty()) return false
     val parentChannel = parentChannelId?.takeIf { it.isNotBlank() } ?: return false
     val parentMessage =
@@ -8700,10 +8703,7 @@ private fun KuiklyThreadScreenPayload.hasReadableReplyParentContext(): Boolean {
     if (!routeIdentity.hasCompleteReplyIdentity || routeIdentity.parentKey != "$parentChannel:$parentMessage") {
         return false
     }
-    val origin = originMessage ?: return false
-    return originStatus == "loaded" &&
-        origin.id == parentMessage &&
-        (origin.body.isNotBlank() || origin.attachments.isNotEmpty())
+    return routeIdentity.canRenderTimelineCandidates && routeIdentity.timelineChannelId != null
 }
 
 private fun KuiklyThreadScreenPayload.withReadOnlyReplyAccessWhenHomeCandidateUnavailable(
@@ -8722,7 +8722,7 @@ private fun KuiklyThreadScreenPayload.isReadOnlyReplyAccessFallback(
     homeLookupComplete: Boolean,
     homeAccessCandidate: ConversationAccessCandidate?
 ): Boolean =
-    homeLookupComplete && homeAccessCandidate == null && hasReadableReplyParentContext()
+    homeLookupComplete && homeAccessCandidate == null && hasReadableCanonicalReplyContent()
 
 private fun DataResult<*>.resolvesCanonicalConversationAccess(): Boolean =
     this is DataResult.Content || (this is DataResult.Empty && reason == EmptyReason.NoMessages)
