@@ -3289,6 +3289,7 @@ class SharedThreadStoreTest {
                         threadSnapshot(
                             threadId = "thread-m1",
                             body = "network reply",
+                            id = "reply-1",
                             conversation = replyThreadConversation(joined = false, canSend = false)
                         )
                     )

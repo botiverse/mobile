@@ -4798,7 +4798,9 @@ internal class SharedThreadStore(
         }
         var refreshStartState = _state.value
         val resolvingInitialAccessAtStart =
-            refreshStartState.accessResolution != ThreadAccessResolution.Resolved ||
+            refreshStartState.accessResolution != ThreadAccessResolution.Resolved
+        val retryingReadOnlyParentAccess =
+            refreshStartState.accessResolution == ThreadAccessResolution.Resolved &&
                 !refreshStartState.writeActionsEnabled
         if (resolvingInitialAccessAtStart) {
             initialAccessStateMutex.withLock {
@@ -4813,6 +4815,11 @@ internal class SharedThreadStore(
                 )
                 refreshStartState = _state.value
             }
+            launchInitialAccessResolution(basePayload, staleToken)
+        } else if (retryingReadOnlyParentAccess) {
+            // A readable reply timeline must stay terminal while Refresh retries
+            // its auxiliary parent capability. Resetting canonical access here
+            // would let a transient reply refresh error cover preserved history.
             launchInitialAccessResolution(basePayload, staleToken)
         }
         val existing = refreshStartState.payload
@@ -5012,7 +5019,7 @@ internal class SharedThreadStore(
                 nextPayload.originDiagnostics()
         )
         launchFocusedOriginHydrationIfNeeded(basePayload, staleToken)
-        if (!resolvingInitialAccessAtStart) {
+        if (!resolvingInitialAccessAtStart && !retryingReadOnlyParentAccess) {
             launchBackgroundHomeContextHydration(basePayload)
         }
         queueAuxiliaryHydration(
