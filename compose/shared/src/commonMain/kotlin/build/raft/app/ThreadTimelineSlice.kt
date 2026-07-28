@@ -60,8 +60,18 @@ internal fun KuiklyThreadScreenPayload.toThreadTimelineSlice(): ThreadTimelineSl
         canLoadMoreAfter = canLoadMoreAfter,
         olderMessagesStatus = olderMessagesStatus,
         newerMessagesStatus = newerMessagesStatus,
-        emptyTitle = emptyTitle,
-        emptyDetail = emptyDetail,
+        emptyTitle =
+            if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread && status == "empty") {
+                ThreadReplyEmptyTitle
+            } else {
+                emptyTitle
+            },
+        emptyDetail =
+            if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread && status == "empty") {
+                ThreadReplyEmptyDetail
+            } else {
+                emptyDetail
+            },
         sourceThreadId = sourceThreadId,
         alignOwnMessagesRight = alignOwnMessagesRight,
         compactConsecutiveMessages = compactConsecutiveMessages,
