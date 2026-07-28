@@ -198,6 +198,15 @@ internal fun rankThreadComposerChannelSuggestionEntries(
         entries = entries
     )
 
+internal fun <T> rankThreadComposerSuggestionEntries(
+    query: String,
+    entries: List<ThreadComposerSuggestionSearchEntry<T>>
+): List<T> =
+    rankThreadComposerSuggestions(
+        query = query,
+        entries = entries
+    )
+
 internal suspend fun rankThreadComposerChannelSuggestionEntriesCancellable(
     query: String,
     entries: List<ThreadComposerSuggestionSearchEntry<KuiklyComposerChannelItem>>
