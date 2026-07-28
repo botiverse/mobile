@@ -58,6 +58,11 @@ internal fun UiSegmentedControlVisualContent() {
         modifier =
             Modifier
                 .width(342.dp)
+                // Fill the full 96dp capture crop with SurfaceWhite so the pager's
+                // default surface does not bleed a cream band below the control
+                // (matches the React baseline and the sibling button fixture, which
+                // pins its height for the same reason). Fixes visual-drift #1516.
+                .height(96.dp)
                 .background(SlockColor.SurfaceWhite)
                 .padding(16.dp)
     ) {
