@@ -8526,14 +8526,16 @@ internal fun SharedThreadRouteContent(
             )
         }
         textSelectionMessage?.let { message ->
-            ThreadMessageTextSelectionDialog(
-                message = message,
-                onCopyAll = {
-                    bridge.copyToPasteboard(message.body)
-                    bridge.toast(copiedLabel)
-                },
-                onDismiss = { textSelectionMessage = null }
-            )
+            key(message.id, message.body) {
+                ThreadMessageTextSelectionDialog(
+                    message = message,
+                    onCopyText = { text ->
+                        bridge.copyToPasteboard(text)
+                        bridge.toast(copiedLabel)
+                    },
+                    onDismiss = { textSelectionMessage = null }
+                )
+            }
         }
         imagePreviewState?.let { preview ->
             ThreadImagePreviewOverlay(
@@ -21002,14 +21004,37 @@ private fun ThreadMessageActionMenu(
 @Composable
 private fun ThreadMessageTextSelectionDialog(
     message: KuiklyThreadMessageItem,
-    onCopyAll: () -> Unit,
+    onCopyText: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
     val originalText = message.body
     val selectionState = rememberSelectionContainerState()
+    var selectionPresentation by remember(message.id, originalText) {
+        mutableStateOf(ThreadTextSelectionPresentation.None)
+    }
+    var selectionGeneration by remember(message.id, originalText) { mutableStateOf(0L) }
+    var selectionSessionActive by remember(message.id, originalText) { mutableStateOf(true) }
+    val currentHasSelection by rememberUpdatedState(selectionPresentation.hasSelection)
+    val copyAllLabel = stringResource(MR.strings.thread_text_selection_copy_all)
+    val copySelectedLabel = stringResource(MR.strings.thread_text_selection_copy_selected)
+    val selectAllLabel = stringResource(MR.strings.thread_text_selection_select_all)
     val topSafeArea = slockTopSafeAreaPadding()
     val bottomSafeArea = slockBottomSafeAreaPadding()
-    Modal(onWillDismiss = { onDismiss() }) {
+    DisposableEffect(message.id, originalText, selectionState) {
+        onDispose {
+            selectionSessionActive = false
+            selectionGeneration += 1
+            selectionState.clearSelection()
+        }
+    }
+    fun dismiss() {
+        selectionSessionActive = false
+        selectionGeneration += 1
+        selectionState.clearSelection()
+        selectionPresentation = ThreadTextSelectionPresentation.None
+        onDismiss()
+    }
+    Modal(onWillDismiss = { dismiss() }) {
         Box(modifier = Modifier.fillMaxSize()) {
             // Keep the native dispatch boundary behind the selectable content.
             // A capture node on the Column itself prevents its selectable text and
@@ -21032,17 +21057,62 @@ private fun ThreadMessageTextSelectionDialog(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.End
                 ) {
-                    SlockBrutalIconButton(
-                        iconName = SlockLucideIconName.Copy,
-                        onClick = onCopyAll,
-                        backgroundColor = SlockColor.BrandYellow,
-                        size = 36.dp,
-                        shadowOffset = 2.dp
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
+                    if (selectionPresentation.hasSelection) {
+                        if (selectionPresentation.actionsVisible) {
+                            SlockBrutalActionButton(
+                                label = selectAllLabel,
+                                onClick = {
+                                    selectionGeneration += 1
+                                    selectionState.createSelectionAll()
+                                    selectionPresentation =
+                                        threadTextSelectionPresentation(
+                                            ThreadTextSelectionEvent.End
+                                        )
+                                },
+                                backgroundColor = SlockColor.SurfaceWhite,
+                                minWidth = 0.dp,
+                                minHeight = 36.dp,
+                                textStyle = SlockType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 14.sp),
+                                shadowOffset = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            SlockBrutalActionButton(
+                                label = copySelectedLabel,
+                                onClick = {
+                                    val requestedGeneration = selectionGeneration
+                                    selectionState.getSelection selectionCallback@ { result ->
+                                        if (!selectionSessionActive || selectionGeneration != requestedGeneration) {
+                                            return@selectionCallback
+                                        }
+                                        threadTextSelectionContent(result)?.let(onCopyText)
+                                        selectionGeneration += 1
+                                        selectionState.clearSelection()
+                                        selectionPresentation = ThreadTextSelectionPresentation.None
+                                    }
+                                },
+                                backgroundColor = SlockColor.BrandYellow,
+                                minWidth = 0.dp,
+                                minHeight = 36.dp,
+                                textStyle = SlockType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 14.sp),
+                                shadowOffset = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                        }
+                    } else {
+                        SlockBrutalActionButton(
+                            label = copyAllLabel,
+                            onClick = { onCopyText(originalText) },
+                            backgroundColor = SlockColor.BrandYellow,
+                            minWidth = 0.dp,
+                            minHeight = 36.dp,
+                            leadingIcon = SlockLucideIconName.Clipboard,
+                            shadowOffset = 2.dp
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                    }
                     SlockBrutalIconButton(
                         iconName = SlockLucideIconName.X,
-                        onClick = onDismiss,
+                        onClick = { dismiss() },
                         size = 36.dp,
                         shadowOffset = 2.dp
                     )
@@ -21052,9 +21122,6 @@ private fun ThreadMessageTextSelectionDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
-                        .padding(start = 16.dp, end = 16.dp, bottom = bottomSafeArea + 16.dp)
-                        .background(SlockColor.SurfaceCream)
-                        .border(SlockStroke.Default, SlockColor.BorderBlack)
                         .pointerInput(originalText) {
                             detectTapGestures(
                                 onLongPress = { offset ->
@@ -21063,9 +21130,37 @@ private fun ThreadMessageTextSelectionDialog(
                                         offset.y,
                                         TextSelectionType.WORD
                                     )
+                                },
+                                onTap = {
+                                    if (currentHasSelection) {
+                                        selectionGeneration += 1
+                                        selectionState.clearSelection()
+                                        selectionPresentation = ThreadTextSelectionPresentation.None
+                                    }
                                 }
                             )
                         }
+                        .padding(start = 16.dp, end = 16.dp, bottom = bottomSafeArea + 16.dp)
+                        .background(SlockColor.SurfaceCream)
+                        .border(SlockStroke.Default, SlockColor.BorderBlack),
+                    onSelectStart = {
+                        selectionGeneration += 1
+                        selectionPresentation =
+                            threadTextSelectionPresentation(ThreadTextSelectionEvent.Start)
+                    },
+                    onSelectChange = {
+                        selectionPresentation =
+                            threadTextSelectionPresentation(ThreadTextSelectionEvent.Change)
+                    },
+                    onSelectEnd = {
+                        selectionPresentation =
+                            threadTextSelectionPresentation(ThreadTextSelectionEvent.End)
+                    },
+                    onSelectCancel = {
+                        selectionGeneration += 1
+                        selectionPresentation =
+                            threadTextSelectionPresentation(ThreadTextSelectionEvent.Cancel)
+                    }
                 ) {
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
                         item {
@@ -21088,6 +21183,37 @@ private fun ThreadMessageTextSelectionDialog(
         }
     }
 }
+
+internal enum class ThreadTextSelectionEvent {
+    Start,
+    Change,
+    End,
+    Cancel
+}
+
+internal data class ThreadTextSelectionPresentation(
+    val hasSelection: Boolean,
+    val actionsVisible: Boolean
+) {
+    companion object {
+        val None = ThreadTextSelectionPresentation(hasSelection = false, actionsVisible = false)
+    }
+}
+
+internal fun threadTextSelectionPresentation(
+    event: ThreadTextSelectionEvent
+): ThreadTextSelectionPresentation =
+    when (event) {
+        ThreadTextSelectionEvent.Start,
+        ThreadTextSelectionEvent.End ->
+            ThreadTextSelectionPresentation(hasSelection = true, actionsVisible = true)
+        ThreadTextSelectionEvent.Change ->
+            ThreadTextSelectionPresentation(hasSelection = true, actionsVisible = false)
+        ThreadTextSelectionEvent.Cancel -> ThreadTextSelectionPresentation.None
+    }
+
+internal fun threadTextSelectionContent(content: List<String>): String? =
+    content.joinToString("").takeIf { it.isNotEmpty() }
 
 @Composable
 private fun ThreadMessageMenuChrome(
