@@ -503,34 +503,52 @@ class HomeDataSourceTest {
         assertEquals("home_direct_messages_contract_mismatch", result.error.code)
     }
 
+    // task #831: a contract-mismatched unread section is still rejected (never
+    // mis-accepted as data — it does not reach the payload), but per the Home
+    // decoupling it must no longer abort the canonical channels/DMs. Previously
+    // these asserted the whole Home returned Error on a guessed unread wrapper.
     @Test
-    fun loadHomeRejectsGuessedUnreadCountWrappersBeforeParser() = runBlocking {
+    fun guessedUnreadCountWrapperIsRejectedWithoutBlockingCanonicalHome() = runBlocking {
         val source =
             SharedHomeDataSource(
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 api = FakeHomeApi(unreadCountsBody = """[{"channelId":"channel-1","unreadCount":1}]"""),
-                parseHome = { _, _ -> error("typed home api should reject unread array before parser") }
+                parseHome = { payload, session ->
+                    // Guessed array shape rejected → not mis-accepted as unread data.
+                    assertEquals(emptyMap(), payload.unreadCounts)
+                    DataResult.Content(sampleHome(ServerId(session.currentServerId!!)))
+                }
             )
 
         val result = source.loadHome(priority = DataRequestPriority.Visible)
 
-        assertTrue(result is DataResult.Error)
-        assertEquals("home_unread_counts_contract_mismatch", result.error.code)
+        assertTrue(
+            result is DataResult.Content,
+            "canonical Home must load even when the unread-counts wire shape is rejected"
+        )
+        assertEquals(1, result.data.channels.size)
     }
 
     @Test
-    fun loadHomeRejectsGuessedServerUnreadSummaryWrapperBeforeParser() = runBlocking {
+    fun guessedServerUnreadSummaryWrapperIsRejectedWithoutBlockingCanonicalHome() = runBlocking {
         val source =
             SharedHomeDataSource(
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 api = FakeHomeApi(serverUnreadSummaryBody = """{"unreadCount":24}"""),
-                parseHome = { _, _ -> error("typed home api should reject summary object before parser") }
+                parseHome = { payload, session ->
+                    // Guessed object shape rejected → not mis-accepted as summary data.
+                    assertEquals(emptyList(), payload.serverUnreadSummary)
+                    DataResult.Content(sampleHome(ServerId(session.currentServerId!!)))
+                }
             )
 
         val result = source.loadHome(priority = DataRequestPriority.Visible)
 
-        assertTrue(result is DataResult.Error)
-        assertEquals("home_server_unread_summary_contract_mismatch", result.error.code)
+        assertTrue(
+            result is DataResult.Content,
+            "canonical Home must load even when the server-unread-summary wire shape is rejected"
+        )
+        assertEquals(1, result.data.channels.size)
     }
 
     @Test
@@ -575,6 +593,99 @@ class HomeDataSourceTest {
         assertTrue(latest.isCurrent(latestGeneration, ServerId("server-b")))
         assertEquals("server-b", latest.complete(latestGeneration, ServerId("server-b")).selectedServerId)
         assertEquals(null, latest.complete(latestGeneration, ServerId("server-b")).pendingServerId)
+    }
+
+    // task #831: the canonical Home surface (channels + DMs) must not be blocked
+    // or failed by the auxiliary unread endpoints (channelUnreadCounts /
+    // serverUnreadSummary). Historically homePayload awaited all four sections
+    // and returned the aggregate terminal state, so a hung or erroring unread
+    // endpoint aborted/hung the whole Home even after channels/DMs had loaded.
+    @Test
+    fun erroringServerUnreadSummaryMustNotBlockCanonicalHome() = runBlocking {
+        val source =
+            SharedHomeDataSource(
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                api = UnreadAuxiliaryHomeApi(errorSummary = true),
+                parseHome = { _, session -> DataResult.Content(sampleHome(ServerId(session.currentServerId!!))) }
+            )
+
+        val result = withTimeout(5_000L) { source.loadHome() }
+
+        assertTrue(
+            result is DataResult.Content,
+            "canonical Home must still load when the server-unread-summary endpoint errors"
+        )
+        assertEquals(1, result.data.channels.size)
+    }
+
+    @Test
+    fun erroringChannelUnreadCountsMustNotBlockCanonicalHome() = runBlocking {
+        val source =
+            SharedHomeDataSource(
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                api = UnreadAuxiliaryHomeApi(errorCounts = true),
+                parseHome = { _, session -> DataResult.Content(sampleHome(ServerId(session.currentServerId!!))) }
+            )
+
+        val result = withTimeout(5_000L) { source.loadHome() }
+
+        assertTrue(
+            result is DataResult.Content,
+            "canonical Home must still load when the channel-unread-counts endpoint errors"
+        )
+        assertEquals(1, result.data.channels.size)
+    }
+
+    @Test
+    fun hungUnreadEndpointMustNotBlockCanonicalHome() = runBlocking {
+        val source =
+            SharedHomeDataSource(
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                api = UnreadAuxiliaryHomeApi(hangSummary = true),
+                parseHome = { payload, session ->
+                    // task #831: a hung/unavailable unread section flags the
+                    // payload so the Store keeps prior badges instead of zeroing.
+                    assertFalse(payload.unreadEnrichmentAvailable)
+                    DataResult.Content(sampleHome(ServerId(session.currentServerId!!)))
+                }
+            )
+
+        // Before the decoupling homePayload hard-awaited the unread deferred, so a
+        // never-completing unread endpoint suspended the whole load and this
+        // bounded wait timed out.
+        val result = withTimeout(5_000L) { source.loadHome() }
+
+        assertTrue(
+            result is DataResult.Content,
+            "canonical Home must still load when an unread endpoint hangs indefinitely"
+        )
+        assertEquals(1, result.data.channels.size)
+    }
+
+    private class UnreadAuxiliaryHomeApi(
+        private val errorSummary: Boolean = false,
+        private val errorCounts: Boolean = false,
+        private val hangSummary: Boolean = false,
+        private val hangCounts: Boolean = false,
+    ) : SlockHomeApi {
+        private val neverCompletes = CompletableDeferred<HomeNetworkResponse>()
+
+        override suspend fun channels(priority: DataRequestPriority): HomeNetworkResponse = ok("[]")
+        override suspend fun directMessages(priority: DataRequestPriority): HomeNetworkResponse = ok("[]")
+
+        override suspend fun channelUnreadCounts(priority: DataRequestPriority): HomeNetworkResponse {
+            if (hangCounts) return neverCompletes.await()
+            if (errorCounts) throw RuntimeException("simulated channel_unread_counts failure")
+            return ok("{}")
+        }
+
+        override suspend fun serverUnreadSummary(priority: DataRequestPriority): HomeNetworkResponse {
+            if (hangSummary) return neverCompletes.await()
+            if (errorSummary) throw RuntimeException("simulated server_unread_summary failure")
+            return ok("[]")
+        }
+
+        private fun ok(body: String): HomeNetworkResponse = HomeNetworkResponse(code = 200, bodyText = body)
     }
 
     private class FakeHomeApi(

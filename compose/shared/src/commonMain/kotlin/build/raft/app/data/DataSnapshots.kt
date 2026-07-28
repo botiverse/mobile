@@ -308,6 +308,15 @@ data class HomeSnapshot(
      */
     val serverUnreadCounts: Map<String, Int> = emptyMap(),
     /**
+     * task #831: false when this snapshot's unread projection came from
+     * unavailable auxiliary endpoints (error/timeout/hung/contract-mismatch),
+     * so [unreadTotal] / [serverUnreadCounts] are an honest empty rather than an
+     * authoritative zero. Consumers must keep the prior unread badges (mark them
+     * stale) instead of clobbering them to read. Default true so existing
+     * fixtures / preview builders keep compiling.
+     */
+    val unreadEnrichmentAvailable: Boolean = true,
+    /**
      * #211: per-server sidebar order snapshot, including pinned conversation
      * ids, pinned order, and pinned sort mode. `null` means the sidebar
      * order has not been loaded for this snapshot yet; the visual layer

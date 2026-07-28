@@ -3142,6 +3142,175 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun unavailableUnreadKeepsPriorBadgesThenRecoversOnNextGeneration() = runBlocking {
+        // task #831: when channels/DMs are fresh but the unread enrichment was
+        // unavailable (error/timeout/hung/contract-mismatch, flagged by
+        // unreadEnrichmentAvailable = false), the Home must keep the prior badge
+        // + drawer counts (only flip isStale) instead of zeroing them. A later
+        // generation with available unread recovers the fresh value.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val serverId = ServerId("server-1")
+        val availableWithBadges =
+            sampleHome(serverId).copy(
+                unreadTotal = 7,
+                unreadSource = AppBadgeSource.SERVER_UNREAD_SUMMARY,
+                serverUnreadCounts = mapOf("server-1" to 7, "server-2" to 3),
+                unreadEnrichmentAvailable = true
+            )
+        val unavailableHonestEmpty =
+            sampleHome(serverId).copy(
+                unreadTotal = 0,
+                unreadSource = AppBadgeSource.CHANNEL_DM_FALLBACK,
+                serverUnreadCounts = emptyMap(),
+                unreadEnrichmentAvailable = false
+            )
+        val recovered =
+            sampleHome(serverId).copy(
+                unreadTotal = 2,
+                unreadSource = AppBadgeSource.SERVER_UNREAD_SUMMARY,
+                serverUnreadCounts = mapOf("server-1" to 2, "server-2" to 5),
+                unreadEnrichmentAvailable = true
+            )
+        val snapshots = listOf(availableWithBadges, unavailableHonestEmpty, recovered)
+        var index = 0
+        val dataSource =
+            SharedHomeDataSource(
+                sessionStore = sessionStore,
+                api = RecordingHomeApi(),
+                parseHome = { _, _ -> DataResult.Content(snapshots[minOf(index++, snapshots.lastIndex)]) }
+            )
+        val store = SharedHomeStore(authStore = sessionStore, dataSource = dataSource, scope = scope)
+
+        store.accept(SharedHomeIntent.Start)
+        assertEquals(7, store.state.value.appBadgeCount.count)
+        assertEquals(false, store.state.value.appBadgeCount.isStale)
+        assertEquals(3, store.state.value.serverUnreadCounts["server-2"])
+
+        store.accept(SharedHomeIntent.Refresh)
+        // Prior badge kept, only marked stale — NOT zeroed.
+        assertEquals(7, store.state.value.appBadgeCount.count)
+        assertEquals(true, store.state.value.appBadgeCount.isStale)
+        assertEquals(3, store.state.value.serverUnreadCounts["server-2"])
+        // task #831 blocker: the COMMITTED snapshot / baseSnapshot (the realtime
+        // unread delta baseline) must also freeze to prior unread, or the next
+        // realtime message would rebuild from zero and clobber 7 down to 1.
+        val committed = store.state.value.content as SharedHomeContentState.Content
+        assertEquals(7, committed.baseSnapshot.unreadTotal)
+        assertEquals(mapOf("server-1" to 7, "server-2" to 3), committed.baseSnapshot.serverUnreadCounts)
+
+        // End-to-end: a realtime unread-increment for a non-current server after
+        // the unavailable refresh must increment from the FROZEN baseline (3),
+        // not from a clobbered zero. applyBackgroundUnreadMessages adds to
+        // current.serverUnreadCounts[serverId]; with the delayed-clobber bug that
+        // baseline was 0, so this would have been 1 instead of 4.
+        val backgroundMessage =
+            MessageNew(
+                Message(
+                    id = MessageId("bg-unread-201"),
+                    threadId = ThreadId("channel-b"),
+                    channelId = ChannelId("channel-b"),
+                    seq = 201,
+                    author = sampleMember().copy(id = MemberId("member-2"), displayName = "Peer"),
+                    timestampLabel = "12:02",
+                    body = "background update after unavailable refresh",
+                )
+            )
+        store.accept(SharedHomeIntent.ApplyBackgroundServerUnreadEvent("server-2", backgroundMessage))
+        assertEquals(4, store.state.value.serverUnreadCounts["server-2"])
+
+        store.accept(SharedHomeIntent.Refresh)
+        // Fresh available unread recovers the value.
+        assertEquals(2, store.state.value.appBadgeCount.count)
+        assertEquals(false, store.state.value.appBadgeCount.isStale)
+        assertEquals(5, store.state.value.serverUnreadCounts["server-2"])
+        scope.cancel()
+    }
+
+    @Test
+    fun unavailableUnreadKeepsCurrentServerRealtimeBaselineRowAggregateAndBadge() = runBlocking {
+        // task #831 blocker (current-server write boundary): the delayed clobber
+        // lived in applyRealtimeHomeEventLocally, which pushes the new message
+        // through content.baseSnapshot.withRealtimeMessages(...) then writes the
+        // row/unreadTotal/server-count/badge back to top-level. If the frozen
+        // baseSnapshot had been zeroed, a current-server message would increment
+        // from 0 (→1). With unread frozen to prior 7, it must increment to 8.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val serverId = ServerId("server-1")
+        val availableWithRowUnread =
+            sampleHome(serverId).let { base ->
+                base.copy(
+                    server = base.server.copy(unreadCount = 7),
+                    channels = listOf(channel("channel-1", "general").copy(unreadCount = 7, unreadCountKnown = true)),
+                    unreadTotal = 7,
+                    unreadSource = AppBadgeSource.SERVER_UNREAD_SUMMARY,
+                    serverUnreadCounts = mapOf("server-1" to 7),
+                    unreadEnrichmentAvailable = true
+                )
+            }
+        val unavailable =
+            sampleHome(serverId).copy(
+                channels = listOf(channel("channel-1", "general")),
+                unreadTotal = 0,
+                unreadSource = AppBadgeSource.CHANNEL_DM_FALLBACK,
+                serverUnreadCounts = emptyMap(),
+                unreadEnrichmentAvailable = false
+            )
+        val snapshots = listOf(availableWithRowUnread, unavailable)
+        var index = 0
+        val dataSource =
+            SharedHomeDataSource(
+                sessionStore = sessionStore,
+                api = RecordingHomeApi(),
+                parseHome = { _, _ -> DataResult.Content(snapshots[minOf(index++, snapshots.lastIndex)]) }
+            )
+        val store = SharedHomeStore(authStore = sessionStore, dataSource = dataSource, scope = scope)
+
+        store.accept(SharedHomeIntent.Start)
+        assertEquals(7, (store.state.value.content as SharedHomeContentState.Content).snapshot.channels.single().unreadCount)
+        assertEquals(7, store.state.value.appBadgeCount.count)
+
+        store.accept(SharedHomeIntent.Refresh)
+        val frozen = store.state.value.content as SharedHomeContentState.Content
+        assertEquals(7, frozen.baseSnapshot.channels.single().unreadCount)
+        assertEquals(7, frozen.baseSnapshot.unreadTotal)
+        assertEquals(7, store.state.value.appBadgeCount.count)
+
+        // Current-server realtime message: increments from the frozen 7, not 0.
+        val peer = sampleMember().copy(id = MemberId("member-2"), displayName = "Peer")
+        store.accept(
+            SharedHomeIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event =
+                    MessageNew(
+                        Message(
+                            id = MessageId("rt-unread-8"),
+                            threadId = ThreadId("channel-1"),
+                            channelId = ChannelId("channel-1"),
+                            seq = 8,
+                            author = peer,
+                            timestampLabel = "12:03",
+                            body = "live current-server update",
+                        )
+                    )
+            )
+        )
+        val after = store.state.value.content as SharedHomeContentState.Content
+        assertEquals(8, after.snapshot.channels.single().unreadCount)
+        assertEquals(8, after.snapshot.unreadTotal)
+        assertEquals(8, after.baseSnapshot.channels.single().unreadCount)
+        assertEquals(8, after.baseSnapshot.unreadTotal)
+        // withRealtimeMessagesForStream sets serverUnreadCounts[server.id] in the
+        // same copy, and applyRealtimeHomeEventLocally writes it back to top-level
+        // — the last unread write face must also increment from the frozen 7.
+        assertEquals(8, after.baseSnapshot.serverUnreadCounts["server-1"])
+        assertEquals(8, store.state.value.serverUnreadCounts["server-1"])
+        assertEquals(8, store.state.value.appBadgeCount.count)
+        scope.cancel()
+    }
+
+    @Test
     fun appBadgeSourceIsDisabledOnServerSwitch() = runBlocking {
         // Server switch must immediately clear the badge to DISABLED with
         // count = 0 so the host stops showing a stale count from the
