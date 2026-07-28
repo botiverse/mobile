@@ -52,6 +52,7 @@ internal val SlockCollapsibleSectionCountTextStyle =
 internal val SlockCollapsibleSectionCountColor = SlockColor.TextBlack.copy(alpha = 0.4f)
 internal val SlockMainTabHeaderStartPadding = 8.dp
 internal val SlockMainTabHeaderTitleStyle = SlockType.PageTitle.copy(fontSize = 16.sp, lineHeight = 20.sp)
+internal val SlockTopPageHeaderContentStartPadding = 18.dp
 internal val SlockTopPageHeaderContentSpacing = 12.dp
 
 internal enum class SlockMainTabHeaderSurface(
@@ -95,7 +96,7 @@ internal fun SlockTopPageHeader(
     applyTopSafeArea: Boolean = true,
     topSafeAreaOverride: Dp? = null,
     headerHeight: Dp = SlockSize.PageHeaderHeight,
-    contentStartPadding: Dp = 20.dp,
+    contentStartPadding: Dp = SlockTopPageHeaderContentStartPadding,
     contentSpacing: Dp = SlockTopPageHeaderContentSpacing,
     titleStyle: TextStyle = SlockType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp),
     refreshing: Boolean = false,
@@ -187,7 +188,7 @@ internal fun SlockTopPageHeaderFrame(
     backgroundColor: Color = SlockColor.SurfaceWhite,
     topSafeArea: Dp = 0.dp,
     headerHeight: Dp = SlockSize.PageHeaderHeight,
-    contentStartPadding: Dp = 20.dp,
+    contentStartPadding: Dp = SlockTopPageHeaderContentStartPadding,
     contentEndPadding: Dp = 16.dp,
     contentSpacing: Dp = SlockTopPageHeaderContentSpacing,
     content: @Composable RowScope.() -> Unit,

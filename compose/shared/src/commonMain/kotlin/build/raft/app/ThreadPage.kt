@@ -809,6 +809,7 @@ private val ThreadHeaderDmAgentActivityDotSize = SlockStatusIndicatorTokens.Inli
 private val ThreadHeaderChannelTileSize = 34.dp
 private val ThreadHeaderChannelIconSize = 16.dp
 private val ThreadHeaderContentSpacing = 6.dp
+private val ThreadHeaderChannelTitleGapExtra = 2.dp
 
 private object ThreadReactionGlyphDiagnostics {
     private val loggedKeys = mutableSetOf<String>()
@@ -13054,7 +13055,9 @@ private fun ThreadPageHeader(
                         }
                 )
             } else if (payload.showModeTabs) {
-                ThreadChannelTile(headerDisplay.channelKind)
+                Box(modifier = Modifier.padding(end = ThreadHeaderChannelTitleGapExtra)) {
+                    ThreadChannelTile(headerDisplay.channelKind)
+                }
             }
         },
         titleContent = {
@@ -13547,6 +13550,9 @@ internal fun threadHeaderVisibleActionGapDp(): Float =
     (ThreadHeaderActionGroupSpacing + ThreadHeaderActionShadowOffset).value
 
 internal fun threadHeaderContentSpacingDp(): Float = ThreadHeaderContentSpacing.value
+
+internal fun threadHeaderChannelTitleGapDp(): Float =
+    (ThreadHeaderContentSpacing + ThreadHeaderChannelTitleGapExtra).value
 
 @Composable
 private fun ThreadHeaderAction(label: String, onClick: () -> Unit) {
