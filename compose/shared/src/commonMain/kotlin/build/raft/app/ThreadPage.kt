@@ -2819,7 +2819,10 @@ private fun ThreadPageScreen(
                         val pendingOpenRequest =
                             payload
                                 .toWireThreadLaunchPayloadOrNull()
-                                ?.toAuthPendingOpenRequest(session?.currentServerId.orEmpty())
+                                ?.toAuthPendingOpenRequest(
+                                    serverId = session?.currentServerId.orEmpty(),
+                                    accountPrincipalId = session?.user?.id.orEmpty(),
+                                )
                         sharedStores.authLossFunnel
                             .report(
                                 AuthLossSignal(
