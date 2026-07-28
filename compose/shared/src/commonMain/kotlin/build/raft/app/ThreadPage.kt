@@ -14465,6 +14465,8 @@ private fun ThreadMessagesList(
     var latestLocalSendBottomAnchorStartUserScrollGeneration by remember(threadInstanceKey) { mutableStateOf(0) }
     val userScrollGeneration = remember(threadInstanceKey) { ThreadUserScrollGeneration() }
     var lastComposerKeyboardInsetDp by remember(threadInstanceKey) { mutableStateOf(composerKeyboardInsetDp) }
+    var lastThreadViewportHeightDp by remember(threadInstanceKey) { mutableStateOf(measuredThreadViewportHeightDp) }
+    var pendingComposerLayoutBottomAnchor by remember(threadInstanceKey) { mutableStateOf(false) }
     var pendingKeyboardBottomAnchor by remember(threadInstanceKey) { mutableStateOf(false) }
     var activeFocusedMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     // Focused-message anchoring is one-shot per explicit request (message id +
@@ -15718,27 +15720,47 @@ private fun ThreadMessagesList(
     LaunchedEffect(
         threadInstanceKey,
         composerKeyboardInsetDp,
+        measuredThreadViewportHeightDp,
+        initialBottomAnchorReady,
         latestItemIndex,
+        allowBottomAutoAnchor,
+        pendingFocusedMessageAnchorIdentityState.value,
+        consumedFocusedMessageAnchorIdentity,
+        scrollInterruptedFocusedMessageAnchorIdentity,
+        bottomAnchorFocusedYieldElapsedMs,
         newerPageCycleActive
     ) {
         if (newerPageCycleActive) {
             lastComposerKeyboardInsetDp = composerKeyboardInsetDp
+            lastThreadViewportHeightDp = measuredThreadViewportHeightDp
+            pendingComposerLayoutBottomAnchor = false
             pendingKeyboardBottomAnchor = false
             allowBottomAutoAnchor = false
             return@LaunchedEffect
         }
-        val shouldAnchor =
-            shouldAnchorThreadKeyboardBottomOnInsetChange(
-                ThreadKeyboardBottomAnchorState(
-                    previousKeyboardInsetDp = lastComposerKeyboardInsetDp,
-                    nextKeyboardInsetDp = composerKeyboardInsetDp,
-                    initialBottomAnchorReady = initialBottomAnchorReady,
-                    latestItemIndex = latestItemIndex,
-                    allowBottomAutoAnchor = allowBottomAutoAnchor
-                )
+        val layoutState =
+            ThreadComposerLayoutBottomAnchorState(
+                previousKeyboardInsetDp = lastComposerKeyboardInsetDp,
+                nextKeyboardInsetDp = composerKeyboardInsetDp,
+                previousViewportHeightDp = lastThreadViewportHeightDp,
+                nextViewportHeightDp = measuredThreadViewportHeightDp,
+                pendingLayoutChange = pendingComposerLayoutBottomAnchor,
+                initialBottomAnchorReady = initialBottomAnchorReady,
+                latestItemIndex = latestItemIndex,
+                allowBottomAutoAnchor = allowBottomAutoAnchor,
+                focusedAnchorOwnsViewport =
+                    focusedMessageAnchorOwnsViewport(
+                        pendingIdentity = pendingFocusedMessageAnchorIdentityState.value,
+                        consumedIdentity = consumedFocusedMessageAnchorIdentity,
+                        scrollInterruptedIdentity = scrollInterruptedFocusedMessageAnchorIdentity,
+                        yieldElapsedMs = bottomAnchorFocusedYieldElapsedMs
+                    )
             )
+        val layoutDecision = resolveThreadComposerLayoutBottomAnchor(layoutState)
         lastComposerKeyboardInsetDp = composerKeyboardInsetDp
-        if (!shouldAnchor) {
+        lastThreadViewportHeightDp = measuredThreadViewportHeightDp
+        pendingComposerLayoutBottomAnchor = layoutDecision.pendingLayoutChange
+        if (!layoutDecision.shouldAnchor) {
             pendingKeyboardBottomAnchor = false
             return@LaunchedEffect
         }
@@ -17170,19 +17192,57 @@ internal fun shouldAutoCorrectThreadBottomAnchor(state: ThreadBottomAnchorCorrec
         !state.isScrollInProgress &&
         !state.isAtRenderedBottom
 
-internal data class ThreadKeyboardBottomAnchorState(
+internal data class ThreadComposerLayoutBottomAnchorState(
     val previousKeyboardInsetDp: Float,
     val nextKeyboardInsetDp: Float,
+    val previousViewportHeightDp: Float,
+    val nextViewportHeightDp: Float,
+    val pendingLayoutChange: Boolean,
     val initialBottomAnchorReady: Boolean,
     val latestItemIndex: Int,
-    val allowBottomAutoAnchor: Boolean
+    val allowBottomAutoAnchor: Boolean,
+    val focusedAnchorOwnsViewport: Boolean
 )
 
-internal fun shouldAnchorThreadKeyboardBottomOnInsetChange(state: ThreadKeyboardBottomAnchorState): Boolean =
-    state.previousKeyboardInsetDp != state.nextKeyboardInsetDp &&
+internal fun threadComposerLayoutChanged(state: ThreadComposerLayoutBottomAnchorState): Boolean =
+    state.previousKeyboardInsetDp != state.nextKeyboardInsetDp ||
+        (
+            threadViewportMeasurementReady(state.previousViewportHeightDp) &&
+                threadViewportMeasurementReady(state.nextViewportHeightDp) &&
+                state.previousViewportHeightDp != state.nextViewportHeightDp
+        )
+
+internal fun shouldAnchorThreadComposerLayoutChange(
+    state: ThreadComposerLayoutBottomAnchorState
+): Boolean =
+    (threadComposerLayoutChanged(state) || state.pendingLayoutChange) &&
         state.initialBottomAnchorReady &&
         state.latestItemIndex >= 0 &&
-        state.allowBottomAutoAnchor
+        state.allowBottomAutoAnchor &&
+        !state.focusedAnchorOwnsViewport
+
+internal data class ThreadComposerLayoutBottomAnchorDecision(
+    val shouldAnchor: Boolean,
+    val pendingLayoutChange: Boolean
+)
+
+internal fun resolveThreadComposerLayoutBottomAnchor(
+    state: ThreadComposerLayoutBottomAnchorState
+): ThreadComposerLayoutBottomAnchorDecision {
+    val layoutChanged = threadComposerLayoutChanged(state)
+    val shouldAnchor = shouldAnchorThreadComposerLayoutChange(state)
+    val pendingLayoutChange =
+        when {
+            shouldAnchor -> false
+            layoutChanged && !state.initialBottomAnchorReady -> true
+            state.initialBottomAnchorReady || state.latestItemIndex < 0 || !state.allowBottomAutoAnchor -> false
+            else -> state.pendingLayoutChange
+        }
+    return ThreadComposerLayoutBottomAnchorDecision(
+        shouldAnchor = shouldAnchor,
+        pendingLayoutChange = pendingLayoutChange
+    )
+}
 
 internal data class ThreadBackToBottomButtonState(
     val initialBottomAnchorReady: Boolean,
