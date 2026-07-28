@@ -11,6 +11,8 @@ import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.ThreadId
+import kotlinx.coroutines.async
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -662,6 +664,39 @@ class HomeDataSourceTest {
         assertEquals(1, result.data.channels.size)
     }
 
+    @Test
+    fun cancellationReachingAnUnreadSectionIsPreservedNotSwallowedAsPartialLoad() = runBlocking {
+        // task #831 follow-up: awaitBestEffortHomeSection swallows an *erroring* or
+        // *timed-out* unread section to null (badges kept, not zeroed) — but a real
+        // CancellationException must be re-thrown, never funnelled through the
+        // best-effort catch into a "partial load succeeded" result. If the caller
+        // walked away (its coroutine cancelled), the in-flight unread await delivers
+        // a CancellationException; reporting that as Content would let the Store
+        // render a half-built snapshot nobody is waiting for. The dedicated
+        // CancellationException catch (ahead of the broad Throwable catch) is what
+        // this guards — remove it and the cancellation is swallowed to null and the
+        // load completes as Content instead of cancelling.
+        val source =
+            SharedHomeDataSource(
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                api = CancellingUnreadHomeApi(),
+                parseHome = { _, session ->
+                    // Reaching here means the cancellation was swallowed into a
+                    // partial payload; a preserved cancellation aborts before parse.
+                    DataResult.Content(sampleHome(ServerId(session.currentServerId!!)))
+                }
+            )
+
+        val load = async { source.loadHome() }
+        load.join()
+
+        assertTrue(
+            load.isCancelled,
+            "a CancellationException from an unread section must propagate (real cancellation preserved), " +
+                "not be swallowed by the best-effort catch into a partial Content load"
+        )
+    }
+
     private class UnreadAuxiliaryHomeApi(
         private val errorSummary: Boolean = false,
         private val errorCounts: Boolean = false,
@@ -683,6 +718,20 @@ class HomeDataSourceTest {
             if (hangSummary) return neverCompletes.await()
             if (errorSummary) throw RuntimeException("simulated server_unread_summary failure")
             return ok("[]")
+        }
+
+        private fun ok(body: String): HomeNetworkResponse = HomeNetworkResponse(code = 200, bodyText = body)
+    }
+
+    private class CancellingUnreadHomeApi : SlockHomeApi {
+        override suspend fun channels(priority: DataRequestPriority): HomeNetworkResponse = ok("[]")
+        override suspend fun directMessages(priority: DataRequestPriority): HomeNetworkResponse = ok("[]")
+        override suspend fun channelUnreadCounts(priority: DataRequestPriority): HomeNetworkResponse = ok("{}")
+
+        override suspend fun serverUnreadSummary(priority: DataRequestPriority): HomeNetworkResponse {
+            // Simulates the in-flight unread request being cancelled — exactly what
+            // a real caller cancellation delivers to the awaited unread section.
+            throw CancellationException("simulated cancellation reaching the unread section")
         }
 
         private fun ok(body: String): HomeNetworkResponse = HomeNetworkResponse(code = 200, bodyText = body)
