@@ -7,20 +7,39 @@ import build.raft.app.model.ThreadConversation
 import build.raft.app.model.ThreadId
 import build.raft.app.model.threadIdentity
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.foundation.background
+import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
+import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
+import com.tencent.kuikly.compose.foundation.layout.height
+import com.tencent.kuikly.compose.foundation.layout.padding
+import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.unit.dp
 
 @Composable
 internal fun ForegroundBannerVisualContent() {
+    var bannerClicked by remember { mutableStateOf(false) }
+    var underlayClicked by remember { mutableStateOf(false) }
     Box(
         modifier =
             Modifier
                 .fillMaxSize()
                 .background(SlockColor.SurfaceWhite)
     ) {
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(start = 12.dp, top = 18.dp, end = 12.dp)
+                    .height(70.dp)
+                    .clickable { underlayClicked = true }
+        )
         SlockForegroundMessageBannerView(
             banner =
                 foregroundBannerVisualBanner(
@@ -42,7 +61,7 @@ internal fun ForegroundBannerVisualContent() {
                     avatarLabel = "CI"
                 ),
             topSafeArea = 10.dp,
-            onClick = {}
+            onClick = { bannerClicked = true }
         )
         SlockForegroundMessageBannerView(
             banner =
@@ -98,6 +117,26 @@ internal fun ForegroundBannerVisualContent() {
             topSafeArea = 188.dp,
             onClick = {}
         )
+        if (bannerClicked) {
+            Box(
+                modifier =
+                    Modifier
+                        .align(Alignment.BottomStart)
+                        .fillMaxWidth(0.5f)
+                        .height(20.dp)
+                        .background(SlockColor.AccentLime)
+            )
+        }
+        if (underlayClicked) {
+            Box(
+                modifier =
+                    Modifier
+                        .align(Alignment.BottomEnd)
+                        .fillMaxWidth(0.5f)
+                        .height(20.dp)
+                        .background(SlockColor.AccentRed)
+            )
+        }
     }
 }
 
