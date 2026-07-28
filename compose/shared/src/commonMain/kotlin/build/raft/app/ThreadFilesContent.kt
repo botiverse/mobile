@@ -34,6 +34,7 @@ import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.tmm.kmmresource.compose.stringResource
+import com.tencent.tmm.kmmresource.resource.StringResource
 import com.tencent.kuikly.compose.ui.unit.sp
 import kotlinx.serialization.Serializable
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -158,6 +159,16 @@ internal data class ThreadAttachmentOpenUiState(
 
 internal fun ThreadAttachmentOpenUiState?.threadAttachmentIsOpening(): Boolean =
     this?.status == "downloading" || this?.status == "paused"
+
+internal fun ThreadAttachmentOpenUiState?.threadAttachmentTerminalStatusResource(): StringResource? =
+    when (this?.status) {
+        "cancelled" -> MR.strings.file_preview_download_stopped
+        "missing" -> MR.strings.file_preview_error_download_attachment
+        "no_app" -> MR.strings.file_preview_error_no_app
+        "storage_failed" -> MR.strings.file_preview_error_storage_unavailable
+        "failed" -> MR.strings.file_preview_error_open_attachment
+        else -> null
+    }
 
 @Composable
 internal fun ThreadFilesContent(
@@ -394,15 +405,14 @@ private fun ThreadFileRow(
 }
 
 @Composable
-internal fun ThreadAttachmentOpenUiState?.localizedThreadAttachmentStatusLabel(): String? =
-    when (this?.status) {
-        "downloading", "paused" -> slockFilePreviewLocalizedActiveDownloadStatusLabel(progress, this.status)
-        "cancelled" -> stringResource(MR.strings.file_preview_download_stopped)
-        "no_app" -> stringResource(MR.strings.file_preview_error_no_app)
-        "storage_failed" -> stringResource(MR.strings.file_preview_error_storage_unavailable)
-        "failed" -> stringResource(MR.strings.file_preview_download_failed)
-        else -> null
+internal fun ThreadAttachmentOpenUiState?.localizedThreadAttachmentStatusLabel(): String? {
+    val state = this
+    return when (state?.status) {
+        "downloading", "paused" ->
+            slockFilePreviewLocalizedActiveDownloadStatusLabel(state.progress, state.status)
+        else -> state.threadAttachmentTerminalStatusResource()?.let { resource -> stringResource(resource) }
     }
+}
 
 @Composable
 private fun ThreadFileThumbnail(item: KuiklyThreadFileItem) {

@@ -665,6 +665,10 @@ jobs:
             scripts/ci/assert-instrumentation-ok.sh first-character-baseline-instrumentation.txt 1
             adb shell am instrument -w -r -e class build.raft.app.shared.KuiklyProfilerRuntimeSmokeTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner | tee kuikly-profiler-runtime-smoke-instrumentation.txt
             scripts/ci/assert-instrumentation-ok.sh kuikly-profiler-runtime-smoke-instrumentation.txt 1
+            adb logcat -c
+            adb shell am instrument -w -r -e class build.raft.app.shared.AndroidAttachmentPrivateFileProviderConnectedTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner | tee attachment-private-file-provider-instrumentation.txt
+            adb logcat -d -v threadtime 'AndroidRuntime:E' 'ActivityTaskManager:I' 'TestRunner:E' '*:S' > attachment-private-file-provider-logcat.txt
+            scripts/ci/assert-instrumentation-ok.sh attachment-private-file-provider-instrumentation.txt 1
             adb install -r "$(find android-shared-atomic-sink-test-apk -type f -name '*.apk' | head -n 1)"
             adb shell pm list instrumentation | tee attachment-atomic-sink-instrumentation.txt
             grep -Fq 'instrumentation:build.raft.app.shared.test/androidx.test.runner.AndroidJUnitRunner' attachment-atomic-sink-instrumentation.txt
@@ -721,6 +725,8 @@ jobs:
           path: |
             first-character-baseline-instrumentation.txt
             kuikly-profiler-runtime-smoke-instrumentation.txt
+            attachment-private-file-provider-instrumentation.txt
+            attachment-private-file-provider-logcat.txt
             attachment-atomic-sink-instrumentation.txt
             attachment-download-runtime-instrumentation.txt
             performance-trace-feedback-instrumentation.txt

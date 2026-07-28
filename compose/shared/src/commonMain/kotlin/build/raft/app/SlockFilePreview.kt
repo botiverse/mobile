@@ -465,6 +465,14 @@ private fun SlockFilePreviewStandalonePageContent() {
     val unableToOpenAttachment = stringResource(MR.strings.file_preview_error_open_attachment)
     val downloadedFileDeleted = stringResource(MR.strings.file_preview_download_deleted)
     val unableToDeleteDownload = stringResource(MR.strings.file_preview_error_delete_download)
+    val attachmentOpenResultTerms =
+        SlockAttachmentOpenResultTerms(
+            downloadStopped = downloadStopped,
+            unableToDownloadAttachment = unableToDownloadAttachment,
+            noAppCanOpenFile = noAppCanOpenFile,
+            storageUnavailable = storageUnavailable,
+            unableToOpenAttachment = unableToOpenAttachment
+        )
     val imageEditorLoading = stringResource(MR.strings.file_preview_error_editor_loading)
     val imageEditorExportFailed = stringResource(MR.strings.file_preview_error_editor_export)
     val imageSavedToPhotos = stringResource(MR.strings.thread_image_preview_saved_to_photos)
@@ -868,18 +876,18 @@ private fun SlockFilePreviewStandalonePageContent() {
             }
             "cancelled" -> {
                 activeDownloadId = null
-                downloadStopped
+                slockAttachmentOpenResultMessage("cancelled", attachmentOpenResultTerms)
             }
             "missing" -> {
                 attachmentCacheState = false
                 attachmentCacheAttemptToken = null
                 attachmentCacheRecordVersion = null
                 activeDownloadId = null
-                result?.optString("message").orEmpty().ifBlank { unableToDownloadAttachment }
+                slockAttachmentOpenResultMessage("missing", attachmentOpenResultTerms)
             }
-            "no_app" -> result?.optString("message").orEmpty().ifBlank { noAppCanOpenFile }
-            "storage_failed" -> result?.optString("message").orEmpty().ifBlank { storageUnavailable }
-            else -> result?.optString("message").orEmpty().ifBlank { unableToOpenAttachment }
+            "no_app" -> slockAttachmentOpenResultMessage("no_app", attachmentOpenResultTerms)
+            "storage_failed" -> slockAttachmentOpenResultMessage("storage_failed", attachmentOpenResultTerms)
+            else -> slockAttachmentOpenResultMessage("failed", attachmentOpenResultTerms)
         }
     }
     suspend fun savePayloadExternally(
@@ -4713,6 +4721,28 @@ internal data class SlockFilePreviewDownloadStatusTerms(
     val paused: String,
     val saving: String
 )
+
+internal data class SlockAttachmentOpenResultTerms(
+    val downloadStopped: String,
+    val unableToDownloadAttachment: String,
+    val noAppCanOpenFile: String,
+    val storageUnavailable: String,
+    val unableToOpenAttachment: String
+)
+
+internal fun slockAttachmentOpenResultMessage(
+    status: String,
+    terms: SlockAttachmentOpenResultTerms
+): String? =
+    // Native messages are diagnostic-only: shared semantic status owns user-visible copy.
+    when (status) {
+        "opened", "" -> null
+        "cancelled" -> terms.downloadStopped
+        "missing" -> terms.unableToDownloadAttachment
+        "no_app" -> terms.noAppCanOpenFile
+        "storage_failed" -> terms.storageUnavailable
+        else -> terms.unableToOpenAttachment
+    }
 
 internal fun slockFilePreviewDownloadStatusLabel(
     progress: BridgeAttachmentDownloadProgress?,
