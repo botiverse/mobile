@@ -2571,6 +2571,10 @@ class SharedThreadStoreTest {
         assertTrue(failed.canonicalAccessResolved)
         assertTrue(failed.initialHomeAccessLookupComplete)
         assertEquals(null, failed.initialHomeAccessCandidate)
+        assertFalse(failed.writeActionsEnabled)
+        assertFalse(failed.payload.joined)
+        assertFalse(failed.payload.canSend)
+        assertFalse(failed.payload.composer.enabled)
         scope.cancel()
     }
 
@@ -2603,11 +2607,19 @@ class SharedThreadStoreTest {
         assertEquals(ThreadAccessResolution.NoPermission, noPermission.accessResolution)
         assertFalse(noPermission.canonicalAccessResolved)
         assertEquals("no_permission", noPermission.payload.status)
+        assertFalse(noPermission.writeActionsEnabled)
+        assertFalse(noPermission.payload.joined)
+        assertFalse(noPermission.payload.canSend)
+        assertFalse(noPermission.payload.composer.enabled)
 
         val error = resolve(DataResult.Error(ScreenError(code = "offline", retryable = true)))
         assertEquals(ThreadAccessResolution.Error, error.accessResolution)
         assertFalse(error.canonicalAccessResolved)
         assertEquals("error", error.payload.status)
+        assertFalse(error.writeActionsEnabled)
+        assertFalse(error.payload.joined)
+        assertFalse(error.payload.canSend)
+        assertFalse(error.payload.composer.enabled)
     }
 
     @Test

@@ -4151,7 +4151,7 @@ internal data class SharedThreadState(
     val canonicalAccessResolved: Boolean = false,
     val initialHomeAccessLookupComplete: Boolean = false,
     val initialHomeAccessCandidate: ConversationAccessCandidate? = null,
-    val writeActionsEnabled: Boolean = true,
+    val writeActionsEnabled: Boolean = false,
     val channelProfileUpdateStatus: ChannelProfileUpdateStatus = ChannelProfileUpdateStatus.Idle,
     val channelProfileUpdateErrorCode: String? = null,
     val membersLoadStatus: LoadMembersStatus = LoadMembersStatus.Idle,
@@ -4982,21 +4982,24 @@ internal class SharedThreadStore(
                             hasReadableCanonicalReplyContent =
                                 projectedPayload.hasReadableCanonicalReplyContent()
                         )
+                    val authorityProjectedPayload =
+                        projectedPayload.withTerminalAccessWriteAuthorityClosed(projectedAccessResolution)
                     val didEmit =
                         reduceState(
                             currentState.copy(
-                                payload = projectedPayload,
+                                payload = authorityProjectedPayload,
                                 accessResolution = projectedAccessResolution,
                                 canonicalAccessResolved = canonicalAccessResolved,
                                 writeActionsEnabled =
-                                    !projectedPayload.isReadOnlyReplyAccessFallback(
+                                    authorityProjectedPayload.hasWriteAuthorityForAccess(
+                                        accessResolution = projectedAccessResolution,
                                         homeLookupComplete = currentState.initialHomeAccessLookupComplete,
                                         homeAccessCandidate = currentState.initialHomeAccessCandidate
                                     )
                             )
                         )
                     if (didEmit && visiblePayload != null) {
-                        dataSource.cachePayload(projectedPayload)
+                        dataSource.cachePayload(authorityProjectedPayload)
                     }
                 }
                 val replyIdentities =
@@ -5277,14 +5280,17 @@ internal class SharedThreadStore(
                                 ThreadAccessResolution.Error
                             else -> ThreadAccessResolution.Loading
                         }
+                    val authorityProjectedPayload =
+                        projectedPayload.withTerminalAccessWriteAuthorityClosed(nextResolution)
                     reduceState(
                         currentState.copy(
-                            payload = projectedPayload,
+                            payload = authorityProjectedPayload,
                             accessResolution = nextResolution,
                             initialHomeAccessLookupComplete = true,
                             initialHomeAccessCandidate = candidate,
                             writeActionsEnabled =
-                                !projectedPayload.isReadOnlyReplyAccessFallback(
+                                authorityProjectedPayload.hasWriteAuthorityForAccess(
+                                    accessResolution = nextResolution,
                                     homeLookupComplete = true,
                                     homeAccessCandidate = candidate
                                 )
@@ -8730,6 +8736,34 @@ private fun KuiklyThreadScreenPayload.isReadOnlyReplyAccessFallback(
     homeAccessCandidate: ConversationAccessCandidate?
 ): Boolean =
     homeLookupComplete && homeAccessCandidate == null && hasReadableCanonicalReplyContent()
+
+// Write authority is a terminal access-state invariant, not an inference from
+// whichever payload fields survived the latest projection. In particular, a
+// canonical permission revocation clears readable content, so re-evaluating
+// only the read-only reply fallback would otherwise turn writes back on.
+private fun KuiklyThreadScreenPayload.hasWriteAuthorityForAccess(
+    accessResolution: ThreadAccessResolution,
+    homeLookupComplete: Boolean,
+    homeAccessCandidate: ConversationAccessCandidate?
+): Boolean =
+    accessResolution == ThreadAccessResolution.Resolved &&
+        !isReadOnlyReplyAccessFallback(homeLookupComplete, homeAccessCandidate)
+
+private fun KuiklyThreadScreenPayload.withTerminalAccessWriteAuthorityClosed(
+    accessResolution: ThreadAccessResolution
+): KuiklyThreadScreenPayload =
+    if (
+        accessResolution == ThreadAccessResolution.NoPermission ||
+        accessResolution == ThreadAccessResolution.Error
+    ) {
+        copy(
+            joined = false,
+            canSend = false,
+            composer = composer.copy(enabled = false)
+        )
+    } else {
+        this
+    }
 
 private fun DataResult<*>.resolvesCanonicalConversationAccess(): Boolean =
     this is DataResult.Content || (this is DataResult.Empty && reason == EmptyReason.NoMessages)

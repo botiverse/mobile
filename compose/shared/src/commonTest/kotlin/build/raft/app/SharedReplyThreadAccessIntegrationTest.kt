@@ -209,6 +209,15 @@ class SharedReplyThreadAccessIntegrationTest {
             assertEquals(ThreadAccessResolution.NoPermission, store.state.value.accessResolution)
             assertEquals("no_permission", store.state.value.payload.status)
             assertTrue(store.state.value.payload.messages.isEmpty())
+            assertFalse(store.state.value.writeActionsEnabled)
+            assertFalse(store.state.value.payload.joined)
+            assertFalse(store.state.value.payload.canSend)
+            assertFalse(store.state.value.payload.composer.enabled)
+            assertNull(
+                store.state.value.payload.resolvedTaskLookupChannelId(
+                    writeActionsEnabled = store.state.value.writeActionsEnabled
+                )
+            )
         }
     }
 
@@ -252,6 +261,15 @@ class SharedReplyThreadAccessIntegrationTest {
             assertEquals(ThreadAccessResolution.Error, store.state.value.accessResolution)
             assertFalse(store.state.value.canonicalAccessResolved)
             assertEquals("thread_reply_network", store.state.value.payload.errorCode)
+            assertFalse(store.state.value.writeActionsEnabled)
+            assertFalse(store.state.value.payload.joined)
+            assertFalse(store.state.value.payload.canSend)
+            assertFalse(store.state.value.payload.composer.enabled)
+            assertNull(
+                store.state.value.payload.resolvedTaskLookupChannelId(
+                    writeActionsEnabled = store.state.value.writeActionsEnabled
+                )
+            )
             assertTrue(retryRepository.replyRequests.isEmpty())
 
             store.accept(SharedThreadIntent.Refresh)

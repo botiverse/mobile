@@ -49,6 +49,106 @@ import kotlin.test.assertTrue
 
 class SharedInboxPanelTest {
     @Test
+    fun activitySuppressesOnlyUnopenableTypedInternalJointRowsAndKeepsCountsCoherent() {
+        val unsafe =
+            replyActivityItem("unsafe").copy(
+                parentChannelId = ChannelId("joint-storage-parent"),
+                parentChannelName = "joint-storage-parent",
+                parentChannelKind = ConversationKind.Joint,
+                unreadCount = 3
+            )
+        val safeJoint =
+            replyActivityItem("safe").copy(
+                parentChannelId = ChannelId("joint-local-parent"),
+                parentChannelName = "member-visible-joint",
+                parentChannelKind = ConversationKind.Joint,
+                unreadCount = 2
+            )
+        val storageLookingNameWithLocalSource =
+            replyActivityItem("display-only").copy(
+                parentChannelId = ChannelId("joint-local-parent-2"),
+                parentChannelName = "joint-storage-display-only",
+                parentChannelKind = ConversationKind.Joint,
+                unreadCount = 1
+            )
+        val ordinaryChannel =
+            InboxItem(
+                key = "channel:ordinary",
+                kind = InboxItemKind.Channel,
+                channelId = ChannelId("ordinary"),
+                channelName = "ordinary",
+                channelKind = ConversationKind.Channel,
+                unreadCount = 4
+            )
+        val ordinaryDm =
+            InboxItem(
+                key = "dm:ordinary",
+                kind = InboxItemKind.DirectMessage,
+                channelId = ChannelId("dm-ordinary"),
+                channelName = "Cindy",
+                channelKind = ConversationKind.DirectMessage
+            )
+        val state =
+            SharedActivityState(
+                snapshot =
+                    InboxSnapshot(
+                        server = ServerSummary(ServerId("server-1"), "Raft"),
+                        items =
+                            listOf(
+                                safeJoint,
+                                unsafe,
+                                ordinaryChannel,
+                                ordinaryDm,
+                                storageLookingNameWithLocalSource
+                            ),
+                        totalCount = 9,
+                        totalUnreadCount = 14
+                    )
+            )
+
+        val projected = projectActivityStateWithoutUnopenableInternalJointRows(state)
+
+        assertEquals(
+            listOf("thread:safe", "channel:ordinary", "dm:ordinary", "thread:display-only"),
+            projected.snapshot?.items?.map(InboxItem::key)
+        )
+        assertEquals(8, projected.totalCount)
+        assertEquals(11, projected.totalUnreadCount)
+        assertEquals(5, state.snapshot?.items?.size)
+        assertEquals(9, state.totalCount)
+        assertEquals(14, state.totalUnreadCount)
+    }
+
+    @Test
+    fun activitySuppressedInternalJointRowReappearsWhenSourceBecomesLocal() {
+        val unsafe =
+            replyActivityItem("restored").copy(
+                parentChannelId = ChannelId("joint-storage-parent"),
+                parentChannelKind = ConversationKind.Joint,
+                unreadCount = 1
+            )
+        val server = ServerSummary(ServerId("server-1"), "Raft")
+        val hidden =
+            projectActivityStateWithoutUnopenableInternalJointRows(
+                SharedActivityState(snapshot = InboxSnapshot(server = server, items = listOf(unsafe)))
+            )
+        val corrected =
+            unsafe.copy(
+                parentChannelId = ChannelId("joint-local-parent"),
+                parentChannelName = "member-visible-joint"
+            )
+        val restored =
+            projectActivityStateWithoutUnopenableInternalJointRows(
+                SharedActivityState(snapshot = InboxSnapshot(server = server, items = listOf(corrected)))
+            )
+
+        assertTrue(hidden.snapshot?.items.orEmpty().isEmpty())
+        assertEquals(listOf("thread:restored"), restored.snapshot?.items?.map(InboxItem::key))
+        assertEquals(1, restored.totalCount)
+        assertEquals(1, restored.totalUnreadCount)
+    }
+
+    @Test
     fun openingActivityRowsLeavesReadAcknowledgementToTheDestinationStore() {
         val opened = activityItem(key = "thread:opened").copy(unreadCount = 2)
         val promotedWhileNavigating = activityItem(key = "thread:promoted").copy(unreadCount = 1)

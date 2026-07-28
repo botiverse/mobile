@@ -3,11 +3,13 @@ package build.raft.app
 import build.raft.app.data.AuthPendingOpenRequest
 import build.raft.app.data.InboxItem
 import build.raft.app.data.SharedConversationDirectoryState
+import build.raft.app.data.hasUnopenableInternalJointParentSource
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MessageId
 import build.raft.app.model.TaskSummary
+import build.raft.app.model.isInternalJointStorageIdentity
 
 internal enum class ConversationOpenSource {
     ActivityRow,
@@ -93,11 +95,14 @@ internal fun resolveOpenRequest(
             sourceMessageIdentity.source == ConversationOpenSource.Notification ||
                 sourceMessageIdentity.source == ConversationOpenSource.ForegroundBanner
         ) && sourceMessageIdentity.isThreadShaped()
+    val validatesActivityThreadIdentity =
+        sourceMessageIdentity.source == ConversationOpenSource.ActivityRow &&
+            sourceMessageIdentity.isThreadShaped()
     // Server payloads are already projection-qualified. Directory evidence may validate that
     // tuple, but must never rewrite aliases or mixed thread/parent/message ids into a local one.
     // Missing directory evidence stays on the existing hydration/raw-open path.
-    val notificationThreadProjectionMismatch =
-        validatesNotificationThreadIdentity &&
+    val sourceThreadProjectionMismatch =
+        (validatesNotificationThreadIdentity || validatesActivityThreadIdentity) &&
             (
                 projection
                     ?.let { replyProjection ->
@@ -127,6 +132,12 @@ internal fun resolveOpenRequest(
                                 ?.let { canonicalId -> canonicalId != parentId }
                         } == true
             )
+    val notificationThreadProjectionMismatch =
+        validatesNotificationThreadIdentity && sourceThreadProjectionMismatch
+    val activityThreadProjectionMismatch =
+        validatesActivityThreadIdentity && sourceThreadProjectionMismatch
+    val activityInternalJointParentSource =
+        sourceMessageIdentity.hasUnopenableInternalJointParentSource()
     // Two-tier drop (t5/#419): a projection that resolved but whose reply-thread parent shape
     // is untrustworthy (builder returned null) may only be reconstructed from a trusted typed
     // parentConversationKind on the source; otherwise it stays unresolved and must NOT fall
@@ -139,8 +150,14 @@ internal fun resolveOpenRequest(
                 ?.takeUnless { it.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread }
                 ?.conversationKind
     val conversation =
-        if (notificationThreadProjectionMismatch) {
+        if (activityInternalJointParentSource || notificationThreadProjectionMismatch) {
             null
+        } else if (activityThreadProjectionMismatch) {
+            // Activity rows are the server-qualified source tuple for this tap.
+            // A directory hit may enrich an exact match, but an alias/cached
+            // projection must never rewrite the row's local parent identity.
+            // Rebuild only from the typed source (or remain Pending below).
+            sourceMessageIdentity.toThreadLaunchConversationIdentity(authoritativeParentKind)
         } else {
             projection?.toThreadLaunchConversationIdentity(conversationDirectory)
                 ?: sourceMessageIdentity.toThreadLaunchConversationIdentity(authoritativeParentKind)
@@ -151,6 +168,7 @@ internal fun resolveOpenRequest(
                 sourceMessageIdentity,
                 reason =
                     when {
+                        activityInternalJointParentSource -> "activity_internal_parent_identity"
                         notificationThreadProjectionMismatch -> "thread_projection_mismatch"
                         projection != null -> "thread_parent_unresolved"
                         projectionHit != null -> "thread_identity_projection_ineligible"
@@ -175,6 +193,8 @@ internal fun resolveOpenRequest(
             "hitSurface=${projectionHit?.surfaceKind ?: "_"} " +
             "hitEligible=${projectionHit != null && projection != null} " +
             "notificationThreadProjectionMismatch=$notificationThreadProjectionMismatch " +
+            "activityThreadProjectionMismatch=$activityThreadProjectionMismatch " +
+            "activityInternalJointParentSource=$activityInternalJointParentSource " +
             "result=" +
             when (resolution) {
                 is ConversationOpenResolution.Resolved ->
@@ -184,6 +204,12 @@ internal fun resolveOpenRequest(
     )
     return resolution
 }
+
+private fun ConversationOpenSourceMessageIdentity.hasUnopenableInternalJointParentSource(): Boolean =
+    source == ConversationOpenSource.ActivityRow &&
+        isThreadShaped() &&
+        parentConversationKind == ConversationKind.Joint &&
+        isInternalJointStorageIdentity(parentChannelId)
 
 internal fun InboxItem.toConversationOpenSourceMessageIdentity(): ConversationOpenSourceMessageIdentity =
     ConversationOpenSourceMessageIdentity(

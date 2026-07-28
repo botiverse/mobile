@@ -50,6 +50,11 @@ data class InboxItem(
     val pendingMentionActions: List<PendingMentionAction> = emptyList()
 )
 
+internal fun InboxItem.hasUnopenableInternalJointParentSource(): Boolean =
+    kind == InboxItemKind.Thread &&
+        parentChannelKind == ConversationKind.Joint &&
+        isInternalJointStorageIdentity(parentChannelId?.value)
+
 @Serializable
 sealed interface HomeConversationRow {
     val threadId: ThreadId
@@ -684,6 +689,21 @@ data class InboxSnapshot(
     val hasMore: Boolean = false,
     val nextOffset: Int? = null
 )
+
+internal fun InboxSnapshot.activityVisibleSummaryCounts(
+    totalUnreadCountOverride: Int? = null,
+    totalCountOverride: Int? = null
+): Pair<Int, Int> {
+    val suppressed = items.filter { item -> item.hasUnopenableInternalJointParentSource() }
+    val visibleItems = items.filterNot { item -> item.hasUnopenableInternalJointParentSource() }
+    return maxOf(
+        visibleItems.sumOf(InboxItem::unreadCount),
+        (totalUnreadCountOverride ?: totalUnreadCount) - suppressed.sumOf(InboxItem::unreadCount)
+    ) to maxOf(
+        visibleItems.size,
+        (totalCountOverride ?: totalCount) - suppressed.size
+    )
+}
 
 data class InboxDoneResult(
     val channelId: ChannelId
