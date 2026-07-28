@@ -13,7 +13,7 @@
 - Attachments keep their selection order, edited images retain their original aspect ratio, and composer interactions are less likely to lose focus
 - Transient network send failures receive more automatic retries, and the manual Retry action is easier to find below the error details
 - Sign-in conflicts now clearly distinguish an existing password account from a third-party identity linked to another account, with the appropriate next step
-- Reaction and task-status chips now show actions immediately; pending chips no longer reserve blank space or change width
+- Results now appear immediately when you add or remove a reaction or change task status; processing no longer causes extra blank space or width changes
 - The preferred translation target in Settings is now System language, following the device language and falling back to English when unsupported
 - Long-pressing to select message text no longer opens the keyboard, while partial selection, Select all, and Copy remain available
 - Android packages now compress DEX and verify every 64-bit native library for 16 KB page-size compatibility, reducing download size and improving compatibility on newer devices

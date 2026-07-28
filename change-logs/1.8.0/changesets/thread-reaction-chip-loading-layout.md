@@ -11,8 +11,8 @@ rollout: full
 
 ## zh-CN
 
-可点按的表情回应芯片不再为等待动画永久预留空白；请求进行中时芯片宽度也会保持稳定，不会重复显示内容或跳动。
+添加或移除回应时，处理中不再出现多余空白，显示宽度保持稳定，也不会重复显示内容或跳动。
 
 ## en
 
-Clickable reaction chips no longer reserve a permanent blank slot for a loading indicator. Their width also remains stable while a request is pending, without duplicated content or layout jumps.
+Adding or removing a reaction no longer leaves extra blank space while processing. The display keeps a stable width without duplicated content or layout jumps.

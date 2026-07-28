@@ -216,6 +216,27 @@ ruby -e '
   raise "Hands finalizer does not require Japanese notes" unless finalizer.include?("--ja-notes") && finalizer.include?("--changelog-file \"ja=${JA_NOTES}\"")
   sop = File.read("docs/android-release-sop.md")
   raise "Android release SOP does not document Japanese notes" unless sop.include?("change-logs/1.2.2/android/ja.md")
+  terminology_contract = [
+    "botiverse/slock",
+    "packages/web/src/i18n/messages/",
+    "`回应`",
+    "`任务状态`",
+    "`处理中`",
+  ]
+  raise "Android release SOP does not require canonical Web terminology" unless terminology_contract.all? { |term| sop.include?(term) }
+
+  release_copy = Dir["change-logs/**/*.md"].to_h { |path| [path, File.read(path)] }
+  deprecated_zh_terms = {
+    "表情回应" => "回应",
+    "任务状态芯片" => "任务状态",
+    "等待中的芯片" => "处理中",
+  }
+  deprecated_zh_terms.each do |deprecated, canonical|
+    offenders = release_copy.each_with_object([]) do |(path, copy), paths|
+      paths << path if copy.include?(deprecated)
+    end
+    raise "release notes use #{deprecated.inspect}; align to Web term #{canonical.inspect}: #{offenders.join(", ")}" unless offenders.empty?
+  end
 
   release_note_headers = {
     "zh-CN" => ["✨ **新功能**", "🔧 **改进**", "🐛 **修复**"],

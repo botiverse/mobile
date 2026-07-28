@@ -304,6 +304,14 @@ platform-internal detail; fold many small related fixes into one line. Soften
 partial or not-yet-open capabilities (e.g. a Billing page that only lists plans
 → "套餐与账单 / Plans & Billing", not "订阅 / subscriptions").
 
+**Web-aligned product terminology.** Before final review, compare shared nouns,
+actions, and status labels with the current `botiverse/slock` Web catalog under
+`packages/web/src/i18n/messages/`. Use the catalog's user-visible wording and
+avoid implementation labels such as chip, badge, or spinner unless they appear
+in the product UI. Record the Web source exact and keys checked in the review
+receipt. For the current zh-CN catalog, reaction, task status, and processing
+are `回应`, `任务状态`, and `处理中`; the live catalog remains authoritative.
+
 **Content source.** Diff the commits since the last *released* `versionCode` and
 translate them into user language — never ship the raw commit list.
 

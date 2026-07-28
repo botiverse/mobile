@@ -11,8 +11,8 @@ rollout: full
 
 ## zh-CN
 
-添加或移除表情回应、修改任务状态时，芯片会立即显示目标状态，不再用等待动画遮住操作结果；请求失败时仍会回到服务器确认的状态。
+添加或移除回应、更改任务状态时，结果会立即显示，不再被处理中状态遮住；请求失败时仍会回到服务器确认的状态。
 
 ## en
 
-Reaction and task-status chips now show the intended state immediately instead of covering the result with a loading spinner. A failed request still returns to the server-confirmed state.
+Results now appear immediately when you add or remove a reaction or change task status. If an action fails, the previous confirmed state is restored.
