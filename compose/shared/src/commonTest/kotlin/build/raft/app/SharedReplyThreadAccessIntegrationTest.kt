@@ -99,6 +99,69 @@ class SharedReplyThreadAccessIntegrationTest {
     }
 
     @Test
+    fun loadedRepliesDoNotWaitForHungParentContextProducer() = runBlocking {
+        withPortableAppScope { appScope ->
+            val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L)
+            val replyRelease = CompletableDeferred<Unit>()
+            val parentRelease = CompletableDeferred<Unit>()
+            val diagnostics = mutableListOf<String>()
+            val repository =
+                ReplyThreadAccessConversationRepositoryRecorder(
+                    replyResult =
+                        DataResult.Content(
+                            replyThreadAccessSnapshot().copy(parentMessage = null)
+                        ),
+                    releaseReply = replyRelease,
+                    releaseParent = parentRelease
+                )
+            val dataSource =
+                replyThreadAccessDataSource(
+                    repository = repository,
+                    sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1")),
+                    payloadStore = payloadStore,
+                    replyOriginHydrationGraceMillis = 0L,
+                    diagnosticsLogger = diagnostics::add
+                )
+
+            val store =
+                SharedThreadStore(
+                    dataSource = dataSource,
+                    scope = appScope,
+                    diagnosticsLogger = diagnostics::add,
+                )
+
+            val start =
+                async {
+                    store.accept(SharedThreadIntent.Start(unresolvedReplyThreadAccessPayload()))
+                }
+            repository.parentStarted.await()
+            replyRelease.complete(Unit)
+            start.await()
+
+            assertEquals("content", store.state.value.payload.status)
+            assertEquals(listOf("reply body"), store.state.value.payload.messages.map { it.body })
+            assertEquals("missing", store.state.value.payload.originStatus)
+            assertEquals(1, repository.parentRequests.size)
+            assertEquals(MessageId("m1"), repository.parentRequests.single().first)
+            assertEquals(ChannelId("channel-1"), repository.parentRequests.single().second)
+            assertFalse(parentRelease.isCompleted)
+            assertTrue(
+                diagnostics.any { line ->
+                    line.startsWith("thread_parent_context_grace_expired ") &&
+                        line.contains("hasReplyContent=true")
+                }
+            )
+            assertTrue(
+                diagnostics.any { line ->
+                    line.contains("thread_refresh_result") &&
+                        line.contains("result=content") &&
+                        line.contains("messages=1")
+                }
+            )
+        }
+    }
+
+    @Test
     fun failureReentryRendersFailClosedErrorAndExplicitRetryStartsOneSuccessor() = runBlocking {
         withPortableAppScope { appScope ->
             val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L)
@@ -161,13 +224,17 @@ class SharedReplyThreadAccessIntegrationTest {
     private fun replyThreadAccessDataSource(
         repository: ConversationRepository,
         sessionStore: SlockAuthSessionStore,
-        payloadStore: SharedThreadPayloadStore
+        payloadStore: SharedThreadPayloadStore,
+        replyOriginHydrationGraceMillis: Long = 300L,
+        diagnosticsLogger: (String) -> Unit = {},
     ): SharedThreadDataSource =
         SharedThreadDataSource(
             networkApi = SharedThreadStoreTest.FakeThreadApi(),
             sessionStore = sessionStore,
             conversationRepository = repository,
             payloadStore = payloadStore,
-            cacheEnvironmentIdProvider = { "https://prod.example.test" }
+            cacheEnvironmentIdProvider = { "https://prod.example.test" },
+            replyOriginHydrationGraceMillis = replyOriginHydrationGraceMillis,
+            diagnosticsLogger = diagnosticsLogger,
         )
 }
