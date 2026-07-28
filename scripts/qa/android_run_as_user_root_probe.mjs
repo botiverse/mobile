@@ -152,6 +152,17 @@ try {
     { timeout: 30_000, stdio: "ignore" },
   );
   passPhase();
+  beginPhase("start_target");
+  // `am switch-user` is asynchronous. On a cold API 34 emulator it can
+  // return before the newly-created user's system services have finished
+  // starting, leaving `is-user-unlocked` false for the whole polling window.
+  // Start the user with Android's blocking gate first; the following exact
+  // current+unlocked readback remains authoritative.
+  execFileSync("adb", ["shell", "am", "start-user", "-w", probeUserId], {
+    timeout: 90_000,
+    stdio: "ignore",
+  });
+  passPhase();
   beginPhase("switch_target");
   execFileSync("adb", ["shell", "am", "switch-user", probeUserId], {
     timeout: 30_000,
@@ -159,7 +170,7 @@ try {
   });
   passPhase();
   beginPhase("target_unlocked");
-  await waitForCurrentUnlockedUser(probeUserId, 30_000);
+  await waitForCurrentUnlockedUser(probeUserId, 60_000);
   passPhase();
 
   beginPhase("private_write");

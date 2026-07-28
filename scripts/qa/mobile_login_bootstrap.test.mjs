@@ -72,8 +72,10 @@ test("real run-as probe verifies bytes then exercises the production Activity co
   assert.match(source, /"pm", "create-user", "--ephemeral"/);
   assert.match(source, /probeUserId === originalUserId/);
   assert.match(source, /"package", "install-existing", "--user", probeUserId/);
+  assert.match(source, /"am", "start-user", "-w", probeUserId/);
+  assert.match(source, /beginPhase\("start_target"\)/);
+  assert.match(source, /waitForCurrentUnlockedUser\(probeUserId, 60_000\)/);
   assert.match(source, /"am", "switch-user", probeUserId/);
-  assert.match(source, /waitForCurrentUnlockedUser\(probeUserId/);
   assert.match(source, /QaSessionBootstrapActivity/);
   assert.match(source, /"am", "start", "--user", probeUserId/);
   assert.match(source, /QA_BOOTSTRAP_STAGE stage=inbox_consumed/);
@@ -139,6 +141,7 @@ test("real probe retries ADB user-switch transport loss and preserves consume ev
       '        printf "%s\\n" "Success: created user id 10"',
       '        ;;',
       '      "shell cmd package install-existing --user 10 build.raft.app.connectedtest") exit 0 ;;',
+      '      "shell am start-user -w 10") exit 0 ;;',
       '      "shell am switch-user 10")',
       '        printf "10\\n" > "$state/current"',
       '        : > "$state/offline-once"',
