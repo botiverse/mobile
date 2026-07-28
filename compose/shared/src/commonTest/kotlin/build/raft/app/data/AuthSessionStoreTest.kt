@@ -12,6 +12,7 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -542,6 +543,90 @@ class AuthSessionStoreTest {
         assertFalse(committed)
         assertFalse(cleanupRan)
         assertEquals("successor-access", store.readSession()?.accessToken)
+    }
+
+    @Test
+    fun terminalAuthLossCommitClearsExactCapturedAuthorityLeftByEarlierClearFailure() = runBlocking {
+        val store = KeyValueAuthSessionStore(InMemorySlockKeyValueStore())
+        val captured = sampleSession()
+        store.replaceAuthenticatedSession(captured)
+        val admitted = store.readAuthSessionTerminalSnapshot()
+        val clearedEvent =
+            async(start = CoroutineStart.UNDISPATCHED) {
+                store.authSessionTerminalEvents.first { it is AuthSessionEvent.Cleared }
+            }
+        var terminalEffectRan = false
+
+        val committed =
+            store.runIfAuthSessionTerminalOrAuthorityRevision(
+                expectedGeneration = admitted.generation,
+                expectedSession = captured,
+            ) {
+                terminalEffectRan = true
+            }
+
+        assertNotNull(committed)
+        assertTrue(terminalEffectRan)
+        assertNull(store.readSession())
+        val event = withTimeoutOrNull(1000) { clearedEvent.await() }
+        assertTrue(event is AuthSessionEvent.Cleared)
+        assertEquals(AuthSessionClearReason.AuthLoss, (event as AuthSessionEvent.Cleared).reason)
+    }
+
+    @Test
+    fun terminalAuthLossCommitRejectsDifferentSuccessorAuthority() = runBlocking {
+        val store = KeyValueAuthSessionStore(InMemorySlockKeyValueStore())
+        val captured = sampleSession()
+        store.replaceAuthenticatedSession(captured)
+        val admitted = store.readAuthSessionTerminalSnapshot()
+        val successor =
+            captured.copy(
+                accessToken = "successor-access",
+                refreshToken = "successor-refresh",
+            )
+        store.replaceAuthenticatedSession(successor)
+        var terminalEffectRan = false
+
+        val committed =
+            store.runIfAuthSessionTerminalOrAuthorityRevision(
+                expectedGeneration = admitted.generation,
+                expectedSession = captured,
+            ) {
+                terminalEffectRan = true
+            }
+
+        assertNull(committed)
+        assertFalse(terminalEffectRan)
+        assertEquals(successor, store.readSession())
+    }
+
+    @Test
+    fun terminalAuthLossCommitAcceptsExactAuthorityAfterMetadataGenerationDrift() = runBlocking {
+        val store = KeyValueAuthSessionStore(InMemorySlockKeyValueStore())
+        val captured = sampleSession()
+        store.replaceAuthenticatedSession(captured)
+        val admitted = store.readAuthSessionTerminalSnapshot()
+        store.updateMetadata(expectedAccountId = captured.user.id) { latest ->
+            latest.copy(user = latest.user.copy(displayName = "Metadata changed"))
+        }
+        val drifted = store.readAuthSessionTerminalSnapshot()
+        assertEquals(admitted.generation + 1, drifted.generation)
+        assertEquals(captured.accessToken, drifted.session?.accessToken)
+        assertEquals(captured.refreshToken, drifted.session?.refreshToken)
+        var terminalEffectRan = false
+
+        val committedGeneration =
+            store.runIfAuthSessionTerminalOrAuthorityRevision(
+                expectedGeneration = admitted.generation,
+                expectedSession = captured,
+            ) {
+                terminalEffectRan = true
+            }
+
+        assertNotNull(committedGeneration)
+        assertEquals(drifted.generation + 1, committedGeneration)
+        assertTrue(terminalEffectRan)
+        assertNull(store.readSession())
     }
 
     private class CountingSlockKeyValueStore : SlockKeyValueStore {

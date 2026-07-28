@@ -23,6 +23,12 @@ const val SLOCK_AUTH_SESSION_MMKV_NAMESPACE = "slockAuthSession"
 const val SLOCK_AUTH_SESSION_RECORD_KEY = "session"
 const val SLOCK_AUTH_SESSION_MMKV_STORAGE_KEY = "slockAuthSession:session"
 
+enum class AuthSessionClearOutcome {
+    Cleared,
+    AlreadyAbsent,
+    AuthorityChanged,
+}
+
 interface SlockAuthSessionStore {
     suspend fun readSession(): StoredAuthSession?
     suspend fun saveSession(session: StoredAuthSession)
@@ -51,6 +57,30 @@ interface SlockAuthSessionStore {
         }
         clearSession(reason, source)
         return true
+    }
+
+    /** Atomically distinguishes a consumed authority from a concurrent successor generation. */
+    suspend fun clearSessionIfMatchesOutcome(
+        expectedAccountId: String,
+        expectedAccessToken: String,
+        expectedRefreshToken: String,
+        reason: String,
+        source: String,
+    ): AuthSessionClearOutcome {
+        val cleared =
+            clearSessionIfMatches(
+                expectedAccountId,
+                expectedAccessToken,
+                expectedRefreshToken,
+                reason,
+                source,
+            )
+        if (cleared) return AuthSessionClearOutcome.Cleared
+        return if (readSession() == null) {
+            AuthSessionClearOutcome.AlreadyAbsent
+        } else {
+            AuthSessionClearOutcome.AuthorityChanged
+        }
     }
 
     // --- Atomic session-write primitives (#466 lost-update fix) ---
@@ -259,6 +289,23 @@ internal interface SlockAuthSessionTerminalSource {
         expectedGeneration: Long,
         action: () -> Unit,
     ): Boolean
+
+    /**
+     * Commits terminal auth loss when the revision is still absent or still owns the exact
+     * captured authority. Real stores override this under the canonical mutation lock and clear
+     * the captured authority before [action], so a prior best-effort clear failure cannot leave an
+     * expired session Ready while a concurrent successor remains protected. Returns the terminal
+     * generation committed while still under that lock; callers must not infer it from a later
+     * snapshot that may already belong to a successor.
+     */
+    suspend fun runIfAuthSessionTerminalOrAuthorityRevision(
+        expectedGeneration: Long,
+        expectedSession: StoredAuthSession?,
+        action: () -> Unit,
+    ): Long? =
+        expectedGeneration.takeIf {
+            runIfAuthSessionTerminalRevision(expectedGeneration, action)
+        }
 }
 
 @Serializable
@@ -524,6 +571,30 @@ class InMemorySlockAuthSessionStore(
         return cleared
     }
 
+    override suspend fun clearSessionIfMatchesOutcome(
+        expectedAccountId: String,
+        expectedAccessToken: String,
+        expectedRefreshToken: String,
+        reason: String,
+        source: String,
+    ): AuthSessionClearOutcome {
+        val outcome =
+            mutex.withLock {
+                val current = session ?: return@withLock AuthSessionClearOutcome.AlreadyAbsent
+                if (
+                    current.user.id != expectedAccountId ||
+                    current.accessToken != expectedAccessToken ||
+                    current.refreshToken != expectedRefreshToken
+                ) {
+                    return@withLock AuthSessionClearOutcome.AuthorityChanged
+                }
+                session = null
+                AuthSessionClearOutcome.Cleared
+            }
+        if (outcome == AuthSessionClearOutcome.Cleared) invalidations.emit(Unit)
+        return outcome
+    }
+
     override suspend fun replaceAuthenticatedSession(session: StoredAuthSession) {
         val changed =
             mutex.withLock {
@@ -700,6 +771,46 @@ class KeyValueAuthSessionStore(
             action()
             true
         }
+
+    override suspend fun runIfAuthSessionTerminalOrAuthorityRevision(
+        expectedGeneration: Long,
+        expectedSession: StoredAuthSession?,
+        action: () -> Unit,
+    ): Long? {
+        var removedGeneration: Long? = null
+        val committedGeneration =
+            mutex.withLock {
+                val current = readSessionRecordLocked()
+                when {
+                    current == null -> {
+                        if (storeGeneration != expectedGeneration) return@withLock null
+                        action()
+                        storeGeneration
+                    }
+                    expectedSession == null ||
+                        current.user.id != expectedSession.user.id ||
+                        current.accessToken != expectedSession.accessToken ||
+                        current.refreshToken != expectedSession.refreshToken -> null
+                    else -> {
+                        clearSessionRecordLocked()
+                        nextGenerationLocked().also { generation ->
+                            removedGeneration = generation
+                            action()
+                        }
+                    }
+                }
+            }
+        removedGeneration?.let { generation ->
+            storeEvents.emit(
+                AuthSessionEvent.Cleared(
+                    generation = generation,
+                    reason = AuthSessionClearReason.AuthLoss,
+                )
+            )
+            invalidations.emit(Unit)
+        }
+        return committedGeneration
+    }
 
     override suspend fun replaceAuthenticatedSession(session: StoredAuthSession) {
         val fingerprint = session.authSessionClearFingerprint()
@@ -928,6 +1039,41 @@ class KeyValueAuthSessionStore(
         log("auth_session_clear_if_matches reason=$safeReason source=$safeSource cleared=$cleared")
         if (cleared) invalidations.emit(Unit)
         return cleared
+    }
+
+    override suspend fun clearSessionIfMatchesOutcome(
+        expectedAccountId: String,
+        expectedAccessToken: String,
+        expectedRefreshToken: String,
+        reason: String,
+        source: String,
+    ): AuthSessionClearOutcome {
+        val safeReason = reason.toSafeAuthSessionDiagnosticsToken()
+        val safeSource = source.toSafeAuthSessionDiagnosticsToken()
+        var removedGeneration: Long? = null
+        val outcome =
+            mutex.withLock {
+                val current = readSessionRecordLocked()
+                    ?: return@withLock AuthSessionClearOutcome.AlreadyAbsent
+                if (
+                    current.user.id != expectedAccountId ||
+                    current.accessToken != expectedAccessToken ||
+                    current.refreshToken != expectedRefreshToken
+                ) {
+                    return@withLock AuthSessionClearOutcome.AuthorityChanged
+                }
+                clearSessionRecordLocked()
+                removedGeneration = nextGenerationLocked()
+                AuthSessionClearOutcome.Cleared
+            }
+        removedGeneration?.let {
+            storeEvents.emit(AuthSessionEvent.Cleared(it, classifyAuthSessionClearReason(reason)))
+        }
+        diagnosticsLogger(
+            "auth_session_clear_if_matches_outcome reason=$safeReason source=$safeSource outcome=$outcome"
+        )
+        if (outcome == AuthSessionClearOutcome.Cleared) invalidations.emit(Unit)
+        return outcome
     }
 
     suspend fun clearSessionFromSessionClearedNotify(

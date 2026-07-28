@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import re
 import sys
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -29,6 +30,17 @@ VENDOR_PARAGRAPH = (
 )
 BRIDGE_AUTH = "compose/shared/src/commonMain/kotlin/build/raft/app/data/BridgeAuth.kt"
 ANDROID_ACTIVITY = "compose/androidApp/src/main/java/build/raft/app/shared/SlockKuiklyActivity.kt"
+AUTH_STRINGS = {
+    "base": "compose/shared/src/commonMain/resources/MR/base/strings.xml",
+    "zh-rCN": "compose/shared/src/commonMain/resources/MR/zh-rCN/strings.xml",
+    "ja": "compose/shared/src/commonMain/resources/MR/ja/strings.xml",
+}
+AUTH_AUTHORITY_CHANGED_KEY = "auth_error_session_changed_retry_create_server"
+AUTH_AUTHORITY_CHANGED_COPY = {
+    "base": "Your session changed. Try creating the server again.",
+    "zh-rCN": "您的会话已更改。请重新创建服务器。",
+    "ja": "セッションが変更されました。もう一度サーバーを作成してください。",
+}
 
 # Settings notification actions the shared side dispatches; each MUST have an
 # explicit Android capability handler (incident: task #361 — Android silently
@@ -103,6 +115,31 @@ def check_notification_action_handlers(bridge: str, activity: str) -> None:
             )
 
 
+def check_auth_authority_changed_i18n(locale_xml: dict[str, str]) -> None:
+    """Incident: task #161 (internal auth code leaked through server picker).
+
+    Base is the runtime fallback. The two shipped non-English catalogs must carry
+    the same key with reviewed actionable copy; missing/drifted values fail closed.
+    """
+    if set(locale_xml) != set(AUTH_AUTHORITY_CHANGED_COPY):
+        raise Violation("task #161 i18n gate must receive base/zh-rCN/ja catalogs")
+    for locale, expected in AUTH_AUTHORITY_CHANGED_COPY.items():
+        try:
+            root = ET.fromstring(locale_xml[locale])
+        except ET.ParseError as error:
+            raise Violation(f"task #161 {locale} strings XML is invalid: {error}") from error
+        values = {
+            element.attrib.get("name"): "".join(element.itertext())
+            for element in root.findall("string")
+        }
+        actual = values.get(AUTH_AUTHORITY_CHANGED_KEY)
+        if actual != expected:
+            raise Violation(
+                f"task #161 {locale} {AUTH_AUTHORITY_CHANGED_KEY} drift: "
+                f"expected {expected!r}, got {actual!r}"
+            )
+
+
 def run(root: Path) -> None:
     def read(rel: str) -> str:
         path = root / rel
@@ -120,6 +157,9 @@ def run(root: Path) -> None:
         }
     )
     check_notification_action_handlers(read(BRIDGE_AUTH), read(ANDROID_ACTIVITY))
+    check_auth_authority_changed_i18n(
+        {locale: read(path) for locale, path in AUTH_STRINGS.items()}
+    )
 
 
 def self_test() -> None:
@@ -158,6 +198,27 @@ def self_test() -> None:
     else:
         raise SystemExit("self-test: notification-handler checker accepted a violation")
 
+    good_auth_i18n = {
+        locale: f'<resources><string name="{AUTH_AUTHORITY_CHANGED_KEY}">{value}</string></resources>'
+        for locale, value in AUTH_AUTHORITY_CHANGED_COPY.items()
+    }
+    check_auth_authority_changed_i18n(good_auth_i18n)
+    for bad in (
+        {**good_auth_i18n, "ja": "<resources />"},
+        {
+            **good_auth_i18n,
+            "zh-rCN": (
+                f'<resources><string name="{AUTH_AUTHORITY_CHANGED_KEY}">wrong</string></resources>'
+            ),
+        },
+    ):
+        try:
+            check_auth_authority_changed_i18n(bad)
+        except Violation:
+            pass
+        else:
+            raise SystemExit("self-test: task #161 i18n checker accepted a violation")
+
     print("check_source_constraints self-test passed")
 
 
@@ -173,7 +234,7 @@ def main(argv: list[str]) -> int:
     except Violation as violation:
         print(f"source-constraint violation: {violation}", file=sys.stderr)
         return 1
-    print("source constraints hold (tasks #800/#803/#361 structural faces)")
+    print("source constraints hold (tasks #800/#803/#361/#161 structural faces)")
     return 0
 
 
