@@ -5787,7 +5787,13 @@ internal class SlockKuiklyBridgeModule(
                             }
                         }
                 )
-        return coordinator.open(identity).toBridgePayload()
+        val requirement =
+                if (request.optBoolean("requirePublicDownload", false)) {
+                    AndroidAttachmentOpenRequirement.PublicDownloadOnly
+                } else {
+                    AndroidAttachmentOpenRequirement.PublicOrPrivate
+                }
+        return coordinator.open(identity, requirement).toBridgePayload()
     }
 
     private fun AttachmentPreparationResult.Ready.toPrivateAttachmentOpenSource(): AndroidAttachmentContentUriSource? {

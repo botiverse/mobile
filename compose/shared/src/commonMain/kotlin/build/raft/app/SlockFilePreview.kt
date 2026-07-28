@@ -369,6 +369,9 @@ private fun SlockFilePreviewEditorVisualContent() {
 private fun SlockFilePreviewStandalonePageContent() {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
+    val publicDownloadRepository =
+        remember(bridge) { BridgeSlockFilePreviewPublicDownloadRepository(bridge) }
+    val supportsPublicDownloadReadback = slockPlatformSupportsPublicAttachmentDownloadReadback()
     val storeScope = remember(pager.pageData.params.toString(), pager.pagerId) {
         pager.pageData.params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
     }
@@ -446,9 +449,22 @@ private fun SlockFilePreviewStandalonePageContent() {
     var activeDownloadStartedAt by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf<TimeMark?>(null) }
     var firstBridgeDownloadId by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf<String?>(null) }
     var firstRenderedDownloadId by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf<String?>(null) }
-    var attachmentCacheState by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf(false) }
+    var publicDownloadState by remember(payload.source, payload.attachmentId, payload.path) {
+        mutableStateOf<SlockFilePreviewPublicDownloadState>(
+            if (supportsPublicDownloadReadback) {
+                SlockFilePreviewPublicDownloadState.Checking
+            } else {
+                SlockFilePreviewPublicDownloadState.NotDownloaded
+            }
+        )
+    }
+    var activePublicDownloadQuery by remember {
+        mutableStateOf<SlockFilePreviewPublicDownloadQuery?>(null)
+    }
+    var observedPublicDownloadQuery by remember {
+        mutableStateOf<SlockFilePreviewPublicDownloadQuery?>(null)
+    }
     var attachmentCacheAttemptToken by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf<String?>(null) }
-    var attachmentCacheRecordVersion by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf<Long?>(null) }
     val downloadProgressMailbox = remember(payload.source, payload.attachmentId, payload.path) {
         SlockFilePreviewProgressMailbox()
     }
@@ -545,7 +561,6 @@ private fun SlockFilePreviewStandalonePageContent() {
                     expectedDownloadId = expectedDownloadId
                 )
             attachmentCacheAttemptToken = progress.attemptToken.takeIf(String::isNotBlank)
-            attachmentCacheRecordVersion = progress.recordVersion
         }
     }
     LaunchedEffect(downloadProgress?.downloadId, downloadProgress?.downloadedBytes) {
@@ -813,38 +828,73 @@ private fun SlockFilePreviewStandalonePageContent() {
             operation = externalOperation,
             status = downloadStatus
         )
-    LaunchedEffect(canOpenWith, attachmentCacheId, attachmentCacheFileName, payload.externalMimeType) {
-        attachmentCacheState = false
-        if (!canOpenWith) return@LaunchedEffect
-        val owner = attachmentOwner ?: return@LaunchedEffect
-        val result =
-            bridge.attachmentCacheStatus(
-                attachmentId = attachmentCacheId,
-                fileName = attachmentCacheFileName,
-                owner = owner,
-                mimeType = payload.externalMimeType
-            )
-        if (!ProcessAttachmentAuthScopes.allows(owner)) return@LaunchedEffect
-        attachmentCacheState = result?.optBoolean("cached") == true
-        attachmentCacheAttemptToken = result?.optString("attemptToken")?.takeIf(String::isNotBlank)
-        attachmentCacheRecordVersion = result?.optString("recordVersion")?.toLongOrNull()?.takeIf { it >= 0L }
+    val publicDownloadQuery =
+        attachmentOwner
+            ?.takeIf { canOpenWith && supportsPublicDownloadReadback }
+            ?.let { owner ->
+                SlockFilePreviewPublicDownloadQuery(
+                    attachmentId = attachmentCacheId,
+                    fileName = attachmentCacheFileName,
+                    owner = owner,
+                    mimeType = payload.externalMimeType
+                )
+            }
+    suspend fun refreshPublicDownloadState(
+        query: SlockFilePreviewPublicDownloadQuery
+    ): SlockFilePreviewPublicDownloadObservation? {
+        val observation = publicDownloadRepository.inspect(query)
+        if (!ProcessAttachmentAuthScopes.allows(query.owner)) return null
+        val committed =
+            slockFilePreviewCommitPublicDownloadObservation(
+                request = query,
+                current = activePublicDownloadQuery,
+                observation = observation
+            ) ?: return null
+        publicDownloadState = committed.state
+        observedPublicDownloadQuery = query
+        attachmentCacheAttemptToken = committed.attemptToken
+        return committed
     }
+    LaunchedEffect(publicDownloadQuery) {
+        activePublicDownloadQuery = publicDownloadQuery
+        attachmentCacheAttemptToken = null
+        if (publicDownloadQuery == null) {
+            publicDownloadState = SlockFilePreviewPublicDownloadState.NotDownloaded
+            observedPublicDownloadQuery = null
+            return@LaunchedEffect
+        }
+        publicDownloadState = SlockFilePreviewPublicDownloadState.Checking
+        observedPublicDownloadQuery = null
+        refreshPublicDownloadState(publicDownloadQuery)
+    }
+    val visiblePublicDownloadState =
+        slockFilePreviewVisiblePublicDownloadState(
+            current = publicDownloadQuery,
+            observedFor = observedPublicDownloadQuery,
+            observedState = publicDownloadState
+        )
     suspend fun openPayloadExternally(
         currentPayload: SlockFilePreviewPayload,
-        trackProgress: Boolean,
+        policy: SlockFilePreviewExternalOpenPolicy,
         operation: AttachmentOperationToken
     ): String? {
         val externalUrl =
-            currentPayload.externalUrl?.takeIf { it.isNotBlank() }
-                ?: currentPayload.threadAttachmentExternalUrl(threadApi)
-                ?: return unableToDownloadAttachment
+            if (policy.requirePublicDownload) {
+                // Public-only open is identity/journal driven and must remain usable offline.
+                // Native code will fail closed before private materialization if readback misses.
+                currentPayload.externalUrl.orEmpty()
+            } else {
+                currentPayload.externalUrl?.takeIf { it.isNotBlank() }
+                    ?: currentPayload.threadAttachmentExternalUrl(threadApi)
+                    ?: return unableToDownloadAttachment
+            }
         val downloadId =
-            if (trackProgress) {
+            if (policy.trackProgress) {
                 activeDownloadId ?: currentPayload.filePreviewDownloadId()
             } else {
                 null
             }
-        if (trackProgress) {
+        if (policy.trackProgress) {
             activeDownloadId = downloadId
             bridge.log(
                 "file_preview_download phase=url_resolved downloadIdHash=${downloadId.orEmpty().hashCode().toString(16)} " +
@@ -860,17 +910,22 @@ private fun SlockFilePreviewStandalonePageContent() {
                 owner = operation.owner,
                 mimeType = currentPayload.externalMimeType,
                 downloadId = downloadId,
+                requirePublicDownload = policy.requirePublicDownload,
                 onProgress =
-                    if (trackProgress) {
+                    if (policy.trackProgress) {
                         { progress -> downloadProgressMailbox.offer(operation, progress) }
                     } else {
                         null
                     }
             )
         if (!attachmentOperationCommitAllowed(operation, activeAttachmentOperation?.operationId.orEmpty())) return null
+        publicDownloadState = slockFilePreviewPublicDownloadStateAfterOpen(visiblePublicDownloadState, result)
+        observedPublicDownloadQuery = publicDownloadQuery
         return when (result?.optString("status").orEmpty()) {
             "opened", "" -> {
-                attachmentCacheState = result?.optBoolean("cached", true) ?: true
+                if (result?.optBoolean("cached", false) == true) {
+                    publicDownloadQuery?.let { refreshPublicDownloadState(it) }
+                }
                 activeDownloadId = null
                 null
             }
@@ -879,9 +934,7 @@ private fun SlockFilePreviewStandalonePageContent() {
                 slockAttachmentOpenResultMessage("cancelled", attachmentOpenResultTerms)
             }
             "missing" -> {
-                attachmentCacheState = false
                 attachmentCacheAttemptToken = null
-                attachmentCacheRecordVersion = null
                 activeDownloadId = null
                 slockAttachmentOpenResultMessage("missing", attachmentOpenResultTerms)
             }
@@ -945,8 +998,12 @@ private fun SlockFilePreviewStandalonePageContent() {
         if (!attachmentOperationCommitAllowed(operation, activeAttachmentOperation?.operationId.orEmpty())) return null
         return when (result?.optString("status").orEmpty()) {
             "saved" -> {
-                if (!toPhotos) {
-                    attachmentCacheState = result?.optBoolean("cached", attachmentCacheState) ?: attachmentCacheState
+                if (!toPhotos && supportsPublicDownloadReadback) {
+                    val query = publicDownloadQuery ?: return null
+                    val observation = refreshPublicDownloadState(query) ?: return null
+                    if (observation.state !is SlockFilePreviewPublicDownloadState.Downloaded) {
+                        return storageUnavailable
+                    }
                 }
                 activeDownloadId = null
                 bridge.toast(
@@ -1037,8 +1094,8 @@ private fun SlockFilePreviewStandalonePageContent() {
     fun requestExternalOpen() {
         if (!canOpenWith || !slockFilePreviewCanStartExternalOperation(downloadStatus)) return
         val owner = attachmentOwner ?: return
+        val policy = slockFilePreviewExternalOpenPolicy(visiblePublicDownloadState) ?: return
         externalOperation = "open"
-        val trackProgress = slockFilePreviewShouldTrackOpenProgress(attachmentCacheState)
         downloadMessage = ""
         nextDownloadGeneration += 1L
         activeDownloadId = payload.filePreviewDownloadId(nextDownloadGeneration)
@@ -1050,9 +1107,9 @@ private fun SlockFilePreviewStandalonePageContent() {
         // Cached opens still cross an irreversible native launch boundary. Keep them non-idle
         // so a second tap cannot supersede this operation token before URI grant/startActivity
         // completes, but use a non-download status so Install/Open never flashes download chrome.
-        downloadStatus = slockFilePreviewExternalOpenAdmissionStatus(trackProgress)
+        downloadStatus = slockFilePreviewExternalOpenAdmissionStatus(policy.trackProgress)
         activeDownloadStartedAt = TimeSource.Monotonic.markNow()
-        if (trackProgress) {
+        if (policy.trackProgress) {
             firstBridgeDownloadId = null
             firstRenderedDownloadId = null
             downloadProgress = SlockFilePreviewInitialDownloadProgress.copy(downloadId = activeDownloadId.orEmpty())
@@ -1065,7 +1122,7 @@ private fun SlockFilePreviewStandalonePageContent() {
         val operationJob =
             coroutineScope.launch(start = CoroutineStart.LAZY) {
                 try {
-                    val error = openPayloadExternally(requestPayload, trackProgress, operation)
+                    val error = openPayloadExternally(requestPayload, policy, operation)
                     if (!attachmentOperationCommitAllowed(operation, activeAttachmentOperation?.operationId.orEmpty())) return@launch
                     if (error == null) {
                         downloadStatus = "idle"
@@ -1118,7 +1175,8 @@ private fun SlockFilePreviewStandalonePageContent() {
         }
     }
     fun requestDeleteDownload() {
-        if (!canOpenWith || !attachmentCacheState || !slockFilePreviewCanStartExternalOperation(downloadStatus)) return
+        val downloaded = visiblePublicDownloadState as? SlockFilePreviewPublicDownloadState.Downloaded ?: return
+        if (!canOpenWith || !slockFilePreviewCanStartExternalOperation(downloadStatus)) return
         val owner = attachmentOwner ?: return
         coroutineScope.launch {
             val result =
@@ -1127,15 +1185,15 @@ private fun SlockFilePreviewStandalonePageContent() {
                     fileName = attachmentCacheFileName,
                     owner = owner,
                     expectedAttemptToken = attachmentCacheAttemptToken,
-                    expectedRecordVersion = attachmentCacheRecordVersion,
+                    expectedRecordVersion = downloaded.generation,
                     mimeType = payload.externalMimeType
                 )
             if (!ProcessAttachmentAuthScopes.allows(owner)) return@launch
             val status = result?.optString("status").orEmpty()
             if (status == "ok" || status.isBlank()) {
-                attachmentCacheState = false
+                publicDownloadState = SlockFilePreviewPublicDownloadState.NotDownloaded
+                observedPublicDownloadQuery = publicDownloadQuery
                 attachmentCacheAttemptToken = null
-                attachmentCacheRecordVersion = null
                 downloadStatus = "idle"
                 downloadMessage = ""
                 downloadProgress = null
@@ -1240,6 +1298,8 @@ private fun SlockFilePreviewStandalonePageContent() {
             }
         }
     }
+    val downloadUiState = slockFilePreviewDownloadUiState(visiblePublicDownloadState, downloadStatus)
+    val downloadActive = downloadUiState == SlockFilePreviewDownloadUiState.Downloading
     SlockFilePreviewPageScaffold(
         title = if (composerImageEditMode) stringResource(MR.strings.file_preview_editor_title) else payload.previewHeaderTitle(),
         subtitle = if (composerImageEditMode) null else payload.previewHeaderSubtitle(),
@@ -1302,17 +1362,17 @@ private fun SlockFilePreviewStandalonePageContent() {
                 } else {
                     null
                 },
-                if (canOpenWith) {
+                if (canOpenWith && downloadUiState != null) {
                     SlockRaftUiMenuItem(
                         id = SlockFilePreviewOpenWithActionId,
-                        label = slockFilePreviewOverflowActionLabel(payload, attachmentCacheState, actionTerms),
+                        label = slockFilePreviewOverflowActionLabel(payload, downloadUiState, actionTerms),
                         icon = SlockLucideIconName.ExternalLink,
                         enabled = slockFilePreviewCanStartExternalOperation(downloadStatus)
                     )
                 } else {
                     null
                 },
-                if (canOpenWith && attachmentCacheState) {
+                if (canOpenWith && downloadUiState == SlockFilePreviewDownloadUiState.Downloaded) {
                     SlockRaftUiMenuItem(
                         id = SlockFilePreviewDeleteDownloadActionId,
                         label = stringResource(MR.strings.file_preview_action_delete_downloaded),
@@ -1331,8 +1391,10 @@ private fun SlockFilePreviewStandalonePageContent() {
             }
         }
     ) {
-        val downloadActive = slockFilePreviewShowsDownloadProgress(downloadStatus)
-        val primaryActionEnabled = slockFilePreviewCanStartExternalOperation(downloadStatus)
+        val primaryActionEnabled =
+            downloadUiState != null &&
+                downloadUiState != SlockFilePreviewDownloadUiState.Downloading &&
+                slockFilePreviewCanStartExternalOperation(downloadStatus)
         if (composerImageEditMode) {
             SlockFilePreviewComposerImageEditor(
                 payload = payload,
@@ -1357,13 +1419,14 @@ private fun SlockFilePreviewStandalonePageContent() {
                     downloadInProgress = downloadActive,
                     downloadPaused = downloadStatus == "paused",
                     downloadProgressPercent = downloadProgress?.percent,
-                    downloadCached = attachmentCacheState,
+                    downloadState = downloadUiState,
                     primaryActionEnabled = primaryActionEnabled,
                     onDownload =
                         if (canOpenWith) {
-                            when (slockFilePreviewPrimaryAction(attachmentCacheState)) {
+                            when (slockFilePreviewPrimaryAction(downloadUiState)) {
                                 SlockFilePreviewPrimaryAction.Save -> ({ requestExternalSave() })
                                 SlockFilePreviewPrimaryAction.Open -> ::requestExternalOpen
+                                null -> ({})
                             }
                         } else {
                             null
@@ -3616,7 +3679,7 @@ internal fun SlockFilePreviewPayloadContent(
     downloadInProgress: Boolean = false,
     downloadPaused: Boolean = false,
     downloadProgressPercent: Int? = null,
-    downloadCached: Boolean = false,
+    downloadState: SlockFilePreviewDownloadUiState? = SlockFilePreviewDownloadUiState.NotDownloaded,
     primaryActionEnabled: Boolean = true,
     onDownload: (() -> Unit)? = null,
     onPauseDownload: (() -> Unit)? = null,
@@ -3727,8 +3790,13 @@ internal fun SlockFilePreviewPayloadContent(
                         actionLabel =
                             onDownload
                                 ?.takeIf { !downloadInProgress }
-                                ?.let { slockFilePreviewPrimaryActionLabel(payload, downloadCached, actionTerms) },
-                        actionIcon = if (downloadInProgress) null else slockFilePreviewPrimaryActionIcon(payload, downloadCached),
+                                ?.let { slockFilePreviewPrimaryActionLabel(payload, downloadState, actionTerms) },
+                        actionIcon =
+                            if (downloadInProgress) {
+                                null
+                            } else {
+                                slockFilePreviewPrimaryActionIcon(payload, downloadState)
+                            },
                         actionEnabled = primaryActionEnabled,
                         onAction = onDownload,
                         downloadPaused = downloadPaused,
@@ -3813,8 +3881,13 @@ internal fun SlockFilePreviewPayloadContent(
                 actionLabel =
                     onDownload
                         ?.takeIf { !downloadInProgress }
-                        ?.let { slockFilePreviewPrimaryActionLabel(payload, downloadCached, actionTerms) },
-                actionIcon = if (downloadInProgress) null else slockFilePreviewPrimaryActionIcon(payload, downloadCached),
+                        ?.let { slockFilePreviewPrimaryActionLabel(payload, downloadState, actionTerms) },
+                actionIcon =
+                    if (downloadInProgress) {
+                        null
+                    } else {
+                        slockFilePreviewPrimaryActionIcon(payload, downloadState)
+                    },
                 actionEnabled = primaryActionEnabled,
                 onAction = onDownload,
                 downloadPaused = downloadPaused,
@@ -4847,13 +4920,15 @@ internal fun slockFilePreviewLocalizedActionTerms(): SlockFilePreviewActionTerms
 
 internal fun slockFilePreviewPrimaryActionLabel(
     payload: SlockFilePreviewPayload,
-    cached: Boolean,
+    downloadState: SlockFilePreviewDownloadUiState?,
     terms: SlockFilePreviewActionTerms
-): String =
-    when {
-        !cached -> terms.download
-        payload.isAndroidPackageArchive() -> terms.install
-        else -> terms.open
+): String? =
+    when (downloadState) {
+        SlockFilePreviewDownloadUiState.NotDownloaded -> terms.download
+        SlockFilePreviewDownloadUiState.Downloaded ->
+            if (payload.isAndroidPackageArchive()) terms.install else terms.open
+        SlockFilePreviewDownloadUiState.Downloading,
+        null -> null
     }
 
 internal enum class SlockFilePreviewPrimaryAction {
@@ -4861,8 +4936,15 @@ internal enum class SlockFilePreviewPrimaryAction {
     Open
 }
 
-internal fun slockFilePreviewPrimaryAction(cached: Boolean): SlockFilePreviewPrimaryAction =
-    if (cached) SlockFilePreviewPrimaryAction.Open else SlockFilePreviewPrimaryAction.Save
+internal fun slockFilePreviewPrimaryAction(
+    downloadState: SlockFilePreviewDownloadUiState?
+): SlockFilePreviewPrimaryAction? =
+    when (downloadState) {
+        SlockFilePreviewDownloadUiState.NotDownloaded -> SlockFilePreviewPrimaryAction.Save
+        SlockFilePreviewDownloadUiState.Downloaded -> SlockFilePreviewPrimaryAction.Open
+        SlockFilePreviewDownloadUiState.Downloading,
+        null -> null
+    }
 
 internal fun slockFilePreviewUnsupportedFileMessage(payload: SlockFilePreviewPayload, downloadable: Boolean): StringDesc =
     when {
@@ -4873,15 +4955,13 @@ internal fun slockFilePreviewUnsupportedFileMessage(payload: SlockFilePreviewPay
 
 internal fun slockFilePreviewOverflowActionLabel(
     payload: SlockFilePreviewPayload,
-    cached: Boolean,
+    downloadState: SlockFilePreviewDownloadUiState,
     terms: SlockFilePreviewActionTerms
 ): String =
     when {
-        cached && payload.isAndroidPackageArchive() -> terms.install
+        downloadState == SlockFilePreviewDownloadUiState.Downloaded && payload.isAndroidPackageArchive() -> terms.install
         else -> terms.openWith
     }
-
-internal fun slockFilePreviewShouldTrackOpenProgress(cached: Boolean): Boolean = !cached
 
 internal fun slockFilePreviewFileIconName(payload: SlockFilePreviewPayload): SlockLucideIconName {
     val mime = payload.externalMimeType.substringBefore(';').trim().lowercase()
@@ -5017,11 +5097,16 @@ private val SlockFilePreviewCodeMimeTypes =
         "text/xml"
     )
 
-private fun slockFilePreviewPrimaryActionIcon(payload: SlockFilePreviewPayload, cached: Boolean): SlockLucideIconName =
-    when {
-        !cached -> SlockLucideIconName.Download
-        payload.isAndroidPackageArchive() -> SlockLucideIconName.Package
-        else -> SlockLucideIconName.ExternalLink
+private fun slockFilePreviewPrimaryActionIcon(
+    payload: SlockFilePreviewPayload,
+    downloadState: SlockFilePreviewDownloadUiState?
+): SlockLucideIconName? =
+    when (downloadState) {
+        SlockFilePreviewDownloadUiState.NotDownloaded -> SlockLucideIconName.Download
+        SlockFilePreviewDownloadUiState.Downloaded ->
+            if (payload.isAndroidPackageArchive()) SlockLucideIconName.Package else SlockLucideIconName.ExternalLink
+        SlockFilePreviewDownloadUiState.Downloading,
+        null -> null
     }
 
 private fun canOpenPayloadWithExternalViewer(payload: SlockFilePreviewPayload): Boolean =

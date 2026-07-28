@@ -45,6 +45,8 @@ internal actual fun slockPlatformSupportsPushPreviewPrivacySetting(): Boolean = 
 
 internal actual fun slockPlatformSupportsSaveImageToPhotos(): Boolean = true
 
+internal actual fun slockPlatformSupportsPublicAttachmentDownloadReadback(): Boolean = false
+
 internal actual fun slockReleaseNotesAppSlug(): String = "raft-ios"
 
 // The current semantic metadata deliberately avoids Kuikly's legacy inline-code

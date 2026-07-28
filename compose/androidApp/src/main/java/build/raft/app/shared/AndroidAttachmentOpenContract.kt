@@ -208,6 +208,11 @@ internal sealed interface AndroidAttachmentPrivateMaterialization<out T> {
     ) : AndroidAttachmentPrivateMaterialization<Nothing>
 }
 
+internal enum class AndroidAttachmentOpenRequirement {
+    PublicOrPrivate,
+    PublicDownloadOnly
+}
+
 /**
  * The executable production composition for Android Open-with.
  *
@@ -238,14 +243,20 @@ internal class AndroidAttachmentOpenCoordinator<T>(
     private val onPrivateSourceFailure: (Throwable) -> Unit = {},
     private val failureResult: (Throwable) -> AndroidAttachmentOpenResult
 ) {
-    fun open(identity: AndroidAttachmentPublicIdentity): AndroidAttachmentOpenResult =
+    fun open(
+        identity: AndroidAttachmentPublicIdentity,
+        requirement: AndroidAttachmentOpenRequirement = AndroidAttachmentOpenRequirement.PublicOrPrivate
+    ): AndroidAttachmentOpenResult =
         try {
-            openOrThrow(identity)
+            openOrThrow(identity, requirement)
         } catch (throwable: Throwable) {
             failureResult(throwable)
         }
 
-    private fun openOrThrow(identity: AndroidAttachmentPublicIdentity): AndroidAttachmentOpenResult {
+    private fun openOrThrow(
+        identity: AndroidAttachmentPublicIdentity,
+        requirement: AndroidAttachmentOpenRequirement
+    ): AndroidAttachmentOpenResult {
         if (!ownerIsCurrent()) return AndroidAttachmentOpenResult.cancelled()
 
         val publicResult =
@@ -260,6 +271,10 @@ internal class AndroidAttachmentOpenCoordinator<T>(
                 }
             }
         if (publicResult != null) return publicResult
+
+        if (requirement == AndroidAttachmentOpenRequirement.PublicDownloadOnly) {
+            return AndroidAttachmentOpenResult.missing()
+        }
 
         if (!awaitPrivateRecovery()) return AndroidAttachmentOpenResult.storageFailed()
         val materialized = materializePrivate(identity)
