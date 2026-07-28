@@ -4151,7 +4151,7 @@ internal data class SharedThreadState(
     val canonicalAccessResolved: Boolean = false,
     val initialHomeAccessLookupComplete: Boolean = false,
     val initialHomeAccessCandidate: ConversationAccessCandidate? = null,
-    val writeActionsEnabled: Boolean = true,
+    val writeActionsEnabled: Boolean = false,
     val channelProfileUpdateStatus: ChannelProfileUpdateStatus = ChannelProfileUpdateStatus.Idle,
     val channelProfileUpdateErrorCode: String? = null,
     val membersLoadStatus: LoadMembersStatus = LoadMembersStatus.Idle,
@@ -4637,9 +4637,12 @@ internal class SharedThreadStore(
                 } else {
                     routeContextPayload.copy(status = "loading", errorCode = null)
                 }).let { candidate ->
-                rememberedAccessFailure?.let { failure -> candidate.asRefreshFailed(failure.code) }
-                    ?: candidate
-                }
+                rememberedAccessFailure?.let { failure ->
+                    candidate
+                        .asRefreshFailed(failure.code)
+                        .withTerminalAccessWriteAuthorityClosed(ThreadAccessResolution.Error)
+                } ?: candidate
+            }
         diagnosticsLogger?.invoke(
             "thread_visible_payload threadId=${threadId.orEmpty()} status=${visiblePayload.status} " +
                 "messages=${visiblePayload.messages.size} " + visiblePayload.originDiagnostics()
@@ -4798,7 +4801,9 @@ internal class SharedThreadStore(
         }
         var refreshStartState = _state.value
         val resolvingInitialAccessAtStart =
-            refreshStartState.accessResolution != ThreadAccessResolution.Resolved ||
+            refreshStartState.accessResolution != ThreadAccessResolution.Resolved
+        val retryingReadOnlyParentAccess =
+            refreshStartState.accessResolution == ThreadAccessResolution.Resolved &&
                 !refreshStartState.writeActionsEnabled
         if (resolvingInitialAccessAtStart) {
             initialAccessStateMutex.withLock {
@@ -4813,6 +4818,11 @@ internal class SharedThreadStore(
                 )
                 refreshStartState = _state.value
             }
+            launchInitialAccessResolution(basePayload, staleToken)
+        } else if (retryingReadOnlyParentAccess) {
+            // A readable reply timeline must stay terminal while Refresh retries
+            // its auxiliary parent capability. Resetting canonical access here
+            // would let a transient reply refresh error cover preserved history.
             launchInitialAccessResolution(basePayload, staleToken)
         }
         val existing = refreshStartState.payload
@@ -4972,23 +4982,27 @@ internal class SharedThreadStore(
                             homeAccessCandidate = currentState.initialHomeAccessCandidate,
                             requiresParentAccessCandidate =
                                 projectedPayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread,
-                            hasReadableReplyParentContext = projectedPayload.hasReadableReplyParentContext()
+                            hasReadableCanonicalReplyContent =
+                                projectedPayload.hasReadableCanonicalReplyContent()
                         )
+                    val authorityProjectedPayload =
+                        projectedPayload.withTerminalAccessWriteAuthorityClosed(projectedAccessResolution)
                     val didEmit =
                         reduceState(
                             currentState.copy(
-                                payload = projectedPayload,
+                                payload = authorityProjectedPayload,
                                 accessResolution = projectedAccessResolution,
                                 canonicalAccessResolved = canonicalAccessResolved,
                                 writeActionsEnabled =
-                                    !projectedPayload.isReadOnlyReplyAccessFallback(
+                                    authorityProjectedPayload.hasWriteAuthorityForAccess(
+                                        accessResolution = projectedAccessResolution,
                                         homeLookupComplete = currentState.initialHomeAccessLookupComplete,
                                         homeAccessCandidate = currentState.initialHomeAccessCandidate
                                     )
                             )
                         )
                     if (didEmit && visiblePayload != null) {
-                        dataSource.cachePayload(projectedPayload)
+                        dataSource.cachePayload(authorityProjectedPayload)
                     }
                 }
                 val replyIdentities =
@@ -5011,7 +5025,7 @@ internal class SharedThreadStore(
                 nextPayload.originDiagnostics()
         )
         launchFocusedOriginHydrationIfNeeded(basePayload, staleToken)
-        if (!resolvingInitialAccessAtStart) {
+        if (!resolvingInitialAccessAtStart && !retryingReadOnlyParentAccess) {
             launchBackgroundHomeContextHydration(basePayload)
         }
         queueAuxiliaryHydration(
@@ -5252,9 +5266,12 @@ internal class SharedThreadStore(
                                 ThreadAccessResolution.NoPermission
                             currentState.accessResolution == ThreadAccessResolution.Error ->
                                 ThreadAccessResolution.Error
+                            currentState.accessResolution == ThreadAccessResolution.Resolved &&
+                                currentState.canonicalAccessResolved ->
+                                ThreadAccessResolution.Resolved
                             projectedPayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
                                 currentState.canonicalAccessResolved &&
-                                (candidate != null || projectedPayload.hasReadableReplyParentContext()) ->
+                                (candidate != null || projectedPayload.hasReadableCanonicalReplyContent()) ->
                                 ThreadAccessResolution.Resolved
                             projectedPayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
                                 currentState.canonicalAccessResolved ->
@@ -5269,14 +5286,17 @@ internal class SharedThreadStore(
                                 ThreadAccessResolution.Error
                             else -> ThreadAccessResolution.Loading
                         }
+                    val authorityProjectedPayload =
+                        projectedPayload.withTerminalAccessWriteAuthorityClosed(nextResolution)
                     reduceState(
                         currentState.copy(
-                            payload = projectedPayload,
+                            payload = authorityProjectedPayload,
                             accessResolution = nextResolution,
                             initialHomeAccessLookupComplete = true,
                             initialHomeAccessCandidate = candidate,
                             writeActionsEnabled =
-                                !projectedPayload.isReadOnlyReplyAccessFallback(
+                                authorityProjectedPayload.hasWriteAuthorityForAccess(
+                                    accessResolution = nextResolution,
                                     homeLookupComplete = true,
                                     homeAccessCandidate = candidate
                                 )
@@ -8651,7 +8671,7 @@ private fun ThreadAccessResolution.afterRefreshResult(
     homeLookupComplete: Boolean,
     homeAccessCandidate: ConversationAccessCandidate?,
     requiresParentAccessCandidate: Boolean,
-    hasReadableReplyParentContext: Boolean
+    hasReadableCanonicalReplyContent: Boolean
 ): ThreadAccessResolution =
     when (result) {
         is DataResult.Content ->
@@ -8660,13 +8680,15 @@ private fun ThreadAccessResolution.afterRefreshResult(
                 !canonicalAccessResolved || !homeLookupComplete -> ThreadAccessResolution.Loading
                 requiresParentAccessCandidate &&
                     homeAccessCandidate == null &&
-                    !hasReadableReplyParentContext ->
+                    !hasReadableCanonicalReplyContent ->
                     ThreadAccessResolution.Error
                 else -> ThreadAccessResolution.Resolved
             }
         is DataResult.Empty ->
             when {
-                this == ThreadAccessResolution.Resolved -> ThreadAccessResolution.Resolved
+                this == ThreadAccessResolution.Resolved &&
+                    (!requiresParentAccessCandidate || homeAccessCandidate != null) ->
+                    ThreadAccessResolution.Resolved
                 result.reason == EmptyReason.NoMessages &&
                     canonicalAccessResolved &&
                     !requiresParentAccessCandidate ->
@@ -8687,9 +8709,11 @@ private fun ThreadAccessResolution.afterRefreshResult(
         is DataResult.Error -> if (this == ThreadAccessResolution.Resolved) this else ThreadAccessResolution.Error
     }
 
-// Canonical reply content plus its exact loaded origin proves read access even
-// when the independent Home bootstrap cannot supply composer capabilities.
-private fun KuiklyThreadScreenPayload.hasReadableReplyParentContext(): Boolean {
+// Canonical reply content proves read access independently of parent/origin
+// enrichment. The complete reply identity keeps stale or unresolved route
+// candidates from acquiring access; parent context remains auxiliary and may
+// degrade inline without hiding the canonical timeline.
+internal fun KuiklyThreadScreenPayload.hasReadableCanonicalReplyContent(): Boolean {
     if (surfaceKind != KuiklyThreadSurfaceKind.ReplyThread || status != "content" || messages.isEmpty()) return false
     val parentChannel = parentChannelId?.takeIf { it.isNotBlank() } ?: return false
     val parentMessage =
@@ -8700,10 +8724,7 @@ private fun KuiklyThreadScreenPayload.hasReadableReplyParentContext(): Boolean {
     if (!routeIdentity.hasCompleteReplyIdentity || routeIdentity.parentKey != "$parentChannel:$parentMessage") {
         return false
     }
-    val origin = originMessage ?: return false
-    return originStatus == "loaded" &&
-        origin.id == parentMessage &&
-        (origin.body.isNotBlank() || origin.attachments.isNotEmpty())
+    return routeIdentity.canRenderTimelineCandidates && routeIdentity.timelineChannelId != null
 }
 
 private fun KuiklyThreadScreenPayload.withReadOnlyReplyAccessWhenHomeCandidateUnavailable(
@@ -8722,7 +8743,45 @@ private fun KuiklyThreadScreenPayload.isReadOnlyReplyAccessFallback(
     homeLookupComplete: Boolean,
     homeAccessCandidate: ConversationAccessCandidate?
 ): Boolean =
-    homeLookupComplete && homeAccessCandidate == null && hasReadableReplyParentContext()
+    homeLookupComplete &&
+        homeAccessCandidate == null &&
+        surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
+
+// Write authority is a terminal access-state invariant, not an inference from
+// whichever payload fields survived the latest projection. In particular, a
+// canonical permission revocation clears readable content, so re-evaluating
+// only the read-only reply fallback would otherwise turn writes back on.
+private fun KuiklyThreadScreenPayload.hasWriteAuthorityForAccess(
+    accessResolution: ThreadAccessResolution,
+    homeLookupComplete: Boolean,
+    homeAccessCandidate: ConversationAccessCandidate?
+): Boolean =
+    accessResolution == ThreadAccessResolution.Resolved &&
+        (
+            surfaceKind != KuiklyThreadSurfaceKind.ReplyThread ||
+                (
+                    homeLookupComplete &&
+                        homeAccessCandidate != null &&
+                        acceptsInitialConversationAccessCandidate(homeAccessCandidate)
+                )
+        ) &&
+        !isReadOnlyReplyAccessFallback(homeLookupComplete, homeAccessCandidate)
+
+private fun KuiklyThreadScreenPayload.withTerminalAccessWriteAuthorityClosed(
+    accessResolution: ThreadAccessResolution
+): KuiklyThreadScreenPayload =
+    if (
+        accessResolution == ThreadAccessResolution.NoPermission ||
+        accessResolution == ThreadAccessResolution.Error
+    ) {
+        copy(
+            joined = false,
+            canSend = false,
+            composer = composer.copy(enabled = false)
+        )
+    } else {
+        this
+    }
 
 private fun DataResult<*>.resolvesCanonicalConversationAccess(): Boolean =
     this is DataResult.Content || (this is DataResult.Empty && reason == EmptyReason.NoMessages)

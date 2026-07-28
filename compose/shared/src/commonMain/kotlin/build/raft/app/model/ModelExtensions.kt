@@ -4,6 +4,10 @@ package build.raft.app.model
 private val ConversationTitleUuidRegex =
     Regex("^[A-Fa-f0-9]{8}(?:-[A-Fa-f0-9]{4}){3}-[A-Fa-f0-9]{12}$")
 private val ConversationTitleShortIdRegex = Regex("^[A-Fa-f0-9]{8}$")
+private const val InternalJointStorageTitlePrefix = "joint-storage-"
+
+internal fun isInternalJointStorageIdentity(raw: String?): Boolean =
+    raw?.trim()?.startsWith(InternalJointStorageTitlePrefix, ignoreCase = true) == true
 
 fun conversationDisplayTitleCandidate(raw: String?): String? =
     raw
@@ -19,6 +23,7 @@ fun conversationIdentityLikeTitle(
 ): Boolean {
     val candidate = conversationDisplayTitleCandidate(title) ?: return false
     if (ConversationTitleUuidRegex.matches(candidate) || ConversationTitleShortIdRegex.matches(candidate)) return true
+    if (isInternalJointStorageIdentity(candidate)) return true
     return identityIds.any { id -> id.isNotBlank() && candidate.equals(id.trim(), ignoreCase = true) }
 }
 

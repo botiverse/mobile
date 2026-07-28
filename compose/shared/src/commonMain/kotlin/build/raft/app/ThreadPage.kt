@@ -2264,7 +2264,10 @@ internal fun KuiklyThreadScreenPayload.resolvedAuxiliaryThreadId(): String? {
     return timelineChannelId
 }
 
-internal fun KuiklyThreadScreenPayload.resolvedTaskLookupChannelId(): String? {
+internal fun KuiklyThreadScreenPayload.resolvedTaskLookupChannelId(
+    writeActionsEnabled: Boolean = true
+): String? {
+    if (!writeActionsEnabled) return null
     val timelineChannelId = resolvedAuxiliaryThreadId() ?: return null
     if (!isReplyThreadWithExplicitParentPair()) return timelineChannelId
     return parentChannelId.nonBlank() ?: timelineChannelId
@@ -5258,7 +5261,10 @@ internal fun SharedThreadRouteContent(
             }
         }
     }
-    val taskChannelId = payload.resolvedTaskLookupChannelId()?.let(::ChannelId)
+    val taskChannelId =
+        payload
+            .resolvedTaskLookupChannelId(writeActionsEnabled = renderSlice.writeActionsEnabled)
+            ?.let(::ChannelId)
     val tasksViewModel: SharedTasksViewModel? =
         taskChannelId?.let { resolvedTaskChannelId ->
             viewModel(key = "shared-thread-tasks-${resolvedTaskChannelId.value}") {

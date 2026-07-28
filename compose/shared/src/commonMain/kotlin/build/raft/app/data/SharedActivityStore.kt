@@ -1775,11 +1775,16 @@ class SharedActivityStore internal constructor(
         val serverId = next.ownerServerId?.trim()?.takeIf { it.isNotBlank() } ?: return
         val accountId = next.ownerUserId?.trim()?.takeIf { it.isNotBlank() } ?: return
         val snapshot = next.snapshot ?: return
+        val previousVisibleCounts = previous.snapshot?.activityVisibleSummaryCounts()
+        val visibleCounts =
+            snapshot.activityVisibleSummaryCounts(
+                totalUnreadCountOverride = countOverride?.first,
+                totalCountOverride = countOverride?.second
+            )
         val summaryChanged =
             previous.ownerServerId != next.ownerServerId ||
                 previous.ownerUserId != next.ownerUserId ||
-                previous.totalUnreadCount != next.totalUnreadCount ||
-                previous.totalCount != next.totalCount
+                previousVisibleCounts != visibleCounts
         if (!summaryChanged && countOverride == null) return
         if (next.selectedFilter != InboxFilter.All) {
             if (!intent.invalidatesGlobalActivitySummary()) return
@@ -1801,11 +1806,11 @@ class SharedActivityStore internal constructor(
         }
         runCatching {
             onSummaryFact(
-                ActivityUnreadSummaryFact(
-                    accountId = accountId,
-                    serverId = serverId,
-                    totalUnreadCount = countOverride?.first ?: snapshot.totalUnreadCount,
-                    totalCount = countOverride?.second ?: snapshot.totalCount,
+                    ActivityUnreadSummaryFact(
+                        accountId = accountId,
+                        serverId = serverId,
+                        totalUnreadCount = visibleCounts.first,
+                        totalCount = visibleCounts.second,
                     authoritative = authoritative,
                     source = source
                 )

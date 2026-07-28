@@ -157,6 +157,8 @@ internal fun unresolvedReplyThreadAccessPayload(
         parentChannelId = "channel-1",
         parentMessageId = parentMessageId,
         originParentMessageId = parentMessageId,
+        parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
+        parentChannelKind = "channel",
         status = "loading",
         showModeTabs = false,
         showReplyActions = false,
@@ -215,7 +217,9 @@ internal fun replyThreadAccessSnapshot(
                     ThreadConversation(
                         parentChannelId = parentChannelId,
                         parentMessageId = parentMessageId,
-                        streamChannelId = streamChannelId
+                        streamChannelId = streamChannelId,
+                        parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
+                        parentChannelKind = "channel"
                     )
             ),
         messages = listOf(reply),
