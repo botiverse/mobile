@@ -1606,6 +1606,42 @@ class AuthDataSourceTest {
     }
 
     @Test
+    fun loadServersRetryUnauthorizedDoesNotClearConcurrentSuccessorSession() = runBlocking {
+        val original = storedSession(accessToken = "expired-access").copy(refreshToken = "expired-refresh")
+        val successor = storedSession(accessToken = "successor-access").copy(refreshToken = "successor-refresh")
+        val store = InMemorySlockAuthSessionStore(original)
+        var serverRequests = 0
+        val api =
+            FakeAuthApi(
+                serversResponses =
+                    ArrayDeque(
+                        listOf(
+                            AuthNetworkResponse(401, null, """{"error":"expired"}"""),
+                            AuthNetworkResponse(401, null, """{"error":"unauthorized"}"""),
+                        )
+                    ),
+                refreshResponse =
+                    AuthNetworkResponse(
+                        200,
+                        """{"accessToken":"fresh-access","refreshToken":"fresh-refresh"}""",
+                    ),
+                onServersRequest = {
+                    serverRequests += 1
+                    if (serverRequests == 2) store.saveSession(successor)
+                },
+            )
+        val source = SharedAuthDataSource(transport = api, sessionStore = store)
+
+        val result = source.loadServers()
+
+        assertTrue(result is SharedAuthResult.Success)
+        assertEquals("successor-access", result.data.accessToken)
+        assertEquals("successor-refresh", result.data.refreshToken)
+        assertEquals("successor-access", store.readSession()?.accessToken)
+        assertEquals(listOf("Bearer expired-access", "Bearer fresh-access"), api.serversAuthorizations)
+    }
+
+    @Test
     fun loadServersDropsResponseWhenSessionWasClearedDuringRequest() = runBlocking {
         val logs = mutableListOf<String>()
         val store =
@@ -1661,6 +1697,168 @@ class AuthDataSourceTest {
         assertEquals("""{"name":"Ops"}""", api.createServerBody)
         assertEquals("server-2", store.readSession()?.selectedServerId)
         assertEquals(2, store.readSession()?.servers?.size)
+    }
+
+    @Test
+    fun createServerRefreshesUnauthorizedAccessBeforeRetryingOnce() = runBlocking {
+        val store =
+            InMemorySlockAuthSessionStore(
+                storedSession(accessToken = "expired-access").copy(refreshToken = "refresh-token")
+            )
+        val api =
+            FakeAuthApi(
+                createServerResponses =
+                    ArrayDeque(
+                        listOf(
+                            AuthNetworkResponse(401, null, """{"error":"expired"}"""),
+                            AuthNetworkResponse(201, """{"id":"server-2","name":"Ops","slug":"ops"}"""),
+                        )
+                    ),
+                refreshResponse =
+                    AuthNetworkResponse(
+                        200,
+                        """{"accessToken":"fresh-access","refreshToken":"fresh-refresh"}""",
+                    ),
+                serversResponse =
+                    AuthNetworkResponse(
+                        200,
+                        """[{"id":"server-1","name":"Slock","slug":"slock"},{"id":"server-2","name":"Ops","slug":"ops"}]""",
+                    ),
+            )
+        val source = SharedAuthDataSource(transport = api, sessionStore = store)
+
+        val result = source.createServer("Ops")
+
+        assertTrue(result is SharedAuthResult.Success)
+        assertEquals(listOf("Bearer expired-access", "Bearer fresh-access"), api.createServerAuthorizations)
+        assertEquals("fresh-access", store.readSession()?.accessToken)
+        assertEquals("fresh-refresh", store.readSession()?.refreshToken)
+        assertEquals("server-2", store.readSession()?.selectedServerId)
+    }
+
+    @Test
+    fun createServerDoesNotReplayWhenRefreshTransportFails() = runBlocking {
+        val original = storedSession(accessToken = "expired-access").copy(refreshToken = "refresh-token")
+        val store = InMemorySlockAuthSessionStore(original)
+        val api =
+            FakeAuthApi(
+                createServerResponse =
+                    AuthNetworkResponse(401, null, """{"error":"expired"}"""),
+                refreshResponse =
+                    AuthNetworkResponse(0, null, """{"error":"network_timeout"}"""),
+            )
+        val source = SharedAuthDataSource(transport = api, sessionStore = store)
+
+        val result = source.createServer("Ops")
+
+        assertTrue(result is SharedAuthResult.Failure)
+        assertEquals(SharedAuthErrorCode.Network, result.code)
+        assertEquals(listOf("Bearer expired-access"), api.createServerAuthorizations)
+        assertEquals(original.accessToken, store.readSession()?.accessToken)
+        assertEquals(original.refreshToken, store.readSession()?.refreshToken)
+    }
+
+    @Test
+    fun createServerDoesNotReplayAcrossConcurrentAccountSwitch() = runBlocking {
+        val original = storedSession(accessToken = "expired-access").copy(refreshToken = "expired-refresh")
+        val successor =
+            storedSession(accessToken = "successor-access")
+                .copy(
+                    user = StoredAuthUser(id = "user-2", email = "user2@slock.ai"),
+                    refreshToken = "successor-refresh",
+                )
+        val store = InMemorySlockAuthSessionStore(original)
+        val api =
+            FakeAuthApi(
+                createServerResponse =
+                    AuthNetworkResponse(401, null, """{"error":"expired"}"""),
+                refreshResponse =
+                    AuthNetworkResponse(
+                        200,
+                        """{"accessToken":"unused-access","refreshToken":"unused-refresh"}""",
+                    ),
+                onRefreshRequest = { store.saveSession(successor) },
+            )
+        val source = SharedAuthDataSource(transport = api, sessionStore = store)
+
+        val result = source.createServer("Ops")
+
+        assertTrue(result is SharedAuthResult.Failure)
+        assertEquals("auth_authority_changed", result.message)
+        assertEquals(listOf("Bearer expired-access"), api.createServerAuthorizations)
+        assertEquals("user-2", store.readSession()?.user?.id)
+        assertEquals("successor-access", store.readSession()?.accessToken)
+    }
+
+    @Test
+    fun createServerRetryUnauthorizedDoesNotReportSuccessAfterTokenRotation() = runBlocking {
+        val original = storedSession(accessToken = "expired-access").copy(refreshToken = "expired-refresh")
+        val successor = original.copy(accessToken = "successor-access", refreshToken = "successor-refresh")
+        val store = InMemorySlockAuthSessionStore(original)
+        val api =
+            FakeAuthApi(
+                createServerResponses =
+                    ArrayDeque(
+                        listOf(
+                            AuthNetworkResponse(401, null, """{"error":"expired"}"""),
+                            AuthNetworkResponse(401, null, """{"error":"unauthorized"}"""),
+                        )
+                    ),
+                refreshResponse =
+                    AuthNetworkResponse(
+                        200,
+                        """{"accessToken":"fresh-access","refreshToken":"fresh-refresh"}""",
+                    ),
+                onCreateServerRequest = { call ->
+                    if (call == 2) store.saveSession(successor)
+                },
+            )
+        val source = SharedAuthDataSource(transport = api, sessionStore = store)
+
+        val result = source.createServer("Ops")
+
+        assertTrue(result is SharedAuthResult.Failure)
+        assertEquals("auth_authority_changed", result.message)
+        assertEquals(listOf("Bearer expired-access", "Bearer fresh-access"), api.createServerAuthorizations)
+        assertEquals(successor, store.readSession())
+    }
+
+    @Test
+    fun createServerRetryUnauthorizedDoesNotReportSuccessAfterAccountSwitch() = runBlocking {
+        val original = storedSession(accessToken = "expired-access").copy(refreshToken = "expired-refresh")
+        val successor =
+            original.copy(
+                user = StoredAuthUser(id = "user-2", email = "user2@slock.ai"),
+                accessToken = "successor-access",
+                refreshToken = "successor-refresh",
+            )
+        val store = InMemorySlockAuthSessionStore(original)
+        val api =
+            FakeAuthApi(
+                createServerResponses =
+                    ArrayDeque(
+                        listOf(
+                            AuthNetworkResponse(401, null, """{"error":"expired"}"""),
+                            AuthNetworkResponse(401, null, """{"error":"unauthorized"}"""),
+                        )
+                    ),
+                refreshResponse =
+                    AuthNetworkResponse(
+                        200,
+                        """{"accessToken":"fresh-access","refreshToken":"fresh-refresh"}""",
+                    ),
+                onCreateServerRequest = { call ->
+                    if (call == 2) store.saveSession(successor)
+                },
+            )
+        val source = SharedAuthDataSource(transport = api, sessionStore = store)
+
+        val result = source.createServer("Ops")
+
+        assertTrue(result is SharedAuthResult.Failure)
+        assertEquals("auth_authority_changed", result.message)
+        assertEquals(listOf("Bearer expired-access", "Bearer fresh-access"), api.createServerAuthorizations)
+        assertEquals(successor, store.readSession())
     }
 
     private fun storedSession(accessToken: String = "access-token"): StoredAuthSession =
@@ -1739,6 +1937,7 @@ class AuthDataSourceTest {
             AuthNetworkResponse(200, """{"ok":true}"""),
         private val createServerResponse: AuthNetworkResponse =
             AuthNetworkResponse(201, """{"id":"server-2","name":"Ops","slug":"ops"}"""),
+        private val createServerResponses: ArrayDeque<AuthNetworkResponse>? = null,
         private val serversResponses: ArrayDeque<AuthNetworkResponse>? = null,
         private val throwCurrentUser: Boolean = false,
         private val resendVerificationResponse: AuthNetworkResponse =
@@ -1751,6 +1950,8 @@ class AuthDataSourceTest {
         private val onCurrentUserRequest: suspend (Int) -> Unit = {},
         private val onCompleteProfileRequest: suspend () -> Unit = {},
         private val onServersRequest: suspend () -> Unit = {},
+        private val onRefreshRequest: suspend () -> Unit = {},
+        private val onCreateServerRequest: suspend (Int) -> Unit = {},
         private val onLogoutRequest: suspend () -> Unit = {},
         private val onQaReadyRequest: suspend () -> Unit = {},
     ) : SlockAuthTransport {
@@ -1800,6 +2001,7 @@ class AuthDataSourceTest {
         val serverOrderAuthorizations = mutableListOf<String>()
         var createServerBody: String? = null
             private set
+        val createServerAuthorizations = mutableListOf<String>()
         var qaConsumeBody: String? = null
             private set
         var qaReadyTicketDigest: String? = null
@@ -1891,8 +2093,10 @@ class AuthDataSourceTest {
             )
         }
 
-        override suspend fun refresh(bodyText: String): AuthNetworkResponse =
-            refreshResponse
+        override suspend fun refresh(bodyText: String): AuthNetworkResponse {
+            onRefreshRequest()
+            return refreshResponse
+        }
 
         override suspend fun logout(bodyText: String): AuthNetworkResponse {
             onLogoutRequest()
@@ -1919,7 +2123,15 @@ class AuthDataSourceTest {
 
         override suspend fun createServer(authorization: String, bodyText: String): AuthNetworkResponse {
             createServerBody = bodyText
-            return createServerResponse
+            createServerAuthorizations += authorization
+            onCreateServerRequest(createServerAuthorizations.size)
+            return createServerResponses?.let { responses ->
+                if (responses.size > 1) {
+                    responses.removeFirst()
+                } else {
+                    responses.first()
+                }
+            } ?: createServerResponse
         }
 
         override suspend fun consumeQaBootstrap(bodyText: String): AuthNetworkResponse {

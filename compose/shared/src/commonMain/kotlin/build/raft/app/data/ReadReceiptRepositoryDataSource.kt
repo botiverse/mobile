@@ -294,6 +294,23 @@ internal class ReadReceiptOwnerAuthSessionStore(
             source = source
         )
     }
+
+    override suspend fun clearSessionIfMatchesOutcome(
+        expectedAccountId: String,
+        expectedAccessToken: String,
+        expectedRefreshToken: String,
+        reason: String,
+        source: String,
+    ): AuthSessionClearOutcome {
+        if (expectedAccountId != owner.accountId) return AuthSessionClearOutcome.AuthorityChanged
+        return delegate.clearSessionIfMatchesOutcome(
+            expectedAccountId = expectedAccountId,
+            expectedAccessToken = expectedAccessToken,
+            expectedRefreshToken = expectedRefreshToken,
+            reason = reason,
+            source = source,
+        )
+    }
 }
 
 private data class ReadReceiptServerContext(val server: ServerSummary)

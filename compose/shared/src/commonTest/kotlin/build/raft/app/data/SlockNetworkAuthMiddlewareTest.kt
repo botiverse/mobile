@@ -129,8 +129,9 @@ class SlockNetworkAuthMiddlewareTest {
     }
 
     @Test
-    fun doesNotReportTerminalAuthLossWhenRefreshFailsTransiently() = runBlocking {
-        val store = InMemorySlockAuthSessionStore(sampleSession())
+    fun preservesTransientRefreshFailureInsteadOfReclassifyingItAsAuthLoss() = runBlocking {
+        val originalSession = sampleSession()
+        val store = InMemorySlockAuthSessionStore(originalSession)
         val reported = mutableListOf<String>()
         val middleware =
             SlockNetworkAuthMiddleware(
@@ -150,8 +151,44 @@ class SlockNetworkAuthMiddlewareTest {
                 HomeNetworkResponse(code = 401, bodyText = null, errorBodyText = """{"error":"expiredToken"}""")
             }
 
-        assertEquals(401, response.code)
-        assertEquals("expired-access", store.readSession()?.accessToken)
+        assertEquals(503, response.code)
+        assertEquals("""{"error":"temporarily_unavailable"}""", response.errorBodyText)
+        assertEquals(originalSession.accessToken, store.readSession()?.accessToken)
+        assertEquals(originalSession.refreshToken, store.readSession()?.refreshToken)
+        assertEquals(emptyList(), reported)
+    }
+
+    @Test
+    fun preservesRefreshTransportFailureInsteadOfReclassifyingItAsAuthLoss() = runBlocking {
+        val originalSession = sampleSession()
+        val store = InMemorySlockAuthSessionStore(originalSession)
+        val reported = mutableListOf<String>()
+        val middleware =
+            SlockNetworkAuthMiddleware(
+                store,
+                FakeAuthApi(
+                    refreshResult =
+                        AuthApiResult.Failure(
+                            code = 0,
+                            errorBodyText = """{"error":"network_timeout"}""",
+                        )
+                ),
+                terminalAuthLossReporter = { _, caller -> reported += caller },
+            )
+
+        val response =
+            middleware.request(caller = "test_refresh_transport_failure") {
+                HomeNetworkResponse(
+                    code = 401,
+                    bodyText = null,
+                    errorBodyText = """{"error":"expiredToken"}""",
+                )
+            }
+
+        assertEquals(0, response.code)
+        assertEquals("""{"error":"network_timeout"}""", response.errorBodyText)
+        assertEquals(originalSession.accessToken, store.readSession()?.accessToken)
+        assertEquals(originalSession.refreshToken, store.readSession()?.refreshToken)
         assertEquals(emptyList(), reported)
     }
 
@@ -180,6 +217,45 @@ class SlockNetworkAuthMiddlewareTest {
     }
 
     @Test
+    fun reportsTerminalAuthLossWhenSessionBecomesUnavailableDuringRefresh() = runBlocking {
+        val originalSession = sampleSession()
+        val store = InMemorySlockAuthSessionStore(originalSession)
+        val reported = mutableListOf<Pair<String, String>>()
+        var requestCalls = 0
+        val middleware =
+            SlockNetworkAuthMiddleware(
+                store,
+                FakeAuthApi(
+                    refreshResult = AuthApiResult.Success(AuthRefreshResponse("unused-access", "unused-refresh")),
+                    beforeRefresh = {
+                        store.clearSession(
+                            reason = "concurrent_logout",
+                            source = "test",
+                        )
+                    },
+                ),
+                terminalAuthLossReporter = { session, caller ->
+                    reported += session.accessToken to caller
+                },
+            )
+
+        val response =
+            middleware.request(caller = "test_unavailable_refresh") {
+                requestCalls += 1
+                HomeNetworkResponse(
+                    code = 401,
+                    bodyText = null,
+                    errorBodyText = """{"error":"expiredToken"}""",
+                )
+            }
+
+        assertEquals(401, response.code)
+        assertEquals(1, requestCalls)
+        assertEquals(null, store.readSession())
+        assertEquals(listOf(originalSession.accessToken to "test_unavailable_refresh"), reported)
+    }
+
+    @Test
     fun terminalAuthLossEntersFunnelAndClearsUnauthenticatedSession() = runBlocking {
         val store =
             InMemorySlockAuthSessionStore(
@@ -189,7 +265,15 @@ class SlockNetworkAuthMiddlewareTest {
         val funnel =
             SharedAuthLossFunnel(
                 restoreSession = { SharedAuthResult.Unauthenticated },
-                clearSession = { reason, source -> store.clearSession(reason = reason, source = source) },
+                clearSessionIfMatches = { session, reason, source ->
+                    store.clearSessionIfMatchesOutcome(
+                        expectedAccountId = session.user.id,
+                        expectedAccessToken = session.accessToken,
+                        expectedRefreshToken = session.refreshToken,
+                        reason = reason,
+                        source = source,
+                    )
+                },
                 scope = this
             )
         val middleware =
@@ -208,7 +292,8 @@ class SlockNetworkAuthMiddlewareTest {
                         funnel.report(
                             AuthLossSignal(
                                 source = caller,
-                                tokenFingerprint = session.accessToken.authLossTokenFingerprint()
+                                tokenFingerprint = session.accessToken.authLossTokenFingerprint(),
+                                capturedSession = session,
                             )
                         ).await()
                 }
@@ -242,7 +327,15 @@ class SlockNetworkAuthMiddlewareTest {
                         ?.let { SharedAuthResult.Success(it) }
                         ?: SharedAuthResult.Unauthenticated
                 },
-                clearSession = { reason, source -> store.clearSession(reason = reason, source = source) },
+                clearSessionIfMatches = { session, reason, source ->
+                    store.clearSessionIfMatchesOutcome(
+                        expectedAccountId = session.user.id,
+                        expectedAccessToken = session.accessToken,
+                        expectedRefreshToken = session.refreshToken,
+                        reason = reason,
+                        source = source,
+                    )
+                },
                 scope = this
             )
         val middleware =
@@ -262,7 +355,8 @@ class SlockNetworkAuthMiddlewareTest {
                         funnel.report(
                             AuthLossSignal(
                                 source = caller,
-                                tokenFingerprint = session.accessToken.authLossTokenFingerprint()
+                                tokenFingerprint = session.accessToken.authLossTokenFingerprint(),
+                                capturedSession = session,
                             )
                         ).await()
                 }
@@ -282,12 +376,16 @@ class SlockNetworkAuthMiddlewareTest {
     }
 
     @Test
-    fun preservesRefreshedSessionWhenRetryStillUnauthorized() = runBlocking {
+    fun retryStillUnauthorizedReportsRefreshedSessionToAuthLossFunnel() = runBlocking {
         val store = InMemorySlockAuthSessionStore(sampleSession())
+        val reported = mutableListOf<Pair<String, String>>()
         val middleware =
             SlockNetworkAuthMiddleware(
                 store,
-                FakeAuthApi(refreshResult = AuthApiResult.Success(AuthRefreshResponse("fresh-access", "fresh-refresh")))
+                FakeAuthApi(refreshResult = AuthApiResult.Success(AuthRefreshResponse("fresh-access", "fresh-refresh"))),
+                terminalAuthLossReporter = { session, caller ->
+                    reported += session.accessToken to caller
+                },
             )
         var calls = 0
 
@@ -301,6 +399,7 @@ class SlockNetworkAuthMiddlewareTest {
         assertEquals(2, calls)
         assertEquals("fresh-access", store.readSession()?.accessToken)
         assertEquals("fresh-refresh", store.readSession()?.refreshToken)
+        assertEquals(listOf("fresh-access" to "shared_network"), reported)
     }
 
     @Test
@@ -353,7 +452,8 @@ class SlockNetworkAuthMiddlewareTest {
 
     private class FakeAuthApi(
         private val refreshResult: AuthApiResult<AuthRefreshResponse>?,
-        private val refreshTokenAssertion: String = "refresh-token"
+        private val refreshTokenAssertion: String = "refresh-token",
+        private val beforeRefresh: suspend () -> Unit = {},
     ) : SlockAuthApi {
         override suspend fun login(email: String, password: String): AuthApiResult<AuthLoginResponse> =
             error("not used")
@@ -417,6 +517,7 @@ class SlockNetworkAuthMiddlewareTest {
 
         override suspend fun refresh(refreshToken: String): AuthApiResult<AuthRefreshResponse> {
             assertEquals(refreshTokenAssertion, refreshToken)
+            beforeRefresh()
             return refreshResult ?: error("refresh should not be called")
         }
 

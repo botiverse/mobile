@@ -1128,6 +1128,7 @@
     <string name="auth_error_restore_session">セッションを復元できませんでした。</string>
     <string name="auth_error_load_servers">サーバーを読み込めませんでした。</string>
     <string name="auth_error_session_refresh_choose_server">サーバーを選択する前にセッションの更新が必要です。もう一度試すか、ログアウトして再ログインしてください。</string>
+    <string name="auth_error_session_changed_retry_create_server">セッションが変更されました。もう一度サーバーを作成してください。</string>
     <string name="auth_server_title_create">サーバーを作成</string>
     <string name="auth_server_title_checking">サーバーを確認中</string>
     <string name="auth_server_title_first">最初のサーバーを作成</string>

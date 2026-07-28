@@ -717,6 +717,7 @@ class KmmResourceI18nTest {
             MR.strings.auth_error_restore_session,
             MR.strings.auth_error_load_servers,
             MR.strings.auth_error_session_refresh_choose_server,
+            MR.strings.auth_error_session_changed_retry_create_server,
             MR.strings.auth_server_title_create,
             MR.strings.auth_server_title_checking,
             MR.strings.auth_server_title_first,
