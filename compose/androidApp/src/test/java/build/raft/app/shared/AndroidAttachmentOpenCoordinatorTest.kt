@@ -401,6 +401,222 @@ class AndroidAttachmentOpenCoordinatorTest {
     }
 }
 
+class AndroidAttachmentSaveAsCoordinatorTest {
+    @Test
+    fun onlyResolverEmptyNoAppDispatchesToSaveAs() {
+        val source = privateSource()
+        val owner =
+            AndroidAttachmentOwnerLease(
+                shellInstanceId = "shell",
+                scopeId = "scope",
+                authEpoch = 1L,
+                principalKey = "a".repeat(64),
+                generation = 2L
+            )
+        val saveAs =
+            androidAttachmentOpenDispatch(
+                result = AndroidAttachmentOpenResult.noApp(cached = false),
+                resolverEmptySource = source,
+                owner = owner,
+                attachmentId = "attachment-1"
+            )
+        val noSource =
+            androidAttachmentOpenDispatch(
+                result = AndroidAttachmentOpenResult.noApp(cached = false),
+                resolverEmptySource = null,
+                owner = owner,
+                attachmentId = "attachment-1"
+            )
+        val ordinaryFailure =
+            androidAttachmentOpenDispatch(
+                result = AndroidAttachmentOpenResult.storageFailed(),
+                resolverEmptySource = source,
+                owner = owner,
+                attachmentId = "attachment-1"
+            )
+
+        assertTrue(saveAs is AndroidAttachmentOpenDispatch.SaveAs)
+        assertEquals(source, (saveAs as AndroidAttachmentOpenDispatch.SaveAs).source)
+        assertEquals(owner, saveAs.owner)
+        assertTrue(noSource is AndroidAttachmentOpenDispatch.Complete)
+        assertEquals(
+            AndroidAttachmentOpenStatus.NoApp,
+            (noSource as AndroidAttachmentOpenDispatch.Complete).result.status
+        )
+        assertTrue(ordinaryFailure is AndroidAttachmentOpenDispatch.Complete)
+        assertEquals(
+            AndroidAttachmentOpenStatus.StorageFailed,
+            (ordinaryFailure as AndroidAttachmentOpenDispatch.Complete).result.status
+        )
+    }
+
+    @Test
+    fun exactCopyCompletesAsOpenedSaveWithoutLeakingDestination() {
+        val source = privateSource()
+        var copiedTo: String? = null
+        val result =
+            coordinator(
+                copy = { destination ->
+                    copiedTo = destination
+                    source.sizeBytes
+                }
+            ).save(source, "content://documents/report")
+        val payload = result.toBridgePayload()
+
+        assertEquals(AndroidAttachmentOpenStatus.Opened, result.status)
+        assertEquals(AndroidAttachmentOpenAction.Save, result.action)
+        assertEquals("content://documents/report", copiedTo)
+        assertEquals("save", payload["action"])
+        assertFalse(payload.containsKey("uri"))
+        assertFalse(payload.containsKey("path"))
+    }
+
+    @Test
+    fun pickerCancelIsSilentSaveCancellationAndPerformsNoIo() {
+        var copies = 0
+        val result =
+            coordinator(copy = {
+                copies += 1
+                25L
+            }).save(privateSource(), null)
+
+        assertEquals(AndroidAttachmentOpenStatus.SaveCancelled, result.status)
+        assertEquals("save_cancelled", result.toBridgePayload()["status"])
+        assertEquals(0, copies)
+    }
+
+    @Test
+    fun retiredOwnerAndEvictedSourceFailClosedBeforeCopy() {
+        var copies = 0
+        val retired =
+            coordinator(
+                ownerCurrent = { false },
+                copy = {
+                    copies += 1
+                    25L
+                }
+            ).save(privateSource(), "destination")
+        val missing =
+            coordinator(
+                readable = { false },
+                copy = {
+                    copies += 1
+                    25L
+                }
+            ).save(privateSource(), "destination")
+
+        assertEquals(AndroidAttachmentOpenStatus.Cancelled, retired.status)
+        assertEquals(AndroidAttachmentOpenStatus.Missing, missing.status)
+        assertEquals(0, copies)
+    }
+
+    @Test
+    fun shortCopyAndProviderFailureDeletePartialDestination() {
+        listOf<(String) -> Long>(
+            { 24L },
+            { throw IllegalStateException("provider write failed") }
+        ).forEach { copy ->
+            val deleted = mutableListOf<String>()
+            var failure: Throwable? = null
+            val result =
+                coordinator(
+                    copy = copy,
+                    delete = {
+                        deleted += it
+                        true
+                    },
+                    onFailure = { failure = it }
+                ).save(privateSource(), "destination")
+
+            assertEquals(AndroidAttachmentOpenStatus.StorageFailed, result.status)
+            assertTrue(result.retryable)
+            assertEquals(listOf("destination"), deleted)
+            assertTrue(failure != null)
+        }
+    }
+
+    @Test
+    fun destinationReadbackMismatchDeletesDestinationAndFailsHonestly() {
+        val deleted = mutableListOf<String>()
+        val result =
+            coordinator(
+                destinationMatches = { false },
+                delete = {
+                    deleted += it
+                    true
+                }
+            ).save(privateSource(), "destination")
+
+        assertEquals(AndroidAttachmentOpenStatus.StorageFailed, result.status)
+        assertEquals(listOf("destination"), deleted)
+    }
+
+    @Test
+    fun ownerRetirementAfterCopyDeletesDestinationAndDoesNotReportSuccess() {
+        var ownerChecks = 0
+        val deleted = mutableListOf<String>()
+        val result =
+            coordinator(
+                ownerCurrent = {
+                    ownerChecks += 1
+                    ownerChecks < 2
+                },
+                delete = {
+                    deleted += it
+                    true
+                }
+            ).save(privateSource(), "destination")
+
+        assertEquals(AndroidAttachmentOpenStatus.Cancelled, result.status)
+        assertEquals(listOf("destination"), deleted)
+    }
+
+    @Test
+    fun ownerRetirementWithFailedCleanupNeverReportsCancellationAsClean() {
+        var ownerChecks = 0
+        val failures = mutableListOf<Throwable>()
+        val result =
+            coordinator(
+                ownerCurrent = {
+                    ownerChecks += 1
+                    ownerChecks < 2
+                },
+                delete = { false },
+                onFailure = { failures += it }
+            ).save(privateSource(), "destination")
+
+        assertEquals(AndroidAttachmentOpenStatus.StorageFailed, result.status)
+        assertTrue(failures.any { it.message?.contains("could not delete") == true })
+    }
+
+    private fun coordinator(
+        ownerCurrent: () -> Boolean = { true },
+        readable: () -> Boolean = { true },
+        copy: (String) -> Long = { 25L },
+        destinationMatches: (String) -> Boolean = { true },
+        delete: (String) -> Boolean = { true },
+        onFailure: (Throwable) -> Unit = {}
+    ): AndroidAttachmentSaveAsCoordinator<String> =
+        AndroidAttachmentSaveAsCoordinator(
+            ownerIsCurrent = ownerCurrent,
+            sourceIsReadable = readable,
+            copyToDestination = copy,
+            destinationMatchesSource = destinationMatches,
+            deleteFailedDestination = delete,
+            onFailure = onFailure
+        )
+
+    private fun privateSource(): AndroidAttachmentContentUriSource =
+        AndroidAttachmentContentUriSource(
+            kind = AndroidAttachmentOpenSourceKind.PrivateCache,
+            contentUri = "content://private/report",
+            mimeType = "text/plain",
+            displayName = "report.txt",
+            sizeBytes = 25L,
+            durableCache = false
+        )
+}
+
 class AndroidAttachmentSourceLauncherTest {
     @Test
     fun missingPrivateSourceNeverQueriesOrLaunches() {

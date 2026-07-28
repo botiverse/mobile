@@ -23,6 +23,7 @@ class AttachmentOpenSemanticResultTest {
     fun nativeOpenStatusesResolveToSharedLocalizedCopy() {
         assertNull(slockAttachmentOpenResultMessage("opened", localizedTerms))
         assertNull(slockAttachmentOpenResultMessage("", localizedTerms))
+        assertNull(slockAttachmentOpenResultMessage("save_cancelled", localizedTerms))
         assertEquals("下载已停止", slockAttachmentOpenResultMessage("cancelled", localizedTerms))
         assertEquals("无法下载附件", slockAttachmentOpenResultMessage("missing", localizedTerms))
         assertEquals("没有应用可以打开此文件", slockAttachmentOpenResultMessage("no_app", localizedTerms))
@@ -217,7 +218,7 @@ class AttachmentOpenSemanticResultTest {
 
     @Test
     fun threadOpenPreservesKnownSemanticStatusesAndFailsClosedOtherwise() {
-        listOf("opened", "cancelled", "missing", "no_app", "storage_failed").forEach { status ->
+        listOf("opened", "cancelled", "save_cancelled", "missing", "no_app", "storage_failed").forEach { status ->
             assertEquals(status, slockThreadAttachmentOpenStatus(status))
         }
         assertEquals("failed", slockThreadAttachmentOpenStatus("failed"))

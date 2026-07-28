@@ -2119,7 +2119,7 @@ private data class ThreadAttachmentOpenResult(
 
 internal fun slockThreadAttachmentOpenStatus(nativeStatus: String): String =
     when (nativeStatus) {
-        "opened", "cancelled", "missing", "no_app", "storage_failed" -> nativeStatus
+        "opened", "cancelled", "save_cancelled", "missing", "no_app", "storage_failed" -> nativeStatus
         else -> "failed"
     }
 
@@ -6708,7 +6708,7 @@ internal fun SharedThreadRouteContent(
                 )
             val token = attachmentOperationTokens[attachment.id]
             if (token != operation || !attachmentOperationCommitAllowed(operation, token.operationId)) return@launch
-            if (result.status == "opened") {
+            if (result.status == "opened" || result.status == "save_cancelled") {
                 attachmentOpenStates = attachmentOpenStates - attachment.id
                 attachmentOperationTokens = attachmentOperationTokens - attachment.id
             } else {
