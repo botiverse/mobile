@@ -1131,7 +1131,7 @@ class SlockMarkdownTest {
         val effectiveAtCode = effectiveSpanStyleAt(codeStart)
         assertEquals(slockMonoFamilyForWeight(FontWeight.Normal), effectiveAtCode.fontFamily)
         assertEquals(FontWeight.Normal, effectiveAtCode.fontWeight)
-        assertEquals(SlockType.Body.fontSize, effectiveAtCode.fontSize)
+        assertEquals(SlockType.Body.fontSize * 0.875f, effectiveAtCode.fontSize)
         assertEquals(SlockType.Body.letterSpacing, effectiveAtCode.letterSpacing)
         assertTrue(
             rendered.spanStyles.none { range ->
