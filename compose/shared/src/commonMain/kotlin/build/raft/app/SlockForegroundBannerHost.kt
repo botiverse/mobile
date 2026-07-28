@@ -241,6 +241,8 @@ internal fun SlockForegroundMessageBannerView(
                     .align(Alignment.TopCenter)
                     .height(bannerHeight)
                     .offset(y = swipeOffsetYDp.dp)
+                    // Keep the complete DOWN..UP sequence on the banner's own hit path.
+                    .slockNativeDispatchCapture()
                     .pointerInput(banner.id) {
                         detectVerticalDragGestures(
                             onDragEnd = {
