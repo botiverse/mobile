@@ -1,5 +1,5 @@
 ---
-type: fixed
+type: improved
 area: thread
 platforms:
   - android
