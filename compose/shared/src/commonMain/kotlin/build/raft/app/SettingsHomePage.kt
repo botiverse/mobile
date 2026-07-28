@@ -7331,9 +7331,9 @@ private fun SettingsLanguagePreferenceCard(
                 stringResource(MR.strings.settings_preferred_translation_language_detail)
             )
             SlockBrutalSelectField(
-                options = snapshot.browserLanguage.toSelectOptions(),
+                options = snapshot.browserLanguage.toTranslationTargetSelectOptions(),
                 selectedId = languageDraft.ifBlank { snapshot.browserLanguage.selectedKey },
-                selectedLabel = snapshot.browserLanguage.labelFor(languageDraft),
+                selectedLabel = snapshot.browserLanguage.translationTargetLabelFor(languageDraft),
                 onSelect = { onLanguageDraftChange(it.id) },
                 enabled = snapshot.browserLanguage.available && !busy
             )
@@ -8909,6 +8909,27 @@ private fun SettingsMobileSelectionSnapshot.toSelectOptions(): List<SlockBrutalS
 
 private fun SettingsMobileSelectionSnapshot.labelFor(key: String): String =
     options.firstOrNull { it.key == key }?.label ?: selectedLabel
+
+@Composable
+private fun SettingsMobileSelectionSnapshot.toTranslationTargetSelectOptions(): List<SlockBrutalSelectOption> {
+    val systemLanguageLabel = stringResource(MR.strings.settings_translation_target_system_language)
+    return options.map { option ->
+        SlockBrutalSelectOption(
+            option.key,
+            if (option.key == TranslationTargetLanguages.System) systemLanguageLabel else option.label
+        )
+    }
+}
+
+@Composable
+private fun SettingsMobileSelectionSnapshot.translationTargetLabelFor(key: String): String {
+    val selectedKey = key.ifBlank { this.selectedKey }
+    return if (selectedKey == TranslationTargetLanguages.System) {
+        stringResource(MR.strings.settings_translation_target_system_language)
+    } else {
+        labelFor(selectedKey)
+    }
+}
 
 private const val SETTINGS_CONNECTED_APPS_CATEGORY_ALL = "__all__"
 
