@@ -1,6 +1,6 @@
 /*
- * Raft Sync Core — type seam (RFC 043). KMP port of packages/shared/src/sync-core/types.ts
- * (slock #4255 @ b665f42). The core is a pure deterministic sync state machine: frames /
+ * Raft Sync Core — type seam (RFC 043). KMP port of packages/sync-core/src/types.ts.
+ * The core is a pure deterministic sync state machine: frames /
  * snapshots / difference responses in; domain state + declarative request descriptions out.
  * No transport, no persistence, no ambient clock or randomness — `now` and ids are injected
  * (RFC 043 §9.4). All IO leaves the core as SyncRequestDescription; retry timing/backoff is
@@ -205,6 +205,8 @@ data class SyncDomainConfig(
     val name: SyncDomainName,
     val density: SyncDensity,
     val initialState: () -> Any?,
+    /** Stable identity of the complete accepted fact at one sequence. */
+    val eventFingerprint: ((event: Any?) -> String)? = null,
     /** Apply one in-order event. Purity is a contract (§9.4). */
     val fold: (state: Any?, event: Any?, frame: SyncFoldFrame) -> Any?,
     /** Replace state from a snapshot (rebaseline). */

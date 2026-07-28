@@ -202,9 +202,9 @@ fun activityStateFromSnapshot(raw: Any?): ActivityDomainState {
         window.tombstones,
     )
     return applied.copy(
-        // A snapshot replaces the baseline; old tombstones must not suppress a
-        // legitimate row from a later frame.
-        tombstones = emptyMap(),
+        // A snapshot replaces the baseline, so only tombstones carried by this
+        // snapshot remain. They must survive to block stale resurrection.
+        tombstones = applied.tombstones,
         activityVersion = activityVersion,
         nextCursor = window.nextCursor,
         hasMore = window.hasMore,
@@ -217,11 +217,18 @@ fun createActivityDomain(): SyncDomainConfig =
         name = ACTIVITY_DOMAIN,
         density = SyncDensity.Contiguous,
         initialState = ::initialActivityState,
+        eventFingerprint = ::fingerprintActivityEvent,
         fold = { state, event, _ ->
             foldActivityEvent(state as? ActivityDomainState ?: initialActivityState(), event)
         },
         fromSnapshot = { snapshot -> activityStateFromSnapshot(snapshot.state) },
     )
+
+fun fingerprintActivityEvent(event: Any?): String = when (event) {
+    is ActivityIngress -> ActivitySyncContractJson.strict.encodeToString(ActivityIngress.serializer(), event)
+    is ActivityDomainEvent -> event.toString()
+    else -> "null"
+}
 
 fun encodeActivityScopeId(
     serverId: String,

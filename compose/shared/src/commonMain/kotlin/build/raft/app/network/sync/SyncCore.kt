@@ -1,6 +1,6 @@
 /*
  * Raft Sync Core — deterministic sync state machine (RFC 043 §3). KMP port of
- * packages/shared/src/sync-core/core.ts (slock #4255 @ b665f42). Pure w.r.t. IO: ingest folds
+ * packages/sync-core/src/core.ts. Pure w.r.t. IO: ingest folds
  * data in; all outbound IO is declarative SyncRequestDescription. No transport, no persistence,
  * no ambient clock/randomness (§9.4). The same input sequence, in any interleaving, yields the
  * same terminal state.
@@ -10,6 +10,7 @@ package build.raft.app.network.sync
 private class ScopeEntry(
     /** null = no baseline yet (pre-first-snapshot for contiguous scopes). */
     var appliedSeq: SyncSeq?,
+    var acceptedFingerprint: String?,
     var epoch: SyncEpoch?,
     var repairPending: Boolean,
     var state: Any?,
@@ -34,7 +35,13 @@ private class SyncCoreImpl(config: SyncCoreConfig) : SyncCore {
     private fun scopeEntry(domain: SyncDomainConfig, scopeId: SyncScopeId): ScopeEntry {
         val byScope = scopes.getOrPut(domain.name) { LinkedHashMap() }
         return byScope.getOrPut(scopeId) {
-            ScopeEntry(appliedSeq = null, epoch = null, repairPending = false, state = domain.initialState())
+            ScopeEntry(
+                appliedSeq = null,
+                acceptedFingerprint = null,
+                epoch = null,
+                repairPending = false,
+                state = domain.initialState(),
+            )
         }
     }
 
@@ -86,18 +93,58 @@ private class SyncCoreImpl(config: SyncCoreConfig) : SyncCore {
             }
             entry.state = domainConfig.fold(entry.state, frame.event, SyncFoldFrame(frame.scopeId, frame.seq))
             entry.appliedSeq = frame.seq
+            entry.acceptedFingerprint = domainConfig.eventFingerprint?.invoke(frame.event)
             if (entry.epoch == null) entry.epoch = frame.epoch
             return SyncIngestOutcome.MaxAdvanced(frame.scopeId, frame.seq)
         }
 
-        // Idempotence: at-or-below the watermark is a no-op by comparison.
-        if (frame.seq <= appliedSeq) {
+        if (frame.seq < appliedSeq) {
+            if (domainConfig.eventFingerprint != null) {
+                violations.push(
+                    SyncViolationDraft(
+                        SyncViolationKind.VersionRegression,
+                        domain,
+                        frame.scopeId,
+                        frame.seq,
+                        frame.epoch,
+                    ),
+                )
+            }
             return SyncIngestOutcome.DuplicateDropped(frame.scopeId, frame.seq)
+        }
+
+        if (frame.seq == appliedSeq) {
+            val fingerprint = domainConfig.eventFingerprint
+                ?: return SyncIngestOutcome.DuplicateDropped(frame.scopeId, frame.seq)
+            if (entry.acceptedFingerprint == fingerprint(frame.event)) {
+                return SyncIngestOutcome.DuplicateDropped(frame.scopeId, frame.seq)
+            }
+            violations.push(
+                SyncViolationDraft(
+                    SyncViolationKind.ProducerVersionConflict,
+                    domain,
+                    frame.scopeId,
+                    frame.seq,
+                    frame.epoch,
+                ),
+            )
+            requestSnapshot(
+                domain,
+                frame.scopeId,
+                if (domainConfig.density == SyncDensity.Sparse) {
+                    SyncSnapshotReason.SparseRepull
+                } else {
+                    SyncSnapshotReason.SnapshotRequired
+                },
+            )
+            entry.repairPending = true
+            return SyncIngestOutcome.Violation(frame.scopeId, SyncViolationKind.ProducerVersionConflict)
         }
 
         if (domainConfig.density == SyncDensity.Sparse) {
             entry.state = domainConfig.fold(entry.state, frame.event, SyncFoldFrame(frame.scopeId, frame.seq))
             entry.appliedSeq = frame.seq
+            entry.acceptedFingerprint = domainConfig.eventFingerprint?.invoke(frame.event)
             return SyncIngestOutcome.MaxAdvanced(frame.scopeId, frame.seq)
         }
 
@@ -105,6 +152,7 @@ private class SyncCoreImpl(config: SyncCoreConfig) : SyncCore {
         if (frame.seq == appliedSeq + 1uL) {
             entry.state = domainConfig.fold(entry.state, frame.event, SyncFoldFrame(frame.scopeId, frame.seq))
             entry.appliedSeq = frame.seq
+            entry.acceptedFingerprint = domainConfig.eventFingerprint?.invoke(frame.event)
             return SyncIngestOutcome.Applied(frame.scopeId, frame.seq)
         }
 
@@ -129,6 +177,7 @@ private class SyncCoreImpl(config: SyncCoreConfig) : SyncCore {
         }
         entry.state = domainConfig.fromSnapshot(snapshot)
         entry.appliedSeq = snapshot.watermark
+        entry.acceptedFingerprint = null
         entry.epoch = snapshot.epoch
         entry.repairPending = false
         clearScopeRequests(domain, snapshot.scopeId)
@@ -158,10 +207,12 @@ private class SyncCoreImpl(config: SyncCoreConfig) : SyncCore {
             if (applied != null && item.seq <= applied) continue
             entry.state = domainConfig.fold(entry.state, item.event, SyncFoldFrame(response.scopeId, item.seq))
             entry.appliedSeq = item.seq
+            entry.acceptedFingerprint = domainConfig.eventFingerprint?.invoke(item.event)
         }
         val afterFold = entry.appliedSeq
         if (afterFold == null || response.toSeq > afterFold) {
             entry.appliedSeq = response.toSeq
+            entry.acceptedFingerprint = null
         }
         clearScopeRequests(domain, response.scopeId)
 

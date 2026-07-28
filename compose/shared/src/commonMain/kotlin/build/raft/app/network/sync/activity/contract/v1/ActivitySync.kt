@@ -59,8 +59,7 @@ const val ACTIVITY_SYNC_TYPESPEC_SHA256: String = "f464700d04af3d47290f6b7df21dc
 typealias OpaqueId = String
 
 @Serializable(with = UInt64StringSerializer::class)
-@JvmInline
-value class UInt64String(val value: String) {
+data class UInt64String(val value: String) {
     init {
         require(UINT64_DECIMAL_REGEX.matches(value)) { "UInt64String must be canonical unsigned decimal" }
     }

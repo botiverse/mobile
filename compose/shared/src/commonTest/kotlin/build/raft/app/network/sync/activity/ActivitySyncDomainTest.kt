@@ -4,6 +4,7 @@ import build.raft.app.network.sync.SyncFrame
 import build.raft.app.network.sync.SyncIngestOutcome
 import build.raft.app.network.sync.SyncRequestDescription
 import build.raft.app.network.sync.SyncSnapshot
+import build.raft.app.network.sync.SyncViolationKind
 import build.raft.app.network.sync.activity.contract.v1.ActivityFilter
 import build.raft.app.network.sync.activity.contract.v1.ActivityRow
 import build.raft.app.network.sync.activity.contract.v1.ActivityRowTombstone
@@ -149,6 +150,49 @@ class ActivitySyncDomainTest {
     }
 
     @Test
+    fun snapshotOwnTombstoneSurvivesAndBlocksStaleResurrection() {
+        var state = activityStateFromSnapshot(
+            snapshot(
+                watermark = "5",
+                activityVersion = "5",
+                rows = emptyList(),
+                tombstones = listOf(stone("gone", "6", TombstoneReason.Deleted)),
+            ),
+        )
+        assertEquals(mapOf("gone" to u("6")), state.tombstones)
+
+        state = foldActivityEvent(state, frame(row("gone", "5")))
+        assertEquals(emptyList(), ids(state))
+        assertEquals(mapOf("gone" to u("6")), state.tombstones)
+    }
+
+    @Test
+    fun sameSequenceDifferentCompleteFactIsAConflictAndDoesNotMutateState() {
+        val core = createSyncCore(build.raft.app.network.sync.SyncCoreConfig(listOf(createActivityDomain())))
+        core.ingestSnapshot(
+            ACTIVITY_DOMAIN,
+            SyncSnapshot(scopeId, 1uL, "1", snapshot("1", "1", emptyList())),
+        )
+        val accepted = frame(row("r1", "1", unreadCount = 1u), activityVersion = "2")
+        assertIs<SyncIngestOutcome.Applied>(
+            core.ingestFrame(ACTIVITY_DOMAIN, SyncFrame(scopeId, 2uL, "1", accepted)),
+        )
+
+        val conflict = frame(row("r1", "1", unreadCount = 9u), activityVersion = "2")
+        val outcome = core.ingestFrame(ACTIVITY_DOMAIN, SyncFrame(scopeId, 2uL, "1", conflict))
+        assertEquals(
+            SyncIngestOutcome.Violation(scopeId, SyncViolationKind.ProducerVersionConflict),
+            outcome,
+        )
+        assertEquals(1u, assertIs<ChannelActivityRow>(core.activityState().rows.single()).unreadCount)
+        assertEquals(SyncViolationKind.ProducerVersionConflict, core.violations().records.single().kind)
+        assertTrue(core.pendingRequests().any { request ->
+            request is SyncRequestDescription.Snapshot &&
+                request.reason == build.raft.app.network.sync.SyncSnapshotReason.SnapshotRequired
+        })
+    }
+
+    @Test
     fun realCoreRequiresBaselineThenAppliesContiguousFramesAndStopGatesGap() {
         val core = createSyncCore(build.raft.app.network.sync.SyncCoreConfig(listOf(createActivityDomain())))
 
@@ -260,6 +304,7 @@ class ActivitySyncDomainTest {
         watermark: String,
         activityVersion: String,
         rows: List<ActivityRow>,
+        tombstones: List<ActivityRowTombstone> = emptyList(),
     ) = SnapshotIngress(
         requestId = "request-$watermark",
         scope = scope,
@@ -268,7 +313,7 @@ class ActivitySyncDomainTest {
         activityVersion = u(activityVersion),
         window = ActivityWindow(
             rows = rows,
-            tombstones = emptyList(),
+            tombstones = tombstones,
             nextCursor = null,
             hasMore = false,
             complete = true,
