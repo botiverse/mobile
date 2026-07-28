@@ -106,6 +106,32 @@ class RealtimeEventMapperTest {
     }
 
     @Test
+    fun messageUpdatedKeepsCreationTimeAsTimelineTimestamp() {
+        val event =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.MessageUpdated,
+                """
+                {
+                  "id": "message-1",
+                  "seq": 30,
+                  "channelId": "channel-1",
+                  "senderType": "agent",
+                  "messageType": "chat",
+                  "senderId": "agent-1",
+                  "senderName": "Argus",
+                  "content": "task state changed",
+                  "createdAt": "2026-07-28T19:30:35+08:00",
+                  "updatedAt": "2026-07-28T19:32:09+08:00"
+                }
+                """.trimIndent()
+            )
+
+        val updated = assertIs<MessageUpdated>(event)
+        assertEquals("2026-07-28T19:30:35+08:00", updated.message.timestampLabel)
+        assertEquals("2026-07-28T19:32:09+08:00", updated.message.updatedAtLabel)
+    }
+
+    @Test
     fun messageUpdatedPreservesKnownEmptyReactionPayload() {
         val event =
             RealtimeEventMapper().map(

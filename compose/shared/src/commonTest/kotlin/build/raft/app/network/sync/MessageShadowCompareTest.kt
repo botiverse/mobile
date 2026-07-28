@@ -57,8 +57,8 @@ class MessageShadowCompareTest {
 
     @Test
     fun messageUpdated_enriched_isParity() {
-        // updatedAt present here: the legacy path folds it into timestampLabel/updatedAtLabel, both of which
-        // the canonical row cannot carry — parity must still hold via normalization.
+        // updatedAt remains update metadata only; the timeline label is createdAt.
+        // The canonical row cannot carry updatedAtLabel, so parity still relies on normalization.
         val payload = buildJsonObject {
             richMessageFields(this)
             put("updatedAt", "2026-07-11T21:00:00Z")
