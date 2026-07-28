@@ -29,6 +29,7 @@ env -u SLOCK_PUBLISH_HANDS \
 
 ruby -e '
   require "json"
+  require "rexml/document"
   require "yaml"
   workflow = YAML.load_file(".github/workflows/android-release.yml")
   update_workflow = YAML.load_file(".github/workflows/android-update-qa.yml")
@@ -219,11 +220,29 @@ ruby -e '
   terminology_contract = [
     "botiverse/slock",
     "packages/web/src/i18n/messages/",
+    "compose/shared/src/commonMain/resources/MR/<locale>/strings.xml",
     "`回应`",
     "`任务状态`",
     "`处理中`",
+    "`リアクション`",
+    "`タスクステータス`",
+    "`処理中`",
   ]
-  raise "Android release SOP does not require canonical Web terminology" unless terminology_contract.all? { |term| sop.include?(term) }
+  raise "Android release SOP does not require canonical shipped-locale terminology" unless terminology_contract.all? { |term| sop.include?(term) }
+
+  ja_resource = REXML::Document.new(File.read("compose/shared/src/commonMain/resources/MR/ja/strings.xml"))
+  ja_strings = {}
+  REXML::XPath.each(ja_resource, "/resources/string") do |element|
+    ja_strings[element.attributes["name"]] = element.text.to_s
+  end
+  {
+    "settings_mobile_reactions" => "リアクション",
+    "thread_error_task_status_unsupported" => "タスクステータス",
+    "app_update_working" => "処理中",
+  }.each do |key, canonical|
+    value = ja_strings.fetch(key)
+    raise "Japanese terminology source #{key} no longer contains #{canonical.inspect}" unless value.include?(canonical)
+  end
 
   release_copy = Dir["change-logs/**/*.md"].to_h { |path| [path, File.read(path)] }
   deprecated_zh_terms = {
@@ -236,6 +255,13 @@ ruby -e '
       paths << path if copy.include?(deprecated)
     end
     raise "release notes use #{deprecated.inspect}; align to Web term #{canonical.inspect}: #{offenders.join(", ")}" unless offenders.empty?
+  end
+  deprecated_ja_terms = { "タスク状態" => "タスクステータス" }
+  deprecated_ja_terms.each do |deprecated, canonical|
+    offenders = release_copy.each_with_object([]) do |(path, copy), paths|
+      paths << path if copy.include?(deprecated)
+    end
+    raise "release notes use #{deprecated.inspect}; align to Mobile term #{canonical.inspect}: #{offenders.join(", ")}" unless offenders.empty?
   end
 
   release_note_headers = {
