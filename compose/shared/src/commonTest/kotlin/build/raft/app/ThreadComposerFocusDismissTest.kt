@@ -176,6 +176,27 @@ class ThreadComposerFocusDismissTest {
     }
 
     @Test
+    fun externalMentionCancelsTheOldTokenBeforeRestoringFocusAndKeyboard() {
+        val registry = SlockInputFocusOwnerRegistry()
+        val owner = Any()
+        registry.setFocused(owner, true) { Rect(0f, 0f, 10f, 10f) }
+        registry.beginPointerFocusClearSequence()
+        val longPressDownToken = requireNotNull(registry.outsideFocusToken(Offset(20f, 20f)))
+        val steps = mutableListOf<String>()
+
+        restoreComposerInputAfterExternalMention(
+            focusOwnerRegistry = registry,
+            requestFocus = {
+                assertEquals(false, registry.claimFocusClear(longPressDownToken))
+                steps += "focus"
+            },
+            showKeyboard = { steps += "keyboard" }
+        )
+
+        assertEquals(listOf("focus", "keyboard"), steps)
+    }
+
+    @Test
     fun newerPointerDownInvalidatesAnOlderGesturesDelayedClear() {
         val registry = SlockInputFocusOwnerRegistry()
         val owner = Any()
