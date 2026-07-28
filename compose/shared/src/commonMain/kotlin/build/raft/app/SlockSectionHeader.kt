@@ -52,6 +52,7 @@ internal val SlockCollapsibleSectionCountTextStyle =
 internal val SlockCollapsibleSectionCountColor = SlockColor.TextBlack.copy(alpha = 0.4f)
 internal val SlockMainTabHeaderStartPadding = 8.dp
 internal val SlockMainTabHeaderTitleStyle = SlockType.PageTitle.copy(fontSize = 16.sp, lineHeight = 20.sp)
+internal val SlockTopPageHeaderContentSpacing = 12.dp
 
 internal enum class SlockMainTabHeaderSurface(
     val iconName: SlockLucideIconName
@@ -95,6 +96,7 @@ internal fun SlockTopPageHeader(
     topSafeAreaOverride: Dp? = null,
     headerHeight: Dp = SlockSize.PageHeaderHeight,
     contentStartPadding: Dp = 20.dp,
+    contentSpacing: Dp = SlockTopPageHeaderContentSpacing,
     titleStyle: TextStyle = SlockType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp),
     refreshing: Boolean = false,
     leadingContent: (@Composable BoxScope.() -> Unit)? = null,
@@ -114,6 +116,7 @@ internal fun SlockTopPageHeader(
             topSafeArea = topSafeArea,
             headerHeight = headerHeight,
             contentStartPadding = contentStartPadding,
+            contentSpacing = contentSpacing,
         ) {
             when {
                 leadingContent != null ->
@@ -186,6 +189,7 @@ internal fun SlockTopPageHeaderFrame(
     headerHeight: Dp = SlockSize.PageHeaderHeight,
     contentStartPadding: Dp = 20.dp,
     contentEndPadding: Dp = 16.dp,
+    contentSpacing: Dp = SlockTopPageHeaderContentSpacing,
     content: @Composable RowScope.() -> Unit,
 ) {
     val metrics = slockTopPageHeaderFrameMetrics(topSafeArea = topSafeArea, headerHeight = headerHeight)
@@ -203,7 +207,7 @@ internal fun SlockTopPageHeaderFrame(
                     .height(metrics.contentHeight)
                     .padding(start = contentStartPadding, top = topSafeArea, end = contentEndPadding),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(contentSpacing),
             content = content,
         )
         Box(

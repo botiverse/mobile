@@ -808,6 +808,7 @@ private val ThreadHeaderDmAgentActivityLeadingGap = SlockSpacing.Sm
 private val ThreadHeaderDmAgentActivityDotSize = SlockStatusIndicatorTokens.InlineSize
 private val ThreadHeaderChannelTileSize = 34.dp
 private val ThreadHeaderChannelIconSize = 16.dp
+private val ThreadHeaderContentSpacing = 6.dp
 
 private object ThreadReactionGlyphDiagnostics {
     private val loggedKeys = mutableSetOf<String>()
@@ -13038,6 +13039,7 @@ private fun ThreadPageHeader(
         title = localizedHeaderTitle,
         backgroundColor = SlockColor.SurfaceWhite,
         topSafeAreaOverride = topSafeArea,
+        contentSpacing = ThreadHeaderContentSpacing,
         leadingContent = {
             SlockTopPageHeaderAction(icon = SlockLucideIconName.ArrowLeft, onClick = onBack)
         },
@@ -13543,6 +13545,8 @@ private fun ThreadHeaderCompactAction(
 
 internal fun threadHeaderVisibleActionGapDp(): Float =
     (ThreadHeaderActionGroupSpacing + ThreadHeaderActionShadowOffset).value
+
+internal fun threadHeaderContentSpacingDp(): Float = ThreadHeaderContentSpacing.value
 
 @Composable
 private fun ThreadHeaderAction(label: String, onClick: () -> Unit) {
