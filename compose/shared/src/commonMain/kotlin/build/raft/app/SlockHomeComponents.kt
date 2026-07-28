@@ -1103,7 +1103,11 @@ internal fun HomeTitlebarResizeVisualScreen() {
 
 @Composable
 internal fun HomeNotificationCenterVisualScreen() {
-    Box(modifier = Modifier.width(342.dp).background(SlockColor.SurfaceWhite).padding(top = 48.dp).padding(16.dp)) {
+    // Fill the full 390x844 viewport crop with SurfaceWhite so the pager's default
+    // surface does not bleed a cream band below/right of the popover (matches the
+    // React baseline and the sibling HomeAppUpdateBannerVisualScreen, which pins the
+    // full viewport for the same reason). Fixes visual-drift #767.
+    Box(modifier = Modifier.width(390.dp).height(844.dp).background(SlockColor.SurfaceWhite).padding(top = 48.dp).padding(16.dp)) {
         HomeNotificationPopover(
             notifications = visualHomeNotifications(),
             onView = {},
