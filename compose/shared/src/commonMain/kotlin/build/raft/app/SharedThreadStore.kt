@@ -9073,7 +9073,10 @@ private fun KuiklyThreadMessageItem.mergeRealtimeUpdate(
         isOwn = if (acceptsIncomingAuthor) update.isOwn else isOwn,
         avatarLabel = if (acceptsIncomingAuthor) update.avatarLabel.ifBlank { avatarLabel } else avatarLabel,
         avatarWireValue = if (acceptsIncomingAuthor) update.avatarWireValue ?: avatarWireValue else avatarWireValue,
-        timestampLabel = update.timestampLabel.ifBlank { timestampLabel },
+        // Creation time is immutable. Realtime message updates may carry a
+        // later updatedAt-derived label, but must never rewrite the visible
+        // timeline timestamp of an already loaded message.
+        timestampLabel = timestampLabel.ifBlank { update.timestampLabel },
         seq = update.seq ?: seq,
         messageType = update.messageType.ifBlank { messageType },
         systemEventType = update.systemEventType ?: systemEventType,

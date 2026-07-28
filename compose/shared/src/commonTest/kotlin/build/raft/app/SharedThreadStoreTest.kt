@@ -9805,6 +9805,52 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun realtimeMessageUpdatedCannotRewriteCreationTimeOrTimelineOrder() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val dataSource = canonicalThreadDataSource()
+        val first =
+            contentPayload("first", id = "m1").messages.single().copy(
+                seq = 30,
+                timestampLabel = "2026-07-28T19:30:00+08:00"
+            )
+        val second =
+            first.copy(
+                id = "m2",
+                seq = 31,
+                body = "second",
+                timestampLabel = "2026-07-28T19:31:00+08:00"
+            )
+        dataSource.cachePayloadForTest(contentPayload("first").copy(messages = listOf(first, second)))
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        store.accept(
+            SharedThreadIntent.ApplyRealtimeEvent(
+                MessageUpdated(
+                    Message(
+                        id = MessageId("m1"),
+                        threadId = ThreadId("channel-1"),
+                        channelId = ChannelId("channel-1"),
+                        seq = 30,
+                        author = member("u1", "Artin"),
+                        timestampLabel = "2026-07-28T19:32:00+08:00",
+                        updatedAtLabel = "2026-07-28T19:32:00+08:00",
+                        body = "first updated"
+                    )
+                )
+            )
+        )
+
+        assertEquals(listOf("m1", "m2"), store.state.value.payload.messages.map { it.id })
+        assertEquals(
+            listOf("2026-07-28T19:30:00+08:00", "2026-07-28T19:31:00+08:00"),
+            store.state.value.payload.messages.map { it.timestampLabel }
+        )
+        assertEquals("first updated", store.state.value.payload.messages.first().body)
+        scope.cancel()
+    }
+
+    @Test
     fun realtimeMessageUpdatedCannotReplaceCanonicalAuthorIdentity() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val dataSource = canonicalThreadDataSource()

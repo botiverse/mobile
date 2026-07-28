@@ -702,7 +702,11 @@ private fun MessageWireDto.toDomain(diagnostics: (String) -> Unit): Message? {
         threadChannelId = null,
         seq = seq,
         author = author,
-        timestampLabel = updatedAt ?: createdAt ?: "",
+        // A message update may advance updatedAt when its task state, reply
+        // projection, reactions, or body changes. The timeline label remains
+        // the immutable creation time; otherwise an in-place update makes an
+        // older row appear newer than the rows rendered after it.
+        timestampLabel = createdAt ?: "",
         body = content,
         messageType = resolvedMessageType,
         systemEventType = null,
