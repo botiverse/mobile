@@ -50,6 +50,7 @@ import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.graphics.SolidColor
 import com.tencent.kuikly.compose.ui.focus.FocusRequester
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
+import com.tencent.kuikly.compose.ui.platform.LocalFocusManager
 import com.tencent.kuikly.compose.ui.platform.LocalSoftwareKeyboardController
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
@@ -1055,6 +1056,7 @@ internal fun ThreadComposerContent(
     keyboardLiftBottomContentPadding: Dp? = null,
     composerSendKeyEnabled: Boolean = false,
     dismissKeyboardOnBlur: Boolean = false,
+    startInReadingMode: Boolean = false,
     attachmentPreviewEnabled: Boolean,
     insertMentionRequest: ThreadComposerInsertMentionRequest? = null,
     onInsertMentionConsumed: (ThreadComposerInsertMentionRequest) -> Unit = {},
@@ -1075,6 +1077,7 @@ internal fun ThreadComposerContent(
         keyboardLiftBottomContentPadding = keyboardLiftBottomContentPadding,
         composerSendKeyEnabled = composerSendKeyEnabled,
         dismissKeyboardOnBlur = dismissKeyboardOnBlur,
+        startInReadingMode = startInReadingMode,
         attachmentPreviewEnabled = attachmentPreviewEnabled,
         insertMentionRequest = insertMentionRequest,
         onInsertMentionConsumed = onInsertMentionConsumed,
@@ -1095,6 +1098,7 @@ internal fun ThreadComposerContent(
     keyboardLiftBottomContentPadding: Dp? = null,
     composerSendKeyEnabled: Boolean = false,
     dismissKeyboardOnBlur: Boolean = false,
+    startInReadingMode: Boolean = false,
     attachmentPreviewEnabled: Boolean,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     insertMentionRequest: ThreadComposerInsertMentionRequest? = null,
@@ -1115,8 +1119,24 @@ internal fun ThreadComposerContent(
     var keyboardInsetDp by remember(state.instanceId) { mutableStateOf(0f) }
     val composerFocusRequester = remember(state.instanceId) { FocusRequester() }
     val focusOwnerRegistry = LocalSlockInputFocusOwnerRegistry.current
+    val focusManager = LocalFocusManager.current
     val softwareKeyboardController = LocalSoftwareKeyboardController.current
     val shouldAutoFocus = state.focusRequestNonce > handledFocusRequestNonce
+    LaunchedEffect(state.instanceId, startInReadingMode) {
+        if (
+            shouldResetThreadComposerInheritedFocus(
+                startInReadingMode = startInReadingMode,
+                focusRequestNonce = state.focusRequestNonce,
+                handledFocusRequestNonce = handledFocusRequestNonce
+            )
+        ) {
+            resetInheritedThreadComposerFocus(
+                resetFocusedState = { focused = false },
+                clearFocus = { focusManager.clearFocus(force = true) },
+                hideKeyboard = { softwareKeyboardController?.hide() }
+            )
+        }
+    }
     LaunchedEffect(state.instanceId, state.focusRequestNonce) {
         if (state.focusRequestNonce > handledFocusRequestNonce) {
             focused = true
@@ -1679,6 +1699,23 @@ internal fun ThreadComposerContent(
         }
     }
     }
+}
+
+internal fun shouldResetThreadComposerInheritedFocus(
+    startInReadingMode: Boolean,
+    focusRequestNonce: Int,
+    handledFocusRequestNonce: Int
+): Boolean =
+    startInReadingMode && focusRequestNonce <= handledFocusRequestNonce
+
+internal fun resetInheritedThreadComposerFocus(
+    resetFocusedState: () -> Unit,
+    clearFocus: () -> Unit,
+    hideKeyboard: () -> Unit
+) {
+    resetFocusedState()
+    clearFocus()
+    hideKeyboard()
 }
 
 @Composable

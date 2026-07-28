@@ -13471,6 +13471,7 @@ private fun ThreadComposerContentWithSuggestions(
         attachmentPreviewEnabled = true,
         surface = surface,
         state = renderedState,
+        startInReadingMode = true,
         onEvent = onEvent,
         onKeyboardHeightChange = onKeyboardHeightChange,
         contentPaddingTop = contentPaddingTop,
