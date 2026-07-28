@@ -9722,6 +9722,8 @@ internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_ADJACENT = "md_wrap_adj
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_CJK_ADJACENT_URL = "cjk_adjacent_url"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_STATUS606 = "md_wrap_status606"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_BLOCKQUOTE = "md_blockquote"
+internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_BLOCKQUOTE_TABLE = "md_blockquote_table"
+internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_BLOCKQUOTE_LIST_TABLE = "md_blockquote_list_table"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_CODE_EMAIL = "md_code_email"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_CODE_URL = "md_code_url"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_CODE_BLOCK = "md_code_block"
@@ -10959,6 +10961,97 @@ internal fun threadVisualFixture(
                                     "> Quoted line one keeps **bold** and `code` inline.\n" +
                                     "> Quoted line two — the rail must end with this line.\n\n" +
                                     "Paragraph below the quote marks the rail's lower bound."
+                        )
+                    ),
+                members = emptyList(),
+                showComposer = false,
+                joined = true,
+                composer =
+                    KuiklyThreadComposerPayload(
+                        instanceId = resolvedInstanceId,
+                        enabled = false
+                    )
+            )
+        THREAD_MESSAGE_VISUAL_FIXTURE_MD_BLOCKQUOTE_TABLE ->
+            KuiklyThreadScreenPayload(
+                instanceId = resolvedInstanceId,
+                title = "#markdown",
+                subtitle = "Blockquote table intrinsic-measurement regression",
+                status = "content",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                streamChannelId = "channel-markdown",
+                sourceThreadId = "channel-markdown",
+                selectedTab = "chat",
+                showModeTabs = false,
+                showReplyActions = true,
+                alignOwnMessagesRight = false,
+                showMessageSaveAction = false,
+                showTaskOpenActions = false,
+                showTaskStatusActions = false,
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "msg_md_blockquote_table_visual",
+                            authorId = "agent-cindy",
+                            authorName = "Cindy",
+                            authorDescription = "Keeps visual testing release notes aligned.",
+                            authorKind = "agent",
+                            avatarLabel = "CI",
+                            timestampLabel = "07/28 19:15",
+                            messageType = "Chat",
+                            body =
+                                "Paragraph above the quoted table.\n\n" +
+                                    "> | Check | Result |\n" +
+                                    "> | --- | --- |\n" +
+                                    "> | Source | Ready |\n" +
+                                    "> | Android | Pending |\n\n" +
+                                    "Paragraph below the quoted table."
+                        )
+                    ),
+                members = emptyList(),
+                showComposer = false,
+                joined = true,
+                composer =
+                    KuiklyThreadComposerPayload(
+                        instanceId = resolvedInstanceId,
+                        enabled = false
+                    )
+            )
+        THREAD_MESSAGE_VISUAL_FIXTURE_MD_BLOCKQUOTE_LIST_TABLE ->
+            KuiklyThreadScreenPayload(
+                instanceId = resolvedInstanceId,
+                title = "#markdown",
+                subtitle = "Nested table intrinsic-measurement regression",
+                status = "content",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                streamChannelId = "channel-markdown",
+                sourceThreadId = "channel-markdown",
+                selectedTab = "chat",
+                showModeTabs = false,
+                showReplyActions = true,
+                alignOwnMessagesRight = false,
+                showMessageSaveAction = false,
+                showTaskOpenActions = false,
+                showTaskStatusActions = false,
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "msg_md_blockquote_list_table_visual",
+                            authorId = "agent-cindy",
+                            authorName = "Cindy",
+                            authorDescription = "Keeps visual testing release notes aligned.",
+                            authorKind = "agent",
+                            avatarLabel = "CI",
+                            timestampLabel = "07/28 20:40",
+                            messageType = "Chat",
+                            body =
+                                "Paragraph above the quoted list.\n\n" +
+                                    "> - Release status\n" +
+                                    ">   \n" +
+                                    ">   | Check | Result |\n" +
+                                    ">   | --- | --- |\n" +
+                                    ">   | Android | Pending |\n\n" +
+                                    "Paragraph below the quoted list."
                         )
                     ),
                 members = emptyList(),
