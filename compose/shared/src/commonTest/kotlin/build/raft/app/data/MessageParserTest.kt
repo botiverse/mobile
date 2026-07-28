@@ -101,6 +101,7 @@ class MessageParserTest {
         assertEquals(ThreadReplySummariesAuthority.Embedded, payload.replySummariesAuthority)
         assertEquals(0, wireMessage.replyCount)
         assertEquals(null, wireMessage.threadChannelId)
+        assertEquals(1_784_988_000_000L, wireMessage.createdAtEpochMillis)
         val summary = payload.threadSummaries.threads.single()
         assertEquals("parent-1", summary.parentMessageId?.value)
         assertEquals("thread-1", summary.threadChannelId?.value)

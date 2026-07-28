@@ -1611,7 +1611,11 @@ internal data class KuiklyThreadMessageItem(
     val deliveryState: String = ThreadMessageDeliverySent,
     val pendingSendContext: KuiklyThreadPendingSendContext? = null,
     val pendingSendErrorCode: String? = null,
-    val pendingSendErrorMessage: String? = null
+    val pendingSendErrorMessage: String? = null,
+    /** Canonical numeric creation time. Sorting must not parse the localized timestamp label. */
+    val createdAtEpochMillis: Long? = null,
+    /** Stable order for same-instant optimistic sends; null for canonical server messages. */
+    val localSendOrder: Long? = null,
 )
 
 internal const val ThreadMessageDeliverySending = "sending"
@@ -1672,6 +1676,7 @@ private fun buildThreadPendingSendMessage(
         avatarLabel = authorName.take(1).uppercase(),
         avatarWireValue = user?.avatarUrl,
         timestampLabel = timestampLabel,
+        createdAtEpochMillis = parseSlockTimestampEpochMillisOrNull(timestampLabel),
         randomId = context.randomId?.takeIf { it.isNotBlank() },
         body = context.body,
         // Phase 3 #3 #3 (#280): explicit nullable instead of \`context.streamChannelId ?: context.channelId\`
@@ -1693,6 +1698,7 @@ private fun buildThreadPendingSendMessage(
                 )
             },
         deliveryState = ThreadMessageDeliverySending,
+        localSendOrder = localMessageId.substringAfterLast('-').toLongOrNull(),
         pendingSendContext = context,
         pendingSendErrorCode = null,
         pendingSendErrorMessage = null

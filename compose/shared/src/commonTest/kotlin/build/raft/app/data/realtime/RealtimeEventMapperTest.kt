@@ -287,6 +287,7 @@ class RealtimeEventMapperTest {
         assertEquals("thread-1", message.channelId?.value)
         assertEquals(MessageType.System, message.messageType)
         assertEquals(MemberKind.System, message.author.kind)
+        assertEquals(1_781_312_400_000L, message.createdAtEpochMillis)
         assertEquals("✅ artin moved #252 \"Implement Thread timeline system-message rendering\" to Done", message.body)
     }
 

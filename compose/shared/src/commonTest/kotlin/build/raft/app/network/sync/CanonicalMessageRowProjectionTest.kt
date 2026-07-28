@@ -105,6 +105,7 @@ class CanonicalMessageRowProjectionTest {
         assertEquals("Ada", message.author.displayName)
         assertEquals("admin", message.author.serverRole)
         assertEquals("2026-07-12T04:00:00Z", message.timestampLabel)
+        assertEquals(1_783_828_800_000L, message.createdAtEpochMillis)
         assertEquals("hello", message.body)
         assertEquals(MessageType.Chat, message.messageType)
         assertEquals("r1", message.randomId)

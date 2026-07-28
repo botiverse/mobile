@@ -20,6 +20,7 @@ import build.raft.app.strictProjectionDiagnosticsLogger
 import build.raft.app.strictTaskStatusOrNull
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MessageType
+import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
@@ -296,6 +297,7 @@ private fun WireMessage.toMessageItem(
         avatarWireValue = null,
         senderMembershipStatus = senderMembershipStatus?.takeIf { it.isNotBlank() },
         timestampLabel = createdAt.orEmpty(),
+        createdAtEpochMillis = parseSlockTimestampEpochMillisOrNull(createdAt),
         seq = seq,
         messageType = resolvedMessageType.name,
         systemEventType = null,

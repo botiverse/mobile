@@ -4770,7 +4770,11 @@ class SharedThreadStoreTest {
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
             )
-        dataSource.cachePayloadForTest(contentPayload("cached body"))
+        val cachedPayload =
+            contentPayload("cached body").let { content ->
+                content.copy(messages = content.messages.map { message -> message.copy(seq = 10L) })
+            }
+        dataSource.cachePayloadForTest(cachedPayload)
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
@@ -9583,7 +9587,11 @@ class SharedThreadStoreTest {
     fun realtimeMessageNewRendersTaskLifecycleSystemRow() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val dataSource = canonicalThreadDataSource()
-        dataSource.cachePayloadForTest(contentPayload("cached body"))
+        val cachedPayload =
+            contentPayload("cached body").let { content ->
+                content.copy(messages = content.messages.map { message -> message.copy(seq = 43L) })
+            }
+        dataSource.cachePayloadForTest(cachedPayload)
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
