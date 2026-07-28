@@ -179,12 +179,16 @@ internal data class WireThreadLaunchPayload(
 }
 
 internal fun WireThreadLaunchPayload.toAuthPendingOpenRequest(
-    serverId: String
+    serverId: String,
+    accountPrincipalId: String,
 ): AuthPendingOpenRequest.Thread? {
     val resolvedServerId = serverId.trim().takeIf { it.isNotBlank() } ?: return null
+    val resolvedAccountPrincipalId =
+        accountPrincipalId.trim().takeIf { it.isNotBlank() } ?: return null
     if (!hasRouteIdentity()) return null
     return AuthPendingOpenRequest.Thread(
         serverId = resolvedServerId,
+        accountPrincipalId = resolvedAccountPrincipalId,
         surfaceKind = surfaceKind,
         channelKind = channelKind,
         threadId = threadId,
