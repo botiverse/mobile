@@ -6,6 +6,11 @@ import kotlin.test.assertEquals
 
 class SlockTopPageHeaderContractTest {
     @Test
+    fun canonicalHeaderStartPaddingKeepsBackActionsNearTheLeftEdge() {
+        assertEquals(18.dp, SlockTopPageHeaderContentStartPadding)
+    }
+
+    @Test
     fun canonicalFrameKeepsAllSurfacesAtSixtyTwoDpWithoutSafeArea() {
         assertEquals(
             SlockTopPageHeaderFrameMetrics(totalHeight = 62.dp, contentHeight = 60.dp),
