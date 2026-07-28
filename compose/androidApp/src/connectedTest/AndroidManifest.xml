@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <!--
+      Baseline-profile generation (task #25): androidx.benchmark.macro.junit4.BaselineProfileRule
+      wraps the generator in GrantPermissionRule.grant(WRITE_EXTERNAL_STORAGE). The grant fails
+      ("Failed to grant permissions") unless the permission is declared, so declare the legacy
+      storage permissions for the connectedTest carrier only. On API 30+ the actual profile output
+      uses the app's scoped external-files dir; these declarations only satisfy the rule's grant.
+      Never added to production variants.
+    -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+</manifest>
