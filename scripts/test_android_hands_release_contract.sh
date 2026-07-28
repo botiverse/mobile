@@ -237,6 +237,7 @@ ruby -e '
   end
   {
     "settings_mobile_reactions" => "リアクション",
+    "settings_mobile_saved_disabled" => "保存済み状態",
     "thread_error_task_status_unsupported" => "タスクステータス",
     "app_update_working" => "処理中",
   }.each do |key, canonical|
@@ -256,7 +257,10 @@ ruby -e '
     end
     raise "release notes use #{deprecated.inspect}; align to Web term #{canonical.inspect}: #{offenders.join(", ")}" unless offenders.empty?
   end
-  deprecated_ja_terms = { "タスク状態" => "タスクステータス" }
+  deprecated_ja_terms = {
+    "タスク状態" => "タスクステータス",
+    "保存済み表示" => "保存済み状態",
+  }
   deprecated_ja_terms.each do |deprecated, canonical|
     offenders = release_copy.each_with_object([]) do |(path, copy), paths|
       paths << path if copy.include?(deprecated)
