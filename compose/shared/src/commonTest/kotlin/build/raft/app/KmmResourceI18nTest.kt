@@ -54,6 +54,14 @@ class KmmResourceI18nTest {
     }
 
     @Test
+    fun translationTargetSystemLanguageStringResourceIsGenerated() {
+        assertTrue(
+            MR.strings.settings_translation_target_system_language.desc() is ResourceStringDesc,
+            "translation-target System language label must use the shared localized resource"
+        )
+    }
+
+    @Test
     fun userVisibleLoadingAndToastFallbackResourcesAreGenerated() {
         listOf(
             MR.strings.common_loading,

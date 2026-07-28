@@ -75,7 +75,7 @@ class SharedMessageTranslationStoreTest {
         authStore: SlockAuthSessionStore = FakeAuthSessionStore(),
         translationMode: () -> TranslationModePreference = { TranslationModePreference.Automatic },
         translationTargetLanguage: () -> String = { TranslationTargetLanguages.Browser },
-        fallbackLanguage: () -> String? = { null }
+        systemLanguage: () -> String? = { null }
     ): SharedMessageTranslationStore =
         SharedMessageTranslationStore(
             authStore = authStore,
@@ -83,7 +83,7 @@ class SharedMessageTranslationStoreTest {
             scope = scope,
             translationMode = translationMode,
             translationTargetLanguage = translationTargetLanguage,
-            fallbackLanguage = fallbackLanguage
+            systemLanguage = systemLanguage
         )
 
     @Test
@@ -104,28 +104,65 @@ class SharedMessageTranslationStoreTest {
     }
 
     @Test
-    fun ensureSettingsLoadedFallsBackToAppLanguageWhenNoPreference() = runBlocking {
+    fun systemTargetUsesCurrentDeviceLanguage() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api = FakeMessageTranslationApi()
-        val store = store(api, scope, fallbackLanguage = { "en" })
+        val store = store(api, scope, systemLanguage = { "ja-JP" })
 
         store.ensureSettingsLoaded()
 
-        assertEquals("en", store.state.value.settings.effectiveLanguage)
+        assertEquals("ja", store.state.value.settings.effectiveLanguage)
         scope.cancel()
     }
 
     @Test
-    fun supportedNonEnglishFallbackLanguageBecomesTranslationTarget() = runBlocking {
+    fun systemTargetIsIndependentFromExplicitAppLanguage() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api = FakeMessageTranslationApi()
-        val store = store(api, scope, fallbackLanguage = { "zh-Hans" })
+        // The store deliberately receives only the device-language provider;
+        // an explicit App Language preference is not part of this resolution path.
+        val store = store(api, scope, systemLanguage = { "zh-Hans" })
 
         store.ensureSettingsLoaded()
         store.requestAutoTranslations(listOf(candidate()))
 
         assertEquals("zh-cn", store.state.value.settings.effectiveLanguage)
         assertEquals("zh-cn", api.batchCalls.single().second)
+        scope.cancel()
+    }
+
+    @Test
+    fun systemTargetReadsRuntimeDeviceLanguageForEveryRequest() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api = FakeMessageTranslationApi()
+        var deviceLanguage = "en-US"
+        val store = store(api, scope, systemLanguage = { deviceLanguage })
+
+        store.ensureSettingsLoaded()
+        store.requestAutoTranslations(listOf(candidate(messageId = "m1")))
+        deviceLanguage = "ja-JP"
+        store.requestAutoTranslations(listOf(candidate(messageId = "m2")))
+
+        assertEquals(listOf("en", "ja"), api.batchCalls.map { it.second })
+        scope.cancel()
+    }
+
+    @Test
+    fun explicitTargetOverridesDeviceLanguage() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api = FakeMessageTranslationApi()
+        val store =
+            store(
+                api,
+                scope,
+                translationTargetLanguage = { "ko" },
+                systemLanguage = { "ja-JP" }
+            )
+
+        store.ensureSettingsLoaded()
+        store.requestAutoTranslations(listOf(candidate()))
+
+        assertEquals("ko", api.batchCalls.single().second)
         scope.cancel()
     }
 

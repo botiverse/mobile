@@ -72,7 +72,7 @@ class SettingsLanguageRegionPreferenceRequestTest {
                     detail = "",
                     options =
                         listOf(
-                            SettingsMobileSelectionOptionSnapshot("browser", "Browser language"),
+                            SettingsMobileSelectionOptionSnapshot("browser", "System language"),
                             SettingsMobileSelectionOptionSnapshot("en", "English"),
                             SettingsMobileSelectionOptionSnapshot("ja", "Japanese")
                         )

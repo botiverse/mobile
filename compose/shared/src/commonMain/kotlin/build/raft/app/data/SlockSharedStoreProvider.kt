@@ -1772,9 +1772,7 @@ internal class SlockSharedStoreProvider private constructor(
                         translationTargetLanguage = {
                             KeyValueChatLayoutPreferenceStore(sharedPreferenceStore).readTranslationTargetLanguageSync()
                         },
-                        fallbackLanguage = {
-                            KeyValueLocalePreferenceStore(sharedPreferenceStore).readLocaleSync().languageTag
-                        },
+                        systemLanguage = ::currentSystemLanguageTag,
                         diagnosticsLogger = sharedInfoLogger("SlockMessageTranslation", "shared_message_translation")
                     ),
                 threadMessageStore = SharedThreadMessageStore(),

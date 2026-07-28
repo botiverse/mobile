@@ -77,7 +77,7 @@ class SharedMessageTranslationStore internal constructor(
     private val scope: CoroutineScope,
     private val translationMode: () -> TranslationModePreference = { TranslationModePreference.Default },
     private val translationTargetLanguage: () -> String = { TranslationTargetLanguages.Browser },
-    private val fallbackLanguage: () -> String? = { null },
+    private val systemLanguage: () -> String? = { null },
     private val diagnosticsLogger: (String) -> Unit = {},
     private val pendingTimeoutMs: Long = MESSAGE_TRANSLATION_PENDING_TIMEOUT_MS,
 ) {
@@ -335,9 +335,10 @@ class SharedMessageTranslationStore internal constructor(
         code == 403 || code == 404 || code == 501
 
     private fun normalizedTargetLanguage(): String =
-        TranslationTargetLanguages.normalize(translationTargetLanguage())
-            ?: TranslationTargetLanguages.normalize(fallbackLanguage())
-            ?: TranslationTargetLanguages.Fallback
+        TranslationTargetLanguages.resolve(
+            targetLanguage = translationTargetLanguage(),
+            systemLanguage = systemLanguage()
+        )
 
     private suspend fun readSessionOrNull(): StoredAuthSession? =
         try {

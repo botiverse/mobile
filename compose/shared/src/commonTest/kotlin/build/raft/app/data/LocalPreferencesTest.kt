@@ -136,6 +136,19 @@ class LocalPreferencesTest {
     }
 
     @Test
+    fun legacyBrowserTranslationTargetRemainsSystemAfterUpgrade() = runBlocking {
+        val store = InMemorySlockKeyValueStore()
+        store.putString("settings.translationTargetLanguage", "browser")
+        val preferenceStore = KeyValueChatLayoutPreferenceStore(store)
+
+        val restored = preferenceStore.readTranslationTargetLanguage()
+
+        assertEquals(TranslationTargetLanguages.System, restored)
+        assertEquals("browser", store.getString("settings.translationTargetLanguage"))
+        assertEquals("ja", TranslationTargetLanguages.resolve(restored, "ja-JP"))
+    }
+
+    @Test
     fun chatLayoutRestoresExplicitSendKeyChoiceAfterDefaultChangesToNewLine() = runBlocking {
         val store = InMemorySlockKeyValueStore()
         store.putBoolean("chatLayout:composer_send_key_enabled", true)
