@@ -154,7 +154,7 @@ class ActivitySyncDomainTest {
 
         val noBaseline = core.ingestFrame(
             ACTIVITY_DOMAIN,
-            SyncFrame(scopeId, seq = 1, epoch = "1", event = frame(row("r1", "1"))),
+            SyncFrame(scopeId, seq = 1uL, epoch = "1", event = frame(row("r1", "1"))),
         )
         assertIs<SyncIngestOutcome.GapRepairRequested>(noBaseline)
         assertEquals(emptyList(), ids(core.activityState()))
@@ -164,7 +164,7 @@ class ActivitySyncDomainTest {
             ACTIVITY_DOMAIN,
             SyncSnapshot(
                 scopeId = scopeId,
-                watermark = 1,
+                watermark = 1uL,
                 epoch = "1",
                 state = snapshot("1", "1", listOf(row("r1", "1"))),
             ),
@@ -173,14 +173,14 @@ class ActivitySyncDomainTest {
 
         val applied = core.ingestFrame(
             ACTIVITY_DOMAIN,
-            SyncFrame(scopeId, seq = 2, epoch = "1", event = frame(row("r2", "1", "2026-07-28T12:00:00Z"))),
+            SyncFrame(scopeId, seq = 2uL, epoch = "1", event = frame(row("r2", "1", "2026-07-28T12:00:00Z"))),
         )
         assertIs<SyncIngestOutcome.Applied>(applied)
         assertEquals(listOf("r2", "r1"), ids(core.activityState()))
 
         val gap = core.ingestFrame(
             ACTIVITY_DOMAIN,
-            SyncFrame(scopeId, seq = 4, epoch = "1", event = frame(row("r3", "1", "2026-07-28T13:00:00Z"))),
+            SyncFrame(scopeId, seq = 4uL, epoch = "1", event = frame(row("r3", "1", "2026-07-28T13:00:00Z"))),
         )
         assertIs<SyncIngestOutcome.GapRepairRequested>(gap)
         assertEquals(listOf("r2", "r1"), ids(core.activityState()))

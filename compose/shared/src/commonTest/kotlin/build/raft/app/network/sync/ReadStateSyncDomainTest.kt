@@ -54,12 +54,12 @@ class ReadStateSyncDomainTest {
         val core = createSyncCore(SyncCoreConfig(domains = listOf(readStateSyncDomain())))
 
         assertEquals(
-            SyncIngestOutcome.MaxAdvanced("server-1:channel-1", 2),
+            SyncIngestOutcome.MaxAdvanced("server-1:channel-1", 2uL),
             core.ingestFrame(
                 READ_STATE_SYNC_DOMAIN,
                 SyncFrame(
                     scopeId = "server-1:channel-1",
-                    seq = 2,
+                    seq = 2uL,
                     event = ReadStateSyncEvent(readStateVersion = 2, maxReadSeq = 20)
                 )
             )
@@ -68,7 +68,7 @@ class ReadStateSyncDomainTest {
             READ_STATE_SYNC_DOMAIN,
             SyncFrame(
                 scopeId = "server-1:channel-1",
-                seq = 99,
+                seq = 99uL,
                 event = ReadStateSyncEvent(readStateVersion = 3, maxReadSeq = 10)
             )
         )

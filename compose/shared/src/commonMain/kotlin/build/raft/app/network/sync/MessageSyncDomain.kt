@@ -524,7 +524,7 @@ internal class MessageDomainSyncHost(
                 return@synchronized SyncIngestOutcome.DuplicateDropped(snapshot.scopeId, snapshot.watermark)
             }
             val activeWatermark =
-                scopeOwner.activeCore.scopeSyncState(MESSAGES_SYNC_DOMAIN, snapshot.scopeId)?.appliedSeq ?: 0L
+                scopeOwner.activeCore.scopeSyncState(MESSAGES_SYNC_DOMAIN, snapshot.scopeId)?.appliedSeq ?: 0uL
             val retainedTailWatermark = pending.postBeginFrames.maxOfOrNull { it.seq } ?: snapshot.watermark
             if (activeWatermark > snapshot.watermark && retainedTailWatermark < activeWatermark) {
                 return@synchronized SyncIngestOutcome.DuplicateDropped(snapshot.scopeId, snapshot.watermark)
@@ -590,10 +590,12 @@ internal class MessageDomainSyncHost(
 private fun SyncSnapshot.hasMatchingMessageCoverageEnvelope(): Boolean {
     val domainState = state as? MessageDomainState ?: return false
     val coverage = domainState.scopeCoverage[scopeId] ?: return false
-    if (coverage.scopeId != scopeId || coverage.epoch != epoch || coverage.remoteHighWaterSeq != watermark) return false
+    if (watermark > Long.MAX_VALUE.toULong()) return false
+    val legacyWatermark = watermark.toLong()
+    if (coverage.scopeId != scopeId || coverage.epoch != epoch || coverage.remoteHighWaterSeq != legacyWatermark) return false
     if (domainState.scopeCoverage.keys.any { it != scopeId }) return false
     if (domainState.channelMessages.keys.any { it != scopeId }) return false
-    return domainState.channelMessages[scopeId].orEmpty().all { it.channelId == scopeId && it.seq <= watermark }
+    return domainState.channelMessages[scopeId].orEmpty().all { it.channelId == scopeId && it.seq <= legacyWatermark }
 }
 
 private fun newMessageDomainSyncCore(): SyncCore =

@@ -85,9 +85,9 @@ internal class SyncCoreMessageShadowFoldLane(
                     if (updated) MessageDomainEvent.Updated(row, decoded.presentAggregates)
                     else MessageDomainEvent.New(row, decoded.presentAggregates)
                 domainHost.ingestFrame(
-                    SyncFrame(scopeId = channelId, seq = row.seq, epoch = epoch, event = domainEvent),
+                    SyncFrame(scopeId = channelId, seq = row.seq.toSyncSeq(), epoch = epoch, event = domainEvent),
                 )
-                val appliedSeq = domainHost.scopeSyncState(channelId)?.appliedSeq ?: row.seq
+                val appliedSeq = domainHost.scopeSyncState(channelId)?.appliedSeq?.toLongExact() ?: row.seq
                 val facts = domainHost.state(channelId)
                     .channelMessages
                     .get(channelId)

@@ -9,7 +9,7 @@ package build.raft.app.network.sync
 
 private class ScopeEntry(
     /** null = no baseline yet (pre-first-snapshot for contiguous scopes). */
-    var appliedSeq: Long?,
+    var appliedSeq: SyncSeq?,
     var epoch: SyncEpoch?,
     var repairPending: Boolean,
     var state: Any?,
@@ -51,7 +51,7 @@ private class SyncCoreImpl(config: SyncCoreConfig) : SyncCore {
         pending[requestKey(request)] = request
     }
 
-    private fun requestDifference(domainName: SyncDomainName, scopeId: SyncScopeId, sinceSeq: Long, epoch: SyncEpoch?) {
+    private fun requestDifference(domainName: SyncDomainName, scopeId: SyncScopeId, sinceSeq: SyncSeq, epoch: SyncEpoch?) {
         val request = SyncRequestDescription.Difference(domainName, scopeId, sinceSeq, epoch)
         pending[requestKey(request)] = request
     }
@@ -82,7 +82,7 @@ private class SyncCoreImpl(config: SyncCoreConfig) : SyncCore {
             if (domainConfig.density == SyncDensity.Contiguous) {
                 requestSnapshot(domain, frame.scopeId, SyncSnapshotReason.Initial)
                 entry.repairPending = true
-                return SyncIngestOutcome.GapRepairRequested(frame.scopeId, fromSeq = 0, toSeq = frame.seq)
+                return SyncIngestOutcome.GapRepairRequested(frame.scopeId, fromSeq = 0uL, toSeq = frame.seq)
             }
             entry.state = domainConfig.fold(entry.state, frame.event, SyncFoldFrame(frame.scopeId, frame.seq))
             entry.appliedSeq = frame.seq
@@ -102,7 +102,7 @@ private class SyncCoreImpl(config: SyncCoreConfig) : SyncCore {
         }
 
         // Contiguous density.
-        if (frame.seq == appliedSeq + 1) {
+        if (frame.seq == appliedSeq + 1uL) {
             entry.state = domainConfig.fold(entry.state, frame.event, SyncFoldFrame(frame.scopeId, frame.seq))
             entry.appliedSeq = frame.seq
             return SyncIngestOutcome.Applied(frame.scopeId, frame.seq)
@@ -110,10 +110,10 @@ private class SyncCoreImpl(config: SyncCoreConfig) : SyncCore {
 
         // Gap: stop-gate and request repair; the frame is NOT applied — the difference response
         // redelivers it in order (RFC 038 §4.1).
-        val fromSeq = appliedSeq + 1
+        val fromSeq = appliedSeq + 1uL
         requestDifference(domain, frame.scopeId, appliedSeq, entry.epoch)
         entry.repairPending = true
-        return SyncIngestOutcome.GapRepairRequested(frame.scopeId, fromSeq, toSeq = frame.seq - 1)
+        return SyncIngestOutcome.GapRepairRequested(frame.scopeId, fromSeq, toSeq = frame.seq - 1uL)
     }
 
     override fun ingestSnapshot(domain: SyncDomainName, snapshot: SyncSnapshot): SyncIngestOutcome {
@@ -170,7 +170,7 @@ private class SyncCoreImpl(config: SyncCoreConfig) : SyncCore {
             // the intermediate watermark.
             val watermark = entry.appliedSeq!!
             requestDifference(domain, response.scopeId, watermark, entry.epoch)
-            return SyncIngestOutcome.GapRepairRequested(response.scopeId, fromSeq = watermark + 1, toSeq = response.toSeq)
+            return SyncIngestOutcome.GapRepairRequested(response.scopeId, fromSeq = watermark + 1uL, toSeq = response.toSeq)
         }
 
         entry.repairPending = false
@@ -185,7 +185,7 @@ private class SyncCoreImpl(config: SyncCoreConfig) : SyncCore {
     override fun scopeSyncState(domain: SyncDomainName, scopeId: SyncScopeId): SyncScopeState? {
         val entry = scopes[domain]?.get(scopeId) ?: return null
         return SyncScopeState(
-            appliedSeq = entry.appliedSeq ?: 0,
+            appliedSeq = entry.appliedSeq ?: 0uL,
             epoch = entry.epoch,
             repairPending = entry.repairPending,
         )
