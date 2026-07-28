@@ -147,6 +147,35 @@ class ThreadComposerFocusDismissTest {
     }
 
     @Test
+    fun explicitInputIntentInvalidatesTheOutsideTokenArmedBeforeLongPressRecognition() {
+        val registry = SlockInputFocusOwnerRegistry()
+        val owner = Any()
+        registry.setFocused(owner, true) { Rect(0f, 0f, 10f, 10f) }
+        registry.beginPointerFocusClearSequence()
+        val longPressDownToken = requireNotNull(registry.outsideFocusToken(Offset(20f, 20f)))
+
+        registry.cancelPendingFocusDismissalForExplicitInputIntent()
+
+        assertEquals(false, registry.claimFocusClear(longPressDownToken))
+    }
+
+    @Test
+    fun ordinaryOutsideGestureStillDismissesAfterAnExplicitInputIntent() {
+        val registry = SlockInputFocusOwnerRegistry()
+        val owner = Any()
+        registry.setFocused(owner, true) { Rect(0f, 0f, 10f, 10f) }
+        registry.beginPointerFocusClearSequence()
+        val staleToken = requireNotNull(registry.outsideFocusToken(Offset(20f, 20f)))
+        registry.cancelPendingFocusDismissalForExplicitInputIntent()
+        assertEquals(false, registry.claimFocusClear(staleToken))
+
+        registry.beginPointerFocusClearSequence()
+        val nextOutsideGestureToken = requireNotNull(registry.outsideFocusToken(Offset(20f, 20f)))
+
+        assertEquals(true, registry.claimFocusClear(nextOutsideGestureToken))
+    }
+
+    @Test
     fun newerPointerDownInvalidatesAnOlderGesturesDelayedClear() {
         val registry = SlockInputFocusOwnerRegistry()
         val owner = Any()
