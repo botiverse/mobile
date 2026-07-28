@@ -17,7 +17,36 @@ plugins {
 val KEY_PAGE_NAME = "pageName"
 val generatedTmmResourceDir = layout.buildDirectory.dir("generated/tmm-res")
 val generatedTmmCommonSourceDir = layout.buildDirectory.dir("generated/tmm-res-common/commonMain")
+val generatedSlockDatetimeConfigDir = layout.buildDirectory.dir("generated/slock-datetime/commonMain/kotlin")
 val commonTmmResourceInputDir = layout.projectDirectory.dir("src/commonMain/resources/MR")
+val slockKuiklyBaseDatetimeEnabled =
+    providers.gradleProperty("slock.kuiklyBaseDatetime.enabled")
+        .orElse(providers.environmentVariable("SLOCK_KUIKLYBASE_DATETIME_ENABLED"))
+        .map { value ->
+            value.trim().lowercase() !in setOf("0", "false", "no", "off")
+        }
+        .orElse(true)
+val generateSlockDatetimeBuildConfig by tasks.registering {
+    val outputFile =
+        generatedSlockDatetimeConfigDir.map {
+            it.file("build/raft/app/data/SlockDatetimeBuildConfig.kt")
+        }
+    inputs.property("kuiklyBaseDatetimeEnabled", slockKuiklyBaseDatetimeEnabled)
+    outputs.file(outputFile)
+    doLast {
+        val enabled = slockKuiklyBaseDatetimeEnabled.get()
+        outputFile.get().asFile.apply {
+            parentFile.mkdirs()
+            writeText(
+                """
+                package build.raft.app.data
+
+                internal const val SlockKuiklyBaseDatetimeEnabledByBuild: Boolean = $enabled
+                """.trimIndent() + "\n"
+            )
+        }
+    }
+}
 val pinnedNetworkCurlCaBundle =
     layout.projectDirectory.file("src/commonMain/assets/network/cacert-2026-05-14.pem")
 val pinnedNetworkCurlCaSha256 =
@@ -85,6 +114,7 @@ kotlin {
             kotlin.srcDir(rootProject.file("../third_party/kuikly-compose-markdown/src/commonMain/kotlin"))
             kotlin.srcDir(rootProject.file("../third_party/markdown-parser/src/commonMain/kotlin"))
             kotlin.srcDir(generatedTmmCommonSourceDir.map { it.dir("src") })
+            kotlin.srcDir(generatedSlockDatetimeConfigDir)
             if (slockVisualFixturesEnabled) {
                 kotlin.srcDir("src/visualFixtures/kotlin")
             }
@@ -99,6 +129,7 @@ kotlin {
                 implementation("org.jetbrains.kotlinx:atomicfu:0.25.0")
                 implementation("app.cash.sqldelight:runtime:2.1.0")
                 implementation("com.tencent.kuiklybase:resource-core:0.1.0-raft.3")
+                implementation("build.raft.kuiklybase:datetime:0.1.0-raft.0")
                 // Unified network infra (task #12): all platforms' HTTP goes
                 // through NetworkKMM behind the SlockHttpExecutor seam.
                 implementation("com.tencent.kuiklybase:network:0.1.0-raft.29")
@@ -257,6 +288,10 @@ tasks.matching { it.name == "kspKotlinOhosArm64" }.configureEach {
 
 tasks.matching { it.name == "generateMRcommonMain" }.configureEach {
     dependsOn(prepareTmmCommonResources)
+}
+
+tasks.matching { it.name.startsWith("compile") || it.name.startsWith("ksp") }.configureEach {
+    dependsOn(generateSlockDatetimeBuildConfig)
 }
 
 tasks.matching { it.name == "generateMRandroidMain" || it.name == "generateMRohosArm64Main" }.configureEach {

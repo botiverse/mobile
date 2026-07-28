@@ -2994,32 +2994,6 @@ private fun HomeSnapshot.unmutedUnreadTotal(): Int =
         .filterNot { it.activityMuted }
         .sumOf { it.unreadCount.coerceAtLeast(0) }
 
-/**
- * #83: KMP-friendly wall-clock source.
- *
- * `kotlin.time.Clock.System` (used in the first cut of #81) is not
- * available on the OHOS K/N target we ship (`2.0.21-KBA-010`).
- * Instead of pulling `kotlinx-datetime` as a new dep, we use a tiny
- * `expect/actual` so each platform can use its own JVM/host
- * `currentTimeMillis`.
- *
- * The `expect` lives in commonMain; the `actual`s are in
- * `androidMain` (uses `System.currentTimeMillis` from the JVM
- * runtime) and `ohosArm64Main` (uses platform-specific
- * `kotlin.system.getTimeMillis`).
- *
- * `kotlin.system.getTimeMillis()` was the simpler alternative
- * explored first; it does NOT work because
- * `kotlin-stdlib-2.0.21-KBA-010` doesn't ship a commonMain
- * implementation (only platform-specific ones), so commonMain
- * can't resolve it. Hence the explicit `expect/actual`.
- *
- * For unit tests, callers inject a fixed clock via
- * [SharedHomeStore]'s `nowMillis` constructor param; the `expect` /
- * `actual` pair is only consulted when no test clock is provided.
- */
-internal expect fun defaultNowMillis(): Long
-
 private fun HomeSnapshot.findHomeConversation(conversationId: String): HomeConversationRow? =
     (channels + directMessages).firstOrNull { it.matchesHomeConversation(conversationId) }
 
