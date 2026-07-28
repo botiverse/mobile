@@ -2613,6 +2613,66 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun resolveOpenRequestKeepsMismatchedActivityPendingWithoutTypedSourceParentKind() {
+        val directory =
+            slockConversationDirectoryStateFromProjections(
+                listOf(
+                    SharedConversationDirectoryProjection(
+                        serverId = "server-local",
+                        canonicalChannelId = "joint-storage-parent",
+                        aliases = setOf("joint-storage-parent", "joint-local-parent"),
+                        conversationKind = ConversationKind.Joint,
+                        surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                        channelKind = "joint",
+                        title = "joint-storage-parent"
+                    ),
+                    SharedConversationDirectoryProjection(
+                        serverId = "server-local",
+                        canonicalChannelId = "reply-stream",
+                        aliases = setOf("reply-stream"),
+                        conversationKind = ConversationKind.Thread,
+                        surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                        channelKind = "thread",
+                        title = "joint-storage-parent",
+                        parentChannelId = "joint-storage-parent",
+                        parentMessageId = "parent-message"
+                    )
+                )
+            )
+        val logs = mutableListOf<String>()
+        val source =
+            InboxItem(
+                key = "thread:reply-stream",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("reply-stream"),
+                channelName = "member-visible-joint",
+                threadChannelId = ChannelId("reply-stream"),
+                parentChannelId = ChannelId("joint-local-parent"),
+                parentChannelName = "member-visible-joint",
+                // The mismatched directory must not supply this missing source type.
+                parentChannelKind = null,
+                parentMessageId = MessageId("parent-message"),
+                latestActivityMessageId = MessageId("reply-1")
+            ).toConversationOpenSourceMessageIdentity()
+
+        val resolution =
+            resolveOpenRequest(
+                serverId = "server-local",
+                sourceMessageIdentity = source,
+                conversationDirectory = directory,
+                diagnosticsLogger = logs::add
+            )
+
+        val pending = assertNotNull(resolution as? ConversationOpenResolution.Pending)
+        assertEquals("thread_parent_unresolved", pending.reason)
+        assertEquals("joint-local-parent", pending.sourceMessageIdentity.parentChannelId)
+        assertNull(pending.sourceMessageIdentity.parentConversationKind)
+        val log = assertNotNull(logs.firstOrNull())
+        assertTrue(log.contains("activityThreadProjectionMismatch=true"), log)
+        assertTrue(log.contains("pending:thread_parent_unresolved"), log)
+    }
+
+    @Test
     fun resolveOpenRequestRefusesActivityRowWhoseOwnTypedJointParentIsInternalStorage() {
         val unsafe =
             InboxItem(

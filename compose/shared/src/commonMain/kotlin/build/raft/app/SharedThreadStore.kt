@@ -4637,9 +4637,12 @@ internal class SharedThreadStore(
                 } else {
                     routeContextPayload.copy(status = "loading", errorCode = null)
                 }).let { candidate ->
-                rememberedAccessFailure?.let { failure -> candidate.asRefreshFailed(failure.code) }
-                    ?: candidate
-                }
+                rememberedAccessFailure?.let { failure ->
+                    candidate
+                        .asRefreshFailed(failure.code)
+                        .withTerminalAccessWriteAuthorityClosed(ThreadAccessResolution.Error)
+                } ?: candidate
+            }
         diagnosticsLogger?.invoke(
             "thread_visible_payload threadId=${threadId.orEmpty()} status=${visiblePayload.status} " +
                 "messages=${visiblePayload.messages.size} " + visiblePayload.originDiagnostics()

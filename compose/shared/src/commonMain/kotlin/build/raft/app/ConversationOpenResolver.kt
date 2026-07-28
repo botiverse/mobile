@@ -157,7 +157,9 @@ internal fun resolveOpenRequest(
             // A directory hit may enrich an exact match, but an alias/cached
             // projection must never rewrite the row's local parent identity.
             // Rebuild only from the typed source (or remain Pending below).
-            sourceMessageIdentity.toThreadLaunchConversationIdentity(authoritativeParentKind)
+            sourceMessageIdentity.toThreadLaunchConversationIdentity(
+                sourceMessageIdentity.parentConversationKind
+            )
         } else {
             projection?.toThreadLaunchConversationIdentity(conversationDirectory)
                 ?: sourceMessageIdentity.toThreadLaunchConversationIdentity(authoritativeParentKind)
