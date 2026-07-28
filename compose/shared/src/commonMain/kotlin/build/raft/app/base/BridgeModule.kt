@@ -349,6 +349,7 @@ internal class BridgeModule : Module() {
         owner: AttachmentOwnerLease,
         mimeType: String? = null,
         downloadId: String? = null,
+        requirePublicDownload: Boolean = false,
         onProgress: ((BridgeAttachmentDownloadProgress) -> Unit)? = null
     ): JSONObject? =
         suspendCancellableCoroutine { continuation ->
@@ -360,6 +361,7 @@ internal class BridgeModule : Module() {
             methodArgs.put("fileName", fileName)
             methodArgs.put("trackProgress", onProgress != null)
             methodArgs.put("downloadId", resolvedDownloadId)
+            methodArgs.put("requirePublicDownload", requirePublicDownload)
             methodArgs.putAttachmentOwner(owner)
             mimeType?.takeIf { it.isNotBlank() }?.let { methodArgs.put("mimeType", it) }
             var callbackRef: CallbackRef? = null

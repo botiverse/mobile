@@ -67,6 +67,47 @@ class AndroidAttachmentOpenCoordinatorTest {
     }
 
     @Test
+    fun requiredPublicDownloadMissingReturnsWithoutPrivateFallbackOrLaunch() {
+        val harness = CoordinatorHarness()
+
+        val result = harness.open(AndroidAttachmentOpenRequirement.PublicDownloadOnly)
+
+        assertEquals(AndroidAttachmentOpenStatus.Missing, result.status)
+        assertTrue(result.retryable)
+        assertEquals(1, harness.resolveCount)
+        assertEquals(1, harness.lockCount)
+        assertEquals(0, harness.recoveryCount)
+        assertEquals(0, harness.materializeCount)
+        assertEquals(0, harness.buildCount)
+        assertEquals(0, harness.launchCount)
+        assertEquals(
+            listOf(
+                "owner:0",
+                "lock-enter:1",
+                "owner:1",
+                "resolve:1",
+                "lock-exit:0"
+            ),
+            harness.events
+        )
+    }
+
+    @Test
+    fun requiredPublicDownloadPresentStillLaunchesExactPublicSourceOnce() {
+        val harness = CoordinatorHarness()
+        harness.resolvePublic = { harness.publicSource }
+
+        val result = harness.open(AndroidAttachmentOpenRequirement.PublicDownloadOnly)
+
+        assertEquals(AndroidAttachmentOpenStatus.Opened, result.status)
+        assertEquals(AndroidAttachmentOpenSourceKind.PublicDownload, result.source)
+        assertEquals(1, harness.resolveCount)
+        assertEquals(1, harness.launchCount)
+        assertEquals(0, harness.recoveryCount)
+        assertEquals(0, harness.materializeCount)
+    }
+
+    @Test
     fun concurrentExplicitSaveWinsAfterPrivateMaterialization() {
         val harness = CoordinatorHarness()
         var resolution = 0
@@ -281,7 +322,9 @@ class AndroidAttachmentOpenCoordinatorTest {
         var launchCount = 0
         var failureCount = 0
 
-        fun open(): AndroidAttachmentOpenResult = coordinator().open(identity)
+        fun open(
+            requirement: AndroidAttachmentOpenRequirement = AndroidAttachmentOpenRequirement.PublicOrPrivate
+        ): AndroidAttachmentOpenResult = coordinator().open(identity, requirement)
 
         private fun coordinator(): AndroidAttachmentOpenCoordinator<String> =
             AndroidAttachmentOpenCoordinator(

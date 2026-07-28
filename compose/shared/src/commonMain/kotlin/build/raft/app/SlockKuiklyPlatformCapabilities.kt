@@ -38,6 +38,10 @@ internal expect fun slockPlatformSupportsPushPreviewPrivacySetting(): Boolean
 // add-only, and OHOS PhotoAccessHelper. Shared exposes one typed sent-image action/result contract.
 internal expect fun slockPlatformSupportsSaveImageToPhotos(): Boolean
 
+// Android exposes durable public Downloads through an exact journal + MediaStore readback.
+// iOS/OHOS keep their existing export behavior until they have an equivalent durable authority.
+internal expect fun slockPlatformSupportsPublicAttachmentDownloadReadback(): Boolean
+
 // task #90: each platform is a separate Hands app with its own release
 // stream, so the release-notes slug must be injected per platform (like the
 // build version), not hardcoded in commonMain. These MUST stay in sync with

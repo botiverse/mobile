@@ -7,6 +7,7 @@ import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.unit.IntSize
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.core.views.PlayState
+import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.tmm.kmmresource.resource.desc.desc
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -40,6 +41,21 @@ class SlockFilePreviewDownloadStatusTest {
             ended = "Ended",
             playbackFailed = "Playback failed",
             ready = "Ready"
+        )
+
+    private fun publicDownloadQuery(attachmentId: String, principalPrefix: String) =
+        SlockFilePreviewPublicDownloadQuery(
+            attachmentId = attachmentId,
+            fileName = "report.pdf",
+            owner =
+                AttachmentOwnerLease(
+                    shellInstanceId = "shell-$principalPrefix",
+                    scopeId = "scope-$principalPrefix",
+                    authEpoch = 1L,
+                    principalKey = AttachmentPrincipalKey(principalPrefix.repeat(64)),
+                    generation = 1L
+                ),
+            mimeType = "application/pdf"
         )
 
     @Test
@@ -1101,11 +1117,11 @@ class SlockFilePreviewDownloadStatusTest {
     }
 
     @Test
-    fun primaryActionShowsDownloadBeforeCacheExists() {
+    fun primaryActionShowsDownloadWhenPublicDownloadIsMissing() {
         val label =
             slockFilePreviewPrimaryActionLabel(
                 SlockFilePreviewPayload(externalFileName = "report.pdf"),
-                cached = false,
+                downloadState = SlockFilePreviewDownloadUiState.NotDownloaded,
                 terms = englishActionTerms
             )
 
@@ -1113,11 +1129,11 @@ class SlockFilePreviewDownloadStatusTest {
     }
 
     @Test
-    fun primaryActionShowsOpenWhenCached() {
+    fun primaryActionShowsOpenWhenExactPublicDownloadIsPresent() {
         val label =
             slockFilePreviewPrimaryActionLabel(
                 SlockFilePreviewPayload(externalFileName = "report.pdf"),
-                cached = true,
+                downloadState = SlockFilePreviewDownloadUiState.Downloaded,
                 terms = englishActionTerms
             )
 
@@ -1125,14 +1141,14 @@ class SlockFilePreviewDownloadStatusTest {
     }
 
     @Test
-    fun primaryActionShowsInstallForCachedApk() {
+    fun primaryActionShowsInstallForDownloadedApk() {
         val label =
             slockFilePreviewPrimaryActionLabel(
                 SlockFilePreviewPayload(
                     externalFileName = "raft.apk",
                     externalMimeType = "application/vnd.android.package-archive"
                 ),
-                cached = true,
+                downloadState = SlockFilePreviewDownloadUiState.Downloaded,
                 terms = englishActionTerms
             )
 
@@ -1144,7 +1160,7 @@ class SlockFilePreviewDownloadStatusTest {
         val label =
             slockFilePreviewOverflowActionLabel(
                 SlockFilePreviewPayload(externalFileName = "report.pdf"),
-                cached = false,
+                downloadState = SlockFilePreviewDownloadUiState.NotDownloaded,
                 terms = englishActionTerms
             )
 
@@ -1165,7 +1181,7 @@ class SlockFilePreviewDownloadStatusTest {
             "下载",
             slockFilePreviewPrimaryActionLabel(
                 SlockFilePreviewPayload(externalFileName = "report.pdf"),
-                cached = false,
+                downloadState = SlockFilePreviewDownloadUiState.NotDownloaded,
                 terms = terms
             )
         )
@@ -1176,7 +1192,7 @@ class SlockFilePreviewDownloadStatusTest {
                     externalFileName = "raft.apk",
                     externalMimeType = "application/vnd.android.package-archive"
                 ),
-                cached = true,
+                downloadState = SlockFilePreviewDownloadUiState.Downloaded,
                 terms = terms
             )
         )
@@ -1184,22 +1200,199 @@ class SlockFilePreviewDownloadStatusTest {
             "打开方式…",
             slockFilePreviewOverflowActionLabel(
                 SlockFilePreviewPayload(externalFileName = "report.pdf"),
-                cached = false,
+                downloadState = SlockFilePreviewDownloadUiState.NotDownloaded,
                 terms = terms
             )
         )
     }
 
     @Test
-    fun primaryActionUsesExplicitSaveUntilPrivateCacheExists() {
-        assertEquals(SlockFilePreviewPrimaryAction.Save, slockFilePreviewPrimaryAction(cached = false))
-        assertEquals(SlockFilePreviewPrimaryAction.Open, slockFilePreviewPrimaryAction(cached = true))
+    fun primaryActionUsesPublicDownloadAuthorityAndSuppressesUnresolvedPreflight() {
+        assertNull(slockFilePreviewPrimaryAction(downloadState = null))
+        assertEquals(
+            SlockFilePreviewPrimaryAction.Save,
+            slockFilePreviewPrimaryAction(SlockFilePreviewDownloadUiState.NotDownloaded)
+        )
+        assertEquals(
+            SlockFilePreviewPrimaryAction.Open,
+            slockFilePreviewPrimaryAction(SlockFilePreviewDownloadUiState.Downloaded)
+        )
+        assertNull(slockFilePreviewPrimaryAction(SlockFilePreviewDownloadUiState.Downloading))
     }
 
     @Test
-    fun cachedOpenDoesNotTrackDownloadProgress() {
-        assertEquals(false, slockFilePreviewShouldTrackOpenProgress(cached = true))
-        assertEquals(true, slockFilePreviewShouldTrackOpenProgress(cached = false))
+    fun downloadedOpenRequiresPublicAuthorityWhileMissingOpenMayMaterialize() {
+        assertEquals(
+            SlockFilePreviewExternalOpenPolicy(
+                requirePublicDownload = true,
+                trackProgress = false
+            ),
+            slockFilePreviewExternalOpenPolicy(
+                SlockFilePreviewPublicDownloadState.Downloaded(
+                    generation = 7L,
+                    sizeBytes = 25L,
+                    persistedUri = "content://downloads/public-7"
+                )
+            )
+        )
+        assertEquals(
+            SlockFilePreviewExternalOpenPolicy(
+                requirePublicDownload = false,
+                trackProgress = true
+            ),
+            slockFilePreviewExternalOpenPolicy(SlockFilePreviewPublicDownloadState.NotDownloaded)
+        )
+        assertNull(slockFilePreviewExternalOpenPolicy(SlockFilePreviewPublicDownloadState.Checking))
+    }
+
+    @Test
+    fun preflightRequiresCompleteExactPublicAuthorityBeforeClaimingDownloaded() {
+        val present =
+            JSONObject()
+                .put("status", "ok")
+                .put("cached", true)
+                .put("recordVersion", 7L)
+                .put("sizeBytes", 25L)
+                .put("uri", "content://downloads/public-7")
+
+        assertEquals(
+            SlockFilePreviewPublicDownloadObservation(
+                state =
+                    SlockFilePreviewPublicDownloadState.Downloaded(
+                        generation = 7L,
+                        sizeBytes = 25L,
+                        persistedUri = "content://downloads/public-7"
+                    )
+            ),
+            slockFilePreviewPublicDownloadObservation(present)
+        )
+
+        listOf(
+            JSONObject().put("status", "ok").put("cached", false),
+            JSONObject().put("status", "storage_failed").put("cached", true),
+            JSONObject().put("status", "ok").put("cached", true).put("sizeBytes", 25L)
+                .put("uri", "content://downloads/public-7"),
+            JSONObject().put("status", "ok").put("cached", true).put("recordVersion", 7L)
+                .put("uri", "content://downloads/public-7"),
+            JSONObject().put("status", "ok").put("cached", true).put("recordVersion", 7L)
+                .put("sizeBytes", 25L),
+            JSONObject().put("status", "ok").put("cached", true).put("recordVersion", 7L)
+                .put("sizeBytes", 25L).put("uri", "file:///Download/Raft/report.pdf"),
+            null
+        ).forEach { response ->
+            assertEquals(
+                SlockFilePreviewPublicDownloadState.NotDownloaded,
+                slockFilePreviewPublicDownloadObservation(response).state
+            )
+        }
+    }
+
+    @Test
+    fun unresolvedPreflightIsNotRenderedAsFalseNotDownloadedState() {
+        assertNull(
+            slockFilePreviewDownloadUiState(
+                publicDownloadState = SlockFilePreviewPublicDownloadState.Checking,
+                downloadStatus = "idle"
+            )
+        )
+        assertEquals(
+            SlockFilePreviewDownloadUiState.NotDownloaded,
+            slockFilePreviewDownloadUiState(
+                publicDownloadState = SlockFilePreviewPublicDownloadState.NotDownloaded,
+                downloadStatus = "idle"
+            )
+        )
+        assertEquals(
+            SlockFilePreviewDownloadUiState.Downloading,
+            slockFilePreviewDownloadUiState(
+                publicDownloadState = SlockFilePreviewPublicDownloadState.NotDownloaded,
+                downloadStatus = "downloading"
+            )
+        )
+        assertEquals(
+            SlockFilePreviewDownloadUiState.Downloaded,
+            slockFilePreviewDownloadUiState(
+                publicDownloadState =
+                    SlockFilePreviewPublicDownloadState.Downloaded(
+                        generation = 7L,
+                        sizeBytes = 25L,
+                        persistedUri = "content://downloads/public-7"
+                    ),
+                downloadStatus = "idle"
+            )
+        )
+    }
+
+    @Test
+    fun stalePreflightForPreviousAttachmentOrPrincipalCannotCommit() {
+        val first = publicDownloadQuery("attachment-1", "a")
+        val second = publicDownloadQuery("attachment-2", "b")
+        val observation =
+            SlockFilePreviewPublicDownloadObservation(
+                SlockFilePreviewPublicDownloadState.Downloaded(
+                    generation = 7L,
+                    sizeBytes = 25L,
+                    persistedUri = "content://downloads/public-7"
+                )
+            )
+
+        assertNull(
+            slockFilePreviewCommitPublicDownloadObservation(
+                request = first,
+                current = second,
+                observation = observation
+            )
+        )
+        assertEquals(
+            SlockFilePreviewPublicDownloadState.Checking,
+            slockFilePreviewVisiblePublicDownloadState(
+                current = second,
+                observedFor = first,
+                observedState = observation.state
+            )
+        )
+        assertEquals(
+            observation,
+            slockFilePreviewCommitPublicDownloadObservation(
+                request = second,
+                current = second,
+                observation = observation
+            )
+        )
+    }
+
+    @Test
+    fun clickTimeMissingOrUnverifiablePublicFileDowngradesImmediately() {
+        val downloaded =
+            SlockFilePreviewPublicDownloadState.Downloaded(
+                generation = 7L,
+                sizeBytes = 25L,
+                persistedUri = "content://downloads/public-7"
+            )
+
+        listOf("missing", "storage_failed").forEach { terminal ->
+            val downgraded =
+                slockFilePreviewPublicDownloadStateAfterOpen(
+                    current = downloaded,
+                    result = JSONObject().put("status", terminal).put("cached", false)
+                )
+            assertEquals(
+                SlockFilePreviewPublicDownloadState.NotDownloaded,
+                downgraded
+            )
+            assertEquals(
+                SlockFilePreviewDownloadUiState.NotDownloaded,
+                slockFilePreviewDownloadUiState(
+                    publicDownloadState = downgraded,
+                    downloadStatus = "failed"
+                )
+            )
+            assertEquals(
+                SlockFilePreviewPrimaryAction.Save,
+                slockFilePreviewPrimaryAction(SlockFilePreviewDownloadUiState.NotDownloaded)
+            )
+            assertTrue(slockFilePreviewCanStartExternalOperation("failed"))
+        }
     }
 
     @Test
