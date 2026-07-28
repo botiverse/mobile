@@ -1,6 +1,9 @@
 package build.raft.app
 
 import build.raft.app.data.HomeSnapshot
+import build.raft.app.data.AuthAuthorityChangedMessage
+import build.raft.app.data.AuthSessionEvent
+import build.raft.app.data.AuthSessionTerminalSnapshot
 import build.raft.app.data.HomeDirectMessageRow
 import build.raft.app.data.InboxItem
 import build.raft.app.data.InboxSnapshot
@@ -10,6 +13,7 @@ import build.raft.app.data.SharedAuthGateState
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedHomeState
 import build.raft.app.data.SlockShellStoreScope
+import build.raft.app.data.SlockAuthSessionTerminalSource
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthUser
@@ -31,6 +35,9 @@ import build.raft.app.model.ServerSummary
 import build.raft.app.model.ThreadId
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -3871,6 +3878,217 @@ class SlockAppShellTest {
         assertFalse(serverGateShouldPinSignOut(AuthGateMessage.Dynamic("Could not load servers.")))
     }
 
+    @Test
+    fun authLossEffectSkipsAStaleAuthorityAfterSuccessorLogin() {
+        val captured =
+            StoredAuthSession(
+                user = StoredAuthUser(id = "user-a", email = "a@example.com"),
+                accessToken = "access-a",
+                refreshToken = "refresh-a",
+            )
+        val successor =
+            captured.copy(
+                user = StoredAuthUser(id = "user-b", email = "b@example.com"),
+                accessToken = "access-b",
+                refreshToken = "refresh-b",
+            )
+
+        assertTrue(appShellAuthLossEffectShouldApply(captured, null))
+        assertTrue(appShellAuthLossEffectShouldApply(captured, captured.copy(selectedServerId = "server-2")))
+        assertFalse(appShellAuthLossEffectShouldApply(captured, successor))
+        assertFalse(appShellAuthLossEffectShouldApply(null, successor))
+    }
+
+    @Test
+    fun authLossTerminalRevisionRejectsSuccessorInstalledAfterSnapshotBeforeEffect() = runBlocking {
+        val terminalSource = AppShellTerminalRevisionTestSource()
+        val admitted = terminalSource.readAuthSessionTerminalSnapshot()
+        val captured =
+            StoredAuthSession(
+                user = StoredAuthUser(id = "user-a", email = "a@example.com"),
+                accessToken = "access-a",
+                refreshToken = "refresh-a",
+            )
+        var resetCount = 0
+        var signedOutCount = 0
+
+        terminalSource.installSuccessor()
+        val committedGeneration =
+            appShellRunIfAuthSessionTerminalOrAuthorityRevision(
+                terminalSource = terminalSource,
+                expectedGeneration = admitted.generation,
+                expectedSession = captured,
+            ) {
+                resetCount += 1
+                signedOutCount += 1
+            }
+
+        assertNull(committedGeneration)
+        assertEquals(0, resetCount)
+        assertEquals(0, signedOutCount)
+        assertNotNull(terminalSource.readAuthSessionTerminalSnapshot().session)
+        Unit
+    }
+
+    @Test
+    fun authLossTerminalRevisionClearsExactCapturedAuthorityAfterEarlierClearFailure() = runBlocking {
+        val captured =
+            StoredAuthSession(
+                user = StoredAuthUser(id = "user-a", email = "a@example.com"),
+                accessToken = "access-a",
+                refreshToken = "refresh-a",
+            )
+        val terminalSource = AppShellTerminalRevisionTestSource(initialSession = captured)
+        val admitted = terminalSource.readAuthSessionTerminalSnapshot()
+        var resetCount = 0
+        var signedOutCount = 0
+
+        val committedGeneration =
+            appShellRunIfAuthSessionTerminalOrAuthorityRevision(
+                terminalSource = terminalSource,
+                expectedGeneration = admitted.generation,
+                expectedSession = captured,
+            ) {
+                resetCount += 1
+                signedOutCount += 1
+            }
+
+        assertNotNull(committedGeneration)
+        assertEquals(1, resetCount)
+        assertEquals(1, signedOutCount)
+        assertNull(terminalSource.readAuthSessionTerminalSnapshot().session)
+    }
+
+    @Test
+    fun authLossTerminalCommitReturnsItsOwnGenerationWhenSuccessorLandsBeforeReturn() = runBlocking {
+        val captured =
+            StoredAuthSession(
+                user = StoredAuthUser(id = "user-a", email = "a@example.com"),
+                accessToken = "access-a",
+                refreshToken = "refresh-a",
+            )
+        val terminalSource = AppShellTerminalRevisionTestSource(initialSession = captured)
+        val admitted = terminalSource.readAuthSessionTerminalSnapshot()
+        terminalSource.installSuccessorBeforeNextCommitReturns()
+        var firstTerminalEffectCount = 0
+
+        val acceptedGeneration =
+            appShellRunIfAuthSessionTerminalOrAuthorityRevision(
+                terminalSource = terminalSource,
+                expectedGeneration = admitted.generation,
+                expectedSession = captured,
+            ) {
+                firstTerminalEffectCount += 1
+            }
+
+        val successorSnapshot = terminalSource.readAuthSessionTerminalSnapshot()
+        val successor = assertNotNull(successorSnapshot.session)
+        assertNotNull(acceptedGeneration)
+        assertEquals(admitted.generation + 1, acceptedGeneration)
+        assertEquals(admitted.generation + 2, successorSnapshot.generation)
+        assertEquals(1, firstTerminalEffectCount)
+
+        var successorTerminalEffectCount = 0
+        val successorAcceptedGeneration =
+            appShellRunIfAuthSessionTerminalOrAuthorityRevision(
+                terminalSource = terminalSource,
+                expectedGeneration = successorSnapshot.generation,
+                expectedSession = successor,
+            ) {
+                successorTerminalEffectCount += 1
+            }
+
+        assertNotNull(successorAcceptedGeneration)
+        assertEquals(successorSnapshot.generation + 1, successorAcceptedGeneration)
+        assertEquals(1, successorTerminalEffectCount)
+        assertNull(terminalSource.readAuthSessionTerminalSnapshot().session)
+    }
+
+    @Test
+    fun createServerAuthorityDriftUsesLocalizedStaticMessage() {
+        assertTrue(
+            serverGateActionFailureMessage("__create__", AuthAuthorityChangedMessage) is
+                AuthGateMessage.Static
+        )
+        assertTrue(
+            serverGateActionFailureMessage("__create__", "network_timeout") is
+                AuthGateMessage.Dynamic
+        )
+        assertTrue(
+            serverGateActionFailureMessage("server-1", AuthAuthorityChangedMessage) is
+                AuthGateMessage.Dynamic
+        )
+    }
+
+}
+
+private class AppShellTerminalRevisionTestSource(
+    initialSession: StoredAuthSession? = null,
+) : SlockAuthSessionTerminalSource {
+    private val events = MutableSharedFlow<AuthSessionEvent>(extraBufferCapacity = 1)
+    private var generation = 1L
+    private var session: StoredAuthSession? = initialSession
+    private var installSuccessorBeforeCommitReturns = false
+
+    override val authSessionTerminalEvents: SharedFlow<AuthSessionEvent> = events
+
+    override suspend fun readAuthSessionTerminalSnapshot(): AuthSessionTerminalSnapshot =
+        AuthSessionTerminalSnapshot(generation = generation, session = session)
+
+    override suspend fun runIfAuthSessionTerminalRevision(
+        expectedGeneration: Long,
+        action: () -> Unit,
+    ): Boolean {
+        if (generation != expectedGeneration || session != null) return false
+        action()
+        return true
+    }
+
+    override suspend fun runIfAuthSessionTerminalOrAuthorityRevision(
+        expectedGeneration: Long,
+        expectedSession: StoredAuthSession?,
+        action: () -> Unit,
+    ): Long? {
+        val current = session
+        val committedGeneration =
+            if (current == null) {
+                if (generation != expectedGeneration) return null
+                action()
+                generation
+            } else {
+                if (
+                    expectedSession == null ||
+                    current.user.id != expectedSession.user.id ||
+                    current.accessToken != expectedSession.accessToken ||
+                    current.refreshToken != expectedSession.refreshToken
+                ) {
+                    return null
+                }
+                session = null
+                generation += 1
+                action()
+                generation
+            }
+        if (installSuccessorBeforeCommitReturns) {
+            installSuccessorBeforeCommitReturns = false
+            installSuccessor()
+        }
+        return committedGeneration
+    }
+
+    fun installSuccessorBeforeNextCommitReturns() {
+        installSuccessorBeforeCommitReturns = true
+    }
+
+    fun installSuccessor() {
+        generation += 1
+        session =
+            StoredAuthSession(
+                user = StoredAuthUser(id = "user-b", email = "b@example.com"),
+                accessToken = "access-b",
+                refreshToken = "refresh-b",
+            )
+    }
 }
 
 private fun appShellForegroundTestMessage(

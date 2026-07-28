@@ -1337,8 +1337,14 @@ internal class SlockSharedStoreProvider private constructor(
             val authLossFunnel =
                 SharedAuthLossFunnel(
                     restoreSession = { authDataSource.restoreSession() },
-                    clearSession = { reason, clearSource ->
-                        authStore.clearSession(reason = reason, source = clearSource)
+                    clearSessionIfMatches = { session, reason, clearSource ->
+                        authStore.clearSessionIfMatchesOutcome(
+                            expectedAccountId = session.user.id,
+                            expectedAccessToken = session.accessToken,
+                            expectedRefreshToken = session.refreshToken,
+                            reason = reason,
+                            source = clearSource,
+                        )
                     },
                     scope = CoroutineScope(SupervisorJob()),
                     diagnosticsLogger = sharedInfoLogger(SHARED_AUTH_LOG_TAG, "auth_loss_funnel")
@@ -1350,7 +1356,8 @@ internal class SlockSharedStoreProvider private constructor(
                 authLossFunnel.report(
                     AuthLossSignal(
                         source = caller,
-                        tokenFingerprint = session.accessToken.authLossTokenFingerprint()
+                        tokenFingerprint = session.accessToken.authLossTokenFingerprint(),
+                        capturedSession = session,
                     )
                 ).await()
             }

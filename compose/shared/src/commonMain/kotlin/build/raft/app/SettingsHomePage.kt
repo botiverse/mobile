@@ -113,13 +113,16 @@ import build.raft.app.data.PersistentLinkOpenPreferenceRepository
 import build.raft.app.data.PersistentLocaleRepository
 import build.raft.app.data.PersistentRecompositionProfilerPreferenceRepository
 import build.raft.app.data.AuthApiResult
+import build.raft.app.data.AuthAuthorityChangedMessage
 import build.raft.app.data.AuthLoginResponse
 import build.raft.app.data.AuthLossDecision
+import build.raft.app.data.AuthLossResolution
 import build.raft.app.data.AuthMobileOAuthLinkCompleteResponse
 import build.raft.app.data.AuthMobileOAuthStartResponse
 import build.raft.app.data.AuthPendingOpenRequest
 import build.raft.app.data.AuthRefreshResponse
 import build.raft.app.data.AuthSessionEvent
+import build.raft.app.data.authSessionTerminalSourceOrNull
 import build.raft.app.data.AuthSocialCompleteResponse
 import build.raft.app.data.ChannelRepository
 import build.raft.app.data.InMemorySlockAuthSessionStore
@@ -129,6 +132,7 @@ import build.raft.app.data.SharedAuthGateIntent
 import build.raft.app.data.SharedAuthGateState
 import build.raft.app.data.SharedAuthGateViewModel
 import build.raft.app.data.SharedAuthResult
+import build.raft.app.data.SlockAuthSessionTerminalSource
 import build.raft.app.data.SharedComputersIntent
 import build.raft.app.data.SharedComputersLoadStatus
 import build.raft.app.data.SharedComputersPickerSlice
@@ -509,6 +513,8 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapNotNull
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -2423,6 +2429,8 @@ internal fun SlockAppShellContent(
     }
     val authStore = sharedStores.authStore
     val shellAuthStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
+    val authSessionTerminalSource =
+        remember(shellAuthStore) { shellAuthStore.authSessionTerminalSourceOrNull() }
     val selectedServerStore = remember(sharedStores, storeScope) { sharedStores.selectedServerStore(storeScope) }
     val appShellServerMembersStore =
         remember(sharedStores, storeScope) { sharedStores.serverMembersStore(storeScope) }
@@ -2591,69 +2599,191 @@ internal fun SlockAppShellContent(
             authSessionEvents.removeSessionClearedListener(callbackRef)
         }
     }
-    LaunchedEffect(sharedStores.authLossFunnel, pager.pagerId) {
-        sharedStores.authLossFunnel.resolutions.collect { resolution ->
-            if (!sharedStores.isActiveAppShellPager(pager.pagerId)) {
-                bridge.logWarn(
-                    "app_shell_auth_loss_effect_skip reason=inactive_pager " +
-                        "source=${resolution.signal.source} pagerId=${pager.pagerId}"
-                )
-                return@collect
-            }
-            when (val decision = resolution.decision) {
-                is AuthLossDecision.SessionPreserved ->
-                    bridge.logWarn(
-                        "app_shell_auth_loss_effect decision=session_preserved " +
-                            "reason=${decision.reason} source=${resolution.signal.source}"
-                    )
-                is AuthLossDecision.AuthRequired -> {
-                    bridge.logWarn(
-                        "app_shell_auth_loss_effect decision=auth_required " +
-                            "reason=${decision.reason} source=${resolution.signal.source}"
-                    )
+    LaunchedEffect(sharedStores.authLossFunnel, authStore, authSessionTerminalSource, pager.pagerId) {
+        var acceptedTerminalGeneration: Long? = null
+        val sessionInvalidationEffects =
+            authSessionTerminalSource
+                ?.authSessionTerminalEvents
+                ?.mapNotNull { event ->
+                    (event as? AuthSessionEvent.Cleared)?.let {
+                        AppShellOrderedAuthEffect.SessionInvalidated(it.generation)
+                    }
+                }
+                ?: authStore.sessionInvalidations.map {
+                    AppShellOrderedAuthEffect.SessionInvalidated(generation = null)
+                }
+        merge(
+            sharedStores.authLossFunnel.resolutions.map { AppShellOrderedAuthEffect.AuthLoss(it) },
+            authStore.sessionChanges.map { AppShellOrderedAuthEffect.SessionChanged(it) },
+            sessionInvalidationEffects,
+        ).collect { effect ->
+            when (effect) {
+                is AppShellOrderedAuthEffect.AuthLoss -> {
+                    val resolution = effect.resolution
+                    if (!sharedStores.isActiveAppShellPager(pager.pagerId)) {
+                        bridge.logWarn(
+                            "app_shell_auth_loss_effect_skip reason=inactive_pager " +
+                                "source=${resolution.signal.source} pagerId=${pager.pagerId}"
+                        )
+                        return@collect
+                    }
+                    when (val decision = resolution.decision) {
+                        is AuthLossDecision.SessionPreserved ->
+                            bridge.logWarn(
+                                "app_shell_auth_loss_effect decision=session_preserved " +
+                                    "reason=${decision.reason} source=${resolution.signal.source}"
+                            )
+                        is AuthLossDecision.AuthRequired -> {
+                            val terminalSnapshot =
+                                authSessionTerminalSource?.let { source ->
+                                    runCatchingPreservingCancellation {
+                                        source.readAuthSessionTerminalSnapshot()
+                                    }.getOrNull()
+                                }
+                            if (authSessionTerminalSource != null && terminalSnapshot == null) {
+                                sharedStores.authLossFunnel.discardPendingOpenRequest(resolution)
+                                bridge.logWarn(
+                                    "app_shell_auth_loss_effect_skip reason=terminal_snapshot_unavailable " +
+                                        "source=${resolution.signal.source}"
+                                )
+                                return@collect
+                            }
+                            val currentSession =
+                                terminalSnapshot?.session
+                                    ?: if (authSessionTerminalSource == null) {
+                                        runCatchingPreservingCancellation {
+                                            shellAuthStore.readSession()
+                                        }.getOrNull()
+                                    } else {
+                                        null
+                                    }
+                            if (
+                                !appShellAuthLossEffectShouldApply(
+                                    resolution.signal.capturedSession,
+                                    currentSession,
+                                )
+                            ) {
+                                sharedStores.authLossFunnel.discardPendingOpenRequest(resolution)
+                                bridge.logWarn(
+                                    "app_shell_auth_loss_effect_skip reason=auth_authority_changed " +
+                                        "source=${resolution.signal.source}"
+                                )
+                                return@collect
+                            }
+                            val authDecision =
+                                appShellBootstrapAuthDecision(AppShellBootstrapAuthSignal.AuthRequired)
+                            val applyEffect = {
+                                authGateMessage =
+                                    AuthGateMessage.Static(MR.strings.auth_error_session_expired.desc())
+                                if (authDecision.resetSessionState) authSessionResetGeneration += 1
+                                authGateViewModel.dispatch(authDecision.intent)
+                            }
+                            var appliedWithoutTerminalSource = false
+                            val committedTerminalGeneration =
+                                if (authSessionTerminalSource != null && terminalSnapshot != null) {
+                                    if (acceptedTerminalGeneration == terminalSnapshot.generation) {
+                                        terminalSnapshot.generation
+                                    } else {
+                                        appShellRunIfAuthSessionTerminalOrAuthorityRevision(
+                                            authSessionTerminalSource,
+                                            terminalSnapshot.generation,
+                                            resolution.signal.capturedSession,
+                                        ) {
+                                            applyEffect()
+                                        }
+                                    }
+                                } else {
+                                    applyEffect()
+                                    appliedWithoutTerminalSource = true
+                                    null
+                                }
+                            val applied =
+                                appliedWithoutTerminalSource || committedTerminalGeneration != null
+                            if (!applied) {
+                                sharedStores.authLossFunnel.discardPendingOpenRequest(resolution)
+                                bridge.logWarn(
+                                    "app_shell_auth_loss_effect_skip reason=terminal_revision_changed " +
+                                        "source=${resolution.signal.source}"
+                                )
+                                return@collect
+                            }
+                            committedTerminalGeneration?.let { generation ->
+                                acceptedTerminalGeneration = generation
+                            }
+                            sharedStores.authLossFunnel.activatePendingOpenRequest(resolution)
+                            bridge.logWarn(
+                                "app_shell_auth_loss_effect decision=auth_required " +
+                                    "reason=${decision.reason} source=${resolution.signal.source}"
+                            )
+                        }
+                    }
+                }
+                is AppShellOrderedAuthEffect.SessionChanged -> {
+                    val cachedSession =
+                        runCatchingPreservingCancellation { shellAuthStore.readSession() }.getOrNull()
+                    if (cachedSession == null) {
+                        ProcessAttachmentAuthScopes.retireAccount()
+                        bridge.attachmentDownloadOwnerChanged(null)
+                    }
+                    val currentSession =
+                        (authGateViewModel.state.value as? SharedAuthGateState.Ready)?.session
+                    val identityChanged = appShellSessionIdentityChanged(cachedSession, currentSession)
                     val authDecision =
-                        appShellBootstrapAuthDecision(AppShellBootstrapAuthSignal.AuthRequired)
-                    authGateMessage = AuthGateMessage.Static(MR.strings.auth_error_session_expired.desc())
+                        appShellBootstrapAuthDecision(
+                            AppShellBootstrapAuthSignal.SessionChanged,
+                            identityChanged = identityChanged
+                        )
+                    bridge.log(
+                        "app_shell_session_change_received fingerprint=${effect.fingerprint} " +
+                            "hasSession=${cachedSession != null} identityChanged=$identityChanged"
+                    )
+                    authGateMessage = null
+                    if (identityChanged) {
+                        bridge.realtimeDisconnect("auth_changed")
+                    }
                     if (authDecision.resetSessionState) authSessionResetGeneration += 1
                     authGateViewModel.dispatch(authDecision.intent)
                 }
+                is AppShellOrderedAuthEffect.SessionInvalidated -> {
+                    val authDecision =
+                        appShellBootstrapAuthDecision(AppShellBootstrapAuthSignal.SessionInvalidated)
+                    val applyEffect = {
+                        bridge.realtimeDisconnect("auth_invalid")
+                        if (authDecision.resetSessionState) authSessionResetGeneration += 1
+                        authGateViewModel.dispatch(authDecision.intent)
+                    }
+                    val applied =
+                        if (effect.generation != null && authSessionTerminalSource != null) {
+                            if (acceptedTerminalGeneration == effect.generation) {
+                                true
+                            } else {
+                                appShellRunIfAuthSessionTerminalRevision(
+                                    authSessionTerminalSource,
+                                    effect.generation,
+                                ) {
+                                    applyEffect()
+                                    acceptedTerminalGeneration = effect.generation
+                                }
+                            }
+                        } else {
+                            val currentSession =
+                                runCatchingPreservingCancellation {
+                                    shellAuthStore.readSession()
+                                }.getOrNull()
+                            if (currentSession == null) {
+                                applyEffect()
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                    if (!applied) {
+                        bridge.logWarn(
+                            "app_shell_session_invalidation_skip reason=terminal_revision_changed"
+                        )
+                    }
+                }
             }
-        }
-    }
-    LaunchedEffect(authStore) {
-        authStore.sessionInvalidations.collect {
-            val authDecision =
-                appShellBootstrapAuthDecision(AppShellBootstrapAuthSignal.SessionInvalidated)
-            bridge.realtimeDisconnect("auth_invalid")
-            if (authDecision.resetSessionState) authSessionResetGeneration += 1
-            authGateViewModel.dispatch(authDecision.intent)
-        }
-    }
-    LaunchedEffect(authStore) {
-        authStore.sessionChanges.collect { fingerprint ->
-            val cachedSession =
-                runCatchingPreservingCancellation { shellAuthStore.readSession() }.getOrNull()
-            if (cachedSession == null) {
-                ProcessAttachmentAuthScopes.retireAccount()
-                bridge.attachmentDownloadOwnerChanged(null)
-            }
-            val currentSession = (authGateViewModel.state.value as? SharedAuthGateState.Ready)?.session
-            val identityChanged = appShellSessionIdentityChanged(cachedSession, currentSession)
-            val authDecision =
-                appShellBootstrapAuthDecision(
-                    AppShellBootstrapAuthSignal.SessionChanged,
-                    identityChanged = identityChanged
-                )
-            bridge.log(
-                "app_shell_session_change_received fingerprint=$fingerprint " +
-                    "hasSession=${cachedSession != null} identityChanged=$identityChanged"
-            )
-            authGateMessage = null
-            if (identityChanged) {
-                bridge.realtimeDisconnect("auth_changed")
-            }
-            if (authDecision.resetSessionState) authSessionResetGeneration += 1
-            authGateViewModel.dispatch(authDecision.intent)
         }
     }
     LaunchedEffect(authStore) {
@@ -15104,7 +15234,7 @@ private fun AppShellServerGateContent(
             }
             is SharedAuthResult.Failure -> {
                 authDataSource.logDiagnostics("auth_choose_server_action_result target=$target result=failure code=${result.code}")
-                errorPresentation = AuthGateMessage.Dynamic(result.message)
+                errorPresentation = serverGateActionFailureMessage(target, result.message)
             }
             SharedAuthResult.Unauthenticated -> {
                 authDataSource.logDiagnostics("auth_choose_server_action_result target=$target result=unauthenticated action=stay_on_server_picker")
@@ -15120,6 +15250,50 @@ internal fun authChooseServerShouldSkipInitialLoad(
     cachedServersCount: Int
 ): Boolean =
     skipInitialLoad && cachedServersCount > 0
+
+internal sealed interface AppShellOrderedAuthEffect {
+    data class AuthLoss(val resolution: AuthLossResolution) : AppShellOrderedAuthEffect
+    data class SessionChanged(val fingerprint: String) : AppShellOrderedAuthEffect
+    data class SessionInvalidated(val generation: Long?) : AppShellOrderedAuthEffect
+}
+
+internal suspend fun appShellRunIfAuthSessionTerminalRevision(
+    terminalSource: SlockAuthSessionTerminalSource,
+    expectedGeneration: Long,
+    action: () -> Unit,
+): Boolean =
+    terminalSource.runIfAuthSessionTerminalRevision(expectedGeneration, action)
+
+internal suspend fun appShellRunIfAuthSessionTerminalOrAuthorityRevision(
+    terminalSource: SlockAuthSessionTerminalSource,
+    expectedGeneration: Long,
+    expectedSession: StoredAuthSession?,
+    action: () -> Unit,
+): Long? =
+    terminalSource.runIfAuthSessionTerminalOrAuthorityRevision(
+        expectedGeneration = expectedGeneration,
+        expectedSession = expectedSession,
+        action = action,
+    )
+
+internal fun appShellAuthLossEffectShouldApply(
+    capturedSession: StoredAuthSession?,
+    currentSession: StoredAuthSession?,
+): Boolean =
+    currentSession == null ||
+        (
+            capturedSession != null &&
+            currentSession.user.id == capturedSession.user.id &&
+                currentSession.accessToken == capturedSession.accessToken &&
+                currentSession.refreshToken == capturedSession.refreshToken
+        )
+
+internal fun serverGateActionFailureMessage(target: String, message: String): AuthGateMessage =
+    if (target == "__create__" && message == AuthAuthorityChangedMessage) {
+        AuthGateMessage.Static(MR.strings.auth_error_session_changed_retry_create_server.desc())
+    } else {
+        AuthGateMessage.Dynamic(message)
+    }
 
 // Web parity: ServerSelector.tsx `toSlug` — lowercase, then every character
 // outside [a-z0-9-] becomes "-" (no collapsing, no trimming). The create form
