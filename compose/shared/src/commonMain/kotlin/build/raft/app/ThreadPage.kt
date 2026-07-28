@@ -238,6 +238,7 @@ import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.resources.imageResource
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.text.SelectionContainer
+import com.tencent.kuikly.compose.text.TextSelectionType
 import com.tencent.kuikly.compose.text.rememberSelectionContainerState
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
@@ -21054,6 +21055,17 @@ private fun ThreadMessageTextSelectionDialog(
                         .padding(start = 16.dp, end = 16.dp, bottom = bottomSafeArea + 16.dp)
                         .background(SlockColor.SurfaceCream)
                         .border(SlockStroke.Default, SlockColor.BorderBlack)
+                        .pointerInput(originalText) {
+                            detectTapGestures(
+                                onLongPress = { offset ->
+                                    selectionState.createSelection(
+                                        offset.x,
+                                        offset.y,
+                                        TextSelectionType.WORD
+                                    )
+                                }
+                            )
+                        }
                 ) {
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
                         item {
