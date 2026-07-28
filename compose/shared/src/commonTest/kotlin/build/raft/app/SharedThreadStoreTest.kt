@@ -6883,58 +6883,54 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun reopenUsesReplyCountProjectionBeforeSecondarySummaryReturns() = runBlocking {
-        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L)
+    fun lateSummaryFromPreviousRouteCannotMutateCurrentCanonicalMessages() = runBlocking {
         val repository =
             FakeConversationRepository(
-                threadResult =
-                    DataResult.Content(
-                        threadSnapshot(
-                            messages =
-                                listOf(
-                                    message(
-                                        threadId = "channel-1",
-                                        id = "m1",
-                                        seq = 10,
-                                        body = "parent",
-                                        replyCount = 0
-                                    )
-                                )
-                        )
+                threadResultsById =
+                    mapOf(
+                        ThreadId("channel-1") to
+                            DataResult.Content(threadSnapshot(threadId = "channel-1", body = "route one")),
+                        ThreadId("channel-2") to
+                            DataResult.Content(threadSnapshot(threadId = "channel-2", body = "route two")),
                     ),
-                threadReplySummariesResult = replySummaries(replyCount = 7)
+                threadReplySummariesResult = replySummaries(replyCount = 7),
+            ).also {
+                it.threadReplySummariesStarted = CompletableDeferred()
+                it.releaseThreadReplySummaries = CompletableDeferred()
+                it.ignoreThreadReplySummariesCancellation = true
+            }
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store =
+            SharedThreadStore(
+                dataSource =
+                    SharedThreadDataSource(
+                        networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        conversationRepository = repository,
+                    ),
+                scope = scope,
             )
-        val dataSource =
-            SharedThreadDataSource(
-                networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                conversationRepository = repository,
-                payloadStore = payloadStore
-            )
-        val firstStore = SharedThreadStore(dataSource = dataSource, scope = appScope)
 
-        firstStore.accept(SharedThreadIntent.Start(basePayload()))
-        firstStore.accept(SharedThreadIntent.FirstContentReady)
-        delay(1L)
-        assertEquals(7, firstStore.state.value.payload.messages.single().replyCount)
-
-        payloadStore.freshnessLedger.advance("server-1", "channel-1")
-        repository.threadReplySummariesResult = replySummaries(replyCount = 9)
-        repository.threadReplySummariesStarted = CompletableDeferred()
-        repository.releaseThreadReplySummaries = CompletableDeferred()
-        val secondStore = SharedThreadStore(dataSource = dataSource, scope = appScope)
-
-        secondStore.accept(SharedThreadIntent.Start(basePayload()))
-        secondStore.accept(SharedThreadIntent.FirstContentReady)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        store.accept(SharedThreadIntent.FirstContentReady)
         repository.threadReplySummariesStarted?.await()
-
-        assertEquals(7, secondStore.state.value.payload.messages.single().replyCount)
-
+        store.accept(
+            SharedThreadIntent.Start(
+                basePayload().copy(
+                    instanceId = "shared-shell-thread-channel-2",
+                    sourceThreadId = "channel-2",
+                    streamChannelId = "channel-2",
+                ),
+            ),
+        )
         repository.releaseThreadReplySummaries?.complete(Unit)
-        delay(1L)
-        assertEquals(9, secondStore.state.value.payload.messages.single().replyCount)
-        appScope.cancel()
+        yield()
+
+        val current = store.state.value.payload
+        assertEquals("channel-2", current.sourceThreadId)
+        assertEquals(listOf("route two"), current.messages.map { it.body })
+        assertEquals(0, current.messages.single().replyCount)
+        scope.cancel()
     }
 
     @Test
@@ -11613,6 +11609,7 @@ class SharedThreadStoreTest {
 
         assertEquals(listOf(30), repository.getThreadLimits)
         assertEquals(listOf(50), repository.olderLimits)
+        assertEquals(listOf(ThreadId("channel-1") to listOf(MessageId("m5"), MessageId("m1"))), repository.getThreadReplySummariesRequests)
         scope.cancel()
     }
 
@@ -13337,6 +13334,7 @@ class SharedThreadStoreTest {
         var releaseGetThread: CompletableDeferred<Unit>? = null
         var threadReplySummariesStarted: CompletableDeferred<Unit>? = null
         var releaseThreadReplySummaries: CompletableDeferred<Unit>? = null
+        var ignoreThreadReplySummariesCancellation: Boolean = false
         var getReplyThreadStarted: CompletableDeferred<Unit>? = null
         var releaseGetReplyThread: CompletableDeferred<Unit>? = null
         var createOrOpenStarted: CompletableDeferred<Unit>? = null
@@ -13386,7 +13384,9 @@ class SharedThreadStoreTest {
         ): DataResult<ThreadReplySummariesSnapshot> {
             getThreadReplySummariesRequests += threadId to parentMessageIds
             threadReplySummariesStarted?.complete(Unit)
-            releaseThreadReplySummaries?.await()
+            if (ignoreThreadReplySummariesCancellation) {
+                withContext(NonCancellable) { releaseThreadReplySummaries?.await() }
+            } else releaseThreadReplySummaries?.await()
             return threadReplySummariesResult
         }
 
