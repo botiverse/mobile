@@ -3,6 +3,7 @@ type: fixed
 area: attachments
 platforms:
   - android
+pull_request: 1682
 rollout: full
 ---
 

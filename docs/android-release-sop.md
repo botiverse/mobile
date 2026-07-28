@@ -188,6 +188,14 @@ Apply the house format from the release-practices document:
 - user-visible changes only;
 - sectioned New / Improved / Fixed content, omitting empty sections;
 - zh-CN, English, and Japanese carry the same claims;
+- align every shipped locale with its current canonical catalog before review.
+  Shared Web/mobile terms come from `botiverse/slock` under
+  `packages/web/src/i18n/messages/`; mobile-only terms and locales also use
+  `compose/shared/src/commonMain/resources/MR/<locale>/strings.xml`. Reuse
+  user-visible nouns and status labels; do not expose implementation terms such
+  as chip or spinner unless the product itself displays them. Current zh-CN
+  terms include `回应`, `任务状态`, and `处理中`; current Japanese terms
+  include `リアクション`, `タスクステータス`, and `処理中`;
 - exclude PR numbers, implementation detail, CI history, and unshipped work.
 
 The release owner must approve these files before activation.

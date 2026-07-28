@@ -5,6 +5,7 @@ platforms:
   - android
   - ios
   - ohos
+pull_request: 1533
 rollout: full
 ---
 

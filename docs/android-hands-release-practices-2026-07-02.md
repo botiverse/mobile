@@ -304,6 +304,18 @@ platform-internal detail; fold many small related fixes into one line. Soften
 partial or not-yet-open capabilities (e.g. a Billing page that only lists plans
 → "套餐与账单 / Plans & Billing", not "订阅 / subscriptions").
 
+**Canonical product terminology.** Before final review, compare each shipped
+locale's nouns, actions, and status labels with its current catalog. Shared
+Web/mobile concepts come from `botiverse/slock` under
+`packages/web/src/i18n/messages/`; mobile-only concepts and locales also use
+`compose/shared/src/commonMain/resources/MR/<locale>/strings.xml`. Use the
+catalog's user-visible wording and avoid implementation labels such as chip,
+badge, or spinner unless they appear in the product UI. Record every source
+exact and key checked in the review receipt. Current zh-CN terms include
+`回应`, `任务状态`, and `处理中`; current Japanese terms include
+`リアクション`, `タスクステータス`, and `処理中`. The live catalogs remain
+authoritative.
+
 **Content source.** Diff the commits since the last *released* `versionCode` and
 translate them into user language — never ship the raw commit list.
 
