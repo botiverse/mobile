@@ -54,7 +54,6 @@ class KmmResourceI18nTest {
     }
 
     @Test
-<<<<<<< HEAD
     fun relativeTimeResourcesAndPlaceholdersAreGenerated() {
         listOf(
             MR.strings.thread_timestamp_now,
@@ -79,13 +78,14 @@ class KmmResourceI18nTest {
         ).forEach { resource ->
             assertTrue(resource.format(listOf(2)) is ResourceFormattedStringDesc)
         }
-=======
+    }
+
+    @Test
     fun translationTargetSystemLanguageStringResourceIsGenerated() {
         assertTrue(
             MR.strings.settings_translation_target_system_language.desc() is ResourceStringDesc,
             "translation-target System language label must use the shared localized resource"
         )
->>>>>>> origin/release-1.8.0
     }
 
     @Test
