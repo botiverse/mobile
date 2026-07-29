@@ -27,6 +27,7 @@ import build.raft.app.model.MessageDeliveryState
 import build.raft.app.model.MessageId
 import build.raft.app.model.MessageReaction
 import build.raft.app.model.MessageType
+import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
 import build.raft.app.model.Presence
 import build.raft.app.model.ThreadId
 import build.raft.app.parseConversationKindOrNull
@@ -87,6 +88,7 @@ fun CanonicalMessageRow.toAppMessage(
         seq = seq,
         author = memberHydration(fallbackAuthor),
         timestampLabel = createdAt,
+        createdAtEpochMillis = parseSlockTimestampEpochMillisOrNull(createdAt),
         body = content,
         messageType = resolvedMessageType,
         metadata = action.metadata,

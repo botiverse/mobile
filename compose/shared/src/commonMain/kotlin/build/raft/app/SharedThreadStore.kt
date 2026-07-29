@@ -8183,7 +8183,16 @@ private fun KuiklyThreadScreenPayload.toThreadRouteId(serverId: ServerId? = null
 
 private fun KuiklyThreadScreenPayload.visibleReadMarker(): ThreadVisibleReadMarker? {
     val channelId = cacheThreadId() ?: return null
-    val latest = messages.lastOrNull() ?: return null
+    val latest =
+        messages
+            .asSequence()
+            .filter { message -> message.seq != null }
+            .maxWithOrNull(
+                compareBy<KuiklyThreadMessageItem> { message -> message.seq ?: Long.MIN_VALUE }
+                    .thenBy(KuiklyThreadMessageItem::id)
+            )
+            ?: messages.lastOrNull()
+            ?: return null
     return ThreadVisibleReadMarker(
         channelId = channelId,
         latestMessageId = latest.id,
@@ -8430,21 +8439,44 @@ internal fun KuiklyThreadScreenPayload.withOriginReplyCountAtLeastLoadedReplies(
     return copy(originMessage = origin.copy(replyCount = loadedReplyCount))
 }
 
-private fun List<KuiklyThreadMessageItem>.sortedByThreadTimeline(): List<KuiklyThreadMessageItem> =
-    sortedWith(
-        Comparator { left, right ->
-            val leftLocal = left.hasLocalSendState()
-            val rightLocal = right.hasLocalSendState()
-            if (leftLocal != rightLocal) {
-                return@Comparator if (leftLocal) 1 else -1
-            }
-            if (left.seq != null && right.seq != null) {
-                compareValues(left.seq, right.seq).takeIf { it != 0 }?.let { return@Comparator it }
-            }
-            left.timestampLabel.compareTo(right.timestampLabel).takeIf { it != 0 }
-                ?: left.id.compareTo(right.id)
-        }
-    )
+internal fun List<KuiklyThreadMessageItem>.sortedByThreadTimeline(): List<KuiklyThreadMessageItem> =
+    sortedWith(SharedThreadTimelineComparator)
+
+/**
+ * A single lexicographic total order for every message pair.
+ *
+ * Canonical server messages stay sequence-authoritative. A sent message whose
+ * sequence has not arrived yet is kept in a separate fallback lane ordered by
+ * its numeric creation instant. Optimistic/failed sends remain last and use
+ * their creation instant plus a stable local-send ordinal. No branch reads the
+ * localized [KuiklyThreadMessageItem.timestampLabel].
+ *
+ * The old pair-dependent comparator used `seq` only when both operands had it,
+ * then compared display strings for mixed pairs. That admitted cycles such as
+ * A(seq=1,label=z) < B(seq=2,label=a) < M(seq=null,label=m) < A.
+ */
+internal val SharedThreadTimelineComparator =
+    Comparator<KuiklyThreadMessageItem> { left, right ->
+        compareValues(left.threadTimelineSortLane(), right.threadTimelineSortLane())
+            .takeIf { it != 0 }
+            ?: compareValues(left.threadTimelineSequenceKey(), right.threadTimelineSequenceKey())
+                .takeIf { it != 0 }
+            ?: compareValues(left.createdAtEpochMillis ?: Long.MAX_VALUE, right.createdAtEpochMillis ?: Long.MAX_VALUE)
+                .takeIf { it != 0 }
+            ?: compareValues(left.localSendOrder ?: Long.MAX_VALUE, right.localSendOrder ?: Long.MAX_VALUE)
+                .takeIf { it != 0 }
+            ?: left.id.compareTo(right.id)
+    }
+
+private fun KuiklyThreadMessageItem.threadTimelineSortLane(): Int =
+    when {
+        hasLocalSendState() -> 2
+        seq != null -> 0
+        else -> 1
+    }
+
+private fun KuiklyThreadMessageItem.threadTimelineSequenceKey(): Long =
+    if (threadTimelineSortLane() == 0) seq ?: Long.MAX_VALUE else Long.MAX_VALUE
 
 private fun KuiklyThreadScreenPayload.applyRealtimeMessageUpdate(
     message: Message,
@@ -9052,6 +9084,7 @@ private fun KuiklyThreadMessageItem.mergeRealtimeUpdate(
         avatarLabel = if (acceptsIncomingAuthor) update.avatarLabel.ifBlank { avatarLabel } else avatarLabel,
         avatarWireValue = if (acceptsIncomingAuthor) update.avatarWireValue ?: avatarWireValue else avatarWireValue,
         timestampLabel = update.timestampLabel.ifBlank { timestampLabel },
+        createdAtEpochMillis = createdAtEpochMillis ?: update.createdAtEpochMillis,
         seq = update.seq ?: seq,
         messageType = update.messageType.ifBlank { messageType },
         systemEventType = update.systemEventType ?: systemEventType,
@@ -9472,6 +9505,7 @@ internal fun KuiklyThreadMessageItem.toMessage(
         author = toMemberProfile(authorMemberKind),
         seq = seq,
         timestampLabel = timestampLabel,
+        createdAtEpochMillis = createdAtEpochMillis,
         body = body,
         messageType = resolvedMessageType,
         systemEventType = systemEventType,
@@ -9613,6 +9647,7 @@ internal fun Message.toKuiklyThreadMessageItem(currentUserId: String?): KuiklyTh
         authorAgentStatus = author.agentStatus?.name,
         seq = seq,
         timestampLabel = timestampLabel,
+        createdAtEpochMillis = createdAtEpochMillis,
         messageType = if (messageType == MessageType.System) "System" else "Chat",
         systemEventType = systemEventType,
         metadata = metadata.withoutLocalSendMetadata(),

@@ -338,7 +338,9 @@ data class Message(
     val commentRef: MessageCommentRef? = null,
     val forwardBundle: ForwardMessageBundle? = null,
     val conversationContext: MessageConversationContext? = null,
-    val randomId: String? = null
+    val randomId: String? = null,
+    /** Canonical numeric creation time used for ordering; never derived from localized display text. */
+    @Transient val createdAtEpochMillis: Long? = null,
 )
 
 @Serializable

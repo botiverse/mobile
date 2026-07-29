@@ -37,6 +37,7 @@ import build.raft.app.model.MessageNew
 import build.raft.app.model.NotificationPushReceived
 import build.raft.app.model.MessageType
 import build.raft.app.model.MessageUpdated
+import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
 import build.raft.app.model.PerReceiverNotificationPrefsChanged
 import build.raft.app.model.ServerNotificationPreferencesChanged
 import build.raft.app.model.PerReceiverPinnedChanged
@@ -703,6 +704,7 @@ private fun MessageWireDto.toDomain(diagnostics: (String) -> Unit): Message? {
         seq = seq,
         author = author,
         timestampLabel = updatedAt ?: createdAt ?: "",
+        createdAtEpochMillis = parseSlockTimestampEpochMillisOrNull(createdAt),
         body = content,
         messageType = resolvedMessageType,
         systemEventType = null,
