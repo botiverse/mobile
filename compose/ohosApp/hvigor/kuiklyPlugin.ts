@@ -92,6 +92,35 @@ function buildKuiklyOhos(config: KuiklyOhosConfig): void {
   fs.mkdirSync(path.dirname(destinationHeader), { recursive: true });
   fs.copyFileSync(sourceSo, destinationSo);
   fs.copyFileSync(sourceHeader, destinationHeader);
+  verifyKuiklyAbi(ohosAppPath, destinationSo);
+}
+
+function verifyKuiklyAbi(ohosAppPath: string, sharedSo: string): void {
+  const renderLibraries = findFilesNamed(path.join(ohosAppPath, 'oh_modules'), 'libkuikly.so')
+    .filter((candidate) => candidate.includes(`${path.sep}@kuikly-open${path.sep}render${path.sep}libs${path.sep}arm64-v8a${path.sep}`));
+  if (renderLibraries.length !== 1) {
+    throw new Error(`[kuiklyCompilePlugin] Expected exactly one resolved OHOS render library, found ${renderLibraries.length}`);
+  }
+
+  const verifier = path.resolve(ohosAppPath, '../../scripts/verify_kuikly_ohos_abi.sh');
+  execFileSync(verifier, [sharedSo, renderLibraries[0]], { stdio: 'inherit' });
+}
+
+function findFilesNamed(directory: string, fileName: string): string[] {
+  if (!fs.existsSync(directory)) {
+    return [];
+  }
+
+  const matches: string[] = [];
+  fs.readdirSync(directory, { withFileTypes: true }).forEach((entry) => {
+    const candidate = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      matches.push(...findFilesNamed(candidate, fileName));
+    } else if (entry.isFile() && entry.name === fileName) {
+      matches.push(candidate);
+    }
+  });
+  return matches;
 }
 
 function runGradle(config: KuiklyOhosConfig, args: string[]): void {
