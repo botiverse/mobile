@@ -15,6 +15,70 @@ import kotlinx.coroutines.channels.Channel
 
 class SharedCreateAgentFormStoreTest {
     @Test
+    fun createRejectionForceRefreshesFormAndRequestsExplicitRetry() = runPortableCoroutineTest {
+        val api = SequencedFormComputersApi()
+        val store = SharedCreateAgentFormStore(SlockComputersApiClient(api), this)
+        val recovery = async {
+            DataResult.Error(ScreenError("form_definition_ref_required"))
+                .recoverRejectedCreateAgentForm(store, "server-1", "machine-1")
+        }
+        api.definitionResponses.receive().complete(ok(canonicalDefinitionBody))
+
+        val result = assertIs<DataResult.Error>(recovery.await())
+
+        assertEquals(AGENT_CREATE_FORM_REFRESH_REQUIRED, result.error.code)
+        assertEquals(1, api.definitionCallCount)
+        assertTrue(store.state.value.resolvedForms.isNotEmpty())
+    }
+
+    @Test
+    fun unrelatedCreateErrorDoesNotRefreshRuntimeForm() = runPortableCoroutineTest {
+        val api = SequencedFormComputersApi()
+        val store = SharedCreateAgentFormStore(SlockComputersApiClient(api), this)
+
+        val result =
+            DataResult.Error(ScreenError("http_409"))
+                .recoverRejectedCreateAgentForm(store, "server-1", "machine-1")
+
+        assertEquals("http_409", assertIs<DataResult.Error>(result).error.code)
+        assertEquals(0, api.definitionCallCount)
+    }
+
+    @Test
+    fun createFormRecoveryFailsClosedWithoutServerOrMachineIdentity() = runPortableCoroutineTest {
+        val api = SequencedFormComputersApi()
+        val store = SharedCreateAgentFormStore(SlockComputersApiClient(api), this)
+
+        listOf("" to "machine-1", "server-1" to "").forEach { (serverId, machineId) ->
+            val result =
+                DataResult.Error(ScreenError("form_definition_ref_required"))
+                    .recoverRejectedCreateAgentForm(store, serverId, machineId)
+            assertEquals(AGENT_CREATE_FORM_REFRESH_FAILED, assertIs<DataResult.Error>(result).error.code)
+        }
+
+        assertEquals(0, api.definitionCallCount)
+    }
+
+    @Test
+    fun createFormRecoveryReportsRefreshFailure() = runPortableCoroutineTest {
+        val api =
+            SequencedFormComputersApi(
+                runtimeOptionsBody = canonicalRuntimeOptionsBody.replace(
+                    "\"canSelectInThisContext\":true",
+                    "\"canSelectInThisContext\":false"
+                )
+            )
+        val store = SharedCreateAgentFormStore(SlockComputersApiClient(api), this)
+
+        val result =
+            DataResult.Error(ScreenError("stale_form_schema"))
+                .recoverRejectedCreateAgentForm(store, "server-1", "machine-1")
+
+        assertEquals(AGENT_CREATE_FORM_REFRESH_FAILED, assertIs<DataResult.Error>(result).error.code)
+        assertEquals(0, api.definitionCallCount)
+    }
+
+    @Test
     fun exactFormLoadsAreSingleFlightAndCachedByExactRef() = runPortableCoroutineTest {
         val api = SequencedFormComputersApi()
         val store = SharedCreateAgentFormStore(SlockComputersApiClient(api), this)
