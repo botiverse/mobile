@@ -455,6 +455,7 @@ sealed interface SharedSettingsIntent {
     data class SetCompactConsecutiveMessages(val enabled: Boolean) : SharedSettingsIntent
     data class SetLongMessageCollapseEnabled(val enabled: Boolean) : SharedSettingsIntent
     data class SetSingleTapOpensThreadEnabled(val enabled: Boolean) : SharedSettingsIntent
+    data class SetInlineSelectionToolbarEnabled(val enabled: Boolean) : SharedSettingsIntent
     data class SetImageAnnotationEnabled(val enabled: Boolean) : SharedSettingsIntent
     data class SetForegroundMessageBanners(val enabled: Boolean) : SharedSettingsIntent
     data class SetActivityTaskStatusBadges(val enabled: Boolean) : SharedSettingsIntent
@@ -1053,6 +1054,14 @@ class SharedSettingsDataSource(
         return loadMobilePreferences()
     }
 
+    suspend fun setInlineSelectionToolbarEnabled(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
+        val repository =
+            chatLayoutPreferenceRepository
+                ?: return DataResult.Error(ScreenError("settings_inline_selection_toolbar_unavailable", retryable = false))
+        repository.setInlineSelectionToolbarEnabled(enabled)
+        return loadMobilePreferences()
+    }
+
     suspend fun setImageAnnotationEnabled(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
         val repository =
             chatLayoutPreferenceRepository
@@ -1375,6 +1384,13 @@ class SharedSettingsDataSource(
                         available = false,
                         statusLabel = "Unsupported",
                         detail = "Single-tap Thread opening is not available on this platform."
+                    ),
+            inlineSelectionToolbar =
+                chatLayout?.toSettingsMobileInlineSelectionToolbarSnapshot()
+                    ?: inlineSelectionToolbar.copy(
+                        available = false,
+                        statusLabel = "Unsupported",
+                        detail = "Inline message selection is not available on this platform."
                     ),
             imageAnnotation =
                 chatLayout?.toSettingsMobileImageAnnotationSnapshot()
@@ -2134,6 +2150,14 @@ class SharedSettingsStore(
                     )
                 dataSource.setSingleTapOpensThreadEnabled(intent.enabled)
                     .applyMobileActionResult(MOBILE_ACTION_SINGLE_TAP_OPENS_THREAD)
+            }
+            is SharedSettingsIntent.SetInlineSelectionToolbarEnabled -> {
+                _state.value =
+                    _state.value.copy(
+                        actionState = SharedSettingsActionState(MOBILE_ACTION_INLINE_SELECTION_TOOLBAR, inProgress = true)
+                    )
+                dataSource.setInlineSelectionToolbarEnabled(intent.enabled)
+                    .applyMobileActionResult(MOBILE_ACTION_INLINE_SELECTION_TOOLBAR)
             }
             is SharedSettingsIntent.SetImageAnnotationEnabled -> {
                 _state.value =
@@ -3402,6 +3426,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.SetCompactConsecutiveMessages,
             is SharedSettingsIntent.SetLongMessageCollapseEnabled,
             is SharedSettingsIntent.SetSingleTapOpensThreadEnabled,
+            is SharedSettingsIntent.SetInlineSelectionToolbarEnabled,
             is SharedSettingsIntent.SetImageAnnotationEnabled,
             is SharedSettingsIntent.SetForegroundMessageBanners,
             is SharedSettingsIntent.SetActivityTaskStatusBadges,
@@ -3576,6 +3601,7 @@ internal const val MOBILE_ACTION_LINK_OPEN_MODE = "linkOpenMode"
 internal const val MOBILE_ACTION_COMPACT_MESSAGES = "compactMessages"
 internal const val MOBILE_ACTION_LONG_MESSAGE_COLLAPSE = "longMessageCollapse"
 internal const val MOBILE_ACTION_SINGLE_TAP_OPENS_THREAD = "singleTapOpensThread"
+internal const val MOBILE_ACTION_INLINE_SELECTION_TOOLBAR = "inlineSelectionToolbar"
 internal const val MOBILE_ACTION_IMAGE_ANNOTATION = "imageAnnotation"
 internal const val MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS = "foregroundMessageBanners"
 internal const val MOBILE_ACTION_ACTIVITY_TASK_STATUS_BADGES = "activityTaskStatusBadges"
@@ -3795,6 +3821,14 @@ private fun ChatLayoutPreferenceSnapshot.toSettingsMobileSingleTapOpensThreadSna
         available = true,
         statusLabel = if (singleTapOpensThreadEnabled) "Enabled" else "Off",
         detail = "Open a message Thread by tapping its body once. When off, use the replies action or message menu."
+    )
+
+private fun ChatLayoutPreferenceSnapshot.toSettingsMobileInlineSelectionToolbarSnapshot(): SettingsMobileToggleSnapshot =
+    SettingsMobileToggleSnapshot(
+        enabled = inlineSelectionToolbarEnabled,
+        available = true,
+        statusLabel = if (inlineSelectionToolbarEnabled) "Enabled" else "Off",
+        detail = "Long-press eligible plain-text messages to select text in place and show quick reactions and message tools."
     )
 
 private fun ChatLayoutPreferenceSnapshot.toSettingsMobileImageAnnotationSnapshot(): SettingsMobileToggleSnapshot =

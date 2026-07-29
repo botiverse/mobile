@@ -1471,6 +1471,8 @@
     <string name="settings_mobile_multi_shell_host_detail">在独立的 Android 应用窗口中打开不同工作区。已打开的窗口会保留到你手动关闭。</string>
     <string name="settings_mobile_server_drawer">多服务器首页抽屉</string>
     <string name="settings_mobile_server_drawer_detail">在首页使用新的多服务器左侧抽屉。关闭后继续使用当前的服务器切换浮层。</string>
+    <string name="settings_mobile_inline_selection_toolbar">原位消息选择工具栏</string>
+    <string name="settings_mobile_inline_selection_toolbar_detail">长按符合条件的纯文本消息，在原位选择文字并显示快捷表情与消息工具。关闭后继续使用现有消息菜单。</string>
     <string name="settings_mobile_home_server_avatar">首页顶部显示工作区头像</string>
     <string name="settings_mobile_home_server_avatar_detail">在首页顶部的工作区名称旁显示当前工作区头像。关闭后继续使用原有的紧凑标题徽标。</string>
     <string name="settings_badge_beta">Beta</string>

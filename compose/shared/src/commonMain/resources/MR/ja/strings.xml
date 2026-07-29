@@ -1471,6 +1471,8 @@
     <string name="settings_mobile_multi_shell_host_detail">異なるワークスペースを別々の Android アプリウィンドウで開きます。既存のウィンドウは閉じるまで開いたままになります。</string>
     <string name="settings_mobile_server_drawer">マルチサーバーのホームドロワー</string>
     <string name="settings_mobile_server_drawer_detail">ホームで新しいマルチサーバー左ドロワーを使用します。オフにすると、現在のサーバー切り替えポップオーバーを維持します。</string>
+    <string name="settings_mobile_inline_selection_toolbar">メッセージのインライン選択ツールバー</string>
+    <string name="settings_mobile_inline_selection_toolbar_detail">対象のプレーンテキストメッセージを長押しすると、その場でテキストを選択し、クイックリアクションとメッセージツールを表示します。オフにすると従来のメッセージメニューを使用します。</string>
     <string name="settings_mobile_home_server_avatar">ホームヘッダーのワークスペースアバター</string>
     <string name="settings_mobile_home_server_avatar_detail">ホームヘッダーで、名前の横に現在のワークスペースのアバターを表示します。オフにすると、既存のコンパクトなタイトルバッジを維持します。</string>
     <string name="settings_badge_beta">ベータ</string>

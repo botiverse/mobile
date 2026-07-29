@@ -1245,6 +1245,13 @@ data class SettingsMobileSnapshot(
             statusLabel = "Off",
             detail = "Open a message Thread by tapping its body once. When off, use the replies action or message menu."
         ),
+    val inlineSelectionToolbar: SettingsMobileToggleSnapshot =
+        SettingsMobileToggleSnapshot(
+            enabled = false,
+            available = true,
+            statusLabel = "Off",
+            detail = "Long-press eligible plain-text messages to select text in place and show quick reactions and message tools."
+        ),
     val imageAnnotation: SettingsMobileToggleSnapshot =
         SettingsMobileToggleSnapshot(
             enabled = false,
