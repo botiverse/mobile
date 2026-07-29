@@ -8,6 +8,7 @@ import build.raft.app.model.ChannelActivityNotificationPreference
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationPermissions
 import build.raft.app.model.ConversationSummary
+import build.raft.app.model.ForwardMessageItem
 import build.raft.app.model.InboxItemKind
 import build.raft.app.model.Message
 import build.raft.app.model.MessageId
@@ -658,11 +659,28 @@ class ThreadPayloadTest {
                     timestampLabel = "2026-06-27T12:34:00Z"
                 )
             )
+        val forwardedTimestamp =
+            ForwardMessageItem(
+                id = "forwarded-message-24h",
+                authorId = "user-1",
+                authorName = "User",
+                timestampLabel = "2026-06-27T12:34:00Z"
+            ).formatThreadForwardedTimestampLabel(twelveHourRenderConfig.timeContext)
 
         assertEquals("20:34", compactTimestamp)
+        assertEquals(compactTimestamp, forwardedTimestamp)
         assertFalse(compactTimestamp.contains("Z"))
         assertFalse(compactTimestamp.contains("AM"))
         assertFalse(compactTimestamp.contains("PM"))
+        assertEquals(
+            "",
+            ForwardMessageItem(
+                id = "forwarded-message-missing-context",
+                authorId = "user-1",
+                authorName = "User",
+                timestampLabel = "2026-06-27T12:34:00Z"
+            ).formatThreadForwardedTimestampLabel(timeContext = null)
+        )
     }
 
     @Test
