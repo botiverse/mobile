@@ -1399,6 +1399,20 @@ class ThreadBottomAnchorSignatureTest {
                 targetIdentity = targetIdentity,
                 targetItemIndex = 17,
                 latestMessageItemIndex = 17,
+                canLoadMoreAfter = false,
+                anchoredIdentity = targetIdentity,
+                consumedIdentity = targetIdentity,
+                scrollInterruptedIdentity = null,
+                startUserScrollGeneration = 0,
+                currentUserScrollGeneration = 0
+            )
+        )
+        assertFalse(
+            focusedLatestMessageComposerLayoutOwnsViewport(
+                targetIdentity = targetIdentity,
+                targetItemIndex = 17,
+                latestMessageItemIndex = 17,
+                canLoadMoreAfter = true,
                 anchoredIdentity = targetIdentity,
                 consumedIdentity = targetIdentity,
                 scrollInterruptedIdentity = null,
@@ -1421,7 +1435,47 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
-    fun composerLayoutBottomAnchor_defersFirstImeUntilLatestFocusedAnchorSettles() {
+    fun composerLayoutBottomAnchor_activeLatestFocusedOwnerCorrectsFirstImeImmediately() {
+        val targetIdentity = "latest-message:route-request"
+        assertTrue(
+            focusedActiveLatestMessageComposerLayoutOwnsViewport(
+                targetIdentity = targetIdentity,
+                targetItemIndex = 17,
+                latestMessageItemIndex = 17,
+                canLoadMoreAfter = false,
+                anchoredIdentity = targetIdentity,
+                consumedIdentity = null,
+                scrollInterruptedIdentity = null,
+                startUserScrollGeneration = 0,
+                currentUserScrollGeneration = 0
+            )
+        )
+        assertFalse(
+            focusedActiveLatestMessageComposerLayoutOwnsViewport(
+                targetIdentity = targetIdentity,
+                targetItemIndex = 17,
+                latestMessageItemIndex = 17,
+                canLoadMoreAfter = true,
+                anchoredIdentity = targetIdentity,
+                consumedIdentity = null,
+                scrollInterruptedIdentity = null,
+                startUserScrollGeneration = 0,
+                currentUserScrollGeneration = 0
+            )
+        )
+        assertFalse(
+            focusedActiveLatestMessageComposerLayoutOwnsViewport(
+                targetIdentity = targetIdentity,
+                targetItemIndex = 17,
+                latestMessageItemIndex = 17,
+                canLoadMoreAfter = false,
+                anchoredIdentity = targetIdentity,
+                consumedIdentity = targetIdentity,
+                scrollInterruptedIdentity = null,
+                startUserScrollGeneration = 0,
+                currentUserScrollGeneration = 0
+            )
+        )
         val whileFocused =
             resolveThreadComposerLayoutBottomAnchor(
                 composerLayoutState(
@@ -1430,36 +1484,64 @@ class ThreadBottomAnchorSignatureTest {
                     previousViewportHeightDp = 720f,
                     nextViewportHeightDp = 408f,
                     allowBottomAutoAnchor = false,
-                    focusedAnchorOwnsViewport = true
+                    focusedAnchorOwnsViewport = true,
+                    focusedActiveLatestAnchorCanCorrectLayout = true
                 )
             )
-        assertFalse(whileFocused.shouldAnchor)
-        assertTrue(whileFocused.pendingLayoutChange)
+        assertTrue(whileFocused.shouldAnchor)
+        assertFalse(whileFocused.pendingLayoutChange)
 
-        val afterFocusedSettles =
+        val loadedLastHistoryFocused =
             resolveThreadComposerLayoutBottomAnchor(
                 composerLayoutState(
-                    previousKeyboardInsetDp = 320f,
+                    previousKeyboardInsetDp = 0f,
                     nextKeyboardInsetDp = 320f,
-                    previousViewportHeightDp = 408f,
+                    previousViewportHeightDp = 720f,
                     nextViewportHeightDp = 408f,
-                    pendingLayoutChange = whileFocused.pendingLayoutChange,
                     allowBottomAutoAnchor = false,
-                    focusedLatestAnchorCanCorrectLayout = true
+                    focusedAnchorOwnsViewport = true,
+                    focusedActiveLatestAnchorCanCorrectLayout = false
                 )
             )
-        assertTrue(afterFocusedSettles.shouldAnchor)
-        assertFalse(afterFocusedSettles.pendingLayoutChange)
+        assertFalse(loadedLastHistoryFocused.shouldAnchor)
+        assertTrue(loadedLastHistoryFocused.pendingLayoutChange)
     }
 
     @Test
     fun focusedLatestComposerLayoutOwner_yieldsToHistoryAndUserScroll() {
         val targetIdentity = "focused-message:route-request"
         assertFalse(
+            focusedActiveLatestMessageComposerLayoutOwnsViewport(
+                targetIdentity = targetIdentity,
+                targetItemIndex = 9,
+                latestMessageItemIndex = 17,
+                canLoadMoreAfter = false,
+                anchoredIdentity = targetIdentity,
+                consumedIdentity = null,
+                scrollInterruptedIdentity = null,
+                startUserScrollGeneration = 0,
+                currentUserScrollGeneration = 0
+            )
+        )
+        assertFalse(
+            focusedActiveLatestMessageComposerLayoutOwnsViewport(
+                targetIdentity = targetIdentity,
+                targetItemIndex = 17,
+                latestMessageItemIndex = 17,
+                canLoadMoreAfter = false,
+                anchoredIdentity = targetIdentity,
+                consumedIdentity = null,
+                scrollInterruptedIdentity = null,
+                startUserScrollGeneration = 0,
+                currentUserScrollGeneration = 1
+            )
+        )
+        assertFalse(
             focusedLatestMessageComposerLayoutOwnsViewport(
                 targetIdentity = targetIdentity,
                 targetItemIndex = 9,
                 latestMessageItemIndex = 17,
+                canLoadMoreAfter = false,
                 anchoredIdentity = targetIdentity,
                 consumedIdentity = targetIdentity,
                 scrollInterruptedIdentity = null,
@@ -1472,6 +1554,7 @@ class ThreadBottomAnchorSignatureTest {
                 targetIdentity = targetIdentity,
                 targetItemIndex = 17,
                 latestMessageItemIndex = 17,
+                canLoadMoreAfter = false,
                 anchoredIdentity = targetIdentity,
                 consumedIdentity = targetIdentity,
                 scrollInterruptedIdentity = null,
@@ -1568,6 +1651,7 @@ class ThreadBottomAnchorSignatureTest {
         latestItemIndex: Int = 15,
         allowBottomAutoAnchor: Boolean = true,
         focusedAnchorOwnsViewport: Boolean = false,
+        focusedActiveLatestAnchorCanCorrectLayout: Boolean = false,
         focusedLatestAnchorCanCorrectLayout: Boolean = false
     ): ThreadComposerLayoutBottomAnchorState =
         ThreadComposerLayoutBottomAnchorState(
@@ -1580,6 +1664,7 @@ class ThreadBottomAnchorSignatureTest {
             latestItemIndex = latestItemIndex,
             allowBottomAutoAnchor = allowBottomAutoAnchor,
             focusedAnchorOwnsViewport = focusedAnchorOwnsViewport,
+            focusedActiveLatestAnchorCanCorrectLayout = focusedActiveLatestAnchorCanCorrectLayout,
             focusedLatestAnchorCanCorrectLayout = focusedLatestAnchorCanCorrectLayout
         )
 
