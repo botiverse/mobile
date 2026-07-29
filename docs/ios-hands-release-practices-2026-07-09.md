@@ -2,6 +2,10 @@
 
 This document records the Slock iOS release boundary for Hands.
 
+When Android and iOS ship from the same frozen Mobile source, follow
+[Mobile Paired Release SOP](mobile-paired-release-sop.md) for the shared
+ordering, authority, activation, receipt, and merge-back contract.
+
 ## Boundary
 
 macOS CI owns Apple signing. Hands never receives Apple certificates,
