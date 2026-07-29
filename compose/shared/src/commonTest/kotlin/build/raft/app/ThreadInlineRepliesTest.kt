@@ -214,6 +214,20 @@ class ThreadInlineRepliesTest {
     }
 
     @Test
+    fun multilineReplyPreviewUsesTheAvailableSingleLineWidth() {
+        assertEquals(
+            "New activity - 14:10 final Android carrier is ready",
+            threadInlineReplyPreviewText(
+                """
+                New activity
+
+                - 14:10 final Android carrier is ready
+                """.trimIndent()
+            ),
+        )
+    }
+
+    @Test
     fun zeroReplyCountHasNoSurfaceAndCachedPreviewCannotAdmitGeometry() {
         assertNull(
             threadInlineReplyPresentation(
