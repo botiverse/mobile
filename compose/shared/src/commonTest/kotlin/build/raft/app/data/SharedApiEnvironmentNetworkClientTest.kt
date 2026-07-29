@@ -12,6 +12,28 @@ import kotlinx.coroutines.runBlocking
 
 class SharedApiEnvironmentNetworkClientTest {
     @Test
+    fun refreshAttemptUsesCanonicalReplayHeaders() = runBlocking {
+        val executor = RecordingHttpExecutor(responseCode = 401)
+        val transport =
+            SharedSlockAuthTransport(
+                baseUrl = "https://api.raft.build/api/",
+                executor = executor,
+            )
+
+        transport.refreshWithAttempt(
+            bodyText = """{"refreshToken":"secret-predecessor"}""",
+            attemptId = "arf_0123456789abcdef",
+            installationId = "ari_0123456789abcdef0123456789abcdef",
+        )
+
+        assertEquals("arf_0123456789abcdef", executor.headers.single()[SLOCK_AUTH_REFRESH_ATTEMPT_HEADER])
+        assertEquals(
+            "ari_0123456789abcdef0123456789abcdef",
+            executor.headers.single()[SLOCK_AUTH_INSTALLATION_HEADER],
+        )
+    }
+
+    @Test
     fun boundMultipartAuthorityMismatchSkipsExecutorAndPlatformStreamOpen() = runBlocking {
         val sessionStore =
             InMemorySlockAuthSessionStore(
@@ -206,6 +228,7 @@ class SharedApiEnvironmentNetworkClientTest {
         private val responseCode: Int = 200
     ) : SlockHttpExecutor {
         val urls = mutableListOf<String>()
+        val headers = mutableListOf<Map<String, String>>()
         var multipartCalls = 0
 
         override suspend fun execute(
@@ -217,6 +240,7 @@ class SharedApiEnvironmentNetworkClientTest {
             jsonBody: Boolean
         ): SlockHttpExecutorResponse {
             urls += url
+            this.headers += headers
             return SlockHttpExecutorResponse(code = responseCode, bodyText = "{}", errorBodyText = null)
         }
 

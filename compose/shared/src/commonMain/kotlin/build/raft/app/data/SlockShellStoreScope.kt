@@ -473,6 +473,9 @@ internal class SlockShellAuthSessionStore(
         )
     }
 
+    override suspend fun readOrCreateAuthInstallationId(candidate: String): String =
+        delegate.readOrCreateAuthInstallationId(candidate)
+
     override suspend fun saveSession(session: StoredAuthSession) {
         // Keep the current main atomic full-replace primitive. Restoring the old
         // delegate.saveSession path here would reintroduce stale whole-session
@@ -506,6 +509,36 @@ internal class SlockShellAuthSessionStore(
             expectedRefreshToken = expectedRefreshToken,
             newAccessToken = newAccessToken,
             newRefreshToken = newRefreshToken
+        )?.withShellSelection()
+
+    override suspend fun prepareRefreshAttemptIfMatch(
+        expectedAccountId: String,
+        expectedAccessToken: String,
+        expectedRefreshToken: String,
+        candidate: StoredAuthRefreshAttempt,
+    ): StoredAuthRefreshAttempt? =
+        delegate.prepareRefreshAttemptIfMatch(
+            expectedAccountId = expectedAccountId,
+            expectedAccessToken = expectedAccessToken,
+            expectedRefreshToken = expectedRefreshToken,
+            candidate = candidate,
+        )
+
+    override suspend fun rotateTokensAndClearRefreshAttemptIfMatch(
+        expectedAccountId: String,
+        expectedAccessToken: String,
+        expectedRefreshToken: String,
+        expectedAttemptId: String,
+        newAccessToken: String,
+        newRefreshToken: String,
+    ): StoredAuthSession? =
+        delegate.rotateTokensAndClearRefreshAttemptIfMatch(
+            expectedAccountId = expectedAccountId,
+            expectedAccessToken = expectedAccessToken,
+            expectedRefreshToken = expectedRefreshToken,
+            expectedAttemptId = expectedAttemptId,
+            newAccessToken = newAccessToken,
+            newRefreshToken = newRefreshToken,
         )?.withShellSelection()
 
     override suspend fun updateMetadata(
