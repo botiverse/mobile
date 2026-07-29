@@ -15946,6 +15946,25 @@ private fun ThreadMessagesList(
             return@LaunchedEffect
         }
         val focusedTargetIdentity = pendingFocusedMessageAnchorIdentityState.value
+        val focusedTargetItemIndex = renderPayload.focusedMessageListItemIndex()
+        val focusedTargetPresent = focusedTargetIdentity != null
+        val focusedAnchoredMatches =
+            focusedTargetPresent && focusedAnchorSessionIdentity == focusedTargetIdentity
+        val focusedConsumedMatches =
+            focusedTargetPresent && consumedFocusedMessageAnchorIdentity == focusedTargetIdentity
+        val focusedInterruptedMatches =
+            focusedTargetPresent && scrollInterruptedFocusedMessageAnchorIdentity == focusedTargetIdentity
+        val focusedLatestAnchorCanCorrectLayout =
+            focusedLatestMessageComposerLayoutOwnsViewport(
+                targetIdentity = focusedTargetIdentity,
+                targetItemIndex = focusedTargetItemIndex,
+                latestMessageItemIndex = latestMessageListItemIndex,
+                anchoredIdentity = focusedAnchorSessionIdentity,
+                consumedIdentity = consumedFocusedMessageAnchorIdentity,
+                scrollInterruptedIdentity = scrollInterruptedFocusedMessageAnchorIdentity,
+                startUserScrollGeneration = focusedAnchorStartUserScrollGeneration,
+                currentUserScrollGeneration = userScrollGeneration.value
+            )
         val layoutState =
             ThreadComposerLayoutBottomAnchorState(
                 previousKeyboardInsetDp = lastComposerKeyboardInsetDp,
@@ -15964,18 +15983,45 @@ private fun ThreadMessagesList(
                         yieldElapsedMs = bottomAnchorFocusedYieldElapsedMs
                     ),
                 focusedLatestAnchorCanCorrectLayout =
-                    focusedLatestMessageComposerLayoutOwnsViewport(
-                        targetIdentity = focusedTargetIdentity,
-                        targetItemIndex = renderPayload.focusedMessageListItemIndex(),
-                        latestMessageItemIndex = latestMessageListItemIndex,
-                        anchoredIdentity = focusedAnchorSessionIdentity,
-                        consumedIdentity = consumedFocusedMessageAnchorIdentity,
-                        scrollInterruptedIdentity = scrollInterruptedFocusedMessageAnchorIdentity,
-                        startUserScrollGeneration = focusedAnchorStartUserScrollGeneration,
-                        currentUserScrollGeneration = userScrollGeneration.value
-                    )
+                    focusedLatestAnchorCanCorrectLayout
             )
         val layoutDecision = resolveThreadComposerLayoutBottomAnchor(layoutState)
+        if (
+            threadComposerLayoutChanged(layoutState) ||
+            layoutState.pendingLayoutChange ||
+            layoutDecision.shouldAnchor ||
+            (focusedTargetPresent && (layoutState.focusedAnchorOwnsViewport || focusedConsumedMatches))
+        ) {
+            val decisionLayout = listState.layoutInfo
+            val decisionFirstVisible = decisionLayout.visibleItemsInfo.firstOrNull()
+            val decisionLastVisible = decisionLayout.visibleItemsInfo.lastOrNull()
+            diagnosticsLogger(
+                "thread_composer_layout_anchor_decision " +
+                    "keyboardDp=${layoutState.previousKeyboardInsetDp}->${layoutState.nextKeyboardInsetDp} " +
+                    "viewportDp=${layoutState.previousViewportHeightDp}->${layoutState.nextViewportHeightDp} " +
+                    "pendingBefore=${layoutState.pendingLayoutChange} pendingAfter=${layoutDecision.pendingLayoutChange} " +
+                    "shouldAnchor=${layoutDecision.shouldAnchor} initialReady=${layoutState.initialBottomAnchorReady} " +
+                    "latestItemIndex=${layoutState.latestItemIndex} allowBottom=${layoutState.allowBottomAutoAnchor} " +
+                    "focusedOwns=${layoutState.focusedAnchorOwnsViewport} " +
+                    "focusedLatestEligible=${layoutState.focusedLatestAnchorCanCorrectLayout} " +
+                    "focusedTargetPresent=$focusedTargetPresent targetItemIndex=$focusedTargetItemIndex " +
+                    "latestMessageItemIndex=$latestMessageListItemIndex " +
+                    "anchoredMatches=$focusedAnchoredMatches " +
+                    "consumedMatches=$focusedConsumedMatches " +
+                    "interruptedMatches=$focusedInterruptedMatches " +
+                    "startUserScrollGeneration=$focusedAnchorStartUserScrollGeneration " +
+                    "currentUserScrollGeneration=${userScrollGeneration.value} " +
+                    "layoutGeneration=$viewportLayoutGeneration viewportIntent=${viewportControllerState.intent} " +
+                    "viewportEpoch=${viewportControllerState.epoch} " +
+                    "pendingCommandId=${viewportControllerState.pendingCommand?.id ?: "none"} " +
+                    "listViewport=${decisionLayout.viewportStartOffset}..${decisionLayout.viewportEndOffset} " +
+                    "firstVisible=${decisionFirstVisible?.index ?: -1}:" +
+                    "${decisionFirstVisible?.offset ?: 0}+${decisionFirstVisible?.size ?: 0} " +
+                    "lastVisible=${decisionLastVisible?.index ?: -1}:" +
+                    "${decisionLastVisible?.offset ?: 0}+${decisionLastVisible?.size ?: 0} " +
+                    "targetOffset=${listState.focusedAnchorTargetOffset(focusedTargetItemIndex) ?: "unplaced"}"
+            )
+        }
         lastComposerKeyboardInsetDp = composerKeyboardInsetDp
         lastThreadViewportHeightDp = measuredThreadViewportHeightDp
         pendingComposerLayoutBottomAnchor = layoutDecision.pendingLayoutChange
@@ -15986,10 +16032,33 @@ private fun ThreadMessagesList(
         pendingKeyboardBottomAnchor = true
         viewportLayoutGeneration += 1L
         dispatchViewportEvent(LazyViewportEvent.ContentMutated(LazyViewportMutation.InsetChange))
-        val insetCommandId = viewportControllerState.pendingCommand?.id
+        val insetCommand = viewportControllerState.pendingCommand
+        val insetCommandId = insetCommand?.id
+        diagnosticsLogger(
+            "thread_composer_layout_anchor_dispatched " +
+                "layoutGeneration=$viewportLayoutGeneration viewportIntent=${viewportControllerState.intent} " +
+                "viewportEpoch=${viewportControllerState.epoch} commandId=${insetCommandId ?: "none"} " +
+                "commandTarget=${insetCommand?.target ?: "none"}"
+        )
         if (insetCommandId != null) {
             awaitViewportCommandSettlement(insetCommandId)
         }
+        val settledLayout = listState.layoutInfo
+        val settledFirstVisible = settledLayout.visibleItemsInfo.firstOrNull()
+        val settledLastVisible = settledLayout.visibleItemsInfo.lastOrNull()
+        diagnosticsLogger(
+                "thread_composer_layout_anchor_settled " +
+                "commandId=${insetCommandId ?: "none"} totalItems=${settledLayout.totalItemsCount} " +
+                "viewportIntent=${viewportControllerState.intent} viewportEpoch=${viewportControllerState.epoch} " +
+                "pendingCommandId=${viewportControllerState.pendingCommand?.id ?: "none"} " +
+                "viewport=${settledLayout.viewportStartOffset}..${settledLayout.viewportEndOffset} " +
+                "firstVisible=${settledFirstVisible?.index ?: -1}:" +
+                "${settledFirstVisible?.offset ?: 0}+${settledFirstVisible?.size ?: 0} " +
+                "lastVisible=${settledLastVisible?.index ?: -1}:" +
+                "${settledLastVisible?.offset ?: 0}+${settledLastVisible?.size ?: 0} " +
+                "targetItemIndex=$focusedTargetItemIndex targetOffset=" +
+                "${listState.focusedAnchorTargetOffset(focusedTargetItemIndex) ?: "unplaced"}"
+        )
         pendingKeyboardBottomAnchor = false
     }
     ThreadReactionAtlasProvider {
