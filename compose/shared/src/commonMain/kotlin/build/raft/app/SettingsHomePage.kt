@@ -19540,72 +19540,41 @@ internal fun homeSearchEntityResults(
                 memberId to conversation.toThreadLaunchConversationIdentity()
             }
             .toMap()
-    val conversationEntries =
-        conversations.mapIndexed { index, conversation ->
+    val conversationResults =
+        conversations.mapNotNull { conversation ->
+            if (!conversation.searchMatches(normalizedQuery)) return@mapNotNull null
             val type =
                 if (conversation.kind == ConversationKind.DirectMessage) {
                     SearchEntityType.DirectMessage
                 } else {
                     SearchEntityType.Channel
                 }
-            ThreadComposerSuggestionSearchEntry(
-                index = index,
-                suggestion =
-                    SearchEntityResult(
-                        key = "conversation:${conversation.threadId.value}",
-                        type = type,
-                        title = if (type == SearchEntityType.Channel) "#${conversation.name}" else conversation.name,
-                        subtitle =
-                            conversation.subtitle?.takeIf { it.isNotBlank() }
-                                ?: if (type == SearchEntityType.Channel) channelLabel else dmLabel,
-                        threadId = conversation.threadId.value,
-                        memberId = conversation.presenceMemberId?.value,
-                        conversationIdentity = conversation.toThreadLaunchConversationIdentity(),
-                        avatarWireValue = null,
-                        showPresence = conversation.isAgentDirectMessage(),
-                        archived = conversation.archived
-                    ),
-                fields =
-                    listOf(
-                        ThreadComposerSuggestionSearchField(conversation.name, priority = 0),
-                        ThreadComposerSuggestionSearchField(conversation.subtitle.orEmpty(), priority = 3),
-                        ThreadComposerSuggestionSearchField(conversation.channelId?.value.orEmpty(), priority = 5),
-                        ThreadComposerSuggestionSearchField(conversation.threadId.value, priority = 5)
-                    )
+            SearchEntityResult(
+                key = "conversation:${conversation.threadId.value}",
+                type = type,
+                title = if (type == SearchEntityType.Channel) "#${conversation.name}" else conversation.name,
+                subtitle = conversation.subtitle?.takeIf { it.isNotBlank() } ?: if (type == SearchEntityType.Channel) channelLabel else dmLabel,
+                threadId = conversation.threadId.value,
+                memberIdentity = conversation.toThreadLaunchConversationIdentity().dmPeerIdentity,
+                conversationIdentity = conversation.toThreadLaunchConversationIdentity(),
+                avatarWireValue = null,
+                showPresence = conversation.isAgentDirectMessage(),
+                archived = conversation.archived
             )
         }
-    val memberEntries =
-        senderFilters.mapIndexed { offset, sender ->
+    val memberResults =
+        senderFilters.mapNotNull { sender ->
+            if (!sender.searchMatches(normalizedQuery)) return@mapNotNull null
             val conversation = byPresenceMemberId[sender.id]
-            ThreadComposerSuggestionSearchEntry(
-                index = conversationEntries.size + offset,
-                suggestion =
-                    SearchEntityResult(
-                        key = "sender:${sender.kind}:${sender.id}",
-                        type = if (sender.kind == MemberKind.Agent) SearchEntityType.Agent else SearchEntityType.Human,
-                        title = sender.displayLabel,
-                        subtitle =
-                            buildString {
-                                append(if (sender.kind == MemberKind.Agent) agentLabel else personLabel)
-                                if (sender.handle.isNotBlank()) append(" · @${sender.handle}")
-                                if (conversation == null) append(" · $membersLabel")
-                            },
-                        threadId = conversation?.threadId?.value,
-                        memberId = sender.id,
-                        conversationIdentity = conversation,
-                        avatarWireValue = sender.avatarWireValue ?: AvatarReference.Random(sender.id).wireValue,
-                        showPresence = sender.kind == MemberKind.Agent
-                    ),
-                fields =
-                    listOf(
-                        ThreadComposerSuggestionSearchField(sender.displayLabel, priority = 0),
-                        ThreadComposerSuggestionSearchField(sender.handle, priority = 1),
-                        ThreadComposerSuggestionSearchField(sender.id, priority = 5)
-                    )
+            sender.toHomeSearchEntityResult(
+                conversationIdentity = conversation,
+                agentLabel = agentLabel,
+                personLabel = personLabel,
+                membersLabel = membersLabel,
             )
         }
     val entries =
-        (conversationEntries + memberEntries).let { candidates ->
+        (conversationResults + memberResults).let { candidates ->
             when (trimmedQuery.firstOrNull()) {
                 '#' -> candidates.filter { it.suggestion.type == SearchEntityType.Channel }
                 '@' ->
