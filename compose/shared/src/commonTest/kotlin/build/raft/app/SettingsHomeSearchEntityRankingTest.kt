@@ -25,14 +25,14 @@ class SettingsHomeSearchEntityRankingTest {
     fun realHomeSearchConsumerSharesPinyinInitialsAndFuzzyRanking() {
         assertEquals(listOf("conversation:channel-pinyin"), keysFor("duihua"))
         assertEquals(listOf("conversation:channel-pinyin"), keysFor("dh"))
-        assertEquals(listOf("sender:Human:human-pinyin"), keysFor("zhaoziqi"))
-        assertEquals(listOf("sender:Human:human-pinyin"), keysFor("zzq"))
+        assertEquals(listOf("sender:server-1:Human:human-pinyin"), keysFor("zhaoziqi"))
+        assertEquals(listOf("sender:server-1:Human:human-pinyin"), keysFor("zzq"))
         assertEquals(
-            listOf("conversation:dm-agent", "sender:Agent:agent-pinyin"),
+            listOf("conversation:dm-agent", "sender:server-1:Agent:agent-pinyin"),
             keysFor("xiaoming")
         )
         assertEquals(
-            listOf("conversation:dm-agent", "sender:Agent:agent-pinyin"),
+            listOf("conversation:dm-agent", "sender:server-1:Agent:agent-pinyin"),
             keysFor("xmzs")
         )
 
@@ -44,7 +44,7 @@ class SettingsHomeSearchEntityRankingTest {
     @Test
     fun realHomeSearchConsumerRanksAcrossEntityTypesAndNormalizesPrefixes() {
         val unified = resultsFor("gen")
-        assertEquals("sender:Human:human-exact", unified.first().key)
+        assertEquals("sender:server-1:Human:human-exact", unified.first().key)
         assertEquals(SearchEntityType.Human, unified.first().type)
 
         assertEquals(
@@ -52,11 +52,11 @@ class SettingsHomeSearchEntityRankingTest {
             keysFor("#duihua")
         )
         assertEquals(
-            listOf("sender:Human:human-pinyin"),
+            listOf("sender:server-1:Human:human-pinyin"),
             keysFor("@zhaoziqi")
         )
         assertEquals(
-            listOf("sender:Agent:agent-pinyin"),
+            listOf("sender:server-1:Agent:agent-pinyin"),
             keysFor("@xmzs")
         )
     }
@@ -113,25 +113,29 @@ class SettingsHomeSearchEntityRankingTest {
                     id = "human-pinyin",
                     label = "赵梓淇",
                     handle = "zhaozq",
-                    kind = MemberKind.Human
+                    kind = MemberKind.Human,
+                    sourceServerId = ServerId("server-1")
                 ),
                 SearchSenderFilterItem(
                     id = "human-exact",
                     label = "gen",
                     handle = "general-person",
-                    kind = MemberKind.Human
+                    kind = MemberKind.Human,
+                    sourceServerId = ServerId("server-1")
                 ),
                 SearchSenderFilterItem(
                     id = "human-dm",
                     label = "Zoe Person",
                     handle = "zoe",
-                    kind = MemberKind.Human
+                    kind = MemberKind.Human,
+                    sourceServerId = ServerId("server-1")
                 ),
                 SearchSenderFilterItem(
                     id = "agent-pinyin",
                     label = "小明助手",
                     handle = "assistant-xm",
-                    kind = MemberKind.Agent
+                    kind = MemberKind.Agent,
+                    sourceServerId = ServerId("server-1")
                 )
             )
 
