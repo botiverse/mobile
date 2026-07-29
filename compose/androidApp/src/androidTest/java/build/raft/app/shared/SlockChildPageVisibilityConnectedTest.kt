@@ -57,6 +57,7 @@ class SlockChildPageVisibilityConnectedTest {
         val blueRatio = bitmap.matchingPixelRatio { red, green, blue ->
             red < 60 && green < 60 && blue > 220
         }
+        saveAcceptedProbeFrame(bitmap)
         bitmap.recycle()
 
         println("SlockChildPageVisibilityProbe redRatio=$redRatio blueRatio=$blueRatio")
@@ -204,6 +205,15 @@ class SlockChildPageVisibilityConnectedTest {
         return bitmap
     }
 
+    private fun saveAcceptedProbeFrame(bitmap: Bitmap) {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        context.openFileOutput(ACCEPTED_PROBE_FRAME_FILE, android.content.Context.MODE_PRIVATE).use { output ->
+            check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) {
+                "Failed to persist accepted child page visibility probe frame"
+            }
+        }
+    }
+
     private fun Bitmap.matchingPixelRatio(matches: (red: Int, green: Int, blue: Int) -> Boolean): Float {
         val row = IntArray(width)
         var matched = 0
@@ -239,3 +249,5 @@ internal fun childPageHostReady(snapshot: SlockKuiklyRenderReadinessSnapshot): B
         snapshot.hasWindowFocus &&
         snapshot.contentWidth > 0 &&
         snapshot.contentHeight > 0
+
+private const val ACCEPTED_PROBE_FRAME_FILE = "child-page-visibility-accepted.png"
