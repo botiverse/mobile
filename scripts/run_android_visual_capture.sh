@@ -593,6 +593,16 @@ CURRENT_PHASE="visual_environment"
 "$ADB_BIN" shell settings put global window_animation_scale 0
 "$ADB_BIN" shell settings put global transition_animation_scale 0
 "$ADB_BIN" shell settings put global animator_duration_scale 0
+# Keep the display awake for the whole capture run. CI emulators ship
+# stay_on_while_plugged_in=0 with a finite screen_off_timeout (PR #1747's
+# first-character finding), so a shard whose interaction case straddles the
+# display sleep sees the keyguard/system window (package=android) hold input
+# focus and eat injected gestures — the active-input-window gate then times
+# out (nightly 30402296301 / proof 30496656826).
+"$ADB_BIN" shell svc power stayon true || true
+"$ADB_BIN" shell settings put system screen_off_timeout 2147483647 || true
+"$ADB_BIN" shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1 || true
+"$ADB_BIN" shell wm dismiss-keyguard >/dev/null 2>&1 || true
 
 CURRENT_PHASE="install_app"
 "$ADB_BIN" install -r "$APP_APK" | tee "$OUTPUT_DIR/app-install.txt"

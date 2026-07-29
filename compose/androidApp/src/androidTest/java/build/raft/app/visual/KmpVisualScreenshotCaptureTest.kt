@@ -3404,16 +3404,31 @@ class KmpVisualScreenshotCaptureTest {
         what: String,
         timeoutMs: Long = ACTIVE_INPUT_WINDOW_TIMEOUT_MS
     ) {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val powerManager =
+            instrumentation.targetContext.getSystemService(android.os.PowerManager::class.java)
         val deadline = SystemClock.uptimeMillis() + timeoutMs
         var activePackage: CharSequence? = null
+        var wokeDisplay = false
         while (SystemClock.uptimeMillis() < deadline) {
+            // CI emulators ship stay_on_while_plugged_in=0 with a finite
+            // screen_off_timeout (PR #1747's first-character finding); when the
+            // display sleeps mid-shard the keyguard/system window (package
+            // "android") takes input focus and eats injected gestures. Re-wake
+            // and dismiss the keyguard before re-reading the focused window.
+            if (powerManager?.isInteractive == false) {
+                runShellCommand("input keyevent KEYCODE_WAKEUP")
+                runShellCommand("wm dismiss-keyguard")
+                wokeDisplay = true
+            }
             activePackage =
-                InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow?.packageName
+                instrumentation.uiAutomation.rootInActiveWindow?.packageName
             if (activePackage == "build.raft.app.connectedtest") return
             Thread.sleep(ACTIVE_INPUT_WINDOW_POLL_MS)
         }
         throw IllegalArgumentException(
-            "$what is not the active input window after ${timeoutMs}ms: package=$activePackage"
+            "$what is not the active input window after ${timeoutMs}ms: " +
+                "package=$activePackage interactive=${powerManager?.isInteractive} wokeDisplay=$wokeDisplay"
         )
     }
 
