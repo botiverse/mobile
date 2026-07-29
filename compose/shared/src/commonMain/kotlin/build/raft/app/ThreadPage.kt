@@ -2167,19 +2167,33 @@ internal fun ThreadTimelineRenderConfig.dateDividerTimeContext(liveTodayEpochDay
         nowEpochMillis = null
     )
 
-internal fun ThreadTimelineRenderConfig.formatCompactTimestampLabel(message: KuiklyThreadMessageItem): String {
-    val value = message.timestampLabel
+internal fun formatThreadCompactTimestampLabel(
+    value: String,
+    timeContext: SlockTimeContext?
+): String {
+    val trimmed = value.trim()
+    if (trimmed.isEmpty()) return ""
     val epochMillis =
-        parseSlockTimestampEpochMillisOrNull(value, timeContext.localOffsetMinutes)
-            ?: return formatTimestampLabel(value)
-    val localEpochDay = threadLocalEpochDay(epochMillis, timeContext.localOffsetMinutes)
+        parseSlockTimestampEpochMillisOrNull(trimmed, timeContext?.localOffsetMinutes ?: 0)
+            ?: return trimmed
+    // Parseable wire timestamps must never leak when a standalone surface has
+    // not established the shared time authority yet. Display-clock literals
+    // remain safe for fixtures and legacy cached rows.
+    val context = timeContext ?: return ""
+    val localEpochDay = threadLocalEpochDay(epochMillis, context.localOffsetMinutes)
     return formatSlockTimestampEpochMillis(
         epochMillis = epochMillis,
-        localOffsetMinutes = timeContext.localOffsetMinutes,
+        localOffsetMinutes = context.localOffsetMinutes,
         todayEpochDay = localEpochDay,
         timeFormat = SlockTimeFormat24Hour
     )
 }
+
+internal fun ThreadTimelineRenderConfig.formatCompactTimestampLabel(message: KuiklyThreadMessageItem): String =
+    formatThreadCompactTimestampLabel(message.timestampLabel, timeContext)
+
+internal fun ForwardMessageItem.formatThreadForwardedTimestampLabel(timeContext: SlockTimeContext?): String =
+    formatThreadCompactTimestampLabel(timestampLabel, timeContext)
 
 internal fun ThreadTimelineRenderConfig.resolveTaskAssigneeDisplayName(
     value: String?,
@@ -23006,6 +23020,7 @@ private fun ThreadForwardBundleCard(
         // mobile navigation contract requested for 1.6.0: every bundle has a
         // full-page entry, including a single forwarded message.
         val previewMessages = bundle.inlinePreviewMessages()
+        val liveTimeContext = LocalSlockTimeContextProvider.current?.current
         previewMessages.forEach { preview ->
             val item = preview.item
             Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(SlockColor.BorderBlack.copy(alpha = 0.1f)))
@@ -23026,9 +23041,11 @@ private fun ThreadForwardBundleCard(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false)
                     )
-                    item.timestampLabel.takeIf { it.isNotBlank() }?.let { timestamp ->
+                    item.formatThreadForwardedTimestampLabel(liveTimeContext)
+                        .takeIf { it.isNotBlank() }
+                        ?.let { timestamp ->
                         Text(
-                            text = slockRelativeTimestampLabel(timestamp),
+                            text = timestamp,
                             style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 10.sp, lineHeight = 13.sp),
                             color = SlockColor.TextMutedGray,
                             maxLines = 1,
@@ -23493,6 +23510,29 @@ internal fun ThreadCommentAnchorVisualScreen() {
 }
 
 const val THREAD_FORWARD_BUNDLE_PAGE = "compose_thread_forward_bundle_page"
+private const val ThreadForwardBundleLocalOffsetMinutesKey = "localOffsetMinutes"
+
+internal fun ThreadForwardBundleRoute.toThreadForwardBundlePageData():
+    com.tencent.kuikly.core.nvi.serialization.json.JSONObject =
+    com.tencent.kuikly.core.nvi.serialization.json.JSONObject().apply {
+        put("pageName", THREAD_FORWARD_BUNDLE_PAGE)
+        put("serverId", serverId.value)
+        put("channelId", channelId.value)
+        put("messageId", messageId.value)
+    }
+
+internal fun com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+    .threadForwardBundleTimeCapabilitiesOrNull(): SlockTimeCapabilities? {
+    val fallbackOffsetMinutes =
+        optString(ThreadForwardBundleLocalOffsetMinutesKey)
+            .toIntOrNull()
+            ?.takeIf { it in -24 * 60..24 * 60 }
+            ?: return null
+    return SlockTimeCapabilities(
+        localOffsetMinutes = fallbackOffsetMinutes,
+        timeFormat = optString("timeFormat").takeIf { it.isNotBlank() } ?: SlockTimeFormat24Hour
+    )
+}
 
 // Full forwarded-bundle list as its own single-page pager (task #64): the
 // inline card previews at most three messages; every bundle can route here. Same
@@ -23501,13 +23541,10 @@ const val THREAD_FORWARD_BUNDLE_PAGE = "compose_thread_forward_bundle_page"
 internal fun Pager.openThreadForwardBundlePage(route: ThreadForwardBundleRoute) {
     openSlockPage(
         pageName = THREAD_FORWARD_BUNDLE_PAGE,
-        pageData =
-            com.tencent.kuikly.core.nvi.serialization.json.JSONObject().apply {
-                put("pageName", THREAD_FORWARD_BUNDLE_PAGE)
-                put("serverId", route.serverId.value)
-                put("channelId", route.channelId.value)
-                put("messageId", route.messageId.value)
-            }
+        // Product state crosses this boundary by identity only. Platform hosts
+        // inject the legacy offset as a rollback fallback; the live provider
+        // refreshes it through the KuiklyBase datetime foundation.
+        pageData = route.toThreadForwardBundlePageData()
     )
 }
 
@@ -23527,6 +23564,8 @@ private fun ThreadForwardBundleScreen() {
     val params = pager.pageData.params
     val visualFixture = remember(params.toString()) { params.optString("visualFixture") == "forward_bundle" }
     val route = remember(params.toString()) { params.toThreadForwardBundleRouteOrNull() }
+    val timeCapabilities = remember(params.toString()) { params.threadForwardBundleTimeCapabilitiesOrNull() }
+    val timeContextProvider = rememberLiveSlockTimeContext(capabilities = timeCapabilities)
     val storeScope = remember(params.toString(), pager.pagerId) {
         params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
     }
@@ -23588,9 +23627,13 @@ private fun ThreadForwardBundleScreen() {
                 LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(vertical = SlockSpacing.Sm)) {
                     items(messages.size, key = { messages[it].id }) { index ->
                         val item = messages[index]
+                        val timestampLabel =
+                            item.formatThreadForwardedTimestampLabel(timeContextProvider.current)
                         Column(modifier = Modifier.fillMaxWidth()) {
                             ThreadMessageCard(
                                 message = item.toThreadMessageItemForBundlePage(),
+                                timestampLabel = timestampLabel,
+                                compactTimestampLabel = timestampLabel,
                                 onShowActions = {},
                                 onOpenMember = {},
                                 onOpenThread = {},
