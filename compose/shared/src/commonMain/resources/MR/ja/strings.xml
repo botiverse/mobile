@@ -237,6 +237,7 @@
     <string name="thread_inline_selection_copy">コピー</string>
     <string name="thread_inline_selection_reply">返信</string>
     <string name="thread_inline_selection_save">保存</string>
+    <string name="thread_inline_selection_select">選択</string>
     <string name="thread_inline_selection_more">その他</string>
     <string name="thread_action_open_thread">スレッドを開く</string>
     <string name="thread_action_remove_from_saved">保存済みから削除</string>
