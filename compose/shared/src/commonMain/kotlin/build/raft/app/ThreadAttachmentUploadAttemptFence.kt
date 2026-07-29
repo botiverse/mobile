@@ -55,11 +55,14 @@ internal data class ThreadAttachmentUploadAdmission(
 /**
  * Production owner for attachment upload attempts and jobs.
  *
- * Tests can drive the same owner with controlled deferred transports; UI code supplies the actual
- * upload block and applies accepted results to the Composer draft reducer.
+ * The production scope must be the shared process-owned Thread send scope, never a page/composable
+ * scope: uploads continue while the process is alive even if the picker changes Activity, the app
+ * backgrounds, or the originating Thread leaves composition. Tests can drive the same owner with
+ * controlled deferred transports; UI code supplies the actual upload block and applies accepted
+ * results to the Composer draft reducer.
  */
 internal class ThreadAttachmentUploadOrchestrator(
-    private val scope: CoroutineScope
+    private val processScope: CoroutineScope
 ) {
     private var fence = ThreadAttachmentUploadAttemptFence()
     private var jobs: Map<String, Job> = emptyMap()
@@ -77,7 +80,7 @@ internal class ThreadAttachmentUploadOrchestrator(
         fence = admission.fence
         val attemptToken = admission.attemptToken
         val job =
-            scope.launch(start = CoroutineStart.LAZY) {
+            processScope.launch(start = CoroutineStart.LAZY) {
                 try {
                     block(attemptToken)
                 } finally {
