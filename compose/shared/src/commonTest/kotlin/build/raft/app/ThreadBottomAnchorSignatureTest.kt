@@ -1392,6 +1392,96 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
+    fun composerLayoutBottomAnchor_correctsFirstImeAfterLatestFocusedAnchorSettles() {
+        val targetIdentity = "latest-message:route-request"
+        assertTrue(
+            focusedLatestMessageComposerLayoutOwnsViewport(
+                targetIdentity = targetIdentity,
+                targetItemIndex = 17,
+                latestMessageItemIndex = 17,
+                anchoredIdentity = targetIdentity,
+                consumedIdentity = targetIdentity,
+                scrollInterruptedIdentity = null,
+                startUserScrollGeneration = 0,
+                currentUserScrollGeneration = 0
+            )
+        )
+        assertTrue(
+            shouldAnchorThreadComposerLayoutChange(
+                composerLayoutState(
+                    previousKeyboardInsetDp = 0f,
+                    nextKeyboardInsetDp = 320f,
+                    previousViewportHeightDp = 720f,
+                    nextViewportHeightDp = 408f,
+                    allowBottomAutoAnchor = false,
+                    focusedLatestAnchorCanCorrectLayout = true
+                )
+            )
+        )
+    }
+
+    @Test
+    fun composerLayoutBottomAnchor_defersFirstImeUntilLatestFocusedAnchorSettles() {
+        val whileFocused =
+            resolveThreadComposerLayoutBottomAnchor(
+                composerLayoutState(
+                    previousKeyboardInsetDp = 0f,
+                    nextKeyboardInsetDp = 320f,
+                    previousViewportHeightDp = 720f,
+                    nextViewportHeightDp = 408f,
+                    allowBottomAutoAnchor = false,
+                    focusedAnchorOwnsViewport = true
+                )
+            )
+        assertFalse(whileFocused.shouldAnchor)
+        assertTrue(whileFocused.pendingLayoutChange)
+
+        val afterFocusedSettles =
+            resolveThreadComposerLayoutBottomAnchor(
+                composerLayoutState(
+                    previousKeyboardInsetDp = 320f,
+                    nextKeyboardInsetDp = 320f,
+                    previousViewportHeightDp = 408f,
+                    nextViewportHeightDp = 408f,
+                    pendingLayoutChange = whileFocused.pendingLayoutChange,
+                    allowBottomAutoAnchor = false,
+                    focusedLatestAnchorCanCorrectLayout = true
+                )
+            )
+        assertTrue(afterFocusedSettles.shouldAnchor)
+        assertFalse(afterFocusedSettles.pendingLayoutChange)
+    }
+
+    @Test
+    fun focusedLatestComposerLayoutOwner_yieldsToHistoryAndUserScroll() {
+        val targetIdentity = "focused-message:route-request"
+        assertFalse(
+            focusedLatestMessageComposerLayoutOwnsViewport(
+                targetIdentity = targetIdentity,
+                targetItemIndex = 9,
+                latestMessageItemIndex = 17,
+                anchoredIdentity = targetIdentity,
+                consumedIdentity = targetIdentity,
+                scrollInterruptedIdentity = null,
+                startUserScrollGeneration = 0,
+                currentUserScrollGeneration = 0
+            )
+        )
+        assertFalse(
+            focusedLatestMessageComposerLayoutOwnsViewport(
+                targetIdentity = targetIdentity,
+                targetItemIndex = 17,
+                latestMessageItemIndex = 17,
+                anchoredIdentity = targetIdentity,
+                consumedIdentity = targetIdentity,
+                scrollInterruptedIdentity = null,
+                startUserScrollGeneration = 0,
+                currentUserScrollGeneration = 1
+            )
+        )
+    }
+
+    @Test
     fun composerLayoutBottomAnchor_runsOncePendingColdEntryBecomesReady() {
         val beforeReady =
             resolveThreadComposerLayoutBottomAnchor(
@@ -1477,7 +1567,8 @@ class ThreadBottomAnchorSignatureTest {
         initialBottomAnchorReady: Boolean = true,
         latestItemIndex: Int = 15,
         allowBottomAutoAnchor: Boolean = true,
-        focusedAnchorOwnsViewport: Boolean = false
+        focusedAnchorOwnsViewport: Boolean = false,
+        focusedLatestAnchorCanCorrectLayout: Boolean = false
     ): ThreadComposerLayoutBottomAnchorState =
         ThreadComposerLayoutBottomAnchorState(
             previousKeyboardInsetDp = previousKeyboardInsetDp,
@@ -1488,7 +1579,8 @@ class ThreadBottomAnchorSignatureTest {
             initialBottomAnchorReady = initialBottomAnchorReady,
             latestItemIndex = latestItemIndex,
             allowBottomAutoAnchor = allowBottomAutoAnchor,
-            focusedAnchorOwnsViewport = focusedAnchorOwnsViewport
+            focusedAnchorOwnsViewport = focusedAnchorOwnsViewport,
+            focusedLatestAnchorCanCorrectLayout = focusedLatestAnchorCanCorrectLayout
         )
 
     @Test
