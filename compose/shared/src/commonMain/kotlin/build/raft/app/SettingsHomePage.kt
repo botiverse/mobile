@@ -19530,7 +19530,6 @@ internal fun homeSearchEntityResults(
     membersLabel: String
 ): List<SearchEntityResult> {
     val trimmedQuery = query.trim()
-    val normalizedQuery = trimmedQuery.lowercase()
     if (trimmedQuery.isBlank()) return emptyList()
     val snapshot = (homeState.content as? SharedHomeContentState.Content)?.snapshot ?: return emptyList()
     val conversations = snapshot.channels + snapshot.directMessages
@@ -19541,57 +19540,78 @@ internal fun homeSearchEntityResults(
                 memberId to conversation.toThreadLaunchConversationIdentity()
             }
             .toMap()
-    val conversationResults =
-        conversations.mapNotNull { conversation ->
-            if (!conversation.searchMatches(normalizedQuery)) return@mapNotNull null
+    val conversationEntries =
+        conversations.mapIndexed { index, conversation ->
             val type =
                 if (conversation.kind == ConversationKind.DirectMessage) {
                     SearchEntityType.DirectMessage
                 } else {
                     SearchEntityType.Channel
                 }
-            SearchEntityResult(
-                key = "conversation:${conversation.threadId.value}",
-                type = type,
-                title = if (type == SearchEntityType.Channel) "#${conversation.name}" else conversation.name,
-                subtitle = conversation.subtitle?.takeIf { it.isNotBlank() } ?: if (type == SearchEntityType.Channel) channelLabel else dmLabel,
-                threadId = conversation.threadId.value,
-                memberIdentity = conversation.toThreadLaunchConversationIdentity().dmPeerIdentity,
-                conversationIdentity = conversation.toThreadLaunchConversationIdentity(),
-                avatarWireValue = null,
-                showPresence = conversation.isAgentDirectMessage(),
-                archived = conversation.archived
+            val conversationIdentity = conversation.toThreadLaunchConversationIdentity()
+            ThreadComposerSuggestionSearchEntry(
+                index = index,
+                suggestion =
+                    SearchEntityResult(
+                        key = "conversation:${conversation.threadId.value}",
+                        type = type,
+                        title = if (type == SearchEntityType.Channel) "#${conversation.name}" else conversation.name,
+                        subtitle =
+                            conversation.subtitle?.takeIf { it.isNotBlank() }
+                                ?: if (type == SearchEntityType.Channel) channelLabel else dmLabel,
+                        threadId = conversation.threadId.value,
+                        memberIdentity = conversationIdentity.dmPeerIdentity,
+                        conversationIdentity = conversationIdentity,
+                        avatarWireValue = null,
+                        showPresence = conversation.isAgentDirectMessage(),
+                        archived = conversation.archived
+                    ),
+                fields =
+                    listOf(
+                        ThreadComposerSuggestionSearchField(conversation.name, priority = 0),
+                        ThreadComposerSuggestionSearchField(conversation.subtitle.orEmpty(), priority = 3),
+                        ThreadComposerSuggestionSearchField(conversation.channelId?.value.orEmpty(), priority = 5),
+                        ThreadComposerSuggestionSearchField(conversation.threadId.value, priority = 5)
+                    )
             )
         }
-    val memberResults =
-        senderFilters.mapNotNull { sender ->
-            if (!sender.searchMatches(normalizedQuery)) return@mapNotNull null
+    val memberEntries =
+        senderFilters.mapIndexedNotNull { offset, sender ->
             val conversation = byPresenceMemberId[sender.id]
-            sender.toHomeSearchEntityResult(
-                conversationIdentity = conversation,
-                agentLabel = agentLabel,
-                personLabel = personLabel,
-                membersLabel = membersLabel,
+            val suggestion =
+                sender.toHomeSearchEntityResult(
+                    conversationIdentity = conversation,
+                    agentLabel = agentLabel,
+                    personLabel = personLabel,
+                    membersLabel = membersLabel,
+                ) ?: return@mapIndexedNotNull null
+            ThreadComposerSuggestionSearchEntry(
+                index = conversationEntries.size + offset,
+                suggestion = suggestion,
+                fields =
+                    listOf(
+                        ThreadComposerSuggestionSearchField(sender.displayLabel, priority = 0),
+                        ThreadComposerSuggestionSearchField(sender.handle, priority = 1),
+                        ThreadComposerSuggestionSearchField(sender.id, priority = 5)
+                    )
             )
         }
-    return (conversationResults + memberResults)
+    val entries =
+        (conversationEntries + memberEntries).let { candidates ->
+            when (trimmedQuery.firstOrNull()) {
+                '#' -> candidates.filter { it.suggestion.type == SearchEntityType.Channel }
+                '@' ->
+                    candidates.filter {
+                        it.suggestion.type == SearchEntityType.Human ||
+                            it.suggestion.type == SearchEntityType.Agent
+                    }
+                else -> candidates
+            }
+        }
+    return rankThreadComposerSuggestionEntries(query = trimmedQuery, entries = entries)
         .distinctBy { it.key }
         .take(5)
 }
-
-
-internal fun HomeConversationRow.searchMatches(query: String): Boolean =
-    listOfNotNull(
-        name,
-        if (kind == ConversationKind.DirectMessage) null else "#${name.removePrefix("#")}",
-        subtitle.orEmpty(),
-        channelId?.value.orEmpty(),
-        threadId.value
-    )
-        .any { it.lowercase().contains(query) }
-
-private fun SearchSenderFilterItem.searchMatches(query: String): Boolean =
-    listOf(label, handle, id).any { it.lowercase().contains(query) }
 
 internal fun SearchSenderFilterItem.toHomeSearchEntityResult(
     conversationIdentity: ThreadLaunchConversationIdentity?,
