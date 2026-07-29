@@ -5166,8 +5166,8 @@ internal fun SharedThreadRouteContent(
     var inlineVideoPreviewStates by remember(threadInstanceKey) {
         mutableStateOf<Map<String, ThreadInlineVideoPreviewUiState>>(emptyMap())
     }
-    val attachmentUploadOrchestrator = remember(threadInstanceKey, coroutineScope) {
-        ThreadAttachmentUploadOrchestrator(coroutineScope)
+    val attachmentUploadOrchestrator = remember(threadInstanceKey, threadSendScope) {
+        ThreadAttachmentUploadOrchestrator(threadSendScope)
     }
     var attachmentUploadFilesByLocalId by remember(threadInstanceKey) {
         mutableStateOf<Map<String, PlatformFile>>(emptyMap())
@@ -5908,11 +5908,6 @@ internal fun SharedThreadRouteContent(
             renderedPayload = renderedPayload,
             resolvedAuxiliaryThreadId = resolvedAuxiliaryThreadId
         )
-    DisposableEffect(threadInstanceKey, attachmentUploadOrchestrator) {
-        onDispose {
-            attachmentUploadOrchestrator.dispose()
-        }
-    }
     val agentStatusResolver =
         remember(serverMembersStore, headerProjectionServerId) {
             slockScopedAgentStatusResolver(serverMembersStore, headerProjectionServerId?.value)

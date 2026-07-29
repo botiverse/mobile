@@ -12,19 +12,35 @@ private val SlockNetworkRequestLifetimeOrigin = TimeSource.Monotonic.markNow()
 /**
  * App-owned classification for lifecycle retirement.
  *
- * Only GET/HEAD are replay-safe, and this coordinator itself never replays either class. The
- * distinction is carried to callers so an interrupted mutation is reported as outcome-unknown.
+ * Uploads and message sends are process-bound long-running work: a page or Activity visibility
+ * edge must not cancel them and turn their server outcome unknown. Other requests keep the
+ * existing visibility-scoped retirement contract. This coordinator never replays any class.
  */
 internal enum class SlockNetworkMethodClass {
     Read,
-    Mutation
+    Mutation,
+    ProcessMutation
 }
 
-internal fun String.toSlockNetworkMethodClass(): SlockNetworkMethodClass =
-    when (trim().uppercase()) {
-        "GET", "HEAD" -> SlockNetworkMethodClass.Read
-        else -> SlockNetworkMethodClass.Mutation
+internal fun slockNetworkMethodClass(
+    method: String,
+    url: String,
+    serverScoped: Boolean
+): SlockNetworkMethodClass {
+    val normalizedMethod = method.trim().uppercase()
+    if (normalizedMethod == "GET" || normalizedMethod == "HEAD") {
+        return SlockNetworkMethodClass.Read
     }
+    val path = url.substringBefore('?').trimEnd('/')
+    return if (
+        serverScoped && normalizedMethod == "POST" &&
+        (path.endsWith("/api/messages") || path.endsWith("/api/attachments/upload"))
+    ) {
+        SlockNetworkMethodClass.ProcessMutation
+    } else {
+        SlockNetworkMethodClass.Mutation
+    }
+}
 
 internal fun interface SlockNetworkRequestCancelHandle {
     fun cancel()
@@ -58,7 +74,7 @@ internal sealed interface SlockNetworkRequestLifetimeOutcome<out T> {
         val processForeground: Boolean
     ) : SlockNetworkRequestLifetimeOutcome<Nothing> {
         val mutationOutcomeUnknown: Boolean
-            get() = descriptor.methodClass == SlockNetworkMethodClass.Mutation
+            get() = descriptor.methodClass != SlockNetworkMethodClass.Read
     }
 }
 
@@ -73,8 +89,10 @@ internal data class SlockNetworkLifecycleTransition(
  *
  * NetworkKMM still owns transport execution and its physical pools. This owner retains only the
  * callback API's cancel handle plus an exactly-once terminal fence. A real process visibility
- * transition retires the previous generation, completes every waiter without depending on a
- * frozen transport callback, and suppresses any late callback from becoming the terminal result.
+ * transition retires the previous generation's visibility-scoped work, completes those waiters
+ * without depending on a frozen transport callback, and suppresses their late callbacks.
+ * Process mutations remain owned by the live process and finish through their original transport
+ * callback or configured transport timeout; they are never replayed at a visibility edge.
  *
  * This coordinator deliberately does not schedule a third timeout. NetworkKMM and the existing
  * request scheduler remain the authoritative timeout owners; this layer adds only process-edge
@@ -159,8 +177,13 @@ internal class SlockNetworkRequestLifetimeCoordinator(
             }
             processForeground = foreground
             generation += 1L
-            val retired = active.values.toList()
-            active.clear()
+            val retired =
+                active.values.filter { attempt ->
+                    attempt.descriptor.methodClass != SlockNetworkMethodClass.ProcessMutation
+                }
+            retired.forEach { attempt ->
+                active.remove(attempt.descriptor.internalRequestId)
+            }
             val cancelHandles =
                 retired.mapNotNull { attempt ->
                     attempt.terminal = true

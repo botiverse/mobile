@@ -139,7 +139,12 @@ internal class NetworkKmmSlockHttpExecutor(
             val response =
                 executeNetworkRequest(
                     request = request,
-                    methodClass = method.toSlockNetworkMethodClass(),
+                    methodClass =
+                        slockNetworkMethodClass(
+                            method = method,
+                            url = url,
+                            serverScoped = headers.keys.any { name -> name.equals(HEADER_SERVER_ID, ignoreCase = true) }
+                        ),
                     timeoutMillis = SLOCK_REQUEST_TIMEOUT_MILLIS
                 )
             warningLogger(
@@ -230,7 +235,7 @@ internal class NetworkKmmSlockHttpExecutor(
                     ?.toExecutorResponse()
                     ?: executeNetworkRequest(
                         request = request,
-                        methodClass = SlockNetworkMethodClass.Mutation,
+                        methodClass = SlockNetworkMethodClass.ProcessMutation,
                         timeoutMillis = totalTimeoutMillis
                     )
             warningLogger(
