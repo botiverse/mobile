@@ -2623,42 +2623,71 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun cachedThreadRefreshExposesBackgroundRefreshingUntilNetworkCompletes() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val api =
-            FakeThreadApi(bodyText = messagesResponse("network body")).apply {
-                channelMessagesStarted = CompletableDeferred()
-                releaseChannelMessages = CompletableDeferred()
+    fun cachedThreadRefreshExposesBackgroundRefreshingUntilNetworkCompletes() = runPortableCoroutineTest {
+        repeat(25) { iteration ->
+            val scopeJob = SupervisorJob()
+            val scope = CoroutineScope(scopeJob + Dispatchers.Unconfined)
+            val loadingStateApplied = CompletableDeferred<KuiklyThreadScreenPayload>()
+            val releaseLoadingState = CompletableDeferred<Unit>()
+            val networkStarted = CompletableDeferred<Unit>()
+            val releaseNetwork = CompletableDeferred<Unit>()
+            val api =
+                FakeThreadApi(bodyText = messagesResponse("network body $iteration")).apply {
+                    channelMessagesStarted = networkStarted
+                    releaseChannelMessages = releaseNetwork
+                }
+            val dataSource =
+                SharedThreadDataSource(
+                    networkApi = api,
+                    sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                )
+            dataSource.cachePayloadForTest(contentPayload("cached body $iteration"))
+            val store =
+                SharedThreadStore(
+                    dataSource = dataSource,
+                    scope = scope,
+                    afterRefreshLoadingStateApplied = { payload ->
+                        assertTrue(
+                            loadingStateApplied.complete(payload),
+                            "iteration=$iteration loading state must be applied exactly once"
+                        )
+                        releaseLoadingState.await()
+                    }
+                )
+
+            try {
+                store.dispatch(SharedThreadIntent.Start(basePayload()))
+
+                val committed = loadingStateApplied.await()
+                assertEquals(0, api.channelMessageCalls, "iteration=$iteration must gate before fetch")
+                assertEquals("content", committed.status, "iteration=$iteration")
+                assertEquals("cached body $iteration", committed.messages.single().body, "iteration=$iteration")
+                assertTrue(committed.backgroundRefreshing, "iteration=$iteration")
+
+                releaseLoadingState.complete(Unit)
+                networkStarted.await()
+                val inFlight = store.state.value.payload
+                assertEquals(1, api.channelMessageCalls, "iteration=$iteration")
+                assertEquals("cached body $iteration", inFlight.messages.single().body, "iteration=$iteration")
+                assertTrue(inFlight.backgroundRefreshing, "iteration=$iteration")
+
+                releaseNetwork.complete(Unit)
+                val completed =
+                    store.state
+                        .map { state -> state.payload }
+                        .first { payload ->
+                            !payload.backgroundRefreshing &&
+                                payload.messages.singleOrNull()?.body == "network body $iteration"
+                        }
+                assertFalse(completed.backgroundRefreshing, "iteration=$iteration")
+                assertEquals("network body $iteration", completed.messages.single().body, "iteration=$iteration")
+                assertEquals(1, api.channelMessageCalls, "iteration=$iteration must fetch exactly once")
+            } finally {
+                releaseLoadingState.complete(Unit)
+                releaseNetwork.complete(Unit)
+                scopeJob.cancelAndJoin()
             }
-        val dataSource =
-            SharedThreadDataSource(
-                networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
-            )
-        dataSource.cachePayloadForTest(contentPayload("cached body"))
-        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
-
-        store.dispatch(SharedThreadIntent.Start(basePayload()))
-        api.channelMessagesStarted?.await()
-
-        val refreshingPayload = store.state.value.payload
-        assertEquals("content", refreshingPayload.status)
-        assertEquals("cached body", refreshingPayload.messages.single().body)
-        assertTrue(refreshingPayload.backgroundRefreshing)
-
-        api.releaseChannelMessages?.complete(Unit)
-        repeat(50) {
-            val payload = store.state.value.payload
-            if (!payload.backgroundRefreshing && payload.messages.singleOrNull()?.body == "network body") {
-                scope.cancel()
-                return@runBlocking
-            }
-            delay(10)
         }
-        val payload = store.state.value.payload
-        assertFalse(payload.backgroundRefreshing)
-        assertEquals("network body", payload.messages.single().body)
-        scope.cancel()
     }
 
     @Test
