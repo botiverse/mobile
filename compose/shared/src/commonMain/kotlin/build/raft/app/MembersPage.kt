@@ -2454,7 +2454,11 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
     }
     val visualSeed = remember(payload) { payload.toMemberDetailVisualSeedOrNull() }
     if (visualSeed != null) {
-        MemberDetailVisualSeedContent(payload = payload, seed = visualSeed)
+        MemberDetailVisualSeedContent(
+            payload = payload,
+            seed = visualSeed,
+            pageVisibleTick = pageVisibleTick
+        )
         return
     }
     val provider = rememberMemberDetailRouteProvider(pager, bridge)
@@ -3147,7 +3151,8 @@ private fun KuiklyMemberDetailPayload.toMemberDetailVisualSeedOrNull(): MemberDe
 @Composable
 private fun MemberDetailVisualSeedContent(
     payload: KuiklyMemberDetailPayload,
-    seed: MemberDetailVisualSeed
+    seed: MemberDetailVisualSeed,
+    pageVisibleTick: Int
 ) {
     val initialAgentTab = remember(payload.initialAgentTab) {
         payload.initialAgentTab.toMembersAgentDetailTabOrNull()
@@ -3198,6 +3203,7 @@ private fun MemberDetailVisualSeedContent(
         },
         onUnavailableAction = {},
         timeContext = payload.toSlockTimeContext(),
+        pageVisibleTick = pageVisibleTick,
         initialVisualMode = visualMode,
         initialAgentTab = initialAgentTab,
         agentPanelTabOrder = payload.agentPanelTabOrder,
