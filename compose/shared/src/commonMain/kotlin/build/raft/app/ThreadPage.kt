@@ -16507,6 +16507,7 @@ private fun ThreadMessagesList(
                 ThreadBackToBottomButtonState(
                     initialBottomAnchorReady = initialBottomAnchorReady,
                     pendingKeyboardBottomAnchor = pendingKeyboardBottomAnchor,
+                    bottomAutoAnchorOwnsViewport = allowBottomAutoAnchor,
                     canScrollTowardBottom = listState.canScrollForward,
                     latestItemOffBottom = listState.shouldShowThreadBackToBottom(latestItemIndex)
                 )
@@ -17490,6 +17491,7 @@ internal fun resolveThreadComposerLayoutBottomAnchor(
 internal data class ThreadBackToBottomButtonState(
     val initialBottomAnchorReady: Boolean,
     val pendingKeyboardBottomAnchor: Boolean,
+    val bottomAutoAnchorOwnsViewport: Boolean = false,
     val canScrollTowardBottom: Boolean = true,
     val latestItemOffBottom: Boolean
 )
@@ -17497,6 +17499,7 @@ internal data class ThreadBackToBottomButtonState(
 internal fun shouldShowThreadBackToBottomButton(state: ThreadBackToBottomButtonState): Boolean =
     state.initialBottomAnchorReady &&
         !state.pendingKeyboardBottomAnchor &&
+        !state.bottomAutoAnchorOwnsViewport &&
         state.canScrollTowardBottom &&
         state.latestItemOffBottom
 
