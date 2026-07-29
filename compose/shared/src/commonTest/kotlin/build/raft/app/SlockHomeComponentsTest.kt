@@ -185,11 +185,86 @@ class SlockHomeComponentsTest {
 
     @Test
     fun homeServerDrawerWidthAndSwipeThresholdFollowModalContract() {
-        assertEquals(336.dp, homeServerDrawerWidth(400.dp))
-        assertEquals(360.dp, homeServerDrawerWidth(800.dp))
+        assertEquals(336.dp, homeServerDrawerWidth(maxWidth = 400.dp, maxHeight = 800.dp))
+        assertEquals(360.dp, homeServerDrawerWidth(maxWidth = 800.dp, maxHeight = 1_000.dp))
+        assertEquals(300.dp, homeServerDrawerWidth(maxWidth = 600.dp, maxHeight = 400.dp))
+        assertEquals(360.dp, homeServerDrawerWidth(maxWidth = 800.dp, maxHeight = 400.dp))
         assertFalse(shouldDismissHomeServerDrawerOnSwipe(horizontalDragDp = -71f))
         assertTrue(shouldDismissHomeServerDrawerOnSwipe(horizontalDragDp = -72f))
         assertFalse(shouldDismissHomeServerDrawerOnSwipe(horizontalDragDp = 120f))
+    }
+
+    @Test
+    fun homeServerDrawerContentGestureRequiresUncontestedHomeRightSwipe() {
+        val allowed =
+            HomeServerDrawerOpenGestureAdmission(
+                homeSurfaceActive = true,
+                pointerOwnerActive = true
+            )
+
+        assertTrue(
+            shouldOpenHomeServerDrawerFromContentGesture(
+                admission = allowed,
+                horizontalDragDp = 80f,
+                verticalDragDp = 8f
+            )
+        )
+        assertFalse(
+            shouldOpenHomeServerDrawerFromContentGesture(
+                admission = allowed,
+                horizontalDragDp = -100f,
+                verticalDragDp = 0f
+            )
+        )
+        assertFalse(
+            shouldOpenHomeServerDrawerFromContentGesture(
+                admission = allowed,
+                horizontalDragDp = 80f,
+                verticalDragDp = 90f
+            )
+        )
+        assertFalse(
+            shouldOpenHomeServerDrawerFromContentGesture(
+                admission = allowed.copy(descendantConsumed = true),
+                horizontalDragDp = 100f,
+                verticalDragDp = 0f
+            )
+        )
+        assertFalse(
+            shouldOpenHomeServerDrawerFromContentGesture(
+                admission = allowed.copy(inputFocused = true),
+                horizontalDragDp = 100f,
+                verticalDragDp = 0f
+            )
+        )
+        assertFalse(
+            shouldOpenHomeServerDrawerFromContentGesture(
+                admission = allowed.copy(modalPresented = true),
+                horizontalDragDp = 100f,
+                verticalDragDp = 0f
+            )
+        )
+        assertFalse(
+            shouldOpenHomeServerDrawerFromContentGesture(
+                admission = allowed.copy(multiplePointers = true),
+                horizontalDragDp = 100f,
+                verticalDragDp = 0f
+            )
+        )
+        assertFalse(
+            shouldOpenHomeServerDrawerFromContentGesture(
+                admission = allowed.copy(homeSurfaceActive = false),
+                horizontalDragDp = 100f,
+                verticalDragDp = 0f
+            )
+        )
+        assertFalse(
+            shouldOpenHomeServerDrawerFromContentGesture(
+                admission = allowed.copy(pointerOwnerActive = false),
+                horizontalDragDp = 100f,
+                verticalDragDp = 0f
+            )
+        )
     }
 
     @Test

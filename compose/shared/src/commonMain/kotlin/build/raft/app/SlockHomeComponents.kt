@@ -117,6 +117,9 @@ import com.tencent.kuikly.compose.ui.layout.ContentScale
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.platform.LocalDensity
+import com.tencent.kuikly.compose.ui.semantics.isTraversalGroup
+import com.tencent.kuikly.compose.ui.semantics.semantics
+import com.tencent.kuikly.compose.ui.semantics.stateDescription
 import com.tencent.kuikly.compose.ui.text.TextStyle
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
@@ -199,6 +202,7 @@ private const val HomeListRepresentativeRowStepDp = 34f
 private const val HomeListServerSwitchRampStep = 3
 private const val HomeServerSwitcherMaxBeyondBoundsItemCount = 6
 private const val HomeServerDrawerWidthFraction = 0.84f
+private const val HomeServerDrawerLandscapeWidthFraction = 0.50f
 private val HomeServerDrawerMaxWidth = 360.dp
 private val HomeServerDrawerSwipeDismissThreshold = 72.dp
 private val HomeServerDrawerHeaderHeight = 56.dp
@@ -2925,18 +2929,21 @@ internal fun homeServerDrawerRows(
         }
     }
 
-internal fun homeServerDrawerWidth(maxWidth: Dp): Dp =
-    minOf(maxWidth * HomeServerDrawerWidthFraction, HomeServerDrawerMaxWidth)
+internal fun homeServerDrawerWidth(maxWidth: Dp, maxHeight: Dp): Dp =
+    minOf(
+        maxWidth *
+            if (maxWidth > maxHeight) {
+                HomeServerDrawerLandscapeWidthFraction
+            } else {
+                HomeServerDrawerWidthFraction
+            },
+        HomeServerDrawerMaxWidth
+    )
 
 internal fun shouldDismissHomeServerDrawerOnSwipe(
     horizontalDragDp: Float,
     thresholdDp: Float = HomeServerDrawerSwipeDismissThreshold.value
 ): Boolean = horizontalDragDp <= -thresholdDp
-
-internal fun shouldOpenHomeServerDrawerOnEdgeSwipe(
-    horizontalDragDp: Float,
-    thresholdDp: Float = HomeServerDrawerSwipeDismissThreshold.value
-): Boolean = horizontalDragDp >= thresholdDp
 
 internal fun List<String>.moveItem(id: String, toIndex: Int): List<String> {
     val fromIndex = indexOf(id)
@@ -3735,7 +3742,7 @@ private fun HomeServerDrawerPanel(
     val swipeThresholdPx = with(density) { HomeServerDrawerSwipeDismissThreshold.toPx() }
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxSize().background(SlockColor.TextBlack.copy(alpha = 0.28f)))
-        val drawerWidth = homeServerDrawerWidth(maxWidth)
+        val drawerWidth = homeServerDrawerWidth(maxWidth = maxWidth, maxHeight = maxHeight)
         var horizontalDragPx by remember { mutableStateOf(0f) }
         Column(
             modifier =
@@ -3800,6 +3807,8 @@ private fun HomeServerDrawerPanel(
                             is SlockHomeServerDrawerRow.ServerHeader ->
                                 HomeServerDrawerServerHeader(
                                     section = row.section,
+                                    hasCachedConversations =
+                                        row.section.channels.isNotEmpty() || row.section.directMessages.isNotEmpty(),
                                     onClick = { onSectionToggle(row.section.server.id) }
                                 )
                             is SlockHomeServerDrawerRow.SectionHeader ->
@@ -3854,145 +3863,197 @@ internal fun HomeServerDrawerHostedPanel(
             }?.header?.server?.id
         }
 
-    Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(HomeServerDrawerHeaderHeight + topSafeArea)
-                    .background(SlockColor.BrandYellow)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .padding(top = topSafeArea)
-                    .padding(horizontal = SlockSpacing.Md),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
-        ) {
-            SlockAvatar(
-                avatarWireValue = userHeader.avatarWireValue,
-                label = userHeader.avatarLabel,
-                avatarSize = 32.dp
-            )
-            Text(
-                text = userHeader.displayName,
-                style = SlockType.ButtonBold,
-                color = SlockColor.TextBlack,
-                modifier = Modifier.weight(1f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-        if (sections.isEmpty()) {
-            Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                Text(labels.noServersAvailable, style = SlockType.Caption, color = SlockColor.TextMutedGray)
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxWidth().weight(1f),
-                beyondBoundsItemCount = 2
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .background(SlockColor.SurfaceWhite)
+                .semantics { isTraversalGroup = true }
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(HomeServerDrawerHeaderHeight + topSafeArea)
+                        .background(SlockColor.BrandYellow)
             ) {
-                sections.forEach { hostedSection ->
-                    val section = hostedSection.header
-                    val serverId = section.server.id
-                    items(1, key = { "server:$serverId" }) {
-                        HomeServerDrawerServerHeader(section = section, onClick = { onSectionToggle(serverId) })
-                    }
-                    if (!section.expanded) return@forEach
-
-                    val normalized = hostedSection.normalizedContent
-                    val hasCache = hostedSection.hasCachedConversations
-                    if (
-                        !hasCache &&
-                        section.status in setOf(HomeServerDrawerLoadStatus.Unloaded, HomeServerDrawerLoadStatus.Loading)
-                    ) {
-                        items(3, key = { index -> "skeleton:$serverId:$index" }) {
-                            HomeSidebarSkeletonRow(
-                                modifier =
-                                    Modifier.padding(
-                                        horizontal = HomeServerDrawerConversationHorizontalPadding,
-                                        vertical = SlockSpacing.Xs
-                                    )
+                Row(
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .padding(top = topSafeArea)
+                            .padding(horizontal = SlockSpacing.Md),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+                ) {
+                    SlockAvatar(
+                        avatarWireValue = userHeader.avatarWireValue,
+                        label = userHeader.avatarLabel,
+                        avatarSize = 32.dp
+                    )
+                    Text(
+                        text = userHeader.displayName,
+                        style = SlockType.ButtonBold,
+                        color = SlockColor.TextBlack,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Box(
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(SlockStroke.Default)
+                        .background(SlockColor.BorderBlack)
+                )
+            }
+            if (sections.isEmpty()) {
+                Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                    Text(labels.noServersAvailable, style = SlockType.Caption, color = SlockColor.TextMutedGray)
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    beyondBoundsItemCount = 2
+                ) {
+                    sections.forEach { hostedSection ->
+                        val section = hostedSection.header
+                        val serverId = section.server.id
+                        items(1, key = { "server:$serverId" }) {
+                            HomeServerDrawerServerHeader(
+                                section = section,
+                                hasCachedConversations = hostedSection.hasCachedConversations,
+                                onClick = { onSectionToggle(serverId) }
                             )
                         }
-                    } else {
-                        items(
-                            normalized.rows.size,
-                            key = { index -> "$serverId:${normalized.rows[index].key}" }
-                        ) { index ->
-                            when (val row = normalized.rows[index]) {
-                                is HomeServerDrawerNormalizedRow.SectionHeader ->
-                                    HomeServerDrawerSectionHeader(
-                                        section = row.section.toSlockHomeConversationSection(),
-                                        count = row.count,
-                                        labels = labels
-                                    )
-                                is HomeServerDrawerNormalizedRow.Conversation -> {
-                                    val item = remember(row.conversation) { projector.project(row.conversation) }
-                                    val memberAvatarResolver =
-                                        remember(serverMembersStore, serverId) {
-                                            slockMemberAvatarResolver(serverMembersStore, serverId)
-                                        }
-                                    val markerModifier =
-                                        if (
-                                            serverId == firstInteractiveServerId &&
-                                            index == normalized.firstConversationIndex &&
-                                            rowObservationGeneration != null &&
-                                            rowObservationGeneration == authoritativeOpenGeneration
-                                        ) {
-                                            Modifier.onGloballyPositioned {
-                                                val generation = rowObservationGeneration
-                                                if (markerGate.claim(generation)) {
-                                                    onFirstInteractiveRow(generation, "$serverId:${row.key}")
-                                                }
-                                            }
-                                        } else {
-                                            Modifier
-                                        }
-                                    Box(modifier = Modifier.fillMaxWidth().then(markerModifier)) {
-                                        HomeServerDrawerConversationRow(
-                                            row =
-                                                SlockHomeServerDrawerRow.Conversation(
-                                                    serverId = serverId,
-                                                    section = row.section.toSlockHomeConversationSection(),
-                                                    item = item
-                                                ),
-                                            memberAvatarResolver = memberAvatarResolver,
-                                            enabled =
-                                                interactiveGeneration != null &&
-                                                    interactiveGeneration == rowObservationGeneration &&
-                                                    interactiveGeneration == authoritativeOpenGeneration,
-                                            onClick = {
-                                                rowObservationGeneration?.let { generation ->
-                                                    onConversationClick(generation, serverId, item.id)
-                                                }
-                                            }
+                        if (!section.expanded) return@forEach
+
+                        val normalized = hostedSection.normalizedContent
+                        val hasCache = hostedSection.hasCachedConversations
+                        if (
+                            !hasCache &&
+                            section.status in
+                                setOf(
+                                    HomeServerDrawerLoadStatus.Unloaded,
+                                    HomeServerDrawerLoadStatus.Loading
+                                )
+                        ) {
+                            items(3, key = { index -> "skeleton:$serverId:$index" }) {
+                                HomeSidebarSkeletonRow(
+                                    modifier =
+                                        Modifier.padding(
+                                            horizontal = HomeServerDrawerConversationHorizontalPadding,
+                                            vertical = SlockSpacing.Xs
                                         )
+                                )
+                            }
+                        } else {
+                            items(
+                                normalized.rows.size,
+                                key = { index -> "$serverId:${normalized.rows[index].key}" }
+                            ) { index ->
+                                when (val row = normalized.rows[index]) {
+                                    is HomeServerDrawerNormalizedRow.SectionHeader ->
+                                        HomeServerDrawerSectionHeader(
+                                            section = row.section.toSlockHomeConversationSection(),
+                                            count = row.count,
+                                            labels = labels
+                                        )
+                                    is HomeServerDrawerNormalizedRow.Conversation -> {
+                                        val item =
+                                            remember(row.conversation) {
+                                                projector.project(row.conversation)
+                                            }
+                                        val memberAvatarResolver =
+                                            remember(serverMembersStore, serverId) {
+                                                slockMemberAvatarResolver(serverMembersStore, serverId)
+                                            }
+                                        val markerModifier =
+                                            if (
+                                                serverId == firstInteractiveServerId &&
+                                                index == normalized.firstConversationIndex &&
+                                                rowObservationGeneration != null &&
+                                                rowObservationGeneration == authoritativeOpenGeneration
+                                            ) {
+                                                Modifier.onGloballyPositioned {
+                                                    val generation = rowObservationGeneration
+                                                    if (markerGate.claim(generation)) {
+                                                        onFirstInteractiveRow(
+                                                            generation,
+                                                            "$serverId:${row.key}"
+                                                        )
+                                                    }
+                                                }
+                                            } else {
+                                                Modifier
+                                            }
+                                        Box(modifier = Modifier.fillMaxWidth().then(markerModifier)) {
+                                            HomeServerDrawerConversationRow(
+                                                row =
+                                                    SlockHomeServerDrawerRow.Conversation(
+                                                        serverId = serverId,
+                                                        section =
+                                                            row.section
+                                                                .toSlockHomeConversationSection(),
+                                                        item = item
+                                                    ),
+                                                memberAvatarResolver = memberAvatarResolver,
+                                                enabled =
+                                                    section.status !=
+                                                        HomeServerDrawerLoadStatus.Unavailable &&
+                                                        interactiveGeneration != null &&
+                                                        interactiveGeneration == rowObservationGeneration &&
+                                                        interactiveGeneration ==
+                                                        authoritativeOpenGeneration,
+                                                onClick = {
+                                                    rowObservationGeneration?.let { generation ->
+                                                        onConversationClick(
+                                                            generation,
+                                                            serverId,
+                                                            item.id
+                                                        )
+                                                    }
+                                                }
+                                            )
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
-                    if (
-                        section.status in setOf(
-                            HomeServerDrawerLoadStatus.ErrorEmpty,
-                            HomeServerDrawerLoadStatus.ErrorWithCache
-                        )
-                    ) {
-                        items(1, key = { "error:$serverId" }) {
-                            HomeServerDrawerErrorRow(
-                                row =
-                                    SlockHomeServerDrawerRow.Error(
-                                        serverId = serverId,
-                                        code = section.errorCode ?: "home_network",
-                                        hasCache = hasCache
-                                    ),
-                                onRetry = { onRetry(serverId) }
-                            )
+                        if (
+                            section.status in
+                                setOf(
+                                    HomeServerDrawerLoadStatus.ErrorEmpty,
+                                    HomeServerDrawerLoadStatus.ErrorWithCache
+                                )
+                        ) {
+                            items(1, key = { "error:$serverId" }) {
+                                HomeServerDrawerErrorRow(
+                                    row =
+                                        SlockHomeServerDrawerRow.Error(
+                                            serverId = serverId,
+                                            code = section.errorCode ?: "home_network",
+                                            hasCache = hasCache
+                                        ),
+                                    onRetry = { onRetry(serverId) }
+                                )
+                            }
                         }
                     }
                 }
             }
+            Spacer(Modifier.fillMaxWidth().height(bottomSafeArea))
         }
-        Spacer(Modifier.fillMaxWidth().height(bottomSafeArea))
+        Box(
+            modifier =
+                Modifier
+                    .align(Alignment.CenterEnd)
+                    .fillMaxHeight()
+                    .width(SlockStroke.Default)
+                    .background(SlockColor.BorderBlack)
+        )
     }
 }
 
@@ -4007,17 +4068,25 @@ private fun HomeServerDrawerConversationSection.toSlockHomeConversationSection()
 @Composable
 private fun HomeServerDrawerServerHeader(
     section: SlockHomeServerDrawerSection,
+    hasCachedConversations: Boolean,
     onClick: () -> Unit
 ) {
     val busy = section.status == HomeServerDrawerLoadStatus.Loading || section.status == HomeServerDrawerLoadStatus.Refreshing
     val failed = section.status == HomeServerDrawerLoadStatus.ErrorEmpty || section.status == HomeServerDrawerLoadStatus.ErrorWithCache
+    val unavailable = section.status == HomeServerDrawerLoadStatus.Unavailable
+    val interactive = !unavailable || hasCachedConversations
+    val unavailableDescription = stringResource(MR.strings.settings_state_unavailable)
     Row(
         modifier =
             Modifier
                 .fillMaxWidth()
                 .heightIn(min = HomeServerSwitcherRowMinHeight)
                 .background(if (section.expanded) SlockColor.SurfaceCream else SlockColor.SurfaceWhite)
-                .clickable(onClick = onClick)
+                .alpha(if (unavailable) 0.3f else 1f)
+                .semantics {
+                    if (unavailable) stateDescription = unavailableDescription
+                }
+                .clickable(enabled = interactive, onClick = onClick)
                 .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -4033,18 +4102,24 @@ private fun HomeServerDrawerServerHeader(
                 overflow = TextOverflow.Ellipsis
             )
         }
-        homeConversationBadgeProjection(HomeConversationBadgeInput(unreadCount = section.server.unreadCount)).label?.let {
-            HomeUnreadBadge(it)
+        if (!unavailable) {
+            homeConversationBadgeProjection(HomeConversationBadgeInput(unreadCount = section.server.unreadCount)).label?.let {
+                HomeUnreadBadge(it)
+            }
         }
         if (busy) {
             SlockLucideIcon(SlockLucideIconName.LoaderCircle, Modifier.size(14.dp), color = SlockColor.TextMutedGrayArgb)
         } else if (failed) {
             SlockLucideIcon(SlockLucideIconName.BadgeInfo, Modifier.size(14.dp), color = SlockColor.AccentRedArgb)
+        } else if (unavailable) {
+            SlockLucideIcon(SlockLucideIconName.BadgeInfo, Modifier.size(14.dp), color = SlockColor.TextMutedGrayArgb)
         }
-        SlockLucideIcon(
-            if (section.expanded) SlockLucideIconName.ChevronUp else SlockLucideIconName.ChevronDown,
-            Modifier.size(16.dp)
-        )
+        if (interactive) {
+            SlockLucideIcon(
+                if (section.expanded) SlockLucideIconName.ChevronUp else SlockLucideIconName.ChevronDown,
+                Modifier.size(16.dp)
+            )
+        }
     }
 }
 

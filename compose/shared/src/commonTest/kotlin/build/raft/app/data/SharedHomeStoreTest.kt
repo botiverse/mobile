@@ -815,7 +815,7 @@ class SharedHomeStoreTest {
             HomeServerDrawerLoadStatus.Loading,
             loading.serverDrawer.sections.getValue(ServerId("server-2")).status
         )
-        assertEquals(true, ServerId("server-2") in loading.serverDrawer.expandedServerIds)
+        assertEquals(setOf(ServerId("server-2")), loading.serverDrawer.expandedServerIds)
 
         blockedServerLoad.release()
         awaitCondition {
@@ -873,6 +873,7 @@ class SharedHomeStoreTest {
         store.accept(SharedHomeIntent.SelectServer("server-1"))
         val reopenRefresh = api.blockNextChannels("server-2")
         store.accept(SharedHomeIntent.ToggleServerSwitcher)
+        store.accept(SharedHomeIntent.ToggleServerDrawerSection(ServerId("server-2")))
         withTimeout(1_000L) { reopenRefresh.awaitStarted() }
 
         val cachedServer2 = store.state.value.serverDrawer.sections.getValue(ServerId("server-2"))
@@ -886,7 +887,7 @@ class SharedHomeStoreTest {
     }
 
     @Test
-    fun reopeningDrawerRefreshesExpandedNonSelectedSectionWhileKeepingCache() = runBlocking {
+    fun reopeningDrawerExpandsOnlySelectedServerAndKeepsOtherCache() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
         val api = RecordingHomeApi()
@@ -909,24 +910,18 @@ class SharedHomeStoreTest {
         assertTrue(cachedBeforeClose != null)
 
         store.accept(SharedHomeIntent.ToggleServerSwitcher)
-        val reopenRefresh = api.blockNextChannels("server-2")
         store.accept(SharedHomeIntent.ToggleServerSwitcher)
-        withTimeout(1_000L) { reopenRefresh.awaitStarted() }
 
-        val refreshing = store.state.value.serverDrawer.sections.getValue(ServerId("server-2"))
-        assertEquals(HomeServerDrawerLoadStatus.Refreshing, refreshing.status)
-        assertEquals(cachedBeforeClose, refreshing.content)
-
-        reopenRefresh.release()
-        awaitCondition {
-            store.state.value.serverDrawer.sections[ServerId("server-2")]?.status ==
-                HomeServerDrawerLoadStatus.Loaded
-        }
+        val reopened = store.state.value.serverDrawer
+        val cached = reopened.sections.getValue(ServerId("server-2"))
+        assertEquals(setOf(ServerId("server-1")), reopened.expandedServerIds)
+        assertEquals(HomeServerDrawerLoadStatus.Cached, cached.status)
+        assertEquals(cachedBeforeClose, cached.content)
         scope.cancel()
     }
 
     @Test
-    fun expandedServerDrawerSectionsLoadIndependentlyByServer() = runBlocking {
+    fun switchingExpandedServerKeepsOnlyOneExpandedWhileLoadsRemainGenerationSafe() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val baseSession = sampleSession()
         val session =
@@ -973,7 +968,7 @@ class SharedHomeStoreTest {
                 HomeServerDrawerLoadStatus.Loaded
         }
         assertEquals(
-            setOf(ServerId("server-1"), ServerId("server-2"), ServerId("server-3")),
+            setOf(ServerId("server-3")),
             store.state.value.serverDrawer.expandedServerIds
         )
         assertEquals(
@@ -1096,6 +1091,39 @@ class SharedHomeStoreTest {
         assertEquals(
             "server-2",
             store.state.value.serverDrawer.sections.getValue(ServerId("server-2")).content?.snapshot?.server?.id?.value
+        )
+        assertEquals("server-1", sessionStore.readSession()?.currentServerId)
+        scope.cancel()
+    }
+
+    @Test
+    fun noPermissionServerDrawerSectionBecomesUnavailableAndDoesNotRetry() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val api = SwitchableHomeApi().apply { setServerUnread("server-1" to 0) }
+        val store =
+            SharedHomeStore(
+                authStore = sessionStore,
+                dataSource = source(api = api, sessionStore = sessionStore),
+                scope = scope
+            )
+
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.ToggleServerSwitcher)
+        api.setPermissionDenied(true)
+        store.accept(SharedHomeIntent.ToggleServerDrawerSection(ServerId("server-2")))
+        awaitCondition {
+            store.state.value.serverDrawer.sections[ServerId("server-2")]?.status ==
+                HomeServerDrawerLoadStatus.Unavailable
+        }
+        val callsAtTerminal = api.callCount
+
+        store.accept(SharedHomeIntent.RetryServerDrawerSection(ServerId("server-2")))
+
+        assertEquals(callsAtTerminal, api.callCount)
+        assertEquals(
+            HomeServerDrawerLoadStatus.Unavailable,
+            store.state.value.serverDrawer.sections.getValue(ServerId("server-2")).status
         )
         assertEquals("server-1", sessionStore.readSession()?.currentServerId)
         scope.cancel()
@@ -3753,15 +3781,30 @@ class SharedHomeStoreTest {
             private set
         private val unreadByServerId = mutableMapOf<String, Int>()
         @Volatile private var failing: Boolean = false
+        @Volatile private var permissionDenied: Boolean = false
 
         fun setServerUnread(vararg pairs: Pair<String, Int>) {
             unreadByServerId.clear()
             unreadByServerId.putAll(pairs)
             failing = false
+            permissionDenied = false
         }
 
         fun setFailing(value: Boolean) {
             failing = value
+        }
+
+        fun setPermissionDenied(value: Boolean) {
+            permissionDenied = value
+        }
+
+        private fun responseOrThrow(bodyText: String): HomeNetworkResponse {
+            if (failing) throw IllegalStateException("offline")
+            return if (permissionDenied) {
+                HomeNetworkResponse(code = 403, bodyText = "{}")
+            } else {
+                HomeNetworkResponse(code = 200, bodyText = bodyText)
+            }
         }
 
         override suspend fun channels(priority: DataRequestPriority): HomeNetworkResponse =
@@ -3778,10 +3821,7 @@ class SharedHomeStoreTest {
 
         override suspend fun channels(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse {
             callCount++
-            if (failing) throw IllegalStateException("offline")
-            return HomeNetworkResponse(
-                code = 200,
-                bodyText =
+            return responseOrThrow(
                     """
                     [
                       {"id":"${serverId.value}-channel","name":"${serverId.value} channel","type":"channel","joined":true}
@@ -3791,22 +3831,17 @@ class SharedHomeStoreTest {
         }
 
         override suspend fun directMessages(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse {
-            if (failing) throw IllegalStateException("offline")
-            return HomeNetworkResponse(code = 200, bodyText = "[]")
+            return responseOrThrow("[]")
         }
 
         override suspend fun channelUnreadCounts(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse {
-            if (failing) throw IllegalStateException("offline")
-            return HomeNetworkResponse(code = 200, bodyText = """{"${serverId.value}-channel":1}""")
+            return responseOrThrow("""{"${serverId.value}-channel":1}""")
         }
 
         override suspend fun serverUnreadSummary(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse {
             callCount++
-            if (failing) throw IllegalStateException("offline")
             val unread = unreadByServerId[serverId.value] ?: 0
-            return HomeNetworkResponse(
-                code = 200,
-                bodyText =
+            return responseOrThrow(
                     """
                     [
                       {"serverId":"${serverId.value}","unreadCount":$unread}

@@ -431,7 +431,6 @@ import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.foundation.interaction.MutableInteractionSource
 import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
-import com.tencent.kuikly.compose.foundation.gestures.detectHorizontalDragGestures
 import com.tencent.kuikly.compose.foundation.text.KeyboardActions
 import com.tencent.kuikly.compose.foundation.text.KeyboardOptions
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
@@ -477,6 +476,10 @@ import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.platform.LocalFocusManager
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.semantics.Role
+import com.tencent.kuikly.compose.ui.semantics.clearAndSetSemantics
+import com.tencent.kuikly.compose.ui.semantics.contentDescription
+import com.tencent.kuikly.compose.ui.semantics.semantics
+import com.tencent.kuikly.compose.ui.semantics.traversalIndex
 import com.tencent.kuikly.compose.ui.text.AnnotatedString
 import com.tencent.kuikly.compose.ui.text.SpanStyle
 import com.tencent.kuikly.compose.ui.text.TextRange
@@ -5543,6 +5546,11 @@ internal fun SlockAppShellContent(
                 bottomSafeArea = shellScope.bottomSafeArea,
                 serverMembersStore = appShellServerMembersStore,
                 selectedTab = selectedTab,
+                modalGestureBlocked =
+                    appShellModalHostState.entries.isNotEmpty() ||
+                        createChannelDialogOpen ||
+                        activeAnnouncement != null,
+                dismissLabel = stringResource(MR.strings.common_dismiss),
                 onConversationClick = ::openServerDrawerConversation,
                 onProgrammaticCloseFenceChanged = { serverDrawerProgrammaticCloseFence = it },
                 content = mainRouteSurface
@@ -5630,6 +5638,8 @@ private fun AppShellServerDrawerHost(
     bottomSafeArea: Dp,
     serverMembersStore: SharedServerMembersStore?,
     selectedTab: String,
+    modalGestureBlocked: Boolean,
+    dismissLabel: String,
     onConversationClick: (String, String) -> Unit,
     onProgrammaticCloseFenceChanged: (((String) -> Unit)?) -> Unit,
     content: @Composable () -> Unit
@@ -5659,7 +5669,7 @@ private fun AppShellServerDrawerHost(
         }
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        val drawerWidth = homeServerDrawerWidth(maxWidth)
+        val drawerWidth = homeServerDrawerWidth(maxWidth = maxWidth, maxHeight = maxHeight)
         val drawerState =
             rememberMoveableDrawerState(
                 initiallyOpen = false,
@@ -5667,8 +5677,13 @@ private fun AppShellServerDrawerHost(
             )
         val scrimWidth = (maxWidth - drawerWidth * drawerState.progress).coerceAtLeast(0.dp)
         var commandState by remember(drawerState) { mutableStateOf(HomeServerDrawerCommandState()) }
-        val edgeDensity = LocalDensity.current
         val pointerPolicy = commandState.pointerPolicy(projection.commandIntent)
+        val openGestureAdmission =
+            HomeServerDrawerOpenGestureAdmission(
+                homeSurfaceActive = selectedTab == "home",
+                pointerOwnerActive = pointerPolicy.appEdgeEnabled,
+                modalPresented = modalGestureBlocked
+            )
 
         fun requestProgrammaticClose(source: String) {
             if (!currentIntent.desiredOpen) return
@@ -5805,7 +5820,47 @@ private fun AppShellServerDrawerHost(
                         }
                     )
                 },
-                content = content
+                content = {
+                    val contentAccessibilityModifier =
+                        if (drawerState.progress > 0.01f) {
+                            Modifier.clearAndSetSemantics { }
+                        } else {
+                            Modifier
+                        }
+                    Box(
+                        modifier =
+                            Modifier
+                                .fillMaxSize()
+                                .then(contentAccessibilityModifier)
+                    ) {
+                        CompositionLocalProvider(
+                            LocalSlockHomeDrawerOpenGesture provides
+                                SlockHomeDrawerOpenGesture(
+                                    admission = openGestureAdmission,
+                                    onOpen = {
+                                        if (
+                                            selectedTab == "home" &&
+                                            pointerPolicy.appEdgeEnabled &&
+                                            !modalGestureBlocked &&
+                                            !currentIntent.desiredOpen
+                                        ) {
+                                            commandState = commandState.beginProgrammaticOpen()
+                                            bridge.log(
+                                                "server_drawer_input source=app_shell_content selectedTab=$selectedTab"
+                                            )
+                                            homeShellStore.dispatch(
+                                                SharedHomeShellIntent.Home(
+                                                    SharedHomeIntent.ToggleServerSwitcher
+                                                )
+                                            )
+                                        }
+                                    }
+                                )
+                        ) {
+                            content()
+                        }
+                    }
+                }
             )
             if (drawerState.progress > 0.01f) {
                 MakeKuiklyComposeNode<DivView>(
@@ -5815,45 +5870,21 @@ private fun AppShellServerDrawerHost(
                             .align(Alignment.CenterEnd)
                             .fillMaxHeight()
                             .width(scrimWidth)
-                            .background(Color.Black.copy(alpha = 0.3f * drawerState.progress))
+                            .background(Color.Black.copy(alpha = 0.28f * drawerState.progress))
+                            .semantics {
+                                contentDescription = dismissLabel
+                                traversalIndex = 1f
+                            }
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
-                                indication = null
+                                indication = null,
+                                role = Role.Button
                             ) {
                                 requestProgrammaticClose("scrim_compose")
                             },
                     viewInit = {
                         getViewEvent().click(closeDrawerEvent)
                     }
-                )
-            }
-            if (pointerPolicy.appEdgeEnabled && drawerState.progress <= 0.01f) {
-                Box(
-                    modifier =
-                        Modifier
-                            .align(Alignment.CenterStart)
-                            .fillMaxHeight()
-                            .width(32.dp)
-                            .pointerInput(drawerState) {
-                                var horizontalDragPx = 0f
-                                detectHorizontalDragGestures(
-                                    onDragStart = { horizontalDragPx = 0f },
-                                    onDragEnd = {
-                                        val horizontalDragDp = horizontalDragPx / edgeDensity.density
-                                        if (shouldOpenHomeServerDrawerOnEdgeSwipe(horizontalDragDp)) {
-                                            commandState = commandState.beginProgrammaticOpen()
-                                            bridge.log(
-                                                "server_drawer_input source=app_shell_edge selectedTab=$selectedTab dragDp=$horizontalDragDp"
-                                            )
-                                            homeShellStore.dispatch(
-                                                SharedHomeShellIntent.Home(SharedHomeIntent.ToggleServerSwitcher)
-                                            )
-                                        }
-                                        horizontalDragPx = 0f
-                                    },
-                                    onDragCancel = { horizontalDragPx = 0f }
-                                ) { _, dragAmount -> horizontalDragPx += dragAmount }
-                            }
                 )
             }
         }
