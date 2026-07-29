@@ -1312,6 +1312,8 @@
     <string name="app_update_installed">Installed</string>
     <string name="app_update_unavailable">Update information is temporarily unavailable.</string>
     <string name="app_update_detail_available_with_size">Raft has an update (%1$s APK).</string>
+    <string name="app_update_detail_available_with_patch_size">Patch %1$s.</string>
+    <string name="app_update_detail_available_with_patch_and_full_sizes">Patch %1$s; full fallback %2$s.</string>
     <string name="app_update_detail_available">Raft has an update.</string>
     <string name="app_update_detail_current">Raft is up to date.</string>
     <string name="app_update_version_summary">%1$s → %2$s</string>

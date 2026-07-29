@@ -658,6 +658,9 @@ internal fun JSONObject.toDeveloperSnapshot(): SharedSettingsDeveloperSnapshot {
                 latestVersionCode = optLong("latestVersionCode", 0L),
                 latestChangelog = optString("latestChangelog"),
                 downloadUrl = optString("updateDownloadUrl"),
+                downloadSizesResolved = optBoolean("updateDownloadSizesResolved", false),
+                fullDownloadSizeBytes = optLong("updateFullDownloadSizeBytes", 0L).coerceAtLeast(0L),
+                patchDownloadSizeBytes = optLong("updatePatchDownloadSizeBytes", 0L).coerceAtLeast(0L),
                 checkedAtLabel = optString("updateCheckedAtLabel"),
                 errorCode = optString("updateCheckErrorCode")
             ),

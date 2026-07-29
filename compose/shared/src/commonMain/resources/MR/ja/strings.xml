@@ -1312,6 +1312,8 @@
     <string name="app_update_installed">インストール済み</string>
     <string name="app_update_unavailable">アップデート情報は一時的に利用できません。</string>
     <string name="app_update_detail_available_with_size">Raft のアップデートがあります（%1$s APK）。</string>
+    <string name="app_update_detail_available_with_patch_size">差分 %1$s。</string>
+    <string name="app_update_detail_available_with_patch_and_full_sizes">差分 %1$s、フル版 %2$s。</string>
     <string name="app_update_detail_available">Raft のアップデートがあります。</string>
     <string name="app_update_detail_current">Raft は最新です。</string>
     <string name="app_update_version_summary">%1$s → %2$s</string>

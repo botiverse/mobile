@@ -1,7 +1,13 @@
 package build.raft.app.shared
 
+import build.hands.update.models.App
+import build.hands.update.models.LatestUpdate
+import build.hands.update.models.Patch
+import build.hands.update.models.UpdateAsset
+import build.hands.update.models.UpdateCheckResponse
 import build.raft.app.BuildConfig
 import build.raft.app.data.SharedSettingsUpdateTransactionState
+import java.lang.reflect.Modifier
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
@@ -376,6 +382,57 @@ class HandsDeltaUpdateGateTest {
     }
 
     @Test
+    fun applicableDeltaOfferDisplaysPatchAndFullFallbackSizes() {
+        assertEquals(
+            HandsUpdateDisplaySizes(
+                patchSizeBytes = 95_256L,
+                fullSizeBytes = 94_411_540L
+            ),
+            updateResponse().handsUpdateDisplaySizes(deltaEnabled = true)
+        )
+    }
+
+    @Test
+    fun displaySizeProjectionRemainsClosedOverSdkFacts() {
+        val outputFields =
+            HandsUpdateDisplaySizes::class.java.declaredFields
+                .filterNot { field -> field.isSynthetic || Modifier.isStatic(field.modifiers) }
+                .mapTo(mutableSetOf()) { it.name }
+        val sourceFields =
+            mapOf(
+                "patchSizeBytes" to (Patch::class.java to "size_bytes"),
+                "fullSizeBytes" to (UpdateAsset::class.java to "size_bytes")
+            )
+
+        assertEquals(sourceFields.keys, outputFields)
+        sourceFields.forEach { (outputField, source) ->
+            val (sourceType, sourceField) = source
+            assertTrue(
+                "$outputField must map to declared SDK fact $sourceField",
+                sourceType.declaredFields.any { it.name == sourceField }
+            )
+        }
+    }
+
+    @Test
+    fun displaySizesHideInvalidOrInapplicablePatch() {
+        val rejected =
+            listOf(
+                "delta disabled" to updateResponse().displaySizes(deltaEnabled = false),
+                "wrong base" to updateResponse(patchFromVersionCode = 1_000_013L).displaySizes(),
+                "unsupported algorithm" to updateResponse(patchAlgorithm = "future-patcher-v2").displaySizes(),
+                "missing target hash" to updateResponse(patchTargetSha256 = "").displaySizes(),
+                "empty patch" to updateResponse(patchSizeBytes = 0L).displaySizes()
+            )
+
+        rejected.forEach { (reason, sizes) ->
+            assertNull(reason, sizes.patchSizeBytes)
+            assertEquals(reason, 94_411_540L, sizes.fullSizeBytes)
+        }
+        assertNull(updateResponse(fullSizeBytes = 0L).displaySizes().fullSizeBytes)
+    }
+
+    @Test
     fun callOwnerAllowsOnlyOneConcurrentSdkCall() = runTest {
         val owner = HandsDeltaUpdateCallOwner()
         val entered = CompletableDeferred<Unit>()
@@ -472,5 +529,48 @@ class HandsDeltaUpdateGateTest {
             versionCode = versionCode,
             buildId = buildId,
             assetSha256 = assetSha256
+        )
+
+    private fun UpdateCheckResponse.displaySizes(
+        deltaEnabled: Boolean = true
+    ): HandsUpdateDisplaySizes =
+        handsUpdateDisplaySizes(deltaEnabled = deltaEnabled)
+
+    private fun updateResponse(
+        currentVersionCode: Long = 1_000_014L,
+        patchFromVersionCode: Long? = currentVersionCode,
+        patchAlgorithm: String? = "archive-patcher-v1+gzip",
+        patchTargetSha256: String? = "a".repeat(64),
+        patchSizeBytes: Long? = 95_256L,
+        fullSizeBytes: Long? = 94_411_540L
+    ): UpdateCheckResponse =
+        UpdateCheckResponse(
+            update_available = true,
+            app = App(slug = "raft-android-alpha-delta", platform = "android"),
+            channel = "alpha-delta",
+            current_version_code = currentVersionCode,
+            latest_version_code = 1_000_015L,
+            latest =
+                LatestUpdate(
+                    build_id = "build-1_000_015",
+                    version = "1.0.15",
+                    version_code = 1_000_015L,
+                    released_at = 1L
+                ),
+            asset =
+                UpdateAsset(
+                    platform = "android",
+                    filetype = "apk",
+                    size_bytes = fullSizeBytes ?: 0L,
+                    download_url = "https://hands.invalid/full.apk"
+                ),
+            patch =
+                Patch(
+                    from_version_code = patchFromVersionCode ?: 0L,
+                    algorithm = patchAlgorithm.orEmpty(),
+                    download_url = "https://hands.invalid/patch.bin",
+                    size_bytes = patchSizeBytes ?: 0L,
+                    target_sha256 = patchTargetSha256
+                )
         )
 }

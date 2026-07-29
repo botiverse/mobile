@@ -3982,6 +3982,8 @@ internal class SlockKuiklyBridgeModule(
                                 languageTag = languageTag
                         )
         val updateAvailable = response.requireUpdate() != null
+        val displaySizes =
+                response.handsUpdateDisplaySizes(deltaEnabled = false)
         SlockAppLog.record(
                 "SlockHandsUpdate",
                 "check status=ok mode=${updateRoute.mode} " +
@@ -3998,7 +4000,7 @@ internal class SlockKuiklyBridgeModule(
                     else -> HandsInstallResult()
                 }
         val updateStatusLabel = installResult.statusLabel.ifBlank { response.handsStatusLabel() }
-        val updateDetail = installResult.detail.ifBlank { response.handsDetail() }
+        val updateDetail = installResult.detail.ifBlank { response.handsDetail(displaySizes) }
         val feedback =
                 when {
                     updateAvailable -> "Update available: ${response.latest?.version?.ifBlank { null } ?: "version code ${response.latest?.version_code ?: 0L}"}."
@@ -4017,6 +4019,9 @@ internal class SlockKuiklyBridgeModule(
                         "latestVersionCode" to (response.latest?.version_code ?: response.latest_version_code ?: 0L),
                         "latestChangelog" to response.latest?.changelog.orEmpty(),
                         "updateDownloadUrl" to response.asset?.download_url.orEmpty(),
+                        "updateDownloadSizesResolved" to true,
+                        "updateFullDownloadSizeBytes" to (displaySizes.fullSizeBytes ?: 0L),
+                        "updatePatchDownloadSizeBytes" to (displaySizes.patchSizeBytes ?: 0L),
                         "updateCheckedAtLabel" to System.currentTimeMillis().toString(),
                         "updateCheckErrorCode" to installResult.errorCode.orEmpty()
                 )
@@ -4129,8 +4134,11 @@ internal class SlockKuiklyBridgeModule(
                         ?: response?.latest_version_code
                         ?: decision.targetVersionCode
                         ?: 0L
+        val displaySizes =
+                response?.handsUpdateDisplaySizes(deltaEnabled = updateRoute.deltaEnabled)
+                        ?: HandsUpdateDisplaySizes()
         val updateDetail =
-                response?.handsDetail()
+                response?.handsDetail(displaySizes)
                         ?: SlockHostStrings.appUpdateDetail(
                                 updateAvailable = decision.updateAvailable,
                                 sizeLabel = null
@@ -4169,6 +4177,9 @@ internal class SlockKuiklyBridgeModule(
                         "latestVersionCode" to latestVersionCode,
                         "latestChangelog" to response?.latest?.changelog.orEmpty(),
                         "updateDownloadUrl" to response?.asset?.download_url.orEmpty(),
+                        "updateDownloadSizesResolved" to offerResult.isSuccess,
+                        "updateFullDownloadSizeBytes" to (displaySizes.fullSizeBytes ?: 0L),
+                        "updatePatchDownloadSizeBytes" to (displaySizes.patchSizeBytes ?: 0L),
                         "updateCheckedAtLabel" to System.currentTimeMillis().toString(),
                         "updateCheckErrorCode" to errorCode.orEmpty()
                 )
@@ -4470,10 +4481,11 @@ internal class SlockKuiklyBridgeModule(
     private fun UpdateCheckResponse.handsStatusLabel(): String =
             if (requireUpdate() != null) "Update available" else "Current"
 
-    private fun UpdateCheckResponse.handsDetail(): String =
+    private fun UpdateCheckResponse.handsDetail(displaySizes: HandsUpdateDisplaySizes): String =
             SlockHostStrings.appUpdateDetail(
                     updateAvailable = requireUpdate() != null,
-                    sizeLabel = asset?.size_bytes?.takeIf { it > 0L }?.formatStorageSizeLabel()
+                    sizeLabel = displaySizes.fullSizeBytes?.formatStorageSizeLabel(),
+                    patchSizeLabel = displaySizes.patchSizeBytes?.formatStorageSizeLabel()
             )
 
     private fun setApiEnvironment(request: JSONObject): Map<String, Any> {

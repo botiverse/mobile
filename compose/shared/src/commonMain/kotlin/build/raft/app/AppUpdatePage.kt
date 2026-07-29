@@ -229,7 +229,13 @@ internal fun SharedSettingsUpdateCheckSnapshot.withAppUpdateDisplayFallback(
         latestVersionCode = resolvedVersionCode,
         latestVersionLabel = latestVersionLabel.ifBlank { previous.latestVersionLabel },
         latestChangelog = latestChangelog.ifBlank { previous.latestChangelog },
-        downloadUrl = downloadUrl.ifBlank { previous.downloadUrl }
+        downloadUrl = downloadUrl.ifBlank { previous.downloadUrl },
+        detail = if (downloadSizesResolved) detail else previous.detail.ifBlank { detail },
+        downloadSizesResolved = downloadSizesResolved || previous.downloadSizesResolved,
+        fullDownloadSizeBytes =
+            if (downloadSizesResolved) fullDownloadSizeBytes else previous.fullDownloadSizeBytes,
+        patchDownloadSizeBytes =
+            if (downloadSizesResolved) patchDownloadSizeBytes else previous.patchDownloadSizeBytes
     )
 }
 
@@ -328,9 +334,9 @@ internal fun AppUpdateDetailsVisualScreen(chinese: Boolean = false) {
             statusLabel = "download",
             detail =
                 if (chinese) {
-                    "更快、更清晰的 Raft 新版本已可安装。"
+                    "增量包 93.0 KB；完整包备用 90.0 MB。"
                 } else {
-                    "A faster, clearer Raft experience is ready to install."
+                    "Patch 93.0 KB; full fallback 90.0 MB."
                 },
             actionLabel = "download",
             updateAvailable = true,
@@ -338,6 +344,9 @@ internal fun AppUpdateDetailsVisualScreen(chinese: Boolean = false) {
             currentVersionCode = 1_050_000L,
             latestVersionLabel = "1.6.0",
             latestVersionCode = 1_060_000L,
+            downloadSizesResolved = true,
+            patchDownloadSizeBytes = 95_256L,
+            fullDownloadSizeBytes = 94_411_540L,
             checkedAtLabel = "Just now"
         )
     Column(modifier = Modifier.width(390.dp).height(844.dp).background(SlockColor.SurfaceWhite).padding(top = 48.dp)) {

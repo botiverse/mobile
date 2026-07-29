@@ -1,5 +1,6 @@
 package build.raft.app.shared
 
+import build.hands.update.models.UpdateCheckResponse
 import build.raft.app.data.SharedSettingsUpdateTransactionState
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -15,6 +16,29 @@ internal data class HandsUpdateRoute(
     val channel: String,
     val deltaEnabled: Boolean
 )
+
+internal data class HandsUpdateDisplaySizes(
+    val patchSizeBytes: Long? = null,
+    val fullSizeBytes: Long? = null
+)
+
+internal fun UpdateCheckResponse.handsUpdateDisplaySizes(deltaEnabled: Boolean): HandsUpdateDisplaySizes {
+    if (requireUpdate() == null) return HandsUpdateDisplaySizes()
+    val offeredPatch = patch
+    val applicablePatchSize =
+        offeredPatch?.size_bytes?.takeIf { size ->
+            deltaEnabled &&
+                current_version_code > 0L &&
+                offeredPatch.from_version_code == current_version_code &&
+                offeredPatch.algorithm.startsWith("archive-patcher-v1") &&
+                !offeredPatch.target_sha256.isNullOrBlank() &&
+                size > 0L
+        }
+    return HandsUpdateDisplaySizes(
+        patchSizeBytes = applicablePatchSize,
+        fullSizeBytes = asset?.size_bytes?.takeIf { it > 0L }
+    )
+}
 
 internal fun resolveHandsUpdateRoute(
     alphaDeltaEnabled: Boolean,

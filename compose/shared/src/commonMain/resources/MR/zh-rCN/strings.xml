@@ -1312,6 +1312,8 @@
     <string name="app_update_installed">已安装</string>
     <string name="app_update_unavailable">暂时无法获取更新信息。</string>
     <string name="app_update_detail_available_with_size">Raft 有可用更新（%1$s APK）。</string>
+    <string name="app_update_detail_available_with_patch_size">增量包 %1$s。</string>
+    <string name="app_update_detail_available_with_patch_and_full_sizes">增量包 %1$s；完整包备用 %2$s。</string>
     <string name="app_update_detail_available">Raft 有可用更新。</string>
     <string name="app_update_detail_current">Raft 已是最新版本。</string>
     <string name="app_update_version_summary">%1$s → %2$s</string>

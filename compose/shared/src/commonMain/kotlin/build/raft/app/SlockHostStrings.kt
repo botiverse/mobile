@@ -13,10 +13,16 @@ internal expect fun slockResolveHostString(desc: StringDesc): String
 
 internal fun appUpdateDetailStringDesc(
     updateAvailable: Boolean,
-    sizeLabel: String?
+    sizeLabel: String?,
+    patchSizeLabel: String? = null
 ): StringDesc =
     when {
         !updateAvailable -> StringDesc.Resource(MR.strings.app_update_detail_current)
+        !patchSizeLabel.isNullOrBlank() && !sizeLabel.isNullOrBlank() ->
+            MR.strings.app_update_detail_available_with_patch_and_full_sizes
+                .format(listOf(patchSizeLabel, sizeLabel))
+        !patchSizeLabel.isNullOrBlank() ->
+            MR.strings.app_update_detail_available_with_patch_size.format(listOf(patchSizeLabel))
         sizeLabel.isNullOrBlank() -> StringDesc.Resource(MR.strings.app_update_detail_available)
         else -> MR.strings.app_update_detail_available_with_size.format(listOf(sizeLabel))
     }
@@ -56,8 +62,11 @@ object SlockHostStrings {
 
     fun feedbackCopiedMessage(): String = resolve(MR.strings.host_feedback_copied_message)
 
-    fun appUpdateDetail(updateAvailable: Boolean, sizeLabel: String?): String =
-        resolve(appUpdateDetailStringDesc(updateAvailable, sizeLabel))
+    fun appUpdateDetail(
+        updateAvailable: Boolean,
+        sizeLabel: String?,
+        patchSizeLabel: String? = null
+    ): String = resolve(appUpdateDetailStringDesc(updateAvailable, sizeLabel, patchSizeLabel))
 
     fun appLocaleLanguageTag(): String? =
         (KmmResourceLocaleRuntime.locale.value ?: AppLocale.Default).kmmResourceLocaleTag

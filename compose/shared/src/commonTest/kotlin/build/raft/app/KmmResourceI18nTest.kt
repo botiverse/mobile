@@ -1026,6 +1026,8 @@ class KmmResourceI18nTest {
             MR.strings.host_feedback_failed_message,
             MR.strings.host_feedback_error_unknown,
             MR.strings.app_update_detail_available,
+            MR.strings.app_update_detail_available_with_patch_size,
+            MR.strings.app_update_detail_available_with_patch_and_full_sizes,
             MR.strings.app_update_detail_current
         ).forEach { resource ->
             assertTrue(
@@ -1053,9 +1055,30 @@ class KmmResourceI18nTest {
             "sized update detail must resolve from a localized formatted resource"
         )
         assertTrue(
+            appUpdateDetailStringDesc(
+                updateAvailable = true,
+                sizeLabel = null,
+                patchSizeLabel = "93 KB"
+            ) is ResourceFormattedStringDesc,
+            "patch-sized update detail must resolve from a localized formatted resource"
+        )
+        assertTrue(
+            appUpdateDetailStringDesc(
+                updateAvailable = true,
+                sizeLabel = "89.6 MB",
+                patchSizeLabel = "93 KB"
+            ) is ResourceFormattedStringDesc,
+            "patch and fallback sizes must resolve from one localized formatted resource"
+        )
+        assertTrue(
             MR.strings.app_update_detail_available_with_size
                 .format(listOf("89.6 MB")) is ResourceFormattedStringDesc,
             "formatted update copy must be generated for every resource locale"
+        )
+        assertTrue(
+            MR.strings.app_update_detail_available_with_patch_and_full_sizes
+                .format(listOf("93 KB", "89.6 MB")) is ResourceFormattedStringDesc,
+            "patch and fallback copy must be generated for every resource locale"
         )
     }
 
