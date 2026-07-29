@@ -10186,7 +10186,11 @@ internal fun threadVisualFixture(
                                             build.raft.app.network.sync.ReplyPreview(
                                                 messageId = "reply-inline-8",
                                                 seq = 8,
-                                                content = "Opening dispatches canonical read state.",
+                                                content =
+                                                    """
+                                                    New validation
+                                                    Opening dispatches canonical read state.
+                                                    """.trimIndent(),
                                                 senderId = "agent-nathan",
                                                 senderType = "agent",
                                                 senderName = "Nathan",
@@ -20555,7 +20559,7 @@ private fun ThreadInlineReplyRow(
             maxLines = 1,
         )
         Text(
-            text = reply.content,
+            text = threadInlineReplyPreviewText(reply.content),
             modifier = Modifier.weight(1f),
             style =
                 SlockType.Caption.copy(
@@ -20577,6 +20581,13 @@ private fun ThreadInlineReplyRow(
         }
     }
 }
+
+internal fun threadInlineReplyPreviewText(content: String): String =
+    content
+        .lineSequence()
+        .map { line -> line.trim() }
+        .filter(String::isNotBlank)
+        .joinToString(" ")
 
 /**
  * Keeps the original 20dp row at the default scale while preserving its 4dp breathing room when
