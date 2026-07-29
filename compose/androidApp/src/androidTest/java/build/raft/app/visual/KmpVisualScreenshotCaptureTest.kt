@@ -1261,6 +1261,7 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     private fun swipeDisplayFraction(startYFraction: Float, endYFraction: Float) {
+        awaitFixtureIsActiveInputWindow("Swipe target fixture")
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val metrics = instrumentation.targetContext.resources.displayMetrics
         val x = metrics.widthPixels * 0.5f
@@ -1299,6 +1300,7 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     private fun tapDisplayFraction(xFraction: Float, yFraction: Float) {
+        awaitFixtureIsActiveInputWindow("Tap target fixture")
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val metrics = instrumentation.targetContext.resources.displayMetrics
         val x = metrics.widthPixels * xFraction
@@ -3350,6 +3352,7 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     private fun tapDisplayDp(x: Float, y: Float) {
+        awaitFixtureIsActiveInputWindow("Tap target fixture")
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val density = instrumentation.targetContext.resources.displayMetrics.density
         val xPx = x * density
@@ -3370,6 +3373,7 @@ class KmpVisualScreenshotCaptureTest {
         y: Float,
         durationMs: Long = 700L
     ) {
+        awaitFixtureIsActiveInputWindow("Long-press target fixture")
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val density = instrumentation.targetContext.resources.displayMetrics.density
         val xPx = x * density
@@ -3392,7 +3396,9 @@ class KmpVisualScreenshotCaptureTest {
      * input window for a while after launch. A gesture issued in that state
      * misses the fixture entirely, so poll until the fixture owns the active
      * input window instead of requiring it at a single instant; fail only after
-     * the bounded timeout (nightly run 30402296301, 7/8 shards).
+     * the bounded timeout (nightly run 30402296301, 7/8 shards). Called by every
+     * gesture-injection helper, so all interaction cases share the gate; when
+     * the fixture already owns the window the first poll returns immediately.
      */
     private fun awaitFixtureIsActiveInputWindow(
         what: String,
@@ -4170,6 +4176,7 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     private fun tapDp(xDp: Float, yDp: Float) {
+        awaitFixtureIsActiveInputWindow("Tap target fixture")
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val density = instrumentation.targetContext.resources.displayMetrics.density
         val x = xDp * density
