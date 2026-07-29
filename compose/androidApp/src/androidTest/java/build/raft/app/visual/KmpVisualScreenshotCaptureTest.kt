@@ -1770,6 +1770,32 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureThreadMessageRowMdBlockquoteTable() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.md-blockquote-table",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-md-blockquote-table")
+                    .put("visualFixture", "md_blockquote_table"),
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
+        )
+    }
+
+    @Test
+    fun captureThreadMessageRowMdBlockquoteListTable() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.md-blockquote-list-table",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-md-blockquote-list-table")
+                    .put("visualFixture", "md_blockquote_list_table"),
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
+        )
+    }
+
+    @Test
     fun captureThreadMessageRowMdWrapAdjacent() {
         captureKmpComponentCase(
             caseId = "components.thread.message-row.md-wrap-adjacent",
@@ -4504,7 +4530,7 @@ class KmpVisualScreenshotCaptureTest {
                 leftDp = 0,
                 topDp = 0,
                 widthDp = 342,
-                heightDp = 270
+                heightDp = 430
             )
         private val HOME_ACTIVITY_RESULTS_CROP =
             VisualCrop(

@@ -1321,65 +1321,175 @@ class ThreadBottomAnchorSignatureTest {
     fun keyboardBottomAnchor_runsWhenInsetChangesAndBottomAutoAnchorAllowed() {
         assertEquals(
             true,
-            shouldAnchorThreadKeyboardBottomOnInsetChange(
-                ThreadKeyboardBottomAnchorState(
+            shouldAnchorThreadComposerLayoutChange(
+                composerLayoutState(
                     previousKeyboardInsetDp = 0f,
                     nextKeyboardInsetDp = 240f,
-                    initialBottomAnchorReady = true,
-                    latestItemIndex = 4,
-                    allowBottomAutoAnchor = true
+                    previousViewportHeightDp = 720f,
+                    nextViewportHeightDp = 720f
                 )
             )
         )
         assertEquals(
             false,
-            shouldAnchorThreadKeyboardBottomOnInsetChange(
-                ThreadKeyboardBottomAnchorState(
+            shouldAnchorThreadComposerLayoutChange(
+                composerLayoutState(
                     previousKeyboardInsetDp = 240f,
                     nextKeyboardInsetDp = 240f,
-                    initialBottomAnchorReady = true,
-                    latestItemIndex = 4,
-                    allowBottomAutoAnchor = true
+                    previousViewportHeightDp = 720f,
+                    nextViewportHeightDp = 720f
                 )
             )
         )
         assertEquals(
             false,
-            shouldAnchorThreadKeyboardBottomOnInsetChange(
-                ThreadKeyboardBottomAnchorState(
+            shouldAnchorThreadComposerLayoutChange(
+                composerLayoutState(
                     previousKeyboardInsetDp = 0f,
                     nextKeyboardInsetDp = 240f,
-                    initialBottomAnchorReady = true,
-                    latestItemIndex = 4,
+                    previousViewportHeightDp = 720f,
+                    nextViewportHeightDp = 720f,
                     allowBottomAutoAnchor = false
                 )
             )
         )
         assertEquals(
             false,
-            shouldAnchorThreadKeyboardBottomOnInsetChange(
-                ThreadKeyboardBottomAnchorState(
+            shouldAnchorThreadComposerLayoutChange(
+                composerLayoutState(
                     previousKeyboardInsetDp = 0f,
                     nextKeyboardInsetDp = 240f,
+                    previousViewportHeightDp = 720f,
+                    nextViewportHeightDp = 720f,
                     initialBottomAnchorReady = false,
-                    latestItemIndex = 4,
-                    allowBottomAutoAnchor = true
                 )
             )
         )
         assertEquals(
             false,
-            shouldAnchorThreadKeyboardBottomOnInsetChange(
-                ThreadKeyboardBottomAnchorState(
+            shouldAnchorThreadComposerLayoutChange(
+                composerLayoutState(
                     previousKeyboardInsetDp = 0f,
                     nextKeyboardInsetDp = 240f,
-                    initialBottomAnchorReady = true,
+                    previousViewportHeightDp = 720f,
+                    nextViewportHeightDp = 720f,
                     latestItemIndex = -1,
-                    allowBottomAutoAnchor = true
                 )
             )
         )
     }
+
+    @Test
+    fun composerLayoutBottomAnchor_runsWhenSuggestionChangesReadyViewportHeight() {
+        assertTrue(
+            shouldAnchorThreadComposerLayoutChange(
+                composerLayoutState(
+                    previousViewportHeightDp = 408f,
+                    nextViewportHeightDp = 240f
+                )
+            )
+        )
+    }
+
+    @Test
+    fun composerLayoutBottomAnchor_runsOncePendingColdEntryBecomesReady() {
+        val beforeReady =
+            resolveThreadComposerLayoutBottomAnchor(
+                composerLayoutState(
+                    previousViewportHeightDp = 720f,
+                    nextViewportHeightDp = 408f,
+                    initialBottomAnchorReady = false
+                )
+            )
+        assertFalse(beforeReady.shouldAnchor)
+        assertTrue(beforeReady.pendingLayoutChange)
+
+        val afterReady =
+            resolveThreadComposerLayoutBottomAnchor(
+                composerLayoutState(
+                    previousViewportHeightDp = 408f,
+                    nextViewportHeightDp = 408f,
+                    pendingLayoutChange = beforeReady.pendingLayoutChange
+                )
+            )
+        assertTrue(afterReady.shouldAnchor)
+        assertFalse(afterReady.pendingLayoutChange)
+
+        assertEquals(
+            ThreadComposerLayoutBottomAnchorDecision(
+                shouldAnchor = false,
+                pendingLayoutChange = false
+            ),
+            resolveThreadComposerLayoutBottomAnchor(
+                composerLayoutState(
+                    previousViewportHeightDp = 408f,
+                    nextViewportHeightDp = 408f,
+                    pendingLayoutChange = afterReady.pendingLayoutChange
+                )
+            )
+        )
+    }
+
+    @Test
+    fun composerLayoutBottomAnchor_ignoresStableGeometryAndUserOwnedViewport() {
+        assertFalse(
+            shouldAnchorThreadComposerLayoutChange(
+                composerLayoutState(
+                    previousViewportHeightDp = 0f,
+                    nextViewportHeightDp = 720f
+                )
+            )
+        )
+        assertFalse(
+            shouldAnchorThreadComposerLayoutChange(
+                composerLayoutState(
+                    previousViewportHeightDp = 408f,
+                    nextViewportHeightDp = 408f
+                )
+            )
+        )
+        assertFalse(
+            shouldAnchorThreadComposerLayoutChange(
+                composerLayoutState(
+                    previousViewportHeightDp = 408f,
+                    nextViewportHeightDp = 240f,
+                    allowBottomAutoAnchor = false
+                )
+            )
+        )
+        assertFalse(
+            shouldAnchorThreadComposerLayoutChange(
+                composerLayoutState(
+                    previousViewportHeightDp = 408f,
+                    nextViewportHeightDp = 240f,
+                    focusedAnchorOwnsViewport = true
+                )
+            )
+        )
+    }
+
+    private fun composerLayoutState(
+        previousKeyboardInsetDp: Float = 320f,
+        nextKeyboardInsetDp: Float = 320f,
+        previousViewportHeightDp: Float,
+        nextViewportHeightDp: Float,
+        pendingLayoutChange: Boolean = false,
+        initialBottomAnchorReady: Boolean = true,
+        latestItemIndex: Int = 15,
+        allowBottomAutoAnchor: Boolean = true,
+        focusedAnchorOwnsViewport: Boolean = false
+    ): ThreadComposerLayoutBottomAnchorState =
+        ThreadComposerLayoutBottomAnchorState(
+            previousKeyboardInsetDp = previousKeyboardInsetDp,
+            nextKeyboardInsetDp = nextKeyboardInsetDp,
+            previousViewportHeightDp = previousViewportHeightDp,
+            nextViewportHeightDp = nextViewportHeightDp,
+            pendingLayoutChange = pendingLayoutChange,
+            initialBottomAnchorReady = initialBottomAnchorReady,
+            latestItemIndex = latestItemIndex,
+            allowBottomAutoAnchor = allowBottomAutoAnchor,
+            focusedAnchorOwnsViewport = focusedAnchorOwnsViewport
+        )
 
     @Test
     fun originReplyCountProjection_usesLiveReplyListWhenItExceedsOriginCount() {

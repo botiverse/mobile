@@ -210,7 +210,11 @@ fun parseSlockHome(
             directMessages = dmsWithUnread,
             unreadTotal = unreadTotal,
             unreadSource = unreadSource,
-            serverUnreadCounts = serverUnreadCounts
+            serverUnreadCounts = serverUnreadCounts,
+            // task #831: carry unread availability through so the Store keeps
+            // prior badges instead of clobbering them to zero when the unread
+            // endpoints were unavailable.
+            unreadEnrichmentAvailable = payload.unreadEnrichmentAvailable
         )
     )
 }

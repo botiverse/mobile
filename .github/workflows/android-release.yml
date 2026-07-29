@@ -43,6 +43,16 @@ on:
         required: false
         type: string
         default: "release"
+      dex_packaging:
+        description: "DEX packaging: current | compressed | mmap"
+        required: false
+        type: string
+        default: "compressed"
+      jni_packaging:
+        description: "JNI packaging: current | legacy | modern"
+        required: false
+        type: string
+        default: "current"
       release_mode:
         required: false
         type: string
@@ -146,6 +156,24 @@ on:
         options:
           - release
           - debug
+      dex_packaging:
+        description: "DEX packaging: current control | compressed | mmap"
+        required: true
+        type: choice
+        default: compressed
+        options:
+          - current
+          - compressed
+          - mmap
+      jni_packaging:
+        description: "JNI packaging: current control | legacy compressed/extracted | modern stored/mmap"
+        required: true
+        type: choice
+        default: current
+        options:
+          - current
+          - legacy
+          - modern
       release_mode:
         description: "Draft only. Review notes and smoke before the separate explicit Hands publish step."
         required: true
@@ -193,6 +221,8 @@ jobs:
       version_name: ${{ steps.p.outputs.version_name }}
       hands_channel: ${{ steps.p.outputs.hands_channel }}
       android_variant: ${{ steps.p.outputs.android_variant }}
+      dex_packaging: ${{ steps.p.outputs.dex_packaging }}
+      jni_packaging: ${{ steps.p.outputs.jni_packaging }}
       release_mode: ${{ steps.p.outputs.release_mode }}
       publish_hands: ${{ steps.p.outputs.publish_hands }}
       create_share_page: ${{ steps.p.outputs.create_share_page }}
@@ -205,6 +235,8 @@ jobs:
         shell: bash
         env:
           INPUT_PUBLISH_HANDS: ${{ inputs.publish_hands }}
+          INPUT_DEX_PACKAGING: ${{ inputs.dex_packaging }}
+          INPUT_JNI_PACKAGING: ${{ inputs.jni_packaging }}
         run: |
           set -euo pipefail
           VERSION_NAME="${{ inputs.version_major }}.${{ inputs.version_minor }}.${{ inputs.version_patch }}"
@@ -214,6 +246,22 @@ jobs:
               "${INPUT_PUBLISH_HANDS}" \
               false
           )"
+          DEX_PACKAGING="${INPUT_DEX_PACKAGING}"
+          case "${DEX_PACKAGING}" in
+            current|compressed|mmap) ;;
+            *)
+              echo "Unsupported DEX packaging mode: ${DEX_PACKAGING}" >&2
+              exit 1
+              ;;
+          esac
+          JNI_PACKAGING="${INPUT_JNI_PACKAGING}"
+          case "${JNI_PACKAGING}" in
+            current|legacy|modern) ;;
+            *)
+              echo "Unsupported JNI packaging mode: ${JNI_PACKAGING}" >&2
+              exit 1
+              ;;
+          esac
           {
             echo "version_major=${{ inputs.version_major }}"
             echo "version_minor=${{ inputs.version_minor }}"
@@ -223,6 +271,8 @@ jobs:
             echo "version_name=${VERSION_NAME}"
             echo "hands_channel=${{ inputs.hands_channel }}"
             echo "android_variant=${{ inputs.android_variant }}"
+            echo "dex_packaging=${DEX_PACKAGING}"
+            echo "jni_packaging=${JNI_PACKAGING}"
             echo "release_mode=draft"
             echo "publish_hands=${PUBLISH_HANDS}"
             echo "create_share_page=${{ inputs.create_share_page }}"
@@ -269,6 +319,8 @@ jobs:
             .github/gradle-cache-quarantine \
             scripts/sign_android_apk_with_rotation.sh \
             scripts/verify_android_apk_with_rotation.sh \
+            scripts/verify_android_dex_packaging.py \
+            scripts/verify_android_elf_alignment.py \
             scripts/verify_android_native_symbols.sh
 
       - name: Checkout immutable product source
@@ -366,6 +418,16 @@ jobs:
             "-PversionZ=${{ needs.resolve.outputs.version_patch }}"
             "-PversionBuild=${{ needs.resolve.outputs.version_build }}"
           )
+          case "${{ needs.resolve.outputs.dex_packaging }}" in
+            current) ;;
+            compressed) GRADLE_ARGS+=("-PraftDexUseLegacyPackaging=true") ;;
+            mmap) GRADLE_ARGS+=("-PraftDexUseLegacyPackaging=false") ;;
+          esac
+          case "${{ needs.resolve.outputs.jni_packaging }}" in
+            current) ;;
+            legacy) GRADLE_ARGS+=("-PraftJniUseLegacyPackaging=true") ;;
+            modern) GRADLE_ARGS+=("-PraftJniUseLegacyPackaging=false") ;;
+          esac
           if [ -n "${{ needs.resolve.outputs.version_suffix }}" ]; then
             GRADLE_ARGS+=("-PversionSuffix=${{ needs.resolve.outputs.version_suffix }}")
           fi
@@ -476,6 +538,28 @@ jobs:
             --apk "${APK}" \
             --build-tools-dir "${BT}" \
             --verify-log apksigner-verify.log
+          DEX_ARGS=(
+            --apk "${APK}"
+          )
+          if [ "${{ needs.resolve.outputs.dex_packaging }}" = "compressed" ]; then
+            DEX_ARGS+=(
+              --expect-dex-method deflated
+              --max-apk-size-bytes 47185920
+              --max-dex-compression-ratio 0.60
+            )
+          else
+            DEX_ARGS+=(--expect-dex-method stored)
+          fi
+          python3 scripts/verify_android_dex_packaging.py "${DEX_ARGS[@]}"
+          NATIVE_METHOD=deflated
+          if [ "${{ needs.resolve.outputs.jni_packaging }}" = "modern" ]; then
+            NATIVE_METHOD=stored
+          fi
+          python3 scripts/verify_android_elf_alignment.py \
+            --archive "${APK}" \
+            --expect-native-method "${NATIVE_METHOD}" \
+            --require-abi arm64-v8a \
+            --require-abi x86_64
           "${BT}/aapt" dump badging "${APK}" 2>&1 | tee aapt-badging.log
           PACKAGE_ID="$(sed -n "s/^package: name='\([^']*\)'.*/\1/p" aapt-badging.log | head -n 1)"
           [ -n "${PACKAGE_ID}" ] || { echo "Unable to read package id" >&2; exit 1; }
@@ -546,6 +630,8 @@ jobs:
             echo "| **APK** | \`${{ steps.locate.outputs.apk_path }}\` |"
             echo "| **size (bytes)** | \`${{ steps.verify.outputs.size }}\` |"
             echo "| **sha256** | \`${{ steps.verify.outputs.sha256 }}\` |"
+            echo "| **DEX packaging** | \`${{ needs.resolve.outputs.dex_packaging }}\` |"
+            echo "| **JNI packaging** | \`${{ needs.resolve.outputs.jni_packaging }}\` |"
             echo "| **Hands channel target** | \`${{ needs.resolve.outputs.hands_channel }}\` |"
             echo "| **Create Hands draft** | \`${{ needs.resolve.outputs.publish_hands }}\` |"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -655,16 +741,25 @@ jobs:
           SLOCK_RELEASE_CHANGELOG_LEGACY_DIR: ${{ github.workspace }}/change-logs/${{ needs.resolve.outputs.version_name }}
         run: |
           set -euo pipefail
-          if [ -s "${SLOCK_RELEASE_CHANGELOG_PLATFORM_DIR}/zh-CN.md" ] && [ -s "${SLOCK_RELEASE_CHANGELOG_PLATFORM_DIR}/en.md" ]; then
+          if [ -s "${SLOCK_RELEASE_CHANGELOG_PLATFORM_DIR}/zh-CN.md" ] && [ -s "${SLOCK_RELEASE_CHANGELOG_PLATFORM_DIR}/en.md" ] && [ -s "${SLOCK_RELEASE_CHANGELOG_PLATFORM_DIR}/ja.md" ]; then
             export SLOCK_RELEASE_CHANGELOG_ZH_FILE="${SLOCK_RELEASE_CHANGELOG_PLATFORM_DIR}/zh-CN.md"
             export SLOCK_RELEASE_CHANGELOG_EN_FILE="${SLOCK_RELEASE_CHANGELOG_PLATFORM_DIR}/en.md"
+            export SLOCK_RELEASE_CHANGELOG_JA_FILE="${SLOCK_RELEASE_CHANGELOG_PLATFORM_DIR}/ja.md"
             echo "Using reviewed Android changelog from change-logs/${{ needs.resolve.outputs.version_name }}/android/"
+          elif find "${SLOCK_RELEASE_CHANGELOG_PLATFORM_DIR}" -maxdepth 1 -type f \( -name 'zh-CN.md' -o -name 'en.md' -o -name 'ja.md' \) -print -quit 2>/dev/null | grep -q .; then
+            echo "Reviewed Android changelog is incomplete; zh-CN.md, en.md, and ja.md are all required." >&2
+            exit 1
           elif [ -s "${SLOCK_RELEASE_CHANGELOG_LEGACY_DIR}/zh-CN.md" ] && [ -s "${SLOCK_RELEASE_CHANGELOG_LEGACY_DIR}/en.md" ]; then
             export SLOCK_RELEASE_CHANGELOG_ZH_FILE="${SLOCK_RELEASE_CHANGELOG_LEGACY_DIR}/zh-CN.md"
             export SLOCK_RELEASE_CHANGELOG_EN_FILE="${SLOCK_RELEASE_CHANGELOG_LEGACY_DIR}/en.md"
+            if [ -s "${SLOCK_RELEASE_CHANGELOG_LEGACY_DIR}/ja.md" ]; then
+              export SLOCK_RELEASE_CHANGELOG_JA_FILE="${SLOCK_RELEASE_CHANGELOG_LEGACY_DIR}/ja.md"
+            else
+              unset SLOCK_RELEASE_CHANGELOG_JA_FILE
+            fi
             echo "Using legacy reviewed changelog from change-logs/${{ needs.resolve.outputs.version_name }}/"
           else
-            unset SLOCK_RELEASE_CHANGELOG_ZH_FILE SLOCK_RELEASE_CHANGELOG_EN_FILE
+            unset SLOCK_RELEASE_CHANGELOG_ZH_FILE SLOCK_RELEASE_CHANGELOG_EN_FILE SLOCK_RELEASE_CHANGELOG_JA_FILE
             echo "Reviewed Android changelog not found; falling back to generated git history."
           fi
           # The release helper handles metadata.json generation, channel
@@ -757,7 +852,7 @@ jobs:
               echo
               echo '\`\`\`sh'
               echo "hands releases show raft-android ${{ steps.publish-hands-release.outputs.release_id }}"
-              echo "hands releases update raft-android ${{ steps.publish-hands-release.outputs.release_id }} --changelog-file zh-CN=zh-CN.md --changelog-file en=en.md"
+              echo "hands releases update raft-android ${{ steps.publish-hands-release.outputs.release_id }} --changelog-file zh-CN=zh-CN.md --changelog-file en=en.md --changelog-file ja=ja.md"
               echo "hands releases publish raft-android ${{ steps.publish-hands-release.outputs.release_id }}"
               echo '\`\`\`'
             fi

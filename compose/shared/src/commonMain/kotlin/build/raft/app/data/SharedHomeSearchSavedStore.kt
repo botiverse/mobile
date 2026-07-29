@@ -48,6 +48,8 @@ class SharedHomeSearchSavedStore(
     private var senderFiltersJob: Job? = null
     private var savedRequestToken: Long = 0L
     private var searchRequestToken: Long = 0L
+    private var senderFiltersRequestToken: Long = 0L
+    private var senderFiltersOwner: SenderFiltersOwner? = null
     private var readPredictionRevisions: Map<ChannelId, Long> = emptyMap()
     private var savedOwner: SavedStateOwner? = null
     private val pendingSavedUnsaves = mutableMapOf<MessageId, PendingSavedUnsave>()
@@ -73,10 +75,7 @@ class SharedHomeSearchSavedStore(
         when (intent) {
             SharedHomeSearchSavedIntent.ClearSavedSummary -> clearSavedSummary()
             SharedHomeSearchSavedIntent.OpenSearch -> {
-                val search = _state.value.search
-                if (search.senderFilters.isEmpty() && !search.senderFiltersLoading) {
-                    loadSenderFilters()
-                }
+                loadSenderFilters()
             }
             SharedHomeSearchSavedIntent.OpenSaved -> {
                 val saved = _state.value.saved
@@ -231,6 +230,8 @@ class SharedHomeSearchSavedStore(
         senderFiltersJob = null
         savedRequestToken++
         searchRequestToken++
+        senderFiltersRequestToken++
+        senderFiltersOwner = null
         pendingSavedUnsaves.clear()
         clearSavedOrderRanks()
         savedOwner = null
@@ -272,21 +273,37 @@ class SharedHomeSearchSavedStore(
     private fun loadSenderFilters() {
         if (memberRepository == null && serverMembersStore == null) return
         senderFiltersJob?.cancel()
+        val requestToken = ++senderFiltersRequestToken
         senderFiltersJob =
             scope.launch {
                 val startedAt = TimeSource.Monotonic.markNow()
-                _state.value =
-                    _state.value.copy(
-                        search = _state.value.search.copy(senderFiltersLoading = true, senderFiltersErrorCode = null)
-                    )
+                var requestOwner: SenderFiltersOwner? = null
                 try {
-                    val session = authStore.readSession() ?: return@launch setSenderFiltersError("unauthenticated")
-                    val serverId = session.currentServerId?.let(::ServerId) ?: return@launch setSenderFiltersError("server_missing")
+                    val session = authStore.readSession()
+                        ?: return@launch setSenderFiltersErrorIfActive(requestToken, "unauthenticated")
+                    val serverId = session.currentServerId?.let(::ServerId)
+                        ?: return@launch setSenderFiltersErrorIfActive(requestToken, "server_missing")
+                    val owner = SenderFiltersOwner(serverId = serverId, principalId = session.user.id)
+                    requestOwner = owner
+                    if (requestToken != senderFiltersRequestToken) return@launch
+                    val ownerChanged = senderFiltersOwner != null && senderFiltersOwner != owner
+                    senderFiltersOwner = owner
+                    _state.value =
+                        _state.value.copy(
+                            search =
+                                _state.value.search.copy(
+                                    senderFilters =
+                                        if (ownerChanged) emptyList() else _state.value.search.senderFilters,
+                                    senderFiltersLoading = true,
+                                    senderFiltersErrorCode = null,
+                                )
+                        )
                     val result = loadSearchSenderFilters(serverId, DataRequestPriority.Visible, session.user.id)
                     diagnosticsLogger(
                         "store_load domain=home_search_sender_filters result=${result.senderFiltersDiagnosticsResult()} " +
                             "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
                     )
+                    if (!senderFiltersRequestStillActive(requestToken, owner)) return@launch
                     when (result) {
                         is DataResult.Content ->
                             _state.value =
@@ -308,13 +325,16 @@ class SharedHomeSearchSavedStore(
                                             senderFiltersErrorCode = null
                                         )
                                 )
-                        is DataResult.Error -> setSenderFiltersError(result.error.code)
-                        is DataResult.NoPermission -> setSenderFiltersError(result.blocker.code)
+                        is DataResult.Error -> setSenderFiltersErrorIfActive(requestToken, result.error.code)
+                        is DataResult.NoPermission -> setSenderFiltersErrorIfActive(requestToken, result.blocker.code)
                     }
                 } catch (cancellation: CancellationException) {
                     throw cancellation
                 } catch (_: Throwable) {
-                    setSenderFiltersError("sender_filters_network")
+                    val owner = requestOwner
+                    if (owner == null || senderFiltersRequestStillActive(requestToken, owner)) {
+                        setSenderFiltersErrorIfActive(requestToken, "sender_filters_network")
+                    }
                     diagnosticsLogger(
                         "store_load domain=home_search_sender_filters result=exception code=sender_filters_network " +
                             "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
@@ -610,14 +630,18 @@ class SharedHomeSearchSavedStore(
         if (store != null) {
             return when (val result = store.refreshMembers(serverId, priority)) {
                 is DataResult.Content ->
-                    DataResult.Content(store.currentServerMembers(serverId).toSearchSenderFilters(currentUserId))
+                    DataResult.Content(
+                        store.currentServerMembers(serverId)
+                            .toSearchSenderFilters(currentUserId, serverId)
+                    )
                 is DataResult.Empty -> DataResult.Empty(result.reason)
                 is DataResult.Error -> DataResult.Error(result.error)
                 is DataResult.NoPermission -> DataResult.NoPermission(result.blocker)
             }
         }
         return when (val result = memberRepository?.getMembers(priority, serverId)) {
-            is DataResult.Content -> DataResult.Content(result.data.members.toSearchSenderFilters(currentUserId))
+            is DataResult.Content ->
+                DataResult.Content(result.data.members.toSearchSenderFilters(currentUserId, serverId))
             is DataResult.Empty -> DataResult.Empty(result.reason)
             is DataResult.Error -> DataResult.Error(result.error)
             is DataResult.NoPermission -> DataResult.NoPermission(result.blocker)
@@ -827,6 +851,49 @@ class SharedHomeSearchSavedStore(
             )
     }
 
+    private fun setSenderFiltersErrorIfActive(
+        requestToken: Long,
+        code: String,
+    ) {
+        if (requestToken == senderFiltersRequestToken) {
+            setSenderFiltersError(code)
+        }
+    }
+
+    private suspend fun senderFiltersRequestStillActive(
+        requestToken: Long,
+        owner: SenderFiltersOwner,
+    ): Boolean {
+        if (requestToken != senderFiltersRequestToken) {
+            diagnosticsLogger(
+                "sender_filters_stale_discard reason=request_token " +
+                    "serverId=${owner.serverId.value}"
+            )
+            return false
+        }
+        val currentSession = authStore.readSession()
+        val currentOwner =
+            currentSession?.currentServerId?.let(::ServerId)?.let { serverId ->
+                SenderFiltersOwner(serverId = serverId, principalId = currentSession.user.id)
+            }
+        if (currentOwner == owner) return true
+        senderFiltersOwner = null
+        _state.value =
+            _state.value.copy(
+                search =
+                    _state.value.search.copy(
+                        senderFilters = emptyList(),
+                        senderFiltersLoading = false,
+                        senderFiltersErrorCode = null,
+                    )
+            )
+        diagnosticsLogger(
+            "sender_filters_stale_discard reason=owner_changed " +
+                "serverId=${owner.serverId.value}"
+        )
+        return false
+    }
+
     private fun adoptSavedOwner(owner: SavedStateOwner) {
         if (savedOwner != owner) {
             pendingSavedUnsaves.clear()
@@ -918,6 +985,11 @@ class SharedHomeSearchSavedStore(
 private data class SavedStateOwner(
     val serverId: ServerId,
     val userId: String
+)
+
+private data class SenderFiltersOwner(
+    val serverId: ServerId,
+    val principalId: String,
 )
 
 private data class PendingSavedUnsave(
@@ -1188,20 +1260,27 @@ data class SearchSenderFilterItem(
     val label: String,
     val handle: String,
     val kind: MemberKind,
+    val sourceServerId: ServerId,
     val isSelf: Boolean = false,
     val avatarWireValue: String? = null,
     val presence: Presence? = null,
     val agentStatus: build.raft.app.model.AgentStatus? = null
 )
 
-private fun List<MemberProfile>.toSearchSenderFilters(currentUserId: String): List<SearchSenderFilterItem> =
-    map { member ->
+internal fun List<MemberProfile>.toSearchSenderFilters(
+    currentUserId: String,
+    sourceServerId: ServerId,
+): List<SearchSenderFilterItem> =
+    mapNotNull { member ->
+        val memberId = member.id.value.trim().takeIf { it.isNotBlank() } ?: return@mapNotNull null
+        if (member.serverId != null && member.serverId != sourceServerId) return@mapNotNull null
         SearchSenderFilterItem(
-            id = member.id.value,
-            label = member.displayName.ifBlank { member.handle.ifBlank { member.id.value } },
+            id = memberId,
+            label = member.displayName.ifBlank { member.handle.ifBlank { memberId } },
             handle = member.handle,
             kind = member.kind,
-            isSelf = member.id.value == currentUserId,
+            sourceServerId = sourceServerId,
+            isSelf = memberId == currentUserId,
             avatarWireValue = member.avatarWireValueForAvatarSlot(),
             presence = member.presence,
             agentStatus = member.agentStatus

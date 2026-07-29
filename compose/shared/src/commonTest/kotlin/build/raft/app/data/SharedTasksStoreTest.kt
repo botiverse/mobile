@@ -1780,40 +1780,6 @@ class SharedTasksStoreTest {
     }
 
     @Test
-    fun presentationReducerPrunesCreatorsAndFiltersVisibleTasks() {
-        val artin = member("Artin", MemberKind.Human)
-        val cindy = member("Cindy", MemberKind.Human)
-        val content =
-            TasksContent(
-                summaryCounts = emptyMap(),
-                tasks =
-                    listOf(
-                        task("task-1", TaskStatus.Todo, creator = artin),
-                        task("task-2", TaskStatus.Todo, creator = cindy),
-                        task("task-3", TaskStatus.InReview, creator = artin)
-                    )
-            )
-
-        val presentation =
-            TasksPresentationState()
-                .reduce(TasksPresentationIntent.ToggleCreator(artin.tasksIdentityFilterId()))
-                .reduce(TasksPresentationIntent.ToggleCreator("missing"))
-                .reduce(TasksPresentationIntent.PruneUnavailableCreators(setOf(artin.tasksIdentityFilterId(), cindy.tasksIdentityFilterId())))
-
-        val visible =
-            content.visibleContent(
-                selectedFilter = null,
-                presentationState = presentation,
-                showChannelFilter = true
-            )
-
-        assertEquals(listOf("user:${artin.id.value}", "user:${cindy.id.value}"), visible.creatorOptions.map { it.tasksIdentityFilterId() })
-        assertEquals(setOf(artin.tasksIdentityFilterId()), visible.selectedCreatorIds)
-        assertEquals(listOf("task-1", "task-3"), visible.filteredTasks.map { it.id.value })
-        assertEquals(emptySet(), presentation.reduce(TasksPresentationIntent.ClearAllFilters).selectedCreatorIds)
-    }
-
-    @Test
     fun refreshResultKeepsContentVisibleOnEmptyAndError() {
         val current =
             TasksUiState(

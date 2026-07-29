@@ -2,6 +2,9 @@ package build.raft.app
 
 import build.raft.app.data.SettingsServerSidebarOrderSnapshot
 import build.raft.app.data.SettingsServerSidebarPinnedItem
+import build.raft.app.model.MemberId
+import build.raft.app.model.MemberKind
+import build.raft.app.model.ServerId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -134,7 +137,14 @@ class SettingsHomeSearchEntityPinTest {
             title = "Title",
             subtitle = "Subtitle",
             threadId = threadId,
-            memberId = memberId,
+            memberIdentity =
+                memberId?.let {
+                    MemberDetailIdentity(
+                        memberId = MemberId(it),
+                        kind = if (type == SearchEntityType.Agent) MemberKind.Agent else MemberKind.Human,
+                        sourceServerId = ServerId("server-1"),
+                    )
+                },
             conversationIdentity = null,
             archived = archived
         )

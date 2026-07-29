@@ -3466,6 +3466,54 @@ class SharedActivityStoreTest {
     }
 
     @Test
+    fun internalJointStopLossKeepsCanonicalRowsButRemovesSummaryCountGhosts() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val facts = mutableListOf<ActivityUnreadSummaryFact>()
+        val safe = activityItem("channel-safe", unreadCount = 2)
+        val unsafe =
+            InboxItem(
+                key = "thread:reply-stream",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("reply-stream"),
+                channelName = "joint-storage-parent",
+                threadChannelId = ChannelId("reply-stream"),
+                parentChannelId = ChannelId("joint-storage-parent"),
+                parentChannelName = "joint-storage-parent",
+                parentChannelKind = ConversationKind.Joint,
+                parentMessageId = MessageId("parent-message"),
+                unreadCount = 3,
+                latestActivityMessageId = MessageId("reply-1")
+            )
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository =
+                    FakeInboxRepository(
+                        initialSnapshots =
+                            listOf(
+                                snapshot(
+                                    items = listOf(safe, unsafe),
+                                    totalCount = 5,
+                                    totalUnreadCount = 10
+                                )
+                            )
+                    ),
+                onSummaryFact = facts::add
+            )
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+
+        assertEquals(listOf("channel:channel-safe", "thread:reply-stream"), store.state.value.items.map(InboxItem::key))
+        assertEquals(5, store.state.value.totalCount)
+        assertEquals(10, store.state.value.totalUnreadCount)
+        val projectedFact = facts.last()
+        assertEquals(4, projectedFact.totalCount)
+        assertEquals(7, projectedFact.totalUnreadCount)
+        assertTrue(projectedFact.authoritative)
+        scope.cancel()
+    }
+
+    @Test
     fun nonAllFilterNeverPublishesAbsoluteProcessCountsAndMutationsOnlyInvalidate() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val facts = mutableListOf<ActivityUnreadSummaryFact>()

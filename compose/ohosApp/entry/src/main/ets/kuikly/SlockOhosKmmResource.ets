@@ -1,4 +1,5 @@
 import { registerServiceProvider, invoke } from '@kuiklybase/knoi';
+import { i18n } from '@kit.LocalizationKit';
 import { SlockOhosDiagnostics } from './SlockOhosDiagnostics';
 
 const KMM_RESOURCE_LOG_TAG = 'SlockKmmResource';
@@ -60,6 +61,16 @@ export class OhosResourceServiceImpl implements OhosResourceService {
   }
 }
 
+export interface SlockOhosSystemLocaleService {
+  currentLanguageTag(): string;
+}
+
+export class SlockOhosSystemLocaleServiceImpl implements SlockOhosSystemLocaleService {
+  currentLanguageTag(): string {
+    return i18n.System.getSystemLanguages()[0] ?? 'en';
+  }
+}
+
 let kmmResourceComposeInitialized = false;
 
 // Must run after KNOI setup()/init() (libshared.so loaded) and before any
@@ -73,6 +84,7 @@ export function initKmmResourceCompose(context: Context): void {
   OhosResourceServiceImpl.context = context.getApplicationContext();
   invoke('init_resource_compose', context.resourceManager);
   registerServiceProvider('OhosResourceService', /** singleton */ true, OhosResourceServiceImpl);
+  registerServiceProvider('slockOhosSystemLocale', /** singleton */ true, SlockOhosSystemLocaleServiceImpl);
   kmmResourceComposeInitialized = true;
   SlockOhosDiagnostics.record(KMM_RESOURCE_LOG_TAG, 'kmm_resource_init complete (OhosResourceService registered)');
 }

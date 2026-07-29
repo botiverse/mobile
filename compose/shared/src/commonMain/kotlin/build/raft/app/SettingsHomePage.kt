@@ -354,6 +354,7 @@ import build.raft.app.data.SettingsServerSnapshot
 import build.raft.app.data.SettingsServerTranslationSnapshot
 import build.raft.app.data.SettingsServerSystemChannelSnapshot
 import build.raft.app.data.SettingsServerTranslationUpdateRequest
+import build.raft.app.data.SharedServerMembersEntry
 import build.raft.app.data.SharedServerMembersState
 import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.MemberSnapshot
@@ -3293,6 +3294,14 @@ internal fun SlockAppShellContent(
     var consumedDiagnosticsDeepLinkId by remember { mutableStateOf<String?>(null) }
     val readySession = (authGateState as? SharedAuthGateState.Ready)?.session
     val readyServerId = selectedServerId
+    val tasksServerMembersEntry by remember(appShellServerMembersStore, readyServerId) {
+        val serverId = readyServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
+        if (serverId == null) {
+            MutableStateFlow(SharedServerMembersEntry(serverId = ""))
+        } else {
+            appShellServerMembersStore.serverMembersEntryFlow(serverId)
+        }
+    }.collectAsState(SharedServerMembersEntry(serverId = readyServerId.orEmpty()))
     LaunchedEffect(readySession?.qaBootstrap?.ticketDigest, homeState.content) {
         if (
             readySession?.qaBootstrap != null &&
@@ -4204,6 +4213,13 @@ internal fun SlockAppShellContent(
             tasksViewModel.dispatch(SharedTasksRouteIntent.Start)
         }
     }
+    LaunchedEffect(selectedTab, readyServerId, appShellServerMembersStore) {
+        val serverId = readyServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
+            ?: return@LaunchedEffect
+        if (selectedTab == "tasks") {
+            appShellServerMembersStore.refreshMembers(serverId, DataRequestPriority.Visible)
+        }
+    }
     LaunchedEffect(selectedTab, tasksState.loadState, tasksState.refreshing) {
         if (selectedTab != "tasks") {
             tasksFirstRenderLoggedKey = null
@@ -5060,6 +5076,7 @@ internal fun SlockAppShellContent(
                                 prewarmAdmissionGate.invalidate("tasks_scroll")
                                 tasksListPosition = it
                             },
+                            identityOptions = tasksServerMembersEntry.members,
                             timeContext = threadTimeContext,
                             onOpenTask = { task ->
                                 prewarmAdmissionGate.invalidate("tasks_open_task")
@@ -7484,9 +7501,9 @@ private fun SettingsLanguagePreferenceCard(
                 stringResource(MR.strings.settings_preferred_translation_language_detail)
             )
             SlockBrutalSelectField(
-                options = snapshot.browserLanguage.toSelectOptions(),
+                options = snapshot.browserLanguage.toTranslationTargetSelectOptions(),
                 selectedId = languageDraft.ifBlank { snapshot.browserLanguage.selectedKey },
-                selectedLabel = snapshot.browserLanguage.labelFor(languageDraft),
+                selectedLabel = snapshot.browserLanguage.translationTargetLabelFor(languageDraft),
                 onSelect = { onLanguageDraftChange(it.id) },
                 enabled = snapshot.browserLanguage.available && !busy
             )
@@ -9062,6 +9079,27 @@ private fun SettingsMobileSelectionSnapshot.toSelectOptions(): List<SlockBrutalS
 
 private fun SettingsMobileSelectionSnapshot.labelFor(key: String): String =
     options.firstOrNull { it.key == key }?.label ?: selectedLabel
+
+@Composable
+private fun SettingsMobileSelectionSnapshot.toTranslationTargetSelectOptions(): List<SlockBrutalSelectOption> {
+    val systemLanguageLabel = stringResource(MR.strings.settings_translation_target_system_language)
+    return options.map { option ->
+        SlockBrutalSelectOption(
+            option.key,
+            if (option.key == TranslationTargetLanguages.System) systemLanguageLabel else option.label
+        )
+    }
+}
+
+@Composable
+private fun SettingsMobileSelectionSnapshot.translationTargetLabelFor(key: String): String {
+    val selectedKey = key.ifBlank { this.selectedKey }
+    return if (selectedKey == TranslationTargetLanguages.System) {
+        stringResource(MR.strings.settings_translation_target_system_language)
+    } else {
+        labelFor(selectedKey)
+    }
+}
 
 private const val SETTINGS_CONNECTED_APPS_CATEGORY_ALL = "__all__"
 
@@ -19395,12 +19433,28 @@ internal data class SearchEntityResult(
     val title: String,
     val subtitle: String,
     val threadId: String?,
-    val memberId: String?,
+    val memberIdentity: MemberDetailIdentity?,
     val conversationIdentity: ThreadLaunchConversationIdentity?,
     val avatarWireValue: String? = null,
     val showPresence: Boolean = false,
     val archived: Boolean = false
-)
+) {
+    val memberId: String?
+        get() = memberIdentity?.memberId?.value
+}
+
+internal sealed interface HomeSearchEntityDestination {
+    data class Conversation(val identity: ThreadLaunchConversationIdentity) : HomeSearchEntityDestination
+    data class Member(val identity: MemberDetailIdentity) : HomeSearchEntityDestination
+}
+
+internal fun SearchEntityResult.destinationOrNull(): HomeSearchEntityDestination? {
+    conversationIdentity?.let { return HomeSearchEntityDestination.Conversation(it) }
+    val identity = memberIdentity ?: return null
+    if (identity.memberId.value.isBlank() || identity.sourceServerId?.value.isNullOrBlank()) return null
+    if (identity.kind != MemberKind.Human && identity.kind != MemberKind.Agent) return null
+    return HomeSearchEntityDestination.Member(identity)
+}
 
 private sealed interface HomeSearchResultGroup {
     data class Message(val item: InboxItem) : HomeSearchResultGroup
@@ -19565,6 +19619,32 @@ internal fun homeSearchEntityResults(
     return rankThreadComposerSuggestionEntries(query = trimmedQuery, entries = entries)
         .distinctBy { it.key }
         .take(5)
+}
+
+internal fun SearchSenderFilterItem.toHomeSearchEntityResult(
+    conversationIdentity: ThreadLaunchConversationIdentity?,
+    agentLabel: String,
+    personLabel: String,
+    membersLabel: String,
+): SearchEntityResult? {
+    if (kind != MemberKind.Agent && kind != MemberKind.Human) return null
+    val identity = memberDetailIdentity(id, kind, sourceServerId.value) ?: return null
+    return SearchEntityResult(
+        key = "sender:${sourceServerId.value}:$kind:${identity.memberId.value}",
+        type = if (kind == MemberKind.Agent) SearchEntityType.Agent else SearchEntityType.Human,
+        title = displayLabel,
+        subtitle =
+            buildString {
+                append(if (kind == MemberKind.Agent) agentLabel else personLabel)
+                if (handle.isNotBlank()) append(" · @$handle")
+                if (conversationIdentity == null) append(" · $membersLabel")
+            },
+        threadId = conversationIdentity?.threadId?.value,
+        memberIdentity = identity,
+        conversationIdentity = conversationIdentity,
+        avatarWireValue = avatarWireValue ?: AvatarReference.Random(identity.memberId.value).wireValue,
+        showPresence = kind == MemberKind.Agent,
+    )
 }
 
 private fun HomeDirectMessageRow.isAgentDirectMessage(): Boolean =
@@ -20369,26 +20449,44 @@ private fun Pager.openHomeSearchEntity(
     threadRowAffordances: Set<ThreadRowAffordancePreference>,
     storeScope: SlockShellStoreScope
 ) {
-    val conversation = entity.conversationIdentity
-    if (conversation != null) {
-        openStandaloneHomeConversation(
-            bridge = bridge,
-            conversation = conversation,
-            source = "home_search_entity",
-            timeContext = timeContext,
-            alignOwnMessagesRight = alignOwnMessagesRight,
-            compactConsecutiveMessages = compactConsecutiveMessages,
-            threadRowAffordances = threadRowAffordances,
-            storeScope = storeScope
-        )
-        return
+    when (val destination = entity.destinationOrNull()) {
+        is HomeSearchEntityDestination.Conversation -> {
+            openStandaloneHomeConversation(
+                bridge = bridge,
+                conversation = destination.identity,
+                source = "home_search_entity",
+                timeContext = timeContext,
+                alignOwnMessagesRight = alignOwnMessagesRight,
+                compactConsecutiveMessages = compactConsecutiveMessages,
+                threadRowAffordances = threadRowAffordances,
+                storeScope = storeScope
+            )
+        }
+        is HomeSearchEntityDestination.Member -> {
+            val pageData = homeSearchMemberDetailPageData(destination.identity, timeContext) ?: return
+            openSlockPage(
+                pageName = MEMBER_DETAIL_PAGE,
+                pageData = pageData,
+                storeScopeOverride = storeScope
+            )
+        }
+        null -> Unit
     }
-    val memberId = entity.memberId?.takeIf { it.isNotBlank() } ?: return
+}
+
+internal fun homeSearchMemberDetailPageData(
+    identity: MemberDetailIdentity,
+    timeContext: AppShellThreadTimeContext?,
+): JSONObject? {
+    val memberId = identity.memberId.value.trim().takeIf { it.isNotBlank() } ?: return null
+    val sourceServerId = identity.sourceServerId?.value?.trim()?.takeIf { it.isNotBlank() } ?: return null
     val instanceId = "home-search-member-$memberId"
     val payload =
         JSONObject().apply {
             put("instanceId", instanceId)
             put("memberId", memberId)
+            put("memberKind", identity.kind.memberKindWireValue())
+            put("sourceServerId", sourceServerId)
             put("localOffsetMinutes", timeContext?.localOffsetMinutes ?: 0)
             timeContext?.todayEpochDay?.let { put("todayEpochDay", it) }
             timeContext?.nowEpochMillis?.let { put("nowEpochMillis", it) }
@@ -20400,11 +20498,7 @@ private fun Pager.openHomeSearchEntity(
             put("payload", payload.toString())
             put("instanceId", instanceId)
         }
-    openSlockPage(
-        pageName = MEMBER_DETAIL_PAGE,
-        pageData = pageData,
-        storeScopeOverride = storeScope
-    )
+    return pageData
 }
 
 internal fun buildStandaloneConversationThreadLaunchPayload(
@@ -21940,6 +22034,7 @@ private val homeSearchVisualSearchState = SharedHomeSearchPanelState(
                 label = "Artin",
                 handle = "artin",
                 kind = MemberKind.Human,
+                sourceServerId = ServerId("server_visual"),
                 isSelf = true,
                 avatarWireValue = AvatarReference.Random("artin").wireValue,
                 presence = Presence.Active
@@ -21949,6 +22044,7 @@ private val homeSearchVisualSearchState = SharedHomeSearchPanelState(
                 label = "Android Developer",
                 handle = "Android-Developer",
                 kind = MemberKind.Agent,
+                sourceServerId = ServerId("server_visual"),
                 avatarWireValue = AvatarReference.Random("android-developer").wireValue,
                 presence = Presence.Active,
                 agentStatus = AgentStatus.Working
@@ -21958,6 +22054,7 @@ private val homeSearchVisualSearchState = SharedHomeSearchPanelState(
                 label = "Pin Human",
                 handle = "pin-human",
                 kind = MemberKind.Human,
+                sourceServerId = ServerId("server_visual"),
                 avatarWireValue = AvatarReference.Random("pin-human").wireValue,
                 presence = Presence.Active
             )

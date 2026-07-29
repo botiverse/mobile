@@ -121,6 +121,7 @@ Environment overrides:
   SLOCK_ANDROID_SYMBOL_ARCHIVE=/path/to/exact-native-symbols.zip
   SLOCK_RELEASE_CHANGELOG_ZH_FILE=change-logs/1.6.0/android/zh-CN.md
   SLOCK_RELEASE_CHANGELOG_EN_FILE=change-logs/1.6.0/android/en.md
+  SLOCK_RELEASE_CHANGELOG_JA_FILE=change-logs/1.8.0/android/ja.md
   SLOCK_RELEASE_CHANGELOG_FILE=changelog.txt
   SLOCK_HANDS_DRY_RUN=1
 
@@ -298,12 +299,20 @@ HANDS_ARGS=(
   --build-time "${BUILD_TIME}"
   --metadata "${METADATA_PATH}"
 )
+if [ -n "${SLOCK_RELEASE_CHANGELOG_JA_FILE:-}" ] && [ ! -s "${SLOCK_RELEASE_CHANGELOG_JA_FILE}" ]; then
+  die "SLOCK_RELEASE_CHANGELOG_JA_FILE must name a non-empty file"
+fi
 if [ -n "${SLOCK_RELEASE_CHANGELOG_ZH_FILE:-}" ] && [ -s "${SLOCK_RELEASE_CHANGELOG_ZH_FILE}" ] &&
   [ -n "${SLOCK_RELEASE_CHANGELOG_EN_FILE:-}" ] && [ -s "${SLOCK_RELEASE_CHANGELOG_EN_FILE}" ]; then
   HANDS_ARGS+=(
     --changelog-file "zh-CN=${SLOCK_RELEASE_CHANGELOG_ZH_FILE}"
     --changelog-file "en=${SLOCK_RELEASE_CHANGELOG_EN_FILE}"
   )
+  if [ -n "${SLOCK_RELEASE_CHANGELOG_JA_FILE:-}" ]; then
+    HANDS_ARGS+=(--changelog-file "ja=${SLOCK_RELEASE_CHANGELOG_JA_FILE}")
+  fi
+elif [ -n "${SLOCK_RELEASE_CHANGELOG_ZH_FILE:-}${SLOCK_RELEASE_CHANGELOG_EN_FILE:-}${SLOCK_RELEASE_CHANGELOG_JA_FILE:-}" ]; then
+  die "reviewed changelog variables require non-empty zh-CN and en files"
 elif [ -n "${SLOCK_RELEASE_CHANGELOG_FILE:-}" ] && [ -s "${SLOCK_RELEASE_CHANGELOG_FILE}" ]; then
   HANDS_ARGS+=(--changelog-file "${SLOCK_RELEASE_CHANGELOG_FILE}")
 fi

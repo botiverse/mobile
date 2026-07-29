@@ -1330,6 +1330,7 @@ internal fun AnnotatedString.withSlockMarkdownSpanFonts(baseStyle: TextStyle): A
             SpanStyle(
                 fontFamily = slockMonoFamilyForWeight(FontWeight.Normal),
                 fontWeight = FontWeight.Normal,
+                fontSize = SlockMarkdownBodyFontSize * 0.875f,
             ),
             range.start,
             range.end,

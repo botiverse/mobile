@@ -753,6 +753,16 @@ internal class SlockInputFocusOwnerRegistry {
         claimedFocusClearToken = null
     }
 
+    /**
+     * Cancels an outside-gesture dismissal that was armed before a descendant established a new
+     * explicit editing intent. The current gesture may still finish normally, but its old token
+     * must not clear the focus that the descendant just reasserted.
+     */
+    fun cancelPendingFocusDismissalForExplicitInputIntent() {
+        pointerSafetyGeneration += 1L
+        claimedFocusClearToken = null
+    }
+
     fun remove(owner: Any) {
         if (activeOwners.remove(owner) != null) {
             advanceFocusOwnerGeneration()

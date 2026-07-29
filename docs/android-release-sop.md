@@ -147,6 +147,14 @@ The canonical workflow switch is `publish_hands=true|false`, and the wrapper
 sets it through `SLOCK_PUBLISH_HANDS`. Legacy publish aliases are rejected. See
 [Android Hands release input migration](android-hands-release-migration-2026-07-24.md).
 
+Android 1.8 production dispatches default to `dex_packaging=compressed` and
+`jni_packaging=current`. The DEX choice is admitted only with the 45 MiB APK
+cap, 0.60 aggregate DEX compression-ratio cap, 16 KB ELF/ZIP admission,
+signing, install, and functional gates. `current|mmap` DEX and `legacy|modern`
+JNI remain explicit diagnostic choices; they are not alternate production
+recommendations. R8/resource shrinking remains off, no Baseline Profile is
+added, and performance was not specially benchmarked for this release.
+
 Expected workflow output:
 
 - signed, aligned APK with a verified SHA-256;
@@ -161,23 +169,33 @@ trigger or a way to bypass the draft gate.
 ## 4. Write And Review Notes
 
 Use the workflow's raw changelog and the selected PR list as source material,
-then create reviewed notes in two files. Do not paste raw commit subjects into
+then create reviewed notes in three files. Do not paste raw commit subjects into
 the release.
 
 ```text
 change-logs/1.2.2/android/zh-CN.md
 change-logs/1.2.2/android/en.md
+change-logs/1.2.2/android/ja.md
 ```
 
-The Android workflow prefers this platform directory. It falls back to the
-historical `change-logs/<version>/{zh-CN,en}.md` layout only for older releases
-that predate platform-specific notes.
+The Android workflow requires all three files in this platform directory. It
+falls back to the historical `change-logs/<version>/{zh-CN,en}.md` layout only
+for older releases that predate platform-specific notes; a legacy Japanese file
+is included when present.
 
 Apply the house format from the release-practices document:
 
 - user-visible changes only;
 - sectioned New / Improved / Fixed content, omitting empty sections;
-- zh-CN and English carry the same claims;
+- zh-CN, English, and Japanese carry the same claims;
+- align every shipped locale with its current canonical catalog before review.
+  Shared Web/mobile terms come from `botiverse/slock` under
+  `packages/web/src/i18n/messages/`; mobile-only terms and locales also use
+  `compose/shared/src/commonMain/resources/MR/<locale>/strings.xml`. Reuse
+  user-visible nouns and status labels; do not expose implementation terms such
+  as chip or spinner unless the product itself displays them. Current zh-CN
+  terms include `回应`, `任务状态`, and `处理中`; current Japanese terms
+  include `リアクション`, `タスクステータス`, and `処理中`;
 - exclude PR numbers, implementation detail, CI history, and unshipped work.
 
 The release owner must approve these files before activation.
@@ -201,7 +219,7 @@ artifact before asking for activation.
 
 Once the owner has reviewed the notes and smoke evidence and explicitly asked
 to publish, run the finalizer. It verifies the supplied draft reports the
-expected versionCode, writes the bilingual notes, activates that draft, and
+expected versionCode, writes the three reviewed locales, activates that draft, and
 requires the public update endpoint to return the exact new versionCode.
 
 ### Authenticate Hands For Finalization
@@ -255,6 +273,7 @@ scripts/finalize_android_hands_release.sh \
   --channel main \
   --zh-notes change-logs/1.2.2/android/zh-CN.md \
   --en-notes change-logs/1.2.2/android/en.md \
+  --ja-notes change-logs/1.2.2/android/ja.md \
   --confirm-publish
 ```
 

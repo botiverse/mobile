@@ -43,7 +43,11 @@ internal data class AttachmentDownloadsExportResult(
     val uri: String? = null,
     val fileName: String? = null,
     val sizeBytes: Long = 0L,
-    val failurePhase: String? = null
+    val failurePhase: String? = null,
+    /** Internal, non-user-visible storage diagnosis. Never bridge raw URI/name/path details. */
+    val storageDiagnosticCode: String? = null,
+    val storageVerificationAttempts: Int = 0,
+    val storageCommitAttempts: Int = 0
 )
 
 internal interface AttachmentDownloadsExportBackend {

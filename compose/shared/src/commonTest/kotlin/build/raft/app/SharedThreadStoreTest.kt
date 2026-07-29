@@ -2571,6 +2571,10 @@ class SharedThreadStoreTest {
         assertTrue(failed.canonicalAccessResolved)
         assertTrue(failed.initialHomeAccessLookupComplete)
         assertEquals(null, failed.initialHomeAccessCandidate)
+        assertFalse(failed.writeActionsEnabled)
+        assertFalse(failed.payload.joined)
+        assertFalse(failed.payload.canSend)
+        assertFalse(failed.payload.composer.enabled)
         scope.cancel()
     }
 
@@ -2603,11 +2607,19 @@ class SharedThreadStoreTest {
         assertEquals(ThreadAccessResolution.NoPermission, noPermission.accessResolution)
         assertFalse(noPermission.canonicalAccessResolved)
         assertEquals("no_permission", noPermission.payload.status)
+        assertFalse(noPermission.writeActionsEnabled)
+        assertFalse(noPermission.payload.joined)
+        assertFalse(noPermission.payload.canSend)
+        assertFalse(noPermission.payload.composer.enabled)
 
         val error = resolve(DataResult.Error(ScreenError(code = "offline", retryable = true)))
         assertEquals(ThreadAccessResolution.Error, error.accessResolution)
         assertFalse(error.canonicalAccessResolved)
         assertEquals("error", error.payload.status)
+        assertFalse(error.writeActionsEnabled)
+        assertFalse(error.payload.joined)
+        assertFalse(error.payload.canSend)
+        assertFalse(error.payload.composer.enabled)
     }
 
     @Test
@@ -3274,7 +3286,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun activityReplyThreadFailsClosedWhenParentAccessCandidateIsMissing() = runBlocking {
+    fun activityReplyThreadKeepsCanonicalRepliesReadableWhenParentAccessCandidateIsMissing() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val route = activityReplyPayload(
             parentKind = ConversationKind.Channel,
@@ -3289,6 +3301,7 @@ class SharedThreadStoreTest {
                         threadSnapshot(
                             threadId = "thread-m1",
                             body = "network reply",
+                            id = "reply-1",
                             conversation = replyThreadConversation(joined = false, canSend = false)
                         )
                     )
@@ -3308,21 +3321,176 @@ class SharedThreadStoreTest {
 
         store.dispatch(SharedThreadIntent.Start(route))
         withTimeout(1_000) {
-            while (store.state.value.accessResolution != ThreadAccessResolution.Error) {
+            while (
+                store.state.value.accessResolution != ThreadAccessResolution.Resolved ||
+                store.state.value.writeActionsEnabled
+            ) {
                 delay(10)
             }
         }
 
-        val failedFrame = store.state.value
-        assertEquals(ThreadAccessResolution.Error, failedFrame.accessResolution)
-        assertTrue(failedFrame.accessResolution.shouldRenderThreadAccessRetry())
+        val degradedFrame = store.state.value
+        assertEquals(ThreadAccessResolution.Resolved, degradedFrame.accessResolution)
+        assertFalse(degradedFrame.accessResolution.shouldRenderThreadAccessRetry())
+        assertEquals(listOf("network reply"), degradedFrame.payload.messages.map { it.body })
+        assertFalse(degradedFrame.writeActionsEnabled)
+        assertFalse(degradedFrame.payload.joined)
+        assertFalse(degradedFrame.payload.canSend)
+        assertFalse(degradedFrame.payload.composer.enabled)
+        assertTrue(
+            degradedFrame.payload.isThreadPrimaryFooterReady(
+                timelineSlice = degradedFrame.timelineSlice,
+                accessResolution = degradedFrame.accessResolution
+            )
+        )
         assertFalse(
-            failedFrame.payload.isThreadPrimaryFooterReady(
-                timelineSlice = failedFrame.timelineSlice,
-                accessResolution = failedFrame.accessResolution
+            shouldShowThreadComposerForReadyContent(
+                joined = degradedFrame.payload.joined,
+                showComposer = degradedFrame.payload.showComposer,
+                selectedTab = degradedFrame.payload.selectedTab
+            )
+        )
+        assertEquals(
+            null,
+            degradedFrame.payload.resolvedTaskLookupChannelId(
+                writeActionsEnabled = degradedFrame.writeActionsEnabled
             )
         )
         scope.cancel()
+    }
+
+    @Test
+    fun readOnlyReplyBecomingEmptyStaysWriteClosedInBothParentRefreshCompletionOrders() = runBlocking {
+        suspend fun verify(homeCompletesFirst: Boolean) {
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            val route =
+                activityReplyPayload(
+                    parentKind = ConversationKind.Channel,
+                    parentChannelId = "channel-1",
+                    parentMessageId = "m1",
+                    threadId = "thread-m1"
+                )
+            val retryHomeStarted = CompletableDeferred<Unit>()
+            val retryHomeFinished = CompletableDeferred<Unit>()
+            val releaseRetryHome = CompletableDeferred<Unit>()
+            val retryHomeMarker = "retry-home-${if (homeCompletesFirst) "first" else "last"}"
+            var homeAttempt = 0
+            val channelRepository =
+                FakeChannelRepository {
+                    homeAttempt += 1
+                    if (homeAttempt == 2) {
+                        retryHomeStarted.complete(Unit)
+                        if (!homeCompletesFirst) {
+                            releaseRetryHome.await()
+                        }
+                        retryHomeFinished.complete(Unit)
+                    }
+                    val home = replyChildOnlyHomeSnapshot(joined = true, canSend = true)
+                    DataResult.Content(
+                        if (homeAttempt == 2) {
+                            home.copy(
+                                channels =
+                                    home.channels +
+                                        ConversationSummary(
+                                            threadId = ThreadId(retryHomeMarker),
+                                            channelId = ChannelId(retryHomeMarker),
+                                            kind = ConversationKind.Channel,
+                                            name = retryHomeMarker
+                                        ).toHomeChannelRow()
+                            )
+                        } else {
+                            home
+                        }
+                    )
+                }
+            val repository =
+                FakeConversationRepository(
+                    threadResult =
+                        DataResult.Content(
+                            threadSnapshot(
+                                threadId = "thread-m1",
+                                body = "network reply",
+                                id = "reply-1",
+                                conversation = replyThreadConversation(joined = false, canSend = false)
+                            )
+                        )
+                )
+            val store =
+                SharedThreadStore(
+                    dataSource =
+                        SharedThreadDataSource(
+                            networkApi = FakeThreadApi(failChannelMessages = true),
+                            sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                            conversationRepository = repository,
+                            channelRepository = channelRepository
+                        ),
+                    scope = scope
+                )
+
+            store.dispatch(SharedThreadIntent.Start(route))
+            withTimeout(1_000) {
+                while (
+                    store.state.value.accessResolution != ThreadAccessResolution.Resolved ||
+                    store.state.value.writeActionsEnabled
+                ) {
+                    delay(10)
+                }
+            }
+
+            repository.threadResult = DataResult.Empty(EmptyReason.NoMessages)
+            if (homeCompletesFirst) {
+                repository.getReplyThreadStarted = CompletableDeferred()
+                repository.releaseGetReplyThread = CompletableDeferred()
+            }
+            store.dispatch(SharedThreadIntent.Refresh)
+            retryHomeStarted.await()
+            if (homeCompletesFirst) {
+                repository.getReplyThreadStarted?.await()
+                retryHomeFinished.await()
+                withTimeout(1_000) {
+                    while (retryHomeMarker !in store.state.value.payload.knownMarkdownChannelNames) {
+                        delay(10)
+                    }
+                }
+                assertEquals("content", store.state.value.payload.status)
+                assertFalse(store.state.value.writeActionsEnabled)
+                repository.releaseGetReplyThread?.complete(Unit)
+            } else {
+                withTimeout(1_000) {
+                    while (store.state.value.payload.status != "empty") {
+                        delay(10)
+                    }
+                }
+                assertFalse(store.state.value.writeActionsEnabled)
+                releaseRetryHome.complete(Unit)
+                retryHomeFinished.await()
+            }
+            withTimeout(1_000) {
+                while (
+                    store.state.value.payload.status != "empty" ||
+                    retryHomeMarker !in store.state.value.payload.knownMarkdownChannelNames
+                ) {
+                    delay(10)
+                }
+            }
+
+            val finalState = store.state.value
+            assertEquals(ThreadAccessResolution.Resolved, finalState.accessResolution)
+            assertFalse(finalState.writeActionsEnabled)
+            assertFalse(finalState.payload.joined)
+            assertFalse(finalState.payload.canSend)
+            assertFalse(finalState.payload.composer.enabled)
+            assertEquals(
+                null,
+                finalState.payload.resolvedTaskLookupChannelId(
+                    writeActionsEnabled = finalState.writeActionsEnabled
+                )
+            )
+            scope.cancel()
+        }
+
+        verify(homeCompletesFirst = true)
+        verify(homeCompletesFirst = false)
     }
 
     @Test
@@ -6887,58 +7055,54 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun reopenUsesReplyCountProjectionBeforeSecondarySummaryReturns() = runBlocking {
-        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L)
+    fun lateSummaryFromPreviousRouteCannotMutateCurrentCanonicalMessages() = runBlocking {
         val repository =
             FakeConversationRepository(
-                threadResult =
-                    DataResult.Content(
-                        threadSnapshot(
-                            messages =
-                                listOf(
-                                    message(
-                                        threadId = "channel-1",
-                                        id = "m1",
-                                        seq = 10,
-                                        body = "parent",
-                                        replyCount = 0
-                                    )
-                                )
-                        )
+                threadResultsById =
+                    mapOf(
+                        ThreadId("channel-1") to
+                            DataResult.Content(threadSnapshot(threadId = "channel-1", body = "route one")),
+                        ThreadId("channel-2") to
+                            DataResult.Content(threadSnapshot(threadId = "channel-2", body = "route two")),
                     ),
-                threadReplySummariesResult = replySummaries(replyCount = 7)
+                threadReplySummariesResult = replySummaries(replyCount = 7),
+            ).also {
+                it.threadReplySummariesStarted = CompletableDeferred()
+                it.releaseThreadReplySummaries = CompletableDeferred()
+                it.ignoreThreadReplySummariesCancellation = true
+            }
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store =
+            SharedThreadStore(
+                dataSource =
+                    SharedThreadDataSource(
+                        networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        conversationRepository = repository,
+                    ),
+                scope = scope,
             )
-        val dataSource =
-            SharedThreadDataSource(
-                networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                conversationRepository = repository,
-                payloadStore = payloadStore
-            )
-        val firstStore = SharedThreadStore(dataSource = dataSource, scope = appScope)
 
-        firstStore.accept(SharedThreadIntent.Start(basePayload()))
-        firstStore.accept(SharedThreadIntent.FirstContentReady)
-        delay(1L)
-        assertEquals(7, firstStore.state.value.payload.messages.single().replyCount)
-
-        payloadStore.freshnessLedger.advance("server-1", "channel-1")
-        repository.threadReplySummariesResult = replySummaries(replyCount = 9)
-        repository.threadReplySummariesStarted = CompletableDeferred()
-        repository.releaseThreadReplySummaries = CompletableDeferred()
-        val secondStore = SharedThreadStore(dataSource = dataSource, scope = appScope)
-
-        secondStore.accept(SharedThreadIntent.Start(basePayload()))
-        secondStore.accept(SharedThreadIntent.FirstContentReady)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        store.accept(SharedThreadIntent.FirstContentReady)
         repository.threadReplySummariesStarted?.await()
-
-        assertEquals(7, secondStore.state.value.payload.messages.single().replyCount)
-
+        store.accept(
+            SharedThreadIntent.Start(
+                basePayload().copy(
+                    instanceId = "shared-shell-thread-channel-2",
+                    sourceThreadId = "channel-2",
+                    streamChannelId = "channel-2",
+                ),
+            ),
+        )
         repository.releaseThreadReplySummaries?.complete(Unit)
-        delay(1L)
-        assertEquals(9, secondStore.state.value.payload.messages.single().replyCount)
-        appScope.cancel()
+        yield()
+
+        val current = store.state.value.payload
+        assertEquals("channel-2", current.sourceThreadId)
+        assertEquals(listOf("route two"), current.messages.map { it.body })
+        assertEquals(0, current.messages.single().replyCount)
+        scope.cancel()
     }
 
     @Test
@@ -9817,6 +9981,52 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun realtimeMessageUpdatedCannotRewriteCreationTimeOrTimelineOrder() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val dataSource = canonicalThreadDataSource()
+        val first =
+            contentPayload("first", id = "m1").messages.single().copy(
+                seq = 30,
+                timestampLabel = "2026-07-28T19:30:00+08:00"
+            )
+        val second =
+            first.copy(
+                id = "m2",
+                seq = 31,
+                body = "second",
+                timestampLabel = "2026-07-28T19:31:00+08:00"
+            )
+        dataSource.cachePayloadForTest(contentPayload("first").copy(messages = listOf(first, second)))
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        store.accept(
+            SharedThreadIntent.ApplyRealtimeEvent(
+                MessageUpdated(
+                    Message(
+                        id = MessageId("m1"),
+                        threadId = ThreadId("channel-1"),
+                        channelId = ChannelId("channel-1"),
+                        seq = 30,
+                        author = member("u1", "Artin"),
+                        timestampLabel = "2026-07-28T19:32:00+08:00",
+                        updatedAtLabel = "2026-07-28T19:32:00+08:00",
+                        body = "first updated"
+                    )
+                )
+            )
+        )
+
+        assertEquals(listOf("m1", "m2"), store.state.value.payload.messages.map { it.id })
+        assertEquals(
+            listOf("2026-07-28T19:30:00+08:00", "2026-07-28T19:31:00+08:00"),
+            store.state.value.payload.messages.map { it.timestampLabel }
+        )
+        assertEquals("first updated", store.state.value.payload.messages.first().body)
+        scope.cancel()
+    }
+
+    @Test
     fun realtimeMessageUpdatedCannotReplaceCanonicalAuthorIdentity() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val dataSource = canonicalThreadDataSource()
@@ -11621,6 +11831,7 @@ class SharedThreadStoreTest {
 
         assertEquals(listOf(30), repository.getThreadLimits)
         assertEquals(listOf(50), repository.olderLimits)
+        assertEquals(listOf(ThreadId("channel-1") to listOf(MessageId("m5"), MessageId("m1"))), repository.getThreadReplySummariesRequests)
         scope.cancel()
     }
 
@@ -13345,6 +13556,7 @@ class SharedThreadStoreTest {
         var releaseGetThread: CompletableDeferred<Unit>? = null
         var threadReplySummariesStarted: CompletableDeferred<Unit>? = null
         var releaseThreadReplySummaries: CompletableDeferred<Unit>? = null
+        var ignoreThreadReplySummariesCancellation: Boolean = false
         var getReplyThreadStarted: CompletableDeferred<Unit>? = null
         var releaseGetReplyThread: CompletableDeferred<Unit>? = null
         var createOrOpenStarted: CompletableDeferred<Unit>? = null
@@ -13394,7 +13606,9 @@ class SharedThreadStoreTest {
         ): DataResult<ThreadReplySummariesSnapshot> {
             getThreadReplySummariesRequests += threadId to parentMessageIds
             threadReplySummariesStarted?.complete(Unit)
-            releaseThreadReplySummaries?.await()
+            if (ignoreThreadReplySummariesCancellation) {
+                withContext(NonCancellable) { releaseThreadReplySummaries?.await() }
+            } else releaseThreadReplySummaries?.await()
             return threadReplySummariesResult
         }
 

@@ -262,7 +262,7 @@ internal fun KuiklyThreadScreenPayload.threadHeaderFallbackDisplayModel(): Threa
         else ->
             ThreadHeaderDisplayModel(
                 title = threadHeaderDisplayTitle(null, surfaceKind),
-                subtitle = subtitle,
+                subtitle = existingThreadChannelHeaderSubtitle(subtitle),
                 surfaceKind = surfaceKind,
                 channelKind = channelKind
             )

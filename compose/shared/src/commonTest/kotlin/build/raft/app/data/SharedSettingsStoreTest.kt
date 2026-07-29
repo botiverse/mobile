@@ -3378,8 +3378,8 @@ class SharedSettingsStoreTest {
                                 request.clearPreferredLanguage ->
                                     current.browserLanguage.copy(
                                         selectedKey = "browser",
-                                        selectedLabel = "Browser language",
-                                        statusLabel = "Browser language"
+                                        selectedLabel = "System language",
+                                        statusLabel = "System language"
                                     )
                                 request.preferredLanguage != null ->
                                     current.browserLanguage.copy(
@@ -4181,7 +4181,7 @@ class SharedSettingsStoreTest {
                     detail = "Translation target language.",
                     options =
                         listOf(
-                            SettingsMobileSelectionOptionSnapshot("browser", "Browser language"),
+                            SettingsMobileSelectionOptionSnapshot("browser", "System language"),
                             SettingsMobileSelectionOptionSnapshot("en", "English"),
                             SettingsMobileSelectionOptionSnapshot("ja", "Japanese")
                         )

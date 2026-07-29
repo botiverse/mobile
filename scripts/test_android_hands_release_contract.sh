@@ -14,11 +14,14 @@ for script in \
   scripts/test_resolve_android_publish_hands_input.sh \
   scripts/release_android_hands_github.sh \
   scripts/publish_android_hands_release.sh \
+  scripts/finalize_android_hands_release.sh \
   scripts/prepare_android_hands_symbols.sh; do
   bash -n "${script}"
 done
 
 scripts/test_resolve_android_publish_hands_input.sh
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/test_verify_android_dex_packaging.py
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/test_verify_android_elf_alignment.py
 
 env -u SLOCK_PUBLISH_HANDS \
   scripts/release_android_hands_github.sh --help |
@@ -26,15 +29,43 @@ env -u SLOCK_PUBLISH_HANDS \
 
 ruby -e '
   require "json"
+  require "rexml/document"
   require "yaml"
   workflow = YAML.load_file(".github/workflows/android-release.yml")
   update_workflow = YAML.load_file(".github/workflows/android-update-qa.yml")
+  signoff_workflow = YAML.load_file(".github/workflows/commit-signoff.yml")
   YAML.load_file(".github/workflows/android-release-contract.yml")
+
+  signoff_branches = signoff_workflow.fetch(true).fetch("push").fetch("branches")
+  raise "Commit Sign-off does not cover release branches" unless signoff_branches.include?("main") && signoff_branches.include?("release-*")
 
   inputs = workflow.fetch(true).fetch("workflow_dispatch").fetch("inputs")
   raise "missing publish_hands input" unless inputs.key?("publish_hands")
+  dex_input = inputs.fetch("dex_packaging")
+  raise "release workflow does not default to compressed DEX" unless dex_input.fetch("default") == "compressed"
+  raise "release workflow DEX choices drifted" unless dex_input.fetch("options") == %w[current compressed mmap]
+  jni_input = inputs.fetch("jni_packaging")
+  raise "release workflow does not default to the current JNI control" unless jni_input.fetch("default") == "current"
+  raise "release workflow JNI choices drifted" unless jni_input.fetch("options") == %w[current legacy modern]
 
   jobs = workflow.fetch("jobs")
+  resolve_job = jobs.fetch("resolve")
+  resolve_input_step = resolve_job.fetch("steps").find { |step| step["id"] == "p" }
+  raise "missing canonical release input resolver step" unless resolve_input_step
+  resolve_env = resolve_input_step.fetch("env")
+  unless resolve_env.fetch("INPUT_DEX_PACKAGING") == "${{ inputs.dex_packaging }}" &&
+      resolve_env.fetch("INPUT_JNI_PACKAGING") == "${{ inputs.jni_packaging }}"
+    raise "packaging inputs must cross into the resolver through step env"
+  end
+  resolve_run = resolve_input_step.fetch("run")
+  unless resolve_run.include?("DEX_PACKAGING=\"${INPUT_DEX_PACKAGING}\"") &&
+      resolve_run.include?("JNI_PACKAGING=\"${INPUT_JNI_PACKAGING}\"")
+    raise "packaging resolver does not read env-bound inputs"
+  end
+  if resolve_run.include?("DEX_PACKAGING=\"${{ inputs.dex_packaging }}\"") ||
+      resolve_run.include?("JNI_PACKAGING=\"${{ inputs.jni_packaging }}\"")
+    raise "packaging input expression is injected into shell source"
+  end
   raise "missing publish_hands job" unless jobs.key?("publish_hands")
   publish_job = jobs.fetch("publish_hands")
   unless publish_job.fetch("if").include?("needs.resolve.outputs.publish_hands == '\''true'\''")
@@ -45,10 +76,17 @@ ruby -e '
   unless share_step.fetch("if") == "needs.resolve.outputs.create_share_page == '\''true'\''"
     raise "share step is not independently gated"
   end
+  publish_step = publish_job.fetch("steps").find { |step| step["id"] == "publish-hands-release" }
+  publish_run = publish_step.fetch("run")
+  raise "release workflow does not require reviewed Japanese notes" unless publish_run.include?("/ja.md") && publish_run.include?("SLOCK_RELEASE_CHANGELOG_JA_FILE")
+  summary_run = publish_job.fetch("steps").find { |step| step["name"] == "Step summary" }.fetch("run")
+  raise "release workflow summary drops Japanese notes" unless summary_run.include?("--changelog-file ja=ja.md")
 
   call_inputs = workflow.fetch(true).fetch("workflow_call").fetch("inputs")
   raise "reusable release workflow lacks source_sha" unless call_inputs.key?("source_sha")
   raise "reusable release workflow lacks unique artifact_name" unless call_inputs.key?("artifact_name")
+  raise "reusable release workflow does not default compressed DEX" unless call_inputs.fetch("dex_packaging").fetch("default") == "compressed"
+  raise "reusable JNI control does not default current" unless call_inputs.fetch("jni_packaging").fetch("default") == "current"
 
   update_inputs = update_workflow.fetch(true).fetch("workflow_dispatch").fetch("inputs")
   raise "update workflow lacks required source_sha" unless update_inputs.fetch("source_sha").fetch("required")
@@ -83,12 +121,51 @@ ruby -e '
   unless stage_run.include?("scripts/verify_android_apk_with_rotation.sh")
     raise "release workflow does not stage the canonical rotation verifier"
   end
+  unless stage_run.include?("scripts/verify_android_dex_packaging.py")
+    raise "release workflow does not stage the DEX packaging verifier"
+  end
+  unless stage_run.include?("scripts/verify_android_elf_alignment.py")
+    raise "release workflow does not stage the 16 KB ELF verifier"
+  end
 
   release_verify = release_steps.fetch(verify_index).fetch("run")
   unless release_verify.include?("scripts/verify_android_apk_with_rotation.sh")
     raise "release workflow bypasses the canonical API 24-32 rotation verifier"
   end
+  unless release_verify.include?("scripts/verify_android_dex_packaging.py") &&
+      release_verify.include?("--expect-dex-method deflated") &&
+      release_verify.include?("--expect-dex-method stored") &&
+      release_verify.include?("--max-apk-size-bytes 47185920") &&
+      release_verify.include?("--max-dex-compression-ratio 0.60")
+    raise "release workflow bypasses the DEX compression and size contract"
+  end
+  unless release_verify.include?("scripts/verify_android_elf_alignment.py") &&
+      release_verify.include?("--expect-native-method") &&
+      release_verify.include?("--require-abi arm64-v8a") &&
+      release_verify.include?("--require-abi x86_64")
+    raise "release workflow bypasses the 16 KB ELF/native packaging contract"
+  end
   raise "release identity output does not canonicalize lineage oldest-to-current" unless release_verify.include?("| reverse")
+
+  android_gradle = File.read("compose/androidApp/build.gradle.kts")
+  unless android_gradle.include?("providers.gradleProperty(\"raftDexUseLegacyPackaging\")") &&
+      android_gradle.include?("providers.gradleProperty(\"raftJniUseLegacyPackaging\")") &&
+      android_gradle.match?(/packaging\s*\{.*?dex\s*\{.*?useLegacyPackaging\s*=\s*raftDexUseLegacyPackaging\.orNull/m) &&
+      android_gradle.match?(/jniLibs\s*\{.*?useLegacyPackaging\s*=\s*raftJniUseLegacyPackaging\.orNull\s*\?:\s*true/m)
+    raise "Android packaging does not expose the exact DEX/JNI matrix properties"
+  end
+
+  contract_paths = YAML.load_file(".github/workflows/android-release-contract.yml").fetch(true)
+  %w[pull_request push].each do |event|
+    paths = contract_paths.fetch(event).fetch("paths")
+    unless paths.include?("compose/androidApp/build.gradle.kts") &&
+        paths.include?("scripts/verify_android_dex_packaging.py") &&
+        paths.include?("scripts/test_verify_android_dex_packaging.py") &&
+        paths.include?("scripts/verify_android_elf_alignment.py") &&
+        paths.include?("scripts/test_verify_android_elf_alignment.py")
+      raise "Android release contract does not watch packaging/alignment inputs"
+    end
+  end
 
   fixture_schema = JSON.parse(File.read("docs/qa-acceptance/android-app-update/android-app-update-fixture.v1.schema.json"))
   required = fixture_schema.fetch("required")
@@ -133,6 +210,81 @@ ruby -e '
   %w[download-failure-actionable-retry retry-target-b-exact].each do |id|
     raise "full update case missing #{id} assertion" unless assertion_ids.include?(id)
   end
+
+  publish_script = File.read("scripts/publish_android_hands_release.sh")
+  raise "Hands publisher drops Japanese notes" unless publish_script.include?("--changelog-file \"ja=${SLOCK_RELEASE_CHANGELOG_JA_FILE}\"")
+  finalizer = File.read("scripts/finalize_android_hands_release.sh")
+  raise "Hands finalizer does not require Japanese notes" unless finalizer.include?("--ja-notes") && finalizer.include?("--changelog-file \"ja=${JA_NOTES}\"")
+  sop = File.read("docs/android-release-sop.md")
+  raise "Android release SOP does not document Japanese notes" unless sop.include?("change-logs/1.2.2/android/ja.md")
+  terminology_contract = [
+    "botiverse/slock",
+    "packages/web/src/i18n/messages/",
+    "compose/shared/src/commonMain/resources/MR/<locale>/strings.xml",
+    "`回应`",
+    "`任务状态`",
+    "`处理中`",
+    "`リアクション`",
+    "`タスクステータス`",
+    "`処理中`",
+  ]
+  raise "Android release SOP does not require canonical shipped-locale terminology" unless terminology_contract.all? { |term| sop.include?(term) }
+
+  ja_resource = REXML::Document.new(File.read("compose/shared/src/commonMain/resources/MR/ja/strings.xml"))
+  ja_strings = {}
+  REXML::XPath.each(ja_resource, "/resources/string") do |element|
+    ja_strings[element.attributes["name"]] = element.text.to_s
+  end
+  {
+    "settings_mobile_reactions" => "リアクション",
+    "settings_mobile_saved_disabled" => "保存済み状態",
+    "thread_error_task_status_unsupported" => "タスクステータス",
+    "app_update_working" => "処理中",
+  }.each do |key, canonical|
+    value = ja_strings.fetch(key)
+    raise "Japanese terminology source #{key} no longer contains #{canonical.inspect}" unless value.include?(canonical)
+  end
+
+  release_copy = Dir["change-logs/**/*.md"].to_h { |path| [path, File.read(path)] }
+  deprecated_zh_terms = {
+    "表情回应" => "回应",
+    "任务状态芯片" => "任务状态",
+    "等待中的芯片" => "处理中",
+  }
+  deprecated_zh_terms.each do |deprecated, canonical|
+    offenders = release_copy.each_with_object([]) do |(path, copy), paths|
+      paths << path if copy.include?(deprecated)
+    end
+    raise "release notes use #{deprecated.inspect}; align to Web term #{canonical.inspect}: #{offenders.join(", ")}" unless offenders.empty?
+  end
+  deprecated_ja_terms = {
+    "タスク状態" => "タスクステータス",
+    "保存済み表示" => "保存済み状態",
+  }
+  deprecated_ja_terms.each do |deprecated, canonical|
+    offenders = release_copy.each_with_object([]) do |(path, copy), paths|
+      paths << path if copy.include?(deprecated)
+    end
+    raise "release notes use #{deprecated.inspect}; align to Mobile term #{canonical.inspect}: #{offenders.join(", ")}" unless offenders.empty?
+  end
+
+  release_note_headers = {
+    "zh-CN" => ["✨ **新功能**", "🔧 **改进**", "🐛 **修复**"],
+    "en" => ["✨ **New**", "🔧 **Improved**", "🐛 **Fixed**"],
+    "ja" => ["✨ **新機能**", "🔧 **改善**", "🐛 **修正**"],
+  }
+  release_note_counts = release_note_headers.map do |locale, headers|
+    path = "change-logs/1.8.0/android/#{locale}.md"
+    lines = File.readlines(path, chomp: true)
+    indexes = headers.map { |header| lines.index(header) }
+    raise "#{path} has missing or reordered sections" unless indexes.all? && indexes == indexes.sort
+    headers.each_index.map do |index|
+      finish = indexes[index + 1] || lines.length
+      lines[(indexes[index] + 1)...finish].count { |line| line.start_with?("- ") }
+    end
+  end
+  raise "1.8.0 release-note locales do not carry matching section claims" unless release_note_counts.uniq.length == 1
+  raise "1.8.0 release notes contain an empty section" unless release_note_counts.first.all?(&:positive?)
 '
 
 grep -Eq '^      publish_hands:$' .github/workflows/android-release.yml ||
@@ -143,11 +295,16 @@ grep -Eq 'needs\.resolve\.outputs\.publish_hands' .github/workflows/android-rele
   fail "publish job is not gated by the canonical publish_hands output"
 grep -Eq -- '-f "publish_hands=\$\{publish_hands\}"' scripts/release_android_hands_github.sh ||
   fail "canonical dispatch wrapper does not send publish_hands"
+grep -Eq -- '-f "dex_packaging=\$\{DEX_PACKAGING\}"' scripts/release_android_hands_github.sh ||
+  fail "canonical dispatch wrapper does not send dex_packaging"
+grep -Eq -- '-f "jni_packaging=\$\{JNI_PACKAGING\}"' scripts/release_android_hands_github.sh ||
+  fail "canonical dispatch wrapper does not send jni_packaging"
 
 for canonical_path in \
   docs/android-hands-release-practices-2026-07-02.md \
   scripts/release_android_hands_github.sh \
   scripts/publish_android_hands_release.sh \
+  scripts/finalize_android_hands_release.sh \
   scripts/prepare_android_hands_symbols.sh; do
   [ -e "${canonical_path}" ] || fail "missing canonical Hands path: ${canonical_path}"
 done

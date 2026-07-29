@@ -23,7 +23,11 @@ class SlockFilePreviewApkContractTest {
 
             assertEquals(
                 "Install",
-                slockFilePreviewPrimaryActionLabel(payload, cached = true, terms = actionTerms),
+                slockFilePreviewPrimaryActionLabel(
+                    payload,
+                    downloadState = SlockFilePreviewDownloadUiState.Downloaded,
+                    terms = actionTerms
+                ),
                 "mimeType=$mimeType"
             )
             assertEquals(SlockLucideIconName.Package, slockFilePreviewFileIconName(payload), "mimeType=$mimeType")
@@ -38,7 +42,17 @@ class SlockFilePreviewApkContractTest {
                 externalMimeType = "application/octet-stream"
             )
 
-        assertEquals("Download", slockFilePreviewPrimaryActionLabel(payload, cached = false, terms = actionTerms))
-        assertEquals(SlockFilePreviewPrimaryAction.Save, slockFilePreviewPrimaryAction(cached = false))
+        assertEquals(
+            "Download",
+            slockFilePreviewPrimaryActionLabel(
+                payload,
+                downloadState = SlockFilePreviewDownloadUiState.NotDownloaded,
+                terms = actionTerms
+            )
+        )
+        assertEquals(
+            SlockFilePreviewPrimaryAction.Save,
+            slockFilePreviewPrimaryAction(SlockFilePreviewDownloadUiState.NotDownloaded)
+        )
     }
 }

@@ -91,6 +91,11 @@ data class TasksVisibleContent(
     val filteredTasks: List<TaskSummary>
 )
 
+internal const val TasksUnassignedAssigneeFilterId = "unassigned"
+
+internal fun tasksAvailableAssigneeFilterIds(assignees: List<MemberProfile>): Set<String> =
+    assignees.mapTo(mutableSetOf(TasksUnassignedAssigneeFilterId)) { it.tasksIdentityFilterId() }
+
 data class TasksBoardColumn(
     val status: TaskStatus,
     val totalCount: Int,
@@ -818,7 +823,8 @@ fun TasksPresentationState.reduce(intent: TasksPresentationIntent): TasksPresent
 fun TasksContent.visibleContent(
     selectedFilter: TaskStatus?,
     presentationState: TasksPresentationState,
-    showChannelFilter: Boolean
+    showChannelFilter: Boolean,
+    identityOptions: List<MemberProfile> = emptyList()
 ): TasksVisibleContent {
     val channelOptions =
         if (showChannelFilter) {
@@ -829,20 +835,15 @@ fun TasksContent.visibleContent(
         } else {
             emptyList()
         }
-    // Derive identity option pools from the loaded tasks so we don't need a separate
-    // members fetch. Each profile that ever appears as a creator/claimer becomes a chip
-    // option; identical identities collapse so popovers don't show duplicates. Sorted
-    // by display name for stable ordering across refreshes.
-    val creatorOptions =
-        tasks
-            .mapNotNull { it.creator }
+    // Web feeds Creator and Assignee from the same server-scoped humans + agents
+    // directory. Never rebuild this pool from task projections: an empty list while
+    // the directory loads is still authoritative and both chips remain interactive.
+    val sharedIdentityOptions =
+        identityOptions
             .distinctBy { it.tasksIdentityFilterId() }
-            .sortedBy { it.displayName.lowercase() }
-    val assigneeOptions =
-        tasks
-            .mapNotNull { it.assignee }
-            .distinctBy { it.id.value }
-            .sortedBy { it.displayName.lowercase() }
+            .sortedWith(compareBy({ it.displayName.lowercase() }, { it.tasksIdentityFilterId() }))
+    val creatorOptions = sharedIdentityOptions
+    val assigneeOptions = sharedIdentityOptions
     val selectedChannels =
         if (showChannelFilter) {
             presentationState.selectedChannelNames.filter { it in channelOptions }.toSet()
@@ -852,7 +853,7 @@ fun TasksContent.visibleContent(
     val availableCreatorIds = creatorOptions.mapTo(mutableSetOf()) { it.tasksIdentityFilterId() }
     val selectedCreatorIds =
         presentationState.selectedCreatorIds.filter { it in availableCreatorIds }.toSet()
-    val availableAssigneeIds = assigneeOptions.mapTo(mutableSetOf()) { it.id.value }
+    val availableAssigneeIds = tasksAvailableAssigneeFilterIds(assigneeOptions)
     val selectedAssigneeIds =
         presentationState.selectedAssigneeIds.filter { it in availableAssigneeIds }.toSet()
     val channelScopedTasks =
@@ -880,7 +881,14 @@ fun TasksContent.visibleContent(
         if (selectedAssigneeIds.isEmpty()) {
             creatorScopedTasks
         } else {
-            creatorScopedTasks.filter { task -> task.assignee?.id?.value in selectedAssigneeIds }
+            creatorScopedTasks.filter { task ->
+                val assigneeId = task.assignee?.tasksIdentityFilterId()
+                if (assigneeId == null) {
+                    TasksUnassignedAssigneeFilterId in selectedAssigneeIds
+                } else {
+                    assigneeId in selectedAssigneeIds
+                }
+            }
         }
     val filteredTasks =
         if (selectedFilter == null) {

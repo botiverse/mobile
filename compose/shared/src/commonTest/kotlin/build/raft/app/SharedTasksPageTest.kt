@@ -1,6 +1,10 @@
 package build.raft.app
 
 import build.raft.app.model.ChannelId
+import build.raft.app.model.MemberId
+import build.raft.app.model.MemberKind
+import build.raft.app.model.MemberProfile
+import build.raft.app.model.Presence
 import build.raft.app.model.TaskId
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.TaskStatus
@@ -118,6 +122,34 @@ class SharedTasksPageTest {
                 showCreateButton = false
             )
         )
+    }
+
+    @Test
+    fun assigneeFilterAlwaysOffersLocalizedUnassignedChoice() {
+        val options =
+            tasksAssigneeFilterOptions(
+                assignees =
+                    listOf(
+                        MemberProfile(
+                            id = MemberId("same-id"),
+                            displayName = "Human",
+                            handle = "human",
+                            kind = MemberKind.Human,
+                            presence = Presence.Active
+                        ),
+                        MemberProfile(
+                            id = MemberId("same-id"),
+                            displayName = "Agent",
+                            handle = "agent",
+                            kind = MemberKind.Agent,
+                            presence = Presence.Active
+                        )
+                    ),
+                unassignedLabel = "Unassigned"
+            )
+
+        assertEquals(listOf("unassigned", "user:same-id", "agent:same-id"), options.map { it.id })
+        assertEquals(listOf("Unassigned", "Human", "Agent"), options.map { it.label })
     }
 
     @Test

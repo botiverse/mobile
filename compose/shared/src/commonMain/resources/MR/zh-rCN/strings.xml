@@ -168,6 +168,7 @@
     <string name="settings_app_language_title">应用语言</string>
     <string name="settings_app_language_detail">跟随系统语言，或让 Raft 始终使用指定语言。</string>
     <string name="settings_app_language_system">系统</string>
+    <string name="settings_translation_target_system_language">系统语言</string>
     <string name="settings_app_language_english">English</string>
     <string name="settings_app_language_simplified_chinese">简体中文</string>
     <string name="settings_preferred_translation_language_title">首选翻译语言</string>
@@ -234,11 +235,17 @@
     <string name="thread_action_copy_link">复制链接</string>
     <string name="thread_action_copy_markdown">复制 Markdown</string>
     <string name="thread_action_select_text">选择文本</string>
+<<<<<<< HEAD
     <string name="thread_inline_selection_copy">复制</string>
     <string name="thread_inline_selection_reply">回复</string>
     <string name="thread_inline_selection_save">收藏</string>
     <string name="thread_inline_selection_select">选择</string>
     <string name="thread_inline_selection_more">更多</string>
+=======
+    <string name="thread_text_selection_copy_all">复制全文</string>
+    <string name="thread_text_selection_copy_selected">复制所选</string>
+    <string name="thread_text_selection_select_all">全选</string>
+>>>>>>> origin/release-1.8.0
     <string name="thread_action_open_thread">打开话题</string>
     <string name="thread_action_remove_from_saved">从收藏中移除</string>
     <string name="thread_action_save_message">收藏消息</string>

@@ -14,6 +14,8 @@ import build.raft.app.data.ActivityUpdateTrackingState
 import build.raft.app.data.InboxFilter
 import build.raft.app.data.InboxItem
 import build.raft.app.data.InboxSnapshot
+import build.raft.app.data.activityVisibleSummaryCounts
+import build.raft.app.data.hasUnopenableInternalJointParentSource
 import build.raft.app.data.MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY
 import build.raft.app.data.RealConversationRepository
 import build.raft.app.data.RealInboxRepository
@@ -235,6 +237,10 @@ internal fun SharedHomeActivityScreen(
         remember(state, activitySummary) {
             projectActivityStateWithProcessSummary(state, activitySummary)
         }
+    val safeOpenProjectedState =
+        remember(projectedState) {
+            projectActivityStateWithoutUnopenableInternalJointRows(projectedState)
+        }
     val diagnosticOverrideRevision by
         ProcessDiagnosticFeatureFlagOverrides.registry
             .revisionFor(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY)
@@ -301,7 +307,7 @@ internal fun SharedHomeActivityScreen(
         }
     }
     SharedActivityPanelContent(
-        state = projectedState,
+        state = safeOpenProjectedState,
         onOpenItem = { item ->
             state.snapshot?.let { snapshot ->
                 sharedHomeStore?.supplementConversationIdentity(snapshot)
@@ -388,7 +394,8 @@ internal fun projectActivityStateWithProcessSummary(
     if (
         snapshot == null ||
         state.selectedFilter != InboxFilter.All ||
-        !activitySummary.hasValue
+        !activitySummary.hasValue ||
+        snapshot.items.any { item -> item.hasUnopenableInternalJointParentSource() }
     ) {
         return state
     }
@@ -397,6 +404,29 @@ internal fun projectActivityStateWithProcessSummary(
             snapshot.copy(
                 totalUnreadCount = activitySummary.totalUnreadCount,
                 totalCount = activitySummary.totalCount
+            )
+    )
+}
+
+// Presentation-only stop-loss. Canonical/persisted Activity state remains
+// untouched; a typed joint reply row whose own source parent is an internal
+// storage identity is hidden because the Activity resolver refuses that same
+// source tuple. Counts are derived from the identical filtered set, and a
+// later member-visible local tuple naturally reappears in its original order.
+internal fun projectActivityStateWithoutUnopenableInternalJointRows(
+    state: SharedActivityState
+): SharedActivityState {
+    val snapshot = state.snapshot ?: return state
+    val suppressed = snapshot.items.filter { item -> item.hasUnopenableInternalJointParentSource() }
+    if (suppressed.isEmpty()) return state
+    val visibleItems = snapshot.items.filterNot { item -> item.hasUnopenableInternalJointParentSource() }
+    val (visibleUnreadCount, visibleTotalCount) = snapshot.activityVisibleSummaryCounts()
+    return state.copy(
+        snapshot =
+            snapshot.copy(
+                items = visibleItems,
+                totalCount = visibleTotalCount,
+                totalUnreadCount = visibleUnreadCount
             )
     )
 }
@@ -957,7 +987,7 @@ private fun SharedActivityList(
     // presentedItems list independently from the count-key lambda and the row-content lambda can
     // bind a node to the new key while its content/callback still belongs to the old index during
     // an immediate-canonical reorder (Hands e3866a35/acb153fa).
-    val renderedItems = presentedItems
+    val renderedItems = presentedItems.filterNot { item -> item.hasUnopenableInternalJointParentSource() }
     val renderedPresentationGeneration = presentationGeneration
     val renderedPresentationOwnerIdentity = presentationOwnerIdentity
     // The pointerInput coroutine deliberately keeps the callback from its DOWN generation. Read
@@ -1002,7 +1032,7 @@ private fun SharedActivityList(
                         onIntent(
                             SharedActivityIntent.PrewarmActivityTail(
                                 activityReplyThreadPrewarmNextAfterClick(
-                                    items = presentedItems,
+                                    items = renderedItems,
                                     clickedKey = currentItem.key,
                                     serverId = snapshot.server.id.value
                                 )

@@ -90,7 +90,7 @@ signed="$work_dir/signed.apk"
 resolved_verify_log="${verify_log:-$work_dir/apksigner-verify.log}"
 mkdir -p "$(dirname "$output")" "$(dirname "$resolved_verify_log")"
 
-"$build_tools_dir/zipalign" -p -f 4 "$input" "$aligned"
+"$build_tools_dir/zipalign" -P 16 -f 4 "$input" "$aligned"
 # Keep the v2 block required by the frozen artifact contract even when the
 # manifest minSdk is 29; otherwise apksigner correctly optimizes it away.
 "$build_tools_dir/apksigner" sign \

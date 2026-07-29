@@ -413,6 +413,16 @@ internal fun <T> threadComposerRenderedSuggestions(
         ?: retainedSuggestions.takeIf { it.isNotEmpty() }
         ?: fallbackSuggestions
 
+internal fun restoreComposerInputAfterExternalMention(
+    focusOwnerRegistry: SlockInputFocusOwnerRegistry?,
+    requestFocus: () -> Unit,
+    showKeyboard: () -> Unit
+) {
+    focusOwnerRegistry?.cancelPendingFocusDismissalForExplicitInputIntent()
+    requestFocus()
+    showKeyboard()
+}
+
 @Serializable
 internal data class KuiklyPendingAttachmentItem(
     val id: String,
@@ -1104,6 +1114,7 @@ internal fun ThreadComposerContent(
     var handledFocusRequestNonce by remember(state.instanceId) { mutableStateOf(state.focusRequestNonce) }
     var keyboardInsetDp by remember(state.instanceId) { mutableStateOf(0f) }
     val composerFocusRequester = remember(state.instanceId) { FocusRequester() }
+    val focusOwnerRegistry = LocalSlockInputFocusOwnerRegistry.current
     val softwareKeyboardController = LocalSoftwareKeyboardController.current
     val shouldAutoFocus = state.focusRequestNonce > handledFocusRequestNonce
     LaunchedEffect(state.instanceId, state.focusRequestNonce) {
@@ -1343,11 +1354,21 @@ internal fun ThreadComposerContent(
     LaunchedEffect(insertMentionRequest?.nonce) {
         val request = insertMentionRequest ?: return@LaunchedEffect
         if (insertMentionAtCursor(request.handle)) {
-            composerFocusRequester.requestFocus()
-            // Android Back can dismiss the IME while the editor remains focused. A repeated
-            // avatar mention is an explicit input intent, so reassert both logical focus and the
-            // software keyboard instead of relying on a focus transition that may be a no-op.
-            softwareKeyboardController?.show()
+            // The avatar long-press starts outside the composer, so the shared root may already
+            // have armed an outside-focus dismissal for this pointer sequence. Mention insertion
+            // is a newer explicit editing intent; invalidate that old token before refocusing so
+            // pointer-up cannot clear the focus and IME that this action just restored.
+            restoreComposerInputAfterExternalMention(
+                focusOwnerRegistry = focusOwnerRegistry,
+                requestFocus = composerFocusRequester::requestFocus,
+                showKeyboard = {
+                    // Android Back can dismiss the IME while the editor remains focused. A
+                    // repeated avatar mention is an explicit input intent, so reassert both
+                    // logical focus and the software keyboard instead of relying on a focus
+                    // transition that may be a no-op.
+                    softwareKeyboardController?.show()
+                }
+            )
         }
         onInsertMentionConsumed(request)
     }

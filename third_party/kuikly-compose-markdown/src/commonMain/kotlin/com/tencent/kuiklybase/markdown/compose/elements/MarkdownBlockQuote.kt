@@ -13,16 +13,20 @@ import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.text.TextStyle
+import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownComponents
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownDimens
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownPadding
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownTypography
 import com.tencent.kuiklybase.markdown.compose.handleElement
+import com.tencent.kuiklybase.markdown.utils.findChildOfTypeRecursive
 import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.MarkdownElementTypes.PARAGRAPH
 import org.intellij.markdown.ast.ASTNode
 import org.intellij.markdown.ast.findChildOfType
+import org.intellij.markdown.ast.getTextInNode
+import org.intellij.markdown.flavours.gfm.GFMElementTypes.TABLE
 
 @Composable
 fun MarkdownBlockQuote(
@@ -58,8 +62,18 @@ fun MarkdownBlockQuote(
             if (nonBlockquotes.isNotEmpty()) {
                 Column(modifier = Modifier.fillMaxWidth().padding(blockQuoteText)) {
                     nonBlockquotes.onEach { quote ->
-                        when (quote.type) {
-                            PARAGRAPH -> {
+                        when {
+                            requiresBlockQuotePlainTextFallback(quote) -> {
+                                MarkdownText(
+                                    content = blockQuoteTablePlainText(
+                                        quote.getTextInNode(content).toString()
+                                    ),
+                                    modifier = Modifier.fillMaxWidth(),
+                                    style = style.merge(fontFamily = FontFamily.Monospace)
+                                )
+                            }
+
+                            quote.type == PARAGRAPH -> {
                                 // Slock (task #800): quoted paragraphs keep the
                                 // legacy fill regardless of the paragraph fill local.
                                 MarkdownParagraph(content, quote, modifier = Modifier.fillMaxWidth(), style = style)
@@ -90,3 +104,15 @@ fun MarkdownBlockQuote(
         }
     }
 }
+
+internal fun requiresBlockQuotePlainTextFallback(node: ASTNode): Boolean =
+    node.type == TABLE || node.findChildOfTypeRecursive(TABLE) != null
+
+internal fun blockQuoteTablePlainText(content: String): String =
+    content.lineSequence().joinToString("\n") { line ->
+        when {
+            line.startsWith("> ") -> line.removePrefix("> ")
+            line.startsWith(">") -> line.removePrefix(">")
+            else -> line
+        }
+    }
