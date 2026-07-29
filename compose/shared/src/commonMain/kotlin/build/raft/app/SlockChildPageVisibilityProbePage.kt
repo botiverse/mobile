@@ -18,7 +18,7 @@ import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 
 const val SLOCK_CHILD_PAGE_VISIBILITY_PROBE_PAGE = "compose_child_page_visibility_probe"
 
-private const val SLOCK_CHILD_PAGE_VISIBILITY_ACTIVE_PAGE = "compose_child_page_visibility_active"
+const val SLOCK_CHILD_PAGE_VISIBILITY_ACTIVE_PAGE = "compose_child_page_visibility_active"
 private const val SLOCK_CHILD_PAGE_VISIBILITY_INACTIVE_PAGE = "compose_child_page_visibility_inactive"
 
 private val ChildPageVisibilityActiveColor = Color(0xFFFF0000)
