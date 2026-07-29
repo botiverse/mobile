@@ -52,6 +52,7 @@ class SlockChildPageVisibilityConnectedTest {
                 .putExtra("pageName", SLOCK_CHILD_PAGE_VISIBILITY_PROBE_PAGE)
                 .putExtra("pageData", "{}")
         var bitmap: Bitmap? = null
+        val powerManager = instrumentation.targetContext.getSystemService(PowerManager::class.java)
         ActivityScenario.launch<SlockKuiklyActivity>(intent).use {
             instrumentation.waitForIdleSync()
             // Bounded readiness poll (AGENTS.md device-wait rule): the previous
@@ -66,6 +67,13 @@ class SlockChildPageVisibilityConnectedTest {
             // one 15s CI timeout on an otherwise-green class).
             val deadline = SystemClock.uptimeMillis() + 30_000
             while (true) {
+                // Re-assert an interactive display before every capture. The job
+                // disables screen_off_timeout, but keep a per-frame wake as a
+                // belt-and-suspenders guard so a mid-poll display sleep can never
+                // turn the screenshot into an all-black frame (redRatio=0/blueRatio=0).
+                if (!powerManager.isInteractive) {
+                    instrumentation.shell("input keyevent KEYCODE_WAKEUP")
+                }
                 val candidate = captureScreenshot()
                 val redRatio = candidate.matchingPixelRatio { red, green, blue ->
                     red > 220 && green < 60 && blue < 60
@@ -77,13 +85,29 @@ class SlockChildPageVisibilityConnectedTest {
                     bitmap = candidate
                     break
                 }
-                candidate.recycle()
                 if (SystemClock.uptimeMillis() >= deadline) {
+                    // Disambiguate the two 0/0 causes for any future failure: a slept
+                    // display yields an all-black frame, while an un-rendered probe
+                    // yields the default (non-red, non-blue) page background.
+                    val blackRatio = candidate.matchingPixelRatio { red, green, blue ->
+                        red < 16 && green < 16 && blue < 16
+                    }
+                    val interactive = powerManager.isInteractive
+                    val stayOn = instrumentation.shell("settings get global stay_on_while_plugged_in").trim()
+                    val wakefulness = instrumentation.shell("dumpsys power")
+                        .lineSequence().firstOrNull { it.contains("mWakefulness=") }?.trim()
+                        ?: "mWakefulness=unknown"
+                    candidate.recycle()
                     error(
                         "Child page visibility probe never reached a dominant probe color " +
-                            "within 30s (redRatio=$redRatio blueRatio=$blueRatio)"
+                            "within 30s (redRatio=$redRatio blueRatio=$blueRatio " +
+                            "blackRatio=$blackRatio isInteractive=$interactive " +
+                            "stayOnWhilePluggedIn=$stayOn $wakefulness). High blackRatio with " +
+                            "isInteractive=false means the display slept mid-poll (black frame); " +
+                            "low blackRatio with no dominant color means the probe page never rendered."
                     )
                 }
+                candidate.recycle()
                 SystemClock.sleep(250)
             }
         }
