@@ -1631,17 +1631,7 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
-    fun backToBottomButton_dependsOnBottomReadinessAndKeyboardAnchor() {
-        assertEquals(
-            true,
-            shouldShowThreadBackToBottomButton(
-                ThreadBackToBottomButtonState(
-                    initialBottomAnchorReady = true,
-                    pendingKeyboardBottomAnchor = false,
-                    latestItemOffBottom = true
-                )
-            )
-        )
+    fun backToBottomButton_hidesWhileKeyboardBottomCorrectionOwnsViewport() {
         assertEquals(
             true,
             shouldShowThreadBackToBottomButton(
@@ -1657,7 +1647,33 @@ class ThreadBottomAnchorSignatureTest {
             shouldShowThreadBackToBottomButton(
                 ThreadBackToBottomButtonState(
                     initialBottomAnchorReady = true,
+                    pendingKeyboardBottomAnchor = false,
+                    bottomAutoAnchorOwnsViewport = true,
+                    latestItemOffBottom = true
+                )
+            )
+        )
+        assertEquals(
+            false,
+            shouldShowThreadBackToBottomButton(
+                ThreadBackToBottomButtonState(
+                    initialBottomAnchorReady = true,
                     pendingKeyboardBottomAnchor = true,
+                    latestItemOffBottom = true
+                )
+            )
+        )
+    }
+
+    @Test
+    fun backToBottomButton_preservesUserAndFocusedHistoryAffordance() {
+        assertEquals(
+            true,
+            shouldShowThreadBackToBottomButton(
+                ThreadBackToBottomButtonState(
+                    initialBottomAnchorReady = true,
+                    pendingKeyboardBottomAnchor = false,
+                    bottomAutoAnchorOwnsViewport = false,
                     latestItemOffBottom = true
                 )
             )
