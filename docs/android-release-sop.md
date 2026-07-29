@@ -5,6 +5,10 @@ release lane is intentionally draft-first: CI may build, sign, upload, and
 share a **draft**, but it must not activate a public release. Activation is a
 separate, explicit, owner-approved command after reviewed notes and smoke.
 
+When Android and iOS ship from the same frozen Mobile source, follow
+[Mobile Paired Release SOP](mobile-paired-release-sop.md) for the shared
+ordering, authority, TestFlight, receipt, and merge-back contract.
+
 Each release is stabilized on a dedicated `release-X.Y.Z` branch. Product work
 may continue on `main`, while only explicitly selected release fixes enter the
 release branch. The release branch is merged back into `main` only after the
