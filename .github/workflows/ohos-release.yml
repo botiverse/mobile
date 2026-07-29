@@ -471,6 +471,7 @@ jobs:
           cat > compose/ohosApp/local.properties <<'PROPERTIES'
           kuikly.projectPath=../
           kuikly.moduleName=ohosBridge
+          kuikly.libraryName=shared
           kuikly.ohosGradleSettings=settings.ohos.gradle.kts
           PROPERTIES
 
