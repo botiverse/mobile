@@ -1155,10 +1155,10 @@ internal class SharedHomeStore(
             currentContent?.snapshot?.server?.id
                 ?: session.currentServerId?.let(::ServerId)
         val expandedServerIds =
-            buildSet {
-                addAll(previous.expandedServerIds.filter { it in availableServerIds })
-                selectedServerId?.takeIf { it in availableServerIds }?.let { add(it) }
-            }
+            selectedServerId
+                ?.takeIf { it in availableServerIds }
+                ?.let(::setOf)
+                ?: emptySet()
         val sections =
             serverSummaries.associate { server ->
                 val cached =
@@ -1207,7 +1207,13 @@ internal class SharedHomeStore(
         val availableServerIds = serverSummaries.mapTo(linkedSetOf()) { it.id }
         pruneServerDrawerRuntimeState(availableServerIds)
         return copy(
-            expandedServerIds = expandedServerIds.filterTo(linkedSetOf()) { it in availableServerIds },
+            expandedServerIds =
+                (
+                    expandedServerIds.firstOrNull { it in availableServerIds }
+                        ?: session.currentServerId?.let(::ServerId)?.takeIf { it in availableServerIds }
+                )
+                    ?.let(::setOf)
+                    ?: emptySet(),
             sections =
                 serverSummaries.associate { server ->
                     val existing = sections[server.id]
@@ -1262,7 +1268,7 @@ internal class SharedHomeStore(
         }
         reduceState(
             _state.value.copy(
-                serverDrawer = drawer.copy(expandedServerIds = drawer.expandedServerIds + serverId)
+                serverDrawer = drawer.copy(expandedServerIds = setOf(serverId))
             )
         )
         val section = _state.value.serverDrawer.sections[serverId] ?: return
@@ -1291,6 +1297,7 @@ internal class SharedHomeStore(
         val drawer = _state.value.serverDrawer
         val section = drawer.sections[serverId] ?: return
         if (!drawer.expanded || serverId !in drawer.expandedServerIds) return
+        if (section.status == HomeServerDrawerLoadStatus.Unavailable) return
         if (!force && serverDrawerLoadJobs[serverId]?.isActive == true) return
 
         val generation = (serverDrawerRequestGenerations[serverId] ?: section.requestGeneration) + 1L
@@ -1384,7 +1391,8 @@ internal class SharedHomeStore(
             }
             is DataResult.Empty -> completeServerDrawerSectionEmpty(serverId, generation)
             is DataResult.Error -> completeServerDrawerSectionError(serverId, generation, homeResult.error.code)
-            is DataResult.NoPermission -> completeServerDrawerSectionError(serverId, generation, homeResult.blocker.code)
+            is DataResult.NoPermission ->
+                completeServerDrawerSectionUnavailable(serverId, generation, homeResult.blocker.code)
         }
     }
 
@@ -1454,12 +1462,24 @@ internal class SharedHomeStore(
         contentByServer.remove(serverId)
         sidebarOrderByServer.remove(serverId)
         val drawer = _state.value.serverDrawer
+        val remainingSections = drawer.sections - serverId
+        val fallbackExpandedServerId =
+            (_state.value.content as? SharedHomeContentState.Content)
+                ?.snapshot
+                ?.server
+                ?.id
+                ?.takeIf { it in remainingSections }
         reduceState(
             _state.value.copy(
                 serverDrawer =
                     drawer.copy(
-                        expandedServerIds = drawer.expandedServerIds - serverId,
-                        sections = drawer.sections - serverId
+                        expandedServerIds =
+                            if (serverId in drawer.expandedServerIds) {
+                                fallbackExpandedServerId?.let(::setOf) ?: emptySet()
+                            } else {
+                                drawer.expandedServerIds - serverId
+                            },
+                        sections = remainingSections
                     )
             )
         )
@@ -1509,6 +1529,27 @@ internal class SharedHomeStore(
                                             } else {
                                                 HomeServerDrawerLoadStatus.ErrorWithCache
                                             },
+                                        errorCode = code
+                                    ))
+                    )
+            )
+        )
+        serverDrawerLoadJobs.remove(serverId)
+    }
+
+    private fun completeServerDrawerSectionUnavailable(serverId: ServerId, generation: Long, code: String) {
+        if (!isCurrentServerDrawerRequest(serverId, generation)) return
+        val drawer = _state.value.serverDrawer
+        val section = drawer.sections[serverId] ?: return
+        reduceState(
+            _state.value.copy(
+                serverDrawer =
+                    drawer.copy(
+                        sections =
+                            drawer.sections +
+                                (serverId to
+                                    section.copy(
+                                        status = HomeServerDrawerLoadStatus.Unavailable,
                                         errorCode = code
                                     ))
                     )
@@ -3615,6 +3656,7 @@ enum class HomeServerDrawerLoadStatus {
     Refreshing,
     Loaded,
     Empty,
+    Unavailable,
     ErrorWithCache,
     ErrorEmpty
 }

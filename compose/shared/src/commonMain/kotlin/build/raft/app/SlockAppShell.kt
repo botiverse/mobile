@@ -2,11 +2,14 @@ package build.raft.app
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
 import build.raft.app.resources.MR
 import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.kuikly.compose.foundation.background
+import com.tencent.kuikly.compose.foundation.gestures.awaitEachGesture
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
@@ -16,9 +19,15 @@ import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.geometry.Offset
+import com.tencent.kuikly.compose.ui.input.pointer.PointerEventPass
+import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
+import com.tencent.kuikly.compose.ui.input.pointer.positionChangedIgnoreConsumed
+import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.zIndex
+import kotlin.math.abs
 
 internal data class SlockAppShellScope(
     val topSafeArea: Dp,
@@ -107,11 +116,28 @@ internal fun SlockAppShellSurface(
             null
         }
     SlockInputFocusDismissHost { focusDismissModifier ->
-        Box(modifier = modifier.then(focusDismissModifier).fillMaxSize().background(SlockColor.SurfaceWhite)) {
+        val drawerOpenGesture = LocalSlockHomeDrawerOpenGesture.current
+        val focusOwnerRegistry = LocalSlockInputFocusOwnerRegistry.current
+        val drawerGestureModifier =
+            Modifier.slockHomeDrawerOpenGesture(
+                admission =
+                    drawerOpenGesture.admission.copy(
+                        inputFocused = focusOwnerRegistry?.hasActiveOwner == true
+                    ),
+                onOpen = drawerOpenGesture.onOpen
+            )
+        Box(
+            modifier =
+                modifier
+                    .then(focusDismissModifier)
+                    .fillMaxSize()
+                    .background(SlockColor.SurfaceWhite)
+        ) {
             SlockUnifiedDialogHostProvider(effectiveModalHostState) {
                 Column(
                     modifier =
                         Modifier
+                            .then(drawerGestureModifier)
                             .zIndex(SlockAppContentHostZIndex)
                             .fillMaxSize()
                             .padding(bottom = shellScope.bottomTabBarHostInset(showBottomTabs))
@@ -138,6 +164,98 @@ internal fun SlockAppShellSurface(
                     modifier = Modifier.fillMaxSize(),
                     bottomInset = shellScope.globalDialogBottomInset(showBottomTabs)
                 )
+            }
+        }
+    }
+}
+
+internal data class HomeServerDrawerOpenGestureAdmission(
+    val homeSurfaceActive: Boolean = false,
+    val pointerOwnerActive: Boolean = false,
+    val modalPresented: Boolean = false,
+    val inputFocused: Boolean = false,
+    val descendantConsumed: Boolean = false,
+    val multiplePointers: Boolean = false
+) {
+    val allowed: Boolean
+        get() =
+            homeSurfaceActive &&
+                pointerOwnerActive &&
+                !modalPresented &&
+                !inputFocused &&
+                !descendantConsumed &&
+                !multiplePointers
+}
+
+private const val HomeServerDrawerOpenThresholdDp = 72f
+private const val HomeServerDrawerOpenHorizontalDominanceRatio = 1.25f
+
+internal fun shouldOpenHomeServerDrawerFromContentGesture(
+    admission: HomeServerDrawerOpenGestureAdmission,
+    horizontalDragDp: Float,
+    verticalDragDp: Float,
+    thresholdDp: Float = HomeServerDrawerOpenThresholdDp
+): Boolean =
+    admission.allowed &&
+        horizontalDragDp >= thresholdDp &&
+        horizontalDragDp >= abs(verticalDragDp) * HomeServerDrawerOpenHorizontalDominanceRatio
+
+internal data class SlockHomeDrawerOpenGesture(
+    val admission: HomeServerDrawerOpenGestureAdmission = HomeServerDrawerOpenGestureAdmission(),
+    val onOpen: () -> Unit = {}
+)
+
+internal val LocalSlockHomeDrawerOpenGesture =
+    staticCompositionLocalOf { SlockHomeDrawerOpenGesture() }
+
+@Composable
+private fun Modifier.slockHomeDrawerOpenGesture(
+    admission: HomeServerDrawerOpenGestureAdmission,
+    onOpen: () -> Unit
+): Modifier {
+    if (!admission.allowed) return this
+    val currentAdmission by rememberUpdatedState(admission)
+    val currentOnOpen by rememberUpdatedState(onOpen)
+    val density = LocalDensity.current
+    return pointerInput(Unit) {
+        awaitEachGesture {
+            var start: Offset? = null
+            var latest = Offset.Zero
+            var descendantConsumed = false
+            var multiplePointers = false
+            var terminal = false
+            while (!terminal) {
+                val initial = awaitPointerEvent(PointerEventPass.Initial)
+                val activePointerCount = initial.changes.count { it.pressed || it.previousPressed }
+                if (activePointerCount > 1) multiplePointers = true
+                val change = initial.changes.firstOrNull()
+                if (change != null) {
+                    if (start == null && change.pressed && !change.previousPressed) {
+                        start = change.position
+                    }
+                    latest = change.position
+                    terminal = start != null && change.previousPressed && !change.pressed
+                }
+                val main = awaitPointerEvent(PointerEventPass.Main)
+                descendantConsumed =
+                    descendantConsumed ||
+                        main.changes.any { it.isConsumed && it.positionChangedIgnoreConsumed() }
+                if (main.nativeEvent == "cancel") return@awaitEachGesture
+            }
+            val origin = start ?: return@awaitEachGesture
+            val admissionAtTerminal =
+                currentAdmission.copy(
+                    descendantConsumed = descendantConsumed,
+                    multiplePointers = multiplePointers
+                )
+            if (
+                shouldOpenHomeServerDrawerFromContentGesture(
+                    admission = admissionAtTerminal,
+                    horizontalDragDp = (latest.x - origin.x) / density.density,
+                    verticalDragDp = (latest.y - origin.y) / density.density
+                )
+            ) {
+                currentOnOpen()
             }
         }
     }
