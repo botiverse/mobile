@@ -7222,9 +7222,7 @@ internal fun SharedThreadRouteContent(
                 LocalSlockMarkdownRenderConfig provides
                     SlockMarkdownRenderConfig(singleParagraphLightPath = singleParagraphLightPathEnabled),
                 LocalThreadMessagePointerSessionKey provides threadPointerSessionKey,
-                LocalThreadPendingReactionKeys provides pendingReactionKeys,
                 LocalThreadPendingReactionVisuals provides pendingReactionVisuals,
-                LocalThreadPendingTaskId provides threadTasksState.statusUpdatingTaskId,
                 LocalSlockTimeContextProvider provides timeContextProvider
             ),
             LocalSlockMarkdownPlainCandidateSession,
