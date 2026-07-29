@@ -7138,8 +7138,8 @@ private fun KuiklyThreadScreenPayload.originDiagnostics(): String =
         "originStatus=$originStatus hasOriginMessage=${originMessage != null} " +
         "hasOriginPreview=${!originPreview.isNullOrBlank()}"
 
-private fun KuiklyThreadScreenPayload.withRouteContext(base: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload =
-    if (hasResolvedReplyThreadStreamFrom(base)) {
+internal fun KuiklyThreadScreenPayload.withRouteContext(base: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload =
+    (if (hasResolvedReplyThreadStreamFrom(base)) {
         copy(
             navigationLabel = base.navigationLabel,
             selectedTab = base.selectedTab,
@@ -7178,7 +7178,44 @@ private fun KuiklyThreadScreenPayload.withRouteContext(base: KuiklyThreadScreenP
             emptyTitle = base.emptyTitle,
             emptyDetail = base.emptyDetail
         )
+    }).withReplyParentRouteIdentityFrom(base)
+
+private fun KuiklyThreadScreenPayload.withReplyParentRouteIdentityFrom(
+    routePayload: KuiklyThreadScreenPayload
+): KuiklyThreadScreenPayload {
+    if (
+        surfaceKind != KuiklyThreadSurfaceKind.ReplyThread ||
+        routePayload.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread
+    ) {
+        return this
     }
+    val routeParentChannelId = routePayload.parentChannelId?.takeIf { it.isNotBlank() } ?: return this
+    val routeParentMessageId =
+        routePayload.parentMessageId?.takeIf { it.isNotBlank() }
+            ?: routePayload.originParentMessageId?.takeIf { it.isNotBlank() }
+            ?: return this
+    val currentParentChannelId = parentChannelId?.takeIf { it.isNotBlank() }
+    val currentParentMessageId =
+        parentMessageId?.takeIf { it.isNotBlank() }
+            ?: originParentMessageId?.takeIf { it.isNotBlank() }
+    if (
+        (currentParentChannelId != null && currentParentChannelId != routeParentChannelId) ||
+        (currentParentMessageId != null && currentParentMessageId != routeParentMessageId)
+    ) {
+        return this
+    }
+    return copy(
+        parentChannelId = routeParentChannelId,
+        parentMessageId = routeParentMessageId,
+        originParentMessageId = originParentMessageId?.takeIf { it.isNotBlank() } ?: routeParentMessageId,
+        parentSurfaceKind =
+            routePayload.parentSurfaceKind?.takeIf { it.isNotBlank() }
+                ?: parentSurfaceKind,
+        parentChannelKind =
+            routePayload.parentChannelKind?.takeIf { it.isNotBlank() }
+                ?: parentChannelKind
+    )
+}
 
 private fun KuiklyThreadScreenPayload.withRouteIntentFrom(routePayload: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
     val resolvedIdentityPayload =
