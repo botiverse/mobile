@@ -3426,11 +3426,30 @@ class KmpVisualScreenshotCaptureTest {
             if (activePackage == "build.raft.app.connectedtest") return
             Thread.sleep(ACTIVE_INPUT_WINDOW_POLL_MS)
         }
+        // Name the offending window definitively: package alone cannot separate
+        // keyguard / ANR dialog / a stuck starting-window (splash), and our
+        // PixelCopy screenshots read the app window directly, so a rendered
+        // before-frame proves nothing about what the screen composite shows.
+        val focusDump = readShellCommand("dumpsys window windows")
+            .lineSequence()
+            .filter { it.contains("mCurrentFocus") || it.contains("mFocusedWindow") || it.contains("mObscuringWindow") }
+            .joinToString(" | ") { it.trim() }
         throw IllegalArgumentException(
             "$what is not the active input window after ${timeoutMs}ms: " +
-                "package=$activePackage interactive=${powerManager?.isInteractive} wokeDisplay=$wokeDisplay"
+                "package=$activePackage interactive=${powerManager?.isInteractive} " +
+                "wokeDisplay=$wokeDisplay focus=[$focusDump]"
         )
     }
+
+    /** Shell command via UiAutomation returning stdout (best-effort, empty on failure). */
+    private fun readShellCommand(command: String): String =
+        try {
+            val fd = InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(command)
+            ParcelFileDescriptor.AutoCloseInputStream(fd).use { String(it.readBytes()) }
+        } catch (t: Throwable) {
+            Log.w(VISUAL_LOG_TAG, "shell read '$command' failed: ${t.message}")
+            ""
+        }
 
     private fun dismissCompatibilityDialog() {
         val root = InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow ?: return
