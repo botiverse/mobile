@@ -8,6 +8,20 @@ import kotlin.test.assertTrue
 
 class ThreadInlineSelectionDemoTest {
     @Test
+    fun compactToolRowKeepsForwardVisibleAndCloseOutOfThePrimaryActions() {
+        assertEquals(
+            listOf(
+                ThreadInlineSelectionDemoTool.Copy,
+                ThreadInlineSelectionDemoTool.Reply,
+                ThreadInlineSelectionDemoTool.Forward,
+                ThreadInlineSelectionDemoTool.Save,
+                ThreadInlineSelectionDemoTool.More
+            ),
+            ThreadInlineSelectionDemoToolOrder
+        )
+    }
+
+    @Test
     fun eligibilityAcceptsOnlyPlainStandaloneMessageBodies() {
         assertTrue(
             threadInlineSelectionDemoEligible(
