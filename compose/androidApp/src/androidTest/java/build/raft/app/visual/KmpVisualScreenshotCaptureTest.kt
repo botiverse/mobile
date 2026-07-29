@@ -857,6 +857,7 @@ class KmpVisualScreenshotCaptureTest {
             beforeScreenshot = {
                 dismissCompatibilityDialog()
                 waitForIdleBounded()
+                awaitReactionAtlasReady("components.thread.inline-selection-demo")
                 var before: Bitmap? = null
                 var after: Bitmap? = null
                 try {
@@ -1044,12 +1045,12 @@ class KmpVisualScreenshotCaptureTest {
                 var after: Bitmap? = null
                 try {
                     before = captureActivityScreenshot("components.thread.inline-selection-demo.before")
-                    val yellowBefore = before.countThreadOpenProbeYellowSamplesInTopBand()
+                    val threadOpenBefore = before.countThreadInlineSelectionOpenProbeSamples()
                     val selectionBlueBefore = before.countThreadInlineSelectionBlueSamples()
                     longPressDisplayDp(x = 300f, y = 70f)
                     Thread.sleep(800)
                     after = captureActivityScreenshot("components.thread.inline-selection-demo.after")
-                    val yellowAfter = after.countThreadOpenProbeYellowSamplesInTopBand()
+                    val threadOpenAfter = after.countThreadInlineSelectionOpenProbeSamples()
                     val selectionBlueAfter = after.countThreadInlineSelectionBlueSamples()
                     val addedToolbarBlack = after.countNewNearBlackSamplesComparedWith(before)
                     val changedRatio = before.fullBitmapChangedPixelRatio(after)
@@ -1067,8 +1068,9 @@ class KmpVisualScreenshotCaptureTest {
                         addedToolbarBlack >= THREAD_INLINE_SELECTION_MIN_ADDED_BLACK_SAMPLES
                     )
                     assertTrue(
-                        "Inline selection must not open the thread; yellowBefore=$yellowBefore yellowAfter=$yellowAfter",
-                        yellowAfter < yellowBefore + THREAD_TAP_PROBE_MIN_ADDED_YELLOW_SAMPLES
+                        "Inline selection must not open the thread; before=$threadOpenBefore after=$threadOpenAfter",
+                        threadOpenAfter <
+                            threadOpenBefore + THREAD_INLINE_SELECTION_MIN_ADDED_OPEN_PROBE_SAMPLES
                     )
                     selectedArtifact = after
                     after = null
@@ -1423,6 +1425,28 @@ class KmpVisualScreenshotCaptureTest {
                     blue in 220..255 &&
                     green - red >= 15 &&
                     blue - green >= 15
+                ) {
+                    samples++
+                }
+                x += FORWARD_PROBE_PIXEL_STRIDE
+            }
+            y += FORWARD_PROBE_PIXEL_STRIDE
+        }
+        return samples
+    }
+
+    private fun Bitmap.countThreadInlineSelectionOpenProbeSamples(): Int {
+        val endY = (height * THREAD_OPEN_PROBE_TOP_BAND_FRACTION).toInt()
+        var samples = 0
+        var y = 0
+        while (y < endY) {
+            var x = 0
+            while (x < width) {
+                val pixel = getPixel(x, y)
+                if (
+                    kotlin.math.abs(Color.red(pixel) - 0xFF) <= THREAD_INLINE_SELECTION_OPEN_PROBE_TOLERANCE &&
+                    kotlin.math.abs(Color.green(pixel) - 0x00) <= THREAD_INLINE_SELECTION_OPEN_PROBE_TOLERANCE &&
+                    kotlin.math.abs(Color.blue(pixel) - 0xA8) <= THREAD_INLINE_SELECTION_OPEN_PROBE_TOLERANCE
                 ) {
                     samples++
                 }
@@ -5034,6 +5058,8 @@ class KmpVisualScreenshotCaptureTest {
         private const val THREAD_INLINE_SELECTION_MIN_ADDED_BLUE_SAMPLES = 100
         private const val THREAD_INLINE_SELECTION_MIN_ADDED_BLACK_SAMPLES = 40
         private const val THREAD_INLINE_SELECTION_MIN_FINAL_BLUE_SAMPLES = 80
+        private const val THREAD_INLINE_SELECTION_MIN_ADDED_OPEN_PROBE_SAMPLES = 100
+        private const val THREAD_INLINE_SELECTION_OPEN_PROBE_TOLERANCE = 8
         private const val SEARCH_PIN_MENU_MIN_CHANGED_RATIO = 0.004f
         private const val THREAD_OPEN_PROBE_TOP_BAND_FRACTION = 0.15f
         private const val FORWARD_PROBE_SWIPE_STEPS = 12

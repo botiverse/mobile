@@ -209,6 +209,7 @@ import com.tencent.kuikly.compose.foundation.gestures.scrollBy
 import com.tencent.kuikly.compose.foundation.hoverable
 import com.tencent.kuikly.compose.foundation.interaction.MutableInteractionSource
 import com.tencent.kuikly.compose.foundation.interaction.collectIsHoveredAsState
+import com.tencent.kuikly.compose.foundation.interaction.collectIsPressedAsState
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.ExperimentalLayoutApi
 import com.tencent.kuikly.compose.foundation.layout.FlowRow
@@ -333,6 +334,14 @@ private const val ThreadLocalizedFeedbackPlaceholder = "__RAFT_VALUE__"
 private const val ThreadAttachmentUploadConcurrencyLimit = 12
 internal const val ThreadRelativeTimestampSlotWidthDp = 112f
 private val ThreadInlineSelectionToolbarGap = 6.dp
+private val ThreadInlineSelectionToolbarWidth = 328.dp
+private val ThreadInlineSelectionReactionRowHeight = 44.dp
+private val ThreadInlineSelectionReactionButtonSize = 34.dp
+private val ThreadInlineSelectionReactionGlyphSize = 22.dp
+private val ThreadInlineSelectionReactionHorizontalPadding = 9.dp
+private val ThreadInlineSelectionToolRowHeight = 52.dp
+private val ThreadInlineSelectionToolIconSize = 18.dp
+private val ThreadInlineSelectionMoreOverlayHeight = 20.dp
 private const val ThreadInlineSelectionToolbarZIndex = 30f
 private const val ThreadInlineSelectionMarkdownTriggerChars = "`*_#><|[]()~@&\\-+=:/"
 private val ThreadInlineSelectionOrderedListPrefix = Regex("""^\d+\. """)
@@ -374,6 +383,25 @@ internal data class ThreadInlineSelectionToolbarPlacement(
     val yPx: Int,
     val belowSelection: Boolean
 )
+
+internal enum class ThreadInlineSelectionDemoTool {
+    Copy,
+    Reply,
+    Forward,
+    Save,
+    Translate,
+    Select
+}
+
+internal val ThreadInlineSelectionDemoToolOrder =
+    listOf(
+        ThreadInlineSelectionDemoTool.Copy,
+        ThreadInlineSelectionDemoTool.Reply,
+        ThreadInlineSelectionDemoTool.Forward,
+        ThreadInlineSelectionDemoTool.Save,
+        ThreadInlineSelectionDemoTool.Translate,
+        ThreadInlineSelectionDemoTool.Select
+    )
 
 internal fun threadInlineSelectionToolbarPlacement(
     cardWidthPx: Int,
@@ -3676,7 +3704,14 @@ private fun ThreadMessageVisualScreenContent() {
                         modifier =
                             Modifier
                                 .size(24.dp)
-                                .background(SlockColor.BrandYellow)
+                                .background(
+                                    if (visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_SELECTION_DEMO) {
+                                        // Keep the fixture's open-thread oracle distinct from colorful reactions.
+                                        Color(0xFFFF00A8)
+                                    } else {
+                                        SlockColor.BrandYellow
+                                    }
+                                )
                     )
                 }
                 ThreadMessageCard(
@@ -3717,8 +3752,14 @@ private fun ThreadMessageVisualScreenContent() {
                     onOpenMarkdownUrl = { openedVisualMarkdownUrlCount += 1 },
                     inlineSelectionDemoEnabled =
                         visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_SELECTION_DEMO,
+                    onInlineSelectionReact = {},
                     onInlineSelectionCopy = {},
                     onInlineSelectionReply = { openedVisualThreadMessageId = message.id },
+                    onInlineSelectionForward = {},
+                    onInlineSelectionSave = {},
+                    onInlineSelectionTranslate = {},
+                    onInlineSelectionSelect = {},
+                    onInlineSelectionMore = {},
                     outerPadding = 0.dp
                 )
                 if (menuActions.isNotEmpty()) {
@@ -17936,8 +17977,14 @@ private fun ThreadMessageCard(
     longMessageExpanded: Boolean = false,
     onToggleLongMessage: () -> Unit = {},
     inlineSelectionDemoEnabled: Boolean = false,
+    onInlineSelectionReact: (String) -> Unit = {},
     onInlineSelectionCopy: () -> Unit = {},
     onInlineSelectionReply: () -> Unit = {},
+    onInlineSelectionForward: () -> Unit = {},
+    onInlineSelectionSave: () -> Unit = {},
+    onInlineSelectionTranslate: () -> Unit = {},
+    onInlineSelectionSelect: () -> Unit = {},
+    onInlineSelectionMore: () -> Unit = {},
     outerPadding: com.tencent.kuikly.compose.ui.unit.Dp = SlockSpacing.Sm
 ) {
     val localizedAuthorName =
@@ -18558,6 +18605,11 @@ private fun ThreadMessageCard(
             ThreadInlineSelectionToolbar(
                 placement = inlineSelectionToolbarPlacement,
                 onMeasured = { size -> inlineSelectionController.toolbarSize = size },
+                onReact = { reaction ->
+                    tapMovementGate.rejectChildAction("inline_selection_reaction")
+                    onInlineSelectionReact(reaction)
+                    clearInlineSelection()
+                },
                 onCopy = {
                     tapMovementGate.rejectChildAction("inline_selection_copy")
                     onInlineSelectionCopy()
@@ -18568,9 +18620,30 @@ private fun ThreadMessageCard(
                     clearInlineSelection()
                     onInlineSelectionReply()
                 },
-                onDismiss = {
-                    tapMovementGate.rejectChildAction("inline_selection_close")
+                onForward = {
+                    tapMovementGate.rejectChildAction("inline_selection_forward")
                     clearInlineSelection()
+                    onInlineSelectionForward()
+                },
+                onSave = {
+                    tapMovementGate.rejectChildAction("inline_selection_save")
+                    clearInlineSelection()
+                    onInlineSelectionSave()
+                },
+                onTranslate = {
+                    tapMovementGate.rejectChildAction("inline_selection_translate")
+                    clearInlineSelection()
+                    onInlineSelectionTranslate()
+                },
+                onSelect = {
+                    tapMovementGate.rejectChildAction("inline_selection_select")
+                    clearInlineSelection()
+                    onInlineSelectionSelect()
+                },
+                onMore = {
+                    tapMovementGate.rejectChildAction("inline_selection_more")
+                    clearInlineSelection()
+                    onInlineSelectionMore()
                 }
             )
         }
@@ -18585,9 +18658,14 @@ private fun ThreadMessageCard(
 private fun ThreadInlineSelectionToolbar(
     placement: ThreadInlineSelectionToolbarPlacement,
     onMeasured: (IntSize) -> Unit,
+    onReact: (String) -> Unit,
     onCopy: () -> Unit,
     onReply: () -> Unit,
-    onDismiss: () -> Unit
+    onForward: () -> Unit,
+    onSave: () -> Unit,
+    onTranslate: () -> Unit,
+    onSelect: () -> Unit,
+    onMore: () -> Unit
 ) {
     Box(
         modifier =
@@ -18604,38 +18682,167 @@ private fun ThreadInlineSelectionToolbar(
                     .offset(x = SlockShadow.BrutalSmall, y = SlockShadow.BrutalSmall)
                     .background(SlockColor.ShadowBlack)
         )
-        Row(
+        Column(
             modifier =
                 Modifier
+                    .width(ThreadInlineSelectionToolbarWidth)
                     .background(SlockColor.SurfaceWhite)
                     .border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .padding(4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    .padding(horizontal = 8.dp, vertical = 6.dp)
         ) {
-            SlockToolbarChip(
-                label = stringResource(MR.strings.thread_inline_selection_copy),
-                iconName = SlockLucideIconName.Copy,
-                uppercase = false,
-                borderColor = SlockColor.BorderBlack,
-                onClick = onCopy
+            ThreadMessageReactionRow(
+                reactionAtlasImage = LocalThreadReactionAtlasImage.current,
+                onReact = onReact,
+                rowHeight = ThreadInlineSelectionReactionRowHeight,
+                buttonSize = ThreadInlineSelectionReactionButtonSize,
+                glyphSize = ThreadInlineSelectionReactionGlyphSize,
+                horizontalPadding = ThreadInlineSelectionReactionHorizontalPadding
             )
-            SlockToolbarChip(
-                label = stringResource(MR.strings.thread_inline_selection_reply),
-                iconName = SlockLucideIconName.MessageSquare,
-                uppercase = false,
-                borderColor = SlockColor.BorderBlack,
-                onClick = onReply
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(SlockStroke.Thin)
+                        .background(SlockColor.BorderBlack)
             )
-            SlockBrutalIconButton(
-                iconName = SlockLucideIconName.X,
-                contentDescription = stringResource(MR.strings.common_close),
-                onClick = onDismiss,
-                size = 30.dp,
-                iconSize = 14.dp,
-                shadowOffset = 0.dp
+            ThreadInlineSelectionToolRow(
+                onCopy = onCopy,
+                onReply = onReply,
+                onForward = onForward,
+                onSave = onSave,
+                onTranslate = onTranslate,
+                onSelect = onSelect
+            )
+            ThreadInlineSelectionMoreOverlay(
+                onClick = onMore
             )
         }
+    }
+}
+
+@Composable
+private fun ThreadInlineSelectionToolRow(
+    onCopy: () -> Unit,
+    onReply: () -> Unit,
+    onForward: () -> Unit,
+    onSave: () -> Unit,
+    onTranslate: () -> Unit,
+    onSelect: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().height(ThreadInlineSelectionToolRowHeight),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        ThreadInlineSelectionDemoToolOrder.forEach { tool ->
+            val label =
+                when (tool) {
+                    ThreadInlineSelectionDemoTool.Copy ->
+                        stringResource(MR.strings.thread_inline_selection_copy)
+                    ThreadInlineSelectionDemoTool.Reply ->
+                        stringResource(MR.strings.thread_inline_selection_reply)
+                    ThreadInlineSelectionDemoTool.Forward ->
+                        stringResource(MR.strings.thread_action_forward)
+                    ThreadInlineSelectionDemoTool.Save ->
+                        stringResource(MR.strings.thread_inline_selection_save)
+                    ThreadInlineSelectionDemoTool.Translate ->
+                        stringResource(MR.strings.thread_action_translate)
+                    ThreadInlineSelectionDemoTool.Select ->
+                        stringResource(MR.strings.thread_inline_selection_select)
+                }
+            val icon =
+                when (tool) {
+                    ThreadInlineSelectionDemoTool.Copy -> SlockLucideIconName.Copy
+                    ThreadInlineSelectionDemoTool.Reply -> SlockLucideIconName.MessageSquare
+                    ThreadInlineSelectionDemoTool.Forward -> SlockLucideIconName.Redo2
+                    ThreadInlineSelectionDemoTool.Save -> SlockLucideIconName.Bookmark
+                    ThreadInlineSelectionDemoTool.Translate -> SlockLucideIconName.Languages
+                    ThreadInlineSelectionDemoTool.Select -> SlockLucideIconName.CircleCheck
+                }
+            val onClick =
+                when (tool) {
+                    ThreadInlineSelectionDemoTool.Copy -> onCopy
+                    ThreadInlineSelectionDemoTool.Reply -> onReply
+                    ThreadInlineSelectionDemoTool.Forward -> onForward
+                    ThreadInlineSelectionDemoTool.Save -> onSave
+                    ThreadInlineSelectionDemoTool.Translate -> onTranslate
+                    ThreadInlineSelectionDemoTool.Select -> onSelect
+                }
+            ThreadInlineSelectionToolButton(
+                label = label,
+                icon = icon,
+                onClick = onClick,
+                modifier = Modifier.weight(1f)
+            )
+        }
+    }
+}
+
+@Composable
+private fun ThreadInlineSelectionMoreOverlay(onClick: () -> Unit) {
+    val label = stringResource(MR.strings.thread_inline_selection_more)
+    Box(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .height(ThreadInlineSelectionMoreOverlayHeight)
+                .clickable(onClick = onClick)
+                .semantics { contentDescription = label },
+        contentAlignment = Alignment.Center
+    ) {
+        SlockLucideIcon(
+            name = SlockLucideIconName.ChevronDown,
+            modifier = Modifier.size(14.dp),
+            color = SlockColor.TextMutedGrayArgb
+        )
+    }
+}
+
+@Composable
+private fun ThreadInlineSelectionToolButton(
+    label: String,
+    icon: SlockLucideIconName,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    Column(
+        modifier =
+            modifier
+                .height(ThreadInlineSelectionToolRowHeight)
+                .background(if (pressed) SlockColor.BrandYellow else Color.Transparent)
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    onClick = onClick
+                )
+                .semantics { contentDescription = label }
+                .padding(horizontal = 2.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        SlockLucideIcon(
+            name = icon,
+            modifier = Modifier.size(ThreadInlineSelectionToolIconSize),
+            color = SlockColor.TextBlackArgb
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = label,
+            style =
+                SlockType.Caption.copy(
+                    color = SlockColor.TextBlack,
+                    fontSize = 10.sp,
+                    lineHeight = 12.sp,
+                    letterSpacing = 0.sp,
+                    fontWeight = FontWeight.Normal
+                ),
+            color = SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }
 
@@ -21425,13 +21632,17 @@ private fun ThreadMessageMenuChrome(
 @Composable
 private fun ThreadMessageReactionRow(
     reactionAtlasImage: ImageBitmap?,
-    onReact: (String) -> Unit
+    onReact: (String) -> Unit,
+    rowHeight: Dp = ThreadMessageMenuReactionRowHeight,
+    buttonSize: Dp = 28.dp,
+    glyphSize: Dp = 18.dp,
+    horizontalPadding: Dp = 12.dp
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(ThreadMessageMenuReactionRowHeight)
-            .padding(horizontal = 12.dp),
+            .height(rowHeight)
+            .padding(horizontal = horizontalPadding),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
@@ -21440,11 +21651,11 @@ private fun ThreadMessageReactionRow(
                 onClick = { onReact(reaction) },
                 pressFeedback = false,
                 modifier = Modifier
-                    .size(28.dp)
+                    .size(buttonSize)
             ) {
                 ThreadQuickReactionGlyph(
                     reaction,
-                    modifier = Modifier.size(18.dp),
+                    modifier = Modifier.size(glyphSize),
                     reactionAtlasImage = reactionAtlasImage
                 )
             }
