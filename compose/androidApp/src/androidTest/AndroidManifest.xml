@@ -10,7 +10,11 @@
             android:theme="@android:style/Theme.NoDisplay" />
         <activity
             android:name="build.raft.app.shared.AndroidAttachmentExternalReadProbeActivity"
-            android:exported="true">
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:noHistory="true"
+            android:process=":attachment_external_reader"
+            android:theme="@android:style/Theme.NoDisplay">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
 

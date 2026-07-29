@@ -12,10 +12,12 @@ import java.io.IOException;
 import java.io.InputStream;
 
 /**
- * Framework-only attachment reader that runs as the standalone androidTest package process.
+ * Framework-only attachment reader that runs in a dedicated androidTest package process.
  *
  * <p>The external process cannot rely on the target APK's Kotlin or AndroidX classpath. Keeping
- * this fixture on Android/JDK APIs preserves the distinct-UID FileProvider grant oracle.
+ * this fixture on Android/JDK APIs and out of the test package's default process prevents merged
+ * library providers from starting before the probe, while preserving the distinct-UID
+ * FileProvider grant oracle.
  */
 public final class AndroidAttachmentExternalReadProbeActivity extends Activity {
     public static final String EXTRA_RESULT_RECEIVER = "attachment_read_result_receiver";
