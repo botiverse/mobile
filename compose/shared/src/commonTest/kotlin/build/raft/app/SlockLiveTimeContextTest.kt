@@ -20,9 +20,14 @@ class SlockLiveTimeContextTest {
     fun stableProviderKeepsIdentityAcrossMinuteUpdates() {
         val first = epochMillis("2026-07-27T12:00:00Z")
         val second = first + 60_000L
-        val provider = SlockTimeContextProvider(SlockTimeCapabilities(0, "24h").contextAt(first))
+        val provider =
+            SlockTimeContextProvider(
+                SlockTimeCapabilities(0, "24h").contextAt(first, SlockLegacyTestDatetimeFoundationOwner)
+            )
 
-        provider.update(SlockTimeCapabilities(0, "24h").contextAt(second))
+        provider.update(
+            SlockTimeCapabilities(0, "24h").contextAt(second, SlockLegacyTestDatetimeFoundationOwner)
+        )
 
         assertEquals(second, provider.current?.nowEpochMillis)
         assertEquals(provider.current?.todayEpochDay, provider.todayEpochDay)
@@ -40,7 +45,7 @@ class SlockLiveTimeContextTest {
                 timeFormat = "12h"
             ).toSlockTimeCapabilities()
 
-        val context = capabilities.contextAt(liveNow)
+        val context = capabilities.contextAt(liveNow, SlockLegacyTestDatetimeFoundationOwner)
 
         assertEquals(liveNow, context.nowEpochMillis)
         assertEquals(slockEpochDayForDate(2026, 7, 27), context.todayEpochDay)
@@ -76,6 +81,7 @@ class SlockLiveTimeContextTest {
             SlockTimeContextRefreshController(
                 capabilities = capabilities,
                 clock = SlockTimeClock { now },
+                foundationOwner = SlockLegacyTestDatetimeFoundationOwner,
                 scheduleTimeout = { _, callback ->
                     scheduled += callback
                     SlockTimeoutHandle {}
@@ -118,6 +124,7 @@ class SlockLiveTimeContextTest {
             SlockTimeContextRefreshController(
                 capabilities = capabilities,
                 clock = SlockTimeClock { listOf(beforeMidnight, afterMidnight)[activeClockIndex] },
+                foundationOwner = SlockLegacyTestDatetimeFoundationOwner,
                 scheduleTimeout = { delayMillis, callback ->
                     activeDelays += delayMillis.toLong()
                     activeCallback = callback
@@ -160,6 +167,7 @@ class SlockLiveTimeContextTest {
             SlockTimeContextRefreshController(
                 capabilities = capabilities,
                 clock = SlockTimeClock { afterMidnight },
+                foundationOwner = SlockLegacyTestDatetimeFoundationOwner,
                 scheduleTimeout = { delayMillis, _ ->
                     resumedDelays += delayMillis.toLong()
                     SlockTimeoutHandle {}
@@ -172,6 +180,48 @@ class SlockLiveTimeContextTest {
         assertEquals(slockEpochDayForDate(2026, 7, 23), resumedRefreshes.single()?.todayEpochDay)
         assertEquals(listOf(55_000L), resumedDelays)
         assertEquals(listOf(1L), resumedArmedGenerations)
+    }
+
+    @Test
+    fun liveControllerReReadsSystemZoneWithoutReplacingLegacyPayload() {
+        val first = epochMillis("2026-07-27T23:59:30Z")
+        var now = first
+        var systemOffsetMinutes = 0
+        val scheduled = mutableListOf<() -> Unit>()
+        val contexts = mutableListOf<SlockTimeContext?>()
+        val foundationOwner =
+            slockTestDatetimeFoundationOwner(
+                kuiklyBaseEnabled = true,
+                kuiklyBaseNowMillis = { now },
+                legacyNowMillis = { now },
+                localOffsetMinutesAt = { systemOffsetMinutes },
+            )
+        val controller =
+            SlockTimeContextRefreshController(
+                capabilities = SlockTimeCapabilities(localOffsetMinutes = 480, timeFormat = "24h"),
+                clock = SlockTimeClock { now },
+                foundationOwner = foundationOwner,
+                scheduleTimeout = { _, callback ->
+                    scheduled += callback
+                    SlockTimeoutHandle {}
+                },
+                onRefresh = contexts::add,
+            )
+
+        controller.start()
+        systemOffsetMinutes = 60
+        now += 60_000L
+        scheduled.removeAt(0).invoke()
+
+        assertEquals(listOf(0, 60), contexts.map { it?.localOffsetMinutes })
+        assertEquals(
+            listOf(
+                slockEpochDayForDate(2026, 7, 27),
+                slockEpochDayForDate(2026, 7, 28),
+            ),
+            contexts.map { it?.todayEpochDay },
+        )
+        controller.stop()
     }
 
     @Test

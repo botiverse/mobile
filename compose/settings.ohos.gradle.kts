@@ -229,6 +229,7 @@ dependencyResolutionManagement {
                 includeModule("com.tencent.kuiklybase", "resource-core")
                 includeModuleByRegex("com\\.tencent\\.kuiklybase", "resource-core.*")
                 includeModuleByRegex("com\\.tencent\\.kuiklybase", "network.*")
+                includeModuleByRegex("build\\.raft\\.kuiklybase", "datetime.*")
                 includeModule(
                     "com.tencent.kuiklybase.network.ohos-runtime",
                     "com.tencent.kuiklybase.network.ohos-runtime.gradle.plugin"

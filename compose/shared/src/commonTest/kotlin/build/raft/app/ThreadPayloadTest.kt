@@ -707,7 +707,8 @@ class ThreadPayloadTest {
         val provider =
             SlockTimeContextProvider(
                 SlockTimeCapabilities(localOffsetMinutes = 480, timeFormat = "24h").contextAt(
-                    parseSlockTimestampEpochMillisOrNull("2026-07-22T23:59:30+08:00")!!
+                    parseSlockTimestampEpochMillisOrNull("2026-07-22T23:59:30+08:00")!!,
+                    SlockLegacyTestDatetimeFoundationOwner,
                 )
             )
         val renderConfig =
@@ -718,7 +719,8 @@ class ThreadPayloadTest {
 
         provider.update(
             SlockTimeCapabilities(localOffsetMinutes = 480, timeFormat = "24h").contextAt(
-                parseSlockTimestampEpochMillisOrNull("2026-07-23T00:01:05+08:00")!!
+                parseSlockTimestampEpochMillisOrNull("2026-07-23T00:01:05+08:00")!!,
+                SlockLegacyTestDatetimeFoundationOwner,
             )
         )
         val refreshedContext = renderConfig.dateDividerTimeContext(provider.todayEpochDay)

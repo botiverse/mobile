@@ -20,7 +20,7 @@ Components:
   coroutines     org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0-KBA-001
   atomicfu       org.jetbrains.kotlinx:atomicfu:0.23.2-KBA-001
   okio           com.squareup.okio:okio:3.9.10-KBA-001
-  datetime       org.jetbrains.kotlinx:kotlinx-datetime:0.6.0-RC.2-KBA-003
+  datetime       RETIRED: use build.raft.kuiklybase:datetime:0.1.0-raft.0(-ohos)
 
 The script clones Tencent-TDS/KuiklyBase-platform, clones the matching
 upstream dependency, checks out the documented baseline, applies the KuiklyBase
@@ -68,12 +68,9 @@ case "${COMPONENT}" in
     EXPECTED_VERSION="3.9.10-KBA-001"
     ;;
   datetime)
-    UPSTREAM_URL="https://github.com/Kotlin/kotlinx-datetime.git"
-    UPSTREAM_REF="v0.6.0-RC.2"
-    PATCH_PATH="kotlinx.datetime/kotlinx-datetime.patch"
-    BRANCH_NAME="${SLOCK_KUIKLYBASE_DEP_BRANCH:-slock-datetime-0.6.0-rc2-ohos}"
-    WORKDIR_DEFAULT="${THIRD_PARTY_ROOT}/kotlinx-datetime-ohos"
-    EXPECTED_VERSION="0.6.0-RC.2-KBA-003"
+    echo "The legacy kotlinx-datetime OHOS preparation is retired." >&2
+    echo "Use build.raft.kuiklybase:datetime:0.1.0-raft.0 (normal) or 0.1.0-raft.0-ohos." >&2
+    exit 4
     ;;
   *)
     echo "Unknown component: ${COMPONENT}" >&2

@@ -8,7 +8,7 @@ import kotlinx.cinterop.ptr
 import platform.posix.gettimeofday
 import platform.posix.timeval
 
-internal actual fun defaultNowMillis(): Long =
+internal actual fun legacyPlatformNowMillis(): Long =
     memScoped {
         val now = alloc<timeval>()
         gettimeofday(now.ptr, null)
