@@ -19530,6 +19530,7 @@ internal fun homeSearchEntityResults(
     membersLabel: String
 ): List<SearchEntityResult> {
     val trimmedQuery = query.trim()
+    val normalizedQuery = trimmedQuery.lowercase()
     if (trimmedQuery.isBlank()) return emptyList()
     val snapshot = (homeState.content as? SharedHomeContentState.Content)?.snapshot ?: return emptyList()
     val conversations = snapshot.channels + snapshot.directMessages
@@ -19573,22 +19574,24 @@ internal fun homeSearchEntityResults(
                 membersLabel = membersLabel,
             )
         }
-    val entries =
-        (conversationResults + memberResults).let { candidates ->
-            when (trimmedQuery.firstOrNull()) {
-                '#' -> candidates.filter { it.suggestion.type == SearchEntityType.Channel }
-                '@' ->
-                    candidates.filter {
-                        it.suggestion.type == SearchEntityType.Human ||
-                            it.suggestion.type == SearchEntityType.Agent
-                    }
-                else -> candidates
-            }
-        }
-    return rankThreadComposerSuggestionEntries(query = trimmedQuery, entries = entries)
+    return (conversationResults + memberResults)
         .distinctBy { it.key }
         .take(5)
 }
+
+
+internal fun HomeConversationRow.searchMatches(query: String): Boolean =
+    listOfNotNull(
+        name,
+        if (kind == ConversationKind.DirectMessage) null else "#${name.removePrefix("#")}",
+        subtitle.orEmpty(),
+        channelId?.value.orEmpty(),
+        threadId.value
+    )
+        .any { it.lowercase().contains(query) }
+
+private fun SearchSenderFilterItem.searchMatches(query: String): Boolean =
+    listOf(label, handle, id).any { it.lowercase().contains(query) }
 
 internal fun SearchSenderFilterItem.toHomeSearchEntityResult(
     conversationIdentity: ThreadLaunchConversationIdentity?,
