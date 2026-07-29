@@ -85,7 +85,6 @@ import build.raft.app.data.SharedComputersStore
 import build.raft.app.data.SharedServerMembersEntry
 import build.raft.app.data.SharedServerMembersState
 import build.raft.app.data.SelectedServerStore
-import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.kuiklyBridgeCallContext
 import build.raft.app.markdown.SlockMarkdownBody
 import build.raft.app.model.AgentProfile
@@ -125,6 +124,7 @@ import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
 import build.raft.app.model.toMemberProfile
 import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -864,7 +864,7 @@ internal class ComposeMembersPage : AuthenticatedProductPager(AuthenticatedProdu
 internal class ComposeMemberDetailPage : AuthenticatedProductPager(AuthenticatedProductRoute.MemberDetail) {
     override fun willInit() {
         super.willInit()
-        setAuthenticatedContent { MemberDetailPageContent() }
+        setAuthenticatedContent { MemberDetailPageContent(slockPageVisibleResumeTick) }
     }
 }
 
@@ -2435,7 +2435,7 @@ private fun rememberMemberDetailRouteProvider(
 }
 
 @Composable
-private fun MemberDetailPageContent() {
+private fun MemberDetailPageContent(pageVisibleTick: Int) {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = Utils.bridgeModule(pager.pagerId)
     val linkNavigator = rememberSlockLinkNavigator(pager, bridge)
@@ -2971,6 +2971,7 @@ private fun MemberDetailPageContent() {
                     onReportAgentIssue = agentDetailActions::reportIssue,
                     onUnavailableAction = { bridge.toast(it) },
                     timeContext = timeContext,
+                    pageVisibleTick = pageVisibleTick,
                     sharedAgentDetailStore = provider.agentDetailStore,
                     initialAgentTab =
                         if (current.accessMode.allowsPrivateAgentSurfaces) {
@@ -3115,6 +3116,7 @@ private fun MemberDetailPageContent() {
                 onReportAgentIssue = null,
                 onUnavailableAction = { bridge.toast(it) },
                 timeContext = timeContext,
+                pageVisibleTick = pageVisibleTick,
                 initialAgentTab = initialAgentTab,
                 agentPanelTabOrder = payload.agentPanelTabOrder,
                 agentStatusResolver = agentStatusResolver,
@@ -4061,6 +4063,7 @@ private fun MembersDetailContent(
     onReportAgentIssue: (suspend (SharedAgentIssueReportRequest) -> DataResult<AgentIssueReportResult>)?,
     onUnavailableAction: (String) -> Unit,
     timeContext: SlockTimeContext,
+    pageVisibleTick: Int = 0,
     sharedAgentDetailStore: SharedAgentDetailStore? = null,
     initialVisualMode: MembersAgentDetailVisualMode = MembersAgentDetailVisualMode.Profile,
     initialAgentTab: MembersAgentDetailTab? = null,
@@ -4607,6 +4610,8 @@ private fun MembersDetailContent(
                                 MembersAgentDetailTab.Chat ->
                                     MembersAgentChatTab(
                                         detail = detail,
+                                        timeContext = timeContext,
+                                        pageVisibleTick = pageVisibleTick,
                                         modifier = Modifier.padding(horizontal = MembersPageInset)
                                     )
                                 MembersAgentDetailTab.Reminders ->
@@ -8934,7 +8939,28 @@ private fun MembersAgentCreatedAgentRow(
 }
 
 @Composable
-private fun MembersAgentChatTab(detail: AgentDetailSnapshot?, modifier: Modifier = Modifier) {
+private fun MembersAgentChatTab(
+    detail: AgentDetailSnapshot?,
+    timeContext: SlockTimeContext,
+    pageVisibleTick: Int,
+    modifier: Modifier = Modifier
+) {
+    val inheritedTimeContextProvider = LocalSlockTimeContextProvider.current
+    val fallbackTimeCapabilities = remember(timeContext) { timeContext.toSlockTimeCapabilities() }
+    val fallbackTimeContextProvider =
+        rememberLiveSlockTimeContext(
+            capabilities = fallbackTimeCapabilities,
+            pageVisibleTick = pageVisibleTick,
+            active = inheritedTimeContextProvider == null
+        )
+    val timeContextProvider = inheritedTimeContextProvider ?: fallbackTimeContextProvider
+    CompositionLocalProvider(LocalSlockTimeContextProvider provides timeContextProvider) {
+        MembersAgentChatTabContent(detail = detail, modifier = modifier)
+    }
+}
+
+@Composable
+private fun MembersAgentChatTabContent(detail: AgentDetailSnapshot?, modifier: Modifier = Modifier) {
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
@@ -9100,7 +9126,7 @@ private fun MembersAgentDmRow(row: AgentDmSummary) {
                 maxLines = 1
             )
             Text(
-                text = row.lastMessageAt.membersDmRelativeTime(),
+                text = slockRelativeTimestampLabel(row.lastMessageAt),
                 style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
                 color = SlockColor.TextMutedGray,
                 maxLines = 1
@@ -9122,29 +9148,6 @@ private fun MembersAgentDmRow(row: AgentDmSummary) {
             color = SlockColor.TextMutedGray.copy(alpha = 0.7f)
         )
     }
-}
-
-private fun String?.membersDmRelativeTime(): String {
-    val raw = this?.trim()?.takeIf { it.isNotBlank() } ?: return ""
-    // Try ISO timestamp first.
-    val epochMillis = parseSlockTimestampEpochMillisOrNull(raw)
-    if (epochMillis != null) {
-        val now = defaultNowMillis()
-        val diffMs = now - epochMillis
-        if (diffMs < 0L) return raw
-        val minutes = diffMs / 60_000L
-        val hours = diffMs / 3_600_000L
-        val days = diffMs / 86_400_000L
-        return when {
-            minutes < 1L -> "just now"
-            minutes < 60L -> "$minutes minute${if (minutes == 1L) "" else "s"} ago"
-            hours < 24L -> "$hours hour${if (hours == 1L) "" else "s"} ago"
-            days < 30L -> "$days day${if (days == 1L) "" else "s"} ago"
-            else -> raw
-        }
-    }
-    // Otherwise pass through (already-friendly strings like '4 days ago').
-    return raw
 }
 
 @Composable
