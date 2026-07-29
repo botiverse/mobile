@@ -1,5 +1,5 @@
 import { hapTasks } from '@ohos/hvigor-ohos-plugin';
-import { kuiklyCompilePlugin, kuiklyCopyAssetsPlugin } from 'kuikly-ohos-compile-plugin';
+import { kuiklyCompilePlugin } from '../hvigor/kuiklyPlugin';
 import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';

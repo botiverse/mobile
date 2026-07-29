@@ -190,6 +190,7 @@ import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.IPagerEventObserver
 import com.tencent.tmm.kmmresource.compose.localized
 import com.tencent.tmm.kmmresource.compose.stringResource
+import com.tencent.tmm.kmmresource.resource.StringResource
 import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 import com.tencent.tmm.kmmresource.resource.desc.desc
 import com.tencent.kuikly.core.pager.Pager
@@ -399,6 +400,19 @@ internal fun membersAgentServerRoleOptions(
 
 private fun String?.normalizedMembersServerRole(): String =
     this?.trim()?.lowercase().orEmpty()
+
+// OHOS's zero-argument native string lookup routes through the variadic
+// OH_ResourceManager_GetStringByName API. Reading a resource that contains
+// %1$s without an argument makes the platform formatter dereference a missing
+// vararg. Resolve templates through KmmResource's formatted service path with
+// a sentinel, then restore the placeholder for callbacks that supply the
+// eventual value outside composition.
+private const val MembersFormatSentinel = "__RAFT_MEMBER_FORMAT_VALUE__"
+
+@Composable
+private fun membersStringTemplate(resource: StringResource): String =
+    stringResource(resource, MembersFormatSentinel)
+        .replace(MembersFormatSentinel, "%1\$s")
 
 private fun String.membersFormat(value: String): String = replace("%1\$s", value)
 
@@ -2443,11 +2457,11 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
     val diagnosticsCopied = stringResource(MR.strings.member_notice_diagnostics_copied)
     val removeFromSettings = stringResource(MR.strings.member_notice_remove_from_settings)
     val tabOrderSaveError = stringResource(MR.strings.member_error_tab_order_save)
-    val tabOrderSaveErrorTemplate = stringResource(MR.strings.member_error_tab_order_save_detail)
+    val tabOrderSaveErrorTemplate = membersStringTemplate(MR.strings.member_error_tab_order_save_detail)
     val tabOrderPermissionError = stringResource(MR.strings.member_error_tab_order_permission)
     val reminderOpenError = stringResource(MR.strings.member_error_open_reminder)
     val directMessageOpenError = stringResource(MR.strings.member_error_open_direct_message)
-    val directMessageOpenErrorTemplate = stringResource(MR.strings.member_error_open_direct_message_detail)
+    val directMessageOpenErrorTemplate = membersStringTemplate(MR.strings.member_error_open_direct_message_detail)
     val directMessagePermissionError = stringResource(MR.strings.member_error_open_direct_message_permission)
     val payload = remember(pager.pageData.params.toString()) {
         pager.pageData.params.toKuiklyMemberDetailPayload()
@@ -4090,8 +4104,8 @@ private fun MembersDetailContent(
     val issueReportingUnavailable = stringResource(MR.strings.member_error_issue_unavailable)
     val avatarEditingUnavailable = stringResource(MR.strings.member_error_avatar_edit_unavailable)
     val avatarUnchanged = stringResource(MR.strings.member_error_avatar_unchanged)
-    val permissionErrorTemplate = stringResource(MR.strings.member_error_permission)
-    val avatarSaveErrorTemplate = stringResource(MR.strings.member_error_avatar_save)
+    val permissionErrorTemplate = membersStringTemplate(MR.strings.member_error_permission)
+    val avatarSaveErrorTemplate = membersStringTemplate(MR.strings.member_error_avatar_save)
     val diagnosticsCopied = stringResource(MR.strings.member_action_diagnostics_copied)
     val issueReported = stringResource(MR.strings.member_action_issue_reported)
     val deleted = detail?.summary?.deletedAt?.isNotBlank() == true
@@ -6147,8 +6161,8 @@ private fun MembersHumanInfoSection(
     var savingRole by remember(member.id.value) { mutableStateOf(false) }
     var roleError by remember(member.id.value) { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
-    val permissionErrorTemplate = stringResource(MR.strings.member_error_permission)
-    val saveErrorTemplate = stringResource(MR.strings.member_error_save)
+    val permissionErrorTemplate = membersStringTemplate(MR.strings.member_error_permission)
+    val saveErrorTemplate = membersStringTemplate(MR.strings.member_error_save)
     val editableRoles = membersEditableHumanServerRoles(
         actorRole = actorRole,
         accessMode = accessMode,
@@ -6625,8 +6639,8 @@ private fun MembersAgentAvatarPicker(
 ) {
     val scope = rememberCoroutineScope()
     val avatarUploadCancelled = stringResource(MR.strings.member_error_avatar_upload_cancelled)
-    val avatarUploadFailed = stringResource(MR.strings.member_error_avatar_upload)
-    val permissionFailed = stringResource(MR.strings.member_error_permission)
+    val avatarUploadFailed = membersStringTemplate(MR.strings.member_error_avatar_upload)
+    val permissionFailed = membersStringTemplate(MR.strings.member_error_permission)
     var uploading by remember(member.id.value) { mutableStateOf(false) }
     // Use SlockUnifiedDialog (the unified modal engine — wraps Kuikly `Modal(...)` for
     // overlay rendering) instead of SlockModalLayer (which is a plain Box and was getting
@@ -6823,8 +6837,8 @@ private fun MembersAgentProfileHeader(
     )
     val scope = rememberCoroutineScope()
     val avatarUploadCancelled = stringResource(MR.strings.member_error_avatar_upload_cancelled)
-    val avatarUploadFailed = stringResource(MR.strings.member_error_avatar_upload)
-    val permissionFailed = stringResource(MR.strings.member_error_permission)
+    val avatarUploadFailed = membersStringTemplate(MR.strings.member_error_avatar_upload)
+    val permissionFailed = membersStringTemplate(MR.strings.member_error_permission)
     var uploading by remember(member.id.value) { mutableStateOf(false) }
 
     Column(
@@ -7003,9 +7017,9 @@ private fun MembersAgentProfileTab(
     val roleEditingUnavailable = stringResource(MR.strings.member_error_role_edit_unavailable)
     val runtimeEditingUnavailable = stringResource(MR.strings.member_error_runtime_edit_unavailable)
     val displayNameRequired = stringResource(MR.strings.member_error_display_name_required)
-    val permissionErrorTemplate = stringResource(MR.strings.member_error_permission)
-    val saveErrorTemplate = stringResource(MR.strings.member_error_save)
-    val descriptionTooLongTemplate = stringResource(MR.strings.member_error_description_too_long)
+    val permissionErrorTemplate = membersStringTemplate(MR.strings.member_error_permission)
+    val saveErrorTemplate = membersStringTemplate(MR.strings.member_error_save)
+    val descriptionTooLongTemplate = membersStringTemplate(MR.strings.member_error_description_too_long)
 
     // Display Name: independent edit state machine, mirrors React `editingDisplayName`
     // (AgentDetailPanel.tsx ~L1073). Pencil icon toggles edit mode; inline Save/Cancel
@@ -9335,12 +9349,12 @@ private fun MembersAgentWorkspaceTab(
                 MembersWorkspaceEmptyState(stringResource(MR.strings.member_state_no_files), onRefresh)
             is MembersAgentWorkspaceTreeState.Error ->
                 MembersWorkspaceErrorState(
-                    stringResource(MR.strings.member_error_workspace_load).membersFormat(treeState.code),
+                    stringResource(MR.strings.member_error_workspace_load, treeState.code),
                     onRefresh
                 )
             is MembersAgentWorkspaceTreeState.NoPermission ->
                 MembersWorkspaceErrorState(
-                    stringResource(MR.strings.member_error_workspace_hidden).membersFormat(treeState.code),
+                    stringResource(MR.strings.member_error_workspace_hidden, treeState.code),
                     onRefresh
                 )
             is MembersAgentWorkspaceTreeState.Content ->
@@ -9469,7 +9483,7 @@ private fun MembersWorkspaceNodeRow(
         }
         errorCode?.let {
             Text(
-                text = stringResource(MR.strings.member_error_workspace_child_load).membersFormat(it),
+                text = stringResource(MR.strings.member_error_workspace_child_load, it),
                 style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
                 color = SlockColor.AccentOrange,
                 modifier = Modifier.padding(start = ((row.depth + 1) * 14).dp)
@@ -9526,8 +9540,10 @@ private fun MembersAgentAppsTab(
             AgentAppLoginLoadState.Error ->
                 MembersDetailField(
                     stringResource(MR.strings.member_tab_apps),
-                    stringResource(MR.strings.member_error_apps_load)
-                        .membersFormat(appLogins.errorCode ?: "unknown_error")
+                    stringResource(
+                        MR.strings.member_error_apps_load,
+                        appLogins.errorCode ?: "unknown_error"
+                    )
                 )
             else -> {
                 val activeItems = appLogins?.items.orEmpty()
@@ -9580,8 +9596,10 @@ private fun MembersAgentAppLoginCard(
                 )
                 item.createdAt?.let {
                     Text(
-                        text = stringResource(MR.strings.member_label_connected_since)
-                            .membersFormat(it.membersActivityDisplayTime(timeContext)),
+                        text = stringResource(
+                            MR.strings.member_label_connected_since,
+                            it.membersActivityDisplayTime(timeContext)
+                        ),
                         style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
                         color = SlockColor.TextMutedGray
                     )
@@ -10300,8 +10318,7 @@ private fun MembersAgentPermissionsTab(
                 minWidth = 88.dp
             )
             Text(
-                text = stringResource(MR.strings.member_label_revision)
-                    .membersFormat(currentServer.revision.toString()),
+                text = stringResource(MR.strings.member_label_revision, currentServer.revision.toString()),
                 style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp),
                 color = SlockColor.TextMutedGray.copy(alpha = 0.4f),
                 modifier = Modifier.padding(start = 4.dp)
