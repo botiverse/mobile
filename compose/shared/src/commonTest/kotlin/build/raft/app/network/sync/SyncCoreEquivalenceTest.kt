@@ -48,11 +48,13 @@ class SyncCoreEquivalenceTest {
     private fun expectedOutcome(o: JsonObject): SyncIngestOutcome {
         val scope = o["scopeId"]!!.jsonPrimitive.content
         return when (val kind = o["kind"]!!.jsonPrimitive.content) {
-            "applied" -> SyncIngestOutcome.Applied(scope, o["seq"]!!.jsonPrimitive.long)
-            "duplicate_dropped" -> SyncIngestOutcome.DuplicateDropped(scope, o["seq"]!!.jsonPrimitive.long)
-            "max_advanced" -> SyncIngestOutcome.MaxAdvanced(scope, o["seq"]!!.jsonPrimitive.long)
+            "applied" -> SyncIngestOutcome.Applied(scope, o["seq"]!!.jsonPrimitive.content.toSyncSeq())
+            "duplicate_dropped" -> SyncIngestOutcome.DuplicateDropped(scope, o["seq"]!!.jsonPrimitive.content.toSyncSeq())
+            "max_advanced" -> SyncIngestOutcome.MaxAdvanced(scope, o["seq"]!!.jsonPrimitive.content.toSyncSeq())
             "gap_repair_requested" -> SyncIngestOutcome.GapRepairRequested(
-                scope, o["fromSeq"]!!.jsonPrimitive.long, o["toSeq"]!!.jsonPrimitive.long,
+                scope,
+                o["fromSeq"]!!.jsonPrimitive.content.toSyncSeq(),
+                o["toSeq"]!!.jsonPrimitive.content.toSyncSeq(),
             )
             "epoch_rebaseline_requested" -> SyncIngestOutcome.EpochRebaselineRequested(scope)
             else -> error("unknown expectedOutcome kind: $kind")
@@ -68,7 +70,7 @@ class SyncCoreEquivalenceTest {
                     domain,
                     SyncFrame(
                         scopeId = f["scopeId"]!!.jsonPrimitive.content,
-                        seq = f["seq"]!!.jsonPrimitive.long,
+                        seq = f["seq"]!!.jsonPrimitive.content.toSyncSeq(),
                         epoch = epochOf(f),
                         event = eventValue(f),
                     ),
@@ -80,7 +82,7 @@ class SyncCoreEquivalenceTest {
                     domain,
                     SyncSnapshot(
                         scopeId = s["scopeId"]!!.jsonPrimitive.content,
-                        watermark = s["watermark"]!!.jsonPrimitive.long,
+                        watermark = s["watermark"]!!.jsonPrimitive.content.toSyncSeq(),
                         epoch = epochOf(s),
                         state = appliedState(s["state"]!!.jsonObject),
                     ),
@@ -93,11 +95,14 @@ class SyncCoreEquivalenceTest {
                     SyncDifferenceResponse(
                         scopeId = r["scopeId"]!!.jsonPrimitive.content,
                         epoch = epochOf(r),
-                        fromSeq = r["fromSeq"]!!.jsonPrimitive.long,
-                        toSeq = r["toSeq"]!!.jsonPrimitive.long,
+                        fromSeq = r["fromSeq"]!!.jsonPrimitive.content.toSyncSeq(),
+                        toSeq = r["toSeq"]!!.jsonPrimitive.content.toSyncSeq(),
                         events = r["events"]!!.jsonArray.map {
                             val eo = it.jsonObject
-                            SyncDifferenceEvent(eo["seq"]!!.jsonPrimitive.long, eo["event"]!!.jsonObject["value"]!!.jsonPrimitive.long)
+                            SyncDifferenceEvent(
+                                eo["seq"]!!.jsonPrimitive.content.toSyncSeq(),
+                                eo["event"]!!.jsonObject["value"]!!.jsonPrimitive.long,
+                            )
                         },
                         partial = r["partial"]?.let { it != JsonNull && it.jsonPrimitive.content == "true" } ?: false,
                         snapshotRequired = r["snapshotRequired"]?.let { it != JsonNull && it.jsonPrimitive.content == "true" } ?: false,

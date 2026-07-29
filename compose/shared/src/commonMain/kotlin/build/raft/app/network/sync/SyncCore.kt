@@ -1,6 +1,6 @@
 /*
  * Raft Sync Core — deterministic sync state machine (RFC 043 §3). KMP port of
- * packages/shared/src/sync-core/core.ts (slock #4255 @ b665f42). Pure w.r.t. IO: ingest folds
+ * packages/sync-core/src/core.ts. Pure w.r.t. IO: ingest folds
  * data in; all outbound IO is declarative SyncRequestDescription. No transport, no persistence,
  * no ambient clock/randomness (§9.4). The same input sequence, in any interleaving, yields the
  * same terminal state.
@@ -9,7 +9,8 @@ package build.raft.app.network.sync
 
 private class ScopeEntry(
     /** null = no baseline yet (pre-first-snapshot for contiguous scopes). */
-    var appliedSeq: Long?,
+    var appliedSeq: SyncSeq?,
+    var acceptedFingerprint: String?,
     var epoch: SyncEpoch?,
     var repairPending: Boolean,
     var state: Any?,
@@ -34,7 +35,13 @@ private class SyncCoreImpl(config: SyncCoreConfig) : SyncCore {
     private fun scopeEntry(domain: SyncDomainConfig, scopeId: SyncScopeId): ScopeEntry {
         val byScope = scopes.getOrPut(domain.name) { LinkedHashMap() }
         return byScope.getOrPut(scopeId) {
-            ScopeEntry(appliedSeq = null, epoch = null, repairPending = false, state = domain.initialState())
+            ScopeEntry(
+                appliedSeq = null,
+                acceptedFingerprint = null,
+                epoch = null,
+                repairPending = false,
+                state = domain.initialState(),
+            )
         }
     }
 
@@ -51,7 +58,7 @@ private class SyncCoreImpl(config: SyncCoreConfig) : SyncCore {
         pending[requestKey(request)] = request
     }
 
-    private fun requestDifference(domainName: SyncDomainName, scopeId: SyncScopeId, sinceSeq: Long, epoch: SyncEpoch?) {
+    private fun requestDifference(domainName: SyncDomainName, scopeId: SyncScopeId, sinceSeq: SyncSeq, epoch: SyncEpoch?) {
         val request = SyncRequestDescription.Difference(domainName, scopeId, sinceSeq, epoch)
         pending[requestKey(request)] = request
     }
@@ -82,38 +89,79 @@ private class SyncCoreImpl(config: SyncCoreConfig) : SyncCore {
             if (domainConfig.density == SyncDensity.Contiguous) {
                 requestSnapshot(domain, frame.scopeId, SyncSnapshotReason.Initial)
                 entry.repairPending = true
-                return SyncIngestOutcome.GapRepairRequested(frame.scopeId, fromSeq = 0, toSeq = frame.seq)
+                return SyncIngestOutcome.GapRepairRequested(frame.scopeId, fromSeq = 0uL, toSeq = frame.seq)
             }
             entry.state = domainConfig.fold(entry.state, frame.event, SyncFoldFrame(frame.scopeId, frame.seq))
             entry.appliedSeq = frame.seq
+            entry.acceptedFingerprint = domainConfig.eventFingerprint?.invoke(frame.event)
             if (entry.epoch == null) entry.epoch = frame.epoch
             return SyncIngestOutcome.MaxAdvanced(frame.scopeId, frame.seq)
         }
 
-        // Idempotence: at-or-below the watermark is a no-op by comparison.
-        if (frame.seq <= appliedSeq) {
+        if (frame.seq < appliedSeq) {
+            if (domainConfig.eventFingerprint != null) {
+                violations.push(
+                    SyncViolationDraft(
+                        SyncViolationKind.VersionRegression,
+                        domain,
+                        frame.scopeId,
+                        frame.seq,
+                        frame.epoch,
+                    ),
+                )
+            }
             return SyncIngestOutcome.DuplicateDropped(frame.scopeId, frame.seq)
+        }
+
+        if (frame.seq == appliedSeq) {
+            val fingerprint = domainConfig.eventFingerprint
+                ?: return SyncIngestOutcome.DuplicateDropped(frame.scopeId, frame.seq)
+            if (entry.acceptedFingerprint == fingerprint(frame.event)) {
+                return SyncIngestOutcome.DuplicateDropped(frame.scopeId, frame.seq)
+            }
+            violations.push(
+                SyncViolationDraft(
+                    SyncViolationKind.ProducerVersionConflict,
+                    domain,
+                    frame.scopeId,
+                    frame.seq,
+                    frame.epoch,
+                ),
+            )
+            requestSnapshot(
+                domain,
+                frame.scopeId,
+                if (domainConfig.density == SyncDensity.Sparse) {
+                    SyncSnapshotReason.SparseRepull
+                } else {
+                    SyncSnapshotReason.SnapshotRequired
+                },
+            )
+            entry.repairPending = true
+            return SyncIngestOutcome.Violation(frame.scopeId, SyncViolationKind.ProducerVersionConflict)
         }
 
         if (domainConfig.density == SyncDensity.Sparse) {
             entry.state = domainConfig.fold(entry.state, frame.event, SyncFoldFrame(frame.scopeId, frame.seq))
             entry.appliedSeq = frame.seq
+            entry.acceptedFingerprint = domainConfig.eventFingerprint?.invoke(frame.event)
             return SyncIngestOutcome.MaxAdvanced(frame.scopeId, frame.seq)
         }
 
         // Contiguous density.
-        if (frame.seq == appliedSeq + 1) {
+        if (frame.seq == appliedSeq + 1uL) {
             entry.state = domainConfig.fold(entry.state, frame.event, SyncFoldFrame(frame.scopeId, frame.seq))
             entry.appliedSeq = frame.seq
+            entry.acceptedFingerprint = domainConfig.eventFingerprint?.invoke(frame.event)
             return SyncIngestOutcome.Applied(frame.scopeId, frame.seq)
         }
 
         // Gap: stop-gate and request repair; the frame is NOT applied — the difference response
         // redelivers it in order (RFC 038 §4.1).
-        val fromSeq = appliedSeq + 1
+        val fromSeq = appliedSeq + 1uL
         requestDifference(domain, frame.scopeId, appliedSeq, entry.epoch)
         entry.repairPending = true
-        return SyncIngestOutcome.GapRepairRequested(frame.scopeId, fromSeq, toSeq = frame.seq - 1)
+        return SyncIngestOutcome.GapRepairRequested(frame.scopeId, fromSeq, toSeq = frame.seq - 1uL)
     }
 
     override fun ingestSnapshot(domain: SyncDomainName, snapshot: SyncSnapshot): SyncIngestOutcome {
@@ -129,6 +177,7 @@ private class SyncCoreImpl(config: SyncCoreConfig) : SyncCore {
         }
         entry.state = domainConfig.fromSnapshot(snapshot)
         entry.appliedSeq = snapshot.watermark
+        entry.acceptedFingerprint = null
         entry.epoch = snapshot.epoch
         entry.repairPending = false
         clearScopeRequests(domain, snapshot.scopeId)
@@ -158,10 +207,12 @@ private class SyncCoreImpl(config: SyncCoreConfig) : SyncCore {
             if (applied != null && item.seq <= applied) continue
             entry.state = domainConfig.fold(entry.state, item.event, SyncFoldFrame(response.scopeId, item.seq))
             entry.appliedSeq = item.seq
+            entry.acceptedFingerprint = domainConfig.eventFingerprint?.invoke(item.event)
         }
         val afterFold = entry.appliedSeq
         if (afterFold == null || response.toSeq > afterFold) {
             entry.appliedSeq = response.toSeq
+            entry.acceptedFingerprint = null
         }
         clearScopeRequests(domain, response.scopeId)
 
@@ -170,7 +221,7 @@ private class SyncCoreImpl(config: SyncCoreConfig) : SyncCore {
             // the intermediate watermark.
             val watermark = entry.appliedSeq!!
             requestDifference(domain, response.scopeId, watermark, entry.epoch)
-            return SyncIngestOutcome.GapRepairRequested(response.scopeId, fromSeq = watermark + 1, toSeq = response.toSeq)
+            return SyncIngestOutcome.GapRepairRequested(response.scopeId, fromSeq = watermark + 1uL, toSeq = response.toSeq)
         }
 
         entry.repairPending = false
@@ -185,7 +236,7 @@ private class SyncCoreImpl(config: SyncCoreConfig) : SyncCore {
     override fun scopeSyncState(domain: SyncDomainName, scopeId: SyncScopeId): SyncScopeState? {
         val entry = scopes[domain]?.get(scopeId) ?: return null
         return SyncScopeState(
-            appliedSeq = entry.appliedSeq ?: 0,
+            appliedSeq = entry.appliedSeq ?: 0uL,
             epoch = entry.epoch,
             repairPending = entry.repairPending,
         )

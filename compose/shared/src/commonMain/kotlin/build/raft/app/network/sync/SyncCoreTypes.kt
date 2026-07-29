@@ -1,6 +1,6 @@
 /*
- * Raft Sync Core — type seam (RFC 043). KMP port of packages/shared/src/sync-core/types.ts
- * (slock #4255 @ b665f42). The core is a pure deterministic sync state machine: frames /
+ * Raft Sync Core — type seam (RFC 043). KMP port of packages/sync-core/src/types.ts.
+ * The core is a pure deterministic sync state machine: frames /
  * snapshots / difference responses in; domain state + declarative request descriptions out.
  * No transport, no persistence, no ambient clock or randomness — `now` and ids are injected
  * (RFC 043 §9.4). All IO leaves the core as SyncRequestDescription; retry timing/backoff is
@@ -13,6 +13,30 @@ typealias SyncScopeId = String
 
 /** Domain name — the RFC 037/038 domain the events belong to. */
 typealias SyncDomainName = String
+
+/** Exact unsigned 64-bit sequence/watermark carried by the sync protocol. */
+typealias SyncSeq = ULong
+
+fun Long.toSyncSeq(): SyncSeq {
+    require(this >= 0L) { "sync seq must be unsigned" }
+    return toULong()
+}
+
+fun String.toSyncSeq(): SyncSeq {
+    val parsed = toULongOrNull()
+    require(parsed != null && parsed.toString() == this) {
+        "sync seq must be canonical uint64 decimal"
+    }
+    return parsed
+}
+
+fun SyncSeq.toLongExact(): Long {
+    require(this <= Long.MAX_VALUE.toULong()) { "sync seq does not fit the legacy signed-long boundary" }
+    return toLong()
+}
+
+/** Canonical cross-platform runner/wire representation; never emit SyncSeq as a JSON number. */
+fun SyncSeq.toCanonicalDecimalString(): String = toString()
 
 /** Epoch discriminator (RFC 038 §3): watermarks compare only within one epoch; null = pre-first-contact. */
 typealias SyncEpoch = String
@@ -27,7 +51,7 @@ enum class SyncDensity { Contiguous, Sparse }
 /** A live push frame for one scope. Payload is the domain's event type (opaque here). */
 data class SyncFrame(
     val scopeId: SyncScopeId,
-    val seq: Long,
+    val seq: SyncSeq,
     val epoch: SyncEpoch? = null,
     val event: Any? = null,
 )
@@ -35,13 +59,13 @@ data class SyncFrame(
 /** A hydrate snapshot for one scope: state + the watermark it was taken at. */
 data class SyncSnapshot(
     val scopeId: SyncScopeId,
-    val watermark: Long,
+    val watermark: SyncSeq,
     val epoch: SyncEpoch? = null,
     val state: Any? = null,
 )
 
 /** One event in a difference response. */
-data class SyncDifferenceEvent(val seq: Long, val event: Any? = null)
+data class SyncDifferenceEvent(val seq: SyncSeq, val event: Any? = null)
 
 /**
  * A difference response (RFC 038 §3.2). `snapshotRequired` = server verdict the gap is
@@ -51,8 +75,8 @@ data class SyncDifferenceEvent(val seq: Long, val event: Any? = null)
 data class SyncDifferenceResponse(
     val scopeId: SyncScopeId,
     val epoch: SyncEpoch? = null,
-    val fromSeq: Long,
-    val toSeq: Long,
+    val fromSeq: SyncSeq,
+    val toSeq: SyncSeq,
     val events: List<SyncDifferenceEvent> = emptyList(),
     val partial: Boolean = false,
     val snapshotRequired: Boolean = false,
@@ -60,7 +84,7 @@ data class SyncDifferenceResponse(
 
 /** Per-scope bookkeeping the core maintains (egress view). */
 data class SyncScopeState(
-    val appliedSeq: Long,
+    val appliedSeq: SyncSeq,
     val epoch: SyncEpoch?,
     /** A repair (difference/snapshot) request is outstanding for this scope. */
     val repairPending: Boolean,
@@ -81,11 +105,11 @@ sealed interface SyncRequestDescription {
     data class Difference(
         override val domain: SyncDomainName,
         override val scopeId: SyncScopeId,
-        val sinceSeq: Long,
+        val sinceSeq: SyncSeq,
         val epoch: SyncEpoch?,
         val holdHash: String? = null,
         /** Client-declared resnapshot threshold (RFC 043 §6). */
-        val resnapshotOverGap: Long? = null,
+        val resnapshotOverGap: SyncSeq? = null,
     ) : SyncRequestDescription
 
     data class Snapshot(
@@ -114,7 +138,7 @@ data class SyncViolationRecord(
     val kind: SyncViolationKind,
     val domain: SyncDomainName,
     val scopeId: SyncScopeId,
-    val seq: Long? = null,
+    val seq: SyncSeq? = null,
     val epoch: SyncEpoch? = null,
     /** Closed-set diagnostic fields only — never raw payload (RFC 040 §3). */
     val detail: Map<String, Any?>? = null,
@@ -125,7 +149,7 @@ data class SyncViolationDraft(
     val kind: SyncViolationKind,
     val domain: SyncDomainName,
     val scopeId: SyncScopeId,
-    val seq: Long? = null,
+    val seq: SyncSeq? = null,
     val epoch: SyncEpoch? = null,
     val detail: Map<String, Any?>? = null,
 )
@@ -170,7 +194,7 @@ interface SyncStorageAdapter {
 }
 
 /** The (scopeId, seq) coordinate handed to a domain fold. */
-data class SyncFoldFrame(val scopeId: SyncScopeId, val seq: Long)
+data class SyncFoldFrame(val scopeId: SyncScopeId, val seq: SyncSeq)
 
 /**
  * Domain registration: the pure fold plus density declaration. The fold is RFC 037's
@@ -181,6 +205,8 @@ data class SyncDomainConfig(
     val name: SyncDomainName,
     val density: SyncDensity,
     val initialState: () -> Any?,
+    /** Stable identity of the complete accepted fact at one sequence. */
+    val eventFingerprint: ((event: Any?) -> String)? = null,
     /** Apply one in-order event. Purity is a contract (§9.4). */
     val fold: (state: Any?, event: Any?, frame: SyncFoldFrame) -> Any?,
     /** Replace state from a snapshot (rebaseline). */
@@ -201,10 +227,10 @@ data class SyncCoreConfig(
 sealed interface SyncIngestOutcome {
     val scopeId: SyncScopeId
 
-    data class Applied(override val scopeId: SyncScopeId, val seq: Long) : SyncIngestOutcome
-    data class DuplicateDropped(override val scopeId: SyncScopeId, val seq: Long) : SyncIngestOutcome
-    data class GapRepairRequested(override val scopeId: SyncScopeId, val fromSeq: Long, val toSeq: Long) : SyncIngestOutcome
-    data class MaxAdvanced(override val scopeId: SyncScopeId, val seq: Long) : SyncIngestOutcome
+    data class Applied(override val scopeId: SyncScopeId, val seq: SyncSeq) : SyncIngestOutcome
+    data class DuplicateDropped(override val scopeId: SyncScopeId, val seq: SyncSeq) : SyncIngestOutcome
+    data class GapRepairRequested(override val scopeId: SyncScopeId, val fromSeq: SyncSeq, val toSeq: SyncSeq) : SyncIngestOutcome
+    data class MaxAdvanced(override val scopeId: SyncScopeId, val seq: SyncSeq) : SyncIngestOutcome
     data class EpochRebaselineRequested(override val scopeId: SyncScopeId) : SyncIngestOutcome
     data class Violation(override val scopeId: SyncScopeId, val violation: SyncViolationKind) : SyncIngestOutcome
 }

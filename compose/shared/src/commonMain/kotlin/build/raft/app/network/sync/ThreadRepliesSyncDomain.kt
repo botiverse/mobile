@@ -135,7 +135,7 @@ internal class ThreadRepliesSyncHost(
         val frame =
             SyncFrame(
                 scopeId = identity.scopeId,
-                seq = reply.seq,
+                seq = reply.seq.toSyncSeq(),
                 epoch = null,
                 event = ThreadRepliesDomainEvent(reply, event.replyCount.coerceAtLeast(0)),
             )
@@ -158,7 +158,7 @@ internal class ThreadRepliesSyncHost(
                             THREAD_REPLIES_SYNC_DOMAIN,
                             SyncSnapshot(
                                 scopeId = identity.scopeId,
-                                watermark = syncState?.appliedSeq ?: reply.seq,
+                                watermark = syncState?.appliedSeq ?: reply.seq.toSyncSeq(),
                                 epoch = null,
                                 state = merged,
                             ),
@@ -215,7 +215,7 @@ internal class ThreadRepliesSyncHost(
                     replyCount = snapshot.replyCount.coerceAtLeast(0),
                     limit = InlineThreadReplyPreviewLimit,
                 )
-            var watermark = replacementState.snapshotSeq
+            var watermark = replacementState.snapshotSeq.toSyncSeq()
             for (frame in parked) {
                 val event = frame.event as? ThreadRepliesDomainEvent ?: continue
                 replacementState =

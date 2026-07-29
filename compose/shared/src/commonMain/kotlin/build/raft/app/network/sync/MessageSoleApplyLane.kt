@@ -255,7 +255,7 @@ internal class MessageSoleApplyLane(
             MESSAGES_SYNC_DOMAIN,
             SyncSnapshot(
                 scopeId = scopeKey.scopeId,
-                watermark = watermark,
+                watermark = watermark.toSyncSeq(),
                 epoch = cursor.epoch,
                 state = MessageDomainState(channelMessages = mapOf(scopeKey.scopeId to orderedFacts)),
             ),
@@ -296,7 +296,7 @@ internal class MessageSoleApplyLane(
             else MessageDomainEvent.New(row, frame.decoded.presentAggregates)
         core.ingestFrame(
             MESSAGES_SYNC_DOMAIN,
-            SyncFrame(scopeId = channelId, seq = seq, epoch = frame.epoch, event = domainEvent),
+            SyncFrame(scopeId = channelId, seq = seq.toSyncSeq(), epoch = frame.epoch, event = domainEvent),
         )
         val facts = (core.state(MESSAGES_SYNC_DOMAIN, channelId) as? MessageDomainState)
             ?.channelMessages
