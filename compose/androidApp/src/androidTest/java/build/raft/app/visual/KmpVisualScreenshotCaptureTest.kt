@@ -2214,11 +2214,7 @@ class KmpVisualScreenshotCaptureTest {
                 try {
                     dismissCompatibilityDialog()
                     waitForIdleBounded()
-                    val activePackage =
-                        InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow?.packageName
-                    require(activePackage == "build.raft.app.connectedtest") {
-                        "Search fixture is not the active input window: package=$activePackage"
-                    }
+                    awaitFixtureIsActiveInputWindow("Search fixture")
                     before = captureActivityScreenshot("$caseId.before")
                     val yellowBefore = before.countThreadOpenProbeYellowSamplesInTopBand()
                     val cyanBefore = before.countThreadChildActionProbeSamples(0x00, 0xE5, 0xFF)
@@ -3387,6 +3383,31 @@ class KmpVisualScreenshotCaptureTest {
         instrumentation.uiAutomation.injectInputEvent(
             MotionEvent.obtain(downTime, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, xPx, yPx, 0),
             true,
+        )
+    }
+
+    /**
+     * Startup/compile timing shifts (e.g. baseline-profile changes such as PR
+     * #1710) can leave a system/transition window ("android") as the active
+     * input window for a while after launch. A gesture issued in that state
+     * misses the fixture entirely, so poll until the fixture owns the active
+     * input window instead of requiring it at a single instant; fail only after
+     * the bounded timeout (nightly run 30402296301, 7/8 shards).
+     */
+    private fun awaitFixtureIsActiveInputWindow(
+        what: String,
+        timeoutMs: Long = ACTIVE_INPUT_WINDOW_TIMEOUT_MS
+    ) {
+        val deadline = SystemClock.uptimeMillis() + timeoutMs
+        var activePackage: CharSequence? = null
+        while (SystemClock.uptimeMillis() < deadline) {
+            activePackage =
+                InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow?.packageName
+            if (activePackage == "build.raft.app.connectedtest") return
+            Thread.sleep(ACTIVE_INPUT_WINDOW_POLL_MS)
+        }
+        throw IllegalArgumentException(
+            "$what is not the active input window after ${timeoutMs}ms: package=$activePackage"
         )
     }
 
@@ -5121,6 +5142,8 @@ class KmpVisualScreenshotCaptureTest {
         private const val TAP_DWELL_MS = 80L
         private const val ACCESSIBILITY_MARKER_TIMEOUT_MS = 2_000L
         private const val ACCESSIBILITY_MARKER_POLL_MS = 100L
+        private const val ACTIVE_INPUT_WINDOW_TIMEOUT_MS = 10_000L
+        private const val ACTIVE_INPUT_WINDOW_POLL_MS = 250L
         // Hard per-case backstop. With every unbounded waitForIdleSync path now
         // bounded (idle waits, onActivity, close — task #362/#364), no case
         // hangs forever, so this is a generous ceiling for legitimately-slow 3x
