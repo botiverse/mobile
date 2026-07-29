@@ -162,6 +162,39 @@ internal class SharedCreateAgentCoordinator(
     }
 }
 
+internal const val AGENT_CREATE_FORM_REFRESH_REQUIRED = "agent_create_form_refresh_required"
+internal const val AGENT_CREATE_FORM_REFRESH_FAILED = "agent_create_form_refresh_failed"
+
+internal val CREATE_AGENT_RUNTIME_FORM_REJECTION_CODES =
+    setOf(
+        "form_definition_ref_required",
+        "stale_form_schema",
+        "unsupported_form_protocol",
+        "unknown_form_runtime",
+        "unknown_form_ref_field"
+    )
+
+internal suspend fun <T> DataResult<T>.recoverRejectedCreateAgentForm(
+    formStore: SharedCreateAgentFormStore?,
+    serverId: String?,
+    machineId: String?
+): DataResult<T> {
+    val error = (this as? DataResult.Error)?.error ?: return this
+    if (error.code !in CREATE_AGENT_RUNTIME_FORM_REJECTION_CODES) return this
+    val cleanServerId = serverId?.trim().orEmpty()
+    val cleanMachineId = machineId?.trim().orEmpty()
+    if (formStore == null || cleanServerId.isBlank() || cleanMachineId.isBlank()) {
+        return DataResult.Error(ScreenError(AGENT_CREATE_FORM_REFRESH_FAILED, retryable = true))
+    }
+    // Refresh the contract, but never replay a create mutation or retain its write-only API key.
+    return when (formStore.loadSupportedBuiltInForm(cleanServerId, cleanMachineId, force = true)) {
+        is DataResult.Content ->
+            DataResult.Error(ScreenError(AGENT_CREATE_FORM_REFRESH_REQUIRED, retryable = true))
+        else ->
+            DataResult.Error(ScreenError(AGENT_CREATE_FORM_REFRESH_FAILED, retryable = true))
+    }
+}
+
 private fun RuntimeModelConfig.toModelIdOrNull(): String? =
     when (this) {
         is RuntimeModelConfig.Preset -> id

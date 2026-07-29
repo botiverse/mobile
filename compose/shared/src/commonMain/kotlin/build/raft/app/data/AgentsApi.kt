@@ -446,8 +446,25 @@ private fun <T> HomeNetworkResponse.toAgentsDataError(): DataResult<T> =
         401 -> DataResult.NoPermission(PermissionBlocker(code = "auth_required", requiredCapability = "auth_session"))
         403 -> DataResult.NoPermission(PermissionBlocker(code = "server_forbidden", requiredCapability = "server_access"))
         in 500..599 -> DataResult.Error(ScreenError(code = "server_unavailable", retryable = true))
-        else -> DataResult.Error(ScreenError(code = "http_$code", retryable = code != 404))
+        else ->
+            DataResult.Error(
+                ScreenError(
+                    code = runtimeFormIssueCodeOrNull() ?: "http_$code",
+                    retryable = code != 404
+                )
+            )
     }
+
+private fun HomeNetworkResponse.runtimeFormIssueCodeOrNull(): String? {
+    if (code != 409) return null
+    val body = bodyText?.takeIf { it.isNotBlank() } ?: return null
+    return runCatching {
+        agentsApiJson.decodeFromString(AgentErrorEnvelopeDto.serializer(), body)
+            .issues
+            .firstOrNull { it.code in CREATE_AGENT_RUNTIME_FORM_REJECTION_CODES }
+            ?.code
+    }.getOrNull()
+}
 
 private suspend fun HomeNetworkResponse.mapAgentsCommand(
     contractCode: String,
@@ -461,6 +478,17 @@ private suspend fun HomeNetworkResponse.mapAgentsCommand(
 // Source of truth: packages/server/src/services/agentService.ts and the
 // routes/agents.ts handlers. `name` is required; `displayName` may be null but
 // is not used as a fallback for `name` — the server always emits `name`.
+
+@Serializable
+private data class AgentErrorEnvelopeDto(
+    val issues: List<AgentErrorIssueDto> = emptyList()
+)
+
+@Serializable
+private data class AgentErrorIssueDto(
+    val code: String,
+    val pointer: String? = null
+)
 
 @Serializable
 private data class AgentWireDto(

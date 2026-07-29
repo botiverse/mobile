@@ -17,6 +17,38 @@ import kotlinx.serialization.json.jsonPrimitive
 
 class AgentsApiTest {
     @Test
+    fun createAgentPreservesRuntimeFormRejectionCodeForRecovery() = runPortableCoroutineTest {
+        val client =
+            SlockAgentsApiClient(
+                RecordingAgentsApi(
+                    createAgentCode = 409,
+                    createAgentBody =
+                        """{"error":"Built-in Pi requires a runtime form definition reference","issues":[{"code":"form_definition_ref_required","pointer":"/formDefinitionRef"}]}"""
+                )
+            )
+
+        val error = assertIs<DataResult.Error>(client.createAgent("{}"))
+
+        assertEquals("form_definition_ref_required", error.error.code)
+    }
+
+    @Test
+    fun createAgentKeepsUnknownConflictGeneric() = runPortableCoroutineTest {
+        val client =
+            SlockAgentsApiClient(
+                RecordingAgentsApi(
+                    createAgentCode = 409,
+                    createAgentBody =
+                        """{"error":"Conflict","issues":[{"code":"unrelated_conflict","pointer":"/name"}]}"""
+                )
+            )
+
+        val error = assertIs<DataResult.Error>(client.createAgent("{}"))
+
+        assertEquals("http_409", error.error.code)
+    }
+
+    @Test
     fun typedAgentsApiAcceptsCanonicalUpstreamShapes() = runPortableCoroutineTest {
         val transport = RecordingAgentsApi()
         val client = SlockAgentsApiClient(transport)
@@ -279,6 +311,7 @@ class AgentsApiTest {
         private val agentsBody: String = """[{"id":"agent-1","name":"Noel","status":"active"}]""",
         private val agentBody: String = """{"id":"agent-1","name":"Agent One","displayName":"Noel Bot","role":"Admin","status":"active","model":"gpt-5","runtime":"codex","runtimeConfig":{"version":1,"runtime":"codex","model":{"kind":"preset","id":"gpt-5.6-sol"},"mode":{"kind":"default"}},"machineId":"machine-1","reasoningEffort":"medium","executionMode":"local","avatarUrl":"pixel:robot","creatorId":"user-1","creatorType":"human","creator":{"type":"human","id":"user-1","name":"artin","displayName":"Artin","avatarUrl":"pixel:user","gravatarHash":"hash-1"},"daemonVersion":"0.57.1","envVars":{"OPENAI_API_KEY":"configured","ANTHROPIC_API_KEY":"configured"},"createdAgents":[{"id":"agent-child","name":"helper","displayName":"Helper","runtime":"codex","status":"idle"}],"activity":"idle","activityDetail":"Ready","deletedAt":null}""",
         private val createAgentBody: String = """{"id":"agent-2","name":"Noel","status":"active","avatarUrl":"pixel:tree"}""",
+        private val createAgentCode: Int = 200,
         private val commandBody: String = """{"ok":true}""",
         private val agentDmsBody: String = """[{"id":"dm-1","name":"Agent chat"}]""",
         private val activityBody: String = """[{"id":"a1","type":"tool_start","timestamp":"2026-05-22T00:00:00.000Z"}]""",
@@ -302,7 +335,7 @@ class AgentsApiTest {
 
         override suspend fun createAgent(body: String): HomeNetworkResponse {
             calls += "POST agents body=$body"
-            return ok(createAgentBody)
+            return HomeNetworkResponse(code = createAgentCode, bodyText = createAgentBody)
         }
 
         override suspend fun updateAgent(agentId: MemberId, body: String): HomeNetworkResponse {
