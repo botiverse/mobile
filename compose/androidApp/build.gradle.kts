@@ -766,6 +766,7 @@ dependencies {
     implementation(libs.androidx.core.splashscreen)
     implementation(libs.androidx.webkit)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.window)
     implementation(libs.androidx.metrics.performance)
     implementation(libs.androidx.profileinstaller)
     implementation(libs.androidx.activity.compose)
