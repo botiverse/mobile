@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-07-30 04:32:43 UTC
+Generated: 2026-07-30 04:37:00 UTC
 Latest run: ef4f45a1-20260730043036
 Latest commit: ef4f45a1-20260730043036
 Commit subject: fix(visual): await fixture active-input-window before search gestures (#1755)
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 80, same 0, pass 0, basic-pass 0, different 79, missing 1
-AI analysis: ready 68 / total 80, pending 12
+AI analysis: ready 79 / total 80, pending 1
 Visual coverage matrix: active 89 / total 108, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 

@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-07-30T04:32:43.723Z",
+  "generatedAt": "2026-07-30T04:37:00.216Z",
   "latestRunId": "ef4f45a1-20260730043036",
   "latest": {
     "runId": "ef4f45a1-20260730043036",
     "commit": "ef4f45a1-20260730043036",
     "commitSubject": "fix(visual): await fixture active-input-window before search gestures (#1755)",
-    "generatedAt": "2026-07-30T04:32:43.723Z",
+    "generatedAt": "2026-07-30T04:37:00.216Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -20,8 +20,8 @@
     },
     "analysisSummary": {
       "total": 80,
-      "ready": 68,
-      "pending": 12
+      "ready": 79,
+      "pending": 1
     },
     "comparisons": [
       "react__android",
@@ -129,7 +129,7 @@
       "runId": "ef4f45a1-20260730043036",
       "commit": "ef4f45a1-20260730043036",
       "commitSubject": "fix(visual): await fixture active-input-window before search gestures (#1755)",
-      "generatedAt": "2026-07-30T04:32:43.723Z",
+      "generatedAt": "2026-07-30T04:37:00.216Z",
       "baseline": "react",
       "current": "android",
       "summary": {
@@ -142,8 +142,8 @@
       },
       "analysisSummary": {
         "total": 80,
-        "ready": 68,
-        "pending": 12
+        "ready": 79,
+        "pending": 1
       },
       "comparisons": [
         "react__android",

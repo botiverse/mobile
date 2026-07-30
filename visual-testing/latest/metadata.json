@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-30T04:32:43.723Z",
+  "generatedAt": "2026-07-30T04:37:00.216Z",
   "runId": "ef4f45a1-20260730043036",
   "commit": "ef4f45a1-20260730043036",
   "commitSubject": "fix(visual): await fixture active-input-window before search gestures (#1755)",
@@ -27,8 +27,8 @@
       },
       "analysisSummary": {
         "total": 80,
-        "ready": 68,
-        "pending": 12
+        "ready": 79,
+        "pending": 1
       }
     },
     {
@@ -51,8 +51,8 @@
       },
       "analysisSummary": {
         "total": 80,
-        "ready": 66,
-        "pending": 14
+        "ready": 74,
+        "pending": 6
       }
     },
     {
@@ -75,8 +75,8 @@
       },
       "analysisSummary": {
         "total": 80,
-        "ready": 69,
-        "pending": 11
+        "ready": 75,
+        "pending": 5
       }
     }
   ],
@@ -90,8 +90,8 @@
   },
   "analysisSummary": {
     "total": 80,
-    "ready": 68,
-    "pending": 12
+    "ready": 79,
+    "pending": 1
   },
   "componentMatrixSummary": {
     "total": 108,
