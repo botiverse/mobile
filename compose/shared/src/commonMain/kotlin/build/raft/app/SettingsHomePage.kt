@@ -820,7 +820,12 @@ private fun SharedHomeSearchEntityLeadingAvatar(
                 ) {
                     SlockAvatar(
                         avatarWireValue = memberAvatarWireValue ?: result.avatarWireValue ?: AvatarReference.Random(result.key).wireValue,
-                        label = result.title.removePrefix("@").removePrefix("#")
+                        label = result.title.removePrefix("@").removePrefix("#"),
+                        // task #107: must match the SlockAvatarWithStatus wrapper's
+                        // avatarSize — the default (ChannelAvatarSize = 20.dp) leaves the
+                        // avatar centered in a 32dp slot while the status dot anchors to
+                        // the slot corner, floating ~8dp outside the visible avatar.
+                        avatarSize = 32.dp
                     )
                 }
             }
