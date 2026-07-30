@@ -7426,6 +7426,9 @@ internal fun SharedThreadRouteContent(
             onLoadNewer = {
                 threadViewModel.loadNewerPage()
             },
+            onJumpToLatest = {
+                threadViewModel.jumpToLatest()
+            },
             onBack = onBack,
             onUpdateChannelProfile = { channelId, originalName, originalDescription, name, description ->
                 if (renderSlice.writeActionsEnabled) {
@@ -12205,6 +12208,7 @@ private fun ThreadPageContent(
     onSaveShareImage: suspend (String) -> JSONObject?,
     onFirstContentReady: () -> Unit = {},
     onLoadNewer: suspend () -> ThreadNewerPageLoadOutcome,
+    onJumpToLatest: suspend () -> Boolean,
     onBack: () -> Unit,
     onUpdateChannelProfile: (String, String, String, String, String) -> Unit = { _, _, _, _, _ -> },
     onClearChannelProfileUpdateStatus: () -> Unit = {},
@@ -12853,6 +12857,7 @@ private fun ThreadPageContent(
                         activeMarkdownTagKey = activeMarkdownTagKey,
                         onThreadEvent = onThreadEvent,
                         onLoadNewer = onLoadNewer,
+                        onJumpToLatest = onJumpToLatest,
                         onOpenMember = onOpenMemberProfile,
                         onMentionAuthor = { message ->
                             val handle = mentionHandleResolver(message)
@@ -14026,6 +14031,7 @@ private fun ThreadChatTab(
     activeMarkdownTagKey: String? = null,
     onThreadEvent: ThreadEventHandler,
     onLoadNewer: suspend () -> ThreadNewerPageLoadOutcome,
+    onJumpToLatest: suspend () -> Boolean,
     onOpenMember: (MemberDetailIdentity) -> Unit,
     onMentionAuthor: (KuiklyThreadMessageItem) -> Unit,
     onOpenMarkdownTag: (ThreadMarkdownTag, String) -> Unit,
@@ -14108,6 +14114,7 @@ private fun ThreadChatTab(
                     activeMarkdownTagKey = activeMarkdownTagKey,
                     onThreadEvent = onThreadEvent,
                     onLoadNewer = onLoadNewer,
+                    onJumpToLatest = onJumpToLatest,
                     onOpenMember = onOpenMember,
                     onMentionAuthor = onMentionAuthor,
                     onOpenMarkdownTag = onOpenMarkdownTag,
@@ -14177,6 +14184,7 @@ private fun ThreadChatTab(
                     activeMarkdownTagKey = activeMarkdownTagKey,
                     onThreadEvent = onThreadEvent,
                     onLoadNewer = onLoadNewer,
+                    onJumpToLatest = onJumpToLatest,
                     onOpenMember = onOpenMember,
                     onMentionAuthor = onMentionAuthor,
                     onOpenMarkdownTag = onOpenMarkdownTag,
@@ -14236,6 +14244,7 @@ private fun ThreadChatTab(
                 resolveMarkdownTagLabel = resolveMarkdownTagLabel,
                 onThreadEvent = onThreadEvent,
                 onLoadNewer = onLoadNewer,
+                onJumpToLatest = onJumpToLatest,
                 onOpenMember = onOpenMember,
                 onMentionAuthor = onMentionAuthor,
                 onOpenMarkdownTag = onOpenMarkdownTag,
@@ -14538,6 +14547,7 @@ private fun ThreadMessagesList(
     activeMarkdownTagKey: String? = null,
     onThreadEvent: ThreadEventHandler,
     onLoadNewer: suspend () -> ThreadNewerPageLoadOutcome,
+    onJumpToLatest: suspend () -> Boolean,
     onOpenMember: (MemberDetailIdentity) -> Unit,
     onMentionAuthor: (KuiklyThreadMessageItem) -> Unit,
     onOpenMarkdownTag: (ThreadMarkdownTag, String) -> Unit,
@@ -16699,7 +16709,7 @@ private fun ThreadMessagesList(
                     coroutineScope.launch {
                         try {
                             val clickUserScrollGeneration = userScrollGeneration.value
-                            val canonicalTailLoaded = threadViewModel.jumpToLatest()
+                            val canonicalTailLoaded = onJumpToLatest()
                             if (
                                 !shouldCompleteThreadBackToBottom(
                                     canonicalTailLoaded = canonicalTailLoaded,
