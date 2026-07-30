@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-07-30T22:20:31.137Z",
+  "generatedAt": "2026-07-30T22:25:39.231Z",
   "latestRunId": "4cdec2e2-20260730221708",
   "latest": {
     "runId": "4cdec2e2-20260730221708",
     "commit": "4cdec2e2-20260730221708",
     "commitSubject": "fix(ohos): preserve shared library fallback (#1785)",
-    "generatedAt": "2026-07-30T22:20:31.137Z",
+    "generatedAt": "2026-07-30T22:25:39.231Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -129,7 +129,7 @@
       "runId": "4cdec2e2-20260730221708",
       "commit": "4cdec2e2-20260730221708",
       "commitSubject": "fix(ohos): preserve shared library fallback (#1785)",
-      "generatedAt": "2026-07-30T22:20:31.137Z",
+      "generatedAt": "2026-07-30T22:25:39.231Z",
       "baseline": "react",
       "current": "android",
       "summary": {
