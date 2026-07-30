@@ -4331,6 +4331,7 @@ internal class SharedThreadStore(
     private val diagnosticsLogger: ((String) -> Unit)? = null,
     initialPayload: KuiklyThreadScreenPayload = KuiklyThreadScreenPayload(),
     private val beforeFocusedOriginCommit: (suspend (KuiklyThreadScreenPayload) -> Unit)? = null,
+    private val afterRefreshLoadingStateApplied: (suspend (KuiklyThreadScreenPayload) -> Unit)? = null,
     private val threadRepliesSyncHost: ThreadRepliesSyncHost = ThreadRepliesSyncHost(),
 ) {
     private val _state = MutableStateFlow(SharedThreadState(payload = initialPayload))
@@ -4857,6 +4858,7 @@ internal class SharedThreadStore(
             }
             currentPayload.withThreadContentProjectionFrom(loadingBase)
         }
+        afterRefreshLoadingStateApplied?.invoke(_state.value.payload)
         if (!hasRenderableContent) {
             delay(SharedThreadFirstFrameDelayMillis)
         }
