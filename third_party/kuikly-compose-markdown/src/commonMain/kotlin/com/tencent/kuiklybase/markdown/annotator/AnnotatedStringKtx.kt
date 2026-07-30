@@ -645,23 +645,29 @@ fun AnnotatedString.Builder.buildMarkdownAnnotatedString(
     }
 }
 
-private fun AnnotatedString.Builder.appendSlockInlineCodeWithEdgeBoxes(codeText: String) {
+private fun AnnotatedString.Builder.appendSlockInlineCodeWithEdgeBoxes(codeText: String) =
+    appendSlockInlineCodeWithEdgeBoxes(codeText, slockFirstComposedCharacterEnd(codeText))
+
+internal fun AnnotatedString.Builder.appendSlockInlineCodeWithEdgeBoxes(
+    codeText: String,
+    firstComposedCharacterEnd: Int?,
+) {
     if (codeText.isEmpty()) return
-    val firstEnd = slockFirstComposedCharacterEnd(codeText)
-    if (firstEnd == null || firstEnd !in 1..codeText.length) {
-        append(codeText)
-        return
-    }
     pushStyle(
         SpanStyle(
             inlineBoxStyle = slockMarkdownInlineCodeEdgeStyle(leading = true, trailing = true)
         )
     )
-    if (firstEnd == codeText.length) {
+    // task #104: a platform without a composed-character segmenter (OHOS) must
+    // still own the chip chrome. A single-child group is the exact shape a
+    // one-grapheme code span already produces on every platform; wrap
+    // opportunities come from the char-wrap bridge, not from this split.
+    if (firstComposedCharacterEnd == null || firstComposedCharacterEnd !in 1 until codeText.length) {
         append(codeText)
         pop()
         return
     }
+    val firstEnd = firstComposedCharacterEnd
 
     // Force at least two children without splitting the first composed
     // character. The group remains wrapping/non-atomic while one box owns both
