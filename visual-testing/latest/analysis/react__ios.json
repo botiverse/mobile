@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-27T22:21:31.564Z",
+  "generatedAt": "2026-07-30T04:32:38.720Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 80,
-    "ready": 74,
-    "pending": 6
+    "ready": 66,
+    "pending": 14
   },
   "cases": [
     {
@@ -364,7 +364,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.06209779776130486
+      "metricMismatch": 0.062097122642146285
     },
     {
       "id": "components.ui.spinner.states",
@@ -1000,7 +1000,7 @@
     {
       "id": "components.thread.header.states",
       "status": "ready",
-      "imageHash": "p1:0ffc1f1c000000e000000020000000000000000000007ffefffefffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fff81fff",
+      "imageHash": "p1:0ffc1f1c000000e000000000000000000000000000007ffefffefffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fff81fff",
       "generatedAt": "2026-07-09T22:21:29.912Z",
       "severity": "medium",
       "summary": [
@@ -1029,12 +1029,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.024828519733733012
+      "metricMismatch": 0.02283219238195544
     },
     {
       "id": "components.thread.message.row",
       "status": "ready",
-      "imageHash": "p1:08040004076e1ffe00000002400000024002c0020000c3fefffeeffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff81fff",
+      "imageHash": "p1:08040004076e1ffe00000002400000024002c0020000c7fefffeeffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff81fff",
       "generatedAt": "2026-07-26T22:13:25.509Z",
       "severity": "high",
       "summary": [
@@ -1063,7 +1063,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.04108943978612223
+      "metricMismatch": 0.04006865961842265
     },
     {
       "id": "components.thread.message-row.deleted-human",
@@ -1098,12 +1098,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.03564764180877922
+      "metricMismatch": 0.03462686164107964
     },
     {
       "id": "components.thread.message-menu.default",
       "status": "ready",
-      "imageHash": "p1:01fe01fc80007ffe800e07fe800000022000e002803ceffefc1e001efc0e001efc00001efc1e27defc1e019efc1e07defc0c07defc0001defc00239effff03defffe03deffff03deffff039effff2bdefffe001efffe003efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff83fff",
+      "imageHash": "p1:01fe01fc80007ffe800e07fe800000022000e002803ce7fefc1e001efc0e001efc00001efc1e27defc1e019efc1e07defc0c07defc0001defc00239effff03defffe03deffff03deffff039effff2bdefffe001efffe003efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff83fff",
       "generatedAt": "2026-07-26T22:13:25.584Z",
       "severity": "medium",
       "summary": [
@@ -1131,7 +1131,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.09222161461497957
+      "metricMismatch": 0.09132674417034603
     },
     {
       "id": "components.thread.message-menu.task",
@@ -1165,7 +1165,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.102460471773268
+      "metricMismatch": 0.10159328121413425
     },
     {
       "id": "components.thread.message-share.selection",
@@ -1203,7 +1203,7 @@
     {
       "id": "components.thread.forward-modal",
       "status": "ready",
-      "imageHash": "p1:bffeffff0000dfff000097ff0000bfff0000fffd2ff8dfff3ffcffff29fc97ff0ffcdfff07fc9fff07fc9fff07fcffff00fc9eff3ffcdfff3ffcffff3ffc9fff3ffcffff3ffc9fff3ffc9fff3ffcffff3ffcffff3ffcffff3ffcffff3ffcffff3ffcffff0000ffff3ff0ffff0000ffff0000ffff0000ffff0000ffffffffffff",
+      "imageHash": "p1:bffeffff0000ffff000097ff0000bfff0000fffd2ff8dfff3ffcffff29fc97ff0ffcdfff07fc9fff07fc9fff07fcffff00fc9eff3ffcdfff3ffcffff3ffc9fff3ffcffff3ffc9fff3ffc9fff3ffcffff3ffcffff3ffcffff3ffcffff3ffcffff3ffcffff0000ffff3ff0ffff0000ffff0000ffff0000ffff0000ffffffffffff",
       "generatedAt": "2026-07-26T05:05:43.154Z",
       "severity": "medium",
       "summary": [
@@ -1237,7 +1237,7 @@
     {
       "id": "components.thread.comment-anchor",
       "status": "ready",
-      "imageHash": "p1:07fe07fe001e00fe0000801e807e0e08807f0ffeffff0106ffff7ffefffefffefffefffefffefffefffefffefffefffefffe7ffeffff0000ffff07f8ffff001cffff001cffff03feffff0000ffff001cffff0004ffff00fcffff00fcffff0000ffff0002fffe001e003207fc00023ffc7fde00007ff8000400000000ffff7fff",
+      "imageHash": "p1:07fe07fe001e01fe0000001e807e0e08807f0ffeffff0106ffff7ffefffefffefffefffefffefffefffefffefffefffefffe7ffeffff0000ffff07f8ffff001cffff001cffff03feffff0000ffff001cffff0004ffff00fcffff00fcffff0000ffff0002fffe001e003207fc00023ffc7fde00007ff8000400000000ffff7fff",
       "generatedAt": "2026-07-19T05:31:41.294Z",
       "severity": "high",
       "summary": [
@@ -1268,7 +1268,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2483624984809819
+      "metricMismatch": 0.2483604731235063
     },
     {
       "id": "components.home.titlebar.states",
@@ -1301,40 +1301,20 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2582141748018525
+      "metricMismatch": 0.2583184807118456
     },
     {
       "id": "components.home.notification-center.states",
-      "status": "ready",
-      "imageHash": "p1:07fe07fcfffe7ffe80067ffe0202000680020002800200020072000200124072803200128012001200f200120072407280020002fffe0006fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff83fff",
-      "generatedAt": "2026-07-26T22:13:25.750Z",
-      "severity": "medium",
-      "summary": [
-        "Typography weight differs: iOS notification titles ('Android-Developer lost connection', 'Release gate needs review') render in lighter weight than React baseline",
-        "iOS secondary text (e.g., 'Last heartbeat was 4 minutes ago.', 'Two visual cases changed in the latest run.') appears slightly smaller/lighter than React",
-        "iOS card has tighter internal padding; icon-to-title gap and title-to-body gap are reduced compared to React",
-        "iOS Dismiss button label appears in lighter/regular weight versus React's bolder weight",
-        "Header bar height on iOS is slightly shorter, with reduced vertical padding around 'NOTIFICATIONS' and '2 items'"
-      ],
-      "likelyCauses": [
-        "Platform default font metrics (San Francisco on iOS vs system Roboto/Inter on React) not normalized in design tokens",
-        "iOS button/text component using default non-bold UIFont variants",
-        "Spacing tokens on iOS not mapped to the same scale as React's notification card",
-        "Shared design system component not enforced; per-platform native styles applied"
-      ],
-      "suggestedOwner": "mobile-design-system",
-      "suggestedFixes": [
-        "Normalize title and body text to a shared Bold/Semibold and body weight across platforms via design tokens",
-        "Map iOS card insets and inter-row spacing to the React notification spacing scale (icon→title→body)",
-        "Apply a bold/medium weight to the Dismiss button label on iOS to match React",
-        "Increase iOS header bar vertical padding so it matches React's header height",
-        "Re-render the visual test after token alignment to confirm pixel mismatch drops below tolerance"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.09345438219845803
+      "status": "pending",
+      "imageHash": "p1:07fe07fcfffe7ffe80067ffe0202000280020002800200020072000a0012407a803200028012001a00f2001a0072407a80020002fffe0002fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff81fff",
+      "generatedAt": "2026-07-30T04:32:37.978Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.10395383535193958
     },
     {
       "id": "components.home.search.results",
@@ -1369,7 +1349,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2678363106088224
+      "metricMismatch": 0.26783732328756027
     },
     {
       "id": "components.home.search.channel-dropdown",
@@ -1405,47 +1385,25 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2676293865867325
+      "metricMismatch": 0.26762904902715334
     },
     {
       "id": "components.home.saved.results",
-      "status": "ready",
-      "imageHash": "p1:1ff83ffc87fd0ffe87fd07fe0000000681f106c680310046800d00fec1fdfffefc31b3ce80310046801d00468ffd1ffefcf1fffe81f1c3ce801103c6801d00c6e3f1003e8031fffe8001f07e80fdf07ebef1fffedc71fffe0001fffedefffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffe1fff",
-      "generatedAt": "2026-07-26T05:05:43.328Z",
-      "severity": "medium",
-      "summary": [
-        "iOS list contains only 3 result cards while React baseline shows 5; iOS displays a 'Load More' button not present in React.",
-        "Bookmark icon color differs: React renders an orange/peach filled bookmark, iOS renders a black/white outlined bookmark.",
-        "React shows the last visible card clipped at the bottom ('Rename old visual cases under' truncated); iOS does not exhibit clipping because the list is shorter.",
-        "Timestamp metadata differs ('34 days ago' on React vs '14 days ago' on iOS for top two cards, '35 days ago' vs '15 days ago' for the UX Designer card), suggesting date/time or locale handling divergence.",
-        "Author badge styling differs: React shows an orange avatar square for Cindy and a purple/lavender person icon for artin; iOS badges appear darker/lower contrast with different hue."
-      ],
-      "likelyCauses": [
-        "React baseline is rendering the full saved set while iOS has paginated or limited the initial fetch, surfacing a 'Load More' affordance.",
-        "Bookmark/save icon asset is mapped to different SF Symbol on iOS vs the React SVG variant, producing color and fill differences.",
-        "Locale or relative-time formatter on iOS computes a different 'days ago' value than the React web client (possible timezone or clock-skew issue).",
-        "Avatar/badge assets differ between web and iOS icon sets, causing color and contrast mismatch."
-      ],
-      "suggestedOwner": "mobile-ios",
-      "suggestedFixes": [
-        "Verify iOS pagination: ensure the initial saved-results query returns the same item count as the React baseline, or hide 'Load More' until truly needed.",
-        "Align the bookmark icon by reusing the shared design-token SVG (or matching SF Symbol with correct tint) across platforms.",
-        "Reconcile relative-time formatting using a single shared helper / locale so 'days ago' is identical between React and iOS.",
-        "Normalize avatar/badge asset colors via shared theme tokens so iOS uses the same accent palette as React.",
-        "Audit iOS SafeArea/contentInset to confirm list clipping behavior matches React's bounded component rect."
-      ],
-      "intentional": [
-        "Pagination via 'Load More' on iOS may be an intentional mobile UX choice."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.11154723808752243
+      "status": "pending",
+      "imageHash": "p1:1ff83ffc87fc0ffe81fc07fe0000000681f106c680310046800d00fec3fdfffefc31b3ce80310046801d00468ffd1ffefcf1fffe81f1c3ce801103c6801d00c6e3f1003e8031fffe8001f07e80fdf07ebef1fffedc71fffe0001fffedefffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffe1fff",
+      "generatedAt": "2026-07-30T04:32:38.043Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.11137103198714571
     },
     {
       "id": "components.home.activity.results",
       "status": "ready",
-      "imageHash": "p1:1ff83ffc87fd07fe82fd06ff000000030040000300000007cbf13fc780f18027801d803f807d007f807d007fc1e11fff8011e7c78fbd00078ffd00ffeff11fff83f13ffffffd1fc7fffd03e7fffdfffffffdfffffffdffff0005fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe0000fffe1fff",
+      "imageHash": "p1:1ff83ffc87fc07fe82fc06ff000000030040000300000007cbf13fc780f18027801d803f807d007f807d007fc1e11fff8011e7c78fbd00078ffd00ffeff11fff83f13ffffffd1fc7fffd03e7fffdfffffffdfffffffdffff0005fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe0000fffe1fff",
       "generatedAt": "2026-07-22T11:29:24.834Z",
       "severity": "medium",
       "summary": [
@@ -1476,7 +1434,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.10776184496563646
+      "metricMismatch": 0.10715491284211665
     },
     {
       "id": "components.tasks.panel.states",
@@ -1583,76 +1541,35 @@
     },
     {
       "id": "components.members.create-agent.dialog",
-      "status": "ready",
-      "imageHash": "p1:ffffffff0000000000007dfc3ffc6df83ffc3ffc3ffc00cc006c7ffc21fc3ffc3ffc3dfc3ffc7ffc28fc1ffc1ffc31fc3ffc07fc3ffc07fc27fc3ffc3ffc3ffc3ffc7ff43ffc7ffc3ffc3ffc3ffc80012ffcfff73ffcffff2ffcffff3ffcffff37fcbff83ffc3ff83ffc8ff03f000ff038048181000090090000fffdffffffff",
-      "generatedAt": "2026-07-19T05:31:45.498Z",
-      "severity": "high",
-      "summary": [
-        "iOS view shows the soft keyboard occupying the lower half of the screen, hiding the Runtime, Model, More, Cancel and Create Agent controls that are visible in the React baseline.",
-        "The dialog appears scrolled down on iOS (showing Computer, Name, Description fully) whereas React shows the full form including Runtime, Model and the action footer.",
-        "iOS Create Agent CTA is not visible (likely clipped behind keyboard) while React shows a disabled pink Create Agent button plus Cancel button at the bottom.",
-        "A blinking text-cursor caret is visible in the iOS Name field ('Product-QA-Bot|') indicating active focus, while the React baseline shows no caret.",
-        "Required field asterisks and the optional label appear slightly larger and bolder on iOS, suggesting a heavier label weight than React."
-      ],
-      "likelyCauses": [
-        "iOS dialog does not implement KeyboardAvoidingView / safe-area inset adjustment, so the keyboard overlays form fields and the footer.",
-        "The iOS implementation auto-scrolls to the focused input but does not reposition scrollable content or resize the modal, unlike React which fits the full form.",
-        "Possible missing bottom action bar (Cancel/Create Agent) on iOS, or it is pushed off-screen.",
-        "Different typography scale/weight for field labels between platforms."
-      ],
-      "suggestedOwner": "mobile-eng (iOS team)",
-      "suggestedFixes": [
-        "Wrap the dialog scroll view in KeyboardAvoidingView with appropriate behavior and adjust contentInset so footer remains above the keyboard.",
-        "Ensure action buttons (Cancel, Create Agent) are anchored to the dialog bottom and remain visible when keyboard is shown.",
-        "Cap dialog height or enable scrolling so the whole form remains reachable; verify Runtime, Model, More sections are rendered on iOS.",
-        "Align label font weight/size between iOS and React design tokens.",
-        "Dismiss focus / blur input in the screenshot capture state to avoid caret artifact in visual tests."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.5001910587218644
+      "status": "pending",
+      "imageHash": "p1:ffffffff0000000020043dfc2bfc2df83ff83e7c000c00cc21fc3ffc3ffc3ffc27fc39fc39fc1ffc0ffc1ffc3ffc21fc3dfc03fc27fc03fc3ffc3ffc3ffc3ffc3ffc3ff43ffc7ffc3ffc3ffc0ffc80013ffcdef32ffcffff3ffcffff0ff8ffff3ffcbff83ffc3ff83ffc0ff03fc40ff03d4481010000800100008001ffffffff",
+      "generatedAt": "2026-07-30T04:32:38.161Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.44411026046097135
     },
     {
       "id": "components.members.create-agent.claude-dialog",
-      "status": "ready",
-      "imageHash": "p1:ffffffff0000000000007dfc3ffc6df83ffc3ffc3ffc00cc006c7ffc21fc3ffc3ffc3dfc3ffc7ffc28fc1ffc1ffc31fc3ffc07fc3ffc07fc27fc3ffc3ffc3ffc3ffc7ff43ffc7ffc3ffc3ffc3ffc80012ffcfff73ffcffff2ffcffff3ffcffff37fcbff83ffc3ff83ffc8ff03f000ff038048181000090090000fffdffffffff",
-      "generatedAt": "2026-07-21T10:47:27.655Z",
-      "severity": "high",
-      "summary": [
-        "iOS viewport is occluded by the system keyboard, hiding the lower half of the form (Runtime select, Model dropdown, > More, Cancel, Create Agent).",
-        "The dialog in iOS does not scroll or reposition to remain usable while the Name field is focused, so actionable controls are unreachable.",
-        "Form labels and inputs render at a visibly larger size on iOS; spacing between fields is also greater, increasing the visible content area needed.",
-        "The \"Create Agent\" primary CTA (pink) and \"Cancel\" button are not visible on iOS due to keyboard occlusion."
-      ],
-      "likelyCauses": [
-        "iOS dialog not using a scroll view or keyboard-avoidance inset adjustment when the keyboard appears.",
-        "Modal is rendered full-screen without safe-area/keyboard insets handling (no `keyboardAvoidingView` / `contentInset`).",
-        "Form fields are not wrapped in a ScrollView, so content below the focused input gets clipped by the keyboard."
-      ],
-      "suggestedOwner": "iOS / Mobile engineering (dialog component owner)",
-      "suggestedFixes": [
-        "Wrap the dialog body in a UIScrollView (or equivalent) so the form can scroll when the keyboard appears.",
-        "Apply keyboard avoidance insets / safe-area bottom padding so the focused field and the CTA remain visible.",
-        "Reduce vertical spacing between form rows or collapse the upgrade notice to fit within the visible area when the keyboard is up.",
-        "Ensure the primary action (Create Agent) sits above the keyboard or becomes reachable by scrolling.",
-        "Capture the test with the keyboard dismissed for a fair baseline comparison, or compare against an iOS screenshot with the keyboard hidden."
-      ],
-      "intentional": [
-        "Larger iOS typography and spacing may be intentional platform scaling.",
-        "Pink CTA color and pink required-field asterisk are consistent across both platforms."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.5001910587218644
+      "status": "pending",
+      "imageHash": "p1:ffffffff0000000020043dfc2bfc2df83ff83e7c000c00cc21fc3ffc3ffc3ffc27fc39fc39fc1ffc0ffc1ffc3ffc21fc3dfc03fc27fc03fc3ffc3ffc3ffc3ffc3ffc3ff43ffc7ffc3ffc3ffc0ffc80013ffcdef32ffcffff3ffcffff0ff8ffff3ffcbff83ffc3ff83ffc0ff03fc40ff03d4481010000800100008001ffffffff",
+      "generatedAt": "2026-07-30T04:32:38.186Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.44411026046097135
     },
     {
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-27T22:21:30.900Z",
+      "generatedAt": "2026-07-30T04:32:38.068Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1809,7 +1726,7 @@
     {
       "id": "components.settings.account.page",
       "status": "ready",
-      "imageHash": "p1:1ffe1ffe9fff9fff87ff83ff80007fff81fccfff81fc8ff7820c83f780010ff7ffff5ff781fc7ff781fc07f787fc8ff7fffc000787fc7e3780088237800083f78ffc00978ffc41f79e3c5307823c7f0783fc7ff780fc430781fc5d07a7fc6ff7bffc61f79fe08007c7c0fff7bfe00ff7c0fc7ff78004000780000002ffffffff",
+      "imageHash": "p1:1ffe1ffe9fff9fff87ff83ff80003fff81fccfff81fc8ff7820c83f780010ff7ffff5ff781fc7ff781fc07f787fc8ff7fffc000787fc7e3780088237800083f78ffc00978ffc41f79e3c5307823c7f0783fc7ff780fc430781fc5d07a7fc6ff7bffc61f79fe08007c7c0fff7bfe00ff7c0fc7ff78004000780000002ffffffff",
       "generatedAt": "2026-07-18T07:40:36.670Z",
       "severity": "medium",
       "summary": [
@@ -1839,7 +1756,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.33182883028854593
+      "metricMismatch": 0.3312701691848611
     },
     {
       "id": "components.settings.account.error-state",
@@ -1874,12 +1791,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.4106861236008156
+      "metricMismatch": 0.4101274624971307
     },
     {
       "id": "components.settings.server.profile",
       "status": "ready",
-      "imageHash": "p1:1ffe1ffe9fff9fff81fe80ff8ffe3fffbfff0ff7807c0013847c020787fc0007bffc3ff383f80ff3800803f3800000038ffc800783fc07f783fc060780005a07ffff0e038004800787fcffffbffcffff8000ffff8000ffff8000fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe7ffeffffffff",
+      "imageHash": "p1:1ffe1ffe9fff1fff81ff00ff8ffe3fffbfff0ff7807c0013847c020787fc0007bffc3ff383f80ff3800803f3800000038ffc800783fc07f783fc060780005a07ffff0e038004800787fcffffbffcffff8000ffff8000ffff8000fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe7ffeffffffff",
       "generatedAt": "2026-07-26T22:13:26.493Z",
       "severity": "medium",
       "summary": [
@@ -1909,12 +1826,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2254675200172831
+      "metricMismatch": 0.2249226988563482
     },
     {
       "id": "components.settings.appearance.page",
       "status": "ready",
-      "imageHash": "p1:0ffe0ffe8ffe1ffe81fe81fe97fe1efe820f001c81fc4ff481fc4ff080040004bffc8000807c07fc81fc3d0cbffc007c8ffc007c807c00008004007cb3fc0004800020008000000081f0ffff8018ffffbffcffff9bfcffff8000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7ffe7ffeffff7fff",
+      "imageHash": "p1:0ffe0ffe8fff1ffe81fe01fe97fe1efe820f001c81fc4ff481fc4ff080040004bffc8000807c07fc81fc3d0cbffc007c8ffc007c807c00008004007cb3fc0004800020008000000081f0ffff8018ffffbffcffff9bfcffff8000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7ffe7ffeffffffff",
       "generatedAt": "2026-07-23T22:53:08.508Z",
       "severity": "high",
       "summary": [
@@ -1942,12 +1859,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19597595225557307
+      "metricMismatch": 0.1955995733246918
     },
     {
       "id": "components.settings.notifications.page",
       "status": "ready",
-      "imageHash": "p1:0ffe1ffe9fff9fff81ff80ff9cfe1ffe80ff9ffb807c00008060000080e087ffbffcc1ffbffc81f1bffcff19a0fc81ff807c81f1807cffff81fc807ffa7cffd1fff0ffffbff081fd8001c0fdffffffffffff0001ffff0000ffff0000ffff0000ffff43feffff383effff0000ffff07feffff7ffcffff0001fffe00f0ffffffff",
+      "imageHash": "p1:0ffe1ffe9fff1fff81ff81ff9cfe3ffe80ff8ffb807c00008060000080e087ffbffcc1ffbffc81f1bffcff19a0fc81ff807c81f1807cffff81fc807ffa7cffd1fff0ffffbff081fd8001c0fdffffffffffff0001ffff0000ffff0000ffff0000ffff43feffff383effff0000ffff07feffff7ffcffff0001fffe00f0ffffffff",
       "generatedAt": "2026-07-22T11:29:25.413Z",
       "severity": "high",
       "summary": [
@@ -1977,7 +1894,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.27458412659834464
+      "metricMismatch": 0.2741294338450736
     },
     {
       "id": "screens.auth.login.signing",
@@ -2054,7 +1971,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-27T22:21:31.184Z",
+      "generatedAt": "2026-07-30T04:32:38.309Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2067,7 +1984,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-27T22:21:31.184Z",
+      "generatedAt": "2026-07-30T04:32:38.309Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2080,7 +1997,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-27T22:21:31.184Z",
+      "generatedAt": "2026-07-30T04:32:38.309Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2093,7 +2010,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-27T22:21:31.184Z",
+      "generatedAt": "2026-07-30T04:32:38.309Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2106,7 +2023,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-27T22:21:31.184Z",
+      "generatedAt": "2026-07-30T04:32:38.309Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2145,7 +2062,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.0942611495929031
+      "metricMismatch": 0.09364206532452979
     },
     {
       "id": "components.members.agent-lifecycle-actions",
@@ -2254,7 +2171,7 @@
     {
       "id": "screens.home.loading",
       "status": "ready",
-      "imageHash": "p1:3ffc3ffc000000000000000000000000dffecffecffe4ffecffecffe8ffe4ffedffe8ffe8ffe9ffefffe9ffec3fe9ffebffe9ffebffebffebffe83ffc7fe9ffebffe9ffebffe9ffebffefffebffe7ffebffe7ffec1fe7ffe93fe7ffebffe7ffebffe7ffebffe7ffefffe7ffefffe7ffe0000dfba0100199a00002000fffe1fff",
+      "imageHash": "p1:3ffe3ffc000000000000000000000000dffecffecffe4ffecffecffe8ffe4ffedffe8ffe8ffe9ffefffe9ffec3fe9ffebffe9ffebffebffebffe83ffc7fe9ffebffe9ffebffe9ffebffefffebffe7ffebffe7ffec1fe7ffe93fe7ffebffe7ffebffe7ffebffe7ffefffe7ffefffe7ffe0000dfba0100199a00002000fffe3fff",
       "generatedAt": "2026-07-19T05:31:52.470Z",
       "severity": "high",
       "summary": [
@@ -2282,12 +2199,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19295243110408988
+      "metricMismatch": 0.193153279053753
     },
     {
       "id": "components.thread.message-row.rich-content",
       "status": "ready",
-      "imageHash": "p1:03f807fc07fcfffe00050002e0050002e001c002e001c006e03dc006e07dc0fee1fdc0fee1fdfffee07dc17efffdc07ee005fffec005c0fe4ffdc0fef05dfffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffa1fff",
+      "imageHash": "p1:03f807fc07fcfffe00050002e0050002e001c002e001c006e03dc006e07dc0fee1fdc0fee1fdfffee07dc17efffdc07ee005fffec005c07e4ffdc0fef05dfffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffa1fff",
       "generatedAt": "2026-07-26T22:13:35.397Z",
       "severity": "medium",
       "summary": [
@@ -2316,43 +2233,20 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.09683065311027395
+      "metricMismatch": 0.09580987294257437
     },
     {
       "id": "components.thread.message-row.long-inline-code",
-      "status": "ready",
-      "imageHash": "p1:47fe07fe0fffffff001f87ffe800801fca41e177c203e007e01fe0bfc000e00be047e683c039e007e03be007e001e01ffa7fe043ffffe00bc00be7f3c002e15fffffe1ffffffe007ffffe007ffffe7ffffffe001ffffe001ffffe001ffffe001ffffe001ffffe7ffffffe03fffffe02bffffe001ffffe001ffffc000ffffffff",
-      "generatedAt": "2026-07-26T22:13:35.598Z",
-      "severity": "medium",
-      "summary": [
-        "React (left) truncates the message body with a 'Show more' affordance and renders the footer action bar (task badge, reply count, reactions, add), while iOS (right) shows the full body and omits the footer entirely",
-        "iOS renders the long inline-code samples (CODE_SPAN, long file path, gradlew command) with a light gray pill background and wraps them across multiple lines; React does not render these samples at all in the visible crop",
-        "iOS wraps '@KMP-专家 #520 Phase 5: delete remaining ConversationSummary launch compatibility helpers.' inline with '#520' rendered as a yellow task chip; React renders '#520' as plain text and shows the trailing 'Phase 5…' line as separate faded lines behind a collapsed 'Show more' state",
-        "React shows a yellow '#42 @Cindy' task badge and a '4 replies · 1 new' reply pill in the action bar; iOS renders no equivalent footer controls",
-        "iOS uses a noticeably larger, system-style monospaced font inside the inline-code chips versus React's smaller weight and tighter line-height in the message body"
-      ],
-      "likelyCauses": [
-        "React is applying a collapse/truncation rule (max-lines + 'Show more') to the message body, which hides the long inline-code and trailing sentences that iOS displays in full",
-        "The React action/footer bar (reactions, reply count, task badge) is rendered outside the cropped 'component-bounds' rect, so it is not being compared against iOS's footer rendering",
-        "The iOS component does not render the thread message-row footer (replies, reactions, task badge) within this screenshot capture",
-        "iOS inline-code styling uses a platform-specific code background fill and font that differs from React's chip styling",
-        "Bare '#520' is rendered as a task chip on iOS and as plain text on React per the documented platform-difference"
-      ],
-      "suggestedOwner": "frontend-platform",
-      "suggestedFixes": [
-        "Decide a unified policy: either both platforms collapse the body behind 'Show more' or neither does; align the collapse threshold and the trailing text shown",
-        "Ensure the iOS thread message-row component includes the footer (task badge, reply count, reactions, add reaction) in the same relative position as React",
-        "Match inline-code chip background color, padding, radius, and monospace font weight between iOS and React so long paths/commands render consistently",
-        "Crop the comparison rect to include the footer controls on both sides so they participate in the diff",
-        "Verify the iOS #520 chip is intentional per the known platform-difference and that the React plain-text fallback is the only behavior needing alignment later"
-      ],
-      "intentional": [
-        "Bare '#520' renders as a yellow task chip on iOS but as plain text on React (known platform-difference per task #416; both sides correct for their platform)"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.41255755390826476
+      "status": "pending",
+      "imageHash": "p1:47fe07fe0fff7ffe001f07ffe000801fca01e177c001e007e01fe03fc000e00bc007e483c039e007e01be007e001e017e87fe043ffffe00bc002e3b3c002e15fffffe3ffffffe00fffffe007ffffe7ffffffe001ffffe001ffffe001ffffe001ffffe2dbffffe02fffffe03fffffe001ffffe001ffffe001ffffc002ffffffff",
+      "generatedAt": "2026-07-30T04:32:38.564Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.38709442216551226
     },
     {
       "id": "components.thread.message-row.md-link-ref",
@@ -2391,7 +2285,7 @@
     {
       "id": "components.thread.message-row.md-latest-release",
       "status": "ready",
-      "imageHash": "p1:00fc00fc07fe6ffe000007fec0000000c0004000c0006000c0026006c000600240fe60020000e01efffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fff81fff",
+      "imageHash": "p1:00fc00fc07fe6ffe000007fec0000000c0004000c0004000c0026006c000600240fe60020000e01efffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fff81fff",
       "generatedAt": "2026-07-26T05:05:57.670Z",
       "severity": "medium",
       "summary": [
@@ -2420,77 +2314,33 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.08215727575917153
+      "metricMismatch": 0.0808492323895168
     },
     {
       "id": "components.thread.message-row.md-wrap-slice1",
-      "status": "ready",
-      "imageHash": "p1:00e00ffc07f7fffe000419fee03401fee1d700fef00780fef007807ef007807ef207807ef00780fef01781fef00783fef07781fefff780fee3f780feffff81feffff80feffff81feffff82feffff80feffff80feffff80feffff81feffff81feffff80feffff80feffff807effff8ffeffff80feffff81fefffa8002fffc3fff",
-      "generatedAt": "2026-07-26T22:13:35.794Z",
-      "severity": "high",
-      "summary": [
-        "iOS renders significantly more content vertically — roughly 2.4× the visible message height — suggesting different line-height, font-size scaling, or wrap behavior vs React baseline.",
-        "Timestamp shown as 'Kee… 07/13 05:55' on iOS (truncated/ellipsized), whereas React shows '07/13 05:55 AM' in full — different timestamp format and clipping.",
-        "Inline code/monospace pill styling differs: iOS shows tighter, lighter gray pill background (e.g. 'Kee…', 'gh', 'bytemain'), React uses a slightly darker tone with more padding.",
-        "iOS shows additional bullets/paragraphs below the React crop area (落地形态 flag, AD2 mapper, #787 flaky test) that are missing in the React element-bounds capture — content overflows the component bounds on iOS.",
-        "Bullet list item wrapping differs: iOS breaks at narrower widths (more short lines, 'realtimeReadStat / ePreservesPartialS / ummaryAndReconcile / sAcceptedRewind' line-per-token), React keeps longer unbroken lines with the same words grouped."
-      ],
-      "likelyCauses": [
-        "iOS uses a different base font-size, line-height multiplier, or dynamic-type scaling that the React baseline does not match.",
-        "Markdown wrap component re-flows content at iOS viewport width without re-applying the same max-width or wrap rules as React.",
-        "Timestamp formatting/truncation logic is platform-specific (e.g. relative 'Kee…' vs absolute 'AM' suffix) and was not unified.",
-        "Inline code background/padding tokens differ between web and iOS theme (lighter alpha or smaller vertical padding on iOS).",
-        "Component crop rect on iOS was not bounded to the message body, so trailing content (extra bullets) is included and inflates height comparison."
-      ],
-      "suggestedOwner": "mobile-ios",
-      "suggestedFixes": [
-        "Re-apply the React wrap/max-width rules on iOS so bullet content breaks at equivalent line lengths.",
-        "Unify timestamp rendering (use absolute 'MM/DD HH:mm' on both platforms) and remove the 'Kee…' truncation badge, or add it consistently to React.",
-        "Tokenize inline code styling (background color, horizontal padding, border-radius) into a shared design token used by both React and iOS.",
-        "Adjust iOS font-size / line-height for the message body to match React's measured rhythm (validate against the 260×386 baseline).",
-        "Recapture the iOS screenshot with a message-body-bounded crop to make a true apples-to-apples comparison of the markdown wrap slice."
-      ],
-      "intentional": [
-        "Avatar glyph rendering and absolute timestamps across the same time zone are expected to be platform-rendered."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.14363936484789563
+      "status": "pending",
+      "imageHash": "p1:00e007fc07f3fffe000409fee03400fee1d700fef00780fef007807ef00780fef00780fef00780fef00780fef007807ef03780fefff780fe63f781feffff81feffff81feffff83feffff80feffff81feffff80feffffc0feffff81feffff80feffff80feffff807effff8dfeffff80feffff80feffff81fefff88000fffc7fff",
+      "generatedAt": "2026-07-30T04:32:38.645Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.13823638622216816
     },
     {
       "id": "components.thread.message-row.md-wrap-clarify",
-      "status": "ready",
-      "imageHash": "p1:00e007fc07f3fffe001410fee11400fee003047ee01300fee00303fee00381fee00300fee01301fee01300fee01300fee01303fee3f301fe43f700fefff700feffff03fefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefff80000fff81fff",
-      "generatedAt": "2026-07-26T22:13:36.609Z",
-      "severity": "medium",
-      "summary": [
-        "iOS message header shows truncated sender name 'Kee…' and timestamp on a single line, while React shows full 'Cindy' name with '07/13 05:56 AM' on the same line — different header layout/width handling",
-        "iOS avatar is rendered smaller and without the yellow status dot present in the React baseline",
-        "Message body in iOS uses noticeably larger line-height/spacing, causing text to wrap differently and span more vertical space",
-        "iOS code chip background (gray highlight around 'message:new') appears with different tone/extent than React",
-        "Last visible line in React is cut off by a 'Show more' link; iOS renders the full text with no truncation affordance"
-      ],
-      "likelyCauses": [
-        "iOS view is using a different content/compression-resistance priority for the sender label, causing it to truncate while the timestamp stays inline",
-        "Avatar size token differs between React (web) and iOS native components; status indicator dot is not being rendered on iOS",
-        "Markdown renderer line-height and paragraph spacing tokens are larger on iOS",
-        "Text collapse/'Show more' threshold is not implemented in the iOS message-row component",
-        "Comparison is made without normalizing DPR, so scaling contributes to pixel mismatch"
-      ],
-      "suggestedOwner": "mobile-ios",
-      "suggestedFixes": [
-        "Add horizontal layout constraints so sender name uses compression-resistance high and timestamp can wrap/truncate independently; consider stacking sender above timestamp on narrow widths",
-        "Render the presence/status dot on the iOS avatar and align avatar diameter to the React spec",
-        "Reduce markdown paragraph line-height and block spacing in the iOS message body to match web tokens",
-        "Implement a 'Show more' truncation after N lines in the iOS message-row, consistent with the React behavior",
-        "Re-capture the iOS baseline at 1× DPR or compare using dp-normalized coordinates to reduce scale-related pixel diff"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.0927360554137805
+      "status": "pending",
+      "imageHash": "p1:00e007fc07f3fffe001410fee11400fee003047ee01300fee00300fee003007ee00300fee013007ee01380fee01300fee01300fee3f300fe43f701fefff700feffff3ffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefff80000fff81fff",
+      "generatedAt": "2026-07-30T04:32:38.636Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.09052098945463871
     },
     {
       "id": "components.thread.message-row.md-wrap-adjacent",
@@ -2529,36 +2379,16 @@
     },
     {
       "id": "components.thread.message-row.md-wrap-status606",
-      "status": "ready",
-      "imageHash": "p1:03fc03fc07fe7ffe00000026e0000002e000600ec0006000c0006002c03e6002e006600ee0026006c002600240fe6002fffeecfefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fffe1fff",
-      "generatedAt": "2026-07-26T22:13:41.980Z",
-      "severity": "medium",
-      "summary": [
-        "iOS renders the markdown text with noticeably larger font size and wider line height than React, making the body block taller.",
-        "React version uses a compact serif/sans mix with tighter tracking; iOS version uses a heavier, more open sans-serif face for the same content.",
-        "Line wrapping differs: React keeps long tokens (hash strings, code) on single lines more aggressively; iOS wraps at earlier break points, producing more lines.",
-        "The teal-highlighted inline badge '#对话流专修:661a12bf' is visually larger and has more padding in iOS compared to React.",
-        "Header row (Cindy + timestamp + 'Keeps vis…') is laid out on a single inline line in React but wraps the trailing text onto a second line in iOS due to wider glyph metrics."
-      ],
-      "likelyCauses": [
-        "iOS is rendering markdown with the system Dynamic Type / UIFont metrics while React uses a custom web font stack at a smaller size.",
-        "No shared design-token or font-size constant between the React and iOS renderers for markdown body text.",
-        "Inline code / pill components are not normalized across platforms (different padding and font scale on iOS).",
-        "Line-break logic differs between the web layout engine and iOS TextKit, causing earlier wrapping on iOS."
-      ],
-      "suggestedOwner": "iOS",
-      "suggestedFixes": [
-        "Pin the markdown body font size and line-height to a shared token (e.g. bodyMD = 14pt / 1.45) on iOS to match React.",
-        "Normalize the inline pill (highlight + monospace) padding, font weight and corner radius across platforms.",
-        "Constrain header metadata (name + channel + timestamp) to a single line with ellipsis truncation on overflow to match React.",
-        "Apply a shared `max-width`/content-insets value so long alphanumeric strings break at consistent points on both platforms.",
-        "Add a visual-regression baseline update once sizes are aligned."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.14428511632303098
+      "status": "pending",
+      "imageHash": "p1:03fc03fc07fe7ffe00000006e0000002e000600ec0006000c0006000c01e6000e0066006c0026002c002600240be6802bffefffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fffa1fff",
+      "generatedAt": "2026-07-30T04:32:38.717Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.13695230958264137
     },
     {
       "id": "components.thread.message-row.md-wrap-task607",
