@@ -8,6 +8,11 @@ on:
         required: false
         type: string
         default: ""
+      version_patch:
+        description: "Alpha patch component (0-99); advance after build 99 is consumed"
+        required: false
+        type: string
+        default: "0"
       version_build:
         description: "Alpha build component (0-99); use a strictly increasing value for update testing"
         required: false
@@ -104,9 +109,14 @@ jobs:
         working-directory: compose
         env:
           SLOCK_HANDS_CHANNEL: debug
+          ALPHA_VERSION_PATCH: ${{ github.event_name == 'workflow_dispatch' && inputs.version_patch || '0' }}
           ALPHA_VERSION_BUILD: ${{ github.event_name == 'workflow_dispatch' && inputs.version_build || '0' }}
         shell: bash
         run: |
+          if ! [[ "${ALPHA_VERSION_PATCH}" =~ ^[0-9]{1,2}$ ]]; then
+            echo "version_patch must be an integer from 0 to 99" >&2
+            exit 1
+          fi
           if ! [[ "${ALPHA_VERSION_BUILD}" =~ ^[0-9]{1,2}$ ]]; then
             echo "version_build must be an integer from 0 to 99" >&2
             exit 1
@@ -115,6 +125,7 @@ jobs:
             :shared:generateSqlDelightInterface \
             :androidApp:assembleAlpha \
             :androidApp:copyHandsNativeSymbols \
+            "-PversionZ=${ALPHA_VERSION_PATCH}" \
             "-PversionBuild=${ALPHA_VERSION_BUILD}" \
             -PversionSuffix=alpha \
             --no-daemon --max-workers=${{ env.GRADLE_MAX_WORKERS }} --console=plain --stacktrace
