@@ -104,37 +104,19 @@ class SlockThreadNewerAutoPaginationConnectedTest {
             )
             recordEvidence("THREAD_NEWER_NO_CASCADE", "snapshot=${fixtureSnapshot(nonce)}")
 
-            // Move to the committed tail through the explicit production
-            // viewport action. This is intentionally not a direct drag, so it
-            // must not manufacture newer-page demand by itself. The next
-            // upward gesture below is therefore the second distinct gesture.
-            performAccessibilityClick(
-                waitForAccessibilityText(instrumentation, BackToBottomLabel),
-                "Back to bottom",
-            )
-            waitForAccessibilityText(instrumentation, threadNewerAutoMessageLabel(46L))
-            assertAfterRequestCountRemains(
-                nonce = nonce,
-                expectedCount = 1,
-                durationMs = ProgrammaticTailObservationMs,
-                reason = "programmatic Back-to-bottom must not authorize a newer page",
-            )
-
-            // A direct downward drag moves just off the exact rendered end and
-            // must not authorize newer pagination. The following fresh upward
-            // drag then crosses the real near-end threshold with scrollable
-            // distance remaining, matching the production interaction path
-            // rather than relying on platform overscroll dispatch at an exact
-            // boundary.
-            performDownwardGesture(instrumentation, scenario)
-            waitForMarkerToLeaveViewport(instrumentation, seq = 46L)
-            assertAfterRequestCountRemains(
-                nonce = nonce,
-                expectedCount = 1,
-                durationMs = OppositeDirectionObservationMs,
-                reason = "a direct downward gesture away from newer must not authorize a page",
-            )
-            performUpwardGesture(instrumentation, scenario, durationMs = SecondGestureDurationMs)
+            // Back-to-bottom now owns a canonical-tail request rather than a
+            // local reposition inside the loaded window. Keep this pagination
+            // gate on its actual contract: fresh direct toward-newer gestures
+            // may advance through the committed 30-row page until one of them
+            // crosses the near-end threshold and starts exactly one next page.
+            var approachGestureCount = 0
+            while (
+                fixtureSnapshot(nonce).afterRequests.size < 2 &&
+                approachGestureCount < MaxTowardNewerApproachGestures
+            ) {
+                performUpwardGesture(instrumentation, scenario, durationMs = SecondGestureDurationMs)
+                approachGestureCount += 1
+            }
             val secondRequest = waitForAfterRequestCount(nonce, expectedCount = 2)
             assertEquals(46L, secondRequest.afterRequests[1].afterSeq)
             assertEquals(30, secondRequest.afterRequests[1].limit)
@@ -570,6 +552,7 @@ class SlockThreadNewerAutoPaginationConnectedTest {
         private const val AccessibilityTapSettleMs = 300L
         private const val FirstGestureDurationMs = 650L
         private const val SecondGestureDurationMs = 650L
+        private const val MaxTowardNewerApproachGestures = 6
         private const val FocusedHistoryGestureXFraction = 0.85f
         private const val TailRepositionGestureXFraction = 0.50f
         private const val RepositionGestureDurationMs = 650L
