@@ -106,9 +106,14 @@ The preflight fails closed when any of these facts is false:
    separate exact-head `Test` workflow for release.
 4. The checked-in Kuikly gitlink is reachable from `origin/staging2`; the
    operator must not publish a detached/orphan Kuikly commit during release.
-5. The OHOS Hands dependency is complete: `libs/hands.har` is readable,
-   identifies as `@botiverse/hands`, and is referenced by both
-   `oh-package.json5` and `oh-package-lock.json5`.
+5. The OHOS Hands dependency is complete and immutable. For the current public
+   OHPM package mode, `oh-package.json5` must use an exact version, the lock
+   must bind that version to the official `ohpm.openharmony.cn` HAR with a
+   complete SHA-512 integrity value, and preflight downloads the pinned bytes
+   to verify both integrity and the archive's `@botiverse/hands` name/version.
+   Historical release branches that still use `file:./libs/hands.har` remain
+   supported only when the local HAR is readable and its metadata agrees with
+   the exact local manifest/lock record.
 6. The candidate versionCode is strictly greater than the active Hands version
    returned by the public update endpoint for the selected channel and Android
    architecture.

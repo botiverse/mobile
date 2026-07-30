@@ -8,6 +8,9 @@ on:
       - ".github/workflows/android-release-contract.yml"
       - "compose/androidApp/build.gradle.kts"
       - "scripts/*android*hands*"
+      - "scripts/release_android_preflight.sh"
+      - "scripts/check_ohos_hands_dependency.py"
+      - "scripts/test_check_ohos_hands_dependency.py"
       - "scripts/verify_android_dex_packaging.py"
       - "scripts/test_verify_android_dex_packaging.py"
       - "scripts/verify_android_elf_alignment.py"
@@ -24,6 +27,9 @@ on:
       - ".github/workflows/android-release-contract.yml"
       - "compose/androidApp/build.gradle.kts"
       - "scripts/*android*hands*"
+      - "scripts/release_android_preflight.sh"
+      - "scripts/check_ohos_hands_dependency.py"
+      - "scripts/test_check_ohos_hands_dependency.py"
       - "scripts/verify_android_dex_packaging.py"
       - "scripts/test_verify_android_dex_packaging.py"
       - "scripts/verify_android_elf_alignment.py"
@@ -50,3 +56,6 @@ jobs:
 
       - name: Validate Hands identifier migration
         run: scripts/test_hands_identifier_migration.sh
+
+      - name: Validate OHOS Hands dependency admission
+        run: python3 scripts/test_check_ohos_hands_dependency.py
