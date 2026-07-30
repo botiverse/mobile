@@ -1138,7 +1138,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         [],
       );
       const shortId = ticketId.slice(0, 8);
-      const environmentText = SlockOhosAppDiagnostics.exportEnvironmentText(context);
+      const environmentText = SlockOhosAppDiagnostics.exportHandsFeedbackEnvironmentText(context);
       const attachmentNames = this.feedbackAttachmentNames(attachmentPaths);
       const attachmentSection = attachmentNames.length > 0
         ? `\nattachments:\n${attachmentNames.join('\n')}`
