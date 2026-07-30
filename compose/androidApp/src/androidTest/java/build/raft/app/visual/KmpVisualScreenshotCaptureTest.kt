@@ -3410,6 +3410,7 @@ class KmpVisualScreenshotCaptureTest {
         val deadline = SystemClock.uptimeMillis() + timeoutMs
         var activePackage: CharSequence? = null
         var wokeDisplay = false
+        var dismissedSystemDialogs = 0
         while (SystemClock.uptimeMillis() < deadline) {
             // CI emulators ship stay_on_while_plugged_in=0 with a finite
             // screen_off_timeout (PR #1747's first-character finding); when the
@@ -3424,6 +3425,17 @@ class KmpVisualScreenshotCaptureTest {
             activePackage =
                 instrumentation.uiAutomation.rootInActiveWindow?.packageName
             if (activePackage == "build.raft.app.connectedtest") return
+            // A system window (package "android") holding input focus is a
+            // crash / ANR / keyguard dialog over the fixture — e.g. a launcher
+            // ANR ("Application Not Responding: ...nexuslauncher", proof run
+            // 30503233522 shard1) that hide_error_dialogs does not suppress.
+            // BACK dismisses the focused dialog; it targets the focused system
+            // window, never the backgrounded fixture, so the fixture cannot be
+            // navigated. Best-effort each poll until focus returns to us.
+            if (activePackage == "android") {
+                runShellCommand("input keyevent KEYCODE_BACK")
+                dismissedSystemDialogs++
+            }
             Thread.sleep(ACTIVE_INPUT_WINDOW_POLL_MS)
         }
         // Name the offending window definitively: package alone cannot separate
@@ -3455,7 +3467,8 @@ class KmpVisualScreenshotCaptureTest {
         throw IllegalArgumentException(
             "$what is not the active input window after ${timeoutMs}ms: " +
                 "package=$activePackage interactive=${powerManager?.isInteractive} " +
-                "wokeDisplay=$wokeDisplay inputFocus=[$inputFocus] focus=[$focusDump]"
+                "wokeDisplay=$wokeDisplay dismissedSystemDialogs=$dismissedSystemDialogs " +
+                "inputFocus=[$inputFocus] focus=[$focusDump]"
         )
     }
 

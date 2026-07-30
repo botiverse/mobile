@@ -612,6 +612,11 @@ CURRENT_PHASE="visual_environment"
 "$ADB_BIN" shell settings put global hide_error_dialogs 1 || true
 "$ADB_BIN" shell settings put global show_first_crash_dialog 0 >/dev/null 2>&1 || true
 "$ADB_BIN" shell settings put secure show_first_crash_dialog_dev_option 0 >/dev/null 2>&1 || true
+# hide_error_dialogs covers app crash dialogs but not every ANR dialog (proof
+# run 30503233522 shard1 hit a launcher ANR dialog). Disable background ANR
+# dialogs too; the await gate's per-poll BACK dismiss is the general backstop.
+"$ADB_BIN" shell settings put secure anr_show_background 0 >/dev/null 2>&1 || true
+"$ADB_BIN" shell settings put global send_action_app_error 0 >/dev/null 2>&1 || true
 
 CURRENT_PHASE="install_app"
 "$ADB_BIN" install -r "$APP_APK" | tee "$OUTPUT_DIR/app-install.txt"
