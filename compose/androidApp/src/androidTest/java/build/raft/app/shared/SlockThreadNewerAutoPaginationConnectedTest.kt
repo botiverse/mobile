@@ -127,6 +127,19 @@ class SlockThreadNewerAutoPaginationConnectedTest {
                 ThreadNewerAutoPaginationVisualFixtureProbe.releaseError(nonce, callNumber = 2),
             )
             waitForReturnedCall(nonce, callNumber = 2)
+            var retryRevealGestureCount = 0
+            while (
+                !hasAccessibilityText(instrumentation, RetryLabel) &&
+                retryRevealGestureCount < MaxTowardNewerApproachGestures
+            ) {
+                performUpwardGesture(instrumentation, scenario, durationMs = SecondGestureDurationMs)
+                retryRevealGestureCount += 1
+            }
+            assertEquals(
+                "Revealing the failed newer boundary must not manufacture a retry request",
+                2,
+                fixtureSnapshot(nonce).afterRequests.size,
+            )
             val retryNode = waitForAccessibilityText(instrumentation, RetryLabel)
             assertTrue(
                 "Error must expose an explicit Retry action",
