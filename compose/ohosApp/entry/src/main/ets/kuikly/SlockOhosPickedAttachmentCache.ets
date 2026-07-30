@@ -39,8 +39,12 @@ export interface SlockOhosCachedPickedAttachment {
 
 /**
  * Freezes a picker-backed file while its temporary media grant is live.
- * Kuikly's OHOS image cache accepts addressable file:// URIs, while picker
- * file://media URIs cannot be decoded by OH_ImageSourceNative_CreateFromUri.
+ * Kuikly's OHOS image cache passes local image refs directly to
+ * OH_ImageSourceNative_CreateFromUri. That decoder accepts a file URI backed
+ * by an absolute sandbox path (`file:///data/...`), not the ability-scoped
+ * authority URI (`file://<bundle>/data/...`) produced by getUriFromPath.
+ * Keep the latter as the platform upload handle and expose the former only to
+ * the renderer.
  */
 export function cacheSlockOhosPickedAttachment(
   sourceFd: number,
@@ -55,20 +59,24 @@ export function cacheSlockOhosPickedAttachment(
     if (expectedSizeBytes <= 0) {
       throw new Error('Picked attachment is empty');
     }
+    if (!targetPath.startsWith('/')) {
+      throw new Error('Picked attachment cache path is unavailable');
+    }
     backend.copyFile(sourceFd, targetPath);
     const cachedSizeBytes = backend.fileSize(targetPath);
     if (cachedSizeBytes !== expectedSizeBytes) {
       throw new Error('Picked attachment cache copy size mismatch');
     }
-    const cachedUri = backend.fileUri(targetPath);
-    if (!cachedUri.startsWith('file://')) {
+    const cachedFileRef = backend.fileUri(targetPath);
+    if (!cachedFileRef.startsWith('file://')) {
       throw new Error('Picked attachment cache URI is unavailable');
     }
+    const cachedPreviewUri = `file://${targetPath}`;
     const result: SlockOhosCachedPickedAttachment = {
       fileName: fileName,
       mimeType: mimeType,
-      previewUri: cachedUri,
-      fileRef: cachedUri,
+      previewUri: cachedPreviewUri,
+      fileRef: cachedFileRef,
       sizeBytes: cachedSizeBytes
     };
     complete = true;
