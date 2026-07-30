@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-30T04:36:52.336Z",
+  "generatedAt": "2026-07-30T22:20:18.478Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -358,7 +358,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.41496209659952354
+      "metricMismatch": 0.41497942386831277
     },
     {
       "id": "components.ui.spinner.states",
@@ -1146,7 +1146,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.4131570597210408
+      "metricMismatch": 0.41316077287641273
     },
     {
       "id": "components.thread.message-menu.task",
@@ -1219,7 +1219,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.7065668840550356
+      "metricMismatch": 0.7065675591741942
     },
     {
       "id": "components.thread.forward-modal",
@@ -1360,7 +1360,7 @@
     {
       "id": "components.home.search.results",
       "status": "ready",
-      "imageHash": "p1:1ffe1ffe85f807fc80000000800000008cef0000800300120002dfffffffffffffff80ff80009fff803cc0ff800080ff88035fffe7ffffffc0fe8001c00e8002fffe83ffd8fe87ffd05ed9fedffe9fffffffc27effff5bffffff403fffff83effffffc3ffffff81ffffffdbffffffffffffffffffffffffffffe7ffeffffffff",
+      "imageHash": "p1:1ffe1ffe85f807fc80000000800000008cef0000800300120002dfffffffffffffff80ff80009fff803c80ff800080ff8803dfffe7ff7fffc0fe8001c00e8002fffe83ffd8fe87ffd05ed9fedffe9fffffffc27effff5bffffff403fffff83effffffc3ffffff81ffffffdbffffffffffffffffffffffffffffe7ffeffffffff",
       "generatedAt": "2026-07-11T22:10:21.250Z",
       "severity": "medium",
       "summary": [
@@ -1391,12 +1391,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2670919917365415
+      "metricMismatch": 0.26768137076193943
     },
     {
       "id": "components.home.search.channel-dropdown",
       "status": "ready",
-      "imageHash": "p1:07fe0ffe07e707fc0007000000070000620f0000380218000012fc7cfe00fc00fe9e813c00879d3c0000c1fc00078000200fdc009fffffff83ff8001403f8003ffff87ffe3ff87ff41ffdfffffff9fffffffc27fffffffffffffd03fffffc3fffffffc3ffffff81ffffffffffffffffffffffffffffffffffffe7ffeffffffff",
+      "imageHash": "p1:07fe0ffe07e707fc0007000000070000620f0000380218000012fc7cfe00fc00fe9e813c00879d3c000081fc00068000200fdc009fffffff83ff8001403f8003ffff87ffe3ff87ff41ffdfffffff9fffffffc27fffffffffffffd03fffffc3fffffffc3ffffff81ffffffffffffffffffffffffffffffffffffe7ffeffffffff",
       "generatedAt": "2026-07-11T22:10:21.330Z",
       "severity": "high",
       "summary": [
@@ -1424,7 +1424,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2668786540824456
+      "metricMismatch": 0.2682822268130325
     },
     {
       "id": "components.home.saved.results",
@@ -1495,7 +1495,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.18607547842126226
+      "metricMismatch": 0.18607705045169676
     },
     {
       "id": "components.tasks.panel.states",
@@ -1635,7 +1635,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.24667098742928129
+      "metricMismatch": 0.24667200010801904
     },
     {
       "id": "components.members.create-agent.claude-dialog",
@@ -1669,13 +1669,13 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.24743522231673887
+      "metricMismatch": 0.24742880868473283
     },
     {
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-30T04:36:51.643Z",
+      "generatedAt": "2026-07-30T22:20:16.966Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1962,7 +1962,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19614000621109628
+      "metricMismatch": 0.196149795438895
     },
     {
       "id": "components.settings.notifications.page",
@@ -2137,7 +2137,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.05972745439570082
+      "metricMismatch": 0.05964812789457341
     },
     {
       "id": "screens.members.agent-detail.workspace",
@@ -2178,7 +2178,7 @@
     {
       "id": "screens.members.agent-detail.apps",
       "status": "ready",
-      "imageHash": "p1:07fe17fc8010003080100020000000000000000087fefffefdff0000ffff1efcffff0000ffff03e0ffff23fdffff001dffff3c05ffff007dffff0030ffff0000ffff0000ffff0000ffff07e0ffff0009ffff03fdffff0038ffff0000ffff0000ffff0000fffefffefffefffefffefffefffffffefffefffe7ffe7ffefffe7fff",
+      "imageHash": "p1:07fe17fc8010003080100020000000000000000087fefffeffff0000ffff1efcffff0000ffff03e0ffff23fdffff001dffff3c05ffff007dffff0030ffff0000ffff0000ffff0000ffff07e0ffff0009ffff03fdffff0038ffff0000ffff0000ffff0000fffefffefffefffefffefffefffffffefffefffe7ffe7ffefffe7fff",
       "generatedAt": "2026-07-18T07:39:58.524Z",
       "severity": "high",
       "summary": [
@@ -2207,7 +2207,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.11929355531251262
+      "metricMismatch": 0.11780964340206046
     },
     {
       "id": "screens.members.agent-detail.activity",
@@ -2241,7 +2241,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.09451803243272439
+      "metricMismatch": 0.09451870755188285
     },
     {
       "id": "screens.members.human.profile",
@@ -2407,7 +2407,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.15690646899177707
+      "metricMismatch": 0.15690140559808807
     },
     {
       "id": "components.thread.message-row.rich-content",

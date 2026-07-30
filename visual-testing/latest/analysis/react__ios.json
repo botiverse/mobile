@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-30T04:36:55.126Z",
+  "generatedAt": "2026-07-30T22:20:22.922Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
@@ -364,7 +364,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.062097122642146285
+      "metricMismatch": 0.062095097284670775
     },
     {
       "id": "components.ui.spinner.states",
@@ -1341,7 +1341,7 @@
     {
       "id": "components.home.search.results",
       "status": "ready",
-      "imageHash": "p1:1ffe1ffe85f807fc80000000800000008cef0000800310120002dfffffffffffffff80ff80009fff803cc0ff800080ff88035fffe7ffffffc0fe8003c00e8002fffe83ffd8fe87ffd05ec1fedffe9fffffff807effff4bffffff403fffff83effffffc3ffffff81ffffffffffffffffffffffffffffffffffffe7ffeffffffff",
+      "imageHash": "p1:1ffe1ffe85f807fc80000000800000008cef0000800310120002dfffffffffffffff80ff80009fff803c80ff800080ff8803dfffe7ff7fffc0fe8003c00e8002fffe83ffd8fe87ffd05ec1fedffe9fffffff807effff4bffffff403fffff83effffffc3ffffff81ffffffffffffffffffffffffffffffffffffe7ffeffffffff",
       "generatedAt": "2026-07-11T22:11:11.488Z",
       "severity": "medium",
       "summary": [
@@ -1371,12 +1371,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.26783732328756027
+      "metricMismatch": 0.2684310905874887
     },
     {
       "id": "components.home.search.channel-dropdown",
       "status": "ready",
-      "imageHash": "p1:07fe0ffe07e707fc0007000000070000620f0000380218100012fc7cfe00fc00fe9e803400879d3c0000c1cc00078000200fdc009fffffff83ff8001403f8003ffff83ffe3ff87ff41ffd9ffffff9fffffffc27fffffdbfffffff03fffff83effffffc3ffffff81ffffffffffffffffffffffffffffffffffffe7ffeffffffff",
+      "imageHash": "p1:07fe0ffe07e707fc0007000000070000620f0000380218100012fc7cfe00fc00fe9e803400879d3c000081cc00068000200fdc009fffffff83ff8001403f8003ffff83ffe3ff87ff41ffd9ffffff9fffffffc27fffffdbfffffff03fffff83effffffc3ffffff81ffffffffffffffffffffffffffffffffffffe7ffeffffffff",
       "generatedAt": "2026-07-11T22:11:11.554Z",
       "severity": "high",
       "summary": [
@@ -1407,7 +1407,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.26762904902715334
+      "metricMismatch": 0.2690137184213014
     },
     {
       "id": "components.home.saved.results",
@@ -1440,7 +1440,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.11137103198714571
+      "metricMismatch": 0.11136833151051162
     },
     {
       "id": "components.home.activity.results",
@@ -1476,7 +1476,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.10715491284211665
+      "metricMismatch": 0.1071559255208544
     },
     {
       "id": "components.tasks.panel.states",
@@ -1653,7 +1653,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-30T04:36:54.457Z",
+      "generatedAt": "2026-07-30T22:20:21.916Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1943,7 +1943,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1955995733246918
+      "metricMismatch": 0.19561307570786246
     },
     {
       "id": "components.settings.notifications.page",
@@ -2055,7 +2055,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-30T04:36:54.711Z",
+      "generatedAt": "2026-07-30T22:20:22.292Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2068,7 +2068,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-30T04:36:54.711Z",
+      "generatedAt": "2026-07-30T22:20:22.293Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2081,7 +2081,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-30T04:36:54.711Z",
+      "generatedAt": "2026-07-30T22:20:22.293Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2094,7 +2094,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-30T04:36:54.711Z",
+      "generatedAt": "2026-07-30T22:20:22.293Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2107,7 +2107,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-30T04:36:54.711Z",
+      "generatedAt": "2026-07-30T22:20:22.293Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2283,7 +2283,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.193153279053753
+      "metricMismatch": 0.19315260393459444
     },
     {
       "id": "components.thread.message-row.rich-content",

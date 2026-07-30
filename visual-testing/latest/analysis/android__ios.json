@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-30T04:36:58.578Z",
+  "generatedAt": "2026-07-30T22:20:28.301Z",
   "baseline": "android",
   "current": "ios",
   "comparison": "android__ios",
@@ -941,7 +941,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.05945571893439194
+      "metricMismatch": 0.05944896774280661
     },
     {
       "id": "components.thread.header.states",
@@ -1063,7 +1063,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.3693138088872686
+      "metricMismatch": 0.3693165093639027
     },
     {
       "id": "components.thread.message-menu.task",
@@ -1263,7 +1263,7 @@
     {
       "id": "components.home.search.results",
       "status": "ready",
-      "imageHash": "p1:1ffe1ffe97fc07fc8000000080000000800000009f321f12ffffffffffffffff80ff80ff9ffe9fffc0ffc0ff80fe80ffffffdfffffffffff800280038002800383fe83ff87fe87ffddfec9ff9ffe9fff827ec27fffffdbffd03fc03f83fe83effc3ffc3ff81ff81fffbffffffffffffffffffffffffffffffffe7ffeffffffff",
+      "imageHash": "p1:1ffe1ffe97fc07fc8000000080000000800000009f321f12ffffffffffffffff80fe80ff9ffe9fff80ff80ff80fe80ffdfffdfffffffffff800280038002800383fe83ff87fe87ffddfec9ff9ffe9fff827ec27fffffdbffd03fc03f83fe83effc3ffc3ff81ff81fffbffffffffffffffffffffffffffffffffe7ffeffffffff",
       "generatedAt": "2026-07-11T22:11:44.112Z",
       "severity": "low",
       "summary": [
@@ -1289,12 +1289,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.08053023858711061
+      "metricMismatch": 0.08087353667922392
     },
     {
       "id": "components.home.search.channel-dropdown",
       "status": "ready",
-      "imageHash": "p1:0ffe0ffe87fe07fc8000000080000000800000019c38dc78fcfcfcfcfc00fc04813c813c9d3c9d3cc1fcc1fe80008000fe00fc00ffffffff800380038003800387ff87ff87ff87ffdfffdfff9fff9fffd67fc67ffffffffff83ff03fc3ffc3fffffffffff81ff81ffffffffffffffffffffffffffffffffffffe7ffeffffffff",
+      "imageHash": "p1:0ffe0ffe87fe07fc8000000080000000800000019c38dc78fcfcfcfcfc00fc04813c813c9d3c9d3c81fc81fe80008000fe00dc00ffffffff800380038003800387ff87ff87ff87ffdfffdfff9fff9fffd67fc67ffffffffff83ff03fc3ffc3fffffffffff81ff81ffffffffffffffffffffffffffffffffffffe7ffeffffffff",
       "generatedAt": "2026-07-18T07:41:10.309Z",
       "severity": "low",
       "summary": [
@@ -1322,7 +1322,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.09582607580237912
+      "metricMismatch": 0.09616937389449243
     },
     {
       "id": "components.home.saved.results",
@@ -1935,7 +1935,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-30T04:36:58.161Z",
+      "generatedAt": "2026-07-30T22:20:27.644Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1948,7 +1948,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-30T04:36:58.161Z",
+      "generatedAt": "2026-07-30T22:20:27.644Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1961,7 +1961,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-30T04:36:58.161Z",
+      "generatedAt": "2026-07-30T22:20:27.644Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1974,7 +1974,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-30T04:36:58.161Z",
+      "generatedAt": "2026-07-30T22:20:27.644Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1987,7 +1987,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-30T04:36:58.161Z",
+      "generatedAt": "2026-07-30T22:20:27.644Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
