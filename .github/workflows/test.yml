@@ -406,10 +406,15 @@ jobs:
     env:
       GITHUB_PACKAGES_USERNAME: ${{ vars.GITHUB_PACKAGES_USERNAME || 'bytemain' }}
       GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_PACKAGES_TOKEN || github.token }}
-      # This compile gate must not inherit a poisoned Gradle transform cache
-      # from a previous hosted run. A corrupt instrumented AGP jar otherwise
-      # fails during root-project configuration before any source is compiled.
-      GRADLE_USER_HOME: /tmp/android-compile-gradle-home-${{ github.run_id }}-${{ github.run_attempt }}
+      # A stable (not per-run) GRADLE_USER_HOME so the setup-gradle cache actually
+      # restores across runs: its GitHub cache version hashes the resolved cache
+      # paths, so a run_id-suffixed home would change the version every run and
+      # never hit. #1478's poisoned-transform isolation is now provided by
+      # gradle-home-cache-excludes below (transforms/instrumented-jars are never
+      # restored), so the per-run home it used is no longer needed. Blacksmith
+      # runners are fresh VMs and the step below rebuilds this dir clean, so only
+      # setup-gradle's restore populates it.
+      GRADLE_USER_HOME: /tmp/android-compile-gradle-home
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -466,10 +471,41 @@ jobs:
       - name: Apply Gradle cache policy
         uses: ./.github/actions/gradle-cache-policy
 
+      - name: Start from a clean Gradle home (fail-closed)
+        run: rm -rf "$GRADLE_USER_HOME" && mkdir -p "$GRADLE_USER_HOME"
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
         with:
-          cache-disabled: true
+          # Re-enable the Gradle cache so the local build cache (caches/build-cache-1)
+          # and dependency bundles restore across runs — with cache-disabled the Android
+          # compile job recompiled everything from scratch every run (~8m40s).
+          #
+          # #1478 disabled the cache because a corrupt instrumented AGP jar could poison
+          # a shared run: `ExternalDependencyInstrumentingArtifactTransform` fails to build
+          # `instrumented-gradle-<v>.jar` at root-project configuration. That poison lives
+          # ONLY in the instrumentation cache families. Per the pinned gradle/actions@v5
+          # extractor (0723195856…, gradle-home-entry-extractor.ts), those families are:
+          #   instrumented-jars -> caches/jars-*/
+          #   transforms        -> caches/transforms-<N>/ (top-level) AND caches/<gradleVer>/transforms/
+          # `gradle-home-cache-excludes` deletes matching paths after restore and before
+          # save, so excluding these keeps them rebuilt-fresh while every other bundle
+          # (build-cache-1, modules-2, wrapper-zips, kotlin-dsl, generated-gradle-jars,
+          # java-toolchains) is content-addressed and restores across runs. transforms-*
+          # (not a pinned transforms-4) survives a Gradle metadata-version bump. Job-scoped
+          # permanent replacement for the blunt cache-disabled; the fleet-wide
+          # incident-response quarantine (.github/gradle-cache-quarantine) stays EMPTY.
+          #
+          # The stable GRADLE_USER_HOME (job env, rebuilt clean above) keeps the cache
+          # version stable across runs; PRs (non-main refs) read the default-branch
+          # cache seed read-only and never write back. The poison-guard writer/reader
+          # jobs in gradle-cache-policy-lint.yml are the authority that these families
+          # never restore while build-cache-1 does.
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+          gradle-home-cache-excludes: |
+            caches/jars-*
+            caches/transforms-*
+            caches/*/transforms
 
       - name: Write GitHub Packages credentials
         shell: bash
