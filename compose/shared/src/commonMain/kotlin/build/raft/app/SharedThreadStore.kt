@@ -6239,6 +6239,53 @@ internal class SharedThreadStore(
         return outcome
     }
 
+    /**
+     * Replaces a focused/windowed timeline with the canonical tail in one request.
+     *
+     * Back-to-bottom is an explicit destination intent, not incremental pagination:
+     * walking `loadNewer()` one page at a time leaves the viewport at each rendered
+     * window boundary and makes progress depend on another edge/drag callback.
+     */
+    suspend fun jumpToLatest(): Boolean {
+        val initial = _state.value.payload
+        val tailRoute =
+            initial
+                .copy(focusedMessageId = null)
+                .withoutTransientLocalSendingMessages()
+        lastRoutePayload = tailRoute
+        if (!initial.canLoadMoreAfter) {
+            reducePayloadPatch { current -> current.copy(focusedMessageId = null) }
+            diagnosticsLogger?.invoke(
+                "thread_jump_to_latest result=already_at_tail messages=${initial.messages.size}"
+            )
+            return true
+        }
+
+        // Invalidate an older focused refresh or incremental newer-page request.
+        // Their stale-token checks prevent a late page from replacing the tail.
+        loadJob?.cancel()
+        loadJob = null
+        secondaryTimelineRefreshJob?.cancel()
+        secondaryTimelineRefreshJob = null
+        val staleToken = advanceRouteStaleToken()
+        diagnosticsLogger?.invoke(
+            "thread_jump_to_latest result=requested visibleMessages=${initial.messages.size} " +
+                "visibleMaxSeq=${initial.messages.mapNotNull { it.seq }.maxOrNull() ?: 0L}"
+        )
+        refresh(basePayload = tailRoute, staleToken = staleToken)
+
+        val latest = _state.value.payload
+        val reachedCanonicalTail =
+            latest.resolveThreadRouteIdentity().canRetainThreadPageFor(tailRoute.resolveThreadRouteIdentity()) &&
+                latest.focusedMessageId == null &&
+                !latest.canLoadMoreAfter
+        diagnosticsLogger?.invoke(
+            "thread_jump_to_latest result=${if (reachedCanonicalTail) "applied" else "failed"} " +
+                "messages=${latest.messages.size} canLoadMoreAfter=${latest.canLoadMoreAfter}"
+        )
+        return reachedCanonicalTail
+    }
+
     private suspend fun recoverRealtimeGap(serverSeq: Long) {
         val initial = _state.value.payload
         val staleToken = routeStaleToken
@@ -7078,6 +7125,8 @@ internal class SharedThreadViewModel(
     }
 
     suspend fun loadNewerPage(): ThreadNewerPageLoadOutcome = store.loadNewer()
+
+    suspend fun jumpToLatest(): Boolean = store.jumpToLatest()
 
     override fun onCleared() {
         if (storeDelegate.isInitialized()) {

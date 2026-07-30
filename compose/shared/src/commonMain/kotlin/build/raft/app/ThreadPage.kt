@@ -16651,6 +16651,7 @@ private fun ThreadMessagesList(
                     pendingKeyboardBottomAnchor = pendingKeyboardBottomAnchor,
                     bottomAutoAnchorOwnsViewport = allowBottomAutoAnchor,
                     canScrollTowardBottom = listState.canScrollForward,
+                    canonicalTailMissing = renderPayload.canLoadMoreAfter,
                     latestItemOffBottom = listState.shouldShowThreadBackToBottom(latestItemIndex)
                 )
             )
@@ -16692,10 +16693,28 @@ private fun ThreadMessagesList(
                     }
                     diagnosticsLogger(
                         "thread_back_to_bottom_click latestItemIndex=$latestItemIndex " +
-                            "retiredFocusedAnchor=${retiredFocusedAnchorIdentity != null}"
+                            "retiredFocusedAnchor=${retiredFocusedAnchorIdentity != null} " +
+                            "canLoadMoreAfter=${renderPayload.canLoadMoreAfter}"
                     )
                     coroutineScope.launch {
                         try {
+                            val clickUserScrollGeneration = userScrollGeneration.value
+                            val canonicalTailLoaded = threadViewModel.jumpToLatest()
+                            if (
+                                !shouldCompleteThreadBackToBottom(
+                                    canonicalTailLoaded = canonicalTailLoaded,
+                                    clickUserScrollGeneration = clickUserScrollGeneration,
+                                    currentUserScrollGeneration = userScrollGeneration.value
+                                )
+                            ) {
+                                diagnosticsLogger(
+                                    "thread_back_to_bottom_settlement result=yielded " +
+                                        "canonicalTailLoaded=$canonicalTailLoaded " +
+                                        "clickUserScrollGeneration=$clickUserScrollGeneration " +
+                                        "currentUserScrollGeneration=${userScrollGeneration.value}"
+                                )
+                                return@launch
+                            }
                             allowBottomAutoAnchor = true
                             dispatchViewportEvent(
                                 LazyViewportEvent.FollowLatest(canOverrideUserDragging = true)
@@ -17635,6 +17654,7 @@ internal data class ThreadBackToBottomButtonState(
     val pendingKeyboardBottomAnchor: Boolean,
     val bottomAutoAnchorOwnsViewport: Boolean = false,
     val canScrollTowardBottom: Boolean = true,
+    val canonicalTailMissing: Boolean = false,
     val latestItemOffBottom: Boolean
 )
 
@@ -17642,8 +17662,17 @@ internal fun shouldShowThreadBackToBottomButton(state: ThreadBackToBottomButtonS
     state.initialBottomAnchorReady &&
         !state.pendingKeyboardBottomAnchor &&
         !state.bottomAutoAnchorOwnsViewport &&
-        state.canScrollTowardBottom &&
-        state.latestItemOffBottom
+        (
+            state.canonicalTailMissing ||
+                (state.canScrollTowardBottom && state.latestItemOffBottom)
+        )
+
+internal fun shouldCompleteThreadBackToBottom(
+    canonicalTailLoaded: Boolean,
+    clickUserScrollGeneration: Int,
+    currentUserScrollGeneration: Int
+): Boolean =
+    canonicalTailLoaded && clickUserScrollGeneration == currentUserScrollGeneration
 
 internal fun shouldKeepThreadBackToBottomOverlayMounted(
     shouldShowButton: Boolean,
