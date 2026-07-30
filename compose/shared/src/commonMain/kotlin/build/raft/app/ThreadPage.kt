@@ -7426,6 +7426,9 @@ internal fun SharedThreadRouteContent(
             onLoadNewer = {
                 threadViewModel.loadNewerPage()
             },
+            onJumpToLatest = {
+                threadViewModel.jumpToLatest()
+            },
             onBack = onBack,
             onUpdateChannelProfile = { channelId, originalName, originalDescription, name, description ->
                 if (renderSlice.writeActionsEnabled) {
@@ -12205,6 +12208,7 @@ private fun ThreadPageContent(
     onSaveShareImage: suspend (String) -> JSONObject?,
     onFirstContentReady: () -> Unit = {},
     onLoadNewer: suspend () -> ThreadNewerPageLoadOutcome,
+    onJumpToLatest: suspend () -> Boolean,
     onBack: () -> Unit,
     onUpdateChannelProfile: (String, String, String, String, String) -> Unit = { _, _, _, _, _ -> },
     onClearChannelProfileUpdateStatus: () -> Unit = {},
@@ -12853,6 +12857,7 @@ private fun ThreadPageContent(
                         activeMarkdownTagKey = activeMarkdownTagKey,
                         onThreadEvent = onThreadEvent,
                         onLoadNewer = onLoadNewer,
+                        onJumpToLatest = onJumpToLatest,
                         onOpenMember = onOpenMemberProfile,
                         onMentionAuthor = { message ->
                             val handle = mentionHandleResolver(message)
@@ -14026,6 +14031,7 @@ private fun ThreadChatTab(
     activeMarkdownTagKey: String? = null,
     onThreadEvent: ThreadEventHandler,
     onLoadNewer: suspend () -> ThreadNewerPageLoadOutcome,
+    onJumpToLatest: suspend () -> Boolean,
     onOpenMember: (MemberDetailIdentity) -> Unit,
     onMentionAuthor: (KuiklyThreadMessageItem) -> Unit,
     onOpenMarkdownTag: (ThreadMarkdownTag, String) -> Unit,
@@ -14108,6 +14114,7 @@ private fun ThreadChatTab(
                     activeMarkdownTagKey = activeMarkdownTagKey,
                     onThreadEvent = onThreadEvent,
                     onLoadNewer = onLoadNewer,
+                    onJumpToLatest = onJumpToLatest,
                     onOpenMember = onOpenMember,
                     onMentionAuthor = onMentionAuthor,
                     onOpenMarkdownTag = onOpenMarkdownTag,
@@ -14177,6 +14184,7 @@ private fun ThreadChatTab(
                     activeMarkdownTagKey = activeMarkdownTagKey,
                     onThreadEvent = onThreadEvent,
                     onLoadNewer = onLoadNewer,
+                    onJumpToLatest = onJumpToLatest,
                     onOpenMember = onOpenMember,
                     onMentionAuthor = onMentionAuthor,
                     onOpenMarkdownTag = onOpenMarkdownTag,
@@ -14236,6 +14244,7 @@ private fun ThreadChatTab(
                 resolveMarkdownTagLabel = resolveMarkdownTagLabel,
                 onThreadEvent = onThreadEvent,
                 onLoadNewer = onLoadNewer,
+                onJumpToLatest = onJumpToLatest,
                 onOpenMember = onOpenMember,
                 onMentionAuthor = onMentionAuthor,
                 onOpenMarkdownTag = onOpenMarkdownTag,
@@ -14538,6 +14547,7 @@ private fun ThreadMessagesList(
     activeMarkdownTagKey: String? = null,
     onThreadEvent: ThreadEventHandler,
     onLoadNewer: suspend () -> ThreadNewerPageLoadOutcome,
+    onJumpToLatest: suspend () -> Boolean,
     onOpenMember: (MemberDetailIdentity) -> Unit,
     onMentionAuthor: (KuiklyThreadMessageItem) -> Unit,
     onOpenMarkdownTag: (ThreadMarkdownTag, String) -> Unit,
@@ -16666,6 +16676,7 @@ private fun ThreadMessagesList(
                     pendingKeyboardBottomAnchor = pendingKeyboardBottomAnchor,
                     bottomAutoAnchorOwnsViewport = allowBottomAutoAnchor,
                     canScrollTowardBottom = listState.canScrollForward,
+                    canonicalTailMissing = renderPayload.canLoadMoreAfter,
                     latestItemOffBottom = listState.shouldShowThreadBackToBottom(latestItemIndex)
                 )
             )
@@ -16707,10 +16718,28 @@ private fun ThreadMessagesList(
                     }
                     diagnosticsLogger(
                         "thread_back_to_bottom_click latestItemIndex=$latestItemIndex " +
-                            "retiredFocusedAnchor=${retiredFocusedAnchorIdentity != null}"
+                            "retiredFocusedAnchor=${retiredFocusedAnchorIdentity != null} " +
+                            "canLoadMoreAfter=${renderPayload.canLoadMoreAfter}"
                     )
                     coroutineScope.launch {
                         try {
+                            val clickUserScrollGeneration = userScrollGeneration.value
+                            val canonicalTailLoaded = onJumpToLatest()
+                            if (
+                                !shouldCompleteThreadBackToBottom(
+                                    canonicalTailLoaded = canonicalTailLoaded,
+                                    clickUserScrollGeneration = clickUserScrollGeneration,
+                                    currentUserScrollGeneration = userScrollGeneration.value
+                                )
+                            ) {
+                                diagnosticsLogger(
+                                    "thread_back_to_bottom_settlement result=yielded " +
+                                        "canonicalTailLoaded=$canonicalTailLoaded " +
+                                        "clickUserScrollGeneration=$clickUserScrollGeneration " +
+                                        "currentUserScrollGeneration=${userScrollGeneration.value}"
+                                )
+                                return@launch
+                            }
                             allowBottomAutoAnchor = true
                             dispatchViewportEvent(
                                 LazyViewportEvent.FollowLatest(canOverrideUserDragging = true)
@@ -17679,6 +17708,7 @@ internal data class ThreadBackToBottomButtonState(
     val pendingKeyboardBottomAnchor: Boolean,
     val bottomAutoAnchorOwnsViewport: Boolean = false,
     val canScrollTowardBottom: Boolean = true,
+    val canonicalTailMissing: Boolean = false,
     val latestItemOffBottom: Boolean
 )
 
@@ -17686,8 +17716,17 @@ internal fun shouldShowThreadBackToBottomButton(state: ThreadBackToBottomButtonS
     state.initialBottomAnchorReady &&
         !state.pendingKeyboardBottomAnchor &&
         !state.bottomAutoAnchorOwnsViewport &&
-        state.canScrollTowardBottom &&
-        state.latestItemOffBottom
+        (
+            state.canonicalTailMissing ||
+                (state.canScrollTowardBottom && state.latestItemOffBottom)
+        )
+
+internal fun shouldCompleteThreadBackToBottom(
+    canonicalTailLoaded: Boolean,
+    clickUserScrollGeneration: Int,
+    currentUserScrollGeneration: Int
+): Boolean =
+    canonicalTailLoaded && clickUserScrollGeneration == currentUserScrollGeneration
 
 internal fun shouldKeepThreadBackToBottomOverlayMounted(
     shouldShowButton: Boolean,
