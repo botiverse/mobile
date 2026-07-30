@@ -397,6 +397,8 @@ internal class SlockSharedStoreProvider private constructor(
     private val shellForegroundBannerStores = SlockShellScopedStoreCache<SharedForegroundBannerStore>()
     private val shellRealtimeRoomLeaseRegistries =
         SlockShellScopedStoreCache<SharedRealtimeRoomLeaseRegistry>()
+    private val shellAdaptiveWorkspaceStores =
+        SlockShellScopedStoreCache<SharedAdaptiveWorkspaceStore>()
     private val processReadReceiptLock = SynchronizedObject()
     private var processReadReceiptCoordinator: ReadReceiptCoordinator? = null
     private val processReadReceiptRepositories = mutableMapOf<ReadReceiptOwner, RealReadReceiptRepository>()
@@ -854,6 +856,9 @@ internal class SlockSharedStoreProvider private constructor(
             SharedRealtimeRoomLeaseRegistry(scope.shellInstanceId)
         }
 
+    fun adaptiveWorkspaceStore(scope: SlockShellStoreScope): SharedAdaptiveWorkspaceStore =
+        shellAdaptiveWorkspaceStores.getOrPut(scope) { SharedAdaptiveWorkspaceStore() }
+
     fun createAuthDataSourceForCurrentEnvironment(): SharedAuthDataSource =
         createSharedAuthDataSourceForCurrentEnvironment(
             apiEnvironmentStore = apiEnvironmentStore,
@@ -1182,6 +1187,7 @@ internal class SlockSharedStoreProvider private constructor(
         shellRealtimeRoomLeaseRegistries.remove(scope)?.clear()?.let { transitions ->
             KuiklyRealtimeEvents(eventBus).applyRoomTransitions(transitions)
         }
+        shellAdaptiveWorkspaceStores.remove(scope)?.clear()
         realtimeAuthorityRegistrations.remove(scope)?.let { registrationId ->
             threadSendScope.launch {
                 realtimeAuthorityProvider.releaseScope(scope.shellInstanceId, registrationId)

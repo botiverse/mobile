@@ -2437,16 +2437,7 @@ internal fun SlockAppShellContent(
     var observedHomeServerSwitchId by remember { mutableStateOf<String?>(null) }
     var tasksListPosition by remember { mutableStateOf(AppShellLazyListPosition()) }
     var membersListState by remember { mutableStateOf(AppShellMembersListState()) }
-    var adaptiveWorkspaceState by remember {
-        mutableStateOf<SlockAdaptiveWorkspaceState?>(null)
-    }
-    var adaptiveDetailLaunchPayload by remember {
-        mutableStateOf<WireThreadLaunchPayload?>(null)
-    }
     var adaptiveDefaultLandingServerId by remember { mutableStateOf<String?>(null) }
-    var adaptiveHandoffRoomLeaseOwner by remember {
-        mutableStateOf<RealtimeRoomLeaseOwner?>(null)
-    }
     var tabScrollToTopRequests by remember { mutableStateOf(AppShellTabScrollToTopRequests()) }
     val bottomTabTapTracker = remember { AppShellBottomTabTapTracker() }
     val bottomTabTapClock = remember { TimeSource.Monotonic.markNow() }
@@ -2457,6 +2448,11 @@ internal fun SlockAppShellContent(
         pager.pageData.params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
     }
     val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
+    val adaptiveWorkspaceStore =
+        remember(sharedStores, storeScope) { sharedStores.adaptiveWorkspaceStore(storeScope) }
+    val adaptiveWorkspaceSession by adaptiveWorkspaceStore.state.collectAsState()
+    val adaptiveWorkspaceState = adaptiveWorkspaceSession.workspace
+    val adaptiveDetailLaunchPayload = adaptiveWorkspaceSession.launchPayload
     rememberAuthRuntimeCapabilities(
         store = sharedStores.authRuntimeCapabilityStore,
         pageData = pager.pageData.params
@@ -3321,10 +3317,16 @@ internal fun SlockAppShellContent(
     val adaptiveRoomLeaseRegistry =
         remember(sharedStores, storeScope) { sharedStores.realtimeRoomLeaseRegistry(storeScope) }
     fun releaseAdaptiveHandoffLease(expectedGeneration: Long? = null) {
-        val owner = adaptiveHandoffRoomLeaseOwner ?: return
+        val owner = adaptiveWorkspaceStore.snapshot().handoffRoomLeaseOwner ?: return
         if (expectedGeneration != null && owner.generation != expectedGeneration) return
         realtimeEvents.applyRoomTransitions(adaptiveRoomLeaseRegistry.release(owner))
-        adaptiveHandoffRoomLeaseOwner = null
+        adaptiveWorkspaceStore.update { current ->
+            if (current.handoffRoomLeaseOwner == owner) {
+                current.copy(handoffRoomLeaseOwner = null)
+            } else {
+                current
+            }
+        }
     }
     fun installAdaptiveHandoffLease(
         selection: SlockAdaptiveDetailSelection,
@@ -3343,8 +3345,10 @@ internal fun SlockAppShellContent(
                 ?.activeRealtimeRoomIds()
                 .orEmpty()
         realtimeEvents.applyRoomTransitions(adaptiveRoomLeaseRegistry.acquire(nextOwner, roomIds))
-        val previousOwner = adaptiveHandoffRoomLeaseOwner
-        adaptiveHandoffRoomLeaseOwner = nextOwner
+        val previousOwner = adaptiveWorkspaceStore.snapshot().handoffRoomLeaseOwner
+        adaptiveWorkspaceStore.update { current ->
+            current.copy(handoffRoomLeaseOwner = nextOwner)
+        }
         if (previousOwner != null && previousOwner != nextOwner) {
             realtimeEvents.applyRoomTransitions(adaptiveRoomLeaseRegistry.release(previousOwner))
         }
@@ -3360,11 +3364,15 @@ internal fun SlockAppShellContent(
     ) {
         val serverId = readyServerId?.trim()?.takeIf(String::isNotBlank)
         if (!adaptiveHomeWorkspaceEnabled || serverId == null) {
-            adaptiveWorkspaceState =
-                adaptiveWorkspaceState?.let { state ->
-                    reduceSlockAdaptiveWorkspace(state, SlockAdaptiveWorkspaceIntent.TerminalReset)
-                }
-            adaptiveDetailLaunchPayload = null
+            adaptiveWorkspaceStore.update { current ->
+                current.copy(
+                    workspace =
+                        current.workspace?.let { state ->
+                            reduceSlockAdaptiveWorkspace(state, SlockAdaptiveWorkspaceIntent.TerminalReset)
+                        },
+                    launchPayload = null,
+                )
+            }
             releaseAdaptiveHandoffLease()
             adaptiveDefaultLandingServerId = null
             return@LaunchedEffect
@@ -3381,7 +3389,7 @@ internal fun SlockAppShellContent(
                     next,
                     SlockAdaptiveWorkspaceIntent.AuthorityChanged(serverId),
                 )
-            adaptiveDetailLaunchPayload = null
+            adaptiveWorkspaceStore.update { current -> current.copy(launchPayload = null) }
             releaseAdaptiveHandoffLease()
             adaptiveDefaultLandingServerId = null
         }
@@ -3397,7 +3405,7 @@ internal fun SlockAppShellContent(
                     pageVisible && retainedAppShellSelectedTab(selectedTab) == "home" && selectedHomeDestination == null
                 ),
             )
-        adaptiveWorkspaceState = next
+        adaptiveWorkspaceStore.update { current -> current.copy(workspace = next) }
     }
     DisposableEffect(sharedStores, storeScope.shellInstanceId) {
         val subscription =
@@ -3408,7 +3416,7 @@ internal fun SlockAppShellContent(
                 val request = eventData?.toSlockAdaptiveDetailCloseRequestOrNull()
                     ?: return@observe
                 if (request.shellInstanceId != storeScope.shellInstanceId) return@observe
-                val current = adaptiveWorkspaceState ?: return@observe
+                val current = adaptiveWorkspaceStore.snapshot().workspace ?: return@observe
                 val next =
                     reduceSlockAdaptiveWorkspace(
                         current,
@@ -3418,11 +3426,20 @@ internal fun SlockAppShellContent(
                         ),
                     )
                 if (current.selection != null && next.selection == null) {
-                    adaptiveDetailLaunchPayload = null
                     releaseAdaptiveHandoffLease(request.generation)
                     homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(null))
                 }
-                adaptiveWorkspaceState = next
+                adaptiveWorkspaceStore.update { session ->
+                    session.copy(
+                        workspace = next,
+                        launchPayload =
+                            if (current.selection != null && next.selection == null) {
+                                null
+                            } else {
+                                session.launchPayload
+                            },
+                    )
+                }
             }
         onDispose { subscription.close() }
     }
@@ -3784,11 +3801,15 @@ internal fun SlockAppShellContent(
     }
 
     fun resetAppShellSessionState() {
-        adaptiveWorkspaceState =
-            adaptiveWorkspaceState?.let { state ->
-                reduceSlockAdaptiveWorkspace(state, SlockAdaptiveWorkspaceIntent.TerminalReset)
-            }
-        adaptiveDetailLaunchPayload = null
+        adaptiveWorkspaceStore.update { current ->
+            current.copy(
+                workspace =
+                    current.workspace?.let { state ->
+                        reduceSlockAdaptiveWorkspace(state, SlockAdaptiveWorkspaceIntent.TerminalReset)
+                    },
+                launchPayload = null,
+            )
+        }
         releaseAdaptiveHandoffLease()
         adaptiveDefaultLandingServerId = null
         realtimeConnectionFamilyId = null
@@ -4044,8 +4065,12 @@ internal fun SlockAppShellContent(
                 if (next.selection != adaptiveState.selection || adaptiveDetailLaunchPayload == null) {
                     installAdaptiveHandoffLease(next.selection, launchPayload)
                 }
-                adaptiveWorkspaceState = next
-                adaptiveDetailLaunchPayload = launchPayload
+                adaptiveWorkspaceStore.update { current ->
+                    current.copy(
+                        workspace = next,
+                        launchPayload = launchPayload,
+                    )
+                }
                 return
             }
         }
@@ -5309,6 +5334,8 @@ internal fun SlockAppShellContent(
                             localePreferenceStore.readLocaleSync() == AppLocale.SimplifiedChinese
                         val adaptiveEmptyLabel = stringResource(MR.strings.home_adaptive_select_conversation)
                         PerformanceSceneEffect(bridge, "kuikly_home", active = active)
+                        val workspace = adaptiveWorkspaceState
+                        val selection = workspace?.selection
                         val homeListPane: @Composable (Boolean) -> Unit = { listActive ->
                             SharedHomeScreen(
                                 bridge = bridge,
@@ -5369,7 +5396,13 @@ internal fun SlockAppShellContent(
                                     pager.openAppUpdatePage(storeScope)
                                 },
                                 externalFocusLossDismissEpoch = homeFocusLossDismissEpoch,
-                                selectedConversationId = selectedHomeConversationId ?: homeState.selectedConversationId,
+                                selectedConversationId =
+                                    resolveSlockHomeSelectedConversationId(
+                                        adaptiveWorkspaceEnabled = adaptiveHomeWorkspaceEnabled,
+                                        adaptiveSelection = selection,
+                                        shellSelectedConversationId = selectedHomeConversationId,
+                                        homeSelectedConversationId = homeState.selectedConversationId,
+                                    ),
                                 onSelectedConversationCleared = {
                                     homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(null))
                                 },
@@ -5428,8 +5461,6 @@ internal fun SlockAppShellContent(
                                 }
                             )
                         }
-                        val workspace = adaptiveWorkspaceState
-                        val selection = workspace?.selection
                         val detailPayload = adaptiveDetailLaunchPayload
                         val childActive =
                             active && workspace?.presentation != SlockAdaptiveWorkspacePresentation.Inactive
