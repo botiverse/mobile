@@ -89,6 +89,10 @@ internal class SharedRealtimeRoomLeaseRegistry(
         owners.flatMap(::releaseOwnerLocked).distinct()
     }
 
+    fun clear(): List<RealtimeRoomTransition> = synchronized(lock) {
+        roomsByOwner.keys.toList().flatMap(::releaseOwnerLocked).distinct()
+    }
+
     fun ownerCount(serverId: String, roomId: String): Int = synchronized(lock) {
         ownersByRoom[RoomKey(serverId, roomId)]?.size ?: 0
     }

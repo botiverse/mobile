@@ -395,6 +395,8 @@ internal class SlockSharedStoreProvider private constructor(
     private val shellCreateAgentFormOwnerJobs = SlockShellScopedStoreCache<Job>()
     private val shellNavigationCoordinators = SlockShellScopedStoreCache<SharedWindowNavigationCoordinator>()
     private val shellForegroundBannerStores = SlockShellScopedStoreCache<SharedForegroundBannerStore>()
+    private val shellRealtimeRoomLeaseRegistries =
+        SlockShellScopedStoreCache<SharedRealtimeRoomLeaseRegistry>()
     private val processReadReceiptLock = SynchronizedObject()
     private var processReadReceiptCoordinator: ReadReceiptCoordinator? = null
     private val processReadReceiptRepositories = mutableMapOf<ReadReceiptOwner, RealReadReceiptRepository>()
@@ -847,6 +849,11 @@ internal class SlockSharedStoreProvider private constructor(
     fun foregroundBannerStore(scope: SlockShellStoreScope): SharedForegroundBannerStore =
         shellForegroundBannerStores.getOrPut(scope) { SharedForegroundBannerStore(threadSendScope) }
 
+    fun realtimeRoomLeaseRegistry(scope: SlockShellStoreScope): SharedRealtimeRoomLeaseRegistry =
+        shellRealtimeRoomLeaseRegistries.getOrPut(scope) {
+            SharedRealtimeRoomLeaseRegistry(scope.shellInstanceId)
+        }
+
     fun createAuthDataSourceForCurrentEnvironment(): SharedAuthDataSource =
         createSharedAuthDataSourceForCurrentEnvironment(
             apiEnvironmentStore = apiEnvironmentStore,
@@ -1172,6 +1179,9 @@ internal class SlockSharedStoreProvider private constructor(
 
     fun releaseShellStoreScope(scope: SlockShellStoreScope) {
         if (scope == SlockShellStoreScope.Legacy) return
+        shellRealtimeRoomLeaseRegistries.remove(scope)?.clear()?.let { transitions ->
+            KuiklyRealtimeEvents(eventBus).applyRoomTransitions(transitions)
+        }
         realtimeAuthorityRegistrations.remove(scope)?.let { registrationId ->
             threadSendScope.launch {
                 realtimeAuthorityProvider.releaseScope(scope.shellInstanceId, registrationId)

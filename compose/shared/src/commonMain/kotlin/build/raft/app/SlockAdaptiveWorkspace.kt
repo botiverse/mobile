@@ -1,5 +1,13 @@
 package build.raft.app
 
+import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+
+internal const val SLOCK_ADAPTIVE_DETAIL_CLOSE_EVENT = "slockAdaptiveDetailClose"
+internal const val SLOCK_ADAPTIVE_DETAIL_SHELL_ID = "slockAdaptiveDetailShellId"
+internal const val SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY = "slockAdaptiveDetailIdentityKey"
+internal const val SLOCK_ADAPTIVE_DETAIL_GENERATION = "slockAdaptiveDetailGeneration"
+internal const val SLOCK_ADAPTIVE_HOME_WORKSPACE_ENABLED = "slockAdaptiveHomeWorkspaceEnabled"
+
 /**
  * Identity and intent for one adaptive conversation detail.
  *
@@ -9,6 +17,7 @@ package build.raft.app
 internal data class SlockAdaptiveDetailIdentity(
     val serverId: String,
     val threadId: String,
+    val surfaceKind: String,
     val channelId: String? = null,
     val streamChannelId: String? = null,
     val parentChannelId: String? = null,
@@ -19,16 +28,18 @@ internal data class SlockAdaptiveDetailIdentity(
         listOf(
             serverId,
             threadId,
+            surfaceKind,
             channelId.orEmpty(),
             streamChannelId.orEmpty(),
             parentChannelId.orEmpty(),
             parentMessageId.orEmpty(),
             focusedMessageId.orEmpty(),
-        ).joinToString("|")
+        ).joinToString(separator = "") { value -> "${value.length}:$value" }
 
     init {
         require(serverId.isNotBlank()) { "Adaptive detail requires a server id" }
         require(threadId.isNotBlank()) { "Adaptive detail requires a thread id" }
+        require(surfaceKind.isNotBlank()) { "Adaptive detail requires a surface kind" }
     }
 }
 
@@ -36,6 +47,81 @@ internal data class SlockAdaptiveDetailSelection(
     val identity: SlockAdaptiveDetailIdentity,
     val generation: Long,
 )
+
+internal data class SlockAdaptiveDetailCloseRequest(
+    val shellInstanceId: String,
+    val identityKey: String,
+    val generation: Long,
+) {
+    init {
+        require(shellInstanceId.isNotBlank()) { "Adaptive close requires a shell id" }
+        require(identityKey.isNotBlank()) { "Adaptive close requires an identity key" }
+        require(generation > 0L) { "Adaptive close requires a positive generation" }
+    }
+
+    fun toJson(): JSONObject =
+        JSONObject()
+            .put(SLOCK_ADAPTIVE_DETAIL_SHELL_ID, shellInstanceId)
+            .put(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY, identityKey)
+            .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, generation)
+}
+
+internal fun JSONObject.toSlockAdaptiveDetailCloseRequestOrNull(): SlockAdaptiveDetailCloseRequest? {
+    val shellInstanceId = optString(SLOCK_ADAPTIVE_DETAIL_SHELL_ID).trim()
+    val identityKey = optString(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY).trim()
+    val generation = optDouble(SLOCK_ADAPTIVE_DETAIL_GENERATION, 0.0).toLong()
+    if (shellInstanceId.isBlank() || identityKey.isBlank() || generation <= 0L) return null
+    return SlockAdaptiveDetailCloseRequest(shellInstanceId, identityKey, generation)
+}
+
+internal fun updatedSlockAdaptiveDetailCloseRequest(
+    current: SlockAdaptiveDetailCloseRequest?,
+    eventData: JSONObject,
+): SlockAdaptiveDetailCloseRequest? =
+    eventData.toSlockAdaptiveDetailCloseRequestOrNull() ?: current
+
+internal fun shouldHoldThreadRoomLease(
+    adaptiveCloseRequest: SlockAdaptiveDetailCloseRequest?,
+    active: Boolean,
+): Boolean = adaptiveCloseRequest == null || active
+
+internal fun WireThreadLaunchPayload.toSlockAdaptiveDetailIdentity(
+    serverId: String,
+): SlockAdaptiveDetailIdentity? {
+    val normalizedServerId = serverId.trim().takeIf(String::isNotBlank) ?: return null
+    val resolvedThreadId =
+        sourceThreadId?.trim()?.takeIf(String::isNotBlank)
+            ?: streamChannelId?.trim()?.takeIf(String::isNotBlank)
+            ?: threadId?.trim()?.takeIf(String::isNotBlank)
+            ?: parentMessageId?.trim()?.takeIf(String::isNotBlank)
+            ?: return null
+    return SlockAdaptiveDetailIdentity(
+        serverId = normalizedServerId,
+        threadId = resolvedThreadId,
+        surfaceKind = surfaceKind,
+        channelId = threadId?.trim()?.takeIf(String::isNotBlank),
+        streamChannelId = streamChannelId?.trim()?.takeIf(String::isNotBlank),
+        parentChannelId = parentChannelId?.trim()?.takeIf(String::isNotBlank),
+        parentMessageId = parentMessageId?.trim()?.takeIf(String::isNotBlank),
+        focusedMessageId = focusedMessageId?.trim()?.takeIf(String::isNotBlank),
+    )
+}
+
+internal data class SlockAdaptiveHomeLandingCandidate(
+    val threadId: String,
+    val name: String,
+    val joint: Boolean,
+)
+
+internal fun resolveSlockAdaptiveHomeLandingId(
+    selectedThreadId: String?,
+    candidates: List<SlockAdaptiveHomeLandingCandidate>,
+): String? =
+    selectedThreadId
+        ?.trim()
+        ?.takeIf(String::isNotBlank)
+        ?.let { selected -> candidates.firstOrNull { it.threadId == selected }?.threadId }
+        ?: candidates.firstOrNull { !it.joint && it.name == "all" }?.threadId
 
 internal enum class SlockAdaptiveWorkspacePresentation {
     ListOnly,

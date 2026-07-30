@@ -87,4 +87,15 @@ internal class KuiklyRealtimeEvents(
             source = "realtime_rooms"
         )
     }
+
+    fun applyRoomTransitions(transitions: Iterable<RealtimeRoomTransition>) {
+        transitions.forEach { transition ->
+            when (transition.action) {
+                RealtimeRoomTransitionAction.Join ->
+                    joinChannel(transition.roomId, transition.serverId)
+                RealtimeRoomTransitionAction.Leave ->
+                    leaveChannel(transition.roomId, transition.serverId)
+            }
+        }
+    }
 }

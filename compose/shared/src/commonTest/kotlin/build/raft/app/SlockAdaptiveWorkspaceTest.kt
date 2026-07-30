@@ -1,8 +1,10 @@
 package build.raft.app
 
+import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -116,6 +118,98 @@ class SlockAdaptiveWorkspaceTest {
         assertEquals(opened.generationCursor, duplicateWindow.generationCursor)
     }
 
+    @Test
+    fun closeEnvelopeRoundTripsExplicitShellIdentityAndGeneration() {
+        val request =
+            SlockAdaptiveDetailCloseRequest(
+                shellInstanceId = "shell-a",
+                identityKey = "4:room",
+                generation = 7,
+            )
+
+        assertEquals(request, request.toJson().toSlockAdaptiveDetailCloseRequestOrNull())
+        assertNull(
+            JSONObject()
+                .put(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY, request.identityKey)
+                .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, request.generation)
+                .toSlockAdaptiveDetailCloseRequestOrNull()
+        )
+    }
+
+    @Test
+    fun childPageDataUpdateRebindsCloseEnvelopeAndLegacyUpdateKeepsCurrent() {
+        val first = SlockAdaptiveDetailCloseRequest("shell-a", "first", 1)
+        val second = SlockAdaptiveDetailCloseRequest("shell-a", "second", 2)
+
+        val rebound = updatedSlockAdaptiveDetailCloseRequest(first, second.toJson())
+        val legacyUpdate = updatedSlockAdaptiveDetailCloseRequest(rebound, JSONObject().put("payload", "{}"))
+
+        assertEquals(second, rebound)
+        assertEquals(second, legacyUpdate)
+    }
+
+    @Test
+    fun standaloneThreadKeepsRoomLeaseWhileCoveredButAdaptiveInactiveReleases() {
+        val adaptive = SlockAdaptiveDetailCloseRequest("shell-a", "detail", 1)
+
+        assertTrue(shouldHoldThreadRoomLease(adaptiveCloseRequest = null, active = false))
+        assertTrue(shouldHoldThreadRoomLease(adaptiveCloseRequest = adaptive, active = true))
+        assertFalse(shouldHoldThreadRoomLease(adaptiveCloseRequest = adaptive, active = false))
+    }
+
+    @Test
+    fun lengthPrefixedIdentityKeysDoNotCollideWhenDelimitersAppearInIds() {
+        val first =
+            detailIdentity("thread|a").copy(
+                channelId = "channel",
+                parentChannelId = "parent|message",
+            )
+        val second =
+            detailIdentity("thread").copy(
+                channelId = "a|channel",
+                parentChannelId = "parent|message",
+            )
+
+        assertNotEquals(first.key, second.key)
+    }
+
+    @Test
+    fun wireLaunchProjectsIdentityOnlyFieldsForAdaptiveSelection() {
+        val wire =
+            WireThreadLaunchPayload(
+                instanceId = "presentation-only-instance",
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                sourceThreadId = "stream-a",
+                streamChannelId = "stream-a",
+                parentChannelId = "channel-a",
+                parentMessageId = "message-a",
+                focusedMessageId = "focus-a",
+                navigationLabel = "localized presentation",
+            )
+
+        val identity = wire.toSlockAdaptiveDetailIdentity("server-a") ?: error("identity missing")
+
+        assertEquals("server-a", identity.serverId)
+        assertEquals("stream-a", identity.threadId)
+        assertEquals("message-a", identity.parentMessageId)
+        assertFalse(identity.key.contains("localized presentation"))
+        assertFalse(identity.key.contains("presentation-only-instance"))
+    }
+
+    @Test
+    fun defaultLandingRestoresVisibleSelectionThenFallsBackToNonJointAll() {
+        val candidates =
+            listOf(
+                SlockAdaptiveHomeLandingCandidate("joint-all", "all", joint = true),
+                SlockAdaptiveHomeLandingCandidate("channel-all", "all", joint = false),
+                SlockAdaptiveHomeLandingCandidate("dm-a", "Alice", joint = false),
+            )
+
+        assertEquals("dm-a", resolveSlockAdaptiveHomeLandingId("dm-a", candidates))
+        assertEquals("channel-all", resolveSlockAdaptiveHomeLandingId("missing", candidates))
+        assertEquals("channel-all", resolveSlockAdaptiveHomeLandingId(null, candidates))
+    }
+
     private fun initialState(): SlockAdaptiveWorkspaceState =
         SlockAdaptiveWorkspaceState(
             shellInstanceId = "shell-a",
@@ -126,6 +220,7 @@ class SlockAdaptiveWorkspaceTest {
         SlockAdaptiveDetailIdentity(
             serverId = "server-a",
             threadId = threadId,
+            surfaceKind = KuiklyThreadSurfaceKind.Channel,
             channelId = "channel-$threadId",
         )
 
