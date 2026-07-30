@@ -3475,6 +3475,8 @@ class KmpVisualScreenshotCaptureTest {
         var activePackage: CharSequence? = null
         var wokeDisplay = false
         var dismissedSystemDialogs = 0
+        var forceStopped = false
+        var forceStoppedPackage: String? = null
         while (SystemClock.uptimeMillis() < deadline) {
             // CI emulators ship stay_on_while_plugged_in=0 with a finite
             // screen_off_timeout (PR #1747's first-character finding); when the
@@ -3499,6 +3501,25 @@ class KmpVisualScreenshotCaptureTest {
             if (activePackage == "android") {
                 runShellCommand("input keyevent KEYCODE_BACK")
                 dismissedSystemDialogs++
+                // A transient dialog clears with a single BACK. A system app
+                // that is genuinely hung (proof run 30512804561 shard0: the
+                // launcher ANR returned across dismissedSystemDialogs=39, BACK
+                // losing the whole 10s) needs to be restarted. Once BACK has
+                // clearly not won, force-stop the ANR/crash owner so its window
+                // rebuilds — but ONLY a non-fixture, non-instrumentation app,
+                // never our own capture process.
+                if (dismissedSystemDialogs == PERSISTENT_DIALOG_FORCE_STOP_AFTER && !forceStopped) {
+                    val offender = focusedSystemAppPackage()
+                    if (offender != null &&
+                        offender != "build.raft.app.connectedtest" &&
+                        offender != "build.raft.app.connectedtest.test"
+                    ) {
+                        runShellCommand("am force-stop $offender")
+                        forceStoppedPackage = offender
+                        forceStopped = true
+                        Log.w(VISUAL_LOG_TAG, "$what: force-stopped hung system app $offender after $dismissedSystemDialogs BACK dismisses")
+                    }
+                }
             }
             Thread.sleep(ACTIVE_INPUT_WINDOW_POLL_MS)
         }
@@ -3532,8 +3553,22 @@ class KmpVisualScreenshotCaptureTest {
             "$what is not the active input window after ${timeoutMs}ms: " +
                 "package=$activePackage interactive=${powerManager?.isInteractive} " +
                 "wokeDisplay=$wokeDisplay dismissedSystemDialogs=$dismissedSystemDialogs " +
-                "inputFocus=[$inputFocus] focus=[$focusDump]"
+                "forceStopped=$forceStoppedPackage inputFocus=[$inputFocus] focus=[$focusDump]"
         )
+    }
+
+    /**
+     * Parse the package that owns the focused ANR / crash dialog from the
+     * window table (e.g. "Application Not Responding: com.google...launcher" or
+     * "Application Error: <pkg>"). Returns null when no such dialog is named, so
+     * the caller only ever force-stops an explicitly-identified hung app.
+     */
+    private fun focusedSystemAppPackage(): String? {
+        val marker = Regex("""Application (?:Not Responding|Error): ([A-Za-z0-9_.]+)""")
+        return readShellCommand("dumpsys window windows")
+            .lineSequence()
+            .mapNotNull { marker.find(it)?.groupValues?.get(1) }
+            .firstOrNull()
     }
 
     /** Shell command via UiAutomation returning stdout (best-effort, empty on failure). */
@@ -5281,6 +5316,9 @@ class KmpVisualScreenshotCaptureTest {
         private const val ACCESSIBILITY_MARKER_POLL_MS = 100L
         private const val ACTIVE_INPUT_WINDOW_TIMEOUT_MS = 10_000L
         private const val ACTIVE_INPUT_WINDOW_POLL_MS = 250L
+        // After this many failed BACK dismisses (~2s at 250ms poll) a system
+        // dialog is treated as a hard-hung app and its owner is force-stopped.
+        private const val PERSISTENT_DIALOG_FORCE_STOP_AFTER = 8
         // Hard per-case backstop. With every unbounded waitForIdleSync path now
         // bounded (idle waits, onActivity, close — task #362/#364), no case
         // hangs forever, so this is a generous ceiling for legitimately-slow 3x
