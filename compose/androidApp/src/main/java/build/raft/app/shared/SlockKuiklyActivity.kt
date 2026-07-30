@@ -362,12 +362,31 @@ internal fun threadShareChromeCaptionTextSize(width: Int): Float =
 internal fun threadShareChromeOutputHeight(width: Int, contentHeight: Int): Int =
         contentHeight.coerceAtLeast(1) + threadShareChromeHeaderHeight(width)
 
+internal data class SlockKuiklyLoadReadiness(
+    val succeeded: Boolean,
+    val completedAtMillis: Long
+)
+
+internal data class SlockKuiklyRenderReadinessSnapshot(
+    val createdAtMillis: Long,
+    val resumedAtMillis: Long?,
+    val topPageLoad: SlockKuiklyLoadReadiness?,
+    val childPageLoad: SlockKuiklyLoadReadiness?,
+    val hasWindowFocus: Boolean,
+    val contentWidth: Int,
+    val contentHeight: Int
+)
+
 open class SlockKuiklyActivity :
     ComponentActivity(),
     KuiklyRenderViewBaseDelegatorDelegate,
     SlockKuiklyChildPageLoadListener {
 
     private val kuiklyRenderViewDelegator = KuiklyRenderViewBaseDelegator(this)
+    private val renderReadinessCreatedAtMillis = SystemClock.elapsedRealtime()
+    @Volatile private var renderReadinessResumedAtMillis: Long? = null
+    @Volatile private var renderReadinessTopPageLoad: SlockKuiklyLoadReadiness? = null
+    private val renderReadinessChildLoads = ConcurrentHashMap<String, SlockKuiklyLoadReadiness>()
     private var pageSpec: SlockKuiklyPageSpec? = null
     private var homeColdStartSplashGate: HomeColdStartSplashGate? = null
     private var homeColdStartSplashTimeoutLogged = false
@@ -556,6 +575,11 @@ open class SlockKuiklyActivity :
         pageDataText: String,
         isSucceed: Boolean
     ) {
+        renderReadinessChildLoads[pageName] =
+            SlockKuiklyLoadReadiness(
+                succeeded = isSucceed,
+                completedAtMillis = SystemClock.elapsedRealtime()
+            )
         if (!isHomeAppShellChildPageData(pageDataText)) return
         if (homeColdStartSplashGate?.release() != true) return
         removeHomeColdStartNativeHold(reason = "child_page_load")
@@ -791,6 +815,7 @@ open class SlockKuiklyActivity :
 
     override fun onResume() {
         super.onResume()
+        renderReadinessResumedAtMillis = SystemClock.elapsedRealtime()
         suppressVisualKeyboard()
         applySlockInputTypeface()
         if (kuiklyHostAttached) {
@@ -935,6 +960,11 @@ open class SlockKuiklyActivity :
         executeMode: KuiklyRenderCoreExecuteModeBase
     ) {
         super.onPageLoadComplete(isSucceed, errorReason, executeMode)
+        renderReadinessTopPageLoad =
+            SlockKuiklyLoadReadiness(
+                succeeded = isSucceed,
+                completedAtMillis = SystemClock.elapsedRealtime()
+            )
         if (isSucceed) return
         SlockAppLog.e(
             "SlockKuiklyHost",
@@ -996,6 +1026,17 @@ open class SlockKuiklyActivity :
             )
         )
     }
+
+    internal fun renderReadinessSnapshot(childPageName: String): SlockKuiklyRenderReadinessSnapshot =
+        SlockKuiklyRenderReadinessSnapshot(
+            createdAtMillis = renderReadinessCreatedAtMillis,
+            resumedAtMillis = renderReadinessResumedAtMillis,
+            topPageLoad = renderReadinessTopPageLoad,
+            childPageLoad = renderReadinessChildLoads[childPageName],
+            hasWindowFocus = window.decorView.hasWindowFocus(),
+            contentWidth = window.decorView.width,
+            contentHeight = window.decorView.height
+        )
 
     override fun registerExternalModule(kuiklyRenderExport: IKuiklyRenderExport) {
         super.registerExternalModule(kuiklyRenderExport)

@@ -698,7 +698,12 @@ jobs:
             # showed its normalization expectation predates #1152's multi-shell
             # gating — pending the shell lane's behavior decision, see
             # docs/instrumented-manual-harnesses.md.)
+            adb logcat -c
             adb shell am instrument -w -r -e class build.raft.app.shared.SlockChildPageVisibilityConnectedTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner | tee child-page-visibility-instrumentation.txt
+            # The accepted frame does not exist on readiness failure. Keep its extraction best-effort so terminal evidence and the real instrumentation assertion still run.
+            adb exec-out run-as build.raft.app.connectedtest cat files/child-page-visibility-accepted.png > child-page-visibility-accepted.png || rm -f child-page-visibility-accepted.png
+            adb exec-out screencap -p > child-page-visibility-terminal.png
+            adb logcat -d -v threadtime > child-page-visibility-logcat.txt
             scripts/ci/assert-instrumentation-ok.sh child-page-visibility-instrumentation.txt 1
             adb shell am instrument -w -r -e class build.raft.app.shared.SlockPagerScrollProbeConnectedTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner | tee pager-scroll-probe-instrumentation.txt
             scripts/ci/assert-instrumentation-ok.sh pager-scroll-probe-instrumentation.txt 1
@@ -739,6 +744,9 @@ jobs:
             attachment-download-runtime-instrumentation.txt
             performance-trace-feedback-instrumentation.txt
             child-page-visibility-instrumentation.txt
+            child-page-visibility-accepted.png
+            child-page-visibility-terminal.png
+            child-page-visibility-logcat.txt
             pager-scroll-probe-instrumentation.txt
             release-notes-section-gap-instrumentation.txt
             thread-align-right-bounds-instrumentation.txt
