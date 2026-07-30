@@ -18,6 +18,7 @@ import slockOhosMotionBridge from '../SlockOhosMotionBridge';
 import slockOhosRealtimeBridge from '../SlockOhosRealtimeBridge';
 import { SlockOhosClipboard } from '../SlockOhosClipboard';
 import { SlockOhosDiagnostics } from '../SlockOhosDiagnostics';
+import { cacheSlockOhosPickedAttachment } from '../SlockOhosPickedAttachmentCache';
 import { slockOhosAttachmentDownloadSink } from '../SlockOhosAttachmentDownloadSink';
 import { SlockOhosApiEnvironment, SlockOhosApiEnvironmentStore } from '../SlockOhosApiEnvironmentStore';
 import { SLOCK_OHOS_BUILD_TIME, SLOCK_OHOS_GIT_COMMIT } from '../generated/SlockOhosBuildMetadata';
@@ -1405,16 +1406,35 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
 
   private readPickedThreadAttachments(uris: Array<string>, imageOnly: boolean): Array<OhosPickedThreadAttachment> {
     const files: Array<OhosPickedThreadAttachment> = [];
+    const context = getContext(this) as common.UIAbilityContext;
+    const cacheDir = `${context.cacheDir}/slock-attachments`;
+    fs.mkdirSync(cacheDir, true);
+    this.cleanupAttachmentCache(cacheDir);
+    const pickedAt = Date.now();
     uris.forEach((uri: string, index: number) => {
       const file = fs.openSync(uri, fs.OpenMode.READ_ONLY);
       try {
         const stat = fs.statSync(file.fd);
+        const fileName = this.fileNameFromUri(uri, index, imageOnly);
+        const mimeType = this.mimeTypeFromName(uri, imageOnly);
+        const targetPath = `${cacheDir}/${this.safeAttachmentCacheFileName(
+          `picked-${pickedAt}-${index}`,
+          fileName,
+          mimeType
+        )}`;
+        const cached = cacheSlockOhosPickedAttachment(
+          file.fd,
+          targetPath,
+          fileName,
+          mimeType,
+          stat.size
+        );
         files.push({
-          fileName: this.fileNameFromUri(uri, index, imageOnly),
-          mimeType: this.mimeTypeFromName(uri, imageOnly),
-          previewUri: uri,
-          fileRef: uri,
-          sizeBytes: stat.size
+          fileName: cached.fileName,
+          mimeType: cached.mimeType,
+          previewUri: cached.previewUri,
+          fileRef: cached.fileRef,
+          sizeBytes: cached.sizeBytes
         });
       } finally {
         fs.closeSync(file);
