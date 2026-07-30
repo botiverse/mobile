@@ -4616,11 +4616,13 @@ internal class SharedThreadStore(
                 ?.takeIf { routeIdentity.canRenderTimelineCandidates }
                 ?.takeIf { it.isUsableCachedPayloadForRoute(routeContextPayload) }
                 ?.withRouteContext(routeContextPayload)
+                ?.withStoreResolvedReplyOriginFrom(routeContextPayload)
         val current =
             if (routeIdentity.canRenderTimelineCandidates) {
                 _state.value.payload.takeIf {
                     it.isUsableCachedPayloadForRoute(routeContextPayload) && it.hasRenderableThreadContent()
                 }?.withRouteContext(routeContextPayload)
+                    ?.withStoreResolvedReplyOriginFrom(routeContextPayload)
             } else {
                 null
             }
@@ -7310,6 +7312,44 @@ private fun KuiklyThreadScreenPayload.withReplyParentRouteIdentityFrom(
         parentChannelKind =
             routePayload.parentChannelKind?.takeIf { it.isNotBlank() }
                 ?: parentChannelKind
+    )
+}
+
+private fun KuiklyThreadScreenPayload.withStoreResolvedReplyOriginFrom(
+    storePayload: KuiklyThreadScreenPayload
+): KuiklyThreadScreenPayload {
+    if (
+        surfaceKind != KuiklyThreadSurfaceKind.ReplyThread ||
+        storePayload.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread ||
+        originMessage != null ||
+        storePayload.originStatus != "loaded"
+    ) {
+        return this
+    }
+    val storeOrigin = storePayload.originMessage ?: return this
+    val currentParentChannelId = parentChannelId?.takeIf { it.isNotBlank() } ?: return this
+    val storeParentChannelId = storePayload.parentChannelId?.takeIf { it.isNotBlank() } ?: return this
+    val currentParentMessageId =
+        parentMessageId?.takeIf { it.isNotBlank() }
+            ?: originParentMessageId?.takeIf { it.isNotBlank() }
+            ?: return this
+    val storeParentMessageId =
+        storePayload.parentMessageId?.takeIf { it.isNotBlank() }
+            ?: storePayload.originParentMessageId?.takeIf { it.isNotBlank() }
+            ?: return this
+    if (
+        currentParentChannelId != storeParentChannelId ||
+        currentParentMessageId != storeParentMessageId ||
+        storeOrigin.id != storeParentMessageId
+    ) {
+        return this
+    }
+    return copy(
+        originMessage = storeOrigin,
+        originPreview = storePayload.originPreview,
+        originParentMessageId = storeParentMessageId,
+        originStatus = "loaded",
+        originErrorCode = null
     )
 }
 
