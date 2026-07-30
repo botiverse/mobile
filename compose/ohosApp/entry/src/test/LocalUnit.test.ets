@@ -70,7 +70,7 @@ class FakePickedAttachmentCacheBackend implements SlockOhosPickedAttachmentCache
   }
 
   fileUri(path: string): string {
-    return `file://build.raft.harmony${path}`;
+    return `file://build.raft.mobile${path}`;
   }
 
   removeFile(path: string): void {
@@ -184,7 +184,7 @@ export default function localUnitTest() {
       expect(backend.copiedSourceFds[0]).assertEqual(42);
       expect(backend.copiedTargetPaths[0]).assertEqual(targetPath);
       expect(cached.previewUri).assertEqual(`file://${targetPath}`);
-      expect(cached.fileRef).assertEqual(`file://build.raft.harmony${targetPath}`);
+      expect(cached.fileRef).assertEqual(`file://build.raft.mobile${targetPath}`);
       expect(cached.fileRef === cached.previewUri).assertFalse();
       expect(cached.fileName).assertEqual('photo.jpg');
       expect(cached.mimeType).assertEqual('image/jpeg');
