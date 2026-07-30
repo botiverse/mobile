@@ -2,51 +2,16 @@ name: Test
 
 on:
   pull_request:
-    paths:
-      - ".github/workflows/test.yml"
-      - "compose/**"
-      - "scripts/check_commonmain_map_compat.sh"
-      - "scripts/check_markdown_spike_println_gate.sh"
-      - "scripts/check_auth_session_writes.sh"
-      - "scripts/check_attachment_mapper_formatting.sh"
-      - "scripts/check_canonical_message_v2_reaction_vector.sh"
-      - "scripts/check_read_state_behavior_vector.sh"
-      - "scripts/check_read_state_sync_domain_registration.sh"
-      - "scripts/audit_translucent_action_tokens.py"
-      - "scripts/build_kuikly_fork.sh"
-      - "scripts/prepare_*.sh"
-      - "scripts/ci/**"
-      - "third_party/kuikly-ui"
-      - "third_party/ktor-ohos/**"
-      - "third_party/stately"
-      - "third_party/sqliter"
-      - "third_party/sqldelight"
-      - "third_party/kuikly-compose-markdown/**"
-      - "third_party/markdown-parser/**"
+    # `labeled`/`unlabeled` make the full-ci escape hatch take effect without
+    # requiring a source push. No path filter: the stable CI gate must report
+    # even for docs-only pull requests if it is configured as required.
+    types: [opened, reopened, synchronize, ready_for_review, labeled, unlabeled]
+  merge_group:
+    types: [checks_requested]
   push:
     branches:
       - main
-    paths:
-      - ".github/workflows/test.yml"
-      - "compose/**"
-      - "scripts/check_commonmain_map_compat.sh"
-      - "scripts/check_markdown_spike_println_gate.sh"
-      - "scripts/check_auth_session_writes.sh"
-      - "scripts/check_attachment_mapper_formatting.sh"
-      - "scripts/check_canonical_message_v2_reaction_vector.sh"
-      - "scripts/check_read_state_behavior_vector.sh"
-      - "scripts/check_read_state_sync_domain_registration.sh"
-      - "scripts/audit_translucent_action_tokens.py"
-      - "scripts/build_kuikly_fork.sh"
-      - "scripts/prepare_*.sh"
-      - "scripts/ci/**"
-      - "third_party/kuikly-ui"
-      - "third_party/ktor-ohos/**"
-      - "third_party/stately"
-      - "third_party/sqliter"
-      - "third_party/sqldelight"
-      - "third_party/kuikly-compose-markdown/**"
-      - "third_party/markdown-parser/**"
+      - "release-*"
   workflow_dispatch:
     inputs:
       ohos_receipt_specimen:
@@ -67,6 +32,44 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  plan:
+    name: CI plan + contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run_basic: ${{ steps.plan.outputs.run_basic }}
+      run_full: ${{ steps.plan.outputs.run_full }}
+      run_emulators: ${{ steps.plan.outputs.run_emulators }}
+      reason: ${{ steps.plan.outputs.reason }}
+    steps:
+      - name: Checkout exact event source
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Validate checked-in CI tiering contract
+        run: scripts/ci/test_ci_tiering_contract.sh
+
+      - name: Resolve exact execution tier
+        id: plan
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          FULL_CI: ${{ contains(github.event.pull_request.labels.*.name, 'full-ci') }}
+        run: |
+          set -euo pipefail
+          changed="$RUNNER_TEMP/test-changed-paths.txt"
+          : > "$changed"
+          if test "$EVENT_NAME" = pull_request; then
+            git cat-file -e "$BASE_SHA^{commit}"
+            git cat-file -e "$HEAD_SHA^{commit}"
+            git diff --name-only "$BASE_SHA" "$HEAD_SHA" > "$changed"
+          fi
+          scripts/ci/plan_test_tier.sh "$EVENT_NAME" "$changed" "$FULL_CI" \
+            | tee -a "$GITHUB_OUTPUT"
+
   # Single upstream build of every fork artifact the platform jobs consume.
   # Kuikly android/foundation + OHOS klibs and the stately/sqliter/sqldelight/
   # ktor-ohos stack are published to mavenLocal ONCE here (ubuntu) and shared
@@ -75,6 +78,8 @@ jobs:
   # restore the same entries instead of rebuilding per (job, os) combination.
   kuikly-artifacts:
     name: Kuikly fork artifacts (prebuild)
+    needs: [plan]
+    if: ${{ needs.plan.outputs.run_basic == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 60
     env:
@@ -119,6 +124,7 @@ jobs:
 
       - name: Set up OpenHarmony SDK
         id: setup-ohos-sdk
+        if: ${{ needs.plan.outputs.run_full == 'true' }}
         uses: openharmony-rs/setup-ohos-sdk@v1.0.1
         with:
           version: "6.0"
@@ -126,6 +132,7 @@ jobs:
           cache: true
 
       - name: Export OpenHarmony SDK path
+        if: ${{ needs.plan.outputs.run_full == 'true' }}
         shell: bash
         run: echo "OHOS_SDK_HOME=${{ steps.setup-ohos-sdk.outputs.ohos-base-sdk-home }}" >> "$GITHUB_ENV"
 
@@ -182,13 +189,14 @@ jobs:
 
       - name: Restore kuikly fork cache (ohos flavor)
         id: kuikly-ohos-cache
+        if: ${{ needs.plan.outputs.run_full == 'true' }}
         uses: actions/cache/restore@v4
         with:
           path: ~/.m2/repository/com/tencent/kuikly-open
           key: kuikly-fork-mavenlocal-ohos-${{ steps.pins.outputs.kuikly }}
 
       - name: Build kuikly fork (ohos flavor)
-        if: steps.kuikly-ohos-cache.outputs.cache-hit != 'true'
+        if: ${{ needs.plan.outputs.run_full == 'true' && steps.kuikly-ohos-cache.outputs.cache-hit != 'true' }}
         shell: bash
         run: |
           rm -rf ~/.m2/repository/com/tencent/kuikly-open
@@ -197,7 +205,7 @@ jobs:
           scripts/build_kuikly_fork.sh --ohos-only
 
       - name: Save kuikly fork cache (ohos flavor)
-        if: steps.kuikly-ohos-cache.outputs.cache-hit != 'true'
+        if: ${{ needs.plan.outputs.run_full == 'true' && steps.kuikly-ohos-cache.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v4
         with:
           path: ~/.m2/repository/com/tencent/kuikly-open
@@ -212,6 +220,8 @@ jobs:
   # other's build.
   fork-deps:
     name: Shared fork dependencies (prebuild)
+    needs: [plan]
+    if: ${{ needs.plan.outputs.run_full == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 60
     env:
@@ -401,7 +411,8 @@ jobs:
   android:
     name: Android compile & tests
     runs-on: blacksmith-4vcpu-ubuntu-2404
-    needs: kuikly-artifacts
+    needs: [plan, kuikly-artifacts]
+    if: ${{ needs.plan.outputs.run_basic == 'true' }}
     timeout-minutes: 40
     env:
       GITHUB_PACKAGES_USERNAME: ${{ vars.GITHUB_PACKAGES_USERNAME || 'bytemain' }}
@@ -616,7 +627,8 @@ jobs:
   android-device:
     name: Android first-character baseline (emulator)
     runs-on: blacksmith-4vcpu-ubuntu-2404
-    needs: android
+    needs: [plan, android]
+    if: ${{ needs.plan.outputs.run_emulators == 'true' }}
     timeout-minutes: 30
     steps:
       - name: Free runner disk space for emulator
@@ -801,7 +813,8 @@ jobs:
   android-minimum-supported-attachment-runtime:
     name: Android attachment authority (API ${{ matrix.api-level }} emulator)
     runs-on: blacksmith-4vcpu-ubuntu-2404
-    needs: android
+    needs: [plan, android]
+    if: ${{ needs.plan.outputs.run_emulators == 'true' }}
     timeout-minutes: 20
     strategy:
       fail-fast: false
@@ -881,7 +894,8 @@ jobs:
   android-canonical-final-actual-host:
     name: Android canonical-final actual host (emulator)
     runs-on: blacksmith-4vcpu-ubuntu-2404
-    needs: android
+    needs: [plan, android]
+    if: ${{ needs.plan.outputs.run_emulators == 'true' }}
     timeout-minutes: 35
     steps:
       - name: Free runner disk space for emulator
@@ -963,12 +977,11 @@ jobs:
 
   ios:
     name: iOS compile
-    # The macOS iOS compile takes ~40min and was blocking/slowing PR merges.
-    # Run it only on main pushes + the nightly schedule (and manual dispatch),
-    # not on pull requests. iOS is a pure commonMain consumer, so Android +
-    # OHOS shared compile on PRs already catch shared-code breaks; iOS-specific
-    # regressions are caught on main/nightly. (artin, 2026-07-08.)
-    if: ${{ github.event_name != 'pull_request' }}
+    # The macOS compile does not run on ordinary PR pushes. It runs once in the
+    # merge queue's deterministic full tier, on an explicit full-ci PR, and on
+    # main/release/nightly/manual full readbacks.
+    needs: [plan]
+    if: ${{ needs.plan.outputs.run_full == 'true' }}
     runs-on: blacksmith-6vcpu-macos-15
     timeout-minutes: 75
     env:
@@ -1078,6 +1091,8 @@ jobs:
   # scripts against controlled fixtures; gates on any leak or wrong verdict.
   ohos-receipt-selftest:
     name: OHOS resource receipt self-test
+    needs: [plan]
+    if: ${{ needs.plan.outputs.run_basic == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -1107,7 +1122,8 @@ jobs:
     runs-on: blacksmith-8vcpu-ubuntu-2404
     container:
       image: ghcr.io/bytemain/harmony-next-pipeline-docker/harmonyos-ci-image:v6.1.1.280-android.1
-    needs: [kuikly-artifacts, fork-deps]
+    needs: [plan, kuikly-artifacts, fork-deps]
+    if: ${{ needs.plan.outputs.run_full == 'true' }}
     timeout-minutes: 90
     env:
       GITHUB_PACKAGES_USERNAME: ${{ vars.GITHUB_PACKAGES_USERNAME || 'bytemain' }}
@@ -1351,7 +1367,8 @@ jobs:
   ohos-host:
     name: OHOS host (hvigor/ArkTS) compile
     runs-on: blacksmith-4vcpu-ubuntu-2404
-    needs: [kuikly-artifacts, fork-deps]
+    needs: [plan, kuikly-artifacts, fork-deps]
+    if: ${{ needs.plan.outputs.run_full == 'true' }}
     timeout-minutes: 90
     container:
       image: ghcr.io/bytemain/harmony-next-pipeline-docker/harmonyos-ci-image:v6.1.1.280-android.1
@@ -1466,3 +1483,34 @@ jobs:
           hvigorw --mode module \
             -p module=entry@default -p product=default -p requiredDeviceType=phone \
             default@CompileArkTS --analyze=normal --parallel --no-daemon
+
+  # The only Test context intended for the main-branch required-check rule.
+  # It always reports, including docs-only PRs, and mechanically verifies that
+  # exactly the jobs selected by the checked-in plan passed. Emulator jobs are
+  # intentionally absent from merge_group until their bounded infra-abort
+  # retry contract has landed and has fresh flake evidence.
+  ci-gate:
+    name: CI gate
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs:
+      - plan
+      - kuikly-artifacts
+      - fork-deps
+      - android
+      - android-device
+      - android-minimum-supported-attachment-runtime
+      - android-canonical-final-actual-host
+      - ios
+      - ohos-receipt-selftest
+      - ohos
+      - ohos-host
+    steps:
+      - name: Checkout aggregate verifier
+        uses: actions/checkout@v5
+
+      - name: Verify exact selected tier results
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: node scripts/ci/verify_test_tier_results.mjs
