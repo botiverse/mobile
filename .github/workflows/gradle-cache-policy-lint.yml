@@ -31,3 +31,137 @@ jobs:
 
       - name: Enforce wiring invariant and validate policy files
         run: python3 scripts/ci/check_gradle_cache_policy_wiring.py
+
+  # #1478 poison-exclusion guard: proves the Android compile job's
+  # gradle-home-cache-excludes (caches/jars-*, caches/transforms-*,
+  # caches/*/transforms — the pinned gradle/actions@v5 instrumentation families)
+  # actually keep those families out of the setup-gradle save/restore round-trip
+  # while build-cache-1 survives. The normal Android run is a cold miss and cannot
+  # exercise this. A throwaway per-run cache-key prefix (re-asserted AFTER the
+  # mandatory cache policy so it overrides the fleet epoch) isolates it so it can
+  # never route into the shared/default cache. Lives here (path-filtered to
+  # .github/**), not in broad test.yml, so it only runs when the cache config changes.
+  gradle-cache-poison-guard-writer:
+    name: Gradle cache poison guard (writer)
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 15
+    env:
+      # Same absolute GRADLE_USER_HOME as the reader: setup-gradle's GitHub cache
+      # identity is key + branch + VERSION, and VERSION hashes the resolved cache
+      # paths (the absolute home). Different writer/reader paths => different
+      # version => same-key miss. Two fresh VMs still keep the reader clean.
+      GRADLE_USER_HOME: /tmp/poison-guard-home-${{ github.run_id }}-${{ github.run_attempt }}
+      # Bind the job/instance/execution cache-key components to a shared fixed
+      # value so the fresh reader computes the SAME setup-gradle key as the writer
+      # and does an exact-key restore (the key normally includes the job name, so
+      # a differently-named reader job would miss the writer's cache).
+      GRADLE_BUILD_ACTION_CACHE_KEY_JOB: poison-guard
+      GRADLE_BUILD_ACTION_CACHE_KEY_JOB_INSTANCE: poison-guard
+      GRADLE_BUILD_ACTION_CACHE_KEY_JOB_EXECUTION: poison-guard
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Apply Gradle cache policy
+        uses: ./.github/actions/gradle-cache-policy
+      - name: Isolate to a throwaway cache key (override the fleet epoch)
+        run: echo "GRADLE_BUILD_ACTION_CACHE_KEY_PREFIX=poison-guard-${{ github.run_id }}-${{ github.run_attempt }}-" >> "$GITHUB_ENV"
+      - name: Set up Gradle (writer, saves the seeded home cache)
+        uses: gradle/actions/setup-gradle@v5
+        with:
+          cache-read-only: false
+          gradle-home-cache-excludes: |
+            caches/jars-*
+            caches/transforms-*
+            caches/*/transforms
+      - name: Register Gradle activity so the home cache is saved
+        working-directory: compose
+        run: ./gradlew --version
+      - name: Seed poison + safe sentinels under the real v5 families
+        run: |
+          set -euo pipefail
+          for family in caches/jars-9 caches/transforms-99 caches/8.13/transforms; do
+            mkdir -p "$GRADLE_USER_HOME/$family"
+            echo POISON > "$GRADLE_USER_HOME/$family/poison-sentinel"
+          done
+          mkdir -p "$GRADLE_USER_HOME/caches/build-cache-1"
+          echo SAFE > "$GRADLE_USER_HOME/caches/build-cache-1/safe-sentinel"
+      # setup-gradle's post step now saves the home cache, applying the excludes.
+
+  gradle-cache-poison-guard:
+    name: Gradle cache poison guard (reader)
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    needs: gradle-cache-poison-guard-writer
+    timeout-minutes: 15
+    env:
+      GRADLE_USER_HOME: /tmp/poison-guard-home-${{ github.run_id }}-${{ github.run_attempt }}
+      # Bind the job/instance/execution cache-key components to a shared fixed
+      # value so the fresh reader computes the SAME setup-gradle key as the writer
+      # and does an exact-key restore (the key normally includes the job name, so
+      # a differently-named reader job would miss the writer's cache).
+      GRADLE_BUILD_ACTION_CACHE_KEY_JOB: poison-guard
+      GRADLE_BUILD_ACTION_CACHE_KEY_JOB_INSTANCE: poison-guard
+      GRADLE_BUILD_ACTION_CACHE_KEY_JOB_EXECUTION: poison-guard
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Apply Gradle cache policy
+        uses: ./.github/actions/gradle-cache-policy
+      - name: Isolate to the same throwaway cache key (override the fleet epoch)
+        run: echo "GRADLE_BUILD_ACTION_CACHE_KEY_PREFIX=poison-guard-${{ github.run_id }}-${{ github.run_attempt }}-" >> "$GITHUB_ENV"
+      - name: Set up Gradle (fresh reader, restores the writer's home cache)
+        uses: gradle/actions/setup-gradle@v5
+        with:
+          cache-read-only: true
+          gradle-home-cache-excludes: |
+            caches/jars-*
+            caches/transforms-*
+            caches/*/transforms
+      - name: Assert instrumentation families excluded and build-cache-1 restored
+        run: |
+          set -euo pipefail
+          fail=0
+          for sentinel in \
+            caches/jars-9/poison-sentinel \
+            caches/transforms-99/poison-sentinel \
+            caches/8.13/transforms/poison-sentinel; do
+            if [ -e "$GRADLE_USER_HOME/$sentinel" ]; then
+              echo "FAIL(returned): instrumentation poison restored: $sentinel"
+              fail=1
+            else
+              echo "ok(excluded): $sentinel absent"
+            fi
+          done
+          if [ -e "$GRADLE_USER_HOME/caches/build-cache-1/safe-sentinel" ]; then
+            echo "ok(round-trip): build-cache-1 safe sentinel restored"
+          else
+            # Also self-checks the round-trip: a missing safe sentinel means the
+            # writer never saved / the reader never restored (fixture broken, e.g.
+            # key not isolated) or build-cache-1 was wrongly excluded — fail loudly.
+            echo "FAIL(missing): build-cache-1 safe sentinel absent after restore"
+            fail=1
+          fi
+          [ "$fail" -eq 0 ] || { echo "poison-guard FAILED"; exit 1; }
+          echo "poison-guard sentinels PASS"
+      - name: Configuration boundary — a clean config must start on the restored home
+        run: |
+          set -euo pipefail
+          # With the instrumentation families excluded, a fresh configuration must
+          # start cleanly (the #1478 failure was at transform init, before any
+          # project source). Configure a trivial empty project against the restored
+          # GRADLE_USER_HOME using the repo's pinned Gradle; poison inheritance
+          # would fail this at configuration.
+          probe="$(mktemp -d)"
+          : > "$probe/settings.gradle"
+          : > "$probe/build.gradle"
+          (cd compose && ./gradlew --project-dir "$probe" help --no-daemon -q)
+          echo "configuration-boundary PASS: clean configure on restored home"
