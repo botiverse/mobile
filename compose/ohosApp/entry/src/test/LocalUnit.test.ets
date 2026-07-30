@@ -37,6 +37,10 @@ import {
   SLOCK_OHOS_PLATFORM_FILE_MAX_STREAM_CHUNK_BYTES,
 } from '../main/ets/entryability/SlockOhosPlatformFileReader';
 import { SlockOhosProcessNetworkLifecycle } from '../main/ets/entryability/SlockOhosProcessNetworkLifecycle';
+import {
+  cacheSlockOhosPickedAttachment,
+  SlockOhosPickedAttachmentCacheBackend,
+} from '../main/ets/kuikly/SlockOhosPickedAttachmentCache';
 
 class FakePlatformFileHandle {
   readonly fileRef: string;
@@ -48,6 +52,30 @@ class FakePlatformFileHandle {
 
 class FakeNonErrorReason {
   readonly reason: string = 'offline';
+}
+
+class FakePickedAttachmentCacheBackend implements SlockOhosPickedAttachmentCacheBackend {
+  readonly copiedSourceFds: Array<number> = [];
+  readonly copiedTargetPaths: Array<string> = [];
+  readonly removedPaths: Array<string> = [];
+  copiedSizeBytes: number = 0;
+
+  copyFile(sourceFd: number, targetPath: string): void {
+    this.copiedSourceFds.push(sourceFd);
+    this.copiedTargetPaths.push(targetPath);
+  }
+
+  fileSize(_path: string): number {
+    return this.copiedSizeBytes;
+  }
+
+  fileUri(path: string): string {
+    return `file://${path}`;
+  }
+
+  removeFile(path: string): void {
+    this.removedPaths.push(path);
+  }
 }
 
 class FakePlatformFileBackend implements SlockOhosPlatformFileBackend {
@@ -140,6 +168,51 @@ function diagnosticWork(
 
 export default function localUnitTest() {
   describe('localUnitTest',() => {
+    it('pickedAttachmentCacheReturnsOneStablePrivateUriForPreviewUploadAndDraft', 0, () => {
+      const backend = new FakePickedAttachmentCacheBackend();
+      backend.copiedSizeBytes = 4;
+      const targetPath = '/data/storage/el2/base/cache/slock-attachments/picked-1-photo.jpg';
+      const cached = cacheSlockOhosPickedAttachment(
+        42,
+        targetPath,
+        'photo.jpg',
+        'image/jpeg',
+        4,
+        backend
+      );
+
+      expect(backend.copiedSourceFds[0]).assertEqual(42);
+      expect(backend.copiedTargetPaths[0]).assertEqual(targetPath);
+      expect(cached.previewUri).assertEqual(`file://${targetPath}`);
+      expect(cached.fileRef).assertEqual(cached.previewUri);
+      expect(cached.fileName).assertEqual('photo.jpg');
+      expect(cached.mimeType).assertEqual('image/jpeg');
+      expect(cached.sizeBytes).assertEqual(4);
+      expect(backend.removedPaths.length).assertEqual(0);
+    });
+
+    it('pickedAttachmentCacheFailsClosedAndRemovesPartialCopyOnSizeMismatch', 0, () => {
+      const backend = new FakePickedAttachmentCacheBackend();
+      backend.copiedSizeBytes = 3;
+      const targetPath = '/data/storage/el2/base/cache/slock-attachments/picked-1-photo.jpg';
+      let failed = false;
+      try {
+        cacheSlockOhosPickedAttachment(
+          42,
+          targetPath,
+          'photo.jpg',
+          'image/jpeg',
+          4,
+          backend
+        );
+      } catch (_) {
+        failed = true;
+      }
+
+      expect(failed).assertTrue();
+      expect(backend.removedPaths[0]).assertEqual(targetPath);
+    });
+
     it('platformFileReaderCapsChunksAdvancesOffsetAndClosesOnce', 0, () => {
       const backend = new FakePlatformFileBackend();
       backend.setData('large', new Array<number>(SLOCK_OHOS_PLATFORM_FILE_MAX_STREAM_CHUNK_BYTES * 2 + 3).fill(7));
