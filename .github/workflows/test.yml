@@ -48,6 +48,11 @@ on:
       - "third_party/kuikly-compose-markdown/**"
       - "third_party/markdown-parser/**"
   workflow_dispatch:
+    inputs:
+      ohos_receipt_specimen:
+        description: "Task #91: force a controlled nonzero OHOS shared-compile exit to prove the resource-receipt artifact still uploads on RED. Does not affect normal runs."
+        type: boolean
+        default: false
   # Nightly run so the (slow, macOS) iOS compile still runs on a schedule even
   # though it no longer gates pull requests. See the `ios` job's `if:` guard.
   schedule:
@@ -1030,6 +1035,21 @@ jobs:
         if: failure()
         uses: ./.github/actions/gradle-failure-diagnostics
 
+  # Task #91: checked-in teeth for the OHOS resource receipt — proves the
+  # crash-artifact inventory is secret-safe (allowlist extraction + mechanical
+  # redaction) and the classifier fails closed (indeterminate(no_phase)) on a
+  # missing compile-phase receipt. Fast bash-only self-test that runs the real
+  # scripts against controlled fixtures; gates on any leak or wrong verdict.
+  ohos-receipt-selftest:
+    name: OHOS resource receipt self-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Crash-artifact sanitization + classifier no-phase fixture
+        run: bash .github/actions/ohos-resource-receipt/test_crash_artifacts.sh
+
   ohos:
     name: OHOS shared compile
     # Runs on Linux, not macOS (#469): this job consumes ohosArm64 klibs,
@@ -1056,6 +1076,11 @@ jobs:
     env:
       GITHUB_PACKAGES_USERNAME: ${{ vars.GITHUB_PACKAGES_USERNAME || 'bytemain' }}
       GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_PACKAGES_TOKEN || github.token }}
+      # Task #91: fail-close resource receipt scratch dir (memory/cgroup snapshots,
+      # compile-phase exit/signal, crash inventory, classifier verdict). Uploaded
+      # as a diagnostic artifact; never influences the gate result. Uses
+      # github.workspace (allowed in job-level env; the `runner` context is not).
+      OHOS_RECEIPT_DIR: ${{ github.workspace }}/ohos-resource-receipt
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -1152,13 +1177,23 @@ jobs:
         with:
           node-version: "22"
 
+      # Task #91: capture the runner's cgroup memory accounting before the
+      # heaviest K/N step so a no-diagnostic kspKotlinOhosArm64 kill can later be
+      # classified fail-close. Collection only; never affects the gate.
+      - name: OHOS resource receipt — pre-compile snapshot
+        uses: ./.github/actions/ohos-resource-receipt
+        with:
+          phase: pre
+
       - name: Compile shared OHOS target and unit tests
+        id: compile_shared_ohos
         working-directory: compose
         env:
           SLOCK_SKIP_OHOS_LOCAL_DEP_PREP: "true"
           OHOS_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk/default/openharmony
           DEVECO_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk
         run: |
+          set +e
           ./gradlew \
             -c settings.ohos.gradle.kts \
             :shared:compileKotlinOhosArm64 \
@@ -1167,6 +1202,36 @@ jobs:
             --no-daemon \
             --console=plain \
             --stacktrace
+          rc=$?
+
+          # Task #91 controlled nonzero specimen: when dispatched with
+          # ohos_receipt_specimen=true and the real compile passed, force a
+          # nonzero exit so the always() resource-receipt upload is proven to run
+          # on a RED job. Normal runs leave the input unset and are unaffected.
+          specimen="${{ github.event.inputs.ohos_receipt_specimen }}"
+          if [ "$specimen" = "true" ] && [ "$rc" -eq 0 ]; then
+            echo "ohos_receipt_specimen=true: forcing controlled nonzero exit to exercise the resource-receipt upload path"
+            rc=42
+          fi
+
+          # Record the real compile phase/exit/signal; the post step classifies it.
+          receipt_dir="${OHOS_RECEIPT_DIR:-${RUNNER_TEMP:-/tmp}/ohos-resource-receipt}"
+          mkdir -p "$receipt_dir"
+          # rc>128 only SUGGESTS a signal via the 128+N convention; it is not
+          # proof the process was killed by signal N, so record it as a candidate.
+          sig_candidate="none"
+          if [ "$rc" -gt 128 ]; then sig_candidate=$((rc - 128)); fi
+          {
+            printf 'phase=compile_shared_ohos\n'
+            printf 'exit_code=%s\n' "$rc"
+            printf 'signal_candidate=%s\n' "$sig_candidate"
+            if [ "$specimen" = "true" ]; then printf 'specimen_forced=true\n'; else printf 'specimen_forced=false\n'; fi
+          } > "$receipt_dir/compile-phase.env"
+          echo "----- ohos-resource-receipt [compile-phase] -----"
+          cat "$receipt_dir/compile-phase.env"
+          echo "-------------------------------------------------"
+          # Re-exit with the real (or specimen-forced) code: never swallow a RED.
+          exit "$rc"
 
       - name: Link and stage the generated OHOS Kotlin Native bridge
         if: steps.ohos_native.outputs.required == 'true'
@@ -1226,6 +1291,16 @@ jobs:
       - name: Gradle failure diagnostics
         if: failure()
         uses: ./.github/actions/gradle-failure-diagnostics
+
+      # Task #91: always() resource receipt — post snapshot, crash inventory,
+      # always_executed marker, fail-close classifier, and artifact upload. Runs
+      # on success AND failure so a no-diagnostic kill still leaves evidence.
+      # Never changes the gate result.
+      - name: OHOS resource receipt — post-compile + classify + upload
+        if: always()
+        uses: ./.github/actions/ohos-resource-receipt
+        with:
+          phase: post
 
   # OHOS host (hvigor/ArkTS) gate — catches .ets compile errors that the
   # KMP-only ohos job cannot see. Runs in artin's harmonyos-ci-image, which
