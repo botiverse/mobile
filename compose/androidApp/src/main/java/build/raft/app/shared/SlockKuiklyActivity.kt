@@ -383,6 +383,16 @@ open class SlockKuiklyActivity :
     SlockKuiklyChildPageLoadListener {
 
     private val kuiklyRenderViewDelegator = KuiklyRenderViewBaseDelegator(this)
+    private val adaptivePaneHostDelegate =
+        lazy {
+            AndroidAdaptivePaneHost(
+                activity = this,
+                sendEvent = { event, data ->
+                    kuiklyRenderViewDelegator.sendEvent(event, data)
+                },
+            )
+        }
+    private val adaptivePaneHost by adaptivePaneHostDelegate
     private val renderReadinessCreatedAtMillis = SystemClock.elapsedRealtime()
     @Volatile private var renderReadinessResumedAtMillis: Long? = null
     @Volatile private var renderReadinessTopPageLoad: SlockKuiklyLoadReadiness? = null
@@ -475,6 +485,7 @@ open class SlockKuiklyActivity :
         SlockPerformanceDiagnostics.updateOperation(container, "kuikly_attach")
         kuiklyRenderViewDelegator.onAttach(container, "", spec.pageName, spec.pageData.toKuiklyMap())
         kuiklyHostAttached = true
+        adaptivePaneHost.start()
         if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
             kuiklyRenderViewDelegator.onResume()
             reportRealtimeVisibility(AndroidHostVisibility.Visible, "deferred_host_attach")
@@ -609,6 +620,9 @@ open class SlockKuiklyActivity :
         removeHomeColdStartFirstDrawListener()
         removeHomeColdStartNativeHold(reason = "destroy")
         removeSlockInputFontBridge()
+        if (adaptivePaneHostDelegate.isInitialized()) {
+            adaptivePaneHost.stop()
+        }
         SlockPerformanceDiagnostics.uninstall(window)
         if (shouldReleaseAndroidShellWindow(isFinishing, isChangingConfigurations)) {
             androidShellLaunchTarget?.let { target ->
