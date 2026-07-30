@@ -7,8 +7,11 @@ import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
 import build.raft.app.model.TaskStatus
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
-import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.cancelAndJoin
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -17,7 +20,9 @@ import kotlin.test.assertTrue
 
 class SharedThreadJumpToLatestTest {
     @Test
-    fun focusedWindowLoadsCanonicalTailOnceInsteadOfWalkingNewerPages() = runTest {
+    fun focusedWindowLoadsCanonicalTailOnceInsteadOfWalkingNewerPages() = runPortableCoroutineTest {
+        val scopeJob = SupervisorJob()
+        val scope = CoroutineScope(scopeJob + Dispatchers.Unconfined)
         val api = TailNetworkApi()
         val window =
             KuiklyThreadScreenPayload(
@@ -34,32 +39,38 @@ class SharedThreadJumpToLatestTest {
         val store =
             SharedThreadStore(
                 dataSource = dataSource(api),
-                scope = backgroundScope,
+                scope = scope,
                 initialPayload = window
             )
 
-        val jump = async { store.jumpToLatest() }
-        api.tailRequestStarted.await()
-        assertTrue(store.state.value.payload.backgroundRefreshing)
-        assertNull(store.state.value.payload.focusedMessageId)
-        assertEquals(emptyList(), api.afterSeqs)
-        api.releaseTailRequest.complete(Unit)
+        try {
+            val jump = scope.async { store.jumpToLatest() }
+            api.tailRequestStarted.await()
+            assertTrue(store.state.value.payload.backgroundRefreshing)
+            assertNull(store.state.value.payload.focusedMessageId)
+            assertEquals(emptyList(), api.afterSeqs)
+            api.releaseTailRequest.complete(Unit)
 
-        assertTrue(jump.await())
-        assertEquals(1, api.tailRequestCount)
-        assertEquals(emptyList(), api.afterSeqs)
-        assertEquals("m210", store.state.value.payload.messages.last().id)
-        assertFalse(store.state.value.payload.canLoadMoreAfter)
-        assertNull(store.state.value.payload.focusedMessageId)
+            assertTrue(jump.await())
+            assertEquals(1, api.tailRequestCount)
+            assertEquals(emptyList(), api.afterSeqs)
+            assertEquals("m210", store.state.value.payload.messages.last().id)
+            assertFalse(store.state.value.payload.canLoadMoreAfter)
+            assertNull(store.state.value.payload.focusedMessageId)
+        } finally {
+            scopeJob.cancelAndJoin()
+        }
     }
 
     @Test
-    fun canonicalTailClearsFocusWithoutAnotherNetworkRequest() = runTest {
+    fun canonicalTailClearsFocusWithoutAnotherNetworkRequest() = runPortableCoroutineTest {
+        val scopeJob = SupervisorJob()
+        val scope = CoroutineScope(scopeJob + Dispatchers.Unconfined)
         val api = TailNetworkApi()
         val store =
             SharedThreadStore(
                 dataSource = dataSource(api),
-                scope = backgroundScope,
+                scope = scope,
                 initialPayload =
                     KuiklyThreadScreenPayload(
                         instanceId = "shared-shell-thread-channel-1",
@@ -74,10 +85,14 @@ class SharedThreadJumpToLatestTest {
                     )
             )
 
-        assertTrue(store.jumpToLatest())
-        assertEquals(0, api.tailRequestCount)
-        assertNull(store.state.value.payload.focusedMessageId)
-        assertFalse(store.state.value.payload.canLoadMoreAfter)
+        try {
+            assertTrue(store.jumpToLatest())
+            assertEquals(0, api.tailRequestCount)
+            assertNull(store.state.value.payload.focusedMessageId)
+            assertFalse(store.state.value.payload.canLoadMoreAfter)
+        } finally {
+            scopeJob.cancelAndJoin()
+        }
     }
 
     private fun dataSource(api: SharedThreadNetworkApi): SharedThreadDataSource =
