@@ -123,6 +123,18 @@ internal fun resolveSlockAdaptiveHomeLandingId(
         ?.let { selected -> candidates.firstOrNull { it.threadId == selected }?.threadId }
         ?: candidates.firstOrNull { !it.joint && it.name == "all" }?.threadId
 
+internal fun resolveSlockHomeSelectedConversationId(
+    adaptiveWorkspaceEnabled: Boolean,
+    adaptiveSelection: SlockAdaptiveDetailSelection?,
+    shellSelectedConversationId: String?,
+    homeSelectedConversationId: String?,
+): String? =
+    if (adaptiveWorkspaceEnabled) {
+        adaptiveSelection?.identity?.threadId
+    } else {
+        shellSelectedConversationId ?: homeSelectedConversationId
+    }
+
 internal enum class SlockAdaptiveWorkspacePresentation {
     ListOnly,
     Split,

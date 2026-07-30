@@ -10,6 +10,42 @@ import kotlin.test.assertTrue
 
 class SlockAdaptiveWorkspaceTest {
     @Test
+    fun adaptiveRowHighlightFollowsMountedDetailInsteadOfStaleHomeSelection() {
+        val selection =
+            SlockAdaptiveDetailSelection(
+                identity = detailIdentity("thread-b"),
+                generation = 3L,
+            )
+
+        assertEquals(
+            "thread-b",
+            resolveSlockHomeSelectedConversationId(
+                adaptiveWorkspaceEnabled = true,
+                adaptiveSelection = selection,
+                shellSelectedConversationId = "thread-a",
+                homeSelectedConversationId = "thread-a",
+            ),
+        )
+        assertNull(
+            resolveSlockHomeSelectedConversationId(
+                adaptiveWorkspaceEnabled = true,
+                adaptiveSelection = null,
+                shellSelectedConversationId = null,
+                homeSelectedConversationId = "thread-a",
+            ),
+        )
+        assertEquals(
+            "thread-a",
+            resolveSlockHomeSelectedConversationId(
+                adaptiveWorkspaceEnabled = false,
+                adaptiveSelection = null,
+                shellSelectedConversationId = null,
+                homeSelectedConversationId = "thread-a",
+            ),
+        )
+    }
+
+    @Test
     fun wideSelectionSurvivesCompactAndInactiveTransitionsWithoutNewGeneration() {
         val wide = widePane()
         val identity = detailIdentity("thread-a")
