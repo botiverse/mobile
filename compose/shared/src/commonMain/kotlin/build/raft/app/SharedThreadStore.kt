@@ -6262,6 +6262,12 @@ internal class SharedThreadStore(
             return true
         }
 
+        // Retire the focused-window intent before the canonical tail fetch.
+        // Timeline projection deliberately does not own route-intent fields, so
+        // leaving the old focus on the visible payload would preserve it when
+        // the fetched tail content is committed.
+        reducePayloadPatch { current -> current.copy(focusedMessageId = null) }
+
         // Invalidate an older focused refresh or incremental newer-page request.
         // Their stale-token checks prevent a late page from replacing the tail.
         loadJob?.cancel()
