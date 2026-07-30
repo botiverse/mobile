@@ -358,3 +358,217 @@ host container traversal after Thread-internal render work.
 Future performance work should optimize inside the Thread Pager first. Future
 two-pane work should get its own explicit lifecycle and realtime contract before
 any embedded/second-surface route is restored.
+
+## Future Two-Pane Contract (task #17)
+
+This section is the decision gate for Desktop view and adaptive list-detail
+work. It permits a second visible Thread surface without undoing the standalone
+Pager boundary above.
+
+### Architecture Decision
+
+- The AppShell Pager remains the session, auth-refresh, realtime-connection,
+  selected-server, and top-level window owner.
+- A visible conversation detail is a separate `THREAD_PAGE` child Pager hosted
+  through `SlockKuiklyChildPage`. The parent must not call
+  `SharedThreadRouteContent` directly or restore an embedded Thread route.
+- Parent-to-child launch data remains `WireThreadLaunchPayload` plus shell
+  scope. It contains route identity and intent only. Messages, header display
+  data, permissions, members, files, tasks, composer state, and fallback UI
+  copy remain forbidden.
+- The parent owns pane layout and selection. The child owns Thread rendering,
+  local navigation, composer focus, draft projection, scroll, and route-local
+  error/loading/content state.
+- Phase 1 rail, Desktop-view preference, and global sidebar chrome are outside
+  this contract. This contract is shared by all later list-detail consumers.
+
+The existing cross-platform child-Pager primitive is the baseline, not a new
+native multi-window experiment: Android, iOS, and OHOS already implement
+`SlockKuiklyPageView`, while `SlockKuiklyChildPageView` forwards parent Pager
+events and sends balanced child visibility events.
+
+### Identity-Only Pane Selection
+
+The parent keeps a typed selection with only:
+
+- shell instance id and server id;
+- conversation/thread identity;
+- optional parent channel/message identity for replies;
+- optional focused message id and navigation intent;
+- a monotonically increasing selection generation.
+
+The selection must not contain an `InboxItem`, Home row, message snapshot,
+Thread payload, title, avatar, permissions, draft, scroll position, or other
+product state. An Activity/Home/Search/Saved/notification source first resolves
+through the canonical conversation directory into the same
+`HomeMessageOpenRequest` / `ThreadLaunchConversationIdentity` contract used by
+standalone navigation. Only then may the parent install a pane selection.
+
+Selection rules:
+
+- list refresh, unread/read changes, reorder, and pagination do not replace or
+  clear the selected identity;
+- selecting a new identity increments the generation and retires the previous
+  child lease before the new child becomes active;
+- server switch, logout, membership removal, and terminal auth loss clear the
+  selection before another server/session becomes visible;
+- deleted/no-access/unavailable content is rendered honestly by the child
+  store. The parent must not guess another row or keep stale display metadata;
+- no selection in a wide layout renders an explicit empty detail pane. It does
+  not auto-select row zero unless a surface-specific product contract says so.
+
+### Parent and Child Lifecycle State Machine
+
+The product state is one of:
+
+1. `ListOnly` — no pane selection is active.
+2. `Split(selection)` — list and selected child are both visible.
+3. `DetailOnly(selection)` — a child selected while wide remains mounted when
+   the window becomes compact, preserving its Pager, draft, focus owner, and
+   scroll until Back returns to the list.
+4. `Inactive(selection?)` — the parent Pager is not visible; no child is
+   lifecycle-visible even if its identity is retained.
+
+Transitions are driven only by parent visibility, adaptive layout, explicit
+selection, Back, and terminal session/server changes:
+
+- `ListOnly + wide row open -> Split(new selection)`.
+- A fresh compact row open keeps the existing standalone `RouterModule`
+  navigation behavior; it does not create a second retained child.
+- `Split + compact resize/fold -> DetailOnly(same selection and same child
+  instance)`; `DetailOnly + wide -> Split(same selection and child)`.
+- `Split/DetailOnly + parent disappear -> Inactive(selection)`; reappearance
+  restores the layout allowed by current window facts without synthesizing a
+  new selection.
+- Switching identities deactivates the old child before mounting/activating the
+  new child. A late old-generation load, lifecycle, navigation, or realtime
+  callback is ignored.
+
+`SlockKuiklyChildPage` must emit exactly one `didAppear` when
+`parentAppeared && childActive` becomes true, and exactly one `didDisappear`
+when it becomes false. Recomposition, duplicate window facts, or row updates
+must not replay lifecycle events. A child with `active=false` is clipped,
+non-interactive, excluded from accessibility traversal, owns no input focus,
+and cannot apply route-local realtime events.
+
+### Back and Nested Navigation
+
+Back is resolved from the innermost visible owner outward:
+
+1. Child-owned modal, menu, selection toolbar, tab subroute, reply/task detail,
+   or other nested Thread route handles Back first.
+2. At the child Thread root, Back emits a typed close-detail request carrying
+   shell id, selection key, and generation. It must not close the AppShell or
+   mutate an unrelated/newer selection.
+3. In `DetailOnly`, root Back returns to `ListOnly`. In `Split`, root Back
+   clears the detail and shows the explicit empty pane.
+4. Only when no detail or shell-owned overlay remains may Back leave the
+   current shell surface or close the AppShell.
+
+Nested conversation opens use identity-only requests. A surface may replace
+the current detail selection or push within the child Pager, but the choice
+must be explicit and generation-fenced; it may not open a hidden third Thread
+consumer or pass a rendered payload back through the parent.
+
+### Realtime and Room Ownership
+
+There is exactly one realtime connection/auth-refresh/cursor authority per
+shell session and server: the AppShell owner. A child Thread is a projection
+consumer, never a connection owner.
+
+Multiple visible projections are expected to observe the same canonical event
+(for example Home unread state and Thread messages). That is not duplicate
+ingest. The following are forbidden:
+
+- a child opening a second websocket or auth-refresh loop;
+- two page-local sinks independently mutating the same canonical store for one
+  event;
+- an inactive/old-generation child applying route-local events;
+- one consumer leaving a room that another visible consumer still needs.
+
+Room membership therefore requires a shell/server-scoped lease registry keyed
+by room id and a unique consumer token. It sends a join only on `0 -> 1`, sends
+a leave only on `1 -> 0`, and rejects releases from an old selection generation
+or server grant. The visible child acquires leases for
+`activeRealtimeRoomIds()` after canonical route resolution and releases them on
+deactivation, identity replacement, server/auth teardown, or disposal.
+Heartbeat/gap recovery remains owned once per canonical Thread projection;
+pane layout changes must not reset its cursor or apply an event twice.
+
+### Resize, Draft, Scroll, Focus, and Hinge
+
+- Wide/compact transitions retain the same selected child instance when the
+  detail was already open, so canonical composer draft, unsent attachments,
+  input focus, Thread tab, and scroll are not reconstructed from route data.
+- Draft authority remains `SharedThreadComposerDraftPersistSlice`, keyed by
+  canonical Thread identity. The pane parent never copies composer state.
+- The list and detail have independent scroll owners. Reordering the list does
+  not move the detail; detail scrolling does not mutate list position.
+- In split mode the composer, IME insets, focus traversal, pointer hit testing,
+  and accessibility semantics belong to the detail bounds only. No control may
+  span or receive input through a folding hinge.
+- Window facts are host layout facts, not route data. Duplicate resize/fold
+  emissions reduce idempotently and must not remount the child.
+
+### Session and Failure Teardown
+
+Every asynchronous child effect is fenced by
+`(shellInstanceId, serverId, selectionGeneration)`.
+
+On server switch, logout, account switch, membership removal, or terminal auth
+loss, the parent deactivates the child, releases room leases, clears selection,
+and only then exposes the successor server/session. Late callbacks from the old
+tuple cannot restore selection, show a toast in the new server, write a draft,
+or navigate.
+
+Child load failure renders a retryable detail error while the list remains
+usable. Retrying reuses the same identity and advances a load attempt, not the
+selection generation. A terminal deleted/no-access result remains visible
+until the user clears it or selects another row; it never falls back to stale
+cached display content.
+
+### Required Verification Before Product Use
+
+Shared behavior tests must exercise public reducers/coordinators, not grep
+production source:
+
+- all `ListOnly`/`Split`/`DetailOnly`/`Inactive` transitions;
+- duplicate window/lifecycle signals produce no duplicate child lifecycle;
+- selection A -> B rejects late A load/navigation/realtime callbacks;
+- read/unread/reorder/pagination preserve selection;
+- server/auth teardown clears selection and leases before successor attach;
+- room lease `0 -> 1` join and `1 -> 0` leave with two consumers;
+- root Back generation-CAS behavior and nested-child-first Back ordering;
+- launch serializer/parser guards continue excluding product content.
+
+Each platform must then run the same real-component matrix:
+
+- compact row open remains standalone;
+- wide row open shows list + canonical child Thread;
+- wide -> compact -> wide retains selection, draft, tab, and scroll;
+- rapid A/B selection plus realtime and resize has no stale flash or duplicate
+  message/reaction/task apply;
+- logout/server switch/no-access/deleted/error-retry paths are honest;
+- IME, hinge, safe areas, pointer bounds, keyboard navigation, and
+  accessibility traversal stay pane-local.
+
+Android verification covers resizable tablet, split screen, and a fold posture;
+iOS covers iPad resize/rotation; OHOS covers large-window resize and fold-status
+changes. A PASS on one host does not imply another. Preview-only, fixture-only,
+or Android-only proof cannot enable Desktop view globally.
+
+### Implementation Gate
+
+No product list-detail task may mount a visible Thread child until all of these
+exist:
+
+1. host window-fact delivery for the target platform;
+2. a pure pane lifecycle/selection reducer with the tests above;
+3. generation-fenced child root-Back delivery;
+4. shell/server-scoped realtime room leases;
+5. identity-only child launch using the existing Thread parser guards;
+6. at least one target-host real-component lifecycle/resize proof.
+
+This gate deliberately allows platform rollout to proceed independently while
+keeping the shared contract identical. It does not permit an Android-only
+layout branch to become the shared default for iOS or OHOS.
