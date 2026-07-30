@@ -48,6 +48,7 @@ import build.raft.app.data.MOBILE_ACTION_ACTIVITY_TASK_STATUS_BADGES
 import build.raft.app.data.MOBILE_ACTION_COMPACT_MESSAGES
 import build.raft.app.data.MOBILE_ACTION_LONG_MESSAGE_COLLAPSE
 import build.raft.app.data.MOBILE_ACTION_SINGLE_TAP_OPENS_THREAD
+import build.raft.app.data.MOBILE_ACTION_INLINE_SELECTION_TOOLBAR
 import build.raft.app.data.MOBILE_ACTION_COMPOSER_SEND_KEY
 import build.raft.app.data.MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS
 import build.raft.app.data.MOBILE_ACTION_IMAGE_ANNOTATION
@@ -6713,6 +6714,9 @@ private fun SettingsAppShellContent(
                     onSingleTapOpensThreadChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetSingleTapOpensThreadEnabled(enabled))
                     },
+                    onInlineSelectionToolbarChange = { enabled ->
+                        onSettingsIntent(SharedSettingsIntent.SetInlineSelectionToolbarEnabled(enabled))
+                    },
                     onImageAnnotationChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetImageAnnotationEnabled(enabled))
                     },
@@ -7874,6 +7878,7 @@ private fun SettingsMobileContent(
     onCompactConsecutiveMessagesChange: (Boolean) -> Unit,
     onLongMessageCollapseChange: (Boolean) -> Unit,
     onSingleTapOpensThreadChange: (Boolean) -> Unit,
+    onInlineSelectionToolbarChange: (Boolean) -> Unit,
     onImageAnnotationChange: (Boolean) -> Unit,
     onActivityTaskStatusBadgesChange: (Boolean) -> Unit,
     onComposerSendKeyChange: (Boolean) -> Unit,
@@ -7925,6 +7930,13 @@ private fun SettingsMobileContent(
                     snapshot = snapshot,
                     actionState = actionState,
                     onSingleTapOpensThreadChange = onSingleTapOpensThreadChange
+                )
+            }
+            item {
+                SettingsInlineSelectionToolbarCard(
+                    snapshot = snapshot,
+                    actionState = actionState,
+                    onInlineSelectionToolbarChange = onInlineSelectionToolbarChange
                 )
             }
             item {
@@ -8377,6 +8389,48 @@ private fun SettingsSingleTapOpensThreadCard(
             )
         }
         if (actionState?.action == MOBILE_ACTION_SINGLE_TAP_OPENS_THREAD && actionState.errorCode != null) {
+            SettingsFormErrorText(actionState.errorCode.orEmpty())
+        }
+    }
+}
+
+@Composable
+private fun SettingsInlineSelectionToolbarCard(
+    snapshot: SettingsMobileSnapshot,
+    actionState: SharedSettingsActionState?,
+    onInlineSelectionToolbarChange: (Boolean) -> Unit
+) {
+    val busy = actionState?.action == MOBILE_ACTION_INLINE_SELECTION_TOOLBAR && actionState.inProgress
+    val preference = snapshot.inlineSelectionToolbar
+    SettingsFormSectionCard(
+        iconName = SlockLucideIconName.FileScan,
+        title = stringResource(MR.strings.settings_mobile_inline_selection_toolbar)
+    ) {
+        SettingsFormDetailText(stringResource(MR.strings.settings_mobile_inline_selection_toolbar_detail))
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(enabled = preference.available && !busy) {
+                        onInlineSelectionToolbarChange(!preference.enabled)
+                    }
+                    .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    preference.localizedToggleStatus(),
+                    style = SlockType.Button.copy(color = SlockColor.TextBlack),
+                    color = SlockColor.TextBlack
+                )
+            }
+            SlockSwitchButton(
+                checked = preference.enabled,
+                enabled = preference.available && !busy
+            )
+        }
+        if (actionState?.action == MOBILE_ACTION_INLINE_SELECTION_TOOLBAR && actionState.errorCode != null) {
             SettingsFormErrorText(actionState.errorCode.orEmpty())
         }
     }

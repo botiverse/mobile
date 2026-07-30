@@ -131,6 +131,7 @@ class LocalPreferencesTest {
         assertEquals(true, snapshot.compactConsecutiveMessages)
         assertEquals(false, snapshot.longMessageCollapseEnabled)
         assertEquals(false, snapshot.singleTapOpensThreadEnabled)
+        assertEquals(false, snapshot.inlineSelectionToolbarEnabled)
         assertEquals(true, snapshot.imageAnnotationEnabled)
         assertEquals(false, snapshot.foregroundMessageBannersEnabled)
         assertEquals(false, snapshot.activityTaskStatusBadgesEnabled)
@@ -212,6 +213,7 @@ class LocalPreferencesTest {
         val compact = repository.setCompactConsecutiveMessages(true)
         val longMessageCollapse = repository.setLongMessageCollapseEnabled(true)
         val singleTapOpensThread = repository.setSingleTapOpensThreadEnabled(true)
+        val inlineSelectionToolbar = repository.setInlineSelectionToolbarEnabled(true)
         val imageAnnotation = repository.setImageAnnotationEnabled(true)
         val foregroundMessageBanners = repository.setForegroundMessageBannersEnabled(true)
         val activityTaskStatusBadges = repository.setActivityTaskStatusBadgesEnabled(true)
@@ -237,6 +239,7 @@ class LocalPreferencesTest {
         assertEquals(true, compact.compactConsecutiveMessages)
         assertEquals(true, longMessageCollapse.longMessageCollapseEnabled)
         assertEquals(true, singleTapOpensThread.singleTapOpensThreadEnabled)
+        assertEquals(true, inlineSelectionToolbar.inlineSelectionToolbarEnabled)
         assertEquals(true, imageAnnotation.imageAnnotationEnabled)
         assertEquals(true, foregroundMessageBanners.foregroundMessageBannersEnabled)
         assertEquals(true, activityTaskStatusBadges.activityTaskStatusBadgesEnabled)
@@ -252,6 +255,7 @@ class LocalPreferencesTest {
         assertEquals(true, restored.compactConsecutiveMessages)
         assertEquals(true, restored.longMessageCollapseEnabled)
         assertEquals(true, restored.singleTapOpensThreadEnabled)
+        assertEquals(true, restored.inlineSelectionToolbarEnabled)
         assertEquals(true, restored.imageAnnotationEnabled)
         assertEquals(true, restored.foregroundMessageBannersEnabled)
         assertEquals(true, restored.activityTaskStatusBadgesEnabled)
@@ -277,6 +281,7 @@ class LocalPreferencesTest {
         assertEquals(true, restoredDisabledCompact.multiShellHostEnabled)
         assertEquals(true, restoredDisabledCompact.serverDrawerEnabled)
         assertEquals(true, restoredDisabledCompact.homeServerAvatarEnabled)
+        assertEquals(true, restoredDisabledCompact.inlineSelectionToolbarEnabled)
     }
 
     @Test

@@ -1022,75 +1022,139 @@ class KmpVisualScreenshotCaptureTest {
 
     @Test
     fun captureThreadInlineSelectionDemo() {
+        val backingStore = slockSharedPreferenceStore()
+        val previous = backingStore.getString(INLINE_SELECTION_TOOLBAR_PREFERENCE_KEY)
         var selectedArtifact: Bitmap? = null
-        captureKmpComponentCase(
-            caseId = "components.thread.inline-selection-demo",
-            pageName = "compose_thread_message_row_visual",
-            pageData =
-                JSONObject()
-                    .put("instanceId", "visual-thread-inline-selection-demo")
-                    .put("visualFixture", "inline_selection_demo")
-                    .put("singleTapOpensThreadEnabled", true),
-            crop = FULL_VIEWPORT_CROP,
-            suppressSoftKeyboard = false,
-            capturedBitmapAfterBeforeScreenshot = {
-                requireNotNull(selectedArtifact) {
-                    "Inline-selection interaction did not provide its validated artifact"
-                }.also { selectedArtifact = null }
-            },
-            beforeScreenshot = {
-                dismissCompatibilityDialog()
-                waitForIdleBounded()
-                var before: Bitmap? = null
-                var after: Bitmap? = null
-                try {
-                    before = captureActivityScreenshot("components.thread.inline-selection-demo.before")
-                    val threadOpenBefore = before.countThreadInlineSelectionOpenProbeSamples()
-                    val selectionBlueBefore = before.countThreadInlineSelectionBlueSamples()
-                    longPressDisplayDp(x = 300f, y = 70f)
-                    Thread.sleep(800)
-                    after = captureActivityScreenshot("components.thread.inline-selection-demo.after")
-                    val threadOpenAfter = after.countThreadInlineSelectionOpenProbeSamples()
-                    val selectionBlueAfter = after.countThreadInlineSelectionBlueSamples()
-                    val addedToolbarBlack = after.countNewNearBlackSamplesComparedWith(before)
-                    val changedRatio = before.fullBitmapChangedPixelRatio(after)
+        try {
+            backingStore.putString(INLINE_SELECTION_TOOLBAR_PREFERENCE_KEY, null)
+            val preferenceStore = KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
+            assertFalse(preferenceStore.readInlineSelectionToolbarEnabledSync())
+            runBlocking { preferenceStore.saveInlineSelectionToolbarEnabled(true) }
+            assertTrue(preferenceStore.readInlineSelectionToolbarEnabledSync())
+            captureKmpComponentCase(
+                caseId = "components.thread.inline-selection-demo",
+                pageName = "compose_thread_message_row_visual",
+                pageData =
+                    JSONObject()
+                        .put("instanceId", "visual-thread-inline-selection-demo")
+                        .put("visualFixture", "inline_selection_demo")
+                        .put("singleTapOpensThreadEnabled", true),
+                crop = FULL_VIEWPORT_CROP,
+                suppressSoftKeyboard = false,
+                capturedBitmapAfterBeforeScreenshot = {
+                    requireNotNull(selectedArtifact) {
+                        "Inline-selection interaction did not provide its validated artifact"
+                    }.also { selectedArtifact = null }
+                },
+                beforeScreenshot = {
+                    dismissCompatibilityDialog()
+                    waitForIdleBounded()
+                    var before: Bitmap? = null
+                    var after: Bitmap? = null
+                    try {
+                        before = captureActivityScreenshot("components.thread.inline-selection-demo.before")
+                        val threadOpenBefore = before.countThreadInlineSelectionOpenProbeSamples()
+                        val selectionBlueBefore = before.countThreadInlineSelectionBlueSamples()
+                        longPressDisplayDp(x = 300f, y = 70f)
+                        Thread.sleep(800)
+                        after = captureActivityScreenshot("components.thread.inline-selection-demo.after")
+                        val threadOpenAfter = after.countThreadInlineSelectionOpenProbeSamples()
+                        val selectionBlueAfter = after.countThreadInlineSelectionBlueSamples()
+                        val addedToolbarBlack = after.countNewNearBlackSamplesComparedWith(before)
+                        val changedRatio = before.fullBitmapChangedPixelRatio(after)
+                        assertTrue(
+                            "Long press must render the in-place selection and compact toolbar; changedRatio=$changedRatio",
+                            changedRatio >= THREAD_LONG_PRESS_MIN_CHANGED_RATIO
+                        )
+                        assertTrue(
+                            "Long press must render a blue selection; before=$selectionBlueBefore after=$selectionBlueAfter",
+                            selectionBlueAfter >=
+                                selectionBlueBefore + THREAD_INLINE_SELECTION_MIN_ADDED_BLUE_SAMPLES
+                        )
+                        assertTrue(
+                            "Long press must render the black toolbar chrome; addedNearBlack=$addedToolbarBlack",
+                            addedToolbarBlack >= THREAD_INLINE_SELECTION_MIN_ADDED_BLACK_SAMPLES
+                        )
+                        assertTrue(
+                            "Inline selection must not open the thread; before=$threadOpenBefore after=$threadOpenAfter",
+                            threadOpenAfter <
+                                threadOpenBefore + THREAD_INLINE_SELECTION_MIN_ADDED_OPEN_PROBE_SAMPLES
+                        )
+                        selectedArtifact = after
+                        after = null
+                    } finally {
+                        before?.recycle()
+                        after?.recycle()
+                    }
+                },
+                assertBitmap = { bitmap ->
+                    val selectionBlue = bitmap.countThreadInlineSelectionBlueSamples()
                     assertTrue(
-                        "Long press must render the in-place selection and compact toolbar; changedRatio=$changedRatio",
-                        changedRatio >= THREAD_LONG_PRESS_MIN_CHANGED_RATIO
+                        "Final inline-selection artifact must preserve the selected text; selectionBlue=$selectionBlue",
+                        selectionBlue >= THREAD_INLINE_SELECTION_MIN_FINAL_BLUE_SAMPLES
                     )
-                    assertTrue(
-                        "Long press must render a blue selection; before=$selectionBlueBefore after=$selectionBlueAfter",
-                        selectionBlueAfter >=
-                            selectionBlueBefore + THREAD_INLINE_SELECTION_MIN_ADDED_BLUE_SAMPLES
-                    )
-                    assertTrue(
-                        "Long press must render the black toolbar chrome; addedNearBlack=$addedToolbarBlack",
-                        addedToolbarBlack >= THREAD_INLINE_SELECTION_MIN_ADDED_BLACK_SAMPLES
-                    )
-                    assertTrue(
-                        "Inline selection must not open the thread; before=$threadOpenBefore after=$threadOpenAfter",
-                        threadOpenAfter <
-                            threadOpenBefore + THREAD_INLINE_SELECTION_MIN_ADDED_OPEN_PROBE_SAMPLES
-                    )
-                    selectedArtifact = after
-                    after = null
-                } finally {
-                    before?.recycle()
-                    after?.recycle()
+                },
+                afterScreenshot = {
+                    selectedArtifact?.recycle()
+                    selectedArtifact = null
                 }
-            },
-            assertBitmap = { bitmap ->
-                val selectionBlue = bitmap.countThreadInlineSelectionBlueSamples()
-                assertTrue(
-                    "Final inline-selection artifact must preserve the selected text; selectionBlue=$selectionBlue",
-                    selectionBlue >= THREAD_INLINE_SELECTION_MIN_FINAL_BLUE_SAMPLES
-                )
-            },
-            afterScreenshot = {
-                selectedArtifact?.recycle()
-                selectedArtifact = null
-            }
-        )
+            )
+        } finally {
+            backingStore.putString(INLINE_SELECTION_TOOLBAR_PREFERENCE_KEY, previous)
+            selectedArtifact?.recycle()
+            selectedArtifact = null
+        }
+    }
+
+    @Test
+    fun captureThreadInlineSelectionPreferenceOffFallback() {
+        val backingStore = slockSharedPreferenceStore()
+        val previous = backingStore.getString(INLINE_SELECTION_TOOLBAR_PREFERENCE_KEY)
+        try {
+            backingStore.putString(INLINE_SELECTION_TOOLBAR_PREFERENCE_KEY, null)
+            assertFalse(
+                KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
+                    .readInlineSelectionToolbarEnabledSync()
+            )
+            captureKmpComponentCase(
+                caseId = "components.thread.inline-selection-preference-off",
+                pageName = "compose_thread_message_row_visual",
+                pageData =
+                    JSONObject()
+                        .put("instanceId", "visual-thread-inline-selection-preference-off")
+                        .put("visualFixture", "inline_selection_demo"),
+                crop = FULL_VIEWPORT_CROP,
+                beforeScreenshot = {
+                    dismissCompatibilityDialog()
+                    waitForIdleBounded()
+                    var before: Bitmap? = null
+                    var after: Bitmap? = null
+                    try {
+                        before = captureActivityScreenshot("components.thread.inline-selection-preference-off.before")
+                        val selectionBlueBefore = before.countThreadInlineSelectionBlueSamples()
+                        longPressDisplayDp(x = 300f, y = 70f)
+                        Thread.sleep(800)
+                        after = captureActivityScreenshot("components.thread.inline-selection-preference-off.after")
+                        val selectionBlueAfter = after.countThreadInlineSelectionBlueSamples()
+                        val changedRatio = before.fullBitmapChangedPixelRatio(after)
+                        assertTrue(
+                            "Default-off long press must retain the legacy actions menu; changedRatio=$changedRatio",
+                            changedRatio >= THREAD_LONG_PRESS_MIN_CHANGED_RATIO
+                        )
+                        assertTrue(
+                            "Default-off long press must not create an in-place selection; before=$selectionBlueBefore after=$selectionBlueAfter",
+                            selectionBlueAfter <
+                                selectionBlueBefore + THREAD_INLINE_SELECTION_MIN_ADDED_BLUE_SAMPLES
+                        )
+                    } finally {
+                        before?.recycle()
+                        after?.recycle()
+                    }
+                }
+            )
+        } finally {
+            backingStore.putString(INLINE_SELECTION_TOOLBAR_PREFERENCE_KEY, previous)
+        }
     }
 
     @Test
@@ -4463,6 +4527,7 @@ class KmpVisualScreenshotCaptureTest {
             )
         private const val HOME_SERVER_AVATAR_PREFERENCE_KEY = "mobile:home_server_avatar_enabled"
         private const val HOME_SERVER_AVATAR_PROCESS_RESTART_PHASE_ARG = "homeServerAvatarProcessRestartPhase"
+        private const val INLINE_SELECTION_TOOLBAR_PREFERENCE_KEY = "mobile:inline_selection_toolbar_enabled"
         private val HOME_SAVED_RESULTS_CROP =
             VisualCrop(
                 leftDp = 0,

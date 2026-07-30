@@ -1475,6 +1475,8 @@
     <string name="settings_mobile_multi_shell_host_detail">Open different workspaces in separate Android app windows. Existing windows remain open until you close them.</string>
     <string name="settings_mobile_server_drawer">Multi-server Home drawer</string>
     <string name="settings_mobile_server_drawer_detail">Use the new multi-server left drawer on Home. Turn this off to keep the current server switcher popover.</string>
+    <string name="settings_mobile_inline_selection_toolbar">Inline message selection toolbar</string>
+    <string name="settings_mobile_inline_selection_toolbar_detail">Long-press an eligible plain-text message to select its text in place and show quick reactions and message tools. Turn this off to keep the current message menu.</string>
     <string name="settings_mobile_home_server_avatar">Workspace avatar in Home header</string>
     <string name="settings_mobile_home_server_avatar_detail">Show the current workspace avatar beside its name in the Home header. Turn this off to keep the existing compact title badge.</string>
     <string name="settings_badge_beta">Beta</string>

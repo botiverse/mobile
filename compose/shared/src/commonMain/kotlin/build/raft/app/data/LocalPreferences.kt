@@ -255,6 +255,7 @@ data class ChatLayoutPreferenceSnapshot(
     val compactConsecutiveMessages: Boolean = true,
     val longMessageCollapseEnabled: Boolean = false,
     val singleTapOpensThreadEnabled: Boolean = false,
+    val inlineSelectionToolbarEnabled: Boolean = false,
     val imageAnnotationEnabled: Boolean = true,
     val foregroundMessageBannersEnabled: Boolean = false,
     val activityTaskStatusBadgesEnabled: Boolean = false,
@@ -289,6 +290,9 @@ interface ChatLayoutPreferenceStore {
     fun readSingleTapOpensThreadEnabledSync(): Boolean
     suspend fun readSingleTapOpensThreadEnabled(): Boolean
     suspend fun saveSingleTapOpensThreadEnabled(enabled: Boolean)
+    fun readInlineSelectionToolbarEnabledSync(): Boolean
+    suspend fun readInlineSelectionToolbarEnabled(): Boolean
+    suspend fun saveInlineSelectionToolbarEnabled(enabled: Boolean)
     fun readImageAnnotationEnabledSync(): Boolean
     suspend fun readImageAnnotationEnabled(): Boolean
     suspend fun saveImageAnnotationEnabled(enabled: Boolean)
@@ -379,6 +383,16 @@ class KeyValueChatLayoutPreferenceStore(
 
     override suspend fun saveSingleTapOpensThreadEnabled(enabled: Boolean) {
         store.putBoolean(KEY_SINGLE_TAP_OPENS_THREAD_ENABLED, enabled)
+    }
+
+    override fun readInlineSelectionToolbarEnabledSync(): Boolean =
+        store.getBoolean(KEY_INLINE_SELECTION_TOOLBAR_ENABLED, false)
+
+    override suspend fun readInlineSelectionToolbarEnabled(): Boolean =
+        readInlineSelectionToolbarEnabledSync()
+
+    override suspend fun saveInlineSelectionToolbarEnabled(enabled: Boolean) {
+        store.putBoolean(KEY_INLINE_SELECTION_TOOLBAR_ENABLED, enabled)
     }
 
     override fun readImageAnnotationEnabledSync(): Boolean =
@@ -515,6 +529,7 @@ class KeyValueChatLayoutPreferenceStore(
         const val KEY_COMPACT_CONSECUTIVE_MESSAGES = "chatLayout:compact_consecutive_messages"
         const val KEY_LONG_MESSAGE_COLLAPSE_ENABLED = "chatLayout:long_message_collapse_enabled"
         const val KEY_SINGLE_TAP_OPENS_THREAD_ENABLED = "chatLayout:single_tap_opens_thread_enabled"
+        const val KEY_INLINE_SELECTION_TOOLBAR_ENABLED = "mobile:inline_selection_toolbar_enabled"
         const val KEY_IMAGE_ANNOTATION_ENABLED = "chatLayout:image_annotation_enabled"
         const val KEY_FOREGROUND_MESSAGE_BANNERS_ENABLED = "chatLayout:foreground_message_banners_enabled"
         const val KEY_ACTIVITY_TASK_STATUS_BADGES_ENABLED = "chatLayout:activity_task_status_badges_enabled"
@@ -540,6 +555,7 @@ interface ChatLayoutPreferenceRepository {
     suspend fun setCompactConsecutiveMessages(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setLongMessageCollapseEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setSingleTapOpensThreadEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
+    suspend fun setInlineSelectionToolbarEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setImageAnnotationEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setForegroundMessageBannersEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setActivityTaskStatusBadgesEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
@@ -566,6 +582,7 @@ class PersistentChatLayoutPreferenceRepository(
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
             longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             singleTapOpensThreadEnabled = store.readSingleTapOpensThreadEnabled(),
+            inlineSelectionToolbarEnabled = store.readInlineSelectionToolbarEnabled(),
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
@@ -589,6 +606,7 @@ class PersistentChatLayoutPreferenceRepository(
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
             longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             singleTapOpensThreadEnabled = store.readSingleTapOpensThreadEnabled(),
+            inlineSelectionToolbarEnabled = store.readInlineSelectionToolbarEnabled(),
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
@@ -613,6 +631,7 @@ class PersistentChatLayoutPreferenceRepository(
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
             longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             singleTapOpensThreadEnabled = store.readSingleTapOpensThreadEnabled(),
+            inlineSelectionToolbarEnabled = store.readInlineSelectionToolbarEnabled(),
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
@@ -635,6 +654,7 @@ class PersistentChatLayoutPreferenceRepository(
             compactConsecutiveMessages = enabled,
             longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             singleTapOpensThreadEnabled = store.readSingleTapOpensThreadEnabled(),
+            inlineSelectionToolbarEnabled = store.readInlineSelectionToolbarEnabled(),
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
@@ -659,6 +679,11 @@ class PersistentChatLayoutPreferenceRepository(
         return getChatLayoutPreference()
     }
 
+    override suspend fun setInlineSelectionToolbarEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
+        store.saveInlineSelectionToolbarEnabled(enabled)
+        return getChatLayoutPreference()
+    }
+
     override suspend fun setImageAnnotationEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
         store.saveImageAnnotationEnabled(enabled)
         return ChatLayoutPreferenceSnapshot(
@@ -667,6 +692,7 @@ class PersistentChatLayoutPreferenceRepository(
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
             longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             singleTapOpensThreadEnabled = store.readSingleTapOpensThreadEnabled(),
+            inlineSelectionToolbarEnabled = store.readInlineSelectionToolbarEnabled(),
             imageAnnotationEnabled = enabled,
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
@@ -689,6 +715,7 @@ class PersistentChatLayoutPreferenceRepository(
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
             longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             singleTapOpensThreadEnabled = store.readSingleTapOpensThreadEnabled(),
+            inlineSelectionToolbarEnabled = store.readInlineSelectionToolbarEnabled(),
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             foregroundMessageBannersEnabled = enabled,
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
@@ -711,6 +738,7 @@ class PersistentChatLayoutPreferenceRepository(
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
             longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             singleTapOpensThreadEnabled = store.readSingleTapOpensThreadEnabled(),
+            inlineSelectionToolbarEnabled = store.readInlineSelectionToolbarEnabled(),
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = enabled,
@@ -758,6 +786,7 @@ class PersistentChatLayoutPreferenceRepository(
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
             longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             singleTapOpensThreadEnabled = store.readSingleTapOpensThreadEnabled(),
+            inlineSelectionToolbarEnabled = store.readInlineSelectionToolbarEnabled(),
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
@@ -795,6 +824,7 @@ class PersistentChatLayoutPreferenceRepository(
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
             longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             singleTapOpensThreadEnabled = store.readSingleTapOpensThreadEnabled(),
+            inlineSelectionToolbarEnabled = store.readInlineSelectionToolbarEnabled(),
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),

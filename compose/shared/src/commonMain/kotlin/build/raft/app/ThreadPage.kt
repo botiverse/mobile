@@ -354,14 +354,14 @@ internal data class ThreadMessageMetadataSlotLayout(
     val timestampVisible: Boolean
 )
 
-internal fun threadInlineSelectionDemoBodyEligible(body: String): Boolean {
+internal fun threadInlineSelectionBodyEligible(body: String): Boolean {
     if (body.isBlank() || body != body.trim()) return false
     if (body.any { it == '\n' || it == '\r' || it == '\t' }) return false
     if (body.any { it in ThreadInlineSelectionMarkdownTriggerChars }) return false
     return !ThreadInlineSelectionOrderedListPrefix.containsMatchIn(body)
 }
 
-internal fun threadInlineSelectionDemoEligible(
+internal fun threadInlineSelectionEligible(
     body: String,
     hasAttachments: Boolean,
     hasActionCard: Boolean,
@@ -369,7 +369,7 @@ internal fun threadInlineSelectionDemoEligible(
     hasCommentReference: Boolean,
     hasLocalSendState: Boolean,
     translationPending: Boolean,
-    longMessageCollapseEnabled: Boolean
+    longMessageCollapsed: Boolean
 ): Boolean =
     !hasAttachments &&
         !hasActionCard &&
@@ -377,8 +377,31 @@ internal fun threadInlineSelectionDemoEligible(
         !hasCommentReference &&
         !hasLocalSendState &&
         !translationPending &&
-        !longMessageCollapseEnabled &&
-        threadInlineSelectionDemoBodyEligible(body)
+        !longMessageCollapsed &&
+        threadInlineSelectionBodyEligible(body)
+
+internal fun threadInlineSelectionEnabledForMessage(
+    settingEnabled: Boolean,
+    body: String,
+    hasAttachments: Boolean,
+    hasActionCard: Boolean,
+    hasForwardBundle: Boolean,
+    hasCommentReference: Boolean,
+    hasLocalSendState: Boolean,
+    translationPending: Boolean,
+    longMessageCollapsed: Boolean
+): Boolean =
+    settingEnabled &&
+        threadInlineSelectionEligible(
+            body = body,
+            hasAttachments = hasAttachments,
+            hasActionCard = hasActionCard,
+            hasForwardBundle = hasForwardBundle,
+            hasCommentReference = hasCommentReference,
+            hasLocalSendState = hasLocalSendState,
+            translationPending = translationPending,
+            longMessageCollapsed = longMessageCollapsed
+        )
 
 internal data class ThreadInlineSelectionToolbarPlacement(
     val xPx: Int,
@@ -386,7 +409,7 @@ internal data class ThreadInlineSelectionToolbarPlacement(
     val belowSelection: Boolean
 )
 
-internal enum class ThreadInlineSelectionDemoTool {
+internal enum class ThreadInlineSelectionTool {
     Copy,
     Reply,
     Forward,
@@ -395,15 +418,56 @@ internal enum class ThreadInlineSelectionDemoTool {
     Select
 }
 
-internal val ThreadInlineSelectionDemoToolOrder =
+internal val ThreadInlineSelectionToolOrder =
     listOf(
-        ThreadInlineSelectionDemoTool.Copy,
-        ThreadInlineSelectionDemoTool.Reply,
-        ThreadInlineSelectionDemoTool.Forward,
-        ThreadInlineSelectionDemoTool.Save,
-        ThreadInlineSelectionDemoTool.Translate,
-        ThreadInlineSelectionDemoTool.Select
+        ThreadInlineSelectionTool.Copy,
+        ThreadInlineSelectionTool.Reply,
+        ThreadInlineSelectionTool.Forward,
+        ThreadInlineSelectionTool.Save,
+        ThreadInlineSelectionTool.Translate,
+        ThreadInlineSelectionTool.Select
     )
+
+internal data class ThreadInlineSelectionToolCallbacks(
+    val onCopy: () -> Unit,
+    val onReply: () -> Unit,
+    val onForward: () -> Unit,
+    val onSave: () -> Unit,
+    val onTranslate: () -> Unit,
+    val onSelect: () -> Unit
+)
+
+internal fun ThreadInlineSelectionTool.dispatch(callbacks: ThreadInlineSelectionToolCallbacks) {
+    when (this) {
+        ThreadInlineSelectionTool.Copy -> callbacks.onCopy()
+        ThreadInlineSelectionTool.Reply -> callbacks.onReply()
+        ThreadInlineSelectionTool.Forward -> callbacks.onForward()
+        ThreadInlineSelectionTool.Save -> callbacks.onSave()
+        ThreadInlineSelectionTool.Translate -> callbacks.onTranslate()
+        ThreadInlineSelectionTool.Select -> callbacks.onSelect()
+    }
+}
+
+internal data class ThreadInlineSelectionActionAvailability(
+    val reactions: Boolean = true,
+    val copy: Boolean = true,
+    val reply: Boolean = true,
+    val forward: Boolean = true,
+    val save: Boolean = true,
+    val translate: Boolean = true,
+    val select: Boolean = true,
+    val more: Boolean = true
+) {
+    fun enabled(tool: ThreadInlineSelectionTool): Boolean =
+        when (tool) {
+            ThreadInlineSelectionTool.Copy -> copy
+            ThreadInlineSelectionTool.Reply -> reply
+            ThreadInlineSelectionTool.Forward -> forward
+            ThreadInlineSelectionTool.Save -> save
+            ThreadInlineSelectionTool.Translate -> translate
+            ThreadInlineSelectionTool.Select -> select
+        }
+}
 
 internal fun threadInlineSelectionToolbarPlacement(
     cardWidthPx: Int,
@@ -439,11 +503,13 @@ private class ThreadInlineSelectionController(
     var cardRootPosition by mutableStateOf(Offset.Zero)
     var cardWidthPx by mutableStateOf(0)
     var toolbarSize by mutableStateOf(IntSize(0, 0))
+    var actionMenuAnchor by mutableStateOf<SlockPopoverAnchor?>(null)
 
     fun clear() {
         selectionState.clearSelection()
         active = false
         frame = SelectionFrame.Zero
+        actionMenuAnchor = null
     }
 }
 
@@ -3434,6 +3500,12 @@ private fun ThreadMessageVisualScreenContent() {
     val interactionProbe = params.optString("interactionProbe")
     val instanceId = params.optString("instanceId")
     val singleTapOpensThreadEnabled = params.optBoolean("singleTapOpensThreadEnabled", false)
+    val inlineSelectionToolbarEnabled =
+        remember(visualFixture) {
+            visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_SELECTION_DEMO &&
+                KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
+                    .readInlineSelectionToolbarEnabledSync()
+        }
     val payload =
         remember(visualFixture, instanceId) {
             threadVisualFixture(fixture = visualFixture.ifBlank { THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT }, instanceId = instanceId)
@@ -3763,8 +3835,7 @@ private fun ThreadMessageVisualScreenContent() {
                         }
                     },
                     onOpenMarkdownUrl = { openedVisualMarkdownUrlCount += 1 },
-                    inlineSelectionDemoEnabled =
-                        visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_SELECTION_DEMO,
+                    inlineSelectionEnabled = inlineSelectionToolbarEnabled,
                     onInlineSelectionReact = {},
                     onInlineSelectionCopy = {},
                     onInlineSelectionReply = { openedVisualThreadMessageId = message.id },
@@ -3772,7 +3843,7 @@ private fun ThreadMessageVisualScreenContent() {
                     onInlineSelectionSave = {},
                     onInlineSelectionTranslate = {},
                     onInlineSelectionSelect = {},
-                    onInlineSelectionMore = {},
+                    onInlineSelectionMore = { _ -> },
                     outerPadding = 0.dp
                 )
                 if (menuActions.isNotEmpty()) {
@@ -5206,6 +5277,7 @@ internal fun SharedThreadRouteContent(
     val composerSendKeyEnabled = chatLayoutPreferenceStore.readComposerSendKeyEnabledSync()
     val longMessageCollapseEnabled = chatLayoutPreferenceStore.readLongMessageCollapseEnabledSync()
     val singleTapOpensThreadEnabled = chatLayoutPreferenceStore.readSingleTapOpensThreadEnabledSync()
+    val inlineSelectionToolbarEnabled = chatLayoutPreferenceStore.readInlineSelectionToolbarEnabledSync()
     val commentsUnavailableLabel = stringResource(MR.strings.thread_error_comments_unavailable)
     val unableToSendCommentLabel = stringResource(MR.strings.thread_error_send_comment)
     val unableToResolveCommentLabel = stringResource(MR.strings.thread_error_resolve_comment)
@@ -7320,6 +7392,7 @@ internal fun SharedThreadRouteContent(
             composerSendKeyEnabled = composerSendKeyEnabled,
             longMessageCollapseEnabled = longMessageCollapseEnabled,
             singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
+            inlineSelectionToolbarEnabled = inlineSelectionToolbarEnabled,
             currentServerSlug = currentServerSlug,
             translationStore = translationStore,
             mentionHandleResolver = { message ->
@@ -12124,6 +12197,7 @@ private fun ThreadPageContent(
     composerSendKeyEnabled: Boolean = false,
     longMessageCollapseEnabled: Boolean = false,
     singleTapOpensThreadEnabled: Boolean = false,
+    inlineSelectionToolbarEnabled: Boolean = false,
     currentServerSlug: String? = null,
     translationStore: SharedMessageTranslationStore? = null,
     mentionHandleResolver: (KuiklyThreadMessageItem) -> String? = { message -> message.threadMentionHandle() },
@@ -12217,6 +12291,7 @@ private fun ThreadPageContent(
     val threadScreenPagerForForwardBundle = LocalActivity.current.getPager() as Pager
     var activeForwardSelectionMode by remember(threadInstanceKey) { mutableStateOf(ThreadForwardSelectionMode.Merged) }
     var selectedShareMessageIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
+    var forwardMessageIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
     val selectedShareBounds = remember(threadInstanceKey) { mutableMapOf<String, ThreadShareCaptureRect>() }
     var sharePreviewImage by remember(threadInstanceKey) { mutableStateOf<ThreadSharePreviewImage?>(null) }
     var sharePreviewLoading by remember(threadInstanceKey) { mutableStateOf(false) }
@@ -12249,9 +12324,13 @@ private fun ThreadPageContent(
         remember(timelineSlice, selectedShareMessageIds) {
             timelineSlice.threadSelectedShareMessages(selectedShareMessageIds)
         }
+    val forwardMessages =
+        remember(timelineSlice, forwardMessageIds) {
+            timelineSlice.threadSelectedShareMessages(forwardMessageIds)
+        }
     val forwardMessageSelection =
-        remember(selectedShareMessages) {
-            selectedShareMessages.threadForwardMessageSelection()
+        remember(forwardMessages) {
+            forwardMessages.threadForwardMessageSelection()
         }
     val selectedShareMarkdown =
         remember(selectedShareMessages) {
@@ -12418,6 +12497,41 @@ private fun ThreadPageContent(
         if (activeModal == "sharePreview") {
             activeModal = null
         }
+    }
+    val openForwardPickerForMessageIds: (Set<String>) -> Unit = openForward@{ messageIds ->
+        if (!writeActionsEnabled) {
+            diagnosticsLogger("thread_forward_open_rejected reason=write_actions_disabled")
+            return@openForward
+        }
+        val candidateMessages = timelineSlice.threadSelectedShareMessages(messageIds)
+        val selection = candidateMessages.threadForwardMessageSelection()
+        if (selection.forwardableMessages.isEmpty()) {
+            onThreadEvent(
+                "forwardMessagesFailed",
+                selection.threadForwardSelectionFailureMessage(),
+                null,
+                null
+            )
+            return@openForward
+        }
+        forwardMessageIds = candidateMessages.mapTo(linkedSetOf()) { it.id }
+        activeForwardSelectionMode = ThreadForwardSelectionMode.Merged
+        forwardSourceServerId = forwardServerId
+        forwardPickerFlow.sessionKey?.let { previous ->
+            forwardTargetRepository?.releaseDirectorySnapshot(previous.directorySessionId())
+        }
+        forwardPickerFlow =
+            forwardPickerFlow.reduce(
+                SlockForwardPickerFlowEvent.Open(
+                    sourceContext = threadInstanceKey,
+                    serverId = forwardServerId?.value.orEmpty()
+                )
+            )
+        forwardTargets = emptyList()
+        forwardDirectoryNextCursor = null
+        forwardSelectedReceipt = null
+        forwardNote = ""
+        activeModal = "forwardTargets"
     }
     val transientBackTarget =
         threadTransientBackTarget(
@@ -12731,6 +12845,7 @@ private fun ThreadPageContent(
                         contentExtrasVisible = contentExtrasVisible,
                         longMessageCollapseEnabled = longMessageCollapseEnabled,
                         singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
+                        inlineSelectionToolbarEnabled = inlineSelectionToolbarEnabled,
                         inlineSearchVisible = inlineSearchVisible,
                         isMarkdownTagValid = isMarkdownTagValid,
                         markdownTagContextSignature = markdownTagContextSignature,
@@ -12781,6 +12896,9 @@ private fun ThreadPageContent(
                         onEnterShareSelection = { messageId ->
                             selectedShareMessageIds = setOf(messageId)
                             activeModal = null
+                        },
+                        onForwardMessage = { messageId ->
+                            openForwardPickerForMessageIds(setOf(messageId))
                         },
                         onToggleShareSelection = { messageId ->
                             selectedShareMessageIds =
@@ -12936,32 +13054,7 @@ private fun ThreadPageContent(
                             selectedShareMessageIds = selectableShareMessageIds
                         },
                         onForward = {
-                            if (forwardMessageSelection.forwardableMessages.isEmpty()) {
-                                onThreadEvent(
-                                    "forwardMessagesFailed",
-                                    forwardMessageSelection.threadForwardSelectionFailureMessage(),
-                                    null,
-                                    null
-                                )
-                            } else {
-                                activeForwardSelectionMode = ThreadForwardSelectionMode.Merged
-                                forwardSourceServerId = forwardServerId
-                                forwardPickerFlow.sessionKey?.let { previous ->
-                                    forwardTargetRepository?.releaseDirectorySnapshot(previous.directorySessionId())
-                                }
-                                forwardPickerFlow =
-                                    forwardPickerFlow.reduce(
-                                        SlockForwardPickerFlowEvent.Open(
-                                            sourceContext = threadInstanceKey,
-                                            serverId = forwardServerId?.value.orEmpty()
-                                        )
-                                    )
-                                forwardTargets = emptyList()
-                                forwardDirectoryNextCursor = null
-                                forwardSelectedReceipt = null
-                                forwardNote = ""
-                                activeModal = "forwardTargets"
-                            }
+                            openForwardPickerForMessageIds(selectedShareMessageIds)
                         },
                         forwardEnabled = writeActionsEnabled,
                         onExportImage = {
@@ -13122,6 +13215,7 @@ private fun ThreadPageContent(
                                     forwardTargetRepository?.releaseDirectorySnapshot(session.directorySessionId())
                                 }
                                 forwardPickerFlow = forwardPickerFlow.reduce(SlockForwardPickerFlowEvent.Dismiss)
+                                forwardMessageIds = emptySet()
                                 activeModal = null
                             }
                             SlockForwardTargetPickerIntent.Continue,
@@ -13207,6 +13301,7 @@ private fun ThreadPageContent(
                                             forwardPickerFlow =
                                                 forwardPickerFlow.reduce(SlockForwardPickerFlowEvent.Dismiss)
                                             forwardSelectedReceipt = null
+                                            forwardMessageIds = emptySet()
                                             forwardNote = ""
                                             clearShareSelection()
                                             onThreadEvent(
@@ -13923,6 +14018,7 @@ private fun ThreadChatTab(
     contentExtrasVisible: Boolean = true,
     longMessageCollapseEnabled: Boolean = false,
     singleTapOpensThreadEnabled: Boolean = false,
+    inlineSelectionToolbarEnabled: Boolean = false,
     inlineSearchVisible: Boolean = false,
     isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean = ::defaultThreadMarkdownTagIsValid,
     markdownTagContextSignature: String = "",
@@ -13945,6 +14041,7 @@ private fun ThreadChatTab(
     selectedShareMessageIds: Set<String> = emptySet(),
     onShareSelectionBounds: (String, ThreadShareCaptureRect?) -> Unit = { _, _ -> },
     onEnterShareSelection: (String) -> Unit = {},
+    onForwardMessage: (String) -> Unit = {},
     onToggleShareSelection: (String) -> Unit = {},
     onOpenForwardBundle: (String) -> Unit = {},
     translationStore: SharedMessageTranslationStore? = null,
@@ -14003,6 +14100,7 @@ private fun ThreadChatTab(
                     contentExtrasVisible = contentExtrasVisible,
                     longMessageCollapseEnabled = longMessageCollapseEnabled,
                     singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
+                    inlineSelectionToolbarEnabled = inlineSelectionToolbarEnabled,
                     inlineSearchVisible = inlineSearchVisible,
                     isMarkdownTagValid = isMarkdownTagValid,
                     markdownTagContextSignature = markdownTagContextSignature,
@@ -14025,6 +14123,7 @@ private fun ThreadChatTab(
                     selectedShareMessageIds = selectedShareMessageIds,
                     onShareSelectionBounds = onShareSelectionBounds,
                     onEnterShareSelection = onEnterShareSelection,
+                    onForwardMessage = onForwardMessage,
                     onToggleShareSelection = onToggleShareSelection,
                     onOpenForwardBundle = onOpenForwardBundle,
                     translationStore = translationStore,
@@ -14070,6 +14169,7 @@ private fun ThreadChatTab(
                     contentExtrasVisible = contentExtrasVisible,
                     longMessageCollapseEnabled = longMessageCollapseEnabled,
                     singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
+                    inlineSelectionToolbarEnabled = inlineSelectionToolbarEnabled,
                     inlineSearchVisible = inlineSearchVisible,
                     isMarkdownTagValid = isMarkdownTagValid,
                     markdownTagContextSignature = markdownTagContextSignature,
@@ -14092,6 +14192,7 @@ private fun ThreadChatTab(
                     selectedShareMessageIds = selectedShareMessageIds,
                     onShareSelectionBounds = onShareSelectionBounds,
                     onEnterShareSelection = onEnterShareSelection,
+                    onForwardMessage = onForwardMessage,
                     onToggleShareSelection = onToggleShareSelection,
                     onOpenForwardBundle = onOpenForwardBundle,
                     translationStore = translationStore,
@@ -14128,6 +14229,7 @@ private fun ThreadChatTab(
                 contentExtrasVisible = contentExtrasVisible,
                 longMessageCollapseEnabled = longMessageCollapseEnabled,
                 singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
+                inlineSelectionToolbarEnabled = inlineSelectionToolbarEnabled,
                 inlineSearchVisible = inlineSearchVisible,
                 isMarkdownTagValid = isMarkdownTagValid,
                 markdownTagContextSignature = markdownTagContextSignature,
@@ -14149,6 +14251,7 @@ private fun ThreadChatTab(
                 selectedShareMessageIds = selectedShareMessageIds,
                 onShareSelectionBounds = onShareSelectionBounds,
                 onEnterShareSelection = onEnterShareSelection,
+                onForwardMessage = onForwardMessage,
                 onToggleShareSelection = onToggleShareSelection,
                 onOpenForwardBundle = onOpenForwardBundle,
                 translationStore = translationStore,
@@ -14427,6 +14530,7 @@ private fun ThreadMessagesList(
     contentExtrasVisible: Boolean = true,
     longMessageCollapseEnabled: Boolean = false,
     singleTapOpensThreadEnabled: Boolean = false,
+    inlineSelectionToolbarEnabled: Boolean = false,
     inlineSearchVisible: Boolean = false,
     isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean = ::defaultThreadMarkdownTagIsValid,
     markdownTagContextSignature: String = "",
@@ -14449,6 +14553,7 @@ private fun ThreadMessagesList(
     selectedShareMessageIds: Set<String> = emptySet(),
     onShareSelectionBounds: (String, ThreadShareCaptureRect?) -> Unit = { _, _ -> },
     onEnterShareSelection: (String) -> Unit = {},
+    onForwardMessage: (String) -> Unit = {},
     onToggleShareSelection: (String) -> Unit = {},
     onOpenForwardBundle: (String) -> Unit = {},
     translationStore: SharedMessageTranslationStore? = null,
@@ -16440,6 +16545,46 @@ private fun ThreadMessagesList(
                                         message.id,
                                         renderPayload.threadMessageListItemIndex(message.id)
                                     )
+                                },
+                                inlineSelectionEnabled = inlineSelectionToolbarEnabled,
+                                inlineSelectionActionAvailability =
+                                    ThreadInlineSelectionActionAvailability(
+                                        reactions = writeActionsEnabled && renderPayload.showReactionActions,
+                                        copy = true,
+                                        reply = renderPayload.showReplyActions,
+                                        forward = writeActionsEnabled,
+                                        save = renderPayload.showMessageSaveAction,
+                                        translate =
+                                            translationStore != null &&
+                                                displayMessage.isTranslationEligible(translationState.settings),
+                                        select = true,
+                                        more = true
+                                    ),
+                                onInlineSelectionReact = { emoji ->
+                                    onThreadEvent("toggleReaction", message.id, null, emoji)
+                                },
+                                onInlineSelectionCopy = {
+                                    onThreadEvent("copyMessage", message.id, null, null)
+                                },
+                                onInlineSelectionReply = {
+                                    onThreadEvent("openMessageThread", message.id, null, null)
+                                },
+                                onInlineSelectionForward = {
+                                    onForwardMessage(message.id)
+                                },
+                                onInlineSelectionSave = {
+                                    onThreadEvent("toggleMessageSaved", message.id, null, null)
+                                },
+                                onInlineSelectionTranslate = {
+                                    translationStore?.translateNow(displayMessage.toTranslationCandidate())
+                                },
+                                onInlineSelectionSelect = {
+                                    onEnterShareSelection(message.id)
+                                },
+                                onInlineSelectionMore = { anchor ->
+                                    actionMenuAnchor = anchor
+                                    actionMessageId = message.id
+                                    diagnosticsLogger("thread_message_menu_inline_more messageId=${message.id}")
                                 }
                             )
                         }
@@ -18238,7 +18383,9 @@ private fun ThreadMessageCard(
     longMessageCollapseEnabled: Boolean = false,
     longMessageExpanded: Boolean = false,
     onToggleLongMessage: () -> Unit = {},
-    inlineSelectionDemoEnabled: Boolean = false,
+    inlineSelectionEnabled: Boolean = false,
+    inlineSelectionActionAvailability: ThreadInlineSelectionActionAvailability =
+        ThreadInlineSelectionActionAvailability(),
     onInlineSelectionReact: (String) -> Unit = {},
     onInlineSelectionCopy: () -> Unit = {},
     onInlineSelectionReply: () -> Unit = {},
@@ -18246,7 +18393,7 @@ private fun ThreadMessageCard(
     onInlineSelectionSave: () -> Unit = {},
     onInlineSelectionTranslate: () -> Unit = {},
     onInlineSelectionSelect: () -> Unit = {},
-    onInlineSelectionMore: () -> Unit = {},
+    onInlineSelectionMore: (SlockPopoverAnchor) -> Unit = {},
     outerPadding: com.tencent.kuikly.compose.ui.unit.Dp = SlockSpacing.Sm
 ) {
     val localizedAuthorName =
@@ -18309,22 +18456,35 @@ private fun ThreadMessageCard(
     val showTimestampInAvatarSlot =
         compactConsecutiveMessages && !showAuthorChrome && pressed && compactTimestampLabel.isNotBlank()
     val compactTimestampGutter = compactConsecutiveMessages
-    val hasThreadAttachments = richContentEnabled && message.attachments.isNotEmpty()
-    val inlineSelectionBody = translation?.displayBody ?: message.body
+    val messageHasAttachments = message.attachments.isNotEmpty()
+    val hasThreadAttachments = richContentEnabled && messageHasAttachments
+    val renderedBody = translation?.displayBody ?: message.body
+    val longMessagePlan =
+        remember(renderedBody) {
+            threadLongMessageRenderPlan(renderedBody)
+        }
+    val showLongMessageToggle =
+        threadLongMessageCollapseActive(longMessageCollapseEnabled, longMessagePlan)
+    val bodyForRender =
+        if (showLongMessageToggle && !longMessageExpanded) {
+            longMessagePlan.collapsedBody
+        } else {
+            renderedBody
+        }
     val inlineSelectionEligible =
-        inlineSelectionDemoEnabled &&
-            threadInlineSelectionDemoEligible(
-                body = inlineSelectionBody,
-                hasAttachments = hasThreadAttachments,
-                hasActionCard = actionCard != null,
-                hasForwardBundle = message.forwardBundle != null,
-                hasCommentReference = message.commentRef != null,
-                hasLocalSendState = message.hasLocalSendState(),
-                translationPending = translation?.pendingPlaceholder == true,
-                longMessageCollapseEnabled = longMessageCollapseEnabled
-            )
+        threadInlineSelectionEnabledForMessage(
+            settingEnabled = inlineSelectionEnabled,
+            body = bodyForRender,
+            hasAttachments = messageHasAttachments,
+            hasActionCard = actionCard != null,
+            hasForwardBundle = message.forwardBundle != null,
+            hasCommentReference = message.commentRef != null,
+            hasLocalSendState = message.hasLocalSendState(),
+            translationPending = translation?.pendingPlaceholder == true,
+            longMessageCollapsed = showLongMessageToggle && !longMessageExpanded
+        )
     val inlineSelectionController =
-        if (inlineSelectionDemoEnabled) {
+        if (inlineSelectionEligible) {
             rememberThreadInlineSelectionController(message.id)
         } else {
             null
@@ -18345,11 +18505,6 @@ private fun ThreadMessageCard(
             )
         } ?: ThreadInlineSelectionToolbarPlacement(xPx = 0, yPx = 0, belowSelection = false)
     val clearInlineSelection: () -> Unit = { inlineSelectionController?.clear() }
-    LaunchedEffect(message.id, inlineSelectionEligible) {
-        if (!inlineSelectionEligible) {
-            clearInlineSelection()
-        }
-    }
     val showSavedBadge =
         shouldShowThreadMessageSavedBadge(
             showSaveAction = showSaveAction,
@@ -18420,7 +18575,7 @@ private fun ThreadMessageCard(
                 .fillMaxWidth()
                 .background(SlockColor.SurfaceWhite)
                 .then(
-                    if (inlineSelectionDemoEnabled) {
+                    if (inlineSelectionEligible) {
                         Modifier.onGloballyPositioned { coordinates ->
                             inlineSelectionController?.cardRootPosition = coordinates.positionInRoot()
                             inlineSelectionController?.cardWidthPx = coordinates.size.width
@@ -18447,10 +18602,11 @@ private fun ThreadMessageCard(
                             },
                             onSelectAllText =
                                 if (inlineSelectionEligible) {
-                                    {
+                                    { anchor ->
                                         diagnosticsLogger(
                                             "thread_inline_selection_select_all messageId=${message.id}"
                                         )
+                                        inlineSelectionController?.actionMenuAnchor = anchor
                                         inlineSelectionController?.selectionState?.createSelectionAll()
                                     }
                                 } else {
@@ -18607,19 +18763,6 @@ private fun ThreadMessageCard(
                                 verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
                                 horizontalAlignment = contentAlignment
                             ) {
-                                val renderedBody = translation?.displayBody ?: message.body
-                                val longMessagePlan =
-                                    remember(renderedBody) {
-                                        threadLongMessageRenderPlan(renderedBody)
-                                    }
-                                val showLongMessageToggle =
-                                    threadLongMessageCollapseActive(longMessageCollapseEnabled, longMessagePlan)
-                                val bodyForRender =
-                                    if (showLongMessageToggle && !longMessageExpanded) {
-                                        longMessagePlan.collapsedBody
-                                    } else {
-                                        renderedBody
-                                    }
                                 // task #800: the sending spinner shares the End
                                 // content coordinates with the body — an in-flow
                                 // Row child, so sending → sent removes only
@@ -18718,6 +18861,7 @@ private fun ThreadMessageCard(
                                                 onSelectCancel = {
                                                     controller.frame = SelectionFrame.Zero
                                                     controller.active = false
+                                                    controller.actionMenuAnchor = null
                                                 }
                                             ) {
                                                 messageBodyBlock()
@@ -18869,6 +19013,12 @@ private fun ThreadMessageCard(
             ThreadInlineSelectionToolbar(
                 placement = inlineSelectionToolbarPlacement,
                 onMeasured = { size -> inlineSelectionController.toolbarSize = size },
+                availability =
+                    inlineSelectionActionAvailability.copy(
+                        more =
+                            inlineSelectionActionAvailability.more &&
+                                inlineSelectionController.actionMenuAnchor != null
+                    ),
                 onReact = { reaction ->
                     tapMovementGate.rejectChildAction("inline_selection_reaction")
                     onInlineSelectionReact(reaction)
@@ -18906,8 +19056,9 @@ private fun ThreadMessageCard(
                 },
                 onMore = {
                     tapMovementGate.rejectChildAction("inline_selection_more")
+                    val anchor = inlineSelectionController.actionMenuAnchor
                     clearInlineSelection()
-                    onInlineSelectionMore()
+                    anchor?.let(onInlineSelectionMore)
                 }
             )
         }
@@ -18922,6 +19073,7 @@ private fun ThreadMessageCard(
 private fun ThreadInlineSelectionToolbar(
     placement: ThreadInlineSelectionToolbarPlacement,
     onMeasured: (IntSize) -> Unit,
+    availability: ThreadInlineSelectionActionAvailability,
     onReact: (String) -> Unit,
     onCopy: () -> Unit,
     onReply: () -> Unit,
@@ -18960,7 +19112,8 @@ private fun ThreadInlineSelectionToolbar(
                 rowHeight = ThreadInlineSelectionReactionRowHeight,
                 buttonSize = ThreadInlineSelectionReactionButtonSize,
                 glyphSize = ThreadInlineSelectionReactionGlyphSize,
-                horizontalPadding = ThreadInlineSelectionReactionHorizontalPadding
+                horizontalPadding = ThreadInlineSelectionReactionHorizontalPadding,
+                enabled = availability.reactions
             )
             Box(
                 modifier =
@@ -18975,9 +19128,11 @@ private fun ThreadInlineSelectionToolbar(
                 onForward = onForward,
                 onSave = onSave,
                 onTranslate = onTranslate,
-                onSelect = onSelect
+                onSelect = onSelect,
+                availability = availability
             )
             ThreadInlineSelectionMoreOverlay(
+                enabled = availability.more,
                 onClick = onMore
             )
         }
@@ -18991,50 +19146,52 @@ private fun ThreadInlineSelectionToolRow(
     onForward: () -> Unit,
     onSave: () -> Unit,
     onTranslate: () -> Unit,
-    onSelect: () -> Unit
+    onSelect: () -> Unit,
+    availability: ThreadInlineSelectionActionAvailability
 ) {
+    val callbacks =
+        ThreadInlineSelectionToolCallbacks(
+            onCopy = onCopy,
+            onReply = onReply,
+            onForward = onForward,
+            onSave = onSave,
+            onTranslate = onTranslate,
+            onSelect = onSelect
+        )
     Row(
         modifier = Modifier.fillMaxWidth().height(ThreadInlineSelectionToolRowHeight),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        ThreadInlineSelectionDemoToolOrder.forEach { tool ->
+        ThreadInlineSelectionToolOrder.forEach { tool ->
             val label =
                 when (tool) {
-                    ThreadInlineSelectionDemoTool.Copy ->
+                    ThreadInlineSelectionTool.Copy ->
                         stringResource(MR.strings.thread_inline_selection_copy)
-                    ThreadInlineSelectionDemoTool.Reply ->
+                    ThreadInlineSelectionTool.Reply ->
                         stringResource(MR.strings.thread_inline_selection_reply)
-                    ThreadInlineSelectionDemoTool.Forward ->
+                    ThreadInlineSelectionTool.Forward ->
                         stringResource(MR.strings.thread_action_forward)
-                    ThreadInlineSelectionDemoTool.Save ->
+                    ThreadInlineSelectionTool.Save ->
                         stringResource(MR.strings.thread_inline_selection_save)
-                    ThreadInlineSelectionDemoTool.Translate ->
+                    ThreadInlineSelectionTool.Translate ->
                         stringResource(MR.strings.thread_action_translate)
-                    ThreadInlineSelectionDemoTool.Select ->
+                    ThreadInlineSelectionTool.Select ->
                         stringResource(MR.strings.thread_inline_selection_select)
                 }
             val icon =
                 when (tool) {
-                    ThreadInlineSelectionDemoTool.Copy -> SlockLucideIconName.Copy
-                    ThreadInlineSelectionDemoTool.Reply -> SlockLucideIconName.MessageSquare
-                    ThreadInlineSelectionDemoTool.Forward -> SlockLucideIconName.Redo2
-                    ThreadInlineSelectionDemoTool.Save -> SlockLucideIconName.Bookmark
-                    ThreadInlineSelectionDemoTool.Translate -> SlockLucideIconName.Languages
-                    ThreadInlineSelectionDemoTool.Select -> SlockLucideIconName.CircleCheck
-                }
-            val onClick =
-                when (tool) {
-                    ThreadInlineSelectionDemoTool.Copy -> onCopy
-                    ThreadInlineSelectionDemoTool.Reply -> onReply
-                    ThreadInlineSelectionDemoTool.Forward -> onForward
-                    ThreadInlineSelectionDemoTool.Save -> onSave
-                    ThreadInlineSelectionDemoTool.Translate -> onTranslate
-                    ThreadInlineSelectionDemoTool.Select -> onSelect
+                    ThreadInlineSelectionTool.Copy -> SlockLucideIconName.Copy
+                    ThreadInlineSelectionTool.Reply -> SlockLucideIconName.MessageSquare
+                    ThreadInlineSelectionTool.Forward -> SlockLucideIconName.Redo2
+                    ThreadInlineSelectionTool.Save -> SlockLucideIconName.Bookmark
+                    ThreadInlineSelectionTool.Translate -> SlockLucideIconName.Languages
+                    ThreadInlineSelectionTool.Select -> SlockLucideIconName.CircleCheck
                 }
             ThreadInlineSelectionToolButton(
                 label = label,
                 icon = icon,
-                onClick = onClick,
+                enabled = availability.enabled(tool),
+                onClick = { tool.dispatch(callbacks) },
                 modifier = Modifier.weight(1f)
             )
         }
@@ -19042,14 +19199,17 @@ private fun ThreadInlineSelectionToolRow(
 }
 
 @Composable
-private fun ThreadInlineSelectionMoreOverlay(onClick: () -> Unit) {
+private fun ThreadInlineSelectionMoreOverlay(
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
     val label = stringResource(MR.strings.thread_inline_selection_more)
     Box(
         modifier =
             Modifier
                 .fillMaxWidth()
                 .height(ThreadInlineSelectionMoreOverlayHeight)
-                .clickable(onClick = onClick)
+                .clickable(enabled = enabled, onClick = onClick)
                 .semantics { contentDescription = label },
         contentAlignment = Alignment.Center
     ) {
@@ -19065,6 +19225,7 @@ private fun ThreadInlineSelectionMoreOverlay(onClick: () -> Unit) {
 private fun ThreadInlineSelectionToolButton(
     label: String,
     icon: SlockLucideIconName,
+    enabled: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -19074,8 +19235,9 @@ private fun ThreadInlineSelectionToolButton(
         modifier =
             modifier
                 .height(ThreadInlineSelectionToolRowHeight)
-                .background(if (pressed) SlockColor.BrandYellow else Color.Transparent)
+                .background(if (pressed && enabled) SlockColor.BrandYellow else Color.Transparent)
                 .clickable(
+                    enabled = enabled,
                     interactionSource = interactionSource,
                     indication = null,
                     onClick = onClick
@@ -19088,20 +19250,20 @@ private fun ThreadInlineSelectionToolButton(
         SlockLucideIcon(
             name = icon,
             modifier = Modifier.size(ThreadInlineSelectionToolIconSize),
-            color = SlockColor.TextBlackArgb
+            color = if (enabled) SlockColor.TextBlackArgb else SlockColor.TextMutedGrayArgb
         )
         Spacer(Modifier.height(4.dp))
         Text(
             text = label,
             style =
                 SlockType.Caption.copy(
-                    color = SlockColor.TextBlack,
+                    color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
                     fontSize = 10.sp,
                     lineHeight = 12.sp,
                     letterSpacing = 0.sp,
                     fontWeight = FontWeight.Normal
                 ),
-            color = SlockColor.TextBlack,
+            color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center,
@@ -20310,7 +20472,7 @@ private fun Modifier.threadMessageLongPressActions(
     diagnosticsLogger: (String) -> Unit = {},
     onTap: (() -> Unit)? = null,
     onTapRejected: (ThreadMessageTapMovementDecision) -> Unit = {},
-    onSelectAllText: (() -> Unit)? = null,
+    onSelectAllText: ((SlockPopoverAnchor?) -> Unit)? = null,
     onShowActions: (SlockPopoverAnchor) -> Unit,
     onPressChanged: (Boolean, Offset?) -> Unit = { _, _ -> }
 ): Modifier {
@@ -20398,11 +20560,12 @@ private fun Modifier.threadMessageLongPressActions(
                             "scrollInProgress=${dispatchDecision.scrollInProgress}"
                     )
                     if (currentOnSelectAllText != null) {
+                        val anchor = rootAnchor.resolve(SlockPopoverLocalPoint.Exact(localOffset))
                         currentDiagnosticsLogger(
                             "thread_message_long_press_select_all_emit messageId=$messageId " +
                                 "scrollInProgress=${dispatchDecision.scrollInProgress}"
                         )
-                        currentOnSelectAllText?.invoke()
+                        currentOnSelectAllText?.invoke(anchor)
                         return@detectTapGestures
                     }
                     val anchor = rootAnchor.resolve(SlockPopoverLocalPoint.Exact(localOffset))
@@ -22036,7 +22199,8 @@ private fun ThreadMessageReactionRow(
     rowHeight: Dp = ThreadMessageMenuReactionRowHeight,
     buttonSize: Dp = 28.dp,
     glyphSize: Dp = 18.dp,
-    horizontalPadding: Dp = 12.dp
+    horizontalPadding: Dp = 12.dp,
+    enabled: Boolean = true
 ) {
     Row(
         modifier = Modifier
@@ -22049,8 +22213,10 @@ private fun ThreadMessageReactionRow(
         ThreadQuickReactionEmojis.forEach { reaction ->
             Button(
                 onClick = { onReact(reaction) },
+                enabled = enabled,
                 pressFeedback = false,
                 modifier = Modifier
+                    .alpha(if (enabled) 1f else 0.45f)
                     .size(buttonSize)
             ) {
                 ThreadQuickReactionGlyph(
