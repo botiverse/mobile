@@ -20,7 +20,8 @@ compile; attribution in #proj-chat task #781, design review in task #786).
 - `.github/gradle-cache-quarantine` — incident-response file, EMPTY in steady state. Allowlisted
   bundle names (`dependencies`, `transforms`), one per line (final newline optional — a trailing
   active entry is honored; CR rejected). Listed bundles are exported as
-  `GRADLE_BUILD_ACTION_SKIP_RESTORE=<b1,b2>`: their poisoned entries stop being restored, at the
+  `GRADLE_BUILD_ACTION_SKIP_RESTORE=<b1|b2>` (pipe-separated, as gradle/actions parses it): their
+  poisoned entries stop being restored, at the
   cost of re-resolving that bundle every run in every wired job. A quarantine line must stay until
   the poisoned bundle key rotates naturally (its hashed file-set changes); this is a quarantine,
   not a purge — the backend entry remains until eviction. Evidence status: the suppression path

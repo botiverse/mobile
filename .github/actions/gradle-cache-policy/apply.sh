@@ -13,7 +13,9 @@
 #   GRADLE_BUILD_ACTION_CACHE_KEY_PREFIX=<epoch>-   (rotates the top-level Gradle User Home key;
 #                                                    verified against gradle/actions@v5 source —
 #                                                    extracted-entry keys are NOT covered)
-#   GRADLE_BUILD_ACTION_SKIP_RESTORE=<b1,b2>        (only when the quarantine file lists bundles)
+#   GRADLE_BUILD_ACTION_SKIP_RESTORE=<b1|b2>        (only when the quarantine file lists bundles;
+#                                                    pipe-separated — gradle/actions parses this list
+#                                                    with '|', see its integ-test-restore-gradle-home)
 #
 # Operating procedure: docs/ci-gradle-cache-epoch-runbook.md (task #786).
 set -euo pipefail
@@ -60,7 +62,10 @@ done < "${quarantine_file}"
 echo "GRADLE_BUILD_ACTION_CACHE_KEY_PREFIX=${epoch}-" >> "${github_env}"
 summary="epoch=${epoch}"
 if [[ "${#bundles[@]}" -gt 0 ]]; then
-  joined="$(IFS=,; echo "${bundles[*]}")"
+  # gradle/actions parses GRADLE_BUILD_ACTION_SKIP_RESTORE as a '|'-separated list (see its
+  # integ-test-restore-gradle-home). A ',' join silently fails to skip any bundle, defeating the
+  # quarantine — so join with '|'.
+  joined="$(IFS='|'; echo "${bundles[*]}")"
   echo "GRADLE_BUILD_ACTION_SKIP_RESTORE=${joined}" >> "${github_env}"
   summary+=" quarantine=${joined}"
 else

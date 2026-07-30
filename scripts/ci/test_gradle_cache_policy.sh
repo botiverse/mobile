@@ -36,7 +36,7 @@ run_case epoch-token-chars pass 'epoch_2026-07.24\n' '# none\n'
 grep -q '^GRADLE_BUILD_ACTION_CACHE_KEY_PREFIX=epoch_2026-07.24-$' "$LAST_ENV_FILE"
 
 run_case quarantine-both-bundles pass '3\n' '# incident\ndependencies\ntransforms\n'
-grep -q '^GRADLE_BUILD_ACTION_SKIP_RESTORE=dependencies,transforms$' "$LAST_ENV_FILE"
+grep -q '^GRADLE_BUILD_ACTION_SKIP_RESTORE=dependencies|transforms$' "$LAST_ENV_FILE"
 
 # Byte-contract paths (shared with the Python checker): final LF optional, CR rejected.
 run_case epoch-no-final-lf pass '7' '# only comments\n'
