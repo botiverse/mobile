@@ -6249,7 +6249,8 @@ internal class SharedThreadStore(
     suspend fun jumpToLatest(): Boolean {
         val initial = _state.value.payload
         val tailRoute =
-            initial
+            (lastRoutePayload ?: initial.withoutThreadTimelineContent())
+                .withRouteIntentFrom(initial)
                 .copy(focusedMessageId = null)
                 .withoutTransientLocalSendingMessages()
         lastRoutePayload = tailRoute
