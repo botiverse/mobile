@@ -47,7 +47,11 @@ internal fun reduceSlockAdaptivePane(
 
     val widthDp = event.widthPx / event.density
     val layout =
-        if (event.posture != SlockAdaptivePanePosture.HalfFolded && widthDp >= DualPaneMinimumWidthDp) {
+        if (
+            event.posture != SlockAdaptivePanePosture.Unknown &&
+            event.posture != SlockAdaptivePanePosture.HalfFolded &&
+            widthDp >= DualPaneMinimumWidthDp
+        ) {
             SlockAdaptivePaneLayout.DualPane
         } else {
             SlockAdaptivePaneLayout.Compact
