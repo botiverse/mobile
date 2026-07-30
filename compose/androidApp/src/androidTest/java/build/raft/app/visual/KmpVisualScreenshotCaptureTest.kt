@@ -3430,14 +3430,32 @@ class KmpVisualScreenshotCaptureTest {
         // keyguard / ANR dialog / a stuck starting-window (splash), and our
         // PixelCopy screenshots read the app window directly, so a rendered
         // before-frame proves nothing about what the screen composite shows.
-        val focusDump = readShellCommand("dumpsys window windows")
+        // The chain-repro (run 30500947125) showed the older mCurrentFocus grep
+        // matches nothing on this emulator image, so log the FULL window and
+        // input-focus tables to logcat and embed a broad-label extract.
+        val windowDump = readShellCommand("dumpsys window windows")
+        windowDump.chunked(3500).forEachIndexed { index, chunk ->
+            Log.i(VISUAL_LOG_TAG, "GATE_TIMEOUT_WINDOWS[$index] $chunk")
+        }
+        val inputFocus = readShellCommand("dumpsys input")
             .lineSequence()
-            .filter { it.contains("mCurrentFocus") || it.contains("mFocusedWindow") || it.contains("mObscuringWindow") }
+            .filter { it.contains("FocusedWindow", ignoreCase = true) || it.contains("FocusedApplication", ignoreCase = true) }
             .joinToString(" | ") { it.trim() }
+            .take(400)
+        Log.i(VISUAL_LOG_TAG, "GATE_TIMEOUT_INPUT_FOCUS $inputFocus")
+        val focusDump = windowDump
+            .lineSequence()
+            .filter { line ->
+                listOf("mCurrentFocus", "mFocusedWindow", "mFocusedApp", "imeInputTarget", "imeLayeringTarget", "Window #")
+                    .any { line.contains(it) }
+            }
+            .joinToString(" | ") { it.trim() }
+            .ifEmpty { "no-focus-labels; head=" + windowDump.take(300).replace('\n', ' ') }
+            .take(700)
         throw IllegalArgumentException(
             "$what is not the active input window after ${timeoutMs}ms: " +
                 "package=$activePackage interactive=${powerManager?.isInteractive} " +
-                "wokeDisplay=$wokeDisplay focus=[$focusDump]"
+                "wokeDisplay=$wokeDisplay inputFocus=[$inputFocus] focus=[$focusDump]"
         )
     }
 
