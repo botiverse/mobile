@@ -480,6 +480,8 @@ import com.tencent.kuikly.compose.ui.platform.LocalFocusManager
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.semantics.Role
 import com.tencent.kuikly.compose.ui.semantics.clearAndSetSemantics
+import com.tencent.kuikly.compose.ui.semantics.invisibleToUser
+import com.tencent.kuikly.compose.ui.ExperimentalComposeUiApi
 import com.tencent.kuikly.compose.ui.semantics.contentDescription
 import com.tencent.kuikly.compose.ui.semantics.semantics
 import com.tencent.kuikly.compose.ui.semantics.traversalIndex
@@ -5915,6 +5917,7 @@ private fun DrawerSettledObservation.isSettled(desiredOpen: Boolean): Boolean =
     if (desiredOpen) isOpen && progress >= 0.99f else !isOpen && progress <= 0.01f
 
 @Composable
+@OptIn(ExperimentalComposeUiApi::class)
 private fun AppShellServerDrawerHost(
     homeShellStore: SharedHomeShellStore,
     bridge: build.raft.app.base.BridgeModule,
@@ -6109,7 +6112,7 @@ private fun AppShellServerDrawerHost(
                 content = {
                     val contentAccessibilityModifier =
                         if (drawerState.progress > 0.01f) {
-                            Modifier.clearAndSetSemantics { }
+                            Modifier.clearAndSetSemantics { invisibleToUser() }
                         } else {
                             Modifier
                         }
