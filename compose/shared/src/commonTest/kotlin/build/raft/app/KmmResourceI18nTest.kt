@@ -58,6 +58,10 @@ class KmmResourceI18nTest {
         listOf(
             MR.strings.thread_timestamp_now,
             MR.strings.relative_time_unknown,
+            MR.strings.relative_time_toggle_show_absolute,
+            MR.strings.relative_time_toggle_show_relative,
+            MR.strings.relative_time_toggle_state_relative,
+            MR.strings.relative_time_toggle_state_absolute,
             MR.strings.relative_time_hour_now,
             MR.strings.relative_time_day_before_yesterday,
             MR.strings.relative_time_day_yesterday,

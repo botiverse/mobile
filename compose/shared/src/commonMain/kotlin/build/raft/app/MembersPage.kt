@@ -9160,8 +9160,8 @@ private fun MembersAgentDmRow(row: AgentDmSummary) {
                 color = SlockColor.TextMutedGray,
                 maxLines = 1
             )
-            Text(
-                text = slockRelativeTimestampLabel(row.lastMessageAt),
+            SlockRelativeTimestampText(
+                value = row.lastMessageAt,
                 style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
                 color = SlockColor.TextMutedGray,
                 maxLines = 1

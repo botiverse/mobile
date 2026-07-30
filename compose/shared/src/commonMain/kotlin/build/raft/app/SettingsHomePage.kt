@@ -18613,9 +18613,10 @@ private fun SharedHomeSavedResultCard(
                             modifier = Modifier.weight(1f)
                         )
                     }
-                    time?.let { t ->
-                        Text(
-                            text = t.formatSavedTimestamp(timeContext),
+                    time?.let { timestamp ->
+                        SlockRelativeTimestampText(
+                            value = timestamp,
+                            timeContext = timeContext,
                             style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 11.sp, lineHeight = 14.sp, letterSpacing = 0.sp),
                             color = SlockColor.TextBlack.copy(alpha = 0.4f),
                             maxLines = 1,
@@ -19010,8 +19011,9 @@ private fun SharedHomeThreadResultGroup(
                 }
                 Spacer(Modifier.weight(1f))
                 if (!latestTime.isNullOrBlank()) {
-                    Text(
-                        text = latestTime.formatSavedTimestamp(timeContext),
+                    SlockRelativeTimestampText(
+                        value = latestTime,
+                        timeContext = timeContext,
                         style = sharedHomeSearchTimestampTextStyle(compact = false),
                         color = SlockColor.TextMutedGray,
                         maxLines = 1
@@ -19118,8 +19120,9 @@ private fun SharedHomeSearchMessageResultRow(
                 }
             }
             if (!time.isNullOrBlank()) {
-                Text(
-                    text = time.formatSavedTimestamp(timeContext),
+                SlockRelativeTimestampText(
+                    value = time,
+                    timeContext = timeContext,
                     style = sharedHomeSearchTimestampTextStyle(compact = compactMeta),
                     color = SlockColor.TextMutedGray,
                     maxLines = 1
@@ -20012,10 +20015,6 @@ private fun Presence?.toSharedPresence(): SlockPresence? =
 
 internal typealias AppShellTimeContext = SlockTimeContext
 internal typealias AppShellThreadTimeContext = SlockTimeContext
-
-@Composable
-private fun String.formatSavedTimestamp(timeContext: AppShellThreadTimeContext?): String =
-    slockRelativeTimestampLabel(this, timeContext)
 
 @Composable
 private fun relativeSettingsTimestampLabel(

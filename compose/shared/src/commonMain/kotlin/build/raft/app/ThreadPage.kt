@@ -18180,8 +18180,8 @@ private fun ThreadSystemMessageRow(
                 .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Xs),
         verticalAlignment = Alignment.Top
     ) {
-        Text(
-            text = slockRelativeTimestampLabel(timestampValue),
+        SlockRelativeTimestampText(
+            value = timestampValue,
             style = SlockType.Caption.copy(color = ThreadSystemMessageTimeColor, fontFamily = SlockMonoFamily),
             color = ThreadSystemMessageTimeColor,
             textAlign = TextAlign.End,
@@ -18765,7 +18765,12 @@ private fun ThreadMessageCard(
                                         )
                                     }
                                     if (showTimestampInHeader) {
-                                        ThreadMessageTimestampLabel(timestampLabel)
+                                        ThreadMessageTimestampLabel(
+                                            timestampLabel = timestampLabel,
+                                            onToggle = {
+                                                tapMovementGate.rejectChildAction("timestamp")
+                                            }
+                                        )
                                     }
                                 }
                             }
@@ -21251,10 +21256,9 @@ private fun ThreadInlineReplyRow(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        val timeLabel = slockRelativeTimestampLabel(reply.createdAt)
-        if (timeLabel.isNotBlank()) {
-            Text(
-                text = timeLabel,
+        if (reply.createdAt.isNotBlank()) {
+            SlockRelativeTimestampText(
+                value = reply.createdAt,
                 style = SlockType.Caption.copy(fontSize = 11.5.sp, lineHeight = 15.sp),
                 color = SlockColor.TextBlack.copy(alpha = 0.42f),
                 maxLines = 1,
@@ -22584,9 +22588,12 @@ private fun ThreadMessageAuthorSubtitle(description: String, modifier: Modifier 
 }
 
 @Composable
-private fun ThreadMessageTimestampLabel(timestampLabel: String) {
-    Text(
-        text = slockRelativeTimestampLabel(timestampLabel),
+private fun ThreadMessageTimestampLabel(
+    timestampLabel: String,
+    onToggle: (SlockTimestampDisplayMode) -> Unit = {}
+) {
+    SlockRelativeTimestampText(
+        value = timestampLabel,
         style =
             SlockType.Caption.copy(
                 fontFamily = SlockMonoFamily,
@@ -22596,7 +22603,8 @@ private fun ThreadMessageTimestampLabel(timestampLabel: String) {
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
         textAlign = TextAlign.End,
-        modifier = Modifier.width(ThreadRelativeTimestampSlotWidthDp.dp)
+        modifier = Modifier.width(ThreadRelativeTimestampSlotWidthDp.dp),
+        onToggle = onToggle
     )
 }
 
