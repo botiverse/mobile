@@ -603,6 +603,15 @@ CURRENT_PHASE="visual_environment"
 "$ADB_BIN" shell settings put system screen_off_timeout 2147483647 || true
 "$ADB_BIN" shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1 || true
 "$ADB_BIN" shell wm dismiss-keyguard >/dev/null 2>&1 || true
+# Suppress system crash/ANR dialogs for the whole run. Chain-repro run
+# 30501756752 named the input blocker: a leaked "Application Error:
+# build.raft.app.connectedtest.test" system dialog stays above the fixture
+# across instrumentation processes, eating every injected gesture while
+# PixelCopy capture-only cases keep passing underneath — exactly the
+# interaction-only failure pattern of nightly 30402296301.
+"$ADB_BIN" shell settings put global hide_error_dialogs 1 || true
+"$ADB_BIN" shell settings put global show_first_crash_dialog 0 >/dev/null 2>&1 || true
+"$ADB_BIN" shell settings put secure show_first_crash_dialog_dev_option 0 >/dev/null 2>&1 || true
 
 CURRENT_PHASE="install_app"
 "$ADB_BIN" install -r "$APP_APK" | tee "$OUTPUT_DIR/app-install.txt"
