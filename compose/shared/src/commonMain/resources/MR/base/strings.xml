@@ -1940,4 +1940,5 @@
     <string name="settings_app_language_japanese">日本語</string>
     <string name="settings_notifications_show_previews_title">Show message previews</string>
     <string name="settings_notifications_show_previews_detail">Include message details in iOS push notifications. Turn this off for private alerts.</string>
+    <string name="home_adaptive_select_conversation">Select a conversation</string>
 </resources>

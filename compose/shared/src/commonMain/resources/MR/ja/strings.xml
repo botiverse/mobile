@@ -1940,4 +1940,5 @@
     <string name="settings_app_language_japanese">日本語</string>
     <string name="settings_notifications_show_previews_title">メッセージのプレビューを表示</string>
     <string name="settings_notifications_show_previews_detail">iOS のプッシュ通知にメッセージの詳細を含めます。オフにするとプライバシーに配慮した通知になります。</string>
+    <string name="home_adaptive_select_conversation">会話を選択</string>
 </resources>

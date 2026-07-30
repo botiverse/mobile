@@ -112,6 +112,7 @@ import build.raft.app.data.toMessageMetadata
 import build.raft.app.data.RealtimeGuardedActiveThreadSink
 import build.raft.app.data.RealtimeCanonicalFinalSinkSurfaceKey
 import build.raft.app.data.RealtimeScopeAuthority
+import build.raft.app.data.RealtimeRoomLeaseOwner
 import build.raft.app.data.SharedMessageTranslationStore
 import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.PendingMentionAction
@@ -2762,6 +2763,9 @@ private fun ThreadPageScreen(
     val params = pager.pageData.params
     var payloadText by remember { mutableStateOf(params.optString("payload")) }
     var instanceId by remember { mutableStateOf(params.optString("instanceId")) }
+    var adaptiveCloseRequest by remember {
+        mutableStateOf(params.toSlockAdaptiveDetailCloseRequestOrNull())
+    }
     DisposableEffect(pager) {
         val observer =
             object : IPagerEventObserver {
@@ -2769,6 +2773,8 @@ private fun ThreadPageScreen(
                     if (pagerEvent != THREAD_PAGE_DATA_EVENT) return
                     eventData.optString("payload").takeIf { it.isNotBlank() }?.let { payloadText = it }
                     eventData.optString("instanceId").takeIf { it.isNotBlank() }?.let { instanceId = it }
+                    adaptiveCloseRequest =
+                        updatedSlockAdaptiveDetailCloseRequest(adaptiveCloseRequest, eventData)
                 }
             }
         pager.addPagerEventObserver(observer)
@@ -3005,8 +3011,19 @@ private fun ThreadPageScreen(
         composerDraftPersistSlice = sharedStores.composerDraftPersistSlice,
         eventBus = sharedStores.eventBus,
         active = pageVisible,
+        adaptiveCloseRequest = adaptiveCloseRequest,
         onBack = {
-            routerModule.closePage()
+            val closeRequest = adaptiveCloseRequest
+            if (closeRequest != null) {
+                sharedStores.eventBus.post(
+                    eventName = SLOCK_ADAPTIVE_DETAIL_CLOSE_EVENT,
+                    eventData = closeRequest.toJson(),
+                    crossProcess = true,
+                    source = "adaptive_thread_root_back",
+                )
+            } else {
+                routerModule.closePage()
+            }
         },
         onOpenThreadPayload = { nextPayload -> openStandaloneThreadPayload(nextPayload) },
         onReplaceThreadPayload = {},
@@ -4563,6 +4580,7 @@ internal fun SharedThreadRouteContent(
     onOpenParentThread: (KuiklyThreadScreenPayload, String?) -> Boolean = { _, _ -> false },
     onAuthRequired: (String) -> Unit = {},
     active: Boolean = true,
+    adaptiveCloseRequest: SlockAdaptiveDetailCloseRequest? = null,
     onResolvedAuxiliaryThreadIdChanged: (String?) -> Unit = {},
     onOpenMemberProfile: (KuiklyThreadScreenPayload, ThreadTimelineSlice, MemberDetailIdentity) -> Unit = { _, _, _ -> },
     onOpenMembersPager: (KuiklyThreadScreenPayload, ServerId, ChannelId, SlockShellStoreScope) -> Unit = { _, _, _, _ -> }
@@ -4897,18 +4915,39 @@ internal fun SharedThreadRouteContent(
             timelineSlice = timelineSlice,
             accessResolution = renderSlice.accessResolution
         )
+    val realtimeRoomLeaseRegistry =
+        remember(sharedStores, storeScope) { sharedStores.realtimeRoomLeaseRegistry(storeScope) }
+    val roomLeaseActive = shouldHoldThreadRoomLease(adaptiveCloseRequest, active)
     DisposableEffect(
         realtimeEvents,
+        realtimeRoomLeaseRegistry,
+        storeScope.shellInstanceId,
+        pager.pagerId,
+        adaptiveCloseRequest?.generation,
         currentSession?.currentServerId,
         payload.parentChannelId,
         payload.sourceThreadId,
-        payload.streamChannelId
+        payload.streamChannelId,
+        roomLeaseActive,
     ) {
         val activeRoomIds = payload.activeRealtimeRoomIds()
-        val roomServerId = currentSession?.currentServerId
-        realtimeEvents.joinChannels(activeRoomIds, roomServerId)
+        val roomServerId = currentSession?.currentServerId.orEmpty()
+        val owner =
+            roomServerId.takeIf(String::isNotBlank)?.let { serverId ->
+                RealtimeRoomLeaseOwner(
+                    shellInstanceId = storeScope.shellInstanceId,
+                    serverId = serverId,
+                    consumerId = "thread-pager-${pager.pagerId}",
+                    generation = adaptiveCloseRequest?.generation ?: 1L,
+                )
+            }
+        if (roomLeaseActive && owner != null) {
+            realtimeEvents.applyRoomTransitions(realtimeRoomLeaseRegistry.acquire(owner, activeRoomIds))
+        }
         onDispose {
-            realtimeEvents.leaveChannels(activeRoomIds, roomServerId)
+            if (roomLeaseActive && owner != null) {
+                realtimeEvents.applyRoomTransitions(realtimeRoomLeaseRegistry.release(owner))
+            }
         }
     }
     LaunchedEffect(resolvedAuxiliaryThreadId, active) {

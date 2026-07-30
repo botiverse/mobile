@@ -1940,4 +1940,5 @@
     <string name="settings_notifications_show_previews_title">显示消息预览</string>
     <string name="settings_notifications_show_previews_detail">在 iOS 推送通知中显示消息详情。关闭后将使用隐私提醒。</string>
     <string name="settings_app_language_japanese">日本語</string>
+    <string name="home_adaptive_select_conversation">选择一个会话</string>
 </resources>

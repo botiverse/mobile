@@ -58,6 +58,27 @@ class SharedRealtimeRoomLeaseRegistryTest {
         assertTrue(registry.release(second).isEmpty())
     }
 
+    @Test
+    fun inactiveReleaseAndReactivationAcquireProduceBalancedMembership() {
+        val registry = SharedRealtimeRoomLeaseRegistry("shell-a")
+        val detail = owner("detail", generation = 3)
+
+        assertEquals(listOf(join("room-a")), registry.acquire(detail, listOf("room-a")))
+        assertEquals(listOf(leave("room-a")), registry.release(detail))
+        assertEquals(listOf(join("room-a")), registry.acquire(detail, listOf("room-a")))
+        assertEquals(1, registry.ownerCount("server-a", "room-a"))
+    }
+
+    @Test
+    fun fullShellTeardownLeavesEveryRoomOnce() {
+        val registry = SharedRealtimeRoomLeaseRegistry("shell-a")
+        registry.acquire(owner("first", generation = 1), listOf("room-a", "room-b"))
+        registry.acquire(owner("second", generation = 2), listOf("room-a"))
+
+        assertEquals(setOf(leave("room-a"), leave("room-b")), registry.clear().toSet())
+        assertTrue(registry.clear().isEmpty())
+    }
+
     private fun owner(consumer: String, generation: Long): RealtimeRoomLeaseOwner =
         RealtimeRoomLeaseOwner(
             shellInstanceId = "shell-a",
