@@ -40,6 +40,33 @@ class SlockAdaptivePaneTest {
     }
 
     @Test
+    fun unknownPostureStaysCompactUntilHostFactsSettle() {
+        val unknown =
+            reduceSlockAdaptivePane(
+                SlockAdaptivePaneState(),
+                SlockAdaptivePaneEvent(
+                    widthPx = 2200,
+                    heightPx = 1200,
+                    density = 2f,
+                    posture = SlockAdaptivePanePosture.Unknown
+                )
+            )
+        val settled =
+            reduceSlockAdaptivePane(
+                unknown,
+                SlockAdaptivePaneEvent(
+                    widthPx = 2200,
+                    heightPx = 1200,
+                    density = 2f,
+                    posture = SlockAdaptivePanePosture.Flat
+                )
+            )
+
+        assertEquals(SlockAdaptivePaneLayout.Compact, unknown.layout)
+        assertEquals(SlockAdaptivePaneLayout.DualPane, settled.layout)
+    }
+
+    @Test
     fun invalidHostEventDoesNotEraseLastKnownWindowFact() {
         val previous =
             SlockAdaptivePaneState(
