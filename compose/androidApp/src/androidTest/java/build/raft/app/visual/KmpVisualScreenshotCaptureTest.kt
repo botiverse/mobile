@@ -1325,6 +1325,7 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     private fun swipeDisplayFraction(startYFraction: Float, endYFraction: Float) {
+        awaitFixtureIsActiveInputWindow("Swipe target fixture")
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val metrics = instrumentation.targetContext.resources.displayMetrics
         val x = metrics.widthPixels * 0.5f
@@ -1363,6 +1364,7 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     private fun tapDisplayFraction(xFraction: Float, yFraction: Float) {
+        awaitFixtureIsActiveInputWindow("Tap target fixture")
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val metrics = instrumentation.targetContext.resources.displayMetrics
         val x = metrics.widthPixels * xFraction
@@ -2278,11 +2280,7 @@ class KmpVisualScreenshotCaptureTest {
                 try {
                     dismissCompatibilityDialog()
                     waitForIdleBounded()
-                    val activePackage =
-                        InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow?.packageName
-                    require(activePackage == "build.raft.app.connectedtest") {
-                        "Search fixture is not the active input window: package=$activePackage"
-                    }
+                    awaitFixtureIsActiveInputWindow("Search fixture")
                     before = captureActivityScreenshot("$caseId.before")
                     val yellowBefore = before.countThreadOpenProbeYellowSamplesInTopBand()
                     val cyanBefore = before.countThreadChildActionProbeSamples(0x00, 0xE5, 0xFF)
@@ -3418,6 +3416,7 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     private fun tapDisplayDp(x: Float, y: Float) {
+        awaitFixtureIsActiveInputWindow("Tap target fixture")
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val density = instrumentation.targetContext.resources.displayMetrics.density
         val xPx = x * density
@@ -3438,6 +3437,7 @@ class KmpVisualScreenshotCaptureTest {
         y: Float,
         durationMs: Long = 700L
     ) {
+        awaitFixtureIsActiveInputWindow("Long-press target fixture")
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val density = instrumentation.targetContext.resources.displayMetrics.density
         val xPx = x * density
@@ -3453,6 +3453,98 @@ class KmpVisualScreenshotCaptureTest {
             true,
         )
     }
+
+    /**
+     * Startup/compile timing shifts (e.g. baseline-profile changes such as PR
+     * #1710) can leave a system/transition window ("android") as the active
+     * input window for a while after launch. A gesture issued in that state
+     * misses the fixture entirely, so poll until the fixture owns the active
+     * input window instead of requiring it at a single instant; fail only after
+     * the bounded timeout (nightly run 30402296301, 7/8 shards). Called by every
+     * gesture-injection helper, so all interaction cases share the gate; when
+     * the fixture already owns the window the first poll returns immediately.
+     */
+    private fun awaitFixtureIsActiveInputWindow(
+        what: String,
+        timeoutMs: Long = ACTIVE_INPUT_WINDOW_TIMEOUT_MS
+    ) {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val powerManager =
+            instrumentation.targetContext.getSystemService(android.os.PowerManager::class.java)
+        val deadline = SystemClock.uptimeMillis() + timeoutMs
+        var activePackage: CharSequence? = null
+        var wokeDisplay = false
+        var dismissedSystemDialogs = 0
+        while (SystemClock.uptimeMillis() < deadline) {
+            // CI emulators ship stay_on_while_plugged_in=0 with a finite
+            // screen_off_timeout (PR #1747's first-character finding); when the
+            // display sleeps mid-shard the keyguard/system window (package
+            // "android") takes input focus and eats injected gestures. Re-wake
+            // and dismiss the keyguard before re-reading the focused window.
+            if (powerManager?.isInteractive == false) {
+                runShellCommand("input keyevent KEYCODE_WAKEUP")
+                runShellCommand("wm dismiss-keyguard")
+                wokeDisplay = true
+            }
+            activePackage =
+                instrumentation.uiAutomation.rootInActiveWindow?.packageName
+            if (activePackage == "build.raft.app.connectedtest") return
+            // A system window (package "android") holding input focus is a
+            // crash / ANR / keyguard dialog over the fixture — e.g. a launcher
+            // ANR ("Application Not Responding: ...nexuslauncher", proof run
+            // 30503233522 shard1) that hide_error_dialogs does not suppress.
+            // BACK dismisses the focused dialog; it targets the focused system
+            // window, never the backgrounded fixture, so the fixture cannot be
+            // navigated. Best-effort each poll until focus returns to us.
+            if (activePackage == "android") {
+                runShellCommand("input keyevent KEYCODE_BACK")
+                dismissedSystemDialogs++
+            }
+            Thread.sleep(ACTIVE_INPUT_WINDOW_POLL_MS)
+        }
+        // Name the offending window definitively: package alone cannot separate
+        // keyguard / ANR dialog / a stuck starting-window (splash), and our
+        // PixelCopy screenshots read the app window directly, so a rendered
+        // before-frame proves nothing about what the screen composite shows.
+        // The chain-repro (run 30500947125) showed the older mCurrentFocus grep
+        // matches nothing on this emulator image, so log the FULL window and
+        // input-focus tables to logcat and embed a broad-label extract.
+        val windowDump = readShellCommand("dumpsys window windows")
+        windowDump.chunked(3500).forEachIndexed { index, chunk ->
+            Log.i(VISUAL_LOG_TAG, "GATE_TIMEOUT_WINDOWS[$index] $chunk")
+        }
+        val inputFocus = readShellCommand("dumpsys input")
+            .lineSequence()
+            .filter { it.contains("FocusedWindow", ignoreCase = true) || it.contains("FocusedApplication", ignoreCase = true) }
+            .joinToString(" | ") { it.trim() }
+            .take(400)
+        Log.i(VISUAL_LOG_TAG, "GATE_TIMEOUT_INPUT_FOCUS $inputFocus")
+        val focusDump = windowDump
+            .lineSequence()
+            .filter { line ->
+                listOf("mCurrentFocus", "mFocusedWindow", "mFocusedApp", "imeInputTarget", "imeLayeringTarget", "Window #")
+                    .any { line.contains(it) }
+            }
+            .joinToString(" | ") { it.trim() }
+            .ifEmpty { "no-focus-labels; head=" + windowDump.take(300).replace('\n', ' ') }
+            .take(700)
+        throw IllegalArgumentException(
+            "$what is not the active input window after ${timeoutMs}ms: " +
+                "package=$activePackage interactive=${powerManager?.isInteractive} " +
+                "wokeDisplay=$wokeDisplay dismissedSystemDialogs=$dismissedSystemDialogs " +
+                "inputFocus=[$inputFocus] focus=[$focusDump]"
+        )
+    }
+
+    /** Shell command via UiAutomation returning stdout (best-effort, empty on failure). */
+    private fun readShellCommand(command: String): String =
+        try {
+            val fd = InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(command)
+            ParcelFileDescriptor.AutoCloseInputStream(fd).use { String(it.readBytes()) }
+        } catch (t: Throwable) {
+            Log.w(VISUAL_LOG_TAG, "shell read '$command' failed: ${t.message}")
+            ""
+        }
 
     private fun dismissCompatibilityDialog() {
         val root = InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow ?: return
@@ -4213,6 +4305,7 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     private fun tapDp(xDp: Float, yDp: Float) {
+        awaitFixtureIsActiveInputWindow("Tap target fixture")
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val density = instrumentation.targetContext.resources.displayMetrics.density
         val x = xDp * density
@@ -5186,6 +5279,8 @@ class KmpVisualScreenshotCaptureTest {
         private const val TAP_DWELL_MS = 80L
         private const val ACCESSIBILITY_MARKER_TIMEOUT_MS = 2_000L
         private const val ACCESSIBILITY_MARKER_POLL_MS = 100L
+        private const val ACTIVE_INPUT_WINDOW_TIMEOUT_MS = 10_000L
+        private const val ACTIVE_INPUT_WINDOW_POLL_MS = 250L
         // Hard per-case backstop. With every unbounded waitForIdleSync path now
         // bounded (idle waits, onActivity, close — task #362/#364), no case
         // hangs forever, so this is a generous ceiling for legitimately-slow 3x

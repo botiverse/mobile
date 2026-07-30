@@ -593,6 +593,30 @@ CURRENT_PHASE="visual_environment"
 "$ADB_BIN" shell settings put global window_animation_scale 0
 "$ADB_BIN" shell settings put global transition_animation_scale 0
 "$ADB_BIN" shell settings put global animator_duration_scale 0
+# Keep the display awake for the whole capture run. CI emulators ship
+# stay_on_while_plugged_in=0 with a finite screen_off_timeout (PR #1747's
+# first-character finding), so a shard whose interaction case straddles the
+# display sleep sees the keyguard/system window (package=android) hold input
+# focus and eat injected gestures — the active-input-window gate then times
+# out (nightly 30402296301 / proof 30496656826).
+"$ADB_BIN" shell svc power stayon true || true
+"$ADB_BIN" shell settings put system screen_off_timeout 2147483647 || true
+"$ADB_BIN" shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1 || true
+"$ADB_BIN" shell wm dismiss-keyguard >/dev/null 2>&1 || true
+# Suppress system crash/ANR dialogs for the whole run. Chain-repro run
+# 30501756752 named the input blocker: a leaked "Application Error:
+# build.raft.app.connectedtest.test" system dialog stays above the fixture
+# across instrumentation processes, eating every injected gesture while
+# PixelCopy capture-only cases keep passing underneath — exactly the
+# interaction-only failure pattern of nightly 30402296301.
+"$ADB_BIN" shell settings put global hide_error_dialogs 1 || true
+"$ADB_BIN" shell settings put global show_first_crash_dialog 0 >/dev/null 2>&1 || true
+"$ADB_BIN" shell settings put secure show_first_crash_dialog_dev_option 0 >/dev/null 2>&1 || true
+# hide_error_dialogs covers app crash dialogs but not every ANR dialog (proof
+# run 30503233522 shard1 hit a launcher ANR dialog). Disable background ANR
+# dialogs too; the await gate's per-poll BACK dismiss is the general backstop.
+"$ADB_BIN" shell settings put secure anr_show_background 0 >/dev/null 2>&1 || true
+"$ADB_BIN" shell settings put global send_action_app_error 0 >/dev/null 2>&1 || true
 
 CURRENT_PHASE="install_app"
 "$ADB_BIN" install -r "$APP_APK" | tee "$OUTPUT_DIR/app-install.txt"
