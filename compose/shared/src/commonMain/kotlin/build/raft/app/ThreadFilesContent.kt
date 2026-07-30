@@ -474,8 +474,8 @@ private fun ThreadFileMetaLine(item: KuiklyThreadFileItem) {
                     modifier = Modifier.size(12.dp),
                     color = SlockColor.TextMutedGrayArgb
                 )
-                Text(
-                    text = slockRelativeTimestampLabel(label),
+                SlockRelativeTimestampText(
+                    value = label,
                     style = SlockType.Input.copy(
                         fontSize = 11.sp,
                         lineHeight = 14.sp,

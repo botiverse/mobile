@@ -291,6 +291,10 @@
     <string name="thread_action_join_channel">加入频道</string>
     <string name="thread_timestamp_now">此刻</string>
     <string name="relative_time_unknown">未知时间</string>
+    <string name="relative_time_toggle_show_absolute">显示具体时间</string>
+    <string name="relative_time_toggle_show_relative">显示相对时间</string>
+    <string name="relative_time_toggle_state_relative">相对时间</string>
+    <string name="relative_time_toggle_state_absolute">具体时间</string>
     <string name="relative_time_minute_past_one">1分钟前</string>
     <string name="relative_time_minute_past_many">%1$d分钟前</string>
     <string name="relative_time_minute_future_one">1分钟后</string>

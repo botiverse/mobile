@@ -291,6 +291,10 @@
     <string name="thread_action_join_channel">チャンネルに参加</string>
     <string name="thread_timestamp_now">1 分以内</string>
     <string name="relative_time_unknown">時刻不明</string>
+    <string name="relative_time_toggle_show_absolute">正確な時刻を表示</string>
+    <string name="relative_time_toggle_show_relative">相対時刻を表示</string>
+    <string name="relative_time_toggle_state_relative">相対時刻</string>
+    <string name="relative_time_toggle_state_absolute">正確な時刻</string>
     <string name="relative_time_minute_past_one">1 分前</string>
     <string name="relative_time_minute_past_many">%1$d 分前</string>
     <string name="relative_time_minute_future_one">1 分後</string>

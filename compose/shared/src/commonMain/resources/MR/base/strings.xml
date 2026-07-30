@@ -291,6 +291,10 @@
     <string name="thread_action_join_channel">Join channel</string>
     <string name="thread_timestamp_now">this minute</string>
     <string name="relative_time_unknown">unknown time</string>
+    <string name="relative_time_toggle_show_absolute">Show exact time</string>
+    <string name="relative_time_toggle_show_relative">Show relative time</string>
+    <string name="relative_time_toggle_state_relative">Relative time</string>
+    <string name="relative_time_toggle_state_absolute">Exact time</string>
     <string name="relative_time_minute_past_one">1 minute ago</string>
     <string name="relative_time_minute_past_many">%1$d minutes ago</string>
     <string name="relative_time_minute_future_one">in 1 minute</string>

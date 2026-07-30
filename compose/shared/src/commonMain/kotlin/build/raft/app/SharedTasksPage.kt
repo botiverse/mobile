@@ -1232,8 +1232,9 @@ private fun SharedTaskCard(
                 }
                 Spacer(Modifier.weight(1f))
                 task.updatedAtLabel.takeIf { it.isNotBlank() }?.let { updatedAt ->
-                    Text(
-                        text = slockRelativeTimestampLabel(updatedAt, timeContext),
+                    SlockRelativeTimestampText(
+                        value = updatedAt,
+                        timeContext = timeContext,
                         style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 11.sp, lineHeight = 14.sp),
                         color = SlockColor.TextBlack.copy(alpha = 0.35f),
                         maxLines = 1
