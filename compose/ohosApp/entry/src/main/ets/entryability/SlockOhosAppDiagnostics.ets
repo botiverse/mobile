@@ -27,6 +27,24 @@ const DIAGNOSTIC_SESSION_PREFIX: string = 'launch-';
 const DIAGNOSTIC_MAX_SESSIONS: number = 5;
 const DIAGNOSTIC_MAX_FILES_PER_SESSION: number = 6;
 const DIAGNOSTIC_LOG_MAX_BYTES: number = 1024 * 1024;
+const HANDS_FEEDBACK_OMITTED_ENVIRONMENT_LABELS: Array<string> = [
+  'Install time',
+  'Screen',
+  'Density',
+  'Font scale',
+  'Session',
+  'Signed in user',
+  'Selected server',
+  'Socket',
+];
+
+export function filterOhosHandsFeedbackEnvironmentLines(lines: Array<string>): Array<string> {
+  return lines.filter((line: string): boolean => {
+    const separator = line.indexOf(':');
+    const label = (separator >= 0 ? line.slice(0, separator) : line).trim();
+    return HANDS_FEEDBACK_OMITTED_ENVIRONMENT_LABELS.indexOf(label) < 0;
+  });
+}
 
 export function isOhosDiagnosticsLogFileName(name: string): boolean {
   return name.startsWith(DIAGNOSTIC_LOG_FILE_NAME);
@@ -218,6 +236,13 @@ export class SlockOhosAppDiagnostics {
   static exportEnvironmentText(context: common.UIAbilityContext): string {
     const bundleInfo = bundleManager.getBundleInfoForSelfSync(bundleManager.BundleFlag.GET_BUNDLE_INFO_DEFAULT);
     return SlockOhosAppDiagnostics.environmentLines(bundleInfo).join('\n');
+  }
+
+  static exportHandsFeedbackEnvironmentText(context: common.UIAbilityContext): string {
+    const bundleInfo = bundleManager.getBundleInfoForSelfSync(bundleManager.BundleFlag.GET_BUNDLE_INFO_DEFAULT);
+    return filterOhosHandsFeedbackEnvironmentLines(
+      SlockOhosAppDiagnostics.environmentLines(bundleInfo)
+    ).join('\n');
   }
 
   static clearLocalFiles(context: common.UIAbilityContext): void {

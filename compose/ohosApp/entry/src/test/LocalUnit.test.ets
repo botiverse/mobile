@@ -16,6 +16,7 @@ import { nextSlockOhosForegroundEpoch } from '../main/ets/kuikly/SlockOhosRealti
 import {
   compareOhosDiagnosticsPath,
   collectOhosDiagnosticsSourceFiles,
+  filterOhosHandsFeedbackEnvironmentLines,
   isOhosDiagnosticsLogFileName,
   isOhosDiagnosticsDescendantPath,
   isOhosFeedbackArchiveName,
@@ -341,6 +342,59 @@ export default function localUnitTest() {
       expect(selectedCurrentFirst.length).assertEqual(5);
       expect(selectedCurrentFirst[0].entryPrefix).assertEqual('current-launch-');
       expect(selectedCurrentFirst[4].entryPrefix).assertEqual('current-4-');
+    });
+    it('handsFeedbackEnvironmentOmitsUnusedRowsWithoutChangingDiagnosticsRows', 0, () => {
+      const fullEnvironment = [
+        'App: Raft',
+        'Version: 1.0.0',
+        'Version code: 1000000',
+        'Build: 1000000',
+        'Source: 593a5c542',
+        'Package: build.raft.harmony',
+        'Platform: OpenHarmony / API 24',
+        'SDK: 24',
+        'Device: HUAWEI HOP-AL10',
+        'Model: HOP-AL10',
+        'Install time: --',
+        'Screen: --',
+        'Density: --',
+        'Font scale: --',
+        'Session: --',
+        'Signed in user: --',
+        'Selected server: --',
+        'Socket: Shared shell',
+      ];
+
+      const feedbackEnvironment = filterOhosHandsFeedbackEnvironmentLines(fullEnvironment);
+      const feedbackText = feedbackEnvironment.join('\n');
+
+      expect(feedbackEnvironment.length).assertEqual(10);
+      expect(feedbackEnvironment[0]).assertEqual('App: Raft');
+      expect(feedbackEnvironment[5]).assertEqual('Package: build.raft.harmony');
+      expect(feedbackEnvironment[9]).assertEqual('Model: HOP-AL10');
+      expect(feedbackText).assertEqual([
+        'App: Raft',
+        'Version: 1.0.0',
+        'Version code: 1000000',
+        'Build: 1000000',
+        'Source: 593a5c542',
+        'Package: build.raft.harmony',
+        'Platform: OpenHarmony / API 24',
+        'SDK: 24',
+        'Device: HUAWEI HOP-AL10',
+        'Model: HOP-AL10',
+      ].join('\n'));
+      expect(feedbackText.includes('Install time:')).assertFalse();
+      expect(feedbackText.includes('Screen:')).assertFalse();
+      expect(feedbackText.includes('Density:')).assertFalse();
+      expect(feedbackText.includes('Font scale:')).assertFalse();
+      expect(feedbackText.includes('Session:')).assertFalse();
+      expect(feedbackText.includes('Signed in user:')).assertFalse();
+      expect(feedbackText.includes('Selected server:')).assertFalse();
+      expect(feedbackText.includes('Socket:')).assertFalse();
+      expect(fullEnvironment.length).assertEqual(18);
+      expect(fullEnvironment[10]).assertEqual('Install time: --');
+      expect(fullEnvironment[17]).assertEqual('Socket: Shared shell');
     });
     it('foregroundEpochAdvancesOnlyOnHiddenToVisibleLeadingEdge', 0, () => {
       const first = nextSlockOhosForegroundEpoch(0, false, true);
