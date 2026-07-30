@@ -45,6 +45,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -259,6 +260,47 @@ class SharedActivityStoreTest {
         releaseFirst.complete(Unit)
         assertEquals(2, calls.size)
         assertTrue(calls[0].contentGeneration !== calls[1].contentGeneration)
+        scope.cancel()
+    }
+
+    @Test
+    fun resetSerializesWithConcurrentReplyPrewarmRegistrationAndCompletion() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val store =
+            activityStore(
+                scope = scope,
+                prewarmReplyThread = { DataResult.Content(Unit) }
+            )
+        val markerSets =
+            (0 until 8).map { generation ->
+                (0 until 24)
+                    .map { index -> keyedMarker("reset-race-$generation-$index") }
+                    .toSet()
+            }
+
+        // Production hit this exact ownership split: Kuikly reset iterated replyPrewarmJobs while
+        // app-scope completion removed entries in finally. Exercise both sides from real worker
+        // threads; any unsynchronized HashMap size/copy race escapes the child and fails the test.
+        val workers =
+            List(4) { worker ->
+                launch(Dispatchers.Default) {
+                    repeat(200) { iteration ->
+                        if ((worker + iteration) % 3 == 0) {
+                            store.reset()
+                        } else {
+                            store.dispatch(
+                                SharedActivityIntent.PrewarmVisibleReplyThreads(
+                                    markerSets[(worker + iteration) % markerSets.size]
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+        workers.joinAll()
+
+        store.reset()
+        assertEquals(emptyList(), store.state.value.items)
         scope.cancel()
     }
 
