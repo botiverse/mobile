@@ -16047,6 +16047,13 @@ private fun ThreadMessagesList(
             return@LaunchedEffect
         }
         val focusedTargetIdentity = pendingFocusedMessageAnchorIdentityState.value
+        val focusedAnchorOwnsViewport =
+            focusedMessageAnchorOwnsViewport(
+                pendingIdentity = focusedTargetIdentity,
+                consumedIdentity = consumedFocusedMessageAnchorIdentity,
+                scrollInterruptedIdentity = scrollInterruptedFocusedMessageAnchorIdentity,
+                yieldElapsedMs = bottomAnchorFocusedYieldElapsedMs
+            )
         val layoutState =
             ThreadComposerLayoutBottomAnchorState(
                 previousKeyboardInsetDp = lastComposerKeyboardInsetDp,
@@ -16057,18 +16064,26 @@ private fun ThreadMessagesList(
                 initialBottomAnchorReady = initialBottomAnchorReady,
                 latestItemIndex = latestItemIndex,
                 allowBottomAutoAnchor = allowBottomAutoAnchor,
-                focusedAnchorOwnsViewport =
-                    focusedMessageAnchorOwnsViewport(
-                        pendingIdentity = pendingFocusedMessageAnchorIdentityState.value,
-                        consumedIdentity = consumedFocusedMessageAnchorIdentity,
-                        scrollInterruptedIdentity = scrollInterruptedFocusedMessageAnchorIdentity,
-                        yieldElapsedMs = bottomAnchorFocusedYieldElapsedMs
-                    ),
+                focusedAnchorOwnsViewport = focusedAnchorOwnsViewport,
+                focusedActiveLatestAnchorCanCorrectLayout =
+                    focusedAnchorOwnsViewport &&
+                        focusedActiveLatestMessageComposerLayoutOwnsViewport(
+                            targetIdentity = focusedTargetIdentity,
+                            targetItemIndex = renderPayload.focusedMessageListItemIndex(),
+                            latestMessageItemIndex = latestMessageListItemIndex,
+                            canLoadMoreAfter = renderPayload.canLoadMoreAfter,
+                            anchoredIdentity = focusedAnchorSessionIdentity,
+                            consumedIdentity = consumedFocusedMessageAnchorIdentity,
+                            scrollInterruptedIdentity = scrollInterruptedFocusedMessageAnchorIdentity,
+                            startUserScrollGeneration = focusedAnchorStartUserScrollGeneration,
+                            currentUserScrollGeneration = userScrollGeneration.value
+                        ),
                 focusedLatestAnchorCanCorrectLayout =
                     focusedLatestMessageComposerLayoutOwnsViewport(
                         targetIdentity = focusedTargetIdentity,
                         targetItemIndex = renderPayload.focusedMessageListItemIndex(),
                         latestMessageItemIndex = latestMessageListItemIndex,
+                        canLoadMoreAfter = renderPayload.canLoadMoreAfter,
                         anchoredIdentity = focusedAnchorSessionIdentity,
                         consumedIdentity = consumedFocusedMessageAnchorIdentity,
                         scrollInterruptedIdentity = scrollInterruptedFocusedMessageAnchorIdentity,
@@ -17562,6 +17577,7 @@ internal data class ThreadComposerLayoutBottomAnchorState(
     val latestItemIndex: Int,
     val allowBottomAutoAnchor: Boolean,
     val focusedAnchorOwnsViewport: Boolean,
+    val focusedActiveLatestAnchorCanCorrectLayout: Boolean,
     val focusedLatestAnchorCanCorrectLayout: Boolean
 )
 
@@ -17581,13 +17597,15 @@ internal fun shouldAnchorThreadComposerLayoutChange(
         state.latestItemIndex >= 0 &&
         (
             (state.allowBottomAutoAnchor && !state.focusedAnchorOwnsViewport) ||
+                state.focusedActiveLatestAnchorCanCorrectLayout ||
                 state.focusedLatestAnchorCanCorrectLayout
         )
 
-internal fun focusedLatestMessageComposerLayoutOwnsViewport(
+internal fun focusedActiveLatestMessageComposerLayoutOwnsViewport(
     targetIdentity: String?,
     targetItemIndex: Int,
     latestMessageItemIndex: Int,
+    canLoadMoreAfter: Boolean,
     anchoredIdentity: String?,
     consumedIdentity: String?,
     scrollInterruptedIdentity: String?,
@@ -17597,6 +17615,28 @@ internal fun focusedLatestMessageComposerLayoutOwnsViewport(
     targetIdentity != null &&
         targetItemIndex >= 0 &&
         targetItemIndex == latestMessageItemIndex &&
+        !canLoadMoreAfter &&
+        anchoredIdentity == targetIdentity &&
+        consumedIdentity != targetIdentity &&
+        scrollInterruptedIdentity != targetIdentity &&
+        startUserScrollGeneration != null &&
+        startUserScrollGeneration == currentUserScrollGeneration
+
+internal fun focusedLatestMessageComposerLayoutOwnsViewport(
+    targetIdentity: String?,
+    targetItemIndex: Int,
+    latestMessageItemIndex: Int,
+    canLoadMoreAfter: Boolean,
+    anchoredIdentity: String?,
+    consumedIdentity: String?,
+    scrollInterruptedIdentity: String?,
+    startUserScrollGeneration: Int?,
+    currentUserScrollGeneration: Int
+): Boolean =
+    targetIdentity != null &&
+        targetItemIndex >= 0 &&
+        targetItemIndex == latestMessageItemIndex &&
+        !canLoadMoreAfter &&
         anchoredIdentity == targetIdentity &&
         consumedIdentity == targetIdentity &&
         scrollInterruptedIdentity != targetIdentity &&
@@ -17621,7 +17661,11 @@ internal fun resolveThreadComposerLayoutBottomAnchor(
             state.focusedAnchorOwnsViewport -> state.pendingLayoutChange
             state.initialBottomAnchorReady ||
                 state.latestItemIndex < 0 ||
-                (!state.allowBottomAutoAnchor && !state.focusedLatestAnchorCanCorrectLayout) -> false
+                (
+                    !state.allowBottomAutoAnchor &&
+                        !state.focusedActiveLatestAnchorCanCorrectLayout &&
+                        !state.focusedLatestAnchorCanCorrectLayout
+                ) -> false
             else -> state.pendingLayoutChange
         }
     return ThreadComposerLayoutBottomAnchorDecision(
