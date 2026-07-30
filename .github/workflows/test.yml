@@ -1197,6 +1197,7 @@ jobs:
           elif git diff --quiet "${{ github.event.pull_request.base.sha }}" HEAD -- \
             .github/workflows/test.yml \
             compose/ohosBridge \
+            compose/ohosApp/hvigor \
             compose/ohosApp/entry/src/main/cpp \
             compose/ohosApp/entry/src/main/ets/entryability \
             compose/ohosApp/scripts \
@@ -1290,6 +1291,7 @@ jobs:
           test -s "$shared_output/libshared_api.h"
           grep -q 'raftUpdateProcessNetworkVisibility' "$shared_output/libshared_api.h"
           test "$(wc -l < "$shared_output/libshared_api.h")" -le 500
+          node ohosApp/scripts/test_kuikly_plugin_source_contract.mjs
 
           mkdir -p ohosApp/entry/libs/arm64-v8a ohosApp/entry/src/main/cpp
           install -m 755 "$shared_output/libshared.so" ohosApp/entry/libs/arm64-v8a/libshared.so
