@@ -187,6 +187,10 @@ internal fun SlockFilterPopover(
                             placeholder = searchPlaceholder,
                             autoFocus = false,
                             maxLines = 1,
+                            // iOS keeps the native editor's precise hit region smaller
+                            // than the brutal field chrome. Let the full visible field
+                            // request focus so taps on its padding still open the editor.
+                            containerTapRequestsFocus = true,
                             showClearWhenNotEmpty = true,
                             onClear = { onSearchChange("") },
                             modifier = Modifier
