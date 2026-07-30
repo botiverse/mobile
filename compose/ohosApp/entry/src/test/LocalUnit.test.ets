@@ -350,7 +350,7 @@ export default function localUnitTest() {
         'Version code: 1000000',
         'Build: 1000000',
         'Source: 593a5c542',
-        'Package: build.raft.harmony',
+        'Package: build.raft.mobile',
         'Platform: OpenHarmony / API 24',
         'SDK: 24',
         'Device: HUAWEI HOP-AL10',
@@ -370,7 +370,7 @@ export default function localUnitTest() {
 
       expect(feedbackEnvironment.length).assertEqual(10);
       expect(feedbackEnvironment[0]).assertEqual('App: Raft');
-      expect(feedbackEnvironment[5]).assertEqual('Package: build.raft.harmony');
+      expect(feedbackEnvironment[5]).assertEqual('Package: build.raft.mobile');
       expect(feedbackEnvironment[9]).assertEqual('Model: HOP-AL10');
       expect(feedbackText).assertEqual([
         'App: Raft',
@@ -378,7 +378,7 @@ export default function localUnitTest() {
         'Version code: 1000000',
         'Build: 1000000',
         'Source: 593a5c542',
-        'Package: build.raft.harmony',
+        'Package: build.raft.mobile',
         'Platform: OpenHarmony / API 24',
         'SDK: 24',
         'Device: HUAWEI HOP-AL10',
