@@ -114,6 +114,10 @@ class SharedActivityStore internal constructor(
     private var readPredictionRevisions: Map<ChannelId, Long> = emptyMap()
     private var readPredictionItemKeys: Map<ChannelId, Set<String>> = emptyMap()
     private val replyPrewarmSemaphore = Semaphore(SharedActivityReplyPrewarmConcurrency)
+    // Activity intents can be dispatched from the Kuikly frame thread while app-scope prewarm
+    // jobs complete on a coroutine worker. Keep every reply-prewarm collection behind one owner
+    // lock so reset cannot iterate a HashMap while a job's finally block mutates it.
+    private val replyPrewarmOwnerLock = SynchronizedObject()
     private var visibleReplyPrewarmMarkers: Map<ActivityReplyThreadPrewarmKey, ActivityReplyThreadPrewarmMarker> = emptyMap()
     private var tailReplyPrewarmMarkers: Map<ActivityReplyThreadPrewarmKey, ActivityReplyThreadPrewarmMarker> = emptyMap()
     private val completedReplyPrewarmGenerations =
@@ -253,18 +257,35 @@ class SharedActivityStore internal constructor(
 
     private fun prewarmVisibleReplyThreads(markers: Set<ActivityReplyThreadPrewarmMarker>) {
         val nextVisible = markers.map(::stampReplyThreadPrewarmMarker).associateBy { it.key }
-        val previousVisible = visibleReplyPrewarmMarkers
-        visibleReplyPrewarmMarkers = nextVisible
+        val previousVisible =
+            synchronized(replyPrewarmOwnerLock) {
+                val previous = visibleReplyPrewarmMarkers
+                visibleReplyPrewarmMarkers = nextVisible
+                previous
+            }
 
-        cancelReplyPrewarmJobsNotIn(nextVisible.keys + tailReplyPrewarmMarkers.keys)
+        val activeKeys =
+            synchronized(replyPrewarmOwnerLock) { nextVisible.keys + tailReplyPrewarmMarkers.keys }
+        cancelReplyPrewarmJobsNotIn(activeKeys)
 
         nextVisible.values.forEach { marker ->
             val key = marker.key
             val enteredViewport = key !in previousVisible
             val versionChanged = previousVisible[key]?.contentGeneration !== marker.contentGeneration
-            if (completedReplyPrewarmGenerations[key] === marker.contentGeneration) return@forEach
-            if (replyPrewarmJobs[key]?.isActive == true) return@forEach
-            if (!enteredViewport && !versionChanged && failedReplyPrewarmGenerations[key] === marker.contentGeneration) {
+            val shouldLaunch =
+                synchronized(replyPrewarmOwnerLock) {
+                    if (completedReplyPrewarmGenerations[key] === marker.contentGeneration) return@synchronized false
+                    if (replyPrewarmJobs[key]?.isCompleted == false) return@synchronized false
+                    if (
+                        !enteredViewport &&
+                        !versionChanged &&
+                        failedReplyPrewarmGenerations[key] === marker.contentGeneration
+                    ) {
+                        return@synchronized false
+                    }
+                    activeReplyPrewarmMarkerLocked(key)?.contentGeneration === marker.contentGeneration
+                }
+            if (!shouldLaunch) {
                 return@forEach
             }
             launchReplyThreadPrewarm(marker)
@@ -280,8 +301,16 @@ class SharedActivityStore internal constructor(
                     if (activeReplyPrewarmMarker(key)?.contentGeneration !== marker.contentGeneration) return@launch
                     when (result) {
                         is DataResult.Content -> {
-                            marker.contentGeneration?.let { completedReplyPrewarmGenerations[key] = it }
-                            failedReplyPrewarmGenerations.remove(key)
+                            val accepted =
+                                synchronized(replyPrewarmOwnerLock) {
+                                    if (activeReplyPrewarmMarkerLocked(key)?.contentGeneration !== marker.contentGeneration) {
+                                        return@synchronized false
+                                    }
+                                    marker.contentGeneration?.let { completedReplyPrewarmGenerations[key] = it }
+                                    failedReplyPrewarmGenerations.remove(key)
+                                    true
+                                }
+                            if (!accepted) return@launch
                             diagnosticsLogger(
                                 "activity_reply_prewarm_result result=success serverId=${key.serverId} " +
                                     "parentChannelId=${key.parentChannelId} parentMessageId=${key.parentMessageId} " +
@@ -289,7 +318,15 @@ class SharedActivityStore internal constructor(
                             )
                         }
                         is DataResult.Empty -> {
-                            marker.contentGeneration?.let { failedReplyPrewarmGenerations[key] = it }
+                            val accepted =
+                                synchronized(replyPrewarmOwnerLock) {
+                                    if (activeReplyPrewarmMarkerLocked(key)?.contentGeneration !== marker.contentGeneration) {
+                                        return@synchronized false
+                                    }
+                                    marker.contentGeneration?.let { failedReplyPrewarmGenerations[key] = it }
+                                    true
+                                }
+                            if (!accepted) return@launch
                             diagnosticsLogger(
                                 "activity_reply_prewarm_result result=empty reason=${result.reason.name} " +
                                     "serverId=${key.serverId} parentChannelId=${key.parentChannelId} " +
@@ -297,7 +334,15 @@ class SharedActivityStore internal constructor(
                             )
                         }
                         is DataResult.Error -> {
-                            marker.contentGeneration?.let { failedReplyPrewarmGenerations[key] = it }
+                            val accepted =
+                                synchronized(replyPrewarmOwnerLock) {
+                                    if (activeReplyPrewarmMarkerLocked(key)?.contentGeneration !== marker.contentGeneration) {
+                                        return@synchronized false
+                                    }
+                                    marker.contentGeneration?.let { failedReplyPrewarmGenerations[key] = it }
+                                    true
+                                }
+                            if (!accepted) return@launch
                             diagnosticsLogger(
                                 "activity_reply_prewarm_result result=error code=${result.error.code} " +
                                     "serverId=${key.serverId} parentChannelId=${key.parentChannelId} " +
@@ -305,7 +350,15 @@ class SharedActivityStore internal constructor(
                             )
                         }
                         is DataResult.NoPermission -> {
-                            marker.contentGeneration?.let { failedReplyPrewarmGenerations[key] = it }
+                            val accepted =
+                                synchronized(replyPrewarmOwnerLock) {
+                                    if (activeReplyPrewarmMarkerLocked(key)?.contentGeneration !== marker.contentGeneration) {
+                                        return@synchronized false
+                                    }
+                                    marker.contentGeneration?.let { failedReplyPrewarmGenerations[key] = it }
+                                    true
+                                }
+                            if (!accepted) return@launch
                             diagnosticsLogger(
                                 "activity_reply_prewarm_result result=no_permission code=${result.blocker.code} " +
                                     "serverId=${key.serverId} parentChannelId=${key.parentChannelId} " +
@@ -316,8 +369,10 @@ class SharedActivityStore internal constructor(
                 } catch (cancellation: CancellationException) {
                     throw cancellation
                 } catch (throwable: Throwable) {
-                    if (activeReplyPrewarmMarker(key)?.contentGeneration === marker.contentGeneration) {
-                        marker.contentGeneration?.let { failedReplyPrewarmGenerations[key] = it }
+                    synchronized(replyPrewarmOwnerLock) {
+                        if (activeReplyPrewarmMarkerLocked(key)?.contentGeneration === marker.contentGeneration) {
+                            marker.contentGeneration?.let { failedReplyPrewarmGenerations[key] = it }
+                        }
                     }
                     diagnosticsLogger(
                         "activity_reply_prewarm_result result=exception errorType=${throwable::class.simpleName.orEmpty()} " +
@@ -326,15 +381,32 @@ class SharedActivityStore internal constructor(
                     )
                 } finally {
                     val currentJob = currentCoroutineContext()[Job]
-                    if (replyPrewarmJobs[key] === currentJob) {
-                        replyPrewarmJobs.remove(key)
-                        visibleReplyPrewarmMarkers[key]
-                            ?.takeIf { latest -> latest.contentGeneration !== marker.contentGeneration }
-                            ?.let(::launchReplyThreadPrewarm)
-                    }
+                    val retryMarker =
+                        synchronized(replyPrewarmOwnerLock) {
+                            if (replyPrewarmJobs[key] !== currentJob) return@synchronized null
+                            replyPrewarmJobs.remove(key)
+                            visibleReplyPrewarmMarkers[key]
+                                ?.takeIf { latest -> latest.contentGeneration !== marker.contentGeneration }
+                        }
+                    retryMarker?.let(::launchReplyThreadPrewarm)
                 }
             }
-        replyPrewarmJobs[key] = job
+        val incumbent =
+            synchronized(replyPrewarmOwnerLock) {
+                if (activeReplyPrewarmMarkerLocked(key)?.contentGeneration !== marker.contentGeneration) {
+                    return@synchronized null
+                }
+                replyPrewarmJobs[key]
+                    ?.takeUnless(Job::isCompleted)
+                    ?: run {
+                        replyPrewarmJobs[key] = job
+                        job
+                    }
+            }
+        if (incumbent !== job) {
+            job.cancel()
+            return incumbent ?: job
+        }
         diagnosticsLogger(
             "activity_reply_prewarm_start serverId=${key.serverId} parentChannelId=${key.parentChannelId} " +
                 "parentMessageId=${key.parentMessageId} threadChannelId=${key.threadChannelId}"
@@ -356,7 +428,7 @@ class SharedActivityStore internal constructor(
         orderedMarkers.map(::stampReplyThreadPrewarmMarker).forEach { marker ->
             nextTail.getOrPut(marker.key) { marker }
         }
-        tailReplyPrewarmMarkers = nextTail
+        synchronized(replyPrewarmOwnerLock) { tailReplyPrewarmMarkers = nextTail }
 
         tailPrewarmLoopJob?.cancel()
         tailPrewarmLoopJob = null
@@ -380,7 +452,9 @@ class SharedActivityStore internal constructor(
         draining?.cancel()
         tailDrainBarrier = draining
         tailInFlightJob = null
-        cancelReplyPrewarmJobsNotIn(visibleReplyPrewarmMarkers.keys + nextTail.keys)
+        val activeKeys =
+            synchronized(replyPrewarmOwnerLock) { visibleReplyPrewarmMarkers.keys + nextTail.keys }
+        cancelReplyPrewarmJobsNotIn(activeKeys)
 
         if (nextTail.isEmpty() && draining == null) return
         val ordered = nextTail.values.toList()
@@ -410,15 +484,22 @@ class SharedActivityStore internal constructor(
     }
 
     private fun shouldLaunchTailPrewarm(marker: ActivityReplyThreadPrewarmMarker): Boolean {
-        val key = marker.key
-        if (key in visibleReplyPrewarmMarkers) return false
-        if (completedReplyPrewarmGenerations[key] === marker.contentGeneration) return false
-        if (replyPrewarmJobs[key]?.isActive == true) return false
-        if (failedReplyPrewarmGenerations[key] === marker.contentGeneration) return false
-        return true
+        return synchronized(replyPrewarmOwnerLock) {
+            val key = marker.key
+            if (key in visibleReplyPrewarmMarkers) return@synchronized false
+            if (completedReplyPrewarmGenerations[key] === marker.contentGeneration) return@synchronized false
+            if (replyPrewarmJobs[key]?.isCompleted == false) return@synchronized false
+            if (failedReplyPrewarmGenerations[key] === marker.contentGeneration) return@synchronized false
+            activeReplyPrewarmMarkerLocked(key)?.contentGeneration === marker.contentGeneration
+        }
     }
 
     private fun activeReplyPrewarmMarker(
+        key: ActivityReplyThreadPrewarmKey
+    ): ActivityReplyThreadPrewarmMarker? =
+        synchronized(replyPrewarmOwnerLock) { activeReplyPrewarmMarkerLocked(key) }
+
+    private fun activeReplyPrewarmMarkerLocked(
         key: ActivityReplyThreadPrewarmKey
     ): ActivityReplyThreadPrewarmMarker? =
         visibleReplyPrewarmMarkers[key] ?: tailReplyPrewarmMarkers[key]
@@ -469,11 +550,14 @@ class SharedActivityStore internal constructor(
     }
 
     private fun cancelReplyPrewarmJobsNotIn(activeKeys: Set<ActivityReplyThreadPrewarmKey>) {
-        replyPrewarmJobs
-            .filterKeys { key -> key !in activeKeys }
-            .values
-            .toList()
-            .forEach(Job::cancel)
+        val jobsToCancel =
+            synchronized(replyPrewarmOwnerLock) {
+                replyPrewarmJobs
+                    .filterKeys { key -> key !in activeKeys }
+                    .values
+                    .toList()
+            }
+        jobsToCancel.forEach(Job::cancel)
     }
 
     private fun clearReplyPrewarmState() {
@@ -483,12 +567,17 @@ class SharedActivityStore internal constructor(
         tailInFlightJob = null
         tailDrainBarrier?.cancel()
         tailDrainBarrier = null
-        replyPrewarmJobs.values.toList().forEach(Job::cancel)
-        replyPrewarmJobs.clear()
-        visibleReplyPrewarmMarkers = emptyMap()
-        tailReplyPrewarmMarkers = emptyMap()
-        completedReplyPrewarmGenerations.clear()
-        failedReplyPrewarmGenerations.clear()
+        val jobsToCancel =
+            synchronized(replyPrewarmOwnerLock) {
+                val jobs = replyPrewarmJobs.values.toList()
+                replyPrewarmJobs.clear()
+                visibleReplyPrewarmMarkers = emptyMap()
+                tailReplyPrewarmMarkers = emptyMap()
+                completedReplyPrewarmGenerations.clear()
+                failedReplyPrewarmGenerations.clear()
+                jobs
+            }
+        jobsToCancel.forEach(Job::cancel)
     }
 
     private fun setFilter(filter: InboxFilter) {
