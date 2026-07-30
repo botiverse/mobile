@@ -509,6 +509,12 @@ pane layout changes must not reset its cursor or apply an event twice.
   span or receive input through a folding hinge.
 - Window facts are host layout facts, not route data. Duplicate resize/fold
   emissions reduce idempotently and must not remount the child.
+- `posture=unknown` is an honest pre-settle host fact, not evidence that a
+  second pane is safe. The effective product layout remains Compact while
+  posture is unknown, even when width is above the wide threshold. It may
+  upgrade only after an explicit settled posture arrives. That settle
+  transition preserves any retained selection/child generation and must not
+  create a wide-then-compact first-frame flash.
 
 ### Session and Failure Teardown
 
@@ -533,6 +539,8 @@ Shared behavior tests must exercise public reducers/coordinators, not grep
 production source:
 
 - all `ListOnly`/`Split`/`DetailOnly`/`Inactive` transitions;
+- unknown-posture first frame stays Compact and a later settled posture
+  upgrades at most once without replacing the selection or child;
 - duplicate window/lifecycle signals produce no duplicate child lifecycle;
 - selection A -> B rejects late A load/navigation/realtime callbacks;
 - read/unread/reorder/pagination preserve selection;
@@ -563,7 +571,8 @@ No product list-detail task may mount a visible Thread child until all of these
 exist:
 
 1. host window-fact delivery for the target platform;
-2. a pure pane lifecycle/selection reducer with the tests above;
+2. a pure pane lifecycle/selection reducer with conservative unknown-posture
+   settling and the tests above;
 3. generation-fenced child root-Back delivery;
 4. shell/server-scoped realtime room leases;
 5. identity-only child launch using the existing Thread parser guards;
