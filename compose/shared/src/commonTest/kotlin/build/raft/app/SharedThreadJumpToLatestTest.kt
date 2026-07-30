@@ -33,19 +33,7 @@ class SharedThreadJumpToLatestTest {
             )
         val store =
             SharedThreadStore(
-                dataSource =
-                    SharedThreadDataSource(
-                        networkApi = api,
-                        sessionStore =
-                            InMemorySlockAuthSessionStore(
-                                StoredAuthSession(
-                                    user = StoredAuthUser("u1", "artin@example.test", "Artin"),
-                                    accessToken = "access",
-                                    refreshToken = "refresh",
-                                    selectedServerId = "server-1"
-                                )
-                            )
-                    ),
+                dataSource = dataSource(api),
                 scope = backgroundScope,
                 initialPayload = window
             )
@@ -64,6 +52,47 @@ class SharedThreadJumpToLatestTest {
         assertFalse(store.state.value.payload.canLoadMoreAfter)
         assertNull(store.state.value.payload.focusedMessageId)
     }
+
+    @Test
+    fun canonicalTailClearsFocusWithoutAnotherNetworkRequest() = runTest {
+        val api = TailNetworkApi()
+        val store =
+            SharedThreadStore(
+                dataSource = dataSource(api),
+                scope = backgroundScope,
+                initialPayload =
+                    KuiklyThreadScreenPayload(
+                        instanceId = "shared-shell-thread-channel-1",
+                        sourceThreadId = "channel-1",
+                        streamChannelId = "channel-1",
+                        status = "content",
+                        messages = listOf(message(id = "m210", seq = 210L, body = "canonical tail")),
+                        focusedMessageId = "m210",
+                        canLoadMoreBefore = true,
+                        canLoadMoreAfter = false,
+                        canSend = true
+                    )
+            )
+
+        assertTrue(store.jumpToLatest())
+        assertEquals(0, api.tailRequestCount)
+        assertNull(store.state.value.payload.focusedMessageId)
+        assertFalse(store.state.value.payload.canLoadMoreAfter)
+    }
+
+    private fun dataSource(api: SharedThreadNetworkApi): SharedThreadDataSource =
+        SharedThreadDataSource(
+            networkApi = api,
+            sessionStore =
+                InMemorySlockAuthSessionStore(
+                    StoredAuthSession(
+                        user = StoredAuthUser("u1", "artin@example.test", "Artin"),
+                        accessToken = "access",
+                        refreshToken = "refresh",
+                        selectedServerId = "server-1"
+                    )
+                )
+        )
 
     private fun message(id: String, seq: Long, body: String): KuiklyThreadMessageItem =
         KuiklyThreadMessageItem(
