@@ -1,5 +1,11 @@
 package build.raft.app
 
+import build.raft.app.ohosicu.slock_icu_first_grapheme_boundary_utf16
+import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.addressOf
+import kotlinx.cinterop.reinterpret
+import kotlinx.cinterop.usePinned
+
 internal actual fun slockPlatformSupportsKuiklyPullToRefreshItem(): Boolean = true
 
 internal actual fun slockPlatformUsesNativeLucideIconRotation(): Boolean = true
@@ -36,11 +42,20 @@ internal actual fun slockInlineCodeCharWrapBridgeThreshold(): Int? = 16
 
 internal actual fun slockInlineCodeUsesEdgePaddingBridge(): Boolean = true
 
-// No standards-backed composed-character segmenter is exposed to shared OHOS
-// yet. Null makes the edge-box bridge emit a SINGLE-CHILD padding group (task
-// #104): exact text preserved, chip chrome still owned. It must NOT drop the
-// group — that was exactly the silent no-gray-background defect.
-internal actual fun slockFirstComposedCharacterEnd(text: String): Int? = null
+// Null keeps the #1767 single-child full-range box fallback active when ICU
+// cannot produce a valid boundary, so inline-code chrome is never dropped.
+@OptIn(ExperimentalForeignApi::class)
+internal actual fun slockFirstComposedCharacterEnd(text: String): Int? {
+    if (text.isEmpty()) return null
+
+    val utf16 = ShortArray(text.length) { index -> text[index].code.toShort() }
+    return utf16.usePinned { pinned ->
+        slock_icu_first_grapheme_boundary_utf16(
+            pinned.addressOf(0).reinterpret(),
+            text.length
+        ).takeIf { it in 1..text.length }
+    }
+}
 
 // Hands OHOS SDK reads attachments into a single ArrayBuffer — 50MB hard cap
 // until it streams (see docs/sdk-parity/ohos.md in the hands repo).

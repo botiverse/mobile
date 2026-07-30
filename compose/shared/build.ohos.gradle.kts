@@ -142,6 +142,10 @@ kotlin {
             includeDirs(file("src/nativeInterop/cinterop"))
             extraOpts("-libraryPath", mmkvWrapperLibDir.absolutePath)
         }
+        main.cinterops.create("slockIcuGrapheme") {
+            definitionFile = file("src/nativeInterop/cinterop/slock_icu_grapheme.def")
+            includeDirs(file("src/nativeInterop/cinterop"))
+        }
     }
 
     sourceSets {
