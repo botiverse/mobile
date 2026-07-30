@@ -24,6 +24,7 @@ import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.base.Size
 import com.tencent.kuiklybase.markdown.annotator.DefaultAnnotatorSettings
+import com.tencent.kuiklybase.markdown.annotator.appendSlockInlineCodeWithEdgeBoxes
 import com.tencent.kuiklybase.markdown.annotator.buildMarkdownAnnotatedString
 import com.tencent.kuiklybase.markdown.compose.elements.updateMarkdownTableColumnWidth
 import com.tencent.kuiklybase.markdown.model.MarkdownAnnotator
@@ -598,6 +599,55 @@ class SlockMarkdownTest {
             code = "e\u0301tool 👩‍💻",
             expectedLeading = "e\u0301",
             expectedTrailing = "👩‍💻",
+        )
+    }
+
+    // task #104 (OHOS gray background): a platform whose composed-character
+    // segmenter is unavailable (slockFirstComposedCharacterEnd == null, the
+    // OHOS actual) must STILL attach the inline-code box chrome as a
+    // single-child group. Dropping the group is the defect: mono typography
+    // survives via the outer code-span style while the gray chip silently
+    // disappears, so no shared test goes red without this tooth.
+    @Test
+    fun inlineCodeEdgeBoxesSurviveMissingComposedCharacterSegmenter() {
+        val code = "raft build"
+
+        // Null segmenter (OHOS shape) and a working segmenter must agree on
+        // the box invariant; only the child split may differ.
+        val withoutSegmenter = buildAnnotatedString {
+            appendSlockInlineCodeWithEdgeBoxes(code, firstComposedCharacterEnd = null)
+        }
+        val withSegmenter = buildAnnotatedString {
+            appendSlockInlineCodeWithEdgeBoxes(code, firstComposedCharacterEnd = 1)
+        }
+        // Degenerate one-grapheme answer (== length) keeps the single-child shape.
+        val wholeTextCluster = buildAnnotatedString {
+            appendSlockInlineCodeWithEdgeBoxes(code, firstComposedCharacterEnd = code.length)
+        }
+
+        for (annotated in listOf(withoutSegmenter, withSegmenter, wholeTextCluster)) {
+            assertEquals(code, annotated.text)
+            val boxRanges = annotated.spanStyles.filter { it.item.inlineBoxStyle != null }
+            assertEquals(1, boxRanges.size)
+            val box = boxRanges.single()
+            assertEquals(0, box.start)
+            assertEquals(code.length, box.end)
+            assertEquals(
+                SlockColor.TextBlack.copy(alpha = 0.05f),
+                box.item.inlineBoxStyle?.backgroundColor,
+            )
+            assertTrue(box.item.inlineBoxStyle!!.paddingStart > 0.dp)
+            assertTrue(box.item.inlineBoxStyle!!.paddingEnd > 0.dp)
+        }
+
+        // The split child exists only when the segmenter answered mid-text.
+        assertTrue(
+            withSegmenter.spanStyles.any { range ->
+                range.start == 0 && range.end == 1 && range.item.inlineBoxStyle == null
+            }
+        )
+        assertFalse(
+            withoutSegmenter.spanStyles.any { range -> range.item.inlineBoxStyle == null }
         )
     }
 

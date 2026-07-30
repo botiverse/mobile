@@ -37,7 +37,9 @@ internal actual fun slockInlineCodeCharWrapBridgeThreshold(): Int? = 16
 internal actual fun slockInlineCodeUsesEdgePaddingBridge(): Boolean = true
 
 // No standards-backed composed-character segmenter is exposed to shared OHOS
-// yet. Fail closed: preserve exact text and skip the padding group.
+// yet. Null makes the edge-box bridge emit a SINGLE-CHILD padding group (task
+// #104): exact text preserved, chip chrome still owned. It must NOT drop the
+// group — that was exactly the silent no-gray-background defect.
 internal actual fun slockFirstComposedCharacterEnd(text: String): Int? = null
 
 // Hands OHOS SDK reads attachments into a single ArrayBuffer — 50MB hard cap
