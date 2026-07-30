@@ -7,6 +7,21 @@ on:
         description: "Immutable commit already contained in main"
         required: true
         type: string
+      version_major:
+        description: "versionName major (X)"
+        required: true
+        type: string
+        default: "1"
+      version_minor:
+        description: "versionName minor (Y)"
+        required: true
+        type: string
+        default: "0"
+      version_patch:
+        description: "versionName patch (Z)"
+        required: true
+        type: string
+        default: "0"
       version_build:
         description: "Beta build component (0-99); increase for Beta updates"
         required: true
@@ -24,6 +39,10 @@ on:
 env:
   GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dkotlin.compiler.execution.strategy=in-process"
   GRADLE_MAX_WORKERS: "1"
+  BETA_VERSION_MAJOR: ${{ github.event_name == 'workflow_dispatch' && inputs.version_major || '1' }}
+  BETA_VERSION_MINOR: ${{ github.event_name == 'workflow_dispatch' && inputs.version_minor || '0' }}
+  BETA_VERSION_PATCH: ${{ github.event_name == 'workflow_dispatch' && inputs.version_patch || '0' }}
+  BETA_VERSION_BUILD: ${{ github.event_name == 'workflow_dispatch' && inputs.version_build || '0' }}
 
 permissions:
   contents: read
@@ -115,17 +134,21 @@ jobs:
         working-directory: compose
         env:
           SLOCK_HANDS_CHANNEL: debug
-          BETA_VERSION_BUILD: ${{ github.event_name == 'workflow_dispatch' && inputs.version_build || '0' }}
         shell: bash
         run: |
-          if ! [[ "${BETA_VERSION_BUILD}" =~ ^[0-9]{1,2}$ ]]; then
-            echo "version_build must be an integer from 0 to 99" >&2
-            exit 1
-          fi
+          for name in BETA_VERSION_MAJOR BETA_VERSION_MINOR BETA_VERSION_PATCH BETA_VERSION_BUILD; do
+            if ! [[ "${!name}" =~ ^[0-9]{1,2}$ ]]; then
+              echo "${name} must be an integer from 0 to 99" >&2
+              exit 1
+            fi
+          done
           ./gradlew \
             :shared:generateSqlDelightInterface \
             :androidApp:assembleBeta \
             :androidApp:copyHandsNativeSymbols \
+            "-PversionX=${BETA_VERSION_MAJOR}" \
+            "-PversionY=${BETA_VERSION_MINOR}" \
+            "-PversionZ=${BETA_VERSION_PATCH}" \
             "-PversionBuild=${BETA_VERSION_BUILD}" \
             -PversionSuffix=beta \
             --no-daemon --max-workers=${{ env.GRADLE_MAX_WORKERS }} --console=plain --stacktrace
@@ -215,6 +238,15 @@ jobs:
           VERSION_NAME="$(sed -n "s/^package: .* versionName='\([^']*\)'.*/\1/p" aapt-badging.log | head -n 1)"
           test -n "${VERSION_CODE}"
           test -n "${VERSION_NAME}"
+          EXPECTED_VERSION_NAME="${BETA_VERSION_MAJOR}.${BETA_VERSION_MINOR}.${BETA_VERSION_PATCH}-beta"
+          EXPECTED_VERSION_CODE=$((
+            10#${BETA_VERSION_MAJOR} * 1000000 +
+            10#${BETA_VERSION_MINOR} * 10000 +
+            10#${BETA_VERSION_PATCH} * 100 +
+            10#${BETA_VERSION_BUILD}
+          ))
+          test "${VERSION_NAME}" = "${EXPECTED_VERSION_NAME}"
+          test "${VERSION_CODE}" = "${EXPECTED_VERSION_CODE}"
           cp "${APK}" "Raft-Beta-${VERSION_CODE}-${SOURCE_SHA::9}.apk"
           echo "apk=Raft-Beta-${VERSION_CODE}-${SOURCE_SHA::9}.apk" >> "$GITHUB_OUTPUT"
           echo "sha256=$(sha256sum "Raft-Beta-${VERSION_CODE}-${SOURCE_SHA::9}.apk" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
