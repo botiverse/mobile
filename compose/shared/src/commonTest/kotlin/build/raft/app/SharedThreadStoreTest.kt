@@ -2111,6 +2111,58 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun activityReplyStartKeepsStoreParentWhenTimelineCacheStillMarksItMissing() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val messageStore = SharedThreadMessageStore()
+        val api = FakeThreadApi(bodyText = messagesResponse("network reply"))
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                messageStore = messageStore,
+                cacheEnvironmentIdProvider = { "https://prod.example.test" },
+                replyCacheIdentityAuthority = testReplyCacheIdentityAuthority(
+                    sessionProvider = { sampleSession() }
+                )
+            )
+        val provenance = requireNotNull(dataSource.captureReplyCacheProducerContext()).provenance
+        dataSource.rememberReplyParentCandidate(
+            provenance = provenance,
+            serverId = "server-1",
+            parentChannelId = "channel-1",
+            parentMessage = contentPayload("stored parent body").messages.single(),
+            threadChannelId = "thread-m1"
+        )
+        val route =
+            replyPayload(parentMessageId = "m1", threadId = "thread-m1")
+                .copy(focusedMessageId = "reply-1")
+        dataSource.cachePayloadForTest(
+            contentPayloadForRoute(
+                base = route,
+                body = "cached focused reply",
+                id = "reply-1",
+                channelId = "thread-m1"
+            ).copy(
+                originMessage = null,
+                originPreview = null,
+                originStatus = "missing",
+                originErrorCode = null
+            )
+        )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+
+        store.dispatch(SharedThreadIntent.Start(route))
+
+        val firstFrame = store.state.value.payload
+        assertEquals("cached focused reply", firstFrame.messages.single().body)
+        assertEquals("loaded", firstFrame.originStatus)
+        assertEquals("m1", firstFrame.originMessage?.id)
+        assertEquals("stored parent body", firstFrame.originMessage?.body)
+        assertEquals(0, api.channelMessageCalls)
+        scope.cancel()
+    }
+
+    @Test
     fun startDoesNotRenderOrCacheContentFromRoutePayload() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
