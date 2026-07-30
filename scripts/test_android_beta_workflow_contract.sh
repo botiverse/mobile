@@ -16,10 +16,21 @@ gradle_file=compose/androidApp/build.gradle.kts
 [[ -f "$workflow" ]] || fail "dedicated workflow is missing"
 grep -Fq 'name: Android Beta' "$workflow" || fail "dedicated workflow name is missing"
 grep -Fq 'source_sha:' "$workflow" || fail "immutable main source input is missing"
+for input in version_major version_minor version_patch version_build; do
+  grep -Fq "${input}:" "$workflow" || fail "${input} input is missing"
+done
 grep -Fq 'git merge-base --is-ancestor "$sha" refs/remotes/origin/main' "$workflow" ||
   fail "manual dispatch is not restricted to commits contained in main"
 grep -Fq ':androidApp:assembleBeta' "$workflow" || fail "workflow does not build the Beta variant"
+for property in versionX versionY versionZ versionBuild; do
+  grep -Fq -- "-P${property}=\${BETA_VERSION_" "$workflow" ||
+    fail "workflow does not pass the ${property} coordinate"
+done
 grep -Fq -- '-PversionSuffix=beta' "$workflow" || fail "workflow does not apply the Beta version suffix"
+grep -Fq 'EXPECTED_VERSION_NAME="${BETA_VERSION_MAJOR}.${BETA_VERSION_MINOR}.${BETA_VERSION_PATCH}-beta"' "$workflow" ||
+  fail "built Beta versionName is not checked against the requested coordinate"
+grep -Fq 'test "${VERSION_CODE}" = "${EXPECTED_VERSION_CODE}"' "$workflow" ||
+  fail "built Beta versionCode is not checked against the requested coordinate"
 grep -Fq "package: name='build.raft.app.beta'" "$workflow" || fail "package identity is not verified"
 grep -Fq "application-label:'Raft Beta'" "$workflow" || fail "application label is not verified"
 grep -Fq 'scripts/verify_android_apk_with_rotation.sh' "$workflow" ||
