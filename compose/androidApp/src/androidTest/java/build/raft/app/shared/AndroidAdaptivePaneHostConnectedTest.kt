@@ -2,7 +2,6 @@ package build.raft.app.shared
 
 import android.content.Intent
 import android.graphics.Rect
-import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.window.layout.FoldingFeature
@@ -35,43 +34,47 @@ class AndroidAdaptivePaneHostConnectedTest {
             )
         val intent =
             Intent(targetContext, SlockKuiklyActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 .putExtra("pageName", SlockKuiklyActivity.PAGE_LOGIN)
                 .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
 
-        ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
-            var host: AndroidAdaptivePaneHost? = null
-            try {
-                scenario.onActivity { activity ->
-                    host =
-                        AndroidAdaptivePaneHost(
-                            activity = activity,
-                            sendEvent = { event, data ->
-                                if (data["posture"] == "half_folded") {
-                                    halfOpenedEvent.set(event to data)
-                                    halfOpenedLatch.countDown()
-                                }
-                            },
-                            windowInfoTracker = tracker,
-                        ).also(AndroidAdaptivePaneHost::start)
-                }
-
-                assertTrue(
-                    "Timed out waiting for HALF_OPENED WindowLayoutInfo to reach the host emitter; " +
-                        "events=${halfOpenedEvent.get()}",
-                    halfOpenedLatch.await(5, TimeUnit.SECONDS),
-                )
-                val captured = halfOpenedEvent.get()
-                assertNotNull(captured)
-                val (event, data) = requireNotNull(captured)
-                assertEquals(AndroidAdaptivePanePublisher.EventName, event)
-                assertEquals("half_folded", data["posture"])
-                assertTrue("Expected positive window width, data=$data", (data["widthPx"] as Int) > 0)
-                assertTrue("Expected positive window height, data=$data", (data["heightPx"] as Int) > 0)
-                assertTrue("Expected positive density, data=$data", (data["density"] as Float) > 0f)
-                assertEquals(setOf("widthPx", "heightPx", "density", "posture"), data.keys)
-            } finally {
-                scenario.onActivity { host?.stop() }
+        val activity = instrumentation.startActivitySync(intent) as SlockKuiklyActivity
+        var host: AndroidAdaptivePaneHost? = null
+        try {
+            instrumentation.runOnMainSync {
+                host =
+                    AndroidAdaptivePaneHost(
+                        activity = activity,
+                        sendEvent = { event, data ->
+                            if (data["posture"] == "half_folded") {
+                                halfOpenedEvent.set(event to data)
+                                halfOpenedLatch.countDown()
+                            }
+                        },
+                        windowInfoTracker = tracker,
+                    ).also(AndroidAdaptivePaneHost::start)
             }
+
+            assertTrue(
+                "Timed out waiting for HALF_OPENED WindowLayoutInfo to reach the host emitter; " +
+                    "events=${halfOpenedEvent.get()}",
+                halfOpenedLatch.await(5, TimeUnit.SECONDS),
+            )
+            val captured = halfOpenedEvent.get()
+            assertNotNull(captured)
+            val (event, data) = requireNotNull(captured)
+            assertEquals(AndroidAdaptivePanePublisher.EventName, event)
+            assertEquals("half_folded", data["posture"])
+            assertTrue("Expected positive window width, data=$data", (data["widthPx"] as Int) > 0)
+            assertTrue("Expected positive window height, data=$data", (data["heightPx"] as Int) > 0)
+            assertTrue("Expected positive density, data=$data", (data["density"] as Float) > 0f)
+            assertEquals(setOf("widthPx", "heightPx", "density", "posture"), data.keys)
+        } finally {
+            instrumentation.runOnMainSync {
+                host?.stop()
+                activity.finish()
+            }
+            instrumentation.waitForIdleSync()
         }
     }
 }
