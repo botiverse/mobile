@@ -1300,7 +1300,6 @@
     <string name="home_action_view">表示</string>
     <string name="home_action_retry">再試行</string>
     <string name="home_section_servers">サーバー</string>
-    <string name="home_retry_with_code">再試行 · %1$s</string>
     <string name="home_notification_center_title">通知</string>
     <string name="home_notification_center_item_count_one">%1$d 件</string>
     <string name="home_notification_center_item_count_many">%1$d 件</string>

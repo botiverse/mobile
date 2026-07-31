@@ -1991,8 +1991,34 @@ internal data class ThreadAttachmentCommentsDialogState(
     val resolvingCommentIds: Set<String> = emptySet(),
     val pendingAnchorLabel: String? = null,
     val pendingQuoteLabel: String? = null,
-    val errorCode: String? = null
+    val errorCode: String? = null,
+    val errorServerMessage: String? = null
 )
+
+internal fun ThreadAttachmentCommentsDialogState.clearAttachmentCommentsError():
+    ThreadAttachmentCommentsDialogState =
+    copy(errorCode = null, errorServerMessage = null)
+
+internal fun ThreadAttachmentCommentsDialogState.withAttachmentCommentsError(
+    errorCode: String?,
+    serverMessage: String?
+): ThreadAttachmentCommentsDialogState =
+    copy(
+        errorCode = errorCode?.trim()?.takeIf { it.isNotBlank() },
+        errorServerMessage = serverMessage?.trim()?.takeIf { it.isNotBlank() }
+    )
+
+internal fun attachmentCommentsVisibleErrorMessage(
+    errorCode: String?,
+    serverMessage: String?,
+    labels: ThreadUserFacingErrorLabels,
+    genericMessage: String
+): String =
+    threadUserFacingErrorCodeReason(errorCode)
+        ?.takeUnless { it == ThreadUserFacingErrorReason.Generic }
+        ?.let(labels::forReason)
+        ?: serverMessage?.trim()?.takeIf { it.isNotBlank() }
+        ?: genericMessage
 
 internal data class ThreadCreateAgentActionDialogState(
     val messageId: String,
@@ -6169,31 +6195,33 @@ internal fun SharedThreadRouteContent(
                             status = "loaded",
                             page = result.data,
                             sending = false,
-                            resolvingCommentIds = emptySet(),
-                            errorCode = null
-                        )
+                            resolvingCommentIds = emptySet()
+                        ).clearAttachmentCommentsError()
                     is DataResult.Empty ->
                         state.copy(
                             status = "loaded",
                             page = ThreadAttachmentCommentsPage(comments = emptyList(), threadChannelId = null, viewer = null),
                             sending = false,
-                            resolvingCommentIds = emptySet(),
-                            errorCode = null
-                        )
+                            resolvingCommentIds = emptySet()
+                        ).clearAttachmentCommentsError()
                     is DataResult.Error ->
                         state.copy(
                             status = "error",
                             sending = false,
-                            resolvingCommentIds = emptySet(),
-                            errorCode = result.error.code
+                            resolvingCommentIds = emptySet()
+                        ).withAttachmentCommentsError(
+                            errorCode = result.error.code,
+                            serverMessage = result.error.serverMessage
                         )
                     is DataResult.NoPermission -> {
                         if (routeAuthRequired(result)) return@launch
                         state.copy(
                             status = "error",
                             sending = false,
-                            resolvingCommentIds = emptySet(),
-                            errorCode = result.blocker.code
+                            resolvingCommentIds = emptySet()
+                        ).withAttachmentCommentsError(
+                            errorCode = result.blocker.code,
+                            serverMessage = null
                         )
                     }
                 }
@@ -6224,7 +6252,7 @@ internal fun SharedThreadRouteContent(
 
     fun reloadAttachmentComments() {
         val current = attachmentCommentsDialogState ?: return
-        val state = current.copy(status = "loading", errorCode = null)
+        val state = current.copy(status = "loading").clearAttachmentCommentsError()
         attachmentCommentsDialogState = state
         loadAttachmentCommentsIntoDialog(state)
     }
@@ -6237,7 +6265,7 @@ internal fun SharedThreadRouteContent(
         val current = attachmentCommentsDialogState ?: return
         val cleanDraft = current.draft.trim()
         if (cleanDraft.isBlank() || current.sending) return
-        attachmentCommentsDialogState = current.copy(sending = true, errorCode = null)
+        attachmentCommentsDialogState = current.copy(sending = true).clearAttachmentCommentsError()
         coroutineScope.launch {
             when (
                 val result =
@@ -6254,9 +6282,8 @@ internal fun SharedThreadRouteContent(
                             status = "loading",
                             draft = "",
                             sending = false,
-                            pendingQuoteLabel = null,
-                            errorCode = null
-                        )
+                            pendingQuoteLabel = null
+                        ).clearAttachmentCommentsError()
                     attachmentCommentsDialogState = loadingState
                     loadAttachmentCommentsIntoDialog(loadingState)
                 }
@@ -6270,7 +6297,11 @@ internal fun SharedThreadRouteContent(
                     attachmentCommentsDialogState =
                         attachmentCommentsDialogState
                             ?.takeIf { it.attachment.id == current.attachment.id }
-                            ?.copy(sending = false, errorCode = code)
+                            ?.copy(sending = false)
+                            ?.withAttachmentCommentsError(
+                                errorCode = code,
+                                serverMessage = (result as? DataResult.Error)?.error?.serverMessage
+                            )
                     bridge.toast(unableToSendCommentLabel)
                 }
                 is DataResult.NoPermission -> {
@@ -6278,7 +6309,11 @@ internal fun SharedThreadRouteContent(
                     attachmentCommentsDialogState =
                         attachmentCommentsDialogState
                             ?.takeIf { it.attachment.id == current.attachment.id }
-                            ?.copy(sending = false, errorCode = result.blocker.code)
+                            ?.copy(sending = false)
+                            ?.withAttachmentCommentsError(
+                                errorCode = result.blocker.code,
+                                serverMessage = null
+                            )
                     bridge.toast(unableToSendCommentLabel)
                 }
             }
@@ -6294,7 +6329,8 @@ internal fun SharedThreadRouteContent(
         if (comment.id.isBlank() || comment.isThreadAttachmentCommentResolved()) return
         if (comment.id in current.resolvingCommentIds) return
         attachmentCommentsDialogState =
-            current.copy(resolvingCommentIds = current.resolvingCommentIds + comment.id, errorCode = null)
+            current.copy(resolvingCommentIds = current.resolvingCommentIds + comment.id)
+                .clearAttachmentCommentsError()
         coroutineScope.launch {
             when (
                 val result =
@@ -6309,7 +6345,8 @@ internal fun SharedThreadRouteContent(
                     val loadingState =
                         attachmentCommentsDialogState
                             ?.takeIf { it.attachment.id == current.attachment.id }
-                            ?.copy(status = "loading", resolvingCommentIds = emptySet(), errorCode = null)
+                            ?.copy(status = "loading", resolvingCommentIds = emptySet())
+                            ?.clearAttachmentCommentsError()
                             ?: return@launch
                     attachmentCommentsDialogState = loadingState
                     loadAttachmentCommentsIntoDialog(loadingState)
@@ -6326,8 +6363,10 @@ internal fun SharedThreadRouteContent(
                             ?.takeIf { it.attachment.id == current.attachment.id }
                             ?.let { state ->
                                 state.copy(
-                                    resolvingCommentIds = state.resolvingCommentIds - comment.id,
-                                    errorCode = code
+                                    resolvingCommentIds = state.resolvingCommentIds - comment.id
+                                ).withAttachmentCommentsError(
+                                    errorCode = code,
+                                    serverMessage = (result as? DataResult.Error)?.error?.serverMessage
                                 )
                             }
                     bridge.toast(unableToResolveCommentLabel)
@@ -6339,8 +6378,10 @@ internal fun SharedThreadRouteContent(
                             ?.takeIf { it.attachment.id == current.attachment.id }
                             ?.let { state ->
                                 state.copy(
-                                    resolvingCommentIds = state.resolvingCommentIds - comment.id,
-                                    errorCode = result.blocker.code
+                                    resolvingCommentIds = state.resolvingCommentIds - comment.id
+                                ).withAttachmentCommentsError(
+                                    errorCode = result.blocker.code,
+                                    serverMessage = null
                                 )
                             }
                     bridge.toast(unableToResolveCommentLabel)
@@ -8965,7 +9006,8 @@ internal fun SharedThreadRouteContent(
                     attachmentCommentsDialogState =
                         attachmentCommentsDialogState
                             ?.takeIf { it.attachment.id == dialogState.attachment.id }
-                            ?.copy(draft = draft, errorCode = null)
+                            ?.copy(draft = draft)
+                            ?.clearAttachmentCommentsError()
                 },
                 onRetry = ::reloadAttachmentComments,
                 onSend = ::sendAttachmentComment,
@@ -8979,9 +9021,8 @@ internal fun SharedThreadRouteContent(
                                 current.copy(
                                     draft = appendThreadQuoteToComposer(current.draft, quote),
                                     pendingQuoteLabel = comment.senderName,
-                                    pendingAnchorLabel = comment.anchorLabel ?: current.attachment.name,
-                                    errorCode = null
-                                )
+                                    pendingAnchorLabel = comment.anchorLabel ?: current.attachment.name
+                                ).clearAttachmentCommentsError()
                             }
                 }
             )
@@ -24080,7 +24121,13 @@ internal fun ThreadAttachmentCommentsContent(
             "error" ->
                 ThreadStateActionMessage(
                     title = stringResource(MR.strings.thread_comments_load_failed),
-                    detail = userFacingErrorLabels.forErrorCode(state.errorCode) ?: stringResource(MR.strings.common_error),
+                    detail =
+                        attachmentCommentsVisibleErrorMessage(
+                            errorCode = state.errorCode,
+                            serverMessage = state.errorServerMessage,
+                            labels = userFacingErrorLabels,
+                            genericMessage = stringResource(MR.strings.common_error)
+                        ),
                     actionLabel = stringResource(MR.strings.common_retry),
                     onClick = onRetry
                 )
@@ -24113,7 +24160,13 @@ internal fun ThreadAttachmentCommentsContent(
         }
         state.errorCode?.takeIf { state.status != "error" && it.isNotBlank() }?.let { code ->
             Text(
-                text = userFacingErrorLabels.forErrorCode(code)?.uppercase() ?: stringResource(MR.strings.common_error),
+                text =
+                    attachmentCommentsVisibleErrorMessage(
+                        errorCode = code,
+                        serverMessage = state.errorServerMessage,
+                        labels = userFacingErrorLabels,
+                        genericMessage = stringResource(MR.strings.common_error)
+                    ),
                 style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
                 color = SlockColor.AccentRed,
                 maxLines = 1,

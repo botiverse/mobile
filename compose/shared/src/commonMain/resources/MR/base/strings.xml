@@ -1300,7 +1300,6 @@
     <string name="home_action_view">View</string>
     <string name="home_action_retry">Retry</string>
     <string name="home_section_servers">SERVERS</string>
-    <string name="home_retry_with_code">Retry · %1$s</string>
     <string name="home_notification_center_title">NOTIFICATIONS</string>
     <string name="home_notification_center_item_count_one">%1$d item</string>
     <string name="home_notification_center_item_count_many">%1$d items</string>
