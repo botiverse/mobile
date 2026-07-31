@@ -18,7 +18,10 @@ import slockOhosMotionBridge from '../SlockOhosMotionBridge';
 import slockOhosRealtimeBridge from '../SlockOhosRealtimeBridge';
 import { SlockOhosClipboard } from '../SlockOhosClipboard';
 import { SlockOhosDiagnostics } from '../SlockOhosDiagnostics';
-import { cacheSlockOhosPickedAttachment } from '../SlockOhosPickedAttachmentCache';
+import {
+  cacheSlockOhosPickedAttachment,
+  ensureSlockOhosAttachmentCacheDirectory,
+} from '../SlockOhosPickedAttachmentCache';
 import { slockOhosAttachmentDownloadSink } from '../SlockOhosAttachmentDownloadSink';
 import { SlockOhosApiEnvironment, SlockOhosApiEnvironmentStore } from '../SlockOhosApiEnvironmentStore';
 import { SLOCK_OHOS_BUILD_TIME, SLOCK_OHOS_GIT_COMMIT } from '../generated/SlockOhosBuildMetadata';
@@ -1408,7 +1411,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     const files: Array<OhosPickedThreadAttachment> = [];
     const context = getContext(this) as common.UIAbilityContext;
     const cacheDir = `${context.cacheDir}/slock-attachments`;
-    fs.mkdirSync(cacheDir, true);
+    ensureSlockOhosAttachmentCacheDirectory(cacheDir);
     this.cleanupAttachmentCache(cacheDir);
     const pickedAt = Date.now();
     uris.forEach((uri: string, index: number) => {
