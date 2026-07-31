@@ -206,6 +206,7 @@ import com.tencent.kuikly.compose.foundation.gestures.detectHorizontalDragGestur
 import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
 import com.tencent.kuikly.compose.foundation.gestures.awaitEachGesture
 import com.tencent.kuikly.compose.foundation.gestures.awaitFirstDown
+import com.tencent.kuikly.compose.foundation.gestures.awaitLongPressOrCancellation
 import com.tencent.kuikly.compose.foundation.gestures.scrollBy
 import com.tencent.kuikly.compose.foundation.hoverable
 import com.tencent.kuikly.compose.foundation.interaction.MutableInteractionSource
@@ -417,6 +418,11 @@ internal fun threadInlineSelectionEnabledForMessage(
             translationPending = translationPending,
             longMessageCollapsed = longMessageCollapsed
         )
+
+internal fun threadInlineSelectionLongPressObserverEnabled(
+    inlineSelectionEligible: Boolean,
+    selectionActive: Boolean
+): Boolean = inlineSelectionEligible && !selectionActive
 
 internal data class ThreadInlineSelectionToolbarPlacement(
     val xPx: Int,
@@ -3675,6 +3681,14 @@ private fun ThreadMessageVisualScreenContent() {
         }
         return
     }
+    if (visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_SELECTION_DEMO) {
+        ThreadInlineSelectionCompactGroupVisual(
+            messages = payload.toThreadTimelineSlice().messages,
+            inlineSelectionEnabled = inlineSelectionToolbarEnabled,
+            singleTapOpensThreadEnabled = singleTapOpensThreadEnabled
+        )
+        return
+    }
     val baseMessage = payload.toThreadTimelineSlice().messages.firstOrNull()
     val message =
         remember(baseMessage, menuVariant, interactionProbe) {
@@ -3888,6 +3902,60 @@ private fun ThreadMessageVisualScreenContent() {
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ThreadInlineSelectionCompactGroupVisual(
+    messages: List<KuiklyThreadMessageItem>,
+    inlineSelectionEnabled: Boolean,
+    singleTapOpensThreadEnabled: Boolean
+) {
+    var openedMessageId by remember { mutableStateOf<String?>(null) }
+    Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+        LazyColumn(
+            modifier =
+                Modifier
+                    .width(390.dp)
+                    .fillMaxSize()
+                    .padding(SlockSpacing.Md)
+        ) {
+            items(messages.size, key = { index -> messages[index].id }) { index ->
+                val message = messages[index]
+                ThreadMessageCard(
+                    message = message,
+                    messageIndex = index,
+                    compactConsecutiveMessages = true,
+                    suppressRepeatedAuthor = index in 1..2 || index >= 4,
+                    showReplyAction = true,
+                    singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
+                    taskOpenEnabled = false,
+                    taskStatusActionsEnabled = false,
+                    showSaveAction = false,
+                    showReactionAddAction = false,
+                    onShowActions = {},
+                    onOpenMember = {},
+                    onOpenThread = { openedMessageId = it },
+                    onOpenTask = {},
+                    onOpenTaskStatusMenu = {},
+                    onToggleReaction = {},
+                    onOpenAttachment = {},
+                    onOpenMarkdownTag = { _, _ -> },
+                    onOpenMarkdownUrl = {},
+                    inlineSelectionEnabled = inlineSelectionEnabled,
+                    outerPadding = 0.dp
+                )
+            }
+        }
+        if (openedMessageId != null) {
+            Box(
+                modifier =
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .size(24.dp)
+                        .background(Color(0xFFFF00A8))
+            )
         }
     }
 }
@@ -10077,14 +10145,23 @@ internal fun threadVisualFixture(
     return when (fixture) {
         THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_SELECTION_DEMO -> {
             val base = threadVisualFixture(THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT, resolvedInstanceId)
+            val seed = requireNotNull(base.messages.firstOrNull())
             base.copy(
                 alignOwnMessagesRight = false,
+                compactConsecutiveMessages = true,
                 messages =
-                    base.messages.take(1).map { message ->
-                        // Developer fixture copy stays deliberately plain so the demo proves
-                        // the first-phase text-only eligibility boundary.
-                        message.copy(
-                            body = "Long press this message to select all text and open the compact action toolbar.",
+                    List(20) { index ->
+                        val inTargetGroup = index < 3
+                        seed.copy(
+                            id = "visual-inline-selection-$index",
+                            body =
+                                if (inTargetGroup) {
+                                    "Compact selection target ${index + 1}"
+                                } else {
+                                    "Scrollable overflow message ${index + 1}"
+                                },
+                            authorId = if (inTargetGroup) seed.authorId else "visual-overflow-author",
+                            authorName = if (inTargetGroup) seed.authorName else "Overflow Author",
                             authorDescription = null,
                             reactions = emptyList(),
                             replyCount = 0,
@@ -18808,6 +18885,10 @@ private fun ThreadMessageCard(
         } else {
             null
         }
+    val inlineSelectionGestureAnchor =
+        remember(message.id) {
+            SlockLiveRootAnchorRef(identity = "thread-inline-selection:${message.id}")
+        }
     val inlineSelectionGapPx = with(LocalDensity.current) { ThreadInlineSelectionToolbarGap.roundToPx() }
     val inlineSelectionToolbarPlacement =
         inlineSelectionController?.let { controller ->
@@ -19167,9 +19248,42 @@ private fun ThreadMessageCard(
                                             SelectionContainer(
                                                 state = controller.selectionState,
                                                 modifier =
-                                                    Modifier.onGloballyPositioned { coordinates ->
-                                                        controller.containerRootPosition = coordinates.positionInRoot()
-                                                    },
+                                                    Modifier
+                                                        .onGloballyPositioned { coordinates ->
+                                                            controller.containerRootPosition = coordinates.positionInRoot()
+                                                        }
+                                                        .slockCaptureLiveRootAnchor(inlineSelectionGestureAnchor)
+                                                        .then(
+                                                            if (
+                                                                threadInlineSelectionLongPressObserverEnabled(
+                                                                    inlineSelectionEligible = true,
+                                                                    selectionActive = controller.active
+                                                                )
+                                                            ) {
+                                                                Modifier.pointerInput(message.id, pointerSessionKey) {
+                                                                    awaitEachGesture {
+                                                                        val down = awaitFirstDown(requireUnconsumed = false)
+                                                                        val longPress = awaitLongPressOrCancellation(down.id)
+                                                                        if (longPress != null) {
+                                                                            tapMovementGate.rejectChildAction(
+                                                                                "inline_selection_body_long_press"
+                                                                            )
+                                                                            controller.actionMenuAnchor =
+                                                                                inlineSelectionGestureAnchor.resolve(
+                                                                                    SlockPopoverLocalPoint.Exact(longPress.position)
+                                                                                )
+                                                                            diagnosticsLogger(
+                                                                                "thread_inline_selection_long_press " +
+                                                                                    "messageId=${message.id} source=container_observer"
+                                                                            )
+                                                                            controller.selectionState.createSelectionAll()
+                                                                        }
+                                                                    }
+                                                                }
+                                                            } else {
+                                                                Modifier
+                                                            }
+                                                        ),
                                                 onSelectStart = { frame ->
                                                     controller.frame = frame
                                                     controller.active = true
@@ -20873,7 +20987,7 @@ private fun Modifier.threadMessageLongPressActions(
                         movementDecision.reason == "movement" || movementDecision.reason == "multi_touch"
                     val dispatchDecision =
                         decideThreadMessageLongPressDispatch(
-                            detectorAccepted = true,
+                            detectorAccepted = movementDecision.allowed,
                             directPointerMovementDetected = directPointerMovementDetected,
                             isScrollInProgress = currentIsScrollInProgress()
                         )
