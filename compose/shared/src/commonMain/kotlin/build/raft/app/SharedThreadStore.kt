@@ -45,6 +45,7 @@ import build.raft.app.data.SlockAuthSessionStore
 import build.raft.app.data.SlockIntegrationsActionsPushApiClient
 import build.raft.app.data.SavedStatusRepository
 import build.raft.app.data.SharedServerMembersStore
+import build.raft.app.data.SharedCreateAgentFormStore
 import build.raft.app.data.ServerFeatureFlagSnapshot
 import build.raft.app.data.MOBILE_THREAD_PAGE_SIZE_FEATURE_FLAG_KEY
 import build.raft.app.data.SelectedServerStore
@@ -67,6 +68,7 @@ import build.raft.app.data.ThreadReplyCacheIdentitySnapshot
 import build.raft.app.data.ThreadReplyCacheIdentityTransitionAnchor
 import build.raft.app.data.authSessionRequiredResult
 import build.raft.app.data.map
+import build.raft.app.data.recoverRejectedCreateAgentForm
 import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.data.toMessageMetadata
 import build.raft.app.data.toThreadRouteId
@@ -1787,8 +1789,10 @@ internal class SharedThreadDataSource(
      * [SharedCreateAgentCoordinator]. The dialog collects a full
      * [SharedCreateAgentDialogSubmit] (name, description, machineId,
      * runtimeConfig, external); the coordinator owns the body construction
-     * and the API call. The action card is just the metadata that gets
-     * marked executed on success.
+     * and the API call. Runtime-form rejection refreshes the canonical form
+     * store but never replays the mutation; the dialog asks the user to
+     * review the refreshed form and submit again. The action card is just the
+     * metadata that gets marked executed on success.
      *
      * Replaces the legacy `commitAgentCreateActionCard(messageId, card)`
      * which only used name/description/machineId from the action card.
@@ -1796,7 +1800,9 @@ internal class SharedThreadDataSource(
     suspend fun commitAgentCreateActionCardFromDialog(
         messageId: String,
         card: ThreadActionCard,
-        submit: SharedCreateAgentDialogSubmit
+        submit: SharedCreateAgentDialogSubmit,
+        formStore: SharedCreateAgentFormStore?,
+        serverId: String?
     ): DataResult<ThreadActionCard> {
         if (!card.type.equals("agent:create", ignoreCase = true)) {
             return DataResult.Error(ScreenError(code = "action_card_unsupported", retryable = false))
@@ -1806,7 +1812,10 @@ internal class SharedThreadDataSource(
         val coordinator = createAgentCoordinator
             ?: return DataResult.Error(ScreenError(code = "action_card_coordinator_missing", retryable = false))
 
-        val created = coordinator.createAgent(submit.toCreateAgentRequest())
+        val created =
+            coordinator
+                .createAgent(submit.toCreateAgentRequest())
+                .recoverRejectedCreateAgentForm(formStore, serverId, submit.machineId)
         return when (created) {
             is DataResult.Content -> {
                 val resultName = created.data.name.takeIf { it.isNotBlank() } ?: submit.name

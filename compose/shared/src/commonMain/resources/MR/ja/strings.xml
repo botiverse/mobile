@@ -513,6 +513,8 @@
     <string name="thread_action_card_error_mark_done">エージェントは作成されましたが、アクションカードを完了にできませんでした。このスレッドを更新してみてください。</string>
     <string name="thread_action_card_error_agent_not_created">エージェントは作成されませんでした。</string>
     <string name="thread_action_card_error_agent_create">エージェントを作成できませんでした: %1$s</string>
+    <string name="thread_action_card_error_agent_form_refresh_required">エージェント作成フォームが更新されました。更新後の項目を確認して、もう一度お試しください。</string>
+    <string name="thread_action_card_error_agent_form_refresh_failed">エージェント作成フォームを更新できませんでした。もう一度お試しください。</string>
     <string name="thread_action_card_error_select_server">コンピューターを読み込む前にサーバーを選択してください。</string>
     <string name="thread_action_card_error_sign_in_computers">コンピューターを読み込むには、もう一度ログインしてください。</string>
     <string name="thread_action_card_error_computers_permission">コンピューターを表示する権限がありません。</string>
