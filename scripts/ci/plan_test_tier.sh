@@ -21,7 +21,7 @@ is_relevant_path() {
 
 forces_deterministic_full() {
   case "$1" in
-    .github/workflows/test.yml|scripts/ci/plan_test_tier.sh|scripts/ci/verify_test_tier_results.mjs|scripts/ci/test_ci_tiering_contract.sh|.github/rulesets/mobile-main-merge-queue.json)
+    .github/workflows/test.yml|scripts/ci/plan_test_tier.sh|scripts/ci/verify_test_tier_results.mjs|scripts/ci/test_ci_tiering_contract.sh|third_party/kuikly-ui|.github/rulesets/mobile-main-merge-queue.json)
       return 0
       ;;
     *)
@@ -135,6 +135,8 @@ self_test() {
     pull_request false $'.github/workflows/test.yml\n'
   assert_plan $'run_basic=true\nrun_full=true\nrun_emulators=false\nreason=pull-request-ci-control' \
     pull_request false $'.github/workflows/test.yml\ncompose/shared/src/commonMain/kotlin/Example.kt\n'
+  assert_plan $'run_basic=true\nrun_full=true\nrun_emulators=false\nreason=pull-request-ci-control' \
+    pull_request false $'third_party/kuikly-ui\n'
   assert_plan $'run_basic=true\nrun_full=true\nrun_emulators=true\nreason=pull-request-full-ci' \
     pull_request true $'docs/readme.md\n'
   assert_plan $'run_basic=true\nrun_full=true\nrun_emulators=false\nreason=merge-group-deterministic-full' \
