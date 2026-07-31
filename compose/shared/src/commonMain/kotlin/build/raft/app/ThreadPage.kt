@@ -231,6 +231,7 @@ import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.foundation.layout.widthIn
 import com.tencent.kuikly.compose.foundation.layout.wrapContentHeight
+import com.tencent.kuikly.compose.foundation.layout.wrapContentWidth
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.foundation.lazy.LazyListState
 import com.tencent.kuikly.compose.foundation.lazy.LazyRow
@@ -336,6 +337,18 @@ private const val ThreadSendMaxSilentRetries = 2
 private const val ThreadLocalizedFeedbackPlaceholder = "__RAFT_VALUE__"
 private const val ThreadAttachmentUploadConcurrencyLimit = 12
 internal const val ThreadRelativeTimestampSlotWidthDp = 112f
+
+internal data class ThreadSystemMessageTimestampLayoutSpec(
+    val reserveFullMetadataGutter: Boolean,
+    val maxWidthDp: Float
+)
+
+internal fun threadSystemMessageTimestampLayoutSpec(): ThreadSystemMessageTimestampLayoutSpec =
+    ThreadSystemMessageTimestampLayoutSpec(
+        reserveFullMetadataGutter = false,
+        maxWidthDp = ThreadRelativeTimestampSlotWidthDp
+    )
+
 private val ThreadInlineSelectionToolbarGap = 6.dp
 private val ThreadInlineSelectionToolbarWidth = 328.dp
 private val ThreadInlineSelectionReactionRowHeight = 44.dp
@@ -18419,6 +18432,7 @@ private fun ThreadSystemMessageRow(
     timestampValue: String
 ) {
     var expanded by remember(message.id) { mutableStateOf(false) }
+    val timestampLayout = remember { threadSystemMessageTimestampLayoutSpec() }
     val systemBody =
         remember(message.body, message.metadata, message.systemEventType, expanded) {
             if (expanded) {
@@ -18442,7 +18456,12 @@ private fun ThreadSystemMessageRow(
             textAlign = TextAlign.End,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.width(ThreadRelativeTimestampSlotWidthDp.dp)
+            modifier =
+                if (timestampLayout.reserveFullMetadataGutter) {
+                    Modifier.width(timestampLayout.maxWidthDp.dp)
+                } else {
+                    Modifier.widthIn(max = timestampLayout.maxWidthDp.dp).wrapContentWidth()
+                }
         )
         Spacer(modifier = Modifier.width(SlockSpacing.Sm))
         Text(
