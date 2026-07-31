@@ -1516,6 +1516,7 @@ class ThreadBottomAnchorSignatureTest {
             )
         assertTrue(whileFocused.shouldAnchor)
         assertFalse(whileFocused.pendingLayoutChange)
+        assertTrue(whileFocused.anchorFocusedLatestAtRenderedBottom)
 
         val loadedLastHistoryFocused =
             resolveThreadComposerLayoutBottomAnchor(
@@ -1531,6 +1532,7 @@ class ThreadBottomAnchorSignatureTest {
             )
         assertFalse(loadedLastHistoryFocused.shouldAnchor)
         assertTrue(loadedLastHistoryFocused.pendingLayoutChange)
+        assertFalse(loadedLastHistoryFocused.anchorFocusedLatestAtRenderedBottom)
     }
 
     @Test
@@ -1613,6 +1615,7 @@ class ThreadBottomAnchorSignatureTest {
             )
         assertTrue(afterReady.shouldAnchor)
         assertFalse(afterReady.pendingLayoutChange)
+        assertFalse(afterReady.anchorFocusedLatestAtRenderedBottom)
 
         assertEquals(
             ThreadComposerLayoutBottomAnchorDecision(
@@ -1663,6 +1666,161 @@ class ThreadBottomAnchorSignatureTest {
                     nextViewportHeightDp = 240f,
                     focusedAnchorOwnsViewport = true
                 )
+            )
+        )
+    }
+
+    @Test
+    fun composerLayoutBottomAnchor_usesRenderedBottomOnlyForFocusedLatestOwner() {
+        val activeLatest =
+            resolveThreadComposerLayoutBottomAnchor(
+                composerLayoutState(
+                    previousKeyboardInsetDp = 0f,
+                    nextKeyboardInsetDp = 320f,
+                    previousViewportHeightDp = 720f,
+                    nextViewportHeightDp = 408f,
+                    allowBottomAutoAnchor = false,
+                    focusedAnchorOwnsViewport = true,
+                    focusedActiveLatestAnchorCanCorrectLayout = true
+                )
+            )
+        val settledLatest =
+            resolveThreadComposerLayoutBottomAnchor(
+                composerLayoutState(
+                    previousKeyboardInsetDp = 0f,
+                    nextKeyboardInsetDp = 320f,
+                    previousViewportHeightDp = 720f,
+                    nextViewportHeightDp = 408f,
+                    allowBottomAutoAnchor = false,
+                    focusedLatestAnchorCanCorrectLayout = true
+                )
+            )
+        val ordinaryFollowingLatest =
+            resolveThreadComposerLayoutBottomAnchor(
+                composerLayoutState(
+                    previousKeyboardInsetDp = 0f,
+                    nextKeyboardInsetDp = 320f,
+                    previousViewportHeightDp = 720f,
+                    nextViewportHeightDp = 408f
+                )
+            )
+        val historyOrUserOwned =
+            resolveThreadComposerLayoutBottomAnchor(
+                composerLayoutState(
+                    previousKeyboardInsetDp = 0f,
+                    nextKeyboardInsetDp = 320f,
+                    previousViewportHeightDp = 720f,
+                    nextViewportHeightDp = 408f,
+                    allowBottomAutoAnchor = false,
+                    focusedAnchorOwnsViewport = true
+                )
+            )
+
+        assertTrue(activeLatest.anchorFocusedLatestAtRenderedBottom)
+        assertTrue(settledLatest.anchorFocusedLatestAtRenderedBottom)
+        assertFalse(ordinaryFollowingLatest.anchorFocusedLatestAtRenderedBottom)
+        assertFalse(historyOrUserOwned.anchorFocusedLatestAtRenderedBottom)
+    }
+
+    @Test
+    fun focusedAnchorReanchor_inheritsPlacementOnlyForSameIdentity() {
+        val identity = "latest-message:request-9"
+
+        assertEquals(
+            LazyViewportAnchorPlacement.RenderedBottom,
+            focusedAnchorPlacementForIdentity(
+                targetIdentity = identity,
+                placementIdentity = identity,
+                placement = LazyViewportAnchorPlacement.RenderedBottom
+            )
+        )
+        assertEquals(
+            LazyViewportAnchorPlacement.Focused,
+            focusedAnchorPlacementForIdentity(
+                targetIdentity = "latest-message:request-10",
+                placementIdentity = identity,
+                placement = LazyViewportAnchorPlacement.RenderedBottom
+            )
+        )
+        assertEquals(
+            16,
+            focusedAnchorPlacementOffsetForIdentity(
+                targetIdentity = identity,
+                placementIdentity = identity,
+                placement = LazyViewportAnchorPlacement.RenderedBottom,
+                placementOffsetPx = 16
+            )
+        )
+        assertEquals(
+            0,
+            focusedAnchorPlacementOffsetForIdentity(
+                targetIdentity = "latest-message:request-10",
+                placementIdentity = identity,
+                placement = LazyViewportAnchorPlacement.RenderedBottom,
+                placementOffsetPx = 16
+            )
+        )
+    }
+
+    @Test
+    fun focusedLatestComposerLayoutOwner_oldInterruptedNonceDoesNotFenceNewIdentity() {
+        assertTrue(
+            focusedLatestMessageComposerLayoutOwnsViewport(
+                targetIdentity = "latest-message:request-10",
+                targetItemIndex = 17,
+                latestMessageItemIndex = 17,
+                canLoadMoreAfter = false,
+                anchoredIdentity = "latest-message:request-10",
+                consumedIdentity = "latest-message:request-10",
+                scrollInterruptedIdentity = "latest-message:request-9",
+                startUserScrollGeneration = 4,
+                currentUserScrollGeneration = 4
+            )
+        )
+    }
+
+    @Test
+    fun focusedLatestComposerLayoutOwner_requiresCanonicalMessageTailNotPaddingItem() {
+        val messageIndex = 11
+        val bottomPaddingIndex = 12
+
+        assertTrue(
+            focusedLatestMessageComposerLayoutOwnsViewport(
+                targetIdentity = "latest-message:request-11",
+                targetItemIndex = messageIndex,
+                latestMessageItemIndex = messageIndex,
+                canLoadMoreAfter = false,
+                anchoredIdentity = "latest-message:request-11",
+                consumedIdentity = "latest-message:request-11",
+                scrollInterruptedIdentity = null,
+                startUserScrollGeneration = 0,
+                currentUserScrollGeneration = 0
+            )
+        )
+        assertFalse(
+            focusedLatestMessageComposerLayoutOwnsViewport(
+                targetIdentity = "latest-message:request-11",
+                targetItemIndex = messageIndex,
+                latestMessageItemIndex = bottomPaddingIndex,
+                canLoadMoreAfter = false,
+                anchoredIdentity = "latest-message:request-11",
+                consumedIdentity = "latest-message:request-11",
+                scrollInterruptedIdentity = null,
+                startUserScrollGeneration = 0,
+                currentUserScrollGeneration = 0
+            )
+        )
+        assertFalse(
+            focusedLatestMessageComposerLayoutOwnsViewport(
+                targetIdentity = "latest-message:request-11",
+                targetItemIndex = -1,
+                latestMessageItemIndex = -1,
+                canLoadMoreAfter = false,
+                anchoredIdentity = "latest-message:request-11",
+                consumedIdentity = "latest-message:request-11",
+                scrollInterruptedIdentity = null,
+                startUserScrollGeneration = 0,
+                currentUserScrollGeneration = 0
             )
         )
     }

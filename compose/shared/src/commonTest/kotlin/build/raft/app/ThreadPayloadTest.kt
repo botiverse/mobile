@@ -1766,6 +1766,15 @@ class ThreadPayloadTest {
             )
         )
         assertEquals(
+            0,
+            threadInitialBottomAnchorScrollDelta(
+                itemOffset = 520,
+                itemSize = 120,
+                trailingPaddingSize = 0,
+                viewportEndOffset = 640
+            )
+        )
+        assertEquals(
             -520,
             threadLatestItemBottomAnchorScrollOffset(
                 itemSize = 120,
