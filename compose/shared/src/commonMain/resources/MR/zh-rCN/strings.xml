@@ -1237,6 +1237,7 @@
     <string name="agent_create_error_provider_url">提供方地址必须以 http:// 或 https:// 开头</string>
     <string name="agent_create_error_provider_key">使用自定义提供方时必须填写 API 密钥</string>
     <string name="agent_create_error_custom_model">必须填写自定义模型。</string>
+    <string name="agent_create_error_name_taken">该名字已被占用，请换一个名字。</string>
     <string name="agent_create_error_form_refreshed">运行时表单已更新。请检查刷新后的字段，重新输入 API 密钥，然后重试。</string>
     <string name="agent_create_error_form_refresh_failed">无法刷新运行时表单。请检查网络连接后重试。</string>
     <string name="agent_create_error_name_reserved">Agent 名称 @%1$s 已保留，请选择其他名称。</string>

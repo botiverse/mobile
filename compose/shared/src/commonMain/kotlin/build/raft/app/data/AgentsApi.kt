@@ -449,7 +449,7 @@ private fun <T> HomeNetworkResponse.toAgentsDataError(): DataResult<T> =
         else ->
             DataResult.Error(
                 ScreenError(
-                    code = runtimeFormIssueCodeOrNull() ?: "http_$code",
+                    code = runtimeFormIssueCodeOrNull() ?: agentNameConflictCodeOrNull() ?: "http_$code",
                     retryable = code != 404
                 )
             )
@@ -470,6 +470,24 @@ private fun HomeNetworkResponse.runtimeFormIssueCodeOrNull(): String? {
     }.getOrNull()
 }
 
+private fun HomeNetworkResponse.agentNameConflictCodeOrNull(): String? {
+    if (code != 409) return null
+    val body = (bodyText ?: errorBodyText)?.takeIf { it.isNotBlank() } ?: return null
+    // task #191: principal-handle conflicts carry only a human-readable
+    // `error` string, no issues codes ("Agent name X is already taken" /
+    // "Cindy agent already exists in this server"). Match the text until the
+    // server exposes a canonical machine code; these conflicts stay outside
+    // the runtime-form recovery allowlist so they are never auto-retried.
+    val errorText =
+        runCatching {
+            agentsApiJson.decodeFromString(AgentErrorTextEnvelopeDto.serializer(), body).error
+        }.getOrNull() ?: return null
+    val normalized = errorText.lowercase()
+    return AGENT_CREATE_NAME_TAKEN.takeIf {
+        "already taken" in normalized || "already exists" in normalized
+    }
+}
+
 private suspend fun HomeNetworkResponse.mapAgentsCommand(
     contractCode: String,
     diagnosticsLogger: (String) -> Unit = {}
@@ -482,6 +500,11 @@ private suspend fun HomeNetworkResponse.mapAgentsCommand(
 // Source of truth: packages/server/src/services/agentService.ts and the
 // routes/agents.ts handlers. `name` is required; `displayName` may be null but
 // is not used as a fallback for `name` — the server always emits `name`.
+
+@Serializable
+private data class AgentErrorTextEnvelopeDto(
+    val error: String? = null
+)
 
 @Serializable
 private data class AgentErrorEnvelopeDto(

@@ -10,6 +10,7 @@ import build.raft.app.model.buildRuntimeConfig
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertTrue
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.jsonObject
@@ -81,6 +82,32 @@ class AgentsApiTest {
         val error = assertIs<DataResult.Error>(client.createAgent("{}"))
 
         assertEquals("http_409", error.error.code)
+    }
+
+    @Test
+    fun createAgentMapsNameConflictTextToHumaneCode() = runPortableCoroutineTest {
+        val taken =
+            SlockAgentsApiClient(
+                RecordingAgentsApi(
+                    createAgentCode = 409,
+                    createAgentErrorBody = """{"error":"Agent name \"Nova\" is already taken"}"""
+                )
+            ).createAgent("{}")
+        val exists =
+            SlockAgentsApiClient(
+                RecordingAgentsApi(
+                    createAgentCode = 409,
+                    createAgentErrorBody = """{"error":"Cindy agent already exists in this server"}"""
+                )
+            ).createAgent("{}")
+
+        assertEquals(AGENT_CREATE_NAME_TAKEN, assertIs<DataResult.Error>(taken).error.code)
+        assertEquals(AGENT_CREATE_NAME_TAKEN, assertIs<DataResult.Error>(exists).error.code)
+    }
+
+    @Test
+    fun nameConflictStaysOutsideFormRecoveryAllowlist() {
+        assertTrue(AGENT_CREATE_NAME_TAKEN !in CREATE_AGENT_RUNTIME_FORM_REJECTION_CODES)
     }
 
     @Test

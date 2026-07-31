@@ -1239,6 +1239,7 @@
     <string name="agent_create_error_provider_url">プロバイダー URL は http:// または https:// で始まる必要があります</string>
     <string name="agent_create_error_provider_key">カスタムプロバイダーにはプロバイダー API キーが必要です</string>
     <string name="agent_create_error_custom_model">カスタムモデルは必須です。</string>
+    <string name="agent_create_error_name_taken">この名前はすでに使われています。別の名前をお試しください。</string>
     <string name="agent_create_error_form_refreshed">ランタイムフォームが更新されました。更新後の項目を確認し、API キーを再入力してからもう一度お試しください。</string>
     <string name="agent_create_error_form_refresh_failed">ランタイムフォームを更新できませんでした。接続を確認して再試行してください。</string>
     <string name="agent_create_error_name_reserved">エージェント名 @%1$s は予約されています。別の名前を選択してください。</string>
