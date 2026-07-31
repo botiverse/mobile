@@ -2552,6 +2552,23 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureMembersCreateAgentClaudeDialogWithTopSafeArea() {
+        val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
+        captureKmpComponentCase(
+            caseId = "components.members.create-agent.claude-dialog.top-safe-area",
+            pageName = "compose_create_agent_dialog_visual",
+            pageData =
+                createAgentDialogPageData(runtime = "claude").apply {
+                    put("slockVisualZeroSafeArea", false)
+                    put("slockNativeSafeAreaInsetsArePixels", true)
+                    put("safeAreaTop", 24 * density)
+                },
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_500
+        )
+    }
+
+    @Test
     fun captureMembersCreateAgentClaudeCustomProviderDialog() {
         captureKmpComponentCase(
             caseId = "components.members.create-agent.claude-custom-provider-dialog",
