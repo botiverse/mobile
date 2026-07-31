@@ -140,6 +140,62 @@ def check_auth_authority_changed_i18n(locale_xml: dict[str, str]) -> None:
             )
 
 
+def check_system_selectable_text_dialog(thread_page: str) -> None:
+    """Incident: task #924 (system selection menu replaced by app chrome).
+
+    The full-screen Select Text destination must expose the immutable message
+    body through Kuikly's native ``SelectableText`` bridge. Reintroducing a
+    ``SelectionContainer`` or business-owned copy/select controls suppresses
+    platform actions such as Android PROCESS_TEXT and iOS Look Up/Translate.
+    """
+    match = re.search(
+        r"private fun ThreadMessageTextSelectionDialog\(.*?"
+        r"\n}\n\n@Composable\nprivate fun ThreadMessageMenuChrome",
+        thread_page,
+        flags=re.DOTALL,
+    )
+    if match is None:
+        raise Violation(
+            "task #924 anchor missing: ThreadMessageTextSelectionDialog must remain "
+            "a distinct auditable surface"
+        )
+    dialog = match.group(0)
+    required = {
+        "val originalText = message.body": "bind the immutable message body",
+        "LazyColumn(": "keep long text externally scrollable",
+        "SelectableText(": "render through the native selectable-text bridge",
+        "text = originalText": "pass original message bytes to the native surface",
+        "Modal(onWillDismiss = { onDismiss() })": "dispose the surface on dismissal",
+    }
+    for token, reason in required.items():
+        if token not in dialog:
+            raise Violation(f"task #924 regression: selection dialog must {reason}")
+
+    forbidden = (
+        "SelectionContainer",
+        "rememberSelectionContainerState",
+        "onCopyText",
+        "createSelection",
+        "getSelection",
+        "TextField",
+        "pointerInput",
+        "thread_text_selection_",
+        "SlockBrutalActionButton",
+    )
+    for token in forbidden:
+        if token in dialog:
+            raise Violation(
+                f"task #924 regression: selection dialog contains {token}; "
+                "system selection/menu ownership must not be replaced by app logic"
+            )
+
+    if "key(message.id, message.body)" not in thread_page:
+        raise Violation(
+            "task #924 lifecycle fence missing: selection dialog must be keyed by "
+            "message identity and immutable body"
+        )
+
+
 def run(root: Path) -> None:
     def read(rel: str) -> str:
         path = root / rel
@@ -149,6 +205,7 @@ def run(root: Path) -> None:
 
     thread_page = read(THREAD_PAGE)
     check_forward_row_identity(thread_page)
+    check_system_selectable_text_dialog(thread_page)
     check_no_layout_direction_flip(
         {
             THREAD_PAGE: thread_page,
@@ -175,6 +232,38 @@ def self_test() -> None:
             pass
         else:
             raise SystemExit("self-test: row-identity checker accepted a violation")
+
+    good_dialog = """
+key(message.id, message.body) { Unit }
+private fun ThreadMessageTextSelectionDialog(message: Message, onDismiss: () -> Unit) {
+    val originalText = message.body
+    Modal(onWillDismiss = { onDismiss() }) {
+        LazyColumn(
+            modifier = Modifier
+        ) {
+            item { SelectableText(text = originalText) }
+        }
+    }
+}
+
+@Composable
+private fun ThreadMessageMenuChrome() = Unit
+"""
+    check_system_selectable_text_dialog(good_dialog)
+    for bad in (
+        good_dialog.replace("SelectableText(", "SelectionContainer("),
+        good_dialog.replace(
+            "item { SelectableText(text = originalText) }",
+            "SlockBrutalActionButton(); item { SelectableText(text = originalText) }",
+        ),
+        good_dialog.replace("key(message.id, message.body)", "key(message.id)"),
+    ):
+        try:
+            check_system_selectable_text_dialog(bad)
+        except Violation:
+            pass
+        else:
+            raise SystemExit("self-test: task #924 checker accepted a violation")
 
     check_no_layout_direction_flip({"f": "Arrangement.spacedBy(12.dp, Alignment.End)"})
     try:
@@ -234,7 +323,7 @@ def main(argv: list[str]) -> int:
     except Violation as violation:
         print(f"source-constraint violation: {violation}", file=sys.stderr)
         return 1
-    print("source constraints hold (tasks #800/#803/#361/#161 structural faces)")
+    print("source constraints hold (tasks #800/#803/#361/#161/#924 structural faces)")
     return 0
 
 
