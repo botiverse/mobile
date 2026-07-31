@@ -48,6 +48,57 @@ class AgentsApiTest {
         assertEquals("http_409", error.error.code)
     }
 
+    // task #186: the production transport delivers non-2xx bodies as
+    // `bodyText = null, errorBodyText = <envelope>` (NetworkKmmSlockHttpExecutor),
+    // which is the shape the on-device 409 actually arrives in. The recovery
+    // code must map it — reading only bodyText left recovery dead on device.
+    @Test
+    fun createAgentMapsRuntimeFormRejectionFromRealTransportErrorBody() = runPortableCoroutineTest {
+        val client =
+            SlockAgentsApiClient(
+                RecordingAgentsApi(
+                    createAgentCode = 409,
+                    createAgentErrorBody =
+                        """{"error":"Runtime form definition is stale or invalid","issues":[{"code":"form_definition_ref_required","pointer":"/formDefinitionRef"}]}"""
+                )
+            )
+
+        val error = assertIs<DataResult.Error>(client.createAgent("{}"))
+
+        assertEquals("form_definition_ref_required", error.error.code)
+    }
+
+    @Test
+    fun createAgentKeepsGenericConflictWhenErrorBodyIsNotAJsonEnvelope() = runPortableCoroutineTest {
+        val client =
+            SlockAgentsApiClient(
+                RecordingAgentsApi(
+                    createAgentCode = 409,
+                    createAgentErrorBody = "Runtime form definition is stale or invalid"
+                )
+            )
+
+        val error = assertIs<DataResult.Error>(client.createAgent("{}"))
+
+        assertEquals("http_409", error.error.code)
+    }
+
+    @Test
+    fun createAgentKeepsNonAllowlistedErrorBodyConflictGeneric() = runPortableCoroutineTest {
+        val client =
+            SlockAgentsApiClient(
+                RecordingAgentsApi(
+                    createAgentCode = 409,
+                    createAgentErrorBody =
+                        """{"error":"Conflict","issues":[{"code":"unrelated_conflict","pointer":"/name"}]}"""
+                )
+            )
+
+        val error = assertIs<DataResult.Error>(client.createAgent("{}"))
+
+        assertEquals("http_409", error.error.code)
+    }
+
     @Test
     fun typedAgentsApiAcceptsCanonicalUpstreamShapes() = runPortableCoroutineTest {
         val transport = RecordingAgentsApi()
@@ -312,6 +363,9 @@ class AgentsApiTest {
         private val agentBody: String = """{"id":"agent-1","name":"Agent One","displayName":"Noel Bot","role":"Admin","status":"active","model":"gpt-5","runtime":"codex","runtimeConfig":{"version":1,"runtime":"codex","model":{"kind":"preset","id":"gpt-5.6-sol"},"mode":{"kind":"default"}},"machineId":"machine-1","reasoningEffort":"medium","executionMode":"local","avatarUrl":"pixel:robot","creatorId":"user-1","creatorType":"human","creator":{"type":"human","id":"user-1","name":"artin","displayName":"Artin","avatarUrl":"pixel:user","gravatarHash":"hash-1"},"daemonVersion":"0.57.1","envVars":{"OPENAI_API_KEY":"configured","ANTHROPIC_API_KEY":"configured"},"createdAgents":[{"id":"agent-child","name":"helper","displayName":"Helper","runtime":"codex","status":"idle"}],"activity":"idle","activityDetail":"Ready","deletedAt":null}""",
         private val createAgentBody: String = """{"id":"agent-2","name":"Noel","status":"active","avatarUrl":"pixel:tree"}""",
         private val createAgentCode: Int = 200,
+        // Mirrors the production transport shape for non-2xx responses:
+        // when set, the create response carries the body ONLY in errorBodyText.
+        private val createAgentErrorBody: String? = null,
         private val commandBody: String = """{"ok":true}""",
         private val agentDmsBody: String = """[{"id":"dm-1","name":"Agent chat"}]""",
         private val activityBody: String = """[{"id":"a1","type":"tool_start","timestamp":"2026-05-22T00:00:00.000Z"}]""",
@@ -335,7 +389,11 @@ class AgentsApiTest {
 
         override suspend fun createAgent(body: String): HomeNetworkResponse {
             calls += "POST agents body=$body"
-            return HomeNetworkResponse(code = createAgentCode, bodyText = createAgentBody)
+            return if (createAgentErrorBody != null) {
+                HomeNetworkResponse(code = createAgentCode, bodyText = null, errorBodyText = createAgentErrorBody)
+            } else {
+                HomeNetworkResponse(code = createAgentCode, bodyText = createAgentBody)
+            }
         }
 
         override suspend fun updateAgent(agentId: MemberId, body: String): HomeNetworkResponse {
