@@ -20,6 +20,7 @@ import build.raft.app.data.NetworkSlockHomeApi
 import build.raft.app.data.OpenDirectMessageResult
 import build.raft.app.data.RealChannelRepository
 import build.raft.app.data.SettingsServerSidebarPinnedItem
+import build.raft.app.data.ScreenError
 import build.raft.app.data.APP_UPDATE_HOME_NOTIFICATION_ID
 import build.raft.app.data.SharedHomeDataSource
 import build.raft.app.data.SharedHomeIntent
@@ -27,6 +28,7 @@ import build.raft.app.data.SlockComputersNetworkApi
 import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.parseSlockHome
+import build.raft.app.data.userFacingMessage
 import build.raft.app.model.AvatarReference
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
@@ -738,7 +740,10 @@ private fun SlockHomePageContent(routeVisibleTick: Int = 0) {
                         )
                     }
                     is DataResult.Empty -> bridge.toast(unableToOpenDirectMessage)
-                    is DataResult.Error -> bridge.toast("$failedToOpenDirectMessage: ${result.error.code}")
+                    is DataResult.Error ->
+                        bridge.toast(
+                            homeDirectMessageOpenFailureMessage(failedToOpenDirectMessage, result.error)
+                        )
                     is DataResult.NoPermission -> bridge.toast(noDirectMessagePermission)
                 }
             }
@@ -765,6 +770,9 @@ private fun SlockHomePageContent(routeVisibleTick: Int = 0) {
         diagnosticsLogger = bridge::log
     )
 }
+
+internal fun homeDirectMessageOpenFailureMessage(prefix: String, error: ScreenError): String =
+    "$prefix: ${error.userFacingMessage()}"
 
 /**
  * #228: open the thread page for a conversation that the sidebar / pinned list

@@ -14,6 +14,7 @@ import build.raft.app.data.homeServerDrawerNormalizedContentForSnapshot
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedHomeState
 import build.raft.app.data.SettingsServerSidebarPinnedItem
+import build.raft.app.data.ScreenError
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
 import build.raft.app.data.APP_UPDATE_HOME_NOTIFICATION_ID
@@ -40,6 +41,36 @@ import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class SlockHomeComponentsTest {
+    @Test
+    fun directMessageOpenFailureKeepsContextAndShowsTheServerReason() {
+        assertEquals(
+            "Could not open direct message: The member is no longer available",
+            homeDirectMessageOpenFailureMessage(
+                prefix = "Could not open direct message",
+                error =
+                    ScreenError(
+                        code = "http_409",
+                        serverMessage = "The member is no longer available"
+                    )
+            )
+        )
+    }
+
+    @Test
+    fun directMessageOpenFailureNeverFallsBackToABareCode() {
+        val message =
+            homeDirectMessageOpenFailureMessage(
+                prefix = "Could not open direct message",
+                error = ScreenError(code = "direct_message_unknown")
+            )
+
+        assertEquals(
+            "Could not open direct message: Something went wrong. Please try again.",
+            message
+        )
+        assertFalse("direct_message_unknown" in message)
+    }
+
     @Test
     fun hostedDrawerProjectionRetainsTenThousandNormalizedRowsByIdentity() {
         val serverId = ServerId("server-scale")

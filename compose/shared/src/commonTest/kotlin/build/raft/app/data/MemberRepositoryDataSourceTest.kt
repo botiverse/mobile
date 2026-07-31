@@ -1,9 +1,12 @@
 package build.raft.app.data
 
+import build.raft.app.SlockFilePreviewPayload
+import build.raft.app.withAgentWorkspaceLoadError
 import build.raft.app.model.MemberId
 import build.raft.app.model.ServerId
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
@@ -175,6 +178,67 @@ class MemberRepositoryDataSourceTest {
     }
 
     @Test
+    fun workspaceReadErrorsPreserveOnlyStructuredServerErrorText() = runBlocking {
+        val fixtures =
+            listOf(
+                "structured" to ("""{"error":"path query parameter is required"}""" to "path query parameter is required"),
+                "wrong-alias" to ("""{"message":"path query parameter is required"}""" to null),
+                "malformed" to ("""{"error":"unterminated""" to null),
+                "plain-text" to ("path query parameter is required" to null),
+                "empty" to ("" to null)
+            )
+
+        fixtures.forEach { (name, fixture) ->
+            val (body, expectedMessage) = fixture
+            val network =
+                FakeMemberNetworkClient().apply {
+                    workspaceFileResponse = HomeNetworkResponse(code = 400, bodyText = null, errorBodyText = body)
+                }
+            val repository = RealMemberRepository(sampleStore(), network)
+
+            val error =
+                assertIs<DataResult.Error>(
+                    repository.readAgentWorkspaceFile(
+                        DataRequestPriority.Visible,
+                        MemberId("agent-1"),
+                        "/repo/README.md"
+                    ),
+                    name
+                ).error
+
+            assertEquals("http_400", error.code, name)
+            assertEquals(expectedMessage, error.serverMessage, name)
+        }
+    }
+
+    @Test
+    fun workspaceStructuredServerErrorReachesFilePreviewVisibleCopy() = runBlocking {
+        val network =
+            FakeMemberNetworkClient().apply {
+                workspaceFileResponse =
+                    HomeNetworkResponse(
+                        code = 400,
+                        bodyText = null,
+                        errorBodyText = """{"error":"path query parameter is required"}"""
+                    )
+            }
+        val repository = RealMemberRepository(sampleStore(), network)
+
+        val error =
+            assertIs<DataResult.Error>(
+                repository.readAgentWorkspaceFile(
+                    DataRequestPriority.Visible,
+                    MemberId("agent-1"),
+                    "/repo/README.md"
+                )
+            ).error
+        val payload = SlockFilePreviewPayload().withAgentWorkspaceLoadError(error)
+
+        assertEquals("path query parameter is required", payload.message)
+        assertEquals("http_400", payload.error)
+    }
+
+    @Test
     fun agentProfileUpdateBodyKeepsAvatarChangesExplicit() {
         assertEquals(
             """{"name":"Noel Bot","displayName":"Noel Bot","description":null}""",
@@ -243,6 +307,7 @@ class MemberRepositoryDataSourceTest {
             [{"timestamp":1710000000,"entry":{"kind":"agent_status","activity":"working","detail":"Running task"}}]
             """.trimIndent()
         var skillsResponse: HomeNetworkResponse? = null
+        var workspaceFileResponse: HomeNetworkResponse? = null
         var startBlocker: CompletableDeferred<Unit>? = null
 
         override suspend fun request(
@@ -332,6 +397,13 @@ class MemberRepositoryDataSourceTest {
                         {"global":[{"name":"docs","displayName":"Docs","description":"Reads docs"}],"workspace":[]}
                         """.trimIndent()
                     )
+                }
+                normalized == "agents/agent-1/workspace-files/read" && method == "GET" -> {
+                    calls += "GET agents/agent-1/workspace-files/read path=${query.toMap()["path"]}"
+                    workspaceFileResponse
+                        ?: ok(
+                            """{"path":"/repo/README.md","content":"# Readme","binary":false,"size":8,"mimeType":"text/markdown","encoding":"utf8"}"""
+                        )
                 }
                 normalized == "integrations/agents/agent-1" && method == "GET" -> {
                     calls += "GET integrations/agents/agent-1"
