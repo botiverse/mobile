@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.refreshCreateAgentDialogBuiltInForm
 import build.raft.app.runPortableCoroutineTest
 import build.raft.app.model.ServerId
 import build.raft.app.model.RuntimeHostUserState
@@ -96,6 +97,37 @@ class SharedCreateAgentFormStoreTest {
         )
         assertEquals(1, api.definitionCallCount)
         assertEquals(listOf("provider", "model"), api.sourceCalls)
+    }
+
+    @Test
+    fun dialogOpenRefreshesCachedCatalogAndExactFormContract() = runPortableCoroutineTest {
+        val api = SequencedFormComputersApi()
+        val store = SharedCreateAgentFormStore(SlockComputersApiClient(api), this)
+        val initialLoad = async { store.loadSupportedBuiltInForm("server-1", "machine-1") }
+        api.definitionResponses.receive().complete(ok(canonicalDefinitionBody))
+        val initial = assertIs<DataResult.Content<SharedResolvedAgentCreateForm>>(initialLoad.await()).data
+        assertEquals(supportedRef, initial.definition.ref)
+
+        val refresh = async {
+            refreshCreateAgentDialogBuiltInForm(store, "server-1", "machine-1")
+        }
+        api.definitionResponses.receive().complete(
+            ok(
+                canonicalDefinitionBody
+                    .replace("Choose provider", "Fresh provider")
+            )
+        )
+        refresh.await()
+
+        val machineKey = SharedCreateAgentMachineFormKey("server-1", "machine-1")
+        val exactKey = SharedCreateAgentExactFormKey("server-1", "machine-1", supportedRef)
+        assertEquals(2, api.runtimeOptionsCallCount)
+        assertEquals(2, api.definitionCallCount)
+        assertEquals(supportedRef, store.state.value.runtimeCatalogs.getValue(machineKey).options.single().formDefinitionRef)
+        assertEquals(
+            "Fresh provider",
+            store.state.value.resolvedForms.getValue(exactKey).definition.uiSchema.localization.getValue("providerId").hint
+        )
     }
 
     @Test
@@ -274,16 +306,19 @@ class SharedCreateAgentFormStoreTest {
     }
 
     private class SequencedFormComputersApi(
-        private val runtimeOptionsBody: String = canonicalRuntimeOptionsBody,
-        private val sourceBodies: Map<String, String> =
+        var runtimeOptionsBody: String = canonicalRuntimeOptionsBody,
+        var sourceBodies: Map<String, String> =
             mapOf("provider" to canonicalProviderSourceBody, "model" to canonicalModelSourceBody)
     ) : SlockComputersApi {
         val definitionResponses = Channel<CompletableDeferred<HomeNetworkResponse>>(Channel.UNLIMITED)
+        var runtimeOptionsCallCount = 0
         var definitionCallCount = 0
         val sourceCalls = mutableListOf<String>()
 
-        override suspend fun runtimeOptions(serverId: ServerId, machineId: String): HomeNetworkResponse =
-            ok(runtimeOptionsBody)
+        override suspend fun runtimeOptions(serverId: ServerId, machineId: String): HomeNetworkResponse {
+            runtimeOptionsCallCount += 1
+            return ok(runtimeOptionsBody)
+        }
 
         override suspend fun runtimeFormDefinition(
             serverId: ServerId,

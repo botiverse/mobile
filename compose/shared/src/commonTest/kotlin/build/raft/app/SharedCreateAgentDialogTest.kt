@@ -99,6 +99,40 @@ class SharedCreateAgentDialogTest {
     }
 
     @Test
+    fun builtInSubmitWaitsForDialogOpenContractRefresh() {
+        assertFalse(
+            isCreateAgentRuntimeContractReady(
+                runtime = "builtin",
+                builtInFormLoading = true,
+                hasBuiltInRuntimeConfig = true
+            ),
+            "a cached contract must not remain submittable while the dialog refreshes it"
+        )
+        assertFalse(
+            isCreateAgentRuntimeContractReady(
+                runtime = "builtin",
+                builtInFormLoading = false,
+                hasBuiltInRuntimeConfig = false
+            )
+        )
+        assertTrue(
+            isCreateAgentRuntimeContractReady(
+                runtime = "builtin",
+                builtInFormLoading = false,
+                hasBuiltInRuntimeConfig = true
+            )
+        )
+        assertTrue(
+            isCreateAgentRuntimeContractReady(
+                runtime = "codex",
+                builtInFormLoading = true,
+                hasBuiltInRuntimeConfig = false
+            ),
+            "refreshing the Built-in contract must not block unrelated runtimes"
+        )
+    }
+
+    @Test
     fun selectedMachineWithoutRuntimeDataProducesBlockingError() {
         assertEquals(
             CREATE_AGENT_NO_MACHINE_RUNTIMES_ERROR,

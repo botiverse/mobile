@@ -353,6 +353,20 @@ internal fun canEnableBuiltInRuntime(
     hasResolvedExactForm: Boolean
 ): Boolean = hasFormOverride || (hasSupportedExactRef && hasResolvedExactForm)
 
+internal suspend fun refreshCreateAgentDialogBuiltInForm(
+    formStore: SharedCreateAgentFormStore,
+    serverId: String,
+    machineId: String
+) {
+    formStore.loadSupportedBuiltInForm(serverId, machineId, force = true)
+}
+
+internal fun isCreateAgentRuntimeContractReady(
+    runtime: String,
+    builtInFormLoading: Boolean,
+    hasBuiltInRuntimeConfig: Boolean
+): Boolean = runtime != "builtin" || (!builtInFormLoading && hasBuiltInRuntimeConfig)
+
 internal fun createAgentRuntimeAvailabilityError(
     selectedMachineId: String?,
     machineRuntimeIds: List<String>,
@@ -603,13 +617,29 @@ internal fun SharedCreateAgentDialog(
         selectedMachineId?.let { machineId -> SharedCreateAgentExactFormKey(cleanCreateAgentServerId, machineId, ref) }
     }
     val builtInForm = builtInFormOverride ?: builtInExactKey?.let(createAgentFormState.resolvedForms::get)
+    var dialogBuiltInFormRefreshInFlight by remember(
+        createAgentFormStore,
+        cleanCreateAgentServerId,
+        selectedMachineId,
+        external,
+        builtInFormOverride
+    ) {
+        mutableStateOf(
+            createAgentFormStore != null &&
+                cleanCreateAgentServerId.isNotBlank() &&
+                selectedMachineId != null &&
+                !external &&
+                builtInFormOverride == null
+        )
+    }
     val builtInRuntimeEnabled = canEnableBuiltInRuntime(
         hasFormOverride = builtInFormOverride != null,
         hasSupportedExactRef = builtInRef != null,
         hasResolvedExactForm = builtInForm != null
     )
     val builtInFormLoading =
-        createAgentMachineKey?.let { it in createAgentFormState.loadingRuntimeCatalogs } == true ||
+        dialogBuiltInFormRefreshInFlight ||
+            createAgentMachineKey?.let { it in createAgentFormState.loadingRuntimeCatalogs } == true ||
             builtInExactKey?.let { it in createAgentFormState.loadingForms } == true
     val builtInOwner = createAgentFormState.owner
     val builtInWriteOnlyIdentity = SharedBuiltInWriteOnlyIdentity(
@@ -673,10 +703,23 @@ internal fun SharedCreateAgentDialog(
         }
     }
 
-    LaunchedEffect(createAgentFormStore, cleanCreateAgentServerId, selectedMachineId, external) {
+    LaunchedEffect(
+        createAgentFormStore,
+        cleanCreateAgentServerId,
+        selectedMachineId,
+        external,
+        builtInFormOverride
+    ) {
         val machineId = selectedMachineId ?: return@LaunchedEffect
         if (!external && builtInFormOverride == null && cleanCreateAgentServerId.isNotBlank()) {
-            createAgentFormStore?.loadSupportedBuiltInForm(cleanCreateAgentServerId, machineId)
+            createAgentFormStore?.let { formStore ->
+                dialogBuiltInFormRefreshInFlight = true
+                try {
+                    refreshCreateAgentDialogBuiltInForm(formStore, cleanCreateAgentServerId, machineId)
+                } finally {
+                    dialogBuiltInFormRefreshInFlight = false
+                }
+            }
         }
     }
 
@@ -765,7 +808,12 @@ internal fun SharedCreateAgentDialog(
         !submitting &&
         !selectedMachineBlocked &&
         runtimeAvailabilityError == null &&
-        (external || runtime != "builtin" || builtInRuntimeConfig != null)
+        (external ||
+            isCreateAgentRuntimeContractReady(
+                runtime = runtime,
+                builtInFormLoading = builtInFormLoading,
+                hasBuiltInRuntimeConfig = builtInRuntimeConfig != null
+            ))
     val showMachinePicker = !external
 
     LaunchedEffect(selectedMachineId, selectedMachineRuntimeIds, runtime) {
