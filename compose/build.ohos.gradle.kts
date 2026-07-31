@@ -32,17 +32,19 @@ tasks.matching { it.name == "copyNetworkOhosRuntimeLibs" }.configureEach {
     finalizedBy(copyResourceComposeLib)
 }
 
-// KmmResource generated MR resources (task #19): the resource generator's
-// mergeOhosResources collects slock_* string/color/plural JSONs from the
-// shared klibs into mergeRes, but nothing shipped them into the HAP — the
+// KmmResource generated MR resources (task #19, incident task #44):
+// generateMRohosArm64Main writes this app's slock_* string/color/plural JSONs
+// into res, but nothing shipped them into the HAP — the
 // entry target's resource.directories references ./mr-res, synced here.
-// Hung off mergeOhosResources itself (the Kuikly host flow only runs the
-// shared link, never copyNetworkOhosRuntimeLibs), so any link refreshes it.
+// Hung off generateMRohosArm64Main itself (the Kuikly host flow invokes that
+// generator directly), so every DevEco/Hvigor build refreshes the staging
+// roots without depending on the standalone mergeOhosResources task, which is
+// not initialized in this host build.
 // restool rejects the generator's BCP-47 locale dirs ("Invalid qualifier
 // key 'zh-CN'"), so locale segments are rewritten to qualifier form.
 val copyMrResourcesForOhosEntry = tasks.register<Sync>("copyMrResourcesForOhosEntry") {
-    dependsOn(":shared:generateMRohosArm64Main", ":shared:mergeOhosResources")
-    from(project(":shared").layout.buildDirectory.dir("generated/tmm-res/ohosArm64Main/mergeRes"))
+    dependsOn(":shared:generateMRohosArm64Main")
+    from(project(":shared").layout.buildDirectory.dir("generated/tmm-res/ohosArm64Main/res"))
     into(layout.projectDirectory.dir("ohosApp/entry/mr-res"))
     includeEmptyDirs = false
     eachFile {
@@ -64,7 +66,7 @@ val copyMrResourcesForOhosEntry = tasks.register<Sync>("copyMrResourcesForOhosEn
 // every generated MR asset into a separate resource root so the MR locator can
 // be consumed by Kuikly without changing either subsystem's global contract.
 val copyMrKuiklyAssetsForOhosEntry = tasks.register<Sync>("copyMrKuiklyAssetsForOhosEntry") {
-    dependsOn(":shared:generateMRohosArm64Main", ":shared:mergeOhosResources")
+    dependsOn(":shared:generateMRohosArm64Main")
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     into(layout.projectDirectory.dir("ohosApp/entry/mr-kuikly-assets"))
     from(
@@ -75,17 +77,9 @@ val copyMrKuiklyAssetsForOhosEntry = tasks.register<Sync>("copyMrKuiklyAssetsFor
     ) {
         into("resfile/assets")
     }
-    from(
-        project(":shared")
-            .layout
-            .buildDirectory
-            .dir("generated/tmm-res/ohosArm64Main/mergeRes/rawfile/assets")
-    ) {
-        into("resfile/assets")
-    }
     includeEmptyDirs = false
     preserve { include(".gitkeep") }
 }
-project(":shared").tasks.matching { it.name == "mergeOhosResources" }.configureEach {
+project(":shared").tasks.matching { it.name == "generateMRohosArm64Main" }.configureEach {
     finalizedBy(copyMrResourcesForOhosEntry, copyMrKuiklyAssetsForOhosEntry)
 }
