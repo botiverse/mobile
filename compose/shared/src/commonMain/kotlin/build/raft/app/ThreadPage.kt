@@ -18850,6 +18850,7 @@ private fun ThreadSystemMessageRow(
     ) {
         SlockRelativeTimestampText(
             value = timestampValue,
+            displayGroup = SlockTimestampDisplayGroup.Conversation,
             style = SlockType.Caption.copy(color = ThreadSystemMessageTimeColor, fontFamily = SlockMonoFamily),
             color = ThreadSystemMessageTimeColor,
             textAlign = TextAlign.End,
@@ -21975,6 +21976,7 @@ private fun ThreadInlineReplyRow(
         if (reply.createdAt.isNotBlank()) {
             SlockRelativeTimestampText(
                 value = reply.createdAt,
+                displayGroup = SlockTimestampDisplayGroup.Conversation,
                 style = SlockType.Caption.copy(fontSize = 11.5.sp, lineHeight = 15.sp),
                 color = SlockColor.TextBlack.copy(alpha = 0.42f),
                 maxLines = 1,
@@ -23310,6 +23312,7 @@ private fun ThreadMessageTimestampLabel(
 ) {
     SlockRelativeTimestampText(
         value = timestampLabel,
+        displayGroup = SlockTimestampDisplayGroup.Conversation,
         style =
             SlockType.Caption.copy(
                 fontFamily = SlockMonoFamily,
@@ -24599,11 +24602,11 @@ private fun ThreadForwardBundleCard(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false)
                     )
-                    item.formatThreadForwardedTimestampLabel(liveTimeContext)
-                        .takeIf { it.isNotBlank() }
-                        ?.let { timestamp ->
-                        Text(
-                            text = timestamp,
+                    if (item.timestampLabel.isNotBlank()) {
+                        SlockRelativeTimestampText(
+                            value = item.timestampLabel,
+                            timeContext = liveTimeContext,
+                            displayGroup = SlockTimestampDisplayGroup.Conversation,
                             style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 10.sp, lineHeight = 13.sp),
                             color = SlockColor.TextMutedGray,
                             maxLines = 1,

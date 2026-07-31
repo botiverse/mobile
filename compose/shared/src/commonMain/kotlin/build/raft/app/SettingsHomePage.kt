@@ -668,6 +668,7 @@ internal class AppShellChildTabRenderSlot(
 
 internal class AppShellChildTabEntry(
     val debugId: Int,
+    val timestampDisplayState: SlockTimestampDisplayState = SlockTimestampDisplayState(),
     initialSelectedTab: String = "home",
     initialParentVisible: Boolean = true,
     initialRetainedTabs: Set<String> = setOf(initialSelectedTab),
@@ -1508,16 +1509,19 @@ internal class ComposeAuthChooseServerPage : build.raft.app.base.BasePager() {
 internal class ComposeSlockAppShellPage : build.raft.app.base.BasePager() {
     private var initialAuthRestoreTick by mutableStateOf(0)
     private var adaptivePane by mutableStateOf(SlockAdaptivePaneState())
+    private val timestampDisplayState = SlockTimestampDisplayState()
 
     override fun willInit() {
         super.willInit()
         setContent {
-            SlockAppShellContent(
-                pageVisibleTick = slockPageVisibleResumeTick,
-                initialAuthRestoreTick = initialAuthRestoreTick,
-                pageVisible = slockPageVisible,
-                adaptivePane = adaptivePane
-            )
+            SlockTimestampDisplayScope(timestampDisplayState) {
+                SlockAppShellContent(
+                    pageVisibleTick = slockPageVisibleResumeTick,
+                    initialAuthRestoreTick = initialAuthRestoreTick,
+                    pageVisible = slockPageVisible,
+                    adaptivePane = adaptivePane
+                )
+            }
         }
     }
 
@@ -1580,12 +1584,14 @@ private fun SlockAppShellChildTabPageContent() {
     if (appShellChildPageRendersContent(active = active, retained = retained)) {
         val renderer = entry.rendererFor(tab)
         val modalHostState = entry.modalHostState
-        if (modalHostState != null) {
-            SlockUnifiedDialogHostProvider(modalHostState) {
+        SlockTimestampDisplayScope(entry.timestampDisplayState) {
+            if (modalHostState != null) {
+                SlockUnifiedDialogHostProvider(modalHostState) {
+                    renderer(tab, active)
+                }
+            } else {
                 renderer(tab, active)
             }
-        } else {
-            renderer(tab, active)
         }
     } else {
         Box(modifier = Modifier.fillMaxSize())
@@ -2404,6 +2410,8 @@ internal fun SlockAppShellContent(
     val channelNotCreatedMessage = stringResource(MR.strings.channel_create_error_not_created)
     val conversationUnavailableMessage = stringResource(MR.strings.home_error_conversation_unavailable)
     val pager = LocalActivity.current.getPager() as Pager
+    val timestampDisplayState =
+        LocalSlockTimestampDisplayState.current ?: remember { SlockTimestampDisplayState() }
     val launchSelection = remember(pager.pageData.params.toString()) {
         pager.pageData.params.appShellLaunchSelection()
     }
@@ -5769,6 +5777,7 @@ internal fun SlockAppShellContent(
                         remember(childTabShellId) {
                             val entry = AppShellChildTabEntry(
                                 debugId = AppShellChildTabRegistry.createEntryId(),
+                                timestampDisplayState = timestampDisplayState,
                                 initialSelectedTab = currentChildTab,
                                 initialParentVisible = pageVisible,
                                 initialRetainedTabs = retainedAppShellTabs,

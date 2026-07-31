@@ -43,7 +43,7 @@ internal abstract class AuthenticatedProductPager(
     protected fun setAuthenticatedContent(content: @Composable () -> Unit) {
         setContent {
             AuthenticatedProductRouteEffect(this@AuthenticatedProductPager, authenticatedRoute)
-            content()
+            SlockTimestampDisplayScope(content = content)
         }
     }
 }
