@@ -72,7 +72,7 @@ for ((attempt = 1; attempt <= attempts; attempt++)); do
 
   # Preserve this attempt's evidence before it is overwritten, so retries remain
   # auditable (which attempts aborted, how many) instead of clobbering the file.
-  cp -f "$file" "${file}.attempt-${attempt}" 2>/dev/null || true
+  cp -f "$file" "${file}.attempt-${attempt}"
   echo "::warning::infra-abort on attempt ${attempt}/${attempts} for ${file} (cmd_rc=${cmd_rc}); evidence at ${file}.attempt-${attempt}" >&2
   if [[ "$attempt" -lt "$attempts" && "$backoff" -gt 0 ]]; then
     sleep "$backoff"

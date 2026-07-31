@@ -1061,6 +1061,8 @@ jobs:
             canonical-final-pm-clear-retry-*.txt
             canonical-final-iptables-reset-*.txt
             canonical-final-ip6tables-reset-*.txt
+            canonical-final-iptables-postclear-*.txt
+            canonical-final-ip6tables-postclear-*.txt
             canonical-final-app-apk-badging.txt
             canonical-final-test-apk-badging.txt
             canonical-final-target-package-path.txt

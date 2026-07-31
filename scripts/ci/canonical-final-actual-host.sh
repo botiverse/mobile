@@ -169,7 +169,7 @@ for run_attempt in $(seq 1 "$CANONICAL_FINAL_ATTEMPTS"); do
     canonical-final-logcat.txt \
     canonical-final-iptables-after.txt \
     canonical-final-ip6tables-after.txt; do
-    cp -f "$evidence_file" "${evidence_file}.attempt-${run_attempt}" 2>/dev/null || true
+    cp -f "$evidence_file" "${evidence_file}.attempt-${run_attempt}"
   done
   printf 'attempt=%s instrument_status=%s assert_rc=%s reject_v4=[%s] reject_v6=[%s]\n' \
     "$run_attempt" "$INSTRUMENT_STATUS" "$CANONICAL_FINAL_ASSERT_RC" "$REJECT_V4" "$REJECT_V6" \
@@ -187,19 +187,31 @@ for run_attempt in $(seq 1 "$CANONICAL_FINAL_ATTEMPTS"); do
   if test "$CANONICAL_FINAL_ASSERT_RC" -eq 2; then
     echo "::warning::canonical-final infra-abort on attempt ${run_attempt}/${CANONICAL_FINAL_ATTEMPTS} (instrument_status=${INSTRUMENT_STATUS}, egress clean); retrying" >&2
     if test "$run_attempt" -lt "$CANONICAL_FINAL_ATTEMPTS"; then
-      if test "$CANONICAL_FINAL_BACKOFF" -gt 0; then
-        sleep "$CANONICAL_FINAL_BACKOFF"
-      fi
-      # Provable state reset before the next attempt (NOT best-effort): pm clear
-      # must report Success and the zeroed counters must read 0, else fail-fast.
+      # Order matters (task #28 blocker): the snapshot above was clean, but if the
+      # target survived the abort it could emit a REJECT during the reset window.
+      # So (1) stop the target FIRST to end its egress capability, then (2) RE-READ
+      # the counters and STRICTLY require 0 0 — a leak in the snapshot->stop window
+      # is fatal and is NEVER -Z-erased, then (3) zero + verify, and only (4) backoff
+      # once the process is gone (so nothing can leak during the sleep).
+      adb shell am force-stop "$PACKAGE"
       adb shell pm clear "$PACKAGE" | tee "canonical-final-pm-clear-retry-${run_attempt}.txt"
       grep -Fxq Success "canonical-final-pm-clear-retry-${run_attempt}.txt"
+      adb shell iptables -w -L "$CHAIN" -n -v -x > "canonical-final-iptables-postclear-${run_attempt}.txt"
+      adb shell ip6tables -w -L "$CHAIN" -n -v -x > "canonical-final-ip6tables-postclear-${run_attempt}.txt"
+      grep -q REJECT "canonical-final-iptables-postclear-${run_attempt}.txt"
+      grep -q REJECT "canonical-final-ip6tables-postclear-${run_attempt}.txt"
+      test "$(awk '$3 == "REJECT" { print $1 " " $2 }' "canonical-final-iptables-postclear-${run_attempt}.txt")" = "0 0"
+      test "$(awk '$3 == "REJECT" { print $1 " " $2 }' "canonical-final-ip6tables-postclear-${run_attempt}.txt")" = "0 0"
+      # Counters proven still-zero after the target is gone — now zero + verify.
       adb shell iptables -w -Z "$CHAIN"
       adb shell ip6tables -w -Z "$CHAIN"
       adb shell iptables -w -L "$CHAIN" -n -v -x > "canonical-final-iptables-reset-${run_attempt}.txt"
       adb shell ip6tables -w -L "$CHAIN" -n -v -x > "canonical-final-ip6tables-reset-${run_attempt}.txt"
       test "$(awk '$3 == "REJECT" { print $1 " " $2 }' "canonical-final-iptables-reset-${run_attempt}.txt")" = "0 0"
       test "$(awk '$3 == "REJECT" { print $1 " " $2 }' "canonical-final-ip6tables-reset-${run_attempt}.txt")" = "0 0"
+      if test "$CANONICAL_FINAL_BACKOFF" -gt 0; then
+        sleep "$CANONICAL_FINAL_BACKOFF"
+      fi
     fi
     continue
   fi
