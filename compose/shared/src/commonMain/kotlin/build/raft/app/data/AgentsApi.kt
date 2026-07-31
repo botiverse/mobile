@@ -457,7 +457,11 @@ private fun <T> HomeNetworkResponse.toAgentsDataError(): DataResult<T> =
 
 private fun HomeNetworkResponse.runtimeFormIssueCodeOrNull(): String? {
     if (code != 409) return null
-    val body = bodyText?.takeIf { it.isNotBlank() } ?: return null
+    // task #186: the production transport (NetworkKmmSlockHttpExecutor) delivers
+    // every non-2xx body in errorBodyText and leaves bodyText null, so the 409
+    // issues envelope must be read from both fields or the runtime-form
+    // recovery never triggers on device.
+    val body = (bodyText ?: errorBodyText)?.takeIf { it.isNotBlank() } ?: return null
     return runCatching {
         agentsApiJson.decodeFromString(AgentErrorEnvelopeDto.serializer(), body)
             .issues
