@@ -146,6 +146,8 @@ import build.raft.app.data.SharedTasksViewModel
 import build.raft.app.data.WindowNavigationAction
 import build.raft.app.data.WindowNavigationIntent
 import build.raft.app.data.WindowNavigationReadiness
+import build.raft.app.data.ConversationForwardAction
+import build.raft.app.data.toConversationForwardEntry
 import build.raft.app.data.SlockSystemNotificationContract
 import build.raft.app.data.hasCompletedTasksSnapshot
 import build.raft.app.data.realtime.RealtimeCursorPolicy
@@ -551,6 +553,7 @@ const val HOME_SEARCH_FOCUS_INPUT = "focusSearchInput"
 const val AUTH_CHOOSE_SERVER_PAGE = "compose_auth_choose_server"
 const val SLOCK_APP_SHELL_PAGE = "compose_slock_app_shell"
 internal const val SLOCK_APP_SHELL_CHILD_TAB_PAGE = "compose_app_shell_child_tab"
+internal const val SLOCK_CONVERSATION_FORWARD_PAGER_EVENT = "slockConversationForwardRequested"
 private const val AUTH_REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
 private const val AUTH_CHOOSE_SERVER_FROM_SHELL = "slockChooseServerFromShell"
 private const val AUTH_CHOOSE_SERVER_SKIP_INITIAL_LOAD = "slockAuthChooseServerSkipInitialLoad"
@@ -1513,6 +1516,7 @@ internal class ComposeAuthChooseServerPage : build.raft.app.base.BasePager() {
 internal class ComposeSlockAppShellPage : build.raft.app.base.BasePager() {
     private var initialAuthRestoreTick by mutableStateOf(0)
     private var adaptivePane by mutableStateOf(SlockAdaptivePaneState())
+    private var conversationForwardRequestTick by mutableStateOf(0)
 
     override fun willInit() {
         super.willInit()
@@ -1523,7 +1527,8 @@ internal class ComposeSlockAppShellPage : build.raft.app.base.BasePager() {
                     pageVisibleTick = slockPageVisibleResumeTick,
                     initialAuthRestoreTick = initialAuthRestoreTick,
                     pageVisible = slockPageVisible,
-                    adaptivePane = adaptivePane
+                    adaptivePane = adaptivePane,
+                    conversationForwardRequestTick = conversationForwardRequestTick
                 )
             }
         }
@@ -1538,6 +1543,13 @@ internal class ComposeSlockAppShellPage : build.raft.app.base.BasePager() {
     override fun onSlockAdaptivePaneChanged(eventData: JSONObject) {
         val event = eventData.toSlockAdaptivePaneEventOrNull() ?: return
         adaptivePane = reduceSlockAdaptivePane(adaptivePane, event)
+    }
+
+    override fun onReceivePagerEvent(pagerEvent: String, eventData: JSONObject) {
+        super.onReceivePagerEvent(pagerEvent, eventData)
+        if (pagerEvent == SLOCK_CONVERSATION_FORWARD_PAGER_EVENT) {
+            conversationForwardRequestTick += 1
+        }
     }
 }
 
@@ -2405,7 +2417,8 @@ internal fun SlockAppShellContent(
     pageVisibleTick: Int = 0,
     initialAuthRestoreTick: Int = 0,
     pageVisible: Boolean = true,
-    adaptivePane: SlockAdaptivePaneState = SlockAdaptivePaneState()
+    adaptivePane: SlockAdaptivePaneState = SlockAdaptivePaneState(),
+    conversationForwardRequestTick: Int = 0
 ) {
     // #85 follow-up: seed the KmmResource `StringDesc.localeType`
     // global from the persisted `AppLocale` as early as possible
@@ -2480,6 +2493,10 @@ internal fun SlockAppShellContent(
         appShellAppearanceGeneration(pageVisibleTick, initialAuthRestoreTick)
     val windowNavigationCoordinator =
         remember(sharedStores, storeScope) { sharedStores.windowNavigationCoordinator(storeScope) }
+    val conversationForwardHistory =
+        remember(sharedStores, storeScope) { sharedStores.conversationForwardHistory(storeScope) }
+    var handledConversationForwardHomeVisibleTick by remember { mutableStateOf(0) }
+    var handledConversationForwardRequestTick by remember { mutableStateOf(0) }
     LaunchedEffect(pager.pagerId, visibleAppearanceGeneration) {
         if (visibleAppearanceGeneration > 0) {
             sharedStores.markActiveAppShellPager(pager.pagerId)
@@ -3838,6 +3855,8 @@ internal fun SlockAppShellContent(
         membersAgentDetailRefreshKey = 0
         membersListCachedContent = null
         foregroundBannerStore.clear()
+        conversationForwardHistory.clear()
+        bridge.setConversationForwardGestureEnabled(false)
         sharedStores.homeSavedStateCache.clear()
         selectAppShellTab("home")
         retainedAppShellTabs = setOf("home")
@@ -4031,7 +4050,7 @@ internal fun SlockAppShellContent(
         conversation: ThreadLaunchConversationIdentity,
         source: String,
         anchorMessageId: String? = null,
-        pushCurrent: Boolean = true,
+        recordForwardHistory: Boolean = true,
         originFallback: ThreadLaunchOriginFallback? = null
     ) {
         bridge.log(
@@ -4090,9 +4109,23 @@ internal fun SlockAppShellContent(
                         launchPayload = launchPayload,
                     )
                 }
+                // Dual-pane detail does not push a native controller, so it must neither become
+                // a Forward entry nor leave an older native-push branch reachable.
+                conversationForwardHistory.clear()
+                bridge.setConversationForwardGestureEnabled(false)
                 return
             }
         }
+        if (recordForwardHistory) {
+            readyServerId
+                ?.takeIf { it.isNotBlank() }
+                ?.let { serverId ->
+                    conversationForwardHistory.recordNewOpen(
+                        conversation.toConversationForwardEntry(serverId)
+                    )
+                }
+        }
+        bridge.setConversationForwardGestureEnabled(false)
         pager.openStandaloneThreadLaunchPayload(launchPayload, navigationStoreScope)
     }
 
@@ -4101,6 +4134,8 @@ internal fun SlockAppShellContent(
             conversation = request.conversationIdentity,
             source = source,
             anchorMessageId = request.anchorMessageId ?: fallbackAnchorMessageId,
+            // Notification/system window routing is not a user-selected Home branch.
+            recordForwardHistory = false,
             originFallback = request.originFallback
         )
     }
@@ -4147,6 +4182,79 @@ internal fun SlockAppShellContent(
                 conversation = row.toThreadLaunchConversationIdentity(),
                 source = "adaptive_default_landing",
             )
+        }
+    }
+
+    LaunchedEffect(pageVisibleTick) {
+        if (pageVisibleTick > handledConversationForwardHomeVisibleTick) {
+            handledConversationForwardHomeVisibleTick = pageVisibleTick
+            conversationForwardHistory.recordHomeVisible()
+            bridge.log(
+                "conversation_forward_home_visible tick=$pageVisibleTick " +
+                    "available=${conversationForwardHistory.canForward}"
+            )
+        }
+        bridge.setConversationForwardGestureEnabled(
+            homeSurfaceVisible &&
+                homeState.content is SharedHomeContentState.Content &&
+                conversationForwardHistory.canForward
+        )
+    }
+
+    LaunchedEffect(
+        homeSurfaceVisible,
+        readyServerId,
+        renderedHomeServerId,
+        conversationForwardRequestTick
+    ) {
+        if (conversationForwardRequestTick <= handledConversationForwardRequestTick) {
+            bridge.setConversationForwardGestureEnabled(
+                homeSurfaceVisible &&
+                    homeState.content is SharedHomeContentState.Content &&
+                    conversationForwardHistory.canForward
+            )
+            return@LaunchedEffect
+        }
+        handledConversationForwardRequestTick = conversationForwardRequestTick
+        bridge.setConversationForwardGestureEnabled(false)
+        if (!homeSurfaceVisible) {
+            bridge.log("conversation_forward_drop reason=home_surface_not_visible")
+            return@LaunchedEffect
+        }
+        val content = homeState.content as? SharedHomeContentState.Content
+        val readiness =
+            WindowNavigationReadiness(
+                knownServerIds = readySession?.servers.orEmpty().mapTo(linkedSetOf()) { server -> server.id },
+                canonicalServerId = readySession?.currentServerId,
+                homeSnapshotServerId = content?.snapshot?.server?.id?.value,
+                homeSessionServerId = content?.session?.currentServerId,
+                conversationDirectory = appShellConversationDirectory
+            )
+        when (val action = conversationForwardHistory.requestForward(readiness)) {
+            is ConversationForwardAction.Open -> {
+                bridge.log(
+                    "conversation_forward_open serverId=${action.entry.serverId} " +
+                        "threadId=${action.request.conversationIdentity.threadId.value}"
+                )
+                openHomeConversation(
+                    conversation = action.request.conversationIdentity,
+                    source = "ios_forward_gesture",
+                    anchorMessageId = action.request.anchorMessageId,
+                    recordForwardHistory = false,
+                    originFallback = action.request.originFallback
+                )
+            }
+            is ConversationForwardAction.Drop -> {
+                bridge.logWarn("conversation_forward_drop reason=${action.reason}")
+                bridge.toast(conversationUnavailableMessage)
+            }
+            null -> {
+                bridge.log("conversation_forward_defer reason=home_or_directory_not_ready")
+                bridge.setConversationForwardGestureEnabled(
+                    homeState.content is SharedHomeContentState.Content &&
+                        conversationForwardHistory.canForward
+                )
+            }
         }
     }
 
@@ -5149,6 +5257,10 @@ internal fun SlockAppShellContent(
                     onWarn = bridge::logWarn
                 ) ?: return@launch
             homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(identity.threadId.value))
+            conversationForwardHistory.recordNewOpen(
+                identity.toConversationForwardEntry(normalizedServerId)
+            )
+            bridge.setConversationForwardGestureEnabled(false)
             pager.openStandaloneThreadLaunchPayload(payload, targetStoreScope)
             homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.DismissServerSwitcher))
         }

@@ -9,6 +9,8 @@ static const NSInteger SlockKuiklyKeyEventTypeDown = 2;
 static const NSInteger SlockKuiklyKeyCodeTab = 9;
 static const NSTimeInterval SlockKuiklyMillisPerDay = 86400000.0;
 static const NSTimeInterval SlockKuiklyMillisPerMinute = 60000.0;
+static NSString *const SlockAppShellPageName = @"compose_slock_app_shell";
+static NSString *const SlockConversationForwardPagerEvent = @"slockConversationForwardRequested";
 
 static void SlockKuiklyPutHostTimeContextIfMissing(NSMutableDictionary *pageData) {
     NSDate *now = [NSDate date];
@@ -88,6 +90,18 @@ static NSString *SlockKuiklyPixelString(CGFloat points, CGFloat scale) {
         _delegator.delegate = self;
     }
     return self;
+}
+
+- (BOOL)slockIsAppShellPage {
+    return [_pageName isEqualToString:SlockAppShellPageName];
+}
+
+- (void)slockRequestConversationForward {
+    if (!self.slockIsAppShellPage || !self.slockConversationForwardGestureEnabled) {
+        return;
+    }
+    self.slockConversationForwardGestureEnabled = NO;
+    [_delegator sendWithEvent:SlockConversationForwardPagerEvent data:@{}];
 }
 
 - (void)viewDidLoad {

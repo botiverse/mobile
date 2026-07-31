@@ -34,6 +34,9 @@
 /// The gesture recognizer that actually handles interactive pop.
 @property (nonatomic, strong, readonly) UIPanGestureRecognizer *fd_fullscreenPopGestureRecognizer;
 
+/// Right-edge, leftward intent recognizer. Shared owns and validates Forward history.
+@property (nonatomic, strong, readonly) UIScreenEdgePanGestureRecognizer *fd_conversationForwardGestureRecognizer;
+
 /// A view controller is able to control navigation bar's appearance by itself,
 /// rather than a global way, checking "fd_prefersNavigationBarHidden" property.
 /// Default to YES, disable it if you don't want so.

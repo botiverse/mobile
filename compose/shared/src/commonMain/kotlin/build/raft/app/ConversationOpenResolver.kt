@@ -18,7 +18,8 @@ internal enum class ConversationOpenSource {
     Task,
     Markdown,
     ParentConversation,
-    AuthResume
+    AuthResume,
+    HistoryForward
 }
 
 internal data class ConversationOpenSourceMessageIdentity(
@@ -356,6 +357,7 @@ private fun ConversationOpenSourceMessageIdentity.resolveOpenAnchorMessageId(
                 messageId
             }
         ConversationOpenSource.ForegroundBanner,
+        ConversationOpenSource.HistoryForward,
         ConversationOpenSource.Task,
         ConversationOpenSource.Markdown,
         ConversationOpenSource.ParentConversation,

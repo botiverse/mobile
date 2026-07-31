@@ -3079,6 +3079,9 @@ internal class SlockKuiklyBridgeModule(
                 }
                 null
             }
+            // iOS owns the native right-edge recognizer; other hosts keep the shared history
+            // reducer inert and deliberately treat this host-admission update as a no-op.
+            "conversationForwardGesture" -> null
             "log" -> {
                 val payload = JSONObject(params ?: "{}")
                 val content = payload.optString("content")
