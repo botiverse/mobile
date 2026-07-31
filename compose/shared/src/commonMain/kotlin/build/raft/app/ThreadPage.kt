@@ -15772,11 +15772,15 @@ private fun ThreadMessagesList(
             delay(FocusedAnchorSessionRecheckIntervalMs)
             focusedAnchorSessionElapsedMs += FocusedAnchorSessionRecheckIntervalMs
             val currentOffset = listState.focusedAnchorTargetOffset(targetIndex)
+            val currentUserScrollGeneration = userScrollGeneration.value
+            val rawScrollInProgress = listState.isScrollInProgress
+            val explicitInterrupt = scrollInterruptedFocusedMessageAnchorIdentity == targetIdentity
             val action =
                 focusedAnchorSessionAction(
                     userInteracting =
                         focusedAnchorSessionUserOverrideActive(
-                            isScrollInProgress = listState.isScrollInProgress,
+                            startUserScrollGeneration = focusedAnchorStartUserScrollGeneration,
+                            currentUserScrollGeneration = currentUserScrollGeneration,
                             targetIdentity = targetIdentity,
                             scrollInterruptedIdentity = scrollInterruptedFocusedMessageAnchorIdentity
                         ),
@@ -15790,7 +15794,10 @@ private fun ThreadMessagesList(
                     diagnosticsLogger(
                         "thread_focused_anchor_session outcome=interrupted " +
                             "reanchors=$focusedAnchorSessionReanchors driftMaxPx=$driftMaxPx " +
-                            "elapsedMs=$focusedAnchorSessionElapsedMs messageId=$targetMessageId"
+                            "elapsedMs=$focusedAnchorSessionElapsedMs messageId=$targetMessageId " +
+                            "rawScrollInProgress=$rawScrollInProgress explicitInterrupt=$explicitInterrupt " +
+                            "startUserScrollGeneration=$focusedAnchorStartUserScrollGeneration " +
+                            "currentUserScrollGeneration=$currentUserScrollGeneration"
                     )
                     return@LaunchedEffect
                 }
@@ -17467,11 +17474,16 @@ internal fun focusedAnchorIdentityForViewportReplacement(
     pendingIdentity ?: sessionIdentity
 
 internal fun focusedAnchorSessionUserOverrideActive(
-    isScrollInProgress: Boolean,
+    startUserScrollGeneration: Int?,
+    currentUserScrollGeneration: Int,
     targetIdentity: String,
     scrollInterruptedIdentity: String?
 ): Boolean =
-    isScrollInProgress || scrollInterruptedIdentity == targetIdentity
+    scrollInterruptedIdentity == targetIdentity ||
+        (
+            startUserScrollGeneration != null &&
+                startUserScrollGeneration != currentUserScrollGeneration
+        )
 
 internal fun shouldCorrectFocusedAnchorAfterOriginHydration(
     originStatus: String,

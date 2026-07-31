@@ -343,16 +343,42 @@ class ThreadBottomAnchorSignatureTest {
         )
         assertTrue(
             focusedAnchorSessionUserOverrideActive(
-                isScrollInProgress = false,
+                startUserScrollGeneration = 7,
+                currentUserScrollGeneration = 7,
                 targetIdentity = targetIdentity,
                 scrollInterruptedIdentity = targetIdentity
             )
         )
         assertFalse(
             focusedAnchorSessionUserOverrideActive(
-                isScrollInProgress = false,
+                startUserScrollGeneration = 7,
+                currentUserScrollGeneration = 7,
                 targetIdentity = targetIdentity,
                 scrollInterruptedIdentity = focusedMessageAnchorIdentity("other", 1)
+            )
+        )
+    }
+
+    @Test
+    fun focusedAnchorSessionOnlyTreatsProvenUserScrollAsOverride() {
+        val targetIdentity = focusedMessageAnchorIdentity(messageId = "m2", requestNonce = 1)
+
+        // LazyListState.isScrollInProgress also covers programmatic scroll actors.
+        // User intent is proven by the direct-pointer generation fence instead.
+        assertFalse(
+            focusedAnchorSessionUserOverrideActive(
+                startUserScrollGeneration = 4,
+                currentUserScrollGeneration = 4,
+                targetIdentity = targetIdentity,
+                scrollInterruptedIdentity = null
+            )
+        )
+        assertTrue(
+            focusedAnchorSessionUserOverrideActive(
+                startUserScrollGeneration = 4,
+                currentUserScrollGeneration = 5,
+                targetIdentity = targetIdentity,
+                scrollInterruptedIdentity = null
             )
         )
     }
