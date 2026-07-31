@@ -160,7 +160,17 @@ for run_attempt in $(seq 1 "$CANONICAL_FINAL_ATTEMPTS"); do
     REJECT_V6="$(awk '$3 == "REJECT" { print $1 " " $2 }' canonical-final-ip6tables-after.txt)"
   fi
   set -e
-  cp -f canonical-final-instrumentation.txt "canonical-final-instrumentation.txt.attempt-${run_attempt}" 2>/dev/null || true
+  # Archive every per-attempt evidence file (not just the body) so a retry never
+  # overwrites the prior attempt's logcat / counters / status — the receipt stays
+  # auditable across attempts.
+  for evidence_file in \
+    canonical-final-instrumentation.txt \
+    canonical-final-instrumentation-status.txt \
+    canonical-final-logcat.txt \
+    canonical-final-iptables-after.txt \
+    canonical-final-ip6tables-after.txt; do
+    cp -f "$evidence_file" "${evidence_file}.attempt-${run_attempt}" 2>/dev/null || true
+  done
   printf 'attempt=%s instrument_status=%s assert_rc=%s reject_v4=[%s] reject_v6=[%s]\n' \
     "$run_attempt" "$INSTRUMENT_STATUS" "$CANONICAL_FINAL_ASSERT_RC" "$REJECT_V4" "$REJECT_V6" \
     | tee -a canonical-final-retry-receipt.txt

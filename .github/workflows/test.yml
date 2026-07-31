@@ -905,7 +905,7 @@ jobs:
             durable-partition-migration-instrumentation.txt
             thread-newer-auto-pagination-instrumentation.txt
             thread-open-budget-telemetry.txt
-            "*-instrumentation.txt.attempt-*"
+            *-instrumentation.txt.attempt-*
           if-no-files-found: warn
           retention-days: 7
 
@@ -988,7 +988,7 @@ jobs:
           path: |
             api29-connectedtest-app-badging.txt
             attachment-public-downloads-api${{ matrix.api-level }}-instrumentation.txt
-            "*-instrumentation.txt.attempt-*"
+            *-instrumentation.txt.attempt-*
           if-no-files-found: warn
           retention-days: 7
 
@@ -1057,10 +1057,10 @@ jobs:
             canonical-final-instrumentation-list.txt
             canonical-final-instrumentation-list-after.txt
             canonical-final-retry-receipt.txt
-            "canonical-final-instrumentation.txt.attempt-*"
-            "canonical-final-pm-clear-retry-*.txt"
-            "canonical-final-iptables-reset-*.txt"
-            "canonical-final-ip6tables-reset-*.txt"
+            canonical-final-*.attempt-*
+            canonical-final-pm-clear-retry-*.txt
+            canonical-final-iptables-reset-*.txt
+            canonical-final-ip6tables-reset-*.txt
             canonical-final-app-apk-badging.txt
             canonical-final-test-apk-badging.txt
             canonical-final-target-package-path.txt
