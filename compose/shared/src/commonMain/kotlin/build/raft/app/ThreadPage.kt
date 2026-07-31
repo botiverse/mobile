@@ -113,6 +113,7 @@ import build.raft.app.data.RealtimeGuardedActiveThreadSink
 import build.raft.app.data.RealtimeCanonicalFinalSinkSurfaceKey
 import build.raft.app.data.RealtimeScopeAuthority
 import build.raft.app.data.RealtimeRoomLeaseOwner
+import build.raft.app.data.AGENT_CREATE_NAME_TAKEN
 import build.raft.app.data.SharedMessageTranslationStore
 import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.PendingMentionAction
@@ -20429,6 +20430,8 @@ private fun threadCreateAgentDialogErrorCopy(code: String): String =
         "action_card_mark_executed_empty",
         "action_mark_executed_contract_mismatch" -> stringResource(MR.strings.thread_action_card_error_mark_done)
         "agent_create_empty" -> stringResource(MR.strings.thread_action_card_error_agent_not_created)
+        AGENT_CREATE_NAME_TAKEN ->
+            stringResource(MR.strings.agent_create_error_name_taken)
         "agent_create_form_refresh_required" ->
             stringResource(MR.strings.thread_action_card_error_agent_form_refresh_required)
         "agent_create_form_refresh_failed" ->

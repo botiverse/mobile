@@ -162,6 +162,7 @@ internal class SharedCreateAgentCoordinator(
     }
 }
 
+internal const val AGENT_CREATE_NAME_TAKEN = "agent_create_name_taken"
 internal const val AGENT_CREATE_FORM_REFRESH_REQUIRED = "agent_create_form_refresh_required"
 internal const val AGENT_CREATE_FORM_REFRESH_FAILED = "agent_create_form_refresh_failed"
 

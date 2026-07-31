@@ -1239,6 +1239,7 @@
     <string name="agent_create_error_provider_url">Provider URL must start with http:// or https://</string>
     <string name="agent_create_error_provider_key">Provider API key is required for custom provider</string>
     <string name="agent_create_error_custom_model">Custom model is required.</string>
+    <string name="agent_create_error_name_taken">This name is already taken. Try a different name.</string>
     <string name="agent_create_error_form_refreshed">The runtime form changed. Review the refreshed fields, re-enter any API key, and try again.</string>
     <string name="agent_create_error_form_refresh_failed">The runtime form could not be refreshed. Check your connection and retry.</string>
     <string name="agent_create_error_name_reserved">Agent name @%1$s is reserved. Choose another name.</string>
