@@ -14,12 +14,15 @@ import build.raft.app.data.parseSharedAttachmentPreview
 import build.raft.app.data.DataResult
 import build.raft.app.data.NetworkSlockThreadApi
 import build.raft.app.data.RealMemberRepository
+import build.raft.app.data.PermissionBlocker
+import build.raft.app.data.ScreenError
 import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.data.SlockNetworkClient
 import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.data.SlockThreadApiClient
 import build.raft.app.data.ThreadAttachmentCommentItem
 import build.raft.app.data.ThreadApiResult
+import build.raft.app.data.userFacingMessage
 import build.raft.app.markdown.SlockMarkdownBody
 import build.raft.app.model.MemberId
 import build.raft.app.model.SlockWorkspaceFilePreview
@@ -3501,24 +3504,30 @@ private suspend fun SlockFilePreviewPayload.loadAgentWorkspacePreview(
                 messageDesc = MR.strings.file_preview_file_unavailable.desc(),
                 error = "empty_preview"
             )
-        is DataResult.Error ->
-            copy(
-                kind = "error",
-                titleDesc = MR.strings.file_preview_unavailable.desc(),
-                message = "",
-                messageDesc = MR.strings.file_preview_error_load.format(listOf(result.error.code)),
-                error = result.error.code
-            )
-        is DataResult.NoPermission ->
-            copy(
-                kind = "error",
-                titleDesc = MR.strings.file_preview_hidden.desc(),
-                message = "",
-                messageDesc = MR.strings.file_preview_error_hidden.format(listOf(result.blocker.code)),
-                error = result.blocker.code
-            )
+        is DataResult.Error -> withAgentWorkspaceLoadError(result.error)
+        is DataResult.NoPermission -> withAgentWorkspacePermissionError(result.blocker)
     }
 }
+
+internal fun SlockFilePreviewPayload.withAgentWorkspaceLoadError(error: ScreenError): SlockFilePreviewPayload =
+    copy(
+        kind = "error",
+        titleDesc = MR.strings.file_preview_unavailable.desc(),
+        message = error.userFacingMessage(),
+        messageDesc = null,
+        error = error.code
+    )
+
+internal fun SlockFilePreviewPayload.withAgentWorkspacePermissionError(
+    blocker: PermissionBlocker
+): SlockFilePreviewPayload =
+    copy(
+        kind = "error",
+        titleDesc = MR.strings.file_preview_hidden.desc(),
+        message = blocker.userFacingMessage(),
+        messageDesc = null,
+        error = blocker.code
+    )
 
 internal fun slockFilePreviewIsMarkdownAttachment(fileName: String, mimeType: String): Boolean {
     val normalizedMime = mimeType.substringBefore(';').trim()
@@ -3898,7 +3907,11 @@ internal fun SlockFilePreviewPayloadContent(
             SlockFilePreviewMessage(
                 iconName = SlockLucideIconName.TriangleAlert,
                 title = stringResource(MR.strings.file_preview_unavailable),
-                detail = payload.error ?: payload.localizedMessage().ifBlank { stringResource(MR.strings.file_preview_error_load_generic) },
+                detail =
+                    slockFilePreviewVisibleErrorDetail(
+                        localizedMessage = payload.localizedMessage(),
+                        fallbackMessage = stringResource(MR.strings.file_preview_error_load_generic)
+                    ),
                 modifier = modifier.fillMaxWidth().padding(SlockSpacing.Md)
             )
         else ->
@@ -4701,6 +4714,13 @@ private fun String.isMimeTypePresentationSegment(): Boolean {
 @Composable
 private fun SlockFilePreviewPayload.localizedMessage(): String =
     message.ifBlank { messageDesc?.localized().orEmpty() }
+
+internal fun slockFilePreviewVisibleErrorDetail(
+    localizedMessage: String,
+    fallbackMessage: String
+): String =
+    localizedMessage.takeIf { it.isNotBlank() }
+        ?: fallbackMessage
 
 private fun String.slockFilePreviewFileName(fallback: String): String {
     val normalized = trim().replace('\\', '/')
