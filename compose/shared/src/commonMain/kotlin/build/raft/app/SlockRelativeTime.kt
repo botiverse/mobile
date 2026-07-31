@@ -1,7 +1,9 @@
 package build.raft.app
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -29,6 +31,58 @@ internal enum class SlockTimestampDisplayMode {
     Absolute
 }
 
+internal enum class SlockTimestampDisplayGroup {
+    Aggregate,
+    Conversation
+}
+
+internal class SlockTimestampDisplayState(
+    initialAggregateMode: SlockTimestampDisplayMode = SlockTimestampDisplayMode.Relative,
+    initialConversationMode: SlockTimestampDisplayMode = SlockTimestampDisplayMode.Absolute
+) {
+    private var aggregateMode by mutableStateOf(initialAggregateMode)
+    private var conversationMode by mutableStateOf(initialConversationMode)
+
+    fun displayMode(group: SlockTimestampDisplayGroup): SlockTimestampDisplayMode =
+        when (group) {
+            SlockTimestampDisplayGroup.Aggregate -> aggregateMode
+            SlockTimestampDisplayGroup.Conversation -> conversationMode
+        }
+
+    private fun updateDisplayMode(
+        group: SlockTimestampDisplayGroup,
+        mode: SlockTimestampDisplayMode
+    ) {
+        when (group) {
+            SlockTimestampDisplayGroup.Aggregate -> aggregateMode = mode
+            SlockTimestampDisplayGroup.Conversation -> conversationMode = mode
+        }
+    }
+
+    fun toggle(
+        group: SlockTimestampDisplayGroup,
+        value: String?,
+        timeContext: SlockTimeContext?
+    ): SlockTimestampDisplayMode {
+        val nextMode = nextSlockTimestampDisplayMode(displayMode(group), value, timeContext)
+        if (slockTimestampToggleAvailable(value, timeContext)) {
+            updateDisplayMode(group, nextMode)
+        }
+        return nextMode
+    }
+}
+
+internal val LocalSlockTimestampDisplayState =
+    compositionLocalOf<SlockTimestampDisplayState?> { null }
+
+@Composable
+internal fun SlockTimestampDisplayScope(
+    state: SlockTimestampDisplayState = remember { SlockTimestampDisplayState() },
+    content: @Composable () -> Unit
+) {
+    CompositionLocalProvider(LocalSlockTimestampDisplayState provides state, content = content)
+}
+
 @Composable
 internal fun slockRelativeTimestampLabel(
     value: String?,
@@ -46,16 +100,17 @@ internal fun slockRelativeTimestampLabel(
 /**
  * Shared interactive timestamp used by product surfaces that lead with relative time.
  *
- * The default stays relative. A parseable timestamp with a live local time context can be toggled
- * to the existing compact local absolute formatter and back. State is deliberately remembered by
- * this composition instance only: changing the source value resets it, and no preference is
- * persisted or shared with another timestamp.
+ * A parseable timestamp with a live local time context can toggle its window-level display group.
+ * Aggregate surfaces default to relative time; conversation surfaces default to compact local
+ * absolute time. Every timestamp in the same group and active activity/window observes the change.
+ * A newly created window restores both defaults, and the modes are not persisted across restarts.
  */
 @Composable
 internal fun SlockRelativeTimestampText(
     value: String?,
     modifier: Modifier = Modifier,
     timeContext: SlockTimeContext? = null,
+    displayGroup: SlockTimestampDisplayGroup = SlockTimestampDisplayGroup.Aggregate,
     style: TextStyle,
     color: Color = Color.Unspecified,
     maxLines: Int = Int.MAX_VALUE,
@@ -66,11 +121,9 @@ internal fun SlockRelativeTimestampText(
 ) {
     val effectiveContext = currentSlockTimeContext(timeContext)
     val toggleAvailable = slockTimestampToggleAvailable(value, effectiveContext)
-    var displayMode by remember(value?.trim(), toggleAvailable) {
-        mutableStateOf(SlockTimestampDisplayMode.Relative)
-    }
+    val displayState = LocalSlockTimestampDisplayState.current ?: remember { SlockTimestampDisplayState() }
     val resolvedMode =
-        if (toggleAvailable) displayMode else SlockTimestampDisplayMode.Relative
+        resolvedSlockTimestampDisplayMode(displayState.displayMode(displayGroup), value, effectiveContext)
     val relativeLabel = slockRelativeTimestampLabel(value, effectiveContext)
     val absoluteLabel = slockAbsoluteTimestampLabel(value, effectiveContext)
     val displayLabel =
@@ -98,9 +151,8 @@ internal fun SlockRelativeTimestampText(
                     onClickLabel = onClickLabel,
                     role = Role.Button
                 ) {
-                    val nextMode = nextSlockTimestampDisplayMode(displayMode, value, effectiveContext)
+                    val nextMode = displayState.toggle(displayGroup, value, effectiveContext)
                     onToggle(nextMode)
-                    displayMode = nextMode
                 }
                 .semantics { stateDescription = modeDescription }
         } else {
@@ -133,6 +185,17 @@ internal fun slockAbsoluteTimestampLabel(
         formatSlockTimestampLabel(value, timeContext).takeIf { it.isNotBlank() }
     } else {
         null
+    }
+
+internal fun resolvedSlockTimestampDisplayMode(
+    preferred: SlockTimestampDisplayMode,
+    value: String?,
+    timeContext: SlockTimeContext?
+): SlockTimestampDisplayMode =
+    if (slockTimestampToggleAvailable(value, timeContext)) {
+        preferred
+    } else {
+        SlockTimestampDisplayMode.Relative
     }
 
 internal fun nextSlockTimestampDisplayMode(

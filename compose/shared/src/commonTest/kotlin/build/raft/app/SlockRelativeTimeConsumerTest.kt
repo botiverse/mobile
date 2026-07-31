@@ -138,4 +138,136 @@ class SlockRelativeTimeConsumerTest {
             )
         )
     }
+
+    @Test
+    fun oneTimestampToggleChangesTheWindowModeForEveryParseableTimestamp() {
+        val context =
+            SlockTimeContext(
+                localOffsetMinutes = 8 * 60,
+                todayEpochDay = slockEpochDayForDate(2026, 7, 30),
+                nowEpochMillis = 1_785_383_220_000L
+            )
+        val firstTimestamp = "2026-07-30T03:06:00Z"
+        val secondTimestamp = "2026-07-30T04:07:00Z"
+        val state = SlockTimestampDisplayState()
+
+        assertEquals(
+            SlockTimestampDisplayMode.Relative,
+            state.displayMode(SlockTimestampDisplayGroup.Aggregate)
+        )
+        assertEquals(
+            SlockTimestampDisplayMode.Absolute,
+            state.toggle(SlockTimestampDisplayGroup.Aggregate, firstTimestamp, context)
+        )
+        assertEquals(
+            SlockTimestampDisplayMode.Absolute,
+            state.displayMode(SlockTimestampDisplayGroup.Aggregate)
+        )
+        assertEquals(
+            SlockTimestampDisplayMode.Absolute,
+            resolvedSlockTimestampDisplayMode(
+                state.displayMode(SlockTimestampDisplayGroup.Aggregate),
+                secondTimestamp,
+                context
+            )
+        )
+
+        assertEquals(
+            SlockTimestampDisplayMode.Relative,
+            state.toggle(SlockTimestampDisplayGroup.Aggregate, secondTimestamp, context)
+        )
+        assertEquals(
+            SlockTimestampDisplayMode.Relative,
+            state.displayMode(SlockTimestampDisplayGroup.Aggregate)
+        )
+        assertEquals(
+            SlockTimestampDisplayMode.Relative,
+            resolvedSlockTimestampDisplayMode(
+                state.displayMode(SlockTimestampDisplayGroup.Aggregate),
+                firstTimestamp,
+                context
+            )
+        )
+    }
+
+    @Test
+    fun nonInteractiveTimestampCannotResetTheWindowMode() {
+        val context =
+            SlockTimeContext(
+                localOffsetMinutes = 8 * 60,
+                todayEpochDay = slockEpochDayForDate(2026, 7, 30),
+                nowEpochMillis = 1_785_383_220_000L
+            )
+        val parseableTimestamp = "2026-07-30T03:06:00Z"
+        val state =
+            SlockTimestampDisplayState(
+                initialAggregateMode = SlockTimestampDisplayMode.Absolute
+            )
+
+        assertEquals(
+            SlockTimestampDisplayMode.Relative,
+            state.toggle(SlockTimestampDisplayGroup.Aggregate, "Now", context)
+        )
+        assertEquals(
+            SlockTimestampDisplayMode.Absolute,
+            state.displayMode(SlockTimestampDisplayGroup.Aggregate)
+        )
+        assertEquals(
+            SlockTimestampDisplayMode.Relative,
+            resolvedSlockTimestampDisplayMode(
+                state.displayMode(SlockTimestampDisplayGroup.Aggregate),
+                "Now",
+                context
+            )
+        )
+        assertEquals(
+            SlockTimestampDisplayMode.Absolute,
+            resolvedSlockTimestampDisplayMode(
+                state.displayMode(SlockTimestampDisplayGroup.Aggregate),
+                parseableTimestamp,
+                context
+            )
+        )
+    }
+
+    @Test
+    fun newWindowRestoresSurfaceDefaultsAndGroupsToggleIndependently() {
+        val context =
+            SlockTimeContext(
+                localOffsetMinutes = 8 * 60,
+                todayEpochDay = slockEpochDayForDate(2026, 7, 30),
+                nowEpochMillis = 1_785_383_220_000L
+            )
+        val timestamp = "2026-07-30T03:06:00Z"
+        val firstWindow = SlockTimestampDisplayState()
+
+        assertEquals(
+            SlockTimestampDisplayMode.Relative,
+            firstWindow.displayMode(SlockTimestampDisplayGroup.Aggregate)
+        )
+        assertEquals(
+            SlockTimestampDisplayMode.Absolute,
+            firstWindow.displayMode(SlockTimestampDisplayGroup.Conversation)
+        )
+        firstWindow.toggle(SlockTimestampDisplayGroup.Aggregate, timestamp, context)
+        firstWindow.toggle(SlockTimestampDisplayGroup.Conversation, timestamp, context)
+        assertEquals(
+            SlockTimestampDisplayMode.Absolute,
+            firstWindow.displayMode(SlockTimestampDisplayGroup.Aggregate)
+        )
+        assertEquals(
+            SlockTimestampDisplayMode.Relative,
+            firstWindow.displayMode(SlockTimestampDisplayGroup.Conversation)
+        )
+
+        val nextWindow = SlockTimestampDisplayState()
+        assertEquals(
+            SlockTimestampDisplayMode.Relative,
+            nextWindow.displayMode(SlockTimestampDisplayGroup.Aggregate)
+        )
+        assertEquals(
+            SlockTimestampDisplayMode.Absolute,
+            nextWindow.displayMode(SlockTimestampDisplayGroup.Conversation)
+        )
+    }
 }
