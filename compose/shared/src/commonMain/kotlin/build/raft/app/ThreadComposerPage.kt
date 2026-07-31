@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.base.Utils
+import build.raft.app.markdown.SlockMarkdownBody
 import build.raft.app.markdown.traceMarkdownSection
 import build.raft.app.markdown.traceMarkdownSectionNonComposable
 import build.raft.app.components.SlockBrutalActionButton
@@ -119,6 +120,9 @@ private val ComposerChannelSuggestionGlyphSize = 12.dp
 private val ThreadComposerVisualComponentWidth = 342.dp
 private val ThreadComposerVisualComponentMinHeight = 100.dp
 private const val ThreadComposerVisualSuggestionAnchorOffset = 216f
+private const val ThreadComposerSuggestionScrollOracleFixture = "member_suggestions_scroll_oracle"
+private val ThreadComposerSuggestionScrollOracleUnderlay = Color(0xFF22D3EE)
+private val ThreadComposerSuggestionScrollOracleLeak = Color(0xFFEF4444)
 private const val ThreadComposerVisualPreviewUri =
     "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20128%20128%22%3E%3Crect%20width%3D%22128%22%20height%3D%22128%22%20fill%3D%22%23FDE047%22%2F%3E%3Ccircle%20cx%3D%2288%22%20cy%3D%2240%22%20r%3D%2220%22%20fill%3D%22%23F472B6%22%2F%3E%3Cpath%20d%3D%22M16%20104L48%2068l22%2024%2018-16%2024%2028H16z%22%20fill%3D%22%23000000%22%2F%3E%3C%2Fsvg%3E"
 private val threadComposerJson = Json { ignoreUnknownKeys = true }
@@ -699,11 +703,45 @@ internal fun ThreadComposerScreen() {
         )
     }
     val suggestionPortal = remember(payload.instanceId) { ThreadComposerSuggestionPortalState() }
+    var suggestionScrollOracleLeak by remember(payload.instanceId) { mutableStateOf(false) }
+    val suggestionScrollOracleEnabled = visualFixture == ThreadComposerSuggestionScrollOracleFixture
     SlockInputFocusDismissHost { focusDismissModifier ->
         Box(
             modifier = focusDismissModifier.fillMaxSize().background(SlockColor.SurfaceWhite),
             contentAlignment = Alignment.TopCenter
         ) {
+            if (suggestionScrollOracleEnabled) {
+                Box(
+                    modifier =
+                        Modifier
+                            .align(Alignment.TopCenter)
+                            .width(ThreadComposerVisualInputWidth)
+                            .height(ComposerSuggestionPanelMaxHeight)
+                            .background(ThreadComposerSuggestionScrollOracleUnderlay)
+                            .padding(12.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    SlockMarkdownBody(
+                        body = "[UNDERLYING MESSAGE](https://raft.test/composer-suggestion-scroll-oracle)",
+                        textStyle = SlockType.Body.withSlockFontWeight(FontWeight.Bold),
+                        onOpenUrl = { suggestionScrollOracleLeak = true }
+                    )
+                }
+                Box(
+                    modifier =
+                        Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .height(96.dp)
+                            .background(
+                                if (suggestionScrollOracleLeak) {
+                                    ThreadComposerSuggestionScrollOracleLeak
+                                } else {
+                                    SlockColor.SurfaceWhite
+                                }
+                            )
+                )
+            }
             CompositionLocalProvider(LocalThreadComposerSuggestionPortal provides suggestionPortal) {
                 Box(
                     modifier =
@@ -922,6 +960,23 @@ private fun threadComposerVisualFixture(
                     )
             )
         "member_suggestions" -> base.copy(seedText = "@", suggestionsOpen = true)
+        ThreadComposerSuggestionScrollOracleFixture ->
+            base.copy(
+                seedText = "@",
+                suggestionsOpen = true,
+                memberSuggestions =
+                    (1..14).map { index ->
+                        KuiklyComposerMemberItem(
+                            displayName = "Scrollable candidate $index",
+                            handle = "scroll-candidate-$index",
+                            inMentionChannel = true,
+                            kind = MemberKind.Agent,
+                            description = "Suggestion row $index",
+                            avatarWireValue = "pixel:robot",
+                            avatarLabel = index.toString()
+                        )
+                    }
+            )
         "channel_suggestions" -> base.copy(seedText = "#", suggestionsOpen = true)
         "image_preview" ->
             base.copy(
@@ -2435,7 +2490,6 @@ private fun ComposerSuggestionStatusRow(message: String) {
             Modifier
                 .fillMaxWidth()
                 .heightIn(min = ComposerSuggestionStatusRowMinHeight)
-                .slockNativeDispatchCapture()
                 .clickable(onClick = {})
                 .padding(horizontal = 12.dp, vertical = 8.dp),
         contentAlignment = Alignment.CenterStart
@@ -2461,7 +2515,6 @@ private fun ComposerSuggestionHeader(
             Modifier
                 .fillMaxWidth()
                 .background(SlockColor.SurfaceWhite)
-                .slockNativeDispatchCapture()
                 .clickable(onClick = {})
     ) {
         if (topDivider) {
@@ -3194,7 +3247,6 @@ private fun ComposerSuggestionInteractiveRow(
                 Modifier
                     .fillMaxWidth()
                     .heightIn(min = minHeight)
-                    .slockNativeDispatchCapture()
                     .clickable(onClick = onClick)
                     .padding(horizontal = 12.dp, vertical = 6.dp),
             contentAlignment = Alignment.CenterStart
