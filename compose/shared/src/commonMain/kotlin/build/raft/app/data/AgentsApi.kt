@@ -445,12 +445,16 @@ private fun <T> HomeNetworkResponse.toAgentsDataError(): DataResult<T> =
     when (code) {
         401 -> DataResult.NoPermission(PermissionBlocker(code = "auth_required", requiredCapability = "auth_session"))
         403 -> DataResult.NoPermission(PermissionBlocker(code = "server_forbidden", requiredCapability = "server_access"))
-        in 500..599 -> DataResult.Error(ScreenError(code = "server_unavailable", retryable = true))
+        in 500..599 ->
+            DataResult.Error(
+                ScreenError(code = "server_unavailable", retryable = true, serverMessage = serverErrorTextOrNull())
+            )
         else ->
             DataResult.Error(
                 ScreenError(
                     code = runtimeFormIssueCodeOrNull() ?: agentNameConflictCodeOrNull() ?: "http_$code",
-                    retryable = code != 404
+                    retryable = code != 404,
+                    serverMessage = serverErrorTextOrNull()
                 )
             )
     }
@@ -468,6 +472,16 @@ private fun HomeNetworkResponse.runtimeFormIssueCodeOrNull(): String? {
             .firstOrNull { it.code in CREATE_AGENT_RUNTIME_FORM_REJECTION_CODES }
             ?.code
     }.getOrNull()
+}
+
+// task #193: the raw server `error` text travels with every mapped agents
+// error so displays can fall back to the real reason (honest-states
+// contract) instead of a bare http code.
+private fun HomeNetworkResponse.serverErrorTextOrNull(): String? {
+    val body = (bodyText ?: errorBodyText)?.takeIf { it.isNotBlank() } ?: return null
+    return runCatching {
+        agentsApiJson.decodeFromString(AgentErrorTextEnvelopeDto.serializer(), body).error
+    }.getOrNull()?.trim()?.takeIf { it.isNotBlank() }
 }
 
 private fun HomeNetworkResponse.agentNameConflictCodeOrNull(): String? {

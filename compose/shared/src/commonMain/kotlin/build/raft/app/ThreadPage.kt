@@ -1994,12 +1994,30 @@ internal data class ThreadAttachmentCommentsDialogState(
     val errorCode: String? = null
 )
 
-private data class ThreadCreateAgentActionDialogState(
+internal data class ThreadCreateAgentActionDialogState(
     val messageId: String,
     val card: ThreadActionCard,
     val submitting: Boolean = false,
-    val errorCode: String? = null
+    val errorCode: String? = null,
+    // task #193 honest-states: raw server error text for the unmapped-code
+    // fallback so the dialog never shows a bare code.
+    val errorServerMessage: String? = null
 )
+
+// task #193: single-source state transitions so a previous request's raw
+// server message can never leak into a later request's error display —
+// every transition that sets or clears errorCode settles errorServerMessage
+// in the same step.
+internal fun ThreadCreateAgentActionDialogState.submittingWith(
+    card: ThreadActionCard
+): ThreadCreateAgentActionDialogState =
+    copy(card = card, submitting = true, errorCode = null, errorServerMessage = null)
+
+internal fun ThreadCreateAgentActionDialogState.failedWith(
+    errorCode: String?,
+    errorServerMessage: String? = null
+): ThreadCreateAgentActionDialogState =
+    copy(submitting = false, errorCode = errorCode, errorServerMessage = errorServerMessage)
 
 private data class ThreadMarkdownTaskCandidateModalState(
     val taskNumber: Int,
@@ -8987,7 +9005,7 @@ internal fun SharedThreadRouteContent(
                     }
                     val normalizedName = request.name.trim().removePrefix("@")
                     if (normalizedName.isBlank()) {
-                        createAgentDialogState = dialogState.copy(errorCode = "agent_name_required")
+                        createAgentDialogState = dialogState.failedWith("agent_name_required")
                         return@submitCreateAgent
                     }
                     val submitCard =
@@ -9001,12 +9019,7 @@ internal fun SharedThreadRouteContent(
                                     dialogState.card.suggestedComputer
                                 }
                         )
-                    val submittingState =
-                        dialogState.copy(
-                            card = submitCard,
-                            submitting = true,
-                            errorCode = null
-                        )
+                    val submittingState = dialogState.submittingWith(submitCard)
                     createAgentDialogState = submittingState
                     pendingActionCardIds = pendingActionCardIds + dialogState.messageId
                     coroutineScope.launch {
@@ -9031,18 +9044,15 @@ internal fun SharedThreadRouteContent(
                                 is DataResult.Empty,
                                 is DataResult.Error -> {
                                     createAgentDialogState =
-                                        submittingState.copy(
-                                            submitting = false,
-                                            errorCode = result.threadActionErrorCode("agent_create_failed")
+                                        submittingState.failedWith(
+                                            errorCode = result.threadActionErrorCode("agent_create_failed"),
+                                            errorServerMessage = (result as? DataResult.Error)?.error?.serverMessage
                                         )
                                 }
                                 is DataResult.NoPermission -> {
                                     if (routeAuthRequired(result)) return@launch
                                     createAgentDialogState =
-                                        submittingState.copy(
-                                            submitting = false,
-                                            errorCode = result.blocker.code
-                                        )
+                                        submittingState.failedWith(errorCode = result.blocker.code)
                                 }
                             }
                         } finally {
@@ -9284,7 +9294,10 @@ private fun ThreadCreateAgentActionDialogHost(
         }
     SharedCreateAgentDialog(
         submitting = dialogState.submitting,
-        errorMessage = dialogState.errorCode?.let { threadCreateAgentDialogErrorCopy(it) },
+        errorMessage =
+            dialogState.errorCode?.let {
+                threadCreateAgentDialogErrorCopy(it, dialogState.errorServerMessage)
+            },
         initialName = dialogState.card.name.removePrefix("@"),
         initialDescription = dialogState.card.description.orEmpty(),
         draftHint = dialogState.card.draftHint,
@@ -20875,7 +20888,7 @@ private fun ThreadActionCard.localizedActionCardCommittedLabel(): String {
 }
 
 @Composable
-private fun threadCreateAgentDialogErrorCopy(code: String): String =
+private fun threadCreateAgentDialogErrorCopy(code: String, serverMessage: String? = null): String =
     when (code) {
         "agent_name_required",
         "action_card_agent_name_missing" -> stringResource(MR.strings.thread_action_card_error_agent_name_required)
@@ -20890,7 +20903,11 @@ private fun threadCreateAgentDialogErrorCopy(code: String): String =
             stringResource(MR.strings.thread_action_card_error_agent_form_refresh_required)
         "agent_create_form_refresh_failed" ->
             stringResource(MR.strings.thread_action_card_error_agent_form_refresh_failed)
-        else -> stringResource(MR.strings.thread_action_card_error_agent_create, code)
+        // task #193 honest-states: unmapped code -> raw server reason first,
+        // localized generic-with-code only when the server sent no text.
+        else ->
+            serverMessage?.takeIf { it.isNotBlank() }
+                ?: stringResource(MR.strings.thread_action_card_error_agent_create, code)
     }
 
 @Composable

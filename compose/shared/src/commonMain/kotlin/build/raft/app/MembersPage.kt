@@ -84,6 +84,7 @@ import build.raft.app.data.SharedComputersPickerSlice
 import build.raft.app.data.SharedComputersStore
 import build.raft.app.data.AGENT_CREATE_FORM_REFRESH_FAILED
 import build.raft.app.data.AGENT_CREATE_NAME_TAKEN
+import build.raft.app.data.createAgentFallbackErrorText
 import build.raft.app.data.AGENT_CREATE_FORM_REFRESH_REQUIRED
 import build.raft.app.data.SharedServerMembersEntry
 import build.raft.app.data.SharedServerMembersState
@@ -3979,7 +3980,7 @@ internal fun MembersListContent(
                                         createAgentFormRefreshed
                                     AGENT_CREATE_FORM_REFRESH_FAILED ->
                                         createAgentFormRefreshFailed
-                                    else -> "$createAgentFailed: ${result.error.code}"
+                                    else -> createAgentFallbackErrorText(result.error, createAgentFailed)
                                 }
                         }
                         is DataResult.NoPermission -> {
