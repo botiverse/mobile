@@ -105,20 +105,19 @@ adb shell ip6tables -w -L "$CHAIN" -n -v -x > canonical-final-ip6tables-before.t
 test "$(awk '$3 == "REJECT" { print $1 " " $2 }' canonical-final-iptables-before.txt)" = "0 0"
 test "$(awk '$3 == "REJECT" { print $1 " " $2 }' canonical-final-ip6tables-before.txt)" = "0 0"
 
-# Bounded infra-abort retry (task #28 blocker #3): a lone emulator/ADB/system
-# crash here must not red this required job like a real regression once the
-# emulator lane is admitted to merge_group. Retry ONLY on assert exit 2
-# (infra-abort); a real test failure or an egress breach fails fast. Each
-# attempt resets the app (pm clear) and zeroes the egress counters (-Z; the
-# UID-owner chain itself survives pm clear) so the reject-counter verification
-# stays clean per attempt.
+# Bounded infra-abort retry (task #28 blockers #1/#3). Order per attempt:
+# classify + archive first; then the exact-zero egress gate fail-fasts on EVERY
+# attempt (a non-loopback REJECT is a real leak, and an unreadable counter cannot
+# prove no leak — neither is ever retried or -Z-erased, so an abort can never mask
+# a leak); only a pure infra-abort (assert exit 2) with a PROVABLY clean counter
+# retries, and the pre-retry state reset (pm clear + iptables -Z) is verified, not
+# best-effort. Evidence capture runs under `set +e` so a device that went offline
+# still reaches the gate instead of aborting mid-capture.
 CANONICAL_FINAL_ATTEMPTS="${INSTRUMENTATION_MAX_ATTEMPTS:-3}"
 CANONICAL_FINAL_BACKOFF="${INSTRUMENTATION_RETRY_BACKOFF_SECONDS:-10}"
 CANONICAL_FINAL_OK=0
+: > canonical-final-retry-receipt.txt
 for run_attempt in $(seq 1 "$CANONICAL_FINAL_ATTEMPTS"); do
-  adb shell pm clear "$PACKAGE" >/dev/null 2>&1 || true
-  adb shell iptables -w -Z "$CHAIN" >/dev/null 2>&1 || true
-  adb shell ip6tables -w -Z "$CHAIN" >/dev/null 2>&1 || true
   adb logcat -c
   adb logcat -v threadtime > canonical-final-logcat-live.txt &
   LOGCAT_PID=$!
@@ -126,40 +125,75 @@ for run_attempt in $(seq 1 "$CANONICAL_FINAL_ATTEMPTS"); do
   INSTRUMENT_PID=$!
   PID_DURING=""
   for pid_probe in $(seq 1 200); do
-    PID_DURING="$(adb shell pidof "$PACKAGE" | tr -d '\r' || true)"
+    PID_DURING="$(adb shell pidof "$PACKAGE" | tr -d '\r' 2>/dev/null || true)"
     if test -n "$PID_DURING"; then
       break
     fi
     sleep 0.1
   done
   printf 'pid_during=%s\n' "$PID_DURING" >> canonical-final-process.txt
-  wait "$INSTRUMENT_PID"
-  INSTRUMENT_STATUS="$(cat canonical-final-instrumentation-status.txt)"
+  wait "$INSTRUMENT_PID" || true
+  INSTRUMENT_STATUS="$(cat canonical-final-instrumentation-status.txt 2>/dev/null || echo unknown)"
   kill "$LOGCAT_PID" 2>/dev/null || true
   wait "$LOGCAT_PID" 2>/dev/null || true
   LOGCAT_PID=""
-  cat canonical-final-instrumentation.txt
-  adb shell iptables -w -L "$CHAIN" -n -v -x > canonical-final-iptables-after.txt
-  adb shell ip6tables -w -L "$CHAIN" -n -v -x > canonical-final-ip6tables-after.txt
-  adb logcat -d -v threadtime > canonical-final-logcat.txt
-  adb shell ps -A > canonical-final-process-list.txt
-  adb shell pm list instrumentation > canonical-final-instrumentation-list-after.txt
-  grep 'canonical_final_actual_host_trace' canonical-final-logcat.txt > canonical-final-trace.txt || true
-  # Classify without aborting (script is set -e): only exit 2 is a retryable
-  # infra-abort. Shared min-count contract fail-closes on failure markers,
-  # skipped/ignored/assumption and zero-test runs; the class owns 3 tests.
+  # Evidence capture is best-effort (set +e): a device that went offline must not
+  # abort here before the egress gate and classification run.
   set +e
+  cat canonical-final-instrumentation.txt
+  adb shell iptables -w -L "$CHAIN" -n -v -x > canonical-final-iptables-after.txt 2>/dev/null
+  adb shell ip6tables -w -L "$CHAIN" -n -v -x > canonical-final-ip6tables-after.txt 2>/dev/null
+  adb logcat -d -v threadtime > canonical-final-logcat.txt 2>/dev/null
+  adb shell ps -A > canonical-final-process-list.txt 2>/dev/null
+  adb shell pm list instrumentation > canonical-final-instrumentation-list-after.txt 2>/dev/null
+  grep 'canonical_final_actual_host_trace' canonical-final-logcat.txt > canonical-final-trace.txt 2>/dev/null
   scripts/ci/assert-instrumentation-ok.sh canonical-final-instrumentation.txt 3
   CANONICAL_FINAL_ASSERT_RC=$?
+  # Egress counters are readable ONLY if the REJECT rule line is present; an
+  # absent line (device offline) stays "unreadable" and is treated as a leak.
+  REJECT_V4="unreadable"
+  REJECT_V6="unreadable"
+  if grep -q REJECT canonical-final-iptables-after.txt 2>/dev/null; then
+    REJECT_V4="$(awk '$3 == "REJECT" { print $1 " " $2 }' canonical-final-iptables-after.txt)"
+  fi
+  if grep -q REJECT canonical-final-ip6tables-after.txt 2>/dev/null; then
+    REJECT_V6="$(awk '$3 == "REJECT" { print $1 " " $2 }' canonical-final-ip6tables-after.txt)"
+  fi
   set -e
+  cp -f canonical-final-instrumentation.txt "canonical-final-instrumentation.txt.attempt-${run_attempt}" 2>/dev/null || true
+  printf 'attempt=%s instrument_status=%s assert_rc=%s reject_v4=[%s] reject_v6=[%s]\n' \
+    "$run_attempt" "$INSTRUMENT_STATUS" "$CANONICAL_FINAL_ASSERT_RC" "$REJECT_V4" "$REJECT_V6" \
+    | tee -a canonical-final-retry-receipt.txt
+
+  # SECURITY egress gate — ALWAYS fail-fast, independent of infra classification.
+  # A non-zero reject is a real egress leak; an unreadable counter cannot prove no
+  # leak. Neither is retried or -Z-erased, so an abort can never mask a leak.
+  if test "$REJECT_V4" != "0 0" || test "$REJECT_V6" != "0 0"; then
+    echo "canonical-final egress gate FAILED on attempt ${run_attempt}: reject_v4=[${REJECT_V4}] reject_v6=[${REJECT_V6}] (leak or unprovable counter — fatal, never retried)" >&2
+    exit 1
+  fi
+
+  # Egress provably clean (counter==0). Only a pure infra-abort may retry.
   if test "$CANONICAL_FINAL_ASSERT_RC" -eq 2; then
-    cp -f canonical-final-instrumentation.txt "canonical-final-instrumentation.txt.attempt-${run_attempt}" 2>/dev/null || true
-    echo "::warning::canonical-final infra-abort on attempt ${run_attempt}/${CANONICAL_FINAL_ATTEMPTS} (instrument_status=${INSTRUMENT_STATUS}); evidence archived" >&2
-    if test "$run_attempt" -lt "$CANONICAL_FINAL_ATTEMPTS" && test "$CANONICAL_FINAL_BACKOFF" -gt 0; then
-      sleep "$CANONICAL_FINAL_BACKOFF"
+    echo "::warning::canonical-final infra-abort on attempt ${run_attempt}/${CANONICAL_FINAL_ATTEMPTS} (instrument_status=${INSTRUMENT_STATUS}, egress clean); retrying" >&2
+    if test "$run_attempt" -lt "$CANONICAL_FINAL_ATTEMPTS"; then
+      if test "$CANONICAL_FINAL_BACKOFF" -gt 0; then
+        sleep "$CANONICAL_FINAL_BACKOFF"
+      fi
+      # Provable state reset before the next attempt (NOT best-effort): pm clear
+      # must report Success and the zeroed counters must read 0, else fail-fast.
+      adb shell pm clear "$PACKAGE" | tee "canonical-final-pm-clear-retry-${run_attempt}.txt"
+      grep -Fxq Success "canonical-final-pm-clear-retry-${run_attempt}.txt"
+      adb shell iptables -w -Z "$CHAIN"
+      adb shell ip6tables -w -Z "$CHAIN"
+      adb shell iptables -w -L "$CHAIN" -n -v -x > "canonical-final-iptables-reset-${run_attempt}.txt"
+      adb shell ip6tables -w -L "$CHAIN" -n -v -x > "canonical-final-ip6tables-reset-${run_attempt}.txt"
+      test "$(awk '$3 == "REJECT" { print $1 " " $2 }' "canonical-final-iptables-reset-${run_attempt}.txt")" = "0 0"
+      test "$(awk '$3 == "REJECT" { print $1 " " $2 }' "canonical-final-ip6tables-reset-${run_attempt}.txt")" = "0 0"
     fi
     continue
   fi
+
   # Not an infra-abort — enforce every real gate, fail-fast on any breach.
   if test -n "$PID_BEFORE"; then
     test "$PID_DURING" != "$PID_BEFORE"
@@ -167,8 +201,6 @@ for run_attempt in $(seq 1 "$CANONICAL_FINAL_ATTEMPTS"); do
   test -n "$PID_DURING"
   test "$INSTRUMENT_STATUS" = 0
   test "$CANONICAL_FINAL_ASSERT_RC" -eq 0
-  test "$(awk '$3 == "REJECT" { print $1 " " $2 }' canonical-final-iptables-after.txt)" = "0 0"
-  test "$(awk '$3 == "REJECT" { print $1 " " $2 }' canonical-final-ip6tables-after.txt)" = "0 0"
   CANONICAL_FINAL_OK=1
   break
 done

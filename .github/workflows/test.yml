@@ -891,6 +891,7 @@ jobs:
             attachment-private-file-provider-instrumentation.txt
             attachment-private-file-provider-logcat.txt
             attachment-atomic-sink-instrumentation.txt
+            attachment-atomic-sink-receipt.txt
             attachment-download-runtime-instrumentation.txt
             performance-trace-feedback-instrumentation.txt
             child-page-visibility-instrumentation.txt
@@ -904,6 +905,7 @@ jobs:
             durable-partition-migration-instrumentation.txt
             thread-newer-auto-pagination-instrumentation.txt
             thread-open-budget-telemetry.txt
+            "*-instrumentation.txt.attempt-*"
           if-no-files-found: warn
           retention-days: 7
 
@@ -986,6 +988,7 @@ jobs:
           path: |
             api29-connectedtest-app-badging.txt
             attachment-public-downloads-api${{ matrix.api-level }}-instrumentation.txt
+            "*-instrumentation.txt.attempt-*"
           if-no-files-found: warn
           retention-days: 7
 
@@ -1053,6 +1056,11 @@ jobs:
             canonical-final-instrumentation-status.txt
             canonical-final-instrumentation-list.txt
             canonical-final-instrumentation-list-after.txt
+            canonical-final-retry-receipt.txt
+            "canonical-final-instrumentation.txt.attempt-*"
+            "canonical-final-pm-clear-retry-*.txt"
+            "canonical-final-iptables-reset-*.txt"
+            "canonical-final-ip6tables-reset-*.txt"
             canonical-final-app-apk-badging.txt
             canonical-final-test-apk-badging.txt
             canonical-final-target-package-path.txt
