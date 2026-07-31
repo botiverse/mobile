@@ -42,6 +42,28 @@ import kotlin.test.assertTrue
 
 class SlockHomeComponentsTest {
     @Test
+    fun homeInlineAndDrawerErrorsKeepDiagnosticCodesOutOfVisibleCopy() {
+        val inlineError =
+            SlockHomeInlineError(
+                title = "Could not refresh Home",
+                detail = "The last workspace remains available.",
+                code = "home_network",
+                actionLabel = "Retry"
+            )
+        val inlineVisibleCopy = inlineError.toVisibleCopy()
+        val drawerError = SlockHomeServerDrawerRow.Error("server-1", "home_network", hasCache = true)
+
+        assertEquals("home_network", inlineError.code)
+        assertEquals("Could not refresh Home", inlineVisibleCopy.title)
+        assertEquals("The last workspace remains available.", inlineVisibleCopy.detail)
+        assertEquals("Retry", inlineVisibleCopy.actionLabel)
+        assertFalse("home_network" in inlineVisibleCopy.toString())
+        assertEquals("home_network", drawerError.code)
+        assertEquals("Retry", drawerError.visibleRetryLabel("Retry"))
+        assertFalse("home_network" in drawerError.visibleRetryLabel("Retry"))
+    }
+
+    @Test
     fun directMessageOpenFailureKeepsContextAndShowsTheServerReason() {
         assertEquals(
             "Could not open direct message: The member is no longer available",

@@ -22,6 +22,7 @@ import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.data.SlockThreadApiClient
 import build.raft.app.data.ThreadAttachmentCommentItem
 import build.raft.app.data.ThreadApiResult
+import build.raft.app.data.toThreadAttachmentCommentsFailureProjection
 import build.raft.app.data.userFacingMessage
 import build.raft.app.markdown.SlockMarkdownBody
 import build.raft.app.model.MemberId
@@ -609,16 +610,19 @@ private fun SlockFilePreviewStandalonePageContent() {
                             status = "loaded",
                             page = result.data,
                             sending = false,
-                            resolvingCommentIds = emptySet(),
-                            errorCode = null
-                        )
-                    is ThreadApiResult.Failure ->
+                            resolvingCommentIds = emptySet()
+                        ).clearAttachmentCommentsError()
+                    is ThreadApiResult.Failure -> {
+                        val failure = result.toThreadAttachmentCommentsFailureProjection()
                         state.copy(
                             status = "error",
                             sending = false,
-                            resolvingCommentIds = emptySet(),
-                            errorCode = result.contractCode ?: "http_${result.code}"
+                            resolvingCommentIds = emptySet()
+                        ).withAttachmentCommentsError(
+                            errorCode = failure.errorCode,
+                            serverMessage = failure.serverMessage
                         )
+                    }
                 }
             setAttachmentCommentsState(next)
         }
@@ -641,7 +645,7 @@ private fun SlockFilePreviewStandalonePageContent() {
     }
     fun reloadAttachmentComments() {
         val current = attachmentCommentsState ?: return
-        val loading = current.copy(status = "loading", errorCode = null)
+        val loading = current.copy(status = "loading").clearAttachmentCommentsError()
         attachmentCommentsState = loading
         loadAttachmentComments(loading)
     }
@@ -649,7 +653,7 @@ private fun SlockFilePreviewStandalonePageContent() {
         val current = attachmentCommentsState ?: return
         val body = current.draft.trim()
         if (body.isBlank() || current.sending) return
-        attachmentCommentsState = current.copy(sending = true, errorCode = null)
+        attachmentCommentsState = current.copy(sending = true).clearAttachmentCommentsError()
         coroutineScope.launch {
             when (val result = threadApi.sendAttachmentComment(current.attachment.id, body)) {
                 is ThreadApiResult.Success -> {
@@ -658,17 +662,21 @@ private fun SlockFilePreviewStandalonePageContent() {
                             status = "loading",
                             draft = "",
                             sending = false,
-                            pendingQuoteLabel = null,
-                            errorCode = null
-                        )
+                            pendingQuoteLabel = null
+                        ).clearAttachmentCommentsError()
                     attachmentCommentsState = loading
                     loadAttachmentComments(loading)
                 }
                 is ThreadApiResult.Failure -> {
+                    val failure = result.toThreadAttachmentCommentsFailureProjection()
                     attachmentCommentsState =
                         attachmentCommentsState
                             ?.takeIf { it.attachment.id == current.attachment.id }
-                            ?.copy(sending = false, errorCode = result.contractCode ?: "http_${result.code}")
+                            ?.copy(sending = false)
+                            ?.withAttachmentCommentsError(
+                                errorCode = failure.errorCode,
+                                serverMessage = failure.serverMessage
+                            )
                     bridge.toast(unableToSendComment)
                 }
             }
@@ -679,26 +687,31 @@ private fun SlockFilePreviewStandalonePageContent() {
         if (comment.id.isBlank() || comment.isThreadAttachmentCommentResolved()) return
         if (comment.id in current.resolvingCommentIds) return
         attachmentCommentsState =
-            current.copy(resolvingCommentIds = current.resolvingCommentIds + comment.id, errorCode = null)
+            current.copy(resolvingCommentIds = current.resolvingCommentIds + comment.id)
+                .clearAttachmentCommentsError()
         coroutineScope.launch {
             when (val result = threadApi.addReaction(comment.id, "✅")) {
                 is ThreadApiResult.Success -> {
                     val loading =
                         attachmentCommentsState
                             ?.takeIf { it.attachment.id == current.attachment.id }
-                            ?.copy(status = "loading", resolvingCommentIds = emptySet(), errorCode = null)
+                            ?.copy(status = "loading", resolvingCommentIds = emptySet())
+                            ?.clearAttachmentCommentsError()
                             ?: return@launch
                     attachmentCommentsState = loading
                     loadAttachmentComments(loading)
                 }
                 is ThreadApiResult.Failure -> {
+                    val failure = result.toThreadAttachmentCommentsFailureProjection()
                     attachmentCommentsState =
                         attachmentCommentsState
                             ?.takeIf { it.attachment.id == current.attachment.id }
                             ?.let { state ->
                                 state.copy(
-                                    resolvingCommentIds = state.resolvingCommentIds - comment.id,
-                                    errorCode = result.contractCode ?: "http_${result.code}"
+                                    resolvingCommentIds = state.resolvingCommentIds - comment.id
+                                ).withAttachmentCommentsError(
+                                    errorCode = failure.errorCode,
+                                    serverMessage = failure.serverMessage
                                 )
                             }
                     bridge.toast(unableToResolveComment)
@@ -1485,7 +1498,8 @@ private fun SlockFilePreviewStandalonePageContent() {
                     attachmentCommentsState =
                         attachmentCommentsState
                             ?.takeIf { it.attachment.id == state.attachment.id }
-                            ?.copy(draft = draft, errorCode = null)
+                            ?.copy(draft = draft)
+                            ?.clearAttachmentCommentsError()
                 },
                 onRetry = ::reloadAttachmentComments,
                 onSend = ::sendAttachmentComment,
@@ -1498,9 +1512,8 @@ private fun SlockFilePreviewStandalonePageContent() {
                                 current.copy(
                                     draft = appendThreadQuoteToComposer(current.draft, formatThreadMessageQuote(comment.content)),
                                     pendingQuoteLabel = comment.senderName,
-                                    pendingAnchorLabel = comment.anchorLabel ?: current.attachment.name,
-                                    errorCode = null
-                                )
+                                    pendingAnchorLabel = comment.anchorLabel ?: current.attachment.name
+                                ).clearAttachmentCommentsError()
                             }
                 }
             )

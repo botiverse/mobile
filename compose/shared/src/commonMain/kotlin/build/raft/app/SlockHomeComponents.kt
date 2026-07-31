@@ -406,6 +406,22 @@ data class SlockHomeInlineError(
     val actionLabel: String = "",
 )
 
+internal data class SlockHomeInlineErrorVisibleCopy(
+    val title: String,
+    val detail: String,
+    val actionLabel: String
+)
+
+internal fun SlockHomeInlineError.toVisibleCopy(): SlockHomeInlineErrorVisibleCopy =
+    SlockHomeInlineErrorVisibleCopy(
+        title = title,
+        detail = detail,
+        actionLabel = actionLabel
+    )
+
+internal fun SlockHomeServerDrawerRow.Error.visibleRetryLabel(localizedRetryLabel: String): String =
+    localizedRetryLabel
+
 @Serializable
 enum class SlockPresence { Online, Offline, Unknown }
 
@@ -3686,6 +3702,7 @@ internal fun HomeInlineErrorCard(
     modifier: Modifier = Modifier,
     onAction: () -> Unit
 ) {
+    val visibleCopy = error.toVisibleCopy()
     Box(
         modifier =
             modifier
@@ -3709,30 +3726,23 @@ internal fun HomeInlineErrorCard(
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Text(
-                        text = error.title,
+                        text = visibleCopy.title,
                         style = SlockType.ButtonBold,
                         color = SlockColor.TextBlack,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = error.detail,
+                        text = visibleCopy.detail,
                         style = SlockType.Caption,
                         color = SlockColor.TextMutedGray,
                         maxLines = 3,
                         overflow = TextOverflow.Ellipsis
                     )
-                    Text(
-                        text = error.code,
-                        style = SlockType.Caption,
-                        color = SlockColor.AccentRed,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
                 }
             }
             SlockBrutalActionButton(
-                label = error.actionLabel,
+                label = visibleCopy.actionLabel,
                 onClick = onAction,
                 leadingIcon = SlockLucideIconName.RefreshCw,
                 backgroundColor = SlockColor.SurfaceWhite
@@ -4223,6 +4233,7 @@ private fun HomeServerDrawerErrorRow(
     row: SlockHomeServerDrawerRow.Error,
     onRetry: () -> Unit
 ) {
+    val retryLabel = row.visibleRetryLabel(stringResource(MR.strings.home_action_retry))
     Row(
         modifier =
             Modifier
@@ -4235,7 +4246,7 @@ private fun HomeServerDrawerErrorRow(
     ) {
         SlockLucideIcon(SlockLucideIconName.RefreshCw, Modifier.size(14.dp), color = SlockColor.AccentRedArgb)
         Text(
-            text = stringResource(MR.strings.home_retry_with_code, row.code),
+            text = retryLabel,
             style = SlockType.Caption,
             color = SlockColor.AccentRed,
             modifier = Modifier.weight(1f),

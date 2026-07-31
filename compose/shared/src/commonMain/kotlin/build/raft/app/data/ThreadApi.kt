@@ -392,6 +392,30 @@ internal sealed interface ThreadApiResult<out T> {
     ) : ThreadApiResult<Nothing>
 }
 
+internal data class ThreadAttachmentCommentsFailureProjection(
+    val errorCode: String,
+    val serverMessage: String?
+)
+
+internal fun ThreadApiResult.Failure.toThreadAttachmentCommentsFailureProjection():
+    ThreadAttachmentCommentsFailureProjection {
+    val envelope =
+        errorBodyText
+            ?.takeIf { it.isNotBlank() }
+            ?.let { body ->
+                runCatching {
+                    threadApiJson.decodeFromString(ThreadErrorResponseDto.serializer(), body)
+                }.getOrNull()
+            }
+    return ThreadAttachmentCommentsFailureProjection(
+        errorCode =
+            contractCode?.trim()?.takeIf { it.isNotBlank() }
+                ?: envelope?.code?.trim()?.takeIf { it.isNotBlank() }
+                ?: "http_$code",
+        serverMessage = envelope?.error?.trim()?.takeIf { it.isNotBlank() }
+    )
+}
+
 internal data class ThreadMessagesPage(
     val messages: List<WireMessage>,
     val canLoadMoreBefore: Boolean?,
@@ -587,6 +611,14 @@ private data class AttachmentCommentsResponseDto(
     val comments: List<AttachmentCommentDto> = emptyList(),
     val threadChannelId: String? = null,
     val viewer: AttachmentCommentViewerDto? = null,
+)
+
+@Serializable
+private data class ThreadErrorResponseDto(
+    // Attachment-comment list/send and message-reaction failures use this
+    // exact server envelope; aliases and plain text intentionally fail closed.
+    val error: String? = null,
+    val code: String? = null,
 )
 
 @Serializable
