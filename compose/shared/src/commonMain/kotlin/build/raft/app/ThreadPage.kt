@@ -7570,10 +7570,10 @@ internal fun SharedThreadRouteContent(
                     bridge.toast(linksCopiedLabel)
                 }
                 action == "shareSelectionImageSaved" -> {
-                    bridge.toast(itemId?.takeIf { it.isNotBlank() } ?: imageSavedLabel)
+                    bridge.toast(imageSavedLabel)
                 }
                 action == "shareSelectionExportFailed" -> {
-                    bridge.toast(itemId?.takeIf { it.isNotBlank() } ?: unableToExportImageLabel)
+                    bridge.toast(unableToExportImageLabel)
                 }
                 action == "forwardTargetSelected" -> {
                     val target = itemId?.takeIf { it.isNotBlank() } ?: "selected target"
