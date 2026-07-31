@@ -361,8 +361,34 @@ internal suspend fun refreshCreateAgentDialogBuiltInForm(
 ): DataResult<SharedResolvedAgentCreateForm> =
     formStore.loadSupportedBuiltInForm(serverId, machineId, force = true)
 
-internal fun isCreateAgentDialogFormRefreshAdmitted(result: DataResult<*>): Boolean =
-    result is DataResult.Content
+internal data class CreateAgentDialogFormRefreshUiState(
+    val loading: Boolean = false,
+    val admitted: Boolean = false,
+    val failureVisible: Boolean = false
+) {
+    val retryAvailable: Boolean
+        get() = failureVisible && !loading
+}
+
+internal fun createAgentDialogFormRefreshInitialState(
+    shouldRefresh: Boolean,
+    hasFormOverride: Boolean
+): CreateAgentDialogFormRefreshUiState =
+    when {
+        hasFormOverride -> CreateAgentDialogFormRefreshUiState(admitted = true)
+        shouldRefresh -> CreateAgentDialogFormRefreshUiState(loading = true)
+        else -> CreateAgentDialogFormRefreshUiState()
+    }
+
+internal fun createAgentDialogFormRefreshStarted(): CreateAgentDialogFormRefreshUiState =
+    CreateAgentDialogFormRefreshUiState(loading = true)
+
+internal fun createAgentDialogFormRefreshCompleted(result: DataResult<*>): CreateAgentDialogFormRefreshUiState =
+    if (result is DataResult.Content) {
+        CreateAgentDialogFormRefreshUiState(admitted = true)
+    } else {
+        CreateAgentDialogFormRefreshUiState(failureVisible = true)
+    }
 
 internal fun isCreateAgentRuntimeContractReady(
     runtime: String,
@@ -623,7 +649,13 @@ internal fun SharedCreateAgentDialog(
         selectedMachineId?.let { machineId -> SharedCreateAgentExactFormKey(cleanCreateAgentServerId, machineId, ref) }
     }
     val builtInForm = builtInFormOverride ?: builtInExactKey?.let(createAgentFormState.resolvedForms::get)
-    var dialogBuiltInFormRefreshInFlight by remember(
+    val shouldRefreshDialogBuiltInForm =
+        createAgentFormStore != null &&
+            cleanCreateAgentServerId.isNotBlank() &&
+            selectedMachineId != null &&
+            !external &&
+            builtInFormOverride == null
+    var dialogBuiltInFormRefreshState by remember(
         createAgentFormStore,
         cleanCreateAgentServerId,
         selectedMachineId,
@@ -631,30 +663,29 @@ internal fun SharedCreateAgentDialog(
         builtInFormOverride
     ) {
         mutableStateOf(
-            createAgentFormStore != null &&
-                cleanCreateAgentServerId.isNotBlank() &&
-                selectedMachineId != null &&
-                !external &&
-                builtInFormOverride == null
+            createAgentDialogFormRefreshInitialState(
+                shouldRefresh = shouldRefreshDialogBuiltInForm,
+                hasFormOverride = builtInFormOverride != null
+            )
         )
     }
-    var dialogBuiltInFormRefreshAdmitted by remember(
+    var dialogBuiltInFormRefreshAttempt by remember(
         createAgentFormStore,
         cleanCreateAgentServerId,
         selectedMachineId,
         external,
         builtInFormOverride
     ) {
-        mutableStateOf(builtInFormOverride != null)
+        mutableStateOf(0)
     }
     val builtInRuntimeEnabled =
         canEnableBuiltInRuntime(
             hasFormOverride = builtInFormOverride != null,
             hasSupportedExactRef = builtInRef != null,
             hasResolvedExactForm = builtInForm != null
-        ) && dialogBuiltInFormRefreshAdmitted
+        )
     val builtInFormLoading =
-        dialogBuiltInFormRefreshInFlight ||
+        dialogBuiltInFormRefreshState.loading ||
             createAgentMachineKey?.let { it in createAgentFormState.loadingRuntimeCatalogs } == true ||
             builtInExactKey?.let { it in createAgentFormState.loadingForms } == true
     val builtInOwner = createAgentFormState.owner
@@ -724,21 +755,17 @@ internal fun SharedCreateAgentDialog(
         cleanCreateAgentServerId,
         selectedMachineId,
         external,
-        builtInFormOverride
+        builtInFormOverride,
+        dialogBuiltInFormRefreshAttempt
     ) {
         val machineId = selectedMachineId ?: return@LaunchedEffect
         if (!external && builtInFormOverride == null && cleanCreateAgentServerId.isNotBlank()) {
             createAgentFormStore?.let { formStore ->
-                dialogBuiltInFormRefreshInFlight = true
-                dialogBuiltInFormRefreshAdmitted = false
-                try {
-                    dialogBuiltInFormRefreshAdmitted =
-                        isCreateAgentDialogFormRefreshAdmitted(
-                            refreshCreateAgentDialogBuiltInForm(formStore, cleanCreateAgentServerId, machineId)
-                        )
-                } finally {
-                    dialogBuiltInFormRefreshInFlight = false
-                }
+                dialogBuiltInFormRefreshState = createAgentDialogFormRefreshStarted()
+                dialogBuiltInFormRefreshState =
+                    createAgentDialogFormRefreshCompleted(
+                        refreshCreateAgentDialogBuiltInForm(formStore, cleanCreateAgentServerId, machineId)
+                    )
             }
         }
     }
@@ -831,7 +858,7 @@ internal fun SharedCreateAgentDialog(
         (external ||
             isCreateAgentRuntimeContractReady(
                 runtime = runtime,
-                builtInFormRefreshAdmitted = dialogBuiltInFormRefreshAdmitted,
+                builtInFormRefreshAdmitted = dialogBuiltInFormRefreshState.admitted,
                 builtInFormLoading = builtInFormLoading,
                 hasBuiltInRuntimeConfig = builtInRuntimeConfig != null
             ))
@@ -906,6 +933,29 @@ internal fun SharedCreateAgentDialog(
                             currentAgentCount = currentAgentCount,
                             maxAgents = maxAgents,
                             planLabel = limitPlanLabel
+                        )
+                    }
+                }
+                if (dialogBuiltInFormRefreshState.failureVisible) {
+                    item(key = "builtin-form-refresh-error") {
+                        SlockRaftUiBanner(
+                            status = SlockRaftUiBannerStatus.Warning,
+                            description = stringResource(MR.strings.agent_create_error_form_refresh_failed),
+                            size = SlockRaftUiBannerSize.Medium,
+                            action = {
+                                SlockBrutalActionButton(
+                                    label = stringResource(MR.strings.common_retry),
+                                    onClick = {
+                                        dialogBuiltInFormRefreshState = createAgentDialogFormRefreshStarted()
+                                        dialogBuiltInFormRefreshAttempt += 1
+                                    },
+                                    enabled = dialogBuiltInFormRefreshState.retryAvailable && !submitting,
+                                    leadingIcon = SlockLucideIconName.RefreshCw,
+                                    minWidth = 72.dp,
+                                    minHeight = 32.dp,
+                                    shadowOffset = SlockShadow.BrutalSmall
+                                )
+                            }
                         )
                     }
                 }
