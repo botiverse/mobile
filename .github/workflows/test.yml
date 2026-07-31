@@ -626,6 +626,7 @@ jobs:
             shared/src androidApp/src \
             shared/build.gradle.kts androidApp/build.gradle.kts \
             gradle/libs.versions.toml gradle/wrapper/gradle-wrapper.properties \
+            gradle.properties buildSrc \
             build.gradle.kts settings.gradle.kts \
             | git hash-object --stdin)
           echo "hash=$HASH" >> "$GITHUB_OUTPUT"
