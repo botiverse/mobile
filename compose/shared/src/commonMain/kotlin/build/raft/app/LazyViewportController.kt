@@ -34,7 +34,8 @@ internal enum class LazyViewportAnchorFallback {
 
 internal enum class LazyViewportAnchorPlacement {
     ExactOffset,
-    Focused
+    Focused,
+    RenderedBottom
 }
 
 internal enum class LazyViewportMutation {

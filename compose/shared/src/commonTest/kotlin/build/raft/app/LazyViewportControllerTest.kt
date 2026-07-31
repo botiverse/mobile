@@ -90,6 +90,87 @@ class LazyViewportControllerTest {
     }
 
     @Test
+    fun focusedLatestRenderedBottomReplaysInsetWithoutChangingAnchoredIntent() {
+        val target = LazyViewportAnchorTarget.Message("latest-message")
+        val anchored =
+            reduceLazyViewport(
+                LazyViewportControllerState(),
+                LazyViewportEvent.Anchor(
+                    target = target,
+                    offset = 16,
+                    layoutGeneration = 21L,
+                    placement = LazyViewportAnchorPlacement.RenderedBottom,
+                    fallback = LazyViewportAnchorFallback.Free
+                )
+            )
+        val firstCommand = anchored.pendingCommand!!
+        val consumed =
+            reduceLazyViewport(
+                anchored,
+                LazyViewportEvent.CommandConsumed(firstCommand.id)
+            )
+        val afterInset =
+            reduceLazyViewport(
+                consumed,
+                LazyViewportEvent.ContentMutated(LazyViewportMutation.InsetChange)
+            )
+
+        val intent = assertIs<LazyViewportIntent.Anchored>(afterInset.intent)
+        assertEquals(target, intent.target)
+        assertEquals(LazyViewportAnchorPlacement.RenderedBottom, intent.placement)
+        assertEquals(
+            LazyViewportCommandTarget.Anchor(
+                target = target,
+                offset = 16,
+                layoutGeneration = 21L,
+                placement = LazyViewportAnchorPlacement.RenderedBottom
+            ),
+            afterInset.pendingCommand?.target
+        )
+        assertTrue(afterInset.accepts(afterInset.pendingCommand!!))
+
+        val settled =
+            reduceLazyViewport(
+                afterInset,
+                LazyViewportEvent.CommandConsumed(afterInset.pendingCommand!!.id)
+            )
+        assertNull(settled.pendingCommand)
+        assertEquals(LazyViewportAnchorPlacement.RenderedBottom, assertIs<LazyViewportIntent.Anchored>(settled.intent).placement)
+
+        val driftCorrection =
+            reduceLazyViewport(
+                settled,
+                LazyViewportEvent.ContentMutated(LazyViewportMutation.HeightChange)
+            )
+        assertEquals(
+            LazyViewportAnchorPlacement.RenderedBottom,
+            assertIs<LazyViewportCommandTarget.Anchor>(driftCorrection.pendingCommand?.target).placement
+        )
+        assertTrue(driftCorrection.accepts(driftCorrection.pendingCommand!!))
+    }
+
+    @Test
+    fun userPointerInvalidatesFocusedLatestRenderedBottomCommand() {
+        val anchored =
+            reduceLazyViewport(
+                LazyViewportControllerState(),
+                LazyViewportEvent.Anchor(
+                    target = LazyViewportAnchorTarget.Message("latest-message"),
+                    offset = 16,
+                    layoutGeneration = 22L,
+                    placement = LazyViewportAnchorPlacement.RenderedBottom,
+                    fallback = LazyViewportAnchorFallback.Free
+                )
+            )
+        val staleCommand = anchored.pendingCommand!!
+        val dragging = reduceLazyViewport(anchored, LazyViewportEvent.PointerDown)
+
+        assertEquals(LazyViewportIntent.UserDragging, dragging.intent)
+        assertNull(dragging.pendingCommand)
+        assertFalse(dragging.accepts(staleCommand))
+    }
+
+    @Test
     fun draggingRejectsAppendAndInsetCommandsUntilPointerSettles() {
         val dragging = reduceLazyViewport(LazyViewportControllerState(), LazyViewportEvent.PointerDown)
         val moved = reduceLazyViewport(dragging, LazyViewportEvent.PointerMove)

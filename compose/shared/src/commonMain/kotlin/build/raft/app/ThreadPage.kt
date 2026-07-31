@@ -14856,6 +14856,11 @@ private fun ThreadMessagesList(
     var focusedAnchorSessionReanchors by remember(threadInstanceKey) { mutableStateOf(0) }
     var focusedAnchorStartUserScrollGeneration by remember(threadInstanceKey) { mutableStateOf<Int?>(null) }
     var correctedFocusedOriginIdentity by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    var focusedAnchorPlacementIdentity by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    var focusedAnchorPlacement by remember(threadInstanceKey) {
+        mutableStateOf(LazyViewportAnchorPlacement.Focused)
+    }
+    var focusedAnchorPlacementOffsetPx by remember(threadInstanceKey) { mutableStateOf(0) }
     var bottomAnchorFocusedYieldElapsedMs by remember(threadInstanceKey) { mutableStateOf(0L) }
     val pendingFocusedMessageAnchorIdentityState =
         rememberUpdatedState(
@@ -15144,6 +15149,13 @@ private fun ThreadMessagesList(
                                 }
                                 LazyViewportAnchorPlacement.Focused ->
                                     listState.scrollThreadItemToFocusedViewport(targetIndex) {
+                                        currentViewportControllerState.value.accepts(command)
+                                    }
+                                LazyViewportAnchorPlacement.RenderedBottom ->
+                                    listState.scrollThreadItemToRenderedBottom(
+                                        itemIndex = targetIndex,
+                                        trailingPaddingSize = target.offset.coerceAtLeast(0)
+                                    ) {
                                         currentViewportControllerState.value.accepts(command)
                                     }
                             }
@@ -15730,12 +15742,17 @@ private fun ThreadMessagesList(
         activeFocusedMessageId = targetMessageId
         allowBottomAutoAnchor = false
         initialBottomAnchorReady = true
+        if (focusedAnchorPlacementIdentity != targetIdentity) {
+            focusedAnchorPlacementIdentity = targetIdentity
+            focusedAnchorPlacement = LazyViewportAnchorPlacement.Focused
+            focusedAnchorPlacementOffsetPx = 0
+        }
         dispatchViewportEvent(
             LazyViewportEvent.Anchor(
                 target = LazyViewportAnchorTarget.Message(targetMessageId),
-                offset = 0,
+                offset = focusedAnchorPlacementOffsetPx,
                 layoutGeneration = viewportLayoutGeneration,
-                placement = LazyViewportAnchorPlacement.Focused,
+                placement = focusedAnchorPlacement,
                 fallback = LazyViewportAnchorFallback.Free
             )
         )
@@ -15828,9 +15845,18 @@ private fun ThreadMessagesList(
                     dispatchViewportEvent(
                         LazyViewportEvent.Anchor(
                             target = LazyViewportAnchorTarget.Message(targetMessageId),
-                            offset = 0,
+                            offset = focusedAnchorPlacementOffsetForIdentity(
+                                targetIdentity = targetIdentity,
+                                placementIdentity = focusedAnchorPlacementIdentity,
+                                placement = focusedAnchorPlacement,
+                                placementOffsetPx = focusedAnchorPlacementOffsetPx
+                            ),
                             layoutGeneration = viewportLayoutGeneration,
-                            placement = LazyViewportAnchorPlacement.Focused,
+                            placement = focusedAnchorPlacementForIdentity(
+                                targetIdentity = targetIdentity,
+                                placementIdentity = focusedAnchorPlacementIdentity,
+                                placement = focusedAnchorPlacement
+                            ),
                             fallback = LazyViewportAnchorFallback.Free
                         )
                     )
@@ -15898,9 +15924,18 @@ private fun ThreadMessagesList(
         dispatchViewportEvent(
             LazyViewportEvent.Anchor(
                 target = LazyViewportAnchorTarget.Message(targetMessageId),
-                offset = 0,
+                offset = focusedAnchorPlacementOffsetForIdentity(
+                    targetIdentity = targetIdentity,
+                    placementIdentity = focusedAnchorPlacementIdentity,
+                    placement = focusedAnchorPlacement,
+                    placementOffsetPx = focusedAnchorPlacementOffsetPx
+                ),
                 layoutGeneration = viewportLayoutGeneration,
-                placement = LazyViewportAnchorPlacement.Focused,
+                placement = focusedAnchorPlacementForIdentity(
+                    targetIdentity = targetIdentity,
+                    placementIdentity = focusedAnchorPlacementIdentity,
+                    placement = focusedAnchorPlacement
+                ),
                 fallback = LazyViewportAnchorFallback.Free
             )
         )
@@ -16119,6 +16154,8 @@ private fun ThreadMessagesList(
             return@LaunchedEffect
         }
         val focusedTargetIdentity = pendingFocusedMessageAnchorIdentityState.value
+        val focusedTargetMessageId = renderPayload.focusedMessageId?.takeIf { it.isNotBlank() }
+        val focusedTargetItemIndex = renderPayload.focusedMessageListItemIndex()
         val focusedAnchorOwnsViewport =
             focusedMessageAnchorOwnsViewport(
                 pendingIdentity = focusedTargetIdentity,
@@ -16141,7 +16178,7 @@ private fun ThreadMessagesList(
                     focusedAnchorOwnsViewport &&
                         focusedActiveLatestMessageComposerLayoutOwnsViewport(
                             targetIdentity = focusedTargetIdentity,
-                            targetItemIndex = renderPayload.focusedMessageListItemIndex(),
+                            targetItemIndex = focusedTargetItemIndex,
                             latestMessageItemIndex = latestMessageListItemIndex,
                             canLoadMoreAfter = renderPayload.canLoadMoreAfter,
                             anchoredIdentity = focusedAnchorSessionIdentity,
@@ -16153,7 +16190,7 @@ private fun ThreadMessagesList(
                 focusedLatestAnchorCanCorrectLayout =
                     focusedLatestMessageComposerLayoutOwnsViewport(
                         targetIdentity = focusedTargetIdentity,
-                        targetItemIndex = renderPayload.focusedMessageListItemIndex(),
+                        targetItemIndex = focusedTargetItemIndex,
                         latestMessageItemIndex = latestMessageListItemIndex,
                         canLoadMoreAfter = renderPayload.canLoadMoreAfter,
                         anchoredIdentity = focusedAnchorSessionIdentity,
@@ -16164,6 +16201,28 @@ private fun ThreadMessagesList(
                     )
             )
         val layoutDecision = resolveThreadComposerLayoutBottomAnchor(layoutState)
+        val layoutChanged = threadComposerLayoutChanged(layoutState)
+        if (layoutChanged || layoutState.pendingLayoutChange) {
+            val anchoredIntent = viewportControllerState.intent as? LazyViewportIntent.Anchored
+            diagnosticsLogger(
+                "thread_composer_layout_decision actor=composer_inset_relayout " +
+                    "keyboardInset=${layoutState.previousKeyboardInsetDp}->${layoutState.nextKeyboardInsetDp} " +
+                    "viewportHeight=${layoutState.previousViewportHeightDp}->${layoutState.nextViewportHeightDp} " +
+                    "pendingBefore=${layoutState.pendingLayoutChange} pendingAfter=${layoutDecision.pendingLayoutChange} " +
+                    "shouldAnchor=${layoutDecision.shouldAnchor} " +
+                    "placement=${if (layoutDecision.anchorFocusedLatestAtRenderedBottom) "rendered_bottom" else "replay_intent"} " +
+                    "targetIsLatest=${focusedTargetItemIndex >= 0 && focusedTargetItemIndex == latestMessageListItemIndex} " +
+                    "targetIndex=$focusedTargetItemIndex latestMessageIndex=$latestMessageListItemIndex " +
+                    "latestViewportItemIndex=$latestItemIndex trailingPaddingPx=$initialBottomAnchorTrailingPaddingPx " +
+                    "canLoadMoreAfter=${renderPayload.canLoadMoreAfter} " +
+                    "focusedOwns=$focusedAnchorOwnsViewport consumed=${consumedFocusedMessageAnchorIdentity == focusedTargetIdentity} " +
+                    "interrupted=${scrollInterruptedFocusedMessageAnchorIdentity == focusedTargetIdentity} " +
+                    "userGeneration=${focusedAnchorStartUserScrollGeneration ?: -1}->${userScrollGeneration.value} " +
+                    "viewportIntent=${viewportControllerState.intent.threadViewportIntentDiagnosticName()} " +
+                    "viewportPlacement=${anchoredIntent?.placement?.name ?: "none"} " +
+                    listState.threadViewportGeometryDiagnostics(focusedTargetItemIndex)
+            )
+        }
         lastComposerKeyboardInsetDp = composerKeyboardInsetDp
         lastThreadViewportHeightDp = measuredThreadViewportHeightDp
         pendingComposerLayoutBottomAnchor = layoutDecision.pendingLayoutChange
@@ -16173,11 +16232,35 @@ private fun ThreadMessagesList(
         }
         pendingKeyboardBottomAnchor = true
         viewportLayoutGeneration += 1L
-        dispatchViewportEvent(LazyViewportEvent.ContentMutated(LazyViewportMutation.InsetChange))
+        if (layoutDecision.anchorFocusedLatestAtRenderedBottom && focusedTargetMessageId != null) {
+            focusedAnchorPlacementIdentity = focusedTargetIdentity
+            focusedAnchorPlacement = LazyViewportAnchorPlacement.RenderedBottom
+            focusedAnchorPlacementOffsetPx = initialBottomAnchorTrailingPaddingPx
+            dispatchViewportEvent(
+                LazyViewportEvent.Anchor(
+                    target = LazyViewportAnchorTarget.Message(focusedTargetMessageId),
+                    offset = initialBottomAnchorTrailingPaddingPx,
+                    layoutGeneration = viewportLayoutGeneration,
+                    placement = LazyViewportAnchorPlacement.RenderedBottom,
+                    fallback = LazyViewportAnchorFallback.Free
+                )
+            )
+        } else {
+            dispatchViewportEvent(LazyViewportEvent.ContentMutated(LazyViewportMutation.InsetChange))
+        }
         val insetCommandId = viewportControllerState.pendingCommand?.id
         if (insetCommandId != null) {
             awaitViewportCommandSettlement(insetCommandId)
         }
+        diagnosticsLogger(
+            "thread_composer_layout_settled actor=composer_inset_relayout " +
+                "command=${insetCommandId?.sequence ?: -1} " +
+                "placement=${if (layoutDecision.anchorFocusedLatestAtRenderedBottom) "rendered_bottom" else "replay_intent"} " +
+                "renderedBottom=${listState.isLatestItemAtRenderedBottom(latestMessageListItemIndex, initialBottomAnchorTrailingPaddingPx)} " +
+                "latestItemOffBottom=${listState.shouldShowThreadBackToBottom(latestItemIndex)} " +
+                "viewportIntent=${viewportControllerState.intent.threadViewportIntentDiagnosticName()} " +
+                listState.threadViewportGeometryDiagnostics(focusedTargetItemIndex)
+        )
         pendingKeyboardBottomAnchor = false
     }
     ThreadReactionAtlasProvider {
@@ -17741,7 +17824,8 @@ internal fun focusedLatestMessageComposerLayoutOwnsViewport(
 
 internal data class ThreadComposerLayoutBottomAnchorDecision(
     val shouldAnchor: Boolean,
-    val pendingLayoutChange: Boolean
+    val pendingLayoutChange: Boolean,
+    val anchorFocusedLatestAtRenderedBottom: Boolean = false
 )
 
 internal fun resolveThreadComposerLayoutBottomAnchor(
@@ -17766,9 +17850,39 @@ internal fun resolveThreadComposerLayoutBottomAnchor(
         }
     return ThreadComposerLayoutBottomAnchorDecision(
         shouldAnchor = shouldAnchor,
-        pendingLayoutChange = pendingLayoutChange
+        pendingLayoutChange = pendingLayoutChange,
+        anchorFocusedLatestAtRenderedBottom =
+            shouldAnchor &&
+                (state.focusedActiveLatestAnchorCanCorrectLayout || state.focusedLatestAnchorCanCorrectLayout)
     )
 }
+
+internal fun focusedAnchorPlacementForIdentity(
+    targetIdentity: String,
+    placementIdentity: String?,
+    placement: LazyViewportAnchorPlacement
+): LazyViewportAnchorPlacement =
+    if (targetIdentity == placementIdentity) placement else LazyViewportAnchorPlacement.Focused
+
+internal fun focusedAnchorPlacementOffsetForIdentity(
+    targetIdentity: String,
+    placementIdentity: String?,
+    placement: LazyViewportAnchorPlacement,
+    placementOffsetPx: Int
+): Int =
+    if (targetIdentity == placementIdentity && placement == LazyViewportAnchorPlacement.RenderedBottom) {
+        placementOffsetPx.coerceAtLeast(0)
+    } else {
+        0
+    }
+
+private fun LazyViewportIntent.threadViewportIntentDiagnosticName(): String =
+    when (this) {
+        LazyViewportIntent.FollowingLatest -> "following_latest"
+        LazyViewportIntent.PinnedTop -> "pinned_top"
+        is LazyViewportIntent.Anchored -> "anchored"
+        LazyViewportIntent.UserDragging -> "user_dragging"
+    }
 
 internal data class ThreadBackToBottomButtonState(
     val initialBottomAnchorReady: Boolean,
@@ -18074,6 +18188,41 @@ private suspend fun LazyListState.scrollThreadItemToFocusedViewport(
             threadFocusedItemScrollOffset(
                 itemSize = item.size,
                 viewportHeight = viewportHeight
+            )
+        scrollToItem(itemIndex, offset)
+        if (!commandStillCurrent()) return false
+        didScroll = true
+        delay(ThreadLayoutStabilityFrameDelayMs)
+        if (!commandStillCurrent()) return false
+    }
+    return didScroll
+}
+
+private suspend fun LazyListState.scrollThreadItemToRenderedBottom(
+    itemIndex: Int,
+    trailingPaddingSize: Int,
+    commandStillCurrent: () -> Boolean
+): Boolean {
+    if (itemIndex < 0 || layoutInfo.totalItemsCount <= itemIndex) return false
+    var didScroll = false
+    repeat(ThreadFocusedMessageCenterAttempts) {
+        if (!commandStillCurrent()) return false
+        val item = layoutInfo.visibleItemsInfo.firstOrNull { it.index == itemIndex }
+        if (item == null) {
+            scrollToItem(itemIndex)
+            if (!commandStillCurrent()) return false
+            delay(ThreadLayoutStabilityFrameDelayMs)
+            if (!commandStillCurrent()) return false
+            return@repeat
+        }
+        val viewportHeight = layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset
+        val offset =
+            threadLatestItemBottomAnchorScrollOffset(
+                itemSize = item.size,
+                viewportHeight = viewportHeight,
+                visibleItemCount = layoutInfo.visibleItemsInfo.size,
+                totalItemCount = layoutInfo.totalItemsCount,
+                trailingPaddingSize = trailingPaddingSize
             )
         scrollToItem(itemIndex, offset)
         if (!commandStillCurrent()) return false
