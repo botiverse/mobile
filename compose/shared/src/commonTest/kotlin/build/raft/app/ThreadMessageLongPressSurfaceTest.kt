@@ -1,5 +1,8 @@
 package build.raft.app
 
+import build.raft.app.data.InMemorySlockKeyValueStore
+import build.raft.app.data.KeyValueChatLayoutPreferenceStore
+import build.raft.app.data.putBoolean
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -95,6 +98,34 @@ class ThreadMessageLongPressSurfaceTest {
                 showReplyAction = true,
                 shareSelectionActive = false,
                 hasLocalSendState = false
+            )
+        )
+    }
+
+    @Test
+    fun rowTapUsesOnByDefaultAndStillHonorsAnExplicitOffPreference() {
+        val keyValueStore = InMemorySlockKeyValueStore()
+        val preferenceStore = KeyValueChatLayoutPreferenceStore(keyValueStore)
+
+        assertTrue(
+            threadMessageTapOpensThread(
+                showReplyAction = true,
+                shareSelectionActive = false,
+                hasLocalSendState = false,
+                singleTapOpensThreadEnabled =
+                    preferenceStore.readSingleTapOpensThreadEnabledSync()
+            )
+        )
+
+        keyValueStore.putBoolean("chatLayout:single_tap_opens_thread_enabled", false)
+
+        assertFalse(
+            threadMessageTapOpensThread(
+                showReplyAction = true,
+                shareSelectionActive = false,
+                hasLocalSendState = false,
+                singleTapOpensThreadEnabled =
+                    preferenceStore.readSingleTapOpensThreadEnabledSync()
             )
         )
     }
