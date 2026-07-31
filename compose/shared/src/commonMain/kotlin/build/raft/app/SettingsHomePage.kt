@@ -259,7 +259,6 @@ import build.raft.app.data.SlockComputersNetworkApi
 import build.raft.app.data.SlockNetworkClient
 import build.raft.app.data.SharedCreateAgentCoordinator
 import build.raft.app.data.SharedCreateAgentFormStore
-import build.raft.app.data.recoverRejectedCreateAgentForm
 import build.raft.app.data.SharedActivityIntent
 import build.raft.app.data.SharedAgentDetailActions
 import build.raft.app.data.SharedAgentDetailIntent
@@ -16197,7 +16196,9 @@ private fun SharedMembersScreen(
                 val result =
                     createAgentCoordinator
                         .createAgent(submit.toCreateAgentRequest())
-                        .recoverRejectedCreateAgentForm(createAgentFormStore, serverId, submit.machineId)
+                        .recoverRejectedCreateAgentFormOrRetry(createAgentFormStore, serverId, submit) { retrySubmit ->
+                            createAgentCoordinator.createAgent(retrySubmit.toCreateAgentRequest())
+                        }
                 if (result is DataResult.Content) {
                     val profile = MemberProfile(
                         id = MemberId(result.data.id),

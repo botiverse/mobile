@@ -771,7 +771,19 @@ internal data class UpdateAgentScopesBody(val scopes: List<String>? = null, val 
 @Serializable
 internal data class IssueAgentBootstrapTokenBody(val scopes: List<String>? = null, val ttlMs: Long? = null)
 
-internal fun buildCreateAgentBody(body: CreateAgentBody): String = agentsApiJson.encodeToString(body)
+// task #186: create requests must match the web wire shape — absent optional
+// fields are OMITTED, never serialized as explicit `null`. The server treats an
+// explicit `"formDefinitionRef":null` as present-but-invalid (routes/agents.ts
+// validates any non-undefined value), which 409s every non-Built-in create and
+// 400s external creates. Encoding-only; response decoding stays on agentsApiJson.
+private val agentsApiCreateBodyJson = Json {
+    ignoreUnknownKeys = true
+    encodeDefaults = true
+    coerceInputValues = true
+    explicitNulls = false
+}
+
+internal fun buildCreateAgentBody(body: CreateAgentBody): String = agentsApiCreateBodyJson.encodeToString(body)
 internal fun buildUpdateAgentBody(body: UpdateAgentBody): String = agentsApiJson.encodeToString(body)
 internal fun buildResetAgentBody(mode: String): String = agentsApiJson.encodeToString(ResetAgentBody(mode))
 internal fun buildAssignAgentMachineBody(machineId: String?): String =

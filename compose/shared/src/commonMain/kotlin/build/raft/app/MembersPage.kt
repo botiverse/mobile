@@ -84,7 +84,6 @@ import build.raft.app.data.SharedComputersPickerSlice
 import build.raft.app.data.SharedComputersStore
 import build.raft.app.data.AGENT_CREATE_FORM_REFRESH_FAILED
 import build.raft.app.data.AGENT_CREATE_FORM_REFRESH_REQUIRED
-import build.raft.app.data.recoverRejectedCreateAgentForm
 import build.raft.app.data.SharedServerMembersEntry
 import build.raft.app.data.SharedServerMembersState
 import build.raft.app.data.SelectedServerStore
@@ -1471,7 +1470,9 @@ internal fun MembersPageContent() {
                 val result =
                     createAgentCoordinator
                         .createAgent(submit.toCreateAgentRequest())
-                        .recoverRejectedCreateAgentForm(createAgentFormStore, serverId, submit.machineId)
+                        .recoverRejectedCreateAgentFormOrRetry(createAgentFormStore, serverId, submit) { retrySubmit ->
+                            createAgentCoordinator.createAgent(retrySubmit.toCreateAgentRequest())
+                        }
                 if (result is DataResult.Content) {
                     // The create response carries machineId but usually no machineName
                     // (runtimeProfile is empty for a fresh agent), so resolve the name

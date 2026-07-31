@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.app.data.DataResult
+import build.raft.app.data.ScreenError
 import build.raft.app.model.RUNTIME_PROVIDER_MODE_CUSTOM
 import build.raft.app.model.RUNTIMES
 import build.raft.app.model.RuntimeModeConfig
@@ -96,6 +98,120 @@ class SharedCreateAgentDialogTest {
                 hasResolvedExactForm = true
             )
         )
+    }
+
+    @Test
+    fun builtInSubmitWaitsForDialogOpenContractRefresh() {
+        assertFalse(
+            isCreateAgentRuntimeContractReady(
+                runtime = "builtin",
+                builtInFormRefreshAdmitted = false,
+                builtInFormLoading = true,
+                hasBuiltInRuntimeConfig = true
+            ),
+            "a cached contract must not remain submittable while the dialog refreshes it"
+        )
+        assertFalse(
+            isCreateAgentRuntimeContractReady(
+                runtime = "builtin",
+                builtInFormRefreshAdmitted = false,
+                builtInFormLoading = false,
+                hasBuiltInRuntimeConfig = true
+            ),
+            "a failed open refresh must not re-admit a cached contract"
+        )
+        assertFalse(
+            isCreateAgentRuntimeContractReady(
+                runtime = "builtin",
+                builtInFormRefreshAdmitted = true,
+                builtInFormLoading = false,
+                hasBuiltInRuntimeConfig = false
+            )
+        )
+        assertTrue(
+            isCreateAgentRuntimeContractReady(
+                runtime = "builtin",
+                builtInFormRefreshAdmitted = true,
+                builtInFormLoading = false,
+                hasBuiltInRuntimeConfig = true
+            )
+        )
+        assertTrue(
+            isCreateAgentRuntimeContractReady(
+                runtime = "codex",
+                builtInFormRefreshAdmitted = false,
+                builtInFormLoading = true,
+                hasBuiltInRuntimeConfig = false
+            ),
+            "refreshing the Built-in contract must not block unrelated runtimes"
+        )
+    }
+
+    @Test
+    fun failedDialogRefreshKeepsCachedFormBlockedAndOffersRetry() {
+        val initial =
+            createAgentDialogFormRefreshInitialState(
+                shouldRefresh = true,
+                hasFormOverride = false
+            )
+        assertTrue(initial.loading)
+        assertFalse(initial.admitted)
+        assertFalse(initial.failureVisible)
+        assertFalse(initial.retryAvailable)
+
+        val failed =
+            createAgentDialogFormRefreshCompleted(
+                DataResult.Error(ScreenError("runtime_form_load_failed", retryable = true))
+            )
+        assertFalse(failed.loading)
+        assertFalse(failed.admitted)
+        assertTrue(failed.failureVisible)
+        assertTrue(failed.retryAvailable)
+        assertFalse(
+            isCreateAgentRuntimeContractReady(
+                runtime = "builtin",
+                builtInFormRefreshAdmitted = failed.admitted,
+                builtInFormLoading = failed.loading,
+                hasBuiltInRuntimeConfig = true
+            ),
+            "a stale cached config must remain blocked while the refresh error offers Retry"
+        )
+    }
+
+    @Test
+    fun successfulRetryClearsFailureAndReceivesFreshnessAdmission() {
+        val retrying = createAgentDialogFormRefreshStarted()
+        assertTrue(retrying.loading)
+        assertFalse(retrying.admitted)
+        assertFalse(retrying.failureVisible)
+        assertFalse(retrying.retryAvailable)
+
+        val succeeded = createAgentDialogFormRefreshCompleted(DataResult.Content(Unit))
+        assertFalse(succeeded.loading)
+        assertTrue(succeeded.admitted)
+        assertFalse(succeeded.failureVisible)
+        assertFalse(succeeded.retryAvailable)
+        assertTrue(
+            isCreateAgentRuntimeContractReady(
+                runtime = "builtin",
+                builtInFormRefreshAdmitted = succeeded.admitted,
+                builtInFormLoading = succeeded.loading,
+                hasBuiltInRuntimeConfig = true
+            )
+        )
+    }
+
+    @Test
+    fun explicitFormOverrideStartsAdmittedWithoutRefresh() {
+        val state =
+            createAgentDialogFormRefreshInitialState(
+                shouldRefresh = false,
+                hasFormOverride = true
+            )
+        assertFalse(state.loading)
+        assertTrue(state.admitted)
+        assertFalse(state.failureVisible)
+        assertFalse(state.retryAvailable)
     }
 
     @Test

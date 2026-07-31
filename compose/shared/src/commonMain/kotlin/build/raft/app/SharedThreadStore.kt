@@ -68,7 +68,6 @@ import build.raft.app.data.ThreadReplyCacheIdentitySnapshot
 import build.raft.app.data.ThreadReplyCacheIdentityTransitionAnchor
 import build.raft.app.data.authSessionRequiredResult
 import build.raft.app.data.map
-import build.raft.app.data.recoverRejectedCreateAgentForm
 import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.data.toMessageMetadata
 import build.raft.app.data.toThreadRouteId
@@ -1789,10 +1788,11 @@ internal class SharedThreadDataSource(
      * [SharedCreateAgentCoordinator]. The dialog collects a full
      * [SharedCreateAgentDialogSubmit] (name, description, machineId,
      * runtimeConfig, external); the coordinator owns the body construction
-     * and the API call. Runtime-form rejection refreshes the canonical form
-     * store but never replays the mutation; the dialog asks the user to
-     * review the refreshed form and submit again. The action card is just the
-     * metadata that gets marked executed on success.
+     * and the API call. An allowlisted zero-side-effect runtime-form rejection
+     * may refresh the canonical form, revalidate the original input, and retry
+     * once with the fresh ref. Changed input or a second rejection requires
+     * explicit confirmation. The action card is just the metadata that gets
+     * marked executed on success.
      *
      * Replaces the legacy `commitAgentCreateActionCard(messageId, card)`
      * which only used name/description/machineId from the action card.
@@ -1815,7 +1815,9 @@ internal class SharedThreadDataSource(
         val created =
             coordinator
                 .createAgent(submit.toCreateAgentRequest())
-                .recoverRejectedCreateAgentForm(formStore, serverId, submit.machineId)
+                .recoverRejectedCreateAgentFormOrRetry(formStore, serverId, submit) { retrySubmit ->
+                    coordinator.createAgent(retrySubmit.toCreateAgentRequest())
+                }
         return when (created) {
             is DataResult.Content -> {
                 val resultName = created.data.name.takeIf { it.isNotBlank() } ?: submit.name
