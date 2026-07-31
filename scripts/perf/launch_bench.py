@@ -96,8 +96,11 @@ def cold_launch(device: str, package: str, component: str) -> dict | None:
 
 
 def warm_launch(device: str, package: str, component: str) -> dict | None:
-    # Process kept alive; send it to background then resume (no pm clear).
-    sh(device, "input keyevent KEYCODE_HOME", check=False)
+    # Warm start = process killed but app DATA + OS caches warm (the typical
+    # "reopen from a killed app" path). force-stop (not pm clear) so it's
+    # distinct from the pm-clear cold above, and NOT a HOME hot-resume (which
+    # reports TotalTime 0 because nothing is actually launched).
+    sh(device, f"am force-stop {package}", check=False)
     time.sleep(1.5)
     out = sh(device, f"am start -W -n {component}", check=False, timeout=90)
     time.sleep(1.5)
