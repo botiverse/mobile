@@ -29,6 +29,13 @@ on:
         required: true
         default: "6"
 
+# actions:read is required for actions/download-artifact@v4 to fetch the alpha
+# APK from another (same-repo) run; the default token otherwise 403s with
+# "Resource not accessible by integration".
+permissions:
+  contents: read
+  actions: read
+
 jobs:
   perf:
     runs-on: ubuntu-latest
