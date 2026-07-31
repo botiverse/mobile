@@ -128,11 +128,10 @@ require_cmd git
 require_cmd gh
 require_cmd curl
 require_cmd python3
-require_cmd tar
 
 cd "${ROOT_DIR}"
 [ -f .github/workflows/android-release.yml ] || die "android release workflow not found"
-[ -f compose/ohosApp/entry/libs/hands.har ] || die "OHOS Hands HAR is missing"
+[ -f compose/ohosApp/entry/oh-package.json5 ] || die "OHOS package manifest is missing"
 [ -f compose/ohosApp/entry/oh-package-lock.json5 ] || die "OHOS package lock is missing"
 
 git fetch "${RELEASE_REMOTE}" "${RELEASE_BRANCH}" --prune
@@ -163,22 +162,26 @@ git -C third_party/kuikly-ui rev-parse --verify --quiet "${KUIKLY_REMOTE_REF}" >
 git -C third_party/kuikly-ui merge-base --is-ancestor "${KUIKLY_SHA}" "${KUIKLY_REMOTE_REF}" ||
   die "Kuikly gitlink ${KUIKLY_SHA} is not reachable from ${KUIKLY_REMOTE}/${KUIKLY_BRANCH}"
 
-HAR_METADATA="$(mktemp)"
-trap 'rm -f "${HAR_METADATA}" "${HANDS_RESPONSE:-}"' EXIT
-tar -xOzf compose/ohosApp/entry/libs/hands.har package/oh-package.json5 >"${HAR_METADATA}" ||
-  die "could not read package/oh-package.json5 from Hands HAR"
-HANDS_HAR_NAME="$(json_field "${HAR_METADATA}" name)"
-HANDS_HAR_VERSION="$(json_field "${HAR_METADATA}" version)"
-[ "${HANDS_HAR_NAME}" = "@botiverse/hands" ] ||
-  die "Hands HAR identifies as '${HANDS_HAR_NAME:-missing}', expected @botiverse/hands"
-[ -n "${HANDS_HAR_VERSION}" ] || die "Hands HAR has no version"
-rg -F '"@botiverse/hands": "file:./libs/hands.har"' compose/ohosApp/entry/oh-package.json5 >/dev/null ||
-  die "OHOS manifest does not point @botiverse/hands at libs/hands.har"
-rg -F '"@botiverse/hands@libs/hands.har"' compose/ohosApp/entry/oh-package-lock.json5 >/dev/null ||
-  die "OHOS lock does not pin @botiverse/hands to libs/hands.har"
+HANDS_DEPENDENCY_METADATA="$(mktemp)"
+trap 'rm -f "${HANDS_DEPENDENCY_METADATA}" "${HANDS_RESPONSE:-}"' EXIT
+python3 scripts/check_ohos_hands_dependency.py \
+  --manifest compose/ohosApp/entry/oh-package.json5 \
+  --lock compose/ohosApp/entry/oh-package-lock.json5 \
+  --legacy-har compose/ohosApp/entry/libs/hands.har \
+  --fetch-registry >"${HANDS_DEPENDENCY_METADATA}" ||
+    die "OHOS Hands dependency failed manifest/lock/artifact verification"
+HANDS_DEPENDENCY_MODE="$(json_field "${HANDS_DEPENDENCY_METADATA}" mode)"
+HANDS_DEPENDENCY_NAME="$(json_field "${HANDS_DEPENDENCY_METADATA}" name)"
+HANDS_DEPENDENCY_VERSION="$(json_field "${HANDS_DEPENDENCY_METADATA}" version)"
+HANDS_DEPENDENCY_SOURCE="$(json_field "${HANDS_DEPENDENCY_METADATA}" source)"
+HANDS_DEPENDENCY_SHA256="$(json_field "${HANDS_DEPENDENCY_METADATA}" artifact_sha256)"
+[ "${HANDS_DEPENDENCY_NAME}" = "@botiverse/hands" ] ||
+  die "Hands dependency identifies as '${HANDS_DEPENDENCY_NAME:-missing}', expected @botiverse/hands"
+[ -n "${HANDS_DEPENDENCY_VERSION}" ] || die "Hands dependency has no version"
+[ -n "${HANDS_DEPENDENCY_SHA256}" ] || die "Hands dependency has no verified artifact digest"
 
 WORKFLOW_JSON="$(mktemp)"
-trap 'rm -f "${HAR_METADATA}" "${WORKFLOW_JSON}" "${HANDS_RESPONSE:-}"' EXIT
+trap 'rm -f "${HANDS_DEPENDENCY_METADATA}" "${WORKFLOW_JSON}" "${HANDS_RESPONSE:-}"' EXIT
 gh run list --repo botiverse/mobile --branch "${RELEASE_BRANCH}" --limit 100 \
   --json name,headSha,status,conclusion,url >"${WORKFLOW_JSON}"
 python3 - "${WORKFLOW_JSON}" "${HEAD_SHA}" <<'PY'
@@ -259,7 +262,9 @@ if [ -n "${REPORT_PATH}" ]; then
     printf -- '- Channel: `%s`\n' "${CHANNEL}"
     printf -- '- Release head: `%s`\n' "${HEAD_SHA}"
     printf -- '- Kuikly gitlink: `%s` reachable from `%s/%s`\n' "${KUIKLY_SHA}" "${KUIKLY_REMOTE}" "${KUIKLY_BRANCH}"
-    printf -- '- OHOS Hands HAR: `%s@%s` with manifest and lock pin\n' "${HANDS_HAR_NAME}" "${HANDS_HAR_VERSION}"
+    printf -- '- OHOS Hands dependency: `%s@%s` via `%s`; source `%s`; verified artifact SHA-256 `%s`\n' \
+      "${HANDS_DEPENDENCY_NAME}" "${HANDS_DEPENDENCY_VERSION}" "${HANDS_DEPENDENCY_MODE}" \
+      "${HANDS_DEPENDENCY_SOURCE}" "${HANDS_DEPENDENCY_SHA256}"
     printf -- '- Required CI: `Commit Sign-off` succeeded for this head; Android Release is the candidate build/test gate\n'
     if [ "${#REQUIRED_PRS[@]}" -gt 0 ]; then
       echo "- Included PRs: $(printf '#%s ' "${REQUIRED_PRS[@]}")"
@@ -280,7 +285,8 @@ echo "Android release preflight passed"
 echo "  candidate: ${VERSION} (${RELEASE_CODE})"
 echo "  head: ${HEAD_SHA}"
 echo "  Kuikly: ${KUIKLY_SHA} on ${KUIKLY_REMOTE}/${KUIKLY_BRANCH}"
-echo "  Hands HAR: ${HANDS_HAR_NAME}@${HANDS_HAR_VERSION}"
+echo "  Hands dependency: ${HANDS_DEPENDENCY_NAME}@${HANDS_DEPENDENCY_VERSION} (${HANDS_DEPENDENCY_MODE})"
+echo "  Hands artifact SHA-256: ${HANDS_DEPENDENCY_SHA256}"
 if [ -n "${LIVE_CODE}" ]; then
   echo "  Hands active versionCode: ${LIVE_CODE}"
 else

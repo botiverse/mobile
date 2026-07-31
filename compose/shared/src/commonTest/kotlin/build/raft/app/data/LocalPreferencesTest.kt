@@ -130,7 +130,7 @@ class LocalPreferencesTest {
         assertEquals(LargeScreenNavigationPreference.LeftRail, snapshot.largeScreenNavigation)
         assertEquals(true, snapshot.compactConsecutiveMessages)
         assertEquals(false, snapshot.longMessageCollapseEnabled)
-        assertEquals(false, snapshot.singleTapOpensThreadEnabled)
+        assertEquals(true, snapshot.singleTapOpensThreadEnabled)
         assertEquals(false, snapshot.inlineSelectionToolbarEnabled)
         assertEquals(true, snapshot.imageAnnotationEnabled)
         assertEquals(false, snapshot.foregroundMessageBannersEnabled)
@@ -180,6 +180,30 @@ class LocalPreferencesTest {
         val snapshot = repository.getChatLayoutPreference()
 
         assertEquals(true, snapshot.composerSendKeyEnabled)
+    }
+
+    @Test
+    fun chatLayoutRestoresExplicitSingleTapThreadChoiceAfterDefaultChangesToOn() = runBlocking {
+        val disabledStore = InMemorySlockKeyValueStore()
+        val disabledPreferenceStore = KeyValueChatLayoutPreferenceStore(disabledStore)
+        disabledPreferenceStore.saveSingleTapOpensThreadEnabled(false)
+
+        val disabledRestored =
+            PersistentChatLayoutPreferenceRepository(
+                KeyValueChatLayoutPreferenceStore(disabledStore)
+            ).getChatLayoutPreference()
+
+        val enabledStore = InMemorySlockKeyValueStore()
+        val enabledPreferenceStore = KeyValueChatLayoutPreferenceStore(enabledStore)
+        enabledPreferenceStore.saveSingleTapOpensThreadEnabled(true)
+
+        val enabledRestored =
+            PersistentChatLayoutPreferenceRepository(
+                KeyValueChatLayoutPreferenceStore(enabledStore)
+            ).getChatLayoutPreference()
+
+        assertEquals(false, disabledRestored.singleTapOpensThreadEnabled)
+        assertEquals(true, enabledRestored.singleTapOpensThreadEnabled)
     }
 
     @Test
