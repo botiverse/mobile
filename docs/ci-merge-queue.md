@@ -63,3 +63,4 @@ queue. It must produce a `merge_group` Test run, select
 `merge-group-deterministic-full`, pass `CI gate`, squash exactly one pull
 request, and leave a successful full readback on `main`. A missing check,
 unexpected job, base drift, or queue timeout is a rollback condition.
+Do not admit product pull requests until both canary receipts are closed.
