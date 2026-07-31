@@ -8929,7 +8929,16 @@ internal fun SharedThreadRouteContent(
                     pendingActionCardIds = pendingActionCardIds + dialogState.messageId
                     coroutineScope.launch {
                         try {
-                            when (val result = dataSource.commitAgentCreateActionCard(dialogState.messageId, submitCard)) {
+                            when (
+                                val result =
+                                    dataSource.commitAgentCreateActionCardFromDialog(
+                                        messageId = dialogState.messageId,
+                                        card = submitCard,
+                                        submit = request,
+                                        formStore = createAgentFormStore,
+                                        serverId = createAgentComputerServerId
+                                    )
+                            ) {
                                 is DataResult.Content -> {
                                     threadViewModel.dispatch(
                                         SharedThreadIntent.ApplyActionCard(dialogState.messageId, result.data)
@@ -20252,6 +20261,10 @@ private fun threadCreateAgentDialogErrorCopy(code: String): String =
         "action_card_mark_executed_empty",
         "action_mark_executed_contract_mismatch" -> stringResource(MR.strings.thread_action_card_error_mark_done)
         "agent_create_empty" -> stringResource(MR.strings.thread_action_card_error_agent_not_created)
+        "agent_create_form_refresh_required" ->
+            stringResource(MR.strings.thread_action_card_error_agent_form_refresh_required)
+        "agent_create_form_refresh_failed" ->
+            stringResource(MR.strings.thread_action_card_error_agent_form_refresh_failed)
         else -> stringResource(MR.strings.thread_action_card_error_agent_create, code)
     }
 

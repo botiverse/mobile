@@ -516,6 +516,8 @@
     <string name="thread_action_card_error_mark_done">Agent was created, but the action card could not be marked done. Try refreshing this thread.</string>
     <string name="thread_action_card_error_agent_not_created">Agent was not created.</string>
     <string name="thread_action_card_error_agent_create">Unable to create agent: %1$s</string>
+    <string name="thread_action_card_error_agent_form_refresh_required">The agent form changed. Review the refreshed options and try again.</string>
+    <string name="thread_action_card_error_agent_form_refresh_failed">Unable to refresh the agent form. Try again.</string>
     <string name="thread_action_card_error_select_server">Select a server before loading computers.</string>
     <string name="thread_action_card_error_sign_in_computers">Sign in again to load computers.</string>
     <string name="thread_action_card_error_computers_permission">You do not have permission to view computers.</string>

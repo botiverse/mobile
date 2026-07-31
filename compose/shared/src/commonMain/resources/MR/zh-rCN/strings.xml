@@ -516,6 +516,8 @@
     <string name="thread_action_card_error_mark_done">Agent 已创建，但操作卡片无法标记完成。请刷新当前对话后重试。</string>
     <string name="thread_action_card_error_agent_not_created">Agent 未创建。</string>
     <string name="thread_action_card_error_agent_create">无法创建 Agent：%1$s</string>
+    <string name="thread_action_card_error_agent_form_refresh_required">Agent 表单已更新，请检查刷新后的选项并重试。</string>
+    <string name="thread_action_card_error_agent_form_refresh_failed">无法刷新 Agent 表单，请重试。</string>
     <string name="thread_action_card_error_select_server">请先选择服务器再加载设备。</string>
     <string name="thread_action_card_error_sign_in_computers">请重新登录以加载设备。</string>
     <string name="thread_action_card_error_computers_permission">你没有查看设备的权限。</string>
