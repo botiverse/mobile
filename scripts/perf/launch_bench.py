@@ -161,6 +161,15 @@ def main() -> int:
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    # Fail loud, never silent-green: an unresolved launcher would make every
+    # `am start` a no-op and yield an all-null "PASS". Refuse to run.
+    component = args.component.strip()
+    if not component or "/" not in component:
+        print(f"FATAL: empty/invalid launcher component {args.component!r} "
+              f"for {args.package}; cannot launch. Failing the run.", flush=True)
+        return 2
+    args.component = component
+
     result: dict = {
         "device": args.device,
         "package": args.package,
@@ -203,6 +212,13 @@ def main() -> int:
     (out_dir / "launch_bench.json").write_text(json.dumps(result, indent=2))
     print("\n=== launch_bench.json ===", flush=True)
     print(json.dumps(result, indent=2), flush=True)
+
+    # Fail loud if nothing was actually measured, so the run goes RED instead of
+    # reporting an all-null "success" that reads as a passing benchmark.
+    if not cold and not warm:
+        print("FATAL: 0 cold and 0 warm launches captured; "
+              "every am start failed. Failing the run.", flush=True)
+        return 3
     return 0
 
 
