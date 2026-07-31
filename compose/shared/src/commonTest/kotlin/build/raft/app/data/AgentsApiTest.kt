@@ -106,6 +106,34 @@ class AgentsApiTest {
     }
 
     @Test
+    fun agentsErrorsCarryRawServerTextForHonestFallback() = runPortableCoroutineTest {
+        val unmappedConflict =
+            SlockAgentsApiClient(
+                RecordingAgentsApi(
+                    createAgentCode = 409,
+                    createAgentErrorBody = """{"error":"No machine assigned. Please assign a machine to this agent first.","code":"machine_unassigned"}"""
+                )
+            ).createAgent("{}")
+        val serverError =
+            SlockAgentsApiClient(
+                RecordingAgentsApi(
+                    createAgentCode = 503,
+                    createAgentErrorBody = """{"error":"Scheduled maintenance in progress"}"""
+                )
+            ).createAgent("{}")
+
+        val conflictError = assertIs<DataResult.Error>(unmappedConflict).error
+        assertEquals("http_409", conflictError.code)
+        assertEquals(
+            "No machine assigned. Please assign a machine to this agent first.",
+            conflictError.serverMessage
+        )
+        val unavailable = assertIs<DataResult.Error>(serverError).error
+        assertEquals("server_unavailable", unavailable.code)
+        assertEquals("Scheduled maintenance in progress", unavailable.serverMessage)
+    }
+
+    @Test
     fun nameConflictStaysOutsideFormRecoveryAllowlist() {
         assertTrue(AGENT_CREATE_NAME_TAKEN !in CREATE_AGENT_RUNTIME_FORM_REJECTION_CODES)
     }
