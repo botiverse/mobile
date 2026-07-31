@@ -261,6 +261,48 @@ class AgentsApiTest {
     }
 
     @Test
+    fun createAgentBodyOmitsAbsentOptionalFieldsLikeWeb() {
+        val body =
+            buildCreateAgentBody(
+                CreateAgentBody(
+                    name = "Codex Agent",
+                    machineId = "machine-1",
+                    runtimeConfig =
+                        RuntimeConfig(
+                            runtime = "codex",
+                            model = RuntimeModelConfig.Preset("gpt-5")
+                        )
+                )
+            )
+        val json = Json.parseToJsonElement(body).jsonObject
+
+        assertEquals(false, "formDefinitionRef" in json)
+        assertEquals(false, "external" in json)
+        assertEquals(false, "description" in json)
+        assertEquals("Codex Agent", json.getValue("name").jsonPrimitive.content)
+        assertEquals("machine-1", json.getValue("machineId").jsonPrimitive.content)
+        assertEquals("codex", json.getValue("runtimeConfig").jsonObject.getValue("runtime").jsonPrimitive.content)
+    }
+
+    @Test
+    fun externalCreateBodyOmitsMachineRuntimeAndFormNulls() {
+        val json =
+            Json.parseToJsonElement(
+                buildCreateAgentBody(
+                    CreateAgentBody(
+                        name = "External Agent",
+                        external = true
+                    )
+                )
+            ).jsonObject
+
+        assertEquals(true, json.getValue("external").jsonPrimitive.boolean)
+        assertEquals(false, "machineId" in json)
+        assertEquals(false, "runtimeConfig" in json)
+        assertEquals(false, "formDefinitionRef" in json)
+    }
+
+    @Test
     fun createAgentBodySerializesBuiltInGatewayCustomModel() {
         val body = buildCreateAgentBody(
             CreateAgentBody(

@@ -771,11 +771,9 @@ internal data class UpdateAgentScopesBody(val scopes: List<String>? = null, val 
 @Serializable
 internal data class IssueAgentBootstrapTokenBody(val scopes: List<String>? = null, val ttlMs: Long? = null)
 
-// task #186: create requests must match the web wire shape — absent optional
-// fields are OMITTED, never serialized as explicit `null`. The server treats an
-// explicit `"formDefinitionRef":null` as present-but-invalid (routes/agents.ts
-// validates any non-undefined value), which 409s every non-Built-in create and
-// 400s external creates. Encoding-only; response decoding stays on agentsApiJson.
+// Create requests match the Web wire shape: absent optional fields are omitted.
+// Keep response decoding and PATCH/update encoding on agentsApiJson because an
+// explicit null can carry different semantics outside this POST boundary.
 private val agentsApiCreateBodyJson = Json {
     ignoreUnknownKeys = true
     encodeDefaults = true
