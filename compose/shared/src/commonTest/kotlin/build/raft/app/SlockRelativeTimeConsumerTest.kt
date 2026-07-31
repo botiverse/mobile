@@ -61,6 +61,14 @@ class SlockRelativeTimeConsumerTest {
     }
 
     @Test
+    fun systemMessageTimestampUsesRenderedLabelWidthInsteadOfMetadataGutter() {
+        val layout = threadSystemMessageTimestampLayoutSpec()
+
+        assertFalse(layout.reserveFullMetadataGutter)
+        assertEquals(ThreadRelativeTimestampSlotWidthDp, layout.maxWidthDp)
+    }
+
+    @Test
     fun parseableRelativeTimestampTogglesToLocalAbsoluteAndBack() {
         val context =
             SlockTimeContext(
