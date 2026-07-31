@@ -1873,6 +1873,17 @@ class ThreadPayloadTest {
                 horizontalAutoFlip = false
             )
         )
+
+        assertEquals(
+            Offset(24f, 252f),
+            roomy.positionContent(
+                anchor = Offset(24f, 500f),
+                contentSize = Size(width = 320f, height = 240f),
+                viewportGap = 8f,
+                verticalOffsetAbove = 8f,
+                verticalPlacement = SlockFloatingVerticalPlacement.Above
+            )
+        )
     }
 
     @Test

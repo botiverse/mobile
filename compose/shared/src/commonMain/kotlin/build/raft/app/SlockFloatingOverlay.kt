@@ -34,6 +34,7 @@ internal data class SlockFloatingOverlayLayout(
 
 internal enum class SlockFloatingVerticalPlacement {
     Below,
+    Above,
     Auto
 }
 
@@ -49,6 +50,7 @@ internal fun SlockModalAnchoredPopover(
     verticalOffsetAbove: Float = verticalOffset,
     verticalPlacement: SlockFloatingVerticalPlacement = SlockFloatingVerticalPlacement.Below,
     horizontalAutoFlip: Boolean = false,
+    dismissActivationDelayMillis: Long = SlockFloatingOverlayDismissActivationDelayMillis,
     content: @Composable () -> Unit
 ) {
     Modal(onWillDismiss = { onDismiss() }) {
@@ -63,6 +65,7 @@ internal fun SlockModalAnchoredPopover(
             verticalOffsetAbove = verticalOffsetAbove,
             verticalPlacement = verticalPlacement,
             horizontalAutoFlip = horizontalAutoFlip,
+            dismissActivationDelayMillis = dismissActivationDelayMillis,
             content = content
         )
     }
@@ -83,6 +86,7 @@ internal fun SlockAnchoredPopover(
     // there is no room on the right. Used by SlockBaseMenuOverlay so
     // long-press menus don't run off the screen's right edge.
     horizontalAutoFlip: Boolean = false,
+    dismissActivationDelayMillis: Long = SlockFloatingOverlayDismissActivationDelayMillis,
     content: @Composable () -> Unit
 ) {
     anchor.renderInOverlay(
@@ -95,6 +99,7 @@ internal fun SlockAnchoredPopover(
         verticalOffsetAbove = verticalOffsetAbove,
         verticalPlacement = verticalPlacement,
         horizontalAutoFlip = horizontalAutoFlip,
+        dismissActivationDelayMillis = dismissActivationDelayMillis,
         content = content
     )
 }
@@ -334,11 +339,14 @@ internal fun slockVerticalPosition(
     verticalPlacement: SlockFloatingVerticalPlacement = SlockFloatingVerticalPlacement.Below
 ): Float {
     val maxY = (viewportHeight - contentHeight - viewportGap).coerceAtLeast(viewportGap)
+    val aboveY = localAnchorY - contentHeight - verticalOffsetAbove
     val belowY = localAnchorY + verticalOffset
     if (verticalPlacement == SlockFloatingVerticalPlacement.Below) {
         return belowY.coerceIn(viewportGap, maxY)
     }
-    val aboveY = localAnchorY - contentHeight - verticalOffsetAbove
+    if (verticalPlacement == SlockFloatingVerticalPlacement.Above) {
+        return aboveY.coerceIn(viewportGap, maxY)
+    }
     val belowFits = belowY + contentHeight <= viewportHeight - viewportGap
     val aboveFits = aboveY >= viewportGap
     return when {

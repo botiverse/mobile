@@ -12999,6 +12999,8 @@ private fun ThreadPageContent(
             }
         }
     }
+    val composerSuggestionPortal =
+        remember(threadInstanceKey) { ThreadComposerSuggestionPortalState() }
     Box(
         modifier =
             Modifier
@@ -13178,35 +13180,40 @@ private fun ThreadPageContent(
                                     )
                             )
                     ) {
-                        ThreadComposerRoute(
-                            baseComposerState = baseComposerState,
-                            composerDraftViewModel = composerDraftViewModel,
-                            renderedPayload = payload,
-                            timelineSlice = timelineSlice,
-                            resolvedAuxiliaryThreadId = resolvedAuxiliaryThreadId,
-                            surface = composerSurface,
-                            memberSuggestionsFlow = memberSuggestionsFlow,
-                            channelSuggestionsFlow = channelSuggestionsFlow,
-                            agentStatusResolver = agentStatusResolver,
-                            onEvent = onComposerEvent,
-                            insertMentionRequest = insertMentionRequest,
-                            onInsertMentionConsumed = { request ->
-                                if (insertMentionRequest?.nonce == request.nonce) {
-                                    insertMentionRequest = null
+                        CompositionLocalProvider(
+                            LocalThreadComposerSuggestionPortal provides composerSuggestionPortal
+                        ) {
+                            ThreadComposerRoute(
+                                baseComposerState = baseComposerState,
+                                composerDraftViewModel = composerDraftViewModel,
+                                renderedPayload = payload,
+                                timelineSlice = timelineSlice,
+                                resolvedAuxiliaryThreadId = resolvedAuxiliaryThreadId,
+                                surface = composerSurface,
+                                memberSuggestionsFlow = memberSuggestionsFlow,
+                                channelSuggestionsFlow = channelSuggestionsFlow,
+                                agentStatusResolver = agentStatusResolver,
+                                onEvent = onComposerEvent,
+                                insertMentionRequest = insertMentionRequest,
+                                onInsertMentionConsumed = { request ->
+                                    if (insertMentionRequest?.nonce == request.nonce) {
+                                        insertMentionRequest = null
+                                    }
+                                },
+                                onSuggestionDemandChanged = onSuggestionDemandChanged,
+                                composerSendKeyEnabled = composerSendKeyEnabled,
+                                onKeyboardHeightChange = { nextInset ->
+                                    if (nextInset != composerKeyboardInsetDp) {
+                                        composerKeyboardInsetDp = nextInset
+                                    }
                                 }
-                            },
-                            onSuggestionDemandChanged = onSuggestionDemandChanged,
-                            composerSendKeyEnabled = composerSendKeyEnabled,
-                            onKeyboardHeightChange = { nextInset ->
-                                if (nextInset != composerKeyboardInsetDp) {
-                                    composerKeyboardInsetDp = nextInset
-                                }
-                            }
-                        )
+                            )
+                        }
                     }
                 }
             }
         }
+        ThreadComposerSuggestionPortalHost(composerSuggestionPortal)
         val visibleForwardPickerSession = forwardPickerFlow.sessionKey
         if ((activeModal == "forwardTargets" || activeModal == "forwardNote") && visibleForwardPickerSession != null) {
                 SlockForwardTargetPicker(
