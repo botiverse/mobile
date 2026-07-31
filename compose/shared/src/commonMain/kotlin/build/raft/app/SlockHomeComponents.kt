@@ -158,6 +158,7 @@ private val SidebarActionRowHeight = 32.dp
 private val HomeSmallShadowOffset = 2.dp
 private val SidebarRowHorizontalPadding = 8.dp
 private val SidebarActionLabelGap = 6.dp
+private val SidebarActionTrailingSlotWidth = 36.dp
 private val ChannelSymbolWidth = 18.dp
 private val ChannelSymbolIconSize = 14.dp
 private val ChannelAvatarSize = 20.dp
@@ -4762,7 +4763,18 @@ private fun SidebarActionRow(icon: SlockLucideIconName, label: String, modifier:
         ) {
             Box(modifier = Modifier.size(SidebarActionIconBoxSize), contentAlignment = Alignment.Center) { SlockLucideIcon(icon, Modifier.size(SidebarActionIconSize)) }
             Text(label, style = SlockType.Button, color = SlockColor.TextBlack, modifier = Modifier.padding(start = SidebarActionLabelGap).weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (badge != null) CountPill(badge, SlockColor.AccentPink) else if (trailingText != null) SidebarTrailingNumberText(trailingText, color = SlockColor.TextBlack)
+            if (badge != null || trailingText != null) {
+                Box(
+                    modifier = Modifier.width(SidebarActionTrailingSlotWidth),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (badge != null) {
+                        CountPill(badge, SlockColor.AccentPink)
+                    } else if (trailingText != null) {
+                        SidebarTrailingNumberText(trailingText, color = SlockColor.TextBlack)
+                    }
+                }
+            }
         }
     }
 }
