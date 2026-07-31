@@ -96,8 +96,11 @@ def cold_launch(device: str, package: str, component: str) -> dict | None:
 
 
 def warm_launch(device: str, package: str, component: str) -> dict | None:
-    # Process kept alive; send it to background then resume (no pm clear).
-    sh(device, "input keyevent KEYCODE_HOME", check=False)
+    # Warm start = process killed but app DATA + OS caches warm (the typical
+    # "reopen from a killed app" path). force-stop (not pm clear) so it's
+    # distinct from the pm-clear cold above, and NOT a HOME hot-resume (which
+    # reports TotalTime 0 because nothing is actually launched).
+    sh(device, f"am force-stop {package}", check=False)
     time.sleep(1.5)
     out = sh(device, f"am start -W -n {component}", check=False, timeout=90)
     time.sleep(1.5)
@@ -161,6 +164,15 @@ def main() -> int:
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    # Fail loud, never silent-green: an unresolved launcher would make every
+    # `am start` a no-op and yield an all-null "PASS". Refuse to run.
+    component = args.component.strip()
+    if not component or "/" not in component:
+        print(f"FATAL: empty/invalid launcher component {args.component!r} "
+              f"for {args.package}; cannot launch. Failing the run.", flush=True)
+        return 2
+    args.component = component
+
     result: dict = {
         "device": args.device,
         "package": args.package,
@@ -203,6 +215,13 @@ def main() -> int:
     (out_dir / "launch_bench.json").write_text(json.dumps(result, indent=2))
     print("\n=== launch_bench.json ===", flush=True)
     print(json.dumps(result, indent=2), flush=True)
+
+    # Fail loud if nothing was actually measured, so the run goes RED instead of
+    # reporting an all-null "success" that reads as a passing benchmark.
+    if not cold and not warm:
+        print("FATAL: 0 cold and 0 warm launches captured; "
+              "every am start failed. Failing the run.", flush=True)
+        return 3
     return 0
 
 

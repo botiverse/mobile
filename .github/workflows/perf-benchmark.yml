@@ -29,6 +29,13 @@ on:
         required: true
         default: "6"
 
+# actions:read is required for actions/download-artifact@v4 to fetch the alpha
+# APK from another (same-repo) run; the default token otherwise 403s with
+# "Resource not accessible by integration".
+permissions:
+  contents: read
+  actions: read
+
 jobs:
   perf:
     runs-on: ubuntu-latest
@@ -103,11 +110,12 @@ jobs:
             adb install -r -g "$APK_PATH"
             echo "resolving launcher component for $PKG"
             adb shell cmd package resolve-activity --brief "$PKG" | tail -1 > component.txt
-            cat component.txt
-            COMPONENT="$(cat component.txt)"
-            echo "component=$COMPONENT"
+            echo "component=$(cat component.txt)"
             mkdir -p artifacts
-            python3 scripts/perf/launch_bench.py --device emulator-5554 --package "$PKG" --component "$COMPONENT" --iterations "$ITERS" --out artifacts/perf-launch
+            # NB: android-emulator-runner runs each script line as its OWN shell,
+            # so a shell var set on one line is empty on the next. Read the
+            # resolved component from the file inline, in this same line.
+            python3 scripts/perf/launch_bench.py --device emulator-5554 --package "$PKG" --component "$(cat component.txt)" --iterations "$ITERS" --out artifacts/perf-launch
             echo "=== device fingerprint ==="
             adb shell getprop ro.build.version.sdk
             adb shell getprop ro.product.model
