@@ -39,6 +39,12 @@ printf 'INSTRUMENTATION_ABORTED: System has crashed\n' > "$tmp/abort.txt"
 printf 'am broadcast ... failed: Broken pipe\n' > "$tmp/pipe.txt"
 "$assert" "$tmp/pipe.txt" 1; check "Broken pipe -> 2 (retryable)" 2 $?
 
+printf 'adb: device offline\n' > "$tmp/offline.txt"
+"$assert" "$tmp/offline.txt" 1; check "adb: device offline -> 2 (retryable)" 2 $?
+
+printf 'error: device '\''emulator-5554'\'' not found\n' > "$tmp/notfound.txt"
+"$assert" "$tmp/notfound.txt" 1; check "device not found -> 2 (retryable)" 2 $?
+
 # A real failure that co-occurs with an abort marker stays fatal (never masked).
 printf 'FAILURES!!!\nINSTRUMENTATION_ABORTED: System has crashed\n' > "$tmp/both.txt"
 "$assert" "$tmp/both.txt" 1; check "FAILURES!!! + abort -> 1 (real wins)" 1 $?
@@ -50,7 +56,14 @@ printf 'no summary here\n' > "$tmp/none.txt"
 "$assert" "$tmp/none.txt" 1; check "no OK summary -> 1 (fatal)" 1 $?
 
 # --- retry wrapper ----------------------------------------------------------
+export INSTRUMENTATION_RETRY_BACKOFF_SECONDS=0  # keep the test fast
 counter="$tmp/counter"
+
+# masked crash: command exits non-zero but body looks OK -> fatal, never green.
+gen_masked_crash() { echo "OK (1 tests)"; exit 7; }
+export -f gen_masked_crash
+INSTRUMENTATION_MAX_ATTEMPTS=3 "$retry" "$tmp/masked.txt" 1 -- bash -c gen_masked_crash
+check "retry: OK-body but cmd exit 7 -> 1 (masked crash, not green)" 1 $?
 
 # infra-abort on the first attempt, then success -> overall 0 after retry.
 echo 0 > "$counter"
@@ -67,6 +80,7 @@ export counter
 INSTRUMENTATION_MAX_ATTEMPTS=3 "$retry" "$tmp/flaky.txt" 1 -- bash -c gen_flaky
 check "retry: infra-abort then OK -> 0" 0 $?
 check "retry: infra-abort then OK ran twice" 2 "$(<"$counter")"
+if [[ -f "$tmp/flaky.txt.attempt-1" ]]; then echo "ok: retry: prior-attempt evidence archived"; else echo "FAIL: retry: prior-attempt evidence archived (missing)" >&2; fail=1; fi
 
 # real failure -> fail fast, exactly one attempt (no retry).
 echo 0 > "$counter"

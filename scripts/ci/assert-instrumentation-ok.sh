@@ -41,9 +41,9 @@ fi
 # the run was interrupted before completing, so the caller may bounded-retry it.
 # Distinct exit code 2 lets run-instrumentation-with-retry.sh retry ONLY these
 # (never a real failure above). See notes/emulator-flaky-audit-2026-07-30.md.
-if grep -Eq 'INSTRUMENTATION_ABORTED|System has crashed|Broken pipe|adb: device .* (not found|offline)|emulator: ERROR|Boot(ing)? .*(timed out|timeout)' "$file"; then
+if grep -Eq 'INSTRUMENTATION_ABORTED|System has crashed|Broken pipe|device ([^ ]+ )?(offline|not found)|no devices/emulators found|emulator: ERROR|[Bb]oot.*(timed out|timeout)|adb.*(offline|not responding|no such device)' "$file"; then
   echo "Instrumentation aborted by infrastructure (retryable) in $file:" >&2
-  grep -E 'INSTRUMENTATION_ABORTED|System has crashed|Broken pipe|adb: device .* (not found|offline)|emulator: ERROR|Boot(ing)? .*(timed out|timeout)' "$file" >&2 || true
+  grep -E 'INSTRUMENTATION_ABORTED|System has crashed|Broken pipe|device ([^ ]+ )?(offline|not found)|no devices/emulators found|emulator: ERROR|[Bb]oot.*(timed out|timeout)|adb.*(offline|not responding|no such device)' "$file" >&2 || true
   exit 2
 fi
 
