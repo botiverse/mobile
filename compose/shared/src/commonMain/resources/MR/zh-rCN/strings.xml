@@ -240,6 +240,9 @@
     <string name="thread_inline_selection_save">收藏</string>
     <string name="thread_inline_selection_select">选择</string>
     <string name="thread_inline_selection_more">更多</string>
+    <string name="thread_text_selection_copy_all">复制全文</string>
+    <string name="thread_text_selection_copy_selected">复制所选</string>
+    <string name="thread_text_selection_select_all">全选</string>
     <string name="thread_action_open_thread">打开话题</string>
     <string name="thread_action_remove_from_saved">从收藏中移除</string>
     <string name="thread_action_save_message">收藏消息</string>

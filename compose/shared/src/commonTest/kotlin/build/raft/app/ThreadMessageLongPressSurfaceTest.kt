@@ -19,6 +19,33 @@ class ThreadMessageLongPressSurfaceTest {
     }
 
     @Test
+    fun textSelectionToolbarTracksStartDragEndAndCancel() {
+        assertEquals(
+            ThreadTextSelectionPresentation(hasSelection = true, actionsVisible = true),
+            threadTextSelectionPresentation(ThreadTextSelectionEvent.Start)
+        )
+        assertEquals(
+            ThreadTextSelectionPresentation(hasSelection = true, actionsVisible = false),
+            threadTextSelectionPresentation(ThreadTextSelectionEvent.Change)
+        )
+        assertEquals(
+            ThreadTextSelectionPresentation(hasSelection = true, actionsVisible = true),
+            threadTextSelectionPresentation(ThreadTextSelectionEvent.End)
+        )
+        assertEquals(
+            ThreadTextSelectionPresentation.None,
+            threadTextSelectionPresentation(ThreadTextSelectionEvent.Cancel)
+        )
+    }
+
+    @Test
+    fun selectedTextUsesOnlyOrderedSelectionContentWithoutEmptyFallback() {
+        assertEquals("middle selection", threadTextSelectionContent(listOf("middle ", "selection")))
+        assertNull(threadTextSelectionContent(emptyList()))
+        assertNull(threadTextSelectionContent(listOf("")))
+    }
+
+    @Test
     fun stationaryLongPressSurvivesProgrammaticListScroll() {
         val decision =
             decideThreadMessageLongPressDispatch(
