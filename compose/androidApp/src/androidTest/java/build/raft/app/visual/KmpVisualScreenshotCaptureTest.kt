@@ -1001,8 +1001,10 @@ class KmpVisualScreenshotCaptureTest {
                     after = captureAfterLongPressRendered(
                         label = "components.thread.message-body-long-press",
                         before = before,
-                        minChangedRatio = THREAD_LONG_PRESS_MIN_CHANGED_RATIO,
                         longPress = { longPressDisplayDp(x = 300f, y = 70f) },
+                        rendered = { b, shot ->
+                            b.fullBitmapChangedPixelRatio(shot) >= THREAD_LONG_PRESS_MIN_CHANGED_RATIO
+                        },
                     )
                     val yellowAfter = after.countThreadOpenProbeYellowSamplesInTopBand()
                     val changedRatio = before.fullBitmapChangedPixelRatio(after)
@@ -1086,8 +1088,19 @@ class KmpVisualScreenshotCaptureTest {
                         after = captureAfterLongPressRendered(
                             label = caseId,
                             before = before,
-                            minChangedRatio = THREAD_LONG_PRESS_MIN_CHANGED_RATIO,
                             longPress = { longPressDisplayDp(x = 300f, y = targetYDp) },
+                            rendered = { b, shot ->
+                                // Full render: the blue selection AND the black
+                                // compact-toolbar chrome, which paints slightly
+                                // after the first pixel change — a changedRatio-
+                                // only gate returned before the toolbar and the
+                                // addedNearBlack assert flaked (shard0 2026-07-31).
+                                b.fullBitmapChangedPixelRatio(shot) >= THREAD_LONG_PRESS_MIN_CHANGED_RATIO &&
+                                    shot.countThreadInlineSelectionBlueSamples() >=
+                                    selectionBlueBefore + THREAD_INLINE_SELECTION_MIN_ADDED_BLUE_SAMPLES &&
+                                    shot.countNewNearBlackSamplesComparedWith(b) >=
+                                    THREAD_INLINE_SELECTION_MIN_ADDED_BLACK_SAMPLES
+                            },
                         )
                         val threadOpenAfter = after.countThreadInlineSelectionOpenProbeSamples()
                         val selectionBlueAfter = after.countThreadInlineSelectionBlueSamples()
@@ -1249,8 +1262,13 @@ class KmpVisualScreenshotCaptureTest {
                         after = captureAfterLongPressRendered(
                             label = "components.thread.inline-selection-preference-off",
                             before = before,
-                            minChangedRatio = THREAD_LONG_PRESS_MIN_CHANGED_RATIO,
                             longPress = { longPressDisplayDp(x = 300f, y = 70f) },
+                            // Preference-off renders the legacy actions menu (and
+                            // must NOT create an in-place selection), so the menu
+                            // pixel change is its complete render signal.
+                            rendered = { b, shot ->
+                                b.fullBitmapChangedPixelRatio(shot) >= THREAD_LONG_PRESS_MIN_CHANGED_RATIO
+                            },
                         )
                         val selectionBlueAfter = after.countThreadInlineSelectionBlueSamples()
                         val changedRatio = before.fullBitmapChangedPixelRatio(after)
@@ -2405,8 +2423,10 @@ class KmpVisualScreenshotCaptureTest {
                     menuOpen = captureAfterLongPressRendered(
                         label = "$caseId.open",
                         before = before,
-                        minChangedRatio = SEARCH_PIN_MENU_MIN_CHANGED_RATIO,
                         longPress = { longPressDisplayDp(x = 180f, y = 220f) },
+                        rendered = { b, shot ->
+                            b.fullBitmapChangedPixelRatio(shot) >= SEARCH_PIN_MENU_MIN_CHANGED_RATIO
+                        },
                     )
                     val yellowMenuOpen = menuOpen.countThreadOpenProbeYellowSamplesInTopBand()
                     val changedRatio = before.fullBitmapChangedPixelRatio(menuOpen)
@@ -3596,19 +3616,23 @@ class KmpVisualScreenshotCaptureTest {
      * than any fixed wait, so a fixed sleep captures before the render and the
      * changedRatio assert flakes (green in isolation, red under load — the
      * inline-selection case seen 2026-07-31). We wait for the real pixels:
-     * poll every [pollMs] until the before->shot changed-pixel ratio crosses
-     * [minChangedRatio] or [timeoutMs] elapses, re-issuing the long-press once at
-     * [retryAtMs] to guard the occasional un-registered press. Returns the final
+     * poll every [pollMs] until [rendered] is true for the fresh capture or
+     * [timeoutMs] elapses, re-issuing the long-press once at [retryAtMs] to guard
+     * the occasional un-registered press. [rendered] must encode the case's FULL
+     * render-ready signal, not just a coarse changedRatio: e.g. the compact case
+     * needs the blue selection AND the black toolbar chrome, which render after
+     * the first pixel change, so a changedRatio-only gate would return before the
+     * toolbar and the caller's later assert would still fail. Returns the final
      * capture (rendered on success, last poll on timeout so the caller's own
-     * changedRatio assert still fails with real detail). The caller owns
-     * recycling the returned bitmap; [captureActivityScreenshot] holds no disk
-     * state, so the intermediate polls are recycled here and never persisted.
+     * asserts still fail with real detail). The caller owns recycling the
+     * returned bitmap; [captureActivityScreenshot] holds no disk state, so the
+     * intermediate polls are recycled here and never persisted.
      */
     private fun captureAfterLongPressRendered(
         label: String,
         before: Bitmap,
-        minChangedRatio: Float,
         longPress: () -> Unit,
+        rendered: (before: Bitmap, shot: Bitmap) -> Boolean,
         timeoutMs: Long = LONG_PRESS_RENDER_TIMEOUT_MS,
         pollMs: Long = LONG_PRESS_RENDER_POLL_MS,
         retryAtMs: Long = LONG_PRESS_RENDER_RETRY_AT_MS,
@@ -3622,9 +3646,9 @@ class KmpVisualScreenshotCaptureTest {
             waitForIdleBounded()
             latest?.recycle()
             latest = captureActivityScreenshot("$label.render-poll")
-            val rendered = before.fullBitmapChangedPixelRatio(latest!!) >= minChangedRatio
+            val ok = rendered(before, latest!!)
             val elapsed = SystemClock.uptimeMillis() - start
-            if (rendered || elapsed >= timeoutMs) {
+            if (ok || elapsed >= timeoutMs) {
                 return latest!!
             }
             if (!retried && elapsed >= retryAtMs) {
