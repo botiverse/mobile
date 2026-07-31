@@ -63,6 +63,10 @@ function functionBody(source, startMarker, endMarker) {
   return source.slice(start, end);
 }
 
+function occurrenceCount(source, marker) {
+  return source.split(marker).length - 1;
+}
+
 function assertCanvasCompatibleDecode(name, source) {
   assertContract(
     source.includes('OH_DecodingOptions_SetDesiredDynamicRange') &&
@@ -89,9 +93,14 @@ function assertCanvasCompatibleDecode(name, source) {
   );
   assertContract(
     source.includes('OH_ImageSourceNative_CreatePixelmap(source, options, pixelmap)') &&
-      source.includes('ValidateCpuReadableRgbaPixelmap(*pixelmap)') &&
+      occurrenceCount(source, 'code = ValidateCpuReadableRgbaPixelmap(*pixelmap);') >= 2 &&
       source.includes('OH_PixelmapNative_ReadPixels('),
-    `${name} API 12-14 fallback must prove the SDR/RGBA result is CPU-readable`
+    `${name} allocator success and legacy retry must both prove the SDR/RGBA result is CPU-readable`
+  );
+  assertContract(
+    source.includes('ReleaseAndClearPixelmap(pixelmap);') &&
+      source.includes('OH_ImageSourceNative_CreatePixelmapUsingAllocator == nullptr || code != IMAGE_SUCCESS'),
+    `${name} must clear an unreadable allocator result before the validated legacy retry`
   );
 }
 
@@ -106,6 +115,22 @@ const memoryCacheDecode = functionBody(
 assertContract(
   /OH_ImageSourceNative_CreatePixelmapUsingAllocator\([\s\S]*?__attribute__\(\(weak\)\)/.test(memoryCacheSource),
   'API 15 allocator decoder must remain weak-linked for Kuikly API 12-14 compatibility'
+);
+assertContract(
+  /OH_PixelmapNative_Destroy\([\s\S]*?__attribute__\(\(weak\)\)/.test(memoryCacheSource),
+  'API 18 PixelMap destroy must remain weak-linked for Kuikly API 12-17 compatibility'
+);
+const releasePixelmap = functionBody(
+  memoryCacheSource,
+  'static void ReleaseAndClearPixelmap(',
+  'static Image_ErrorCode CreateCanvasCompatiblePixelmap('
+);
+assertContract(
+  releasePixelmap.includes('OH_PixelmapNative_Destroy != nullptr') &&
+    releasePixelmap.includes('OH_PixelmapNative_Destroy(pixelmap)') &&
+    releasePixelmap.includes('OH_PixelmapNative_Release(*pixelmap)') &&
+    releasePixelmap.includes('*pixelmap = nullptr'),
+  'PixelMap cleanup must destroy on API 18+ and release plus clear only on API 12-17'
 );
 
 const entryPackage = read('compose/ohosApp/entry/oh-package.json5');
@@ -150,18 +175,24 @@ try {
 
   const symbolTable = run(resolveLlvmTool('llvm-nm'), ['-D', extractedLibrary]);
   assertContract(
-    /^\s*w\s+OH_ImageSourceNative_CreatePixelmapUsingAllocator$/m.test(symbolTable),
-    'pinned libkuikly.so must weak-link the API 15 allocator'
+    /^\s*w\s+OH_ImageSourceNative_CreatePixelmapUsingAllocator$/m.test(symbolTable) &&
+      /^\s*w\s+OH_PixelmapNative_Destroy$/m.test(symbolTable),
+    'pinned libkuikly.so must weak-link the API 15 allocator and API 18 destroy symbols'
   );
   assertContract(
     /^\s*U\s+OH_ImageSourceNative_CreatePixelmap$/m.test(symbolTable) &&
-      /^\s*U\s+OH_PixelmapNative_ReadPixels$/m.test(symbolTable),
-    'pinned libkuikly.so must retain the API 12 legacy decoder and CPU-read fallback symbols'
+      /^\s*U\s+OH_PixelmapNative_ReadPixels$/m.test(symbolTable) &&
+      /^\s*U\s+OH_PixelmapNative_Release$/m.test(symbolTable) &&
+      /^\s*U\s+OH_Drawing_PixelMapGetFromOhPixelMapNative$/m.test(symbolTable) &&
+      /^\s*U\s+OH_Drawing_PixelMapDissolve$/m.test(symbolTable),
+    'pinned libkuikly.so must retain legacy decode/read/release and Canvas conversion/dissolve symbols'
   );
 
   const notes = run(resolveLlvmTool('llvm-readobj'), ['--notes', extractedLibrary]);
   const buildId = /Build ID:\s*([0-9a-f]+)/i.exec(notes)?.[1];
   assertContract(buildId === provenance.libraryBuildId, 'libkuikly.so Build ID mismatch');
+  const dynamicTable = run(resolveLlvmTool('llvm-readelf'), ['-d', extractedLibrary]);
+  assertContract(dynamicTable.includes('BIND_NOW'), 'pinned libkuikly.so must retain BIND_NOW');
 } finally {
   fs.rmSync(temporaryDirectory, { recursive: true, force: true });
 }
@@ -203,6 +234,27 @@ assertContract(
 );
 
 assertCanvasCompatibleDecode('Kuikly Canvas memory cache', memoryCacheDecode);
+
+const canvasSource = read(
+  'third_party/kuikly-ui/core-render-ohos/src/main/cpp/libohos_render/expand/components/canvas/KRCanvasView.cpp'
+);
+const canvasDrawImage = functionBody(
+  canvasSource,
+  'void KRCanvasView::DrawImage(',
+  'void KRCanvasView::CreatePenIfNeeded('
+);
+const conversion = canvasDrawImage.indexOf('OH_Drawing_PixelMapGetFromOhPixelMapNative(pixelmap)');
+const conversionGuard = canvasDrawImage.indexOf('if (!drawingPixelMap)', conversion);
+const draw = canvasDrawImage.indexOf('OH_Drawing_CanvasDrawPixelMapRect(', conversionGuard);
+const dissolve = canvasDrawImage.indexOf('OH_Drawing_PixelMapDissolve(drawingPixelMap)', draw);
+assertContract(
+  canvasDrawImage.includes('if (!module)') &&
+    conversion >= 0 &&
+    conversionGuard > conversion &&
+    draw > conversionGuard &&
+    dissolve > draw,
+  'Canvas image drawing must guard the cache module and conversion, then dissolve after drawing'
+);
 
 console.log(
   `OHOS image decode policy source + pinned HAR contract: PASS ` +
