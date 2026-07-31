@@ -68,7 +68,6 @@ import build.raft.app.data.ThreadReplyCacheIdentitySnapshot
 import build.raft.app.data.ThreadReplyCacheIdentityTransitionAnchor
 import build.raft.app.data.authSessionRequiredResult
 import build.raft.app.data.map
-import build.raft.app.data.recoverRejectedCreateAgentForm
 import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.data.toMessageMetadata
 import build.raft.app.data.toThreadRouteId
@@ -1815,7 +1814,9 @@ internal class SharedThreadDataSource(
         val created =
             coordinator
                 .createAgent(submit.toCreateAgentRequest())
-                .recoverRejectedCreateAgentForm(formStore, serverId, submit.machineId)
+                .recoverRejectedCreateAgentFormOrRetry(formStore, serverId, submit) { retrySubmit ->
+                    coordinator.createAgent(retrySubmit.toCreateAgentRequest())
+                }
         return when (created) {
             is DataResult.Content -> {
                 val resultName = created.data.name.takeIf { it.isNotBlank() } ?: submit.name
