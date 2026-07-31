@@ -1022,6 +1022,32 @@ class KmpVisualScreenshotCaptureTest {
 
     @Test
     fun captureThreadInlineSelectionDemo() {
+        captureThreadInlineSelectionCompactTarget(
+            caseId = "components.thread.inline-selection-compact-first",
+            targetYDp = 70f
+        )
+    }
+
+    @Test
+    fun captureThreadInlineSelectionCompactMiddle() {
+        captureThreadInlineSelectionCompactTarget(
+            caseId = "components.thread.inline-selection-compact-middle",
+            targetYDp = 124f
+        )
+    }
+
+    @Test
+    fun captureThreadInlineSelectionCompactLast() {
+        captureThreadInlineSelectionCompactTarget(
+            caseId = "components.thread.inline-selection-compact-last",
+            targetYDp = 172f
+        )
+    }
+
+    private fun captureThreadInlineSelectionCompactTarget(
+        caseId: String,
+        targetYDp: Float
+    ) {
         val backingStore = slockSharedPreferenceStore()
         val previous = backingStore.getString(INLINE_SELECTION_TOOLBAR_PREFERENCE_KEY)
         var selectedArtifact: Bitmap? = null
@@ -1032,11 +1058,11 @@ class KmpVisualScreenshotCaptureTest {
             runBlocking { preferenceStore.saveInlineSelectionToolbarEnabled(true) }
             assertTrue(preferenceStore.readInlineSelectionToolbarEnabledSync())
             captureKmpComponentCase(
-                caseId = "components.thread.inline-selection-demo",
+                caseId = caseId,
                 pageName = "compose_thread_message_row_visual",
                 pageData =
                     JSONObject()
-                        .put("instanceId", "visual-thread-inline-selection-demo")
+                        .put("instanceId", "visual-$caseId")
                         .put("visualFixture", "inline_selection_demo")
                         .put("singleTapOpensThreadEnabled", true),
                 crop = FULL_VIEWPORT_CROP,
@@ -1052,12 +1078,12 @@ class KmpVisualScreenshotCaptureTest {
                     var before: Bitmap? = null
                     var after: Bitmap? = null
                     try {
-                        before = captureActivityScreenshot("components.thread.inline-selection-demo.before")
+                        before = captureActivityScreenshot("$caseId.before")
                         val threadOpenBefore = before.countThreadInlineSelectionOpenProbeSamples()
                         val selectionBlueBefore = before.countThreadInlineSelectionBlueSamples()
-                        longPressDisplayDp(x = 300f, y = 70f)
+                        longPressDisplayDp(x = 300f, y = targetYDp)
                         Thread.sleep(800)
-                        after = captureActivityScreenshot("components.thread.inline-selection-demo.after")
+                        after = captureActivityScreenshot("$caseId.after")
                         val threadOpenAfter = after.countThreadInlineSelectionOpenProbeSamples()
                         val selectionBlueAfter = after.countThreadInlineSelectionBlueSamples()
                         val addedToolbarBlack = after.countNewNearBlackSamplesComparedWith(before)
@@ -1104,6 +1130,89 @@ class KmpVisualScreenshotCaptureTest {
             selectedArtifact?.recycle()
             selectedArtifact = null
         }
+    }
+
+    @Test
+    fun captureThreadInlineSelectionCompactListStillScrolls() {
+        captureKmpComponentCase(
+            caseId = "components.thread.inline-selection-compact-scroll",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-inline-selection-compact-scroll")
+                    .put("visualFixture", "inline_selection_demo")
+                    .put("singleTapOpensThreadEnabled", true),
+            crop = FULL_VIEWPORT_CROP,
+            beforeScreenshot = {
+                dismissCompatibilityDialog()
+                waitForIdleBounded()
+                var before: Bitmap? = null
+                var after: Bitmap? = null
+                try {
+                    before = captureActivityScreenshot("components.thread.inline-selection-compact-scroll.before")
+                    swipeDisplayFraction(startYFraction = 0.75f, endYFraction = 0.25f)
+                    waitForIdleBounded()
+                    Thread.sleep(400)
+                    after = captureActivityScreenshot("components.thread.inline-selection-compact-scroll.after")
+                    val changedRatio = before.fullBitmapChangedPixelRatio(after)
+                    assertTrue(
+                        "Dragging over inline-selection rows must still scroll the LazyColumn; changedRatio=$changedRatio",
+                        changedRatio >= FORWARD_PROBE_MIN_SCROLL_CHANGED_RATIO
+                    )
+                    assertTrue(
+                        "A vertical drag must not open a message thread",
+                        after.countThreadInlineSelectionOpenProbeSamples() <
+                            THREAD_INLINE_SELECTION_MIN_ADDED_OPEN_PROBE_SAMPLES
+                    )
+                } finally {
+                    before?.recycle()
+                    after?.recycle()
+                }
+            }
+        )
+    }
+
+    @Test
+    fun captureThreadInlineSelectionCompactTapStillOpensThread() {
+        captureKmpComponentCase(
+            caseId = "components.thread.inline-selection-compact-tap",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-inline-selection-compact-tap")
+                    .put("visualFixture", "inline_selection_demo")
+                    .put("singleTapOpensThreadEnabled", true),
+            crop = FULL_VIEWPORT_CROP,
+            beforeScreenshot = {
+                dismissCompatibilityDialog()
+                waitForIdleBounded()
+                var before: Bitmap? = null
+                var after: Bitmap? = null
+                try {
+                    before = captureActivityScreenshot("components.thread.inline-selection-compact-tap.before")
+                    val openProbeBefore = before.countThreadInlineSelectionOpenProbeSamples()
+                    tapDisplayDp(x = 300f, y = 124f)
+                    waitForIdleBounded()
+                    Thread.sleep(400)
+                    after = captureActivityScreenshot("components.thread.inline-selection-compact-tap.after")
+                    val openProbeAfter = after.countThreadInlineSelectionOpenProbeSamples()
+                    assertTrue(
+                        "Tapping a compact inline-selection row must still open its thread; " +
+                            "before=$openProbeBefore after=$openProbeAfter",
+                        openProbeAfter >=
+                            openProbeBefore + THREAD_INLINE_SELECTION_MIN_ADDED_OPEN_PROBE_SAMPLES
+                    )
+                    assertTrue(
+                        "Ordinary tap must not create inline text selection",
+                        after.countThreadInlineSelectionBlueSamples() <
+                            THREAD_INLINE_SELECTION_MIN_FINAL_BLUE_SAMPLES
+                    )
+                } finally {
+                    before?.recycle()
+                    after?.recycle()
+                }
+            }
+        )
     }
 
     @Test

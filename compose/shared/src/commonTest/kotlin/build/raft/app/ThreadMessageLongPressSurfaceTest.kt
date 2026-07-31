@@ -73,6 +73,53 @@ class ThreadMessageLongPressSurfaceTest {
     }
 
     @Test
+    fun compactGroupRowsKeepIndependentLongPressOwnership() {
+        listOf("first", "middle", "last").forEach { _ ->
+            assertTrue(threadMessageUsesFullRowLongPressActions(shareSelectionActive = false))
+            assertTrue(
+                threadInlineSelectionLongPressObserverEnabled(
+                    inlineSelectionEligible = true,
+                    selectionActive = false
+                )
+            )
+        }
+    }
+
+    @Test
+    fun activeInlineSelectionReleasesTheObserverForNativeHandles() {
+        assertFalse(
+            threadInlineSelectionLongPressObserverEnabled(
+                inlineSelectionEligible = true,
+                selectionActive = true
+            )
+        )
+        assertFalse(
+            threadInlineSelectionLongPressObserverEnabled(
+                inlineSelectionEligible = false,
+                selectionActive = false
+            )
+        )
+    }
+
+    @Test
+    fun childOwnedInlineSelectionLongPressDoesNotDoubleDispatchTheRow() {
+        val gate = ThreadMessageTapMovementGate()
+        gate.begin(Offset(100f, 100f))
+        gate.rejectChildAction("inline_selection_body_long_press")
+        val movementDecision = gate.decision()
+
+        val decision =
+            decideThreadMessageLongPressDispatch(
+                detectorAccepted = movementDecision.allowed,
+                directPointerMovementDetected = false,
+                isScrollInProgress = false
+            )
+
+        assertFalse(decision.allowed)
+        assertEquals("detector_not_admitted", decision.reason)
+    }
+
+    @Test
     fun ordinaryMessageBodyTapOpensItsThreadOnlyWhenEnabled() {
         assertFalse(
             threadMessageTapOpensThread(
