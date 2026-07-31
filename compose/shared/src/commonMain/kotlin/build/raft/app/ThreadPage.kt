@@ -2462,7 +2462,7 @@ internal suspend fun openMarkdownTaskNumberPayload(
     ) {
         is SharedTaskReferenceResolution.Found -> {
             val payload =
-                currentPayload.markdownTaskNumberLaunchPayload(
+                currentPayload.taskThreadLaunchPayload(
                     task = resolution.task,
                     serverId = serverId,
                     conversationIdentityProvider = conversationIdentityProvider
@@ -2485,7 +2485,14 @@ internal suspend fun openMarkdownTaskNumberPayload(
     }
 }
 
-internal fun KuiklyThreadScreenPayload.markdownTaskNumberLaunchPayload(
+/**
+ * Canonical task-to-thread opener shared by the Tasks panel and Markdown task references.
+ *
+ * A task row already carries the typed parent/stream identity required by the same
+ * [resolveOpenRequest] contract used by Activity. Keep that identity intact instead of
+ * reducing the row to a task id and searching only the currently loaded message window.
+ */
+internal fun KuiklyThreadScreenPayload.taskThreadLaunchPayload(
     task: TaskSummary,
     serverId: ServerId,
     conversationIdentityProvider: SharedConversationIdentityProvider? = null
@@ -2510,15 +2517,11 @@ internal fun KuiklyThreadScreenPayload.markdownTaskNumberLaunchPayload(
         } else {
             null
         }
-    val request =
-        task.resolveTaskThreadOpenRequest(
+    val launchPayload =
+        buildStandaloneTaskThreadLaunchPayload(
+            task = task,
             serverId = serverId.value,
             conversationDirectory = directory,
-            parentConversationKind = currentParentKind
-        ) ?: return null
-    val launchPayload =
-        buildStandaloneConversationThreadLaunchPayload(
-            conversation = request.conversationIdentity,
             timeContext =
                 SlockTimeContext(
                     localOffsetMinutes = localOffsetMinutes,
@@ -2526,9 +2529,14 @@ internal fun KuiklyThreadScreenPayload.markdownTaskNumberLaunchPayload(
                     nowEpochMillis = nowEpochMillis,
                     timeFormat = timeFormat
                 ),
-            anchorMessageId = request.anchorMessageId,
             alignOwnMessagesRight = alignOwnMessagesRight,
-            compactConsecutiveMessages = compactConsecutiveMessages
+            compactConsecutiveMessages = compactConsecutiveMessages,
+            threadRowAffordances =
+                listOfNotNull(
+                    ThreadRowAffordancePreference.Reactions.takeIf { showReactionActions },
+                    ThreadRowAffordancePreference.Saved.takeIf { showInlineSaveAction }
+                ).toSet(),
+            parentConversationKind = currentParentKind
         ) ?: return null
     return launchPayload.toInitialPayloadOrNull(launchPayload.instanceId)
 }
@@ -7445,6 +7453,37 @@ internal fun SharedThreadRouteContent(
         refreshComposerMemberSuggestions(reason = "membership_mutation")
     }
 
+    val openCanonicalTask: (TaskSummary, String) -> Unit = { task, source ->
+        val serverId = currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
+        val loadingPayload =
+            serverId?.let {
+                renderedThread.taskThreadLaunchPayload(
+                    task = task,
+                    serverId = it,
+                    conversationIdentityProvider = conversationIdentityProvider
+                )
+            }
+        if (loadingPayload == null) {
+            bridge.logWarn(
+                "thread_task_open_rejected reason=canonical_identity_unresolved " +
+                    "source=$source taskId=${task.id.value} serverId=${serverId?.value.orEmpty()} " +
+                    "parentChannelId=${task.channelId?.value.orEmpty()} " +
+                    "parentMessageId=${task.parentMessageId?.value.orEmpty()} " +
+                    "knownThreadChannelId=${task.threadId?.value.orEmpty()}"
+            )
+            bridge.toast(unableToOpenTaskLabel)
+        } else {
+            bridge.log(
+                "thread_task_open result=resolved source=$source taskId=${task.id.value} " +
+                    "parentChannelId=${loadingPayload.parentChannelId.orEmpty()} " +
+                    "parentMessageId=${loadingPayload.parentMessageId.orEmpty()} " +
+                    "knownThreadChannelId=${loadingPayload.streamChannelId.orEmpty()} " +
+                    "loadingInstance=${loadingPayload.resolveThreadRouteIdentity().instanceKey}"
+            )
+            onOpenThreadPayload(loadingPayload)
+        }
+    }
+
     SlockForegroundBannerHost(
         banner = foregroundMessageBanner,
         topSafeArea = slockTopSafeAreaPadding(),
@@ -7554,6 +7593,7 @@ internal fun SharedThreadRouteContent(
             forwardServerId = headerProjectionServerId,
             forwardTargetRepository = forwardTargetRepository,
             contentExtrasVisible = true,
+            onOpenTaskSummary = openCanonicalTask,
             onTasksIntent = { intent ->
                 if (
                     renderSlice.writeActionsEnabled ||
@@ -8063,45 +8103,74 @@ internal fun SharedThreadRouteContent(
                     try {
                         markdownTaskOpenRequestGate.nextRequest()
                         markdownTaskCandidateModalState = null
+                        val canonicalTask = linkedTasksProjection.taskById(itemId)
                         val parentMessage = renderedTimelineSlice.findTaskParentMessage(itemId, linkedTasksProjection)
-                        if (parentMessage == null) {
-                            bridge.toast(unableToOpenTaskLabel)
-                            return@ThreadPageContent
-                        }
-                        val parentReplyMetadata = replyMetadataByParentId.threadReplyMetadataFor(parentMessage)
+                        val parentReplyMetadata =
+                            parentMessage?.let { message ->
+                                replyMetadataByParentId.threadReplyMetadataFor(message)
+                            }
                         val parentChannelId = renderedThread.replyParentChannelIdForNestedOpen()
                         val provenance = replyCacheProvenance
-                        if (
-                            provenance == null ||
-                            !dataSource.rememberReplyParentCandidate(
-                                provenance = provenance,
-                                serverId = currentServerId,
-                                parentChannelId = parentChannelId,
-                                parentMessage = parentMessage,
-                                threadChannelId = parentReplyMetadata.threadChannelId
-                            )
-                        ) {
+                        val loadedParentProvenanceAccepted =
+                            parentMessage != null &&
+                                parentReplyMetadata != null &&
+                                provenance != null &&
+                                dataSource.rememberReplyParentCandidate(
+                                    provenance = provenance,
+                                    serverId = currentServerId,
+                                    parentChannelId = parentChannelId,
+                                    parentMessage = parentMessage,
+                                    threadChannelId = parentReplyMetadata.threadChannelId
+                                )
+                        if (parentMessage != null && !loadedParentProvenanceAccepted) {
                             bridge.logWarn("thread_task_parent_seed_rejected reason=stale_provenance")
-                            bridge.toast(unableToOpenTaskLabel)
+                        }
+                        var useLoadedParent = false
+                        arbitrateThreadTaskOpen(
+                            loadedParentAvailable = parentMessage != null,
+                            loadedParentProvenanceAccepted = loadedParentProvenanceAccepted,
+                            canonicalTask = canonicalTask
+                        ).dispatch(
+                            onUseLoadedParent = { useLoadedParent = true },
+                            onOpenCanonical = { task, reason ->
+                                bridge.log(
+                                    "thread_task_open result=fallback_to_canonical reason=${reason.diagnosticValue} " +
+                                        "taskId=$itemId"
+                                )
+                                openCanonicalTask(
+                                    task,
+                                    if (markdownActionId == null) "inline_task" else "markdown_task"
+                                )
+                            },
+                            onFailClosed = { reason ->
+                                bridge.logWarn(
+                                    "thread_task_open_rejected reason=${reason.diagnosticValue} taskId=$itemId"
+                                )
+                                bridge.toast(unableToOpenTaskLabel)
+                            }
+                        )
+                        if (!useLoadedParent) {
                             return@ThreadPageContent
                         }
+                        val loadedParentMessage = parentMessage ?: return@ThreadPageContent
+                        val loadedParentReplyMetadata = parentReplyMetadata ?: return@ThreadPageContent
                         val loadingPayload =
                             renderedThread.replyThreadLoadingPayload(
-                                parentMessageId = parentMessage.id,
+                                parentMessageId = loadedParentMessage.id,
                                 parentChannelId = parentChannelId,
-                                threadChannelId = parentReplyMetadata.threadChannelId,
-                                focusedMessageId = parentReplyMetadata.firstUnreadReplyMessageId
+                                threadChannelId = loadedParentReplyMetadata.threadChannelId,
+                                focusedMessageId = loadedParentReplyMetadata.firstUnreadReplyMessageId
                             )
                         threadViewModel.dispatch(
                             SharedThreadIntent.ApplyReplyThreadRead(
-                                parentMessageId = parentMessage.id,
-                                threadChannelId = parentReplyMetadata.threadChannelId
+                                parentMessageId = loadedParentMessage.id,
+                                threadChannelId = loadedParentReplyMetadata.threadChannelId
                             )
                         )
                         bridge.log(
                             "thread_reply_open action=task parentChannelId=${loadingPayload.parentChannelId.orEmpty()} " +
-                                "parentMessageId=${parentMessage.id} taskId=$itemId replyCount=${parentReplyMetadata.replyCount} " +
-                                "knownThreadChannelId=${parentReplyMetadata.threadChannelId.orEmpty()} " +
+                                "parentMessageId=${loadedParentMessage.id} taskId=$itemId replyCount=${loadedParentReplyMetadata.replyCount} " +
+                                "knownThreadChannelId=${loadedParentReplyMetadata.threadChannelId.orEmpty()} " +
                                 "loadingInstance=${loadingPayload.resolveThreadRouteIdentity().instanceKey}"
                         )
                         onOpenThreadPayload(loadingPayload)
@@ -8971,7 +9040,7 @@ internal fun SharedThreadRouteContent(
                     val loadingPayload = currentServerId
                         ?.let(::ServerId)
                         ?.let { serverId ->
-                            renderedThread.markdownTaskNumberLaunchPayload(
+                            renderedThread.taskThreadLaunchPayload(
                                 task = task,
                                 serverId = serverId,
                                 conversationIdentityProvider = conversationIdentityProvider
@@ -12436,6 +12505,7 @@ private fun ThreadPageContent(
     forwardServerId: ServerId?,
     forwardTargetRepository: ForwardMessageTargetRepository?,
     contentExtrasVisible: Boolean,
+    onOpenTaskSummary: (TaskSummary, String) -> Unit,
     onTasksIntent: (SharedTasksRouteIntent) -> Unit,
     onFilesAuthRequired: (String?) -> Unit,
     onOpenFilesAttachment: (KuiklyThreadAttachmentItem, ThreadImageAttachmentGroup?) -> Unit,
@@ -13196,7 +13266,7 @@ private fun ThreadPageContent(
                         openTaskEnabled = payload.showTaskOpenActions,
                         draftProjection = draftProjection,
                         timeContext = payload.toSlockTimeCapabilities().staticContext(),
-                        onOpenTask = { onThreadEvent("openTask", it, null, null) },
+                        onOpenTask = { task -> onOpenTaskSummary(task, "tasks_panel") },
                         onIntent = onTasksIntent
                     )
                 KuiklyThreadTab.Files ->
@@ -24404,7 +24474,7 @@ private fun ThreadTasksTab(
     openTaskEnabled: Boolean,
     draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
     timeContext: SlockTimeContext? = null,
-    onOpenTask: (String) -> Unit,
+    onOpenTask: (TaskSummary) -> Unit,
     onIntent: (SharedTasksRouteIntent) -> Unit
 ) {
     val pendingTasksState = remember { TasksUiState(ScreenLoadState.Loading) }
@@ -24424,7 +24494,7 @@ private fun ThreadTasksTab(
         draftProjection = draftProjection,
         timeContext = timeContext,
         onOpenTask = if (openTaskEnabled) {
-            { task -> onOpenTask(task.id.value) }
+            onOpenTask
         } else {
             null
         },

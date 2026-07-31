@@ -6937,6 +6937,123 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun threadTaskIdentityLookupDoesNotConfuseAnotherTasksMessageId() {
+        val target =
+            TaskSummary(
+                id = TaskId("task-target"),
+                title = "target",
+                status = TaskStatus.InProgress,
+                messageId = MessageId("message-target"),
+                updatedAtLabel = ""
+            )
+        val collision =
+            TaskSummary(
+                id = TaskId("task-other"),
+                title = "other",
+                status = TaskStatus.Todo,
+                messageId = MessageId("task-target"),
+                updatedAtLabel = ""
+            )
+        val projection =
+            ThreadLinkedTasksProjection(
+                authoritative = true,
+                lookup = listOf(target, collision).threadLinkedTasksByMessageLookup()
+            )
+
+        assertEquals(target, projection.taskById("task-target"))
+    }
+
+    @Test
+    fun threadTaskOpenArbitrationOpensCanonicalOnceWhenParentIsOutsideLoadedTimeline() {
+        val task =
+            TaskSummary(
+                id = TaskId("task-outside-window"),
+                title = "outside window",
+                status = TaskStatus.InProgress,
+                updatedAtLabel = ""
+            )
+        var loadedParentOpens = 0
+        var canonicalOpens = 0
+        var failClosed = 0
+
+        arbitrateThreadTaskOpen(
+            loadedParentAvailable = false,
+            loadedParentProvenanceAccepted = false,
+            canonicalTask = task
+        ).dispatch(
+            onUseLoadedParent = { loadedParentOpens += 1 },
+            onOpenCanonical = { openedTask, reason ->
+                assertEquals(task, openedTask)
+                assertEquals(ThreadTaskOpenRecoveryReason.ParentOutsideLoadedWindow, reason)
+                canonicalOpens += 1
+            },
+            onFailClosed = { failClosed += 1 }
+        )
+
+        assertEquals(0, loadedParentOpens)
+        assertEquals(1, canonicalOpens)
+        assertEquals(0, failClosed)
+    }
+
+    @Test
+    fun threadTaskOpenArbitrationOpensCanonicalOnceWhenLoadedParentProvenanceIsStale() {
+        val task =
+            TaskSummary(
+                id = TaskId("task-stale-parent"),
+                title = "stale parent",
+                status = TaskStatus.Todo,
+                updatedAtLabel = ""
+            )
+        var loadedParentOpens = 0
+        var canonicalOpens = 0
+        var failClosed = 0
+
+        arbitrateThreadTaskOpen(
+            loadedParentAvailable = true,
+            loadedParentProvenanceAccepted = false,
+            canonicalTask = task
+        ).dispatch(
+            onUseLoadedParent = { loadedParentOpens += 1 },
+            onOpenCanonical = { openedTask, reason ->
+                assertEquals(task, openedTask)
+                assertEquals(ThreadTaskOpenRecoveryReason.StaleProvenance, reason)
+                canonicalOpens += 1
+            },
+            onFailClosed = { failClosed += 1 }
+        )
+
+        assertEquals(0, loadedParentOpens)
+        assertEquals(1, canonicalOpens)
+        assertEquals(0, failClosed)
+    }
+
+    @Test
+    fun threadTaskOpenArbitrationFailsClosedWithoutCanonicalTaskIdentity() {
+        var loadedParentOpens = 0
+        var canonicalOpens = 0
+        var failClosed = 0
+        var failReason: ThreadTaskOpenRecoveryReason? = null
+
+        arbitrateThreadTaskOpen(
+            loadedParentAvailable = false,
+            loadedParentProvenanceAccepted = false,
+            canonicalTask = null
+        ).dispatch(
+            onUseLoadedParent = { loadedParentOpens += 1 },
+            onOpenCanonical = { _, _ -> canonicalOpens += 1 },
+            onFailClosed = { reason ->
+                failClosed += 1
+                failReason = reason
+            }
+        )
+
+        assertEquals(0, loadedParentOpens)
+        assertEquals(0, canonicalOpens)
+        assertEquals(1, failClosed)
+        assertEquals(ThreadTaskOpenRecoveryReason.TaskIdentityUnavailable, failReason)
+    }
+
+    @Test
     fun threadTaskStatusUpdateRequiresLinkedTaskProjection() {
         val intent =
             emptyThreadLinkedTasksProjection()
@@ -6946,7 +7063,7 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun markdownTaskNumberLaunchPayloadUsesTaskIdentityOnly() {
+    fun taskThreadLaunchPayloadUsesTaskIdentityOutsideLoadedTimeline() {
         val payload =
             KuiklyThreadScreenPayload(
                 surfaceKind = KuiklyThreadSurfaceKind.Channel,
@@ -6973,7 +7090,7 @@ class ThreadPayloadTest {
                 updatedAtLabel = "now"
             )
 
-        val launchPayload = payload.markdownTaskNumberLaunchPayload(task, ServerId("server-1"))
+        val launchPayload = payload.taskThreadLaunchPayload(task, ServerId("server-1"))
 
         assertEquals(KuiklyThreadSurfaceKind.ReplyThread, launchPayload?.surfaceKind)
         assertEquals("channel-dialog", launchPayload?.parentChannelId)
@@ -6990,7 +7107,7 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun markdownTaskNumberLaunchPayloadFocusesTaskReplyWhenDistinctFromOrigin() {
+    fun taskThreadLaunchPayloadFocusesTaskReplyWhenDistinctFromOrigin() {
         val payload =
             KuiklyThreadScreenPayload(
                 surfaceKind = KuiklyThreadSurfaceKind.Channel,
@@ -7011,11 +7128,31 @@ class ThreadPayloadTest {
                 updatedAtLabel = "now"
             )
 
-        val launchPayload = payload.markdownTaskNumberLaunchPayload(task, ServerId("server-1"))
+        val launchPayload = payload.taskThreadLaunchPayload(task, ServerId("server-1"))
 
         assertEquals("parent-message-482", launchPayload?.parentMessageId)
         assertEquals("parent-message-482", launchPayload?.originParentMessageId)
         assertEquals("reply-message-482", launchPayload?.focusedMessageId)
+    }
+
+    @Test
+    fun taskThreadLaunchPayloadFailsClosedWhenTypedParentIdentityIsMissing() {
+        val payload =
+            KuiklyThreadScreenPayload(
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                channelKind = KuiklyThreadSurfaceKind.Channel,
+                sourceThreadId = "channel-dialog",
+                streamChannelId = "channel-dialog"
+            )
+        val task =
+            TaskSummary(
+                id = TaskId("task-missing-parent"),
+                title = "missing parent",
+                status = TaskStatus.Todo,
+                updatedAtLabel = "now"
+            )
+
+        assertEquals(null, payload.taskThreadLaunchPayload(task, ServerId("server-1")))
     }
 
     @Test

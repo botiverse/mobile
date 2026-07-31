@@ -20,7 +20,7 @@ internal fun ThreadLinkedTasksProjection.statusUpdateIntent(
     taskId: String,
     status: TaskStatus,
 ): SharedTasksRouteIntent.UpdateStatus? =
-    lookup[taskId.trim()]?.let { task -> SharedTasksRouteIntent.UpdateStatus(task, status) }
+    taskById(taskId)?.let { task -> SharedTasksRouteIntent.UpdateStatus(task, status) }
 
 internal data class ThreadLinkedTaskReferences(
     val messageIds: Set<String>,
@@ -169,6 +169,67 @@ internal fun List<TaskSummary>.threadLinkedTasksByMessageId(): Map<String, TaskS
 
 private const val ThreadTaskIdLookupPrefix = "task-id:"
 private const val ThreadTaskNumberLookupPrefix = "task-number:"
+
+internal fun ThreadLinkedTasksProjection.taskById(taskId: String): TaskSummary? {
+    val key = taskId.trim().takeIf { it.isNotBlank() } ?: return null
+    return lookup[ThreadTaskIdLookupPrefix + key]
+        ?: lookup[key]?.takeIf { task -> task.id.value == key }
+}
+
+internal enum class ThreadTaskOpenRecoveryReason(
+    val diagnosticValue: String,
+) {
+    ParentOutsideLoadedWindow("parent_outside_loaded_window"),
+    StaleProvenance("stale_provenance"),
+    TaskIdentityUnavailable("task_identity_unavailable"),
+}
+
+internal sealed interface ThreadTaskOpenArbitration {
+    data object UseLoadedParent : ThreadTaskOpenArbitration
+
+    data class OpenCanonical(
+        val task: TaskSummary,
+        val reason: ThreadTaskOpenRecoveryReason,
+    ) : ThreadTaskOpenArbitration
+
+    data class FailClosed(
+        val reason: ThreadTaskOpenRecoveryReason,
+    ) : ThreadTaskOpenArbitration
+}
+
+internal fun arbitrateThreadTaskOpen(
+    loadedParentAvailable: Boolean,
+    loadedParentProvenanceAccepted: Boolean,
+    canonicalTask: TaskSummary?,
+): ThreadTaskOpenArbitration {
+    val recoveryReason =
+        when {
+            !loadedParentAvailable -> ThreadTaskOpenRecoveryReason.ParentOutsideLoadedWindow
+            !loadedParentProvenanceAccepted -> ThreadTaskOpenRecoveryReason.StaleProvenance
+            else -> return ThreadTaskOpenArbitration.UseLoadedParent
+        }
+    return canonicalTask
+        ?.let { task -> ThreadTaskOpenArbitration.OpenCanonical(task, recoveryReason) }
+        ?: ThreadTaskOpenArbitration.FailClosed(
+            if (recoveryReason == ThreadTaskOpenRecoveryReason.ParentOutsideLoadedWindow) {
+                ThreadTaskOpenRecoveryReason.TaskIdentityUnavailable
+            } else {
+                recoveryReason
+            }
+        )
+}
+
+internal inline fun ThreadTaskOpenArbitration.dispatch(
+    onUseLoadedParent: () -> Unit,
+    onOpenCanonical: (TaskSummary, ThreadTaskOpenRecoveryReason) -> Unit,
+    onFailClosed: (ThreadTaskOpenRecoveryReason) -> Unit,
+) {
+    when (this) {
+        ThreadTaskOpenArbitration.UseLoadedParent -> onUseLoadedParent()
+        is ThreadTaskOpenArbitration.OpenCanonical -> onOpenCanonical(task, reason)
+        is ThreadTaskOpenArbitration.FailClosed -> onFailClosed(reason)
+    }
+}
 
 private fun <K, V> MutableMap<K, V>.putLinkedTaskIfAbsent(key: K, value: V) {
     if (!containsKey(key)) {
