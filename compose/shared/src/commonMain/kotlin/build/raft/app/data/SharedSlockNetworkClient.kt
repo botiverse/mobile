@@ -538,6 +538,22 @@ class SharedSlockAuthTransport internal constructor(
     override suspend fun refresh(bodyText: String): AuthNetworkResponse =
         request(path = "auth/refresh", method = "POST", bodyText = bodyText)
 
+    override suspend fun refreshWithAttempt(
+        bodyText: String,
+        attemptId: String,
+        installationId: String,
+    ): AuthNetworkResponse =
+        request(
+            path = "auth/refresh",
+            method = "POST",
+            bodyText = bodyText,
+            extraHeaders =
+                mapOf(
+                    SLOCK_AUTH_REFRESH_ATTEMPT_HEADER to attemptId,
+                    SLOCK_AUTH_INSTALLATION_HEADER to installationId,
+                ),
+        )
+
     override suspend fun logout(bodyText: String): AuthNetworkResponse =
         request(path = "auth/logout", method = "POST", bodyText = bodyText)
 
@@ -576,7 +592,8 @@ class SharedSlockAuthTransport internal constructor(
         path: String,
         method: String,
         authorization: String? = null,
-        bodyText: String? = null
+        bodyText: String? = null,
+        extraHeaders: Map<String, String> = emptyMap(),
     ): AuthNetworkResponse {
         val startedAt = TimeSource.Monotonic.markNow()
         val normalizedMethod = method.uppercase()
@@ -596,7 +613,11 @@ class SharedSlockAuthTransport internal constructor(
                         priority = SlockRequestPriority.Foreground,
                         url = "${baseUrlProvider().trimEnd('/')}/${path.trimStart('/')}",
                         method = normalizedMethod,
-                        headers = authorization?.let { mapOf(HEADER_AUTHORIZATION to it) } ?: emptyMap(),
+                        headers =
+                            buildMap {
+                                authorization?.let { put(HEADER_AUTHORIZATION, it) }
+                                putAll(extraHeaders)
+                            },
                         bodyText = bodyText,
                         jsonBody = bodyText != null
                     )
@@ -633,6 +654,9 @@ class SharedSlockAuthTransport internal constructor(
         return response.toAuthNetworkResponse()
     }
 }
+
+internal const val SLOCK_AUTH_REFRESH_ATTEMPT_HEADER = "X-Slock-Auth-Refresh-Attempt-Id"
+internal const val SLOCK_AUTH_INSTALLATION_HEADER = "X-Slock-Auth-Installation-Id"
 
 private fun SlockRequestTimeoutException.toTimeoutAuthNetworkResponse(
     path: String,
