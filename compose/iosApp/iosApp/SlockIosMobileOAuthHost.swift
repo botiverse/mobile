@@ -6,7 +6,8 @@ import SwiftUI
 import UIKit
 import shared
 
-let slockIosOAuthProviders = "google,github"
+let slockIosOAuthProviderIds = ["google", "github", "apple"]
+let slockIosOAuthProviders = slockIosOAuthProviderIds.joined(separator: ",")
 private let slockIosOAuthLoginPage = "compose_login"
 private let slockIosOAuthLegalPage = "compose_auth_legal_acceptance"
 private let slockIosOAuthChooseServerPage = "compose_auth_choose_server"
@@ -175,7 +176,7 @@ final class SlockIosMobileOAuthHost: NSObject, ASWebAuthenticationPresentationCo
             guard let self else { return }
             let normalizedProvider = provider.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
             let normalizedMode = mode.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            guard ["google", "github"].contains(normalizedProvider), ["login", "link"].contains(normalizedMode) else {
+            guard slockIosOAuthProviderIds.contains(normalizedProvider), ["login", "link"].contains(normalizedMode) else {
                 completion(self.startError(code: "ios_mobile_oauth_invalid_request", message: "This sign-in provider is unavailable."))
                 return
             }

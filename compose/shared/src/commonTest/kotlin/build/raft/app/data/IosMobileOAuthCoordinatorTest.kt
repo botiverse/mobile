@@ -52,6 +52,34 @@ class IosMobileOAuthCoordinatorTest {
     }
 
     @Test
+    fun appleLoginUsesTheSameGenerationFencedIosCallbackContract() = runBlocking {
+        val runtime = FakeRuntime(environmentKey = "production")
+        val fixture = fixture(runtime)
+
+        val start = fixture.coordinator.start(
+            provider = "apple",
+            mode = "login",
+            generation = "apple-generation",
+            codeVerifier = Verifier,
+            codeChallenge = Challenge,
+        )
+        val completion = fixture.coordinator.complete(
+            fixture.callback(
+                provider = "apple",
+                code = "apple-handoff",
+                expectedGeneration = "apple-generation",
+            )
+        )
+
+        assertEquals("started", start.status)
+        assertEquals("apple", runtime.startedLogin?.provider)
+        assertEquals("choose_server", completion.status)
+        assertEquals("apple-handoff", runtime.completedLogin?.code)
+        assertEquals("apple", completion.provider)
+        assertNull(fixture.pendingStore.read())
+    }
+
+    @Test
     fun successfulLoginCallbacksRouteByCanonicalSelectedServerState() = runBlocking {
         listOf(null to "choose_server", "server-1" to "app_shell").forEach { (selectedServerId, expectedStatus) ->
             val runtime = FakeRuntime(environmentKey = "production").apply {

@@ -67,6 +67,7 @@ class SettingsRepositoryDataSourceTest {
                         {"providers":[
                           {"id":"google","name":"Google","enabled":true},
                           {"id":"github","name":"GitHub","enabled":true},
+                          {"id":"apple","name":"Apple","enabled":true},
                           {"id":"disabled","name":"Disabled","enabled":false}
                         ]}
                     """.trimIndent(),
@@ -81,10 +82,11 @@ class SettingsRepositoryDataSourceTest {
         val result = repository.getAccount()
 
         assertTrue(result is DataResult.Content)
-        assertEquals(listOf("password", "google", "github"), result.data.connectedAccounts.map { it.providerId })
+        assertEquals(listOf("password", "google", "github", "apple"), result.data.connectedAccounts.map { it.providerId })
         assertEquals(ConnectedAccountStatus.Connected, result.data.connectedAccounts.single { it.providerId == "google" }.status)
         assertEquals("user@gmail.com", result.data.connectedAccounts.single { it.providerId == "google" }.identifier)
         assertEquals(ConnectedAccountStatus.NotConnected, result.data.connectedAccounts.single { it.providerId == "github" }.status)
+        assertEquals(ConnectedAccountStatus.NotConnected, result.data.connectedAccounts.single { it.providerId == "apple" }.status)
     }
 
     @Test

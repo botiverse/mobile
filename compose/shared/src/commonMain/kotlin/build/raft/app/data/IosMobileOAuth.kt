@@ -22,7 +22,7 @@ private const val IOS_MOBILE_OAUTH_CALLBACK_PATH = "/callback"
 private const val IOS_MOBILE_OAUTH_PENDING_TTL_MILLIS = 10L * 60L * 1000L
 private const val IOS_MOBILE_OAUTH_CLOCK_SKEW_MILLIS = 60L * 1000L
 
-private val IosMobileOAuthProviders = setOf("google", "github")
+private val IosMobileOAuthProviders = setOf("google", "github", "apple")
 private val IosMobileOAuthModes = setOf(IOS_MOBILE_OAUTH_LOGIN_MODE, IOS_MOBILE_OAUTH_LINK_MODE)
 private val IosMobileOAuthPkceValue = Regex("^[A-Za-z0-9_-]{43,128}$")
 
@@ -642,6 +642,7 @@ private fun String.iosMobileOAuthProviderName(): String =
     when (lowercase()) {
         "google" -> "Google"
         "github" -> "GitHub"
+        "apple" -> "Apple"
         else -> "Social"
     }
 

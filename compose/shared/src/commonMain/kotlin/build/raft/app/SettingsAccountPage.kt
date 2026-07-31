@@ -1,14 +1,15 @@
 package build.raft.app
 
-import build.raft.app.base.Utils
+import build.raft.app.AppleIconDataUri
 import build.raft.app.GitHubIconDataUri
 import build.raft.app.GoogleIconDataUri
+import build.raft.app.SlockCachedImage
+import build.raft.app.base.Utils
 import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalCard
 import build.raft.app.components.SlockBrutalReadOnlyField
 import build.raft.app.components.SlockBrutalTextField
 import build.raft.app.components.SlockFormFieldSize
-import build.raft.app.SlockCachedImage
 import build.raft.app.data.AccountPasswordChangeRequest
 import build.raft.app.data.AccountProfileUpdateRequest
 import build.raft.app.data.AccountProviderLinkStartRequest
@@ -903,15 +904,16 @@ private fun IconBox(iconName: SlockLucideIconName, color: Color, invert: Boolean
     }
 }
 
-// React parity (SettingsPanel SocialProviderIcon): google gets the Google
-// logo, every other social provider falls back to the GitHub mark — never
-// the Google logo.
+// Known providers keep their own marks. Unknown social identities retain the
+// existing GitHub fallback rather than borrowing another provider's logo.
 // task #436: iOS uses the MR-bundled SVG asset (SVG coder decodes it); other
 // platforms keep the inline SVG data URI they already render.
 private fun providerIconDataUri(provider: String): String =
     when {
         provider.lowercase().contains("google") ->
             providerIconIosSvgSource(ProviderIconKey.GoogleColor) ?: GoogleIconDataUri
+        provider.lowercase().contains("apple") ->
+            providerIconIosSvgSource(ProviderIconKey.AppleBlack) ?: AppleIconDataUri
         else ->
             providerIconIosSvgSource(ProviderIconKey.GitHubBlack) ?: GitHubIconDataUri
     }

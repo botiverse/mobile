@@ -1433,6 +1433,28 @@ internal fun LoginContent(
                         leadingContent = { AuthProviderIcon(AuthProvider.GitHub) }
                     )
                 }
+                if (AuthProvider.Apple in visibleSocialProviders) {
+                    AuthActionButton(
+                        text =
+                            if (socialSubmittingProvider == AuthProvider.Apple) {
+                                StringDesc.ResourceFormatted(
+                                    MR.strings.auth_action_opening_provider,
+                                    listOf(AuthProvider.Apple.providerDisplayName())
+                                ).localized()
+                            } else {
+                                StringDesc.ResourceFormatted(
+                                    MR.strings.auth_action_continue_with_provider,
+                                    listOf(AuthProvider.Apple.providerDisplayName())
+                                ).localized()
+                            },
+                        onClick = { onSocialSignIn(AuthProvider.Apple) },
+                        tone = AuthButtonTone.Black,
+                        enabled = socialEnabled,
+                        loading = socialSubmittingProvider == AuthProvider.Apple,
+                        preserveDisabledVisual = true,
+                        leadingContent = { AuthProviderIcon(AuthProvider.Apple) }
+                    )
+                }
             }
             AuthLegalNotice(
                 onOpenTerms = onOpenTerms,
@@ -2044,6 +2066,7 @@ private fun SharedAuthRuntimeCapabilities.socialAuthProviders(): Set<AuthProvide
             when (raw.trim().lowercase()) {
                 AuthProvider.Google.providerId() -> AuthProvider.Google
                 AuthProvider.GitHub.providerId() -> AuthProvider.GitHub
+                AuthProvider.Apple.providerId() -> AuthProvider.Apple
                 else -> null
             }
         }
@@ -2053,17 +2076,20 @@ private fun AuthProvider.providerId(): String =
     when (this) {
         AuthProvider.Google -> "google"
         AuthProvider.GitHub -> "github"
+        AuthProvider.Apple -> "apple"
     }
 
 private fun AuthProvider.providerDisplayName(): String =
     when (this) {
         AuthProvider.Google -> "Google"
         AuthProvider.GitHub -> "GitHub"
+        AuthProvider.Apple -> "Apple"
     }
 
 private fun String.mobileOAuthProviderDisplayName(): String =
     when (trim().lowercase()) {
         AuthProvider.Google.providerId() -> AuthProvider.Google.providerDisplayName()
         AuthProvider.GitHub.providerId() -> AuthProvider.GitHub.providerDisplayName()
+        AuthProvider.Apple.providerId() -> AuthProvider.Apple.providerDisplayName()
         else -> "Social"
     }

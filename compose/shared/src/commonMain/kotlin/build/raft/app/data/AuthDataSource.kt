@@ -1411,7 +1411,7 @@ internal suspend fun selectStoredAuthServer(
 
 private fun <T> AuthApiResult.Success<T>.toSharedAuthResult(): SharedAuthResult<T> = SharedAuthResult.Success(data)
 
-private val MobileOAuthProviders = setOf("google", "github")
+private val MobileOAuthProviders = setOf("google", "github", "apple")
 private const val AUTH_ME_CONTRACT_MISMATCH = "auth_me_contract_mismatch"
 
 private suspend fun StoredAuthSession.withValidatedServerSelection(
