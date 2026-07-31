@@ -23837,11 +23837,12 @@ private fun KuiklyThreadAttachmentItem.toThreadAttachmentPreviewPayload(
         externalMimeType = mimeType
     )
 
-private fun PlatformFile.composerLocalPreviewUri(): String? =
-    fileRef?.takeIf { it.isNotBlank() }
-        ?: previewUri?.takeIf { it.isNotBlank() }
+/** Renderer-facing URI; [PlatformFile.fileRef] remains the platform upload handle. */
+internal fun PlatformFile.composerLocalPreviewUri(): String? =
+    previewUri?.takeIf { it.isNotBlank() }
+        ?: fileRef?.takeIf { it.isNotBlank() }
 
-private fun PlatformFile.toComposerImageGalleryImage(): SlockFilePreviewGalleryImage =
+internal fun PlatformFile.toComposerImageGalleryImage(): SlockFilePreviewGalleryImage =
     SlockFilePreviewGalleryImage(
         attachmentId = id,
         name = fileName,

@@ -430,9 +430,26 @@ private fun SlockFilePreviewStandalonePageContent() {
             SlockComposerImageEditorState()
         }
     var composerImageEditSaving by remember(payload.composerImageActionId) { mutableStateOf(false) }
-    var composerImageEditCaptureRef by remember(payload.composerImageActionId) {
-        mutableStateOf<ViewRef<DeclarativeBaseView<*, *>>?>(null)
+    val composerImageEditCaptureOwner =
+        SlockComposerImageEditCaptureOwner(
+            actionId = payload.composerImageActionId,
+            attachmentId = payload.attachmentId,
+            imageUrl = payload.imageUrl,
+            editMode = composerImageEditMode,
+        )
+    val composerImageEditCaptureSlot = remember(composerImageEditCaptureOwner) {
+        mutableStateOf(SlockComposerImageEditCaptureSlot(composerImageEditCaptureOwner))
     }
+    val onComposerImageEditCaptureRef =
+        remember(composerImageEditCaptureOwner) {
+            { ref: ViewRef<DeclarativeBaseView<*, *>> ->
+                composerImageEditCaptureSlot.value =
+                    composerImageEditCaptureSlot.value.bind(
+                        owner = composerImageEditCaptureOwner,
+                        ref = ref,
+                    )
+            }
+        }
     var downloadStatus by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf("idle") }
     var downloadMessage by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf("") }
     var downloadProgress by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf<BridgeAttachmentDownloadProgress?>(null) }
@@ -1274,7 +1291,7 @@ private fun SlockFilePreviewStandalonePageContent() {
     }
     fun requestComposerImageEditSave() {
         if (composerImageEditSaving) return
-        val captureView = composerImageEditCaptureRef?.view
+        val captureView = composerImageEditCaptureSlot.value.ref?.view
         if (captureView == null) {
             bridge.toast(imageEditorLoading)
             return
@@ -1400,7 +1417,7 @@ private fun SlockFilePreviewStandalonePageContent() {
                 payload = payload,
                 state = composerImageEditorState,
                 saving = composerImageEditSaving,
-                onCaptureRef = { composerImageEditCaptureRef = it },
+                onCaptureRef = onComposerImageEditCaptureRef,
                 onDone = ::requestComposerImageEditSave,
                 modifier = Modifier.weight(1f).fillMaxWidth()
             )
@@ -1802,12 +1819,30 @@ internal fun slockComposerImageEditorCaptureSize(
     return Size(width = imageWidth * scale, height = imageHeight * scale)
 }
 
+internal data class SlockComposerImageEditCaptureOwner(
+    val actionId: String,
+    val attachmentId: String,
+    val imageUrl: String?,
+    val editMode: Boolean,
+)
+
+internal data class SlockComposerImageEditCaptureSlot(
+    val owner: SlockComposerImageEditCaptureOwner,
+    val ref: ViewRef<DeclarativeBaseView<*, *>>? = null,
+) {
+    fun bind(
+        owner: SlockComposerImageEditCaptureOwner,
+        ref: ViewRef<DeclarativeBaseView<*, *>>,
+    ): SlockComposerImageEditCaptureSlot =
+        if (owner == this.owner) copy(ref = ref) else this
+}
+
 @Composable
 private fun SlockFilePreviewComposerImageEditor(
     payload: SlockFilePreviewPayload,
     state: SlockComposerImageEditorState,
     saving: Boolean,
-    onCaptureRef: (ViewRef<DeclarativeBaseView<*, *>>?) -> Unit,
+    onCaptureRef: (ViewRef<DeclarativeBaseView<*, *>>) -> Unit,
     onDone: () -> Unit,
     initialTool: SlockComposerImageEditorTool = SlockComposerImageEditorTool.Pencil,
     initialPencilOptionsExpanded: Boolean = false,
@@ -1838,9 +1873,6 @@ private fun SlockFilePreviewComposerImageEditor(
     val focusManager = LocalFocusManager.current
     val editorDensity = LocalDensity.current
     val coroutineScope = rememberCoroutineScope()
-    LaunchedEffect(payload.imageUrl) {
-        onCaptureRef(null)
-    }
     fun selectTool(nextTool: SlockComposerImageEditorTool) {
         if (tool == SlockComposerImageEditorTool.Text && nextTool != SlockComposerImageEditorTool.Text) {
             focusManager.clearFocus(force = true)
