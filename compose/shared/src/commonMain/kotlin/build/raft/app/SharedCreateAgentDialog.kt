@@ -27,6 +27,7 @@ import build.raft.app.model.supportsRuntimeFastMode
 import build.raft.app.model.supportsRuntimeCustomModelName
 import build.raft.app.model.supportsRuntimeReasoningEffort
 import build.raft.app.model.validateAgentName
+import build.raft.app.data.DataResult
 import build.raft.app.data.SharedAgentCreateFormOptionSource
 import build.raft.app.data.SharedBuiltInWriteOnlyIdentity
 import build.raft.app.data.SharedCreateAgentExactFormKey
@@ -357,15 +358,20 @@ internal suspend fun refreshCreateAgentDialogBuiltInForm(
     formStore: SharedCreateAgentFormStore,
     serverId: String,
     machineId: String
-) {
+): DataResult<SharedResolvedAgentCreateForm> =
     formStore.loadSupportedBuiltInForm(serverId, machineId, force = true)
-}
+
+internal fun isCreateAgentDialogFormRefreshAdmitted(result: DataResult<*>): Boolean =
+    result is DataResult.Content
 
 internal fun isCreateAgentRuntimeContractReady(
     runtime: String,
+    builtInFormRefreshAdmitted: Boolean,
     builtInFormLoading: Boolean,
     hasBuiltInRuntimeConfig: Boolean
-): Boolean = runtime != "builtin" || (!builtInFormLoading && hasBuiltInRuntimeConfig)
+): Boolean =
+    runtime != "builtin" ||
+        (builtInFormRefreshAdmitted && !builtInFormLoading && hasBuiltInRuntimeConfig)
 
 internal fun createAgentRuntimeAvailabilityError(
     selectedMachineId: String?,
@@ -632,11 +638,21 @@ internal fun SharedCreateAgentDialog(
                 builtInFormOverride == null
         )
     }
-    val builtInRuntimeEnabled = canEnableBuiltInRuntime(
-        hasFormOverride = builtInFormOverride != null,
-        hasSupportedExactRef = builtInRef != null,
-        hasResolvedExactForm = builtInForm != null
-    )
+    var dialogBuiltInFormRefreshAdmitted by remember(
+        createAgentFormStore,
+        cleanCreateAgentServerId,
+        selectedMachineId,
+        external,
+        builtInFormOverride
+    ) {
+        mutableStateOf(builtInFormOverride != null)
+    }
+    val builtInRuntimeEnabled =
+        canEnableBuiltInRuntime(
+            hasFormOverride = builtInFormOverride != null,
+            hasSupportedExactRef = builtInRef != null,
+            hasResolvedExactForm = builtInForm != null
+        ) && dialogBuiltInFormRefreshAdmitted
     val builtInFormLoading =
         dialogBuiltInFormRefreshInFlight ||
             createAgentMachineKey?.let { it in createAgentFormState.loadingRuntimeCatalogs } == true ||
@@ -714,8 +730,12 @@ internal fun SharedCreateAgentDialog(
         if (!external && builtInFormOverride == null && cleanCreateAgentServerId.isNotBlank()) {
             createAgentFormStore?.let { formStore ->
                 dialogBuiltInFormRefreshInFlight = true
+                dialogBuiltInFormRefreshAdmitted = false
                 try {
-                    refreshCreateAgentDialogBuiltInForm(formStore, cleanCreateAgentServerId, machineId)
+                    dialogBuiltInFormRefreshAdmitted =
+                        isCreateAgentDialogFormRefreshAdmitted(
+                            refreshCreateAgentDialogBuiltInForm(formStore, cleanCreateAgentServerId, machineId)
+                        )
                 } finally {
                     dialogBuiltInFormRefreshInFlight = false
                 }
@@ -811,6 +831,7 @@ internal fun SharedCreateAgentDialog(
         (external ||
             isCreateAgentRuntimeContractReady(
                 runtime = runtime,
+                builtInFormRefreshAdmitted = dialogBuiltInFormRefreshAdmitted,
                 builtInFormLoading = builtInFormLoading,
                 hasBuiltInRuntimeConfig = builtInRuntimeConfig != null
             ))

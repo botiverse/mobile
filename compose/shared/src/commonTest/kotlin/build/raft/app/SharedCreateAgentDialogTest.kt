@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.app.data.DataResult
+import build.raft.app.data.ScreenError
 import build.raft.app.model.RUNTIME_PROVIDER_MODE_CUSTOM
 import build.raft.app.model.RUNTIMES
 import build.raft.app.model.RuntimeModeConfig
@@ -103,6 +105,7 @@ class SharedCreateAgentDialogTest {
         assertFalse(
             isCreateAgentRuntimeContractReady(
                 runtime = "builtin",
+                builtInFormRefreshAdmitted = false,
                 builtInFormLoading = true,
                 hasBuiltInRuntimeConfig = true
             ),
@@ -111,6 +114,16 @@ class SharedCreateAgentDialogTest {
         assertFalse(
             isCreateAgentRuntimeContractReady(
                 runtime = "builtin",
+                builtInFormRefreshAdmitted = false,
+                builtInFormLoading = false,
+                hasBuiltInRuntimeConfig = true
+            ),
+            "a failed open refresh must not re-admit a cached contract"
+        )
+        assertFalse(
+            isCreateAgentRuntimeContractReady(
+                runtime = "builtin",
+                builtInFormRefreshAdmitted = true,
                 builtInFormLoading = false,
                 hasBuiltInRuntimeConfig = false
             )
@@ -118,6 +131,7 @@ class SharedCreateAgentDialogTest {
         assertTrue(
             isCreateAgentRuntimeContractReady(
                 runtime = "builtin",
+                builtInFormRefreshAdmitted = true,
                 builtInFormLoading = false,
                 hasBuiltInRuntimeConfig = true
             )
@@ -125,10 +139,21 @@ class SharedCreateAgentDialogTest {
         assertTrue(
             isCreateAgentRuntimeContractReady(
                 runtime = "codex",
+                builtInFormRefreshAdmitted = false,
                 builtInFormLoading = true,
                 hasBuiltInRuntimeConfig = false
             ),
             "refreshing the Built-in contract must not block unrelated runtimes"
+        )
+    }
+
+    @Test
+    fun onlySuccessfulDialogRefreshReceivesFreshnessAdmission() {
+        assertTrue(isCreateAgentDialogFormRefreshAdmitted(DataResult.Content(Unit)))
+        assertFalse(
+            isCreateAgentDialogFormRefreshAdmitted(
+                DataResult.Error(ScreenError("runtime_form_load_failed", retryable = true))
+            )
         )
     }
 
