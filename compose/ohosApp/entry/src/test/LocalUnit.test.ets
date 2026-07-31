@@ -40,6 +40,8 @@ import {
 import { SlockOhosProcessNetworkLifecycle } from '../main/ets/entryability/SlockOhosProcessNetworkLifecycle';
 import {
   cacheSlockOhosPickedAttachment,
+  ensureSlockOhosAttachmentCacheDirectory,
+  SlockOhosAttachmentCacheDirectoryBackend,
   SlockOhosPickedAttachmentCacheBackend,
 } from '../main/ets/kuikly/SlockOhosPickedAttachmentCache';
 
@@ -76,6 +78,28 @@ class FakePickedAttachmentCacheBackend implements SlockOhosPickedAttachmentCache
 
   removeFile(path: string): void {
     this.removedPaths.push(path);
+  }
+}
+
+class FakeAttachmentCacheDirectoryBackend implements SlockOhosAttachmentCacheDirectoryBackend {
+  directoryExists: boolean = false;
+  directoryExistsAfterCreateAttempt: boolean = false;
+  createCount: number = 0;
+  createError: Error | null = null;
+
+  createDirectory(_path: string): void {
+    this.createCount += 1;
+    if (this.directoryExistsAfterCreateAttempt) {
+      this.directoryExists = true;
+    }
+    if (this.createError != null) {
+      throw this.createError;
+    }
+    this.directoryExists = true;
+  }
+
+  isDirectory(_path: string): boolean {
+    return this.directoryExists;
   }
 }
 
@@ -169,6 +193,43 @@ function diagnosticWork(
 
 export default function localUnitTest() {
   describe('localUnitTest',() => {
+    it('attachmentCacheDirectoryReusesExistingDirectoryWithoutCreating', 0, () => {
+      const backend = new FakeAttachmentCacheDirectoryBackend();
+      backend.directoryExists = true;
+
+      ensureSlockOhosAttachmentCacheDirectory('/data/cache/slock-attachments', backend);
+
+      expect(backend.createCount).assertEqual(0);
+    });
+
+    it('attachmentCacheDirectoryAcceptsConcurrentExistsAfterCreateError', 0, () => {
+      const backend = new FakeAttachmentCacheDirectoryBackend();
+      backend.createError = new Error('13900015 File exists');
+      backend.directoryExistsAfterCreateAttempt = true;
+
+      ensureSlockOhosAttachmentCacheDirectory('/data/cache/slock-attachments', backend);
+
+      expect(backend.createCount).assertEqual(1);
+      expect(backend.directoryExists).assertTrue();
+    });
+
+    it('attachmentCacheDirectoryPreservesCreateFailureWhenPathIsNotDirectory', 0, () => {
+      const backend = new FakeAttachmentCacheDirectoryBackend();
+      backend.createError = new Error('permission denied');
+      let failed = false;
+      let failureMessage = '';
+      try {
+        ensureSlockOhosAttachmentCacheDirectory('/data/cache/slock-attachments', backend);
+      } catch (error) {
+        failed = true;
+        failureMessage = (error as Error).message;
+      }
+
+      expect(failed).assertTrue();
+      expect(failureMessage).assertEqual('permission denied');
+      expect(backend.createCount).assertEqual(1);
+    });
+
     it('pickedAttachmentCacheSeparatesRendererPathUriFromPlatformFileRef', 0, () => {
       const backend = new FakePickedAttachmentCacheBackend();
       backend.copiedSizeBytes = 4;
