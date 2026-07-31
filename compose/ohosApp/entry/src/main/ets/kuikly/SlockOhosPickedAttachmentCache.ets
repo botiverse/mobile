@@ -84,8 +84,9 @@ export interface SlockOhosCachedPickedAttachment {
  * OH_ImageSourceNative_CreateFromUri. That decoder accepts a file URI backed
  * by an absolute sandbox path (`file:///data/...`), not the ability-scoped
  * authority URI (`file://<bundle>/data/...`) produced by getUriFromPath.
- * Keep the latter as the platform upload handle and expose the former only to
- * the renderer.
+ * Keep the latter as the platform file identity and expose the former only to
+ * the renderer. Multipart consumers must resolve that identity back to its
+ * absolute sandbox path before assigning http.MultiFormData.filePath.
  */
 export function cacheSlockOhosPickedAttachment(
   sourceFd: number,
