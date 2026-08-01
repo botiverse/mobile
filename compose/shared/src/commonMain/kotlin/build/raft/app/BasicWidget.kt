@@ -9,6 +9,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -16,6 +17,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import com.tencent.kuikly.compose.coil3.AsyncImagePainter
+import com.tencent.kuikly.compose.coil3.rememberAsyncImageBitmap
 import com.tencent.kuikly.compose.extension.RefFunc
 import com.tencent.kuikly.compose.extension.keyboardHeightChange
 import com.tencent.kuikly.compose.extension.nativeRef
@@ -122,6 +124,33 @@ internal data class SlockImagePreviewLoadingPresentation(
     val showLoadingOverlay: Boolean
 )
 
+internal data class SlockImagePreviewRenderIdentity(
+    val source: String,
+    val decodedWidth: Int,
+    val decodedHeight: Int
+)
+
+internal fun slockImagePreviewRenderIdentity(
+    source: String,
+    decodedWidth: Int,
+    decodedHeight: Int
+): SlockImagePreviewRenderIdentity =
+    SlockImagePreviewRenderIdentity(
+        source = source,
+        decodedWidth = decodedWidth.coerceAtLeast(0),
+        decodedHeight = decodedHeight.coerceAtLeast(0)
+    )
+
+@Composable
+internal fun SlockImagePreviewRenderSlot(
+    identity: SlockImagePreviewRenderIdentity,
+    content: @Composable () -> Unit
+) {
+    key(identity) {
+        content()
+    }
+}
+
 internal fun slockImagePreviewLoadingPresentation(
     activeSource: String?,
     fallbackSource: String?,
@@ -192,6 +221,13 @@ internal fun SlockAspectFitImagePreviewSurface(
         contentAlignment = Alignment.Center
     ) {
         if (activeSource != null) {
+            val activeBitmap = rememberAsyncImageBitmap(activeSource)
+            val renderIdentity =
+                slockImagePreviewRenderIdentity(
+                    source = activeSource.orEmpty(),
+                    decodedWidth = activeBitmap?.width ?: 0,
+                    decodedHeight = activeBitmap?.height ?: 0
+                )
             val loadingPresentation =
                 slockImagePreviewLoadingPresentation(
                     activeSource = activeSource,
@@ -208,33 +244,35 @@ internal fun SlockAspectFitImagePreviewSurface(
                     modifier = Modifier.fillMaxSize()
                 )
             }
-            if (zoomable) {
-                SlockZoomableCachedImage(
-                    source = activeSource.orEmpty(),
-                    contentDescription = contentDescription,
-                    modifier = Modifier.fillMaxSize(),
-                    onImageStateChange = { state ->
-                        imageState = state
-                        onImageStateChange?.invoke(state)
-                        if (state is AsyncImagePainter.State.Error && activeSource != normalizedFallback && normalizedFallback != null) {
-                            activeSource = normalizedFallback
+            SlockImagePreviewRenderSlot(renderIdentity) {
+                if (zoomable) {
+                    SlockZoomableCachedImage(
+                        source = activeSource.orEmpty(),
+                        contentDescription = contentDescription,
+                        modifier = Modifier.fillMaxSize(),
+                        onImageStateChange = { state ->
+                            imageState = state
+                            onImageStateChange?.invoke(state)
+                            if (state is AsyncImagePainter.State.Error && activeSource != normalizedFallback && normalizedFallback != null) {
+                                activeSource = normalizedFallback
+                            }
                         }
-                    }
-                )
-            } else {
-                SlockCachedImage(
-                    source = activeSource,
-                    contentDescription = contentDescription,
-                    contentScale = contentScale,
-                    modifier = Modifier.fillMaxSize(),
-                    onImageStateChange = { state ->
-                        imageState = state
-                        onImageStateChange?.invoke(state)
-                        if (state is AsyncImagePainter.State.Error && activeSource != normalizedFallback && normalizedFallback != null) {
-                            activeSource = normalizedFallback
+                    )
+                } else {
+                    SlockCachedImage(
+                        source = activeSource,
+                        contentDescription = contentDescription,
+                        contentScale = contentScale,
+                        modifier = Modifier.fillMaxSize(),
+                        onImageStateChange = { state ->
+                            imageState = state
+                            onImageStateChange?.invoke(state)
+                            if (state is AsyncImagePainter.State.Error && activeSource != normalizedFallback && normalizedFallback != null) {
+                                activeSource = normalizedFallback
+                            }
                         }
-                    }
-                )
+                    )
+                }
             }
             if (loadingPresentation.showLoadingOverlay) {
                 SlockImagePreviewLoadingOverlay(

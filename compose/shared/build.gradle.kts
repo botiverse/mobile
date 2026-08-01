@@ -157,6 +157,7 @@ kotlin {
         val androidUnitTest by getting {
             dependencies {
                 implementation("app.cash.sqldelight:sqlite-driver:2.1.0")
+                implementation("org.robolectric:robolectric:4.14.1")
             }
         }
         val androidInstrumentedTest by getting {
