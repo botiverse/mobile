@@ -208,6 +208,7 @@ import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.toSharedHomeAppUpdateNotification
+import build.raft.app.data.DIAGNOSTICS_ACTION_APPLE_SIGNIN_LOCAL_OVERRIDE
 import build.raft.app.data.DIAGNOSTICS_ACTION_PROFILER_EXPORT
 import build.raft.app.data.DIAGNOSTICS_ACTION_PROFILER_ENABLED
 import build.raft.app.data.DIAGNOSTICS_ACTION_PROFILER_REPORT
@@ -11734,6 +11735,7 @@ internal fun SharedSettingsDiagnosticsContent(
     onShareLogs: () -> Unit,
     onSetDiagnosticFeatureFlagOverride: (String, String) -> Unit,
     onOpenLocalFeatureOverrides: (() -> Unit)? = null,
+    onSetAppleSignInLocalOverride: ((Boolean) -> Unit)? = null,
     onSetProfilerEnabled: (Boolean) -> Unit,
     onStartProfiler: () -> Unit,
     onStopProfiler: () -> Unit,
@@ -11749,11 +11751,18 @@ internal fun SharedSettingsDiagnosticsContent(
             actionState = actionState,
             copy = settingsDiagnosticsPayloadCopy(),
             includeLocalFeatureOverrides = onOpenLocalFeatureOverrides != null,
+            appleSignInLocalOverride =
+                if (onSetAppleSignInLocalOverride != null && snapshot?.appleSignInLocalOverrideAvailable == true) {
+                    snapshot?.appleSignInLocalOverride == true
+                } else {
+                    null
+                },
         )
     SharedSettingsSectionContent(payload, bottomContentPadding = bottomContentPadding) { action, value ->
         when (action) {
             "copyLogs" -> onCopyLogs()
             "shareLogs" -> onShareLogs()
+            DIAGNOSTICS_ACTION_APPLE_SIGNIN_LOCAL_OVERRIDE -> onSetAppleSignInLocalOverride?.invoke(value == "true")
             DIAGNOSTICS_ACTION_PROFILER_ENABLED -> onSetProfilerEnabled(value == "true")
             "startProfiler" -> onStartProfiler()
             "stopProfiler" -> onStopProfiler()
@@ -14132,6 +14141,8 @@ internal data class SettingsDiagnosticsPayloadCopy(
     val refreshProfilerDetail: String = "Call getReport(saveToFile=false) to refresh the current summary without rewriting files.",
     val exportProfiler: String = "Export report",
     val exportProfilerDetail: String = "Call getReport(saveToFile=true) and keep profiler_frames.jsonl beside profiler_report.json for analyzer input.",
+    val appleSignInOverride: String = "Apple sign-in (local test)",
+    val appleSignInOverrideDetail: String = "Locally show the Apple button on the login page for testing. The backend platform=mobile gate still decides whether an Apple sign-in start succeeds.",
     val loading: String = "Loading",
     val on: String = "On",
     val pending: String = "Pending",
@@ -14192,6 +14203,8 @@ private fun settingsDiagnosticsPayloadCopy(): SettingsDiagnosticsPayloadCopy =
         refreshProfilerDetail = stringResource(MR.strings.settings_diagnostics_profiler_refresh_detail),
         exportProfiler = stringResource(MR.strings.settings_diagnostics_profiler_export),
         exportProfilerDetail = stringResource(MR.strings.settings_diagnostics_profiler_export_detail),
+        appleSignInOverride = stringResource(MR.strings.settings_diagnostics_apple_signin_override),
+        appleSignInOverrideDetail = stringResource(MR.strings.settings_diagnostics_apple_signin_override_detail),
         loading = stringResource(MR.strings.settings_state_loading),
         on = stringResource(MR.strings.settings_state_on),
         pending = stringResource(MR.strings.settings_state_pending),
@@ -14558,6 +14571,7 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
     actionState: build.raft.app.data.SharedSettingsActionState?,
     copy: SettingsDiagnosticsPayloadCopy = SettingsDiagnosticsPayloadCopy(),
     includeLocalFeatureOverrides: Boolean = true,
+    appleSignInLocalOverride: Boolean? = null,
 ): KuiklySharedSettingsPayload {
     val diagnosticsExportAvailable = state is ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>
     val snapshot = (state as? ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>)?.data
@@ -14672,6 +14686,30 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
                     )
                 }
         )
+    val appleSignInOverrideSection =
+        appleSignInLocalOverride?.let { enabled ->
+            KuiklySharedSettingsSection(
+                title = copy.appleSignInOverride,
+                rows =
+                    listOf(
+                        KuiklySharedSettingsRow(
+                            DIAGNOSTICS_ACTION_APPLE_SIGNIN_LOCAL_OVERRIDE,
+                            SlockLucideIconName.SlidersHorizontal,
+                            copy.appleSignInOverride,
+                            copy.appleSignInOverrideDetail,
+                            value = (!enabled).toString(),
+                            status =
+                                when {
+                                    actionState.isDiagnosticsActionLoading(DIAGNOSTICS_ACTION_APPLE_SIGNIN_LOCAL_OVERRIDE) -> copy.loading
+                                    enabled -> copy.on
+                                    else -> copy.off
+                                },
+                            enabled = true,
+                            toggleValue = enabled
+                        )
+                    )
+            )
+        }
     val localFeatureOverridesSection =
         snapshot
             ?.takeIf { includeLocalFeatureOverrides && it.localFeatureOverridesAvailable() }
@@ -14713,7 +14751,7 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
                 loadStatusRows.takeIf { it.isNotEmpty() }?.let {
                     KuiklySharedSettingsSection(title = copy.loadStatus, rows = it)
                 }
-            ) + listOfNotNull(localFeatureOverridesSection) + listOf(profilerControlSection) + listOf(
+            ) + listOfNotNull(localFeatureOverridesSection) + listOfNotNull(appleSignInOverrideSection) + listOf(profilerControlSection) + listOf(
                 KuiklySharedSettingsSection(
                     title = copy.actions,
                     rows =

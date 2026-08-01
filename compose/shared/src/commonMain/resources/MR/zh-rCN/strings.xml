@@ -1890,6 +1890,8 @@
     <string name="settings_diagnostics_profiler_refresh_detail">调用 getReport(saveToFile=false) 刷新当前摘要且不重写文件。</string>
     <string name="settings_diagnostics_profiler_export">导出报告</string>
     <string name="settings_diagnostics_profiler_export_detail">调用 getReport(saveToFile=true)，并将 profiler_frames.jsonl 与 profiler_report.json 一同保留供分析器使用。</string>
+    <string name="settings_diagnostics_apple_signin_override">Apple 登录（本地测试）</string>
+    <string name="settings_diagnostics_apple_signin_override_detail">在登录页本地显示 Apple 按钮以便测试。Apple 登录能否真正发起仍由后端 platform=mobile 开关决定。</string>
     <string name="settings_diagnostics_label_app">应用</string>
     <string name="settings_diagnostics_label_build">构建</string>
     <string name="settings_diagnostics_label_version_code">版本号</string>

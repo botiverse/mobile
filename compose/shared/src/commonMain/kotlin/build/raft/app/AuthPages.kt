@@ -2,6 +2,7 @@ package build.raft.app
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -229,11 +230,13 @@ private fun LoginScreen() {
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
     val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
     val paramsSignature = pager.pageData.params.toString()
-    val authRuntimeCapabilities =
-        rememberAuthRuntimeCapabilities(
-            store = sharedStores.authRuntimeCapabilityStore,
-            pageData = pager.pageData.params
-        )
+    // Seed host capabilities synchronously, then observe the store so the signed-out
+    // diagnostics Apple toggle applies as soon as the user returns to this page.
+    rememberAuthRuntimeCapabilities(
+        store = sharedStores.authRuntimeCapabilityStore,
+        pageData = pager.pageData.params
+    )
+    val authRuntimeCapabilities by sharedStores.authRuntimeCapabilityStore.state.collectAsState()
     val linkNavigator =
         rememberSlockLinkNavigator(
             pager = pager,
@@ -863,7 +866,8 @@ private fun AuthAboutScreen(initialDestination: AuthAboutDestination = AuthAbout
                 sessionStore = sharedStores.authStore,
                 apiEnvironmentStore = sharedStores.apiEnvironmentStore,
                 platformCapabilities = settingsCapabilities,
-                diagnosticsLogger = { message -> bridge.log("compose_auth_developer $message") }
+                diagnosticsLogger = { message -> bridge.log("compose_auth_developer $message") },
+                authRuntimeCapabilityStore = sharedStores.authRuntimeCapabilityStore
             )
         }
     var aboutState by remember { mutableStateOf<ScreenLoadState<SharedSettingsAboutSnapshot>>(ScreenLoadState.Loading) }
@@ -1019,6 +1023,13 @@ private fun AuthAboutScreen(initialDestination: AuthAboutDestination = AuthAbout
                     onSetProfilerEnabled = { enabled ->
                         bridgeCallScope.launch {
                             diagnosticsState = settingsDataSource.setRecompositionProfilerEnabled(enabled).toDiagnosticsScreenLoadState()
+                        }
+                    },
+                    onSetAppleSignInLocalOverride = { enabled ->
+                        bridgeCallScope.launch {
+                            diagnosticsState =
+                                settingsDataSource.setAppleSignInLocalOverride(enabled)
+                                    .toDiagnosticsScreenLoadState()
                         }
                     },
                     onStartProfiler = {
@@ -2060,8 +2071,8 @@ private fun Pager.closeAuthSubPage() {
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
 }
 
-private fun SharedAuthRuntimeCapabilities.socialAuthProviders(): Set<AuthProvider> =
-    socialProviderIds
+internal fun SharedAuthRuntimeCapabilities.socialAuthProviders(): Set<AuthProvider> =
+    (if (localAppleSignInOverride) socialProviderIds + AuthProvider.Apple.providerId() else socialProviderIds)
         .mapNotNull { raw ->
             when (raw.trim().lowercase()) {
                 AuthProvider.Google.providerId() -> AuthProvider.Google
