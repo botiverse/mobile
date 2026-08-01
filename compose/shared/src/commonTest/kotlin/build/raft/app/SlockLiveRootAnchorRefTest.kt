@@ -56,6 +56,12 @@ class SlockLiveRootAnchorRefTest {
         assertNotNull(resolver.resolveAtPlacementRevision(2L))
         assertEquals(13, coordinates.localToRootCalls)
         resolver.endObservingPlacement()
+
+        coordinates.root = Offset(300f, 400f)
+        anchorRef.captureFromLayoutCoordinates(coordinates)
+
+        assertEquals(2L, resolver.placementRevision)
+        assertEquals(13, coordinates.localToRootCalls)
     }
 
     @Test
