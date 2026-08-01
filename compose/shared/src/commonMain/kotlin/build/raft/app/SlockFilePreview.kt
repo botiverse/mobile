@@ -135,14 +135,18 @@ internal const val SLOCK_COMPOSER_IMAGE_EDIT_EVENT = "slock.composerImageEdit"
 // (e.g. Settings feedback draft) accumulates per-image edit events for a group and
 // only releases the whole group when N/N is present and consistent.
 //
-// The frozen authority (expectedGroupId, expectedToken, expectedCount) lives on the
-// request/session state; `fold` only accepts ACTUAL event fields and must be
-// zero-mutation on any identity / total / range / duplicate mismatch. This is the
-// contract Vera requires: cross-group, stale, and total mismatches can never yield
-// a partial or spurious merge.
+// The frozen authority lives on the request/session state: expectedGroupId + expectedCount.
+// Freshness/generation is proven by the UNIQUE groupId plus the consumer's own
+// account/page-generation gate (we intentionally do NOT fake a per-event token field;
+// cross-process events carry no authoritative generation, so a token comparison here
+// would either reject every legal event or accept spoofed old ones).
+//
+// `fold` only accepts ACTUAL event fields and must be zero-mutation on any group /
+// total / range mismatch. A DUPLICATE index that replays the SAME itemKey is an
+// idempotent no-op (exactly-once redelivery must not poison a complete group); a
+// duplicate index with a CONFLICTING itemKey is rejected (poison).
 internal data class SlockImageEditGroupState(
     val expectedGroupId: String,
-    val expectedToken: String?,
     val expectedCount: Int,
     val total: Int? = null,
     val itemsByIndex: Map<Int, String> = emptyMap(),
@@ -161,20 +165,28 @@ internal data class SlockImageEditGroupState(
 
 internal object SlockImageEditGroupReconcile {
     const val REJECT_WRONG_GROUP = "wrong_group"
-    const val REJECT_STALE = "stale"
     const val REJECT_TOTAL_MISMATCH = "total_mismatch"
     const val REJECT_OUT_OF_RANGE = "out_of_range"
-    const val REJECT_DUPLICATE_INDEX = "duplicate_index"
+    const val REJECT_DUPLICATE_CONFLICT = "duplicate_conflict"
 
     /**
+     * Production-used group-total resolution: for a non-blank groupId the total is the
+     * gallery size, floored to 1 so a single image with no gallery still emits total=1
+     * (single-image N=1 contract, never 0). Blank groupId keeps legacy on-zero semantics.
+     */
+    fun resolveGroupTotal(groupId: String, gallerySize: Int): Int =
+        if (groupId.isBlank()) gallerySize
+        else gallerySize.coerceAtLeast(1)
+    /**
      * Fold one incoming edit event (actual fields) into a group state. The state
-     * already holds the frozen expected group id/token/count; any mismatch returns
-     * the state unchanged (zero mutation) plus the rejection reason.
+     * already holds the frozen expected group id / count; any group/total/range
+     * mismatch returns the state unchanged (zero mutation) plus the rejection reason.
+     * A same-index idempotent replay (identical itemKey) is a no-op; only a conflicting
+     * itemKey at an occupied index is rejected.
      */
     fun fold(
         state: SlockImageEditGroupState,
         actualGroupId: String,
-        actualToken: String?,
         index: Int,
         total: Int,
         itemKey: String
@@ -182,17 +194,16 @@ internal object SlockImageEditGroupReconcile {
         if (actualGroupId != state.expectedGroupId) {
             return state.withReject(REJECT_WRONG_GROUP)
         }
-        if (state.expectedToken != null && actualToken != state.expectedToken) {
-            return state.withReject(REJECT_STALE)
-        }
         if (total != state.expectedCount || total <= 0) {
             return state.withReject(REJECT_TOTAL_MISMATCH)
         }
         if (index < 0 || index >= total) {
             return state.withReject(REJECT_OUT_OF_RANGE)
         }
-        if (state.itemsByIndex.containsKey(index)) {
-            return state.withReject(REJECT_DUPLICATE_INDEX)
+        val existing = state.itemsByIndex[index]
+        if (existing != null) {
+            if (existing == itemKey) return state // idempotent replay no-op
+            return state.withReject(REJECT_DUPLICATE_CONFLICT)
         }
         return state.copy(
             total = total,
@@ -1344,7 +1355,7 @@ private fun SlockFilePreviewStandalonePageContent() {
         // (single-image N=1 contract), never 0.
         groupId: String = payload.composerImageGroupId,
         groupIndex: Int = payload.imageGalleryIndex.coerceAtLeast(0),
-        groupTotal: Int = payload.imageGallery.size.coerceAtLeast(if (groupId.isNotBlank()) 1 else 0)
+        groupTotal: Int = SlockImageEditGroupReconcile.resolveGroupTotal(payload.composerImageGroupId, payload.imageGallery.size)
     ) {
         if (actionId.isBlank() || fileRef.isBlank()) return
         eventBus.post(

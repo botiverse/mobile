@@ -6,21 +6,17 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 // task #113: whole-group edit-session reconciliation pure-function contract tests.
-// The frozen authority (groupId/token/count) lives on the state; fold only accepts
-// ACTUAL event fields and must be zero-mutation on any mismatch.
+// The frozen authority (groupId, count) lives on the state; fold only accepts ACTUAL
+// event fields and must be zero-mutation on any group/total/range mismatch. A
+// same-index idempotent replay is a no-op (must not poison a complete group); a
+// conflicting itemKey at an occupied index is rejected. No token pseudo-contract:
+// freshness/generation is proven by unique groupId + the consumer's page-generation gate.
 class SlockImageEditGroupReconcileTest {
-    private fun state(
-        groupId: String = "g1",
-        token: String? = "tok1",
-        count: Int = 3
-    ) = SlockImageEditGroupState(
-        expectedGroupId = groupId,
-        expectedToken = token,
-        expectedCount = count
-    )
+    private fun state(groupId: String = "g1", count: Int = 3) =
+        SlockImageEditGroupState(expectedGroupId = groupId, expectedCount = count)
 
-    private fun fold(s: SlockImageEditGroupState, index: Int, total: Int, key: String, gid: String = "g1", tok: String? = "tok1") =
-        SlockImageEditGroupReconcile.fold(s, actualGroupId = gid, actualToken = tok, index = index, total = total, itemKey = key)
+    private fun fold(s: SlockImageEditGroupState, index: Int, total: Int, key: String, gid: String = "g1") =
+        SlockImageEditGroupReconcile.fold(s, actualGroupId = gid, index = index, total = total, itemKey = key)
 
     @Test
     fun groupCompletesOnlyWhenAllNNIndicesPresentOrderIndependent() {
@@ -41,19 +37,33 @@ class SlockImageEditGroupReconcileTest {
         s = fold(s, 0, 3, "a")
         s = fold(s, 2, 3, "c")
         assertFalse(s.isComplete, "index 1 missing => never complete")
-        // Explicit completion/output assertion (not char-code): no partial can be derived.
+        // Explicit completion/output assertion: no partial can be derived.
         assertEquals(2, s.itemsByIndex.size)
         assertEquals(false, s.isComplete)
     }
 
     @Test
-    fun duplicateIndexRejectedAndNeverOverwritesSlot() {
+    fun conflictingDuplicateIndexRejectedProductionAndNeverOverwrites() {
         var s = state()
         s = fold(s, 1, 3, "original")
-        val after = fold(s, 1, 3, "tampered")
-        assertTrue(SlockImageEditGroupReconcile.REJECT_DUPLICATE_INDEX in after.rejects)
-        assertEquals("original", after.itemsByIndex[1], "first writer wins; duplicate must not overwrite")
-        assertFalse(after.isComplete)
+        val after = fold(s, 1, 3, "tampered") // same index, different itemKey
+        assertTrue(SlockImageEditGroupReconcile.REJECT_DUPLICATE_CONFLICT in after.rejects)
+        assertEquals("original", after.itemsByIndex[1], "first writer wins; conflict must not overwrite")
+        assertFalse(after.isCommittable, "a conflict poisons the group")
+    }
+
+    @Test
+    fun identicalReplayIsIdempotentNoOpAndKeepsGroupCommittable() {
+        var s = state()
+        s = fold(s, 0, 3, "a")
+        s = fold(s, 1, 3, "b")
+        s = fold(s, 2, 3, "c")
+        // Cross-process exactly-once redelivery replays an identical event.
+        val replay = fold(s, 1, 3, "b")
+        assertTrue(replay.isComplete)
+        assertTrue(replay.isCommittable, "identical replay must be a no-op, not poison")
+        assertTrue(replay.rejects.isEmpty(), "identical replay adds no reject")
+        assertEquals(3, replay.itemsByIndex.size)
     }
 
     @Test
@@ -68,7 +78,7 @@ class SlockImageEditGroupReconcileTest {
     @Test
     fun totalMismatchAndZeroAndNegativeRejected() {
         var s = state()
-        s = fold(s, 0, 4, "a") // total(4) != expected(3)
+        s = fold(s, 0, 4, "a")
         assertTrue(SlockImageEditGroupReconcile.REJECT_TOTAL_MISMATCH in s.rejects)
         assertTrue(s.itemsByIndex.isEmpty())
 
@@ -84,29 +94,6 @@ class SlockImageEditGroupReconcileTest {
     }
 
     @Test
-    fun staleTokenRejectedZeroMutationAndNeverCompletes() {
-        var s = state()
-        s = fold(s, 0, 3, "a", tok = "tok1") // valid first
-        val stale = fold(s, 1, 3, "b", tok = "WRONG") // stale token
-        assertTrue(SlockImageEditGroupReconcile.REJECT_STALE in stale.rejects)
-        assertEquals(1, stale.itemsByIndex.size, "stale event must not write an item")
-        assertFalse(stale.itemsByIndex.containsKey(1), "stale index must not be recorded")
-        // Feeding more stale events must never reach complete. Use fresh indices > count-1 so
-        // they are not blocked by duplicate_index (which would be a different reject path).
-        var s2 = stalesOf(stale, 3)
-        assertFalse(s2.isComplete, "stale-only events must never complete the group")
-        assertTrue(SlockImageEditGroupReconcile.REJECT_STALE in s2.rejects)
-        assertEquals(1, s2.itemsByIndex.size, "no stale event ever wrote an item")
-    }
-
-    private fun stalesOf(s0: SlockImageEditGroupState, n: Int): SlockImageEditGroupState {
-        var s = s0
-        // Use indices beyond expectedCount (3..n) so they are always fresh -> all stale (not duplicate).
-        for (i in 3 until 3 + n) s = fold(s, i, 3, "k$i", tok = "WRONG")
-        return s
-    }
-
-    @Test
     fun wrongGroupIdRejectedZeroMutation() {
         var s = state()
         s = fold(s, 0, 3, "a", gid = "OTHER-GROUP")
@@ -116,37 +103,56 @@ class SlockImageEditGroupReconcileTest {
     }
 
     @Test
+    fun staleLikeOldEventWithWrongGroupNeverCompletes() {
+        var s = state()
+        // A stale/old event from a previous session would carry a different groupId; it must not write.
+        s = fold(s, 0, 3, "stale", gid = "OLD-SESSION")
+        assertFalse(s.isComplete)
+        assertFalse(s.isCommittable)
+    }
+
+    @Test
     fun singleImageIsNNOne() {
         var s = state(count = 1)
         s = fold(s, 0, 1, "only")
         assertTrue(s.isComplete, "single image = total 1, complete after its one event")
+        assertTrue(s.isCommittable)
         assertEquals(1, s.itemsByIndex.size)
     }
 
     @Test
     fun committableRequiresCompleteAndNoRejects() {
-        // Clean complete group => isCommittable true.
         var s = state()
         s = fold(s, 0, 3, "a")
         s = fold(s, 1, 3, "b")
         s = fold(s, 2, 3, "c")
         assertTrue(s.isCommittable)
 
-        // Same N/N but one stale reject => not committable even though isComplete.
         var bad = state()
-        bad = fold(bad, 0, 3, "a", tok = "WRONG") // rejected, no item
+        bad = fold(bad, 0, 3, "a", gid = "WRONG-GROUP") // rejected, no item
         bad = fold(bad, 0, 3, "a")
         bad = fold(bad, 1, 3, "b")
         bad = fold(bad, 2, 3, "c")
         assertTrue(bad.isComplete)
         assertFalse(bad.isCommittable, "any reject must prevent commit")
-        assertTrue(SlockImageEditGroupReconcile.REJECT_STALE in bad.rejects)
+        assertTrue(SlockImageEditGroupReconcile.REJECT_WRONG_GROUP in bad.rejects)
+    }
+
+    // --- Production-used group-total resolution (Vera #2): bound to the actual emitter helper. ---
+    @Test
+    fun groupTotalResolutionBlankLegacy() {
+        assertEquals(2, SlockImageEditGroupReconcile.resolveGroupTotal("", 2))
+        assertEquals(0, SlockImageEditGroupReconcile.resolveGroupTotal("", 0), "blank groupId keeps legacy on-zero")
     }
 
     @Test
-    fun emitterSingleImageWithoutGalleryEmitsTotalOne() {
-        // contract-level: with groupId set and an empty gallery, groupTotal must be >= 1 (single-image N=1), never 0.
-        assertEquals(1, (0).coerceAtLeast(1), "guard expression for groupTotal with non-blank groupId and empty gallery")
-        assertTrue(true)
+    fun groupTotalResolutionGroupedSingleWithoutGalleryFloorsToOne() {
+        assertEquals(1, SlockImageEditGroupReconcile.resolveGroupTotal("g1", 0), "grouped single no gallery => total 1")
+        assertEquals(1, SlockImageEditGroupReconcile.resolveGroupTotal("g1", 1))
+    }
+
+    @Test
+    fun groupTotalResolutionGroupedMulti() {
+        assertEquals(4, SlockImageEditGroupReconcile.resolveGroupTotal("g1", 4))
     }
 }
