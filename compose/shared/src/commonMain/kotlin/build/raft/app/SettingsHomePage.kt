@@ -21043,9 +21043,15 @@ internal fun buildStandaloneTaskThreadLaunchPayload(
     timeContext: AppShellThreadTimeContext?,
     alignOwnMessagesRight: Boolean = false,
     compactConsecutiveMessages: Boolean = false,
-    threadRowAffordances: Set<ThreadRowAffordancePreference> = ThreadRowAffordancePreference.Default
+    threadRowAffordances: Set<ThreadRowAffordancePreference> = ThreadRowAffordancePreference.Default,
+    parentConversationKind: ConversationKind? = null
 ): WireThreadLaunchPayload? {
-    val request = task.resolveTaskThreadOpenRequest(serverId, conversationDirectory) ?: return null
+    val request =
+        task.resolveTaskThreadOpenRequest(
+            serverId = serverId,
+            conversationDirectory = conversationDirectory,
+            parentConversationKind = parentConversationKind
+        ) ?: return null
     return buildStandaloneConversationThreadLaunchPayload(
         conversation = request.conversationIdentity,
         timeContext = timeContext,
