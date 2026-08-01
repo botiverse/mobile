@@ -852,6 +852,46 @@ class SettingsHomePageDiagnosticsTest {
     }
 
     @Test
+    fun aboutAndDiagnosticsRowsCarryLongPressCopyValues() {
+        val aboutPayload =
+            SharedSettingsAboutSnapshot(
+                appName = "Raft",
+                versionLabel = "1.0.1",
+                buildLabel = "1000100",
+                buildTime = "2026-07-03T19:03:28Z",
+                gitCommit = "15fb7be3",
+                packageName = "build.raft.app"
+            ).toAboutPayload(webUrl = "https://app.raft.build")
+
+        val aboutRows = aboutPayload.sections.first { it.title == "Application" }.rows.associateBy { it.key }
+        assertEquals("Raft", aboutRows.getValue("appName").copyValue)
+        assertEquals("1.0.1 1000100", aboutRows.getValue("version").copyValue)
+        assertEquals("2026-07-03T19:03:28Z", aboutRows.getValue("buildTime").copyValue)
+        assertEquals("15fb7be3", aboutRows.getValue("gitCommit").copyValue)
+        assertEquals("build.raft.app", aboutRows.getValue("package").copyValue)
+
+        val diagnosticsPayload =
+            emptyList<build.raft.app.data.SharedSettingsDiagnosticsEntry>().toDiagnosticsPayload(
+                state =
+                    ScreenLoadState.Content(
+                        SharedSettingsDiagnosticsSnapshot(
+                            about =
+                                SharedSettingsAboutSnapshot(
+                                    appName = "Raft",
+                                    versionLabel = "1.0.1",
+                                    gitCommit = "15fb7be3",
+                                    packageName = "build.raft.app"
+                                )
+                        )
+                    ),
+                actionState = null,
+            )
+        val environmentRows = diagnosticsPayload.sections.first { it.title == "Environment" }.rows.associateBy { it.key }
+        assertEquals("Raft 1.0.1", environmentRows.getValue("diagnosticsApp").copyValue)
+        assertEquals("build.raft.app", environmentRows.getValue("diagnosticsPackage").copyValue)
+    }
+
+    @Test
     fun aboutPayloadHidesUpdateCheckBeforeHostCapabilityLoads() {
         val payload =
             SharedSettingsAboutSnapshot(appName = "Raft", versionLabel = "1.0.1")
