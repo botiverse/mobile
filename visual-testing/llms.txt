@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-07-30 22:25:39 UTC
-Latest run: 4cdec2e2-20260730221708
-Latest commit: 4cdec2e2-20260730221708
-Commit subject: fix(ohos): preserve shared library fallback (#1785)
+Generated: 2026-08-01 03:04:22 UTC
+Latest run: cbeff10c-20260801030228
+Latest commit: cbeff10c-20260801030228
+Commit subject: fix(visual): exclude @Ignore'd tests from the expected/sharding set (#1838)
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 80, same 0, pass 0, basic-pass 0, different 79, missing 1
-AI analysis: ready 79 / total 80, pending 1
+AI analysis: ready 77 / total 80, pending 3
 Visual coverage matrix: active 89 / total 108, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
@@ -116,6 +116,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- cbeff10c-20260801030228: react vs android, total 80, pass 0, basic-pass 0, different 79, matrix runs/cbeff10c-20260801030228/component-matrix.json, page runs/cbeff10c-20260801030228/
 - 4cdec2e2-20260730221708: react vs android, total 80, pass 0, basic-pass 0, different 79, matrix runs/4cdec2e2-20260730221708/component-matrix.json, page runs/4cdec2e2-20260730221708/
 - ef4f45a1-20260730043036: react vs android, total 80, pass 0, basic-pass 0, different 79, matrix runs/ef4f45a1-20260730043036/component-matrix.json, page runs/ef4f45a1-20260730043036/
 - 59776b7e-20260727221416: react vs android, total 80, pass 0, basic-pass 0, different 79, matrix runs/59776b7e-20260727221416/component-matrix.json, page runs/59776b7e-20260727221416/

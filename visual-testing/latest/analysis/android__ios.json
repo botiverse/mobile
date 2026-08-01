@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-30T22:25:37.299Z",
+  "generatedAt": "2026-08-01T03:04:21.185Z",
   "baseline": "android",
   "current": "ios",
   "comparison": "android__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 80,
-    "ready": 75,
-    "pending": 5
+    "ready": 73,
+    "pending": 7
   },
   "cases": [
     {
@@ -816,66 +816,29 @@
     },
     {
       "id": "components.thread.composer.member-suggestions",
-      "status": "ready",
-      "imageHash": "p1:03f807fc00010002000100020001000202010202000100023ff93ffa00010002000100020fb10fb200010002fffdfffe0001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffa1fff",
-      "generatedAt": "2026-07-12T22:11:22.571Z",
-      "severity": "high",
-      "summary": [
-        "NOT IN THIS CHANNEL row on Android has overlapping/duplicated text ('Android De… Implements features for ... @Android-Developer-4') whereas iOS shows a clean single-line row 'Android Dev… @Android-Developer-4'",
-        "Product UX row: Android uses 'Product UX … … @Product-UX-Designer' while iOS renders 'Product UX… T… @Product-UX-Designer' — different middle-glyph (ellipsis vs 'T…') suggests text truncation/truncation-indicator mismatch",
-        "Row vertical heights differ: Android rows are noticeably taller than iOS rows, producing different list/composer bounds and inconsistent section spacing",
-        "Cropped region size mismatch: baseline crop is 342×320 but current (iOS) raw is 1170×2532 — the iOS side appears scaled/letterboxed differently, inflating apparent whitespace",
-        "Header title and 'ANDROID'/'IOS' badge placement differs slightly in vertical alignment between the two sides"
-      ],
-      "likelyCauses": [
-        "Text-overflow/ellipsis logic differs between Android and iOS Kuikly renderers (different number-of-lines or max-characters per row)",
-        "List item min-height / line-height not normalized across platforms, so identical font metrics produce different row heights",
-        "Subtitle/status text in the 'NOT IN THIS CHANNEL' row is being rendered twice on Android (overlap), indicating a z-order or duplicate-node bug specific to the Android renderer",
-        "Cropping contract applied only to baseline; iOS is shown full-frame (1170×2532), so the comparison canvas is not apples-to-apples — a tooling/config issue, not a real UI divergence",
-        "Platform-specific font metrics (SF Pro on iOS vs Roboto on Android) causing different ellipsis truncation width for the same dp value"
-      ],
-      "suggestedOwner": "Kuikly cross-platform rendering / Thread composer component owner",
-      "suggestedFixes": [
-        "Normalize Text overflow behavior (maxLines + ellipsize=end) across Android and iOS for member name and subtitle fields",
-        "Apply the same crop contract to the iOS baseline (manual-rect component-bounds) so both renders are compared at equal dimensions",
-        "Audit the 'NOT IN THIS CHANNEL' row for duplicate child Text nodes on Android; remove redundant subtitle Text view",
-        "Unify list-item minHeight/lineHeight via a shared design token so row heights match on both platforms",
-        "Use platform-agnostic font (or explicit font-metrics override) so truncation widths and ellipsis positions align between Android and iOS"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.056407218374043055
+      "status": "pending",
+      "imageHash": "p1:03f807fcfffdfffe00010002000100020001000202010002000100023ff93ffa00010002200900020fb10fb200010002600dfffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffa1fff",
+      "generatedAt": "2026-08-01T03:04:20.238Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.05902296755377323
     },
     {
       "id": "components.thread.composer.channel-suggestions",
-      "status": "ready",
-      "imageHash": "p1:03f807fc00010002000100020ff90ffa00010002000100020ff10ff20001000200050002fffdfffefffdfffefffdfffe0001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffa1fff",
-      "generatedAt": "2026-07-21T10:47:47.115Z",
-      "severity": "low",
-      "summary": [
-        "Layout, hierarchy, colors, and copy match between Android and iOS renders.",
-        "Typography weight, size, and spacing on channel list rows (design/product/android-artifacts) appear identical across ends.",
-        "Toolbar icons (gallery, attachment), '#' prefix, 'As Task' label, and send button shape/color match.",
-        "Minor pixel-level differences (4.26% mismatch) are within tolerance and likely due to font hinting/anti-aliasing rather than a real UI divergence.",
-        "No missing, clipped, or misaligned elements on either side."
-      ],
-      "likelyCauses": [
-        "Subtle native font rendering differences (Android vs iOS text shaping/anti-aliasing) producing small pixel deltas.",
-        "Possible baseline DPI/canvas scaling differences between the two renders, but within the configured 0.02 pixelRatio tolerance."
-      ],
-      "suggestedOwner": "ui-engineering",
-      "suggestedFixes": [
-        "No action required — differences are within tolerance and not visually perceptible.",
-        "If strict parity is desired, unify the font stack or enable the same text-rendering hinting on both platforms.",
-        "Re-run Slock with a tightened tolerance or after introducing font parity to confirm no hidden divergence."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.042629049027153254
+      "status": "pending",
+      "imageHash": "p1:03f807fc7ffdfffefffdfffefffdfffefffdfffe00010002000100020ff92ffa00010002200900020fb10fb200010002600dfffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffa1fff",
+      "generatedAt": "2026-08-01T03:04:20.244Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.05141099904133084
     },
     {
       "id": "components.thread.composer.image-preview",
@@ -941,7 +904,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.05944896774280661
+      "metricMismatch": 0.05945268089817857
     },
     {
       "id": "components.thread.header.states",
@@ -1063,7 +1026,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.3693165093639027
+      "metricMismatch": 0.3693138088872686
     },
     {
       "id": "components.thread.message-menu.task",
@@ -1893,7 +1856,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1939948150848625
+      "metricMismatch": 0.1940167564575147
     },
     {
       "id": "screens.auth.profile-setup",
@@ -1935,7 +1898,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-30T22:25:36.838Z",
+      "generatedAt": "2026-08-01T03:04:20.798Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1948,7 +1911,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-30T22:25:36.838Z",
+      "generatedAt": "2026-08-01T03:04:20.798Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1961,7 +1924,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-30T22:25:36.838Z",
+      "generatedAt": "2026-08-01T03:04:20.798Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1974,7 +1937,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-30T22:25:36.838Z",
+      "generatedAt": "2026-08-01T03:04:20.798Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1987,7 +1950,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-30T22:25:36.838Z",
+      "generatedAt": "2026-08-01T03:04:20.798Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

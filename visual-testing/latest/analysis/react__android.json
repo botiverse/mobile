@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-30T22:25:29.935Z",
+  "generatedAt": "2026-08-01T03:04:15.707Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 80,
-    "ready": 79,
-    "pending": 1
+    "ready": 77,
+    "pending": 3
   },
   "cases": [
     {
@@ -358,7 +358,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.41497942386831277
+      "metricMismatch": 0.41496209659952354
     },
     {
       "id": "components.ui.spinner.states",
@@ -869,71 +869,29 @@
     },
     {
       "id": "components.thread.composer.member-suggestions",
-      "status": "ready",
-      "imageHash": "p1:fffeffff03fe03fcffff0000fc01000181fc03ffbbfeffffbe0400018000000180000001bffc7fff87fc03ff87fc037b8000000380fea1fffffeffffbffc3fff9ffc3203fffeffffbffc00018000000180013ffdbffc3ffdbffe0ff1bffc0f9187d8000187c880038418ffff8000ffffffffffff80008000ffffffffffffffff",
-      "generatedAt": "2026-07-09T07:30:49.863Z",
-      "severity": "high",
-      "summary": [
-        "In 'IN THIS CHANNEL' list, the order of the first two rows is swapped: React shows 'artin' (yellow highlight) then 'Cindy'; Android shows 'Cindy' (yellow highlight) then 'Product UX...'",
-        "The highlighted (selected) row differs between platforms: React highlights the avatar-only 'artin' entry, Android highlights the full 'Cindy' row that includes bio and @mention text",
-        "Text clipping in 'NOT IN THIS CHANNEL' section on Android: 'Android De...' and 'I work...' descriptions overlap the @Product-UX-Designer handle, producing illegible stacked/overlapping text (React shows clean truncation with ellipsis)",
-        "Section/card spacing is larger on Android: more vertical gap between 'IN THIS CHANNEL' and 'NOT IN THIS CHANNEL' cards, and between the suggestions panel and the composer toolbar",
-        "Composer toolbar layout is more compact on Android: icon group (image, attachment) sits closer to the @ glyph, and the 'As Task' checkbox/send button cluster is shifted further right than in React"
-      ],
-      "likelyCauses": [
-        "Suggestion list data shape or ordering differs between the React and Android member-suggestions components (likely different list item model / row layout)",
-        "Android member suggestion row item uses a single dense layout (name + description + @handle in one row) versus React's multi-row layout",
-        "Selected-state highlight is bound to a different row index due to list ordering or keyboard/focus divergence between platforms",
-        "Text truncation / ellipsizing on Android is not applied per-line, causing description and @handle to wrap on top of each other",
-        "Avatar fallback asset/color is not tokenized consistently across platforms"
-      ],
-      "suggestedOwner": "android-thread-composer",
-      "suggestedFixes": [
-        "Unify the member-suggestion row layout across platforms: adopt a consistent two-line pattern (name on line 1, description + @handle truncated on line 2) with proper single-line ellipsization to prevent overlap",
-        "Align the list ordering so the currently-highlighted/selected item is index 0 in both React and Android implementations",
-        "Apply ellipsize=end to both the description and @handle TextViews, and cap each to a single line with adequate horizontal padding",
-        "Tokenize avatar fallback colors and shapes so both platforms render the same placeholder (e.g., purple silhouette) when an avatar image is missing",
-        "Reconcile vertical spacing tokens between the 'IN THIS CHANNEL' and 'NOT IN THIS CHANNEL' section cards and the gap to the composer toolbar"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.2403518924626381
+      "status": "pending",
+      "imageHash": "p1:fffeffff03fe03fcffffffffcc01ffff81fcffffb3feffffbe0400018000f7ff80003c0bbffc000187fc000187fc7fff800003ff80fe27fffffc0001bffc01ff97fcfffffffe3fffbffc21ff80003fff80000000bffc0001bffc3ffdbffc3ffd87d80ff987c80f9184180ff180000001ffffffff80008000ffffffffffffffff",
+      "generatedAt": "2026-08-01T03:04:14.807Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.32410554743339826
     },
     {
       "id": "components.thread.composer.channel-suggestions",
-      "status": "ready",
-      "imageHash": "p1:fffeffff03fe03fcffff0000ffff0001ffff0001ffff0001ffff0001ffff0fffffff0fffffff7fff800001ff800001fb8000000180007ffd9ffc7ffd87fc0ff9fffc0f9180fc0ff180fc00018000ffff8000ffffbffcffffbffefffffffcffff87d8ffff87c8ffff8418ffff8000ffffffffffff80008000ffffffffffffffff",
-      "generatedAt": "2026-07-21T10:47:02.324Z",
-      "severity": "medium",
-      "summary": [
-        "Vertical stacking order differs: Android renders the suggestions list above the composer input row, while React places the composer row below the suggestions list.",
-        "Suggestion list card on Android has tighter internal vertical padding, causing rows to appear more compact than React's more generous spacing.",
-        "Channel name typography weight on Android appears slightly lighter for the bold channel names (\"design\", \"product\", \"android-artifacts\") versus React's heavier weight.",
-        "Description text on Android uses a lighter/more muted gray color than React's medium gray for \"Product and UI decisions\", \"Release tracking and acceptance\", and \"Builds and screenshots\".",
-        "The composer input row on Android is rendered without the visible card border/elevation around the attachment icons and send button that React shows, giving it a flatter appearance."
-      ],
-      "likelyCauses": [
-        "Android layout uses a different container ordering (Column with suggestions first, composer second) versus React's composer-first arrangement.",
-        "Spacing/padding tokens in Android Compose theme do not match the React design system's list-row vertical padding.",
-        "Android typography scale is mapping the channel-name TextStyle to a lower fontWeight than the React baseline's 600/bold.",
-        "Android secondary text color token is set to a lighter shade than the React equivalent, reducing contrast on descriptions.",
-        "Android composer bottom bar is rendered without a surrounding Card/surface container, omitting the elevation/border present in React."
-      ],
-      "suggestedOwner": "android-engineering",
-      "suggestedFixes": [
-        "Reorder Android layout so the composer input row renders below the channel-suggestions list to match React vertical flow.",
-        "Increase vertical padding inside each suggestion row to match the React baseline's row height (add ~4–8dp top/bottom).",
-        "Set the channel-name TextStyle fontWeight to SemiBold/Bold to match React's bolder rendering.",
-        "Adjust the description text color token to a darker gray (e.g., raise contrast toward React's ~#6B6B6B equivalent).",
-        "Wrap the composer bottom row in a surface/Card with a border or subtle elevation to match React's card container styling."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.3527107699805069
+      "status": "pending",
+      "imageHash": "p1:fffeffff03fe03fcffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff8000ffff8000ffff80000001800000019ffc000187fc3ffbfffe0fff80fc3fff80fc3fff800001ff80000000bffc0001bffc7ffdfffc7ffd87d80ff987c80f9184180ff180000001ffffffff80008000ffffffffffffffff",
+      "generatedAt": "2026-08-01T03:04:14.816Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.27270142949967513
     },
     {
       "id": "components.thread.composer.image-preview",
@@ -1146,7 +1104,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.41316077287641273
+      "metricMismatch": 0.41315739728062006
     },
     {
       "id": "components.thread.message-menu.task",
@@ -1219,7 +1177,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.7065675591741942
+      "metricMismatch": 0.7065668840550356
     },
     {
       "id": "components.thread.forward-modal",
@@ -1391,7 +1349,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.26768137076193943
+      "metricMismatch": 0.2676675308191896
     },
     {
       "id": "components.home.search.channel-dropdown",
@@ -1424,12 +1382,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2682822268130325
+      "metricMismatch": 0.268270074668179
     },
     {
       "id": "components.home.saved.results",
       "status": "ready",
-      "imageHash": "p1:0ffc1ffc3ffe3ffe83fe03fe81fe83fe08000000f3f8e3f2c1398032c0188012c00e807ec0fefffefffafffede79fdfece7888f2801e8012c01e801ecffecffefffafffef0f9fffec1f9e1f2c00ec1f2c01ec072fffe803ec1f8dffec039fffec00efc3ec0fefc3ec0fefffefff8fffecc79fffec018fffe00040000fffa7fff",
+      "imageHash": "p1:0ffc1ffc3ffe3ffe83fe03fe81fe83fe08000000f3f8e3f2c1398032c0188012c00e807ec0fefffefffafffede79fdfece7888f2801e8012c01e801ecffecffefffafffef0f9fffec1f9e1f2c00ec1f2c01ec072fffe803ec1f8dffec039fffec00efc3ec0fefc3ec0fefffefff8fffecc79fffec018fffe00040000fffa3fff",
       "generatedAt": "2026-07-30T04:34:27.469Z",
       "severity": "medium",
       "summary": [
@@ -1461,7 +1419,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1903047643002369
+      "metricMismatch": 0.1901957701901109
     },
     {
       "id": "components.home.activity.results",
@@ -1495,7 +1453,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.18607705045169676
+      "metricMismatch": 0.18609381877633147
     },
     {
       "id": "components.tasks.panel.states",
@@ -1675,7 +1633,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-30T22:25:29.092Z",
+      "generatedAt": "2026-08-01T03:04:15.074Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1962,7 +1920,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.196149795438895
+      "metricMismatch": 0.19611367656391354
     },
     {
       "id": "components.settings.notifications.page",
@@ -2033,7 +1991,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.23653643618098597
+      "metricMismatch": 0.23653677374056525
     },
     {
       "id": "screens.auth.profile-setup",
@@ -2137,7 +2095,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.05964812789457341
+      "metricMismatch": 0.05969336087819499
     },
     {
       "id": "screens.members.agent-detail.workspace",

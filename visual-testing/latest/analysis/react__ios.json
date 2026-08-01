@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-30T22:25:33.482Z",
+  "generatedAt": "2026-08-01T03:04:18.217Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 80,
-    "ready": 74,
-    "pending": 6
+    "ready": 71,
+    "pending": 9
   },
   "cases": [
     {
@@ -274,33 +274,15 @@
     },
     {
       "id": "components.ui.status-dot.states",
-      "status": "ready",
-      "imageHash": "p1:0000000007fc0ffe03f407fe03fc07fe0000fffe0000fffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00000",
-      "generatedAt": "2026-07-23T22:53:07.321Z",
-      "severity": "low",
-      "summary": [
-        "The four static status dots (green, orange, gray, blue) render with identical color, size, and spacing across React and iOS.",
-        "The pink \"Waiting pulse\" dot and its accompanying bold label render at matching position, color, and weight on both sides.",
-        "Typography for the component title and metadata labels is consistent in family and weight between platforms.",
-        "Pixel-perfect similarity of 99.77% and RGB similarity of 97.9% confirm no meaningful visual divergence within the cropped component region."
-      ],
-      "likelyCauses": [
-        "Minor antialiasing variation between web (subpixel rendering) and iOS (native rendering) of the circular dot edges.",
-        "Slight differences in font hinting between browser and UIFont rendering of the \"Waiting pulse\" label and title text."
-      ],
-      "suggestedOwner": "design-system",
-      "suggestedFixes": [
-        "No action required — visual parity is within tolerance.",
-        "If stricter parity is desired, normalize dot border/edge rendering by using identical SVG or CALayer with shared stroke parameters.",
-        "Consider pinning the label to a system font that matches the React baseline's metric to eliminate remaining subpixel drift."
-      ],
-      "intentional": [
-        "Cross-platform minor rendering differences are expected and within the configured 0.02 pixel-ratio tolerance.",
-        "The iOS viewport (1170×2532) is a full screen capture while the React baseline is cropped to component bounds; this does not indicate a UI defect."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
+      "status": "pending",
+      "imageHash": "p1:0000000007fc0ffe03fc07fe03fc87fe0000fffec3fcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00001",
+      "generatedAt": "2026-08-01T03:04:16.994Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
       "metricMismatch": 0.0022987807347997213
     },
     {
@@ -364,7 +346,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.062095097284670775
+      "metricMismatch": 0.062097122642146285
     },
     {
       "id": "components.ui.spinner.states",
@@ -857,75 +839,29 @@
     },
     {
       "id": "components.thread.composer.member-suggestions",
-      "status": "ready",
-      "imageHash": "p1:03f807fc00010002000100020001000280090202000900023ff93ffa17f900020001000210090fb20f9100020001fffe700dfffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffa1fff",
-      "generatedAt": "2026-07-12T22:10:28.215Z",
-      "severity": "medium",
-      "summary": [
-        "Different list item ordering: React highlights 'artin' (avatar placeholder, no bot indicator) as selected, while iOS highlights 'Cindy' (bot avatar, with status dot) as selected.",
-        "iOS 'IN THIS CHANNEL' section shows secondary text (status/preview like 'Keeps visual testing releas...', 'T...') inline with name; React shows it only on the non-selected row and omits it on the selected 'artin' row.",
-        "iOS renders all 'NOT IN THIS CHANNEL' avatars with the bot/checkered pattern, while React uses a generic person placeholder for 'artin' and a solid teal block for 'Product UX De…'.",
-        "Selection highlight placement differs: iOS highlights the second visible row (Cindy) instead of the first row, and uses a wider yellow band that extends closer to the right edge including the handle.",
-        "Bottom composer toolbar on iOS is detached/floating below the suggestions card with extra vertical gap, whereas React places it directly attached beneath the suggestion list."
-      ],
-      "likelyCauses": [
-        "iOS implementation reorders the suggestion list or shifts the keyboard-focus/highlighted index relative to the React baseline.",
-        "iOS renders richer secondary metadata (status message, truncated preview) on each row while the React variant shows it only on hover/non-selected state.",
-        "Avatar assets differ per platform: iOS uses the bot-style checkered avatar for all entries, React uses placeholder silhouettes or solid color blocks.",
-        "Spacing/padding tokens (row height, inner padding, toolbar separation) were not normalized across the two platform implementations."
-      ],
-      "suggestedOwner": "ios-eng",
-      "suggestedFixes": [
-        "Verify selected/highlighted row index matches the React baseline (first entry, 'artin') and align list ordering logic if iOS re-sorts.",
-        "Match secondary text rendering per row so the preview/status string appears consistently on both selected and non-selected items.",
-        "Align avatar rendering so placeholder vs bot avatars are consistent across platforms (or accept as platform-specific asset if intentional).",
-        "Normalize list row height and internal padding to the React spec; reduce vertical gap between the suggestions card and the composer toolbar.",
-        "Confirm whether iOS composer attachment below the card is intentional platform behavior or should be moved flush against the suggestions card."
-      ],
-      "intentional": [
-        "Platform-specific avatar assets for bot vs person indicators may be acceptable as native conventions.",
-        "Detached floating composer on iOS may be an intentional iOS keyboard-avoidance pattern."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.07664121467439
+      "status": "pending",
+      "imageHash": "p1:03f807fc0001fffe000100020001000280090002000900023ff9000217f93ffa00010003100900020f910fb200010002700dfffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffe1fff",
+      "generatedAt": "2026-08-01T03:04:17.302Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.11039447212432996
     },
     {
       "id": "components.thread.composer.channel-suggestions",
-      "status": "ready",
-      "imageHash": "p1:03f807fcfffd0002fffd0002fffd0ffa000100020001000207f91ff200090002000100023009fffe0f91fffe0001fffe700dfffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffe1fff",
-      "generatedAt": "2026-07-12T22:10:29.386Z",
-      "severity": "medium",
-      "summary": [
-        "Channel suggestions list renders at the very top of the iOS canvas with no top padding, while React has generous top spacing.",
-        "Composer input row (text area, As Task checkbox, send button) sits directly below the suggestions on iOS but is visually separated with breathing room on React.",
-        "Yellow '#' icon tile appears missing/clipped on the iOS composer row header — only the '#' character shows without the yellow square background that React renders.",
-        "Send (paper plane) button on iOS sits inside a visible pink/coral square fill, whereas on React the button background blends more subtly with the row.",
-        "Typography weight of channel names ('design', 'product', 'android-artifacts') looks heavier/bolder on iOS versus React's lighter weight."
-      ],
-      "likelyCauses": [
-        "iOS implementation missing explicit top inset/padding on the suggestions container",
-        "iOS row header not rendering the hashtag badge background tile (icon asset or container style regression)",
-        "Platform-specific font weight mapping causing iOS to use a heavier SF/system variant than React's web font",
-        "Send button styling diverged between platforms — iOS applies a filled accent background that React does not",
-        "Different default line-height/leading between iOS UITextField and web input causing vertical spacing mismatch"
-      ],
-      "suggestedOwner": "iOS",
-      "suggestedFixes": [
-        "Add equivalent top padding/inset on the iOS channel suggestions container to match React's vertical rhythm",
-        "Restore the yellow '#' badge background tile on the iOS composer row header (check icon asset and view background)",
-        "Align iOS channel name font weight with the React design token (e.g., semibold → medium)",
-        "Normalize the send button background state across platforms — either both filled accent or both outlined",
-        "Audit iOS composer row vertical spacing/padding to match React's measured values within the 1dp tolerance"
-      ],
-      "intentional": [
-        "Differences in absolute canvas size (342×320 vs 1170×2532) are platform artifacts, not UI regressions"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.11759022967553778
+      "status": "pending",
+      "imageHash": "p1:03f807fcfffdfffefffdfffefffdfffe0001fffe0001000207f9000200092ffa00010003300900020f910fb200010002700dfffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffa1fff",
+      "generatedAt": "2026-08-01T03:04:17.306Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.09285588906441988
     },
     {
       "id": "components.thread.composer.image-preview",
@@ -1371,7 +1307,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2684310905874887
+      "metricMismatch": 0.2684287276704338
     },
     {
       "id": "components.home.search.channel-dropdown",
@@ -1407,7 +1343,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2690137184213014
+      "metricMismatch": 0.26900966770635015
     },
     {
       "id": "components.home.saved.results",
@@ -1440,7 +1376,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.11136833151051162
+      "metricMismatch": 0.11129710643928659
     },
     {
       "id": "components.home.activity.results",
@@ -1476,7 +1412,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1071559255208544
+      "metricMismatch": 0.10716672742739097
     },
     {
       "id": "components.tasks.panel.states",
@@ -1653,7 +1589,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-30T22:25:32.624Z",
+      "generatedAt": "2026-08-01T03:04:17.628Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1943,7 +1879,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19561307570786246
+      "metricMismatch": 0.19557526903498468
     },
     {
       "id": "components.settings.notifications.page",
@@ -2055,7 +1991,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-30T22:25:32.976Z",
+      "generatedAt": "2026-08-01T03:04:17.865Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2068,7 +2004,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-30T22:25:32.976Z",
+      "generatedAt": "2026-08-01T03:04:17.865Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2081,7 +2017,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-30T22:25:32.976Z",
+      "generatedAt": "2026-08-01T03:04:17.865Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2094,7 +2030,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-30T22:25:32.976Z",
+      "generatedAt": "2026-08-01T03:04:17.865Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2107,7 +2043,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-30T22:25:32.976Z",
+      "generatedAt": "2026-08-01T03:04:17.865Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
