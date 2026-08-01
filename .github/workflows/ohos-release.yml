@@ -212,7 +212,7 @@ jobs:
 
       - name: Restore Kuikly OHOS fork cache
         id: kuikly-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: ~/.m2/repository/com/tencent/kuikly-open
           key: kuikly-fork-mavenlocal-ohos-${{ steps.pins.outputs.kuikly }}
@@ -227,7 +227,7 @@ jobs:
 
       - name: Save Kuikly OHOS fork cache
         if: steps.kuikly-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: ~/.m2/repository/com/tencent/kuikly-open
           key: kuikly-fork-mavenlocal-ohos-${{ steps.pins.outputs.kuikly }}
@@ -326,7 +326,7 @@ jobs:
 
       - name: Cache shared fork dependencies
         id: forkdeps-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.m2/repository/co/touchlab
@@ -476,14 +476,14 @@ jobs:
           PROPERTIES
 
       - name: Restore Kuikly OHOS fork artifacts
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: ~/.m2/repository/com/tencent/kuikly-open
           key: kuikly-fork-mavenlocal-ohos-${{ needs.kuikly-artifacts.outputs.kuikly-sha }}
           fail-on-cache-miss: true
 
       - name: Restore shared fork dependency artifacts
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: |
             ~/.m2/repository/co/touchlab
@@ -675,7 +675,7 @@ jobs:
           echo "Packaged OHOS native symbols for build-id $symbol_build_id"
 
       - name: Upload signed OHOS release artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: raft-ohos-${{ needs.resolve.outputs.version_name }}-${{ needs.resolve.outputs.version_code }}
           path: ${{ runner.temp }}/ohos-release

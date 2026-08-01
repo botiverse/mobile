@@ -78,7 +78,7 @@ jobs:
           java-version: "17"
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
 
       - name: Install Android SDK packages
         shell: bash
@@ -265,7 +265,7 @@ jobs:
           echo "sha256=$(sha256sum "${ARCHIVE}" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
 
       - name: Upload alpha APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: android-alpha-${{ github.event.pull_request.number || github.run_number }}-${{ steps.source.outputs.sha }}
           path: |
@@ -276,7 +276,7 @@ jobs:
           retention-days: 7
 
       - name: Upload exact Hands native symbols
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: android-alpha-native-symbols-${{ github.event.pull_request.number || github.run_number }}-${{ steps.source.outputs.sha }}
           path: ${{ steps.native-symbols.outputs.archive }}

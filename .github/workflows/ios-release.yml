@@ -395,7 +395,7 @@ jobs:
           echo "dsym_size=${DSYM_SIZE}" >> "$GITHUB_OUTPUT"
 
       - name: Upload IPA artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ios-release-ipa
           path: dist/ios/*.ipa
@@ -403,7 +403,7 @@ jobs:
           retention-days: 14
 
       - name: Upload dSYM artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ios-release-dsym
           path: dist/ios/*.dSYM.zip
@@ -412,7 +412,7 @@ jobs:
 
       - name: Upload export diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ios-release-diagnostics
           path: |
@@ -467,13 +467,13 @@ jobs:
           fetch-depth: 0
 
       - name: Download signed IPA
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: ios-release-ipa
           path: dist/ios/
 
       - name: Download dSYM
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: ios-release-dsym
           path: dist/ios/
