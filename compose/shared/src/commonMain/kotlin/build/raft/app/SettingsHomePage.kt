@@ -204,6 +204,7 @@ import build.raft.app.data.ServerPushMode
 import build.raft.app.data.PushPreviewMode
 import build.raft.app.data.SlockAuthApi
 import build.raft.app.data.SlockAuthSessionStore
+import build.raft.app.data.SlockEventBus
 import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.data.ScreenLoadState
@@ -5586,6 +5587,8 @@ internal fun SlockAppShellContent(
                     }
                     val settingsTabContent: @Composable (active: Boolean) -> Unit = {
                         SettingsAppShellContent(
+                            pager = pager,
+                            eventBus = eventBus,
                             session = (authGateState as? SharedAuthGateState.Ready)?.session,
                             authDataSource = authDataSource,
                             settingsCapabilities = settingsCapabilities,
@@ -6224,6 +6227,8 @@ internal fun appShellAuthGateViewModelKey(pagerId: String, instanceId: String = 
 
 @Composable
 private fun SettingsAppShellContent(
+    pager: Pager,
+    eventBus: SlockEventBus,
     session: StoredAuthSession?,
     authDataSource: SharedAuthDataSource,
     settingsCapabilities: BridgeSettingsPlatformCapabilities,
@@ -7180,6 +7185,8 @@ private fun SettingsAppShellContent(
                 }
             SettingsDestinationHandsFeedback ->
                 SharedHandsFeedbackContent(
+                    pager = pager,
+                    eventBus = eventBus,
                     settingsCapabilities = settingsCapabilities,
                     accountId = session?.user?.id.orEmpty(),
                     visualFixture = handsFeedbackVisualFixture,
@@ -11844,6 +11851,8 @@ private fun parseDiagnosticFeatureFlagAction(action: String): Pair<String, Strin
 
 @Composable
 private fun SharedHandsFeedbackContent(
+    pager: Pager,
+    eventBus: SlockEventBus,
     settingsCapabilities: BridgeSettingsPlatformCapabilities,
     accountId: String,
     visualFixture: SettingsHandsFeedbackVisualFixture? = null,
@@ -11862,10 +11871,17 @@ private fun SharedHandsFeedbackContent(
         remember {
             SettingsHandsFeedbackDraftStore(slockSharedPreferenceStore())
         }
+    val feedbackPageGeneration =
+        remember(accountId) {
+            newSettingsHandsFeedbackImageEditId()
+        }
     val restoredDraft =
         remember(feedbackDraftStore, accountId, visualFixture) {
             visualFixture?.draft ?: feedbackDraftStore.read(accountId)
         }
+    var lastPersistedDraft by remember(feedbackDraftStore, accountId, visualFixture) {
+        mutableStateOf(restoredDraft)
+    }
     val composerSendKeyEnabled = chatLayoutPreferenceStore.readComposerSendKeyEnabledSync()
     var messageFieldValue by remember(accountId) {
         mutableStateOf(
@@ -11879,7 +11895,11 @@ private fun SharedHandsFeedbackContent(
     val latestDraftTextForPersistence by rememberUpdatedState(draftTextForPersistence)
     val message = messageFieldValue.text
     var attachments by remember(accountId) { mutableStateOf(restoredDraft.attachments) }
+    var pendingImageEditSession by remember(accountId, feedbackPageGeneration) {
+        mutableStateOf<SettingsHandsFeedbackImageEditSession?>(null)
+    }
     val latestAttachmentsForPersistence by rememberUpdatedState(attachments)
+    val latestLastPersistedDraft by rememberUpdatedState(lastPersistedDraft)
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var pendingRetryRequest by remember { mutableStateOf<SettingsHandsFeedbackRetryRequest?>(null) }
@@ -11912,16 +11932,31 @@ private fun SharedHandsFeedbackContent(
 
     LaunchedEffect(feedbackDraftStore, accountId, draftTextForPersistence, attachments) {
         delay(250L)
-        feedbackDraftStore.save(accountId, draftTextForPersistence, attachments)
+        val currentDraft =
+            SettingsHandsFeedbackDraftSnapshot(
+                text = draftTextForPersistence,
+                attachments = attachments
+            )
+        if (currentDraft != lastPersistedDraft) {
+            feedbackDraftStore.save(accountId, currentDraft.text, currentDraft.attachments)
+            lastPersistedDraft = currentDraft
+        }
     }
 
     DisposableEffect(feedbackDraftStore, accountId) {
         onDispose {
-            feedbackDraftStore.save(
-                accountId = accountId,
-                text = latestDraftTextForPersistence,
-                attachments = latestAttachmentsForPersistence
-            )
+            val currentDraft =
+                SettingsHandsFeedbackDraftSnapshot(
+                    text = latestDraftTextForPersistence,
+                    attachments = latestAttachmentsForPersistence
+                )
+            if (currentDraft != latestLastPersistedDraft) {
+                feedbackDraftStore.save(
+                    accountId = accountId,
+                    text = currentDraft.text,
+                    attachments = currentDraft.attachments
+                )
+            }
         }
     }
 
@@ -11974,20 +12009,48 @@ private fun SharedHandsFeedbackContent(
         }
         busy = true
         error = null
+        pendingImageEditSession = null
         scope.launch {
             when (val result = settingsCapabilities.pickFeedbackAttachment(imageOnly)) {
                 is DataResult.Content -> {
-                    val accepted = result.data.filter { file -> (file.sizeBytes ?: 0L) <= attachmentMaxBytes }
-                    val rejectedCount = result.data.size - accepted.size
-                    val merged =
-                        (attachments + accepted)
-                            .distinctBy { it.fileRef ?: it.id }
-                            .take(attachmentLimit)
-                    attachments = merged
-                    error = when {
-                        rejectedCount > 0 -> copy.attachmentTooLarge(attachmentMaxLabel)
-                        accepted.size > remainingSlots -> copy.attachmentLimitTrimmed(attachmentLimit)
-                        else -> null
+                    val pickedFiles = result.data
+                    val attachmentAction =
+                        resolveThreadPickedAttachmentComposerAction(
+                            action = if (imageOnly) "attachImage" else "attachFile",
+                            fileCount = pickedFiles.size,
+                            imageAnnotationEnabled =
+                                imageOnly && chatLayoutPreferenceStore.readImageAnnotationEnabledSync(),
+                            allFilesAreImages = slockComposerImagePickerFilesAreStrictImages(pickedFiles)
+                        )
+                    if (attachmentAction == ThreadPickedAttachmentComposerAction.OpenImageAnnotation) {
+                        val request =
+                            settingsHandsFeedbackImageEditRequest(
+                                accountId = accountId,
+                                pageGeneration = feedbackPageGeneration,
+                                files = pickedFiles
+                            )
+                        if (request == null) {
+                            error = copy.attachmentPickerFailed
+                        } else {
+                            pendingImageEditSession = request.session
+                            pager.openSlockFilePreviewPage(request.previewPayload)
+                        }
+                    } else {
+                        val accepted =
+                            pickedFiles.filter { file ->
+                                (file.sizeBytes ?: 0L) <= attachmentMaxBytes
+                            }
+                        val rejectedCount = pickedFiles.size - accepted.size
+                        val merged =
+                            (attachments + accepted)
+                                .distinctBy { it.fileRef ?: it.id }
+                                .take(attachmentLimit)
+                        attachments = merged
+                        error = when {
+                            rejectedCount > 0 -> copy.attachmentTooLarge(attachmentMaxLabel)
+                            accepted.size > remainingSlots -> copy.attachmentLimitTrimmed(attachmentLimit)
+                            else -> null
+                        }
                     }
                 }
                 is DataResult.Empty -> Unit
@@ -11995,6 +12058,77 @@ private fun SharedHandsFeedbackContent(
                 is DataResult.NoPermission -> error = copy.attachmentPickerPermissionNeeded
             }
             busy = false
+        }
+    }
+
+    DisposableEffect(eventBus, accountId, feedbackPageGeneration) {
+        val subscription =
+            eventBus.observe(SLOCK_COMPOSER_IMAGE_EDIT_EVENT, crossProcess = true) { data ->
+                val eventDataSnapshot = data?.toString() ?: return@observe
+                scope.launch {
+                    val session = pendingImageEditSession ?: return@launch
+                    val eventData =
+                        runCatching { JSONObject(eventDataSnapshot) }.getOrNull()
+                            ?: return@launch
+                    if (eventData.optString("threadKey").orEmpty() != session.threadKey) {
+                        return@launch
+                    }
+                    val event = parseSettingsHandsFeedbackImageEditEvent(eventData)
+                    if (event == null) {
+                        pendingImageEditSession = null
+                        error = copy.attachmentPickerFailed
+                        return@launch
+                    }
+                    when (
+                        val result =
+                            foldSettingsHandsFeedbackImageEditEvent(
+                                session = session,
+                                event = event,
+                                currentAccountId = accountId,
+                                currentPageGeneration = feedbackPageGeneration
+                            )
+                    ) {
+                        is SettingsHandsFeedbackImageEditFoldResult.Ignored -> Unit
+                        is SettingsHandsFeedbackImageEditFoldResult.Pending -> {
+                            pendingImageEditSession = result.session
+                        }
+                        is SettingsHandsFeedbackImageEditFoldResult.Failed -> {
+                            pendingImageEditSession = null
+                            error = copy.attachmentPickerFailed
+                        }
+                        is SettingsHandsFeedbackImageEditFoldResult.Complete -> {
+                            val promotion =
+                                promoteSettingsHandsFeedbackEditedAttachments(
+                                    existing = attachments,
+                                    edited = result.files,
+                                    attachmentMaxBytes = attachmentMaxBytes,
+                                    attachmentLimit = attachmentLimit
+                                )
+                            feedbackDraftStore.save(
+                                accountId = accountId,
+                                text = draftTextForPersistence,
+                                attachments = promotion.attachments
+                            )
+                            lastPersistedDraft =
+                                SettingsHandsFeedbackDraftSnapshot(
+                                    text = draftTextForPersistence,
+                                    attachments = promotion.attachments
+                                )
+                            pendingImageEditSession = null
+                            attachments = promotion.attachments
+                            error = when {
+                                promotion.rejectedTooLargeCount > 0 ->
+                                    copy.attachmentTooLarge(attachmentMaxLabel)
+                                promotion.trimmedByLimit ->
+                                    copy.attachmentLimitTrimmed(attachmentLimit)
+                                else -> null
+                            }
+                        }
+                    }
+                }
+            }
+        onDispose {
+            subscription.close()
         }
     }
 
@@ -23079,6 +23213,7 @@ private fun SettingsRouteVisualScreen() {
                 }
             )
         }
+    val eventBus = remember(bridge) { SlockSharedStoreRegistry.get(bridge).eventBus }
     val sessionStore = remember(session) { InMemorySlockAuthSessionStore(session) }
     val authDataSource =
         remember(sessionStore, session) {
@@ -23100,6 +23235,8 @@ private fun SettingsRouteVisualScreen() {
     }
 
     SettingsAppShellContent(
+        pager = pager,
+        eventBus = eventBus,
         session = session,
         authDataSource = authDataSource,
         settingsCapabilities = settingsCapabilities,
