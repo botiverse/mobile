@@ -1509,11 +1509,11 @@ internal class ComposeAuthChooseServerPage : build.raft.app.base.BasePager() {
 internal class ComposeSlockAppShellPage : build.raft.app.base.BasePager() {
     private var initialAuthRestoreTick by mutableStateOf(0)
     private var adaptivePane by mutableStateOf(SlockAdaptivePaneState())
-    private val timestampDisplayState = SlockTimestampDisplayState()
 
     override fun willInit() {
         super.willInit()
         setContent {
+            val timestampDisplayState = retainedSlockTimestampDisplayState(pagerId)
             SlockTimestampDisplayScope(timestampDisplayState) {
                 SlockAppShellContent(
                     pageVisibleTick = slockPageVisibleResumeTick,

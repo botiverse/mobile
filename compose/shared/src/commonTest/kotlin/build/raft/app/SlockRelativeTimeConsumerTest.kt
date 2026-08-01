@@ -270,4 +270,47 @@ class SlockRelativeTimeConsumerTest {
             nextWindow.displayMode(SlockTimestampDisplayGroup.Conversation)
         )
     }
+
+    @Test
+    fun retainedWindowOwnerKeepsModesWhileNewWindowOwnerRestoresDefaults() {
+        val context = SlockTimeContext(nowEpochMillis = 1_700_000_000_000L, localOffsetMinutes = 0)
+        val retainedOwner = SlockTimestampDisplayViewModel()
+
+        retainedOwner.state.toggle(
+            SlockTimestampDisplayGroup.Aggregate,
+            "2023-11-14T22:12:20Z",
+            context
+        )
+        retainedOwner.state.toggle(
+            SlockTimestampDisplayGroup.Conversation,
+            "2023-11-14T22:12:20Z",
+            context
+        )
+
+        assertEquals(
+            SlockTimestampDisplayMode.Absolute,
+            retainedOwner.state.displayMode(SlockTimestampDisplayGroup.Aggregate)
+        )
+        assertEquals(
+            SlockTimestampDisplayMode.Relative,
+            retainedOwner.state.displayMode(SlockTimestampDisplayGroup.Conversation)
+        )
+
+        val newWindowOwner = SlockTimestampDisplayViewModel()
+        assertEquals(
+            SlockTimestampDisplayMode.Relative,
+            newWindowOwner.state.displayMode(SlockTimestampDisplayGroup.Aggregate)
+        )
+        assertEquals(
+            SlockTimestampDisplayMode.Absolute,
+            newWindowOwner.state.displayMode(SlockTimestampDisplayGroup.Conversation)
+        )
+    }
+
+    @Test
+    fun retainedTimestampOwnerKeyIsPagerScoped() {
+        assertEquals("timestamp-display-window-a", slockTimestampDisplayViewModelKey("window-a"))
+        assertEquals("timestamp-display-window-b", slockTimestampDisplayViewModelKey("window-b"))
+        assertEquals("timestamp-display-default", slockTimestampDisplayViewModelKey(""))
+    }
 }

@@ -24,6 +24,8 @@ import com.tencent.kuikly.compose.ui.semantics.stateDescription
 import com.tencent.kuikly.compose.ui.text.TextStyle
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
+import com.tencent.kuikly.lifecycle.ViewModel
+import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import com.tencent.tmm.kmmresource.compose.stringResource
 
 internal enum class SlockTimestampDisplayMode {
@@ -71,6 +73,26 @@ internal class SlockTimestampDisplayState(
         return nextMode
     }
 }
+
+/**
+ * Retains one logical window's temporary timestamp modes across host configuration recreation.
+ *
+ * Kuikly's ViewModel store survives Android Activity configuration changes but is released with
+ * the Pager window. It deliberately has no saved-state or persistence binding, so a real new
+ * window and a process restart both restore the product defaults.
+ */
+internal class SlockTimestampDisplayViewModel : ViewModel() {
+    val state = SlockTimestampDisplayState()
+}
+
+internal fun slockTimestampDisplayViewModelKey(pagerId: String): String =
+    "timestamp-display-${pagerId.ifBlank { "default" }}"
+
+@Composable
+internal fun retainedSlockTimestampDisplayState(pagerId: String): SlockTimestampDisplayState =
+    viewModel(key = slockTimestampDisplayViewModelKey(pagerId)) {
+        SlockTimestampDisplayViewModel()
+    }.state
 
 internal val LocalSlockTimestampDisplayState =
     compositionLocalOf<SlockTimestampDisplayState?> { null }
