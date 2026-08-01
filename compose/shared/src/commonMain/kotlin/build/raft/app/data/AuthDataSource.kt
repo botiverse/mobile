@@ -1411,7 +1411,7 @@ internal suspend fun selectStoredAuthServer(
 
 private fun <T> AuthApiResult.Success<T>.toSharedAuthResult(): SharedAuthResult<T> = SharedAuthResult.Success(data)
 
-private val MobileOAuthProviders = setOf("google", "github")
+private val MobileOAuthProviders = setOf("google", "github", "apple")
 private const val AUTH_ME_CONTRACT_MISMATCH = "auth_me_contract_mismatch"
 
 private suspend fun StoredAuthSession.withValidatedServerSelection(
@@ -1544,6 +1544,10 @@ interface SlockAuthApi {
     suspend fun verifyEmail(token: String): AuthApiResult<Unit>
     suspend fun currentUser(authorization: String): AuthApiResult<StoredAuthUser>
     suspend fun refresh(refreshToken: String): AuthApiResult<AuthRefreshResponse>
+    suspend fun refreshWithAttempt(
+        refreshToken: String,
+        attempt: AuthRefreshAttemptContext,
+    ): AuthApiResult<AuthRefreshResponse> = refresh(refreshToken)
     suspend fun logout(refreshToken: String): AuthApiResult<Unit>
     suspend fun servers(authorization: String): AuthApiResult<List<StoredAuthServer>>
     suspend fun serverOrder(authorization: String): AuthApiResult<ServerSwitcherOrderPreference>
@@ -1741,6 +1745,18 @@ class SlockAuthApiClient(
             .mapAuthBody("auth_refresh_contract_mismatch", AuthRefreshResponseDto.serializer(), diagnosticsLogger) {
                 it.toDomain()
             }
+
+    override suspend fun refreshWithAttempt(
+        refreshToken: String,
+        attempt: AuthRefreshAttemptContext,
+    ): AuthApiResult<AuthRefreshResponse> =
+        transport.refreshWithAttempt(
+            bodyText = authJson.encodeToString(AuthRefreshRequestBody(refreshToken = refreshToken)),
+            attemptId = attempt.attemptId,
+            installationId = attempt.installationId,
+        ).mapAuthBody("auth_refresh_contract_mismatch", AuthRefreshResponseDto.serializer(), diagnosticsLogger) {
+            it.toDomain()
+        }
 
     override suspend fun logout(refreshToken: String): AuthApiResult<Unit> {
         val response = transport.logout(authJson.encodeToString(AuthLogoutRequestBody(refreshToken = refreshToken)))
@@ -1962,6 +1978,11 @@ data class AuthMobileOAuthLinkCompleteResponse(
 data class AuthRefreshResponse(
     val accessToken: String,
     val refreshToken: String
+)
+
+data class AuthRefreshAttemptContext(
+    val attemptId: String,
+    val installationId: String,
 )
 
 data class ServerSwitcherOrderPreference(

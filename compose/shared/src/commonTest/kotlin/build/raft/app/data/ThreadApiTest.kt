@@ -13,6 +13,54 @@ import kotlinx.coroutines.runBlocking
 
 class ThreadApiTest {
     @Test
+    fun attachmentCommentsFailureParsesOnlyCanonicalErrorEnvelope() {
+        assertEquals(
+            ThreadAttachmentCommentsFailureProjection(
+                errorCode = "attachment_comments_disabled",
+                serverMessage = "Attachment comments are not enabled on this server"
+            ),
+            ThreadApiResult.Failure(
+                code = 403,
+                errorBodyText =
+                    """{"error":"Attachment comments are not enabled on this server","code":"attachment_comments_disabled"}"""
+            ).toThreadAttachmentCommentsFailureProjection()
+        )
+        assertEquals(
+            ThreadAttachmentCommentsFailureProjection(
+                errorCode = "http_500",
+                serverMessage = "Failed to load comments"
+            ),
+            ThreadApiResult.Failure(
+                code = 500,
+                errorBodyText = """{"error":"Failed to load comments"}"""
+            ).toThreadAttachmentCommentsFailureProjection()
+        )
+    }
+
+    @Test
+    fun attachmentCommentsFailureRejectsAliasesMalformedPlainAndEmptyBodies() {
+        listOf(
+            """{"message":"must not be guessed","errorCode":"wrong_alias"}""",
+            "{",
+            "plain failure",
+            "   ",
+            """{"error":" ","code":" "}"""
+        ).forEach { body ->
+            assertEquals(
+                ThreadAttachmentCommentsFailureProjection(
+                    errorCode = "http_400",
+                    serverMessage = null
+                ),
+                ThreadApiResult.Failure(
+                    code = 400,
+                    errorBodyText = body
+                ).toThreadAttachmentCommentsFailureProjection(),
+                body
+            )
+        }
+    }
+
+    @Test
     fun channelMessagesAcceptsCanonicalUpstreamWrapperOnly() = runBlocking {
         val api =
             SlockThreadApiClient(

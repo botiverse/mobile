@@ -13,6 +13,17 @@ import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+
+private val bridgeAuthJson = Json { ignoreUnknownKeys = true }
+
+@Serializable
+private data class HandsUpdateBridgeErrorBody(
+    val status: String? = null,
+    val code: String? = null,
+    val message: String? = null
+)
 
 class SettingsDiagnosticsFeedbackDraft(
     val message: String,
@@ -447,7 +458,7 @@ internal class BridgeSettingsPlatformCapabilities(
     private suspend fun handsUpdateAction(action: String): DataResult<SharedSettingsUpdateCheckSnapshot> {
         val response = settingsCapability(JSONObject().put("action", action))
         if (response?.optString("status") != "ok") {
-            return DataResult.Error(ScreenError(response?.optString("code").orEmpty().ifBlank { "settings_hands_update_failed" }))
+            return DataResult.Error(handsUpdateBridgeError(response?.toString()))
         }
         return DataResult.Content(response.toDeveloperSnapshot().updateCheck)
     }
@@ -540,6 +551,26 @@ internal class BridgeSettingsPlatformCapabilities(
             message = optString("message")
         )
     }
+}
+
+internal fun handsUpdateBridgeError(bodyText: String?): ScreenError {
+    val body =
+        bodyText
+            ?.takeIf { it.isNotBlank() }
+            ?.let { payload ->
+                runCatching {
+                    bridgeAuthJson.decodeFromString(HandsUpdateBridgeErrorBody.serializer(), payload)
+                }.getOrNull()
+            }
+    return ScreenError(
+        code = body?.code?.trim()?.takeIf { it.isNotBlank() } ?: "settings_hands_update_failed",
+        serverMessage =
+            body
+                ?.takeIf { it.status == "error" }
+                ?.message
+                ?.trim()
+                ?.takeIf { it.isNotBlank() }
+    )
 }
 
 internal fun systemNotificationPermissionSnapshot(

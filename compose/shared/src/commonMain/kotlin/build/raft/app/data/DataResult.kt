@@ -19,7 +19,14 @@ enum class EmptyReason {
 
 data class ScreenError(
     val code: String,
-    val retryable: Boolean = true
+    val retryable: Boolean = true,
+    /**
+     * task #193 (honest-states contract): the server's raw human-readable
+     * error text, carried so displays can always fall back to showing the
+     * real reason instead of a bare code. Humane localized special-cases
+     * remain overlays on top of this fallback, never a replacement for it.
+     */
+    val serverMessage: String? = null
 )
 
 data class PermissionBlocker(
@@ -37,9 +44,15 @@ fun String?.isAuthSessionErrorCode(): Boolean =
     this == "auth_required" || this == "auth_session" || this == "unauthenticated"
 
 internal fun ScreenError.userFacingMessage(): String =
-    code.userFacingErrorCodeMessage(
+    // task #193 honest-states contract: known categories keep their humane
+    // copy (overlay); anything unrecognized falls back to the server's raw
+    // error text; only when neither exists do we show the generic sentence.
+    // A bare code is never the user-facing message.
+    code.userFacingErrorCodeMessageOrNull(
         authMessage = "Your session expired. Sign in again to continue."
     )
+        ?: serverMessage?.takeIf { it.isNotBlank() }
+        ?: "Something went wrong. Please try again."
 
 internal fun PermissionBlocker.userFacingMessage(): String =
     code.userFacingErrorCodeMessage(
@@ -61,10 +74,17 @@ internal fun EmptyReason.userFacingMessage(): String =
 internal fun String?.userFacingErrorCodeMessage(
     authMessage: String = "Please sign in again to continue.",
     permissionMessage: String = "You do not have permission to perform this action."
-): String {
+): String =
+    userFacingErrorCodeMessageOrNull(authMessage = authMessage, permissionMessage = permissionMessage)
+        ?: "Something went wrong. Please try again."
+
+internal fun String?.userFacingErrorCodeMessageOrNull(
+    authMessage: String = "Please sign in again to continue.",
+    permissionMessage: String = "You do not have permission to perform this action."
+): String? {
     val normalized = this?.trim().orEmpty()
-    if (normalized.isBlank()) return "Something went wrong. Please try again."
-    if (!normalized.looksLikeErrorCode()) return "Something went wrong. Please try again."
+    if (normalized.isBlank()) return null
+    if (!normalized.looksLikeErrorCode()) return null
     val lower = normalized.lowercase()
     return when {
         lower.isAuthSessionErrorCode() || "auth" in lower || "unauthenticated" in lower -> authMessage
@@ -86,7 +106,7 @@ internal fun String?.userFacingErrorCodeMessage(
             "Too many attempts. Please wait a moment and try again."
         "contract" in lower || "parse" in lower || "mismatch" in lower ->
             "The response could not be read. Please try again."
-        else -> "Something went wrong. Please try again."
+        else -> null
     }
 }
 

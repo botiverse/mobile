@@ -893,6 +893,9 @@ private fun AddChannelMemberRequest.toBodyText(): String =
 
 private data class SharedNetworkServerContext(val session: StoredAuthSession, val server: ServerSummary)
 
+@Serializable
+private data class MemberErrorBody(val error: String? = null)
+
 private fun StoredAuthSession.toNetworkServerContext(serverId: ServerId): SharedNetworkServerContext? {
     val requestedId = serverId.value.trim().takeIf { it.isNotBlank() } ?: return null
     val server = servers.firstOrNull { it.id == requestedId }?.toServerSummary() ?: return null
@@ -906,9 +909,33 @@ private fun <T> HomeNetworkResponse.toDataError(): DataResult<T> =
     when (code) {
         401 -> authRequired()
         403 -> DataResult.NoPermission(PermissionBlocker(code = "server_forbidden", requiredCapability = "server_access"))
-        in 500..599 -> DataResult.Error(ScreenError(code = "server_unavailable", retryable = true))
-        else -> DataResult.Error(ScreenError(code = "http_$code", retryable = code != 404))
+        in 500..599 ->
+            DataResult.Error(
+                ScreenError(
+                    code = "server_unavailable",
+                    retryable = true,
+                    serverMessage = memberServerErrorTextOrNull()
+                )
+            )
+        else ->
+            DataResult.Error(
+                ScreenError(
+                    code = "http_$code",
+                    retryable = code != 404,
+                    serverMessage = memberServerErrorTextOrNull()
+                )
+            )
     }
+
+private fun HomeNetworkResponse.memberServerErrorTextOrNull(): String? {
+    val payload = (bodyText ?: errorBodyText)?.takeIf { it.isNotBlank() } ?: return null
+    return runCatching {
+        memberRepositoryJson.decodeFromString(MemberErrorBody.serializer(), payload)
+            .error
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+    }.getOrNull()
+}
 
 private fun DataResult<AgentCommandResult>.toLifecycleActionResult(
     agentId: MemberId,

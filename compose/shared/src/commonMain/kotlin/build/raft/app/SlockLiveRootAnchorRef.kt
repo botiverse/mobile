@@ -3,7 +3,9 @@ package build.raft.app
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.offset
 import com.tencent.kuikly.compose.ui.Modifier
@@ -56,9 +58,14 @@ internal class SlockPopoverAnchor private constructor(
         verticalOffsetAbove: Float,
         verticalPlacement: SlockFloatingVerticalPlacement,
         horizontalAutoFlip: Boolean,
+        dismissActivationDelayMillis: Long,
         content: @Composable () -> Unit
     ) {
-        SlockFloatingOverlayHost(onDismiss = onDismiss, modifier = modifier) { overlayLayout ->
+        SlockFloatingOverlayHost(
+            onDismiss = onDismiss,
+            modifier = modifier,
+            dismissActivationDelayMillis = dismissActivationDelayMillis
+        ) { overlayLayout ->
             val popoverOffset =
                 overlayLayout.positionContent(
                     anchor = rootOffset,
@@ -79,9 +86,23 @@ internal class SlockPopoverAnchor private constructor(
     internal class LiveRef(
         private val identity: Any
     ) {
+        private data class PlacementSnapshot(
+            val size: IntSize,
+            val topLeft: Offset,
+            val topRight: Offset,
+            val bottomLeft: Offset,
+            val bottomRight: Offset
+        )
+
         private var coordinates: LayoutCoordinates? = null
         private var captureLease: Long = 0L
+        private var placementRevisionState by mutableStateOf(0L)
+        private var placementObserverCount: Int = 0
+        private var placementSnapshot: PlacementSnapshot? = null
         private val reuseInvalidatedLeases = mutableSetOf<Long>()
+
+        internal val placementRevision: Long
+            get() = placementRevisionState
 
         internal fun captureFromLayoutCoordinates(next: LayoutCoordinates) {
             coordinates
@@ -89,12 +110,15 @@ internal class SlockPopoverAnchor private constructor(
                 ?.let { previous -> SlockLiveRootAnchorCaptureRegistry.release(previous, this) }
             SlockLiveRootAnchorCaptureRegistry.claim(next, this)
             coordinates = next
+            publishPlacementIfObserved(next)
         }
 
         fun invalidate() {
             coordinates?.let { current -> SlockLiveRootAnchorCaptureRegistry.release(current, this) }
             coordinates = null
             captureLease += 1L
+            placementSnapshot = null
+            placementRevisionState += 1L
         }
 
         internal fun invalidateReusedCapture(coordinates: LayoutCoordinates) {
@@ -102,6 +126,36 @@ internal class SlockPopoverAnchor private constructor(
                 this.coordinates = null
                 reuseInvalidatedLeases += captureLease
                 captureLease += 1L
+                placementSnapshot = null
+                placementRevisionState += 1L
+            }
+        }
+
+        internal fun beginObservingPlacement() {
+            placementObserverCount += 1
+            if (placementObserverCount == 1) placementSnapshot = null
+        }
+
+        internal fun endObservingPlacement() {
+            placementObserverCount = (placementObserverCount - 1).coerceAtLeast(0)
+            if (placementObserverCount == 0) placementSnapshot = null
+        }
+
+        private fun publishPlacementIfObserved(next: LayoutCoordinates) {
+            if (placementObserverCount <= 0 || !next.isAttached) return
+            val width = next.size.width.toFloat()
+            val height = next.size.height.toFloat()
+            val nextSnapshot =
+                PlacementSnapshot(
+                    size = next.size,
+                    topLeft = next.localToRoot(Offset.Zero),
+                    topRight = next.localToRoot(Offset(x = width, y = 0f)),
+                    bottomLeft = next.localToRoot(Offset(x = 0f, y = height)),
+                    bottomRight = next.localToRoot(Offset(x = width, y = height))
+                )
+            if (placementSnapshot != nextSnapshot) {
+                placementSnapshot = nextSnapshot
+                placementRevisionState += 1L
             }
         }
 
@@ -120,9 +174,11 @@ internal class SlockPopoverAnchor private constructor(
 
         internal fun resolve(
             localPoint: SlockPopoverLocalPoint,
-            expectedCaptureLease: Long
+            expectedCaptureLease: Long,
+            expectedPlacementRevision: Long? = null
         ): SlockPopoverAnchor? {
             if (expectedCaptureLease != captureLease) return null
+            if (expectedPlacementRevision != null && expectedPlacementRevision != placementRevisionState) return null
             val current = coordinates?.takeIf { it.isAttached } ?: return null
             val rootOffset = current.localToRoot(localPoint.resolve(current.size))
             return SlockPopoverAnchor(ownerIdentity = identity, rootOffset = rootOffset)
@@ -183,9 +239,40 @@ internal class SlockPopoverAnchorResolver internal constructor(
     private val localPoint: SlockPopoverLocalPoint,
     private val captureLease: Long
 ) {
+    internal val placementRevision: Long
+        get() = anchorRef.placementRevision
+
     fun resolve(): SlockPopoverAnchor? = anchorRef.resolve(localPoint, captureLease)
 
+    internal fun resolveAtPlacementRevision(expectedPlacementRevision: Long): SlockPopoverAnchor? =
+        anchorRef.resolve(
+            localPoint = localPoint,
+            expectedCaptureLease = captureLease,
+            expectedPlacementRevision = expectedPlacementRevision
+        )
+
+    internal fun beginObservingPlacement() = anchorRef.beginObservingPlacement()
+
+    internal fun endObservingPlacement() = anchorRef.endObservingPlacement()
+
     fun wasInvalidatedByCaptureReuse(): Boolean = anchorRef.wasCaptureLeaseInvalidatedByReuse(captureLease)
+}
+
+/**
+ * Resolves a retained anchor while observing layout publications from its live coordinates.
+ *
+ * Gesture-opened popovers normally resolve once at the gesture. A portal that remains open across
+ * IME or window relayout must call this from composition so the same portal instance re-resolves on
+ * the next frame instead of retaining the root offset from its opening frame.
+ */
+@Composable
+internal fun SlockPopoverAnchorResolver.resolveCurrentPlacement(): SlockPopoverAnchor? {
+    DisposableEffect(this) {
+        beginObservingPlacement()
+        onDispose { endObservingPlacement() }
+    }
+    val observedPlacementRevision = placementRevision
+    return resolveAtPlacementRevision(observedPlacementRevision)
 }
 
 /**

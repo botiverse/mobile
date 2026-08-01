@@ -90,6 +90,297 @@ class LazyViewportControllerTest {
     }
 
     @Test
+    fun focusedTailRenderedBottomReplaysInsetWithoutChangingAnchoredIntent() {
+        val target = LazyViewportAnchorTarget.Message("latest-message")
+        val anchored =
+            reduceLazyViewport(
+                LazyViewportControllerState(),
+                LazyViewportEvent.Anchor(
+                    target = target,
+                    offset = 16,
+                    layoutGeneration = 21L,
+                    placement = LazyViewportAnchorPlacement.RenderedBottom,
+                    renderedTailMessageId = "latest-message",
+                    renderedTailAnchorIdentity = "latest-message:request-1",
+                    fallback = LazyViewportAnchorFallback.Free
+                )
+            )
+        val firstCommand = anchored.pendingCommand!!
+        val consumed =
+            reduceLazyViewport(
+                anchored,
+                LazyViewportEvent.CommandConsumed(firstCommand.id)
+            )
+        val afterInset =
+            reduceLazyViewport(
+                consumed,
+                LazyViewportEvent.ContentMutated(LazyViewportMutation.InsetChange)
+            )
+
+        val intent = assertIs<LazyViewportIntent.Anchored>(afterInset.intent)
+        assertEquals(target, intent.target)
+        assertEquals(LazyViewportAnchorPlacement.RenderedBottom, intent.placement)
+        assertEquals("latest-message", intent.renderedTailMessageId)
+        assertEquals("latest-message:request-1", intent.renderedTailAnchorIdentity)
+        assertEquals(
+            LazyViewportCommandTarget.Anchor(
+                target = target,
+                offset = 16,
+                layoutGeneration = 21L,
+                placement = LazyViewportAnchorPlacement.RenderedBottom,
+                renderedTailMessageId = "latest-message",
+                renderedTailAnchorIdentity = "latest-message:request-1"
+            ),
+            afterInset.pendingCommand?.target
+        )
+        assertTrue(afterInset.accepts(afterInset.pendingCommand!!))
+
+        val settled =
+            reduceLazyViewport(
+                afterInset,
+                LazyViewportEvent.CommandConsumed(afterInset.pendingCommand!!.id)
+            )
+        assertNull(settled.pendingCommand)
+        assertEquals(LazyViewportAnchorPlacement.RenderedBottom, assertIs<LazyViewportIntent.Anchored>(settled.intent).placement)
+
+        val driftCorrection =
+            reduceLazyViewport(
+                settled,
+                LazyViewportEvent.ContentMutated(LazyViewportMutation.HeightChange)
+            )
+        assertEquals(
+            LazyViewportAnchorPlacement.RenderedBottom,
+            assertIs<LazyViewportCommandTarget.Anchor>(driftCorrection.pendingCommand?.target).placement
+        )
+        assertTrue(driftCorrection.accepts(driftCorrection.pendingCommand!!))
+    }
+
+    @Test
+    fun renderedTailCommand_requiresLiveLayoutGenerationAndTailIdentity() {
+        val anchored =
+            reduceLazyViewport(
+                LazyViewportControllerState(),
+                LazyViewportEvent.Anchor(
+                    target = LazyViewportAnchorTarget.Message("focused-message"),
+                    offset = 224,
+                    layoutGeneration = 21L,
+                    placement = LazyViewportAnchorPlacement.RenderedBottom,
+                    renderedTailMessageId = "tail-message-3",
+                    renderedTailAnchorIdentity = "focused-message:request-7",
+                    fallback = LazyViewportAnchorFallback.Free
+                )
+            )
+        val command = anchored.pendingCommand!!
+
+        assertTrue(
+            anchored.acceptsRenderedTailCommand(
+                command = command,
+                currentLayoutGeneration = 21L,
+                currentTailMessageId = "tail-message-3",
+                currentAnchorIdentity = "focused-message:request-7"
+            )
+        )
+        assertFalse(
+            anchored.acceptsRenderedTailCommand(
+                command = command,
+                currentLayoutGeneration = 22L,
+                currentTailMessageId = "tail-message-3",
+                currentAnchorIdentity = "focused-message:request-7"
+            )
+        )
+        assertFalse(
+            anchored.acceptsRenderedTailCommand(
+                command = command,
+                currentLayoutGeneration = 21L,
+                currentTailMessageId = "tail-message-4",
+                currentAnchorIdentity = "focused-message:request-7"
+            )
+        )
+        assertFalse(
+            anchored.acceptsRenderedTailCommand(
+                command = command,
+                currentLayoutGeneration = 21L,
+                currentTailMessageId = "tail-message-3",
+                currentAnchorIdentity = "focused-message:request-8"
+            )
+        )
+
+        val afterAppend =
+            reduceLazyViewport(
+                anchored,
+                LazyViewportEvent.ContentMutated(LazyViewportMutation.Append)
+            )
+        val afterAppendIntent = assertIs<LazyViewportIntent.Anchored>(afterAppend.intent)
+        assertNull(afterAppend.pendingCommand)
+        assertEquals(LazyViewportAnchorPlacement.Focused, afterAppendIntent.placement)
+        assertEquals(0, afterAppendIntent.offset)
+        assertNull(afterAppendIntent.renderedTailMessageId)
+        assertNull(afterAppendIntent.renderedTailAnchorIdentity)
+        assertFalse(afterAppend.accepts(command))
+
+        val dragging = reduceLazyViewport(anchored, LazyViewportEvent.PointerDown)
+        assertFalse(
+            dragging.acceptsRenderedTailCommand(
+                command = command,
+                currentLayoutGeneration = 21L,
+                currentTailMessageId = "tail-message-3",
+                currentAnchorIdentity = "focused-message:request-7"
+            )
+        )
+    }
+
+    @Test
+    fun staleRenderedTailCommand_isTerminalAndCannotReplayOldTrailingSpan() {
+        fun anchored(): LazyViewportControllerState =
+            reduceLazyViewport(
+                LazyViewportControllerState(),
+                LazyViewportEvent.Anchor(
+                    target = LazyViewportAnchorTarget.Message("focused-message"),
+                    offset = 224,
+                    layoutGeneration = 21L,
+                    placement = LazyViewportAnchorPlacement.RenderedBottom,
+                    renderedTailMessageId = "tail-message-3",
+                    renderedTailAnchorIdentity = "focused-message:request-7",
+                    fallback = LazyViewportAnchorFallback.Free
+                )
+            )
+
+        fun invalidate(
+            state: LazyViewportControllerState,
+            command: LazyViewportCommand,
+            currentLayoutGeneration: Long
+        ): LazyViewportControllerState {
+            val invalidated =
+                reduceLazyViewport(
+                    state,
+                    LazyViewportEvent.RenderedTailCommandInvalidated(
+                        commandId = command.id,
+                        currentLayoutGeneration = currentLayoutGeneration
+                    )
+                )
+            val intent = assertIs<LazyViewportIntent.Anchored>(invalidated.intent)
+            assertNull(invalidated.pendingCommand)
+            assertEquals(LazyViewportAnchorTarget.Message("focused-message"), intent.target)
+            assertEquals(0, intent.offset)
+            assertEquals(currentLayoutGeneration, intent.layoutGeneration)
+            assertEquals(LazyViewportAnchorPlacement.Focused, intent.placement)
+            assertNull(intent.renderedTailMessageId)
+            assertNull(intent.renderedTailAnchorIdentity)
+            assertFalse(invalidated.accepts(command))
+            return invalidated
+        }
+
+        val appendOwner = anchored()
+        val appendCommand = appendOwner.pendingCommand!!
+        val afterAppend =
+            reduceLazyViewport(
+                appendOwner,
+                LazyViewportEvent.ContentMutated(LazyViewportMutation.Append)
+            )
+        val appendIntent = assertIs<LazyViewportIntent.Anchored>(afterAppend.intent)
+        assertNull(afterAppend.pendingCommand)
+        assertEquals(LazyViewportAnchorPlacement.Focused, appendIntent.placement)
+        assertEquals(0, appendIntent.offset)
+        assertNull(appendIntent.renderedTailMessageId)
+        assertNull(appendIntent.renderedTailAnchorIdentity)
+        assertFalse(afterAppend.accepts(appendCommand))
+
+        val layoutOwner = anchored()
+        invalidate(layoutOwner, layoutOwner.pendingCommand!!, currentLayoutGeneration = 22L)
+
+        val tailOwner = anchored()
+        invalidate(tailOwner, tailOwner.pendingCommand!!, currentLayoutGeneration = 21L)
+
+        val nonceOwner = anchored()
+        invalidate(nonceOwner, nonceOwner.pendingCommand!!, currentLayoutGeneration = 21L)
+
+        listOf(
+            LazyViewportMutation.InsetChange,
+            LazyViewportMutation.HeightChange
+        ).forEach { mutation ->
+            val replay = reduceLazyViewport(afterAppend, LazyViewportEvent.ContentMutated(mutation))
+            val target = assertIs<LazyViewportCommandTarget.Anchor>(replay.pendingCommand?.target)
+            assertEquals(0, target.offset, mutation.toString())
+            assertEquals(21L, target.layoutGeneration, mutation.toString())
+            assertEquals(LazyViewportAnchorPlacement.Focused, target.placement, mutation.toString())
+            assertNull(target.renderedTailMessageId, mutation.toString())
+            assertNull(target.renderedTailAnchorIdentity, mutation.toString())
+        }
+    }
+
+    @Test
+    fun renderedTailInvalidation_ignoresNonMatchingCommandId() {
+        val anchored =
+            reduceLazyViewport(
+                LazyViewportControllerState(),
+                LazyViewportEvent.Anchor(
+                    target = LazyViewportAnchorTarget.Message("focused-message"),
+                    offset = 224,
+                    layoutGeneration = 21L,
+                    placement = LazyViewportAnchorPlacement.RenderedBottom,
+                    renderedTailMessageId = "tail-message-3",
+                    renderedTailAnchorIdentity = "focused-message:request-7",
+                    fallback = LazyViewportAnchorFallback.Free
+                )
+            )
+
+        assertEquals(
+            anchored,
+            reduceLazyViewport(
+                anchored,
+                LazyViewportEvent.RenderedTailCommandInvalidated(
+                    commandId = anchored.pendingCommand!!.id.copy(sequence = 999L),
+                    currentLayoutGeneration = 22L
+                )
+            )
+        )
+    }
+
+    @Test
+    fun ordinaryAnchoredCommand_keepsExistingAcceptanceWithoutRenderedTailFence() {
+        val anchored =
+            reduceLazyViewport(
+                LazyViewportControllerState(),
+                LazyViewportEvent.Anchor(
+                    target = LazyViewportAnchorTarget.Message("history-message"),
+                    offset = -24,
+                    layoutGeneration = 7L,
+                    fallback = LazyViewportAnchorFallback.Free
+                )
+            )
+
+        assertTrue(
+            anchored.acceptsRenderedTailCommand(
+                command = anchored.pendingCommand!!,
+                currentLayoutGeneration = 99L,
+                currentTailMessageId = "different-tail",
+                currentAnchorIdentity = "different-anchor"
+            )
+        )
+    }
+
+    @Test
+    fun userPointerInvalidatesFocusedTailRenderedBottomCommand() {
+        val anchored =
+            reduceLazyViewport(
+                LazyViewportControllerState(),
+                LazyViewportEvent.Anchor(
+                    target = LazyViewportAnchorTarget.Message("latest-message"),
+                    offset = 16,
+                    layoutGeneration = 22L,
+                    placement = LazyViewportAnchorPlacement.RenderedBottom,
+                    fallback = LazyViewportAnchorFallback.Free
+                )
+            )
+        val staleCommand = anchored.pendingCommand!!
+        val dragging = reduceLazyViewport(anchored, LazyViewportEvent.PointerDown)
+
+        assertEquals(LazyViewportIntent.UserDragging, dragging.intent)
+        assertNull(dragging.pendingCommand)
+        assertFalse(dragging.accepts(staleCommand))
+    }
+
+    @Test
     fun draggingRejectsAppendAndInsetCommandsUntilPointerSettles() {
         val dragging = reduceLazyViewport(LazyViewportControllerState(), LazyViewportEvent.PointerDown)
         val moved = reduceLazyViewport(dragging, LazyViewportEvent.PointerMove)
@@ -240,7 +531,8 @@ class LazyViewportControllerTest {
                                 target = intent.target,
                                 offset = intent.offset,
                                 layoutGeneration = intent.layoutGeneration,
-                                placement = intent.placement
+                                placement = intent.placement,
+                                renderedTailMessageId = intent.renderedTailMessageId
                             )
                         LazyViewportIntent.UserDragging -> null
                     }

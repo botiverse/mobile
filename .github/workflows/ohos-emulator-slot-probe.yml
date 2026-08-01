@@ -79,7 +79,7 @@ jobs:
 
       - name: Upload slot evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ohos-emulator-api23-slot-1
           path: ${{ runner.temp }}/ohos-emulator-slot-1/

@@ -22,33 +22,6 @@ class ThreadMessageLongPressSurfaceTest {
     }
 
     @Test
-    fun textSelectionToolbarTracksStartDragEndAndCancel() {
-        assertEquals(
-            ThreadTextSelectionPresentation(hasSelection = true, actionsVisible = true),
-            threadTextSelectionPresentation(ThreadTextSelectionEvent.Start)
-        )
-        assertEquals(
-            ThreadTextSelectionPresentation(hasSelection = true, actionsVisible = false),
-            threadTextSelectionPresentation(ThreadTextSelectionEvent.Change)
-        )
-        assertEquals(
-            ThreadTextSelectionPresentation(hasSelection = true, actionsVisible = true),
-            threadTextSelectionPresentation(ThreadTextSelectionEvent.End)
-        )
-        assertEquals(
-            ThreadTextSelectionPresentation.None,
-            threadTextSelectionPresentation(ThreadTextSelectionEvent.Cancel)
-        )
-    }
-
-    @Test
-    fun selectedTextUsesOnlyOrderedSelectionContentWithoutEmptyFallback() {
-        assertEquals("middle selection", threadTextSelectionContent(listOf("middle ", "selection")))
-        assertNull(threadTextSelectionContent(emptyList()))
-        assertNull(threadTextSelectionContent(listOf("")))
-    }
-
-    @Test
     fun stationaryLongPressSurvivesProgrammaticListScroll() {
         val decision =
             decideThreadMessageLongPressDispatch(
@@ -73,6 +46,53 @@ class ThreadMessageLongPressSurfaceTest {
 
         assertFalse(decision.allowed)
         assertTrue(decision.reason == "direct_pointer_movement")
+    }
+
+    @Test
+    fun compactGroupRowsKeepIndependentLongPressOwnership() {
+        listOf("first", "middle", "last").forEach { _ ->
+            assertTrue(threadMessageUsesFullRowLongPressActions(shareSelectionActive = false))
+            assertTrue(
+                threadInlineSelectionLongPressObserverEnabled(
+                    inlineSelectionEligible = true,
+                    selectionActive = false
+                )
+            )
+        }
+    }
+
+    @Test
+    fun activeInlineSelectionReleasesTheObserverForNativeHandles() {
+        assertFalse(
+            threadInlineSelectionLongPressObserverEnabled(
+                inlineSelectionEligible = true,
+                selectionActive = true
+            )
+        )
+        assertFalse(
+            threadInlineSelectionLongPressObserverEnabled(
+                inlineSelectionEligible = false,
+                selectionActive = false
+            )
+        )
+    }
+
+    @Test
+    fun childOwnedInlineSelectionLongPressDoesNotDoubleDispatchTheRow() {
+        val gate = ThreadMessageTapMovementGate()
+        gate.begin(Offset(100f, 100f))
+        gate.rejectChildAction("inline_selection_body_long_press")
+        val movementDecision = gate.decision()
+
+        val decision =
+            decideThreadMessageLongPressDispatch(
+                detectorAccepted = movementDecision.allowed,
+                directPointerMovementDetected = false,
+                isScrollInProgress = false
+            )
+
+        assertFalse(decision.allowed)
+        assertEquals("detector_not_admitted", decision.reason)
     }
 
     @Test

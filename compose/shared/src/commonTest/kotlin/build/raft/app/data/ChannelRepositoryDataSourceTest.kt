@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.homeDirectMessageOpenFailureMessage
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
 import build.raft.app.model.ServerId
@@ -64,6 +65,58 @@ class ChannelRepositoryDataSourceTest {
 
         val error = assertIs<DataResult.Error>(result)
         assertEquals("network_parse_failed", error.error.code)
+    }
+
+    @Test
+    fun directMessageErrorsPreserveOnlyStructuredServerErrorText() = runBlocking {
+        val fixtures =
+            listOf(
+                "structured" to ("""{"error":"User is not a member of this server"}""" to "User is not a member of this server"),
+                "wrong-alias" to ("""{"message":"User is not a member of this server"}""" to null),
+                "malformed" to ("""{"error":"unterminated""" to null),
+                "plain-text" to ("User is not a member of this server" to null),
+                "empty" to ("" to null)
+            )
+
+        fixtures.forEach { (name, fixture) ->
+            val (body, expectedMessage) = fixture
+            val repository =
+                RealChannelRepository(
+                    sampleStore(),
+                    FakeChannelNetworkClient(
+                        responseCode = 400,
+                        responseBody = null,
+                        responseErrorBody = body
+                    )
+                )
+
+            val error =
+                assertIs<DataResult.Error>(repository.openUserDirectMessage(MemberId("user-2")), name)
+                    .error
+
+            assertEquals("http_400", error.code, name)
+            assertEquals(expectedMessage, error.serverMessage, name)
+        }
+    }
+
+    @Test
+    fun directMessageStructuredServerErrorReachesHomeVisibleCopy() = runBlocking {
+        val repository =
+            RealChannelRepository(
+                sampleStore(),
+                FakeChannelNetworkClient(
+                    responseCode = 400,
+                    responseBody = null,
+                    responseErrorBody = """{"error":"User is not a member of this server"}"""
+                )
+            )
+
+        val error = assertIs<DataResult.Error>(repository.openUserDirectMessage(MemberId("user-2"))).error
+
+        assertEquals(
+            "Could not open direct message: User is not a member of this server",
+            homeDirectMessageOpenFailureMessage("Could not open direct message", error)
+        )
     }
 
     @Test
@@ -538,8 +591,9 @@ class ChannelRepositoryDataSourceTest {
 
     private class FakeChannelNetworkClient(
         private val responseCode: Int = 200,
-        var responseBody: String = """{"id":"channel-1","name":"general","type":"channel","joined":true}""",
-        private val pathResponses: Map<String, String> = emptyMap()
+        var responseBody: String? = """{"id":"channel-1","name":"general","type":"channel","joined":true}""",
+        private val pathResponses: Map<String, String> = emptyMap(),
+        private val responseErrorBody: String? = null
     ) : SlockNetworkClient {
         val requests = mutableListOf<RecordedChannelRequest>()
         val bodies = mutableListOf<String>()
@@ -557,7 +611,8 @@ class ChannelRepositoryDataSourceTest {
             bodyText?.let { bodies += it }
             return HomeNetworkResponse(
                 code = responseCode,
-                bodyText = pathResponses[normalizedPath] ?: responseBody
+                bodyText = pathResponses[normalizedPath] ?: responseBody,
+                errorBodyText = responseErrorBody
             )
         }
     }

@@ -14,6 +14,8 @@ internal sealed interface LazyViewportIntent {
         val offset: Int,
         val layoutGeneration: Long,
         val placement: LazyViewportAnchorPlacement,
+        val renderedTailMessageId: String? = null,
+        val renderedTailAnchorIdentity: String? = null,
         val fallback: LazyViewportAnchorFallback
     ) : LazyViewportIntent
 
@@ -34,7 +36,8 @@ internal enum class LazyViewportAnchorFallback {
 
 internal enum class LazyViewportAnchorPlacement {
     ExactOffset,
-    Focused
+    Focused,
+    RenderedBottom
 }
 
 internal enum class LazyViewportMutation {
@@ -65,7 +68,9 @@ internal sealed interface LazyViewportCommandTarget {
         val target: LazyViewportAnchorTarget,
         val offset: Int,
         val layoutGeneration: Long,
-        val placement: LazyViewportAnchorPlacement = LazyViewportAnchorPlacement.ExactOffset
+        val placement: LazyViewportAnchorPlacement = LazyViewportAnchorPlacement.ExactOffset,
+        val renderedTailMessageId: String? = null,
+        val renderedTailAnchorIdentity: String? = null
     ) : LazyViewportCommandTarget
 }
 
@@ -93,6 +98,8 @@ internal sealed interface LazyViewportEvent {
         val offset: Int,
         val layoutGeneration: Long,
         val placement: LazyViewportAnchorPlacement = LazyViewportAnchorPlacement.ExactOffset,
+        val renderedTailMessageId: String? = null,
+        val renderedTailAnchorIdentity: String? = null,
         val fallback: LazyViewportAnchorFallback
     ) : LazyViewportEvent
 
@@ -119,6 +126,11 @@ internal sealed interface LazyViewportEvent {
     ) : LazyViewportEvent
 
     data class AnchorUnavailable(val commandId: LazyViewportCommandId) : LazyViewportEvent
+
+    data class RenderedTailCommandInvalidated(
+        val commandId: LazyViewportCommandId,
+        val currentLayoutGeneration: Long
+    ) : LazyViewportEvent
 
     data class CommandConsumed(val commandId: LazyViewportCommandId) : LazyViewportEvent
 }
@@ -147,6 +159,8 @@ internal fun reduceLazyViewport(
                     offset = event.offset,
                     layoutGeneration = event.layoutGeneration,
                     placement = event.placement,
+                    renderedTailMessageId = event.renderedTailMessageId,
+                    renderedTailAnchorIdentity = event.renderedTailAnchorIdentity,
                     fallback = event.fallback
                 ),
                 emitCommand = true
@@ -178,6 +192,8 @@ internal fun reduceLazyViewport(
         is LazyViewportEvent.ContentMutated -> state.onContentMutation(event.mutation)
         is LazyViewportEvent.NewerPageSettled -> state.onNewerPageSettled(event)
         is LazyViewportEvent.AnchorUnavailable -> state.onAnchorUnavailable(event.commandId)
+        is LazyViewportEvent.RenderedTailCommandInvalidated ->
+            state.onRenderedTailCommandInvalidated(event)
         is LazyViewportEvent.CommandConsumed ->
             if (state.pendingCommand?.id == event.commandId) state.copy(pendingCommand = null) else state
     }
@@ -194,7 +210,9 @@ internal fun LazyViewportControllerState.accepts(command: LazyViewportCommand): 
                         target = currentIntent.target,
                         offset = currentIntent.offset,
                         layoutGeneration = currentIntent.layoutGeneration,
-                        placement = currentIntent.placement
+                        placement = currentIntent.placement,
+                        renderedTailMessageId = currentIntent.renderedTailMessageId,
+                        renderedTailAnchorIdentity = currentIntent.renderedTailAnchorIdentity
                     )
             LazyViewportIntent.UserDragging -> false
         }
@@ -208,6 +226,40 @@ internal fun LazyViewportControllerState.anchorSnapshotOrNull(): LazyViewportAnc
             layoutGeneration = anchored.layoutGeneration
         )
     }
+
+internal fun LazyViewportControllerState.acceptsRenderedTailCommand(
+    command: LazyViewportCommand,
+    currentLayoutGeneration: Long,
+    currentTailMessageId: String?,
+    currentAnchorIdentity: String?
+): Boolean {
+    if (!accepts(command)) return false
+    val anchor = command.target as? LazyViewportCommandTarget.Anchor ?: return true
+    val expectedTailMessageId = anchor.renderedTailMessageId ?: return true
+    return anchor.layoutGeneration == currentLayoutGeneration &&
+        expectedTailMessageId == currentTailMessageId &&
+        anchor.renderedTailAnchorIdentity != null &&
+        anchor.renderedTailAnchorIdentity == currentAnchorIdentity
+}
+
+private fun LazyViewportControllerState.onRenderedTailCommandInvalidated(
+    event: LazyViewportEvent.RenderedTailCommandInvalidated
+): LazyViewportControllerState {
+    if (pendingCommand?.id != event.commandId) return this
+    val anchored = intent as? LazyViewportIntent.Anchored ?: return copy(pendingCommand = null)
+    if (anchored.renderedTailMessageId == null) return copy(pendingCommand = null)
+    return transitionTo(
+        nextIntent =
+            anchored.copy(
+                offset = 0,
+                layoutGeneration = event.currentLayoutGeneration,
+                placement = LazyViewportAnchorPlacement.Focused,
+                renderedTailMessageId = null,
+                renderedTailAnchorIdentity = null
+            ),
+        emitCommand = false
+    )
+}
 
 private fun LazyViewportControllerState.transitionTo(
     nextIntent: LazyViewportIntent,
@@ -229,7 +281,23 @@ private fun LazyViewportControllerState.onContentMutation(
     when (intent) {
         LazyViewportIntent.UserDragging -> copy(pendingCommand = null)
         LazyViewportIntent.PinnedTop -> if (mutation == LazyViewportMutation.Append) this else withCommandForIntent()
-        is LazyViewportIntent.Anchored -> if (mutation == LazyViewportMutation.Append) this else withCommandForIntent()
+        is LazyViewportIntent.Anchored ->
+            if (mutation == LazyViewportMutation.Append && intent.renderedTailMessageId != null) {
+                transitionTo(
+                    nextIntent =
+                        intent.copy(
+                            offset = 0,
+                            placement = LazyViewportAnchorPlacement.Focused,
+                            renderedTailMessageId = null,
+                            renderedTailAnchorIdentity = null
+                        ),
+                    emitCommand = false
+                )
+            } else if (mutation == LazyViewportMutation.Append) {
+                this
+            } else {
+                withCommandForIntent()
+            }
         LazyViewportIntent.FollowingLatest -> withCommandForIntent()
     }
 
@@ -284,7 +352,9 @@ private fun LazyViewportControllerState.withCommandForIntent(
                     target = currentIntent.target,
                     offset = currentIntent.offset,
                     layoutGeneration = currentIntent.layoutGeneration,
-                    placement = currentIntent.placement
+                    placement = currentIntent.placement,
+                    renderedTailMessageId = currentIntent.renderedTailMessageId,
+                    renderedTailAnchorIdentity = currentIntent.renderedTailAnchorIdentity
                 )
             LazyViewportIntent.UserDragging -> return copy(pendingCommand = null)
         }

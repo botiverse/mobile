@@ -37,7 +37,7 @@ jobs:
           node scripts/perf/test_thread_open_contract.mjs --keep checker-fixtures | tee checker-selftest.txt
       - name: Upload fixtures and results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: checker-selftest
           path: |

@@ -29,6 +29,62 @@ class SlockLiveRootAnchorRefTest {
     }
 
     @Test
+    fun retainedResolverPublishesChangedGlobalPlacementWhileObserved() {
+        val coordinates = FakeLayoutCoordinates(root = Offset(10f, 20f))
+        val anchorRef = SlockLiveRootAnchorRef(identity = "composer")
+        val resolver = anchorRef.resolver(SlockPopoverLocalPoint.Exact(Offset.Zero))
+
+        assertEquals(0L, resolver.placementRevision)
+        anchorRef.captureFromLayoutCoordinates(coordinates)
+        assertEquals(0L, resolver.placementRevision)
+        assertEquals(0, coordinates.localToRootCalls)
+
+        resolver.beginObservingPlacement()
+        anchorRef.captureFromLayoutCoordinates(coordinates)
+        assertEquals(1L, resolver.placementRevision)
+        assertEquals(4, coordinates.localToRootCalls)
+
+        anchorRef.captureFromLayoutCoordinates(coordinates)
+        assertEquals(1L, resolver.placementRevision)
+        assertEquals(8, coordinates.localToRootCalls)
+
+        coordinates.root = Offset(100f, 200f)
+        anchorRef.captureFromLayoutCoordinates(coordinates)
+
+        assertEquals(2L, resolver.placementRevision)
+        assertEquals(12, coordinates.localToRootCalls)
+        assertNotNull(resolver.resolveAtPlacementRevision(2L))
+        assertEquals(13, coordinates.localToRootCalls)
+        resolver.endObservingPlacement()
+
+        coordinates.root = Offset(300f, 400f)
+        anchorRef.captureFromLayoutCoordinates(coordinates)
+
+        assertEquals(2L, resolver.placementRevision)
+        assertEquals(13, coordinates.localToRootCalls)
+    }
+
+    @Test
+    fun resolverRejectsAPlacementRevisionSupersededBeforeResolution() {
+        val coordinates = FakeLayoutCoordinates(root = Offset(10f, 20f))
+        val anchorRef = SlockLiveRootAnchorRef(identity = "composer")
+        anchorRef.captureFromLayoutCoordinates(coordinates)
+        val resolver = anchorRef.resolver(SlockPopoverLocalPoint.Exact(Offset.Zero))
+        resolver.beginObservingPlacement()
+        anchorRef.captureFromLayoutCoordinates(coordinates)
+        val staleRevision = resolver.placementRevision
+
+        coordinates.root = Offset(100f, 200f)
+        anchorRef.captureFromLayoutCoordinates(coordinates)
+
+        assertNull(resolver.resolveAtPlacementRevision(staleRevision))
+        assertEquals(8, coordinates.localToRootCalls)
+        assertNotNull(resolver.resolveAtPlacementRevision(resolver.placementRevision))
+        assertEquals(9, coordinates.localToRootCalls)
+        resolver.endObservingPlacement()
+    }
+
+    @Test
     fun sizeDerivedAnchorUsesCurrentSizeAndTransform() {
         val coordinates =
             FakeLayoutCoordinates(

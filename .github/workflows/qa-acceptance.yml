@@ -121,7 +121,7 @@ jobs:
           java-version: "17"
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
 
       - name: Apply Gradle cache policy
         uses: ./.github/actions/gradle-cache-policy
@@ -144,7 +144,7 @@ jobs:
 
       - name: Cache kuikly fork mavenLocal artifacts
         id: kuikly-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.m2/repository/com/tencent/kuikly-open
           key: kuikly-fork-mavenlocal-android-${{ runner.os }}-${{ steps.kuikly-fork.outputs.sha }}
@@ -188,7 +188,7 @@ jobs:
           EOF
 
       - name: Upload APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: qa-acceptance-apk
           path: |
@@ -238,11 +238,11 @@ jobs:
           df -h /
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
 
       - name: Download APK
         if: ${{ inputs.apk_run_id == '' && inputs.apk_url == '' }}
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: qa-acceptance-apk
           path: apks
@@ -586,7 +586,7 @@ jobs:
 
       - name: Upload evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: qa-acceptance-evidence
           path: qa-evidence

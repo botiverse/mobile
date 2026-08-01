@@ -40,6 +40,13 @@ def enumerate_capture_tests(source: str) -> list[dict[str, object]]:
         body = chunks[index + 1]
         if re.search(r"@Test\s*$", prefix) is None:
             continue
+        # @Ignore'd tests compile but never execute, so they must be removed
+        # from the expected/sharding set at the source — otherwise a quarantined
+        # case is still "expected" (24) while it never starts (23), tripping the
+        # per-shard started-vs-expected harness guard. The annotation block for
+        # this method is the prefix tail after the previous method's close brace.
+        if "@Ignore" in prefix.rsplit("}", 1)[-1]:
+            continue
         case_match = CASE_ID_RE.search(body)
         if case_match is None:
             raise ValueError(f"@Test method has no canonical case id: {method}")

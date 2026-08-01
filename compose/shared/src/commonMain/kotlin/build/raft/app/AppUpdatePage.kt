@@ -12,12 +12,14 @@ import build.raft.app.base.Utils
 import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.data.DataResult
 import build.raft.app.data.KuiklyAppUpdateEvents
+import build.raft.app.data.ScreenError
 import build.raft.app.data.SharedSettingsUpdateCheckSnapshot
 import build.raft.app.data.SharedSettingsUpdateTransactionState
 import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.data.SharedPreferenceStore
 import build.raft.app.data.slockSharedPreferenceStore
+import build.raft.app.data.userFacingMessage
 import build.raft.app.resources.MR
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
@@ -77,10 +79,11 @@ private fun AppUpdateScreen(pageVisibleResumeTick: Int) {
     val appUpdateEvents = remember(sharedStores.eventBus) { KuiklyAppUpdateEvents(sharedStores.eventBus) }
     val scope = rememberCoroutineScope()
     val refreshGate = remember { AppUpdateRefreshGate() }
+    val unavailableMessage = stringResource(MR.strings.app_update_unavailable)
     var snapshot by remember { mutableStateOf<SharedSettingsUpdateCheckSnapshot?>(null) }
     var loading by remember { mutableStateOf(true) }
     var actionRunning by remember { mutableStateOf(false) }
-    var errorCode by remember { mutableStateOf<String?>(null) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
 
     fun refresh() {
         scope.launch {
@@ -88,15 +91,10 @@ private fun AppUpdateScreen(pageVisibleResumeTick: Int) {
             try {
                 loading = true
                 do {
-                    when (val result = environment.settingsCapabilities.checkHandsUpdateStatus()) {
-                        is DataResult.Content -> {
-                            snapshot = result.data.withAppUpdateDisplayFallback(snapshot)
-                            errorCode = result.data.errorCode.takeIf { it.isNotBlank() }
-                        }
-                        is DataResult.Empty -> errorCode = "app_update_unavailable"
-                        is DataResult.Error -> errorCode = result.error.code
-                        is DataResult.NoPermission -> errorCode = result.blocker.code
-                    }
+                    val result = environment.settingsCapabilities.checkHandsUpdateStatus()
+                    val projection = result.toAppUpdateResultProjection(snapshot, unavailableMessage)
+                    snapshot = projection.snapshot
+                    errorMessage = projection.errorMessage
                 } while (refreshGate.completeAndShouldContinue())
             } finally {
                 loading = false
@@ -132,7 +130,7 @@ private fun AppUpdateScreen(pageVisibleResumeTick: Int) {
             snapshot = snapshot,
             loading = loading,
             actionRunning = actionRunning,
-            errorCode = errorCode,
+            errorMessage = errorMessage,
             onRetry = ::refresh,
             onSkipVersion = {
                 snapshot?.latestVersionCode?.let(::saveSkippedAppUpdateVersionCode)
@@ -142,17 +140,12 @@ private fun AppUpdateScreen(pageVisibleResumeTick: Int) {
             onAction = {
                 scope.launch {
                     actionRunning = true
-                    errorCode = null
+                    errorMessage = null
                     try {
-                        when (val result = environment.settingsCapabilities.installHandsUpdate()) {
-                            is DataResult.Content -> {
-                                snapshot = result.data.withAppUpdateDisplayFallback(snapshot)
-                                errorCode = result.data.errorCode.takeIf { it.isNotBlank() }
-                            }
-                            is DataResult.Empty -> errorCode = "app_update_unavailable"
-                            is DataResult.Error -> errorCode = result.error.code
-                            is DataResult.NoPermission -> errorCode = result.blocker.code
-                        }
+                        val result = environment.settingsCapabilities.installHandsUpdate()
+                        val projection = result.toAppUpdateResultProjection(snapshot, unavailableMessage)
+                        snapshot = projection.snapshot
+                        errorMessage = projection.errorMessage
                     } finally {
                         actionRunning = false
                     }
@@ -230,7 +223,12 @@ internal fun SharedSettingsUpdateCheckSnapshot.withAppUpdateDisplayFallback(
         latestVersionLabel = latestVersionLabel.ifBlank { previous.latestVersionLabel },
         latestChangelog = latestChangelog.ifBlank { previous.latestChangelog },
         downloadUrl = downloadUrl.ifBlank { previous.downloadUrl },
-        detail = if (downloadSizesResolved) detail else previous.detail.ifBlank { detail },
+        detail =
+            if (downloadSizesResolved || errorCode.isNotBlank()) {
+                detail
+            } else {
+                previous.detail.ifBlank { detail }
+            },
         downloadSizesResolved = downloadSizesResolved || previous.downloadSizesResolved,
         fullDownloadSizeBytes =
             if (downloadSizesResolved) fullDownloadSizeBytes else previous.fullDownloadSizeBytes,
@@ -239,12 +237,53 @@ internal fun SharedSettingsUpdateCheckSnapshot.withAppUpdateDisplayFallback(
     )
 }
 
+internal fun DataResult<SharedSettingsUpdateCheckSnapshot>.appUpdateErrorMessage(
+    unavailableMessage: String
+): String? =
+    when (this) {
+        is DataResult.Content ->
+            data.errorCode
+                .takeIf { it.isNotBlank() }
+                ?.let { code ->
+                    data.detail.takeIf { it.isNotBlank() }
+                        ?: ScreenError(code).userFacingMessage()
+                }
+        is DataResult.Empty -> unavailableMessage
+        is DataResult.Error -> error.userFacingMessage()
+        is DataResult.NoPermission -> blocker.userFacingMessage()
+    }
+
+internal data class AppUpdateResultProjection(
+    val snapshot: SharedSettingsUpdateCheckSnapshot?,
+    val errorMessage: String?
+)
+
+internal fun DataResult<SharedSettingsUpdateCheckSnapshot>.toAppUpdateResultProjection(
+    previousSnapshot: SharedSettingsUpdateCheckSnapshot?,
+    unavailableMessage: String
+): AppUpdateResultProjection =
+    when (this) {
+        is DataResult.Content -> {
+            val currentErrorMessage = appUpdateErrorMessage(unavailableMessage)
+            val resolvedSnapshot = data.withAppUpdateDisplayFallback(previousSnapshot)
+            AppUpdateResultProjection(
+                snapshot = resolvedSnapshot,
+                errorMessage = currentErrorMessage
+            )
+        }
+        else ->
+            AppUpdateResultProjection(
+                snapshot = previousSnapshot,
+                errorMessage = appUpdateErrorMessage(unavailableMessage)
+            )
+    }
+
 @Composable
 internal fun AppUpdateSummary(
     snapshot: SharedSettingsUpdateCheckSnapshot?,
     loading: Boolean,
     actionRunning: Boolean,
-    errorCode: String?,
+    errorMessage: String?,
     onRetry: () -> Unit,
     onSkipVersion: () -> Unit,
     onAction: () -> Unit
@@ -294,22 +333,22 @@ internal fun AppUpdateSummary(
                 )
                 Text(
                     text =
-                        if (errorCode != null && snapshot == null) {
-                            stringResource(MR.strings.app_update_unavailable)
+                        if (errorMessage != null) {
+                            errorMessage
                         } else {
                             snapshot?.detail.orEmpty()
                         },
                     style = SlockType.Caption,
-                    color = if (errorCode == null) SlockColor.TextMutedGray else SlockColor.AccentRed,
+                    color = if (errorMessage == null) SlockColor.TextMutedGray else SlockColor.AccentRed,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
             }
             SlockBrutalActionButton(
                 label = actionLabel,
-                onClick = if (errorCode != null && snapshot == null) onRetry else onAction,
-                enabled = appUpdatePrimaryActionEnabled(snapshot, loading, actionRunning, errorCode),
-                leadingIcon = appUpdatePrimaryActionIcon(snapshot, errorCode),
+                onClick = if (errorMessage != null && snapshot == null) onRetry else onAction,
+                enabled = appUpdatePrimaryActionEnabled(snapshot, loading, actionRunning, errorMessage),
+                leadingIcon = appUpdatePrimaryActionIcon(snapshot, errorMessage),
                 minWidth = 96.dp,
                 backgroundColor = SlockColor.AccentPink
             )
@@ -362,7 +401,7 @@ internal fun AppUpdateDetailsVisualScreen(chinese: Boolean = false) {
             snapshot = snapshot,
             loading = false,
             actionRunning = false,
-            errorCode = null,
+            errorMessage = null,
             onRetry = {},
             onSkipVersion = {},
             onAction = {}
@@ -481,10 +520,10 @@ internal fun appUpdatePrimaryActionEnabled(
     snapshot: SharedSettingsUpdateCheckSnapshot?,
     loading: Boolean,
     actionRunning: Boolean,
-    errorCode: String?
+    errorMessage: String?
 ): Boolean {
     if (loading || actionRunning) return false
-    if (snapshot == null) return errorCode != null
+    if (snapshot == null) return errorMessage != null
     if (!snapshot.supported) return false
     return when (snapshot.transactionState) {
         SharedSettingsUpdateTransactionState.Idle -> snapshot.updateAvailable
@@ -506,10 +545,10 @@ internal fun appUpdatePrimaryActionEnabled(
 
 internal fun appUpdatePrimaryActionIcon(
     snapshot: SharedSettingsUpdateCheckSnapshot?,
-    errorCode: String?
+    errorMessage: String?
 ): SlockLucideIconName =
     when {
-        snapshot == null && errorCode != null -> SlockLucideIconName.RefreshCw
+        snapshot == null && errorMessage != null -> SlockLucideIconName.RefreshCw
         snapshot?.transactionState == SharedSettingsUpdateTransactionState.ReadyToInstall ||
             snapshot?.transactionState == SharedSettingsUpdateTransactionState.InstallerOpened ->
             SlockLucideIconName.PackageCheck

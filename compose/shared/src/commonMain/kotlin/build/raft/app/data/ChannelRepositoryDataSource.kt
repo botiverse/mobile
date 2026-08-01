@@ -525,8 +525,22 @@ private fun <T> HomeNetworkResponse.toChannelDataError(): DataResult<T> =
                 requiredCapability = "server_access"
             )
         )
-        in 500..599 -> DataResult.Error(ScreenError(code = "server_unavailable", retryable = true))
-        else -> DataResult.Error(ScreenError(code = channelErrorCode("http_$code"), retryable = false))
+        in 500..599 ->
+            DataResult.Error(
+                ScreenError(
+                    code = "server_unavailable",
+                    retryable = true,
+                    serverMessage = channelServerErrorTextOrNull()
+                )
+            )
+        else ->
+            DataResult.Error(
+                ScreenError(
+                    code = channelErrorCode("http_$code"),
+                    retryable = false,
+                    serverMessage = channelServerErrorTextOrNull()
+                )
+            )
     }
 
 private fun HomeNetworkResponse.channelErrorCode(fallback: String): String {
@@ -538,6 +552,16 @@ private fun HomeNetworkResponse.channelErrorCode(fallback: String): String {
             ?.takeIf { it.isNotBlank() }
             ?: errorBody.error.toChannelValidationErrorCode()
     }.getOrNull() ?: fallback
+}
+
+private fun HomeNetworkResponse.channelServerErrorTextOrNull(): String? {
+    val payload = (bodyText ?: errorBodyText)?.takeIf { it.isNotBlank() } ?: return null
+    return runCatching {
+        channelRepositoryJson.decodeFromString(ChannelErrorBody.serializer(), payload)
+            .error
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+    }.getOrNull()
 }
 
 private fun String?.toChannelValidationErrorCode(): String? {

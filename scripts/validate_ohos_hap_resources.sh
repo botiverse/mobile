@@ -29,7 +29,10 @@ fi
 
 unzip -p "$HAP_FILE" resources.index > "$WORK_DIR/resources.index"
 strings "$WORK_DIR/resources.index" > "$WORK_DIR/resources.strings"
-for key in slock_thread_show_more slock_auth_restore_tagline; do
+for key in \
+  slock_thread_show_more \
+  slock_auth_restore_tagline \
+  slock_home_error_conversation_not_ready; do
   grep -Fq "$key" "$WORK_DIR/resources.strings" || {
     echo "HAP resources.index is missing shared resource key: $key" >&2
     exit 1

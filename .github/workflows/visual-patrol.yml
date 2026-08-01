@@ -50,10 +50,10 @@ jobs:
   patrol:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0            # need origin/gh-pages for the analysis + issue dedup
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: "22"
       - name: Resolve live/dry-run
@@ -116,7 +116,7 @@ jobs:
             --cap 5 \
             ${{ steps.mode.outputs.live }} | tee font-audit-report.json
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: visual-patrol-report
           path: |
@@ -137,10 +137,10 @@ jobs:
       contents: read
       issues: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0            # need origin/gh-pages for the analysis context
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: "22"
       - name: Install M3 SDK (pi-ai)
@@ -175,7 +175,7 @@ jobs:
             --repo "${{ github.repository }}" \
             --comparison "${{ github.event.inputs.comparison || 'react__android' }}" \
             ${{ steps.mode.outputs.live }} | tee verify-report.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: patrol-verify-report
           path: verify-report.json

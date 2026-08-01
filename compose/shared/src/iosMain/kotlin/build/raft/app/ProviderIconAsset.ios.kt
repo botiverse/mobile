@@ -10,4 +10,6 @@ internal actual fun providerIconIosSvgSource(key: ProviderIconKey): String? = wh
     ProviderIconKey.GoogleColor -> "assets://${MR.assets.icons.provider_google.originalPath}"
     ProviderIconKey.GitHubBlack -> "assets://${MR.assets.icons.provider_github.originalPath}"
     ProviderIconKey.GitHubWhite -> "assets://${MR.assets.icons.provider_github_white.originalPath}"
+    ProviderIconKey.AppleBlack -> "assets://${MR.assets.icons.provider_apple.originalPath}"
+    ProviderIconKey.AppleWhite -> "assets://${MR.assets.icons.provider_apple_white.originalPath}"
 }

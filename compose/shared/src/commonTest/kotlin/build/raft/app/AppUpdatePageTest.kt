@@ -1,5 +1,9 @@
 package build.raft.app
 
+import build.raft.app.data.DataResult
+import build.raft.app.data.EmptyReason
+import build.raft.app.data.PermissionBlocker
+import build.raft.app.data.ScreenError
 import build.raft.app.data.SharedSettingsUpdateCheckSnapshot
 import build.raft.app.data.SharedSettingsUpdateTransactionState
 import kotlin.test.Test
@@ -8,6 +12,96 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class AppUpdatePageTest {
+    @Test
+    fun appUpdateErrorsUseHonestStateMessagesInsteadOfBareCodes() {
+        assertEquals(
+            "Update service maintenance is in progress",
+            DataResult.Error(
+                ScreenError(
+                    code = "update_backend_restarting",
+                    serverMessage = "Update service maintenance is in progress"
+                )
+            ).appUpdateErrorMessage("Updates are unavailable")
+        )
+        assertEquals(
+            "Something went wrong. Please try again.",
+            DataResult.Error(ScreenError(code = "update_unknown"))
+                .appUpdateErrorMessage("Updates are unavailable")
+        )
+        assertEquals(
+            "You do not have permission to view this page.",
+            DataResult.NoPermission(PermissionBlocker(code = "forbidden"))
+                .appUpdateErrorMessage("Updates are unavailable")
+        )
+        assertEquals(
+            "Updates are unavailable",
+            DataResult.Empty(EmptyReason.NoSettingsAvailable)
+                .appUpdateErrorMessage("Updates are unavailable")
+        )
+    }
+
+    @Test
+    fun appUpdateContentFailurePreservesItsHumanReadableDetail() {
+        val result =
+            DataResult.Content(
+                SharedSettingsUpdateCheckSnapshot(
+                    errorCode = "update_download_failed",
+                    detail = "The update package could not be downloaded"
+                )
+            )
+
+        assertEquals(
+            "The update package could not be downloaded",
+            result.appUpdateErrorMessage("Updates are unavailable")
+        )
+    }
+
+    @Test
+    fun appUpdateNetworkFailureKeepsSnapshotButDisplaysCurrentServerReason() {
+        val previous =
+            SharedSettingsUpdateCheckSnapshot(
+                latestVersionLabel = "1.9.0",
+                detail = "Previous successful update detail"
+            )
+
+        val projection =
+            DataResult.Error(
+                ScreenError(
+                    code = "update_backend_restarting",
+                    serverMessage = "Update service maintenance is in progress"
+                )
+            ).toAppUpdateResultProjection(previous, "Updates are unavailable")
+
+        assertEquals(previous, projection.snapshot)
+        assertEquals("Update service maintenance is in progress", projection.errorMessage)
+    }
+
+    @Test
+    fun appUpdateContentFailureUsesCurrentDetailBeforeSnapshotFallback() {
+        val previous =
+            SharedSettingsUpdateCheckSnapshot(
+                latestVersionCode = 1_000_011L,
+                detail = "Previous successful update detail",
+                downloadSizesResolved = true,
+                fullDownloadSizeBytes = 94_411_540L
+            )
+        val current =
+            SharedSettingsUpdateCheckSnapshot(
+                transactionTargetVersionCode = 1_000_011L,
+                errorCode = "update_download_failed",
+                detail = "This update download failed",
+                downloadSizesResolved = false
+            )
+
+        val projection =
+            DataResult.Content(current)
+                .toAppUpdateResultProjection(previous, "Updates are unavailable")
+
+        assertEquals("This update download failed", projection.errorMessage)
+        assertEquals("This update download failed", projection.snapshot?.detail)
+        assertEquals(94_411_540L, projection.snapshot?.fullDownloadSizeBytes)
+    }
+
     @Test
     fun appUpdateRefreshesAfterReturningFromTheSystemInstaller() {
         assertFalse(appUpdatePageShouldRefreshOnResume(0))
@@ -206,7 +300,7 @@ class AppUpdatePageTest {
                 snapshot = null,
                 loading = false,
                 actionRunning = false,
-                errorCode = "network_error"
+                errorMessage = "The network connection failed."
             )
         )
         assertFalse(
@@ -220,7 +314,7 @@ class AppUpdatePageTest {
                     ),
                 loading = false,
                 actionRunning = true,
-                errorCode = null
+                errorMessage = null
             )
         )
         assertTrue(
@@ -234,7 +328,7 @@ class AppUpdatePageTest {
                     ),
                 loading = false,
                 actionRunning = false,
-                errorCode = "download_canceled"
+                errorMessage = "The download was canceled."
             )
         )
         assertFalse(
@@ -242,7 +336,7 @@ class AppUpdatePageTest {
                 snapshot = SharedSettingsUpdateCheckSnapshot(supported = false, updateAvailable = true),
                 loading = false,
                 actionRunning = false,
-                errorCode = null
+                errorMessage = null
             )
         )
         assertFalse(
@@ -250,7 +344,7 @@ class AppUpdatePageTest {
                 snapshot = SharedSettingsUpdateCheckSnapshot(supported = true, updateAvailable = true, statusLabel = "downloading"),
                 loading = false,
                 actionRunning = false,
-                errorCode = null
+                errorMessage = null
             )
         )
         assertFalse(
@@ -258,7 +352,7 @@ class AppUpdatePageTest {
                 snapshot = SharedSettingsUpdateCheckSnapshot(supported = true, updateAvailable = true, statusLabel = "installing"),
                 loading = false,
                 actionRunning = false,
-                errorCode = null
+                errorMessage = null
             )
         )
         assertTrue(
@@ -266,7 +360,7 @@ class AppUpdatePageTest {
                 snapshot = SharedSettingsUpdateCheckSnapshot(supported = true, updateAvailable = true, statusLabel = "install"),
                 loading = false,
                 actionRunning = false,
-                errorCode = null
+                errorMessage = null
             )
         )
         val transactionEnabled =
@@ -285,7 +379,7 @@ class AppUpdatePageTest {
                             ),
                         loading = false,
                         actionRunning = false,
-                        errorCode = null
+                        errorMessage = null
                     )
                 }
         assertTrue(transactionEnabled.getValue(SharedSettingsUpdateTransactionState.Idle))
@@ -308,7 +402,7 @@ class AppUpdatePageTest {
                     ),
                 loading = false,
                 actionRunning = false,
-                errorCode = "network_error"
+                errorMessage = "The network connection failed."
             )
         )
         assertFalse(
@@ -322,7 +416,7 @@ class AppUpdatePageTest {
                     ),
                 loading = false,
                 actionRunning = false,
-                errorCode = "signer_mismatch"
+                errorMessage = "The package signer did not match."
             )
         )
     }

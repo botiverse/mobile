@@ -154,6 +154,8 @@ internal class ThreadUserFacingErrorLabels(
     fun forErrorCode(errorCode: String?): String? =
         threadUserFacingErrorCodeReason(errorCode)?.let(labels::get)
 
+    fun forReason(reason: ThreadUserFacingErrorReason): String = checkNotNull(labels[reason])
+
     fun generic(): String = checkNotNull(labels[ThreadUserFacingErrorReason.Generic])
 }
 

@@ -83,8 +83,9 @@ import build.raft.app.data.userFacingMessage
 import build.raft.app.data.SharedComputersPickerSlice
 import build.raft.app.data.SharedComputersStore
 import build.raft.app.data.AGENT_CREATE_FORM_REFRESH_FAILED
+import build.raft.app.data.AGENT_CREATE_NAME_TAKEN
+import build.raft.app.data.createAgentFallbackErrorText
 import build.raft.app.data.AGENT_CREATE_FORM_REFRESH_REQUIRED
-import build.raft.app.data.recoverRejectedCreateAgentForm
 import build.raft.app.data.SharedServerMembersEntry
 import build.raft.app.data.SharedServerMembersState
 import build.raft.app.data.SelectedServerStore
@@ -1471,7 +1472,9 @@ internal fun MembersPageContent() {
                 val result =
                     createAgentCoordinator
                         .createAgent(submit.toCreateAgentRequest())
-                        .recoverRejectedCreateAgentForm(createAgentFormStore, serverId, submit.machineId)
+                        .recoverRejectedCreateAgentFormOrRetry(createAgentFormStore, serverId, submit) { retrySubmit ->
+                            createAgentCoordinator.createAgent(retrySubmit.toCreateAgentRequest())
+                        }
                 if (result is DataResult.Content) {
                     // The create response carries machineId but usually no machineName
                     // (runtimeProfile is empty for a fresh agent), so resolve the name
@@ -3748,6 +3751,7 @@ internal fun MembersListContent(
     val createAgentFailed = stringResource(MR.strings.member_error_create_agent)
     val createAgentForbidden = stringResource(MR.strings.member_error_create_agent_forbidden)
     val createAgentFormRefreshed = stringResource(MR.strings.agent_create_error_form_refreshed)
+    val createAgentNameTaken = stringResource(MR.strings.agent_create_error_name_taken)
     val createAgentFormRefreshFailed = stringResource(MR.strings.agent_create_error_form_refresh_failed)
     val sendInvitesFailed = stringResource(MR.strings.member_error_send_invites)
     val sendInvitesForbidden = stringResource(MR.strings.member_error_send_invites_forbidden)
@@ -3970,11 +3974,13 @@ internal fun MembersListContent(
                         is DataResult.Error -> {
                             createAgentError =
                                 when (result.error.code) {
+                                    AGENT_CREATE_NAME_TAKEN ->
+                                        createAgentNameTaken
                                     AGENT_CREATE_FORM_REFRESH_REQUIRED ->
                                         createAgentFormRefreshed
                                     AGENT_CREATE_FORM_REFRESH_FAILED ->
                                         createAgentFormRefreshFailed
-                                    else -> "$createAgentFailed: ${result.error.code}"
+                                    else -> createAgentFallbackErrorText(result.error, createAgentFailed)
                                 }
                         }
                         is DataResult.NoPermission -> {

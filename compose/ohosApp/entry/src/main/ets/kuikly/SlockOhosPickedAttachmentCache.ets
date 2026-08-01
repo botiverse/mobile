@@ -1,6 +1,47 @@
 import { fileUri } from '@kit.CoreFileKit';
 import fs from '@ohos.file.fs';
 
+export interface SlockOhosAttachmentCacheDirectoryBackend {
+  createDirectory(path: string): void;
+  isDirectory(path: string): boolean;
+}
+
+class FsSlockOhosAttachmentCacheDirectoryBackend implements SlockOhosAttachmentCacheDirectoryBackend {
+  createDirectory(path: string): void {
+    fs.mkdirSync(path, true);
+  }
+
+  isDirectory(path: string): boolean {
+    try {
+      return fs.statSync(path).isDirectory();
+    } catch (_) {
+      return false;
+    }
+  }
+}
+
+/**
+ * HarmonyOS may report 13900015 (EEXIST) for recursive mkdir when the cache
+ * directory already exists. Treat an existing directory as success, while
+ * preserving the original error when the path is absent or is not a directory.
+ */
+export function ensureSlockOhosAttachmentCacheDirectory(
+  path: string,
+  backend: SlockOhosAttachmentCacheDirectoryBackend = new FsSlockOhosAttachmentCacheDirectoryBackend()
+): void {
+  if (backend.isDirectory(path)) {
+    return;
+  }
+  try {
+    backend.createDirectory(path);
+  } catch (error) {
+    const createError = error as Error;
+    if (!backend.isDirectory(path)) {
+      throw createError;
+    }
+  }
+}
+
 export interface SlockOhosPickedAttachmentCacheBackend {
   copyFile(sourceFd: number, targetPath: string): void;
   fileSize(path: string): number;
@@ -43,8 +84,9 @@ export interface SlockOhosCachedPickedAttachment {
  * OH_ImageSourceNative_CreateFromUri. That decoder accepts a file URI backed
  * by an absolute sandbox path (`file:///data/...`), not the ability-scoped
  * authority URI (`file://<bundle>/data/...`) produced by getUriFromPath.
- * Keep the latter as the platform upload handle and expose the former only to
- * the renderer.
+ * Keep the latter as the platform file identity and expose the former only to
+ * the renderer. Multipart consumers must resolve that identity back to its
+ * absolute sandbox path before assigning http.MultiFormData.filePath.
  */
 export function cacheSlockOhosPickedAttachment(
   sourceFd: number,

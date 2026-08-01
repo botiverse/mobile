@@ -14,6 +14,7 @@ import build.raft.app.data.homeServerDrawerNormalizedContentForSnapshot
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedHomeState
 import build.raft.app.data.SettingsServerSidebarPinnedItem
+import build.raft.app.data.ScreenError
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
 import build.raft.app.data.APP_UPDATE_HOME_NOTIFICATION_ID
@@ -40,6 +41,58 @@ import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class SlockHomeComponentsTest {
+    @Test
+    fun homeInlineAndDrawerErrorsKeepDiagnosticCodesOutOfVisibleCopy() {
+        val inlineError =
+            SlockHomeInlineError(
+                title = "Could not refresh Home",
+                detail = "The last workspace remains available.",
+                code = "home_network",
+                actionLabel = "Retry"
+            )
+        val inlineVisibleCopy = inlineError.toVisibleCopy()
+        val drawerError = SlockHomeServerDrawerRow.Error("server-1", "home_network", hasCache = true)
+
+        assertEquals("home_network", inlineError.code)
+        assertEquals("Could not refresh Home", inlineVisibleCopy.title)
+        assertEquals("The last workspace remains available.", inlineVisibleCopy.detail)
+        assertEquals("Retry", inlineVisibleCopy.actionLabel)
+        assertFalse("home_network" in inlineVisibleCopy.toString())
+        assertEquals("home_network", drawerError.code)
+        assertEquals("Retry", drawerError.visibleRetryLabel("Retry"))
+        assertFalse("home_network" in drawerError.visibleRetryLabel("Retry"))
+    }
+
+    @Test
+    fun directMessageOpenFailureKeepsContextAndShowsTheServerReason() {
+        assertEquals(
+            "Could not open direct message: The member is no longer available",
+            homeDirectMessageOpenFailureMessage(
+                prefix = "Could not open direct message",
+                error =
+                    ScreenError(
+                        code = "http_409",
+                        serverMessage = "The member is no longer available"
+                    )
+            )
+        )
+    }
+
+    @Test
+    fun directMessageOpenFailureNeverFallsBackToABareCode() {
+        val message =
+            homeDirectMessageOpenFailureMessage(
+                prefix = "Could not open direct message",
+                error = ScreenError(code = "direct_message_unknown")
+            )
+
+        assertEquals(
+            "Could not open direct message: Something went wrong. Please try again.",
+            message
+        )
+        assertFalse("direct_message_unknown" in message)
+    }
+
     @Test
     fun hostedDrawerProjectionRetainsTenThousandNormalizedRowsByIdentity() {
         val serverId = ServerId("server-scale")

@@ -34,6 +34,8 @@
 static NSString *const SlockBridgeDefaultLogTag = @"SlockKuikly";
 static NSString *const SlockAttachmentExportDestinationFiles = @"files";
 static NSString *const SlockAttachmentExportDestinationPhotos = @"photos";
+static NSString *const SlockThreadShareImageDirectoryName = @"RaftThreadShareImages";
+static NSTimeInterval const SlockThreadShareImageMaximumAgeSeconds = 24.0 * 60.0 * 60.0;
 static NSString *const SlockBridgeReplaceCurrentPageKey = @"slockReplaceCurrentPage";
 static NSString *const SlockDiagnosticsLogDirName = @"raft_diagnostics_logs";
 static NSString *const SlockDiagnosticsLogFileName = @"raft-diagnostics.jsonl";
@@ -1893,6 +1895,225 @@ static NSString *SlockPickedAttachmentDisplayName(NSString *suggestedName,
     return displayName;
 }
 
+static NSDictionary *SlockThreadShareImageFailure(NSString *message) {
+    return @{
+        @"status" : @"failed",
+        @"message" : message.length > 0 ? message : @"Unable to export image"
+    };
+}
+
+static CGFloat SlockThreadShareImageScale(UIView *view) {
+    CGFloat scale = view.window.screen.scale;
+    if (scale <= 0) {
+        scale = UIScreen.mainScreen.scale;
+    }
+    return MAX(1.0, scale);
+}
+
+static NSString *SlockThreadShareImageDirectoryPath(void) {
+    return [NSTemporaryDirectory() stringByAppendingPathComponent:SlockThreadShareImageDirectoryName];
+}
+
+static BOOL SlockThreadSharePrepareDirectory(BOOL pruneExpiredFiles) {
+    NSFileManager *fileManager = NSFileManager.defaultManager;
+    NSString *directory = SlockThreadShareImageDirectoryPath();
+    BOOL isDirectory = NO;
+    if ([fileManager fileExistsAtPath:directory isDirectory:&isDirectory]) {
+        if (!isDirectory) {
+            return NO;
+        }
+    } else if (![fileManager createDirectoryAtPath:directory
+                       withIntermediateDirectories:YES
+                                        attributes:nil
+                                             error:nil]) {
+        return NO;
+    }
+    if (pruneExpiredFiles) {
+        NSDate *cutoff = [NSDate dateWithTimeIntervalSinceNow:-SlockThreadShareImageMaximumAgeSeconds];
+        for (NSString *name in [fileManager contentsOfDirectoryAtPath:directory error:nil] ?: @[]) {
+            NSString *path = [directory stringByAppendingPathComponent:name];
+            NSDate *modified = [[fileManager attributesOfItemAtPath:path error:nil] fileModificationDate];
+            if (modified && [modified compare:cutoff] == NSOrderedAscending) {
+                [fileManager removeItemAtPath:path error:nil];
+            }
+        }
+    }
+    return YES;
+}
+
+static NSDictionary *SlockThreadShareWriteImage(UIImage *image, BOOL pruneExpiredFiles) {
+    CGImageRef cgImage = image.CGImage;
+    if (!cgImage || CGImageGetWidth(cgImage) == 0 || CGImageGetHeight(cgImage) == 0) {
+        return SlockThreadShareImageFailure(@"Unable to capture image");
+    }
+    if (!SlockThreadSharePrepareDirectory(pruneExpiredFiles)) {
+        return SlockThreadShareImageFailure(@"Storage unavailable");
+    }
+    NSString *fileName = [NSString stringWithFormat:@"raft-message-share-%lld-%@.png",
+                                                       (long long)(NSDate.date.timeIntervalSince1970 * 1000.0),
+                                                       NSUUID.UUID.UUIDString.lowercaseString];
+    NSString *path = [SlockThreadShareImageDirectoryPath() stringByAppendingPathComponent:fileName];
+    NSData *data = UIImagePNGRepresentation(image);
+    if (data.length == 0 || ![data writeToFile:path options:NSDataWritingAtomic error:nil]) {
+        return SlockThreadShareImageFailure(@"Unable to write image");
+    }
+    return @{
+        @"status" : @"ok",
+        @"uri" : [NSURL fileURLWithPath:path].absoluteString ?: @"",
+        @"path" : path,
+        @"fileName" : fileName,
+        @"mimeType" : @"image/png",
+        @"width" : @(CGImageGetWidth(cgImage)),
+        @"height" : @(CGImageGetHeight(cgImage))
+    };
+}
+
+static UIImage *SlockThreadShareCaptureView(UIView *view, NSDictionary *params) {
+    if (!view || CGRectIsEmpty(view.bounds)) {
+        return nil;
+    }
+    CGFloat scale = SlockThreadShareImageScale(view);
+    CGFloat requestedX = [params[@"x"] respondsToSelector:@selector(doubleValue)] ? [params[@"x"] doubleValue] : 0;
+    CGFloat requestedY = [params[@"y"] respondsToSelector:@selector(doubleValue)] ? [params[@"y"] doubleValue] : 0;
+    CGFloat requestedWidth = [params[@"width"] respondsToSelector:@selector(doubleValue)] ? [params[@"width"] doubleValue] : 0;
+    CGFloat requestedHeight = [params[@"height"] respondsToSelector:@selector(doubleValue)] ? [params[@"height"] doubleValue] : 0;
+    // Compose layout coordinates are physical pixels. UIKit frames are points.
+    CGRect requested = CGRectMake(
+        MAX(0, requestedX) / scale,
+        MAX(0, requestedY) / scale,
+        requestedWidth > 0 ? requestedWidth / scale : CGRectGetWidth(view.bounds),
+        requestedHeight > 0 ? requestedHeight / scale : CGRectGetHeight(view.bounds)
+    );
+    CGRect captureRect = CGRectIntersection(view.bounds, requested);
+    if (CGRectIsNull(captureRect) || CGRectIsEmpty(captureRect) ||
+        captureRect.size.width <= 0 || captureRect.size.height <= 0) {
+        return nil;
+    }
+    [view layoutIfNeeded];
+    UIGraphicsImageRendererFormat *format = [UIGraphicsImageRendererFormat defaultFormat];
+    format.scale = scale;
+    format.opaque = YES;
+    UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:captureRect.size format:format];
+    return [renderer imageWithActions:^(UIGraphicsImageRendererContext *context) {
+        CGContextRef graphicsContext = context.CGContext;
+        [[UIColor whiteColor] setFill];
+        CGContextFillRect(graphicsContext, CGRectMake(0, 0, captureRect.size.width, captureRect.size.height));
+        CGContextTranslateCTM(graphicsContext, -captureRect.origin.x, -captureRect.origin.y);
+        BOOL rendered = [view drawViewHierarchyInRect:view.bounds afterScreenUpdates:YES];
+        if (!rendered) {
+            [view.layer renderInContext:graphicsContext];
+        }
+    }];
+}
+
+static UIFont *SlockThreadShareFont(NSString *name, CGFloat size, UIFontWeight fallbackWeight) {
+    return [UIFont fontWithName:name size:size] ?: [UIFont systemFontOfSize:size weight:fallbackWeight];
+}
+
+static UIImage *SlockThreadShareFrameImage(UIImage *content) {
+    CGImageRef contentCGImage = content.CGImage;
+    if (!contentCGImage) {
+        return nil;
+    }
+    CGFloat width = CGImageGetWidth(contentCGImage);
+    CGFloat contentHeight = CGImageGetHeight(contentCGImage);
+    if (width <= 0 || contentHeight <= 0) {
+        return nil;
+    }
+    CGFloat headerHeight = MIN(96.0, MAX(72.0, round(width * 0.12)));
+    CGSize outputSize = CGSizeMake(width, contentHeight + headerHeight);
+    UIGraphicsImageRendererFormat *format = [UIGraphicsImageRendererFormat defaultFormat];
+    format.scale = 1.0;
+    format.opaque = YES;
+    UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:outputSize format:format];
+    return [renderer imageWithActions:^(UIGraphicsImageRendererContext *context) {
+        CGContextRef graphicsContext = context.CGContext;
+        [[UIColor whiteColor] setFill];
+        CGContextFillRect(graphicsContext, CGRectMake(0, 0, outputSize.width, outputSize.height));
+        [[UIColor colorWithRed:1.0 green:(216.0 / 255.0) blue:(77.0 / 255.0) alpha:1.0] setFill];
+        CGContextFillRect(graphicsContext, CGRectMake(0, 0, width, headerHeight));
+
+        CGFloat horizontalInset = MIN(38.0, MAX(26.0, width * 0.048));
+        UIImage *logo = [UIImage imageNamed:@"lucide-raft-logo"];
+        if (logo.size.width > 0 && logo.size.height > 0) {
+            CGFloat maxLogoWidth = MIN(300.0, MAX(190.0, width * 0.36));
+            CGFloat maxLogoHeight = MAX(48.0, headerHeight - 34.0);
+            CGFloat logoScale = MIN(maxLogoWidth / logo.size.width, maxLogoHeight / logo.size.height);
+            CGSize logoSize = CGSizeMake(logo.size.width * logoScale, logo.size.height * logoScale);
+            [logo drawInRect:CGRectMake(horizontalInset,
+                                        MAX(0, (headerHeight - logoSize.height) / 2.0),
+                                        logoSize.width,
+                                        logoSize.height)];
+        } else {
+            CGFloat titleSize = MIN(48.0, MAX(36.0, width * 0.07));
+            NSDictionary *attributes = @{
+                NSFontAttributeName : SlockThreadShareFont(@"SpaceGrotesk-Bold", titleSize, UIFontWeightBold),
+                NSForegroundColorAttributeName : UIColor.blackColor
+            };
+            CGSize titleBounds = [@"RAFT" sizeWithAttributes:attributes];
+            [@"RAFT" drawAtPoint:CGPointMake(horizontalInset, (headerHeight - titleBounds.height) / 2.0)
+                   withAttributes:attributes];
+        }
+
+        CGFloat captionSize = MIN(26.0, MAX(18.0, width * 0.034));
+        NSDictionary *captionAttributes = @{
+            NSFontAttributeName : SlockThreadShareFont(@"SpaceGrotesk-SemiBold", captionSize, UIFontWeightSemibold),
+            NSForegroundColorAttributeName : [UIColor colorWithRed:(24.0 / 255.0)
+                                                              green:(24.0 / 255.0)
+                                                               blue:(24.0 / 255.0)
+                                                              alpha:1.0],
+            NSKernAttributeName : @(captionSize * 0.045)
+        };
+        NSString *site = @"raft.build";
+        CGSize siteBounds = [site sizeWithAttributes:captionAttributes];
+        [site drawAtPoint:CGPointMake(width - siteBounds.width - horizontalInset,
+                                      (headerHeight - siteBounds.height) / 2.0)
+           withAttributes:captionAttributes];
+
+        [content drawInRect:CGRectMake(0, headerHeight, width, contentHeight)];
+        CGContextSetStrokeColorWithColor(graphicsContext, UIColor.blackColor.CGColor);
+        CGContextSetLineWidth(graphicsContext, 3.0);
+        CGContextMoveToPoint(graphicsContext, 0, headerHeight);
+        CGContextAddLineToPoint(graphicsContext, width, headerHeight);
+        CGContextStrokePath(graphicsContext);
+        CGContextStrokeRect(graphicsContext, CGRectMake(1.5, 1.5, width - 3.0, outputSize.height - 3.0));
+    }];
+}
+
+static UIImage *SlockThreadShareStitchFragments(NSArray<NSString *> *fragmentPaths) {
+    NSMutableArray<UIImage *> *images = [NSMutableArray array];
+    CGFloat width = 0;
+    CGFloat height = 0;
+    for (NSString *path in fragmentPaths) {
+        UIImage *image = [UIImage imageWithContentsOfFile:path];
+        CGImageRef cgImage = image.CGImage;
+        if (!cgImage) {
+            return nil;
+        }
+        width = MAX(width, CGImageGetWidth(cgImage));
+        height += CGImageGetHeight(cgImage);
+        [images addObject:image];
+    }
+    if (images.count == 0 || width <= 0 || height <= 0) {
+        return nil;
+    }
+    UIGraphicsImageRendererFormat *format = [UIGraphicsImageRendererFormat defaultFormat];
+    format.scale = 1.0;
+    format.opaque = YES;
+    UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(width, height) format:format];
+    return [renderer imageWithActions:^(UIGraphicsImageRendererContext *context) {
+        [[UIColor whiteColor] setFill];
+        CGContextFillRect(context.CGContext, CGRectMake(0, 0, width, height));
+        CGFloat top = 0;
+        for (UIImage *image in images) {
+            CGFloat imageWidth = CGImageGetWidth(image.CGImage);
+            CGFloat imageHeight = CGImageGetHeight(image.CGImage);
+            [image drawInRect:CGRectMake(MAX(0, (width - imageWidth) / 2.0), top, imageWidth, imageHeight)];
+            top += imageHeight;
+        }
+    }];
+}
+
 @interface HRBridgeModule () <PHPickerViewControllerDelegate, UIDocumentPickerDelegate, SharedAttachmentDownloadObserver>
 
 @property(nonatomic, copy, nullable) KuiklyRenderCallback slock_attachmentExportCallback;
@@ -2040,6 +2261,92 @@ static NSString *SlockPickedAttachmentDisplayName(NSString *suggestedName,
     SlockBridgeRunOnMain(^{
         [self slock_showToast:content];
     });
+}
+
+- (void)exportThreadShareImage:(NSDictionary *)args {
+    KuiklyRenderCallback callback = args[KR_CALLBACK_KEY];
+    if (!callback) {
+        return;
+    }
+    NSDictionary *params = SlockBridgeParams(args);
+    SlockBridgeRunOnMain(^{
+        NSString *fragmentValue = SlockBridgeRawString(params[@"fragments"]);
+        NSMutableArray<NSString *> *fragmentPaths = [NSMutableArray array];
+        for (NSString *line in [fragmentValue componentsSeparatedByCharactersInSet:NSCharacterSet.newlineCharacterSet]) {
+            NSString *path = SlockBridgeString(line);
+            if (path.length > 0) {
+                [fragmentPaths addObject:path];
+            }
+        }
+        UIImage *image = nil;
+        BOOL frame = params[@"frame"] == nil || SlockBridgeBool(params[@"frame"]);
+        if (fragmentPaths.count > 0) {
+            image = SlockThreadShareStitchFragments(fragmentPaths);
+            frame = YES;
+        } else {
+            image = SlockThreadShareCaptureView(self.hr_rootView, params);
+        }
+        if (!image) {
+            callback(SlockThreadShareImageFailure(@"Unable to capture image"));
+            return;
+        }
+        UIImage *output = frame ? SlockThreadShareFrameImage(image) : image;
+        if (!output) {
+            callback(SlockThreadShareImageFailure(@"Unable to frame image"));
+            return;
+        }
+        callback(SlockThreadShareWriteImage(output, frame));
+    });
+}
+
+- (void)saveThreadShareImage:(NSDictionary *)args {
+    KuiklyRenderCallback callback = args[KR_CALLBACK_KEY];
+    if (!callback) {
+        return;
+    }
+    NSDictionary *params = SlockBridgeParams(args);
+    NSString *path = SlockBridgeString(params[@"path"]);
+    BOOL isDirectory = NO;
+    if (path.length == 0 ||
+        ![NSFileManager.defaultManager fileExistsAtPath:path isDirectory:&isDirectory] ||
+        isDirectory ||
+        [[NSFileManager.defaultManager attributesOfItemAtPath:path error:nil][NSFileSize] unsignedLongLongValue] == 0) {
+        callback(SlockThreadShareImageFailure(@"Image file unavailable"));
+        return;
+    }
+    NSURL *fileURL = [NSURL fileURLWithPath:path];
+    void (^saveImage)(void) = ^{
+        [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
+            [PHAssetChangeRequest creationRequestForAssetFromImageAtFileURL:fileURL];
+        } completionHandler:^(BOOL success, NSError *error) {
+            SlockBridgeRunOnMain(^{
+                if (success) {
+                    callback(@{ @"status" : @"ok", @"uri" : fileURL.absoluteString ?: @"" });
+                } else {
+                    callback(SlockThreadShareImageFailure(error.localizedDescription ?: @"Unable to save image"));
+                }
+            });
+        }];
+    };
+    PHAuthorizationStatus status = [PHPhotoLibrary authorizationStatusForAccessLevel:PHAccessLevelAddOnly];
+    if (status == PHAuthorizationStatusAuthorized || status == PHAuthorizationStatusLimited) {
+        saveImage();
+        return;
+    }
+    if (status == PHAuthorizationStatusDenied || status == PHAuthorizationStatusRestricted) {
+        callback(SlockThreadShareImageFailure(@"Photos access is unavailable"));
+        return;
+    }
+    [PHPhotoLibrary requestAuthorizationForAccessLevel:PHAccessLevelAddOnly handler:^(PHAuthorizationStatus authorizationStatus) {
+        SlockBridgeRunOnMain(^{
+            if (authorizationStatus == PHAuthorizationStatusAuthorized ||
+                authorizationStatus == PHAuthorizationStatusLimited) {
+                saveImage();
+            } else {
+                callback(SlockThreadShareImageFailure(@"Photos access is unavailable"));
+            }
+        });
+    }];
 }
 
 - (void)localServeTime:(NSDictionary *)args {

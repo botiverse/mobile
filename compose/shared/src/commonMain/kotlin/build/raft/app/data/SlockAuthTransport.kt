@@ -15,6 +15,11 @@ interface SlockAuthTransport {
     suspend fun completeProfile(authorization: String, bodyText: String): AuthNetworkResponse =
         AuthNetworkResponse(code = 501, bodyText = null, errorBodyText = "Profile setup is not implemented")
     suspend fun refresh(bodyText: String): AuthNetworkResponse
+    suspend fun refreshWithAttempt(
+        bodyText: String,
+        attemptId: String,
+        installationId: String,
+    ): AuthNetworkResponse = refresh(bodyText)
     suspend fun logout(bodyText: String): AuthNetworkResponse
     suspend fun servers(authorization: String): AuthNetworkResponse
     suspend fun serverOrder(authorization: String): AuthNetworkResponse

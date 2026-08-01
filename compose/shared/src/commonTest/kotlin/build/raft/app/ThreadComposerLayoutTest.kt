@@ -3,11 +3,193 @@ package build.raft.app
 import build.raft.app.data.SettingsDiagnosticsFeedbackDraft
 import build.raft.app.data.SharedMembersLoadStatus
 import build.raft.app.model.MemberKind
+import com.tencent.kuikly.compose.ui.geometry.Offset
+import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNull
+import kotlin.test.assertSame
+import kotlin.test.assertTrue
 
 class ThreadComposerLayoutTest {
+    @Test
+    fun suggestionPortalOnlyClearsItsCurrentOwner() {
+        val owner = Any()
+        val otherOwner = Any()
+        val anchorRef = SlockLiveRootAnchorRef(owner)
+        val presentation =
+            ThreadComposerSuggestionPresentation(
+                owner = owner,
+                anchorResolver = anchorRef.resolver(SlockPopoverLocalPoint.Exact(Offset.Zero)),
+                selectionContext =
+                    requireNotNull(
+                        threadComposerSuggestionSelectionContext(
+                            text = "@",
+                            selectionStart = 1,
+                            selectionEnd = 1,
+                            suggestionsEnabled = true
+                        )
+                    ),
+                contentSize = Size(320f, 240f),
+                panelState = ThreadComposerSuggestionPanelState.MemberLoading,
+                surface = ThreadComposerSurface(kind = KuiklyThreadSurfaceKind.Channel, channelId = "channel-1"),
+                memberSuggestions = emptyList(),
+                memberSelectedIndex = 0,
+                memberErrorCode = null,
+                channelSuggestions = emptyList(),
+                channelSelectedIndex = 0,
+                channelErrorCode = null,
+                agentStatusResolver = EmptySlockAgentStatusResolver,
+                onDismiss = {},
+                onMemberClick = { _, _ -> },
+                onChannelClick = { _, _ -> }
+            )
+        val portal = ThreadComposerSuggestionPortalState()
+
+        portal.show(presentation)
+        portal.clear(otherOwner)
+        assertSame(presentation, portal.presentation)
+
+        portal.clear(owner)
+        assertNull(portal.presentation)
+    }
+
+    @Test
+    fun stableChannelCallbackUsesLatestDraftAfterInitialEmptyComposition() {
+        val channel = KuiklyComposerChannelItem(name = "design")
+        val committed = mutableListOf<KuiklyComposerSuggestionEdit>()
+        val dispatcher =
+            ThreadComposerSuggestionSelectionDispatcher(
+                initialText = "",
+                initialSelectionStart = 0,
+                initialSelectionEnd = 0,
+                initialSuggestionsEnabled = true
+            )
+        val stableCallback = dispatcher::selectChannel
+
+        dispatcher.updateDraft(text = "#", selectionStart = 1, selectionEnd = 1)
+        dispatcher.updateComposition(
+            suggestionsEnabled = true,
+            memberSuggestions = emptyList(),
+            channelSuggestions = listOf(channel),
+            onCommit = committed::add
+        )
+        val context =
+            requireNotNull(
+                threadComposerSuggestionSelectionContext(
+                    text = "#",
+                    selectionStart = 1,
+                    selectionEnd = 1,
+                    suggestionsEnabled = true
+                )
+            )
+
+        assertTrue(stableCallback(context, channel))
+        assertEquals(listOf(KuiklyComposerSuggestionEdit(text = "#design ", cursor = 8)), committed)
+    }
+
+    @Test
+    fun stableMemberCallbackUsesLatestDraftAfterInitialEmptyComposition() {
+        val member = KuiklyComposerMemberItem(displayName = "Artin", handle = "artin", memberId = "member-1")
+        val committed = mutableListOf<KuiklyComposerSuggestionEdit>()
+        val dispatcher =
+            ThreadComposerSuggestionSelectionDispatcher(
+                initialText = "",
+                initialSelectionStart = 0,
+                initialSelectionEnd = 0,
+                initialSuggestionsEnabled = true
+            )
+        val stableCallback = dispatcher::selectMember
+
+        dispatcher.updateDraft(text = "@", selectionStart = 1, selectionEnd = 1)
+        dispatcher.updateComposition(
+            suggestionsEnabled = true,
+            memberSuggestions = listOf(member),
+            channelSuggestions = emptyList(),
+            onCommit = committed::add
+        )
+        val context =
+            requireNotNull(
+                threadComposerSuggestionSelectionContext(
+                    text = "@",
+                    selectionStart = 1,
+                    selectionEnd = 1,
+                    suggestionsEnabled = true
+                )
+            )
+
+        assertTrue(stableCallback(context, member))
+        assertEquals(listOf(KuiklyComposerSuggestionEdit(text = "@artin ", cursor = 7)), committed)
+    }
+
+    @Test
+    fun stalePresentationIsRejectedAfterTextOrRangeChanges() {
+        val channel = KuiklyComposerChannelItem(name = "design")
+        val committed = mutableListOf<KuiklyComposerSuggestionEdit>()
+        val dispatcher =
+            ThreadComposerSuggestionSelectionDispatcher(
+                initialText = "#d",
+                initialSelectionStart = 2,
+                initialSelectionEnd = 2,
+                initialSuggestionsEnabled = true
+            )
+        dispatcher.updateComposition(
+            suggestionsEnabled = true,
+            memberSuggestions = emptyList(),
+            channelSuggestions = listOf(channel),
+            onCommit = committed::add
+        )
+        val oldContext =
+            requireNotNull(
+                threadComposerSuggestionSelectionContext(
+                    text = "#d",
+                    selectionStart = 2,
+                    selectionEnd = 2,
+                    suggestionsEnabled = true
+                )
+            )
+
+        dispatcher.updateDraft(text = "#de", selectionStart = 3, selectionEnd = 3)
+        assertFalse(dispatcher.selectChannel(oldContext, channel))
+        dispatcher.updateDraft(text = "#d", selectionStart = 1, selectionEnd = 1)
+        assertFalse(dispatcher.selectChannel(oldContext, channel))
+        assertEquals(emptyList(), committed)
+    }
+
+    @Test
+    fun candidateRemovedFromLatestCompositionIsRejectedByIdentity() {
+        val member = KuiklyComposerMemberItem(displayName = "Artin", handle = "artin", memberId = "member-1")
+        val replacement = KuiklyComposerMemberItem(displayName = "Other", handle = "other", memberId = "member-2")
+        val committed = mutableListOf<KuiklyComposerSuggestionEdit>()
+        val dispatcher =
+            ThreadComposerSuggestionSelectionDispatcher(
+                initialText = "@",
+                initialSelectionStart = 1,
+                initialSelectionEnd = 1,
+                initialSuggestionsEnabled = true
+            )
+        val context =
+            requireNotNull(
+                threadComposerSuggestionSelectionContext(
+                    text = "@",
+                    selectionStart = 1,
+                    selectionEnd = 1,
+                    suggestionsEnabled = true
+                )
+            )
+        dispatcher.updateComposition(
+            suggestionsEnabled = true,
+            memberSuggestions = listOf(replacement),
+            channelSuggestions = emptyList(),
+            onCommit = committed::add
+        )
+
+        assertFalse(dispatcher.selectMember(context, member))
+        assertEquals(emptyList(), committed)
+    }
+
     @Test
     fun threadComposerBottomPaddingIncludesClosedKeyboardSafeArea() {
         assertEquals(38.dp, threadComposerBottomPadding(keyboardInsetDp = 0f, bottomSafeArea = 24.dp))
@@ -291,10 +473,10 @@ class ThreadComposerLayoutTest {
     }
 
     @Test
-    fun suggestionPanelSlotHeightCanOmitMemberHeaderForDirectMessages() {
+    fun suggestionPanelHeightCanOmitMemberHeaderForDirectMessages() {
         assertEquals(
             114.dp,
-            composerSuggestionPanelSlotHeight(
+            composerSuggestionPanelHeight(
                 panelState = ThreadComposerSuggestionPanelState.MemberItems,
                 memberCount = 3,
                 channelCount = 0,
@@ -304,10 +486,10 @@ class ThreadComposerLayoutTest {
     }
 
     @Test
-    fun suggestionPanelSlotHeightMatchesMemberPanelHeight() {
+    fun suggestionPanelHeightMatchesMemberPanelHeight() {
         assertEquals(
             240.dp,
-            composerSuggestionPanelSlotHeight(
+            composerSuggestionPanelHeight(
                 panelState = ThreadComposerSuggestionPanelState.MemberItems,
                 memberCount = 6,
                 channelCount = 0
@@ -316,10 +498,10 @@ class ThreadComposerLayoutTest {
     }
 
     @Test
-    fun suggestionPanelSlotHeightIncludesMemberSectionHeaders() {
+    fun suggestionPanelHeightIncludesMemberSectionHeaders() {
         assertEquals(
             220.dp,
-            composerSuggestionPanelSlotHeight(
+            composerSuggestionPanelHeight(
                 panelState = ThreadComposerSuggestionPanelState.MemberItems,
                 memberCount = 3,
                 channelCount = 0,
