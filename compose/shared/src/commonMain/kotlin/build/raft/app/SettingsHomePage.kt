@@ -11879,9 +11879,11 @@ private fun SharedHandsFeedbackContent(
         remember(feedbackDraftStore, accountId, visualFixture) {
             visualFixture?.draft ?: feedbackDraftStore.read(accountId)
         }
-    var lastPersistedDraft by remember(feedbackDraftStore, accountId, visualFixture) {
-        mutableStateOf(restoredDraft)
-    }
+    val lastPersistedDraftState =
+        remember(feedbackDraftStore, accountId, visualFixture) {
+            mutableStateOf(restoredDraft)
+        }
+    var lastPersistedDraft by lastPersistedDraftState
     val composerSendKeyEnabled = chatLayoutPreferenceStore.readComposerSendKeyEnabledSync()
     var messageFieldValue by remember(accountId) {
         mutableStateOf(
@@ -11891,10 +11893,13 @@ private fun SharedHandsFeedbackContent(
             )
         )
     }
-    var draftTextForPersistence by remember(accountId) { mutableStateOf(restoredDraft.text) }
-    val latestDraftTextForPersistence by rememberUpdatedState(draftTextForPersistence)
+    val draftTextForPersistenceState =
+        remember(accountId) { mutableStateOf(restoredDraft.text) }
+    var draftTextForPersistence by draftTextForPersistenceState
     val message = messageFieldValue.text
-    var attachments by remember(accountId) { mutableStateOf(restoredDraft.attachments) }
+    val attachmentsState =
+        remember(accountId) { mutableStateOf(restoredDraft.attachments) }
+    var attachments by attachmentsState
     var pendingImageEditSession by remember(accountId, feedbackPageGeneration) {
         mutableStateOf<SettingsHandsFeedbackImageEditSession?>(null)
     }
@@ -11904,8 +11909,9 @@ private fun SharedHandsFeedbackContent(
         }
     val latestFeedbackAccountId by rememberUpdatedState(accountId)
     val latestFeedbackPageGeneration by rememberUpdatedState(feedbackPageGeneration)
-    val latestAttachmentsForPersistence by rememberUpdatedState(attachments)
-    val latestLastPersistedDraft by rememberUpdatedState(lastPersistedDraft)
+    val feedbackDraftResetGenerationState =
+        remember(accountId) { mutableStateOf(0L) }
+    var feedbackDraftResetGeneration by feedbackDraftResetGenerationState
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var pendingRetryRequest by remember { mutableStateOf<SettingsHandsFeedbackRetryRequest?>(null) }
@@ -11953,10 +11959,10 @@ private fun SharedHandsFeedbackContent(
         onDispose {
             val currentDraft =
                 SettingsHandsFeedbackDraftSnapshot(
-                    text = latestDraftTextForPersistence,
-                    attachments = latestAttachmentsForPersistence
+                    text = draftTextForPersistenceState.value,
+                    attachments = attachmentsState.value
                 )
-            if (currentDraft != latestLastPersistedDraft) {
+            if (currentDraft != lastPersistedDraftState.value) {
                 feedbackDraftStore.save(
                     accountId = accountId,
                     text = currentDraft.text,
@@ -12051,14 +12057,18 @@ private fun SharedHandsFeedbackContent(
                                 (file.sizeBytes ?: 0L) <= attachmentMaxBytes
                             }
                         val rejectedCount = pickedFiles.size - accepted.size
+                        val currentAttachments = attachmentsState.value
+                        val currentRemainingSlots =
+                            (attachmentLimit - currentAttachments.size).coerceAtLeast(0)
                         val merged =
-                            (attachments + accepted)
+                            (currentAttachments + accepted)
                                 .distinctBy { it.fileRef ?: it.id }
                                 .take(attachmentLimit)
                         attachments = merged
                         error = when {
                             rejectedCount > 0 -> copy.attachmentTooLarge(attachmentMaxLabel)
-                            accepted.size > remainingSlots -> copy.attachmentLimitTrimmed(attachmentLimit)
+                            accepted.size > currentRemainingSlots ->
+                                copy.attachmentLimitTrimmed(attachmentLimit)
                             else -> null
                         }
                     }
@@ -12109,11 +12119,12 @@ private fun SharedHandsFeedbackContent(
                         is SettingsHandsFeedbackImageEditFoldResult.Complete -> {
                             if (!imageEditCommitGate.tryClaim(session)) return@launch
                             pendingImageEditSession = null
+                            val initialDraftResetGeneration = feedbackDraftResetGenerationState.value
                             try {
                                 when (
                                     val commit =
                                         commitSettingsHandsFeedbackEditedGroup(
-                                            existing = attachments,
+                                            existing = attachmentsState.value,
                                             edited = result.files,
                                             attachmentMaxBytes = attachmentMaxBytes,
                                             attachmentLimit = attachmentLimit,
@@ -12124,6 +12135,11 @@ private fun SharedHandsFeedbackContent(
                                                     currentPageGeneration = latestFeedbackPageGeneration
                                                 )
                                             },
+                                            currentExisting = { attachmentsState.value },
+                                            initialDraftResetGeneration = initialDraftResetGeneration,
+                                            currentDraftResetGeneration = {
+                                                feedbackDraftResetGenerationState.value
+                                            },
                                             promote = { selected ->
                                                 settingsCapabilities.promoteFeedbackDraftAttachments(
                                                     accountId = accountId,
@@ -12133,11 +12149,17 @@ private fun SharedHandsFeedbackContent(
                                                 )
                                             },
                                             persist = { promotedAttachments ->
+                                                val currentDraftText = draftTextForPersistenceState.value
                                                 feedbackDraftStore.save(
                                                     accountId = accountId,
-                                                    text = draftTextForPersistence,
+                                                    text = currentDraftText,
                                                     attachments = promotedAttachments
                                                 )
+                                                lastPersistedDraft =
+                                                    SettingsHandsFeedbackDraftSnapshot(
+                                                        text = currentDraftText,
+                                                        attachments = promotedAttachments
+                                                    )
                                             },
                                             discard = { promotedAttachments ->
                                                 settingsCapabilities.discardFeedbackDraftAttachments(
@@ -12149,11 +12171,6 @@ private fun SharedHandsFeedbackContent(
                                 ) {
                                     is SettingsHandsFeedbackEditedGroupCommitResult.Committed -> {
                                         val promotion = commit.promotion
-                                        lastPersistedDraft =
-                                            SettingsHandsFeedbackDraftSnapshot(
-                                                text = draftTextForPersistence,
-                                                attachments = promotion.attachments
-                                            )
                                         attachments = promotion.attachments
                                         error =
                                             if (promotion.trimmedByLimit) {
@@ -12163,12 +12180,16 @@ private fun SharedHandsFeedbackContent(
                                             }
                                     }
                                     is SettingsHandsFeedbackEditedGroupCommitResult.Failed -> {
-                                        error =
-                                            if ("too_large" in commit.code) {
-                                                copy.attachmentTooLarge(attachmentMaxLabel)
-                                            } else {
-                                                copy.attachmentPickerFailed
-                                            }
+                                        if ("session_stale" !in commit.code) {
+                                            error =
+                                                if ("too_large" in commit.code) {
+                                                    copy.attachmentTooLarge(attachmentMaxLabel)
+                                                } else if ("limit_reached" in commit.code) {
+                                                    copy.attachmentLimitReached(attachmentLimit)
+                                                } else {
+                                                    copy.attachmentPickerFailed
+                                                }
+                                        }
                                     }
                                 }
                             } finally {
@@ -12206,6 +12227,8 @@ private fun SharedHandsFeedbackContent(
             error = copy.messageRequired
             return
         }
+        pendingImageEditSession = null
+        feedbackDraftResetGeneration += 1L
         settingsCapabilities.log("settings_hands_feedback_submit_enter")
         busy = true
         error = null
@@ -12450,6 +12473,10 @@ private fun SharedHandsFeedbackContent(
                                         )
                                         lastPersistedDraft = nextDraft
                                         attachments = remaining
+                                        if (remaining.isEmpty()) {
+                                            pendingImageEditSession = null
+                                            feedbackDraftResetGeneration += 1L
+                                        }
                                         scope.launch {
                                             try {
                                                 settingsCapabilities.discardFeedbackDraftAttachments(

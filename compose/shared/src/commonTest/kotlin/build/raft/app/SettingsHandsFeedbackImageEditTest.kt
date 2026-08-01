@@ -12,6 +12,8 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 
 class SettingsHandsFeedbackImageEditTest {
@@ -460,6 +462,194 @@ class SettingsHandsFeedbackImageEditTest {
         )
         assertEquals(0, persistCount)
         assertEquals(1, discardCount)
+    }
+
+    @Test
+    fun attachmentAddedWhilePromotionIsSuspendedIsMergedFromCommitTimeDraftState() = runBlocking {
+        val existing = image("existing", "file:///draft/existing.png")
+        val concurrent = image("concurrent", "file:///draft/concurrent.pdf")
+        val durable =
+            image("edited", "file:///durable/edited.png")
+                .copy(source = "settings_feedback_draft")
+        val promotionStarted = CompletableDeferred<Unit>()
+        val finishPromotion = CompletableDeferred<Unit>()
+        var currentAttachments = listOf(existing)
+        var persisted = emptyList<PlatformFile>()
+
+        val pendingCommit =
+            async {
+                commitSettingsHandsFeedbackEditedGroup(
+                    existing = currentAttachments,
+                    edited = listOf(image("edited", "file:///editor-temp.png")),
+                    attachmentMaxBytes = 1_000,
+                    attachmentLimit = 9,
+                    isCurrent = { true },
+                    promote = {
+                        promotionStarted.complete(Unit)
+                        finishPromotion.await()
+                        DataResult.Content(listOf(durable))
+                    },
+                    persist = { persisted = it },
+                    currentExisting = { currentAttachments }
+                )
+            }
+
+        promotionStarted.await()
+        currentAttachments = currentAttachments + concurrent
+        finishPromotion.complete(Unit)
+
+        val committed =
+            assertIs<SettingsHandsFeedbackEditedGroupCommitResult.Committed>(pendingCommit.await())
+        val expected = listOf(existing, concurrent, durable)
+        assertEquals(expected, committed.promotion.attachments)
+        assertEquals(expected, persisted)
+    }
+
+    @Test
+    fun attachmentAddedIntoLastSlotWhilePromotionIsSuspendedDiscardsTheWholeEditedGroup() =
+        runBlocking {
+            val existing =
+                (0 until 7).map { index ->
+                    image("existing-$index", "file:///draft/existing-$index.png")
+                }
+            val concurrent = image("concurrent", "file:///draft/concurrent.pdf")
+            val durable =
+                listOf(
+                    image("edited-0", "file:///durable/edited-0.png")
+                        .copy(source = "settings_feedback_draft"),
+                    image("edited-1", "file:///durable/edited-1.png")
+                        .copy(source = "settings_feedback_draft")
+                )
+            val promotionStarted = CompletableDeferred<Unit>()
+            val finishPromotion = CompletableDeferred<Unit>()
+            var currentAttachments = existing
+            var persistCount = 0
+            var discarded = emptyList<PlatformFile>()
+
+            val pendingCommit =
+                async {
+                    commitSettingsHandsFeedbackEditedGroup(
+                        existing = currentAttachments,
+                        edited =
+                            listOf(
+                                image("edited-0", "file:///editor-temp-0.png"),
+                                image("edited-1", "file:///editor-temp-1.png")
+                            ),
+                        attachmentMaxBytes = 1_000,
+                        attachmentLimit = 9,
+                        isCurrent = { true },
+                        promote = {
+                            promotionStarted.complete(Unit)
+                            finishPromotion.await()
+                            DataResult.Content(durable)
+                        },
+                        persist = { persistCount += 1 },
+                        currentExisting = { currentAttachments },
+                        discard = { discarded = it }
+                    )
+                }
+
+            promotionStarted.await()
+            currentAttachments = currentAttachments + concurrent
+            finishPromotion.complete(Unit)
+
+            assertEquals(
+                "settings_feedback_attachment_limit_reached",
+                assertIs<SettingsHandsFeedbackEditedGroupCommitResult.Failed>(pendingCommit.await()).code
+            )
+            assertEquals(0, persistCount)
+            assertEquals(durable, discarded)
+            assertEquals(existing + concurrent, currentAttachments)
+        }
+
+    @Test
+    fun attachmentRemovedWhilePromotionIsSuspendedIsNotRestoredByTheCommit() = runBlocking {
+        val kept = image("kept", "file:///draft/kept.png")
+        val removed = image("removed", "file:///draft/removed.png")
+        val durable =
+            image("edited", "file:///durable/edited.png")
+                .copy(source = "settings_feedback_draft")
+        val promotionStarted = CompletableDeferred<Unit>()
+        val finishPromotion = CompletableDeferred<Unit>()
+        var currentAttachments = listOf(kept, removed)
+        var persisted = emptyList<PlatformFile>()
+
+        val pendingCommit =
+            async {
+                commitSettingsHandsFeedbackEditedGroup(
+                    existing = currentAttachments,
+                    edited = listOf(image("edited", "file:///editor-temp.png")),
+                    attachmentMaxBytes = 1_000,
+                    attachmentLimit = 9,
+                    isCurrent = { true },
+                    promote = {
+                        promotionStarted.complete(Unit)
+                        finishPromotion.await()
+                        DataResult.Content(listOf(durable))
+                    },
+                    persist = { persisted = it },
+                    currentExisting = { currentAttachments }
+                )
+            }
+
+        promotionStarted.await()
+        currentAttachments = listOf(kept)
+        finishPromotion.complete(Unit)
+
+        val committed =
+            assertIs<SettingsHandsFeedbackEditedGroupCommitResult.Committed>(pendingCommit.await())
+        assertEquals(listOf(kept, durable), committed.promotion.attachments)
+        assertEquals(listOf(kept, durable), persisted)
+        assertFalse(persisted.contains(removed))
+    }
+
+    @Test
+    fun draftClearedWhilePromotionIsSuspendedFailsStaleAndNeverOverwritesTheClear() = runBlocking {
+        val existing = image("existing", "file:///draft/existing.png")
+        val durable =
+            image("edited", "file:///durable/edited.png")
+                .copy(source = "settings_feedback_draft")
+        val promotionStarted = CompletableDeferred<Unit>()
+        val finishPromotion = CompletableDeferred<Unit>()
+        var currentAttachments = listOf(existing)
+        var draftResetGeneration = 7L
+        val initialDraftResetGeneration = draftResetGeneration
+        var persistCount = 0
+        var discarded = emptyList<PlatformFile>()
+
+        val pendingCommit =
+            async {
+                commitSettingsHandsFeedbackEditedGroup(
+                    existing = currentAttachments,
+                    edited = listOf(image("edited", "file:///editor-temp.png")),
+                    attachmentMaxBytes = 1_000,
+                    attachmentLimit = 9,
+                    isCurrent = { true },
+                    promote = {
+                        promotionStarted.complete(Unit)
+                        finishPromotion.await()
+                        DataResult.Content(listOf(durable))
+                    },
+                    persist = { persistCount += 1 },
+                    currentExisting = { currentAttachments },
+                    initialDraftResetGeneration = initialDraftResetGeneration,
+                    currentDraftResetGeneration = { draftResetGeneration },
+                    discard = { discarded = it }
+                )
+            }
+
+        promotionStarted.await()
+        currentAttachments = emptyList()
+        draftResetGeneration += 1L
+        finishPromotion.complete(Unit)
+
+        assertEquals(
+            "settings_feedback_attachment_session_stale",
+            assertIs<SettingsHandsFeedbackEditedGroupCommitResult.Failed>(pendingCommit.await()).code
+        )
+        assertEquals(0, persistCount)
+        assertEquals(listOf(durable), discarded)
+        assertTrue(currentAttachments.isEmpty())
     }
 
     @Test

@@ -318,18 +318,21 @@ internal suspend fun commitSettingsHandsFeedbackEditedGroup(
     isCurrent: () -> Boolean,
     promote: suspend (List<PlatformFile>) -> DataResult<List<PlatformFile>>,
     persist: (List<PlatformFile>) -> Unit,
+    currentExisting: () -> List<PlatformFile> = { existing },
+    initialDraftResetGeneration: Long = 0L,
+    currentDraftResetGeneration: () -> Long = { initialDraftResetGeneration },
     discard: suspend (List<PlatformFile>) -> Unit = {}
 ): SettingsHandsFeedbackEditedGroupCommitResult {
-    val remainingSlots = (attachmentLimit - existing.size).coerceAtLeast(0)
+    if (!isCurrent() || currentDraftResetGeneration() != initialDraftResetGeneration) {
+        return SettingsHandsFeedbackEditedGroupCommitResult.Failed(
+            "settings_feedback_attachment_session_stale"
+        )
+    }
+    val remainingSlots = (attachmentLimit - currentExisting().size).coerceAtLeast(0)
     val selected = edited.take(remainingSlots)
     if (selected.isEmpty()) {
         return SettingsHandsFeedbackEditedGroupCommitResult.Failed(
             "settings_feedback_attachment_limit_reached"
-        )
-    }
-    if (!isCurrent()) {
-        return SettingsHandsFeedbackEditedGroupCommitResult.Failed(
-            "settings_feedback_attachment_session_stale"
         )
     }
     val promoted =
@@ -344,28 +347,37 @@ internal suspend fun commitSettingsHandsFeedbackEditedGroup(
         }
     return when (promoted) {
         is DataResult.Content -> {
-            if (!isCurrent()) {
+            if (!isCurrent() || currentDraftResetGeneration() != initialDraftResetGeneration) {
                 discardSettingsHandsFeedbackPromotedAttachments(promoted.data, discard)
                 return SettingsHandsFeedbackEditedGroupCommitResult.Failed(
                     "settings_feedback_attachment_session_stale"
                 )
             }
-            val promotion =
+            val promotionBeforeSelectionTrim =
                 promoteSettingsHandsFeedbackEditedAttachments(
-                    existing = existing,
+                    existing = currentExisting(),
                     edited = promoted.data,
                     attachmentMaxBytes = attachmentMaxBytes,
                     attachmentLimit = attachmentLimit
-                ).copy(
-                    trimmedByLimit = edited.size > selected.size
                 )
-            if (!promotion.isCommittable || promoted.data.size != selected.size) {
+            val promotion =
+                promotionBeforeSelectionTrim.copy(
+                    trimmedByLimit =
+                        promotionBeforeSelectionTrim.trimmedByLimit || edited.size > selected.size
+                )
+            if (
+                !promotion.isCommittable ||
+                promoted.data.size != selected.size ||
+                promotionBeforeSelectionTrim.trimmedByLimit
+            ) {
                 discardSettingsHandsFeedbackPromotedAttachments(promoted.data, discard)
                 val code =
-                    if (promotion.rejectedTooLargeCount > 0) {
-                        "settings_feedback_attachment_too_large"
-                    } else {
-                        "settings_feedback_attachment_promotion_incomplete"
+                    when {
+                        promotion.rejectedTooLargeCount > 0 ->
+                            "settings_feedback_attachment_too_large"
+                        promotionBeforeSelectionTrim.trimmedByLimit ->
+                            "settings_feedback_attachment_limit_reached"
+                        else -> "settings_feedback_attachment_promotion_incomplete"
                     }
                 SettingsHandsFeedbackEditedGroupCommitResult.Failed(code)
             } else {
