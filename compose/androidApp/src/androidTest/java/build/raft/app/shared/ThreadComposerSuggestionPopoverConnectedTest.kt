@@ -5,6 +5,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Rect
 import android.os.Build
 import android.os.SystemClock
 import android.view.MotionEvent
@@ -13,12 +14,103 @@ import android.view.WindowInsets
 import android.view.WindowInsetsController
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.uiautomator.By
+import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.Until
 import org.json.JSONObject
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.math.abs
 
 class ThreadComposerSuggestionPopoverConnectedTest {
+    @Test
+    fun openSuggestionCandidateMovesAndRemainsHittableAfterAncestorRelayout() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val device = UiDevice.getInstance(instrumentation)
+        val context = instrumentation.targetContext
+        val intent =
+            Intent(context, SlockKuiklyActivity::class.java)
+                .putExtra("pageName", SlockKuiklyPages.THREAD_COMPOSER_VISUAL)
+                .putExtra(
+                    "pageData",
+                    JSONObject()
+                        .put("instanceId", "composer-suggestion-reposition-oracle")
+                        .put("visualFixture", RepositionOracleFixture)
+                        .toString()
+                )
+                .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
+
+        ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
+            scenario.onActivity { activity -> activity.hideSystemBarsForSuggestionTest() }
+            instrumentation.waitForIdleSync()
+
+            val initialCandidate =
+                requireNotNull(device.wait(Until.findObject(By.text(CandidateLabel)), CandidateWaitMs)) {
+                    "Initial suggestion candidate was not exposed before the relayout oracle"
+                }
+            val initialBounds = Rect(initialCandidate.visibleBounds)
+            assertValidCandidateBounds("initial", initialBounds)
+            val beforeRelayout = captureActivityBitmap(scenario)
+
+            val movedCandidate = waitForMovedCandidate(device, initialBounds, instrumentation)
+            val movedBounds = Rect(movedCandidate.visibleBounds)
+            assertValidCandidateBounds("moved", movedBounds)
+            val afterRelayout = captureActivityBitmap(scenario)
+            val expectedShiftPx = RepositionShiftDp * context.resources.displayMetrics.density
+            val actualShiftPx = movedBounds.centerY() - initialBounds.centerY()
+            assertTrue(
+                "Candidate hit bounds did not follow the visual anchor relayout; expectedShift=$expectedShiftPx actualShift=$actualShiftPx initial=$initialBounds moved=$movedBounds",
+                abs(actualShiftPx - expectedShiftPx) <= MaxRepositionErrorPx
+            )
+
+            val oldVisualDiff =
+                beforeRelayout.changedPixelsComparedWith(
+                    afterRelayout,
+                    initialBounds.toPixelRegion(beforeRelayout.width, beforeRelayout.height)
+                )
+            val newVisualDiff =
+                beforeRelayout.changedPixelsComparedWith(
+                    afterRelayout,
+                    movedBounds.toPixelRegion(beforeRelayout.width, beforeRelayout.height)
+                )
+            assertTrue(
+                "Suggestion visuals did not leave the old candidate bounds; changedPixels=$oldVisualDiff bounds=$initialBounds",
+                oldVisualDiff >= MinCandidateRelayoutChangedPixels
+            )
+            assertTrue(
+                "Suggestion visuals did not enter the moved candidate bounds; changedPixels=$newVisualDiff bounds=$movedBounds",
+                newVisualDiff >= MinCandidateRelayoutChangedPixels
+            )
+
+            movedCandidate.click()
+            instrumentation.waitForIdleSync()
+            assertTrue(
+                "Candidate tap at moved hit bounds did not update the composer input",
+                device.wait(Until.hasObject(By.textContains("@scroll-candidate-1")), CandidateTapWaitMs)
+            )
+            assertTrue(
+                "Candidate tap at moved hit bounds did not close the popover",
+                device.wait(Until.gone(By.text(CandidateLabel)), CandidateTapWaitMs)
+            )
+            val afterTap = captureActivityBitmap(scenario)
+            val uncoveredUnderlay =
+                afterTap.countNearColor(
+                    UnderlayCyan,
+                    movedBounds.toPixelRegion(afterTap.width, afterTap.height)
+                )
+            val leakAfterTap = afterTap.countNearColor(LeakRed, StatusRegionDp, instrumentation)
+            assertTrue(
+                "Popover did not uncover its underlay after moved candidate tap; cyanPixels=$uncoveredUnderlay",
+                uncoveredUnderlay >= MinMovedCandidateUnderlayPixels
+            )
+            assertTrue("Moved candidate tap reached the underlying message; leakPixels=$leakAfterTap", leakAfterTap <= MaxLeakPixels)
+
+            beforeRelayout.recycle()
+            afterRelayout.recycle()
+            afterTap.recycle()
+        }
+    }
+
     @Test
     fun overflowingSuggestionsScrollAndCandidateTapDoesNotReachUnderlyingMessage() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -123,8 +215,12 @@ class ThreadComposerSuggestionPopoverConnectedTest {
         other: Bitmap,
         regionDp: DpRegion,
         instrumentation: Instrumentation
+    ): Int = changedPixelsComparedWith(other, regionDp.toPixelRegion(instrumentation, width, height))
+
+    private fun Bitmap.changedPixelsComparedWith(
+        other: Bitmap,
+        region: PixelRegion
     ): Int {
-        val region = regionDp.toPixelRegion(instrumentation, width, height)
         var changed = 0
         for (y in region.top until region.bottom) {
             for (x in region.left until region.right) {
@@ -146,8 +242,12 @@ class ThreadComposerSuggestionPopoverConnectedTest {
         target: Int,
         regionDp: DpRegion,
         instrumentation: Instrumentation
+    ): Int = countNearColor(target, regionDp.toPixelRegion(instrumentation, width, height))
+
+    private fun Bitmap.countNearColor(
+        target: Int,
+        region: PixelRegion
     ): Int {
-        val region = regionDp.toPixelRegion(instrumentation, width, height)
         var count = 0
         for (y in region.top until region.bottom) {
             for (x in region.left until region.right) {
@@ -174,6 +274,35 @@ class ThreadComposerSuggestionPopoverConnectedTest {
             right = (right * density).toInt().coerceIn(0, bitmapWidth),
             bottom = (bottom * density).toInt().coerceIn(0, bitmapHeight)
         )
+    }
+
+    private fun Rect.toPixelRegion(bitmapWidth: Int, bitmapHeight: Int): PixelRegion =
+        PixelRegion(
+            left = left.coerceIn(0, bitmapWidth),
+            top = top.coerceIn(0, bitmapHeight),
+            right = right.coerceIn(0, bitmapWidth),
+            bottom = bottom.coerceIn(0, bitmapHeight)
+        )
+
+    private fun waitForMovedCandidate(
+        device: UiDevice,
+        initialBounds: Rect,
+        instrumentation: Instrumentation
+    ): androidx.test.uiautomator.UiObject2 {
+        val deadline = SystemClock.uptimeMillis() + CandidateMoveWaitMs
+        while (SystemClock.uptimeMillis() < deadline) {
+            instrumentation.waitForIdleSync()
+            val candidate = device.findObject(By.text(CandidateLabel))
+            if (candidate != null && abs(candidate.visibleBounds.centerY() - initialBounds.centerY()) >= MinCandidateMovePx) {
+                return candidate
+            }
+            SystemClock.sleep(CandidateMovePollMs)
+        }
+        error("Suggestion candidate did not move after the relayout oracle; initial=$initialBounds")
+    }
+
+    private fun assertValidCandidateBounds(label: String, bounds: Rect) {
+        assertTrue("$label candidate bounds are empty or inverted: $bounds", bounds.left < bounds.right && bounds.top < bounds.bottom)
     }
 
     private fun SlockKuiklyActivity.hideSystemBarsForSuggestionTest() {
@@ -203,10 +332,18 @@ class ThreadComposerSuggestionPopoverConnectedTest {
         private const val SwipeDurationMs = 600L
         private const val SwipeSteps = 12
         private const val TapDurationMs = 80L
+        private const val CandidateWaitMs = 5_000L
+        private const val CandidateMoveWaitMs = 10_000L
+        private const val CandidateMovePollMs = 100L
+        private const val CandidateTapWaitMs = 3_000L
         private const val PixelDifferenceTolerance = 18
         private const val ColorTolerance = 16
         private const val MinPanelChangedPixels = 8_000
         private const val MinInputChangedPixels = 120
+        private const val MinCandidateMovePx = 80
+        private const val MaxRepositionErrorPx = 12f
+        private const val MinCandidateRelayoutChangedPixels = 600
+        private const val MinMovedCandidateUnderlayPixels = 600
         private const val MaxUnderlayPixelIncreaseDuringDrag = 600
         private const val MinUncoveredUnderlayPixels = 20_000
         private const val MaxLeakPixels = 100
@@ -215,5 +352,8 @@ class ThreadComposerSuggestionPopoverConnectedTest {
         private val StatusRegionDp = DpRegion(left = 0f, top = 720f, right = 412f, bottom = 915f)
         private val UnderlayCyan = Color.rgb(34, 211, 238)
         private val LeakRed = Color.rgb(239, 68, 68)
+        private const val RepositionOracleFixture = "member_suggestions_reposition_oracle"
+        private const val CandidateLabel = "Scrollable candidate 1"
+        private const val RepositionShiftDp = 120f
     }
 }

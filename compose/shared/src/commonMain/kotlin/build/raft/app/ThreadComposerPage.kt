@@ -120,7 +120,10 @@ private val ComposerChannelSuggestionGlyphSize = 12.dp
 private val ThreadComposerVisualComponentWidth = 342.dp
 private val ThreadComposerVisualComponentMinHeight = 100.dp
 private const val ThreadComposerVisualSuggestionAnchorOffset = 216f
+private const val ThreadComposerVisualSuggestionRepositionOffset = 336f
 private const val ThreadComposerSuggestionScrollOracleFixture = "member_suggestions_scroll_oracle"
+private const val ThreadComposerSuggestionRepositionOracleFixture = "member_suggestions_reposition_oracle"
+private const val ThreadComposerSuggestionRepositionDelayMillis = 8_000L
 private val ThreadComposerSuggestionScrollOracleUnderlay = Color(0xFF22D3EE)
 private val ThreadComposerSuggestionScrollOracleLeak = Color(0xFFEF4444)
 private const val ThreadComposerVisualPreviewUri =
@@ -166,7 +169,7 @@ internal fun ThreadComposerSuggestionPortalHost(
     portalState: ThreadComposerSuggestionPortalState
 ) {
     val presentation = portalState.presentation ?: return
-    val anchor = presentation.anchorResolver.resolve() ?: return
+    val anchor = presentation.anchorResolver.resolveCurrentPlacement() ?: return
     val density = LocalDensity.current
     val panelWidth = with(density) { presentation.contentSize.width.toDp() }
     val panelHeight = with(density) { presentation.contentSize.height.toDp() }
@@ -704,7 +707,18 @@ internal fun ThreadComposerScreen() {
     }
     val suggestionPortal = remember(payload.instanceId) { ThreadComposerSuggestionPortalState() }
     var suggestionScrollOracleLeak by remember(payload.instanceId) { mutableStateOf(false) }
-    val suggestionScrollOracleEnabled = visualFixture == ThreadComposerSuggestionScrollOracleFixture
+    var suggestionRepositioned by remember(payload.instanceId) { mutableStateOf(false) }
+    val suggestionScrollOracleEnabled =
+        visualFixture == ThreadComposerSuggestionScrollOracleFixture ||
+            visualFixture == ThreadComposerSuggestionRepositionOracleFixture
+    val suggestionRepositionOracleEnabled = visualFixture == ThreadComposerSuggestionRepositionOracleFixture
+    LaunchedEffect(payload.instanceId, suggestionRepositionOracleEnabled) {
+        suggestionRepositioned = false
+        if (suggestionRepositionOracleEnabled) {
+            delay(ThreadComposerSuggestionRepositionDelayMillis)
+            suggestionRepositioned = true
+        }
+    }
     SlockInputFocusDismissHost { focusDismissModifier ->
         Box(
             modifier = focusDismissModifier.fillMaxSize().background(SlockColor.SurfaceWhite),
@@ -750,7 +764,13 @@ internal fun ThreadComposerScreen() {
                             .heightIn(min = ThreadComposerVisualComponentMinHeight)
                             .offset(
                                 x = 0f,
-                                y = if (payload.suggestionsOpen) ThreadComposerVisualSuggestionAnchorOffset else 0f
+                                y =
+                                    when {
+                                        suggestionRepositionOracleEnabled && suggestionRepositioned ->
+                                            ThreadComposerVisualSuggestionRepositionOffset
+                                        payload.suggestionsOpen -> ThreadComposerVisualSuggestionAnchorOffset
+                                        else -> 0f
+                                    }
                             )
                 ) {
                     Box(Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
@@ -960,7 +980,8 @@ private fun threadComposerVisualFixture(
                     )
             )
         "member_suggestions" -> base.copy(seedText = "@", suggestionsOpen = true)
-        ThreadComposerSuggestionScrollOracleFixture ->
+        ThreadComposerSuggestionScrollOracleFixture,
+        ThreadComposerSuggestionRepositionOracleFixture ->
             base.copy(
                 seedText = "@",
                 suggestionsOpen = true,
