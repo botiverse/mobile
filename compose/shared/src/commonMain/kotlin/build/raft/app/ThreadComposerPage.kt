@@ -146,6 +146,7 @@ internal class ThreadComposerSuggestionPortalState {
 internal data class ThreadComposerSuggestionPresentation(
     val owner: Any,
     val anchorResolver: SlockPopoverAnchorResolver,
+    val selectionContext: ThreadComposerSuggestionSelectionContext,
     val contentSize: Size,
     val panelState: ThreadComposerSuggestionPanelState,
     val surface: ThreadComposerSurface,
@@ -157,8 +158,8 @@ internal data class ThreadComposerSuggestionPresentation(
     val channelErrorCode: String?,
     val agentStatusResolver: SlockAgentStatusResolver,
     val onDismiss: () -> Unit,
-    val onMemberClick: (KuiklyComposerMemberItem) -> Unit,
-    val onChannelClick: (KuiklyComposerChannelItem) -> Unit
+    val onMemberClick: (ThreadComposerSuggestionSelectionContext, KuiklyComposerMemberItem) -> Unit,
+    val onChannelClick: (ThreadComposerSuggestionSelectionContext, KuiklyComposerChannelItem) -> Unit
 )
 
 internal val LocalThreadComposerSuggestionPortal =
@@ -204,8 +205,12 @@ internal fun ThreadComposerSuggestionPortalHost(
                 channelSelectedIndex = presentation.channelSelectedIndex,
                 channelErrorCode = presentation.channelErrorCode,
                 agentStatusResolver = presentation.agentStatusResolver,
-                onMemberClick = presentation.onMemberClick,
-                onChannelClick = presentation.onChannelClick
+                onMemberClick = { member ->
+                    presentation.onMemberClick(presentation.selectionContext, member)
+                },
+                onChannelClick = { channel ->
+                    presentation.onChannelClick(presentation.selectionContext, channel)
+                }
             )
         }
     }
@@ -657,6 +662,160 @@ internal sealed class KuiklyComposerSuggestionTrigger {
     data class MemberTrigger(val query: String, val triggerStart: Int) : KuiklyComposerSuggestionTrigger()
     data class ChannelTrigger(val query: String, val triggerStart: Int) : KuiklyComposerSuggestionTrigger()
     object None : KuiklyComposerSuggestionTrigger()
+}
+
+internal enum class ThreadComposerSuggestionSelectionKind {
+    Member,
+    Channel
+}
+
+internal data class ThreadComposerSuggestionSelectionContext(
+    val text: String,
+    val selectionStart: Int,
+    val selectionEnd: Int,
+    val kind: ThreadComposerSuggestionSelectionKind,
+    val triggerStart: Int,
+    val query: String
+)
+
+internal fun threadComposerSuggestionSelectionContext(
+    text: String,
+    selectionStart: Int,
+    selectionEnd: Int,
+    suggestionsEnabled: Boolean
+): ThreadComposerSuggestionSelectionContext? {
+    val safeStart = minOf(selectionStart, selectionEnd).coerceIn(0, text.length)
+    val safeEnd = maxOf(selectionStart, selectionEnd).coerceIn(safeStart, text.length)
+    return when (val trigger = threadComposerSuggestionTrigger(text, safeStart, suggestionsEnabled)) {
+        is KuiklyComposerSuggestionTrigger.MemberTrigger ->
+            ThreadComposerSuggestionSelectionContext(
+                text = text,
+                selectionStart = safeStart,
+                selectionEnd = safeEnd,
+                kind = ThreadComposerSuggestionSelectionKind.Member,
+                triggerStart = trigger.triggerStart,
+                query = trigger.query
+            )
+        is KuiklyComposerSuggestionTrigger.ChannelTrigger ->
+            ThreadComposerSuggestionSelectionContext(
+                text = text,
+                selectionStart = safeStart,
+                selectionEnd = safeEnd,
+                kind = ThreadComposerSuggestionSelectionKind.Channel,
+                triggerStart = trigger.triggerStart,
+                query = trigger.query
+            )
+        KuiklyComposerSuggestionTrigger.None -> null
+    }
+}
+
+/**
+ * Composition-local bridge between one stable portal callback and the latest committed composer
+ * state. Native editor changes update [draft] synchronously, while [updateComposition] publishes
+ * the candidate set and commit edge only after a successful composition. Selection therefore
+ * fails closed if the visible presentation belongs to an older text/range or candidate identity.
+ */
+internal class ThreadComposerSuggestionSelectionDispatcher(
+    initialText: String,
+    initialSelectionStart: Int,
+    initialSelectionEnd: Int,
+    initialSuggestionsEnabled: Boolean
+) {
+    private data class Draft(
+        val text: String,
+        val selectionStart: Int,
+        val selectionEnd: Int
+    )
+
+    private var draft = normalizedDraft(initialText, initialSelectionStart, initialSelectionEnd)
+    private var suggestionsEnabled = initialSuggestionsEnabled
+    private var memberSuggestions: List<KuiklyComposerMemberItem> = emptyList()
+    private var channelSuggestions: List<KuiklyComposerChannelItem> = emptyList()
+    private var onCommit: (KuiklyComposerSuggestionEdit) -> Unit = {}
+
+    fun updateDraft(text: String, selectionStart: Int, selectionEnd: Int) {
+        draft = normalizedDraft(text, selectionStart, selectionEnd)
+    }
+
+    fun updateComposition(
+        suggestionsEnabled: Boolean,
+        memberSuggestions: List<KuiklyComposerMemberItem>,
+        channelSuggestions: List<KuiklyComposerChannelItem>,
+        onCommit: (KuiklyComposerSuggestionEdit) -> Unit
+    ) {
+        this.suggestionsEnabled = suggestionsEnabled
+        this.memberSuggestions = memberSuggestions
+        this.channelSuggestions = channelSuggestions
+        this.onCommit = onCommit
+    }
+
+    fun selectMember(
+        expectedContext: ThreadComposerSuggestionSelectionContext,
+        member: KuiklyComposerMemberItem
+    ): Boolean {
+        val currentContext = currentContext() ?: return false
+        if (currentContext != expectedContext || currentContext.kind != ThreadComposerSuggestionSelectionKind.Member) {
+            return false
+        }
+        if (memberSuggestions.none { current -> current.hasSameSuggestionIdentity(member) }) return false
+        val edit =
+            applyKuiklyComposerSuggestionEdit(
+                text = currentContext.text,
+                selectionStart = currentContext.selectionStart,
+                selectionEnd = currentContext.selectionEnd,
+                triggerStart = currentContext.triggerStart,
+                replacement = "@${member.handle} "
+            ) ?: return false
+        onCommit(edit)
+        return true
+    }
+
+    fun selectChannel(
+        expectedContext: ThreadComposerSuggestionSelectionContext,
+        channel: KuiklyComposerChannelItem
+    ): Boolean {
+        val currentContext = currentContext() ?: return false
+        if (currentContext != expectedContext || currentContext.kind != ThreadComposerSuggestionSelectionKind.Channel) {
+            return false
+        }
+        if (channelSuggestions.none { current -> current.name == channel.name }) return false
+        val edit =
+            applyKuiklyComposerSuggestionEdit(
+                text = currentContext.text,
+                selectionStart = currentContext.selectionStart,
+                selectionEnd = currentContext.selectionEnd,
+                triggerStart = currentContext.triggerStart,
+                replacement = "#${channel.name} "
+            ) ?: return false
+        onCommit(edit)
+        return true
+    }
+
+    private fun currentContext(): ThreadComposerSuggestionSelectionContext? =
+        threadComposerSuggestionSelectionContext(
+            text = draft.text,
+            selectionStart = draft.selectionStart,
+            selectionEnd = draft.selectionEnd,
+            suggestionsEnabled = suggestionsEnabled
+        )
+
+    private fun normalizedDraft(text: String, selectionStart: Int, selectionEnd: Int): Draft {
+        val safeStart = minOf(selectionStart, selectionEnd).coerceIn(0, text.length)
+        val safeEnd = maxOf(selectionStart, selectionEnd).coerceIn(safeStart, text.length)
+        return Draft(text = text, selectionStart = safeStart, selectionEnd = safeEnd)
+    }
+}
+
+private fun KuiklyComposerMemberItem.hasSameSuggestionIdentity(other: KuiklyComposerMemberItem): Boolean {
+    val currentMemberId = memberId?.takeIf { it.isNotBlank() }
+    val otherMemberId = other.memberId?.takeIf { it.isNotBlank() }
+    return if (currentMemberId != null || otherMemberId != null) {
+        currentMemberId != null &&
+            currentMemberId == otherMemberId &&
+            sourceServerId == other.sourceServerId
+    } else {
+        handle == other.handle && sourceServerId == other.sourceServerId
+    }
 }
 
 @Composable
@@ -1297,6 +1456,15 @@ internal fun ThreadComposerContent(
     val softwareKeyboardController = LocalSoftwareKeyboardController.current
     val suggestionPortal = LocalThreadComposerSuggestionPortal.current
     val suggestionPortalOwner = remember(state.instanceId) { Any() }
+    val suggestionSelectionDispatcher =
+        remember(state.instanceId) {
+            ThreadComposerSuggestionSelectionDispatcher(
+                initialText = state.seedText,
+                initialSelectionStart = state.seedText.length,
+                initialSelectionEnd = state.seedText.length,
+                initialSuggestionsEnabled = state.suggestionsEnabled
+            )
+        }
     val suggestionAnchorRef = remember(state.instanceId) { SlockLiveRootAnchorRef(suggestionPortalOwner) }
     val suggestionAnchorResolver =
         remember(state.instanceId, suggestionAnchorRef) {
@@ -1317,7 +1485,13 @@ internal fun ThreadComposerContent(
     // interaction state and must only move through onFocus/onBlur or an explicit focus request;
     // attachment/mention/send callbacks must not synthesize a blur.
     LaunchedEffect(state.instanceId, state.syncNonce) {
-        fieldValue = TextFieldValue(state.seedText, selection = TextRange(state.seedText.length))
+        val nextFieldValue = TextFieldValue(state.seedText, selection = TextRange(state.seedText.length))
+        suggestionSelectionDispatcher.updateDraft(
+            text = nextFieldValue.text,
+            selectionStart = nextFieldValue.selection.start,
+            selectionEnd = nextFieldValue.selection.end
+        )
+        fieldValue = nextFieldValue
         asTask = state.seedAsTask
     }
     val selectionStart = minOf(fieldValue.selection.start, fieldValue.selection.end).coerceIn(0, text.length)
@@ -1478,6 +1652,13 @@ internal fun ThreadComposerContent(
             channelCount = filteredChannelSuggestions.size,
             channelStatus = effectiveChannelSuggestionsStatus
         )
+    val suggestionSelectionContext =
+        threadComposerSuggestionSelectionContext(
+            text = text,
+            selectionStart = selectionStart,
+            selectionEnd = selectionEnd,
+            suggestionsEnabled = state.suggestionsEnabled
+        )
     var memberSuggestionSelectedIndex by remember(state.instanceId) { mutableStateOf(0) }
     var channelSuggestionSelectedIndex by remember(state.instanceId) { mutableStateOf(0) }
     LaunchedEffect(suggestionTrigger, suggestionPanelState, filteredMemberSuggestions) {
@@ -1532,7 +1713,13 @@ internal fun ThreadComposerContent(
             selectionEnd = selectionEnd,
             handle = handle
         ) ?: return false
-        fieldValue = TextFieldValue(edit.text, selection = TextRange(edit.cursor))
+        val nextFieldValue = TextFieldValue(edit.text, selection = TextRange(edit.cursor))
+        suggestionSelectionDispatcher.updateDraft(
+            text = nextFieldValue.text,
+            selectionStart = nextFieldValue.selection.start,
+            selectionEnd = nextFieldValue.selection.end
+        )
+        fieldValue = nextFieldValue
         focused = true
         emitChange(nextText = edit.text)
         return true
@@ -1561,31 +1748,13 @@ internal fun ThreadComposerContent(
     }
 
     fun applyMemberSuggestion(member: KuiklyComposerMemberItem) {
-        val trigger = suggestionTrigger as? KuiklyComposerSuggestionTrigger.MemberTrigger ?: return
-        applyKuiklyComposerSuggestionEdit(
-            text = text,
-            selectionStart = selectionStart,
-            selectionEnd = selectionEnd,
-            triggerStart = trigger.triggerStart,
-            replacement = "@${member.handle} "
-        )?.let { edit ->
-            fieldValue = TextFieldValue(edit.text, selection = TextRange(edit.cursor))
-            emitChange(nextText = edit.text)
-        }
+        val context = suggestionSelectionContext ?: return
+        suggestionSelectionDispatcher.selectMember(context, member)
     }
 
     fun applyChannelSuggestion(channel: KuiklyComposerChannelItem) {
-        val trigger = suggestionTrigger as? KuiklyComposerSuggestionTrigger.ChannelTrigger ?: return
-        applyKuiklyComposerSuggestionEdit(
-            text = text,
-            selectionStart = selectionStart,
-            selectionEnd = selectionEnd,
-            triggerStart = trigger.triggerStart,
-            replacement = "#${channel.name} "
-        )?.let { edit ->
-            fieldValue = TextFieldValue(edit.text, selection = TextRange(edit.cursor))
-            emitChange(nextText = edit.text)
-        }
+        val context = suggestionSelectionContext ?: return
+        suggestionSelectionDispatcher.selectChannel(context, channel)
     }
 
     fun commitSuggestionToken() {
@@ -1601,7 +1770,13 @@ internal fun ThreadComposerContent(
             selectionEnd = selectionEnd,
             triggerStart = triggerStart
         )?.let { edit ->
-            fieldValue = TextFieldValue(edit.text, selection = TextRange(edit.cursor))
+            val nextFieldValue = TextFieldValue(edit.text, selection = TextRange(edit.cursor))
+            suggestionSelectionDispatcher.updateDraft(
+                text = nextFieldValue.text,
+                selectionStart = nextFieldValue.selection.start,
+                selectionEnd = nextFieldValue.selection.end
+            )
+            fieldValue = nextFieldValue
             focused = false
             emitChange(nextText = edit.text)
         }
@@ -1672,8 +1847,6 @@ internal fun ThreadComposerContent(
             )
         }
     val density = LocalDensity.current
-    val currentApplyMemberSuggestion by rememberUpdatedState<(KuiklyComposerMemberItem) -> Unit>(::applyMemberSuggestion)
-    val currentApplyChannelSuggestion by rememberUpdatedState<(KuiklyComposerChannelItem) -> Unit>(::applyChannelSuggestion)
     val currentDismissSuggestions by rememberUpdatedState<() -> Unit> {
         focused = false
         focusManager.clearFocus(force = true)
@@ -1681,22 +1854,30 @@ internal fun ThreadComposerContent(
     val dismissSuggestionPopover =
         remember(suggestionPortalOwner) { { currentDismissSuggestions() } }
     val selectMemberSuggestion =
-        remember(suggestionPortalOwner) {
-            { member: KuiklyComposerMemberItem -> currentApplyMemberSuggestion(member) }
+        remember(suggestionPortalOwner, suggestionSelectionDispatcher) {
+            { context: ThreadComposerSuggestionSelectionContext, member: KuiklyComposerMemberItem ->
+                suggestionSelectionDispatcher.selectMember(context, member)
+                Unit
+            }
         }
     val selectChannelSuggestion =
-        remember(suggestionPortalOwner) {
-            { channel: KuiklyComposerChannelItem -> currentApplyChannelSuggestion(channel) }
+        remember(suggestionPortalOwner, suggestionSelectionDispatcher) {
+            { context: ThreadComposerSuggestionSelectionContext, channel: KuiklyComposerChannelItem ->
+                suggestionSelectionDispatcher.selectChannel(context, channel)
+                Unit
+            }
         }
     val suggestionPresentation =
         if (
             suggestionPanelState != ThreadComposerSuggestionPanelState.Hidden &&
+            suggestionSelectionContext != null &&
             composerCardSize.width > 0 &&
             composerCardSize.height > 0
         ) {
             ThreadComposerSuggestionPresentation(
                 owner = suggestionPortalOwner,
                 anchorResolver = suggestionAnchorResolver,
+                selectionContext = suggestionSelectionContext,
                 contentSize =
                     Size(
                         width = composerCardSize.width.toFloat(),
@@ -1719,6 +1900,21 @@ internal fun ThreadComposerContent(
             null
         }
     SideEffect {
+        suggestionSelectionDispatcher.updateComposition(
+            suggestionsEnabled = state.suggestionsEnabled,
+            memberSuggestions = filteredMemberSuggestions,
+            channelSuggestions = filteredChannelSuggestions,
+            onCommit = { edit ->
+                val nextFieldValue = TextFieldValue(edit.text, selection = TextRange(edit.cursor))
+                suggestionSelectionDispatcher.updateDraft(
+                    text = nextFieldValue.text,
+                    selectionStart = nextFieldValue.selection.start,
+                    selectionEnd = nextFieldValue.selection.end
+                )
+                fieldValue = nextFieldValue
+                onEvent("change", edit.text, asTask, null)
+            }
+        )
         if (suggestionPresentation == null) {
             suggestionPortal?.clear(suggestionPortalOwner)
         } else {
@@ -1821,6 +2017,11 @@ internal fun ThreadComposerContent(
                         autoFocus = shouldAutoFocus,
                         onValueChange = { next ->
                             val textChanged = next.text != fieldValue.text
+                            suggestionSelectionDispatcher.updateDraft(
+                                text = next.text,
+                                selectionStart = next.selection.start,
+                                selectionEnd = next.selection.end
+                            )
                             fieldValue = next
                             focused = true
                             if (textChanged) {
