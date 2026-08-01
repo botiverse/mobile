@@ -130,6 +130,80 @@ import kotlin.time.TimeSource
 internal const val SLOCK_FILE_PREVIEW_PAGE = "compose_file_preview"
 private const val SLOCK_FILE_PREVIEW_EDITOR_VISUAL_PAGE = "compose_file_preview_editor_visual"
 internal const val SLOCK_COMPOSER_IMAGE_EDIT_EVENT = "slock.composerImageEdit"
+
+// task #113: whole-group edit-session result reconciliation (pure). A consumer
+// (e.g. Settings feedback draft) accumulates per-image edit events for a group and
+// only releases the whole group when N/N is present and consistent.
+//
+// The frozen authority (expectedGroupId, expectedToken, expectedCount) lives on the
+// request/session state; `fold` only accepts ACTUAL event fields and must be
+// zero-mutation on any identity / total / range / duplicate mismatch. This is the
+// contract Vera requires: cross-group, stale, and total mismatches can never yield
+// a partial or spurious merge.
+internal data class SlockImageEditGroupState(
+    val expectedGroupId: String,
+    val expectedToken: String?,
+    val expectedCount: Int,
+    val total: Int? = null,
+    val itemsByIndex: Map<Int, String> = emptyMap(),
+    val rejects: List<String> = emptyList()
+) {
+    val isComplete: Boolean
+        get() =
+            total != null &&
+                total == expectedCount &&
+                itemsByIndex.size == expectedCount &&
+                (0 until expectedCount).none { !itemsByIndex.containsKey(it) }
+    /** A group is only committable when it is complete AND no event was ever rejected. */
+    val isCommittable: Boolean
+        get() = isComplete && rejects.isEmpty()
+}
+
+internal object SlockImageEditGroupReconcile {
+    const val REJECT_WRONG_GROUP = "wrong_group"
+    const val REJECT_STALE = "stale"
+    const val REJECT_TOTAL_MISMATCH = "total_mismatch"
+    const val REJECT_OUT_OF_RANGE = "out_of_range"
+    const val REJECT_DUPLICATE_INDEX = "duplicate_index"
+
+    /**
+     * Fold one incoming edit event (actual fields) into a group state. The state
+     * already holds the frozen expected group id/token/count; any mismatch returns
+     * the state unchanged (zero mutation) plus the rejection reason.
+     */
+    fun fold(
+        state: SlockImageEditGroupState,
+        actualGroupId: String,
+        actualToken: String?,
+        index: Int,
+        total: Int,
+        itemKey: String
+    ): SlockImageEditGroupState {
+        if (actualGroupId != state.expectedGroupId) {
+            return state.withReject(REJECT_WRONG_GROUP)
+        }
+        if (state.expectedToken != null && actualToken != state.expectedToken) {
+            return state.withReject(REJECT_STALE)
+        }
+        if (total != state.expectedCount || total <= 0) {
+            return state.withReject(REJECT_TOTAL_MISMATCH)
+        }
+        if (index < 0 || index >= total) {
+            return state.withReject(REJECT_OUT_OF_RANGE)
+        }
+        if (state.itemsByIndex.containsKey(index)) {
+            return state.withReject(REJECT_DUPLICATE_INDEX)
+        }
+        return state.copy(
+            total = total,
+            itemsByIndex = state.itemsByIndex + (index to itemKey)
+        )
+    }
+
+    private fun SlockImageEditGroupState.withReject(reason: String): SlockImageEditGroupState =
+        if (reason in rejects) this
+        else copy(rejects = rejects + reason)
+}
 private const val SlockFilePreviewSaveToPhotosActionId = "save-to-photos"
 private const val SlockFilePreviewOpenWithActionId = "open-with"
 private const val SlockFilePreviewDeleteDownloadActionId = "delete-download"
@@ -261,6 +335,9 @@ internal data class SlockFilePreviewPayload(
     val imageGalleryIndex: Int = 0,
     val composerImageThreadKey: String = "",
     val composerImageActionId: String = "",
+    // task #113: whole-group edit-session identity. Consumer (e.g. Settings feedback
+    // draft) uses this to reconcile an N/N group; blank = legacy single-shot semantics.
+    val composerImageGroupId: String = "",
     val composerImageFileRef: String = "",
     val composerImageFileName: String = "",
     val composerImageMimeType: String = "",
@@ -1260,7 +1337,14 @@ private fun SlockFilePreviewStandalonePageContent() {
         mimeType: String = payload.composerImageMimeType.ifBlank { payload.externalMimeType.ifBlank { "image/png" } },
         sizeBytes: Long? = payload.composerImageSizeBytes,
         replaceAttachmentId: String = payload.composerImageReplaceAttachmentId,
-        closePage: Boolean = true
+        closePage: Boolean = true,
+        // task #113 whole-group contract: groupId + ordinal within the gallery + total count.
+        // Blank groupId keeps legacy single-shot semantics (index/total ignored).
+        // When groupId is set but this is a single image with no gallery, total must be 1
+        // (single-image N=1 contract), never 0.
+        groupId: String = payload.composerImageGroupId,
+        groupIndex: Int = payload.imageGalleryIndex.coerceAtLeast(0),
+        groupTotal: Int = payload.imageGallery.size.coerceAtLeast(if (groupId.isNotBlank()) 1 else 0)
     ) {
         if (actionId.isBlank() || fileRef.isBlank()) return
         eventBus.post(
@@ -1275,6 +1359,11 @@ private fun SlockFilePreviewStandalonePageContent() {
                 put("mimeType", mimeType)
                 sizeBytes?.takeIf { it > 0L }?.let { put("sizeBytes", it) }
                 put("replaceAttachmentId", replaceAttachmentId)
+                if (groupId.isNotBlank()) {
+                    put("groupId", groupId)
+                    put("groupIndex", groupIndex)
+                    put("groupTotal", groupTotal)
+                }
             },
             crossProcess = true
         )
@@ -1300,7 +1389,10 @@ private fun SlockFilePreviewStandalonePageContent() {
                 mimeType = image.mimeType.ifBlank { "image/png" },
                 sizeBytes = image.composerImageSizeBytes,
                 replaceAttachmentId = "",
-                closePage = false
+                closePage = false,
+                groupId = payload.composerImageGroupId,
+                groupIndex = index,
+                groupTotal = gallery.size
             )
         }
         pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
