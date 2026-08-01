@@ -3842,26 +3842,70 @@ private fun ThreadMessageVisualScreenContent() {
     var openedVisualThreadMessageId by remember(visualFixture) { mutableStateOf<String?>(null) }
     var openedVisualMarkdownUrlCount by remember(visualFixture) { mutableStateOf(0) }
     var openedVisualMentionCount by remember(visualFixture) { mutableStateOf(0) }
+    var ordinaryTimestampToggleCount by remember(interactionProbe) { mutableStateOf(0) }
+    var inlineReplyTimestampBounds by remember(interactionProbe) {
+        mutableStateOf<ThreadInlineReplyTimestampBounds?>(null)
+    }
+    val inheritedTimeContextProvider = LocalSlockTimeContextProvider.current
+    val visualTimeContextProvider =
+        remember(payload, interactionProbe) {
+            if (interactionProbe == "reply-timestamp-owner") {
+                SlockTimeContextProvider(payload.toSlockTimeContext())
+            } else {
+                null
+            }
+        }
+    val inlineReplyTimestampReporter =
+        remember(interactionProbe) {
+            if (interactionProbe == "reply-timestamp-owner") {
+                { messageId: String, origin: Offset, size: IntSize ->
+                    if (messageId == "reply-inline-8") {
+                        inlineReplyTimestampBounds =
+                            ThreadInlineReplyTimestampBounds(origin = origin, size = size)
+                    }
+                }
+            } else {
+                null
+            }
+        }
     CompositionLocalProvider(
         LocalSlockMessagePermalinkLabelResolver provides visualMessagePermalinkLabelResolver,
         LocalSlockMarkdownRenderConfig provides
             SlockMarkdownRenderConfig(renderMessagePermalinksAsTag = true),
+        LocalSlockTimeContextProvider provides (visualTimeContextProvider ?: inheritedTimeContextProvider),
+        LocalThreadInlineReplyTimestampReporter provides inlineReplyTimestampReporter,
     ) {
-        Column(
-            modifier =
-                Modifier
-                    .width(threadMessageVisualWidth(visualFixture))
-                    // task #415: the visual route's window gives BOUNDED height
-                    // constraints (unlike production's LazyColumn, whose items
-                    // measure unbounded). TextStringRichNode clamps the natively
-                    // measured text height to constraints.maxHeight, but the native
-                    // view still draws the full layout — so a body taller than the
-                    // window overlapped the siblings placed at the clamped height.
-                    // Measure unbounded like production.
-                    .wrapContentHeight(align = Alignment.Top, unbounded = true)
-                    .background(SlockColor.SurfaceWhite)
-                    .padding(SlockSpacing.Md)
-        ) {
+        Box {
+            Column(
+                modifier =
+                    Modifier
+                        .width(threadMessageVisualWidth(visualFixture))
+                        // task #415: the visual route's window gives BOUNDED height
+                        // constraints (unlike production's LazyColumn, whose items
+                        // measure unbounded). TextStringRichNode clamps the natively
+                        // measured text height to constraints.maxHeight, but the native
+                        // view still draws the full layout — so a body taller than the
+                        // window overlapped the siblings placed at the clamped height.
+                        // Measure unbounded like production.
+                        .wrapContentHeight(align = Alignment.Top, unbounded = true)
+                        .background(SlockColor.SurfaceWhite)
+                        .padding(SlockSpacing.Md)
+            ) {
+            if (interactionProbe == "reply-timestamp-owner") {
+                Spacer(modifier = Modifier.height(32.dp))
+                SlockRelativeTimestampText(
+                    value = "2026-07-24T10:05:00Z",
+                    timeContext = payload.toSlockTimeContext(),
+                    displayGroup = SlockTimestampDisplayGroup.Conversation,
+                    style = SlockType.Caption.copy(fontFamily = SlockMonoFamily),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    onToggle = { ordinaryTimestampToggleCount += 1 },
+                )
+                if (ordinaryTimestampToggleCount > 0) {
+                    Box(modifier = Modifier.size(12.dp).background(SlockColor.AccentCyan))
+                }
+            }
             if (message != null) {
                 if (
                     visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_MARKDOWN_LINK_CHILD ||
@@ -3970,6 +4014,27 @@ private fun ThreadMessageVisualScreenContent() {
                         modifier = Modifier
                     )
                 }
+            }
+            }
+            inlineReplyTimestampBounds?.let { bounds ->
+                val density = LocalDensity.current.density
+                Box(
+                    modifier =
+                        Modifier
+                            .offset {
+                                IntOffset(
+                                    bounds.origin.x.toInt(),
+                                    bounds.origin.y.toInt(),
+                                )
+                            }
+                            .size(
+                                width = (bounds.size.width / density).dp,
+                                height = (bounds.size.height / density).dp,
+                            )
+                            .semantics {
+                                contentDescription = ThreadInlineReplyTimestampHitTargetDescription
+                            }
+                )
             }
         }
     }
@@ -22040,6 +22105,17 @@ internal fun threadInlineReplyPresentationForMessage(
         null
     }
 
+private data class ThreadInlineReplyTimestampBounds(
+    val origin: Offset,
+    val size: IntSize,
+)
+
+private val LocalThreadInlineReplyTimestampReporter =
+    compositionLocalOf<((String, Offset, IntSize) -> Unit)?> { null }
+
+private const val ThreadInlineReplyTimestampHitTargetDescription =
+    "Inline reply timestamp hit target"
+
 @Composable
 private fun ThreadInlineRepliesSurface(
     presentation: ThreadInlineReplyPresentation,
@@ -22115,6 +22191,7 @@ private fun ThreadInlineReplyRow(
     memberAvatarResolver: SlockMemberAvatarResolver,
     rowHeight: Dp,
 ) {
+    val timestampPositionReporter = LocalThreadInlineReplyTimestampReporter.current
     val resolvedAvatar = rememberSlockMemberAvatarWireValue(memberAvatarResolver, reply.senderId)
     val displayName =
         reply.senderDisplayName?.trim()?.takeIf { it.isNotBlank() }
@@ -22166,10 +22243,23 @@ private fun ThreadInlineReplyRow(
         if (reply.createdAt.isNotBlank()) {
             SlockRelativeTimestampText(
                 value = reply.createdAt,
+                modifier =
+                    if (timestampPositionReporter == null) {
+                        Modifier
+                    } else {
+                        Modifier.onGloballyPositioned { coordinates ->
+                            timestampPositionReporter(
+                                reply.messageId,
+                                coordinates.positionInRoot(),
+                                coordinates.size,
+                            )
+                        }
+                    },
                 displayGroup = SlockTimestampDisplayGroup.Conversation,
                 style = SlockType.Caption.copy(fontSize = 11.5.sp, lineHeight = 15.sp),
                 color = SlockColor.TextBlack.copy(alpha = 0.42f),
                 maxLines = 1,
+                toggleEnabled = false,
             )
         }
     }

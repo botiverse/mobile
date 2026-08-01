@@ -110,6 +110,26 @@ class SlockRelativeTimeConsumerTest {
     }
 
     @Test
+    fun parentOwnedTimestampDoesNotInstallItsOwnToggleTarget() {
+        val context =
+            SlockTimeContext(
+                localOffsetMinutes = 8 * 60,
+                todayEpochDay = slockEpochDayForDate(2026, 7, 30),
+                nowEpochMillis = 1_785_383_220_000L
+            )
+        val timestamp = "2026-07-30T03:06:00Z"
+
+        assertTrue(slockTimestampToggleAvailable(timestamp, context))
+        assertFalse(
+            slockTimestampToggleAvailable(
+                value = timestamp,
+                timeContext = context,
+                toggleEnabled = false,
+            )
+        )
+    }
+
+    @Test
     fun literalUnknownAndContextlessValuesStayNonInteractive() {
         val context =
             SlockTimeContext(

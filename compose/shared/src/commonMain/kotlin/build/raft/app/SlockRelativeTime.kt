@@ -139,10 +139,11 @@ internal fun SlockRelativeTimestampText(
     overflow: TextOverflow = TextOverflow.Clip,
     textAlign: TextAlign? = null,
     softWrap: Boolean = true,
+    toggleEnabled: Boolean = true,
     onToggle: (SlockTimestampDisplayMode) -> Unit = {}
 ) {
     val effectiveContext = currentSlockTimeContext(timeContext)
-    val toggleAvailable = slockTimestampToggleAvailable(value, effectiveContext)
+    val toggleAvailable = slockTimestampToggleAvailable(value, effectiveContext, toggleEnabled)
     val displayState = LocalSlockTimestampDisplayState.current ?: remember { SlockTimestampDisplayState() }
     val resolvedMode =
         resolvedSlockTimestampDisplayMode(displayState.displayMode(displayGroup), value, effectiveContext)
@@ -194,9 +195,11 @@ internal fun SlockRelativeTimestampText(
 
 internal fun slockTimestampToggleAvailable(
     value: String?,
-    timeContext: SlockTimeContext?
+    timeContext: SlockTimeContext?,
+    toggleEnabled: Boolean = true,
 ): Boolean =
-    timeContext?.nowEpochMillis != null &&
+    toggleEnabled &&
+        timeContext?.nowEpochMillis != null &&
         parseSlockTimestampEpochMillisOrNull(value, timeContext.localOffsetMinutes) != null
 
 internal fun slockAbsoluteTimestampLabel(
