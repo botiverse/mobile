@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-01T03:08:05.005Z",
+  "generatedAt": "2026-08-01T22:13:00.960Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 80,
-    "ready": 79,
-    "pending": 1
+    "ready": 77,
+    "pending": 3
   },
   "cases": [
     {
@@ -96,7 +96,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.11839986439528771
+      "metricMismatch": 0.12013729977116705
     },
     {
       "id": "components.ui.form-field.states",
@@ -294,7 +294,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.04021174110800352
+      "metricMismatch": 0.04020820973528827
     },
     {
       "id": "components.ui.progress-bar.states",
@@ -358,7 +358,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.41496209659952354
+      "metricMismatch": 0.41497942386831277
     },
     {
       "id": "components.ui.spinner.states",
@@ -565,36 +565,16 @@
     },
     {
       "id": "components.ui.select.states",
-      "status": "ready",
+      "status": "pending",
       "imageHash": "p1:e003e0031ffc1ffc1ffc1ffcffff7ffffffefffe80008001b004a0049ffc9ffc8ffc8ffcbffcbffc80008001fffeffff80008001a004bffc8ffc8ffc8ffc8ffc8000800080008001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffefffeffff0000000000000000fffffffffff81fffffffffff",
-      "generatedAt": "2026-07-10T22:11:54.806Z",
-      "severity": "low",
-      "summary": [
-        "Select border thickness appears slightly heavier on the React baseline versus the Android render, producing a marginally thicker outline on both the active and placeholder fields.",
-        "Chevron icon vertical alignment is a few pixels lower on Android compared to React, sitting closer to the bottom edge of the input box.",
-        "Placeholder 'Select…' text and the 'Codex' label appear slightly larger/wider on Android, suggesting a marginally heavier font weight or larger size in the Android typography token.",
-        "Vertical spacing between the two select fields is nearly identical; no clipping or missing elements observed."
-      ],
-      "likelyCauses": [
-        "Android Select component may be reading a different stroke width / borderWidth token than the React baseline.",
-        "Chevron is likely positioned via baseline alignment in Android (Roboto metric) vs. vertical center in React (web line-height).",
-        "Android text style may be inheriting a slightly larger bodyMedium size or medium weight vs. the React counterpart using a 16px/regular weight.",
-        "Font metrics (Roboto vs. system web font) differ in glyph width and line-box, producing the minor size delta."
-      ],
-      "suggestedOwner": "android",
-      "suggestedFixes": [
-        "Normalize the Select border width to match the React value (e.g., 1dp vs 2dp) via a shared outline token.",
-        "Center the trailing chevron vertically using explicit padding or centerVertical constraint instead of text-baseline alignment.",
-        "Override the Android placeholder/value text style to use the same fontSize and fontWeight (e.g., 16sp/Regular) as the React token.",
-        "Run a font-metrics pass: if Roboto is required, ensure the same family/weight is applied; otherwise map Android to the equivalent web font metric."
-      ],
-      "intentional": [
-        "Slight per-platform font metric variation is acceptable if the design system explicitly allows Roboto vs. web font drift."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.047202293630219105
+      "generatedAt": "2026-08-01T22:12:59.969Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.09450339288465537
     },
     {
       "id": "components.ui.surface-list-item.states",
@@ -662,7 +642,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.27707579133017735
+      "metricMismatch": 0.2771608805965531
     },
     {
       "id": "components.auth.register.inputs",
@@ -1041,7 +1021,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.17218186134852798
+      "metricMismatch": 0.17354700854700855
     },
     {
       "id": "components.thread.message.row",
@@ -1078,7 +1058,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.3384883695341212
+      "metricMismatch": 0.3384856187143769
     },
     {
       "id": "components.thread.message-row.deleted-human",
@@ -1150,7 +1130,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.41315739728062006
+      "metricMismatch": 0.41316043531683344
     },
     {
       "id": "components.thread.message-menu.task",
@@ -1395,7 +1375,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2676675308191896
+      "metricMismatch": 0.2676418762911654
     },
     {
       "id": "components.home.search.channel-dropdown",
@@ -1428,12 +1408,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.268270074668179
+      "metricMismatch": 0.26824340746141695
     },
     {
       "id": "components.home.saved.results",
       "status": "ready",
-      "imageHash": "p1:0ffc1ffc3ffe3ffe83fe03fe81fe83fe08000000f3f8e3f2c1398032c0188012c00e807ec0fefffefffafffede79fdfece7888f2801e8012c01e801ecffecffefffafffef0f9fffec1f9e1f2c00ec1f2c01ec072fffe803ec1f8dffec039fffec00efc3ec0fefc3ec0fefffefff8fffecc79fffec018fffe00040000fffa3fff",
+      "imageHash": "p1:0ffc1ffc3ffe3ffe83fe03fe81fe83fe08000000f3f8e3f2c1398032c0188012c00e807ec0fefffefffafffede79fdfece7888f2801e8012c01e801ecffecffefffafffef0f9fffec1f9e1f2c00ec1f2c01ec072fffe803ec1f8dffec039fffec00efc3ec0fefc3ec0fefffefff8fffecc79fffec018fffe00040000fffa7fff",
       "generatedAt": "2026-07-30T04:34:27.469Z",
       "severity": "medium",
       "summary": [
@@ -1465,7 +1445,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1901957701901109
+      "metricMismatch": 0.19004223521767383
     },
     {
       "id": "components.home.activity.results",
@@ -1499,7 +1479,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.18609381877633147
+      "metricMismatch": 0.1860498019241652
     },
     {
       "id": "components.tasks.panel.states",
@@ -1610,7 +1590,7 @@
     {
       "id": "components.members.create-agent.dialog",
       "status": "ready",
-      "imageHash": "p1:ffffffff0000000024047dfc3bfc7df83ff83e4c000c00fc21fc3ffc3ffc3ffc27fc39fc3dfc1ffc0ffc1ffc3ffc3ffc3ffc3ffc27fc03fc3ffc3ffc3ffc3ffc3ffc7ff43ffc7ffc3ffc3ffc0ffc07fc3ffc3ffc2ffc3ffc3ffc07fc0ff827fc3ffc3ffc3ffc0ffc3ffc3ffc3ff47ffc3f447f7c0000380000000000ffffffff",
+      "imageHash": "p1:ffffffff0000000024047dfc3bfc7df83ff83e4c000c00fc21fc3ffc3ffc3ffc2ffc39fc3dfc1ffc2ffc1ffc3ffc3ffc3ffc3ffc27fc03fc3ffc3ffc3ffc3ffc3ffc7ff43ffc7ffc3ffc3ffc2ffc07fc3ffc3ffc2ffc3ffc3ffc07fc2ff827fc3ffc3ffc3ffc0ffc3ffc3ffc3ff47ffc3f447f7c0000380000000000ffffffff",
       "generatedAt": "2026-07-30T04:34:27.646Z",
       "severity": "medium",
       "summary": [
@@ -1639,12 +1619,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.24667200010801904
+      "metricMismatch": 0.24706154386249168
     },
     {
       "id": "components.members.create-agent.claude-dialog",
       "status": "ready",
-      "imageHash": "p1:ffffffff0000000024047dfc3bfc7df83ff83e4c000c00fc21fc3ffc3ffc3ffc27fc39fc3dfc1ffc0ffc1ffc3ffc3ffc3ffc3ffc27fc03fc3ffc3ffc3ffc3ffc3ffc7ff43ffc7ffc3ffc3ffc0ffc03fc3ffc2ffc2ffc3ffc3ffc1ffc0ff87ffc3ffc7ffc3ffc3ffc3ffc3ffc3ff47ffc3f447f7c0000380000000000ffffffff",
+      "imageHash": "p1:ffffffff0000000024047dfc3bfc7df83ff83e4c000c00fc21fc3ffc3ffc3ffc2ffc39fc3dfc1ffc2ffc1ffc3ffc3ffc3ffc3ffc27fc03fc3ffc3ffc3ffc3ffc3ffc7ff43ffc7ffc3ffc3ffc2ffc03fc3ffc2ffc2ffc3ffc3ffc1ffc2ff87ffc3ffc7ffc3ffc3ffc3ffc3ffc3ff47ffc3f447f7c0000380000000000ffffffff",
       "generatedAt": "2026-07-30T04:34:27.690Z",
       "severity": "high",
       "summary": [
@@ -1673,13 +1653,13 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.24742880868473283
+      "metricMismatch": 0.2477930354707606
     },
     {
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-01T03:08:04.250Z",
+      "generatedAt": "2026-08-01T22:13:00.302Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1691,7 +1671,7 @@
     {
       "id": "components.members.agent-detail.profile",
       "status": "ready",
-      "imageHash": "p1:1ffe3ffe801000318010082100000000001206e281ff0f7f8fff001f8fff0fffffffdfff83ffe7ffffffdfff81fbdfff803f81ffffffffffffffffff8fff1fff8fff0fffc0fff87f80fff1fffffff1ffd47fffffffffffffd7ff0c3f80010c3f80010c7f80ff0007807f0003807ff7ffffff97ffdfff97ff80781802ffffffff",
+      "imageHash": "p1:1ffe3ffe801000318010082100000000000206e281ff0f7f8fff001f8fff0fffffffdfff83ffe7ffffffdfff81fbdfff803f81ffffffffffffffffff8fff1fff8fff0fffc0fff87f80fff1fffffff1ffd47fffffffffffffd7ff0c3f80010c3f80010c7f80ff0007807f0003807ff7ffffff97ffdfff97ff80781802ffffffff",
       "generatedAt": "2026-07-26T05:05:15.817Z",
       "severity": "medium",
       "summary": [
@@ -1720,44 +1700,20 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.17692105156560134
+      "metricMismatch": 0.17717523392878842
     },
     {
       "id": "components.channel.settings.panel",
-      "status": "ready",
-      "imageHash": "p1:ffffffff000000000000000000000000000000000000000000007ffc7ffe7ffc7ffe7ffc7ffe7ffc7ffe7ffc7ffe7ffc7ffe7ffc7ffe7ffc7ffe7ffc7ffe7ffc7f867ffc7f827ffc7ffe7ffc7c3e7ffc600640007f3e7ffc60024000400260047ffe4000000020040000000000000000000000000000000080018001ffffffff",
-      "generatedAt": "2026-07-26T22:12:50.647Z",
-      "severity": "high",
-      "summary": [
-        "Android adds a 'Pin' action button (with pin icon) that is absent in the React baseline",
-        "Android 'Save Changes' button appears in disabled/light-gray state, while React shows it enabled with a pink/magenta fill",
-        "Android positions the modal panel higher and shifted right relative to the viewport versus the React modal which is bottom-left anchored",
-        "Android modal panel extends closer to the top edge of the viewport, React modal has larger top margin",
-        "Cancel/Save Changes button group on Android uses a different layout/style (white outlined Cancel + gray filled Save) versus React (white outlined Cancel + pink filled Save)"
-      ],
-      "likelyCauses": [
-        "Android implementation includes an additional Pin feature not present in the React component spec",
-        "Save Changes disabled state on Android suggests form validation or dirty-state detection not matching React behavior",
-        "Modal positioning/anchor logic differs between platforms (bottom-sheet vs centered/modal)",
-        "Action button ordering differs: Android places Pin between primary actions and destructive actions",
-        "Design token mismatch for primary CTA color/state between web and native"
-      ],
-      "suggestedOwner": "android-channel-settings",
-      "suggestedFixes": [
-        "Remove or hide the Pin button on Android to match React baseline, or update React to include it as an intentional feature",
-        "Fix Save Changes enabled/disabled logic so it matches React state (should be enabled with pink primary fill when form is dirty/valid)",
-        "Adjust modal anchor to bottom-left positioning with the same top margin as React",
-        "Align Cancel/Save button group styling: outlined Cancel + filled primary (pink) Save on both platforms",
-        "Verify design tokens for primary action color, disabled state, and modal dimensions are shared across platforms"
-      ],
-      "intentional": [
-        "Differences in modal positioning may be intentional platform convention (Android bottom-sheet vs web centered modal)",
-        "Button order including Pin above destructive actions could be an intentional Android addition"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.2735046110638528
+      "status": "pending",
+      "imageHash": "p1:ffffffffffff000087fd0000fffd0000ffff0000ffff0000ffff7ffcffff7ff8cffd7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffc80017c7c80017ffc80017ffc800140008001000080014000ffff0000ffff4000ffff0000ffff0000ffff0000ffff0000ffff0000ff810000ffc10000ffffffff",
+      "generatedAt": "2026-08-01T22:13:00.449Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.9019045111462173
     },
     {
       "id": "components.channel.members.add-panel",
@@ -1966,7 +1922,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19611367656391354
+      "metricMismatch": 0.19616768609659607
     },
     {
       "id": "components.settings.notifications.page",
@@ -2076,7 +2032,7 @@
     {
       "id": "screens.members.agent-detail.profile",
       "status": "ready",
-      "imageHash": "p1:1ffe3ffe801000318010082100000000001206e2817f0f7f8fff001f8fff0fffffffdfff83ffe7ffffffdfff81fbdfff803f81ffffffffffffffffff8fff1fff8fff0fff80fff87f80fff1fffffff1ffd47fffffffffffffd7ff0c3f80010c3f80010c7f80ff0007807f0003807ff7ffffff97ffdfff97ff80781802ffffffff",
+      "imageHash": "p1:1ffe3ffe801000318010082100000000000206e2817f0f7f8fff001f8fff0fffffffdfff83ffe7ffffffdfff81fbdfff803f81ffffffffffffffffff8fff1fff8fff0fff80fff87f80fff1fffffff1ffd47fffffffffffffd7ff0c3f80010c3f80010c7f80ff0007807f0003807ff7ffffff97ffdfff97ff80781802ffffffff",
       "generatedAt": "2026-07-26T05:05:16.996Z",
       "severity": "high",
       "summary": [
@@ -2105,7 +2061,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1774368426027194
+      "metricMismatch": 0.1776910249659065
     },
     {
       "id": "screens.members.agent-detail.reminders",
@@ -2141,7 +2097,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.05969336087819499
+      "metricMismatch": 0.05980137994356005
     },
     {
       "id": "screens.members.agent-detail.workspace",
@@ -2177,7 +2133,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.04842427188398757
+      "metricMismatch": 0.048551531845370755
     },
     {
       "id": "screens.members.agent-detail.apps",
@@ -2211,7 +2167,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.11780964340206046
+      "metricMismatch": 0.11798011098958971
     },
     {
       "id": "screens.members.agent-detail.activity",
@@ -2245,7 +2201,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.09451870755188285
+      "metricMismatch": 0.09477288991507005
     },
     {
       "id": "screens.members.human.profile",
@@ -2312,12 +2268,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.20058229027423335
+      "metricMismatch": 0.20063258665154404
     },
     {
       "id": "components.members.avatar-management",
       "status": "ready",
-      "imageHash": "p1:3ffe3ffe801b003380100a310000000085fe000e81ff0b3f8fff8fff8fffffffffffc7ffa001ffff8001ffff8001c1ff8003fffff81ffffffe7f0fff87ff0ffffffffdfffffff1ff803bfbffffffffffffff9c7fffff8c3f8fff9c7fdfff8c7f80ff0003ffff8427fcfffffffeff87ffffff97ff99dbffff80010ffeffffffff",
+      "imageHash": "p1:3ffe3ffe801b003384100a310000000081fe000e81ff0b3f8fff8fff8fffffffffffc7ffa001ffff8001ffff8001c1ff8003fffff81ffffffe7f0fff87ff0ffffffffdfffffff1ff803bfbffffffffffffff9c7fffff8c3f8fff9c7fdfff8c7f80ff0003ffff8427fcfffffffeff87ffffff97ff99dbffff80010ffeffffffff",
       "generatedAt": "2026-07-26T05:05:24.126Z",
       "severity": "high",
       "summary": [
@@ -2345,7 +2301,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.23492661454746766
+      "metricMismatch": 0.23518079691065474
     },
     {
       "id": "screens.settings.server-danger-modal",

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-01T03:08:11.538Z",
+  "generatedAt": "2026-08-01T22:13:06.591Z",
   "baseline": "android",
   "current": "ios",
   "comparison": "android__ios",
@@ -947,7 +947,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.05945268089817857
+      "metricMismatch": 0.05945571893439194
     },
     {
       "id": "components.thread.header.states",
@@ -1069,7 +1069,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.3693138088872686
+      "metricMismatch": 0.3693165093639027
     },
     {
       "id": "components.thread.message-menu.task",
@@ -1626,7 +1626,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.08794709766273745
+      "metricMismatch": 0.08794676010315816
     },
     {
       "id": "components.channel.settings.panel",
@@ -1941,7 +1941,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-01T03:08:11.089Z",
+      "generatedAt": "2026-08-01T22:13:06.223Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1954,7 +1954,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-01T03:08:11.089Z",
+      "generatedAt": "2026-08-01T22:13:06.223Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1967,7 +1967,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-01T03:08:11.089Z",
+      "generatedAt": "2026-08-01T22:13:06.223Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1980,7 +1980,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-01T03:08:11.089Z",
+      "generatedAt": "2026-08-01T22:13:06.223Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1993,7 +1993,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-01T03:08:11.089Z",
+      "generatedAt": "2026-08-01T22:13:06.223Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2062,7 +2062,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.09200321356719465
+      "metricMismatch": 0.09200287600761536
     },
     {
       "id": "components.members.avatar-management",

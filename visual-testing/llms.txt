@@ -1,19 +1,19 @@
 # Raft Visual Testing
 
-Generated: 2026-08-01 03:08:13 UTC
-Latest run: cbeff10c-20260801030228
-Latest commit: cbeff10c-20260801030228
-Commit subject: fix(visual): exclude @Ignore'd tests from the expected/sharding set (#1838)
+Generated: 2026-08-01 22:13:08 UTC
+Latest run: 6176fdd2-20260801221112
+Latest commit: 6176fdd2-20260801221112
+Commit subject: fix(thread): keep reply preview taps parent-owned (#1849)
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 80, same 0, pass 0, basic-pass 0, different 79, missing 1
-AI analysis: ready 79 / total 80, pending 1
+AI analysis: ready 77 / total 80, pending 3
 Visual coverage matrix: active 89 / total 108, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Comparisons
 
 - react__android: total 80, same 0, pass 0, basic-pass 0, different 79, missing 1
-- react__ios: total 80, same 0, pass 12, basic-pass 10, different 52, missing 6
+- react__ios: total 80, same 0, pass 11, basic-pass 11, different 52, missing 6
 - android__ios: total 80, same 0, pass 15, basic-pass 18, different 42, missing 5
 
 ## Capture Type Coverage
@@ -116,6 +116,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- 6176fdd2-20260801221112: react vs android, total 80, pass 0, basic-pass 0, different 79, matrix runs/6176fdd2-20260801221112/component-matrix.json, page runs/6176fdd2-20260801221112/
 - cbeff10c-20260801030228: react vs android, total 80, pass 0, basic-pass 0, different 79, matrix runs/cbeff10c-20260801030228/component-matrix.json, page runs/cbeff10c-20260801030228/
 - 4cdec2e2-20260730221708: react vs android, total 80, pass 0, basic-pass 0, different 79, matrix runs/4cdec2e2-20260730221708/component-matrix.json, page runs/4cdec2e2-20260730221708/
 - ef4f45a1-20260730043036: react vs android, total 80, pass 0, basic-pass 0, different 79, matrix runs/ef4f45a1-20260730043036/component-matrix.json, page runs/ef4f45a1-20260730043036/
