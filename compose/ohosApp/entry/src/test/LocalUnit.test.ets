@@ -39,6 +39,12 @@ import {
 } from '../main/ets/entryability/SlockOhosPlatformFileReader';
 import { SlockOhosProcessNetworkLifecycle } from '../main/ets/entryability/SlockOhosProcessNetworkLifecycle';
 import {
+  exportSlockOhosAttachmentToPublicDownloads,
+  slockOhosPublicDownloadFileName,
+  SlockOhosPublicDownloadBackend,
+  SlockOhosPublicDownloadStat,
+} from '../main/ets/kuikly/SlockOhosPublicDownloadExport';
+import {
   cacheSlockOhosPickedAttachment,
   ensureSlockOhosAttachmentCacheDirectory,
   SlockOhosAttachmentCacheDirectoryBackend,
@@ -105,6 +111,70 @@ class FakeAttachmentCacheDirectoryBackend implements SlockOhosAttachmentCacheDir
 
   isDirectory(_path: string): boolean {
     return this.directoryExists;
+  }
+}
+
+class FakePublicDownloadBackend implements SlockOhosPublicDownloadBackend {
+  readonly stats: Map<string, SlockOhosPublicDownloadStat> = new Map();
+  readonly ensuredDirectories: Array<string> = [];
+  readonly copiedPaths: Array<string> = [];
+  readonly publishedPaths: Array<string> = [];
+  readonly removedPaths: Array<string> = [];
+  downloadDirectory: string = '/storage/Users/currentUser/Download';
+  collisionTargets: Set<string> = new Set();
+  copyError: Error | null = null;
+  copiedSizeOverride: number | null = null;
+  publishedSizeOverride: number | null = null;
+
+  userDownloadDirectory(): string {
+    return this.downloadDirectory;
+  }
+
+  ensureDirectory(path: string): void {
+    this.ensuredDirectories.push(path);
+  }
+
+  stat(path: string): SlockOhosPublicDownloadStat | null {
+    return this.stats.get(path) ?? null;
+  }
+
+  temporaryPath(directory: string): string {
+    return `${directory}/.raft-pending-test`;
+  }
+
+  copyFile(sourcePath: string, targetPath: string): void {
+    this.copiedPaths.push(`${sourcePath}->${targetPath}`);
+    if (this.copyError !== null) {
+      throw this.copyError;
+    }
+    const source = this.stats.get(sourcePath);
+    if (source !== undefined) {
+      this.stats.set(targetPath, {
+        isFile: source.isFile,
+        sizeBytes: this.copiedSizeOverride ?? source.sizeBytes,
+      });
+    }
+  }
+
+  publishWithoutOverwrite(stagedPath: string, targetPath: string): boolean {
+    this.publishedPaths.push(`${stagedPath}->${targetPath}`);
+    if (this.collisionTargets.has(targetPath)) {
+      return false;
+    }
+    const staged = this.stats.get(stagedPath);
+    if (staged !== undefined) {
+      this.stats.set(targetPath, {
+        isFile: staged.isFile,
+        sizeBytes: this.publishedSizeOverride ?? staged.sizeBytes,
+      });
+      this.stats.delete(stagedPath);
+    }
+    return true;
+  }
+
+  removeFile(path: string): void {
+    this.removedPaths.push(path);
+    this.stats.delete(path);
   }
 }
 
@@ -219,6 +289,135 @@ function diagnosticWork(
 
 export default function localUnitTest() {
   describe('localUnitTest',() => {
+    it('publicDownloadExportWritesDirectlyIntoDownloadsRaftWithoutPickerAuthority', 0, () => {
+      const backend = new FakePublicDownloadBackend();
+      const source = '/data/storage/el2/base/cache/slock-attachments/source.apk';
+      backend.stats.set(source, { isFile: true, sizeBytes: 95123456 });
+
+      const result = exportSlockOhosAttachmentToPublicDownloads(source, 'mobile.apk', 'apk', backend);
+
+      expect(backend.ensuredDirectories[0]).assertEqual('/storage/Users/currentUser/Download/Raft');
+      expect(backend.copiedPaths[0]).assertEqual(`${source}->/storage/Users/currentUser/Download/Raft/.raft-pending-test`);
+      expect(backend.publishedPaths[0]).assertEqual(
+        '/storage/Users/currentUser/Download/Raft/.raft-pending-test->/storage/Users/currentUser/Download/Raft/mobile.apk'
+      );
+      expect(result.path).assertEqual('/storage/Users/currentUser/Download/Raft/mobile.apk');
+      expect(result.sizeBytes).assertEqual(95123456);
+    });
+
+    it('publicDownloadExportUsesNonDestructiveSuffixForDuplicateName', 0, () => {
+      const backend = new FakePublicDownloadBackend();
+      const source = '/cache/source.apk';
+      backend.stats.set(source, { isFile: true, sizeBytes: 90 });
+      backend.collisionTargets.add('/storage/Users/currentUser/Download/Raft/mobile.apk');
+      backend.collisionTargets.add('/storage/Users/currentUser/Download/Raft/mobile (1).apk');
+
+      const result = exportSlockOhosAttachmentToPublicDownloads(source, 'mobile.apk', 'apk', backend);
+
+      expect(result.fileName).assertEqual('mobile (2).apk');
+      expect(backend.publishedPaths.length).assertEqual(3);
+      expect(backend.publishedPaths[2]).assertEqual(
+        '/storage/Users/currentUser/Download/Raft/.raft-pending-test->/storage/Users/currentUser/Download/Raft/mobile (2).apk'
+      );
+    });
+
+    it('publicDownloadFileNameStripsTraversalAndAddsMimeExtension', 0, () => {
+      expect(slockOhosPublicDownloadFileName('../report:2026', 'pdf')).assertEqual('report_2026.pdf');
+      expect(slockOhosPublicDownloadFileName('folder\\release notes.pdf', 'pdf')).assertEqual('release notes.pdf');
+      expect(slockOhosPublicDownloadFileName('///', 'apk')).assertEqual('attachment.apk');
+    });
+
+    it('publicDownloadExportRejectsMissingOrEmptySourceBeforePublishing', 0, () => {
+      const backend = new FakePublicDownloadBackend();
+      backend.stats.set('/cache/empty.apk', { isFile: true, sizeBytes: 0 });
+      let missingFailed = false;
+      let emptyFailed = false;
+
+      try {
+        exportSlockOhosAttachmentToPublicDownloads('/cache/missing.apk', 'mobile.apk', 'apk', backend);
+      } catch (_) {
+        missingFailed = true;
+      }
+      try {
+        exportSlockOhosAttachmentToPublicDownloads('/cache/empty.apk', 'mobile.apk', 'apk', backend);
+      } catch (_) {
+        emptyFailed = true;
+      }
+
+      expect(missingFailed).assertTrue();
+      expect(emptyFailed).assertTrue();
+      expect(backend.publishedPaths.length).assertEqual(0);
+    });
+
+    it('publicDownloadExportRejectsInvalidDirectoryBeforeCopy', 0, () => {
+      const backend = new FakePublicDownloadBackend();
+      const source = '/cache/source.apk';
+      backend.stats.set(source, { isFile: true, sizeBytes: 90 });
+      backend.downloadDirectory = '';
+      let failed = false;
+
+      try {
+        exportSlockOhosAttachmentToPublicDownloads(source, 'mobile.apk', 'apk', backend);
+      } catch (_) {
+        failed = true;
+      }
+
+      expect(failed).assertTrue();
+      expect(backend.copiedPaths.length).assertEqual(0);
+    });
+
+    it('publicDownloadExportRemovesPartialTargetWhenCopyFails', 0, () => {
+      const backend = new FakePublicDownloadBackend();
+      const source = '/cache/source.apk';
+      backend.stats.set(source, { isFile: true, sizeBytes: 90 });
+      backend.copyError = new Error('copy failed');
+      let failed = false;
+
+      try {
+        exportSlockOhosAttachmentToPublicDownloads(source, 'mobile.apk', 'apk', backend);
+      } catch (_) {
+        failed = true;
+      }
+
+      expect(failed).assertTrue();
+      expect(backend.removedPaths[0]).assertEqual('/storage/Users/currentUser/Download/Raft/.raft-pending-test');
+    });
+
+    it('publicDownloadExportRejectsAndRemovesTruncatedStagedCopy', 0, () => {
+      const backend = new FakePublicDownloadBackend();
+      const source = '/cache/source.apk';
+      backend.stats.set(source, { isFile: true, sizeBytes: 90 });
+      backend.copiedSizeOverride = 45;
+      let failed = false;
+
+      try {
+        exportSlockOhosAttachmentToPublicDownloads(source, 'mobile.apk', 'apk', backend);
+      } catch (_) {
+        failed = true;
+      }
+
+      expect(failed).assertTrue();
+      expect(backend.publishedPaths.length).assertEqual(0);
+      expect(backend.removedPaths[0]).assertEqual('/storage/Users/currentUser/Download/Raft/.raft-pending-test');
+    });
+
+    it('publicDownloadExportRemovesPublishedFileWhenFinalSizeVerificationFails', 0, () => {
+      const backend = new FakePublicDownloadBackend();
+      const source = '/cache/source.apk';
+      backend.stats.set(source, { isFile: true, sizeBytes: 90 });
+      backend.publishedSizeOverride = 45;
+      let failed = false;
+
+      try {
+        exportSlockOhosAttachmentToPublicDownloads(source, 'mobile.apk', 'apk', backend);
+      } catch (_) {
+        failed = true;
+      }
+
+      expect(failed).assertTrue();
+      expect(backend.removedPaths[0]).assertEqual('/storage/Users/currentUser/Download/Raft/mobile.apk');
+    });
+
     it('attachmentCacheDirectoryReusesExistingDirectoryWithoutCreating', 0, () => {
       const backend = new FakeAttachmentCacheDirectoryBackend();
       backend.directoryExists = true;

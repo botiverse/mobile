@@ -18,6 +18,7 @@ import slockOhosMotionBridge from '../SlockOhosMotionBridge';
 import slockOhosRealtimeBridge from '../SlockOhosRealtimeBridge';
 import { SlockOhosClipboard } from '../SlockOhosClipboard';
 import { SlockOhosDiagnostics } from '../SlockOhosDiagnostics';
+import { exportSlockOhosAttachmentToPublicDownloads } from '../SlockOhosPublicDownloadExport';
 import {
   cacheSlockOhosPickedAttachment,
   ensureSlockOhosAttachmentCacheDirectory,
@@ -358,16 +359,19 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
           return;
         }
       }
-      const options = new picker.DocumentSaveOptions();
-      options.newFileNames = [fileName];
-      const targetUris = await new picker.DocumentViewPicker(context).save(options);
-      const targetUri = targetUris.length > 0 ? targetUris[0] : undefined;
-      if (targetUri === undefined || targetUri.length === 0) {
-        callback({ "status": "cancelled" });
-        return;
-      }
+      const fallbackExtension = this.extensionForMimeType(mimeType).replace(/^\./, '');
+      let publishedPath = '';
+      let publishedFileName = '';
+      let publishedSize = 0;
       try {
-        fs.copyFileSync(path, targetUri);
+        const published = exportSlockOhosAttachmentToPublicDownloads(
+          path,
+          fileName,
+          fallbackExtension
+        );
+        publishedPath = published.path;
+        publishedFileName = published.fileName;
+        publishedSize = published.sizeBytes;
       } catch (error) {
         const businessError = error as BusinessError;
         SlockOhosDiagnostics.record(
@@ -383,19 +387,14 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       );
       callback({
         "status": "saved",
-        "message": "Saved to Files",
-        "uri": targetUri,
-        "fileName": fileName,
+        "message": "Saved to Downloads",
+        "uri": fileUri.getUriFromPath(publishedPath),
+        "fileName": publishedFileName,
         "cached": true,
-        "sizeBytes": fs.statSync(path).size
+        "sizeBytes": publishedSize
       });
     } catch (error) {
       const businessError = error as BusinessError;
-      const message = businessError.message ?? `${error}`;
-      if (message.toLowerCase().includes("cancel")) {
-        callback({ "status": "cancelled" });
-        return;
-      }
       SlockOhosDiagnostics.record(
         "SlockAttachmentSave",
         `attachmentId=${attachmentId.substring(0, 8)} status=failed code=${businessError.code ?? "unknown"}`
