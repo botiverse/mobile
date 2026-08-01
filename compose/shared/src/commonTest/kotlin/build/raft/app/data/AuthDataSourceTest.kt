@@ -714,6 +714,28 @@ class AuthDataSourceTest {
     }
 
     @Test
+    fun appleMobileOAuthStartUsesTheExistingIosBrokerContract() = runBlocking {
+        val store = InMemorySlockAuthSessionStore()
+        val api = FakeAuthApi()
+        val source = SharedAuthDataSource(transport = api, sessionStore = store)
+
+        val result =
+            source.startMobileOAuthLogin(
+                provider = " Apple ",
+                platform = "ios",
+                appEnv = "production",
+                returnUri = "raft://oauth/callback",
+                codeChallenge = "challenge-apple"
+            )
+
+        assertTrue(result is SharedAuthResult.Success)
+        assertEquals(
+            """{"provider":"apple","mode":"login","platform":"ios","appEnv":"production","returnUri":"raft://oauth/callback","codeChallenge":"challenge-apple","codeChallengeMethod":"S256"}""",
+            api.mobileOAuthStartBody
+        )
+    }
+
+    @Test
     fun mobileOAuthCompleteStoresReturnedSessionAndFetchesServers() = runBlocking {
         val store = InMemorySlockAuthSessionStore()
         val api = FakeAuthApi()

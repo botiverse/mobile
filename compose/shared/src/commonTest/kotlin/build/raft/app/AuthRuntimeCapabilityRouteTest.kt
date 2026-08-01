@@ -16,7 +16,7 @@ class AuthRuntimeCapabilityRouteTest {
         val initialLogin =
             JSONObject()
                 .put("pageName", LOGIN_PAGE)
-                .put(AUTH_SOCIAL_PROVIDERS_KEY, "google,github")
+                .put(AUTH_SOCIAL_PROVIDERS_KEY, "google,github,apple")
 
         val initialCapabilities = store.seedFromAuthPageData(initialLogin)
         val chooseServer =
@@ -29,17 +29,17 @@ class AuthRuntimeCapabilityRouteTest {
             )
         val loginAfterLogout = loginPageData(replaceCurrent = true)
 
-        assertEquals(setOf("google", "github"), initialCapabilities.socialProviderIds)
+        assertEquals(setOf("google", "github", "apple"), initialCapabilities.socialProviderIds)
         assertEquals(AUTH_CHOOSE_SERVER_PAGE, chooseServer.pageName)
         assertFalse(chooseServer.pageData.has(AUTH_SOCIAL_PROVIDERS_KEY))
         assertFalse(loginAfterLogout.has(AUTH_SOCIAL_PROVIDERS_KEY))
         assertTrue(loginAfterLogout.optBoolean("slockReplaceCurrentPage", false))
         assertEquals(
-            setOf("google", "github"),
+            setOf("google", "github", "apple"),
             store.seedFromAuthPageData(chooseServer.pageData).socialProviderIds
         )
         assertEquals(
-            setOf("google", "github"),
+            setOf("google", "github", "apple"),
             store.seedFromAuthPageData(loginAfterLogout).socialProviderIds
         )
     }
@@ -49,12 +49,12 @@ class AuthRuntimeCapabilityRouteTest {
         val store = SharedAuthRuntimeCapabilityStore()
 
         store.seedFromAuthPageData(
-            JSONObject().put(AUTH_SOCIAL_PROVIDERS_KEY, " GitHub, GOOGLE, github ")
+            JSONObject().put(AUTH_SOCIAL_PROVIDERS_KEY, " GitHub, APPLE, GOOGLE, github ")
         )
-        assertEquals(setOf("github", "google"), store.current().socialProviderIds)
+        assertEquals(setOf("github", "apple", "google"), store.current().socialProviderIds)
 
         store.seedFromAuthPageData(JSONObject().put("pageName", LOGIN_PAGE))
-        assertEquals(setOf("github", "google"), store.current().socialProviderIds)
+        assertEquals(setOf("github", "apple", "google"), store.current().socialProviderIds)
 
         store.seedFromAuthPageData(JSONObject().put(AUTH_SOCIAL_PROVIDERS_KEY, ""))
         assertEquals(emptySet(), store.current().socialProviderIds)
