@@ -1240,8 +1240,9 @@ class KmpVisualScreenshotCaptureTest {
     // passed as a non-first case in the targeted proof run 30670789815). Most
     // likely a cold-app gesture-registration race (long-press fires before the
     // target row is interactive). Ignored to restore the baseline for the other
-    // cases; re-enable once the readiness fix lands. Tracked in #proj-visual-testing.
-    @Ignore("Quarantined: cold-first-case long-press renders no menu (changedRatio~0); re-enable after readiness fix")
+    // cases; re-enable once the readiness fix lands, after a targeted cold-first
+    // rerun rules out product behavior. Tracked in botiverse/mobile#1837.
+    @Ignore("Quarantined (botiverse/mobile#1837): cold-first-case long-press renders no menu (changedRatio~0); re-enable after readiness fix + cold-first rerun")
     @Test
     fun captureThreadInlineSelectionPreferenceOffFallback() {
         val backingStore = slockSharedPreferenceStore()
