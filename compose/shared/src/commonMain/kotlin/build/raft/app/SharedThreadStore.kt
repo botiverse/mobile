@@ -1146,6 +1146,54 @@ internal class SharedThreadDataSource(
     val createAgentCoordinatorOrNull: build.raft.app.data.SharedCreateAgentCoordinator?
         get() = createAgentCoordinator
 
+    internal fun seedThreadAuthorProfiles(
+        serverId: String?,
+        payload: KuiklyThreadScreenPayload,
+        source: String
+    ) {
+        val scopedServerId = serverId?.trim()?.takeIf { it.isNotBlank() }?.let(::ServerId) ?: return
+        serverMembersStore?.seedThreadAuthorProfiles(
+            serverId = scopedServerId,
+            messages = payload.threadAuthorProfileCandidates(),
+            source = source,
+            diagnosticsLogger = diagnosticsLogger
+        )
+    }
+
+    internal fun seedRealtimeThreadAuthorProfiles(
+        serverId: String?,
+        event: RealtimeEvent,
+        currentUserId: String?
+    ) {
+        val scopedServerId = serverId?.trim()?.takeIf { it.isNotBlank() }?.let(::ServerId) ?: return
+        val messageItems =
+            when (event) {
+                is MessageNew -> listOf(event.message)
+                is MessageUpdated -> listOf(event.message)
+                is SyncResumeResponse -> event.messages
+                else -> emptyList()
+            }.map { message -> message.toKuiklyThreadMessageItem(currentUserId) }
+        serverMembersStore?.seedThreadAuthorProfiles(
+            serverId = scopedServerId,
+            messages = messageItems,
+            source = "realtime",
+            diagnosticsLogger = diagnosticsLogger
+        )
+    }
+
+    internal fun seedAcceptedRealtimeThreadReplyAuthorProfile(
+        serverId: String?,
+        reply: build.raft.app.network.sync.ReplyPreview
+    ) {
+        val scopedServerId = serverId?.trim()?.takeIf { it.isNotBlank() }?.let(::ServerId) ?: return
+        serverMembersStore?.seedAcceptedThreadReplyAuthorProfile(
+            serverId = scopedServerId,
+            reply = reply,
+            source = "realtime_inline",
+            diagnosticsLogger = diagnosticsLogger
+        )
+    }
+
     constructor(
         networkApi: SharedThreadNetworkApi,
         sessionStore: SlockAuthSessionStore,
@@ -2147,6 +2195,7 @@ internal class SharedThreadDataSource(
                 when (val warmed = payloadCache.joinOrConsumePrewarm(serverId, threadId)) {
                     is DataResult.Content -> {
                         cacheReplyThreadResolution(replyResolutionNamespaceId, warmed.data)
+                        seedThreadAuthorProfiles(session.currentServerId, warmed.data, source = "prewarm")
                         return warmed
                     }
                     is DataResult.Empty,
@@ -2266,6 +2315,7 @@ internal class SharedThreadDataSource(
                 expectedGeneration = canonicalRequestGeneration
             )
         }
+        seedThreadAuthorProfiles(session.currentServerId, payload, source = "initial")
         return DataResult.Content(payload)
     }
 
@@ -3379,13 +3429,15 @@ internal class SharedThreadDataSource(
                 )
             }
         return when (result) {
-            is DataResult.Content ->
+            is DataResult.Content -> {
+                seedThreadAuthorProfiles(session.currentServerId, result.data, source = source)
                 DataResult.Content(
                     SharedThreadPageFetchResult(
                         payload = result.data,
                         requestedPageSize = pageSize
                     )
                 )
+            }
             is DataResult.Empty -> result
             is DataResult.Error -> result
             is DataResult.NoPermission -> result
@@ -5647,7 +5699,8 @@ internal class SharedThreadStore(
         val acceptedPayload = _state.value.payload
         val eventStaleToken = routeStaleToken
         val eventRouteIdentity = acceptedPayload.realtimeGapRouteIdentity()
-        val currentUserId = dataSource.readSession()?.user?.id
+        val currentSession = dataSource.readSession()
+        val currentUserId = currentSession?.user?.id
         val repliesPageIdentity = captureThreadRepliesPageIdentity(acceptedPayload)
         val decision =
             realtimeGapRecoveryMutex.withLock {
@@ -5668,12 +5721,25 @@ internal class SharedThreadStore(
                         dropped = true,
                     )
                 }
+                dataSource.seedRealtimeThreadAuthorProfiles(
+                    serverId = currentSession?.currentServerId,
+                    event = event,
+                    currentUserId = currentUserId
+                )
                 val acceptedRepliesProjection =
                     if (event is ThreadUpdated && repliesPageIdentity != null) {
                         threadRepliesSyncHost.ingestFrame(repliesPageIdentity, event)
                     } else {
                         null
                     }
+                if (event is ThreadUpdated && acceptedRepliesProjection != null) {
+                    event.latestReply?.let { reply ->
+                        dataSource.seedAcceptedRealtimeThreadReplyAuthorProfile(
+                            serverId = currentSession?.currentServerId,
+                            reply = reply
+                        )
+                    }
+                }
                 val storeEvent =
                     if (event is ThreadUpdated) event.copy(latestReply = null) else event
                 val realtimeGapServerSeq =

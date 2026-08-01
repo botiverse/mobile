@@ -1,5 +1,6 @@
 package build.raft.app
 
+import kotlinx.coroutines.flow.flowOf
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -33,6 +34,36 @@ class ThreadAvatarResolutionTest {
                 avatarWireValue = "https://www.gravatar.com/avatar/agenthash?s=52&d=404"
             )
         assertEquals("pixel:robot", legacyUrlAgent.resolvedThreadAvatarWireValue())
+    }
+
+    @Test
+    fun messageRowsReadOnlyTheCanonicalMemberAvatar() {
+        val canonicalAvatar = "https://cdn.slock.ai/avatars/agents/agent-1.webp"
+        val fullHistoryRow =
+            KuiklyThreadMessageItem(
+                id = "history-message",
+                authorId = "agent-1",
+                authorName = "Build Bot",
+                authorKind = "agent",
+                avatarWireValue = canonicalAvatar
+            )
+        val sparseRealtimeRow =
+            fullHistoryRow.copy(
+                id = "realtime-message",
+                avatarWireValue = null
+            )
+
+        assertEquals(canonicalAvatar, fullHistoryRow.resolvedThreadAvatarWireValue())
+        assertEquals("pixel:robot", sparseRealtimeRow.resolvedThreadAvatarWireValue())
+        val canonicalByAuthor = mapOf("agent-1" to canonicalAvatar)
+        val resolver =
+            SlockMemberAvatarResolver(
+                currentAvatar = canonicalByAuthor::get,
+                avatarFlow = { authorId -> flowOf(canonicalByAuthor[authorId]) }
+            )
+
+        assertEquals(canonicalAvatar, resolveThreadRowAvatarWireValue(resolver.current(fullHistoryRow.authorId)))
+        assertEquals(canonicalAvatar, resolveThreadRowAvatarWireValue(resolver.current(sparseRealtimeRow.authorId)))
     }
 
     @Test

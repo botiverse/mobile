@@ -9,6 +9,7 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -40,6 +41,24 @@ class SlockMemberAvatarResolverTest {
         assertNull(resolver.current("member-1"))
         updates.value = "pixel:later"
         assertEquals("pixel:later", resolver("member-1").first { it != null })
+    }
+
+    @Test
+    fun alreadyMountedRowsObserveTheSameHydratedAvatarUpdate() = runBlocking {
+        val updates = MutableStateFlow<String?>(null)
+        val resolver =
+            SlockMemberAvatarResolver(
+                currentAvatar = { updates.value },
+                avatarFlow = { updates }
+            )
+        val firstMountedRow = async { resolver("agent-1").first { it != null } }
+        val secondMountedRow = async { resolver("agent-1").first { it != null } }
+        val uploadedAvatar = "https://cdn.raft.build/avatars/agents/deadbeef.webp"
+
+        updates.value = uploadedAvatar
+
+        assertEquals(uploadedAvatar, firstMountedRow.await())
+        assertEquals(uploadedAvatar, secondMountedRow.await())
     }
 
     @Test

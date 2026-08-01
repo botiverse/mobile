@@ -5781,6 +5781,183 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun threadDataSourceWritesFullAndRealtimeAuthorSnapshotsIntoMemberStore() {
+        val memberRepository = FakeMemberRepository()
+        val memberStore = SharedServerMembersStore(memberRepository)
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                memberRepository = memberRepository,
+                serverMembersStore = memberStore
+            )
+        val uploadedAvatar =
+            "https://cdn.raft.build/avatars/agents/deadbeefdeadbeefdeadbeefdeadbeef.webp"
+        val fullHistoryRow =
+            KuiklyThreadMessageItem(
+                id = "history-message",
+                authorId = "agent-1",
+                authorName = "Argus",
+                authorKind = "agent",
+                avatarWireValue = uploadedAvatar
+            )
+
+        dataSource.seedThreadAuthorProfiles(
+            serverId = "server-1",
+            payload = basePayload().copy(status = "content", messages = listOf(fullHistoryRow)),
+            source = "initial"
+        )
+        assertEquals(
+            uploadedAvatar,
+            memberStore.state.value.memberProfile(ServerId("server-1"), "agent-1")?.avatar?.wireValue
+        )
+
+        dataSource.seedRealtimeThreadAuthorProfiles(
+            serverId = "server-1",
+            event =
+                MessageNew(
+                    Message(
+                        id = MessageId("realtime-message"),
+                        threadId = ThreadId("channel-1"),
+                        channelId = ChannelId("channel-1"),
+                        author =
+                            member("agent-1", "Argus").copy(
+                                kind = MemberKind.Agent,
+                                avatar = AvatarReference.fromWireValue(uploadedAvatar),
+                                avatarUrl = uploadedAvatar
+                            ),
+                        timestampLabel = "2026-08-02T00:00:00Z",
+                        body = "realtime"
+                    )
+                ),
+            currentUserId = "u1"
+        )
+        assertEquals(
+            uploadedAvatar,
+            memberStore.state.value.memberProfile(ServerId("server-1"), "agent-1")?.avatar?.wireValue
+        )
+    }
+
+    @Test
+    fun acceptedRealtimeInlineReplySeedsResolverWhileRejectedScopeWritesNothing() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val memberRepository = FakeMemberRepository()
+        val memberStore = SharedServerMembersStore(memberRepository)
+        val sessionStore = ParkableReadSessionStore(sampleSession())
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = sessionStore,
+                memberRepository = memberRepository,
+                serverMembersStore = memberStore
+            )
+        dataSource.cachePayloadForTest(contentPayload("reply parent"))
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        val acceptedAvatar =
+            "https://cdn.raft.build/avatars/agents/77777777777777777777777777777777.webp"
+        val rejectedAvatar =
+            "https://cdn.raft.build/avatars/agents/88888888888888888888888888888888.webp"
+        val staleAvatar =
+            "https://cdn.raft.build/avatars/agents/99999999999999999999999999999999.webp"
+        fun replyEvent(
+            senderId: String,
+            avatarUrl: String,
+            seq: Long,
+            envelopeServerId: String
+        ) =
+            ThreadUpdated(
+                parentMessageId = MessageId("m1"),
+                threadChannelId = ChannelId("reply-thread"),
+                replyCount = seq.toInt(),
+                lastReplyAt = "2026-08-02T00:00:00Z",
+                participantIds = listOf(MemberId(senderId)),
+                unreadCount = 1,
+                firstUnreadMessageId = MessageId("reply-$seq"),
+                latestReply =
+                    ReplyPreview(
+                        messageId = "reply-$seq",
+                        seq = seq,
+                        content = "live reply $seq",
+                        senderId = senderId,
+                        senderType = "agent",
+                        senderName = senderId,
+                        senderAvatarUrl = avatarUrl,
+                        createdAt = "2026-08-02T00:00:00Z"
+                    ),
+                syncCoreReplyWindow =
+                    build.raft.app.network.sync.ThreadRepliesSyncWindowEnvelope(
+                        producer = build.raft.app.network.sync.ThreadRepliesSyncWindowProducer,
+                        rootKind = "message",
+                        rootServerId = envelopeServerId,
+                        rootMessageId = "m1",
+                        relationKind = "replies",
+                        parentScopeServerId = envelopeServerId,
+                        parentScopeKind = "channel",
+                        parentScopeId = "channel-1",
+                        backing = "sync-scope",
+                        windowKind = "sync-scope-window"
+                    )
+            )
+
+        store.accept(
+            SharedThreadIntent.ApplyRealtimeEvent(
+                replyEvent(
+                    senderId = "agent-live",
+                    avatarUrl = acceptedAvatar,
+                    seq = 1L,
+                    envelopeServerId = "server-1"
+                )
+            )
+        )
+        val resolver = slockMemberAvatarResolver(memberStore, "server-1")
+        assertEquals(acceptedAvatar, resolver.current("agent-live"))
+
+        store.accept(
+            SharedThreadIntent.ApplyRealtimeEvent(
+                replyEvent(
+                    senderId = "agent-rejected",
+                    avatarUrl = rejectedAvatar,
+                    seq = 2L,
+                    envelopeServerId = "other-server"
+                )
+            )
+        )
+        assertNull(resolver.current("agent-rejected"))
+        assertNull(memberStore.state.value.memberProfile(ServerId("server-1"), "agent-rejected"))
+
+        sessionStore.parkNextRead()
+        val staleEvent =
+            launch {
+                store.accept(
+                    SharedThreadIntent.ApplyRealtimeEvent(
+                        replyEvent(
+                            senderId = "agent-stale",
+                            avatarUrl = staleAvatar,
+                            seq = 3L,
+                            envelopeServerId = "server-1"
+                        )
+                    )
+                )
+            }
+        sessionStore.nextReadStarted.await()
+        store.accept(
+            SharedThreadIntent.Start(
+                basePayload().copy(
+                    sourceThreadId = "channel-2",
+                    streamChannelId = "channel-2",
+                    title = "Other channel"
+                )
+            )
+        )
+        sessionStore.releaseNextRead.complete(Unit)
+        staleEvent.join()
+        assertNull(resolver.current("agent-stale"))
+        assertNull(memberStore.state.value.memberProfile(ServerId("server-1"), "agent-stale"))
+        scope.cancel()
+    }
+
+    @Test
     fun addChannelMemberUsesTypedRepositoryAndRefreshesMembers() = runBlocking {
         val memberRepository =
             FakeMemberRepository(
