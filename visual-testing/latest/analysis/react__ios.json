@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-01T03:04:18.217Z",
+  "generatedAt": "2026-08-01T03:08:08.007Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 80,
-    "ready": 71,
-    "pending": 9
+    "ready": 74,
+    "pending": 6
   },
   "cases": [
     {
@@ -274,15 +274,32 @@
     },
     {
       "id": "components.ui.status-dot.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0000000007fc0ffe03fc07fe03fc87fe0000fffec3fcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00001",
-      "generatedAt": "2026-08-01T03:04:16.994Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-01T03:06:31.282Z",
+      "severity": "low",
+      "summary": [
+        "Status dot row (green, orange, gray, cyan) appears visually identical in both renders with matching color, size, and horizontal spacing.",
+        "Pink 'Waiting pulse' indicator dot is the same color and roughly the same size on both sides.",
+        "'Waiting pulse' label text is identical in weight, color, and approximate font size on both platforms.",
+        "Top-left metadata block (component path, title, dimensions) and the platform badge (REACT / iOS) align consistently in position and styling.",
+        "High RGB similarity (97.95%) and pixel-perfect similarity (99.77%) confirm near-identical rendering."
+      ],
+      "likelyCauses": [
+        "No significant visual discrepancies; remaining ~0.23% pixel mismatch is attributable to font antialiasing and sub-pixel rounding on iOS."
+      ],
+      "suggestedOwner": "design-system",
+      "suggestedFixes": [
+        "No corrective action required; differences are within tolerance.",
+        "If stricter parity is desired, ensure iOS uses the same system font fallback chain and weight as the React baseline (e.g., SF Pro → Inter) to minimize sub-pixel variance."
+      ],
+      "intentional": [
+        "iOS rendering on a 1170×2532 canvas vs. React's 342×92 canvas, with content scaled proportionally and anchored top-left, is expected.",
+        "Platform badge text changes from 'REACT' to 'iOS' intentionally to reflect the target platform."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.0022987807347997213
     },
     {
@@ -839,28 +856,68 @@
     },
     {
       "id": "components.thread.composer.member-suggestions",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:03f807fc0001fffe000100020001000280090002000900023ff9000217f93ffa00010003100900020f910fb200010002700dfffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffe1fff",
-      "generatedAt": "2026-08-01T03:04:17.302Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-01T03:06:31.638Z",
+      "severity": "high",
+      "summary": [
+        "Member suggestion rows display different content between React and iOS (different member highlighted as selected in each platform).",
+        "Selected/active row on iOS is 'Cindy' with subtitle 'Keeps visual testing rele…', whereas React shows 'artin' selected with no subtitle.",
+        "React shows two members in 'IN THIS CHANNEL' (artin, Cindy) while iOS shows two different members (Cindy, Product UX…).",
+        "The bottom (third) member row in React is partially clipped/cut off at the suggestion panel bottom, whereas iOS shows the row fully inside the panel.",
+        "iOS adds a small person-add glyph (👤+) icon next to names in 'NOT IN THIS CHANNEL' (Android Dev…, Product UX…) that is absent in React's version."
+      ],
+      "likelyCauses": [
+        "iOS implementation is reading a different member list / different 'selected match' state than the React baseline (likely stale fixtures or different sort order in the suggestion API).",
+        "Element crop on baseline uses 'component-bounds' but iOS crop is null, producing a 1170×2532 full-screen capture — scale/density differences making the same component appear at different relative sizes.",
+        "iOS renders a person-add badge icon for off-channel members that the React member-suggestion row does not render (incomplete parity of the suggestion row component).",
+        "Layout container on iOS auto-grows or is not height-constrained, so the third member is not clipped; React container has a fixed height that clips overflow without ellipsis styling."
+      ],
+      "suggestedOwner": "components-thread-composer / member-suggestions component owner (mobile parity squad)",
+      "suggestedFixes": [
+        "Normalize the selected/highlighted member across platforms using the same fixture or deterministic mock state so both show the same row highlighted.",
+        "Align the 'NOT IN THIS CHANNEL' row rendering: remove the 👤+ glyph on iOS or add it to React so the visual states match.",
+        "Constrain the suggestion panel to the same height in both platforms or add proper overflow/ellipsis handling so the third row is either fully shown or cleanly truncated on both sides.",
+        "Crop iOS screenshot to the same component bounds as React (use the same contract: 'component-bounds') so visual diffs are computed at matched scales/density.",
+        "Match avatar glyph rendering between React and iOS (either both use person outline or both use the pixelated avatar style) for consistency."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.11039447212432996
     },
     {
       "id": "components.thread.composer.channel-suggestions",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:03f807fcfffdfffefffdfffefffdfffe0001fffe0001000207f9000200092ffa00010003300900020f910fb200010002700dfffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffa1fff",
-      "generatedAt": "2026-08-01T03:04:17.306Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-01T03:06:31.651Z",
+      "severity": "medium",
+      "summary": [
+        "Channel suggestion list has different vertical offsets and spacing between React and iOS renders.",
+        "iOS list container starts lower and is narrower relative to viewport than React baseline.",
+        "iOS composer/action bar container is wider and positioned with more horizontal padding than React.",
+        "# hashtag icon styling identical but the icon square size/weights look slightly thicker on iOS due to scale.",
+        "Overall typography weight and color appear consistent; differences are primarily positional/sizing."
+      ],
+      "likelyCauses": [
+        "iOS render uses full device canvas (1170x2532) without the element-bounds crop that React uses (342x320).",
+        "iOS layout applies platform-native scaling metrics (points/pixels) not normalized to component bounds.",
+        "AutoLayout/SafeArea insets on iOS shift vertical placement of the suggestion dropdown and toolbar.",
+        "Spacing constants differ between React token system and iOS Auto Layout constraints."
+      ],
+      "suggestedOwner": "iOS",
+      "suggestedFixes": [
+        "Crop iOS screenshot to the component bounds before diffing to compare apples to apples.",
+        "Normalize spacing tokens between React and iOS so suggestion list and toolbar have matching positions.",
+        "Verify Auto Layout constraints on the suggestion dropdown and composer bar match React's offset/gap values.",
+        "Ensure iOS snapshot uses the same logical width as the React baseline for fair comparison.",
+        "Update tolerance layoutDp to account for platform-specific scaling."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.09285588906441988
     },
     {
@@ -1589,7 +1646,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-01T03:04:17.628Z",
+      "generatedAt": "2026-08-01T03:08:07.292Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1991,7 +2048,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-01T03:04:17.865Z",
+      "generatedAt": "2026-08-01T03:08:07.577Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2004,7 +2061,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-01T03:04:17.865Z",
+      "generatedAt": "2026-08-01T03:08:07.577Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2017,7 +2074,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-01T03:04:17.865Z",
+      "generatedAt": "2026-08-01T03:08:07.577Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2030,7 +2087,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-01T03:04:17.865Z",
+      "generatedAt": "2026-08-01T03:08:07.577Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2043,7 +2100,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-01T03:04:17.865Z",
+      "generatedAt": "2026-08-01T03:08:07.577Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

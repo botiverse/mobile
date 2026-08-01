@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-01T03:04:15.707Z",
+  "generatedAt": "2026-08-01T03:08:05.005Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 80,
-    "ready": 77,
-    "pending": 3
+    "ready": 79,
+    "pending": 1
   },
   "cases": [
     {
@@ -869,28 +869,74 @@
     },
     {
       "id": "components.thread.composer.member-suggestions",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:fffeffff03fe03fcffffffffcc01ffff81fcffffb3feffffbe0400018000f7ff80003c0bbffc000187fc000187fc7fff800003ff80fe27fffffc0001bffc01ff97fcfffffffe3fffbffc21ff80003fff80000000bffc0001bffc3ffdbffc3ffd87d80ff987c80f9184180ff180000001ffffffff80008000ffffffffffffffff",
-      "generatedAt": "2026-08-01T03:04:14.807Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-01T03:06:16.979Z",
+      "severity": "medium",
+      "summary": [
+        "Different highlighted item: React shows 'artin' as the yellow-selected suggestion; Android shows 'Cindy' as the yellow-selected suggestion",
+        "Different ordering/contents of the suggestion list: React shows 'artin' then 'Cindy' in 'IN THIS CHANNEL' and 'artin'/'Product UX' in 'NOT IN THIS CHANNEL'; Android shows 'Cindy'/'Product UX' in 'IN THIS CHANNEL' and 'Android Dev' in 'NOT IN THIS CHANNEL'",
+        "Avatar styling differs: React uses a lighter flat icon avatar for non-Cindy rows; Android uses the pixelated mosaic avatar style across all rows",
+        "Secondary label (status text) is visible inline on Android (e.g., 'Keeps visual testing releas…', 'Tur…') but is clipped/absent on React rows except for Cindy",
+        "Bottom composer bar: React shows the @ icon positioned directly above the attach buttons; Android shows the @ icon with more vertical offset above the buttons"
+      ],
+      "likelyCauses": [
+        "Different default selected/highlighted suggestion between platforms (selection state diverged)",
+        "Android renders status/description text inline in the suggestion row while React omits it for most rows",
+        "Inconsistent avatar component mapping across platforms (icon vs image avatar)",
+        "Test crop coordinates differ (element bounds vs manual rect) introducing a baseline offset",
+        "Possible different sort order or filter applied to member suggestions on Android"
+      ],
+      "suggestedOwner": "Android composer / member-suggestions component owner",
+      "suggestedFixes": [
+        "Sync the selected-index state so both platforms highlight the same member suggestion",
+        "Align the row layout: consistently show or hide the secondary status label per row",
+        "Use the same avatar component (image/mosaic) across all rows on both platforms",
+        "Re-capture the Android baseline using element-bounds contract instead of a manual rect offset of 24px",
+        "Verify the suggestion list ordering and 'NOT IN THIS CHANNEL' filter match the React behavior"
+      ],
+      "intentional": [
+        "The pixelated avatar style is the platform-native convention on Android",
+        "Status text rendering inline may be intentional on Android if spec calls for it"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.32410554743339826
     },
     {
       "id": "components.thread.composer.channel-suggestions",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:fffeffff03fe03fcffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff8000ffff8000ffff80000001800000019ffc000187fc3ffbfffe0fff80fc3fff80fc3fff800001ff80000000bffc0001bffc7ffdfffc7ffd87d80ff987c80f9184180ff180000001ffffffff80008000ffffffffffffffff",
-      "generatedAt": "2026-08-01T03:04:14.816Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-01T03:06:17.049Z",
+      "severity": "medium",
+      "summary": [
+        "Android suggestions list is horizontally shifted to the right (~24px) compared to React baseline, as confirmed by crop rect offset.",
+        "Both variants render the same three channel rows (#design highlighted pink, #product, #android-artifacts) with identical hash icon chips and descriptions.",
+        "The #design channel label appears in a heavier/larger font weight on Android versus React (text reads 'design' with noticeably thicker strokes).",
+        "Row spacing/padding within the suggestions box looks tighter on Android; the pink-highlighted #design row has reduced vertical padding relative to React.",
+        "The bottom action bar (image/attach icons, 'As Task' checkbox, send arrow) is visually similar but the send-arrow icon size appears marginally smaller on Android."
+      ],
+      "likelyCauses": [
+        "Android crop was taken with a manual-rect offset (x=24) instead of component-bounds, producing horizontal misalignment rather than a true layout regression.",
+        "Possible intentional density/spacing adjustment for Material 3 list-item spec on Android (lower minimum height, denser rows).",
+        "Typography token mapping for channel name weight differs between React (font-medium/600) and Android (regular/500 or default)."
+      ],
+      "suggestedOwner": "android-platform",
+      "suggestedFixes": [
+        "Re-capture Android screenshot using component-bounds crop mode (matching React contract) to rule out capture-frame artifact.",
+        "Audit Android row min-height and vertical padding tokens against the React spec; align to 56dp if currently below.",
+        "Verify channel-name TextStyle on Android uses semibold/600 to match React font-medium weight.",
+        "Confirm horizontal margins of suggestions popup equal React value; if 24dp inset is intentional on Android, update test to normalize or document the platform divergence.",
+        "Re-run pixel-perfect diff after alignment fixes; target mismatch ratio <5%."
+      ],
+      "intentional": [
+        "24px manual-rect crop offset on Android is a capture-side artifact, not a UI difference.",
+        "Minor font-weight deviation on the highlighted row could be an intentional Material typography choice."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.27270142949967513
     },
     {
@@ -1633,7 +1679,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-01T03:04:15.074Z",
+      "generatedAt": "2026-08-01T03:08:04.250Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

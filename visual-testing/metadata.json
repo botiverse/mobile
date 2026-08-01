@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-01T03:04:22.708Z",
+  "generatedAt": "2026-08-01T03:08:13.329Z",
   "runId": "cbeff10c-20260801030228",
   "commit": "cbeff10c-20260801030228",
   "commitSubject": "fix(visual): exclude @Ignore'd tests from the expected/sharding set (#1838)",
@@ -27,8 +27,8 @@
       },
       "analysisSummary": {
         "total": 80,
-        "ready": 77,
-        "pending": 3
+        "ready": 79,
+        "pending": 1
       }
     },
     {
@@ -51,8 +51,8 @@
       },
       "analysisSummary": {
         "total": 80,
-        "ready": 71,
-        "pending": 9
+        "ready": 74,
+        "pending": 6
       }
     },
     {
@@ -75,8 +75,8 @@
       },
       "analysisSummary": {
         "total": 80,
-        "ready": 73,
-        "pending": 7
+        "ready": 75,
+        "pending": 5
       }
     }
   ],
@@ -90,8 +90,8 @@
   },
   "analysisSummary": {
     "total": 80,
-    "ready": 77,
-    "pending": 3
+    "ready": 79,
+    "pending": 1
   },
   "componentMatrixSummary": {
     "total": 108,

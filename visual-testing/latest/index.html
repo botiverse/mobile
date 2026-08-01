@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>cbeff10c-20260801030228</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-08-01T03:04:22.708Z" data-timestamp="2026-08-01T03:04:22.708Z" title="2026-08-01T03:04:22.708Z">2026-08-01 03:04:22 UTC</time></p>
+    <p class="runMeta"><code>cbeff10c-20260801030228</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-08-01T03:08:13.329Z" data-timestamp="2026-08-01T03:08:13.329Z" title="2026-08-01T03:08:13.329Z">2026-08-01 03:08:13 UTC</time></p>
     <p class="runMeta">Comparisons: <strong>React vs Android</strong> · <a href="react__ios.html">React vs iOS</a> · <a href="android__ios.html">Android vs iOS</a></p>
     <div class="summary">
       <span class="pill">Total 80</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 0</span>
       <span class="pill">Different 79</span>
       <span class="pill">Missing 1</span>
-      <span class="pill">AI 77/80 ready</span>
+      <span class="pill">AI 79/80 ready</span>
       <span class="pill">Matrix 89/108 active</span>
       <span class="pill">Components Parity 78/82 active</span><span class="pill">Screens Parity 11/26 active</span>
     </div>
@@ -1805,7 +1805,12 @@
       <p><code>RGB 82.1%</code><br/><code>Pixel 67.59%</code><br/><code>Mismatch 32.41%</code><br/><code>Raw 1026×960 / 1026×960</code><br/><code>Canvas 1026×960</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 342×320 / component-bounds 342×320</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · Android composer / member-suggestions component owner</summary>
+    <ul><li>Different highlighted item: React shows 'artin' as the yellow-selected suggestion; Android shows 'Cindy' as the yellow-selected suggestion</li><li>Different ordering/contents of the suggestion list: React shows 'artin' then 'Cindy' in 'IN THIS CHANNEL' and 'artin'/'Product UX' in 'NOT IN THIS CHANNEL'; Android shows 'Cindy'/'Product UX' in 'IN THIS CHANNEL' and 'Android Dev' in 'NOT IN THIS CHANNEL'</li><li>Avatar styling differs: React uses a lighter flat icon avatar for non-Cindy rows; Android uses the pixelated mosaic avatar style across all rows</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Sync the selected-index state so both platforms highlight the same member suggestion</li><li>Align the row layout: consistently show or hide the secondary status label per row</li><li>Use the same avatar component (image/mosaic) across all rows on both platforms</li><li>Re-capture the Android baseline using element-bounds contract instead of a manual rect offset of 24px</li><li>Verify the suggestion list ordering and 'NOT IN THIS CHANNEL' filter match the React behavior</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.thread.composer.member-suggestions.png" data-current-src="android/components.thread.composer.member-suggestions.png" data-overlay-width="1026" data-overlay-height="960">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -1864,7 +1869,12 @@
       <p><code>RGB 85.9%</code><br/><code>Pixel 72.73%</code><br/><code>Mismatch 27.27%</code><br/><code>Raw 1026×960 / 1026×960</code><br/><code>Canvas 1026×960</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 342×320 / component-bounds 342×320</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · android-platform</summary>
+    <ul><li>Android suggestions list is horizontally shifted to the right (~24px) compared to React baseline, as confirmed by crop rect offset.</li><li>Both variants render the same three channel rows (#design highlighted pink, #product, #android-artifacts) with identical hash icon chips and descriptions.</li><li>The #design channel label appears in a heavier/larger font weight on Android versus React (text reads 'design' with noticeably thicker strokes).</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Re-capture Android screenshot using component-bounds crop mode (matching React contract) to rule out capture-frame artifact.</li><li>Audit Android row min-height and vertical padding tokens against the React spec; align to 56dp if currently below.</li><li>Verify channel-name TextStyle on Android uses semibold/600 to match React font-medium weight.</li><li>Confirm horizontal margins of suggestions popup equal React value; if 24dp inset is intentional on Android, update test to normalize or document the platform divergence.</li><li>Re-run pixel-perfect diff after alignment fixes; target mismatch ratio &lt;5%.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.thread.composer.channel-suggestions.png" data-current-src="android/components.thread.composer.channel-suggestions.png" data-overlay-width="1026" data-overlay-height="960">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">

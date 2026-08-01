@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>cbeff10c-20260801030228</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-08-01T03:04:22.708Z" data-timestamp="2026-08-01T03:04:22.708Z" title="2026-08-01T03:04:22.708Z">2026-08-01 03:04:22 UTC</time></p>
+    <p class="runMeta"><code>cbeff10c-20260801030228</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-08-01T03:08:13.329Z" data-timestamp="2026-08-01T03:08:13.329Z" title="2026-08-01T03:08:13.329Z">2026-08-01 03:08:13 UTC</time></p>
     <p class="runMeta">Comparisons: <a href="index.html">React vs Android</a> · <a href="react__ios.html">React vs iOS</a> · <strong>Android vs iOS</strong></p>
     <div class="summary">
       <span class="pill">Total 80</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 18</span>
       <span class="pill">Different 42</span>
       <span class="pill">Missing 5</span>
-      <span class="pill">AI 73/80 ready</span>
+      <span class="pill">AI 75/80 ready</span>
       <span class="pill">Matrix 89/108 active</span>
       <span class="pill">Components Parity 78/82 active</span><span class="pill">Screens Parity 11/26 active</span>
     </div>
@@ -1805,7 +1805,12 @@
       <p><code>RGB 86.1%</code><br/><code>Pixel 94.10%</code><br/><code>Mismatch 5.90%</code><br/><code>Raw 1026×960 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 342×320 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · low · Kuikly Compose platform team (composer/member-suggestions)</summary>
+    <ul><li>Typography on iOS appears slightly heavier/bolder than on Android for suggestion names (e.g., 'Cindy', 'Product UX...', 'Android Dev...')</li><li>Text ellipsis/truncation differs: Android shows 'Tur…' while iOS shows 'Turns…' in the second suggestion row, indicating different substring cutting</li><li>Section header 'NOT IN THIS CHANNEL' appears bolder/darker on iOS than on Android</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Normalize font weight and size via a shared token (e.g., 14sp/14pt regular) and let platform font-family vary</li><li>Unify ellipsis truncation logic so both ends show consistent character counts (e.g., 'Turns…' vs 'Tur…')</li><li>Replace fixed-pixel icon sizes with dp/pt-based sizing so checkbox, send icon, and toolbar icons scale proportionally</li><li>Scale avatars and row heights via a single density-aware unit</li><li>Verify the 'NOT IN THIS CHANNEL' header weight is consistent across platforms</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="android/components.thread.composer.member-suggestions.png" data-current-src="ios/components.thread.composer.member-suggestions.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · Android under iOS</summary>
     <div class="overlayControls">
@@ -1864,7 +1869,12 @@
       <p><code>RGB 88.4%</code><br/><code>Pixel 94.86%</code><br/><code>Mismatch 5.14%</code><br/><code>Raw 1026×960 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 342×320 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · low · mobile-platform / Kuikly component owner</summary>
+    <ul><li>iOS suggestion list rows have denser vertical spacing and tighter gaps between items than Android</li><li>iOS suggestion row height (taller container) is slightly larger than Android's, giving more padding</li><li>iOS typography appears slightly larger/heavier in the channel name and description labels compared to Android</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Pin row minHeight and vertical padding to a fixed dp on both platforms</li><li>Set explicit font-size/line-height for channel name and description labels instead of relying on theme defaults</li><li>Constrain composer toolbar width to match the suggestion list width or document the intent if full-width is desired</li><li>Normalize trailing-icon button size via a fixed dimension token rather than intrinsic sizing</li><li>Re-run the visual diff after applying the above to confirm pixel-perfect similarity increases above ~0.95</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="android/components.thread.composer.channel-suggestions.png" data-current-src="ios/components.thread.composer.channel-suggestions.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · Android under iOS</summary>
     <div class="overlayControls">

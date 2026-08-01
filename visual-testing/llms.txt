@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-08-01 03:04:22 UTC
+Generated: 2026-08-01 03:08:13 UTC
 Latest run: cbeff10c-20260801030228
 Latest commit: cbeff10c-20260801030228
 Commit subject: fix(visual): exclude @Ignore'd tests from the expected/sharding set (#1838)
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 80, same 0, pass 0, basic-pass 0, different 79, missing 1
-AI analysis: ready 77 / total 80, pending 3
+AI analysis: ready 79 / total 80, pending 1
 Visual coverage matrix: active 89 / total 108, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 

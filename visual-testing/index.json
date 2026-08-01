@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-08-01T03:04:22.708Z",
+  "generatedAt": "2026-08-01T03:08:13.329Z",
   "latestRunId": "cbeff10c-20260801030228",
   "latest": {
     "runId": "cbeff10c-20260801030228",
     "commit": "cbeff10c-20260801030228",
     "commitSubject": "fix(visual): exclude @Ignore'd tests from the expected/sharding set (#1838)",
-    "generatedAt": "2026-08-01T03:04:22.708Z",
+    "generatedAt": "2026-08-01T03:08:13.329Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -20,8 +20,8 @@
     },
     "analysisSummary": {
       "total": 80,
-      "ready": 77,
-      "pending": 3
+      "ready": 79,
+      "pending": 1
     },
     "comparisons": [
       "react__android",
@@ -129,7 +129,7 @@
       "runId": "cbeff10c-20260801030228",
       "commit": "cbeff10c-20260801030228",
       "commitSubject": "fix(visual): exclude @Ignore'd tests from the expected/sharding set (#1838)",
-      "generatedAt": "2026-08-01T03:04:22.708Z",
+      "generatedAt": "2026-08-01T03:08:13.329Z",
       "baseline": "react",
       "current": "android",
       "summary": {
@@ -142,8 +142,8 @@
       },
       "analysisSummary": {
         "total": 80,
-        "ready": 77,
-        "pending": 3
+        "ready": 79,
+        "pending": 1
       },
       "comparisons": [
         "react__android",

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-01T03:04:22.708Z",
+  "generatedAt": "2026-08-01T03:08:13.329Z",
   "runId": "cbeff10c-20260801030228",
   "cases": [
     {
@@ -3135,17 +3135,31 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-01T03:04:18.452Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-01T03:06:31.282Z",
+            "severity": "low",
+            "summary": [
+              "Status dot row (green, orange, gray, cyan) appears visually identical in both renders with matching color, size, and horizontal spacing.",
+              "Pink 'Waiting pulse' indicator dot is the same color and roughly the same size on both sides.",
+              "'Waiting pulse' label text is identical in weight, color, and approximate font size on both platforms.",
+              "Top-left metadata block (component path, title, dimensions) and the platform badge (REACT / iOS) align consistently in position and styling.",
+              "High RGB similarity (97.95%) and pixel-perfect similarity (99.77%) confirm near-identical rendering."
+            ],
+            "likelyCauses": [
+              "No significant visual discrepancies; remaining ~0.23% pixel mismatch is attributable to font antialiasing and sub-pixel rounding on iOS."
+            ],
+            "suggestedOwner": "design-system",
+            "suggestedFixes": [
+              "No corrective action required; differences are within tolerance.",
+              "If stricter parity is desired, ensure iOS uses the same system font fallback chain and weight as the React baseline (e.g., SF Pro → Inter) to minimize sub-pixel variance."
+            ],
+            "intentional": [
+              "iOS rendering on a 1170×2532 canvas vs. React's 342×92 canvas, with content scaled proportionally and anchored top-left, is expected.",
+              "Platform badge text changes from 'REACT' to 'iOS' intentionally to reflect the target platform."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -3220,17 +3234,31 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-01T03:04:18.452Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-01T03:06:31.282Z",
+            "severity": "low",
+            "summary": [
+              "Status dot row (green, orange, gray, cyan) appears visually identical in both renders with matching color, size, and horizontal spacing.",
+              "Pink 'Waiting pulse' indicator dot is the same color and roughly the same size on both sides.",
+              "'Waiting pulse' label text is identical in weight, color, and approximate font size on both platforms.",
+              "Top-left metadata block (component path, title, dimensions) and the platform badge (REACT / iOS) align consistently in position and styling.",
+              "High RGB similarity (97.95%) and pixel-perfect similarity (99.77%) confirm near-identical rendering."
+            ],
+            "likelyCauses": [
+              "No significant visual discrepancies; remaining ~0.23% pixel mismatch is attributable to font antialiasing and sub-pixel rounding on iOS."
+            ],
+            "suggestedOwner": "design-system",
+            "suggestedFixes": [
+              "No corrective action required; differences are within tolerance.",
+              "If stricter parity is desired, ensure iOS uses the same system font fallback chain and weight as the React baseline (e.g., SF Pro → Inter) to minimize sub-pixel variance."
+            ],
+            "intentional": [
+              "iOS rendering on a 1170×2532 canvas vs. React's 342×92 canvas, with content scaled proportionally and anchored top-left, is expected.",
+              "Platform badge text changes from 'REACT' to 'iOS' intentionally to reflect the target platform."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {
@@ -9739,17 +9767,38 @@
         "currentHeight": 960
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-08-01T03:04:15.871Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
-        "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "status": "ready",
+        "generatedAt": "2026-08-01T03:06:16.979Z",
+        "severity": "medium",
+        "summary": [
+          "Different highlighted item: React shows 'artin' as the yellow-selected suggestion; Android shows 'Cindy' as the yellow-selected suggestion",
+          "Different ordering/contents of the suggestion list: React shows 'artin' then 'Cindy' in 'IN THIS CHANNEL' and 'artin'/'Product UX' in 'NOT IN THIS CHANNEL'; Android shows 'Cindy'/'Product UX' in 'IN THIS CHANNEL' and 'Android Dev' in 'NOT IN THIS CHANNEL'",
+          "Avatar styling differs: React uses a lighter flat icon avatar for non-Cindy rows; Android uses the pixelated mosaic avatar style across all rows",
+          "Secondary label (status text) is visible inline on Android (e.g., 'Keeps visual testing releas…', 'Tur…') but is clipped/absent on React rows except for Cindy",
+          "Bottom composer bar: React shows the @ icon positioned directly above the attach buttons; Android shows the @ icon with more vertical offset above the buttons"
+        ],
+        "likelyCauses": [
+          "Different default selected/highlighted suggestion between platforms (selection state diverged)",
+          "Android renders status/description text inline in the suggestion row while React omits it for most rows",
+          "Inconsistent avatar component mapping across platforms (icon vs image avatar)",
+          "Test crop coordinates differ (element bounds vs manual rect) introducing a baseline offset",
+          "Possible different sort order or filter applied to member suggestions on Android"
+        ],
+        "suggestedOwner": "Android composer / member-suggestions component owner",
+        "suggestedFixes": [
+          "Sync the selected-index state so both platforms highlight the same member suggestion",
+          "Align the row layout: consistently show or hide the secondary status label per row",
+          "Use the same avatar component (image/mosaic) across all rows on both platforms",
+          "Re-capture the Android baseline using element-bounds contract instead of a manual rect offset of 24px",
+          "Verify the suggestion list ordering and 'NOT IN THIS CHANNEL' filter match the React behavior"
+        ],
+        "intentional": [
+          "The pixelated avatar style is the platform-native convention on Android",
+          "Status text rendering inline may be intentional on Android if spec calls for it"
+        ],
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -9836,17 +9885,38 @@
             "currentHeight": 960
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-01T03:04:15.871Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-01T03:06:16.979Z",
+            "severity": "medium",
+            "summary": [
+              "Different highlighted item: React shows 'artin' as the yellow-selected suggestion; Android shows 'Cindy' as the yellow-selected suggestion",
+              "Different ordering/contents of the suggestion list: React shows 'artin' then 'Cindy' in 'IN THIS CHANNEL' and 'artin'/'Product UX' in 'NOT IN THIS CHANNEL'; Android shows 'Cindy'/'Product UX' in 'IN THIS CHANNEL' and 'Android Dev' in 'NOT IN THIS CHANNEL'",
+              "Avatar styling differs: React uses a lighter flat icon avatar for non-Cindy rows; Android uses the pixelated mosaic avatar style across all rows",
+              "Secondary label (status text) is visible inline on Android (e.g., 'Keeps visual testing releas…', 'Tur…') but is clipped/absent on React rows except for Cindy",
+              "Bottom composer bar: React shows the @ icon positioned directly above the attach buttons; Android shows the @ icon with more vertical offset above the buttons"
+            ],
+            "likelyCauses": [
+              "Different default selected/highlighted suggestion between platforms (selection state diverged)",
+              "Android renders status/description text inline in the suggestion row while React omits it for most rows",
+              "Inconsistent avatar component mapping across platforms (icon vs image avatar)",
+              "Test crop coordinates differ (element bounds vs manual rect) introducing a baseline offset",
+              "Possible different sort order or filter applied to member suggestions on Android"
+            ],
+            "suggestedOwner": "Android composer / member-suggestions component owner",
+            "suggestedFixes": [
+              "Sync the selected-index state so both platforms highlight the same member suggestion",
+              "Align the row layout: consistently show or hide the secondary status label per row",
+              "Use the same avatar component (image/mosaic) across all rows on both platforms",
+              "Re-capture the Android baseline using element-bounds contract instead of a manual rect offset of 24px",
+              "Verify the suggestion list ordering and 'NOT IN THIS CHANNEL' filter match the React behavior"
+            ],
+            "intentional": [
+              "The pixelated avatar style is the platform-native convention on Android",
+              "Status text rendering inline may be intentional on Android if spec calls for it"
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -9869,17 +9939,34 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-01T03:04:18.763Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-01T03:06:31.638Z",
+            "severity": "high",
+            "summary": [
+              "Member suggestion rows display different content between React and iOS (different member highlighted as selected in each platform).",
+              "Selected/active row on iOS is 'Cindy' with subtitle 'Keeps visual testing rele…', whereas React shows 'artin' selected with no subtitle.",
+              "React shows two members in 'IN THIS CHANNEL' (artin, Cindy) while iOS shows two different members (Cindy, Product UX…).",
+              "The bottom (third) member row in React is partially clipped/cut off at the suggestion panel bottom, whereas iOS shows the row fully inside the panel.",
+              "iOS adds a small person-add glyph (👤+) icon next to names in 'NOT IN THIS CHANNEL' (Android Dev…, Product UX…) that is absent in React's version."
+            ],
+            "likelyCauses": [
+              "iOS implementation is reading a different member list / different 'selected match' state than the React baseline (likely stale fixtures or different sort order in the suggestion API).",
+              "Element crop on baseline uses 'component-bounds' but iOS crop is null, producing a 1170×2532 full-screen capture — scale/density differences making the same component appear at different relative sizes.",
+              "iOS renders a person-add badge icon for off-channel members that the React member-suggestion row does not render (incomplete parity of the suggestion row component).",
+              "Layout container on iOS auto-grows or is not height-constrained, so the third member is not clipped; React container has a fixed height that clips overflow without ellipsis styling."
+            ],
+            "suggestedOwner": "components-thread-composer / member-suggestions component owner (mobile parity squad)",
+            "suggestedFixes": [
+              "Normalize the selected/highlighted member across platforms using the same fixture or deterministic mock state so both show the same row highlighted.",
+              "Align the 'NOT IN THIS CHANNEL' row rendering: remove the 👤+ glyph on iOS or add it to React so the visual states match.",
+              "Constrain the suggestion panel to the same height in both platforms or add proper overflow/ellipsis handling so the third row is either fully shown or cleanly truncated on both sides.",
+              "Crop iOS screenshot to the same component bounds as React (use the same contract: 'component-bounds') so visual diffs are computed at matched scales/density.",
+              "Match avatar glyph rendering between React and iOS (either both use person outline or both use the pixelated avatar style) for consistency."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -9902,17 +9989,37 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-01T03:04:21.728Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-01T03:06:46.771Z",
+            "severity": "low",
+            "summary": [
+              "Typography on iOS appears slightly heavier/bolder than on Android for suggestion names (e.g., 'Cindy', 'Product UX...', 'Android Dev...')",
+              "Text ellipsis/truncation differs: Android shows 'Tur…' while iOS shows 'Turns…' in the second suggestion row, indicating different substring cutting",
+              "Section header 'NOT IN THIS CHANNEL' appears bolder/darker on iOS than on Android",
+              "Compose toolbar icons ('@', gallery, attachment, send arrow) are rendered at a noticeably larger size on iOS relative to the suggestion list, while on Android they look smaller and more balanced with the list rows",
+              "Overall component density differs: iOS suggestion rows are taller with larger avatars/text, Android rows are more compact"
+            ],
+            "likelyCauses": [
+              "Platform-default font metrics not normalized (iOS SF vs Android Roboto weight/density differences)",
+              "Different text-truncation strategy or ellipsis-character handling between Kuikly Android and iOS renderers",
+              "Hard-coded pixel sizes instead of dp/pt for composer icons and checkbox, causing scale mismatch on iOS (1170×2532) vs Android (342×320)",
+              "Avatars rendered at fixed px rather than relative size, inflating on higher-density iOS canvas",
+              "Missing platform-aware scaling wrapper for the entire composer suggestions component"
+            ],
+            "suggestedOwner": "Kuikly Compose platform team (composer/member-suggestions)",
+            "suggestedFixes": [
+              "Normalize font weight and size via a shared token (e.g., 14sp/14pt regular) and let platform font-family vary",
+              "Unify ellipsis truncation logic so both ends show consistent character counts (e.g., 'Turns…' vs 'Tur…')",
+              "Replace fixed-pixel icon sizes with dp/pt-based sizing so checkbox, send icon, and toolbar icons scale proportionally",
+              "Scale avatars and row heights via a single density-aware unit",
+              "Verify the 'NOT IN THIS CHANNEL' header weight is consistent across platforms"
+            ],
+            "intentional": [
+              "Differences may partly stem from genuine iOS HIG conventions (slightly heavier SF font weight, larger tap targets) — confirm with design before treating all divergences as bugs"
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       },
@@ -9938,17 +10045,34 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-01T03:04:18.763Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-01T03:06:31.638Z",
+            "severity": "high",
+            "summary": [
+              "Member suggestion rows display different content between React and iOS (different member highlighted as selected in each platform).",
+              "Selected/active row on iOS is 'Cindy' with subtitle 'Keeps visual testing rele…', whereas React shows 'artin' selected with no subtitle.",
+              "React shows two members in 'IN THIS CHANNEL' (artin, Cindy) while iOS shows two different members (Cindy, Product UX…).",
+              "The bottom (third) member row in React is partially clipped/cut off at the suggestion panel bottom, whereas iOS shows the row fully inside the panel.",
+              "iOS adds a small person-add glyph (👤+) icon next to names in 'NOT IN THIS CHANNEL' (Android Dev…, Product UX…) that is absent in React's version."
+            ],
+            "likelyCauses": [
+              "iOS implementation is reading a different member list / different 'selected match' state than the React baseline (likely stale fixtures or different sort order in the suggestion API).",
+              "Element crop on baseline uses 'component-bounds' but iOS crop is null, producing a 1170×2532 full-screen capture — scale/density differences making the same component appear at different relative sizes.",
+              "iOS renders a person-add badge icon for off-channel members that the React member-suggestion row does not render (incomplete parity of the suggestion row component).",
+              "Layout container on iOS auto-grows or is not height-constrained, so the third member is not clipped; React container has a fixed height that clips overflow without ellipsis styling."
+            ],
+            "suggestedOwner": "components-thread-composer / member-suggestions component owner (mobile parity squad)",
+            "suggestedFixes": [
+              "Normalize the selected/highlighted member across platforms using the same fixture or deterministic mock state so both show the same row highlighted.",
+              "Align the 'NOT IN THIS CHANNEL' row rendering: remove the 👤+ glyph on iOS or add it to React so the visual states match.",
+              "Constrain the suggestion panel to the same height in both platforms or add proper overflow/ellipsis handling so the third row is either fully shown or cleanly truncated on both sides.",
+              "Crop iOS screenshot to the same component bounds as React (use the same contract: 'component-bounds') so visual diffs are computed at matched scales/density.",
+              "Match avatar glyph rendering between React and iOS (either both use person outline or both use the pixelated avatar style) for consistency."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {
@@ -9972,17 +10096,37 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-01T03:04:21.728Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-01T03:06:46.771Z",
+            "severity": "low",
+            "summary": [
+              "Typography on iOS appears slightly heavier/bolder than on Android for suggestion names (e.g., 'Cindy', 'Product UX...', 'Android Dev...')",
+              "Text ellipsis/truncation differs: Android shows 'Tur…' while iOS shows 'Turns…' in the second suggestion row, indicating different substring cutting",
+              "Section header 'NOT IN THIS CHANNEL' appears bolder/darker on iOS than on Android",
+              "Compose toolbar icons ('@', gallery, attachment, send arrow) are rendered at a noticeably larger size on iOS relative to the suggestion list, while on Android they look smaller and more balanced with the list rows",
+              "Overall component density differs: iOS suggestion rows are taller with larger avatars/text, Android rows are more compact"
+            ],
+            "likelyCauses": [
+              "Platform-default font metrics not normalized (iOS SF vs Android Roboto weight/density differences)",
+              "Different text-truncation strategy or ellipsis-character handling between Kuikly Android and iOS renderers",
+              "Hard-coded pixel sizes instead of dp/pt for composer icons and checkbox, causing scale mismatch on iOS (1170×2532) vs Android (342×320)",
+              "Avatars rendered at fixed px rather than relative size, inflating on higher-density iOS canvas",
+              "Missing platform-aware scaling wrapper for the entire composer suggestions component"
+            ],
+            "suggestedOwner": "Kuikly Compose platform team (composer/member-suggestions)",
+            "suggestedFixes": [
+              "Normalize font weight and size via a shared token (e.g., 14sp/14pt regular) and let platform font-family vary",
+              "Unify ellipsis truncation logic so both ends show consistent character counts (e.g., 'Turns…' vs 'Tur…')",
+              "Replace fixed-pixel icon sizes with dp/pt-based sizing so checkbox, send icon, and toolbar icons scale proportionally",
+              "Scale avatars and row heights via a single density-aware unit",
+              "Verify the 'NOT IN THIS CHANNEL' header weight is consistent across platforms"
+            ],
+            "intentional": [
+              "Differences may partly stem from genuine iOS HIG conventions (slightly heavier SF font weight, larger tap targets) — confirm with design before treating all divergences as bugs"
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       ],
@@ -10022,17 +10166,36 @@
         "currentHeight": 960
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-08-01T03:04:15.875Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
-        "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "status": "ready",
+        "generatedAt": "2026-08-01T03:06:17.049Z",
+        "severity": "medium",
+        "summary": [
+          "Android suggestions list is horizontally shifted to the right (~24px) compared to React baseline, as confirmed by crop rect offset.",
+          "Both variants render the same three channel rows (#design highlighted pink, #product, #android-artifacts) with identical hash icon chips and descriptions.",
+          "The #design channel label appears in a heavier/larger font weight on Android versus React (text reads 'design' with noticeably thicker strokes).",
+          "Row spacing/padding within the suggestions box looks tighter on Android; the pink-highlighted #design row has reduced vertical padding relative to React.",
+          "The bottom action bar (image/attach icons, 'As Task' checkbox, send arrow) is visually similar but the send-arrow icon size appears marginally smaller on Android."
+        ],
+        "likelyCauses": [
+          "Android crop was taken with a manual-rect offset (x=24) instead of component-bounds, producing horizontal misalignment rather than a true layout regression.",
+          "Possible intentional density/spacing adjustment for Material 3 list-item spec on Android (lower minimum height, denser rows).",
+          "Typography token mapping for channel name weight differs between React (font-medium/600) and Android (regular/500 or default)."
+        ],
+        "suggestedOwner": "android-platform",
+        "suggestedFixes": [
+          "Re-capture Android screenshot using component-bounds crop mode (matching React contract) to rule out capture-frame artifact.",
+          "Audit Android row min-height and vertical padding tokens against the React spec; align to 56dp if currently below.",
+          "Verify channel-name TextStyle on Android uses semibold/600 to match React font-medium weight.",
+          "Confirm horizontal margins of suggestions popup equal React value; if 24dp inset is intentional on Android, update test to normalize or document the platform divergence.",
+          "Re-run pixel-perfect diff after alignment fixes; target mismatch ratio <5%."
+        ],
+        "intentional": [
+          "24px manual-rect crop offset on Android is a capture-side artifact, not a UI difference.",
+          "Minor font-weight deviation on the highlighted row could be an intentional Material typography choice."
+        ],
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -10119,17 +10282,36 @@
             "currentHeight": 960
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-01T03:04:15.875Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-01T03:06:17.049Z",
+            "severity": "medium",
+            "summary": [
+              "Android suggestions list is horizontally shifted to the right (~24px) compared to React baseline, as confirmed by crop rect offset.",
+              "Both variants render the same three channel rows (#design highlighted pink, #product, #android-artifacts) with identical hash icon chips and descriptions.",
+              "The #design channel label appears in a heavier/larger font weight on Android versus React (text reads 'design' with noticeably thicker strokes).",
+              "Row spacing/padding within the suggestions box looks tighter on Android; the pink-highlighted #design row has reduced vertical padding relative to React.",
+              "The bottom action bar (image/attach icons, 'As Task' checkbox, send arrow) is visually similar but the send-arrow icon size appears marginally smaller on Android."
+            ],
+            "likelyCauses": [
+              "Android crop was taken with a manual-rect offset (x=24) instead of component-bounds, producing horizontal misalignment rather than a true layout regression.",
+              "Possible intentional density/spacing adjustment for Material 3 list-item spec on Android (lower minimum height, denser rows).",
+              "Typography token mapping for channel name weight differs between React (font-medium/600) and Android (regular/500 or default)."
+            ],
+            "suggestedOwner": "android-platform",
+            "suggestedFixes": [
+              "Re-capture Android screenshot using component-bounds crop mode (matching React contract) to rule out capture-frame artifact.",
+              "Audit Android row min-height and vertical padding tokens against the React spec; align to 56dp if currently below.",
+              "Verify channel-name TextStyle on Android uses semibold/600 to match React font-medium weight.",
+              "Confirm horizontal margins of suggestions popup equal React value; if 24dp inset is intentional on Android, update test to normalize or document the platform divergence.",
+              "Re-run pixel-perfect diff after alignment fixes; target mismatch ratio <5%."
+            ],
+            "intentional": [
+              "24px manual-rect crop offset on Android is a capture-side artifact, not a UI difference.",
+              "Minor font-weight deviation on the highlighted row could be an intentional Material typography choice."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -10152,17 +10334,34 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-01T03:04:18.760Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-01T03:06:31.651Z",
+            "severity": "medium",
+            "summary": [
+              "Channel suggestion list has different vertical offsets and spacing between React and iOS renders.",
+              "iOS list container starts lower and is narrower relative to viewport than React baseline.",
+              "iOS composer/action bar container is wider and positioned with more horizontal padding than React.",
+              "# hashtag icon styling identical but the icon square size/weights look slightly thicker on iOS due to scale.",
+              "Overall typography weight and color appear consistent; differences are primarily positional/sizing."
+            ],
+            "likelyCauses": [
+              "iOS render uses full device canvas (1170x2532) without the element-bounds crop that React uses (342x320).",
+              "iOS layout applies platform-native scaling metrics (points/pixels) not normalized to component bounds.",
+              "AutoLayout/SafeArea insets on iOS shift vertical placement of the suggestion dropdown and toolbar.",
+              "Spacing constants differ between React token system and iOS Auto Layout constraints."
+            ],
+            "suggestedOwner": "iOS",
+            "suggestedFixes": [
+              "Crop iOS screenshot to the component bounds before diffing to compare apples to apples.",
+              "Normalize spacing tokens between React and iOS so suggestion list and toolbar have matching positions.",
+              "Verify Auto Layout constraints on the suggestion dropdown and composer bar match React's offset/gap values.",
+              "Ensure iOS snapshot uses the same logical width as the React baseline for fair comparison.",
+              "Update tolerance layoutDp to account for platform-specific scaling."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -10185,17 +10384,34 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-01T03:04:21.726Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-01T03:06:46.781Z",
+            "severity": "low",
+            "summary": [
+              "iOS suggestion list rows have denser vertical spacing and tighter gaps between items than Android",
+              "iOS suggestion row height (taller container) is slightly larger than Android's, giving more padding",
+              "iOS typography appears slightly larger/heavier in the channel name and description labels compared to Android",
+              "iOS send-button (pink square with arrow) is slightly larger relative to row height than on Android",
+              "iOS composer toolbar container is wider (full composer width) while Android toolbar is same as suggestion list width; right-edge alignment of the send button differs slightly between the two"
+            ],
+            "likelyCauses": [
+              "Kuikly Text/View default metrics differ between Android and iOS hosts (line-height, font metrics, default padding)",
+              "Component row uses platform-default vertical padding rather than an explicit dp value",
+              "IconButton sizing for the send action uses intrinsic dimensions that resolve larger on iOS",
+              "No explicit width constraint on the composer toolbar so it stretches to parent width on iOS"
+            ],
+            "suggestedOwner": "mobile-platform / Kuikly component owner",
+            "suggestedFixes": [
+              "Pin row minHeight and vertical padding to a fixed dp on both platforms",
+              "Set explicit font-size/line-height for channel name and description labels instead of relying on theme defaults",
+              "Constrain composer toolbar width to match the suggestion list width or document the intent if full-width is desired",
+              "Normalize trailing-icon button size via a fixed dimension token rather than intrinsic sizing",
+              "Re-run the visual diff after applying the above to confirm pixel-perfect similarity increases above ~0.95"
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       },
@@ -10221,17 +10437,34 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-01T03:04:18.760Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-01T03:06:31.651Z",
+            "severity": "medium",
+            "summary": [
+              "Channel suggestion list has different vertical offsets and spacing between React and iOS renders.",
+              "iOS list container starts lower and is narrower relative to viewport than React baseline.",
+              "iOS composer/action bar container is wider and positioned with more horizontal padding than React.",
+              "# hashtag icon styling identical but the icon square size/weights look slightly thicker on iOS due to scale.",
+              "Overall typography weight and color appear consistent; differences are primarily positional/sizing."
+            ],
+            "likelyCauses": [
+              "iOS render uses full device canvas (1170x2532) without the element-bounds crop that React uses (342x320).",
+              "iOS layout applies platform-native scaling metrics (points/pixels) not normalized to component bounds.",
+              "AutoLayout/SafeArea insets on iOS shift vertical placement of the suggestion dropdown and toolbar.",
+              "Spacing constants differ between React token system and iOS Auto Layout constraints."
+            ],
+            "suggestedOwner": "iOS",
+            "suggestedFixes": [
+              "Crop iOS screenshot to the component bounds before diffing to compare apples to apples.",
+              "Normalize spacing tokens between React and iOS so suggestion list and toolbar have matching positions.",
+              "Verify Auto Layout constraints on the suggestion dropdown and composer bar match React's offset/gap values.",
+              "Ensure iOS snapshot uses the same logical width as the React baseline for fair comparison.",
+              "Update tolerance layoutDp to account for platform-specific scaling."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {
@@ -10255,17 +10488,34 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-01T03:04:21.726Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-01T03:06:46.781Z",
+            "severity": "low",
+            "summary": [
+              "iOS suggestion list rows have denser vertical spacing and tighter gaps between items than Android",
+              "iOS suggestion row height (taller container) is slightly larger than Android's, giving more padding",
+              "iOS typography appears slightly larger/heavier in the channel name and description labels compared to Android",
+              "iOS send-button (pink square with arrow) is slightly larger relative to row height than on Android",
+              "iOS composer toolbar container is wider (full composer width) while Android toolbar is same as suggestion list width; right-edge alignment of the send button differs slightly between the two"
+            ],
+            "likelyCauses": [
+              "Kuikly Text/View default metrics differ between Android and iOS hosts (line-height, font metrics, default padding)",
+              "Component row uses platform-default vertical padding rather than an explicit dp value",
+              "IconButton sizing for the send action uses intrinsic dimensions that resolve larger on iOS",
+              "No explicit width constraint on the composer toolbar so it stretches to parent width on iOS"
+            ],
+            "suggestedOwner": "mobile-platform / Kuikly component owner",
+            "suggestedFixes": [
+              "Pin row minHeight and vertical padding to a fixed dp on both platforms",
+              "Set explicit font-size/line-height for channel name and description labels instead of relying on theme defaults",
+              "Constrain composer toolbar width to match the suggestion list width or document the intent if full-width is desired",
+              "Normalize trailing-icon button size via a fixed dimension token rather than intrinsic sizing",
+              "Re-run the visual diff after applying the above to confirm pixel-perfect similarity increases above ~0.95"
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       ],
@@ -18470,7 +18720,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-08-01T03:04:15.712Z",
+        "generatedAt": "2026-08-01T03:08:05.012Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -18531,7 +18781,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-01T03:04:15.712Z",
+            "generatedAt": "2026-08-01T03:08:05.012Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -18553,7 +18803,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-01T03:04:18.222Z",
+            "generatedAt": "2026-08-01T03:08:08.013Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -18628,7 +18878,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-01T03:04:18.222Z",
+            "generatedAt": "2026-08-01T03:08:08.013Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -23148,7 +23398,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-01T03:04:18.222Z",
+            "generatedAt": "2026-08-01T03:08:08.013Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -23170,7 +23420,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-01T03:04:21.190Z",
+            "generatedAt": "2026-08-01T03:08:11.544Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -23195,7 +23445,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-01T03:04:18.222Z",
+            "generatedAt": "2026-08-01T03:08:08.013Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -23218,7 +23468,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-01T03:04:21.190Z",
+            "generatedAt": "2026-08-01T03:08:11.544Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -23418,7 +23668,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-01T03:04:18.222Z",
+            "generatedAt": "2026-08-01T03:08:08.013Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -23440,7 +23690,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-01T03:04:21.190Z",
+            "generatedAt": "2026-08-01T03:08:11.544Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -23465,7 +23715,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-01T03:04:18.222Z",
+            "generatedAt": "2026-08-01T03:08:08.013Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -23488,7 +23738,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-01T03:04:21.190Z",
+            "generatedAt": "2026-08-01T03:08:11.544Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -23688,7 +23938,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-01T03:04:18.222Z",
+            "generatedAt": "2026-08-01T03:08:08.013Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -23710,7 +23960,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-01T03:04:21.190Z",
+            "generatedAt": "2026-08-01T03:08:11.544Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -23735,7 +23985,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-01T03:04:18.222Z",
+            "generatedAt": "2026-08-01T03:08:08.013Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -23758,7 +24008,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-01T03:04:21.190Z",
+            "generatedAt": "2026-08-01T03:08:11.544Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -23954,7 +24204,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-01T03:04:18.222Z",
+            "generatedAt": "2026-08-01T03:08:08.013Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -23976,7 +24226,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-01T03:04:21.190Z",
+            "generatedAt": "2026-08-01T03:08:11.544Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -24001,7 +24251,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-01T03:04:18.222Z",
+            "generatedAt": "2026-08-01T03:08:08.013Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -24024,7 +24274,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-01T03:04:21.190Z",
+            "generatedAt": "2026-08-01T03:08:11.544Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -24220,7 +24470,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-01T03:04:18.222Z",
+            "generatedAt": "2026-08-01T03:08:08.013Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -24242,7 +24492,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-01T03:04:21.190Z",
+            "generatedAt": "2026-08-01T03:08:11.544Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -24267,7 +24517,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-01T03:04:18.222Z",
+            "generatedAt": "2026-08-01T03:08:08.013Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -24290,7 +24540,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-01T03:04:21.190Z",
+            "generatedAt": "2026-08-01T03:08:11.544Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],

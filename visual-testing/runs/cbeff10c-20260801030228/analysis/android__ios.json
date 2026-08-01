@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-01T03:04:21.185Z",
+  "generatedAt": "2026-08-01T03:08:11.538Z",
   "baseline": "android",
   "current": "ios",
   "comparison": "android__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 80,
-    "ready": 73,
-    "pending": 7
+    "ready": 75,
+    "pending": 5
   },
   "cases": [
     {
@@ -816,28 +816,71 @@
     },
     {
       "id": "components.thread.composer.member-suggestions",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:03f807fcfffdfffe00010002000100020001000202010002000100023ff93ffa00010002200900020fb10fb200010002600dfffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffa1fff",
-      "generatedAt": "2026-08-01T03:04:20.238Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-01T03:06:46.771Z",
+      "severity": "low",
+      "summary": [
+        "Typography on iOS appears slightly heavier/bolder than on Android for suggestion names (e.g., 'Cindy', 'Product UX...', 'Android Dev...')",
+        "Text ellipsis/truncation differs: Android shows 'Tur…' while iOS shows 'Turns…' in the second suggestion row, indicating different substring cutting",
+        "Section header 'NOT IN THIS CHANNEL' appears bolder/darker on iOS than on Android",
+        "Compose toolbar icons ('@', gallery, attachment, send arrow) are rendered at a noticeably larger size on iOS relative to the suggestion list, while on Android they look smaller and more balanced with the list rows",
+        "Overall component density differs: iOS suggestion rows are taller with larger avatars/text, Android rows are more compact"
+      ],
+      "likelyCauses": [
+        "Platform-default font metrics not normalized (iOS SF vs Android Roboto weight/density differences)",
+        "Different text-truncation strategy or ellipsis-character handling between Kuikly Android and iOS renderers",
+        "Hard-coded pixel sizes instead of dp/pt for composer icons and checkbox, causing scale mismatch on iOS (1170×2532) vs Android (342×320)",
+        "Avatars rendered at fixed px rather than relative size, inflating on higher-density iOS canvas",
+        "Missing platform-aware scaling wrapper for the entire composer suggestions component"
+      ],
+      "suggestedOwner": "Kuikly Compose platform team (composer/member-suggestions)",
+      "suggestedFixes": [
+        "Normalize font weight and size via a shared token (e.g., 14sp/14pt regular) and let platform font-family vary",
+        "Unify ellipsis truncation logic so both ends show consistent character counts (e.g., 'Turns…' vs 'Tur…')",
+        "Replace fixed-pixel icon sizes with dp/pt-based sizing so checkbox, send icon, and toolbar icons scale proportionally",
+        "Scale avatars and row heights via a single density-aware unit",
+        "Verify the 'NOT IN THIS CHANNEL' header weight is consistent across platforms"
+      ],
+      "intentional": [
+        "Differences may partly stem from genuine iOS HIG conventions (slightly heavier SF font weight, larger tap targets) — confirm with design before treating all divergences as bugs"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.05902296755377323
     },
     {
       "id": "components.thread.composer.channel-suggestions",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:03f807fc7ffdfffefffdfffefffdfffefffdfffe00010002000100020ff92ffa00010002200900020fb10fb200010002600dfffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffa1fff",
-      "generatedAt": "2026-08-01T03:04:20.244Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-01T03:06:46.781Z",
+      "severity": "low",
+      "summary": [
+        "iOS suggestion list rows have denser vertical spacing and tighter gaps between items than Android",
+        "iOS suggestion row height (taller container) is slightly larger than Android's, giving more padding",
+        "iOS typography appears slightly larger/heavier in the channel name and description labels compared to Android",
+        "iOS send-button (pink square with arrow) is slightly larger relative to row height than on Android",
+        "iOS composer toolbar container is wider (full composer width) while Android toolbar is same as suggestion list width; right-edge alignment of the send button differs slightly between the two"
+      ],
+      "likelyCauses": [
+        "Kuikly Text/View default metrics differ between Android and iOS hosts (line-height, font metrics, default padding)",
+        "Component row uses platform-default vertical padding rather than an explicit dp value",
+        "IconButton sizing for the send action uses intrinsic dimensions that resolve larger on iOS",
+        "No explicit width constraint on the composer toolbar so it stretches to parent width on iOS"
+      ],
+      "suggestedOwner": "mobile-platform / Kuikly component owner",
+      "suggestedFixes": [
+        "Pin row minHeight and vertical padding to a fixed dp on both platforms",
+        "Set explicit font-size/line-height for channel name and description labels instead of relying on theme defaults",
+        "Constrain composer toolbar width to match the suggestion list width or document the intent if full-width is desired",
+        "Normalize trailing-icon button size via a fixed dimension token rather than intrinsic sizing",
+        "Re-run the visual diff after applying the above to confirm pixel-perfect similarity increases above ~0.95"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.05141099904133084
     },
     {
@@ -1898,7 +1941,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-01T03:04:20.798Z",
+      "generatedAt": "2026-08-01T03:08:11.089Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1911,7 +1954,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-01T03:04:20.798Z",
+      "generatedAt": "2026-08-01T03:08:11.089Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1924,7 +1967,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-01T03:04:20.798Z",
+      "generatedAt": "2026-08-01T03:08:11.089Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1937,7 +1980,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-01T03:04:20.798Z",
+      "generatedAt": "2026-08-01T03:08:11.089Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1950,7 +1993,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-01T03:04:20.798Z",
+      "generatedAt": "2026-08-01T03:08:11.089Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
