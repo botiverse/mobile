@@ -259,7 +259,6 @@ import build.raft.app.data.SlockComputersNetworkApi
 import build.raft.app.data.SlockNetworkClient
 import build.raft.app.data.SharedCreateAgentCoordinator
 import build.raft.app.data.SharedCreateAgentFormStore
-import build.raft.app.data.recoverRejectedCreateAgentForm
 import build.raft.app.data.SharedActivityIntent
 import build.raft.app.data.SharedAgentDetailActions
 import build.raft.app.data.SharedAgentDetailIntent
@@ -669,6 +668,7 @@ internal class AppShellChildTabRenderSlot(
 
 internal class AppShellChildTabEntry(
     val debugId: Int,
+    val timestampDisplayState: SlockTimestampDisplayState = SlockTimestampDisplayState(),
     initialSelectedTab: String = "home",
     initialParentVisible: Boolean = true,
     initialRetainedTabs: Set<String> = setOf(initialSelectedTab),
@@ -1513,12 +1513,15 @@ internal class ComposeSlockAppShellPage : build.raft.app.base.BasePager() {
     override fun willInit() {
         super.willInit()
         setContent {
-            SlockAppShellContent(
-                pageVisibleTick = slockPageVisibleResumeTick,
-                initialAuthRestoreTick = initialAuthRestoreTick,
-                pageVisible = slockPageVisible,
-                adaptivePane = adaptivePane
-            )
+            val timestampDisplayState = retainedSlockTimestampDisplayState(pagerId)
+            SlockTimestampDisplayScope(timestampDisplayState) {
+                SlockAppShellContent(
+                    pageVisibleTick = slockPageVisibleResumeTick,
+                    initialAuthRestoreTick = initialAuthRestoreTick,
+                    pageVisible = slockPageVisible,
+                    adaptivePane = adaptivePane
+                )
+            }
         }
     }
 
@@ -1581,12 +1584,14 @@ private fun SlockAppShellChildTabPageContent() {
     if (appShellChildPageRendersContent(active = active, retained = retained)) {
         val renderer = entry.rendererFor(tab)
         val modalHostState = entry.modalHostState
-        if (modalHostState != null) {
-            SlockUnifiedDialogHostProvider(modalHostState) {
+        SlockTimestampDisplayScope(entry.timestampDisplayState) {
+            if (modalHostState != null) {
+                SlockUnifiedDialogHostProvider(modalHostState) {
+                    renderer(tab, active)
+                }
+            } else {
                 renderer(tab, active)
             }
-        } else {
-            renderer(tab, active)
         }
     } else {
         Box(modifier = Modifier.fillMaxSize())
@@ -2405,6 +2410,8 @@ internal fun SlockAppShellContent(
     val channelNotCreatedMessage = stringResource(MR.strings.channel_create_error_not_created)
     val conversationUnavailableMessage = stringResource(MR.strings.home_error_conversation_unavailable)
     val pager = LocalActivity.current.getPager() as Pager
+    val timestampDisplayState =
+        LocalSlockTimestampDisplayState.current ?: remember { SlockTimestampDisplayState() }
     val launchSelection = remember(pager.pageData.params.toString()) {
         pager.pageData.params.appShellLaunchSelection()
     }
@@ -5770,6 +5777,7 @@ internal fun SlockAppShellContent(
                         remember(childTabShellId) {
                             val entry = AppShellChildTabEntry(
                                 debugId = AppShellChildTabRegistry.createEntryId(),
+                                timestampDisplayState = timestampDisplayState,
                                 initialSelectedTab = currentChildTab,
                                 initialParentVisible = pageVisible,
                                 initialRetainedTabs = retainedAppShellTabs,
@@ -16197,7 +16205,9 @@ private fun SharedMembersScreen(
                 val result =
                     createAgentCoordinator
                         .createAgent(submit.toCreateAgentRequest())
-                        .recoverRejectedCreateAgentForm(createAgentFormStore, serverId, submit.machineId)
+                        .recoverRejectedCreateAgentFormOrRetry(createAgentFormStore, serverId, submit) { retrySubmit ->
+                            createAgentCoordinator.createAgent(retrySubmit.toCreateAgentRequest())
+                        }
                 if (result is DataResult.Content) {
                     val profile = MemberProfile(
                         id = MemberId(result.data.id),

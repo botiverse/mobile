@@ -113,6 +113,7 @@ import build.raft.app.data.RealtimeGuardedActiveThreadSink
 import build.raft.app.data.RealtimeCanonicalFinalSinkSurfaceKey
 import build.raft.app.data.RealtimeScopeAuthority
 import build.raft.app.data.RealtimeRoomLeaseOwner
+import build.raft.app.data.AGENT_CREATE_NAME_TAKEN
 import build.raft.app.data.SharedMessageTranslationStore
 import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.PendingMentionAction
@@ -205,6 +206,7 @@ import com.tencent.kuikly.compose.foundation.gestures.detectHorizontalDragGestur
 import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
 import com.tencent.kuikly.compose.foundation.gestures.awaitEachGesture
 import com.tencent.kuikly.compose.foundation.gestures.awaitFirstDown
+import com.tencent.kuikly.compose.foundation.gestures.awaitLongPressOrCancellation
 import com.tencent.kuikly.compose.foundation.gestures.scrollBy
 import com.tencent.kuikly.compose.foundation.hoverable
 import com.tencent.kuikly.compose.foundation.interaction.MutableInteractionSource
@@ -231,6 +233,7 @@ import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.foundation.layout.widthIn
 import com.tencent.kuikly.compose.foundation.layout.wrapContentHeight
+import com.tencent.kuikly.compose.foundation.layout.wrapContentWidth
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.foundation.lazy.LazyListState
 import com.tencent.kuikly.compose.foundation.lazy.LazyRow
@@ -336,6 +339,18 @@ private const val ThreadSendMaxSilentRetries = 2
 private const val ThreadLocalizedFeedbackPlaceholder = "__RAFT_VALUE__"
 private const val ThreadAttachmentUploadConcurrencyLimit = 12
 internal const val ThreadRelativeTimestampSlotWidthDp = 112f
+
+internal data class ThreadSystemMessageTimestampLayoutSpec(
+    val reserveFullMetadataGutter: Boolean,
+    val maxWidthDp: Float
+)
+
+internal fun threadSystemMessageTimestampLayoutSpec(): ThreadSystemMessageTimestampLayoutSpec =
+    ThreadSystemMessageTimestampLayoutSpec(
+        reserveFullMetadataGutter = false,
+        maxWidthDp = ThreadRelativeTimestampSlotWidthDp
+    )
+
 private val ThreadInlineSelectionToolbarGap = 6.dp
 private val ThreadInlineSelectionToolbarWidth = 328.dp
 private val ThreadInlineSelectionReactionRowHeight = 44.dp
@@ -403,6 +418,11 @@ internal fun threadInlineSelectionEnabledForMessage(
             translationPending = translationPending,
             longMessageCollapsed = longMessageCollapsed
         )
+
+internal fun threadInlineSelectionLongPressObserverEnabled(
+    inlineSelectionEligible: Boolean,
+    selectionActive: Boolean
+): Boolean = inlineSelectionEligible && !selectionActive
 
 internal data class ThreadInlineSelectionToolbarPlacement(
     val xPx: Int,
@@ -1971,15 +1991,59 @@ internal data class ThreadAttachmentCommentsDialogState(
     val resolvingCommentIds: Set<String> = emptySet(),
     val pendingAnchorLabel: String? = null,
     val pendingQuoteLabel: String? = null,
-    val errorCode: String? = null
+    val errorCode: String? = null,
+    val errorServerMessage: String? = null
 )
 
-private data class ThreadCreateAgentActionDialogState(
+internal fun ThreadAttachmentCommentsDialogState.clearAttachmentCommentsError():
+    ThreadAttachmentCommentsDialogState =
+    copy(errorCode = null, errorServerMessage = null)
+
+internal fun ThreadAttachmentCommentsDialogState.withAttachmentCommentsError(
+    errorCode: String?,
+    serverMessage: String?
+): ThreadAttachmentCommentsDialogState =
+    copy(
+        errorCode = errorCode?.trim()?.takeIf { it.isNotBlank() },
+        errorServerMessage = serverMessage?.trim()?.takeIf { it.isNotBlank() }
+    )
+
+internal fun attachmentCommentsVisibleErrorMessage(
+    errorCode: String?,
+    serverMessage: String?,
+    labels: ThreadUserFacingErrorLabels,
+    genericMessage: String
+): String =
+    threadUserFacingErrorCodeReason(errorCode)
+        ?.takeUnless { it == ThreadUserFacingErrorReason.Generic }
+        ?.let(labels::forReason)
+        ?: serverMessage?.trim()?.takeIf { it.isNotBlank() }
+        ?: genericMessage
+
+internal data class ThreadCreateAgentActionDialogState(
     val messageId: String,
     val card: ThreadActionCard,
     val submitting: Boolean = false,
-    val errorCode: String? = null
+    val errorCode: String? = null,
+    // task #193 honest-states: raw server error text for the unmapped-code
+    // fallback so the dialog never shows a bare code.
+    val errorServerMessage: String? = null
 )
+
+// task #193: single-source state transitions so a previous request's raw
+// server message can never leak into a later request's error display —
+// every transition that sets or clears errorCode settles errorServerMessage
+// in the same step.
+internal fun ThreadCreateAgentActionDialogState.submittingWith(
+    card: ThreadActionCard
+): ThreadCreateAgentActionDialogState =
+    copy(card = card, submitting = true, errorCode = null, errorServerMessage = null)
+
+internal fun ThreadCreateAgentActionDialogState.failedWith(
+    errorCode: String?,
+    errorServerMessage: String? = null
+): ThreadCreateAgentActionDialogState =
+    copy(submitting = false, errorCode = errorCode, errorServerMessage = errorServerMessage)
 
 private data class ThreadMarkdownTaskCandidateModalState(
     val taskNumber: Int,
@@ -3661,6 +3725,14 @@ private fun ThreadMessageVisualScreenContent() {
         }
         return
     }
+    if (visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_SELECTION_DEMO) {
+        ThreadInlineSelectionCompactGroupVisual(
+            messages = payload.toThreadTimelineSlice().messages,
+            inlineSelectionEnabled = inlineSelectionToolbarEnabled,
+            singleTapOpensThreadEnabled = singleTapOpensThreadEnabled
+        )
+        return
+    }
     val baseMessage = payload.toThreadTimelineSlice().messages.firstOrNull()
     val message =
         remember(baseMessage, menuVariant, interactionProbe) {
@@ -3874,6 +3946,60 @@ private fun ThreadMessageVisualScreenContent() {
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ThreadInlineSelectionCompactGroupVisual(
+    messages: List<KuiklyThreadMessageItem>,
+    inlineSelectionEnabled: Boolean,
+    singleTapOpensThreadEnabled: Boolean
+) {
+    var openedMessageId by remember { mutableStateOf<String?>(null) }
+    Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+        LazyColumn(
+            modifier =
+                Modifier
+                    .width(390.dp)
+                    .fillMaxSize()
+                    .padding(SlockSpacing.Md)
+        ) {
+            items(messages.size, key = { index -> messages[index].id }) { index ->
+                val message = messages[index]
+                ThreadMessageCard(
+                    message = message,
+                    messageIndex = index,
+                    compactConsecutiveMessages = true,
+                    suppressRepeatedAuthor = index in 1..2 || index >= 4,
+                    showReplyAction = true,
+                    singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
+                    taskOpenEnabled = false,
+                    taskStatusActionsEnabled = false,
+                    showSaveAction = false,
+                    showReactionAddAction = false,
+                    onShowActions = {},
+                    onOpenMember = {},
+                    onOpenThread = { openedMessageId = it },
+                    onOpenTask = {},
+                    onOpenTaskStatusMenu = {},
+                    onToggleReaction = {},
+                    onOpenAttachment = {},
+                    onOpenMarkdownTag = { _, _ -> },
+                    onOpenMarkdownUrl = {},
+                    inlineSelectionEnabled = inlineSelectionEnabled,
+                    outerPadding = 0.dp
+                )
+            }
+        }
+        if (openedMessageId != null) {
+            Box(
+                modifier =
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .size(24.dp)
+                        .background(Color(0xFFFF00A8))
+            )
         }
     }
 }
@@ -6069,31 +6195,33 @@ internal fun SharedThreadRouteContent(
                             status = "loaded",
                             page = result.data,
                             sending = false,
-                            resolvingCommentIds = emptySet(),
-                            errorCode = null
-                        )
+                            resolvingCommentIds = emptySet()
+                        ).clearAttachmentCommentsError()
                     is DataResult.Empty ->
                         state.copy(
                             status = "loaded",
                             page = ThreadAttachmentCommentsPage(comments = emptyList(), threadChannelId = null, viewer = null),
                             sending = false,
-                            resolvingCommentIds = emptySet(),
-                            errorCode = null
-                        )
+                            resolvingCommentIds = emptySet()
+                        ).clearAttachmentCommentsError()
                     is DataResult.Error ->
                         state.copy(
                             status = "error",
                             sending = false,
-                            resolvingCommentIds = emptySet(),
-                            errorCode = result.error.code
+                            resolvingCommentIds = emptySet()
+                        ).withAttachmentCommentsError(
+                            errorCode = result.error.code,
+                            serverMessage = result.error.serverMessage
                         )
                     is DataResult.NoPermission -> {
                         if (routeAuthRequired(result)) return@launch
                         state.copy(
                             status = "error",
                             sending = false,
-                            resolvingCommentIds = emptySet(),
-                            errorCode = result.blocker.code
+                            resolvingCommentIds = emptySet()
+                        ).withAttachmentCommentsError(
+                            errorCode = result.blocker.code,
+                            serverMessage = null
                         )
                     }
                 }
@@ -6124,7 +6252,7 @@ internal fun SharedThreadRouteContent(
 
     fun reloadAttachmentComments() {
         val current = attachmentCommentsDialogState ?: return
-        val state = current.copy(status = "loading", errorCode = null)
+        val state = current.copy(status = "loading").clearAttachmentCommentsError()
         attachmentCommentsDialogState = state
         loadAttachmentCommentsIntoDialog(state)
     }
@@ -6137,7 +6265,7 @@ internal fun SharedThreadRouteContent(
         val current = attachmentCommentsDialogState ?: return
         val cleanDraft = current.draft.trim()
         if (cleanDraft.isBlank() || current.sending) return
-        attachmentCommentsDialogState = current.copy(sending = true, errorCode = null)
+        attachmentCommentsDialogState = current.copy(sending = true).clearAttachmentCommentsError()
         coroutineScope.launch {
             when (
                 val result =
@@ -6154,9 +6282,8 @@ internal fun SharedThreadRouteContent(
                             status = "loading",
                             draft = "",
                             sending = false,
-                            pendingQuoteLabel = null,
-                            errorCode = null
-                        )
+                            pendingQuoteLabel = null
+                        ).clearAttachmentCommentsError()
                     attachmentCommentsDialogState = loadingState
                     loadAttachmentCommentsIntoDialog(loadingState)
                 }
@@ -6170,7 +6297,11 @@ internal fun SharedThreadRouteContent(
                     attachmentCommentsDialogState =
                         attachmentCommentsDialogState
                             ?.takeIf { it.attachment.id == current.attachment.id }
-                            ?.copy(sending = false, errorCode = code)
+                            ?.copy(sending = false)
+                            ?.withAttachmentCommentsError(
+                                errorCode = code,
+                                serverMessage = (result as? DataResult.Error)?.error?.serverMessage
+                            )
                     bridge.toast(unableToSendCommentLabel)
                 }
                 is DataResult.NoPermission -> {
@@ -6178,7 +6309,11 @@ internal fun SharedThreadRouteContent(
                     attachmentCommentsDialogState =
                         attachmentCommentsDialogState
                             ?.takeIf { it.attachment.id == current.attachment.id }
-                            ?.copy(sending = false, errorCode = result.blocker.code)
+                            ?.copy(sending = false)
+                            ?.withAttachmentCommentsError(
+                                errorCode = result.blocker.code,
+                                serverMessage = null
+                            )
                     bridge.toast(unableToSendCommentLabel)
                 }
             }
@@ -6194,7 +6329,8 @@ internal fun SharedThreadRouteContent(
         if (comment.id.isBlank() || comment.isThreadAttachmentCommentResolved()) return
         if (comment.id in current.resolvingCommentIds) return
         attachmentCommentsDialogState =
-            current.copy(resolvingCommentIds = current.resolvingCommentIds + comment.id, errorCode = null)
+            current.copy(resolvingCommentIds = current.resolvingCommentIds + comment.id)
+                .clearAttachmentCommentsError()
         coroutineScope.launch {
             when (
                 val result =
@@ -6209,7 +6345,8 @@ internal fun SharedThreadRouteContent(
                     val loadingState =
                         attachmentCommentsDialogState
                             ?.takeIf { it.attachment.id == current.attachment.id }
-                            ?.copy(status = "loading", resolvingCommentIds = emptySet(), errorCode = null)
+                            ?.copy(status = "loading", resolvingCommentIds = emptySet())
+                            ?.clearAttachmentCommentsError()
                             ?: return@launch
                     attachmentCommentsDialogState = loadingState
                     loadAttachmentCommentsIntoDialog(loadingState)
@@ -6226,8 +6363,10 @@ internal fun SharedThreadRouteContent(
                             ?.takeIf { it.attachment.id == current.attachment.id }
                             ?.let { state ->
                                 state.copy(
-                                    resolvingCommentIds = state.resolvingCommentIds - comment.id,
-                                    errorCode = code
+                                    resolvingCommentIds = state.resolvingCommentIds - comment.id
+                                ).withAttachmentCommentsError(
+                                    errorCode = code,
+                                    serverMessage = (result as? DataResult.Error)?.error?.serverMessage
                                 )
                             }
                     bridge.toast(unableToResolveCommentLabel)
@@ -6239,8 +6378,10 @@ internal fun SharedThreadRouteContent(
                             ?.takeIf { it.attachment.id == current.attachment.id }
                             ?.let { state ->
                                 state.copy(
-                                    resolvingCommentIds = state.resolvingCommentIds - comment.id,
-                                    errorCode = result.blocker.code
+                                    resolvingCommentIds = state.resolvingCommentIds - comment.id
+                                ).withAttachmentCommentsError(
+                                    errorCode = result.blocker.code,
+                                    serverMessage = null
                                 )
                             }
                     bridge.toast(unableToResolveCommentLabel)
@@ -7556,10 +7697,10 @@ internal fun SharedThreadRouteContent(
                     bridge.toast(linksCopiedLabel)
                 }
                 action == "shareSelectionImageSaved" -> {
-                    bridge.toast(itemId?.takeIf { it.isNotBlank() } ?: imageSavedLabel)
+                    bridge.toast(imageSavedLabel)
                 }
                 action == "shareSelectionExportFailed" -> {
-                    bridge.toast(itemId?.takeIf { it.isNotBlank() } ?: unableToExportImageLabel)
+                    bridge.toast(unableToExportImageLabel)
                 }
                 action == "forwardTargetSelected" -> {
                     val target = itemId?.takeIf { it.isNotBlank() } ?: "selected target"
@@ -8865,7 +9006,8 @@ internal fun SharedThreadRouteContent(
                     attachmentCommentsDialogState =
                         attachmentCommentsDialogState
                             ?.takeIf { it.attachment.id == dialogState.attachment.id }
-                            ?.copy(draft = draft, errorCode = null)
+                            ?.copy(draft = draft)
+                            ?.clearAttachmentCommentsError()
                 },
                 onRetry = ::reloadAttachmentComments,
                 onSend = ::sendAttachmentComment,
@@ -8879,9 +9021,8 @@ internal fun SharedThreadRouteContent(
                                 current.copy(
                                     draft = appendThreadQuoteToComposer(current.draft, quote),
                                     pendingQuoteLabel = comment.senderName,
-                                    pendingAnchorLabel = comment.anchorLabel ?: current.attachment.name,
-                                    errorCode = null
-                                )
+                                    pendingAnchorLabel = comment.anchorLabel ?: current.attachment.name
+                                ).clearAttachmentCommentsError()
                             }
                 }
             )
@@ -8905,7 +9046,7 @@ internal fun SharedThreadRouteContent(
                     }
                     val normalizedName = request.name.trim().removePrefix("@")
                     if (normalizedName.isBlank()) {
-                        createAgentDialogState = dialogState.copy(errorCode = "agent_name_required")
+                        createAgentDialogState = dialogState.failedWith("agent_name_required")
                         return@submitCreateAgent
                     }
                     val submitCard =
@@ -8919,17 +9060,21 @@ internal fun SharedThreadRouteContent(
                                     dialogState.card.suggestedComputer
                                 }
                         )
-                    val submittingState =
-                        dialogState.copy(
-                            card = submitCard,
-                            submitting = true,
-                            errorCode = null
-                        )
+                    val submittingState = dialogState.submittingWith(submitCard)
                     createAgentDialogState = submittingState
                     pendingActionCardIds = pendingActionCardIds + dialogState.messageId
                     coroutineScope.launch {
                         try {
-                            when (val result = dataSource.commitAgentCreateActionCard(dialogState.messageId, submitCard)) {
+                            when (
+                                val result =
+                                    dataSource.commitAgentCreateActionCardFromDialog(
+                                        messageId = dialogState.messageId,
+                                        card = submitCard,
+                                        submit = request,
+                                        formStore = createAgentFormStore,
+                                        serverId = createAgentComputerServerId
+                                    )
+                            ) {
                                 is DataResult.Content -> {
                                     threadViewModel.dispatch(
                                         SharedThreadIntent.ApplyActionCard(dialogState.messageId, result.data)
@@ -8940,18 +9085,15 @@ internal fun SharedThreadRouteContent(
                                 is DataResult.Empty,
                                 is DataResult.Error -> {
                                     createAgentDialogState =
-                                        submittingState.copy(
-                                            submitting = false,
-                                            errorCode = result.threadActionErrorCode("agent_create_failed")
+                                        submittingState.failedWith(
+                                            errorCode = result.threadActionErrorCode("agent_create_failed"),
+                                            errorServerMessage = (result as? DataResult.Error)?.error?.serverMessage
                                         )
                                 }
                                 is DataResult.NoPermission -> {
                                     if (routeAuthRequired(result)) return@launch
                                     createAgentDialogState =
-                                        submittingState.copy(
-                                            submitting = false,
-                                            errorCode = result.blocker.code
-                                        )
+                                        submittingState.failedWith(errorCode = result.blocker.code)
                                 }
                             }
                         } finally {
@@ -9193,7 +9335,10 @@ private fun ThreadCreateAgentActionDialogHost(
         }
     SharedCreateAgentDialog(
         submitting = dialogState.submitting,
-        errorMessage = dialogState.errorCode?.let { threadCreateAgentDialogErrorCopy(it) },
+        errorMessage =
+            dialogState.errorCode?.let {
+                threadCreateAgentDialogErrorCopy(it, dialogState.errorServerMessage)
+            },
         initialName = dialogState.card.name.removePrefix("@"),
         initialDescription = dialogState.card.description.orEmpty(),
         draftHint = dialogState.card.draftHint,
@@ -10054,14 +10199,23 @@ internal fun threadVisualFixture(
     return when (fixture) {
         THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_SELECTION_DEMO -> {
             val base = threadVisualFixture(THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT, resolvedInstanceId)
+            val seed = requireNotNull(base.messages.firstOrNull())
             base.copy(
                 alignOwnMessagesRight = false,
+                compactConsecutiveMessages = true,
                 messages =
-                    base.messages.take(1).map { message ->
-                        // Developer fixture copy stays deliberately plain so the demo proves
-                        // the first-phase text-only eligibility boundary.
-                        message.copy(
-                            body = "Long press this message to select all text and open the compact action toolbar.",
+                    List(20) { index ->
+                        val inTargetGroup = index < 3
+                        seed.copy(
+                            id = "visual-inline-selection-$index",
+                            body =
+                                if (inTargetGroup) {
+                                    "Compact selection target ${index + 1}"
+                                } else {
+                                    "Scrollable overflow message ${index + 1}"
+                                },
+                            authorId = if (inTargetGroup) seed.authorId else "visual-overflow-author",
+                            authorName = if (inTargetGroup) seed.authorName else "Overflow Author",
                             authorDescription = null,
                             reactions = emptyList(),
                             replyCount = 0,
@@ -12999,6 +13153,8 @@ private fun ThreadPageContent(
             }
         }
     }
+    val composerSuggestionPortal =
+        remember(threadInstanceKey) { ThreadComposerSuggestionPortalState() }
     Box(
         modifier =
             Modifier
@@ -13178,35 +13334,40 @@ private fun ThreadPageContent(
                                     )
                             )
                     ) {
-                        ThreadComposerRoute(
-                            baseComposerState = baseComposerState,
-                            composerDraftViewModel = composerDraftViewModel,
-                            renderedPayload = payload,
-                            timelineSlice = timelineSlice,
-                            resolvedAuxiliaryThreadId = resolvedAuxiliaryThreadId,
-                            surface = composerSurface,
-                            memberSuggestionsFlow = memberSuggestionsFlow,
-                            channelSuggestionsFlow = channelSuggestionsFlow,
-                            agentStatusResolver = agentStatusResolver,
-                            onEvent = onComposerEvent,
-                            insertMentionRequest = insertMentionRequest,
-                            onInsertMentionConsumed = { request ->
-                                if (insertMentionRequest?.nonce == request.nonce) {
-                                    insertMentionRequest = null
+                        CompositionLocalProvider(
+                            LocalThreadComposerSuggestionPortal provides composerSuggestionPortal
+                        ) {
+                            ThreadComposerRoute(
+                                baseComposerState = baseComposerState,
+                                composerDraftViewModel = composerDraftViewModel,
+                                renderedPayload = payload,
+                                timelineSlice = timelineSlice,
+                                resolvedAuxiliaryThreadId = resolvedAuxiliaryThreadId,
+                                surface = composerSurface,
+                                memberSuggestionsFlow = memberSuggestionsFlow,
+                                channelSuggestionsFlow = channelSuggestionsFlow,
+                                agentStatusResolver = agentStatusResolver,
+                                onEvent = onComposerEvent,
+                                insertMentionRequest = insertMentionRequest,
+                                onInsertMentionConsumed = { request ->
+                                    if (insertMentionRequest?.nonce == request.nonce) {
+                                        insertMentionRequest = null
+                                    }
+                                },
+                                onSuggestionDemandChanged = onSuggestionDemandChanged,
+                                composerSendKeyEnabled = composerSendKeyEnabled,
+                                onKeyboardHeightChange = { nextInset ->
+                                    if (nextInset != composerKeyboardInsetDp) {
+                                        composerKeyboardInsetDp = nextInset
+                                    }
                                 }
-                            },
-                            onSuggestionDemandChanged = onSuggestionDemandChanged,
-                            composerSendKeyEnabled = composerSendKeyEnabled,
-                            onKeyboardHeightChange = { nextInset ->
-                                if (nextInset != composerKeyboardInsetDp) {
-                                    composerKeyboardInsetDp = nextInset
-                                }
-                            }
-                        )
+                            )
+                        }
                     }
                 }
             }
         }
+        ThreadComposerSuggestionPortalHost(composerSuggestionPortal)
         val visibleForwardPickerSession = forwardPickerFlow.sessionKey
         if ((activeModal == "forwardTargets" || activeModal == "forwardNote") && visibleForwardPickerSession != null) {
                 SlockForwardTargetPicker(
@@ -14690,9 +14851,10 @@ private fun ThreadMessagesList(
             latestMessageItemIndex = latestMessageListItemIndex,
             bottomPaddingItemIndex = latestItemIndex
         )
+    val threadDensity = LocalDensity.current
     val initialBottomAnchorTrailingPaddingPx =
         if (latestMessageListItemIndex >= 0) {
-            with(LocalDensity.current) {
+            with(threadDensity) {
                 ThreadBottomScrollPaddingHeight.roundToPx()
             }
         } else {
@@ -14840,6 +15002,9 @@ private fun ThreadMessagesList(
     var focusedAnchorSessionReanchors by remember(threadInstanceKey) { mutableStateOf(0) }
     var focusedAnchorStartUserScrollGeneration by remember(threadInstanceKey) { mutableStateOf<Int?>(null) }
     var correctedFocusedOriginIdentity by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    var focusedAnchorPlacementState by remember(threadInstanceKey) {
+        mutableStateOf(resetThreadFocusedAnchorPlacement(identity = null))
+    }
     var bottomAnchorFocusedYieldElapsedMs by remember(threadInstanceKey) { mutableStateOf(0L) }
     val pendingFocusedMessageAnchorIdentityState =
         rememberUpdatedState(
@@ -15055,6 +15220,7 @@ private fun ThreadMessagesList(
     val currentLatestItemIndexState = rememberUpdatedState(latestItemIndex)
     val currentThreadInstanceKeyState = rememberUpdatedState(threadInstanceKey)
     val currentViewportControllerState = rememberUpdatedState(viewportControllerState)
+    val currentViewportLayoutGenerationState = rememberUpdatedState(viewportLayoutGeneration)
     var previousViewportMessageIds by remember(threadInstanceKey) {
         mutableStateOf(renderPayload.messages.map { message -> message.id })
     }
@@ -15072,31 +15238,82 @@ private fun ThreadMessagesList(
                 else -> LazyViewportMutation.HeightChange
             }
         viewportLayoutGeneration += 1L
+        if (
+            mutation == LazyViewportMutation.Append &&
+            focusedAnchorPlacementState.placement == LazyViewportAnchorPlacement.RenderedBottom
+        ) {
+            focusedAnchorPlacementState =
+                resetThreadFocusedAnchorPlacement(focusedAnchorPlacementState.identity)
+        }
         dispatchViewportEvent(LazyViewportEvent.ContentMutated(mutation))
     }
     // THREAD_VIEWPORT_EXECUTOR_START: the only production owner allowed to mutate listState.
     LaunchedEffect(threadInstanceKey, viewportControllerState.pendingCommand?.id) {
         val command = viewportControllerState.pendingCommand ?: return@LaunchedEffect
-        if (!currentViewportControllerState.value.accepts(command)) return@LaunchedEffect
+        fun commandStillCurrent(): Boolean =
+            currentViewportControllerState.value.acceptsRenderedTailCommand(
+                command = command,
+                currentLayoutGeneration = currentViewportLayoutGenerationState.value,
+                currentTailMessageId = currentPayloadState.value.messages.lastOrNull()?.id,
+                currentAnchorIdentity = pendingFocusedMessageAnchorIdentityState.value
+            )
+        var staleRenderedTailInvalidationDispatched = false
+        fun commandIsLiveOrTerminallyInvalidate(): Boolean {
+            if (commandStillCurrent()) return true
+            val anchor = command.target as? LazyViewportCommandTarget.Anchor
+            val controller = currentViewportControllerState.value
+            if (
+                !staleRenderedTailInvalidationDispatched &&
+                anchor?.renderedTailMessageId != null &&
+                controller.accepts(command)
+            ) {
+                staleRenderedTailInvalidationDispatched = true
+                if (
+                    focusedAnchorPlacementState.identity == anchor.renderedTailAnchorIdentity &&
+                    focusedAnchorPlacementState.placement == LazyViewportAnchorPlacement.RenderedBottom &&
+                    focusedAnchorPlacementState.renderedTailMessageId == anchor.renderedTailMessageId
+                ) {
+                    focusedAnchorPlacementState =
+                        resetThreadFocusedAnchorPlacement(anchor.renderedTailAnchorIdentity)
+                }
+                diagnosticsLogger(
+                    "thread_rendered_tail_command result=invalidated command=${command.id.sequence} " +
+                        "commandLayoutGeneration=${anchor.layoutGeneration} " +
+                        "currentLayoutGeneration=${currentViewportLayoutGenerationState.value} " +
+                        "expectedTail=${anchor.renderedTailMessageId} " +
+                        "currentTail=${currentPayloadState.value.messages.lastOrNull()?.id ?: "none"} " +
+                        "expectedIdentity=${anchor.renderedTailAnchorIdentity ?: "none"} " +
+                        "currentIdentity=${pendingFocusedMessageAnchorIdentityState.value ?: "none"}"
+                )
+                dispatchViewportEvent(
+                    LazyViewportEvent.RenderedTailCommandInvalidated(
+                        commandId = command.id,
+                        currentLayoutGeneration = currentViewportLayoutGenerationState.value
+                    )
+                )
+            }
+            return false
+        }
+        if (!commandIsLiveOrTerminallyInvalidate()) return@LaunchedEffect
         listState.awaitThreadMessagesLayoutFrame()
-        if (!currentViewportControllerState.value.accepts(command)) return@LaunchedEffect
+        if (!commandIsLiveOrTerminallyInvalidate()) return@LaunchedEffect
         val executed =
             when (val target = command.target) {
                 is LazyViewportCommandTarget.Top -> {
-                    if (!currentViewportControllerState.value.accepts(command)) return@LaunchedEffect
+                    if (!commandIsLiveOrTerminallyInvalidate()) return@LaunchedEffect
                     if (target.animated) {
                         slockExpressiveTopSettleAnchor(
                             firstVisibleItemIndex = listState.firstVisibleItemIndex,
                             visibleItemCount = listState.layoutInfo.visibleItemsInfo.size
                         )?.let { anchor ->
                             listState.scrollToItem(anchor)
-                            if (!currentViewportControllerState.value.accepts(command)) return@LaunchedEffect
+                            if (!commandIsLiveOrTerminallyInvalidate()) return@LaunchedEffect
                         }
                         listState.animateScrollToItem(0)
-                        if (!currentViewportControllerState.value.accepts(command)) return@LaunchedEffect
+                        if (!commandIsLiveOrTerminallyInvalidate()) return@LaunchedEffect
                     } else {
                         listState.scrollToItem(0)
-                        if (!currentViewportControllerState.value.accepts(command)) return@LaunchedEffect
+                        if (!commandIsLiveOrTerminallyInvalidate()) return@LaunchedEffect
                     }
                     true
                 }
@@ -15105,11 +15322,11 @@ private fun ThreadMessagesList(
                     if (targetIndex < 0) {
                         false
                     } else {
-                        if (!currentViewportControllerState.value.accepts(command)) return@LaunchedEffect
+                        if (!commandIsLiveOrTerminallyInvalidate()) return@LaunchedEffect
                         listState.scrollLatestItemToRenderedBottom(targetIndex) {
-                            currentViewportControllerState.value.accepts(command)
+                            commandIsLiveOrTerminallyInvalidate()
                         }
-                        if (!currentViewportControllerState.value.accepts(command)) return@LaunchedEffect
+                        if (!commandIsLiveOrTerminallyInvalidate()) return@LaunchedEffect
                         true
                     }
                 }
@@ -15119,7 +15336,7 @@ private fun ThreadMessagesList(
                         dispatchViewportEvent(LazyViewportEvent.AnchorUnavailable(command.id))
                         false
                     } else {
-                        if (!currentViewportControllerState.value.accepts(command)) return@LaunchedEffect
+                        if (!commandIsLiveOrTerminallyInvalidate()) return@LaunchedEffect
                         val anchorExecuted =
                             when (target.placement) {
                                 LazyViewportAnchorPlacement.ExactOffset -> {
@@ -15128,15 +15345,22 @@ private fun ThreadMessagesList(
                                 }
                                 LazyViewportAnchorPlacement.Focused ->
                                     listState.scrollThreadItemToFocusedViewport(targetIndex) {
-                                        currentViewportControllerState.value.accepts(command)
+                                        commandIsLiveOrTerminallyInvalidate()
+                                    }
+                                LazyViewportAnchorPlacement.RenderedBottom ->
+                                    listState.scrollThreadItemToRenderedBottom(
+                                        itemIndex = targetIndex,
+                                        trailingPaddingSize = target.offset.coerceAtLeast(0)
+                                    ) {
+                                        commandIsLiveOrTerminallyInvalidate()
                                     }
                             }
-                        if (!currentViewportControllerState.value.accepts(command)) return@LaunchedEffect
+                        if (!commandIsLiveOrTerminallyInvalidate()) return@LaunchedEffect
                         anchorExecuted
                     }
                 }
             }
-        if (currentViewportControllerState.value.accepts(command)) {
+        if (commandIsLiveOrTerminallyInvalidate()) {
             if (executed) {
                 dispatchViewportEvent(LazyViewportEvent.CommandConsumed(command.id))
             } else if (command.target is LazyViewportCommandTarget.Anchor) {
@@ -15714,12 +15938,28 @@ private fun ThreadMessagesList(
         activeFocusedMessageId = targetMessageId
         allowBottomAutoAnchor = false
         initialBottomAnchorReady = true
+        if (focusedAnchorPlacementState.identity != targetIdentity) {
+            focusedAnchorPlacementState = resetThreadFocusedAnchorPlacement(targetIdentity)
+        }
         dispatchViewportEvent(
             LazyViewportEvent.Anchor(
                 target = LazyViewportAnchorTarget.Message(targetMessageId),
-                offset = 0,
+                offset = focusedAnchorPlacementState.offsetPx,
                 layoutGeneration = viewportLayoutGeneration,
-                placement = LazyViewportAnchorPlacement.Focused,
+                placement = focusedAnchorPlacementState.placement,
+                renderedTailMessageId =
+                    focusedAnchorPlacementState.renderedTailMessageId.takeIf {
+                        focusedAnchorPlacementState.identity == targetIdentity &&
+                            focusedAnchorPlacementState.placement ==
+                                LazyViewportAnchorPlacement.RenderedBottom
+                    },
+                renderedTailAnchorIdentity =
+                    focusedAnchorPlacementState.identity.takeIf {
+                        it == targetIdentity &&
+                            focusedAnchorPlacementState.placement ==
+                                LazyViewportAnchorPlacement.RenderedBottom &&
+                            focusedAnchorPlacementState.renderedTailMessageId != null
+                    },
                 fallback = LazyViewportAnchorFallback.Free
             )
         )
@@ -15759,11 +15999,15 @@ private fun ThreadMessagesList(
             delay(FocusedAnchorSessionRecheckIntervalMs)
             focusedAnchorSessionElapsedMs += FocusedAnchorSessionRecheckIntervalMs
             val currentOffset = listState.focusedAnchorTargetOffset(targetIndex)
+            val currentUserScrollGeneration = userScrollGeneration.value
+            val rawScrollInProgress = listState.isScrollInProgress
+            val explicitInterrupt = scrollInterruptedFocusedMessageAnchorIdentity == targetIdentity
             val action =
                 focusedAnchorSessionAction(
                     userInteracting =
                         focusedAnchorSessionUserOverrideActive(
-                            isScrollInProgress = listState.isScrollInProgress,
+                            startUserScrollGeneration = focusedAnchorStartUserScrollGeneration,
+                            currentUserScrollGeneration = currentUserScrollGeneration,
                             targetIdentity = targetIdentity,
                             scrollInterruptedIdentity = scrollInterruptedFocusedMessageAnchorIdentity
                         ),
@@ -15777,7 +16021,10 @@ private fun ThreadMessagesList(
                     diagnosticsLogger(
                         "thread_focused_anchor_session outcome=interrupted " +
                             "reanchors=$focusedAnchorSessionReanchors driftMaxPx=$driftMaxPx " +
-                            "elapsedMs=$focusedAnchorSessionElapsedMs messageId=$targetMessageId"
+                            "elapsedMs=$focusedAnchorSessionElapsedMs messageId=$targetMessageId " +
+                            "rawScrollInProgress=$rawScrollInProgress explicitInterrupt=$explicitInterrupt " +
+                            "startUserScrollGeneration=$focusedAnchorStartUserScrollGeneration " +
+                            "currentUserScrollGeneration=$currentUserScrollGeneration"
                     )
                     return@LaunchedEffect
                 }
@@ -15805,9 +16052,31 @@ private fun ThreadMessagesList(
                     dispatchViewportEvent(
                         LazyViewportEvent.Anchor(
                             target = LazyViewportAnchorTarget.Message(targetMessageId),
-                            offset = 0,
+                            offset = focusedAnchorPlacementOffsetForIdentity(
+                                targetIdentity = targetIdentity,
+                                placementIdentity = focusedAnchorPlacementState.identity,
+                                placement = focusedAnchorPlacementState.placement,
+                                placementOffsetPx = focusedAnchorPlacementState.offsetPx
+                            ),
                             layoutGeneration = viewportLayoutGeneration,
-                            placement = LazyViewportAnchorPlacement.Focused,
+                            placement = focusedAnchorPlacementForIdentity(
+                                targetIdentity = targetIdentity,
+                                placementIdentity = focusedAnchorPlacementState.identity,
+                                placement = focusedAnchorPlacementState.placement
+                            ),
+                            renderedTailMessageId = focusedAnchorRenderedTailMessageIdForIdentity(
+                                targetIdentity = targetIdentity,
+                                placementIdentity = focusedAnchorPlacementState.identity,
+                                placement = focusedAnchorPlacementState.placement,
+                                renderedTailMessageId = focusedAnchorPlacementState.renderedTailMessageId
+                            ),
+                            renderedTailAnchorIdentity =
+                                focusedAnchorPlacementState.identity.takeIf {
+                                    it == targetIdentity &&
+                                        focusedAnchorPlacementState.placement ==
+                                            LazyViewportAnchorPlacement.RenderedBottom &&
+                                        focusedAnchorPlacementState.renderedTailMessageId != null
+                                },
                             fallback = LazyViewportAnchorFallback.Free
                         )
                     )
@@ -15875,9 +16144,31 @@ private fun ThreadMessagesList(
         dispatchViewportEvent(
             LazyViewportEvent.Anchor(
                 target = LazyViewportAnchorTarget.Message(targetMessageId),
-                offset = 0,
+                offset = focusedAnchorPlacementOffsetForIdentity(
+                    targetIdentity = targetIdentity,
+                    placementIdentity = focusedAnchorPlacementState.identity,
+                    placement = focusedAnchorPlacementState.placement,
+                    placementOffsetPx = focusedAnchorPlacementState.offsetPx
+                ),
                 layoutGeneration = viewportLayoutGeneration,
-                placement = LazyViewportAnchorPlacement.Focused,
+                placement = focusedAnchorPlacementForIdentity(
+                    targetIdentity = targetIdentity,
+                    placementIdentity = focusedAnchorPlacementState.identity,
+                    placement = focusedAnchorPlacementState.placement
+                ),
+                renderedTailMessageId = focusedAnchorRenderedTailMessageIdForIdentity(
+                    targetIdentity = targetIdentity,
+                    placementIdentity = focusedAnchorPlacementState.identity,
+                    placement = focusedAnchorPlacementState.placement,
+                    renderedTailMessageId = focusedAnchorPlacementState.renderedTailMessageId
+                ),
+                renderedTailAnchorIdentity =
+                    focusedAnchorPlacementState.identity.takeIf {
+                        it == targetIdentity &&
+                            focusedAnchorPlacementState.placement ==
+                                LazyViewportAnchorPlacement.RenderedBottom &&
+                            focusedAnchorPlacementState.renderedTailMessageId != null
+                    },
                 fallback = LazyViewportAnchorFallback.Free
             )
         )
@@ -16084,6 +16375,7 @@ private fun ThreadMessagesList(
         focusedAnchorStartUserScrollGeneration,
         userScrollGeneration.value,
         latestMessageListItemIndex,
+        latestMessageLayoutKey,
         bottomAnchorFocusedYieldElapsedMs,
         newerPageCycleActive
     ) {
@@ -16096,6 +16388,9 @@ private fun ThreadMessagesList(
             return@LaunchedEffect
         }
         val focusedTargetIdentity = pendingFocusedMessageAnchorIdentityState.value
+        val focusedTargetMessageId = renderPayload.focusedMessageId?.takeIf { it.isNotBlank() }
+        val focusedTargetItemIndex = renderPayload.focusedMessageListItemIndex()
+        val focusedTailMessageId = renderPayload.messages.lastOrNull()?.id
         val focusedAnchorOwnsViewport =
             focusedMessageAnchorOwnsViewport(
                 pendingIdentity = focusedTargetIdentity,
@@ -16103,6 +16398,90 @@ private fun ThreadMessagesList(
                 scrollInterruptedIdentity = scrollInterruptedFocusedMessageAnchorIdentity,
                 yieldElapsedMs = bottomAnchorFocusedYieldElapsedMs
             )
+        var focusedTailFit =
+            listState.threadFocusedTailFit(
+                targetItemIndex = focusedTargetItemIndex,
+                latestMessageItemIndex = latestMessageListItemIndex,
+                bottomPaddingItemIndex = latestItemIndex,
+                viewportHeightPx = with(threadDensity) { measuredThreadViewportHeightDp.dp.roundToPx() },
+                trailingPaddingPx = initialBottomAnchorTrailingPaddingPx
+            )
+        val measurementViewportEpoch = viewportControllerState.epoch
+        val measurementLayoutGeneration = viewportLayoutGeneration
+        val focusedTailMeasurementLayoutChanged =
+            pendingComposerLayoutBottomAnchor ||
+                lastComposerKeyboardInsetDp != composerKeyboardInsetDp ||
+                lastThreadViewportHeightDp != measuredThreadViewportHeightDp
+        fun focusedTailMeasurementOwnerStillCurrent(): Boolean {
+            val currentPayload = currentPayloadState.value
+            if (
+                currentThreadInstanceKeyState.value != threadInstanceKey ||
+                currentViewportControllerState.value.epoch != measurementViewportEpoch ||
+                currentViewportLayoutGenerationState.value != measurementLayoutGeneration ||
+                pendingFocusedMessageAnchorIdentityState.value != focusedTargetIdentity ||
+                currentPayload.focusedMessageId != focusedTargetMessageId ||
+                currentPayload.messages.lastOrNull()?.id != focusedTailMessageId ||
+                currentPayload.latestMessageLayoutKey() != latestMessageLayoutKey ||
+                currentPayload.focusedMessageListItemIndex() != focusedTargetItemIndex
+            ) {
+                return false
+            }
+            val currentFocusedOwner =
+                focusedMessageAnchorOwnsViewport(
+                    pendingIdentity = focusedTargetIdentity,
+                    consumedIdentity = consumedFocusedMessageAnchorIdentity,
+                    scrollInterruptedIdentity = scrollInterruptedFocusedMessageAnchorIdentity,
+                    yieldElapsedMs = bottomAnchorFocusedYieldElapsedMs
+                )
+            return (
+                currentFocusedOwner &&
+                    focusedActiveTailMessageComposerLayoutOwnsViewport(
+                        targetIdentity = focusedTargetIdentity,
+                        targetItemIndex = focusedTargetItemIndex,
+                        latestMessageItemIndex = latestMessageListItemIndex,
+                        targetToTailFitsViewport = true,
+                        canLoadMoreAfter = currentPayload.canLoadMoreAfter,
+                        anchoredIdentity = focusedAnchorSessionIdentity,
+                        consumedIdentity = consumedFocusedMessageAnchorIdentity,
+                        scrollInterruptedIdentity = scrollInterruptedFocusedMessageAnchorIdentity,
+                        startUserScrollGeneration = focusedAnchorStartUserScrollGeneration,
+                        currentUserScrollGeneration = userScrollGeneration.value
+                    )
+                ) ||
+                focusedTailMessageComposerLayoutOwnsViewport(
+                    targetIdentity = focusedTargetIdentity,
+                    targetItemIndex = focusedTargetItemIndex,
+                    latestMessageItemIndex = latestMessageListItemIndex,
+                    targetToTailFitsViewport = true,
+                    canLoadMoreAfter = currentPayload.canLoadMoreAfter,
+                    anchoredIdentity = focusedAnchorSessionIdentity,
+                    consumedIdentity = consumedFocusedMessageAnchorIdentity,
+                    scrollInterruptedIdentity = scrollInterruptedFocusedMessageAnchorIdentity,
+                    startUserScrollGeneration = focusedAnchorStartUserScrollGeneration,
+                    currentUserScrollGeneration = userScrollGeneration.value
+                )
+        }
+        if (
+            focusedTailMeasurementLayoutChanged &&
+            focusedTailFit.fitHeightPx < 0 &&
+            focusedTailMeasurementOwnerStillCurrent()
+        ) {
+            var remainingMeasurementFrames = ThreadFocusedTailMeasurementRetryFrames
+            while (remainingMeasurementFrames > 0 && focusedTailFit.fitHeightPx < 0) {
+                remainingMeasurementFrames -= 1
+                listState.awaitThreadMessagesLayoutFrame()
+                if (!focusedTailMeasurementOwnerStillCurrent()) break
+                focusedTailFit =
+                    listState.threadFocusedTailFit(
+                        targetItemIndex = focusedTargetItemIndex,
+                        latestMessageItemIndex = latestMessageListItemIndex,
+                        bottomPaddingItemIndex = latestItemIndex,
+                        viewportHeightPx =
+                            with(threadDensity) { measuredThreadViewportHeightDp.dp.roundToPx() },
+                        trailingPaddingPx = initialBottomAnchorTrailingPaddingPx
+                    )
+            }
+        }
         val layoutState =
             ThreadComposerLayoutBottomAnchorState(
                 previousKeyboardInsetDp = lastComposerKeyboardInsetDp,
@@ -16114,12 +16493,13 @@ private fun ThreadMessagesList(
                 latestItemIndex = latestItemIndex,
                 allowBottomAutoAnchor = allowBottomAutoAnchor,
                 focusedAnchorOwnsViewport = focusedAnchorOwnsViewport,
-                focusedActiveLatestAnchorCanCorrectLayout =
+                focusedActiveTailAnchorCanCorrectLayout =
                     focusedAnchorOwnsViewport &&
-                        focusedActiveLatestMessageComposerLayoutOwnsViewport(
+                        focusedActiveTailMessageComposerLayoutOwnsViewport(
                             targetIdentity = focusedTargetIdentity,
-                            targetItemIndex = renderPayload.focusedMessageListItemIndex(),
+                            targetItemIndex = focusedTargetItemIndex,
                             latestMessageItemIndex = latestMessageListItemIndex,
+                            targetToTailFitsViewport = focusedTailFit.fitsViewport,
                             canLoadMoreAfter = renderPayload.canLoadMoreAfter,
                             anchoredIdentity = focusedAnchorSessionIdentity,
                             consumedIdentity = consumedFocusedMessageAnchorIdentity,
@@ -16127,11 +16507,12 @@ private fun ThreadMessagesList(
                             startUserScrollGeneration = focusedAnchorStartUserScrollGeneration,
                             currentUserScrollGeneration = userScrollGeneration.value
                         ),
-                focusedLatestAnchorCanCorrectLayout =
-                    focusedLatestMessageComposerLayoutOwnsViewport(
+                focusedTailAnchorCanCorrectLayout =
+                    focusedTailMessageComposerLayoutOwnsViewport(
                         targetIdentity = focusedTargetIdentity,
-                        targetItemIndex = renderPayload.focusedMessageListItemIndex(),
+                        targetItemIndex = focusedTargetItemIndex,
                         latestMessageItemIndex = latestMessageListItemIndex,
+                        targetToTailFitsViewport = focusedTailFit.fitsViewport,
                         canLoadMoreAfter = renderPayload.canLoadMoreAfter,
                         anchoredIdentity = focusedAnchorSessionIdentity,
                         consumedIdentity = consumedFocusedMessageAnchorIdentity,
@@ -16141,6 +16522,31 @@ private fun ThreadMessagesList(
                     )
             )
         val layoutDecision = resolveThreadComposerLayoutBottomAnchor(layoutState)
+        val layoutChanged = threadComposerLayoutChanged(layoutState)
+        if (layoutChanged || layoutState.pendingLayoutChange) {
+            val anchoredIntent = viewportControllerState.intent as? LazyViewportIntent.Anchored
+            diagnosticsLogger(
+                "thread_composer_layout_decision actor=composer_inset_relayout " +
+                    "keyboardInset=${layoutState.previousKeyboardInsetDp}->${layoutState.nextKeyboardInsetDp} " +
+                    "viewportHeight=${layoutState.previousViewportHeightDp}->${layoutState.nextViewportHeightDp} " +
+                    "pendingBefore=${layoutState.pendingLayoutChange} pendingAfter=${layoutDecision.pendingLayoutChange} " +
+                    "shouldAnchor=${layoutDecision.shouldAnchor} " +
+                    "placement=${if (layoutDecision.anchorFocusedTailAtRenderedBottom) "rendered_tail_bottom" else "replay_intent"} " +
+                    "targetIsLatest=${focusedTargetItemIndex >= 0 && focusedTargetItemIndex == latestMessageListItemIndex} " +
+                    "targetIndex=$focusedTargetItemIndex latestMessageIndex=$latestMessageListItemIndex " +
+                    "latestViewportItemIndex=$latestItemIndex trailingPaddingPx=$initialBottomAnchorTrailingPaddingPx " +
+                    "fitHeightPx=${focusedTailFit.fitHeightPx} fitViewportPx=${focusedTailFit.viewportHeightPx} " +
+                    "tailSpanPx=${focusedTailFit.trailingSpanPx} tailFits=${focusedTailFit.fitsViewport} " +
+                    "measurementResult=${if (focusedTailFit.fitHeightPx >= 0) "available" else "measurement_unavailable"} " +
+                    "canLoadMoreAfter=${renderPayload.canLoadMoreAfter} " +
+                    "focusedOwns=$focusedAnchorOwnsViewport consumed=${consumedFocusedMessageAnchorIdentity == focusedTargetIdentity} " +
+                    "interrupted=${scrollInterruptedFocusedMessageAnchorIdentity == focusedTargetIdentity} " +
+                    "userGeneration=${focusedAnchorStartUserScrollGeneration ?: -1}->${userScrollGeneration.value} " +
+                    "viewportIntent=${viewportControllerState.intent.threadViewportIntentDiagnosticName()} " +
+                    "viewportPlacement=${anchoredIntent?.placement?.name ?: "none"} " +
+                    listState.threadViewportGeometryDiagnostics(focusedTargetItemIndex)
+            )
+        }
         lastComposerKeyboardInsetDp = composerKeyboardInsetDp
         lastThreadViewportHeightDp = measuredThreadViewportHeightDp
         pendingComposerLayoutBottomAnchor = layoutDecision.pendingLayoutChange
@@ -16150,11 +16556,47 @@ private fun ThreadMessagesList(
         }
         pendingKeyboardBottomAnchor = true
         viewportLayoutGeneration += 1L
-        dispatchViewportEvent(LazyViewportEvent.ContentMutated(LazyViewportMutation.InsetChange))
+        if (
+            layoutDecision.anchorFocusedTailAtRenderedBottom &&
+            focusedTargetMessageId != null &&
+            focusedTailMessageId != null
+        ) {
+            focusedAnchorPlacementState =
+                renderedThreadFocusedAnchorPlacement(
+                    identity = requireNotNull(focusedTargetIdentity),
+                    offsetPx = focusedTailFit.trailingSpanPx,
+                    renderedTailMessageId = focusedTailMessageId
+                )
+            dispatchViewportEvent(
+                LazyViewportEvent.Anchor(
+                    target = LazyViewportAnchorTarget.Message(focusedTargetMessageId),
+                    offset = focusedTailFit.trailingSpanPx,
+                    layoutGeneration = viewportLayoutGeneration,
+                    placement = LazyViewportAnchorPlacement.RenderedBottom,
+                    renderedTailMessageId = focusedTailMessageId,
+                    renderedTailAnchorIdentity = focusedTargetIdentity,
+                    fallback = LazyViewportAnchorFallback.Free
+                )
+            )
+        } else {
+            dispatchViewportEvent(LazyViewportEvent.ContentMutated(LazyViewportMutation.InsetChange))
+        }
         val insetCommandId = viewportControllerState.pendingCommand?.id
         if (insetCommandId != null) {
             awaitViewportCommandSettlement(insetCommandId)
         }
+        diagnosticsLogger(
+                "thread_composer_layout_settled actor=composer_inset_relayout " +
+                "command=${insetCommandId?.sequence ?: -1} " +
+                "placement=${if (layoutDecision.anchorFocusedTailAtRenderedBottom) "rendered_tail_bottom" else "replay_intent"} " +
+                "targetIndex=$focusedTargetItemIndex latestMessageIndex=$latestMessageListItemIndex " +
+                "latestViewportItemIndex=$latestItemIndex fitHeightPx=${focusedTailFit.fitHeightPx} " +
+                "fitViewportPx=${focusedTailFit.viewportHeightPx} tailSpanPx=${focusedTailFit.trailingSpanPx} " +
+                "renderedBottom=${listState.isLatestItemAtRenderedBottom(latestMessageListItemIndex, initialBottomAnchorTrailingPaddingPx)} " +
+                "latestItemOffBottom=${listState.shouldShowThreadBackToBottom(latestItemIndex)} " +
+                "viewportIntent=${viewportControllerState.intent.threadViewportIntentDiagnosticName()} " +
+                listState.threadViewportGeometryDiagnostics(focusedTargetItemIndex)
+        )
         pendingKeyboardBottomAnchor = false
     }
     ThreadReactionAtlasProvider {
@@ -17454,11 +17896,16 @@ internal fun focusedAnchorIdentityForViewportReplacement(
     pendingIdentity ?: sessionIdentity
 
 internal fun focusedAnchorSessionUserOverrideActive(
-    isScrollInProgress: Boolean,
+    startUserScrollGeneration: Int?,
+    currentUserScrollGeneration: Int,
     targetIdentity: String,
     scrollInterruptedIdentity: String?
 ): Boolean =
-    isScrollInProgress || scrollInterruptedIdentity == targetIdentity
+    scrollInterruptedIdentity == targetIdentity ||
+        (
+            startUserScrollGeneration != null &&
+                startUserScrollGeneration != currentUserScrollGeneration
+        )
 
 internal fun shouldCorrectFocusedAnchorAfterOriginHydration(
     originStatus: String,
@@ -17635,6 +18082,71 @@ internal fun shouldAutoCorrectThreadBottomAnchor(state: ThreadBottomAnchorCorrec
         !state.isScrollInProgress &&
         !state.isAtRenderedBottom
 
+internal data class ThreadFocusedTailFit(
+    val targetItemIndex: Int,
+    val latestMessageItemIndex: Int,
+    val bottomPaddingItemIndex: Int,
+    val fitHeightPx: Int,
+    val viewportHeightPx: Int,
+    val trailingSpanPx: Int,
+    val fitsViewport: Boolean
+)
+
+internal fun resolveThreadFocusedTailFit(
+    targetItemIndex: Int,
+    latestMessageItemIndex: Int,
+    bottomPaddingItemIndex: Int,
+    targetOffsetPx: Int?,
+    targetSizePx: Int?,
+    latestMessageOffsetPx: Int?,
+    latestMessageSizePx: Int?,
+    viewportHeightPx: Int,
+    trailingPaddingPx: Int
+): ThreadFocusedTailFit {
+    val indicesValid =
+        targetItemIndex >= 0 &&
+            latestMessageItemIndex >= targetItemIndex &&
+            bottomPaddingItemIndex > latestMessageItemIndex
+    val geometryValid =
+        targetOffsetPx != null &&
+            targetSizePx != null &&
+            targetSizePx > 0 &&
+            latestMessageOffsetPx != null &&
+            latestMessageSizePx != null &&
+            latestMessageSizePx > 0 &&
+            viewportHeightPx > 0
+    if (!indicesValid || !geometryValid) {
+        return ThreadFocusedTailFit(
+            targetItemIndex = targetItemIndex,
+            latestMessageItemIndex = latestMessageItemIndex,
+            bottomPaddingItemIndex = bottomPaddingItemIndex,
+            fitHeightPx = -1,
+            viewportHeightPx = viewportHeightPx,
+            trailingSpanPx = 0,
+            fitsViewport = false
+        )
+    }
+    val targetOffset = requireNotNull(targetOffsetPx)
+    val targetSize = requireNotNull(targetSizePx)
+    val latestMessageOffset = requireNotNull(latestMessageOffsetPx)
+    val latestMessageSize = requireNotNull(latestMessageSizePx)
+    val targetBottomPx = targetOffset + targetSize
+    val latestMessageBottomPx = latestMessageOffset + latestMessageSize
+    val cleanTrailingPaddingPx = trailingPaddingPx.coerceAtLeast(0)
+    val fitHeightPx = latestMessageBottomPx - targetOffset + cleanTrailingPaddingPx
+    val trailingSpanPx = latestMessageBottomPx - targetBottomPx + cleanTrailingPaddingPx
+    val orderedGeometry = fitHeightPx > 0 && trailingSpanPx >= cleanTrailingPaddingPx
+    return ThreadFocusedTailFit(
+        targetItemIndex = targetItemIndex,
+        latestMessageItemIndex = latestMessageItemIndex,
+        bottomPaddingItemIndex = bottomPaddingItemIndex,
+        fitHeightPx = fitHeightPx,
+        viewportHeightPx = viewportHeightPx,
+        trailingSpanPx = trailingSpanPx.coerceAtLeast(0),
+        fitsViewport = orderedGeometry && fitHeightPx <= viewportHeightPx
+    )
+}
+
 internal data class ThreadComposerLayoutBottomAnchorState(
     val previousKeyboardInsetDp: Float,
     val nextKeyboardInsetDp: Float,
@@ -17645,8 +18157,8 @@ internal data class ThreadComposerLayoutBottomAnchorState(
     val latestItemIndex: Int,
     val allowBottomAutoAnchor: Boolean,
     val focusedAnchorOwnsViewport: Boolean,
-    val focusedActiveLatestAnchorCanCorrectLayout: Boolean,
-    val focusedLatestAnchorCanCorrectLayout: Boolean
+    val focusedActiveTailAnchorCanCorrectLayout: Boolean,
+    val focusedTailAnchorCanCorrectLayout: Boolean
 )
 
 internal fun threadComposerLayoutChanged(state: ThreadComposerLayoutBottomAnchorState): Boolean =
@@ -17665,14 +18177,15 @@ internal fun shouldAnchorThreadComposerLayoutChange(
         state.latestItemIndex >= 0 &&
         (
             (state.allowBottomAutoAnchor && !state.focusedAnchorOwnsViewport) ||
-                state.focusedActiveLatestAnchorCanCorrectLayout ||
-                state.focusedLatestAnchorCanCorrectLayout
+                state.focusedActiveTailAnchorCanCorrectLayout ||
+                state.focusedTailAnchorCanCorrectLayout
         )
 
-internal fun focusedActiveLatestMessageComposerLayoutOwnsViewport(
+internal fun focusedActiveTailMessageComposerLayoutOwnsViewport(
     targetIdentity: String?,
     targetItemIndex: Int,
     latestMessageItemIndex: Int,
+    targetToTailFitsViewport: Boolean,
     canLoadMoreAfter: Boolean,
     anchoredIdentity: String?,
     consumedIdentity: String?,
@@ -17682,7 +18195,8 @@ internal fun focusedActiveLatestMessageComposerLayoutOwnsViewport(
 ): Boolean =
     targetIdentity != null &&
         targetItemIndex >= 0 &&
-        targetItemIndex == latestMessageItemIndex &&
+        latestMessageItemIndex >= targetItemIndex &&
+        targetToTailFitsViewport &&
         !canLoadMoreAfter &&
         anchoredIdentity == targetIdentity &&
         consumedIdentity != targetIdentity &&
@@ -17690,10 +18204,11 @@ internal fun focusedActiveLatestMessageComposerLayoutOwnsViewport(
         startUserScrollGeneration != null &&
         startUserScrollGeneration == currentUserScrollGeneration
 
-internal fun focusedLatestMessageComposerLayoutOwnsViewport(
+internal fun focusedTailMessageComposerLayoutOwnsViewport(
     targetIdentity: String?,
     targetItemIndex: Int,
     latestMessageItemIndex: Int,
+    targetToTailFitsViewport: Boolean,
     canLoadMoreAfter: Boolean,
     anchoredIdentity: String?,
     consumedIdentity: String?,
@@ -17703,7 +18218,8 @@ internal fun focusedLatestMessageComposerLayoutOwnsViewport(
 ): Boolean =
     targetIdentity != null &&
         targetItemIndex >= 0 &&
-        targetItemIndex == latestMessageItemIndex &&
+        latestMessageItemIndex >= targetItemIndex &&
+        targetToTailFitsViewport &&
         !canLoadMoreAfter &&
         anchoredIdentity == targetIdentity &&
         consumedIdentity == targetIdentity &&
@@ -17713,7 +18229,8 @@ internal fun focusedLatestMessageComposerLayoutOwnsViewport(
 
 internal data class ThreadComposerLayoutBottomAnchorDecision(
     val shouldAnchor: Boolean,
-    val pendingLayoutChange: Boolean
+    val pendingLayoutChange: Boolean,
+    val anchorFocusedTailAtRenderedBottom: Boolean = false
 )
 
 internal fun resolveThreadComposerLayoutBottomAnchor(
@@ -17731,16 +18248,83 @@ internal fun resolveThreadComposerLayoutBottomAnchor(
                 state.latestItemIndex < 0 ||
                 (
                     !state.allowBottomAutoAnchor &&
-                        !state.focusedActiveLatestAnchorCanCorrectLayout &&
-                        !state.focusedLatestAnchorCanCorrectLayout
+                        !state.focusedActiveTailAnchorCanCorrectLayout &&
+                        !state.focusedTailAnchorCanCorrectLayout
                 ) -> false
             else -> state.pendingLayoutChange
         }
     return ThreadComposerLayoutBottomAnchorDecision(
         shouldAnchor = shouldAnchor,
-        pendingLayoutChange = pendingLayoutChange
+        pendingLayoutChange = pendingLayoutChange,
+        anchorFocusedTailAtRenderedBottom =
+            shouldAnchor &&
+                (state.focusedActiveTailAnchorCanCorrectLayout || state.focusedTailAnchorCanCorrectLayout)
     )
 }
+
+internal data class ThreadFocusedAnchorPlacementState(
+    val identity: String?,
+    val placement: LazyViewportAnchorPlacement,
+    val offsetPx: Int,
+    val renderedTailMessageId: String?
+)
+
+internal fun resetThreadFocusedAnchorPlacement(identity: String?): ThreadFocusedAnchorPlacementState =
+    ThreadFocusedAnchorPlacementState(
+        identity = identity,
+        placement = LazyViewportAnchorPlacement.Focused,
+        offsetPx = 0,
+        renderedTailMessageId = null
+    )
+
+internal fun renderedThreadFocusedAnchorPlacement(
+    identity: String,
+    offsetPx: Int,
+    renderedTailMessageId: String
+): ThreadFocusedAnchorPlacementState =
+    ThreadFocusedAnchorPlacementState(
+        identity = identity,
+        placement = LazyViewportAnchorPlacement.RenderedBottom,
+        offsetPx = offsetPx.coerceAtLeast(0),
+        renderedTailMessageId = renderedTailMessageId
+    )
+
+internal fun focusedAnchorPlacementForIdentity(
+    targetIdentity: String,
+    placementIdentity: String?,
+    placement: LazyViewportAnchorPlacement
+): LazyViewportAnchorPlacement =
+    if (targetIdentity == placementIdentity) placement else LazyViewportAnchorPlacement.Focused
+
+internal fun focusedAnchorPlacementOffsetForIdentity(
+    targetIdentity: String,
+    placementIdentity: String?,
+    placement: LazyViewportAnchorPlacement,
+    placementOffsetPx: Int
+): Int =
+    if (targetIdentity == placementIdentity && placement == LazyViewportAnchorPlacement.RenderedBottom) {
+        placementOffsetPx.coerceAtLeast(0)
+    } else {
+        0
+    }
+
+internal fun focusedAnchorRenderedTailMessageIdForIdentity(
+    targetIdentity: String,
+    placementIdentity: String?,
+    placement: LazyViewportAnchorPlacement,
+    renderedTailMessageId: String?
+): String? =
+    renderedTailMessageId?.takeIf {
+        targetIdentity == placementIdentity && placement == LazyViewportAnchorPlacement.RenderedBottom
+    }
+
+private fun LazyViewportIntent.threadViewportIntentDiagnosticName(): String =
+    when (this) {
+        LazyViewportIntent.FollowingLatest -> "following_latest"
+        LazyViewportIntent.PinnedTop -> "pinned_top"
+        is LazyViewportIntent.Anchored -> "anchored"
+        LazyViewportIntent.UserDragging -> "user_dragging"
+    }
 
 internal data class ThreadBackToBottomButtonState(
     val initialBottomAnchorReady: Boolean,
@@ -18056,6 +18640,64 @@ private suspend fun LazyListState.scrollThreadItemToFocusedViewport(
     return didScroll
 }
 
+private suspend fun LazyListState.scrollThreadItemToRenderedBottom(
+    itemIndex: Int,
+    trailingPaddingSize: Int,
+    commandStillCurrent: () -> Boolean
+): Boolean {
+    if (itemIndex < 0 || layoutInfo.totalItemsCount <= itemIndex) return false
+    var didScroll = false
+    repeat(ThreadFocusedMessageCenterAttempts) {
+        if (!commandStillCurrent()) return false
+        val item = layoutInfo.visibleItemsInfo.firstOrNull { it.index == itemIndex }
+        if (item == null) {
+            scrollToItem(itemIndex)
+            if (!commandStillCurrent()) return false
+            delay(ThreadLayoutStabilityFrameDelayMs)
+            if (!commandStillCurrent()) return false
+            return@repeat
+        }
+        val viewportHeight = layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset
+        val offset =
+            threadLatestItemBottomAnchorScrollOffset(
+                itemSize = item.size,
+                viewportHeight = viewportHeight,
+                visibleItemCount = layoutInfo.visibleItemsInfo.size,
+                totalItemCount = layoutInfo.totalItemsCount,
+                trailingPaddingSize = trailingPaddingSize
+            )
+        scrollToItem(itemIndex, offset)
+        if (!commandStillCurrent()) return false
+        didScroll = true
+        delay(ThreadLayoutStabilityFrameDelayMs)
+        if (!commandStillCurrent()) return false
+    }
+    return didScroll
+}
+
+private fun LazyListState.threadFocusedTailFit(
+    targetItemIndex: Int,
+    latestMessageItemIndex: Int,
+    bottomPaddingItemIndex: Int,
+    viewportHeightPx: Int,
+    trailingPaddingPx: Int
+): ThreadFocusedTailFit {
+    val visibleItems = layoutInfo.visibleItemsInfo
+    val target = visibleItems.firstOrNull { item -> item.index == targetItemIndex }
+    val latestMessage = visibleItems.firstOrNull { item -> item.index == latestMessageItemIndex }
+    return resolveThreadFocusedTailFit(
+        targetItemIndex = targetItemIndex,
+        latestMessageItemIndex = latestMessageItemIndex,
+        bottomPaddingItemIndex = bottomPaddingItemIndex,
+        targetOffsetPx = target?.offset,
+        targetSizePx = target?.size,
+        latestMessageOffsetPx = latestMessage?.offset,
+        latestMessageSizePx = latestMessage?.size,
+        viewportHeightPx = viewportHeightPx,
+        trailingPaddingPx = trailingPaddingPx
+    )
+}
+
 private fun LazyListState.threadViewportGeometryDiagnostics(targetIndex: Int): String {
     val info = layoutInfo
     val visibleItems = info.visibleItemsInfo
@@ -18221,6 +18863,7 @@ private const val ThreadBackToBottomTolerancePx = 24
 private const val ThreadBottomAnchorMinimumAttempts = 2
 private const val ThreadInitialBottomAnchorAttempts = 12
 private const val ThreadInitialBottomAnchorRetryDelayMs = 80L
+private const val ThreadFocusedTailMeasurementRetryFrames = 2
 private const val ThreadInitialBottomAnchorMinimumConsumedDeltaPx = 0.5f
 private const val ThreadLayoutStabilityFrameDelayMs = 16L
 private const val ThreadFirstContentTaskJoinDelayMs = 96L
@@ -18242,6 +18885,7 @@ private fun ThreadSystemMessageRow(
     timestampValue: String
 ) {
     var expanded by remember(message.id) { mutableStateOf(false) }
+    val timestampLayout = remember { threadSystemMessageTimestampLayoutSpec() }
     val systemBody =
         remember(message.body, message.metadata, message.systemEventType, expanded) {
             if (expanded) {
@@ -18260,12 +18904,18 @@ private fun ThreadSystemMessageRow(
     ) {
         SlockRelativeTimestampText(
             value = timestampValue,
+            displayGroup = SlockTimestampDisplayGroup.Conversation,
             style = SlockType.Caption.copy(color = ThreadSystemMessageTimeColor, fontFamily = SlockMonoFamily),
             color = ThreadSystemMessageTimeColor,
             textAlign = TextAlign.End,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.width(ThreadRelativeTimestampSlotWidthDp.dp)
+            modifier =
+                if (timestampLayout.reserveFullMetadataGutter) {
+                    Modifier.width(timestampLayout.maxWidthDp.dp)
+                } else {
+                    Modifier.widthIn(max = timestampLayout.maxWidthDp.dp).wrapContentWidth()
+                }
         )
         Spacer(modifier = Modifier.width(SlockSpacing.Sm))
         Text(
@@ -18610,6 +19260,10 @@ private fun ThreadMessageCard(
             rememberThreadInlineSelectionController(message.id)
         } else {
             null
+        }
+    val inlineSelectionGestureAnchor =
+        remember(message.id) {
+            SlockLiveRootAnchorRef(identity = "thread-inline-selection:${message.id}")
         }
     val inlineSelectionGapPx = with(LocalDensity.current) { ThreadInlineSelectionToolbarGap.roundToPx() }
     val inlineSelectionToolbarPlacement =
@@ -18970,9 +19624,42 @@ private fun ThreadMessageCard(
                                             SelectionContainer(
                                                 state = controller.selectionState,
                                                 modifier =
-                                                    Modifier.onGloballyPositioned { coordinates ->
-                                                        controller.containerRootPosition = coordinates.positionInRoot()
-                                                    },
+                                                    Modifier
+                                                        .onGloballyPositioned { coordinates ->
+                                                            controller.containerRootPosition = coordinates.positionInRoot()
+                                                        }
+                                                        .slockCaptureLiveRootAnchor(inlineSelectionGestureAnchor)
+                                                        .then(
+                                                            if (
+                                                                threadInlineSelectionLongPressObserverEnabled(
+                                                                    inlineSelectionEligible = true,
+                                                                    selectionActive = controller.active
+                                                                )
+                                                            ) {
+                                                                Modifier.pointerInput(message.id, pointerSessionKey) {
+                                                                    awaitEachGesture {
+                                                                        val down = awaitFirstDown(requireUnconsumed = false)
+                                                                        val longPress = awaitLongPressOrCancellation(down.id)
+                                                                        if (longPress != null) {
+                                                                            tapMovementGate.rejectChildAction(
+                                                                                "inline_selection_body_long_press"
+                                                                            )
+                                                                            controller.actionMenuAnchor =
+                                                                                inlineSelectionGestureAnchor.resolve(
+                                                                                    SlockPopoverLocalPoint.Exact(longPress.position)
+                                                                                )
+                                                                            diagnosticsLogger(
+                                                                                "thread_inline_selection_long_press " +
+                                                                                    "messageId=${message.id} source=container_observer"
+                                                                            )
+                                                                            controller.selectionState.createSelectionAll()
+                                                                        }
+                                                                    }
+                                                                }
+                                                            } else {
+                                                                Modifier
+                                                            }
+                                                        ),
                                                 onSelectStart = { frame ->
                                                     controller.frame = frame
                                                     controller.active = true
@@ -20243,7 +20930,7 @@ private fun ThreadActionCard.localizedActionCardCommittedLabel(): String {
 }
 
 @Composable
-private fun threadCreateAgentDialogErrorCopy(code: String): String =
+private fun threadCreateAgentDialogErrorCopy(code: String, serverMessage: String? = null): String =
     when (code) {
         "agent_name_required",
         "action_card_agent_name_missing" -> stringResource(MR.strings.thread_action_card_error_agent_name_required)
@@ -20252,7 +20939,17 @@ private fun threadCreateAgentDialogErrorCopy(code: String): String =
         "action_card_mark_executed_empty",
         "action_mark_executed_contract_mismatch" -> stringResource(MR.strings.thread_action_card_error_mark_done)
         "agent_create_empty" -> stringResource(MR.strings.thread_action_card_error_agent_not_created)
-        else -> stringResource(MR.strings.thread_action_card_error_agent_create, code)
+        AGENT_CREATE_NAME_TAKEN ->
+            stringResource(MR.strings.agent_create_error_name_taken)
+        "agent_create_form_refresh_required" ->
+            stringResource(MR.strings.thread_action_card_error_agent_form_refresh_required)
+        "agent_create_form_refresh_failed" ->
+            stringResource(MR.strings.thread_action_card_error_agent_form_refresh_failed)
+        // task #193 honest-states: unmapped code -> raw server reason first,
+        // localized generic-with-code only when the server sent no text.
+        else ->
+            serverMessage?.takeIf { it.isNotBlank() }
+                ?: stringResource(MR.strings.thread_action_card_error_agent_create, code)
     }
 
 @Composable
@@ -20670,7 +21367,7 @@ private fun Modifier.threadMessageLongPressActions(
                         movementDecision.reason == "movement" || movementDecision.reason == "multi_touch"
                     val dispatchDecision =
                         decideThreadMessageLongPressDispatch(
-                            detectorAccepted = true,
+                            detectorAccepted = movementDecision.allowed,
                             directPointerMovementDetected = directPointerMovementDetected,
                             isScrollInProgress = currentIsScrollInProgress()
                         )
@@ -21337,6 +22034,7 @@ private fun ThreadInlineReplyRow(
         if (reply.createdAt.isNotBlank()) {
             SlockRelativeTimestampText(
                 value = reply.createdAt,
+                displayGroup = SlockTimestampDisplayGroup.Conversation,
                 style = SlockType.Caption.copy(fontSize = 11.5.sp, lineHeight = 15.sp),
                 color = SlockColor.TextBlack.copy(alpha = 0.42f),
                 maxLines = 1,
@@ -22672,6 +23370,7 @@ private fun ThreadMessageTimestampLabel(
 ) {
     SlockRelativeTimestampText(
         value = timestampLabel,
+        displayGroup = SlockTimestampDisplayGroup.Conversation,
         style =
             SlockType.Caption.copy(
                 fontFamily = SlockMonoFamily,
@@ -23182,11 +23881,12 @@ private fun KuiklyThreadAttachmentItem.toThreadAttachmentPreviewPayload(
         externalMimeType = mimeType
     )
 
-private fun PlatformFile.composerLocalPreviewUri(): String? =
-    fileRef?.takeIf { it.isNotBlank() }
-        ?: previewUri?.takeIf { it.isNotBlank() }
+/** Renderer-facing URI; [PlatformFile.fileRef] remains the platform upload handle. */
+internal fun PlatformFile.composerLocalPreviewUri(): String? =
+    previewUri?.takeIf { it.isNotBlank() }
+        ?: fileRef?.takeIf { it.isNotBlank() }
 
-private fun PlatformFile.toComposerImageGalleryImage(): SlockFilePreviewGalleryImage =
+internal fun PlatformFile.toComposerImageGalleryImage(): SlockFilePreviewGalleryImage =
     SlockFilePreviewGalleryImage(
         attachmentId = id,
         name = fileName,
@@ -23421,7 +24121,13 @@ internal fun ThreadAttachmentCommentsContent(
             "error" ->
                 ThreadStateActionMessage(
                     title = stringResource(MR.strings.thread_comments_load_failed),
-                    detail = userFacingErrorLabels.forErrorCode(state.errorCode) ?: stringResource(MR.strings.common_error),
+                    detail =
+                        attachmentCommentsVisibleErrorMessage(
+                            errorCode = state.errorCode,
+                            serverMessage = state.errorServerMessage,
+                            labels = userFacingErrorLabels,
+                            genericMessage = stringResource(MR.strings.common_error)
+                        ),
                     actionLabel = stringResource(MR.strings.common_retry),
                     onClick = onRetry
                 )
@@ -23454,7 +24160,13 @@ internal fun ThreadAttachmentCommentsContent(
         }
         state.errorCode?.takeIf { state.status != "error" && it.isNotBlank() }?.let { code ->
             Text(
-                text = userFacingErrorLabels.forErrorCode(code)?.uppercase() ?: stringResource(MR.strings.common_error),
+                text =
+                    attachmentCommentsVisibleErrorMessage(
+                        errorCode = code,
+                        serverMessage = state.errorServerMessage,
+                        labels = userFacingErrorLabels,
+                        genericMessage = stringResource(MR.strings.common_error)
+                    ),
                 style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
                 color = SlockColor.AccentRed,
                 maxLines = 1,
@@ -23961,11 +24673,11 @@ private fun ThreadForwardBundleCard(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false)
                     )
-                    item.formatThreadForwardedTimestampLabel(liveTimeContext)
-                        .takeIf { it.isNotBlank() }
-                        ?.let { timestamp ->
-                        Text(
-                            text = timestamp,
+                    if (item.timestampLabel.isNotBlank()) {
+                        SlockRelativeTimestampText(
+                            value = item.timestampLabel,
+                            timeContext = liveTimeContext,
+                            displayGroup = SlockTimestampDisplayGroup.Conversation,
                             style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 10.sp, lineHeight = 13.sp),
                             color = SlockColor.TextMutedGray,
                             maxLines = 1,

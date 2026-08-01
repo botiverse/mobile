@@ -16,6 +16,11 @@ interface KuiklyOhosConfig {
 
 const DEFAULT_SO_PATH = 'entry/libs/arm64-v8a';
 const DEFAULT_HEADER_PATH = 'entry/src/main/cpp';
+const DEFAULT_LIBRARY_NAME = 'shared';
+
+function resolveLibraryName(config: KuiklyOhosConfig): string {
+  return config.libraryName || DEFAULT_LIBRARY_NAME;
+}
 
 export function kuiklyCompilePlugin(): HvigorPlugin {
   return {
@@ -49,7 +54,7 @@ function cleanKuiklyOhos(config: KuiklyOhosConfig): void {
   validateConfig(config);
 
   const ohosAppPath = hvigor.getRootNode().getNodePath();
-  const libraryName = config.libraryName || config.moduleName;
+  const libraryName = resolveLibraryName(config);
   const soPath = config.soPath || DEFAULT_SO_PATH;
   const headerPath = config.headerPath || DEFAULT_HEADER_PATH;
 
@@ -68,7 +73,7 @@ function buildKuiklyOhos(config: KuiklyOhosConfig): void {
   const rawBuildMode = parameter.getExtParams().buildMode || 'debug';
   const buildMode = rawBuildMode.charAt(0).toUpperCase() + rawBuildMode.slice(1);
   const ohosAppPath = hvigor.getRootNode().getNodePath();
-  const libraryName = config.libraryName || config.moduleName;
+  const libraryName = resolveLibraryName(config);
   const soPath = config.soPath || DEFAULT_SO_PATH;
   const headerPath = config.headerPath || DEFAULT_HEADER_PATH;
 

@@ -18,7 +18,11 @@ import slockOhosMotionBridge from '../SlockOhosMotionBridge';
 import slockOhosRealtimeBridge from '../SlockOhosRealtimeBridge';
 import { SlockOhosClipboard } from '../SlockOhosClipboard';
 import { SlockOhosDiagnostics } from '../SlockOhosDiagnostics';
-import { cacheSlockOhosPickedAttachment } from '../SlockOhosPickedAttachmentCache';
+import {
+  cacheSlockOhosPickedAttachment,
+  ensureSlockOhosAttachmentCacheDirectory,
+} from '../SlockOhosPickedAttachmentCache';
+import { slockOhosHandsFeedbackAttachmentPaths } from '../SlockOhosHandsFeedbackAttachments';
 import { slockOhosAttachmentDownloadSink } from '../SlockOhosAttachmentDownloadSink';
 import { SlockOhosApiEnvironment, SlockOhosApiEnvironmentStore } from '../SlockOhosApiEnvironmentStore';
 import { SLOCK_OHOS_BUILD_TIME, SLOCK_OHOS_GIT_COMMIT } from '../generated/SlockOhosBuildMetadata';
@@ -1160,19 +1164,11 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   }
 
   private feedbackAttachmentPaths(value: Object | undefined): Array<string> {
-    if (!Array.isArray(value)) {
-      return [];
-    }
-    const paths: Array<string> = [];
-    (value as Array<Record<string, Object>>).forEach((file: Record<string, Object>) => {
-      const fileRef = (file["fileRef"] as string | undefined) ?? "";
-      if (fileRef.length > 0) {
-        if (this.feedbackAttachmentFits(fileRef)) {
-          paths.push(fileRef);
-        }
-      }
-    });
-    return paths.slice(0, KRBridgeModule.HANDS_FEEDBACK_MAX_ATTACHMENTS);
+    return slockOhosHandsFeedbackAttachmentPaths(
+      value,
+      KRBridgeModule.HANDS_FEEDBACK_MAX_ATTACHMENTS,
+      KRBridgeModule.HANDS_FEEDBACK_MAX_ATTACHMENT_BYTES,
+    );
   }
 
   private feedbackAttachmentNames(paths: Array<string>): Array<string> {
@@ -1408,7 +1404,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     const files: Array<OhosPickedThreadAttachment> = [];
     const context = getContext(this) as common.UIAbilityContext;
     const cacheDir = `${context.cacheDir}/slock-attachments`;
-    fs.mkdirSync(cacheDir, true);
+    ensureSlockOhosAttachmentCacheDirectory(cacheDir);
     this.cleanupAttachmentCache(cacheDir);
     const pickedAt = Date.now();
     uris.forEach((uri: string, index: number) => {

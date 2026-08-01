@@ -20,6 +20,7 @@ import build.raft.app.data.NetworkSlockHomeApi
 import build.raft.app.data.OpenDirectMessageResult
 import build.raft.app.data.RealChannelRepository
 import build.raft.app.data.SettingsServerSidebarPinnedItem
+import build.raft.app.data.ScreenError
 import build.raft.app.data.APP_UPDATE_HOME_NOTIFICATION_ID
 import build.raft.app.data.SharedHomeDataSource
 import build.raft.app.data.SharedHomeIntent
@@ -27,6 +28,7 @@ import build.raft.app.data.SlockComputersNetworkApi
 import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.parseSlockHome
+import build.raft.app.data.userFacingMessage
 import build.raft.app.model.AvatarReference
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
@@ -158,6 +160,7 @@ private val SidebarActionRowHeight = 32.dp
 private val HomeSmallShadowOffset = 2.dp
 private val SidebarRowHorizontalPadding = 8.dp
 private val SidebarActionLabelGap = 6.dp
+private val SidebarActionTrailingSlotWidth = 36.dp
 private val ChannelSymbolWidth = 18.dp
 private val ChannelSymbolIconSize = 14.dp
 private val ChannelAvatarSize = 20.dp
@@ -402,6 +405,22 @@ data class SlockHomeInlineError(
     val code: String,
     val actionLabel: String = "",
 )
+
+internal data class SlockHomeInlineErrorVisibleCopy(
+    val title: String,
+    val detail: String,
+    val actionLabel: String
+)
+
+internal fun SlockHomeInlineError.toVisibleCopy(): SlockHomeInlineErrorVisibleCopy =
+    SlockHomeInlineErrorVisibleCopy(
+        title = title,
+        detail = detail,
+        actionLabel = actionLabel
+    )
+
+internal fun SlockHomeServerDrawerRow.Error.visibleRetryLabel(localizedRetryLabel: String): String =
+    localizedRetryLabel
 
 @Serializable
 enum class SlockPresence { Online, Offline, Unknown }
@@ -737,7 +756,10 @@ private fun SlockHomePageContent(routeVisibleTick: Int = 0) {
                         )
                     }
                     is DataResult.Empty -> bridge.toast(unableToOpenDirectMessage)
-                    is DataResult.Error -> bridge.toast("$failedToOpenDirectMessage: ${result.error.code}")
+                    is DataResult.Error ->
+                        bridge.toast(
+                            homeDirectMessageOpenFailureMessage(failedToOpenDirectMessage, result.error)
+                        )
                     is DataResult.NoPermission -> bridge.toast(noDirectMessagePermission)
                 }
             }
@@ -764,6 +786,9 @@ private fun SlockHomePageContent(routeVisibleTick: Int = 0) {
         diagnosticsLogger = bridge::log
     )
 }
+
+internal fun homeDirectMessageOpenFailureMessage(prefix: String, error: ScreenError): String =
+    "$prefix: ${error.userFacingMessage()}"
 
 /**
  * #228: open the thread page for a conversation that the sidebar / pinned list
@@ -3677,6 +3702,7 @@ internal fun HomeInlineErrorCard(
     modifier: Modifier = Modifier,
     onAction: () -> Unit
 ) {
+    val visibleCopy = error.toVisibleCopy()
     Box(
         modifier =
             modifier
@@ -3700,30 +3726,23 @@ internal fun HomeInlineErrorCard(
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Text(
-                        text = error.title,
+                        text = visibleCopy.title,
                         style = SlockType.ButtonBold,
                         color = SlockColor.TextBlack,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = error.detail,
+                        text = visibleCopy.detail,
                         style = SlockType.Caption,
                         color = SlockColor.TextMutedGray,
                         maxLines = 3,
                         overflow = TextOverflow.Ellipsis
                     )
-                    Text(
-                        text = error.code,
-                        style = SlockType.Caption,
-                        color = SlockColor.AccentRed,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
                 }
             }
             SlockBrutalActionButton(
-                label = error.actionLabel,
+                label = visibleCopy.actionLabel,
                 onClick = onAction,
                 leadingIcon = SlockLucideIconName.RefreshCw,
                 backgroundColor = SlockColor.SurfaceWhite
@@ -4214,6 +4233,7 @@ private fun HomeServerDrawerErrorRow(
     row: SlockHomeServerDrawerRow.Error,
     onRetry: () -> Unit
 ) {
+    val retryLabel = row.visibleRetryLabel(stringResource(MR.strings.home_action_retry))
     Row(
         modifier =
             Modifier
@@ -4226,7 +4246,7 @@ private fun HomeServerDrawerErrorRow(
     ) {
         SlockLucideIcon(SlockLucideIconName.RefreshCw, Modifier.size(14.dp), color = SlockColor.AccentRedArgb)
         Text(
-            text = stringResource(MR.strings.home_retry_with_code, row.code),
+            text = retryLabel,
             style = SlockType.Caption,
             color = SlockColor.AccentRed,
             modifier = Modifier.weight(1f),
@@ -4762,7 +4782,18 @@ private fun SidebarActionRow(icon: SlockLucideIconName, label: String, modifier:
         ) {
             Box(modifier = Modifier.size(SidebarActionIconBoxSize), contentAlignment = Alignment.Center) { SlockLucideIcon(icon, Modifier.size(SidebarActionIconSize)) }
             Text(label, style = SlockType.Button, color = SlockColor.TextBlack, modifier = Modifier.padding(start = SidebarActionLabelGap).weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (badge != null) CountPill(badge, SlockColor.AccentPink) else if (trailingText != null) SidebarTrailingNumberText(trailingText, color = SlockColor.TextBlack)
+            if (badge != null || trailingText != null) {
+                Box(
+                    modifier = Modifier.width(SidebarActionTrailingSlotWidth),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (badge != null) {
+                        CountPill(badge, SlockColor.AccentPink)
+                    } else if (trailingText != null) {
+                        SidebarTrailingNumberText(trailingText, color = SlockColor.TextBlack)
+                    }
+                }
+            }
         }
     }
 }

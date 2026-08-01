@@ -129,6 +129,25 @@ internal class SlockUnifiedDialogHostState {
 private val LocalSlockUnifiedDialogHostState = compositionLocalOf<SlockUnifiedDialogHostState?> { null }
 private val LocalSlockUnifiedDialogHostBottomInset = compositionLocalOf { 0.dp }
 
+internal data class SlockUnifiedDialogOuterClearance(
+    val start: Dp,
+    val top: Dp,
+    val end: Dp,
+    val bottom: Dp
+)
+
+internal fun slockUnifiedDialogOuterClearance(
+    outerPadding: Dp,
+    topInset: Dp,
+    bottomInset: Dp
+): SlockUnifiedDialogOuterClearance =
+    SlockUnifiedDialogOuterClearance(
+        start = outerPadding,
+        top = outerPadding + topInset,
+        end = outerPadding,
+        bottom = outerPadding + bottomInset
+    )
+
 @Composable
 internal fun rememberSlockUnifiedDialogHostState(): SlockUnifiedDialogHostState =
     remember { SlockUnifiedDialogHostState() }
@@ -211,6 +230,10 @@ internal fun SlockUnifiedDialog(
     hostRoute: String = SlockUnifiedDialogGenericHostRoute,
     content: @Composable () -> Unit
 ) {
+    // Resolve and capture the pager inset before entering Kuikly's native ModalView. Reading a
+    // composition local from inside the hosted Modal content is too late: ModalView rehosts that
+    // content in a separate native window, where the page host's top-inset local is not retained.
+    val topInset = slockTopSafeAreaPadding()
     val hostState = LocalSlockUnifiedDialogHostState.current
     if (hostState == null) {
         Modal(onWillDismiss = { if (dismissEnabled) onDismiss() }) {
@@ -229,6 +252,7 @@ internal fun SlockUnifiedDialog(
                 titleLineHeight = titleLineHeight,
                 titleMaxLines = titleMaxLines,
                 contentSpacing = contentSpacing,
+                topInset = topInset,
                 hostBottomInset = 0.dp,
                 handleBack = false,
                 content = content
@@ -260,6 +284,7 @@ internal fun SlockUnifiedDialog(
                     titleLineHeight = titleLineHeight,
                     titleMaxLines = titleMaxLines,
                     contentSpacing = contentSpacing,
+                    topInset = topInset,
                     hostBottomInset = LocalSlockUnifiedDialogHostBottomInset.current,
                     handleBack = false,
                     content = content
@@ -293,6 +318,7 @@ private fun SlockUnifiedDialogSurface(
     titleLineHeight: Int,
     titleMaxLines: Int,
     contentSpacing: Dp,
+    topInset: Dp,
     hostBottomInset: Dp,
     handleBack: Boolean,
     content: @Composable () -> Unit
@@ -300,6 +326,12 @@ private fun SlockUnifiedDialogSurface(
     if (handleBack) {
         SlockBackHandler(enabled = dismissEnabled, label = "unified_dialog", onBack = onDismiss)
     }
+    val outerClearance =
+        slockUnifiedDialogOuterClearance(
+            outerPadding = outerPadding,
+            topInset = topInset,
+            bottomInset = hostBottomInset
+        )
     Box(
         modifier =
             Modifier
@@ -314,8 +346,12 @@ private fun SlockUnifiedDialogSurface(
         Box(
             modifier =
                 modifier
-                    .padding(outerPadding)
-                    .padding(bottom = hostBottomInset)
+                    .padding(
+                        start = outerClearance.start,
+                        top = outerClearance.top,
+                        end = outerClearance.end,
+                        bottom = outerClearance.bottom
+                    )
                     .padding(end = SlockUnifiedDialogShadowOffset, bottom = SlockUnifiedDialogShadowOffset)
                     .widthIn(min = minWidth, max = maxWidth)
                     .slockDialogContentPointerBarrier()

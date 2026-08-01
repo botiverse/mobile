@@ -516,6 +516,8 @@
     <string name="thread_action_card_error_mark_done">エージェントは作成されましたが、アクションカードを完了にできませんでした。このスレッドを更新してみてください。</string>
     <string name="thread_action_card_error_agent_not_created">エージェントは作成されませんでした。</string>
     <string name="thread_action_card_error_agent_create">エージェントを作成できませんでした: %1$s</string>
+    <string name="thread_action_card_error_agent_form_refresh_required">エージェント作成フォームが更新されました。更新後の項目を確認して、もう一度お試しください。</string>
+    <string name="thread_action_card_error_agent_form_refresh_failed">エージェント作成フォームを更新できませんでした。もう一度お試しください。</string>
     <string name="thread_action_card_error_select_server">コンピューターを読み込む前にサーバーを選択してください。</string>
     <string name="thread_action_card_error_sign_in_computers">コンピューターを読み込むには、もう一度ログインしてください。</string>
     <string name="thread_action_card_error_computers_permission">コンピューターを表示する権限がありません。</string>
@@ -1237,8 +1239,9 @@
     <string name="agent_create_error_provider_url">プロバイダー URL は http:// または https:// で始まる必要があります</string>
     <string name="agent_create_error_provider_key">カスタムプロバイダーにはプロバイダー API キーが必要です</string>
     <string name="agent_create_error_custom_model">カスタムモデルは必須です。</string>
+    <string name="agent_create_error_name_taken">この名前はすでに使われています。別の名前をお試しください。</string>
     <string name="agent_create_error_form_refreshed">ランタイムフォームが更新されました。更新後の項目を確認し、API キーを再入力してからもう一度お試しください。</string>
-    <string name="agent_create_error_form_refresh_failed">ランタイムフォームを更新できませんでした。このダイアログを閉じ、開き直してからもう一度お試しください。</string>
+    <string name="agent_create_error_form_refresh_failed">ランタイムフォームを更新できませんでした。接続を確認して再試行してください。</string>
     <string name="agent_create_error_name_reserved">エージェント名 @%1$s は予約されています。別の名前を選択してください。</string>
     <string name="agent_create_error_name_min">エージェント名は 1 文字以上にしてください</string>
     <string name="agent_create_error_name_max">エージェント名は 32 文字以内にしてください</string>
@@ -1297,7 +1300,6 @@
     <string name="home_action_view">表示</string>
     <string name="home_action_retry">再試行</string>
     <string name="home_section_servers">サーバー</string>
-    <string name="home_retry_with_code">再試行 · %1$s</string>
     <string name="home_notification_center_title">通知</string>
     <string name="home_notification_center_item_count_one">%1$d 件</string>
     <string name="home_notification_center_item_count_many">%1$d 件</string>

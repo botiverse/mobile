@@ -445,25 +445,61 @@ private fun <T> HomeNetworkResponse.toAgentsDataError(): DataResult<T> =
     when (code) {
         401 -> DataResult.NoPermission(PermissionBlocker(code = "auth_required", requiredCapability = "auth_session"))
         403 -> DataResult.NoPermission(PermissionBlocker(code = "server_forbidden", requiredCapability = "server_access"))
-        in 500..599 -> DataResult.Error(ScreenError(code = "server_unavailable", retryable = true))
+        in 500..599 ->
+            DataResult.Error(
+                ScreenError(code = "server_unavailable", retryable = true, serverMessage = serverErrorTextOrNull())
+            )
         else ->
             DataResult.Error(
                 ScreenError(
-                    code = runtimeFormIssueCodeOrNull() ?: "http_$code",
-                    retryable = code != 404
+                    code = runtimeFormIssueCodeOrNull() ?: agentNameConflictCodeOrNull() ?: "http_$code",
+                    retryable = code != 404,
+                    serverMessage = serverErrorTextOrNull()
                 )
             )
     }
 
 private fun HomeNetworkResponse.runtimeFormIssueCodeOrNull(): String? {
     if (code != 409) return null
-    val body = bodyText?.takeIf { it.isNotBlank() } ?: return null
+    // task #186: the production transport (NetworkKmmSlockHttpExecutor) delivers
+    // every non-2xx body in errorBodyText and leaves bodyText null, so the 409
+    // issues envelope must be read from both fields or the runtime-form
+    // recovery never triggers on device.
+    val body = (bodyText ?: errorBodyText)?.takeIf { it.isNotBlank() } ?: return null
     return runCatching {
         agentsApiJson.decodeFromString(AgentErrorEnvelopeDto.serializer(), body)
             .issues
             .firstOrNull { it.code in CREATE_AGENT_RUNTIME_FORM_REJECTION_CODES }
             ?.code
     }.getOrNull()
+}
+
+// task #193: the raw server `error` text travels with every mapped agents
+// error so displays can fall back to the real reason (honest-states
+// contract) instead of a bare http code.
+private fun HomeNetworkResponse.serverErrorTextOrNull(): String? {
+    val body = (bodyText ?: errorBodyText)?.takeIf { it.isNotBlank() } ?: return null
+    return runCatching {
+        agentsApiJson.decodeFromString(AgentErrorTextEnvelopeDto.serializer(), body).error
+    }.getOrNull()?.trim()?.takeIf { it.isNotBlank() }
+}
+
+private fun HomeNetworkResponse.agentNameConflictCodeOrNull(): String? {
+    if (code != 409) return null
+    val body = (bodyText ?: errorBodyText)?.takeIf { it.isNotBlank() } ?: return null
+    // task #191: principal-handle conflicts carry only a human-readable
+    // `error` string, no issues codes ("Agent name X is already taken" /
+    // "Cindy agent already exists in this server"). Match the text until the
+    // server exposes a canonical machine code; these conflicts stay outside
+    // the runtime-form recovery allowlist so they are never auto-retried.
+    val errorText =
+        runCatching {
+            agentsApiJson.decodeFromString(AgentErrorTextEnvelopeDto.serializer(), body).error
+        }.getOrNull() ?: return null
+    val normalized = errorText.lowercase()
+    return AGENT_CREATE_NAME_TAKEN.takeIf {
+        "already taken" in normalized || "already exists" in normalized
+    }
 }
 
 private suspend fun HomeNetworkResponse.mapAgentsCommand(
@@ -478,6 +514,11 @@ private suspend fun HomeNetworkResponse.mapAgentsCommand(
 // Source of truth: packages/server/src/services/agentService.ts and the
 // routes/agents.ts handlers. `name` is required; `displayName` may be null but
 // is not used as a fallback for `name` — the server always emits `name`.
+
+@Serializable
+private data class AgentErrorTextEnvelopeDto(
+    val error: String? = null
+)
 
 @Serializable
 private data class AgentErrorEnvelopeDto(
@@ -767,7 +808,19 @@ internal data class UpdateAgentScopesBody(val scopes: List<String>? = null, val 
 @Serializable
 internal data class IssueAgentBootstrapTokenBody(val scopes: List<String>? = null, val ttlMs: Long? = null)
 
-internal fun buildCreateAgentBody(body: CreateAgentBody): String = agentsApiJson.encodeToString(body)
+// task #186: create requests must match the web wire shape — absent optional
+// fields are OMITTED, never serialized as explicit `null`. The server treats an
+// explicit `"formDefinitionRef":null` as present-but-invalid (routes/agents.ts
+// validates any non-undefined value), which 409s every non-Built-in create and
+// 400s external creates. Encoding-only; response decoding stays on agentsApiJson.
+private val agentsApiCreateBodyJson = Json {
+    ignoreUnknownKeys = true
+    encodeDefaults = true
+    coerceInputValues = true
+    explicitNulls = false
+}
+
+internal fun buildCreateAgentBody(body: CreateAgentBody): String = agentsApiCreateBodyJson.encodeToString(body)
 internal fun buildUpdateAgentBody(body: UpdateAgentBody): String = agentsApiJson.encodeToString(body)
 internal fun buildResetAgentBody(mode: String): String = agentsApiJson.encodeToString(ResetAgentBody(mode))
 internal fun buildAssignAgentMachineBody(machineId: String?): String =

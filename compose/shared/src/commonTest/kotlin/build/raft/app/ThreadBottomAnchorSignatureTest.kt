@@ -343,16 +343,42 @@ class ThreadBottomAnchorSignatureTest {
         )
         assertTrue(
             focusedAnchorSessionUserOverrideActive(
-                isScrollInProgress = false,
+                startUserScrollGeneration = 7,
+                currentUserScrollGeneration = 7,
                 targetIdentity = targetIdentity,
                 scrollInterruptedIdentity = targetIdentity
             )
         )
         assertFalse(
             focusedAnchorSessionUserOverrideActive(
-                isScrollInProgress = false,
+                startUserScrollGeneration = 7,
+                currentUserScrollGeneration = 7,
                 targetIdentity = targetIdentity,
                 scrollInterruptedIdentity = focusedMessageAnchorIdentity("other", 1)
+            )
+        )
+    }
+
+    @Test
+    fun focusedAnchorSessionOnlyTreatsProvenUserScrollAsOverride() {
+        val targetIdentity = focusedMessageAnchorIdentity(messageId = "m2", requestNonce = 1)
+
+        // LazyListState.isScrollInProgress also covers programmatic scroll actors.
+        // User intent is proven by the direct-pointer generation fence instead.
+        assertFalse(
+            focusedAnchorSessionUserOverrideActive(
+                startUserScrollGeneration = 4,
+                currentUserScrollGeneration = 4,
+                targetIdentity = targetIdentity,
+                scrollInterruptedIdentity = null
+            )
+        )
+        assertTrue(
+            focusedAnchorSessionUserOverrideActive(
+                startUserScrollGeneration = 4,
+                currentUserScrollGeneration = 5,
+                targetIdentity = targetIdentity,
+                scrollInterruptedIdentity = null
             )
         )
     }
@@ -1392,13 +1418,131 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
+    fun focusedTailFit_usesOneSnapshotForExactFitIncludingSpacingAndPadding() {
+        val fit =
+            resolveThreadFocusedTailFit(
+                targetItemIndex = 10,
+                latestMessageItemIndex = 13,
+                bottomPaddingItemIndex = 14,
+                targetOffsetPx = 100,
+                targetSizePx = 40,
+                // The 140px between the target bottom and tail start represents
+                // all intermediate rows, system rows, footers, and spacing.
+                latestMessageOffsetPx = 280,
+                latestMessageSizePx = 60,
+                viewportHeightPx = 264,
+                trailingPaddingPx = 24
+            )
+
+        assertEquals(264, fit.fitHeightPx)
+        assertEquals(224, fit.trailingSpanPx)
+        assertTrue(fit.fitsViewport)
+
+        assertFalse(
+            resolveThreadFocusedTailFit(
+                targetItemIndex = 10,
+                latestMessageItemIndex = 13,
+                bottomPaddingItemIndex = 14,
+                targetOffsetPx = 100,
+                targetSizePx = 40,
+                latestMessageOffsetPx = 280,
+                latestMessageSizePx = 60,
+                viewportHeightPx = 263,
+                trailingPaddingPx = 24
+            ).fitsViewport
+        )
+    }
+
+    @Test
+    fun focusedTailFit_failsClosedForUnmeasuredOrInvalidSnapshot() {
+        fun fit(
+            targetOffsetPx: Int? = 100,
+            targetSizePx: Int? = 40,
+            latestOffsetPx: Int? = 280,
+            latestSizePx: Int? = 60,
+            bottomPaddingItemIndex: Int = 14
+        ): ThreadFocusedTailFit =
+            resolveThreadFocusedTailFit(
+                targetItemIndex = 10,
+                latestMessageItemIndex = 13,
+                bottomPaddingItemIndex = bottomPaddingItemIndex,
+                targetOffsetPx = targetOffsetPx,
+                targetSizePx = targetSizePx,
+                latestMessageOffsetPx = latestOffsetPx,
+                latestMessageSizePx = latestSizePx,
+                viewportHeightPx = 264,
+                trailingPaddingPx = 24
+            )
+
+        listOf(
+            fit(targetOffsetPx = null),
+            fit(targetSizePx = null),
+            fit(latestOffsetPx = null),
+            fit(latestSizePx = null),
+            fit(bottomPaddingItemIndex = 13)
+        ).forEach { unavailable ->
+            assertEquals(-1, unavailable.fitHeightPx)
+            assertEquals(0, unavailable.trailingSpanPx)
+            assertFalse(unavailable.fitsViewport)
+        }
+    }
+
+    @Test
+    fun focusedTailComposerOwner_acceptsNearTailOnlyWhenMeasuredContentFits() {
+        val identity = "near-tail-message:route-request"
+        assertTrue(
+            focusedActiveTailMessageComposerLayoutOwnsViewport(
+                targetIdentity = identity,
+                targetItemIndex = 10,
+                latestMessageItemIndex = 13,
+                targetToTailFitsViewport = true,
+                canLoadMoreAfter = false,
+                anchoredIdentity = identity,
+                consumedIdentity = null,
+                scrollInterruptedIdentity = null,
+                startUserScrollGeneration = 5,
+                currentUserScrollGeneration = 5
+            )
+        )
+        assertTrue(
+            focusedTailMessageComposerLayoutOwnsViewport(
+                targetIdentity = identity,
+                targetItemIndex = 10,
+                latestMessageItemIndex = 13,
+                targetToTailFitsViewport = true,
+                canLoadMoreAfter = false,
+                anchoredIdentity = identity,
+                consumedIdentity = identity,
+                scrollInterruptedIdentity = null,
+                startUserScrollGeneration = 5,
+                currentUserScrollGeneration = 5
+            )
+        )
+        assertFalse(
+            focusedTailMessageComposerLayoutOwnsViewport(
+                targetIdentity = identity,
+                targetItemIndex = 10,
+                latestMessageItemIndex = 13,
+                targetToTailFitsViewport = false,
+                canLoadMoreAfter = false,
+                anchoredIdentity = identity,
+                consumedIdentity = identity,
+                scrollInterruptedIdentity = null,
+                startUserScrollGeneration = 5,
+                currentUserScrollGeneration = 5
+            )
+        )
+    }
+
+    @Test
     fun composerLayoutBottomAnchor_correctsFirstImeAfterLatestFocusedAnchorSettles() {
         val targetIdentity = "latest-message:route-request"
         assertTrue(
-            focusedLatestMessageComposerLayoutOwnsViewport(
+            focusedTailMessageComposerLayoutOwnsViewport(
                 targetIdentity = targetIdentity,
                 targetItemIndex = 17,
                 latestMessageItemIndex = 17,
+                targetToTailFitsViewport = true,
                 canLoadMoreAfter = false,
                 anchoredIdentity = targetIdentity,
                 consumedIdentity = targetIdentity,
@@ -1408,10 +1552,11 @@ class ThreadBottomAnchorSignatureTest {
             )
         )
         assertFalse(
-            focusedLatestMessageComposerLayoutOwnsViewport(
+            focusedTailMessageComposerLayoutOwnsViewport(
                 targetIdentity = targetIdentity,
                 targetItemIndex = 17,
                 latestMessageItemIndex = 17,
+                targetToTailFitsViewport = true,
                 canLoadMoreAfter = true,
                 anchoredIdentity = targetIdentity,
                 consumedIdentity = targetIdentity,
@@ -1428,7 +1573,7 @@ class ThreadBottomAnchorSignatureTest {
                     previousViewportHeightDp = 720f,
                     nextViewportHeightDp = 408f,
                     allowBottomAutoAnchor = false,
-                    focusedLatestAnchorCanCorrectLayout = true
+                    focusedTailAnchorCanCorrectLayout = true
                 )
             )
         )
@@ -1438,10 +1583,11 @@ class ThreadBottomAnchorSignatureTest {
     fun composerLayoutBottomAnchor_activeLatestFocusedOwnerCorrectsFirstImeImmediately() {
         val targetIdentity = "latest-message:route-request"
         assertTrue(
-            focusedActiveLatestMessageComposerLayoutOwnsViewport(
+            focusedActiveTailMessageComposerLayoutOwnsViewport(
                 targetIdentity = targetIdentity,
                 targetItemIndex = 17,
                 latestMessageItemIndex = 17,
+                targetToTailFitsViewport = true,
                 canLoadMoreAfter = false,
                 anchoredIdentity = targetIdentity,
                 consumedIdentity = null,
@@ -1451,10 +1597,11 @@ class ThreadBottomAnchorSignatureTest {
             )
         )
         assertFalse(
-            focusedActiveLatestMessageComposerLayoutOwnsViewport(
+            focusedActiveTailMessageComposerLayoutOwnsViewport(
                 targetIdentity = targetIdentity,
                 targetItemIndex = 17,
                 latestMessageItemIndex = 17,
+                targetToTailFitsViewport = true,
                 canLoadMoreAfter = true,
                 anchoredIdentity = targetIdentity,
                 consumedIdentity = null,
@@ -1464,10 +1611,11 @@ class ThreadBottomAnchorSignatureTest {
             )
         )
         assertFalse(
-            focusedActiveLatestMessageComposerLayoutOwnsViewport(
+            focusedActiveTailMessageComposerLayoutOwnsViewport(
                 targetIdentity = targetIdentity,
                 targetItemIndex = 17,
                 latestMessageItemIndex = 17,
+                targetToTailFitsViewport = true,
                 canLoadMoreAfter = false,
                 anchoredIdentity = targetIdentity,
                 consumedIdentity = targetIdentity,
@@ -1485,11 +1633,12 @@ class ThreadBottomAnchorSignatureTest {
                     nextViewportHeightDp = 408f,
                     allowBottomAutoAnchor = false,
                     focusedAnchorOwnsViewport = true,
-                    focusedActiveLatestAnchorCanCorrectLayout = true
+                    focusedActiveTailAnchorCanCorrectLayout = true
                 )
             )
         assertTrue(whileFocused.shouldAnchor)
         assertFalse(whileFocused.pendingLayoutChange)
+        assertTrue(whileFocused.anchorFocusedTailAtRenderedBottom)
 
         val loadedLastHistoryFocused =
             resolveThreadComposerLayoutBottomAnchor(
@@ -1500,21 +1649,23 @@ class ThreadBottomAnchorSignatureTest {
                     nextViewportHeightDp = 408f,
                     allowBottomAutoAnchor = false,
                     focusedAnchorOwnsViewport = true,
-                    focusedActiveLatestAnchorCanCorrectLayout = false
+                    focusedActiveTailAnchorCanCorrectLayout = false
                 )
             )
         assertFalse(loadedLastHistoryFocused.shouldAnchor)
         assertTrue(loadedLastHistoryFocused.pendingLayoutChange)
+        assertFalse(loadedLastHistoryFocused.anchorFocusedTailAtRenderedBottom)
     }
 
     @Test
-    fun focusedLatestComposerLayoutOwner_yieldsToHistoryAndUserScroll() {
+    fun focusedTailComposerLayoutOwner_yieldsWhenTailDoesNotFitOrUserScrolls() {
         val targetIdentity = "focused-message:route-request"
         assertFalse(
-            focusedActiveLatestMessageComposerLayoutOwnsViewport(
+            focusedActiveTailMessageComposerLayoutOwnsViewport(
                 targetIdentity = targetIdentity,
                 targetItemIndex = 9,
                 latestMessageItemIndex = 17,
+                targetToTailFitsViewport = false,
                 canLoadMoreAfter = false,
                 anchoredIdentity = targetIdentity,
                 consumedIdentity = null,
@@ -1524,10 +1675,11 @@ class ThreadBottomAnchorSignatureTest {
             )
         )
         assertFalse(
-            focusedActiveLatestMessageComposerLayoutOwnsViewport(
+            focusedActiveTailMessageComposerLayoutOwnsViewport(
                 targetIdentity = targetIdentity,
                 targetItemIndex = 17,
                 latestMessageItemIndex = 17,
+                targetToTailFitsViewport = true,
                 canLoadMoreAfter = false,
                 anchoredIdentity = targetIdentity,
                 consumedIdentity = null,
@@ -1537,10 +1689,11 @@ class ThreadBottomAnchorSignatureTest {
             )
         )
         assertFalse(
-            focusedLatestMessageComposerLayoutOwnsViewport(
+            focusedTailMessageComposerLayoutOwnsViewport(
                 targetIdentity = targetIdentity,
                 targetItemIndex = 9,
                 latestMessageItemIndex = 17,
+                targetToTailFitsViewport = false,
                 canLoadMoreAfter = false,
                 anchoredIdentity = targetIdentity,
                 consumedIdentity = targetIdentity,
@@ -1550,10 +1703,11 @@ class ThreadBottomAnchorSignatureTest {
             )
         )
         assertFalse(
-            focusedLatestMessageComposerLayoutOwnsViewport(
+            focusedTailMessageComposerLayoutOwnsViewport(
                 targetIdentity = targetIdentity,
                 targetItemIndex = 17,
                 latestMessageItemIndex = 17,
+                targetToTailFitsViewport = true,
                 canLoadMoreAfter = false,
                 anchoredIdentity = targetIdentity,
                 consumedIdentity = targetIdentity,
@@ -1587,6 +1741,7 @@ class ThreadBottomAnchorSignatureTest {
             )
         assertTrue(afterReady.shouldAnchor)
         assertFalse(afterReady.pendingLayoutChange)
+        assertFalse(afterReady.anchorFocusedTailAtRenderedBottom)
 
         assertEquals(
             ThreadComposerLayoutBottomAnchorDecision(
@@ -1641,6 +1796,200 @@ class ThreadBottomAnchorSignatureTest {
         )
     }
 
+    @Test
+    fun composerLayoutBottomAnchor_usesRenderedBottomOnlyForFocusedLatestOwner() {
+        val activeLatest =
+            resolveThreadComposerLayoutBottomAnchor(
+                composerLayoutState(
+                    previousKeyboardInsetDp = 0f,
+                    nextKeyboardInsetDp = 320f,
+                    previousViewportHeightDp = 720f,
+                    nextViewportHeightDp = 408f,
+                    allowBottomAutoAnchor = false,
+                    focusedAnchorOwnsViewport = true,
+                    focusedActiveTailAnchorCanCorrectLayout = true
+                )
+            )
+        val settledLatest =
+            resolveThreadComposerLayoutBottomAnchor(
+                composerLayoutState(
+                    previousKeyboardInsetDp = 0f,
+                    nextKeyboardInsetDp = 320f,
+                    previousViewportHeightDp = 720f,
+                    nextViewportHeightDp = 408f,
+                    allowBottomAutoAnchor = false,
+                    focusedTailAnchorCanCorrectLayout = true
+                )
+            )
+        val ordinaryFollowingLatest =
+            resolveThreadComposerLayoutBottomAnchor(
+                composerLayoutState(
+                    previousKeyboardInsetDp = 0f,
+                    nextKeyboardInsetDp = 320f,
+                    previousViewportHeightDp = 720f,
+                    nextViewportHeightDp = 408f
+                )
+            )
+        val historyOrUserOwned =
+            resolveThreadComposerLayoutBottomAnchor(
+                composerLayoutState(
+                    previousKeyboardInsetDp = 0f,
+                    nextKeyboardInsetDp = 320f,
+                    previousViewportHeightDp = 720f,
+                    nextViewportHeightDp = 408f,
+                    allowBottomAutoAnchor = false,
+                    focusedAnchorOwnsViewport = true
+                )
+            )
+
+        assertTrue(activeLatest.anchorFocusedTailAtRenderedBottom)
+        assertTrue(settledLatest.anchorFocusedTailAtRenderedBottom)
+        assertFalse(ordinaryFollowingLatest.anchorFocusedTailAtRenderedBottom)
+        assertFalse(historyOrUserOwned.anchorFocusedTailAtRenderedBottom)
+    }
+
+    @Test
+    fun focusedAnchorReanchor_inheritsPlacementOnlyForSameIdentity() {
+        val identity = "latest-message:request-9"
+
+        assertEquals(
+            LazyViewportAnchorPlacement.RenderedBottom,
+            focusedAnchorPlacementForIdentity(
+                targetIdentity = identity,
+                placementIdentity = identity,
+                placement = LazyViewportAnchorPlacement.RenderedBottom
+            )
+        )
+        assertEquals(
+            LazyViewportAnchorPlacement.Focused,
+            focusedAnchorPlacementForIdentity(
+                targetIdentity = "latest-message:request-10",
+                placementIdentity = identity,
+                placement = LazyViewportAnchorPlacement.RenderedBottom
+            )
+        )
+        assertEquals(
+            16,
+            focusedAnchorPlacementOffsetForIdentity(
+                targetIdentity = identity,
+                placementIdentity = identity,
+                placement = LazyViewportAnchorPlacement.RenderedBottom,
+                placementOffsetPx = 16
+            )
+        )
+        assertEquals(
+            0,
+            focusedAnchorPlacementOffsetForIdentity(
+                targetIdentity = "latest-message:request-10",
+                placementIdentity = identity,
+                placement = LazyViewportAnchorPlacement.RenderedBottom,
+                placementOffsetPx = 16
+            )
+        )
+        assertEquals(
+            "tail-message",
+            focusedAnchorRenderedTailMessageIdForIdentity(
+                targetIdentity = identity,
+                placementIdentity = identity,
+                placement = LazyViewportAnchorPlacement.RenderedBottom,
+                renderedTailMessageId = "tail-message"
+            )
+        )
+        assertEquals(
+            null,
+            focusedAnchorRenderedTailMessageIdForIdentity(
+                targetIdentity = "latest-message:request-10",
+                placementIdentity = identity,
+                placement = LazyViewportAnchorPlacement.RenderedBottom,
+                renderedTailMessageId = "tail-message"
+            )
+        )
+    }
+
+    @Test
+    fun focusedTailPlacement_configChangeResetsPixelsAndRebuildsFromNewSnapshot() {
+        val identity = "near-tail-message:request-12"
+        val beforeConfigChange =
+            renderedThreadFocusedAnchorPlacement(
+                identity = identity,
+                offsetPx = 224,
+                renderedTailMessageId = "tail-message-3"
+            )
+        assertEquals(LazyViewportAnchorPlacement.RenderedBottom, beforeConfigChange.placement)
+        assertEquals(224, beforeConfigChange.offsetPx)
+
+        // A new surface/configuration gets a fresh remembered state. The old
+        // density/layout snapshot must not cross that boundary.
+        val afterConfigChange = resetThreadFocusedAnchorPlacement(identity = null)
+        assertEquals(null, afterConfigChange.identity)
+        assertEquals(LazyViewportAnchorPlacement.Focused, afterConfigChange.placement)
+        assertEquals(0, afterConfigChange.offsetPx)
+        assertEquals(null, afterConfigChange.renderedTailMessageId)
+
+        val rebuiltFromNewSnapshot =
+            renderedThreadFocusedAnchorPlacement(
+                identity = identity,
+                offsetPx = 176,
+                renderedTailMessageId = "tail-message-3"
+            )
+        assertEquals(identity, rebuiltFromNewSnapshot.identity)
+        assertEquals(LazyViewportAnchorPlacement.RenderedBottom, rebuiltFromNewSnapshot.placement)
+        assertEquals(176, rebuiltFromNewSnapshot.offsetPx)
+        assertEquals("tail-message-3", rebuiltFromNewSnapshot.renderedTailMessageId)
+    }
+
+    @Test
+    fun focusedLatestComposerLayoutOwner_oldInterruptedNonceDoesNotFenceNewIdentity() {
+        assertTrue(
+            focusedTailMessageComposerLayoutOwnsViewport(
+                targetIdentity = "latest-message:request-10",
+                targetItemIndex = 17,
+                latestMessageItemIndex = 17,
+                targetToTailFitsViewport = true,
+                canLoadMoreAfter = false,
+                anchoredIdentity = "latest-message:request-10",
+                consumedIdentity = "latest-message:request-10",
+                scrollInterruptedIdentity = "latest-message:request-9",
+                startUserScrollGeneration = 4,
+                currentUserScrollGeneration = 4
+            )
+        )
+    }
+
+    @Test
+    fun focusedTailComposerLayoutOwner_requiresValidMessageIndices() {
+        val messageIndex = 11
+
+        assertTrue(
+            focusedTailMessageComposerLayoutOwnsViewport(
+                targetIdentity = "latest-message:request-11",
+                targetItemIndex = messageIndex,
+                latestMessageItemIndex = messageIndex,
+                targetToTailFitsViewport = true,
+                canLoadMoreAfter = false,
+                anchoredIdentity = "latest-message:request-11",
+                consumedIdentity = "latest-message:request-11",
+                scrollInterruptedIdentity = null,
+                startUserScrollGeneration = 0,
+                currentUserScrollGeneration = 0
+            )
+        )
+        assertFalse(
+            focusedTailMessageComposerLayoutOwnsViewport(
+                targetIdentity = "latest-message:request-11",
+                targetItemIndex = -1,
+                latestMessageItemIndex = -1,
+                targetToTailFitsViewport = false,
+                canLoadMoreAfter = false,
+                anchoredIdentity = "latest-message:request-11",
+                consumedIdentity = "latest-message:request-11",
+                scrollInterruptedIdentity = null,
+                startUserScrollGeneration = 0,
+                currentUserScrollGeneration = 0
+            )
+        )
+    }
+
     private fun composerLayoutState(
         previousKeyboardInsetDp: Float = 320f,
         nextKeyboardInsetDp: Float = 320f,
@@ -1651,8 +2000,8 @@ class ThreadBottomAnchorSignatureTest {
         latestItemIndex: Int = 15,
         allowBottomAutoAnchor: Boolean = true,
         focusedAnchorOwnsViewport: Boolean = false,
-        focusedActiveLatestAnchorCanCorrectLayout: Boolean = false,
-        focusedLatestAnchorCanCorrectLayout: Boolean = false
+        focusedActiveTailAnchorCanCorrectLayout: Boolean = false,
+        focusedTailAnchorCanCorrectLayout: Boolean = false
     ): ThreadComposerLayoutBottomAnchorState =
         ThreadComposerLayoutBottomAnchorState(
             previousKeyboardInsetDp = previousKeyboardInsetDp,
@@ -1664,8 +2013,8 @@ class ThreadBottomAnchorSignatureTest {
             latestItemIndex = latestItemIndex,
             allowBottomAutoAnchor = allowBottomAutoAnchor,
             focusedAnchorOwnsViewport = focusedAnchorOwnsViewport,
-            focusedActiveLatestAnchorCanCorrectLayout = focusedActiveLatestAnchorCanCorrectLayout,
-            focusedLatestAnchorCanCorrectLayout = focusedLatestAnchorCanCorrectLayout
+            focusedActiveTailAnchorCanCorrectLayout = focusedActiveTailAnchorCanCorrectLayout,
+            focusedTailAnchorCanCorrectLayout = focusedTailAnchorCanCorrectLayout
         )
 
     @Test

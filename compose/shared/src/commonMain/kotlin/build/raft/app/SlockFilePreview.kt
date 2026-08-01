@@ -14,12 +14,16 @@ import build.raft.app.data.parseSharedAttachmentPreview
 import build.raft.app.data.DataResult
 import build.raft.app.data.NetworkSlockThreadApi
 import build.raft.app.data.RealMemberRepository
+import build.raft.app.data.PermissionBlocker
+import build.raft.app.data.ScreenError
 import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.data.SlockNetworkClient
 import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.data.SlockThreadApiClient
 import build.raft.app.data.ThreadAttachmentCommentItem
 import build.raft.app.data.ThreadApiResult
+import build.raft.app.data.toThreadAttachmentCommentsFailureProjection
+import build.raft.app.data.userFacingMessage
 import build.raft.app.markdown.SlockMarkdownBody
 import build.raft.app.model.MemberId
 import build.raft.app.model.SlockWorkspaceFilePreview
@@ -430,9 +434,26 @@ private fun SlockFilePreviewStandalonePageContent() {
             SlockComposerImageEditorState()
         }
     var composerImageEditSaving by remember(payload.composerImageActionId) { mutableStateOf(false) }
-    var composerImageEditCaptureRef by remember(payload.composerImageActionId) {
-        mutableStateOf<ViewRef<DeclarativeBaseView<*, *>>?>(null)
+    val composerImageEditCaptureOwner =
+        SlockComposerImageEditCaptureOwner(
+            actionId = payload.composerImageActionId,
+            attachmentId = payload.attachmentId,
+            imageUrl = payload.imageUrl,
+            editMode = composerImageEditMode,
+        )
+    val composerImageEditCaptureSlot = remember(composerImageEditCaptureOwner) {
+        mutableStateOf(SlockComposerImageEditCaptureSlot(composerImageEditCaptureOwner))
     }
+    val onComposerImageEditCaptureRef =
+        remember(composerImageEditCaptureOwner) {
+            { ref: ViewRef<DeclarativeBaseView<*, *>> ->
+                composerImageEditCaptureSlot.value =
+                    composerImageEditCaptureSlot.value.bind(
+                        owner = composerImageEditCaptureOwner,
+                        ref = ref,
+                    )
+            }
+        }
     var downloadStatus by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf("idle") }
     var downloadMessage by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf("") }
     var downloadProgress by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf<BridgeAttachmentDownloadProgress?>(null) }
@@ -589,16 +610,19 @@ private fun SlockFilePreviewStandalonePageContent() {
                             status = "loaded",
                             page = result.data,
                             sending = false,
-                            resolvingCommentIds = emptySet(),
-                            errorCode = null
-                        )
-                    is ThreadApiResult.Failure ->
+                            resolvingCommentIds = emptySet()
+                        ).clearAttachmentCommentsError()
+                    is ThreadApiResult.Failure -> {
+                        val failure = result.toThreadAttachmentCommentsFailureProjection()
                         state.copy(
                             status = "error",
                             sending = false,
-                            resolvingCommentIds = emptySet(),
-                            errorCode = result.contractCode ?: "http_${result.code}"
+                            resolvingCommentIds = emptySet()
+                        ).withAttachmentCommentsError(
+                            errorCode = failure.errorCode,
+                            serverMessage = failure.serverMessage
                         )
+                    }
                 }
             setAttachmentCommentsState(next)
         }
@@ -621,7 +645,7 @@ private fun SlockFilePreviewStandalonePageContent() {
     }
     fun reloadAttachmentComments() {
         val current = attachmentCommentsState ?: return
-        val loading = current.copy(status = "loading", errorCode = null)
+        val loading = current.copy(status = "loading").clearAttachmentCommentsError()
         attachmentCommentsState = loading
         loadAttachmentComments(loading)
     }
@@ -629,7 +653,7 @@ private fun SlockFilePreviewStandalonePageContent() {
         val current = attachmentCommentsState ?: return
         val body = current.draft.trim()
         if (body.isBlank() || current.sending) return
-        attachmentCommentsState = current.copy(sending = true, errorCode = null)
+        attachmentCommentsState = current.copy(sending = true).clearAttachmentCommentsError()
         coroutineScope.launch {
             when (val result = threadApi.sendAttachmentComment(current.attachment.id, body)) {
                 is ThreadApiResult.Success -> {
@@ -638,17 +662,21 @@ private fun SlockFilePreviewStandalonePageContent() {
                             status = "loading",
                             draft = "",
                             sending = false,
-                            pendingQuoteLabel = null,
-                            errorCode = null
-                        )
+                            pendingQuoteLabel = null
+                        ).clearAttachmentCommentsError()
                     attachmentCommentsState = loading
                     loadAttachmentComments(loading)
                 }
                 is ThreadApiResult.Failure -> {
+                    val failure = result.toThreadAttachmentCommentsFailureProjection()
                     attachmentCommentsState =
                         attachmentCommentsState
                             ?.takeIf { it.attachment.id == current.attachment.id }
-                            ?.copy(sending = false, errorCode = result.contractCode ?: "http_${result.code}")
+                            ?.copy(sending = false)
+                            ?.withAttachmentCommentsError(
+                                errorCode = failure.errorCode,
+                                serverMessage = failure.serverMessage
+                            )
                     bridge.toast(unableToSendComment)
                 }
             }
@@ -659,26 +687,31 @@ private fun SlockFilePreviewStandalonePageContent() {
         if (comment.id.isBlank() || comment.isThreadAttachmentCommentResolved()) return
         if (comment.id in current.resolvingCommentIds) return
         attachmentCommentsState =
-            current.copy(resolvingCommentIds = current.resolvingCommentIds + comment.id, errorCode = null)
+            current.copy(resolvingCommentIds = current.resolvingCommentIds + comment.id)
+                .clearAttachmentCommentsError()
         coroutineScope.launch {
             when (val result = threadApi.addReaction(comment.id, "✅")) {
                 is ThreadApiResult.Success -> {
                     val loading =
                         attachmentCommentsState
                             ?.takeIf { it.attachment.id == current.attachment.id }
-                            ?.copy(status = "loading", resolvingCommentIds = emptySet(), errorCode = null)
+                            ?.copy(status = "loading", resolvingCommentIds = emptySet())
+                            ?.clearAttachmentCommentsError()
                             ?: return@launch
                     attachmentCommentsState = loading
                     loadAttachmentComments(loading)
                 }
                 is ThreadApiResult.Failure -> {
+                    val failure = result.toThreadAttachmentCommentsFailureProjection()
                     attachmentCommentsState =
                         attachmentCommentsState
                             ?.takeIf { it.attachment.id == current.attachment.id }
                             ?.let { state ->
                                 state.copy(
-                                    resolvingCommentIds = state.resolvingCommentIds - comment.id,
-                                    errorCode = result.contractCode ?: "http_${result.code}"
+                                    resolvingCommentIds = state.resolvingCommentIds - comment.id
+                                ).withAttachmentCommentsError(
+                                    errorCode = failure.errorCode,
+                                    serverMessage = failure.serverMessage
                                 )
                             }
                     bridge.toast(unableToResolveComment)
@@ -1274,7 +1307,7 @@ private fun SlockFilePreviewStandalonePageContent() {
     }
     fun requestComposerImageEditSave() {
         if (composerImageEditSaving) return
-        val captureView = composerImageEditCaptureRef?.view
+        val captureView = composerImageEditCaptureSlot.value.ref?.view
         if (captureView == null) {
             bridge.toast(imageEditorLoading)
             return
@@ -1400,7 +1433,7 @@ private fun SlockFilePreviewStandalonePageContent() {
                 payload = payload,
                 state = composerImageEditorState,
                 saving = composerImageEditSaving,
-                onCaptureRef = { composerImageEditCaptureRef = it },
+                onCaptureRef = onComposerImageEditCaptureRef,
                 onDone = ::requestComposerImageEditSave,
                 modifier = Modifier.weight(1f).fillMaxWidth()
             )
@@ -1465,7 +1498,8 @@ private fun SlockFilePreviewStandalonePageContent() {
                     attachmentCommentsState =
                         attachmentCommentsState
                             ?.takeIf { it.attachment.id == state.attachment.id }
-                            ?.copy(draft = draft, errorCode = null)
+                            ?.copy(draft = draft)
+                            ?.clearAttachmentCommentsError()
                 },
                 onRetry = ::reloadAttachmentComments,
                 onSend = ::sendAttachmentComment,
@@ -1478,9 +1512,8 @@ private fun SlockFilePreviewStandalonePageContent() {
                                 current.copy(
                                     draft = appendThreadQuoteToComposer(current.draft, formatThreadMessageQuote(comment.content)),
                                     pendingQuoteLabel = comment.senderName,
-                                    pendingAnchorLabel = comment.anchorLabel ?: current.attachment.name,
-                                    errorCode = null
-                                )
+                                    pendingAnchorLabel = comment.anchorLabel ?: current.attachment.name
+                                ).clearAttachmentCommentsError()
                             }
                 }
             )
@@ -1802,12 +1835,30 @@ internal fun slockComposerImageEditorCaptureSize(
     return Size(width = imageWidth * scale, height = imageHeight * scale)
 }
 
+internal data class SlockComposerImageEditCaptureOwner(
+    val actionId: String,
+    val attachmentId: String,
+    val imageUrl: String?,
+    val editMode: Boolean,
+)
+
+internal data class SlockComposerImageEditCaptureSlot(
+    val owner: SlockComposerImageEditCaptureOwner,
+    val ref: ViewRef<DeclarativeBaseView<*, *>>? = null,
+) {
+    fun bind(
+        owner: SlockComposerImageEditCaptureOwner,
+        ref: ViewRef<DeclarativeBaseView<*, *>>,
+    ): SlockComposerImageEditCaptureSlot =
+        if (owner == this.owner) copy(ref = ref) else this
+}
+
 @Composable
 private fun SlockFilePreviewComposerImageEditor(
     payload: SlockFilePreviewPayload,
     state: SlockComposerImageEditorState,
     saving: Boolean,
-    onCaptureRef: (ViewRef<DeclarativeBaseView<*, *>>?) -> Unit,
+    onCaptureRef: (ViewRef<DeclarativeBaseView<*, *>>) -> Unit,
     onDone: () -> Unit,
     initialTool: SlockComposerImageEditorTool = SlockComposerImageEditorTool.Pencil,
     initialPencilOptionsExpanded: Boolean = false,
@@ -1838,9 +1889,6 @@ private fun SlockFilePreviewComposerImageEditor(
     val focusManager = LocalFocusManager.current
     val editorDensity = LocalDensity.current
     val coroutineScope = rememberCoroutineScope()
-    LaunchedEffect(payload.imageUrl) {
-        onCaptureRef(null)
-    }
     fun selectTool(nextTool: SlockComposerImageEditorTool) {
         if (tool == SlockComposerImageEditorTool.Text && nextTool != SlockComposerImageEditorTool.Text) {
             focusManager.clearFocus(force = true)
@@ -3469,24 +3517,30 @@ private suspend fun SlockFilePreviewPayload.loadAgentWorkspacePreview(
                 messageDesc = MR.strings.file_preview_file_unavailable.desc(),
                 error = "empty_preview"
             )
-        is DataResult.Error ->
-            copy(
-                kind = "error",
-                titleDesc = MR.strings.file_preview_unavailable.desc(),
-                message = "",
-                messageDesc = MR.strings.file_preview_error_load.format(listOf(result.error.code)),
-                error = result.error.code
-            )
-        is DataResult.NoPermission ->
-            copy(
-                kind = "error",
-                titleDesc = MR.strings.file_preview_hidden.desc(),
-                message = "",
-                messageDesc = MR.strings.file_preview_error_hidden.format(listOf(result.blocker.code)),
-                error = result.blocker.code
-            )
+        is DataResult.Error -> withAgentWorkspaceLoadError(result.error)
+        is DataResult.NoPermission -> withAgentWorkspacePermissionError(result.blocker)
     }
 }
+
+internal fun SlockFilePreviewPayload.withAgentWorkspaceLoadError(error: ScreenError): SlockFilePreviewPayload =
+    copy(
+        kind = "error",
+        titleDesc = MR.strings.file_preview_unavailable.desc(),
+        message = error.userFacingMessage(),
+        messageDesc = null,
+        error = error.code
+    )
+
+internal fun SlockFilePreviewPayload.withAgentWorkspacePermissionError(
+    blocker: PermissionBlocker
+): SlockFilePreviewPayload =
+    copy(
+        kind = "error",
+        titleDesc = MR.strings.file_preview_hidden.desc(),
+        message = blocker.userFacingMessage(),
+        messageDesc = null,
+        error = blocker.code
+    )
 
 internal fun slockFilePreviewIsMarkdownAttachment(fileName: String, mimeType: String): Boolean {
     val normalizedMime = mimeType.substringBefore(';').trim()
@@ -3866,7 +3920,11 @@ internal fun SlockFilePreviewPayloadContent(
             SlockFilePreviewMessage(
                 iconName = SlockLucideIconName.TriangleAlert,
                 title = stringResource(MR.strings.file_preview_unavailable),
-                detail = payload.error ?: payload.localizedMessage().ifBlank { stringResource(MR.strings.file_preview_error_load_generic) },
+                detail =
+                    slockFilePreviewVisibleErrorDetail(
+                        localizedMessage = payload.localizedMessage(),
+                        fallbackMessage = stringResource(MR.strings.file_preview_error_load_generic)
+                    ),
                 modifier = modifier.fillMaxWidth().padding(SlockSpacing.Md)
             )
         else ->
@@ -4669,6 +4727,13 @@ private fun String.isMimeTypePresentationSegment(): Boolean {
 @Composable
 private fun SlockFilePreviewPayload.localizedMessage(): String =
     message.ifBlank { messageDesc?.localized().orEmpty() }
+
+internal fun slockFilePreviewVisibleErrorDetail(
+    localizedMessage: String,
+    fallbackMessage: String
+): String =
+    localizedMessage.takeIf { it.isNotBlank() }
+        ?: fallbackMessage
 
 private fun String.slockFilePreviewFileName(fallback: String): String {
     val normalized = trim().replace('\\', '/')

@@ -40,8 +40,15 @@ import {
 import { SlockOhosProcessNetworkLifecycle } from '../main/ets/entryability/SlockOhosProcessNetworkLifecycle';
 import {
   cacheSlockOhosPickedAttachment,
+  ensureSlockOhosAttachmentCacheDirectory,
+  SlockOhosAttachmentCacheDirectoryBackend,
   SlockOhosPickedAttachmentCacheBackend,
 } from '../main/ets/kuikly/SlockOhosPickedAttachmentCache';
+import {
+  slockOhosHandsFeedbackAttachmentPaths,
+  SlockOhosHandsFeedbackAttachmentBackend,
+  SlockOhosHandsFeedbackAttachmentStat,
+} from '../main/ets/kuikly/SlockOhosHandsFeedbackAttachments';
 
 class FakePlatformFileHandle {
   readonly fileRef: string;
@@ -76,6 +83,49 @@ class FakePickedAttachmentCacheBackend implements SlockOhosPickedAttachmentCache
 
   removeFile(path: string): void {
     this.removedPaths.push(path);
+  }
+}
+
+class FakeAttachmentCacheDirectoryBackend implements SlockOhosAttachmentCacheDirectoryBackend {
+  directoryExists: boolean = false;
+  directoryExistsAfterCreateAttempt: boolean = false;
+  createCount: number = 0;
+  createError: Error | null = null;
+
+  createDirectory(_path: string): void {
+    this.createCount += 1;
+    if (this.directoryExistsAfterCreateAttempt) {
+      this.directoryExists = true;
+    }
+    if (this.createError != null) {
+      throw this.createError;
+    }
+    this.directoryExists = true;
+  }
+
+  isDirectory(_path: string): boolean {
+    return this.directoryExists;
+  }
+}
+
+class FakeHandsFeedbackAttachmentBackend implements SlockOhosHandsFeedbackAttachmentBackend {
+  readonly resolvedRefs: Array<string> = [];
+  readonly statPaths: Array<string> = [];
+  readonly uriPaths: Map<string, string> = new Map();
+  readonly stats: Map<string, SlockOhosHandsFeedbackAttachmentStat> = new Map();
+  throwingRef: string = '';
+
+  localPathForFileUri(ref: string): string {
+    this.resolvedRefs.push(ref);
+    if (ref === this.throwingRef) {
+      throw new Error('invalid file uri');
+    }
+    return this.uriPaths.get(ref) ?? '';
+  }
+
+  stat(path: string): SlockOhosHandsFeedbackAttachmentStat {
+    this.statPaths.push(path);
+    return this.stats.get(path) ?? { isFile: false, sizeBytes: 0 };
   }
 }
 
@@ -169,6 +219,43 @@ function diagnosticWork(
 
 export default function localUnitTest() {
   describe('localUnitTest',() => {
+    it('attachmentCacheDirectoryReusesExistingDirectoryWithoutCreating', 0, () => {
+      const backend = new FakeAttachmentCacheDirectoryBackend();
+      backend.directoryExists = true;
+
+      ensureSlockOhosAttachmentCacheDirectory('/data/cache/slock-attachments', backend);
+
+      expect(backend.createCount).assertEqual(0);
+    });
+
+    it('attachmentCacheDirectoryAcceptsConcurrentExistsAfterCreateError', 0, () => {
+      const backend = new FakeAttachmentCacheDirectoryBackend();
+      backend.createError = new Error('13900015 File exists');
+      backend.directoryExistsAfterCreateAttempt = true;
+
+      ensureSlockOhosAttachmentCacheDirectory('/data/cache/slock-attachments', backend);
+
+      expect(backend.createCount).assertEqual(1);
+      expect(backend.directoryExists).assertTrue();
+    });
+
+    it('attachmentCacheDirectoryPreservesCreateFailureWhenPathIsNotDirectory', 0, () => {
+      const backend = new FakeAttachmentCacheDirectoryBackend();
+      backend.createError = new Error('permission denied');
+      let failed = false;
+      let failureMessage = '';
+      try {
+        ensureSlockOhosAttachmentCacheDirectory('/data/cache/slock-attachments', backend);
+      } catch (error) {
+        failed = true;
+        failureMessage = (error as Error).message;
+      }
+
+      expect(failed).assertTrue();
+      expect(failureMessage).assertEqual('permission denied');
+      expect(backend.createCount).assertEqual(1);
+    });
+
     it('pickedAttachmentCacheSeparatesRendererPathUriFromPlatformFileRef', 0, () => {
       const backend = new FakePickedAttachmentCacheBackend();
       backend.copiedSizeBytes = 4;
@@ -213,6 +300,37 @@ export default function localUnitTest() {
 
       expect(failed).assertTrue();
       expect(backend.removedPaths[0]).assertEqual(targetPath);
+    });
+
+    it('handsFeedbackAttachmentsNormalizeFileUrisAndPreserveAdmissionGates', 0, () => {
+      const backend = new FakeHandsFeedbackAttachmentBackend();
+      const authorityRef = 'file://build.raft.mobile/data/storage/el2/base/cache/picked.jpg';
+      const authorityPath = '/data/storage/el2/base/cache/picked.jpg';
+      const absolutePath = '/data/storage/el2/base/files/raft-feedback.zip';
+      const oversizedPath = '/data/storage/el2/base/cache/large.mov';
+      backend.uriPaths.set(authorityRef, authorityPath);
+      backend.stats.set(authorityPath, { isFile: true, sizeBytes: 4 });
+      backend.stats.set(absolutePath, { isFile: true, sizeBytes: 8 });
+      backend.stats.set(oversizedPath, { isFile: true, sizeBytes: 11 });
+      backend.throwingRef = 'file://build.raft.mobile/broken';
+
+      const paths = slockOhosHandsFeedbackAttachmentPaths([
+        { fileRef: authorityRef },
+        { fileRef: 'content://media/photo/1' },
+        { fileRef: 'relative.txt' },
+        { fileRef: 'file://build.raft.mobile/broken' },
+        { fileRef: absolutePath },
+        { fileRef: oversizedPath },
+      ], 3, 10, backend);
+
+      expect(paths.length).assertEqual(2);
+      expect(paths[0]).assertEqual(authorityPath);
+      expect(paths[1]).assertEqual(absolutePath);
+      expect(backend.resolvedRefs.length).assertEqual(2);
+      expect(backend.statPaths.includes(authorityRef)).assertFalse();
+      expect(backend.statPaths.includes(authorityPath)).assertTrue();
+      expect(backend.statPaths.includes(absolutePath)).assertTrue();
+      expect(backend.statPaths.includes(oversizedPath)).assertTrue();
     });
 
     it('platformFileReaderCapsChunksAdvancesOffsetAndClosesOnce', 0, () => {

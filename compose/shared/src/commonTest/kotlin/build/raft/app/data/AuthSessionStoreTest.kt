@@ -18,6 +18,65 @@ import kotlin.test.assertTrue
 
 class AuthSessionStoreTest {
     @Test
+    fun authInstallationIdentityPersistsAcrossStoreInstancesAndAccounts() = runBlocking {
+        val keyValue = InMemorySlockKeyValueStore()
+        val first = KeyValueAuthSessionStore(keyValue)
+        val firstId = first.readOrCreateAuthInstallationId("ari_00000000000000000000000000000001")
+        first.replaceAuthenticatedSession(sampleSession())
+        first.clearSession(reason = "switch", source = "test")
+        val restarted = KeyValueAuthSessionStore(keyValue)
+
+        val readBack = restarted.readOrCreateAuthInstallationId("ari_ffffffffffffffffffffffffffffffff")
+
+        assertEquals(firstId, readBack)
+        assertEquals("ari_00000000000000000000000000000001", readBack)
+    }
+
+    @Test
+    fun durableAttemptAndSuccessorCommitShareOneSessionRecord() = runBlocking {
+        val keyValue = InMemorySlockKeyValueStore()
+        val store = KeyValueAuthSessionStore(keyValue)
+        val original = sampleSession()
+        store.replaceAuthenticatedSession(original)
+        val attempt =
+            StoredAuthRefreshAttempt(
+                attemptId = "arf_0000000000000010",
+                installationId = "ari_00000000000000000000000000000011",
+                accountId = original.user.id,
+                predecessorAccessToken = original.accessToken,
+                predecessorRefreshToken = original.refreshToken,
+                createdAtMillis = 1L,
+            )
+
+        assertEquals(
+            attempt,
+            store.prepareRefreshAttemptIfMatch(
+                expectedAccountId = original.user.id,
+                expectedAccessToken = original.accessToken,
+                expectedRefreshToken = original.refreshToken,
+                candidate = attempt,
+            ),
+        )
+        val processRestart = KeyValueAuthSessionStore(keyValue)
+        assertEquals(attempt, processRestart.readSession()?.refreshAttempt)
+
+        val successor =
+            processRestart.rotateTokensAndClearRefreshAttemptIfMatch(
+                expectedAccountId = original.user.id,
+                expectedAccessToken = original.accessToken,
+                expectedRefreshToken = original.refreshToken,
+                expectedAttemptId = attempt.attemptId,
+                newAccessToken = "successor-access",
+                newRefreshToken = "successor-refresh",
+            )
+
+        assertEquals("successor-access", successor?.accessToken)
+        assertNull(successor?.refreshAttempt)
+        val secondRestart = KeyValueAuthSessionStore(keyValue)
+        assertEquals("successor-refresh", secondRestart.readSession()?.refreshToken)
+        assertNull(secondRestart.readSession()?.refreshAttempt)
+    }
+    @Test
     fun serverPermissionProjectionMatchesMachineManagementCapability() {
         fun permissions(role: String?) =
             StoredAuthServer(id = "server-1", name = "Server One", role = role)

@@ -22,6 +22,7 @@ import kotlinx.serialization.json.Json
 const val SLOCK_AUTH_SESSION_MMKV_NAMESPACE = "slockAuthSession"
 const val SLOCK_AUTH_SESSION_RECORD_KEY = "session"
 const val SLOCK_AUTH_SESSION_MMKV_STORAGE_KEY = "slockAuthSession:session"
+const val SLOCK_AUTH_INSTALLATION_ID_RECORD_KEY = "authInstallationId"
 
 enum class AuthSessionClearOutcome {
     Cleared,
@@ -35,6 +36,9 @@ interface SlockAuthSessionStore {
     suspend fun updateTokens(accessToken: String, refreshToken: String)
     suspend fun updateSelectedServer(serverId: String?, serverSlug: String?)
     suspend fun clearSession(reason: String = "local", source: String = "unknown")
+
+    /** Stable, non-secret per-install identity used only to bind refresh replay receipts. */
+    suspend fun readOrCreateAuthInstallationId(candidate: String): String = candidate
 
     /**
      * Atomically clears only the exact captured account/token generation. Auth-loss paths must use
@@ -123,6 +127,66 @@ interface SlockAuthSessionStore {
             return null
         }
         val updated = current.copy(accessToken = newAccessToken, refreshToken = newRefreshToken)
+        saveSession(updated)
+        return updated
+    }
+
+    /**
+     * Durably admits one refresh attempt before the request can consume the predecessor token.
+     * Implementations must compare and write inside the same session mutation lock. An already
+     * persisted attempt for this exact authority is returned so a cold process reuses its id.
+     */
+    suspend fun prepareRefreshAttemptIfMatch(
+        expectedAccountId: String,
+        expectedAccessToken: String,
+        expectedRefreshToken: String,
+        candidate: StoredAuthRefreshAttempt,
+    ): StoredAuthRefreshAttempt? {
+        val current = readSession() ?: return null
+        if (
+            current.user.id != expectedAccountId ||
+            current.accessToken != expectedAccessToken ||
+            current.refreshToken != expectedRefreshToken
+        ) {
+            return null
+        }
+        current.refreshAttempt
+            ?.takeIf { it.matchesAuthority(current, candidate.installationId) }
+            ?.let { return it }
+        require(candidate.matchesAuthority(current, candidate.installationId)) {
+            "refresh attempt authority mismatch"
+        }
+        saveSession(current.copy(refreshAttempt = candidate))
+        return candidate
+    }
+
+    /**
+     * Commits the successor tokens and retires their attempt in one durable session-record write.
+     * Returning null means the authority or attempt changed; callers must reconcile latest state.
+     */
+    suspend fun rotateTokensAndClearRefreshAttemptIfMatch(
+        expectedAccountId: String,
+        expectedAccessToken: String,
+        expectedRefreshToken: String,
+        expectedAttemptId: String,
+        newAccessToken: String,
+        newRefreshToken: String,
+    ): StoredAuthSession? {
+        val current = readSession() ?: return null
+        if (
+            current.user.id != expectedAccountId ||
+            current.accessToken != expectedAccessToken ||
+            current.refreshToken != expectedRefreshToken ||
+            current.refreshAttempt?.attemptId != expectedAttemptId
+        ) {
+            return null
+        }
+        val updated =
+            current.copy(
+                accessToken = newAccessToken,
+                refreshToken = newRefreshToken,
+                refreshAttempt = null,
+            )
         saveSession(updated)
         return updated
     }
@@ -323,6 +387,7 @@ data class StoredAuthSession(
     val selectedServerSlug: String? = null,
     val servers: List<StoredAuthServer> = emptyList(),
     val qaBootstrap: StoredQaBootstrapMetadata? = null,
+    val refreshAttempt: StoredAuthRefreshAttempt? = null,
     @Transient val qaBootstrapLaunchAuthorized: Boolean = false,
     @Transient val allowImplicitServerFallback: Boolean = true
 ) {
@@ -346,6 +411,36 @@ data class StoredAuthSession(
             availableServers = servers.map { it.toServerSummary() }
         )
     }
+}
+
+@Serializable
+data class StoredAuthRefreshAttempt(
+    val attemptId: String,
+    val installationId: String,
+    val accountId: String,
+    val predecessorAccessToken: String,
+    val predecessorRefreshToken: String,
+    val createdAtMillis: Long,
+)
+
+internal fun StoredAuthRefreshAttempt.matchesAuthority(
+    session: StoredAuthSession,
+    expectedInstallationId: String,
+): Boolean =
+    attemptId.isValidAuthRefreshAttemptId() &&
+        installationId.isValidAuthInstallationId() &&
+        installationId == expectedInstallationId &&
+        accountId == session.user.id &&
+        predecessorAccessToken == session.accessToken &&
+        predecessorRefreshToken == session.refreshToken
+
+private val AuthInstallationIdRegex = Regex("^ari_[0-9a-f]{32}$")
+
+internal fun String.isValidAuthInstallationId(): Boolean = AuthInstallationIdRegex.matches(this)
+
+private fun String.validatedAuthInstallationId(): String {
+    require(isValidAuthInstallationId()) { "invalid auth installation id" }
+    return this
 }
 
 @Serializable
@@ -483,6 +578,7 @@ class InMemorySlockAuthSessionStore(
     private val invalidations = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     private val changes = MutableSharedFlow<String>(extraBufferCapacity = 1)
     private var session: StoredAuthSession? = initialSession
+    private var authInstallationId: String? = null
     private val rememberedSelections = mutableMapOf<String, StoredAuthServerSelection>()
 
     override val sessionInvalidations: SharedFlow<Unit> = invalidations.asSharedFlow()
@@ -490,6 +586,11 @@ class InMemorySlockAuthSessionStore(
 
     override suspend fun readSession(): StoredAuthSession? =
         mutex.withLock { session }
+
+    override suspend fun readOrCreateAuthInstallationId(candidate: String): String =
+        mutex.withLock {
+            authInstallationId ?: candidate.validatedAuthInstallationId().also { authInstallationId = it }
+        }
 
     override suspend fun saveSession(session: StoredAuthSession) {
         val changed =
@@ -636,6 +737,66 @@ class InMemorySlockAuthSessionStore(
                     return@withLock null
                 }
                 val updated = current.copy(accessToken = newAccessToken, refreshToken = newRefreshToken)
+                session = updated
+                newFingerprint =
+                    updated.authSessionClearFingerprint().takeIf { it != current.authSessionClearFingerprint() }
+                updated
+            }
+        newFingerprint?.let { changes.emit(it) }
+        return rotated
+    }
+
+    override suspend fun prepareRefreshAttemptIfMatch(
+        expectedAccountId: String,
+        expectedAccessToken: String,
+        expectedRefreshToken: String,
+        candidate: StoredAuthRefreshAttempt,
+    ): StoredAuthRefreshAttempt? =
+        mutex.withLock {
+            val current = session ?: return@withLock null
+            if (
+                current.user.id != expectedAccountId ||
+                current.accessToken != expectedAccessToken ||
+                current.refreshToken != expectedRefreshToken
+            ) {
+                return@withLock null
+            }
+            current.refreshAttempt
+                ?.takeIf { it.matchesAuthority(current, candidate.installationId) }
+                ?.let { return@withLock it }
+            require(candidate.matchesAuthority(current, candidate.installationId)) {
+                "refresh attempt authority mismatch"
+            }
+            session = current.copy(refreshAttempt = candidate)
+            candidate
+        }
+
+    override suspend fun rotateTokensAndClearRefreshAttemptIfMatch(
+        expectedAccountId: String,
+        expectedAccessToken: String,
+        expectedRefreshToken: String,
+        expectedAttemptId: String,
+        newAccessToken: String,
+        newRefreshToken: String,
+    ): StoredAuthSession? {
+        var newFingerprint: String? = null
+        val rotated =
+            mutex.withLock {
+                val current = session ?: return@withLock null
+                if (
+                    current.user.id != expectedAccountId ||
+                    current.accessToken != expectedAccessToken ||
+                    current.refreshToken != expectedRefreshToken ||
+                    current.refreshAttempt?.attemptId != expectedAttemptId
+                ) {
+                    return@withLock null
+                }
+                val updated =
+                    current.copy(
+                        accessToken = newAccessToken,
+                        refreshToken = newRefreshToken,
+                        refreshAttempt = null,
+                    )
                 session = updated
                 newFingerprint =
                     updated.authSessionClearFingerprint().takeIf { it != current.authSessionClearFingerprint() }
@@ -878,6 +1039,85 @@ class KeyValueAuthSessionStore(
         if (rotated != null) storeEvents.emit(AuthSessionEvent.TokensRotated(generation))
         newFingerprint?.let { changes.emit(it) }
         diagnosticsLogger("auth_token_rotate applied=${rotated != null}")
+        return rotated
+    }
+
+    override suspend fun prepareRefreshAttemptIfMatch(
+        expectedAccountId: String,
+        expectedAccessToken: String,
+        expectedRefreshToken: String,
+        candidate: StoredAuthRefreshAttempt,
+    ): StoredAuthRefreshAttempt? {
+        val attempt =
+            mutex.withLock {
+                val current = readSessionRecordLocked() ?: return@withLock null
+                if (
+                    current.user.id != expectedAccountId ||
+                    current.accessToken != expectedAccessToken ||
+                    current.refreshToken != expectedRefreshToken
+                ) {
+                    return@withLock null
+                }
+                current.refreshAttempt
+                    ?.takeIf { it.matchesAuthority(current, candidate.installationId) }
+                    ?.let { return@withLock it }
+                require(candidate.matchesAuthority(current, candidate.installationId)) {
+                    "refresh attempt authority mismatch"
+                }
+                writeSessionRecordLocked(current.copy(refreshAttempt = candidate))
+                candidate
+            }
+        diagnosticsLogger(
+            "auth_refresh_attempt_prepare applied=${attempt != null} " +
+                "attempt=${attempt?.attemptId.authTokenDiagnosticsFingerprint()}"
+        )
+        return attempt
+    }
+
+    override suspend fun readOrCreateAuthInstallationId(candidate: String): String =
+        mutex.withLock {
+            store.getString(SLOCK_AUTH_INSTALLATION_ID_RECORD_KEY)?.takeIf { it.isValidAuthInstallationId() }
+                ?: candidate.validatedAuthInstallationId().also { created ->
+                    store.putString(SLOCK_AUTH_INSTALLATION_ID_RECORD_KEY, created)
+                }
+        }
+
+    override suspend fun rotateTokensAndClearRefreshAttemptIfMatch(
+        expectedAccountId: String,
+        expectedAccessToken: String,
+        expectedRefreshToken: String,
+        expectedAttemptId: String,
+        newAccessToken: String,
+        newRefreshToken: String,
+    ): StoredAuthSession? {
+        var generation = 0L
+        var newFingerprint: String? = null
+        val rotated =
+            mutex.withLock {
+                val current = readSessionRecordLocked() ?: return@withLock null
+                if (
+                    current.user.id != expectedAccountId ||
+                    current.accessToken != expectedAccessToken ||
+                    current.refreshToken != expectedRefreshToken ||
+                    current.refreshAttempt?.attemptId != expectedAttemptId
+                ) {
+                    return@withLock null
+                }
+                val updated =
+                    current.copy(
+                        accessToken = newAccessToken,
+                        refreshToken = newRefreshToken,
+                        refreshAttempt = null,
+                    )
+                writeSessionRecordLocked(updated)
+                generation = nextGenerationLocked()
+                newFingerprint =
+                    updated.authSessionClearFingerprint().takeIf { it != current.authSessionClearFingerprint() }
+                updated
+            }
+        if (rotated != null) storeEvents.emit(AuthSessionEvent.TokensRotated(generation))
+        newFingerprint?.let { changes.emit(it) }
+        diagnosticsLogger("auth_refresh_successor_commit applied=${rotated != null}")
         return rotated
     }
 

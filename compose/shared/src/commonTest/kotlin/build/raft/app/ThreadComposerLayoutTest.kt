@@ -3,11 +3,48 @@ package build.raft.app
 import build.raft.app.data.SettingsDiagnosticsFeedbackDraft
 import build.raft.app.data.SharedMembersLoadStatus
 import build.raft.app.model.MemberKind
+import com.tencent.kuikly.compose.ui.geometry.Offset
+import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
+import kotlin.test.assertSame
 
 class ThreadComposerLayoutTest {
+    @Test
+    fun suggestionPortalOnlyClearsItsCurrentOwner() {
+        val owner = Any()
+        val otherOwner = Any()
+        val anchorRef = SlockLiveRootAnchorRef(owner)
+        val presentation =
+            ThreadComposerSuggestionPresentation(
+                owner = owner,
+                anchorResolver = anchorRef.resolver(SlockPopoverLocalPoint.Exact(Offset.Zero)),
+                contentSize = Size(320f, 240f),
+                panelState = ThreadComposerSuggestionPanelState.MemberLoading,
+                surface = ThreadComposerSurface(kind = KuiklyThreadSurfaceKind.Channel, channelId = "channel-1"),
+                memberSuggestions = emptyList(),
+                memberSelectedIndex = 0,
+                memberErrorCode = null,
+                channelSuggestions = emptyList(),
+                channelSelectedIndex = 0,
+                channelErrorCode = null,
+                agentStatusResolver = EmptySlockAgentStatusResolver,
+                onDismiss = {},
+                onMemberClick = {},
+                onChannelClick = {}
+            )
+        val portal = ThreadComposerSuggestionPortalState()
+
+        portal.show(presentation)
+        portal.clear(otherOwner)
+        assertSame(presentation, portal.presentation)
+
+        portal.clear(owner)
+        assertNull(portal.presentation)
+    }
+
     @Test
     fun threadComposerBottomPaddingIncludesClosedKeyboardSafeArea() {
         assertEquals(38.dp, threadComposerBottomPadding(keyboardInsetDp = 0f, bottomSafeArea = 24.dp))
@@ -291,10 +328,10 @@ class ThreadComposerLayoutTest {
     }
 
     @Test
-    fun suggestionPanelSlotHeightCanOmitMemberHeaderForDirectMessages() {
+    fun suggestionPanelHeightCanOmitMemberHeaderForDirectMessages() {
         assertEquals(
             114.dp,
-            composerSuggestionPanelSlotHeight(
+            composerSuggestionPanelHeight(
                 panelState = ThreadComposerSuggestionPanelState.MemberItems,
                 memberCount = 3,
                 channelCount = 0,
@@ -304,10 +341,10 @@ class ThreadComposerLayoutTest {
     }
 
     @Test
-    fun suggestionPanelSlotHeightMatchesMemberPanelHeight() {
+    fun suggestionPanelHeightMatchesMemberPanelHeight() {
         assertEquals(
             240.dp,
-            composerSuggestionPanelSlotHeight(
+            composerSuggestionPanelHeight(
                 panelState = ThreadComposerSuggestionPanelState.MemberItems,
                 memberCount = 6,
                 channelCount = 0
@@ -316,10 +353,10 @@ class ThreadComposerLayoutTest {
     }
 
     @Test
-    fun suggestionPanelSlotHeightIncludesMemberSectionHeaders() {
+    fun suggestionPanelHeightIncludesMemberSectionHeaders() {
         assertEquals(
             220.dp,
-            composerSuggestionPanelSlotHeight(
+            composerSuggestionPanelHeight(
                 panelState = ThreadComposerSuggestionPanelState.MemberItems,
                 memberCount = 3,
                 channelCount = 0,

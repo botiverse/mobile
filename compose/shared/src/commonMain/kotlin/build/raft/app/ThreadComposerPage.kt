@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.base.Utils
+import build.raft.app.markdown.SlockMarkdownBody
 import build.raft.app.markdown.traceMarkdownSection
 import build.raft.app.markdown.traceMarkdownSectionNonComposable
 import build.raft.app.components.SlockBrutalActionButton
@@ -14,8 +15,11 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -46,10 +50,14 @@ import com.tencent.kuikly.compose.foundation.text.KeyboardOptions
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.geometry.Offset
+import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.graphics.SolidColor
 import com.tencent.kuikly.compose.ui.focus.FocusRequester
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
+import com.tencent.kuikly.compose.ui.platform.LocalDensity
+import com.tencent.kuikly.compose.ui.platform.LocalFocusManager
 import com.tencent.kuikly.compose.ui.platform.LocalSoftwareKeyboardController
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
@@ -58,9 +66,9 @@ import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
 import com.tencent.kuikly.compose.ui.text.TextRange
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Dp
+import com.tencent.kuikly.compose.ui.unit.IntSize
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
-import com.tencent.kuikly.compose.ui.zIndex
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.IPagerEventObserver
 import com.tencent.kuikly.core.pager.Pager
@@ -99,7 +107,7 @@ private val ThreadComposerDisabledSendBorder = Color(0xFFB3B3B3)
 private val ThreadComposerDisabledSendShadow = Color(0xFFB8B8B8)
 private const val ThreadComposerDisabledSendIconArgb = "#FFB3B3B3"
 private val ComposerSuggestionPanelMaxHeight = 240.dp
-private const val ComposerSuggestionPanelZIndex = 10f
+private val ComposerSuggestionPopoverGap = 6.dp
 private val ComposerSuggestionHeaderEstimatedHeight = 30.dp
 private val ComposerMemberSuggestionRowMinHeight = 38.dp
 private val ComposerChannelSuggestionRowMinHeight = 34.dp
@@ -111,9 +119,94 @@ private val ComposerChannelSuggestionIconSize = 20.dp
 private val ComposerChannelSuggestionGlyphSize = 12.dp
 private val ThreadComposerVisualComponentWidth = 342.dp
 private val ThreadComposerVisualComponentMinHeight = 100.dp
+private const val ThreadComposerVisualSuggestionAnchorOffset = 216f
+private const val ThreadComposerSuggestionScrollOracleFixture = "member_suggestions_scroll_oracle"
+private val ThreadComposerSuggestionScrollOracleUnderlay = Color(0xFF22D3EE)
+private val ThreadComposerSuggestionScrollOracleLeak = Color(0xFFEF4444)
 private const val ThreadComposerVisualPreviewUri =
     "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20128%20128%22%3E%3Crect%20width%3D%22128%22%20height%3D%22128%22%20fill%3D%22%23FDE047%22%2F%3E%3Ccircle%20cx%3D%2288%22%20cy%3D%2240%22%20r%3D%2220%22%20fill%3D%22%23F472B6%22%2F%3E%3Cpath%20d%3D%22M16%20104L48%2068l22%2024%2018-16%2024%2028H16z%22%20fill%3D%22%23000000%22%2F%3E%3C%2Fsvg%3E"
 private val threadComposerJson = Json { ignoreUnknownKeys = true }
+
+internal class ThreadComposerSuggestionPortalState {
+    var presentation by mutableStateOf<ThreadComposerSuggestionPresentation?>(null)
+        private set
+
+    fun show(next: ThreadComposerSuggestionPresentation) {
+        if (presentation != next) presentation = next
+    }
+
+    fun clear(owner: Any) {
+        if (presentation?.owner === owner) presentation = null
+    }
+}
+
+internal data class ThreadComposerSuggestionPresentation(
+    val owner: Any,
+    val anchorResolver: SlockPopoverAnchorResolver,
+    val contentSize: Size,
+    val panelState: ThreadComposerSuggestionPanelState,
+    val surface: ThreadComposerSurface,
+    val memberSuggestions: List<KuiklyComposerMemberItem>,
+    val memberSelectedIndex: Int,
+    val memberErrorCode: String?,
+    val channelSuggestions: List<KuiklyComposerChannelItem>,
+    val channelSelectedIndex: Int,
+    val channelErrorCode: String?,
+    val agentStatusResolver: SlockAgentStatusResolver,
+    val onDismiss: () -> Unit,
+    val onMemberClick: (KuiklyComposerMemberItem) -> Unit,
+    val onChannelClick: (KuiklyComposerChannelItem) -> Unit
+)
+
+internal val LocalThreadComposerSuggestionPortal =
+    compositionLocalOf<ThreadComposerSuggestionPortalState?> { null }
+
+@Composable
+internal fun ThreadComposerSuggestionPortalHost(
+    portalState: ThreadComposerSuggestionPortalState
+) {
+    val presentation = portalState.presentation ?: return
+    val anchor = presentation.anchorResolver.resolve() ?: return
+    val density = LocalDensity.current
+    val panelWidth = with(density) { presentation.contentSize.width.toDp() }
+    val panelHeight = with(density) { presentation.contentSize.height.toDp() }
+    val viewportGapPx = with(density) { SlockFloatingDefaultViewportGap.dp.toPx() }
+    val popoverGapPx = with(density) { ComposerSuggestionPopoverGap.toPx() }
+    val currentOnDismiss by rememberUpdatedState(presentation.onDismiss)
+    SlockAnchoredPopover(
+        anchor = anchor,
+        contentSize = presentation.contentSize,
+        onDismiss = currentOnDismiss,
+        viewportGap = viewportGapPx,
+        verticalOffset = popoverGapPx,
+        verticalOffsetAbove = popoverGapPx,
+        verticalPlacement = SlockFloatingVerticalPlacement.Above,
+        dismissActivationDelayMillis = SlockFloatingOverlayClickTriggeredDismissDelayMillis
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .width(panelWidth)
+                    .height(panelHeight)
+                    .retainInputFocusForInteractions()
+                    .clickable(onClick = {})
+        ) {
+            ComposerSuggestionPanelContent(
+                panelState = presentation.panelState,
+                surface = presentation.surface,
+                memberSuggestions = presentation.memberSuggestions,
+                memberSelectedIndex = presentation.memberSelectedIndex,
+                memberErrorCode = presentation.memberErrorCode,
+                channelSuggestions = presentation.channelSuggestions,
+                channelSelectedIndex = presentation.channelSelectedIndex,
+                channelErrorCode = presentation.channelErrorCode,
+                agentStatusResolver = presentation.agentStatusResolver,
+                onMemberClick = presentation.onMemberClick,
+                onChannelClick = presentation.onChannelClick
+            )
+        }
+    }
+}
 private val threadComposerContentPayloadKeys =
     setOf(
         "placeholder",
@@ -609,32 +702,79 @@ internal fun ThreadComposerScreen() {
             "thread_composer_render instanceId=${payload.instanceId} syncNonce=${payload.syncNonce} attachments=${payload.pendingAttachments.size} mode=${payload.composerMode}"
         )
     }
+    val suggestionPortal = remember(payload.instanceId) { ThreadComposerSuggestionPortalState() }
+    var suggestionScrollOracleLeak by remember(payload.instanceId) { mutableStateOf(false) }
+    val suggestionScrollOracleEnabled = visualFixture == ThreadComposerSuggestionScrollOracleFixture
     SlockInputFocusDismissHost { focusDismissModifier ->
         Box(
             modifier = focusDismissModifier.fillMaxSize().background(SlockColor.SurfaceWhite),
             contentAlignment = Alignment.TopCenter
         ) {
-            Box(modifier = Modifier.width(ThreadComposerVisualComponentWidth).heightIn(min = ThreadComposerVisualComponentMinHeight)) {
-                Box(Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+            if (suggestionScrollOracleEnabled) {
                 Box(
-                    modifier = Modifier
-                        .width(ThreadComposerVisualInputWidth)
-                        .offset(x = 0f, y = 14f),
-                    contentAlignment = Alignment.TopCenter
+                    modifier =
+                        Modifier
+                            .align(Alignment.TopCenter)
+                            .width(ThreadComposerVisualInputWidth)
+                            .height(ComposerSuggestionPanelMaxHeight)
+                            .background(ThreadComposerSuggestionScrollOracleUnderlay)
+                            .padding(12.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    ThreadComposerContent(
-                        payload = payload,
-                        attachmentPreviewEnabled = false,
-                        onEvent = { action, _, _, attachmentId ->
-                            bridge.log(
-                                "thread_composer_visual_event instanceId=${payload.instanceId} action=$action attachmentId=${attachmentId.orEmpty()}"
-                            )
-                        },
-                        contentPaddingTop = 0.dp,
-                        contentPaddingBottom = ThreadComposerStandaloneBottomPadding
+                    SlockMarkdownBody(
+                        body = "[UNDERLYING MESSAGE](https://raft.test/composer-suggestion-scroll-oracle)",
+                        textStyle = SlockType.Body.withSlockFontWeight(FontWeight.Bold),
+                        onOpenUrl = { suggestionScrollOracleLeak = true }
                     )
                 }
+                Box(
+                    modifier =
+                        Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .height(96.dp)
+                            .background(
+                                if (suggestionScrollOracleLeak) {
+                                    ThreadComposerSuggestionScrollOracleLeak
+                                } else {
+                                    SlockColor.SurfaceWhite
+                                }
+                            )
+                )
             }
+            CompositionLocalProvider(LocalThreadComposerSuggestionPortal provides suggestionPortal) {
+                Box(
+                    modifier =
+                        Modifier
+                            .width(ThreadComposerVisualComponentWidth)
+                            .heightIn(min = ThreadComposerVisualComponentMinHeight)
+                            .offset(
+                                x = 0f,
+                                y = if (payload.suggestionsOpen) ThreadComposerVisualSuggestionAnchorOffset else 0f
+                            )
+                ) {
+                    Box(Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+                    Box(
+                        modifier = Modifier
+                            .width(ThreadComposerVisualInputWidth)
+                            .offset(x = 0f, y = 14f),
+                        contentAlignment = Alignment.TopCenter
+                    ) {
+                        ThreadComposerContent(
+                            payload = payload,
+                            attachmentPreviewEnabled = false,
+                            onEvent = { action, _, _, attachmentId ->
+                                bridge.log(
+                                    "thread_composer_visual_event instanceId=${payload.instanceId} action=$action attachmentId=${attachmentId.orEmpty()}"
+                                )
+                            },
+                            contentPaddingTop = 0.dp,
+                            contentPaddingBottom = ThreadComposerStandaloneBottomPadding
+                        )
+                    }
+                }
+            }
+            ThreadComposerSuggestionPortalHost(suggestionPortal)
         }
     }
 }
@@ -820,6 +960,23 @@ private fun threadComposerVisualFixture(
                     )
             )
         "member_suggestions" -> base.copy(seedText = "@", suggestionsOpen = true)
+        ThreadComposerSuggestionScrollOracleFixture ->
+            base.copy(
+                seedText = "@",
+                suggestionsOpen = true,
+                memberSuggestions =
+                    (1..14).map { index ->
+                        KuiklyComposerMemberItem(
+                            displayName = "Scrollable candidate $index",
+                            handle = "scroll-candidate-$index",
+                            inMentionChannel = true,
+                            kind = MemberKind.Agent,
+                            description = "Suggestion row $index",
+                            avatarWireValue = "pixel:robot",
+                            avatarLabel = index.toString()
+                        )
+                    }
+            )
         "channel_suggestions" -> base.copy(seedText = "#", suggestionsOpen = true)
         "image_preview" ->
             base.copy(
@@ -1115,7 +1272,16 @@ internal fun ThreadComposerContent(
     var keyboardInsetDp by remember(state.instanceId) { mutableStateOf(0f) }
     val composerFocusRequester = remember(state.instanceId) { FocusRequester() }
     val focusOwnerRegistry = LocalSlockInputFocusOwnerRegistry.current
+    val focusManager = LocalFocusManager.current
     val softwareKeyboardController = LocalSoftwareKeyboardController.current
+    val suggestionPortal = LocalThreadComposerSuggestionPortal.current
+    val suggestionPortalOwner = remember(state.instanceId) { Any() }
+    val suggestionAnchorRef = remember(state.instanceId) { SlockLiveRootAnchorRef(suggestionPortalOwner) }
+    val suggestionAnchorResolver =
+        remember(state.instanceId, suggestionAnchorRef) {
+            suggestionAnchorRef.resolver(SlockPopoverLocalPoint.Exact(Offset.Zero))
+        }
+    var composerCardSize by remember(state.instanceId) { mutableStateOf(IntSize.Zero) }
     val shouldAutoFocus = state.focusRequestNonce > handledFocusRequestNonce
     LaunchedEffect(state.instanceId, state.focusRequestNonce) {
         if (state.focusRequestNonce > handledFocusRequestNonce) {
@@ -1460,6 +1626,88 @@ internal fun ThreadComposerContent(
             KeyboardActions.Default
         }
 
+    val memberSuggestionTitle = surface.memberSuggestionTitle()
+    val memberPanelEntryCount =
+        remember(surface.memberSuggestionHeadersVisible, memberSuggestionTitle, filteredMemberSuggestions) {
+            if (surface.memberSuggestionHeadersVisible) {
+                composerMemberSuggestionPanelEntries(memberSuggestionTitle, filteredMemberSuggestions).entries.size
+            } else {
+                filteredMemberSuggestions.size
+            }
+        }
+    val suggestionPanelHeight =
+        remember(
+            suggestionPanelState,
+            surface.memberSuggestionHeadersVisible,
+            memberPanelEntryCount,
+            filteredChannelSuggestions.size
+        ) {
+            composerSuggestionPanelHeight(
+                panelState = suggestionPanelState,
+                memberCount = filteredMemberSuggestions.size,
+                channelCount = filteredChannelSuggestions.size,
+                includeMemberHeader = surface.memberSuggestionHeadersVisible,
+                memberPanelEntryCount = memberPanelEntryCount
+            )
+        }
+    val density = LocalDensity.current
+    val currentApplyMemberSuggestion by rememberUpdatedState<(KuiklyComposerMemberItem) -> Unit>(::applyMemberSuggestion)
+    val currentApplyChannelSuggestion by rememberUpdatedState<(KuiklyComposerChannelItem) -> Unit>(::applyChannelSuggestion)
+    val currentDismissSuggestions by rememberUpdatedState<() -> Unit> {
+        focused = false
+        focusManager.clearFocus(force = true)
+    }
+    val dismissSuggestionPopover =
+        remember(suggestionPortalOwner) { { currentDismissSuggestions() } }
+    val selectMemberSuggestion =
+        remember(suggestionPortalOwner) {
+            { member: KuiklyComposerMemberItem -> currentApplyMemberSuggestion(member) }
+        }
+    val selectChannelSuggestion =
+        remember(suggestionPortalOwner) {
+            { channel: KuiklyComposerChannelItem -> currentApplyChannelSuggestion(channel) }
+        }
+    val suggestionPresentation =
+        if (
+            suggestionPanelState != ThreadComposerSuggestionPanelState.Hidden &&
+            composerCardSize.width > 0 &&
+            composerCardSize.height > 0
+        ) {
+            ThreadComposerSuggestionPresentation(
+                owner = suggestionPortalOwner,
+                anchorResolver = suggestionAnchorResolver,
+                contentSize =
+                    Size(
+                        width = composerCardSize.width.toFloat(),
+                        height = with(density) { suggestionPanelHeight.toPx() }
+                    ),
+                panelState = suggestionPanelState,
+                surface = surface,
+                memberSuggestions = filteredMemberSuggestions,
+                memberSelectedIndex = memberSuggestionSelectedIndex,
+                memberErrorCode = state.memberSuggestionsErrorCode,
+                channelSuggestions = filteredChannelSuggestions,
+                channelSelectedIndex = channelSuggestionSelectedIndex,
+                channelErrorCode = state.channelSuggestionsErrorCode,
+                agentStatusResolver = agentStatusResolver,
+                onDismiss = dismissSuggestionPopover,
+                onMemberClick = selectMemberSuggestion,
+                onChannelClick = selectChannelSuggestion
+            )
+        } else {
+            null
+        }
+    SideEffect {
+        if (suggestionPresentation == null) {
+            suggestionPortal?.clear(suggestionPortalOwner)
+        } else {
+            suggestionPortal?.show(suggestionPresentation)
+        }
+    }
+    DisposableEffect(suggestionPortal, suggestionPortalOwner) {
+        onDispose { suggestionPortal?.clear(suggestionPortalOwner) }
+    }
+
     val hostPaddingBottom =
         keyboardLiftBottomContentPadding?.let { bottomContentPadding ->
             threadComposerHostKeyboardLiftBottomPadding(
@@ -1525,21 +1773,14 @@ internal fun ThreadComposerContent(
                     onDismiss = { resolutionId -> onEvent("dismissMention", resolutionId, null, null) }
                 )
             }
-            ComposerSuggestionSlot(
-                panelState = suggestionPanelState,
-                surface = surface,
-                memberSuggestions = filteredMemberSuggestions,
-                memberSelectedIndex = memberSuggestionSelectedIndex,
-                memberErrorCode = state.memberSuggestionsErrorCode,
-                channelSuggestions = filteredChannelSuggestions,
-                channelSelectedIndex = channelSuggestionSelectedIndex,
-                channelErrorCode = state.channelSuggestionsErrorCode,
-                agentStatusResolver = agentStatusResolver,
-                onMemberClick = { applyMemberSuggestion(it) },
-                onChannelClick = { applyChannelSuggestion(it) }
-            )
             Box(
-                modifier = Modifier.fillMaxWidth().padding(end = 2.dp, bottom = 2.dp)
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(end = 2.dp, bottom = 2.dp)
+                        .slockCaptureLiveRootAnchor(suggestionAnchorRef) { nextSize ->
+                            if (composerCardSize != nextSize) composerCardSize = nextSize
+                        }
             ) {
                 Box(
                     modifier = Modifier.matchParentSize().offset(x = 2f, y = 2f).background(SlockColor.ShadowBlack)
@@ -1681,70 +1922,7 @@ internal fun ThreadComposerContent(
     }
 }
 
-@Composable
-private fun ComposerSuggestionSlot(
-    panelState: ThreadComposerSuggestionPanelState,
-    surface: ThreadComposerSurface,
-    memberSuggestions: List<KuiklyComposerMemberItem>,
-    memberSelectedIndex: Int,
-    memberErrorCode: String?,
-    channelSuggestions: List<KuiklyComposerChannelItem>,
-    channelSelectedIndex: Int,
-    channelErrorCode: String?,
-    agentStatusResolver: SlockAgentStatusResolver,
-    onMemberClick: (KuiklyComposerMemberItem) -> Unit,
-    onChannelClick: (KuiklyComposerChannelItem) -> Unit
-) {
-    if (panelState == ThreadComposerSuggestionPanelState.Hidden) return
-    val memberSuggestionTitle = surface.memberSuggestionTitle()
-    val memberPanelEntryCount =
-        remember(surface.memberSuggestionHeadersVisible, memberSuggestionTitle, memberSuggestions) {
-            if (surface.memberSuggestionHeadersVisible) {
-                composerMemberSuggestionPanelEntries(memberSuggestionTitle, memberSuggestions).entries.size
-            } else {
-                memberSuggestions.size
-            }
-        }
-    val slotHeight =
-        remember(
-            panelState,
-            surface.memberSuggestionHeadersVisible,
-            memberPanelEntryCount,
-            channelSuggestions.size
-        ) {
-            composerSuggestionPanelSlotHeight(
-                panelState = panelState,
-                memberCount = memberSuggestions.size,
-                channelCount = channelSuggestions.size,
-                includeMemberHeader = surface.memberSuggestionHeadersVisible,
-                memberPanelEntryCount = memberPanelEntryCount
-            )
-        }
-    Box(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .height(slotHeight)
-                .zIndex(ComposerSuggestionPanelZIndex)
-                .padding(end = 2.dp)
-    ) {
-        ComposerSuggestionPanelContent(
-            panelState = panelState,
-            surface = surface,
-            memberSuggestions = memberSuggestions,
-            memberSelectedIndex = memberSelectedIndex,
-            memberErrorCode = memberErrorCode,
-            channelSuggestions = channelSuggestions,
-            channelSelectedIndex = channelSelectedIndex,
-            channelErrorCode = channelErrorCode,
-            agentStatusResolver = agentStatusResolver,
-            onMemberClick = onMemberClick,
-            onChannelClick = onChannelClick
-        )
-    }
-}
-
-internal fun composerSuggestionPanelSlotHeight(
+internal fun composerSuggestionPanelHeight(
     panelState: ThreadComposerSuggestionPanelState,
     memberCount: Int,
     channelCount: Int,
@@ -2312,6 +2490,7 @@ private fun ComposerSuggestionStatusRow(message: String) {
             Modifier
                 .fillMaxWidth()
                 .heightIn(min = ComposerSuggestionStatusRowMinHeight)
+                .clickable(onClick = {})
                 .padding(horizontal = 12.dp, vertical = 8.dp),
         contentAlignment = Alignment.CenterStart
     ) {
@@ -2331,7 +2510,13 @@ private fun ComposerSuggestionHeader(
     topDivider: Boolean = false,
     bottomDivider: Boolean = false
 ) {
-    Column(modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite)) {
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(SlockColor.SurfaceWhite)
+                .clickable(onClick = {})
+    ) {
         if (topDivider) {
             ComposerSuggestionDivider()
         }
@@ -2447,7 +2632,7 @@ private fun ComposerMemberSuggestionRow(
                 text = "@${member.handle}",
                 style = SlockType.Caption.copy(color = handleColor, fontFamily = SlockMonoFamily),
                 color = handleColor,
-                modifier = Modifier.padding(start = 6.dp),
+                modifier = Modifier.widthIn(max = 132.dp).padding(start = 6.dp),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )

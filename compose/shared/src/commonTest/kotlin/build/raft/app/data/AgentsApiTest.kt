@@ -10,6 +10,7 @@ import build.raft.app.model.buildRuntimeConfig
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertTrue
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.jsonObject
@@ -39,6 +40,111 @@ class AgentsApiTest {
                 RecordingAgentsApi(
                     createAgentCode = 409,
                     createAgentBody =
+                        """{"error":"Conflict","issues":[{"code":"unrelated_conflict","pointer":"/name"}]}"""
+                )
+            )
+
+        val error = assertIs<DataResult.Error>(client.createAgent("{}"))
+
+        assertEquals("http_409", error.error.code)
+    }
+
+    // task #186: the production transport delivers non-2xx bodies as
+    // `bodyText = null, errorBodyText = <envelope>` (NetworkKmmSlockHttpExecutor),
+    // which is the shape the on-device 409 actually arrives in. The recovery
+    // code must map it — reading only bodyText left recovery dead on device.
+    @Test
+    fun createAgentMapsRuntimeFormRejectionFromRealTransportErrorBody() = runPortableCoroutineTest {
+        val client =
+            SlockAgentsApiClient(
+                RecordingAgentsApi(
+                    createAgentCode = 409,
+                    createAgentErrorBody =
+                        """{"error":"Runtime form definition is stale or invalid","issues":[{"code":"form_definition_ref_required","pointer":"/formDefinitionRef"}]}"""
+                )
+            )
+
+        val error = assertIs<DataResult.Error>(client.createAgent("{}"))
+
+        assertEquals("form_definition_ref_required", error.error.code)
+    }
+
+    @Test
+    fun createAgentKeepsGenericConflictWhenErrorBodyIsNotAJsonEnvelope() = runPortableCoroutineTest {
+        val client =
+            SlockAgentsApiClient(
+                RecordingAgentsApi(
+                    createAgentCode = 409,
+                    createAgentErrorBody = "Runtime form definition is stale or invalid"
+                )
+            )
+
+        val error = assertIs<DataResult.Error>(client.createAgent("{}"))
+
+        assertEquals("http_409", error.error.code)
+    }
+
+    @Test
+    fun createAgentMapsNameConflictTextToHumaneCode() = runPortableCoroutineTest {
+        val taken =
+            SlockAgentsApiClient(
+                RecordingAgentsApi(
+                    createAgentCode = 409,
+                    createAgentErrorBody = """{"error":"Agent name \"Nova\" is already taken"}"""
+                )
+            ).createAgent("{}")
+        val exists =
+            SlockAgentsApiClient(
+                RecordingAgentsApi(
+                    createAgentCode = 409,
+                    createAgentErrorBody = """{"error":"Cindy agent already exists in this server"}"""
+                )
+            ).createAgent("{}")
+
+        assertEquals(AGENT_CREATE_NAME_TAKEN, assertIs<DataResult.Error>(taken).error.code)
+        assertEquals(AGENT_CREATE_NAME_TAKEN, assertIs<DataResult.Error>(exists).error.code)
+    }
+
+    @Test
+    fun agentsErrorsCarryRawServerTextForHonestFallback() = runPortableCoroutineTest {
+        val unmappedConflict =
+            SlockAgentsApiClient(
+                RecordingAgentsApi(
+                    createAgentCode = 409,
+                    createAgentErrorBody = """{"error":"No machine assigned. Please assign a machine to this agent first.","code":"machine_unassigned"}"""
+                )
+            ).createAgent("{}")
+        val serverError =
+            SlockAgentsApiClient(
+                RecordingAgentsApi(
+                    createAgentCode = 503,
+                    createAgentErrorBody = """{"error":"Scheduled maintenance in progress"}"""
+                )
+            ).createAgent("{}")
+
+        val conflictError = assertIs<DataResult.Error>(unmappedConflict).error
+        assertEquals("http_409", conflictError.code)
+        assertEquals(
+            "No machine assigned. Please assign a machine to this agent first.",
+            conflictError.serverMessage
+        )
+        val unavailable = assertIs<DataResult.Error>(serverError).error
+        assertEquals("server_unavailable", unavailable.code)
+        assertEquals("Scheduled maintenance in progress", unavailable.serverMessage)
+    }
+
+    @Test
+    fun nameConflictStaysOutsideFormRecoveryAllowlist() {
+        assertTrue(AGENT_CREATE_NAME_TAKEN !in CREATE_AGENT_RUNTIME_FORM_REJECTION_CODES)
+    }
+
+    @Test
+    fun createAgentKeepsNonAllowlistedErrorBodyConflictGeneric() = runPortableCoroutineTest {
+        val client =
+            SlockAgentsApiClient(
+                RecordingAgentsApi(
+                    createAgentCode = 409,
+                    createAgentErrorBody =
                         """{"error":"Conflict","issues":[{"code":"unrelated_conflict","pointer":"/name"}]}"""
                 )
             )
@@ -312,6 +418,9 @@ class AgentsApiTest {
         private val agentBody: String = """{"id":"agent-1","name":"Agent One","displayName":"Noel Bot","role":"Admin","status":"active","model":"gpt-5","runtime":"codex","runtimeConfig":{"version":1,"runtime":"codex","model":{"kind":"preset","id":"gpt-5.6-sol"},"mode":{"kind":"default"}},"machineId":"machine-1","reasoningEffort":"medium","executionMode":"local","avatarUrl":"pixel:robot","creatorId":"user-1","creatorType":"human","creator":{"type":"human","id":"user-1","name":"artin","displayName":"Artin","avatarUrl":"pixel:user","gravatarHash":"hash-1"},"daemonVersion":"0.57.1","envVars":{"OPENAI_API_KEY":"configured","ANTHROPIC_API_KEY":"configured"},"createdAgents":[{"id":"agent-child","name":"helper","displayName":"Helper","runtime":"codex","status":"idle"}],"activity":"idle","activityDetail":"Ready","deletedAt":null}""",
         private val createAgentBody: String = """{"id":"agent-2","name":"Noel","status":"active","avatarUrl":"pixel:tree"}""",
         private val createAgentCode: Int = 200,
+        // Mirrors the production transport shape for non-2xx responses:
+        // when set, the create response carries the body ONLY in errorBodyText.
+        private val createAgentErrorBody: String? = null,
         private val commandBody: String = """{"ok":true}""",
         private val agentDmsBody: String = """[{"id":"dm-1","name":"Agent chat"}]""",
         private val activityBody: String = """[{"id":"a1","type":"tool_start","timestamp":"2026-05-22T00:00:00.000Z"}]""",
@@ -335,7 +444,11 @@ class AgentsApiTest {
 
         override suspend fun createAgent(body: String): HomeNetworkResponse {
             calls += "POST agents body=$body"
-            return HomeNetworkResponse(code = createAgentCode, bodyText = createAgentBody)
+            return if (createAgentErrorBody != null) {
+                HomeNetworkResponse(code = createAgentCode, bodyText = null, errorBodyText = createAgentErrorBody)
+            } else {
+                HomeNetworkResponse(code = createAgentCode, bodyText = createAgentBody)
+            }
         }
 
         override suspend fun updateAgent(agentId: MemberId, body: String): HomeNetworkResponse {
