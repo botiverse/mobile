@@ -11,6 +11,7 @@ import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -368,6 +369,93 @@ internal class BridgeSettingsPlatformCapabilities(
         return DataResult.Content(files)
     }
 
+    suspend fun promoteFeedbackDraftAttachments(
+        accountId: String,
+        groupId: String,
+        files: List<PlatformFile>,
+        maxBytes: Long
+    ): DataResult<List<PlatformFile>> {
+        if (groupId.isBlank() || files.isEmpty() || files.size > 9 || maxBytes <= 0L) {
+            return DataResult.Error(
+                ScreenError("settings_feedback_attachment_promotion_invalid", retryable = false)
+            )
+        }
+        val command =
+            JSONObject()
+                .put("action", "promoteFeedbackDraftAttachments")
+                .put("accountId", accountId)
+                .put("groupId", groupId)
+                .put("maxBytes", maxBytes)
+                .put("files", files.toFeedbackDraftPromotionFilesJson())
+        val response = settingsCapability(command)
+        if (response?.optString("status") != "ok") {
+            return DataResult.Error(
+                ScreenError(
+                    response?.optString("code").orEmpty()
+                        .ifBlank { "settings_feedback_attachment_promotion_failed" },
+                    retryable = true
+                )
+            )
+        }
+        val promoted = parseSharedThreadPickedPlatformFiles(response)
+        val valid =
+            promoted.size == files.size &&
+                promoted.zip(files).all { (actual, requested) ->
+                    actual.id == requested.id &&
+                        actual.fileName.isNotBlank() &&
+                        !actual.fileRef.isNullOrBlank() &&
+                        actual.source == "settings_feedback_draft" &&
+                        actual.sizeBytes?.let { it in 1L..maxBytes } == true
+                }
+        return if (valid) {
+            DataResult.Content(promoted)
+        } else {
+            try {
+                discardFeedbackDraftAttachmentRefs(
+                    accountId = accountId,
+                    fileRefs = promoted.mapNotNull { it.fileRef?.takeIf(String::isNotBlank) }
+                )
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Throwable) {
+            }
+            DataResult.Error(
+                ScreenError("settings_feedback_attachment_promotion_incomplete", retryable = true)
+            )
+        }
+    }
+
+    suspend fun discardFeedbackDraftAttachments(
+        accountId: String,
+        files: List<PlatformFile>
+    ): Boolean {
+        val fileRefs =
+            files
+                .filter { it.source == "settings_feedback_draft" }
+                .mapNotNull { it.fileRef?.takeIf(String::isNotBlank) }
+                .distinct()
+        return discardFeedbackDraftAttachmentRefs(accountId, fileRefs)
+    }
+
+    private suspend fun discardFeedbackDraftAttachmentRefs(
+        accountId: String,
+        fileRefs: List<String>
+    ): Boolean {
+        val distinctRefs = fileRefs.filter(String::isNotBlank).distinct()
+        if (distinctRefs.isEmpty()) return true
+        val response =
+            settingsCapability(
+                JSONObject()
+                    .put("action", "discardFeedbackDraftAttachments")
+                    .put("accountId", accountId)
+                    .put(
+                        "fileRefs",
+                        JSONArray().also { array -> distinctRefs.forEach(array::put) }
+                    )
+            )
+        return response?.optString("status") == "ok"
+    }
+
     suspend fun submitHandsFeedback(
         message: String,
         attachments: List<PlatformFile>
@@ -507,6 +595,20 @@ internal class BridgeSettingsPlatformCapabilities(
                                 item.put("bodyBase64", Base64.encode(file.bytes))
                             }
                         }
+                )
+            }
+        }
+
+    private fun List<PlatformFile>.toFeedbackDraftPromotionFilesJson(): JSONArray =
+        JSONArray().also { array ->
+            forEach { file ->
+                array.put(
+                    JSONObject()
+                        .put("id", file.id)
+                        .put("fileName", file.fileName)
+                        .put("mimeType", file.mimeType.orEmpty())
+                        .put("fileRef", file.fileRef.orEmpty())
+                        .put("previewUri", file.previewUri.orEmpty())
                 )
             }
         }

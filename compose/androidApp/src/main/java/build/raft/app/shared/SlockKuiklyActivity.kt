@@ -3441,6 +3441,31 @@ internal class SlockKuiklyBridgeModule(
             }
             return
         }
+        if (action == "promoteFeedbackDraftAttachments" || action == "discardFeedbackDraftAttachments") {
+            val scope = (activity as? ComponentActivity)?.lifecycleScope ?: CoroutineScope(Dispatchers.Main)
+            scope.launch {
+                val result =
+                        withContext(Dispatchers.IO) {
+                            runCatching {
+                                        if (action == "promoteFeedbackDraftAttachments") {
+                                            promoteFeedbackDraftAttachments(request)
+                                        } else {
+                                            discardFeedbackDraftAttachments(request)
+                                        }
+                                    }
+                                    .getOrElse { throwable ->
+                                        mapOf(
+                                                "status" to "error",
+                                                "code" to feedbackAttachmentPrepareErrorCode(throwable),
+                                                "message" to (throwable.message
+                                                        ?: "Feedback draft attachment storage failed")
+                                        )
+                                    }
+                        }
+                callback?.invoke(result)
+            }
+            return
+        }
         if (action == "prefetchReleaseNotes") {
             val url = request.optString("url")
             if (!SlockReleaseNotesDocumentCache.isReleaseNotesUrl(url)) {
@@ -4923,6 +4948,71 @@ internal class SlockKuiklyBridgeModule(
         }
         return files
     }
+
+    private fun promoteFeedbackDraftAttachments(request: JSONObject): Map<String, Any> {
+        val filesJson = request.optJSONArray("files") ?: throw FeedbackAttachmentReadException("Missing files")
+        val sources =
+                buildList {
+                    for (index in 0 until filesJson.length()) {
+                        val file = filesJson.optJSONObject(index) ?: continue
+                        add(
+                                SettingsHandsFeedbackDraftAttachmentSource(
+                                        id = file.optString("id"),
+                                        fileName = file.optString("fileName").ifBlank { "attachment-${index + 1}" },
+                                        mimeType = file.optString("mimeType").ifBlank { "application/octet-stream" },
+                                        fileRef = file.optString("fileRef")
+                                )
+                        )
+                    }
+                }
+        val storage = feedbackDraftAttachmentStorage()
+        val promoted =
+                storage.promoteGroup(
+                        accountId = request.optString("accountId"),
+                        groupId = request.optString("groupId"),
+                        sources = sources,
+                        maxBytes = request.optLong("maxBytes", 0L)
+                )
+        val files =
+                JSONArray().also { array ->
+                    promoted.forEach { file ->
+                        array.put(
+                                JSONObject()
+                                        .put("id", file.id)
+                                        .put("fileName", file.fileName)
+                                        .put("mimeType", file.mimeType)
+                                        .put("sizeBytes", file.sizeBytes)
+                                        .put("previewUri", file.previewUri)
+                                        .put("fileRef", file.fileRef)
+                                        .put("source", "settings_feedback_draft")
+                        )
+                    }
+                }
+        return mapOf("status" to "ok", "files" to files)
+    }
+
+    private fun discardFeedbackDraftAttachments(request: JSONObject): Map<String, Any> {
+        val refsJson = request.optJSONArray("fileRefs")
+        val refs =
+                buildList {
+                    if (refsJson != null) {
+                        for (index in 0 until refsJson.length()) {
+                            refsJson.optString(index).takeIf(String::isNotBlank)?.let(::add)
+                        }
+                    }
+                }
+        feedbackDraftAttachmentStorage().discard(
+                accountId = request.optString("accountId"),
+                fileRefs = refs
+        )
+        return mapOf("status" to "ok")
+    }
+
+    private fun feedbackDraftAttachmentStorage(): SettingsHandsFeedbackDraftAttachmentStorage =
+            SettingsHandsFeedbackDraftAttachmentStorage(
+                    rootDirectory = File(appContext.filesDir, "settings-hands-feedback-drafts"),
+                    openSource = { fileRef -> openHandsFeedbackFileRefStream(Uri.parse(fileRef)) }
+            )
 
     private fun copyHandsFeedbackFileRef(
             fileRef: String,

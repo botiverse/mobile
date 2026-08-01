@@ -11898,6 +11898,12 @@ private fun SharedHandsFeedbackContent(
     var pendingImageEditSession by remember(accountId, feedbackPageGeneration) {
         mutableStateOf<SettingsHandsFeedbackImageEditSession?>(null)
     }
+    val imageEditCommitGate =
+        remember(accountId, feedbackPageGeneration) {
+            SettingsHandsFeedbackImageEditCommitGate()
+        }
+    val latestFeedbackAccountId by rememberUpdatedState(accountId)
+    val latestFeedbackPageGeneration by rememberUpdatedState(feedbackPageGeneration)
     val latestAttachmentsForPersistence by rememberUpdatedState(attachments)
     val latestLastPersistedDraft by rememberUpdatedState(lastPersistedDraft)
     var busy by remember { mutableStateOf(false) }
@@ -12013,7 +12019,11 @@ private fun SharedHandsFeedbackContent(
         scope.launch {
             when (val result = settingsCapabilities.pickFeedbackAttachment(imageOnly)) {
                 is DataResult.Content -> {
-                    val pickedFiles = result.data
+                    val pickedFiles =
+                        normalizeSettingsHandsFeedbackPickerFiles(
+                            files = result.data,
+                            imageOnly = imageOnly
+                        )
                     val attachmentAction =
                         resolveThreadPickedAttachmentComposerAction(
                             action = if (imageOnly) "attachImage" else "attachFile",
@@ -12084,8 +12094,8 @@ private fun SharedHandsFeedbackContent(
                             foldSettingsHandsFeedbackImageEditEvent(
                                 session = session,
                                 event = event,
-                                currentAccountId = accountId,
-                                currentPageGeneration = feedbackPageGeneration
+                                currentAccountId = latestFeedbackAccountId,
+                                currentPageGeneration = latestFeedbackPageGeneration
                             )
                     ) {
                         is SettingsHandsFeedbackImageEditFoldResult.Ignored -> Unit
@@ -12097,31 +12107,72 @@ private fun SharedHandsFeedbackContent(
                             error = copy.attachmentPickerFailed
                         }
                         is SettingsHandsFeedbackImageEditFoldResult.Complete -> {
-                            val promotion =
-                                promoteSettingsHandsFeedbackEditedAttachments(
-                                    existing = attachments,
-                                    edited = result.files,
-                                    attachmentMaxBytes = attachmentMaxBytes,
-                                    attachmentLimit = attachmentLimit
-                                )
-                            feedbackDraftStore.save(
-                                accountId = accountId,
-                                text = draftTextForPersistence,
-                                attachments = promotion.attachments
-                            )
-                            lastPersistedDraft =
-                                SettingsHandsFeedbackDraftSnapshot(
-                                    text = draftTextForPersistence,
-                                    attachments = promotion.attachments
-                                )
+                            if (!imageEditCommitGate.tryClaim(session)) return@launch
                             pendingImageEditSession = null
-                            attachments = promotion.attachments
-                            error = when {
-                                promotion.rejectedTooLargeCount > 0 ->
-                                    copy.attachmentTooLarge(attachmentMaxLabel)
-                                promotion.trimmedByLimit ->
-                                    copy.attachmentLimitTrimmed(attachmentLimit)
-                                else -> null
+                            try {
+                                when (
+                                    val commit =
+                                        commitSettingsHandsFeedbackEditedGroup(
+                                            existing = attachments,
+                                            edited = result.files,
+                                            attachmentMaxBytes = attachmentMaxBytes,
+                                            attachmentLimit = attachmentLimit,
+                                            isCurrent = {
+                                                imageEditCommitGate.isCurrent(
+                                                    session = session,
+                                                    currentAccountId = latestFeedbackAccountId,
+                                                    currentPageGeneration = latestFeedbackPageGeneration
+                                                )
+                                            },
+                                            promote = { selected ->
+                                                settingsCapabilities.promoteFeedbackDraftAttachments(
+                                                    accountId = accountId,
+                                                    groupId = session.groupId,
+                                                    files = selected,
+                                                    maxBytes = attachmentMaxBytes
+                                                )
+                                            },
+                                            persist = { promotedAttachments ->
+                                                feedbackDraftStore.save(
+                                                    accountId = accountId,
+                                                    text = draftTextForPersistence,
+                                                    attachments = promotedAttachments
+                                                )
+                                            },
+                                            discard = { promotedAttachments ->
+                                                settingsCapabilities.discardFeedbackDraftAttachments(
+                                                    accountId = accountId,
+                                                    files = promotedAttachments
+                                                )
+                                            }
+                                        )
+                                ) {
+                                    is SettingsHandsFeedbackEditedGroupCommitResult.Committed -> {
+                                        val promotion = commit.promotion
+                                        lastPersistedDraft =
+                                            SettingsHandsFeedbackDraftSnapshot(
+                                                text = draftTextForPersistence,
+                                                attachments = promotion.attachments
+                                            )
+                                        attachments = promotion.attachments
+                                        error =
+                                            if (promotion.trimmedByLimit) {
+                                                copy.attachmentLimitTrimmed(attachmentLimit)
+                                            } else {
+                                                null
+                                            }
+                                    }
+                                    is SettingsHandsFeedbackEditedGroupCommitResult.Failed -> {
+                                        error =
+                                            if ("too_large" in commit.code) {
+                                                copy.attachmentTooLarge(attachmentMaxLabel)
+                                            } else {
+                                                copy.attachmentPickerFailed
+                                            }
+                                    }
+                                }
+                            } finally {
+                                imageEditCommitGate.release(session)
                             }
                         }
                     }
@@ -12214,8 +12265,43 @@ private fun SharedHandsFeedbackContent(
                                 )
                         messageFieldValue = TextFieldValue("")
                         draftTextForPersistence = ""
-                        feedbackDraftStore.clear(accountId)
+                        val emptyDraft = SettingsHandsFeedbackDraftSnapshot()
+                        val draftReleased =
+                            try {
+                                feedbackDraftStore.clear(accountId)
+                                lastPersistedDraft = emptyDraft
+                                true
+                            } catch (cancellation: CancellationException) {
+                                throw cancellation
+                            } catch (throwable: Throwable) {
+                                settingsCapabilities.log(
+                                    "settings_hands_feedback_draft_clear_failed " +
+                                        "error=${throwable::class.simpleName}"
+                                )
+                                false
+                            }
                         attachments = emptyList()
+                        if (draftReleased) {
+                            try {
+                                val discarded =
+                                    settingsCapabilities.discardFeedbackDraftAttachments(
+                                        accountId = accountId,
+                                        files = submittedAttachments
+                                    )
+                                if (!discarded) {
+                                    settingsCapabilities.log(
+                                        "settings_hands_feedback_attachment_cleanup_failed reason=host_rejected"
+                                    )
+                                }
+                            } catch (cancellation: CancellationException) {
+                                throw cancellation
+                            } catch (throwable: Throwable) {
+                                settingsCapabilities.log(
+                                    "settings_hands_feedback_attachment_cleanup_failed " +
+                                        "error=${throwable::class.simpleName}"
+                                )
+                            }
+                        }
                     }
                     is DataResult.Empty -> {
                         settingsCapabilities.log("settings_hands_feedback_submit_result status=empty")
@@ -12234,6 +12320,8 @@ private fun SharedHandsFeedbackContent(
                         appendFailure(copy.submissionPermissionFailure())
                     }
                 }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
             } catch (throwable: Throwable) {
                 settingsCapabilities.log(
                         "settings_hands_feedback_submit_exception error=${throwable::class.simpleName} " +
@@ -12343,10 +12431,44 @@ private fun SharedHandsFeedbackContent(
                         "attachFile" -> pickAttachment(imageOnly = false)
                         "removeAttachment" ->
                             attachmentId?.let { id ->
-                                attachments =
-                                    attachments.filterNot { file ->
+                                val removed =
+                                    attachments.filter { file ->
                                         file.feedbackComposerAttachmentId() == id
                                     }
+                                if (removed.isNotEmpty()) {
+                                    val remaining = attachments - removed.toSet()
+                                    val nextDraft =
+                                        SettingsHandsFeedbackDraftSnapshot(
+                                            text = draftTextForPersistence,
+                                            attachments = remaining
+                                        )
+                                    try {
+                                        feedbackDraftStore.save(
+                                            accountId = accountId,
+                                            text = nextDraft.text,
+                                            attachments = nextDraft.attachments
+                                        )
+                                        lastPersistedDraft = nextDraft
+                                        attachments = remaining
+                                        scope.launch {
+                                            try {
+                                                settingsCapabilities.discardFeedbackDraftAttachments(
+                                                    accountId = accountId,
+                                                    files = removed
+                                                )
+                                            } catch (cancellation: CancellationException) {
+                                                throw cancellation
+                                            } catch (_: Throwable) {
+                                            }
+                                        }
+                                    } catch (throwable: Throwable) {
+                                        settingsCapabilities.log(
+                                            "settings_hands_feedback_attachment_remove_failed " +
+                                                "error=${throwable::class.simpleName}"
+                                        )
+                                        error = copy.attachmentPickerFailed
+                                    }
+                                }
                             }
                         "previewAttachment", "retryAttachments", "blur", "toggleAsTask" -> Unit
                     }

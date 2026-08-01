@@ -1,11 +1,13 @@
 package build.raft.app
 
+import build.raft.app.data.DataResult
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.formatAttachmentSizeLabel
 import build.raft.app.resources.MR
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.tmm.kmmresource.resource.desc.desc
 import kotlin.random.Random
+import kotlinx.coroutines.CancellationException
 
 internal data class SettingsHandsFeedbackImageEditRequest(
     val session: SettingsHandsFeedbackImageEditSession,
@@ -51,8 +53,57 @@ internal sealed interface SettingsHandsFeedbackImageEditFoldResult {
 internal data class SettingsHandsFeedbackAttachmentPromotion(
     val attachments: List<PlatformFile>,
     val rejectedTooLargeCount: Int,
-    val trimmedByLimit: Boolean
+    val trimmedByLimit: Boolean,
+    val invalidDurableCount: Int = 0
 )
+
+internal val SettingsHandsFeedbackAttachmentPromotion.isCommittable: Boolean
+    get() = rejectedTooLargeCount == 0 && invalidDurableCount == 0
+
+internal sealed interface SettingsHandsFeedbackEditedGroupCommitResult {
+    data class Committed(val promotion: SettingsHandsFeedbackAttachmentPromotion) :
+        SettingsHandsFeedbackEditedGroupCommitResult
+
+    data class Failed(val code: String) : SettingsHandsFeedbackEditedGroupCommitResult
+}
+
+internal class SettingsHandsFeedbackImageEditCommitGate {
+    private data class Claim(
+        val groupId: String,
+        val accountId: String,
+        val pageGeneration: String
+    )
+
+    private var activeClaim: Claim? = null
+
+    fun tryClaim(session: SettingsHandsFeedbackImageEditSession): Boolean {
+        if (activeClaim != null) return false
+        activeClaim = session.toClaim()
+        return true
+    }
+
+    fun isCurrent(
+        session: SettingsHandsFeedbackImageEditSession,
+        currentAccountId: String,
+        currentPageGeneration: String
+    ): Boolean =
+        activeClaim == session.toClaim() &&
+            currentAccountId == session.accountId &&
+            currentPageGeneration == session.pageGeneration
+
+    fun release(session: SettingsHandsFeedbackImageEditSession) {
+        if (activeClaim == session.toClaim()) {
+            activeClaim = null
+        }
+    }
+
+    private fun SettingsHandsFeedbackImageEditSession.toClaim(): Claim =
+        Claim(
+            groupId = groupId,
+            accountId = accountId,
+            pageGeneration = pageGeneration
+        )
+}
 
 internal fun newSettingsHandsFeedbackImageEditId(
     randomLong: () -> Long = { Random.nextLong() }
@@ -114,6 +165,34 @@ internal fun settingsHandsFeedbackImageEditRequest(
                 composerImageCanEdit = true
             )
     )
+}
+
+internal fun normalizeSettingsHandsFeedbackPickerFiles(
+    files: List<PlatformFile>,
+    imageOnly: Boolean
+): List<PlatformFile> {
+    if (!imageOnly) return files
+    return files.map { file ->
+        val normalizedMimeType = file.mimeType.orEmpty().substringBefore(';').trim().lowercase()
+        val extension =
+            when (normalizedMimeType) {
+                "image/avif" -> ".avif"
+                "image/bmp" -> ".bmp"
+                "image/gif" -> ".gif"
+                "image/heic" -> ".heic"
+                "image/heif" -> ".heif"
+                "image/jpeg", "image/jpg" -> ".jpg"
+                "image/png" -> ".png"
+                "image/svg+xml" -> ".svg"
+                "image/webp" -> ".webp"
+                else -> null
+            }
+        if (extension == null || slockComposerImagePickerIsStrictImage(file.fileName, normalizedMimeType)) {
+            file
+        } else {
+            file.copy(fileName = "${file.fileName.ifBlank { "image" }}$extension")
+        }
+    }
 }
 
 internal fun parseSettingsHandsFeedbackImageEditEvent(
@@ -215,14 +294,111 @@ internal fun promoteSettingsHandsFeedbackEditedAttachments(
     attachmentMaxBytes: Long,
     attachmentLimit: Int
 ): SettingsHandsFeedbackAttachmentPromotion {
-    val accepted =
+    val durable =
         edited.filter { file ->
-            !file.fileRef.isNullOrBlank() && (file.sizeBytes ?: 0L) <= attachmentMaxBytes
+            !file.fileRef.isNullOrBlank() &&
+                file.source == "settings_feedback_draft" &&
+                file.sizeBytes?.let { it > 0L } == true
         }
+    val accepted = durable.filter { file -> file.sizeBytes?.let { it <= attachmentMaxBytes } == true }
     val merged = (existing + accepted).distinctBy { file -> file.fileRef ?: file.id }
     return SettingsHandsFeedbackAttachmentPromotion(
         attachments = merged.take(attachmentLimit),
-        rejectedTooLargeCount = edited.size - accepted.size,
-        trimmedByLimit = merged.size > attachmentLimit
+        rejectedTooLargeCount = durable.size - accepted.size,
+        trimmedByLimit = merged.size > attachmentLimit,
+        invalidDurableCount = edited.size - durable.size
     )
+}
+
+internal suspend fun commitSettingsHandsFeedbackEditedGroup(
+    existing: List<PlatformFile>,
+    edited: List<PlatformFile>,
+    attachmentMaxBytes: Long,
+    attachmentLimit: Int,
+    isCurrent: () -> Boolean,
+    promote: suspend (List<PlatformFile>) -> DataResult<List<PlatformFile>>,
+    persist: (List<PlatformFile>) -> Unit,
+    discard: suspend (List<PlatformFile>) -> Unit = {}
+): SettingsHandsFeedbackEditedGroupCommitResult {
+    val remainingSlots = (attachmentLimit - existing.size).coerceAtLeast(0)
+    val selected = edited.take(remainingSlots)
+    if (selected.isEmpty()) {
+        return SettingsHandsFeedbackEditedGroupCommitResult.Failed(
+            "settings_feedback_attachment_limit_reached"
+        )
+    }
+    if (!isCurrent()) {
+        return SettingsHandsFeedbackEditedGroupCommitResult.Failed(
+            "settings_feedback_attachment_session_stale"
+        )
+    }
+    val promoted =
+        try {
+            promote(selected)
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Throwable) {
+            return SettingsHandsFeedbackEditedGroupCommitResult.Failed(
+                "settings_feedback_attachment_promotion_failed"
+            )
+        }
+    return when (promoted) {
+        is DataResult.Content -> {
+            if (!isCurrent()) {
+                discardSettingsHandsFeedbackPromotedAttachments(promoted.data, discard)
+                return SettingsHandsFeedbackEditedGroupCommitResult.Failed(
+                    "settings_feedback_attachment_session_stale"
+                )
+            }
+            val promotion =
+                promoteSettingsHandsFeedbackEditedAttachments(
+                    existing = existing,
+                    edited = promoted.data,
+                    attachmentMaxBytes = attachmentMaxBytes,
+                    attachmentLimit = attachmentLimit
+                ).copy(
+                    trimmedByLimit = edited.size > selected.size
+                )
+            if (!promotion.isCommittable || promoted.data.size != selected.size) {
+                discardSettingsHandsFeedbackPromotedAttachments(promoted.data, discard)
+                val code =
+                    if (promotion.rejectedTooLargeCount > 0) {
+                        "settings_feedback_attachment_too_large"
+                    } else {
+                        "settings_feedback_attachment_promotion_incomplete"
+                    }
+                SettingsHandsFeedbackEditedGroupCommitResult.Failed(code)
+            } else {
+                try {
+                    persist(promotion.attachments)
+                    SettingsHandsFeedbackEditedGroupCommitResult.Committed(promotion)
+                } catch (failure: Throwable) {
+                    discardSettingsHandsFeedbackPromotedAttachments(promoted.data, discard)
+                    if (failure is CancellationException) throw failure
+                    SettingsHandsFeedbackEditedGroupCommitResult.Failed(
+                        "settings_feedback_attachment_persistence_failed"
+                    )
+                }
+            }
+        }
+        is DataResult.Error -> SettingsHandsFeedbackEditedGroupCommitResult.Failed(promoted.error.code)
+        is DataResult.Empty ->
+            SettingsHandsFeedbackEditedGroupCommitResult.Failed(
+                "settings_feedback_attachment_promotion_empty"
+            )
+        is DataResult.NoPermission ->
+            SettingsHandsFeedbackEditedGroupCommitResult.Failed(promoted.blocker.code)
+    }
+}
+
+private suspend fun discardSettingsHandsFeedbackPromotedAttachments(
+    attachments: List<PlatformFile>,
+    discard: suspend (List<PlatformFile>) -> Unit
+) {
+    try {
+        discard(attachments)
+    } catch (cancellation: CancellationException) {
+        throw cancellation
+    } catch (_: Throwable) {
+    }
 }

@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.DataResult
 import build.raft.app.data.InMemorySlockKeyValueStore
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.SettingsHandsFeedbackDraftStore
@@ -11,6 +12,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.runBlocking
 
 class SettingsHandsFeedbackImageEditTest {
     @Test
@@ -243,7 +245,7 @@ class SettingsHandsFeedbackImageEditTest {
         val promotion =
             promoteSettingsHandsFeedbackEditedAttachments(
                 existing = existing,
-                edited = complete.files,
+                edited = complete.files.map { it.copy(source = "settings_feedback_draft") },
                 attachmentMaxBytes = 1_000,
                 attachmentLimit = 9
             )
@@ -267,7 +269,10 @@ class SettingsHandsFeedbackImageEditTest {
         val promotion =
             promoteSettingsHandsFeedbackEditedAttachments(
                 existing = emptyList(),
-                edited = complete.files,
+                edited =
+                    complete.files.map { file ->
+                        file.copy(source = "settings_feedback_draft")
+                    },
                 attachmentMaxBytes = 10_000,
                 attachmentLimit = 9
             )
@@ -283,7 +288,267 @@ class SettingsHandsFeedbackImageEditTest {
             listOf("file:///edited/0.png", "file:///edited/1.png"),
             restored.attachments.map { it.fileRef }
         )
-        assertEquals(listOf("image_annotation", "image_annotation"), restored.attachments.map { it.source })
+        assertEquals(
+            listOf("settings_feedback_draft", "settings_feedback_draft"),
+            restored.attachments.map { it.source }
+        )
+    }
+
+    @Test
+    fun trustedImageOnlyPickerNormalizesOpaquePhotoForTheProductionRoute() {
+        val opaque =
+            PlatformFile(
+                id = "opaque",
+                fileName = "opaque-id",
+                mimeType = "image/jpeg",
+                fileRef = "photo://media/opaque-id"
+            )
+
+        val normalized = normalizeSettingsHandsFeedbackPickerFiles(listOf(opaque), imageOnly = true)
+
+        assertEquals("opaque-id.jpg", normalized.single().fileName)
+        assertTrue(slockComposerImagePickerFilesAreStrictImages(normalized))
+        assertEquals(
+            ThreadPickedAttachmentComposerAction.OpenImageAnnotation,
+            resolveThreadPickedAttachmentComposerAction(
+                action = "attachImage",
+                fileCount = normalized.size,
+                imageAnnotationEnabled = true,
+                allFilesAreImages = slockComposerImagePickerFilesAreStrictImages(normalized)
+            )
+        )
+        val video = opaque.copy(fileName = "opaque-video", mimeType = "video/mp4")
+        assertEquals("opaque-video", normalizeSettingsHandsFeedbackPickerFiles(listOf(video), true).single().fileName)
+        assertFalse(slockComposerImagePickerFilesAreStrictImages(listOf(video)))
+        assertEquals(
+            "opaque-id",
+            normalizeSettingsHandsFeedbackPickerFiles(listOf(opaque), imageOnly = false).single().fileName
+        )
+    }
+
+    @Test
+    fun platformPromotionFailurePerformsNoDraftWrite() = runBlocking {
+        var persistCount = 0
+
+        val result =
+            commitSettingsHandsFeedbackEditedGroup(
+                existing = emptyList(),
+                edited = listOf(image("edited", "file:///editor-temp.png")),
+                attachmentMaxBytes = 1_000,
+                attachmentLimit = 9,
+                isCurrent = { true },
+                promote = {
+                    DataResult.Error(
+                        build.raft.app.data.ScreenError("settings_feedback_attachment_promotion_failed")
+                    )
+                },
+                persist = { persistCount += 1 }
+            )
+
+        assertIs<SettingsHandsFeedbackEditedGroupCommitResult.Failed>(result)
+        assertEquals(0, persistCount)
+    }
+
+    @Test
+    fun platformPromotionExceptionPerformsNoDraftWrite() = runBlocking {
+        var persistCount = 0
+
+        val result =
+            commitSettingsHandsFeedbackEditedGroup(
+                existing = emptyList(),
+                edited = listOf(image("edited", "file:///editor-temp.png")),
+                attachmentMaxBytes = 1_000,
+                attachmentLimit = 9,
+                isCurrent = { true },
+                promote = { error("native promotion failed") },
+                persist = { persistCount += 1 }
+            )
+
+        assertEquals(
+            "settings_feedback_attachment_promotion_failed",
+            assertIs<SettingsHandsFeedbackEditedGroupCommitResult.Failed>(result).code
+        )
+        assertEquals(0, persistCount)
+    }
+
+    @Test
+    fun actualPromotedSizeRejectsOldSmallEventThatBecameTooLarge() = runBlocking {
+        var persistCount = 0
+        var discarded = emptyList<PlatformFile>()
+        val oldSmall = image("edited", "file:///editor-temp.png", sizeBytes = 10)
+        val actualLarge =
+            oldSmall.copy(
+                fileRef = "file:///durable/edited.png",
+                previewUri = "file:///durable/edited.png",
+                sizeBytes = 1_001,
+                source = "settings_feedback_draft"
+            )
+
+        val result =
+            commitSettingsHandsFeedbackEditedGroup(
+                existing = emptyList(),
+                edited = listOf(oldSmall),
+                attachmentMaxBytes = 1_000,
+                attachmentLimit = 9,
+                isCurrent = { true },
+                promote = { DataResult.Content(listOf(actualLarge)) },
+                persist = { persistCount += 1 },
+                discard = { discarded = it }
+            )
+
+        assertEquals(
+            "settings_feedback_attachment_too_large",
+            assertIs<SettingsHandsFeedbackEditedGroupCommitResult.Failed>(result).code
+        )
+        assertEquals(0, persistCount)
+        assertEquals(listOf(actualLarge), discarded)
+    }
+
+    @Test
+    fun actualPromotedSizeAcceptsOldLargeEventThatBecameCompliantAndPersistsNewMetadata() = runBlocking {
+        val oldLarge = image("edited", "file:///editor-temp.png", sizeBytes = 2_000)
+        val actualSmall =
+            oldLarge.copy(
+                fileRef = "file:///durable/edited.png",
+                previewUri = "file:///durable/edited.png",
+                sizeBytes = 800,
+                source = "settings_feedback_draft"
+            )
+        var persisted = emptyList<PlatformFile>()
+
+        val result =
+            commitSettingsHandsFeedbackEditedGroup(
+                existing = emptyList(),
+                edited = listOf(oldLarge),
+                attachmentMaxBytes = 1_000,
+                attachmentLimit = 9,
+                isCurrent = { true },
+                promote = { DataResult.Content(listOf(actualSmall)) },
+                persist = { persisted = it }
+            )
+
+        assertIs<SettingsHandsFeedbackEditedGroupCommitResult.Committed>(result)
+        assertEquals(listOf(actualSmall), persisted)
+        assertEquals(800L, persisted.single().sizeBytes)
+        assertEquals("settings_feedback_draft", persisted.single().source)
+    }
+
+    @Test
+    fun sessionThatTurnsStaleDuringPromotionDiscardsDurableOutputAndNeverPersists() = runBlocking {
+        var currentChecks = 0
+        var persistCount = 0
+        var discardCount = 0
+        val durable =
+            image("edited", "file:///durable/edited.png")
+                .copy(source = "settings_feedback_draft")
+
+        val result =
+            commitSettingsHandsFeedbackEditedGroup(
+                existing = emptyList(),
+                edited = listOf(image("edited", "file:///editor-temp.png")),
+                attachmentMaxBytes = 1_000,
+                attachmentLimit = 9,
+                isCurrent = { ++currentChecks == 1 },
+                promote = { DataResult.Content(listOf(durable)) },
+                persist = { persistCount += 1 },
+                discard = { discardCount += it.size }
+            )
+
+        assertEquals(
+            "settings_feedback_attachment_session_stale",
+            assertIs<SettingsHandsFeedbackEditedGroupCommitResult.Failed>(result).code
+        )
+        assertEquals(0, persistCount)
+        assertEquals(1, discardCount)
+    }
+
+    @Test
+    fun persistenceFailureDiscardsPromotedOutputAndNeverCommitsComposeState() = runBlocking {
+        val durable =
+            image("edited", "file:///durable/edited.png")
+                .copy(source = "settings_feedback_draft")
+        var discarded = emptyList<PlatformFile>()
+
+        val result =
+            commitSettingsHandsFeedbackEditedGroup(
+                existing = emptyList(),
+                edited = listOf(image("edited", "file:///editor-temp.png")),
+                attachmentMaxBytes = 1_000,
+                attachmentLimit = 9,
+                isCurrent = { true },
+                promote = { DataResult.Content(listOf(durable)) },
+                persist = { error("draft persistence failed") },
+                discard = { discarded = it }
+            )
+
+        assertEquals(
+            "settings_feedback_attachment_persistence_failed",
+            assertIs<SettingsHandsFeedbackEditedGroupCommitResult.Failed>(result).code
+        )
+        assertEquals(listOf(durable), discarded)
+    }
+
+    @Test
+    fun invalidPromotionRemainsFailedWhenBestEffortDiscardAlsoFails() = runBlocking {
+        var persistCount = 0
+        val invalid =
+            image("edited", "file:///durable/edited.png")
+                .copy(source = "image_annotation")
+
+        val result =
+            commitSettingsHandsFeedbackEditedGroup(
+                existing = emptyList(),
+                edited = listOf(image("edited", "file:///editor-temp.png")),
+                attachmentMaxBytes = 1_000,
+                attachmentLimit = 9,
+                isCurrent = { true },
+                promote = { DataResult.Content(listOf(invalid)) },
+                persist = { persistCount += 1 },
+                discard = { error("host cleanup failed") }
+            )
+
+        assertEquals(
+            "settings_feedback_attachment_promotion_incomplete",
+            assertIs<SettingsHandsFeedbackEditedGroupCommitResult.Failed>(result).code
+        )
+        assertEquals(0, persistCount)
+    }
+
+    @Test
+    fun terminalCommitGateAllowsOneInFlightGroupAndRevalidatesCurrentScope() {
+        val gate = SettingsHandsFeedbackImageEditCommitGate()
+        val claimed = session(expectedCount = 2)
+        val other = claimed.copy(groupId = "group-b", threadKey = "feedback-group-b")
+
+        assertTrue(gate.tryClaim(claimed))
+        assertFalse(gate.tryClaim(claimed))
+        assertFalse(gate.tryClaim(other))
+        assertTrue(
+            gate.isCurrent(
+                session = claimed,
+                currentAccountId = claimed.accountId,
+                currentPageGeneration = claimed.pageGeneration
+            )
+        )
+        assertFalse(
+            gate.isCurrent(
+                session = claimed,
+                currentAccountId = "different-account",
+                currentPageGeneration = claimed.pageGeneration
+            )
+        )
+        assertFalse(
+            gate.isCurrent(
+                session = claimed,
+                currentAccountId = claimed.accountId,
+                currentPageGeneration = "different-page"
+            )
+        )
+
+        gate.release(other)
+        assertFalse(gate.tryClaim(other))
+        gate.release(claimed)
+        assertTrue(gate.tryClaim(other))
     }
 
     @Test

@@ -21,8 +21,14 @@ import { SlockOhosDiagnostics } from '../SlockOhosDiagnostics';
 import {
   cacheSlockOhosPickedAttachment,
   ensureSlockOhosAttachmentCacheDirectory,
+  normalizeSlockOhosImagePickerFileName,
 } from '../SlockOhosPickedAttachmentCache';
 import { slockOhosHandsFeedbackAttachmentPaths } from '../SlockOhosHandsFeedbackAttachments';
+import {
+  discardSlockOhosFeedbackDraftAttachments,
+  promoteSlockOhosFeedbackDraftAttachments,
+  SlockOhosFeedbackDraftAttachmentSource,
+} from '../SlockOhosHandsFeedbackDraftAttachments';
 import { slockOhosAttachmentDownloadSink } from '../SlockOhosAttachmentDownloadSink';
 import { SlockOhosApiEnvironment, SlockOhosApiEnvironmentStore } from '../SlockOhosApiEnvironmentStore';
 import { SLOCK_OHOS_BUILD_TIME, SLOCK_OHOS_GIT_COMMIT } from '../generated/SlockOhosBuildMetadata';
@@ -906,6 +912,14 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
           callback(await this.submitFeedbackToHandsCapability(records));
           return;
         }
+        case "promoteFeedbackDraftAttachments": {
+          callback(this.promoteFeedbackDraftAttachmentsCapability(records));
+          return;
+        }
+        case "discardFeedbackDraftAttachments": {
+          callback(this.discardFeedbackDraftAttachmentsCapability(records));
+          return;
+        }
         case "requestNotificationPermission": {
           callback(await this.requestNotificationPermissionCapability());
           return;
@@ -1163,6 +1177,61 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     }
   }
 
+  private promoteFeedbackDraftAttachmentsCapability(records: Record<string, Object>): Record<string, Object> {
+    try {
+      const rawFiles = records["files"];
+      if (!Array.isArray(rawFiles)) {
+        throw new Error('Missing feedback draft attachment files');
+      }
+      const sources: Array<SlockOhosFeedbackDraftAttachmentSource> = [];
+      (rawFiles as Array<Record<string, Object>>).forEach((file: Record<string, Object>): void => {
+        sources.push({
+          id: (file["id"] as string | undefined) ?? '',
+          fileName: (file["fileName"] as string | undefined) ?? 'attachment',
+          mimeType: (file["mimeType"] as string | undefined) ?? 'application/octet-stream',
+          fileRef: (file["fileRef"] as string | undefined) ?? '',
+        });
+      });
+      const context = getContext(this) as common.UIAbilityContext;
+      const promoted = promoteSlockOhosFeedbackDraftAttachments(
+        `${context.filesDir}/settings-hands-feedback-drafts`,
+        (records["accountId"] as string | undefined) ?? '',
+        (records["groupId"] as string | undefined) ?? '',
+        sources,
+        Number(records["maxBytes"] ?? 0),
+      );
+      return { "status": "ok", "files": promoted };
+    } catch (error) {
+      const message = String(error);
+      return {
+        "status": "error",
+        "code": message.includes('too_large')
+          ? "settings_feedback_attachment_too_large"
+          : "settings_feedback_attachment_promotion_failed",
+        "message": message,
+      };
+    }
+  }
+
+  private discardFeedbackDraftAttachmentsCapability(records: Record<string, Object>): Record<string, Object> {
+    const rawRefs = records["fileRefs"];
+    const refs: Array<string> = [];
+    if (Array.isArray(rawRefs)) {
+      (rawRefs as Array<Object>).forEach((value: Object): void => {
+        if (typeof value === 'string' && value.length > 0) {
+          refs.push(value);
+        }
+      });
+    }
+    const context = getContext(this) as common.UIAbilityContext;
+    discardSlockOhosFeedbackDraftAttachments(
+      `${context.filesDir}/settings-hands-feedback-drafts`,
+      (records["accountId"] as string | undefined) ?? '',
+      refs,
+    );
+    return { "status": "ok" };
+  }
+
   private feedbackAttachmentPaths(value: Object | undefined): Array<string> {
     return slockOhosHandsFeedbackAttachmentPaths(
       value,
@@ -1411,8 +1480,12 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       const file = fs.openSync(uri, fs.OpenMode.READ_ONLY);
       try {
         const stat = fs.statSync(file.fd);
-        const fileName = this.fileNameFromUri(uri, index, imageOnly);
         const mimeType = this.mimeTypeFromName(uri, imageOnly);
+        const fileName = normalizeSlockOhosImagePickerFileName(
+          this.fileNameFromUri(uri, index, imageOnly),
+          mimeType,
+          imageOnly,
+        );
         const targetPath = `${cacheDir}/${this.safeAttachmentCacheFileName(
           `picked-${pickedAt}-${index}`,
           fileName,

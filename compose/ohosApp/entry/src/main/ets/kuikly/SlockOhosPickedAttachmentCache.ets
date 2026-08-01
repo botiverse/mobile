@@ -78,6 +78,34 @@ export interface SlockOhosCachedPickedAttachment {
   sizeBytes: number;
 }
 
+export function normalizeSlockOhosImagePickerFileName(
+  fileName: string,
+  mimeType: string,
+  imageOnly: boolean
+): string {
+  if (!imageOnly) {
+    return fileName;
+  }
+  const normalizedMimeType = mimeType.split(';')[0].trim().toLowerCase();
+  const extension = (() => {
+    switch (normalizedMimeType) {
+      case 'image/avif': return '.avif';
+      case 'image/gif': return '.gif';
+      case 'image/heic': return '.heic';
+      case 'image/heif': return '.heif';
+      case 'image/jpeg':
+      case 'image/jpg': return '.jpg';
+      case 'image/png': return '.png';
+      case 'image/webp': return '.webp';
+      default: return '';
+    }
+  })();
+  if (extension.length === 0 || /\.(avif|gif|heic|heif|jpe?g|png|webp)$/i.test(fileName)) {
+    return fileName;
+  }
+  return `${fileName.length > 0 ? fileName : 'image'}${extension}`;
+}
+
 /**
  * Freezes a picker-backed file while its temporary media grant is live.
  * Kuikly's OHOS image cache passes local image refs directly to

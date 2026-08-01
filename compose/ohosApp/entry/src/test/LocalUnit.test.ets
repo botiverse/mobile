@@ -41,6 +41,7 @@ import { SlockOhosProcessNetworkLifecycle } from '../main/ets/entryability/Slock
 import {
   cacheSlockOhosPickedAttachment,
   ensureSlockOhosAttachmentCacheDirectory,
+  normalizeSlockOhosImagePickerFileName,
   SlockOhosAttachmentCacheDirectoryBackend,
   SlockOhosPickedAttachmentCacheBackend,
 } from '../main/ets/kuikly/SlockOhosPickedAttachmentCache';
@@ -49,6 +50,15 @@ import {
   SlockOhosHandsFeedbackAttachmentBackend,
   SlockOhosHandsFeedbackAttachmentStat,
 } from '../main/ets/kuikly/SlockOhosHandsFeedbackAttachments';
+import {
+  promoteSlockOhosFeedbackDraftAttachments,
+  slockOhosFeedbackDraftAccountSegmentFromDigest,
+  SlockOhosFeedbackDraftAttachmentBackend,
+} from '../main/ets/kuikly/SlockOhosHandsFeedbackDraftAttachments';
+
+interface FakeHandsFeedbackAttachmentInput {
+  fileRef: string;
+}
 
 class FakePlatformFileHandle {
   readonly fileRef: string;
@@ -126,6 +136,84 @@ class FakeHandsFeedbackAttachmentBackend implements SlockOhosHandsFeedbackAttach
   stat(path: string): SlockOhosHandsFeedbackAttachmentStat {
     this.statPaths.push(path);
     return this.stats.get(path) ?? { isFile: false, sizeBytes: 0 };
+  }
+}
+
+class FakeFeedbackDraftAttachmentBackend implements SlockOhosFeedbackDraftAttachmentBackend {
+  readonly directories: Set<string> = new Set();
+  readonly files: Map<string, number> = new Map();
+  readonly refs: Map<string, string> = new Map();
+
+  ensureDirectory(path: string): void {
+    this.directories.add(path);
+  }
+
+  resolveFileRef(ref: string): string {
+    if (ref.startsWith('/')) return ref;
+    return this.refs.get(ref) ?? '';
+  }
+
+  isDirectory(path: string): boolean {
+    return this.directories.has(path);
+  }
+
+  isFile(path: string): boolean {
+    return this.files.has(path);
+  }
+
+  fileSize(path: string): number {
+    return this.files.get(path) ?? 0;
+  }
+
+  copyFile(sourcePath: string, targetPath: string): void {
+    const size = this.files.get(sourcePath);
+    if (size == null) throw new Error('missing source');
+    this.files.set(targetPath, size);
+  }
+
+  rename(sourcePath: string, targetPath: string): void {
+    const moved: Array<[string, number]> = [];
+    this.files.forEach((size: number, path: string): void => {
+      if (path.startsWith(`${sourcePath}/`)) {
+        moved.push([`${targetPath}${path.slice(sourcePath.length)}`, size]);
+        this.files.delete(path);
+      }
+    });
+    moved.forEach((entry: [string, number]): void => {
+      this.files.set(entry[0], entry[1]);
+    });
+    this.directories.delete(sourcePath);
+    this.directories.add(targetPath);
+  }
+
+  removeRecursively(path: string): void {
+    Array.from(this.files.keys())
+      .filter((filePath: string): boolean => filePath === path || filePath.startsWith(`${path}/`))
+      .forEach((filePath: string): void => {
+        this.files.delete(filePath);
+      });
+    Array.from(this.directories)
+      .filter((directory: string): boolean => directory === path || directory.startsWith(`${path}/`))
+      .forEach((directory: string): void => {
+        this.directories.delete(directory);
+      });
+  }
+
+  removeFile(path: string): void {
+    this.files.delete(path);
+  }
+
+  list(path: string): Array<string> {
+    const prefix = `${path}/`;
+    return Array.from(this.files.keys())
+      .filter((filePath: string): boolean => filePath.startsWith(prefix))
+      .map((filePath: string): string => filePath.slice(prefix.length).split('/')[0]);
+  }
+
+  fileUri(path: string): string {
+    const ref = `file://build.raft.mobile${path}`;
+    this.refs.set(ref, path);
+    return ref;
   }
 }
 
@@ -302,6 +390,88 @@ export default function localUnitTest() {
       expect(backend.removedPaths[0]).assertEqual(targetPath);
     });
 
+    it('imageOnlyPickerNormalizesOpaquePhotoNameButKeepsUntrustedFilesStrict', 0, () => {
+      expect(normalizeSlockOhosImagePickerFileName('opaque-id', 'image/jpeg', true))
+        .assertEqual('opaque-id.jpg');
+      expect(normalizeSlockOhosImagePickerFileName('clip', 'video/mp4', true))
+        .assertEqual('clip');
+      expect(normalizeSlockOhosImagePickerFileName('opaque-id', 'image/jpeg', false))
+        .assertEqual('opaque-id');
+    });
+
+    it('feedbackDraftPromotionCommitsActualStatToFilesDirAsOneGroup', 0, () => {
+      const backend = new FakeFeedbackDraftAttachmentBackend();
+      backend.files.set('/temp/editor-output.png', 7);
+      const promoted = promoteSlockOhosFeedbackDraftAttachments(
+        '/data/storage/el2/base/files/settings-hands-feedback-drafts',
+        'account-a',
+        'group-a',
+        [{ id: 'edited', fileName: 'edited.png', mimeType: 'image/png', fileRef: '/temp/editor-output.png' }],
+        10,
+        backend,
+        (_: string): string => 'account-test',
+      );
+
+      expect(promoted.length).assertEqual(1);
+      expect(promoted[0].sizeBytes).assertEqual(7);
+      expect(promoted[0].source).assertEqual('settings_feedback_draft');
+      expect(promoted[0].previewUri.includes('/files/settings-hands-feedback-drafts/')).assertTrue();
+      expect(backend.resolveFileRef(promoted[0].fileRef).includes('/files/settings-hands-feedback-drafts/')).assertTrue();
+      expect(backend.isFile(backend.resolveFileRef(promoted[0].fileRef))).assertTrue();
+
+      backend.files.delete('/temp/editor-output.png');
+      const reopened = promoteSlockOhosFeedbackDraftAttachments(
+        '/data/storage/el2/base/files/settings-hands-feedback-drafts',
+        'account-a',
+        'group-a',
+        [{ id: 'edited', fileName: 'edited.png', mimeType: 'image/png', fileRef: '/temp/editor-output.png' }],
+        10,
+        backend,
+        (_: string): string => 'account-test',
+      );
+      expect(reopened[0].fileRef).assertEqual(promoted[0].fileRef);
+      expect(reopened[0].sizeBytes).assertEqual(7);
+    });
+
+    it('feedbackDraftAccountScopeUses128BitDigestSegment', 0, () => {
+      const digest = new Uint8Array([
+        0, 1, 2, 3, 4, 5, 6, 7,
+        8, 9, 10, 11, 12, 13, 14, 15,
+        16, 17, 18, 19, 20, 21, 22, 23,
+        24, 25, 26, 27, 28, 29, 30, 31,
+      ]);
+      expect(slockOhosFeedbackDraftAccountSegmentFromDigest(digest))
+        .assertEqual('account-000102030405060708090a0b0c0d0e0f');
+    });
+
+    it('feedbackDraftPromotionFailureLeavesNoCommittedOrStagedFiles', 0, () => {
+      const backend = new FakeFeedbackDraftAttachmentBackend();
+      backend.files.set('/temp/small.png', 2);
+      backend.files.set('/temp/large.png', 11);
+      let failed = false;
+      try {
+        promoteSlockOhosFeedbackDraftAttachments(
+          '/data/storage/el2/base/files/settings-hands-feedback-drafts',
+          'account-a',
+          'group-failure',
+          [
+            { id: 'small', fileName: 'small.png', mimeType: 'image/png', fileRef: '/temp/small.png' },
+            { id: 'large', fileName: 'large.png', mimeType: 'image/png', fileRef: '/temp/large.png' },
+          ],
+          10,
+          backend,
+          (_: string): string => 'account-test',
+        );
+      } catch (_) {
+        failed = true;
+      }
+
+      expect(failed).assertTrue();
+      expect(Array.from(backend.files.keys()).filter((path: string): boolean =>
+        path.includes('settings-hands-feedback-drafts')
+      ).length).assertEqual(0);
+    });
+
     it('handsFeedbackAttachmentsNormalizeFileUrisAndPreserveAdmissionGates', 0, () => {
       const backend = new FakeHandsFeedbackAttachmentBackend();
       const authorityRef = 'file://build.raft.mobile/data/storage/el2/base/cache/picked.jpg';
@@ -314,14 +484,15 @@ export default function localUnitTest() {
       backend.stats.set(oversizedPath, { isFile: true, sizeBytes: 11 });
       backend.throwingRef = 'file://build.raft.mobile/broken';
 
-      const paths = slockOhosHandsFeedbackAttachmentPaths([
+      const inputs: Array<FakeHandsFeedbackAttachmentInput> = [
         { fileRef: authorityRef },
         { fileRef: 'content://media/photo/1' },
         { fileRef: 'relative.txt' },
         { fileRef: 'file://build.raft.mobile/broken' },
         { fileRef: absolutePath },
         { fileRef: oversizedPath },
-      ], 3, 10, backend);
+      ];
+      const paths = slockOhosHandsFeedbackAttachmentPaths(inputs, 3, 10, backend);
 
       expect(paths.length).assertEqual(2);
       expect(paths[0]).assertEqual(authorityPath);
