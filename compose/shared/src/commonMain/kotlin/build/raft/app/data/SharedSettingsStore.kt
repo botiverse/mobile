@@ -253,6 +253,9 @@ data class SharedSettingsDiagnosticsSnapshot(
     val profiler: SharedSettingsRecompositionProfilerSnapshot = SharedSettingsRecompositionProfilerSnapshot(),
     val readStateV1: SharedSettingsReadStateV1DiagnosticSnapshot = SharedSettingsReadStateV1DiagnosticSnapshot(),
     val featureFlagOverrides: List<SharedSettingsDiagnosticFeatureFlagSnapshot> = emptyList(),
+    /** Signed-out diagnostics toggle; see [SharedAuthRuntimeCapabilityStore]. */
+    val appleSignInLocalOverride: Boolean = false,
+    val appleSignInLocalOverrideAvailable: Boolean = false,
     val loadErrorMessage: String? = null
 )
 
@@ -582,7 +585,8 @@ class SharedSettingsDataSource(
     private val diagnosticsLogger: ((String) -> Unit)? = null,
     private val recompositionProfilerController: SharedSettingsRecompositionProfilerController =
         SharedSettingsRecompositionProfilerController(),
-    private val linkOpenPreferenceRepository: LinkOpenPreferenceRepository? = null
+    private val linkOpenPreferenceRepository: LinkOpenPreferenceRepository? = null,
+    private val authRuntimeCapabilityStore: SharedAuthRuntimeCapabilityStore? = null
 ) {
     val authSessionEvents: SharedFlow<AuthSessionEvent>?
         get() = (sessionStore as? SlockAuthSessionEventSource)?.authSessionEvents
@@ -1251,6 +1255,19 @@ class SharedSettingsDataSource(
         }
     }
 
+    /**
+     * Signed-out diagnostics Apple-login toggle. This only changes local capability
+     * projection (which provider buttons the login surface renders); the backend
+     * `platform=mobile` gate still decides whether an Apple start call succeeds.
+     */
+    suspend fun setAppleSignInLocalOverride(enabled: Boolean): DataResult<SharedSettingsDiagnosticsSnapshot> {
+        val store = authRuntimeCapabilityStore
+            ?: return DataResult.Error(ScreenError("apple_signin_override_unavailable", retryable = false))
+        store.setLocalAppleSignInOverride(enabled)
+        diagnosticsLogger?.invoke("apple_signin_local_override enabled=$enabled")
+        return loadDiagnosticsSnapshot()
+    }
+
     suspend fun setRecompositionProfilerEnabled(enabled: Boolean): DataResult<SharedSettingsDiagnosticsSnapshot> {
         val hostResult = platformCapabilities.setRecompositionProfilerEnabled(enabled)
         when (hostResult) {
@@ -1537,6 +1554,8 @@ class SharedSettingsDataSource(
                     ?: SharedSettingsReadStateV1DiagnosticSnapshot(),
                 featureFlagOverrides =
                     (hostResult as? DataResult.Content)?.data?.featureFlagOverrides.orEmpty(),
+                appleSignInLocalOverride = authRuntimeCapabilityStore?.current()?.localAppleSignInOverride == true,
+                appleSignInLocalOverrideAvailable = authRuntimeCapabilityStore != null,
                 loadErrorMessage = loadErrorMessage
             )
         )
@@ -3663,6 +3682,7 @@ internal const val DIAGNOSTICS_ACTION_PROFILER_ENABLED = "diagnosticsProfilerEna
 internal const val DIAGNOSTICS_ACTION_PROFILER_RESET = "diagnosticsProfilerReset"
 internal const val DIAGNOSTICS_ACTION_PROFILER_REPORT = "diagnosticsProfilerReport"
 internal const val DIAGNOSTICS_ACTION_PROFILER_EXPORT = "diagnosticsProfilerExport"
+internal const val DIAGNOSTICS_ACTION_APPLE_SIGNIN_LOCAL_OVERRIDE = "diagnosticsAppleSignInLocalOverride"
 
 private fun SettingsLanguageRegionPreferenceUpdateRequest.toLanguageRegionAction(): String =
     when {

@@ -1890,6 +1890,8 @@
     <string name="settings_diagnostics_profiler_refresh_detail">getReport(saveToFile=false) を呼び出し、ファイルを書き換えずに現在のサマリーを更新します。</string>
     <string name="settings_diagnostics_profiler_export">レポートをエクスポート</string>
     <string name="settings_diagnostics_profiler_export_detail">getReport(saveToFile=true) を呼び出し、analyzer の入力用に profiler_frames.jsonl を profiler_report.json と並べて保持します。</string>
+    <string name="settings_diagnostics_apple_signin_override">Apple サインイン（ローカルテスト）</string>
+    <string name="settings_diagnostics_apple_signin_override_detail">ログインページに Apple ボタンをローカル表示してテストします。Apple サインインを開始できるかどうかは、引き続きバックエンドの platform=mobile ゲートが決定します。</string>
     <string name="settings_diagnostics_label_app">アプリ</string>
     <string name="settings_diagnostics_label_build">ビルド</string>
     <string name="settings_diagnostics_label_version_code">バージョンコード</string>

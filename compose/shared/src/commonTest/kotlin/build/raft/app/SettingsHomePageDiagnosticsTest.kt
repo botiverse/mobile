@@ -67,6 +67,38 @@ class SettingsHomePageDiagnosticsTest {
     }
 
     @Test
+    fun appleSignInLocalOverrideSectionRendersOnlyWhenRequestedAndReflectsEnabledState() {
+        val snapshot =
+            ScreenLoadState.Content(
+                SharedSettingsDiagnosticsSnapshot(
+                    appleSignInLocalOverride = true,
+                    appleSignInLocalOverrideAvailable = true,
+                )
+            )
+
+        val withOverride =
+            emptyList<build.raft.app.data.SharedSettingsDiagnosticsEntry>().toDiagnosticsPayload(
+                state = snapshot,
+                actionState = null,
+                appleSignInLocalOverride = true,
+            )
+        val overrideSection = withOverride.sections.first { it.title == "Apple sign-in (local test)" }
+        val row = overrideSection.rows.single()
+        assertEquals(build.raft.app.data.DIAGNOSTICS_ACTION_APPLE_SIGNIN_LOCAL_OVERRIDE, row.key)
+        assertEquals("false", row.value)
+        assertEquals(true, row.toggleValue)
+        assertEquals("On", row.status)
+        assertTrue(row.enabled)
+
+        val withoutOverride =
+            emptyList<build.raft.app.data.SharedSettingsDiagnosticsEntry>().toDiagnosticsPayload(
+                state = snapshot,
+                actionState = null,
+            )
+        assertFalse(withoutOverride.sections.any { it.title == "Apple sign-in (local test)" })
+    }
+
+    @Test
     fun localFeatureOverrideListAlwaysShowsEveryEntitledRegisteredKey() {
         val snapshot = localFeatureOverrideSnapshot()
 
