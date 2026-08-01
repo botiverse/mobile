@@ -40,7 +40,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Mobile exact
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -53,7 +53,7 @@ jobs:
         run: git fetch origin gh-pages:refs/remotes/origin/gh-pages
 
       - name: Checkout Slock staging truth source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: botiverse/slock
           ref: staging
@@ -62,7 +62,7 @@ jobs:
           token: ${{ secrets.SLOCK_SOURCE_REPO_TOKEN || secrets.SLOCK_GITHUB_PACKAGES_TOKEN }}
 
       - name: Checkout React component library truth source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: botiverse/rui
           ref: main
@@ -70,7 +70,7 @@ jobs:
           fetch-depth: 1
           token: ${{ secrets.SLOCK_SOURCE_REPO_TOKEN || secrets.SLOCK_GITHUB_PACKAGES_TOKEN }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: "22"
 
@@ -122,7 +122,7 @@ jobs:
 
       - name: Upload full provenance
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: visual-fix-queue-${{ github.run_id }}-${{ github.run_attempt }}
           path: |

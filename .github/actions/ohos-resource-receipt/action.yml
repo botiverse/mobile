@@ -38,7 +38,7 @@ runs:
 
     - name: OHOS resource receipt — upload bundle
       if: inputs.phase == 'post'
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: ohos-resource-receipt-${{ github.run_id }}
         path: ${{ env.OHOS_RECEIPT_DIR }}

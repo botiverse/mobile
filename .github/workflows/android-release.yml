@@ -353,7 +353,7 @@ jobs:
           java-version: "17"
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
 
       - name: Install Android SDK packages
         shell: bash
@@ -592,7 +592,7 @@ jobs:
 
       - name: Upload APK as workflow artifact
         id: upload-apk
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ inputs.artifact_name }}
           path: ${{ steps.locate.outputs.apk_path }}
@@ -602,7 +602,7 @@ jobs:
       - name: Upload R8 mapping as workflow artifact
         # Enables server-side crash deobfuscation: the publish job attaches
         # this as a proguard-mapping build asset.
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ inputs.artifact_name }}-mapping
           path: compose/androidApp/build/outputs/mapping/${{ needs.resolve.outputs.android_variant }}/mapping.txt
@@ -610,7 +610,7 @@ jobs:
           retention-days: 14
 
       - name: Upload exact native symbols as workflow artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ inputs.artifact_name }}-native-symbols
           path: ${{ steps.native-symbols.outputs.archive }}
@@ -676,7 +676,7 @@ jobs:
           fetch-depth: 0
 
       - name: Download signed APK
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: ${{ inputs.artifact_name }}
           path: dist/
@@ -685,13 +685,13 @@ jobs:
         # Restored to the exact path the publish helper probes; absent for
         # variants without minification.
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: ${{ inputs.artifact_name }}-mapping
           path: compose/androidApp/build/outputs/mapping/${{ needs.resolve.outputs.android_variant }}/
 
       - name: Download exact native symbols
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: ${{ inputs.artifact_name }}-native-symbols
           path: dist/native-symbols/

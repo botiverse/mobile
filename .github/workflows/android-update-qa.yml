@@ -202,7 +202,7 @@ jobs:
           sha256sum android-app-update-build-pair.json > android-app-update-build-pair.json.sha256
 
       - name: Upload build-pair manifest
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: android-update-qa-fixture
           path: |

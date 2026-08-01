@@ -144,7 +144,7 @@ jobs:
       # Same key as visual-testing/test.yml so this job rides their warm cache.
       - name: Cache kuikly fork mavenLocal artifacts
         id: kuikly-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.m2/repository/com/tencent/kuikly-open
           key: kuikly-fork-mavenlocal-android-${{ runner.os }}-${{ steps.kuikly-fork.outputs.sha }}
@@ -239,7 +239,7 @@ jobs:
 
       - name: Download frozen iOS Simulator app
         if: ${{ inputs.app_run_id != '' }}
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: ios-simulator-app-${{ inputs.app_run_id }}
           path: pinned-ios-app
@@ -520,7 +520,7 @@ jobs:
 
       - name: Upload evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: qa-acceptance-ios-evidence
           path: qa-evidence

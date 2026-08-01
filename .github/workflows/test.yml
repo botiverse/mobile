@@ -147,7 +147,7 @@ jobs:
       # os-less keys: the artifacts are jars/klibs, consumable on any OS.
       - name: Restore kuikly fork cache (android flavor)
         id: kuikly-android-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: .ci-cache/maven/kuikly-android
           key: kuikly-fork-mavenlocal-android-${{ env.HARMONY_CACHE_EPOCH }}-${{ steps.pins.outputs.kuikly }}
@@ -183,7 +183,7 @@ jobs:
 
       - name: Save kuikly fork cache (android flavor)
         if: steps.kuikly-android-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: .ci-cache/maven/kuikly-android
           key: kuikly-fork-mavenlocal-android-${{ env.HARMONY_CACHE_EPOCH }}-${{ steps.pins.outputs.kuikly }}
@@ -191,7 +191,7 @@ jobs:
       - name: Restore kuikly fork cache (ohos flavor)
         id: kuikly-ohos-cache
         if: ${{ needs.plan.outputs.run_full == 'true' }}
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: .ci-cache/maven/kuikly-ohos
           key: kuikly-fork-mavenlocal-ohos-${{ env.HARMONY_CACHE_EPOCH }}-${{ steps.pins.outputs.kuikly }}
@@ -231,7 +231,7 @@ jobs:
 
       - name: Save kuikly fork cache (ohos flavor)
         if: ${{ needs.plan.outputs.run_full == 'true' && steps.kuikly-ohos-cache.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: .ci-cache/maven/kuikly-ohos
           key: kuikly-fork-mavenlocal-ohos-${{ env.HARMONY_CACHE_EPOCH }}-${{ steps.pins.outputs.kuikly }}
@@ -341,7 +341,7 @@ jobs:
 
       - name: Cache shared fork dependencies mavenLocal artifacts
         id: forkdeps-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .ci-cache/maven/fork-deps
           key: ${{ steps.keys.outputs.forkdeps }}
@@ -582,7 +582,7 @@ jobs:
           } > compose/github-packages.properties
 
       - name: Restore kuikly fork mavenLocal artifacts
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: .ci-cache/maven/kuikly-android
           key: kuikly-fork-mavenlocal-android-${{ env.HARMONY_CACHE_EPOCH }}-${{ needs.kuikly-artifacts.outputs.kuikly-sha }}
@@ -634,7 +634,7 @@ jobs:
 
       - name: Restore build output cache (file hash key)
         id: build-cache-restore
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: |
             compose/shared/build
@@ -655,7 +655,7 @@ jobs:
 
       - name: Save build output cache (file hash key)
         if: steps.build-cache-restore.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: |
             compose/shared/build
@@ -703,7 +703,7 @@ jobs:
             "${APK}"
 
       - name: Upload Android connected-test APKs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: android-connected-test-apks
           path: |
@@ -713,7 +713,7 @@ jobs:
           retention-days: 7
 
       - name: Upload shared atomic-sink test APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: android-shared-atomic-sink-test-apk
           path: compose/shared/build/outputs/apk/androidTest/debug/*.apk
@@ -722,7 +722,7 @@ jobs:
 
       - name: Upload unit test reports
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: android-unit-test-reports
           path: |
@@ -777,16 +777,16 @@ jobs:
           echo "Thread newer-pagination gate required: $run_gate"
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
 
       - name: Download connected-test APKs
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: android-connected-test-apks
           path: android-connected-test-apks
 
       - name: Download shared atomic-sink test APK
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: android-shared-atomic-sink-test-apk
           path: android-shared-atomic-sink-test-apk
@@ -897,7 +897,7 @@ jobs:
 
       - name: Upload instrumentation output
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: first-character-baseline-instrumentation
           path: |
@@ -946,10 +946,10 @@ jobs:
         run: scripts/ci/test_assert_instrumentation_ok.sh
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
 
       - name: Download connected-test APKs
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: android-connected-test-apks
           path: android-connected-test-apks
@@ -994,7 +994,7 @@ jobs:
 
       - name: Upload API ${{ matrix.api-level }} attachment evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: attachment-public-downloads-api${{ matrix.api-level }}-evidence
           path: |
@@ -1022,10 +1022,10 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
 
       - name: Download connected-test APKs
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: android-connected-test-apks
           path: android-connected-test-apks
@@ -1059,7 +1059,7 @@ jobs:
 
       - name: Upload canonical-final actual-host evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: canonical-final-actual-host-evidence
           path: |
@@ -1135,7 +1135,7 @@ jobs:
 
       - name: Cache kuikly fork mavenLocal artifacts
         id: kuikly-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.m2/repository/com/tencent/kuikly-open
           key: kuikly-fork-mavenlocal-android-${{ runner.os }}-${{ steps.kuikly-fork.outputs.sha }}
@@ -1272,14 +1272,14 @@ jobs:
           } > compose/github-packages.properties
 
       - name: Restore kuikly fork mavenLocal artifacts
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: .ci-cache/maven/kuikly-ohos
           key: kuikly-fork-mavenlocal-ohos-${{ env.HARMONY_CACHE_EPOCH }}-${{ needs.kuikly-artifacts.outputs.kuikly-sha }}
           fail-on-cache-miss: true
 
       - name: Restore shared fork dependencies mavenLocal artifacts
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: .ci-cache/maven/fork-deps
           key: ${{ needs.fork-deps.outputs.forkdeps-key }}
@@ -1508,14 +1508,14 @@ jobs:
           } > compose/github-packages.properties
 
       - name: Restore kuikly fork mavenLocal artifacts
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: .ci-cache/maven/kuikly-ohos
           key: kuikly-fork-mavenlocal-ohos-${{ env.HARMONY_CACHE_EPOCH }}-${{ needs.kuikly-artifacts.outputs.kuikly-sha }}
           fail-on-cache-miss: true
 
       - name: Restore shared fork dependencies mavenLocal artifacts
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: .ci-cache/maven/fork-deps
           key: ${{ needs.fork-deps.outputs.forkdeps-key }}

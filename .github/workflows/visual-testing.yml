@@ -69,7 +69,7 @@ jobs:
           path: slock-source
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v5
         with:
           package_json_file: slock-source/package.json
 
@@ -112,7 +112,7 @@ jobs:
           exit "$status"
 
       - name: Upload react results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: visual-results-react
           path: slock-source/visual-testing-results/react
@@ -153,7 +153,7 @@ jobs:
           java-version: "17"
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
 
       - name: Install Android SDK packages
         run: sdkmanager "platform-tools" "build-tools;36.0.0"
@@ -181,7 +181,7 @@ jobs:
 
       - name: Cache kuikly fork mavenLocal artifacts
         id: kuikly-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.m2/repository/com/tencent/kuikly-open
           key: kuikly-fork-mavenlocal-android-${{ runner.os }}-${{ steps.kuikly-fork.outputs.sha }}
@@ -306,7 +306,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload APKs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: visual-test-apks
           path: |
@@ -346,7 +346,7 @@ jobs:
 
       - name: Setup Android SDK
         if: ${{ needs.android-build.outputs.method_filter == '' || matrix.shard == 0 }}
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
 
       - name: Install APK identity tools
         if: ${{ needs.android-build.outputs.method_filter == '' || matrix.shard == 0 }}
@@ -354,7 +354,7 @@ jobs:
 
       - name: Download APKs
         if: ${{ needs.android-build.outputs.method_filter == '' || matrix.shard == 0 }}
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: visual-test-apks
           path: apks
@@ -386,7 +386,7 @@ jobs:
 
       - name: Upload android results
         if: ${{ always() && (needs.android-build.outputs.method_filter == '' || matrix.shard == 0) }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: visual-results-android-shard-${{ matrix.shard }}
           path: visual-testing-results/android
@@ -394,7 +394,7 @@ jobs:
 
       - name: Upload capture logcat (per-case timing)
         if: ${{ always() && (needs.android-build.outputs.method_filter == '' || matrix.shard == 0) }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: visual-logcat-shard-${{ matrix.shard }}
           path: visual-testing-results/logcat-shard-${{ matrix.shard }}.txt
@@ -402,7 +402,7 @@ jobs:
 
       - name: Upload capture harness evidence
         if: ${{ always() && (needs.android-build.outputs.method_filter == '' || matrix.shard == 0) }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: visual-harness-shard-${{ matrix.shard }}
           path: |
@@ -510,7 +510,7 @@ jobs:
       # Same key prefix as the test.yml ios job so the two share the cache.
       - name: Cache kuikly fork mavenLocal artifacts
         id: kuikly-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.m2/repository/com/tencent/kuikly-open
           key: kuikly-fork-mavenlocal-android-${{ runner.os }}-${{ steps.kuikly-fork.outputs.sha }}
@@ -719,7 +719,7 @@ jobs:
 
       - name: Upload results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: visual-testing-results-ios
           path: visual-testing-results/
@@ -767,7 +767,7 @@ jobs:
           path: slock-source
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v5
         with:
           package_json_file: slock-source/package.json
 
@@ -802,14 +802,14 @@ jobs:
 
       - name: Download react results
         if: ${{ !inputs.site_only }}
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: visual-results-react
           path: mobile/visual-testing-results/react
 
       - name: Download android results (merge shards)
         if: ${{ !inputs.site_only }}
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           pattern: visual-results-android-shard-*
           merge-multiple: true
@@ -820,7 +820,7 @@ jobs:
       - name: Download ios results
         if: ${{ !inputs.site_only }}
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: visual-testing-results-ios
           path: mobile/visual-testing-results
@@ -895,7 +895,7 @@ jobs:
           echo "published=${{ inputs.publish || inputs.site_only || github.event_name == 'schedule' }}" >> "$GITHUB_OUTPUT"
 
       - name: Upload site artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: visual-testing-site
           path: mobile/artifacts/visual-testing-site
@@ -949,7 +949,7 @@ jobs:
           path: slock-source
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v5
         with:
           package_json_file: slock-source/package.json
 

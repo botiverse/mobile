@@ -197,7 +197,7 @@ jobs:
 
       - name: Upload probe evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ohos-macos-m4-hvf-probe
           path: ${{ runner.temp }}/ohos-macos-hvf-probe/
