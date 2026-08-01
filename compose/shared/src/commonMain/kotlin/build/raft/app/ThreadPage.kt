@@ -189,6 +189,7 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.movableContentOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -219,6 +220,7 @@ import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.BoxWithConstraints
 import com.tencent.kuikly.compose.foundation.layout.BoxScope
 import com.tencent.kuikly.compose.foundation.layout.Column
+import com.tencent.kuikly.compose.foundation.layout.ColumnScope
 import com.tencent.kuikly.compose.foundation.layout.PaddingValues
 import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.Spacer
@@ -747,6 +749,19 @@ internal enum class ThreadRouteMountPlan {
     LoadingShell,
     FeatureSurfaces
 }
+
+internal data class ThreadRouteScaffoldPlan(
+    val rootIdentity: String,
+    val mountLoadingBody: Boolean,
+    val mountFeatureBody: Boolean
+)
+
+internal fun ThreadRouteMountPlan.toThreadRouteScaffoldPlan(): ThreadRouteScaffoldPlan =
+    ThreadRouteScaffoldPlan(
+        rootIdentity = "thread-route-scaffold",
+        mountLoadingBody = this == ThreadRouteMountPlan.LoadingShell,
+        mountFeatureBody = this == ThreadRouteMountPlan.FeatureSurfaces
+    )
 
 internal data class ThreadFeatureOwnerMountPlan(
     val mountChatTimeline: Boolean,
@@ -5242,8 +5257,18 @@ internal fun SharedThreadRouteContent(
             }
         onDispose { canonicalFinalLifecycleEffects?.dispose(handle) }
     }
+    // Loading still returns before feature-owner construction, but the one movable
+    // scaffold instance keeps the route root/header composition when its lightweight
+    // body is replaced by the feature body after canonical access resolves.
+    val movableThreadRouteScaffold =
+        remember(threadInstanceKey) {
+            movableContentOf<ThreadRouteScaffoldSlots> { slots ->
+                ThreadRouteScaffold(slots)
+            }
+        }
     if (routeMountPlan == ThreadRouteMountPlan.LoadingShell) {
         ThreadDeferredLoadingRouteContent(
+            scaffold = movableThreadRouteScaffold,
             payload = payload,
             displayModel = headerDisplayModel,
             memberAvatarResolver = memberAvatarResolver,
@@ -7478,6 +7503,7 @@ internal fun SharedThreadRouteContent(
         )
         CompositionLocalProvider(*threadProvidedValues) {
             ThreadPageContent(
+            scaffold = movableThreadRouteScaffold,
             threadInstanceKey = threadInstanceKey,
             payload = renderedThread,
             timelineSlice = renderedTimelineSlice,
@@ -12285,39 +12311,75 @@ internal fun SharedThreadComposerAttachment.threadComposerUploadProgressPercent(
         .toInt()
 }
 
+private class ThreadRouteScaffoldSlots(
+    val scaffoldPlan: ThreadRouteScaffoldPlan,
+    val rootModifier: Modifier = Modifier,
+    val header: @Composable () -> Unit,
+    val body: @Composable ColumnScope.() -> Unit,
+    val overlays: @Composable BoxScope.() -> Unit = {}
+)
+
+@Composable
+private fun ThreadRouteScaffold(
+    slots: ThreadRouteScaffoldSlots
+) {
+    key(slots.scaffoldPlan.rootIdentity) {
+        Box(
+            modifier =
+                slots.rootModifier
+                    .fillMaxSize()
+                    .background(SlockColor.SurfaceWhite)
+        ) {
+            Column(
+                modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)
+            ) {
+                slots.header()
+                slots.body(this)
+            }
+            slots.overlays(this)
+        }
+    }
+}
+
 @Composable
 private fun ThreadDeferredLoadingRouteContent(
+    scaffold: @Composable (ThreadRouteScaffoldSlots) -> Unit,
     payload: KuiklyThreadScreenPayload,
     displayModel: ThreadHeaderDisplayModel,
     memberAvatarResolver: SlockMemberAvatarResolver,
     onBack: () -> Unit
 ) {
-    Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-        Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-            ThreadPageHeader(
-                payload = payload,
-                headerDisplay = displayModel,
-                activityMuteState = null,
-                memberAvatarResolver = memberAvatarResolver,
-                showActions = false,
-                onBack = onBack,
-                onOpenInChannel = {},
-                onOpenMemberProfile = {},
-                onOpenSearch = {},
-                onShowMembers = {},
-                onShowSettings = {}
-            )
-            Box(
-                modifier =
-                    Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .background(SlockColor.SurfaceWhite)
-            ) {
-                ThreadStateMessage(stringResource(MR.strings.thread_state_loading), null)
+    scaffold(
+        ThreadRouteScaffoldSlots(
+            scaffoldPlan = ThreadRouteMountPlan.LoadingShell.toThreadRouteScaffoldPlan(),
+            header = {
+                ThreadPageHeader(
+                    payload = payload,
+                    headerDisplay = displayModel,
+                    activityMuteState = null,
+                    memberAvatarResolver = memberAvatarResolver,
+                    showActions = false,
+                    onBack = onBack,
+                    onOpenInChannel = {},
+                    onOpenMemberProfile = {},
+                    onOpenSearch = {},
+                    onShowMembers = {},
+                    onShowSettings = {}
+                )
+            },
+            body = {
+                Box(
+                    modifier =
+                        Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .background(SlockColor.SurfaceWhite)
+                ) {
+                    ThreadStateMessage(stringResource(MR.strings.thread_state_loading), null)
+                }
             }
-        }
-    }
+        )
+    )
 }
 
 private class ThreadEventHandler(
@@ -12342,6 +12404,7 @@ private class ThreadEventHandler(
 
 @Composable
 private fun ThreadPageContent(
+    scaffold: @Composable (ThreadRouteScaffoldSlots) -> Unit,
     threadInstanceKey: String,
     payload: KuiklyThreadScreenPayload,
     timelineSlice: ThreadTimelineSlice,
@@ -13155,57 +13218,55 @@ private fun ThreadPageContent(
     }
     val composerSuggestionPortal =
         remember(threadInstanceKey) { ThreadComposerSuggestionPortalState() }
-    Box(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .background(SlockColor.SurfaceWhite)
-                .onGloballyPositioned { coordinates ->
+    scaffold(
+        ThreadRouteScaffoldSlots(
+            scaffoldPlan = ThreadRouteMountPlan.FeatureSurfaces.toThreadRouteScaffoldPlan(),
+            rootModifier =
+                Modifier.onGloballyPositioned { coordinates ->
                     onLayoutGeneration(coordinates.size.width, coordinates.size.height)
-                }
-    ) {
-        Column(
-            modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)
-        ) {
-            ThreadPageHeader(
-                payload = payload,
-                headerDisplay = headerDisplay,
-                activityMuteState = activityMuteState,
-                agentStatusResolver = agentStatusResolver,
-                memberAvatarResolver = memberAvatarResolver,
-                onBack = onBack,
-                onOpenInChannel = {
-                    onThreadEvent("openParentMessage", payload.originParentMessageId, null, null)
                 },
-                onOpenMemberProfile = onOpenMemberProfile,
-                onOpenSearch = {
-                    when (payload.threadHeaderSearchAction()) {
-                        ThreadHeaderSearchAction.ChannelSearch ->
-                            onThreadEvent("openChannelSearch", payload.threadChannelSearchChannelId(), null, null)
-                        ThreadHeaderSearchAction.InlineThreadSearch -> {
-                            if (selectedTab != KuiklyThreadTab.Chat) {
-                                onSelectedTabChanged(KuiklyThreadTab.Chat)
-                                onThreadEvent("selectTab", null, null, KuiklyThreadTab.Chat.wireValue)
+            header = {
+                ThreadPageHeader(
+                    payload = payload,
+                    headerDisplay = headerDisplay,
+                    activityMuteState = activityMuteState,
+                    agentStatusResolver = agentStatusResolver,
+                    memberAvatarResolver = memberAvatarResolver,
+                    onBack = onBack,
+                    onOpenInChannel = {
+                        onThreadEvent("openParentMessage", payload.originParentMessageId, null, null)
+                    },
+                    onOpenMemberProfile = onOpenMemberProfile,
+                    onOpenSearch = {
+                        when (payload.threadHeaderSearchAction()) {
+                            ThreadHeaderSearchAction.ChannelSearch ->
+                                onThreadEvent("openChannelSearch", payload.threadChannelSearchChannelId(), null, null)
+                            ThreadHeaderSearchAction.InlineThreadSearch -> {
+                                if (selectedTab != KuiklyThreadTab.Chat) {
+                                    onSelectedTabChanged(KuiklyThreadTab.Chat)
+                                    onThreadEvent("selectTab", null, null, KuiklyThreadTab.Chat.wireValue)
+                                }
+                                inlineSearchVisible = !inlineSearchVisible
                             }
-                            inlineSearchVisible = !inlineSearchVisible
+                            null -> Unit
                         }
-                        null -> Unit
-                    }
-                },
-                onShowMembers = {
-                    onThreadEvent("openMembersPager", null, null, null)
-                },
-                onShowSettings = {
-                    activeModal = "settings"
-                },
-                onToggleActivityMute = onToggleActivityMute,
-                onTitleClick =
-                    if (threadHeaderScrollToTopEnabled(payload.surfaceKind, selectedTab.wireValue)) {
-                        { threadHeaderScrollToTopRequest += 1 }
-                    } else {
-                        null
-                    }
-            )
+                    },
+                    onShowMembers = {
+                        onThreadEvent("openMembersPager", null, null, null)
+                    },
+                    onShowSettings = {
+                        activeModal = "settings"
+                    },
+                    onToggleActivityMute = onToggleActivityMute,
+                    onTitleClick =
+                        if (threadHeaderScrollToTopEnabled(payload.surfaceKind, selectedTab.wireValue)) {
+                            { threadHeaderScrollToTopRequest += 1 }
+                        } else {
+                            null
+                        }
+                )
+            },
+            body = {
             if (payload.showModeTabs) {
                 SlockTabbedScaffold(
                     tabs = availableTabs.map { it.toSlockTabSpec() },
@@ -13366,7 +13427,8 @@ private fun ThreadPageContent(
                     }
                 }
             }
-        }
+            },
+            overlays = {
         ThreadComposerSuggestionPortalHost(composerSuggestionPortal)
         val visibleForwardPickerSession = forwardPickerFlow.sessionKey
         if ((activeModal == "forwardTargets" || activeModal == "forwardNote") && visibleForwardPickerSession != null) {
@@ -13589,7 +13651,9 @@ private fun ThreadPageContent(
                     }
                 )
         }
-    }
+            }
+        )
+    )
 }
 
 @Composable
