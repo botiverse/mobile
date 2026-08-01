@@ -10,8 +10,11 @@ import android.os.Build
 import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowInsets
 import android.view.WindowInsetsController
+import android.view.inputmethod.EditorInfo
+import android.widget.EditText
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
@@ -23,6 +26,61 @@ import org.junit.Test
 import kotlin.math.abs
 
 class ThreadComposerSuggestionPopoverConnectedTest {
+    @Test
+    fun lateTypedMemberAndChannelCandidatesUseCurrentComposerDraft() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val device = UiDevice.getInstance(instrumentation)
+        val context = instrumentation.targetContext
+        val cases =
+            listOf(
+                LateTypedSuggestionCase(trigger = "@", candidateLabel = "Cindy", expectedText = "@Cindy "),
+                LateTypedSuggestionCase(trigger = "#", candidateLabel = "design", expectedText = "#design ")
+            )
+
+        cases.forEachIndexed { index, case ->
+            val intent =
+                Intent(context, SlockKuiklyActivity::class.java)
+                    .putExtra("pageName", SlockKuiklyPages.THREAD_COMPOSER_VISUAL)
+                    .putExtra(
+                        "pageData",
+                        JSONObject()
+                            .put("instanceId", "composer-late-suggestion-$index")
+                            .put("visualFixture", "empty")
+                            .toString()
+                    )
+                    .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
+
+            ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
+                waitUntil("empty composer should attach before '${case.trigger}'") {
+                    scenario.composerText() == ""
+                }
+                scenario.onActivity { activity ->
+                    val editor = requireNotNull(activity.window.decorView.findComposerEditText())
+                    assertTrue("composer should accept focus", editor.requestFocus())
+                    val inputConnection = requireNotNull(editor.onCreateInputConnection(EditorInfo()))
+                    assertTrue("IME should commit '${case.trigger}'", inputConnection.commitText(case.trigger, 1))
+                }
+
+                val candidate =
+                    requireNotNull(device.wait(Until.findObject(By.text(case.candidateLabel)), CandidateWaitMs)) {
+                        "${case.candidateLabel} should appear after late '${case.trigger}' input"
+                    }
+                candidate.click()
+
+                waitUntil("${case.candidateLabel} should update the current composer draft") {
+                    scenario.composerText() == case.expectedText
+                }
+                assertTrue(
+                    "${case.candidateLabel} selection should close its popover",
+                    device.wait(Until.gone(By.text(case.candidateLabel)), CandidateTapWaitMs)
+                )
+                scenario.onActivity { activity ->
+                    assertTrue("candidate selection should preserve composer focus", activity.window.decorView.findComposerEditText()?.hasFocus() == true)
+                }
+            }
+        }
+    }
+
     @Test
     fun openSuggestionCandidateMovesAndRemainsHittableAfterAncestorRelayout() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -305,6 +363,38 @@ class ThreadComposerSuggestionPopoverConnectedTest {
         assertTrue("$label candidate bounds are empty or inverted: $bounds", bounds.left < bounds.right && bounds.top < bounds.bottom)
     }
 
+    private fun ActivityScenario<SlockKuiklyActivity>.composerText(): String? {
+        var value: String? = null
+        onActivity { activity -> value = activity.window.decorView.findComposerEditText()?.text?.toString() }
+        return value
+    }
+
+    private fun View.findComposerEditText(): EditText? {
+        if (this is EditText) return this
+        if (this is ViewGroup) {
+            for (index in 0 until childCount) {
+                getChildAt(index).findComposerEditText()?.let { return it }
+            }
+        }
+        return null
+    }
+
+    private fun waitUntil(
+        message: String,
+        timeoutMs: Long = 12_000L,
+        stepMs: Long = 100L,
+        condition: () -> Boolean
+    ) {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val deadline = SystemClock.uptimeMillis() + timeoutMs
+        while (SystemClock.uptimeMillis() < deadline) {
+            instrumentation.waitForIdleSync()
+            if (condition()) return
+            SystemClock.sleep(stepMs)
+        }
+        throw AssertionError(message)
+    }
+
     private fun SlockKuiklyActivity.hideSystemBarsForSuggestionTest() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             window.insetsController?.let { controller ->
@@ -325,6 +415,7 @@ class ThreadComposerSuggestionPopoverConnectedTest {
 
     private data class DpRegion(val left: Float, val top: Float, val right: Float, val bottom: Float)
     private data class PixelRegion(val left: Int, val top: Int, val right: Int, val bottom: Int)
+    private data class LateTypedSuggestionCase(val trigger: String, val candidateLabel: String, val expectedText: String)
 
     private companion object {
         private const val RenderSettleMs = 2_000L

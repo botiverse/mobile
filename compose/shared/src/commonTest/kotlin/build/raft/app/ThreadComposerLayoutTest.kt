@@ -8,8 +8,10 @@ import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertSame
+import kotlin.test.assertTrue
 
 class ThreadComposerLayoutTest {
     @Test
@@ -21,6 +23,15 @@ class ThreadComposerLayoutTest {
             ThreadComposerSuggestionPresentation(
                 owner = owner,
                 anchorResolver = anchorRef.resolver(SlockPopoverLocalPoint.Exact(Offset.Zero)),
+                selectionContext =
+                    requireNotNull(
+                        threadComposerSuggestionSelectionContext(
+                            text = "@",
+                            selectionStart = 1,
+                            selectionEnd = 1,
+                            suggestionsEnabled = true
+                        )
+                    ),
                 contentSize = Size(320f, 240f),
                 panelState = ThreadComposerSuggestionPanelState.MemberLoading,
                 surface = ThreadComposerSurface(kind = KuiklyThreadSurfaceKind.Channel, channelId = "channel-1"),
@@ -32,8 +43,8 @@ class ThreadComposerLayoutTest {
                 channelErrorCode = null,
                 agentStatusResolver = EmptySlockAgentStatusResolver,
                 onDismiss = {},
-                onMemberClick = {},
-                onChannelClick = {}
+                onMemberClick = { _, _ -> },
+                onChannelClick = { _, _ -> }
             )
         val portal = ThreadComposerSuggestionPortalState()
 
@@ -43,6 +54,140 @@ class ThreadComposerLayoutTest {
 
         portal.clear(owner)
         assertNull(portal.presentation)
+    }
+
+    @Test
+    fun stableChannelCallbackUsesLatestDraftAfterInitialEmptyComposition() {
+        val channel = KuiklyComposerChannelItem(name = "design")
+        val committed = mutableListOf<KuiklyComposerSuggestionEdit>()
+        val dispatcher =
+            ThreadComposerSuggestionSelectionDispatcher(
+                initialText = "",
+                initialSelectionStart = 0,
+                initialSelectionEnd = 0,
+                initialSuggestionsEnabled = true
+            )
+        val stableCallback = dispatcher::selectChannel
+
+        dispatcher.updateDraft(text = "#", selectionStart = 1, selectionEnd = 1)
+        dispatcher.updateComposition(
+            suggestionsEnabled = true,
+            memberSuggestions = emptyList(),
+            channelSuggestions = listOf(channel),
+            onCommit = committed::add
+        )
+        val context =
+            requireNotNull(
+                threadComposerSuggestionSelectionContext(
+                    text = "#",
+                    selectionStart = 1,
+                    selectionEnd = 1,
+                    suggestionsEnabled = true
+                )
+            )
+
+        assertTrue(stableCallback(context, channel))
+        assertEquals(listOf(KuiklyComposerSuggestionEdit(text = "#design ", cursor = 8)), committed)
+    }
+
+    @Test
+    fun stableMemberCallbackUsesLatestDraftAfterInitialEmptyComposition() {
+        val member = KuiklyComposerMemberItem(displayName = "Artin", handle = "artin", memberId = "member-1")
+        val committed = mutableListOf<KuiklyComposerSuggestionEdit>()
+        val dispatcher =
+            ThreadComposerSuggestionSelectionDispatcher(
+                initialText = "",
+                initialSelectionStart = 0,
+                initialSelectionEnd = 0,
+                initialSuggestionsEnabled = true
+            )
+        val stableCallback = dispatcher::selectMember
+
+        dispatcher.updateDraft(text = "@", selectionStart = 1, selectionEnd = 1)
+        dispatcher.updateComposition(
+            suggestionsEnabled = true,
+            memberSuggestions = listOf(member),
+            channelSuggestions = emptyList(),
+            onCommit = committed::add
+        )
+        val context =
+            requireNotNull(
+                threadComposerSuggestionSelectionContext(
+                    text = "@",
+                    selectionStart = 1,
+                    selectionEnd = 1,
+                    suggestionsEnabled = true
+                )
+            )
+
+        assertTrue(stableCallback(context, member))
+        assertEquals(listOf(KuiklyComposerSuggestionEdit(text = "@artin ", cursor = 7)), committed)
+    }
+
+    @Test
+    fun stalePresentationIsRejectedAfterTextOrRangeChanges() {
+        val channel = KuiklyComposerChannelItem(name = "design")
+        val committed = mutableListOf<KuiklyComposerSuggestionEdit>()
+        val dispatcher =
+            ThreadComposerSuggestionSelectionDispatcher(
+                initialText = "#d",
+                initialSelectionStart = 2,
+                initialSelectionEnd = 2,
+                initialSuggestionsEnabled = true
+            )
+        dispatcher.updateComposition(
+            suggestionsEnabled = true,
+            memberSuggestions = emptyList(),
+            channelSuggestions = listOf(channel),
+            onCommit = committed::add
+        )
+        val oldContext =
+            requireNotNull(
+                threadComposerSuggestionSelectionContext(
+                    text = "#d",
+                    selectionStart = 2,
+                    selectionEnd = 2,
+                    suggestionsEnabled = true
+                )
+            )
+
+        dispatcher.updateDraft(text = "#de", selectionStart = 3, selectionEnd = 3)
+        assertFalse(dispatcher.selectChannel(oldContext, channel))
+        dispatcher.updateDraft(text = "#d", selectionStart = 1, selectionEnd = 1)
+        assertFalse(dispatcher.selectChannel(oldContext, channel))
+        assertEquals(emptyList(), committed)
+    }
+
+    @Test
+    fun candidateRemovedFromLatestCompositionIsRejectedByIdentity() {
+        val member = KuiklyComposerMemberItem(displayName = "Artin", handle = "artin", memberId = "member-1")
+        val replacement = KuiklyComposerMemberItem(displayName = "Other", handle = "other", memberId = "member-2")
+        val committed = mutableListOf<KuiklyComposerSuggestionEdit>()
+        val dispatcher =
+            ThreadComposerSuggestionSelectionDispatcher(
+                initialText = "@",
+                initialSelectionStart = 1,
+                initialSelectionEnd = 1,
+                initialSuggestionsEnabled = true
+            )
+        val context =
+            requireNotNull(
+                threadComposerSuggestionSelectionContext(
+                    text = "@",
+                    selectionStart = 1,
+                    selectionEnd = 1,
+                    suggestionsEnabled = true
+                )
+            )
+        dispatcher.updateComposition(
+            suggestionsEnabled = true,
+            memberSuggestions = listOf(replacement),
+            channelSuggestions = emptyList(),
+            onCommit = committed::add
+        )
+
+        assertFalse(dispatcher.selectMember(context, member))
+        assertEquals(emptyList(), committed)
     }
 
     @Test
