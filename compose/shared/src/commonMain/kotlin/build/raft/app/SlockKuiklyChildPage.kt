@@ -193,7 +193,7 @@ internal fun SlockKuiklyChildPage(
     onLoadSuccess: () -> Unit = {},
     onLoadFailure: () -> Unit = {}
 ) {
-    val pageDataText = remember(pageData.toString()) { pageData.toString() }
+    val pageDataText = remember(pageData.toString()) { slockEmbeddedChildPageData(pageData).toString() }
     MakeKuiklyComposeNode<SlockKuiklyChildPageView>(
         factory = { SlockKuiklyChildPageView() },
         modifier = modifier,
@@ -215,6 +215,11 @@ internal fun SlockKuiklyChildPage(
         }
     )
 }
+
+internal fun slockEmbeddedChildPageData(pageData: JSONObject): JSONObject =
+    JSONObject(pageData.toString()).apply {
+        put(SLOCK_EMBEDDED_CHILD_PAGE_PARAM, true)
+    }
 
 @Page(SLOCK_CHILD_PAGE_HOST_SMOKE_PAGE, supportInLocal = true)
 internal class SlockKuiklyChildPageHostSmokePage : BasePager() {

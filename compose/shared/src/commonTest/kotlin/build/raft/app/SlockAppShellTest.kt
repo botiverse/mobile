@@ -716,7 +716,8 @@ class SlockAppShellTest {
     }
 
     @Test
-    fun appShellLayerZOrderKeepsGlobalModalsAboveTabs() {
+    fun appShellLayerZOrderKeepsEnvironmentIndicatorAboveEveryInteractiveLayer() {
+        assertTrue(SlockEnvironmentIndicatorZIndex > SlockFloatingOverlayHostZIndex)
         assertTrue(SlockFloatingOverlayHostZIndex > SlockGlobalModalHostZIndex)
         assertTrue(SlockGlobalModalHostZIndex > SlockAppBottomTabBarHostZIndex)
         assertTrue(SlockAppBottomTabBarHostZIndex > SlockAppContentHostZIndex)

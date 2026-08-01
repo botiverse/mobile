@@ -1,13 +1,17 @@
 package build.raft.app.base
 
+import build.raft.app.SlockEnvironmentIndicatorHost
+import build.raft.app.slockEnvironmentIndicatorEnabledForPage
 import build.raft.app.slockLogError
 import build.raft.app.slockLogInfo
 import build.raft.app.SlockAdaptivePanePagerEvent
 import build.raft.app.slockPlatformConsumesSnapshotsFromKuikly
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.ComposeContainer
+import com.tencent.kuikly.compose.setContent as setKuiklyContent
 import com.tencent.kuikly.core.module.Module
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.IModuleCreator
@@ -33,6 +37,20 @@ internal abstract class BasePager : ComposeContainer() {
         registerSlockExternalModuleCreators()
         super.willInit()
         configureKuiklyThreadVerification()
+    }
+
+    /**
+     * Every Slock Compose page enters through this member rather than Kuikly's extension directly.
+     * Member functions win over extensions at each page's existing `setContent { ... }` callsite,
+     * which keeps the non-production environment indicator above auth and product surfaces alike.
+     */
+    protected fun setContent(content: @Composable () -> Unit) {
+        setKuiklyContent {
+            SlockEnvironmentIndicatorHost(
+                enabled = slockEnvironmentIndicatorEnabledForPage(pageData.params),
+                content = content,
+            )
+        }
     }
 
     private fun registerSlockExternalModuleCreators() {
