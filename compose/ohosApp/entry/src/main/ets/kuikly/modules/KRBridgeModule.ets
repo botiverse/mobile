@@ -280,7 +280,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     const context = getContext(this) as common.UIAbilityContext;
     try {
       const cacheDir = `${context.cacheDir}/slock-attachments`;
-      fs.mkdirSync(cacheDir, true);
+      ensureSlockOhosAttachmentCacheDirectory(cacheDir);
       this.cleanupAttachmentCache(cacheDir);
       const path = `${cacheDir}/${this.safeAttachmentCacheFileName(attachmentId, fileName, mimeType)}`;
       const cached = this.isUsableAttachmentCacheFile(path);
@@ -339,7 +339,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     const context = getContext(this) as common.UIAbilityContext;
     try {
       const cacheDir = `${context.cacheDir}/slock-attachments`;
-      fs.mkdirSync(cacheDir, true);
+      ensureSlockOhosAttachmentCacheDirectory(cacheDir);
       this.cleanupAttachmentCache(cacheDir);
       const requestedBaseName = requestedFileName.split("/").pop()?.split("\\").pop() ?? "attachment";
       const fileName = this.safeAttachmentPathSegment(requestedBaseName).slice(0, 120) || "attachment";
@@ -442,7 +442,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     const context = getContext(this) as common.UIAbilityContext;
     try {
       const cacheDir = `${context.cacheDir}/slock-attachments`;
-      fs.mkdirSync(cacheDir, true);
+      ensureSlockOhosAttachmentCacheDirectory(cacheDir);
       this.cleanupAttachmentCache(cacheDir);
       const path = `${cacheDir}/${ownerKey}-${this.safeAttachmentCacheFileName(attachmentId, requestedFileName, claimedMimeType)}`;
       const cached = this.isUsableAttachmentCacheFile(path);
