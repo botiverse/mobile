@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-01T22:13:00.960Z",
+  "generatedAt": "2026-08-01T22:16:21.424Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 80,
-    "ready": 77,
-    "pending": 3
+    "ready": 79,
+    "pending": 1
   },
   "cases": [
     {
@@ -565,15 +565,32 @@
     },
     {
       "id": "components.ui.select.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:e003e0031ffc1ffc1ffc1ffcffff7ffffffefffe80008001b004a0049ffc9ffc8ffc8ffcbffcbffc80008001fffeffff80008001a004bffc8ffc8ffc8ffc8ffc8000800080008001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffefffeffff0000000000000000fffffffffff81fffffffffff",
-      "generatedAt": "2026-08-01T22:12:59.969Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-01T22:14:58.658Z",
+      "severity": "low",
+      "summary": [
+        "Select component bounds and vertical spacing are visually aligned between React and Android.",
+        "Subtle font rendering difference: Android text appears slightly thinner/lighter weight than React.",
+        "Dropdown chevron icon position appears consistent; minor antialiasing variation at edges."
+      ],
+      "likelyCauses": [
+        "Different default font stacks between web (React) and native (Android) rendering.",
+        "Platform-specific font hinting and antialiasing behavior.",
+        "Possible missing explicit font-family/font-weight in Android Select component."
+      ],
+      "suggestedOwner": "android-ui",
+      "suggestedFixes": [
+        "Explicitly set fontFamily, fontWeight (e.g., 400), and fontSize to match the React baseline in the Android Select component.",
+        "Verify textStyle/textAppearance maps to the design token used by the React Select.",
+        "Run a font rendering comparison with the same font asset if available, or apply weight compensation."
+      ],
+      "intentional": [
+        "Differences are minor and likely platform-introduced font antialiasing only."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.09450339288465537
     },
     {
@@ -1659,7 +1676,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-01T22:13:00.302Z",
+      "generatedAt": "2026-08-01T22:16:20.761Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1704,15 +1721,39 @@
     },
     {
       "id": "components.channel.settings.panel",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:ffffffffffff000087fd0000fffd0000ffff0000ffff0000ffff7ffcffff7ff8cffd7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffc80017c7c80017ffc80017ffc800140008001000080014000ffff0000ffff4000ffff0000ffff0000ffff0000ffff0000ffff0000ff810000ffc10000ffffffff",
-      "generatedAt": "2026-08-01T22:13:00.449Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-01T22:14:59.204Z",
+      "severity": "high",
+      "summary": [
+        "Header is full-width yellow banner on React vs compact modal-style 'EDIT CHANNEL' header on Android",
+        "Android version rendered as a centered modal dialog over a dark backdrop instead of a full-screen panel",
+        "Footer button order differs: React places Cancel/Save Changes inside the main panel at the bottom; Android places them between form and actions",
+        "'CHANNEL INFO' section title and helper description text are missing on Android",
+        "'CHANNEL ACTIONS' section title and helper description text are missing on Android"
+      ],
+      "likelyCauses": [
+        "Android implementation rebuilt this screen as a modal dialog instead of reusing the React panel layout spec",
+        "Section headers and helper copy were dropped during native port",
+        "Extra 'Pin' action suggests Android shipped a different action set / API surface",
+        "Form dirty/validation state was not initialized, leaving Save Changes disabled",
+        "Header branding/title text was localized differently per platform without alignment to baseline"
+      ],
+      "suggestedOwner": "android-channel-settings",
+      "suggestedFixes": [
+        "Match React layout: render panel full-width without modal backdrop and remove the centered dialog frame",
+        "Restore 'CHANNEL INFO' and 'CHANNEL ACTIONS' section headers with their helper descriptions",
+        "Remove the 'Pin' action or gate it behind a flag so it does not appear in baseline parity",
+        "Reorder footer: move Cancel/Save Changes out of the form area or align position with React baseline",
+        "Ensure Save Changes is enabled by default when form values match the initial state"
+      ],
+      "intentional": [
+        "Pin action may be platform-specific and intentional on Android",
+        "Modal presentation may be intentional on Android per Material guidelines"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.9019045111462173
     },
     {

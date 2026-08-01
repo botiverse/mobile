@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>6176fdd2-20260801221112</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-08-01T22:13:08.148Z" data-timestamp="2026-08-01T22:13:08.148Z" title="2026-08-01T22:13:08.148Z">2026-08-01 22:13:08 UTC</time></p>
+    <p class="runMeta"><code>6176fdd2-20260801221112</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-08-01T22:16:28.632Z" data-timestamp="2026-08-01T22:16:28.632Z" title="2026-08-01T22:16:28.632Z">2026-08-01 22:16:28 UTC</time></p>
     <p class="runMeta">Comparisons: <a href="index.html">React vs Android</a> · <strong>React vs iOS</strong> · <a href="android__ios.html">Android vs iOS</a></p>
     <div class="summary">
       <span class="pill">Total 80</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 11</span>
       <span class="pill">Different 52</span>
       <span class="pill">Missing 6</span>
-      <span class="pill">AI 71/80 ready</span>
+      <span class="pill">AI 74/80 ready</span>
       <span class="pill">Matrix 89/108 active</span>
       <span class="pill">Components Parity 78/82 active</span><span class="pill">Screens Parity 11/26 active</span>
     </div>
@@ -644,7 +644,12 @@
       <p><code>RGB 98.0%</code><br/><code>Pixel 99.77%</code><br/><code>Mismatch 0.23%</code><br/><code>Raw 1026×276 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       <p class="cropInfo">pass: pixel perfect 99.77% &gt; 99% · raw different</p>
       <p class="cropInfo"><code>Crop component-bounds 342×92 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · low · design-system</summary>
+    <ul><li>Pixel similarity is very high (97.95%) with a mismatch ratio of only 0.23%, indicating near-identical rendering between React and iOS</li><li>No obvious visual differences in the status dot components themselves: same number of dots (4 small + 1 pulse), same color sequence (green, orange, gray, cyan, pink), same approximate sizes</li><li>No visible differences in typography weight, alignment, color, or component bounds for the Status Dot content</li></ul>
+    <strong>Suggested fixes</strong><ul><li>No action needed — current rendering is within acceptable tolerance (2% pixel ratio)</li><li>If tighter parity is desired, normalize the iOS screenshot crop to component bounds rather than full canvas</li><li>Consider exporting both views at matched DPR to reduce minor anti-aliasing differences</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.ui.status-dot.states.png" data-current-src="ios/components.ui.status-dot.states.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -1215,7 +1220,12 @@
       <p><code>RGB 92.1%</code><br/><code>Pixel 98.59%</code><br/><code>Mismatch 1.41%</code><br/><code>Raw 1026×582 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       <p class="cropInfo">basic pass: pixel perfect 98.59% &gt; 96% · raw different</p>
       <p class="cropInfo"><code>Crop component-bounds 342×194 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · low · design-system</summary>
+    <ul><li>Two select fields (selected 'Codex' and placeholder 'Select...') render with consistent bounds, colors, typography, and chevron icon position across React and iOS.</li><li>iOS canvas is full-screen (1170×2532) vs React element crop (342×194), but the select components themselves appear identical in proportion and styling.</li><li>Pixel-perfect similarity is ~98.6% with only ~1.4% mismatch, indicating near-equivalent rendering.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>No visual fixes required; the iOS Select component matches the React baseline within tolerance.</li><li>If aiming for stricter parity, apply a component-bounds crop to the iOS render so it matches the baseline's 342×194 element rect before comparing.</li><li>Optionally normalize font rendering by specifying explicit font-family and antialiasing settings on iOS.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.ui.select.states.png" data-current-src="ios/components.ui.select.states.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -4076,7 +4086,12 @@
       <p><code>RGB 64.5%</code><br/><code>Pixel 9.80%</code><br/><code>Mismatch 90.20%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop modal-viewport 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · mobile-ios</summary>
+    <ul><li>iOS renders a modal dialog overlay on a darkened backdrop, while React shows a full-page settings panel with a yellow header banner — fundamentally different layout pattern.</li><li>iOS title reads 'EDIT CHANNEL' whereas React header reads 'CHANNEL SETTINGS' with '#design' subtitle — different wording/copy.</li><li>iOS omits the 'CHANNEL INFO' section header and its description text ('Name and description shown across the workspace.').</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Decide on a consistent layout strategy: align iOS modal structure (title, sections, action footer) with the React full-page panel, or update React baseline if modal is intentional.</li><li>Unify section labels: rename iOS 'EDIT CHANNEL' to 'SETTINGS' (or vice versa) and restore the 'CHANNEL INFO' header + description on iOS.</li><li>Move Cancel and Save Changes to a consistent position (footer on both platforms) and ensure Save Changes is enabled when the form is dirty/valid.</li><li>Remove or add the 'Pin' action consistently across platforms based on product spec.</li><li>Restore the '#design' channel name subtitle on iOS to match React baseline.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.channel.settings.panel.png" data-current-src="ios/components.channel.settings.panel.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">

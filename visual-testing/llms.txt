@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-08-01 22:13:08 UTC
+Generated: 2026-08-01 22:16:28 UTC
 Latest run: 6176fdd2-20260801221112
 Latest commit: 6176fdd2-20260801221112
 Commit subject: fix(thread): keep reply preview taps parent-owned (#1849)
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 80, same 0, pass 0, basic-pass 0, different 79, missing 1
-AI analysis: ready 77 / total 80, pending 3
+AI analysis: ready 79 / total 80, pending 1
 Visual coverage matrix: active 89 / total 108, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 

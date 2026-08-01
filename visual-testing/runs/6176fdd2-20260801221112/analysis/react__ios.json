@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-01T22:13:03.564Z",
+  "generatedAt": "2026-08-01T22:16:24.055Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 80,
-    "ready": 71,
-    "pending": 9
+    "ready": 74,
+    "pending": 6
   },
   "cases": [
     {
@@ -274,15 +274,31 @@
     },
     {
       "id": "components.ui.status-dot.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0000000007fc0ffe03f407fe03fc07fe0000fffe0000fffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00000",
-      "generatedAt": "2026-08-01T22:13:02.272Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-01T22:15:09.363Z",
+      "severity": "low",
+      "summary": [
+        "Pixel similarity is very high (97.95%) with a mismatch ratio of only 0.23%, indicating near-identical rendering between React and iOS",
+        "No obvious visual differences in the status dot components themselves: same number of dots (4 small + 1 pulse), same color sequence (green, orange, gray, cyan, pink), same approximate sizes",
+        "No visible differences in typography weight, alignment, color, or component bounds for the Status Dot content",
+        "The iOS view is rendered at a much higher resolution (1170×2532) vs React (342×92) but no scaling artifacts are apparent"
+      ],
+      "likelyCauses": [
+        "Minor anti-aliasing or sub-pixel rendering differences between web (Canvas/HTML) and iOS rendering",
+        "Screenshot capture difference (element-bounds crop on React vs full-canvas on iOS) causes the iOS view to include much more whitespace",
+        "Possible 1px sub-pixel shift in dot positioning due to different rendering engines (WebKit vs native iOS)"
+      ],
+      "suggestedOwner": "design-system",
+      "suggestedFixes": [
+        "No action needed — current rendering is within acceptable tolerance (2% pixel ratio)",
+        "If tighter parity is desired, normalize the iOS screenshot crop to component bounds rather than full canvas",
+        "Consider exporting both views at matched DPR to reduce minor anti-aliasing differences"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.0022987807347997213
     },
     {
@@ -546,15 +562,31 @@
     },
     {
       "id": "components.ui.select.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ff83ffc00000002000000020000000200000002000000067ffcfffe0000fffe0001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
-      "generatedAt": "2026-08-01T22:13:02.443Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-01T22:15:09.531Z",
+      "severity": "low",
+      "summary": [
+        "Two select fields (selected 'Codex' and placeholder 'Select...') render with consistent bounds, colors, typography, and chevron icon position across React and iOS.",
+        "iOS canvas is full-screen (1170×2532) vs React element crop (342×194), but the select components themselves appear identical in proportion and styling.",
+        "Pixel-perfect similarity is ~98.6% with only ~1.4% mismatch, indicating near-equivalent rendering."
+      ],
+      "likelyCauses": [
+        "Resolution/canvas size difference between baseline element crop and full-screen iOS render is the dominant source of minor pixel diff (current crop is null).",
+        "Negligible sub-pixel/antialiasing differences in text and border rendering between platforms."
+      ],
+      "suggestedOwner": "design-system",
+      "suggestedFixes": [
+        "No visual fixes required; the iOS Select component matches the React baseline within tolerance.",
+        "If aiming for stricter parity, apply a component-bounds crop to the iOS render so it matches the baseline's 342×194 element rect before comparing.",
+        "Optionally normalize font rendering by specifying explicit font-family and antialiasing settings on iOS."
+      ],
+      "intentional": [
+        "Full-screen iOS canvas vs cropped React element is a test harness artifact, not a UI difference."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.014050242367777965
     },
     {
@@ -1610,7 +1642,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-01T22:13:02.933Z",
+      "generatedAt": "2026-08-01T22:16:23.458Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1658,15 +1690,39 @@
     },
     {
       "id": "components.channel.settings.panel",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:ffffffffffff000087fd0000fffd0000ffff0000ffff0000ffff7ffcffff7df8cffd7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffc80017c7c80017ffc80017ffc800140008001000080014000ffff0000ffff4000ffff0000ffff0000ffff0000ffff0000ffff0000ff810000ffc10000ffffffff",
-      "generatedAt": "2026-08-01T22:13:03.096Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-01T22:15:10.198Z",
+      "severity": "high",
+      "summary": [
+        "iOS renders a modal dialog overlay on a darkened backdrop, while React shows a full-page settings panel with a yellow header banner — fundamentally different layout pattern.",
+        "iOS title reads 'EDIT CHANNEL' whereas React header reads 'CHANNEL SETTINGS' with '#design' subtitle — different wording/copy.",
+        "iOS omits the 'CHANNEL INFO' section header and its description text ('Name and description shown across the workspace.').",
+        "iOS places Cancel and Save Changes buttons inline (top-right, below description), whereas React anchors them at the bottom of the panel; Save Changes is pink/red on React vs. disabled gray on iOS.",
+        "iOS adds a 'Pin' action button not present on the React baseline; React's Cancel button at bottom is missing on iOS."
+      ],
+      "likelyCauses": [
+        "iOS implementation built as a modal sheet rather than a full-page panel, altering the overall layout structure and content ordering.",
+        "Copy/labels differ between platforms ('SETTINGS' vs 'EDIT CHANNEL').",
+        "iOS omits the Channel Info section header and helper description.",
+        "Button placement and action set differ — iOS adds 'Pin' and relocates Cancel/Save inline, React keeps bottom-anchored actions.",
+        "Save Changes state not synced to dirty/form-valid state on iOS (rendered disabled)."
+      ],
+      "suggestedOwner": "mobile-ios",
+      "suggestedFixes": [
+        "Decide on a consistent layout strategy: align iOS modal structure (title, sections, action footer) with the React full-page panel, or update React baseline if modal is intentional.",
+        "Unify section labels: rename iOS 'EDIT CHANNEL' to 'SETTINGS' (or vice versa) and restore the 'CHANNEL INFO' header + description on iOS.",
+        "Move Cancel and Save Changes to a consistent position (footer on both platforms) and ensure Save Changes is enabled when the form is dirty/valid.",
+        "Remove or add the 'Pin' action consistently across platforms based on product spec.",
+        "Restore the '#design' channel name subtitle on iOS to match React baseline."
+      ],
+      "intentional": [
+        "Platform-specific modal vs full-page presentation may be intentional per platform conventions.",
+        "Native iOS cancel/confirm button placement near content may be a deliberate UX choice."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.9020182687244298
     },
     {
@@ -1989,7 +2045,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-01T22:13:03.182Z",
+      "generatedAt": "2026-08-01T22:16:23.709Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2002,7 +2058,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-01T22:13:03.182Z",
+      "generatedAt": "2026-08-01T22:16:23.709Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2015,7 +2071,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-01T22:13:03.182Z",
+      "generatedAt": "2026-08-01T22:16:23.709Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2028,7 +2084,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-01T22:13:03.182Z",
+      "generatedAt": "2026-08-01T22:16:23.709Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2041,7 +2097,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-01T22:13:03.182Z",
+      "generatedAt": "2026-08-01T22:16:23.709Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

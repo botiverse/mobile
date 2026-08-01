@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-01T22:13:08.148Z",
+  "generatedAt": "2026-08-01T22:16:28.632Z",
   "runId": "6176fdd2-20260801221112",
   "cases": [
     {
@@ -3135,17 +3135,30 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-01T22:13:03.810Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-01T22:15:09.363Z",
+            "severity": "low",
+            "summary": [
+              "Pixel similarity is very high (97.95%) with a mismatch ratio of only 0.23%, indicating near-identical rendering between React and iOS",
+              "No obvious visual differences in the status dot components themselves: same number of dots (4 small + 1 pulse), same color sequence (green, orange, gray, cyan, pink), same approximate sizes",
+              "No visible differences in typography weight, alignment, color, or component bounds for the Status Dot content",
+              "The iOS view is rendered at a much higher resolution (1170×2532) vs React (342×92) but no scaling artifacts are apparent"
+            ],
+            "likelyCauses": [
+              "Minor anti-aliasing or sub-pixel rendering differences between web (Canvas/HTML) and iOS rendering",
+              "Screenshot capture difference (element-bounds crop on React vs full-canvas on iOS) causes the iOS view to include much more whitespace",
+              "Possible 1px sub-pixel shift in dot positioning due to different rendering engines (WebKit vs native iOS)"
+            ],
+            "suggestedOwner": "design-system",
+            "suggestedFixes": [
+              "No action needed — current rendering is within acceptable tolerance (2% pixel ratio)",
+              "If tighter parity is desired, normalize the iOS screenshot crop to component bounds rather than full canvas",
+              "Consider exporting both views at matched DPR to reduce minor anti-aliasing differences"
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -3220,17 +3233,30 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-01T22:13:03.810Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-08-01T22:15:09.363Z",
+            "severity": "low",
+            "summary": [
+              "Pixel similarity is very high (97.95%) with a mismatch ratio of only 0.23%, indicating near-identical rendering between React and iOS",
+              "No obvious visual differences in the status dot components themselves: same number of dots (4 small + 1 pulse), same color sequence (green, orange, gray, cyan, pink), same approximate sizes",
+              "No visible differences in typography weight, alignment, color, or component bounds for the Status Dot content",
+              "The iOS view is rendered at a much higher resolution (1170×2532) vs React (342×92) but no scaling artifacts are apparent"
+            ],
+            "likelyCauses": [
+              "Minor anti-aliasing or sub-pixel rendering differences between web (Canvas/HTML) and iOS rendering",
+              "Screenshot capture difference (element-bounds crop on React vs full-canvas on iOS) causes the iOS view to include much more whitespace",
+              "Possible 1px sub-pixel shift in dot positioning due to different rendering engines (WebKit vs native iOS)"
+            ],
+            "suggestedOwner": "design-system",
+            "suggestedFixes": [
+              "No action needed — current rendering is within acceptable tolerance (2% pixel ratio)",
+              "If tighter parity is desired, normalize the iOS screenshot crop to component bounds rather than full canvas",
+              "Consider exporting both views at matched DPR to reduce minor anti-aliasing differences"
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {
@@ -6312,17 +6338,31 @@
         "currentHeight": 582
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-08-01T22:13:01.060Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
-        "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "status": "ready",
+        "generatedAt": "2026-08-01T22:14:58.658Z",
+        "severity": "low",
+        "summary": [
+          "Select component bounds and vertical spacing are visually aligned between React and Android.",
+          "Subtle font rendering difference: Android text appears slightly thinner/lighter weight than React.",
+          "Dropdown chevron icon position appears consistent; minor antialiasing variation at edges."
+        ],
+        "likelyCauses": [
+          "Different default font stacks between web (React) and native (Android) rendering.",
+          "Platform-specific font hinting and antialiasing behavior.",
+          "Possible missing explicit font-family/font-weight in Android Select component."
+        ],
+        "suggestedOwner": "android-ui",
+        "suggestedFixes": [
+          "Explicitly set fontFamily, fontWeight (e.g., 400), and fontSize to match the React baseline in the Android Select component.",
+          "Verify textStyle/textAppearance maps to the design token used by the React Select.",
+          "Run a font rendering comparison with the same font asset if available, or apply weight compensation."
+        ],
+        "intentional": [
+          "Differences are minor and likely platform-introduced font antialiasing only."
+        ],
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -6409,17 +6449,31 @@
             "currentHeight": 582
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-01T22:13:01.060Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-01T22:14:58.658Z",
+            "severity": "low",
+            "summary": [
+              "Select component bounds and vertical spacing are visually aligned between React and Android.",
+              "Subtle font rendering difference: Android text appears slightly thinner/lighter weight than React.",
+              "Dropdown chevron icon position appears consistent; minor antialiasing variation at edges."
+            ],
+            "likelyCauses": [
+              "Different default font stacks between web (React) and native (Android) rendering.",
+              "Platform-specific font hinting and antialiasing behavior.",
+              "Possible missing explicit font-family/font-weight in Android Select component."
+            ],
+            "suggestedOwner": "android-ui",
+            "suggestedFixes": [
+              "Explicitly set fontFamily, fontWeight (e.g., 400), and fontSize to match the React baseline in the Android Select component.",
+              "Verify textStyle/textAppearance maps to the design token used by the React Select.",
+              "Run a font rendering comparison with the same font asset if available, or apply weight compensation."
+            ],
+            "intentional": [
+              "Differences are minor and likely platform-introduced font antialiasing only."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -6442,17 +6496,30 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-01T22:13:03.969Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-01T22:15:09.531Z",
+            "severity": "low",
+            "summary": [
+              "Two select fields (selected 'Codex' and placeholder 'Select...') render with consistent bounds, colors, typography, and chevron icon position across React and iOS.",
+              "iOS canvas is full-screen (1170×2532) vs React element crop (342×194), but the select components themselves appear identical in proportion and styling.",
+              "Pixel-perfect similarity is ~98.6% with only ~1.4% mismatch, indicating near-equivalent rendering."
+            ],
+            "likelyCauses": [
+              "Resolution/canvas size difference between baseline element crop and full-screen iOS render is the dominant source of minor pixel diff (current crop is null).",
+              "Negligible sub-pixel/antialiasing differences in text and border rendering between platforms."
+            ],
+            "suggestedOwner": "design-system",
+            "suggestedFixes": [
+              "No visual fixes required; the iOS Select component matches the React baseline within tolerance.",
+              "If aiming for stricter parity, apply a component-bounds crop to the iOS render so it matches the baseline's 342×194 element rect before comparing.",
+              "Optionally normalize font rendering by specifying explicit font-family and antialiasing settings on iOS."
+            ],
+            "intentional": [
+              "Full-screen iOS canvas vs cropped React element is a test harness artifact, not a UI difference."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -6526,17 +6593,30 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-01T22:13:03.969Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-01T22:15:09.531Z",
+            "severity": "low",
+            "summary": [
+              "Two select fields (selected 'Codex' and placeholder 'Select...') render with consistent bounds, colors, typography, and chevron icon position across React and iOS.",
+              "iOS canvas is full-screen (1170×2532) vs React element crop (342×194), but the select components themselves appear identical in proportion and styling.",
+              "Pixel-perfect similarity is ~98.6% with only ~1.4% mismatch, indicating near-equivalent rendering."
+            ],
+            "likelyCauses": [
+              "Resolution/canvas size difference between baseline element crop and full-screen iOS render is the dominant source of minor pixel diff (current crop is null).",
+              "Negligible sub-pixel/antialiasing differences in text and border rendering between platforms."
+            ],
+            "suggestedOwner": "design-system",
+            "suggestedFixes": [
+              "No visual fixes required; the iOS Select component matches the React baseline within tolerance.",
+              "If aiming for stricter parity, apply a component-bounds crop to the iOS render so it matches the baseline's 342×194 element rect before comparing.",
+              "Optionally normalize font rendering by specifying explicit font-family and antialiasing settings on iOS."
+            ],
+            "intentional": [
+              "Full-screen iOS canvas vs cropped React element is a test harness artifact, not a UI difference."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {
@@ -18626,7 +18706,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-08-01T22:13:00.966Z",
+        "generatedAt": "2026-08-01T22:16:21.430Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -18687,7 +18767,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-01T22:13:00.966Z",
+            "generatedAt": "2026-08-01T22:16:21.430Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -18709,7 +18789,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-01T22:13:03.570Z",
+            "generatedAt": "2026-08-01T22:16:24.059Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -18784,7 +18864,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-01T22:13:03.570Z",
+            "generatedAt": "2026-08-01T22:16:24.059Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -19286,17 +19366,38 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-08-01T22:13:01.542Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
-        "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "status": "ready",
+        "generatedAt": "2026-08-01T22:14:59.204Z",
+        "severity": "high",
+        "summary": [
+          "Header is full-width yellow banner on React vs compact modal-style 'EDIT CHANNEL' header on Android",
+          "Android version rendered as a centered modal dialog over a dark backdrop instead of a full-screen panel",
+          "Footer button order differs: React places Cancel/Save Changes inside the main panel at the bottom; Android places them between form and actions",
+          "'CHANNEL INFO' section title and helper description text are missing on Android",
+          "'CHANNEL ACTIONS' section title and helper description text are missing on Android"
+        ],
+        "likelyCauses": [
+          "Android implementation rebuilt this screen as a modal dialog instead of reusing the React panel layout spec",
+          "Section headers and helper copy were dropped during native port",
+          "Extra 'Pin' action suggests Android shipped a different action set / API surface",
+          "Form dirty/validation state was not initialized, leaving Save Changes disabled",
+          "Header branding/title text was localized differently per platform without alignment to baseline"
+        ],
+        "suggestedOwner": "android-channel-settings",
+        "suggestedFixes": [
+          "Match React layout: render panel full-width without modal backdrop and remove the centered dialog frame",
+          "Restore 'CHANNEL INFO' and 'CHANNEL ACTIONS' section headers with their helper descriptions",
+          "Remove the 'Pin' action or gate it behind a flag so it does not appear in baseline parity",
+          "Reorder footer: move Cancel/Save Changes out of the form area or align position with React baseline",
+          "Ensure Save Changes is enabled by default when form values match the initial state"
+        ],
+        "intentional": [
+          "Pin action may be platform-specific and intentional on Android",
+          "Modal presentation may be intentional on Android per Material guidelines"
+        ],
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -19383,17 +19484,38 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-01T22:13:01.542Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-01T22:14:59.204Z",
+            "severity": "high",
+            "summary": [
+              "Header is full-width yellow banner on React vs compact modal-style 'EDIT CHANNEL' header on Android",
+              "Android version rendered as a centered modal dialog over a dark backdrop instead of a full-screen panel",
+              "Footer button order differs: React places Cancel/Save Changes inside the main panel at the bottom; Android places them between form and actions",
+              "'CHANNEL INFO' section title and helper description text are missing on Android",
+              "'CHANNEL ACTIONS' section title and helper description text are missing on Android"
+            ],
+            "likelyCauses": [
+              "Android implementation rebuilt this screen as a modal dialog instead of reusing the React panel layout spec",
+              "Section headers and helper copy were dropped during native port",
+              "Extra 'Pin' action suggests Android shipped a different action set / API surface",
+              "Form dirty/validation state was not initialized, leaving Save Changes disabled",
+              "Header branding/title text was localized differently per platform without alignment to baseline"
+            ],
+            "suggestedOwner": "android-channel-settings",
+            "suggestedFixes": [
+              "Match React layout: render panel full-width without modal backdrop and remove the centered dialog frame",
+              "Restore 'CHANNEL INFO' and 'CHANNEL ACTIONS' section headers with their helper descriptions",
+              "Remove the 'Pin' action or gate it behind a flag so it does not appear in baseline parity",
+              "Reorder footer: move Cancel/Save Changes out of the form area or align position with React baseline",
+              "Ensure Save Changes is enabled by default when form values match the initial state"
+            ],
+            "intentional": [
+              "Pin action may be platform-specific and intentional on Android",
+              "Modal presentation may be intentional on Android per Material guidelines"
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -19416,17 +19538,38 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-01T22:13:04.616Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-01T22:15:10.198Z",
+            "severity": "high",
+            "summary": [
+              "iOS renders a modal dialog overlay on a darkened backdrop, while React shows a full-page settings panel with a yellow header banner — fundamentally different layout pattern.",
+              "iOS title reads 'EDIT CHANNEL' whereas React header reads 'CHANNEL SETTINGS' with '#design' subtitle — different wording/copy.",
+              "iOS omits the 'CHANNEL INFO' section header and its description text ('Name and description shown across the workspace.').",
+              "iOS places Cancel and Save Changes buttons inline (top-right, below description), whereas React anchors them at the bottom of the panel; Save Changes is pink/red on React vs. disabled gray on iOS.",
+              "iOS adds a 'Pin' action button not present on the React baseline; React's Cancel button at bottom is missing on iOS."
+            ],
+            "likelyCauses": [
+              "iOS implementation built as a modal sheet rather than a full-page panel, altering the overall layout structure and content ordering.",
+              "Copy/labels differ between platforms ('SETTINGS' vs 'EDIT CHANNEL').",
+              "iOS omits the Channel Info section header and helper description.",
+              "Button placement and action set differ — iOS adds 'Pin' and relocates Cancel/Save inline, React keeps bottom-anchored actions.",
+              "Save Changes state not synced to dirty/form-valid state on iOS (rendered disabled)."
+            ],
+            "suggestedOwner": "mobile-ios",
+            "suggestedFixes": [
+              "Decide on a consistent layout strategy: align iOS modal structure (title, sections, action footer) with the React full-page panel, or update React baseline if modal is intentional.",
+              "Unify section labels: rename iOS 'EDIT CHANNEL' to 'SETTINGS' (or vice versa) and restore the 'CHANNEL INFO' header + description on iOS.",
+              "Move Cancel and Save Changes to a consistent position (footer on both platforms) and ensure Save Changes is enabled when the form is dirty/valid.",
+              "Remove or add the 'Pin' action consistently across platforms based on product spec.",
+              "Restore the '#design' channel name subtitle on iOS to match React baseline."
+            ],
+            "intentional": [
+              "Platform-specific modal vs full-page presentation may be intentional per platform conventions.",
+              "Native iOS cancel/confirm button placement near content may be a deliberate UX choice."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -19497,17 +19640,38 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-08-01T22:13:04.616Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-08-01T22:15:10.198Z",
+            "severity": "high",
+            "summary": [
+              "iOS renders a modal dialog overlay on a darkened backdrop, while React shows a full-page settings panel with a yellow header banner — fundamentally different layout pattern.",
+              "iOS title reads 'EDIT CHANNEL' whereas React header reads 'CHANNEL SETTINGS' with '#design' subtitle — different wording/copy.",
+              "iOS omits the 'CHANNEL INFO' section header and its description text ('Name and description shown across the workspace.').",
+              "iOS places Cancel and Save Changes buttons inline (top-right, below description), whereas React anchors them at the bottom of the panel; Save Changes is pink/red on React vs. disabled gray on iOS.",
+              "iOS adds a 'Pin' action button not present on the React baseline; React's Cancel button at bottom is missing on iOS."
+            ],
+            "likelyCauses": [
+              "iOS implementation built as a modal sheet rather than a full-page panel, altering the overall layout structure and content ordering.",
+              "Copy/labels differ between platforms ('SETTINGS' vs 'EDIT CHANNEL').",
+              "iOS omits the Channel Info section header and helper description.",
+              "Button placement and action set differ — iOS adds 'Pin' and relocates Cancel/Save inline, React keeps bottom-anchored actions.",
+              "Save Changes state not synced to dirty/form-valid state on iOS (rendered disabled)."
+            ],
+            "suggestedOwner": "mobile-ios",
+            "suggestedFixes": [
+              "Decide on a consistent layout strategy: align iOS modal structure (title, sections, action footer) with the React full-page panel, or update React baseline if modal is intentional.",
+              "Unify section labels: rename iOS 'EDIT CHANNEL' to 'SETTINGS' (or vice versa) and restore the 'CHANNEL INFO' header + description on iOS.",
+              "Move Cancel and Save Changes to a consistent position (footer on both platforms) and ensure Save Changes is enabled when the form is dirty/valid.",
+              "Remove or add the 'Pin' action consistently across platforms based on product spec.",
+              "Restore the '#design' channel name subtitle on iOS to match React baseline."
+            ],
+            "intentional": [
+              "Platform-specific modal vs full-page presentation may be intentional per platform conventions.",
+              "Native iOS cancel/confirm button placement near content may be a deliberate UX choice."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {
@@ -23222,7 +23386,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-01T22:13:03.570Z",
+            "generatedAt": "2026-08-01T22:16:24.059Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -23244,7 +23408,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-01T22:13:06.595Z",
+            "generatedAt": "2026-08-01T22:16:27.071Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -23269,7 +23433,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-01T22:13:03.570Z",
+            "generatedAt": "2026-08-01T22:16:24.059Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -23292,7 +23456,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-01T22:13:06.595Z",
+            "generatedAt": "2026-08-01T22:16:27.071Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -23492,7 +23656,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-01T22:13:03.570Z",
+            "generatedAt": "2026-08-01T22:16:24.059Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -23514,7 +23678,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-01T22:13:06.595Z",
+            "generatedAt": "2026-08-01T22:16:27.071Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -23539,7 +23703,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-01T22:13:03.570Z",
+            "generatedAt": "2026-08-01T22:16:24.059Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -23562,7 +23726,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-01T22:13:06.595Z",
+            "generatedAt": "2026-08-01T22:16:27.071Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -23762,7 +23926,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-01T22:13:03.570Z",
+            "generatedAt": "2026-08-01T22:16:24.059Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -23784,7 +23948,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-01T22:13:06.595Z",
+            "generatedAt": "2026-08-01T22:16:27.071Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -23809,7 +23973,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-01T22:13:03.570Z",
+            "generatedAt": "2026-08-01T22:16:24.059Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -23832,7 +23996,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-01T22:13:06.595Z",
+            "generatedAt": "2026-08-01T22:16:27.071Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -24028,7 +24192,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-01T22:13:03.570Z",
+            "generatedAt": "2026-08-01T22:16:24.059Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -24050,7 +24214,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-01T22:13:06.595Z",
+            "generatedAt": "2026-08-01T22:16:27.071Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -24075,7 +24239,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-01T22:13:03.570Z",
+            "generatedAt": "2026-08-01T22:16:24.059Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -24098,7 +24262,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-01T22:13:06.595Z",
+            "generatedAt": "2026-08-01T22:16:27.071Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -24294,7 +24458,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-01T22:13:03.570Z",
+            "generatedAt": "2026-08-01T22:16:24.059Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -24316,7 +24480,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-01T22:13:06.595Z",
+            "generatedAt": "2026-08-01T22:16:27.071Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -24341,7 +24505,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-01T22:13:03.570Z",
+            "generatedAt": "2026-08-01T22:16:24.059Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -24364,7 +24528,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-08-01T22:13:06.595Z",
+            "generatedAt": "2026-08-01T22:16:27.071Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
