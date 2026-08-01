@@ -2044,6 +2044,9 @@ class AuthDataSourceTest {
             return socialCompleteResponse
         }
 
+        override suspend fun socialAuthProviders(platform: String): AuthNetworkResponse =
+            AuthNetworkResponse(code = 501, bodyText = null)
+
         override suspend fun startMobileOAuth(bodyText: String, authorization: String?): AuthNetworkResponse {
             mobileOAuthStartBody = bodyText
             return mobileOAuthStartResponse

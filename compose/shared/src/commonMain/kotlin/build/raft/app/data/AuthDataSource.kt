@@ -54,6 +54,21 @@ class SharedAuthDataSource(
         diagnosticsLogger(message)
     }
 
+    /**
+     * Backend-advertised, platform-gated social provider ids. Returns null on any
+     * failure so callers can stay fail-closed (provider hidden until a probe succeeds).
+     */
+    suspend fun probeBackendSocialProviders(platform: String): Set<String>? =
+        when (val result = api.fetchSocialAuthProviders(platform)) {
+            is AuthApiResult.Success -> result.data
+            is AuthApiResult.Failure -> {
+                diagnosticsLogger(
+                    "auth_social_providers_probe platform=$platform result=failure http=${result.code}"
+                )
+                null
+            }
+        }
+
     suspend fun login(email: String, password: String): SharedAuthResult<StoredAuthSession> {
         if (email.isBlank() || password.isBlank()) {
             return SharedAuthResult.Failure(
@@ -1505,6 +1520,7 @@ private fun String.authBodyDiagnostics(): String {
 interface SlockAuthApi {
     suspend fun login(email: String, password: String): AuthApiResult<AuthLoginResponse>
     suspend fun completeSocialLogin(provider: String, bodyText: String): AuthApiResult<AuthSocialCompleteResponse>
+    suspend fun fetchSocialAuthProviders(platform: String): AuthApiResult<Set<String>>
     suspend fun startMobileOAuth(
         provider: String,
         mode: String,
@@ -1579,6 +1595,20 @@ class SlockAuthApiClient(
                 diagnosticsLogger
             ) {
                 it.toDomain()
+            }
+
+    override suspend fun fetchSocialAuthProviders(platform: String): AuthApiResult<Set<String>> =
+        transport.socialAuthProviders(platform)
+            .mapAuthBody(
+                "auth_social_providers_contract_mismatch",
+                AuthSocialProvidersDto.serializer(),
+                diagnosticsLogger
+            ) { dto ->
+                dto.providers
+                    .filter { it.enabled }
+                    .map { it.id.trim().lowercase() }
+                    .filter { it.isNotBlank() }
+                    .toSet()
             }
 
     override suspend fun startMobileOAuth(
@@ -1817,6 +1847,17 @@ data class AuthLoginResponse(
 )
 
 internal const val QA_BOOTSTRAP_LOGIN_PROTOCOL = "qa-bootstrap-login/v1"
+
+@Serializable
+private data class AuthSocialProviderEntryDto(
+    val id: String,
+    val enabled: Boolean = false
+)
+
+@Serializable
+private data class AuthSocialProvidersDto(
+    val providers: List<AuthSocialProviderEntryDto> = emptyList()
+)
 
 @Serializable
 data class QaBootstrapLoginEnvelope(

@@ -19,6 +19,8 @@ import kotlinx.coroutines.flow.asStateFlow
  */
 data class SharedAuthRuntimeCapabilities(
     val socialProviderIds: Set<String> = emptySet(),
+    /** Backend `/auth/providers?platform=…` result; null until a probe succeeds (fail-closed). */
+    val backendEnabledSocialProviderIds: Set<String>? = null,
     val localAppleSignInOverride: Boolean = false
 )
 
@@ -46,6 +48,12 @@ class SharedAuthRuntimeCapabilityStore {
     fun setLocalAppleSignInOverride(enabled: Boolean): SharedAuthRuntimeCapabilities =
         synchronized(lock) {
             _state.value = _state.value.copy(localAppleSignInOverride = enabled)
+            _state.value
+        }
+
+    fun setBackendEnabledSocialProviders(providerIds: Set<String>): SharedAuthRuntimeCapabilities =
+        synchronized(lock) {
+            _state.value = _state.value.copy(backendEnabledSocialProviderIds = providerIds)
             _state.value
         }
 

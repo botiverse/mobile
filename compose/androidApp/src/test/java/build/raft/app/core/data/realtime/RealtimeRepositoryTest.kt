@@ -2094,6 +2094,9 @@ class RealtimeRepositoryTest {
         ): AuthApiResult<AuthSocialCompleteResponse> =
             AuthApiResult.Failure(404)
 
+        override suspend fun fetchSocialAuthProviders(platform: String): AuthApiResult<Set<String>> =
+            AuthApiResult.Failure(404)
+
         override suspend fun startMobileOAuth(
             provider: String,
             mode: String,

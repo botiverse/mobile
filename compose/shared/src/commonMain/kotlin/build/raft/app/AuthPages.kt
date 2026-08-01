@@ -237,6 +237,14 @@ private fun LoginScreen() {
         pageData = pager.pageData.params
     )
     val authRuntimeCapabilities by sharedStores.authRuntimeCapabilityStore.state.collectAsState()
+    // Probe the backend platform gate once per login composition; Apple stays hidden
+    // until this succeeds (fail-closed) unless the diagnostics override forces it.
+    LaunchedEffect(bridge) {
+        val probed = currentEnvironmentAuthDataSource(bridge).probeBackendSocialProviders("mobile")
+        if (probed != null) {
+            sharedStores.authRuntimeCapabilityStore.setBackendEnabledSocialProviders(probed)
+        }
+    }
     val linkNavigator =
         rememberSlockLinkNavigator(
             pager = pager,
@@ -2071,8 +2079,8 @@ private fun Pager.closeAuthSubPage() {
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
 }
 
-internal fun SharedAuthRuntimeCapabilities.socialAuthProviders(): Set<AuthProvider> =
-    (if (localAppleSignInOverride) socialProviderIds + AuthProvider.Apple.providerId() else socialProviderIds)
+internal fun SharedAuthRuntimeCapabilities.socialAuthProviders(): Set<AuthProvider> {
+    val hostProviders = socialProviderIds
         .mapNotNull { raw ->
             when (raw.trim().lowercase()) {
                 AuthProvider.Google.providerId() -> AuthProvider.Google
@@ -2082,6 +2090,13 @@ internal fun SharedAuthRuntimeCapabilities.socialAuthProviders(): Set<AuthProvid
             }
         }
         .toSet()
+    // Apple renders only when the backend platform gate says available, or the
+    // signed-out diagnostics override forces it locally. Other providers stay
+    // host-advertised because the backend does not flag-gate them.
+    val appleAllowed = localAppleSignInOverride ||
+        backendEnabledSocialProviderIds?.contains(AuthProvider.Apple.providerId()) == true
+    return if (appleAllowed) hostProviders + AuthProvider.Apple else hostProviders - AuthProvider.Apple
+}
 
 private fun AuthProvider.providerId(): String =
     when (this) {

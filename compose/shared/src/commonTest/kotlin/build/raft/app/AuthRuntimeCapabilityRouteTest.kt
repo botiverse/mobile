@@ -61,11 +61,43 @@ class AuthRuntimeCapabilityRouteTest {
     }
 
     @Test
-    fun localAppleOverrideAddsAppleOnlyToEffectiveProvidersAndSurvivesHostSeeds() {
+    fun appleStaysHiddenUntilBackendGateOrLocalOverrideAdmitsIt() {
+        val store = SharedAuthRuntimeCapabilityStore()
+        store.seedFromAuthPageData(JSONObject().put(AUTH_SOCIAL_PROVIDERS_KEY, "google,github,apple"))
+
+        // Fail-closed before any backend probe: Apple stays hidden even though the
+        // host advertises it; Google/GitHub stay host-driven.
+        assertEquals(setOf(AuthProvider.Google, AuthProvider.GitHub), store.current().socialAuthProviders())
+
+        // A backend probe without Apple keeps it hidden.
+        store.setBackendEnabledSocialProviders(setOf("google", "github"))
+        assertEquals(setOf(AuthProvider.Google, AuthProvider.GitHub), store.current().socialAuthProviders())
+
+        // Backend platform gate opens Apple.
+        store.setBackendEnabledSocialProviders(setOf("google", "github", "apple"))
+        assertEquals(
+            setOf(AuthProvider.Google, AuthProvider.GitHub, AuthProvider.Apple),
+            store.current().socialAuthProviders()
+        )
+
+        // A later probe narrowing the set closes Apple again (flag rolled back).
+        store.setBackendEnabledSocialProviders(setOf("google", "github"))
+        assertEquals(setOf(AuthProvider.Google, AuthProvider.GitHub), store.current().socialAuthProviders())
+
+        // The signed-out diagnostics override forces Apple locally without any backend signal.
+        store.setLocalAppleSignInOverride(true)
+        assertEquals(
+            setOf(AuthProvider.Google, AuthProvider.GitHub, AuthProvider.Apple),
+            store.current().socialAuthProviders()
+        )
+        store.setLocalAppleSignInOverride(false)
+        assertEquals(setOf(AuthProvider.Google, AuthProvider.GitHub), store.current().socialAuthProviders())
+    }
+
+    @Test
+    fun localAppleOverrideSurvivesHostSeedsAndDoesNotDuplicate() {
         val store = SharedAuthRuntimeCapabilityStore()
         store.seedFromAuthPageData(JSONObject().put(AUTH_SOCIAL_PROVIDERS_KEY, "google,github"))
-
-        assertEquals(setOf(AuthProvider.Google, AuthProvider.GitHub), store.current().socialAuthProviders())
 
         store.setLocalAppleSignInOverride(true)
         assertTrue(store.current().localAppleSignInOverride)
@@ -83,11 +115,7 @@ class AuthRuntimeCapabilityRouteTest {
 
         store.setLocalAppleSignInOverride(false)
         assertEquals(setOf(AuthProvider.Google), store.current().socialAuthProviders())
-    }
 
-    @Test
-    fun localAppleOverrideDoesNotDuplicateHostAdvertisedApple() {
-        val store = SharedAuthRuntimeCapabilityStore()
         store.seedFromAuthPageData(JSONObject().put(AUTH_SOCIAL_PROVIDERS_KEY, "google,github,apple"))
         store.setLocalAppleSignInOverride(true)
         assertEquals(
