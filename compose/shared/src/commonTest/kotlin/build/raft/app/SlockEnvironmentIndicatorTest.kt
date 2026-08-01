@@ -88,4 +88,59 @@ class SlockEnvironmentIndicatorTest {
         assertTrue(slockEnvironmentIndicatorEnabledForPage(original))
         assertFalse(slockEnvironmentIndicatorEnabledForPage(embedded))
     }
+
+    @Test
+    fun draggableIndicatorDefaultsToSafeTopRightAndClampsToEveryVisibleEdge() {
+        val bounds =
+            SlockEnvironmentIndicatorDragBounds(
+                hostWidthPx = 720f,
+                hostHeightPx = 1280f,
+                badgeWidthPx = 96f,
+                badgeHeightPx = 40f,
+                topSafeAreaPx = 48f,
+                bottomSafeAreaPx = 72f,
+                edgeMarginPx = 12f,
+            )
+
+        assertEquals(
+            SlockEnvironmentIndicatorPosition(xPx = 612f, yPx = 60f),
+            slockDefaultEnvironmentIndicatorPosition(bounds),
+        )
+        assertEquals(
+            SlockEnvironmentIndicatorPosition(xPx = 12f, yPx = 60f),
+            slockClampEnvironmentIndicatorPosition(
+                SlockEnvironmentIndicatorPosition(xPx = -1_000f, yPx = -1_000f),
+                bounds,
+            ),
+        )
+        assertEquals(
+            SlockEnvironmentIndicatorPosition(xPx = 612f, yPx = 1_156f),
+            slockClampEnvironmentIndicatorPosition(
+                SlockEnvironmentIndicatorPosition(xPx = 10_000f, yPx = 10_000f),
+                bounds,
+            ),
+        )
+    }
+
+    @Test
+    fun draggableIndicatorRemainsVisibleWhenInsetsExceedTheTinyHost() {
+        val bounds =
+            SlockEnvironmentIndicatorDragBounds(
+                hostWidthPx = 80f,
+                hostHeightPx = 60f,
+                badgeWidthPx = 100f,
+                badgeHeightPx = 40f,
+                topSafeAreaPx = 30f,
+                bottomSafeAreaPx = 30f,
+                edgeMarginPx = 12f,
+            )
+
+        assertEquals(
+            SlockEnvironmentIndicatorPosition(xPx = 0f, yPx = 10f),
+            slockClampEnvironmentIndicatorPosition(
+                SlockEnvironmentIndicatorPosition(xPx = 500f, yPx = 500f),
+                bounds,
+            ),
+        )
+    }
 }
