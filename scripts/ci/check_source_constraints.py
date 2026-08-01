@@ -30,6 +30,13 @@ VENDOR_PARAGRAPH = (
 )
 BRIDGE_AUTH = "compose/shared/src/commonMain/kotlin/build/raft/app/data/BridgeAuth.kt"
 ANDROID_ACTIVITY = "compose/androidApp/src/main/java/build/raft/app/shared/SlockKuiklyActivity.kt"
+IOS_MOBILE_OAUTH_HOST = "compose/iosApp/iosApp/SlockIosMobileOAuthHost.swift"
+IOS_MOBILE_OAUTH_SHARED = (
+    "compose/shared/src/commonMain/kotlin/build/raft/app/data/IosMobileOAuth.kt"
+)
+AUTH_DATA_SOURCE = "compose/shared/src/commonMain/kotlin/build/raft/app/data/AuthDataSource.kt"
+IOS_ENTITLEMENTS = "compose/iosApp/iosApp/iosApp.entitlements"
+IOS_XCODE_PROJECT = "compose/iosApp/iosApp.xcodeproj/project.pbxproj"
 AUTH_STRINGS = {
     "base": "compose/shared/src/commonMain/resources/MR/base/strings.xml",
     "zh-rCN": "compose/shared/src/commonMain/resources/MR/zh-rCN/strings.xml",
@@ -199,6 +206,130 @@ def check_system_selectable_text_dialog(thread_page: str) -> None:
         )
 
 
+def check_native_apple_authentication_services(
+    host: str,
+    shared: str,
+    auth_data_source: str,
+    entitlements: str,
+    xcode_project: str,
+) -> None:
+    """Incident: task #82 (Apple was incorrectly presented as browser OAuth).
+
+    Apple must enter AuthenticationServices' native credential sheet, with the
+    PKCE S256 challenge bound as the Apple nonce. Google/GitHub intentionally
+    remain on ASWebAuthenticationSession. The entitlement and Xcode capability
+    are part of the same structural contract; source alone cannot provision the
+    Apple Developer App ID, but dropping either local declaration is always a
+    regression.
+    """
+    native_host_tokens = {
+        "ASAuthorizationAppleIDProvider().createRequest()": (
+            "create a native Apple ID authorization request"
+        ),
+        "request.requestedScopes = [.email]": "request the verified email scope",
+        "request.nonce = pkce.challenge": "bind Apple identity tokens to the PKCE challenge",
+        "ASAuthorizationController(authorizationRequests: [request])": (
+            "present through ASAuthorizationController"
+        ),
+        'result.presentation == "native_apple"': "require the shared native presentation contract",
+        "result.authorizationUrl == nil": "reject browser URLs from the native Apple start contract",
+        "authorization.credential as? ASAuthorizationAppleIDCredential": (
+            "admit only Apple ID credentials"
+        ),
+        "SlockIosMobileOAuthBridge.shared.completeNativeApple(": (
+            "complete native Apple credentials through the typed shared bridge"
+        ),
+    }
+    for token, reason in native_host_tokens.items():
+        if token not in host:
+            raise Violation(f"task #82 regression: iOS host must {reason}")
+
+    dispatch = re.search(
+        r'if normalizedProvider == "apple" \{\s*'
+        r'(?P<apple>SlockIosMobileOAuthBridge\.shared\.startNativeApple\(.*?)'
+        r'\n\s*\} else \{\s*'
+        r'(?P<browser>SlockIosMobileOAuthBridge\.shared\.startBrowser\(.*?)'
+        r'\n\s*\}',
+        host,
+        flags=re.DOTALL,
+    )
+    if dispatch is None:
+        raise Violation(
+            "task #82 routing fence missing: Apple must call startNativeApple and "
+            "the explicit non-Apple branch must call startBrowser"
+        )
+    if "startBrowser" in dispatch.group("apple") or "ASWebAuthenticationSession" in dispatch.group("apple"):
+        raise Violation(
+            "task #82 regression: the Apple dispatch branch must not enter the browser broker"
+        )
+
+    browser_allowlists = (
+        ("iOS coordinator", shared, "IosBrowserOAuthProviders"),
+        ("auth data source", auth_data_source, "BrowserMobileOAuthProviders"),
+    )
+    for label, source, variable in browser_allowlists:
+        provider_match = re.search(
+            rf"private val {variable}\s*=\s*setOf\((?P<providers>[^)]*)\)",
+            source,
+        )
+        if provider_match is None:
+            raise Violation(f"task #82 anchor missing: {label} browser-provider allowlist is absent")
+        providers = set(re.findall(r'"([a-z]+)"', provider_match.group("providers")))
+        if providers != {"google", "github"}:
+            raise Violation(
+                f"task #82 regression: the {label} browser broker must admit exactly "
+                f"Google/GitHub, got {sorted(providers)}"
+            )
+
+    shared_tokens = {
+        'presentation = "native_apple"': "return the native Apple presentation discriminator",
+        "suspend fun startNativeApple(": "expose a native Apple start coordinator",
+        "suspend fun completeNativeApple(": "expose native Apple credential completion",
+        "normalizedProvider !in IosBrowserOAuthProviders": (
+            "validate browser starts against the Google/GitHub-only allowlist"
+        ),
+        "pending.provider !in IosBrowserOAuthProviders || pending.requestToken != null": (
+            "prevent custom-URL callbacks from consuming native Apple pending state"
+        ),
+    }
+    for token, reason in shared_tokens.items():
+        if token not in shared:
+            raise Violation(f"task #82 regression: shared iOS coordinator must {reason}")
+
+    try:
+        plist = ET.fromstring(entitlements)
+    except ET.ParseError as error:
+        raise Violation(f"task #82 iOS entitlements plist is invalid: {error}") from error
+    entitlement_dict = plist.find("dict")
+    if entitlement_dict is None:
+        raise Violation("task #82 iOS entitlements plist has no top-level dict")
+    entitlement_children = list(entitlement_dict)
+    apple_entitlement = None
+    for index, element in enumerate(entitlement_children[:-1]):
+        if element.tag == "key" and element.text == "com.apple.developer.applesignin":
+            apple_entitlement = entitlement_children[index + 1]
+            break
+    if (
+        apple_entitlement is None
+        or apple_entitlement.tag != "array"
+        or [value.text for value in apple_entitlement.findall("string")] != ["Default"]
+    ):
+        raise Violation(
+            "task #82 regression: iOS entitlements must declare "
+            "com.apple.developer.applesignin = [Default]"
+        )
+
+    if not re.search(
+        r"com\.apple\.SignInWithApple\s*=\s*\{\s*enabled\s*=\s*1;\s*\};",
+        xcode_project,
+        flags=re.DOTALL,
+    ):
+        raise Violation(
+            "task #82 regression: the iOS target must keep the Sign in with Apple "
+            "SystemCapabilities entry enabled"
+        )
+
+
 def run(root: Path) -> None:
     def read(rel: str) -> str:
         path = root / rel
@@ -219,6 +350,13 @@ def run(root: Path) -> None:
     check_notification_action_handlers(read(BRIDGE_AUTH), read(ANDROID_ACTIVITY))
     check_auth_authority_changed_i18n(
         {locale: read(path) for locale, path in AUTH_STRINGS.items()}
+    )
+    check_native_apple_authentication_services(
+        host=read(IOS_MOBILE_OAUTH_HOST),
+        shared=read(IOS_MOBILE_OAUTH_SHARED),
+        auth_data_source=read(AUTH_DATA_SOURCE),
+        entitlements=read(IOS_ENTITLEMENTS),
+        xcode_project=read(IOS_XCODE_PROJECT),
     )
 
 
@@ -318,6 +456,124 @@ private fun ThreadMessageMenuChrome() = Unit
         else:
             raise SystemExit("self-test: task #161 i18n checker accepted a violation")
 
+    good_native_apple_host = '''
+let request = ASAuthorizationAppleIDProvider().createRequest()
+request.requestedScopes = [.email]
+request.nonce = pkce.challenge
+let controller = ASAuthorizationController(authorizationRequests: [request])
+guard result.presentation == "native_apple", result.authorizationUrl == nil else { return }
+guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential else { return }
+SlockIosMobileOAuthBridge.shared.completeNativeApple(
+    generation: generation,
+    authorizationCode: authorizationCode,
+    identityToken: identityToken
+)
+if normalizedProvider == "apple" {
+    SlockIosMobileOAuthBridge.shared.startNativeApple(
+        mode: mode
+    )
+} else {
+    SlockIosMobileOAuthBridge.shared.startBrowser(
+        provider: normalizedProvider
+    )
+}
+'''
+    good_native_apple_shared = '''
+private val IosBrowserOAuthProviders = setOf("google", "github")
+if (normalizedProvider !in IosBrowserOAuthProviders) return
+if (pending.provider !in IosBrowserOAuthProviders || pending.requestToken != null) return
+presentation = "native_apple"
+suspend fun startNativeApple() = Unit
+suspend fun completeNativeApple() = Unit
+'''
+    good_native_apple_auth_data_source = '''
+private val BrowserMobileOAuthProviders = setOf("google", "github")
+'''
+    good_native_apple_entitlements = '''<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+<key>com.apple.developer.applesignin</key><array><string>Default</string></array>
+</dict></plist>
+'''
+    good_native_apple_project = '''
+com.apple.SignInWithApple = {
+    enabled = 1;
+};
+'''
+    check_native_apple_authentication_services(
+        good_native_apple_host,
+        good_native_apple_shared,
+        good_native_apple_auth_data_source,
+        good_native_apple_entitlements,
+        good_native_apple_project,
+    )
+    bad_native_apple_shapes = (
+        (
+            good_native_apple_host.replace(
+                "SlockIosMobileOAuthBridge.shared.startNativeApple(",
+                "SlockIosMobileOAuthBridge.shared.startBrowser(",
+                1,
+            ),
+            good_native_apple_shared,
+            good_native_apple_auth_data_source,
+            good_native_apple_entitlements,
+            good_native_apple_project,
+        ),
+        (
+            good_native_apple_host.replace("request.nonce = pkce.challenge", ""),
+            good_native_apple_shared,
+            good_native_apple_auth_data_source,
+            good_native_apple_entitlements,
+            good_native_apple_project,
+        ),
+        (
+            good_native_apple_host,
+            good_native_apple_shared.replace(
+                'setOf("google", "github")',
+                'setOf("google", "github", "apple")',
+            ),
+            good_native_apple_auth_data_source,
+            good_native_apple_entitlements,
+            good_native_apple_project,
+        ),
+        (
+            good_native_apple_host,
+            good_native_apple_shared,
+            good_native_apple_auth_data_source.replace(
+                'setOf("google", "github")',
+                'setOf("google", "github", "apple")',
+            ),
+            good_native_apple_entitlements,
+            good_native_apple_project,
+        ),
+        (
+            good_native_apple_host,
+            good_native_apple_shared,
+            good_native_apple_auth_data_source,
+            good_native_apple_entitlements.replace("Default", ""),
+            good_native_apple_project,
+        ),
+        (
+            good_native_apple_host,
+            good_native_apple_shared,
+            good_native_apple_auth_data_source,
+            good_native_apple_entitlements,
+            good_native_apple_project.replace("enabled = 1", "enabled = 0"),
+        ),
+    )
+    for bad_host, bad_shared, bad_auth_data_source, bad_entitlements, bad_project in bad_native_apple_shapes:
+        try:
+            check_native_apple_authentication_services(
+                bad_host,
+                bad_shared,
+                bad_auth_data_source,
+                bad_entitlements,
+                bad_project,
+            )
+        except Violation:
+            pass
+        else:
+            raise SystemExit("self-test: task #82 native Apple checker accepted a violation")
+
     print("check_source_constraints self-test passed")
 
 
@@ -333,7 +589,7 @@ def main(argv: list[str]) -> int:
     except Violation as violation:
         print(f"source-constraint violation: {violation}", file=sys.stderr)
         return 1
-    print("source constraints hold (tasks #800/#803/#361/#161/#924 structural faces)")
+    print("source constraints hold (tasks #800/#803/#361/#161/#924/#82 structural faces)")
     return 0
 
 

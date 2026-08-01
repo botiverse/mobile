@@ -197,7 +197,7 @@ class SharedAuthDataSource(
         codeChallenge: String
     ): SharedAuthResult<AuthMobileOAuthStartResponse> {
         val normalizedProvider = provider.trim().lowercase()
-        if (normalizedProvider !in MobileOAuthProviders) {
+        if (normalizedProvider !in BrowserMobileOAuthProviders) {
             return SharedAuthResult.Failure(
                 SharedAuthErrorCode.Validation,
                 "This sign-in provider is not available on this device."
@@ -224,6 +224,32 @@ class SharedAuthDataSource(
             is AuthApiResult.Failure -> response.toSharedAuthFailure()
         }
     }
+
+    suspend fun startNativeAppleMobileOAuthLogin(
+        appEnv: String,
+        returnUri: String,
+        codeChallenge: String,
+    ): SharedAuthResult<AuthNativeAppleMobileOAuthStartResponse> =
+        startNativeAppleMobileOAuth(
+            mode = "login",
+            appEnv = appEnv,
+            returnUri = returnUri,
+            codeChallenge = codeChallenge,
+        )
+
+    suspend fun authorizeNativeAppleMobileOAuthLogin(
+        requestId: String,
+        requestToken: String,
+        authorizationCode: String,
+        identityToken: String,
+    ): SharedAuthResult<AuthNativeAppleMobileOAuthAuthorizationResponse> =
+        authorizeNativeAppleMobileOAuth(
+            mode = "login",
+            requestId = requestId,
+            requestToken = requestToken,
+            authorizationCode = authorizationCode,
+            identityToken = identityToken,
+        )
 
     suspend fun completeMobileOAuthLogin(
         code: String,
@@ -305,7 +331,7 @@ class SharedAuthDataSource(
         codeChallenge: String
     ): SharedAuthResult<AuthMobileOAuthStartResponse> {
         val normalizedProvider = provider.trim().lowercase()
-        if (normalizedProvider !in MobileOAuthProviders) {
+        if (normalizedProvider !in BrowserMobileOAuthProviders) {
             return SharedAuthResult.Failure(
                 SharedAuthErrorCode.Validation,
                 "This account provider is not available on this device."
@@ -331,6 +357,32 @@ class SharedAuthDataSource(
             is AuthApiResult.Failure -> response.toSharedAuthFailure()
         }
     }
+
+    suspend fun startNativeAppleMobileOAuthLink(
+        appEnv: String,
+        returnUri: String,
+        codeChallenge: String,
+    ): SharedAuthResult<AuthNativeAppleMobileOAuthStartResponse> =
+        startNativeAppleMobileOAuth(
+            mode = "link",
+            appEnv = appEnv,
+            returnUri = returnUri,
+            codeChallenge = codeChallenge,
+        )
+
+    suspend fun authorizeNativeAppleMobileOAuthLink(
+        requestId: String,
+        requestToken: String,
+        authorizationCode: String,
+        identityToken: String,
+    ): SharedAuthResult<AuthNativeAppleMobileOAuthAuthorizationResponse> =
+        authorizeNativeAppleMobileOAuth(
+            mode = "link",
+            requestId = requestId,
+            requestToken = requestToken,
+            authorizationCode = authorizationCode,
+            identityToken = identityToken,
+        )
 
     suspend fun completeMobileOAuthLink(
         provider: String,
@@ -358,6 +410,85 @@ class SharedAuthDataSource(
                     code = code.trim(),
                     codeVerifier = codeVerifier.trim(),
                     authorization = "Bearer ${session.accessToken}"
+                )
+        ) {
+            is AuthApiResult.Success -> SharedAuthResult.Success(response.data)
+            is AuthApiResult.Failure -> response.toSharedAuthFailure()
+        }
+    }
+
+    private suspend fun startNativeAppleMobileOAuth(
+        mode: String,
+        appEnv: String,
+        returnUri: String,
+        codeChallenge: String,
+    ): SharedAuthResult<AuthNativeAppleMobileOAuthStartResponse> {
+        if (appEnv.isBlank() || returnUri.isBlank() || codeChallenge.isBlank()) {
+            return SharedAuthResult.Failure(
+                SharedAuthErrorCode.Validation,
+                if (mode == "link") "Account linking could not be prepared." else "Mobile sign-in could not be prepared.",
+            )
+        }
+        val authorization =
+            if (mode == "link") {
+                val session = sessionStore.readSession() ?: return SharedAuthResult.Unauthenticated
+                "Bearer ${session.accessToken}"
+            } else {
+                null
+            }
+        return when (
+            val response =
+                api.startNativeAppleMobileOAuth(
+                    mode = mode,
+                    platform = "ios",
+                    appEnv = appEnv.trim(),
+                    returnUri = returnUri.trim(),
+                    codeChallenge = codeChallenge.trim(),
+                    authorization = authorization,
+                )
+        ) {
+            is AuthApiResult.Success -> SharedAuthResult.Success(response.data)
+            is AuthApiResult.Failure -> response.toSharedAuthFailure()
+        }
+    }
+
+    private suspend fun authorizeNativeAppleMobileOAuth(
+        mode: String,
+        requestId: String,
+        requestToken: String,
+        authorizationCode: String,
+        identityToken: String,
+    ): SharedAuthResult<AuthNativeAppleMobileOAuthAuthorizationResponse> {
+        if (
+            requestId.isBlank() ||
+            requestToken.isBlank() ||
+            authorizationCode.isBlank() ||
+            identityToken.isBlank()
+        ) {
+            return SharedAuthResult.Failure(
+                SharedAuthErrorCode.Validation,
+                if (mode == "link") {
+                    "Account linking did not return the required credentials."
+                } else {
+                    "Mobile sign-in did not return the required credentials."
+                },
+            )
+        }
+        val authorization =
+            if (mode == "link") {
+                val session = sessionStore.readSession() ?: return SharedAuthResult.Unauthenticated
+                "Bearer ${session.accessToken}"
+            } else {
+                null
+            }
+        return when (
+            val response =
+                api.authorizeNativeAppleMobileOAuth(
+                    requestId = requestId.trim(),
+                    requestToken = requestToken.trim(),
+                    authorizationCode = authorizationCode.trim(),
+                    identityToken = identityToken.trim(),
+                    authorization = authorization,
                 )
         ) {
             is AuthApiResult.Success -> SharedAuthResult.Success(response.data)
@@ -1411,7 +1542,8 @@ internal suspend fun selectStoredAuthServer(
 
 private fun <T> AuthApiResult.Success<T>.toSharedAuthResult(): SharedAuthResult<T> = SharedAuthResult.Success(data)
 
-private val MobileOAuthProviders = setOf("google", "github", "apple")
+private val BrowserMobileOAuthProviders = setOf("google", "github")
+private val MobileOAuthProviders = BrowserMobileOAuthProviders + "apple"
 private const val AUTH_ME_CONTRACT_MISMATCH = "auth_me_contract_mismatch"
 
 private suspend fun StoredAuthSession.withValidatedServerSelection(
@@ -1514,6 +1646,21 @@ interface SlockAuthApi {
         codeChallenge: String,
         authorization: String? = null
     ): AuthApiResult<AuthMobileOAuthStartResponse>
+    suspend fun startNativeAppleMobileOAuth(
+        mode: String,
+        platform: String,
+        appEnv: String,
+        returnUri: String,
+        codeChallenge: String,
+        authorization: String? = null,
+    ): AuthApiResult<AuthNativeAppleMobileOAuthStartResponse> = AuthApiResult.Failure(code = 501)
+    suspend fun authorizeNativeAppleMobileOAuth(
+        requestId: String,
+        requestToken: String,
+        authorizationCode: String,
+        identityToken: String,
+        authorization: String? = null,
+    ): AuthApiResult<AuthNativeAppleMobileOAuthAuthorizationResponse> = AuthApiResult.Failure(code = 501)
     suspend fun completeMobileOAuth(
         code: String,
         codeVerifier: String,
@@ -1607,6 +1754,59 @@ class SlockAuthApiClient(
             "auth_mobile_oauth_start_contract_mismatch",
             AuthMobileOAuthStartResponseDto.serializer(),
             diagnosticsLogger
+        ) {
+            it.toDomain()
+        }
+
+    override suspend fun startNativeAppleMobileOAuth(
+        mode: String,
+        platform: String,
+        appEnv: String,
+        returnUri: String,
+        codeChallenge: String,
+        authorization: String?,
+    ): AuthApiResult<AuthNativeAppleMobileOAuthStartResponse> =
+        transport.startNativeAppleMobileOAuth(
+            authJson.encodeToString(
+                AuthNativeAppleMobileOAuthStartRequestBody(
+                    mode = mode,
+                    platform = platform,
+                    appEnv = appEnv,
+                    returnUri = returnUri,
+                    codeChallenge = codeChallenge,
+                    codeChallengeMethod = "S256",
+                )
+            ),
+            authorization = authorization,
+        ).mapAuthBody(
+            "auth_native_apple_mobile_oauth_start_contract_mismatch",
+            AuthNativeAppleMobileOAuthStartResponseDto.serializer(),
+            diagnosticsLogger,
+        ) {
+            it.toDomain()
+        }
+
+    override suspend fun authorizeNativeAppleMobileOAuth(
+        requestId: String,
+        requestToken: String,
+        authorizationCode: String,
+        identityToken: String,
+        authorization: String?,
+    ): AuthApiResult<AuthNativeAppleMobileOAuthAuthorizationResponse> =
+        transport.authorizeNativeAppleMobileOAuth(
+            authJson.encodeToString(
+                AuthNativeAppleMobileOAuthAuthorizationRequestBody(
+                    requestId = requestId,
+                    requestToken = requestToken,
+                    authorizationCode = authorizationCode,
+                    identityToken = identityToken,
+                )
+            ),
+            authorization = authorization,
+        ).mapAuthBody(
+            "auth_native_apple_mobile_oauth_authorize_contract_mismatch",
+            AuthNativeAppleMobileOAuthAuthorizationResponseDto.serializer(),
+            diagnosticsLogger,
         ) {
             it.toDomain()
         }
@@ -1963,6 +2163,20 @@ data class AuthMobileOAuthStartResponse(
     val expiresAt: String
 )
 
+data class AuthNativeAppleMobileOAuthStartResponse(
+    val requestId: String,
+    val requestToken: String,
+    val returnUri: String,
+    val expiresAt: String,
+)
+
+data class AuthNativeAppleMobileOAuthAuthorizationResponse(
+    val requestId: String,
+    val handoffCode: String,
+    val provider: String,
+    val mode: String,
+)
+
 data class AuthMobileOAuthIdentity(
     val provider: String,
     val email: String?
@@ -2048,6 +2262,24 @@ data class AuthMobileOAuthStartRequestBody(
     val returnUri: String,
     val codeChallenge: String,
     val codeChallengeMethod: String
+)
+
+@kotlinx.serialization.Serializable
+data class AuthNativeAppleMobileOAuthStartRequestBody(
+    val mode: String,
+    val platform: String,
+    val appEnv: String,
+    val returnUri: String,
+    val codeChallenge: String,
+    val codeChallengeMethod: String,
+)
+
+@kotlinx.serialization.Serializable
+data class AuthNativeAppleMobileOAuthAuthorizationRequestBody(
+    val requestId: String,
+    val requestToken: String,
+    val authorizationCode: String,
+    val identityToken: String,
 )
 
 @kotlinx.serialization.Serializable
@@ -2243,6 +2475,38 @@ private fun AuthMobileOAuthStartResponseDto.toDomain(): AuthMobileOAuthStartResp
         requestId = requestId,
         returnUri = returnUri,
         expiresAt = expiresAt
+    )
+
+@Serializable
+private data class AuthNativeAppleMobileOAuthStartResponseDto(
+    val requestId: String,
+    val requestToken: String,
+    val returnUri: String,
+    val expiresAt: String,
+)
+
+private fun AuthNativeAppleMobileOAuthStartResponseDto.toDomain(): AuthNativeAppleMobileOAuthStartResponse =
+    AuthNativeAppleMobileOAuthStartResponse(
+        requestId = requestId,
+        requestToken = requestToken,
+        returnUri = returnUri,
+        expiresAt = expiresAt,
+    )
+
+@Serializable
+private data class AuthNativeAppleMobileOAuthAuthorizationResponseDto(
+    val requestId: String,
+    val handoffCode: String,
+    val provider: String,
+    val mode: String,
+)
+
+private fun AuthNativeAppleMobileOAuthAuthorizationResponseDto.toDomain(): AuthNativeAppleMobileOAuthAuthorizationResponse =
+    AuthNativeAppleMobileOAuthAuthorizationResponse(
+        requestId = requestId,
+        handoffCode = handoffCode,
+        provider = provider,
+        mode = mode,
     )
 
 @Serializable

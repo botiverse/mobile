@@ -385,6 +385,9 @@
 							com.apple.Push = {
 								enabled = 1;
 							};
+							com.apple.SignInWithApple = {
+								enabled = 1;
+							};
 						};
 					};
 					A12900040000000000000001 = {

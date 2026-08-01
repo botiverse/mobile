@@ -493,6 +493,22 @@ class SharedSlockAuthTransport internal constructor(
     override suspend fun completeMobileOAuth(bodyText: String, authorization: String?): AuthNetworkResponse =
         request(path = "auth/mobile/oauth/complete", method = "POST", authorization = authorization, bodyText = bodyText)
 
+    override suspend fun startNativeAppleMobileOAuth(bodyText: String, authorization: String?): AuthNetworkResponse =
+        request(
+            path = "auth/mobile/oauth/apple/native/start",
+            method = "POST",
+            authorization = authorization,
+            bodyText = bodyText
+        )
+
+    override suspend fun authorizeNativeAppleMobileOAuth(bodyText: String, authorization: String?): AuthNetworkResponse =
+        request(
+            path = "auth/mobile/oauth/apple/native/authorize",
+            method = "POST",
+            authorization = authorization,
+            bodyText = bodyText
+        )
+
     override suspend fun startMobileOAuthLink(
         provider: String,
         bodyText: String,
