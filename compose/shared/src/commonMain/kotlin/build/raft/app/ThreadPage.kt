@@ -15409,6 +15409,7 @@ private fun ThreadMessagesList(
     var lastComposerKeyboardInsetDp by remember(threadInstanceKey) { mutableStateOf(composerKeyboardInsetDp) }
     var lastThreadViewportHeightDp by remember(threadInstanceKey) { mutableStateOf(measuredThreadViewportHeightDp) }
     var pendingComposerLayoutBottomAnchor by remember(threadInstanceKey) { mutableStateOf(false) }
+    var composerLayoutViewportRetryGeneration by remember(threadInstanceKey) { mutableStateOf(0L) }
     var pendingKeyboardBottomAnchor by remember(threadInstanceKey) { mutableStateOf(false) }
     var activeFocusedMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     // Focused-message anchoring is one-shot per explicit request (message id +
@@ -16788,18 +16789,42 @@ private fun ThreadMessagesList(
                 "items=${threadLazyWindowConsumerCounts.listBeyondBoundsItems}"
         )
     }
-    // Read the Lazy viewport in composition so either side of the measured ↔
-    // placed viewport handshake can restart a deferred composer correction.
-    // Without these keys, a pending mixed epoch only recovered when the
-    // BoxWithConstraints measurement happened to change afterwards.
-    val composerLayoutViewportStartPx = listState.layoutInfo.viewportStartOffset
-    val composerLayoutViewportEndPx = listState.layoutInfo.viewportEndOffset
+    LaunchedEffect(
+        threadInstanceKey,
+        pendingComposerLayoutBottomAnchor,
+        measuredThreadViewportHeightDp,
+        pendingFocusedMessageAnchorIdentityState.value,
+        latestMessageLayoutKey,
+        userScrollGeneration.value
+    ) {
+        if (!pendingComposerLayoutBottomAnchor) return@LaunchedEffect
+        val measuredViewportHeightPx =
+            with(threadDensity) { measuredThreadViewportHeightDp.dp.roundToPx() }
+        // Observe Lazy layout only while a mixed epoch is pending. Ordinary
+        // scroll/remeasure must not invalidate Thread composition or perturb
+        // the target dispose/reinsert/draw chain that this probe measures.
+        snapshotFlow {
+            listState.layoutInfo.viewportStartOffset to
+                listState.layoutInfo.viewportEndOffset
+        }
+            .distinctUntilChanged()
+            .first { (layoutStartPx, layoutEndPx) ->
+                shouldAdvanceThreadComposerViewportRetry(
+                    pendingLayoutChange = pendingComposerLayoutBottomAnchor,
+                    measuredViewportHeightPx = measuredViewportHeightPx,
+                    layoutViewportStartPx = layoutStartPx,
+                    layoutViewportEndPx = layoutEndPx
+                )
+            }
+        if (pendingComposerLayoutBottomAnchor) {
+            composerLayoutViewportRetryGeneration += 1L
+        }
+    }
     LaunchedEffect(
         threadInstanceKey,
         composerKeyboardInsetDp,
         measuredThreadViewportHeightDp,
-        composerLayoutViewportStartPx,
-        composerLayoutViewportEndPx,
+        composerLayoutViewportRetryGeneration,
         initialBottomAnchorReady,
         latestItemIndex,
         allowBottomAutoAnchor,
@@ -16838,8 +16863,8 @@ private fun ThreadMessagesList(
         var focusedTailViewportEpochCoherent =
             threadViewportEpochCoherent(
                 measuredViewportHeightPx = measuredFocusedTailViewportHeightPx,
-                layoutViewportStartPx = composerLayoutViewportStartPx,
-                layoutViewportEndPx = composerLayoutViewportEndPx
+                layoutViewportStartPx = listState.layoutInfo.viewportStartOffset,
+                layoutViewportEndPx = listState.layoutInfo.viewportEndOffset
             )
         var focusedTailFit =
             listState.threadFocusedTailFit(
@@ -17129,6 +17154,7 @@ private fun ThreadMessagesList(
                     pixelResult == null -> "infra_timeout"
                     !pixelProbeOwnerCurrent -> "stale_owner"
                     !pixelProbeReceiptMatches -> "stale_receipt"
+                    acceptedPixelResult?.optString("status") == "timeout" -> "infra_timeout"
                     else -> acceptedPixelResult?.optString("status").orEmpty()
                 }
             diagnosticsLogger(
@@ -18666,6 +18692,19 @@ internal fun threadViewportEpochCoherent(
         layoutViewportHeightPx > 0 &&
         kotlin.math.abs(measuredViewportHeightPx - layoutViewportHeightPx) <= tolerancePx.coerceAtLeast(0)
 }
+
+internal fun shouldAdvanceThreadComposerViewportRetry(
+    pendingLayoutChange: Boolean,
+    measuredViewportHeightPx: Int,
+    layoutViewportStartPx: Int,
+    layoutViewportEndPx: Int
+): Boolean =
+    pendingLayoutChange &&
+        threadViewportEpochCoherent(
+            measuredViewportHeightPx = measuredViewportHeightPx,
+            layoutViewportStartPx = layoutViewportStartPx,
+            layoutViewportEndPx = layoutViewportEndPx
+        )
 
 internal fun resolveThreadFocusedTailFit(
     targetItemIndex: Int,

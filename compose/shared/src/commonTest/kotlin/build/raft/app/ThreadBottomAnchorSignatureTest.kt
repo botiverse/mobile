@@ -1495,8 +1495,8 @@ class ThreadBottomAnchorSignatureTest {
         )
 
         // BoxWithConstraints did not change. The only new fact is the Lazy
-        // layout viewport catching up; its composition-observed viewport key
-        // must rerun the pending decision without ever replaying the mixed one.
+        // layout viewport catching up; the pending-only retry flow must rerun
+        // the decision without ever replaying the mixed one.
         val layoutOnlyCatchUp =
             resolveThreadComposerLayoutBottomAnchor(
                 composerLayoutState(
@@ -1512,6 +1512,44 @@ class ThreadBottomAnchorSignatureTest {
         assertTrue(layoutOnlyCatchUp.shouldAnchor)
         assertFalse(layoutOnlyCatchUp.pendingLayoutChange)
         assertTrue(layoutOnlyCatchUp.anchorFocusedTailAtRenderedBottom)
+    }
+
+    @Test
+    fun composerLayoutViewportRetry_isInactiveForOrdinaryScrollAndSingleShotForCatchUp() {
+        assertFalse(
+            shouldAdvanceThreadComposerViewportRetry(
+                pendingLayoutChange = false,
+                measuredViewportHeightPx = 1059,
+                layoutViewportStartPx = 0,
+                layoutViewportEndPx = 1059
+            )
+        )
+        assertFalse(
+            shouldAdvanceThreadComposerViewportRetry(
+                pendingLayoutChange = false,
+                measuredViewportHeightPx = 1059,
+                // Ordinary scroll/remeasure changes are ignored while no
+                // composer layout correction is pending.
+                layoutViewportStartPx = -120,
+                layoutViewportEndPx = 939
+            )
+        )
+        assertFalse(
+            shouldAdvanceThreadComposerViewportRetry(
+                pendingLayoutChange = true,
+                measuredViewportHeightPx = 1059,
+                layoutViewportStartPx = 0,
+                layoutViewportEndPx = 2092
+            )
+        )
+        assertTrue(
+            shouldAdvanceThreadComposerViewportRetry(
+                pendingLayoutChange = true,
+                measuredViewportHeightPx = 1059,
+                layoutViewportStartPx = 0,
+                layoutViewportEndPx = 1059
+            )
+        )
     }
 
     @Test
