@@ -18,6 +18,9 @@ private class InMemoryAuthority : ComposerSessionAuthority {
     override fun terminalOf(sessionId: String): ComposerSessionTerminal? =
         terminals[sessionId]?.terminal
 
+    override fun recordOf(sessionId: String): ComposerSessionAuthorityRecord? =
+        terminals[sessionId]
+
     override fun tryTerminate(record: ComposerSessionAuthorityRecord): ComposerTerminalCasOutcome {
         val existing = terminals[record.sessionId]
         if (existing != null) {
@@ -37,6 +40,8 @@ private class FakeCapabilities(
     private val onPromotion: suspend () -> Unit = {},
 ) : ComposerHostCapabilities {
     val releases = mutableListOf<Triple<List<DurableEditRef>, String, String>>()
+    /** Ownership set: refs currently promoted and not yet released. */
+    val ownedRefs = LinkedHashSet<String>()
 
     override suspend fun pickFiles(request: ComposerPickRequest): ComposerPickOutcome =
         ComposerPickOutcome(emptyList())
@@ -63,7 +68,7 @@ private class FakeCapabilities(
                         durableRef = "durable://$sessionId/${file.fileName}",
                         previewRef = file.previewUri,
                         originalName = file.fileName,
-                    )
+                    ).also { ownedRefs += it.durableRef }
                 },
             )
         }
@@ -75,20 +80,47 @@ private class FakeCapabilities(
         reason: String,
     ) {
         releases += Triple(refs, sessionId, reason)
+        refs.forEach { ownedRefs -= it.durableRef }
     }
 }
 
 private class FakeAcceptor(
-    private val decision: ComposerAcceptDecision = ComposerAcceptDecision.Accepted,
+    private val rejectPrepare: Boolean = false,
+    private val onPrepare: suspend () -> Unit = {},
 ) : ComposerEditResultAcceptor {
-    val calls = mutableListOf<Pair<ComposerGenerationToken, List<DurableEditRef>>>()
+    val prepareCalls = mutableListOf<Pair<ComposerGenerationToken, List<DurableEditRef>>>()
+    val committed = LinkedHashMap<String, ComposerAcceptReceipt>()
+    val staged = LinkedHashMap<String, ComposerAcceptReceipt>()
+    val aborted = mutableListOf<ComposerAcceptReceipt>()
+    private var seq = 0
 
-    override suspend fun acceptEditResult(
+    override suspend fun prepareAccept(
         expectedGeneration: ComposerGenerationToken,
         refs: List<DurableEditRef>,
-    ): ComposerAcceptDecision {
-        calls += expectedGeneration to refs
-        return decision
+    ): ComposerPrepareOutcome {
+        onPrepare()
+        prepareCalls += expectedGeneration to refs
+        if (rejectPrepare) return ComposerPrepareOutcome.Rejected("limits")
+        val receipt =
+            ComposerAcceptReceipt(
+                receiptId = "rcpt-${seq++}",
+                sessionId = refs.first().sessionId,
+                generation = expectedGeneration,
+                refs = refs,
+            )
+        staged[receipt.receiptId] = receipt
+        return ComposerPrepareOutcome.Prepared(receipt)
+    }
+
+    override suspend fun commitPreparedAccept(receipt: ComposerAcceptReceipt): ComposerAcceptDecision {
+        staged.remove(receipt.receiptId)
+        committed[receipt.receiptId] = receipt
+        return ComposerAcceptDecision.Accepted
+    }
+
+    override suspend fun abortPreparedAccept(receipt: ComposerAcceptReceipt) {
+        staged.remove(receipt.receiptId)
+        aborted += receipt
     }
 }
 
@@ -272,118 +304,183 @@ class ComposerPickEditMachineTest {
         assertEquals(ComposerSessionTerminal.Accepted, authority3.terminalOf("s"))
     }
 
-    @Test
-    fun commitRequiresCompleteGroupAndSurvivesOnlyViaAccepted() {
+    private fun readySessionOf(m: ComposerPickEditMachine): ComposerPickEditSession {
+        var s = m.beginSession(request(2), listOf(image("a"), image("b")))!!
+        s = (m.foldEvent(s, event(s, 0)) as ComposerFoldOutcome.Pending).session
+        return when (val f = m.foldEvent(s, event(s, 1))) {
+            is ComposerFoldOutcome.ReadyToCommit -> f.session
+            else -> error("expected ReadyToCommit")
+        }
+    }
+
+    private fun countingMachine(authority: InMemoryAuthority = InMemoryAuthority()): ComposerPickEditMachine {
         var sessionSeq = 0
-        val m = ComposerPickEditMachine(
-            authority = InMemoryAuthority(),
+        return ComposerPickEditMachine(
+            authority = authority,
             currentSessionValidator = { _, _ -> true },
             sessionIdFactory = { "sess-${sessionSeq++}" },
         )
+    }
+
+    @Test
+    fun commitRequiresCompleteGroupAndSurvivesOnlyViaAccepted() {
+        val m = countingMachine()
         val incomplete = m.beginSession(request(2), listOf(image("a"), image("b")))!!
         val acceptor = FakeAcceptor()
         val r1 = kotlinx.coroutines.runBlocking {
             m.commitSession(incomplete, FakeCapabilities(), acceptor, atEpochMs = 1L)
         }
         assertIs<ComposerEditResult.Failed>(r1)
-        assertTrue(acceptor.calls.isEmpty())
+        assertTrue(acceptor.prepareCalls.isEmpty())
 
-        fun readySession(): ComposerPickEditSession {
-            var s = m.beginSession(request(2), listOf(image("a"), image("b")))!!
-            s = (m.foldEvent(s, event(s, 0)) as ComposerFoldOutcome.Pending).session
-            return when (val f = m.foldEvent(s, event(s, 1))) {
-                is ComposerFoldOutcome.ReadyToCommit -> f.session
-                else -> error("expected ReadyToCommit")
-            }
-        }
-        // Post-CAS Rejected is a host contract violation: refs released, Failed, no Complete.
-        // The Accepted tombstone still stands (immutable first-terminal) — hence a fresh session per attempt.
-        val rejecting = FakeAcceptor(ComposerAcceptDecision.Rejected)
-        val rejectingCaps = FakeCapabilities()
+        // promotion failure: Failed, no prepare call
         val r2 = kotlinx.coroutines.runBlocking {
-            m.commitSession(readySession(), rejectingCaps, rejecting, atEpochMs = 1L)
+            m.commitSession(readySessionOf(m), FakeCapabilities(failPromotion = true), FakeAcceptor(), atEpochMs = 1L)
         }
         assertIs<ComposerEditResult.Failed>(r2)
-        assertEquals(generation, rejecting.calls.single().first)
-        assertEquals("accept_rejected", rejectingCaps.releases.single().third)
-        // promotion failure: Failed, no accept call
-        val r3 = kotlinx.coroutines.runBlocking {
-            m.commitSession(readySession(), FakeCapabilities(failPromotion = true), FakeAcceptor(), atEpochMs = 1L)
-        }
-        assertIs<ComposerEditResult.Failed>(r3)
-        assertTrue((r3 as ComposerEditResult.Failed).reason.startsWith("promotion_failed:"))
-        // only Accepted yields Complete with durable refs carrying content identity
+        assertTrue((r2 as ComposerEditResult.Failed).reason.startsWith("promotion_failed:"))
+
+        // only a Won-CAS commit yields Complete with durable refs carrying content identity
         val accepting = FakeAcceptor()
-        val ready = readySession()
-        val r4 = kotlinx.coroutines.runBlocking {
-            m.commitSession(ready, FakeCapabilities(), accepting, atEpochMs = 1L)
+        val caps = FakeCapabilities()
+        val ready = readySessionOf(m)
+        val r3 = kotlinx.coroutines.runBlocking {
+            m.commitSession(ready, caps, accepting, atEpochMs = 1L)
         }
-        assertIs<ComposerEditResult.Complete>(r4)
-        val refs = (r4 as ComposerEditResult.Complete).refs
+        assertIs<ComposerEditResult.Complete>(r3)
+        val refs = (r3 as ComposerEditResult.Complete).refs
         assertEquals(2, refs.size)
         assertTrue(refs.all { it.contentSha256.isNotBlank() && it.durableRef.startsWith("durable://") })
         assertEquals(listOf(0, 1), refs.map { it.index })
+        assertEquals(1, accepting.committed.size)
+        assertTrue(accepting.staged.isEmpty())
+        assertTrue(accepting.aborted.isEmpty())
+        assertTrue(caps.releases.isEmpty())
+        // SSOT-claimed refs stay owned (surface claims them), never released
+        assertEquals(2, caps.ownedRefs.size)
     }
 
-    /** AD4 blocker 1: cancel landing during promotion ⇒ post-suspend terminal recheck stops the commit: ZERO acceptor calls (no SSOT write), refs released. */
+    /** AD4 r2 tooth 1: prepare Rejected is NORMAL + non-terminal: refs released, zero SSOT, session stays Active, later retry succeeds. */
+    @Test
+    fun prepareRejectedIsNonTerminalAndRetryable() {
+        val authority = InMemoryAuthority()
+        val m = countingMachine(authority)
+        val session = readySessionOf(m)
+        val rejecting = FakeAcceptor(rejectPrepare = true)
+        val caps = FakeCapabilities()
+        val r1 = kotlinx.coroutines.runBlocking {
+            m.commitSession(session, caps, rejecting, atEpochMs = 1L)
+        }
+        assertIs<ComposerEditResult.Cancelled>(r1)
+        assertTrue((r1 as ComposerEditResult.Cancelled).reason.startsWith("accept_rejected:"))
+        assertEquals("accept_rejected", caps.releases.single().third)
+        // zero SSOT writes, zero tombstone, zero ownership leak
+        assertTrue(rejecting.committed.isEmpty() && rejecting.staged.isEmpty())
+        assertNull(authority.terminalOf(session.sessionId))
+        assertTrue(caps.ownedRefs.isEmpty())
+        // retry with an accepting surface: same session commits
+        val accepting = FakeAcceptor()
+        val caps2 = FakeCapabilities()
+        val r2 = kotlinx.coroutines.runBlocking {
+            m.commitSession(session, caps2, accepting, atEpochMs = 2L)
+        }
+        assertIs<ComposerEditResult.Complete>(r2)
+        assertEquals(ComposerSessionTerminal.Accepted, authority.terminalOf(session.sessionId))
+    }
+
+    /** AD4 r2 tooth 2: SSOT committed, then response loss / process restart: retry replays the recorded Complete, no re-prepare, no release. */
+    @Test
+    fun responseLossRetryReplaysRecordedComplete() {
+        val authority = InMemoryAuthority()
+        val m = countingMachine(authority)
+        val session = readySessionOf(m)
+        val acceptor = FakeAcceptor()
+        val caps = FakeCapabilities()
+        val r1 = kotlinx.coroutines.runBlocking {
+            m.commitSession(session, caps, acceptor, atEpochMs = 1L)
+        }
+        assertIs<ComposerEditResult.Complete>(r1)
+        val committedRefs = (r1 as ComposerEditResult.Complete).refs
+        // response lost; caller retries the SAME session commit (new capabilities instance, same authority)
+        val retryAcceptor = FakeAcceptor()
+        val retryCaps = FakeCapabilities()
+        val r2 = kotlinx.coroutines.runBlocking {
+            m.commitSession(session, retryCaps, retryAcceptor, atEpochMs = 2L)
+        }
+        assertIs<ComposerEditResult.Complete>(r2)
+        assertEquals(committedRefs, (r2 as ComposerEditResult.Complete).refs)
+        // replay must not re-prepare, must not release SSOT-claimed refs
+        assertTrue(retryAcceptor.prepareCalls.isEmpty())
+        assertTrue(caps.releases.isEmpty() && retryCaps.releases.isEmpty())
+        assertEquals(2, caps.ownedRefs.size)
+    }
+
+    /** AD4 r2 tooth 3: cancel lands DURING prepareAccept suspend ⇒ CAS conflict: staged receipt aborted, refs released, zero committed, Cancelled. */
+    @Test
+    fun cancelDuringPrepareAbortsReceiptAndReleases() {
+        val authority = InMemoryAuthority()
+        val m = countingMachine(authority)
+        val session = readySessionOf(m)
+        val acceptor = FakeAcceptor(onPrepare = { m.cancel(session, atEpochMs = 0L) })
+        val caps = FakeCapabilities()
+        val r = kotlinx.coroutines.runBlocking {
+            m.commitSession(session, caps, acceptor, atEpochMs = 1L)
+        }
+        assertIs<ComposerEditResult.Cancelled>(r)
+        assertEquals(ComposerSessionTerminal.Cancelled, authority.terminalOf(session.sessionId))
+        assertEquals(1, acceptor.aborted.size)
+        assertTrue(acceptor.staged.isEmpty() && acceptor.committed.isEmpty())
+        assertEquals("terminal_lost", caps.releases.single().third)
+        assertTrue(caps.ownedRefs.isEmpty())
+    }
+
+    /** AD4 blocker 1 (r1): cancel landing during promotion ⇒ post-suspend terminal recheck stops the commit: ZERO prepare calls (no SSOT write), refs released. */
     @Test
     fun cancelDuringPromotionReleasesAndWritesNothing() {
         val authority = InMemoryAuthority()
-        val m = machine(authority = authority)
-        var ready = m.beginSession(request(2), listOf(image("a"), image("b")))!!
-        ready = (m.foldEvent(ready, event(ready, 0)) as ComposerFoldOutcome.Pending).session
-        ready = when (val f = m.foldEvent(ready, event(ready, 1))) {
-            is ComposerFoldOutcome.ReadyToCommit -> f.session
-            else -> error("expected ReadyToCommit")
-        }
+        val m = countingMachine(authority)
+        val ready = readySessionOf(m)
         val acceptor = FakeAcceptor()
         val caps = FakeCapabilities(onPromotion = { m.cancel(ready, atEpochMs = 0L) })
         val r = kotlinx.coroutines.runBlocking {
             m.commitSession(ready, caps, acceptor, atEpochMs = 1L)
         }
         assertIs<ComposerEditResult.Cancelled>(r)
-        assertTrue(acceptor.calls.isEmpty())
+        assertTrue(acceptor.prepareCalls.isEmpty())
         assertEquals("session_terminal", caps.releases.single().third)
         assertEquals(ComposerSessionTerminal.Cancelled, authority.terminalOf(ready.sessionId))
+        assertTrue(caps.ownedRefs.isEmpty())
     }
 
-    /** AD4 blocker 3: validator flipping during promotion ⇒ stale, refs released, acceptor never called. */
+    /** AD4 blocker 3 (r1): validator flipping during promotion ⇒ stale, refs released, acceptor never called. */
     @Test
     fun validatorFlipDuringPromotionReleasesAndCancels() {
         var valid = true
         val authority = InMemoryAuthority()
+        var sessionSeq = 0
         val m = ComposerPickEditMachine(
             authority = authority,
             currentSessionValidator = { _, _ -> valid },
-            sessionIdFactory = { "sess-1" },
+            sessionIdFactory = { "sess-${sessionSeq++}" },
         )
-        var ready = m.beginSession(request(2), listOf(image("a"), image("b")))!!
-        ready = (m.foldEvent(ready, event(ready, 0)) as ComposerFoldOutcome.Pending).session
-        ready = when (val f = m.foldEvent(ready, event(ready, 1))) {
-            is ComposerFoldOutcome.ReadyToCommit -> f.session
-            else -> error("expected ReadyToCommit")
-        }
+        val ready = readySessionOf(m)
         val acceptor = FakeAcceptor()
         val caps = FakeCapabilities(onPromotion = { valid = false })
         val r = kotlinx.coroutines.runBlocking {
             m.commitSession(ready, caps, acceptor, atEpochMs = 1L)
         }
         assertIs<ComposerEditResult.Cancelled>(r)
-        assertTrue(acceptor.calls.isEmpty())
+        assertTrue(acceptor.prepareCalls.isEmpty())
         assertEquals("stale_generation", caps.releases.single().third)
+        assertTrue(caps.ownedRefs.isEmpty())
     }
 
-    /** AD4 blocker 1 (CAS fork): opposite terminal pre-recorded ⇒ commit short-circuits: release + Cancelled, acceptor never called, no SSOT write. */
+    /** Pre-existing Cancelled terminal ⇒ commit short-circuits before promotion: zero prepare, zero releases, zero SSOT. */
     @Test
-    fun casConflictReleasesRefsAndCancels() {
+    fun preRecordedTerminalShortCircuitsBeforePromotion() {
         val authority = InMemoryAuthority()
-        val m = machine(authority = authority)
-        var ready = m.beginSession(request(2), listOf(image("a"), image("b")))!!
-        ready = (m.foldEvent(ready, event(ready, 0)) as ComposerFoldOutcome.Pending).session
-        ready = when (val f = m.foldEvent(ready, event(ready, 1))) {
-            is ComposerFoldOutcome.ReadyToCommit -> f.session
-            else -> error("expected ReadyToCommit")
-        }
+        val m = countingMachine(authority)
+        val ready = readySessionOf(m)
         authority.tryTerminate(
             ComposerSessionAuthorityRecord(
                 sessionId = ready.sessionId,
@@ -399,8 +496,8 @@ class ComposerPickEditMachineTest {
             m.commitSession(ready, caps, acceptor, atEpochMs = 1L)
         }
         assertIs<ComposerEditResult.Cancelled>(r)
-        assertTrue(acceptor.calls.isEmpty())
-        // Pre-existing terminal short-circuits before promotion: zero refs promoted, nothing to release.
+        assertTrue(acceptor.prepareCalls.isEmpty())
         assertTrue(caps.releases.isEmpty())
+        assertTrue(caps.ownedRefs.isEmpty())
     }
 }

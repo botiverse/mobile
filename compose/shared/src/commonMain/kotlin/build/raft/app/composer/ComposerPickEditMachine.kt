@@ -155,18 +155,15 @@ internal class ComposerPickEditMachine(
     }
 
     /**
-     * Final commit pipeline (v1.3): validator + terminal checks → durable promotion
-     * (host capability) → RE-VALIDATE terminal + session after the promotion suspend
-     * → first-terminal CAS(Active→Accepted) BEFORE any SSOT write → only a Won CAS
-     * invokes the acceptor (the persistence authority). Cancel-during-accept therefore
-     * loses the CAS and produces ZERO draft writes + released refs. Every non-Accepted
-     * path after promotion releases the refs via the host capability.
-     *
-     * Host contract: the acceptor's Rejected decision must be computable before the
-     * CAS; post-CAS the acceptor is the persistence authority and a Rejected there is
-     * a host contract violation — the machine still releases refs and reports Failed,
-     * and the Accepted tombstone stands (immutable first-terminal; refs are released
-     * and the tombstone is GC'd past the replay horizon).
+     * Final commit pipeline (v1.3 + AD4 round-2): validator + terminal checks →
+     * durable promotion → RE-VALIDATE terminal + validator after the promotion
+     * suspend → two-phase accept: prepareAccept (surface SSOT transaction, durable
+     * receipt) → first-terminal CAS(Active→Accepted, receipt) → commit (Won) or
+     * abort (Lost). Rejected at prepare is a NORMAL non-terminal outcome (session
+     * stays Active, refs released, Cancelled). An Accepted winner record carries
+     * the receipt, so response-loss/restart retries replay the same Complete(refs)
+     * and never release SSOT-claimed refs. Refs are released only while no
+     * authority record claims them (prepare-Rejected / CAS conflict / stale).
      */
     suspend fun commitSession(
         session: ComposerPickEditSession,
@@ -174,9 +171,7 @@ internal class ComposerPickEditMachine(
         acceptor: ComposerEditResultAcceptor,
         atEpochMs: Long,
     ): ComposerEditResult {
-        if (authority.terminalOf(session.sessionId) != null) {
-            return ComposerEditResult.Cancelled("session_terminal")
-        }
+        replayRecordedTerminal(session.sessionId)?.let { return it }
         if (!currentSessionValidator(session.identity, session.generation)) {
             return ComposerEditResult.Cancelled("stale_generation")
         }
@@ -192,15 +187,27 @@ internal class ComposerPickEditMachine(
                     return ComposerEditResult.Failed("promotion_failed:${promotion.reason}")
             }
         // Post-suspend re-validation: terminal AND live session state must both still hold.
-        if (authority.terminalOf(session.sessionId) != null) {
+        replayRecordedTerminal(session.sessionId)?.let {
+            if (it is ComposerEditResult.Complete) {
+                // An Accepted winner already claims these refs via its receipt — never release.
+                return it
+            }
             capabilities.releaseDurableRefs(refs, session.sessionId, "session_terminal")
-            return ComposerEditResult.Cancelled("session_terminal")
+            return it
         }
         if (!currentSessionValidator(session.identity, session.generation)) {
             capabilities.releaseDurableRefs(refs, session.sessionId, "stale_generation")
             return ComposerEditResult.Cancelled("stale_generation")
         }
-        // CAS-first: only the Accepted winner may write SSOT via the acceptor.
+        val prepared = acceptor.prepareAccept(session.generation, refs)
+        val receipt =
+            when (prepared) {
+                is ComposerPrepareOutcome.Rejected -> {
+                    capabilities.releaseDurableRefs(refs, session.sessionId, "accept_rejected")
+                    return ComposerEditResult.Cancelled("accept_rejected:${prepared.reason}")
+                }
+                is ComposerPrepareOutcome.Prepared -> prepared.receipt
+            }
         return when (
             authority.tryTerminate(
                 ComposerSessionAuthorityRecord(
@@ -209,22 +216,48 @@ internal class ComposerPickEditMachine(
                     generation = session.generation,
                     terminal = ComposerSessionTerminal.Accepted,
                     terminalAtEpochMs = atEpochMs,
+                    acceptedReceipt = receipt,
                 ),
             )
         ) {
             ComposerTerminalCasOutcome.Won ->
-                when (acceptor.acceptEditResult(session.generation, refs)) {
+                when (acceptor.commitPreparedAccept(receipt)) {
                     ComposerAcceptDecision.Accepted -> ComposerEditResult.Complete(refs)
-                    ComposerAcceptDecision.Rejected -> {
-                        capabilities.releaseDurableRefs(refs, session.sessionId, "accept_rejected")
-                        ComposerEditResult.Failed("accept_rejected_post_cas")
-                    }
+                    // A committed-stage refusal after a Won CAS is a host contract violation;
+                    // the tombstone stands and the receipt stays recoverable for retry.
+                    ComposerAcceptDecision.Rejected ->
+                        ComposerEditResult.Failed("commit_incomplete")
                 }
-            ComposerTerminalCasOutcome.SameTerminalReplay,
+            ComposerTerminalCasOutcome.SameTerminalReplay -> {
+                // Same-terminal winner already committed this receipt: discard our duplicate
+                // staging and replay the recorded Complete. NEVER release claimed refs.
+                acceptor.abortPreparedAccept(receipt)
+                val recorded = authority.recordOf(session.sessionId)?.acceptedReceipt
+                if (recorded != null) {
+                    ComposerEditResult.Complete(recorded.refs)
+                } else {
+                    ComposerEditResult.Failed("accepted_receipt_missing")
+                }
+            }
             ComposerTerminalCasOutcome.OppositeTerminalConflict -> {
+                acceptor.abortPreparedAccept(receipt)
                 capabilities.releaseDurableRefs(refs, session.sessionId, "terminal_lost")
                 ComposerEditResult.Cancelled("session_terminal")
             }
         }
     }
+
+    /** Idempotent replay of an already-recorded terminal (response loss / process restart). */
+    private fun replayRecordedTerminal(sessionId: String): ComposerEditResult? =
+        when (val record = authority.recordOf(sessionId)) {
+            null -> null
+            else ->
+                when (record.terminal) {
+                    ComposerSessionTerminal.Cancelled ->
+                        ComposerEditResult.Cancelled("session_terminal")
+                    ComposerSessionTerminal.Accepted ->
+                        record.acceptedReceipt?.let { ComposerEditResult.Complete(it.refs) }
+                            ?: ComposerEditResult.Failed("accepted_receipt_missing")
+                }
+        }
 }

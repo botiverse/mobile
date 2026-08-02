@@ -66,6 +66,12 @@ internal data class ComposerSessionAuthorityRecord(
     val generation: ComposerGenerationToken,
     val terminal: ComposerSessionTerminal,
     val terminalAtEpochMs: Long,
+    /**
+     * For an Accepted winner: the durable accept receipt, so a response-loss/restart
+     * retry replays the SAME Complete(refs) instead of a wrong Cancelled, and never
+     * releases refs the surface SSOT already claims. Null only for Cancelled.
+     */
+    val acceptedReceipt: ComposerAcceptReceipt? = null,
 )
 
 /** Three-outcome CAS result — plain set/overwrite shapes are forbidden (v1.3). */
@@ -90,6 +96,9 @@ internal enum class ComposerTerminalCasOutcome {
  */
 internal interface ComposerSessionAuthority {
     fun terminalOf(sessionId: String): ComposerSessionTerminal?
+
+    /** Full winner record (for receipt-carrying Accepted replay); null while Active. */
+    fun recordOf(sessionId: String): ComposerSessionAuthorityRecord?
 
     fun tryTerminate(record: ComposerSessionAuthorityRecord): ComposerTerminalCasOutcome
 }
@@ -125,20 +134,57 @@ internal enum class ComposerAcceptDecision {
     Rejected,
 }
 
+/**
+ * Durable accept receipt minted by [ComposerEditResultAcceptor.prepareAccept].
+ * Survives process death; committing/aborting the same receipt is idempotent.
+ */
+internal data class ComposerAcceptReceipt(
+    val receiptId: String,
+    val sessionId: String,
+    val generation: ComposerGenerationToken,
+    val refs: List<DurableEditRef>,
+)
+
+internal sealed interface ComposerPrepareOutcome {
+    /** Validated + staged against the CURRENT SSOT; durable receipt returned. */
+    data class Prepared(val receipt: ComposerAcceptReceipt) : ComposerPrepareOutcome
+
+    /** Normal outcome (generation/limits/dedupe drift) — NOT a host violation and NOT a terminal. */
+    data class Rejected(val reason: String) : ComposerPrepareOutcome
+}
+
+/**
+ * Two-phase accept handshake — the FINAL commit authority (the machine only does
+ * pick/preflight/CAS arbitration). The split exists because the machine's
+ * first-terminal tombstone CAS and the surface's SSOT transaction are two distinct
+ * authorities that no single call order can make atomic:
+ *
+ * ① [prepareAccept]: inside one transaction the surface CAS-checks
+ *    [expectedGeneration] against its CURRENT session generation, recomputes
+ *    maxDraftItems/bytes/dedupe against its CURRENT SSOT (content identity, never
+ *    path), and durably STAGES the refs as a pending receipt. Rejected here is a
+ *    normal outcome — the machine releases the promoted refs, leaves the session
+ *    Active, and reports Cancelled; the user may retry.
+ * ② The machine then runs first-terminal CAS(Active→Accepted, receipt):
+ *    Won → [commitPreparedAccept] — the surface flips the staged receipt to
+ *    committed inside its SSOT (Thread: persistable `staged` pre-upload stage;
+ *    Feedback: draft attachment list); only this relinquishes machine ownership.
+ *    Lost → [abortPreparedAccept] — the surface discards the staged receipt;
+ *    the machine releases the promoted refs.
+ *
+ * Response-loss idempotence: the Accepted authority record carries the receipt;
+ * a retry replays the recorded Complete(refs) without re-preparing and WITHOUT
+ * releasing refs the SSOT already claims.
+ */
 internal interface ComposerEditResultAcceptor {
-    /**
-     * Atomic accept handshake — the FINAL commit authority (the machine only does
-     * pick/preflight). Inside one transaction the surface must: ① CAS-check
-     * [expectedGeneration] against its CURRENT session generation; ② recompute
-     * maxDraftItems/bytes/dedupe (content identity, never path) against its CURRENT
-     * SSOT — never the pick-launch snapshot; ③ durably persist the refs into its own
-     * SSOT (Thread: persistable `staged` pre-upload stage; Feedback: draft attachment
-     * list) BEFORE returning. Only Accepted relinquishes machine ownership and yields
-     * [ComposerEditResult.Complete]; Rejected leaves ownership with the machine,
-     * which cleans staging and yields Cancelled/Failed.
-     */
-    suspend fun acceptEditResult(
+    suspend fun prepareAccept(
         expectedGeneration: ComposerGenerationToken,
         refs: List<DurableEditRef>,
-    ): ComposerAcceptDecision
+    ): ComposerPrepareOutcome
+
+    /** Idempotent commit of a prepared receipt after the machine's CAS Won. */
+    suspend fun commitPreparedAccept(receipt: ComposerAcceptReceipt): ComposerAcceptDecision
+
+    /** Idempotent discard of a prepared receipt after the machine's CAS lost. */
+    suspend fun abortPreparedAccept(receipt: ComposerAcceptReceipt)
 }
