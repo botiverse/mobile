@@ -169,6 +169,31 @@ class SharedCreateAgentFormStoreTest {
     }
 
     @Test
+    fun editLoaderAcceptsCurrentManageableBuiltInRuntimeWithoutOpeningCreateAdmission() =
+        runPortableCoroutineTest {
+            val currentManageableBody =
+                canonicalRuntimeOptionsBody
+                    .replace("\"current\":false", "\"current\":true")
+                    .replace("\"availableForNew\":true", "\"availableForNew\":false")
+                    .replace("\"canSelectInThisContext\":true", "\"canSelectInThisContext\":false")
+            val api = SequencedFormComputersApi(runtimeOptionsBody = currentManageableBody)
+            val store = SharedCreateAgentFormStore(SlockComputersApiClient(api), this)
+
+            val createResult = store.loadSupportedBuiltInForm("server-1", "machine-1")
+            assertEquals(
+                "runtime_form_unavailable_runtime_not_selectable",
+                assertIs<DataResult.Error>(createResult).error.code
+            )
+
+            val editLoad = async {
+                store.loadSupportedBuiltInFormForEdit("server-1", "machine-1")
+            }
+            api.definitionResponses.receive().complete(ok(canonicalDefinitionBody))
+            assertIs<DataResult.Content<SharedResolvedAgentCreateForm>>(editLoad.await())
+            assertEquals(1, api.definitionCallCount)
+        }
+
+    @Test
     fun resolvedSourcesBuildPresetAndGatewayWithoutClientCatalogs() = runPortableCoroutineTest {
         val api = SequencedFormComputersApi()
         val store = SharedCreateAgentFormStore(SlockComputersApiClient(api), this)

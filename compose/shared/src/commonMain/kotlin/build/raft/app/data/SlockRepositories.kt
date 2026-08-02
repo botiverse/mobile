@@ -764,6 +764,12 @@ data class AgentProfileUpdateRequest(
     val includeServerRole: Boolean = false,
     val runtimeConfig: build.raft.app.model.RuntimeConfig? = null,
     val includeRuntimeConfig: Boolean = false,
+    /**
+     * Update-only Built-in secret retention. When true the wire body omits
+     * provider.apiKey; the server retains it only if provider identity still
+     * matches. This never recovers or serializes the existing write-only value.
+     */
+    val retainOmittedBuiltInProviderSecret: Boolean = false,
     val runtimeResetMode: AgentResetMode? = null
 )
 

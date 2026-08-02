@@ -82,6 +82,9 @@ import build.raft.app.data.SharedComputersLoadStatus
 import build.raft.app.data.userFacingMessage
 import build.raft.app.data.SharedComputersPickerSlice
 import build.raft.app.data.SharedComputersStore
+import build.raft.app.data.SharedCreateAgentFormStore
+import build.raft.app.data.CREATE_AGENT_BUILTIN_RUNTIME_ID
+import build.raft.app.data.buildBuiltInRuntimeConfig
 import build.raft.app.data.AGENT_CREATE_FORM_REFRESH_FAILED
 import build.raft.app.data.AGENT_CREATE_NAME_TAKEN
 import build.raft.app.data.createAgentFallbackErrorText
@@ -1892,6 +1895,7 @@ private class MemberDetailRouteProvider(
     val serverMembersStore: build.raft.app.data.SharedServerMembersStore,
     val computersStore: SharedComputersStore,
     val createAgentCoordinator: build.raft.app.data.SharedCreateAgentCoordinator,
+    val createAgentFormStore: SharedCreateAgentFormStore,
     val conversationIdentityProvider: build.raft.app.data.SharedConversationIdentityProvider?,
     val storeScope: SlockShellStoreScope,
     val agentsApiClient: build.raft.app.data.SlockAgentsApiClient? = null
@@ -2418,6 +2422,9 @@ private fun rememberMemberDetailRouteProvider(
             logger = { message -> bridge.log("member_detail_runtime_models $message") }
         )
     }
+    val createAgentFormStore = remember(sharedStores, storeScope) {
+        sharedStores.createAgentFormStore(storeScope)
+    }
     return remember(
         bridge,
         reportIssueFailedMessage,
@@ -2432,6 +2439,7 @@ private fun rememberMemberDetailRouteProvider(
         serverMembersStore,
         computersStore,
         createAgentCoordinator,
+        createAgentFormStore,
         sharedStores.conversationIdentityProvider(storeScope),
         storeScope,
         agentsApiClient
@@ -2450,6 +2458,7 @@ private fun rememberMemberDetailRouteProvider(
             serverMembersStore = serverMembersStore,
             computersStore = computersStore,
             createAgentCoordinator = createAgentCoordinator,
+            createAgentFormStore = createAgentFormStore,
             conversationIdentityProvider = sharedStores.conversationIdentityProvider(storeScope),
             storeScope = storeScope,
             agentsApiClient = agentsApiClient
@@ -2918,6 +2927,7 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
                     agentRuntimeModelLoadsInFlight = agentRuntimeModelLoadsByRuntime,
                     agentRuntimeModelErrorsByRuntime = agentRuntimeModelErrorsByRuntime,
                     agentRuntimeModelGenerationsByRuntime = agentRuntimeModelGenerationsByRuntime,
+                    createAgentFormStore = provider.createAgentFormStore,
                     agentProfileEditAuthority = agentProfileEditAuthority,
                     onAgentRuntimeModelsRequest = loadAgentRuntimeModels,
                     canViewPrivateAgentSurfaces = { _, detail ->
@@ -4077,6 +4087,7 @@ private fun MembersDetailContent(
     agentRuntimeModelLoadsInFlight: Set<String> = emptySet(),
     agentRuntimeModelErrorsByRuntime: Map<String, String> = emptyMap(),
     agentRuntimeModelGenerationsByRuntime: Map<String, Long> = emptyMap(),
+    createAgentFormStore: SharedCreateAgentFormStore? = null,
     agentProfileEditAuthority: MembersAgentProfileEditAuthority? = null,
     onAgentRuntimeModelsRequest: (runtime: String, force: Boolean) -> Unit = { _, _ -> },
     canViewPrivateAgentSurfaces: (MemberProfile, AgentDetailSnapshot?) -> Boolean,
@@ -4598,6 +4609,7 @@ private fun MembersDetailContent(
                                         agentRuntimeModelLoadsInFlight = agentRuntimeModelLoadsInFlight,
                                         agentRuntimeModelErrorsByRuntime = agentRuntimeModelErrorsByRuntime,
                                         agentRuntimeModelGenerationsByRuntime = agentRuntimeModelGenerationsByRuntime,
+                                        createAgentFormStore = createAgentFormStore,
                                         agentProfileEditAuthority = agentProfileEditAuthority,
                                         onAgentRuntimeModelsRequest = onAgentRuntimeModelsRequest,
                                         canManage = canManage,
@@ -6983,6 +6995,7 @@ private fun MembersAgentProfileTab(
     agentRuntimeModelLoadsInFlight: Set<String> = emptySet(),
     agentRuntimeModelErrorsByRuntime: Map<String, String> = emptyMap(),
     agentRuntimeModelGenerationsByRuntime: Map<String, Long> = emptyMap(),
+    createAgentFormStore: SharedCreateAgentFormStore? = null,
     agentProfileEditAuthority: MembersAgentProfileEditAuthority? = null,
     onAgentRuntimeModelsRequest: (runtime: String, force: Boolean) -> Unit = { _, _ -> },
     canManage: Boolean,
@@ -7347,7 +7360,11 @@ private fun MembersAgentProfileTab(
         }
     }
 
-    fun saveRuntimeConfig(nextConfig: RuntimeConfig, openedCatalogGeneration: Long) {
+    fun saveRuntimeConfig(
+        nextConfig: RuntimeConfig,
+        openedCatalogGeneration: Long,
+        retainBuiltInProviderSecret: Boolean
+    ) {
         val callback = onUpdateAgentProfile
         if (!canEdit || (agentDetailActions == null && callback == null) || savingRuntimeConfig) {
             onUnavailableAction(runtimeEditingUnavailable)
@@ -7396,6 +7413,7 @@ private fun MembersAgentProfileTab(
                         description = member.description?.takeIf { it.isNotBlank() },
                         runtimeConfig = nextConfig,
                         includeRuntimeConfig = true,
+                        retainOmittedBuiltInProviderSecret = retainBuiltInProviderSecret,
                         runtimeResetMode = restartMode
                     )
                     if (agentDetailActions != null) {
@@ -7913,6 +7931,9 @@ private fun MembersAgentProfileTab(
                 runtimeModelLoadsInFlight = agentRuntimeModelLoadsInFlight,
                 runtimeModelErrorsByRuntime = agentRuntimeModelErrorsByRuntime,
                 runtimeModelGenerationsByRuntime = agentRuntimeModelGenerationsByRuntime,
+                createAgentFormStore = createAgentFormStore,
+                currentServerId = agentProfileEditAuthority?.serverId?.value,
+                machineId = summary?.machineId ?: member.membersComputerId,
                 openedProfileAuthority = runtimeEditorAuthority,
                 currentProfileAuthority = agentProfileEditAuthority,
                 onRuntimeModelsRequest = onAgentRuntimeModelsRequest,
@@ -7925,8 +7946,8 @@ private fun MembersAgentProfileTab(
                         runtimeConfigError = null
                     }
                 },
-                onSave = { nextConfig, catalogGeneration ->
-                    saveRuntimeConfig(nextConfig, catalogGeneration)
+                onSave = { nextConfig, catalogGeneration, retainBuiltInProviderSecret ->
+                    saveRuntimeConfig(nextConfig, catalogGeneration, retainBuiltInProviderSecret)
                 }
             )
         }
@@ -8092,6 +8113,31 @@ private fun MembersAgentRuntimeConfigRows(
                 )
             }
         }
+        if (runtimeId == CREATE_AGENT_BUILTIN_RUNTIME_ID) {
+            MembersAgentRuntimeConfigField(stringResource(MR.strings.member_label_provider)) {
+                val providerId = runtimeConfig.provider.membersBuiltInProviderId()
+                Text(
+                    text = providerId.ifBlank { stringResource(MR.strings.member_label_default) },
+                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
+                    color = if (providerId.isBlank()) SlockColor.TextMutedGray else SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+        if (runtimeId == "pi") {
+            MembersAgentRuntimeConfigField(stringResource(MR.strings.member_label_provider)) {
+                val providerId =
+                    (runtimeConfig.provider as? RuntimeProviderConfig.PiBuiltin)?.providerId
+                Text(
+                    text = providerId ?: stringResource(MR.strings.member_label_default),
+                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
+                    color = if (providerId == null) SlockColor.TextMutedGray else SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
         if (runtimeId == "claude") {
             MembersAgentRuntimeConfigField(stringResource(MR.strings.member_label_provider)) {
                 val provider = runtimeConfig.provider as? RuntimeProviderConfig.Custom
@@ -8218,6 +8264,9 @@ private fun MembersAgentRuntimeConfigDialog(
     initialConfig: RuntimeConfig,
     memberId: MemberId,
     summary: AgentDetailSummary?,
+    createAgentFormStore: SharedCreateAgentFormStore?,
+    currentServerId: String?,
+    machineId: String?,
     machineRuntimeIds: List<String> = emptyList(),
     runtimeModelsByRuntime: Map<String, SharedCreateAgentRuntimeModelCatalog> = emptyMap(),
     runtimeModelLoadsInFlight: Set<String> = emptySet(),
@@ -8229,7 +8278,7 @@ private fun MembersAgentRuntimeConfigDialog(
     saving: Boolean,
     error: String?,
     onDismiss: () -> Unit,
-    onSave: (RuntimeConfig, catalogGeneration: Long) -> Unit
+    onSave: (RuntimeConfig, catalogGeneration: Long, retainBuiltInProviderSecret: Boolean) -> Unit
 ) {
     val stableInitialConfig = remember(memberId.value, initialConfig) { initialConfig }
     var runtime by remember(stableInitialConfig) { mutableStateOf(stableInitialConfig.runtime) }
@@ -8252,6 +8301,27 @@ private fun MembersAgentRuntimeConfigDialog(
     }
     var providerApiUrl by remember(stableInitialConfig) { mutableStateOf(initialProvider?.apiUrl.orEmpty()) }
     var providerApiKey by remember(stableInitialConfig) { mutableStateOf(initialProvider?.apiKey.orEmpty()) }
+    val initialPiProvider = stableInitialConfig.provider as? RuntimeProviderConfig.PiBuiltin
+    var piProviderId by remember(stableInitialConfig) {
+        mutableStateOf(initialPiProvider?.providerId ?: "configured")
+    }
+    var piProviderApiKey by remember(stableInitialConfig) {
+        mutableStateOf(initialPiProvider?.apiKey.orEmpty())
+    }
+    val initialBuiltInProvider = stableInitialConfig.provider
+        .takeIf { stableInitialConfig.runtime == CREATE_AGENT_BUILTIN_RUNTIME_ID }
+    var builtInProviderId by remember(stableInitialConfig) {
+        mutableStateOf(initialBuiltInProvider.membersBuiltInProviderId())
+    }
+    // Built-in provider keys are write-only. Agent reads deliberately project
+    // an empty string; a non-empty draft always means the user supplied a replacement.
+    var builtInApiKey by remember(stableInitialConfig) { mutableStateOf("") }
+    var builtInBaseUrl by remember(stableInitialConfig) {
+        mutableStateOf((initialBuiltInProvider as? RuntimeProviderConfig.Gateway)?.baseUrl.orEmpty())
+    }
+    var builtInSupportsImageInput by remember(stableInitialConfig) {
+        mutableStateOf((initialBuiltInProvider as? RuntimeProviderConfig.Gateway)?.supportsImageInput == true)
+    }
     var fastMode by remember(stableInitialConfig) { mutableStateOf(stableInitialConfig.mode is RuntimeModeConfig.Fast) }
     var reasoningEffort by remember(stableInitialConfig) { mutableStateOf(stableInitialConfig.reasoningEffort) }
     var command by remember(stableInitialConfig) { mutableStateOf(stableInitialConfig.command.orEmpty()) }
@@ -8259,6 +8329,7 @@ private fun MembersAgentRuntimeConfigDialog(
         mutableStateOf(stableInitialConfig.envVars.orEmpty().entries.map { it.key to it.value })
     }
     var pendingRuntimeSwitchConfig by remember(stableInitialConfig) { mutableStateOf<RuntimeConfig?>(null) }
+    var pendingRetainBuiltInProviderSecret by remember(stableInitialConfig) { mutableStateOf(false) }
     var awaitingServerModelForRuntime by remember(stableInitialConfig) { mutableStateOf(false) }
     var acceptedCatalogGeneration by remember(stableInitialConfig) {
         mutableStateOf(runtimeModelGenerationsByRuntime[stableInitialConfig.runtime] ?: 0L)
@@ -8266,6 +8337,23 @@ private fun MembersAgentRuntimeConfigDialog(
     var advancedOpen by remember(stableInitialConfig) {
         mutableStateOf(command.isNotBlank() || envVarEntries.isNotEmpty())
     }
+    val formStoreState = createAgentFormStore?.state?.collectAsState()?.value
+    val cleanServerId = currentServerId?.trim().orEmpty()
+    val cleanMachineId = machineId?.trim().orEmpty()
+    val builtInForm = formStoreState?.resolvedForms?.entries
+        ?.singleOrNull { (key, _) ->
+            key.serverId == cleanServerId &&
+                key.machineId == cleanMachineId &&
+                key.ref.runtimeId == CREATE_AGENT_BUILTIN_RUNTIME_ID
+        }
+        ?.value
+    val builtInFormLoading = formStoreState?.loadingForms?.any { key ->
+        key.serverId == cleanServerId &&
+            key.machineId == cleanMachineId &&
+            key.ref.runtimeId == CREATE_AGENT_BUILTIN_RUNTIME_ID
+    } == true
+    var builtInFormError by remember(stableInitialConfig) { mutableStateOf<String?>(null) }
+    var builtInFormReloadGeneration by remember(stableInitialConfig) { mutableStateOf(0) }
     val currentStatus = AgentStatus.fromWireValue(summary?.status)
     val activeAgent = currentStatus != null && currentStatus.presence != Presence.Offline
     val customModelMissing = customModelMode && customModelName.trim().isBlank()
@@ -8277,12 +8365,39 @@ private fun MembersAgentRuntimeConfigDialog(
         runtime == "claude" &&
             providerMode == RUNTIME_PROVIDER_MODE_CUSTOM &&
             providerApiKey.isBlank()
+    val piProviderKeyInvalid =
+        runtime == "pi" && piProviderId != "configured" && piProviderApiKey.isBlank()
     val runtimeModelsCatalog = runtimeModelsByRuntime[runtime]
     val runtimeModelsOverride = runtimeModelsCatalog?.models.orEmpty()
     val runtimeModelsLoading = runtime in runtimeModelLoadsInFlight
     val runtimeModelsError = runtimeModelErrorsByRuntime[runtime]
+    val retainBuiltInProviderSecret =
+        membersCanRetainBuiltInProviderSecret(
+            initialConfig = stableInitialConfig,
+            runtime = runtime,
+            providerId = builtInProviderId,
+            baseUrl = builtInBaseUrl,
+            replacementApiKey = builtInApiKey
+        )
+    val builtInConfigForSave =
+        if (runtime == CREATE_AGENT_BUILTIN_RUNTIME_ID) {
+            builtInForm?.buildBuiltInRuntimeConfig(
+                providerId = builtInProviderId,
+                apiKey = builtInApiKey.ifBlank {
+                    if (retainBuiltInProviderSecret) MembersRetainedBuiltInSecretPlaceholder else ""
+                },
+                baseUrl = builtInBaseUrl,
+                model = model,
+                envVars = envVarEntries.toMembersRuntimeEnvVars(),
+                supportsImageInput = builtInSupportsImageInput
+            )?.membersProjectRetainedBuiltInSecret(retainBuiltInProviderSecret)
+        } else {
+            null
+        }
     val runtimeConfigSaveEnabled =
-        membersAgentRuntimeConfigSaveEnabled(
+        if (runtime == CREATE_AGENT_BUILTIN_RUNTIME_ID) {
+            builtInConfigForSave != null && !builtInFormLoading && builtInFormError == null
+        } else membersAgentRuntimeConfigSaveEnabled(
             runtime = runtime,
             model = model,
             customModelMode = customModelMode,
@@ -8294,8 +8409,57 @@ private fun MembersAgentRuntimeConfigDialog(
         )
 
     LaunchedEffect(runtime) {
-        if (runtime.isNotBlank()) {
+        if (runtime.isNotBlank() && runtime != CREATE_AGENT_BUILTIN_RUNTIME_ID) {
             onRuntimeModelsRequest(runtime, false)
+        }
+    }
+    LaunchedEffect(
+        runtime,
+        createAgentFormStore,
+        cleanServerId,
+        cleanMachineId,
+        builtInFormReloadGeneration
+    ) {
+        if (
+            runtime == CREATE_AGENT_BUILTIN_RUNTIME_ID &&
+            createAgentFormStore != null &&
+            cleanServerId.isNotBlank() &&
+            cleanMachineId.isNotBlank()
+        ) {
+            builtInFormError = null
+            when (
+                val result = createAgentFormStore.loadSupportedBuiltInFormForEdit(
+                    serverId = cleanServerId,
+                    machineId = cleanMachineId,
+                    force = builtInFormReloadGeneration > 0
+                )
+            ) {
+                is DataResult.Content -> Unit
+                is DataResult.Empty -> builtInFormError = "runtime_form_unavailable"
+                is DataResult.Error -> builtInFormError = result.error.code
+                is DataResult.NoPermission -> builtInFormError = result.blocker.code
+            }
+        }
+    }
+    LaunchedEffect(runtime, builtInForm) {
+        if (runtime == CREATE_AGENT_BUILTIN_RUNTIME_ID && builtInForm != null) {
+            val providerSource =
+                builtInForm.optionSources["provider"] as?
+                    build.raft.app.data.SharedAgentCreateFormOptionSource.Select
+            val selectedProvider = providerSource?.options?.singleOrNull { it.value == builtInProviderId }
+            if (selectedProvider == null) {
+                val nextProvider = providerSource?.defaultValue.orEmpty()
+                builtInProviderId = nextProvider
+                builtInBaseUrl = ""
+                builtInApiKey = ""
+                builtInSupportsImageInput = false
+                val modelSource =
+                    builtInForm.optionSources["model"] as?
+                        build.raft.app.data.SharedAgentCreateFormOptionSource.DependentSelect
+                model = modelSource?.defaultValueByValue?.get(nextProvider).orEmpty()
+                customModelMode = modelSource?.customValueAllowedByValue?.get(nextProvider) == true
+                customModelName = if (customModelMode) model else ""
+            }
         }
     }
     LaunchedEffect(runtime, runtimeModelsCatalog, awaitingServerModelForRuntime) {
@@ -8330,19 +8494,80 @@ private fun MembersAgentRuntimeConfigDialog(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 item {
-                    AdvancedRuntimeSection(
+                    if (runtime == CREATE_AGENT_BUILTIN_RUNTIME_ID) {
+                        BuiltInRuntimeSection(
+                            runtime = runtime,
+                            onRuntimeChange = { nextRuntime ->
+                                runtime = nextRuntime
+                                if (nextRuntime != CREATE_AGENT_BUILTIN_RUNTIME_ID) {
+                                    model = ""
+                                    awaitingServerModelForRuntime = true
+                                    customModelMode = false
+                                    customModelName = ""
+                                }
+                            },
+                            machineRuntimeIds = machineRuntimeIds,
+                            runtimeAvailabilityError = null,
+                            form = builtInForm,
+                            loading = builtInFormLoading,
+                            providerId = builtInProviderId,
+                            onProviderIdChange = { nextProvider ->
+                                if (nextProvider != builtInProviderId) {
+                                    builtInApiKey = ""
+                                    builtInBaseUrl = ""
+                                    builtInSupportsImageInput = false
+                                }
+                                builtInProviderId = nextProvider
+                            },
+                            apiKey = builtInApiKey,
+                            onApiKeyChange = { builtInApiKey = it },
+                            baseUrl = builtInBaseUrl,
+                            onBaseUrlChange = { builtInBaseUrl = it },
+                            supportsImageInput = builtInSupportsImageInput,
+                            onSupportsImageInputChange = { builtInSupportsImageInput = it },
+                            model = model,
+                            onModelChange = { model = it },
+                            envVarEntries = envVarEntries,
+                            onEnvVarEntriesChange = { envVarEntries = it },
+                            advancedOpen = advancedOpen,
+                            onAdvancedOpenChange = { advancedOpen = it },
+                            enabled = !saving
+                        )
+                        builtInFormError?.let { formError ->
+                            Text(
+                                text = formError,
+                                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold)
+                                    .copy(color = SlockColor.AccentRed),
+                                color = SlockColor.AccentRed
+                            )
+                            SlockBrutalActionButton(
+                                label = stringResource(MR.strings.common_retry),
+                                leadingIcon = SlockLucideIconName.RefreshCw,
+                                enabled = !builtInFormLoading && !saving,
+                                backgroundColor = SlockColor.SurfaceWhite,
+                                onClick = { builtInFormReloadGeneration += 1 }
+                            )
+                        }
+                    } else AdvancedRuntimeSection(
                         runtime = runtime,
                         onRuntimeChange = { nextRuntime ->
                             runtime = nextRuntime
-                            // A runtime switch must wait for this machine's canonical model catalog;
-                            // enum/static defaults are not server truth and cannot seed a save.
-                            model = ""
-                            awaitingServerModelForRuntime = true
-                            customModelMode = false
-                            customModelName = ""
+                            if (nextRuntime == CREATE_AGENT_BUILTIN_RUNTIME_ID) {
+                                awaitingServerModelForRuntime = false
+                                model = stableInitialConfig.toMembersRuntimeModelValue()
+                            } else {
+                                // A runtime switch must wait for this machine's canonical model catalog;
+                                // enum/static defaults are not server truth and cannot seed a save.
+                                model = ""
+                                awaitingServerModelForRuntime = true
+                                customModelMode = false
+                                customModelName = ""
+                            }
                             providerMode = RUNTIME_PROVIDER_MODE_DEFAULT
                             providerApiUrl = ""
                             providerApiKey = ""
+                            piProviderId = "configured"
+                            piProviderApiKey = ""
                             fastMode = false
                             command = ""
                             if (!supportsRuntimeReasoningEffort(nextRuntime)) {
@@ -8381,6 +8606,13 @@ private fun MembersAgentRuntimeConfigDialog(
                         onProviderApiUrlChange = { providerApiUrl = it },
                         providerApiKey = providerApiKey,
                         onProviderApiKeyChange = { providerApiKey = it },
+                        piProviderId = piProviderId,
+                        onPiProviderIdChange = {
+                            piProviderId = it
+                            if (it == "configured") piProviderApiKey = ""
+                        },
+                        piProviderApiKey = piProviderApiKey,
+                        onPiProviderApiKeyChange = { piProviderApiKey = it },
                         fastMode = fastMode,
                         onFastModeChange = { fastMode = it },
                         reasoningEffort = reasoningEffort,
@@ -8392,7 +8624,7 @@ private fun MembersAgentRuntimeConfigDialog(
                         advancedOpen = advancedOpen,
                         onAdvancedOpenChange = { advancedOpen = it }
                     )
-                    if (runtimeModelsError != null) {
+                    if (runtime != CREATE_AGENT_BUILTIN_RUNTIME_ID && runtimeModelsError != null) {
                         SlockBrutalActionButton(
                             label = stringResource(MR.strings.common_retry),
                             leadingIcon = SlockLucideIconName.RefreshCw,
@@ -8440,27 +8672,34 @@ private fun MembersAgentRuntimeConfigDialog(
                             runtimeEditorAuthorityCurrent &&
                             !customModelMissing &&
                             !providerUrlInvalid &&
-                            !providerKeyInvalid,
+                            !providerKeyInvalid &&
+                            !piProviderKeyInvalid,
                     backgroundColor = SlockColor.AccentPink,
                     minWidth = 166.dp,
                     onClick = {
-                        val nextConfig = buildRuntimeConfig(
-                            runtime = runtime,
-                            model = if (customModelMode) customModelName else model,
-                            customModelMode = customModelMode,
-                            customModelName = customModelName.takeIf { customModelMode },
-                            providerMode = providerMode,
-                            providerApiUrl = providerApiUrl,
-                            providerApiKey = providerApiKey,
-                            fastMode = fastMode,
-                            reasoningEffort = reasoningEffort,
-                            envVars = envVarEntries.toMembersRuntimeEnvVars(),
-                            command = command
-                        )
+                        val nextConfig =
+                            if (runtime == CREATE_AGENT_BUILTIN_RUNTIME_ID) {
+                                builtInConfigForSave ?: return@SlockBrutalActionButton
+                            } else buildRuntimeConfig(
+                                runtime = runtime,
+                                model = if (customModelMode) customModelName else model,
+                                customModelMode = customModelMode,
+                                customModelName = customModelName.takeIf { customModelMode },
+                                providerMode = providerMode,
+                                providerApiUrl = providerApiUrl,
+                                providerApiKey = providerApiKey,
+                                piProviderId = piProviderId,
+                                piProviderApiKey = piProviderApiKey,
+                                fastMode = fastMode,
+                                reasoningEffort = reasoningEffort,
+                                envVars = envVarEntries.toMembersRuntimeEnvVars(),
+                                command = command
+                            )
                         if (membersRuntimeConfigSwitchConfirmation(stableInitialConfig, nextConfig, activeAgent) != null) {
                             pendingRuntimeSwitchConfig = nextConfig
+                            pendingRetainBuiltInProviderSecret = retainBuiltInProviderSecret
                         } else {
-                            onSave(nextConfig, acceptedCatalogGeneration)
+                            onSave(nextConfig, acceptedCatalogGeneration, retainBuiltInProviderSecret)
                         }
                     }
                 )
@@ -8474,11 +8713,17 @@ private fun MembersAgentRuntimeConfigDialog(
                 confirmation = confirmation,
                 onConfirm = {
                     pendingRuntimeSwitchConfig = null
-                    onSave(pendingConfig, acceptedCatalogGeneration)
+                    onSave(
+                        pendingConfig,
+                        acceptedCatalogGeneration,
+                        pendingRetainBuiltInProviderSecret
+                    )
+                    pendingRetainBuiltInProviderSecret = false
                 },
                 onCancel = {
                     if (!saving) {
                         pendingRuntimeSwitchConfig = null
+                        pendingRetainBuiltInProviderSecret = false
                     }
                 }
             )
@@ -8612,6 +8857,44 @@ internal sealed interface MembersAgentRuntimeConfigResolution {
     data class Unavailable(val code: String) : MembersAgentRuntimeConfigResolution
 }
 
+private const val MembersRetainedBuiltInSecretPlaceholder = "retained-by-server"
+
+private fun RuntimeProviderConfig?.membersBuiltInProviderId(): String =
+    when (this) {
+        is RuntimeProviderConfig.Preset -> providerId
+        is RuntimeProviderConfig.Gateway -> providerId
+        else -> ""
+    }
+
+internal fun membersCanRetainBuiltInProviderSecret(
+    initialConfig: RuntimeConfig,
+    runtime: String,
+    providerId: String,
+    baseUrl: String,
+    replacementApiKey: String
+): Boolean {
+    if (runtime != CREATE_AGENT_BUILTIN_RUNTIME_ID || replacementApiKey.isNotBlank()) return false
+    if (initialConfig.runtime != CREATE_AGENT_BUILTIN_RUNTIME_ID) return false
+    val cleanProviderId = providerId.trim()
+    return when (val provider = initialConfig.provider) {
+        is RuntimeProviderConfig.Preset -> provider.providerId == cleanProviderId
+        is RuntimeProviderConfig.Gateway ->
+            provider.providerId == cleanProviderId && provider.baseUrl.trim() == baseUrl.trim()
+        else -> false
+    }
+}
+
+private fun RuntimeConfig.membersProjectRetainedBuiltInSecret(retain: Boolean): RuntimeConfig {
+    if (!retain || runtime != CREATE_AGENT_BUILTIN_RUNTIME_ID) return this
+    val projectedProvider =
+        when (val current = provider) {
+            is RuntimeProviderConfig.Preset -> current.copy(apiKey = "")
+            is RuntimeProviderConfig.Gateway -> current.copy(apiKey = "")
+            else -> current
+        }
+    return copy(provider = projectedProvider)
+}
+
 internal fun membersAgentRuntimeConfigSaveEnabled(
     runtime: String,
     model: String,
@@ -8645,6 +8928,7 @@ internal fun AgentDetailSummary?.toMembersRuntimeConfigResolution(): MembersAgen
         ?: return MembersAgentRuntimeConfigResolution.Unavailable("agent_runtime_model_missing")
     return MembersAgentRuntimeConfigResolution.Content(RuntimeConfig(
         runtime = runtime,
+        provider = summary.runtimeProvider,
         model = membersRuntimeModelConfig(runtime, model, summary.runtimeModelKind),
         mode = if (summary.executionMode?.trim()?.lowercase() == "fast") {
             RuntimeModeConfig.Fast
@@ -8708,6 +8992,7 @@ private fun AgentDetailSnapshot.withRuntimeConfigProjection(config: RuntimeConfi
         summary = currentSummary.copy(
             runtime = config.runtime,
             model = config.toMembersRuntimeModelValue(),
+            runtimeProvider = config.provider,
             runtimeModelKind =
                 when (config.model) {
                     is RuntimeModelConfig.Preset -> "preset"

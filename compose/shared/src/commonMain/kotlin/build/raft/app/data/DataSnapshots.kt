@@ -468,6 +468,7 @@ data class AgentDetailSummary(
     val runtime: String? = null,
     val model: String? = null,
     val runtimeModelKind: String? = null,
+    val runtimeProvider: build.raft.app.model.RuntimeProviderConfig? = null,
     val reasoning: String? = null,
     val executionMode: String? = null,
     val machineId: String? = null,

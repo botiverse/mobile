@@ -21,7 +21,7 @@ class SharedCreateAgentDialogTest {
 
         assertTrue(items.isNotEmpty())
         assertEquals(
-            listOf("claude", "codex", "antigravity", "kimi-sdk", "kimi", "copilot", "cursor", "gemini", "opencode", "pi"),
+            listOf("claude", "codex", "grok", "builtin", "antigravity", "kimi-sdk", "copilot", "cursor", "opencode", "pi"),
             items.map { it.id }
         )
         assertFalse(items.any { it.custom })
@@ -35,7 +35,7 @@ class SharedCreateAgentDialogTest {
             )
 
         assertEquals(
-            listOf("claude", "codex", "antigravity", "kimi-sdk", "kimi", "copilot", "cursor", "gemini", "opencode", "pi"),
+            listOf("claude", "codex", "grok", "builtin", "antigravity", "kimi-sdk", "copilot", "cursor", "opencode", "pi"),
             items.map { it.id }
         )
         assertEquals("Claude Code", items.first { it.id == "claude" }.label)
@@ -45,6 +45,17 @@ class SharedCreateAgentDialogTest {
         assertTrue(items.first { it.id == "codex" }.enabled)
         assertFalse(items.first { it.id == "pi" }.enabled)
         assertFalse(items.any { it.custom })
+    }
+
+    @Test
+    fun runtimeDropdownRetainsOnlyTheCurrentDeprecatedRuntimeWhileEditing() {
+        val createIds = createAgentRuntimeDropdownItems().map { it.id }
+        assertFalse("kimi" in createIds)
+        assertFalse("gemini" in createIds)
+
+        val editingKimiIds = createAgentRuntimeDropdownItems(currentRuntimeId = "kimi").map { it.id }
+        assertTrue("kimi" in editingKimiIds)
+        assertFalse("gemini" in editingKimiIds)
     }
 
     @Test
@@ -330,7 +341,7 @@ class SharedCreateAgentDialogTest {
     }
 
     @Test
-    fun everySelectableRuntimeKeepsCustomModelAsLastOption() {
+    fun onlyCanonicalCustomModelRuntimesAppendCustomAsLastOption() {
         RUNTIMES.filter { it.supported }.forEach { runtime ->
             val items =
                 createAgentModelDropdownItems(
@@ -340,8 +351,13 @@ class SharedCreateAgentDialogTest {
                     allowCustomModel = supportsRuntimeCustomModelName(runtime.id)
                 )
 
-            assertEquals(CREATE_AGENT_CUSTOM_MODEL_ID, items.last().id, runtime.id)
-            assertTrue(items.last().custom, runtime.id)
+            if (supportsRuntimeCustomModelName(runtime.id)) {
+                assertEquals(CREATE_AGENT_CUSTOM_MODEL_ID, items.last().id, runtime.id)
+                assertTrue(items.last().custom, runtime.id)
+            } else {
+                assertFalse(items.any { it.custom }, runtime.id)
+                assertFalse(items.any { it.id == CREATE_AGENT_CUSTOM_MODEL_ID }, runtime.id)
+            }
         }
     }
 
@@ -478,18 +494,18 @@ class SharedCreateAgentDialogTest {
     }
 
     @Test
-    fun customModelSelectionAcceptsAndSavesUserInputForPreviouslyGatedRuntime() {
+    fun customModelSelectionAcceptsAndSavesUserInputForSupportedRuntime() {
         val request =
             buildSharedCreateAgentDialogSubmit(
-                name = "OpenCode Agent",
+                name = "Codex Agent",
                 description = "",
                 selectedMachineId = "machine-1",
                 requiredComputer = null,
                 external = false,
-                runtime = "opencode",
+                runtime = "codex",
                 model = "catalog-model",
                 customModelMode = true,
-                customModelName = " vendor/private-opencode-model ",
+                customModelName = " vendor/private-codex-model ",
                 providerMode = "default",
                 providerApiUrl = "",
                 providerApiKey = "",
@@ -500,7 +516,7 @@ class SharedCreateAgentDialogTest {
             ).toCreateAgentRequest()
 
         assertEquals(
-            RuntimeModelConfig.Custom("vendor/private-opencode-model"),
+            RuntimeModelConfig.Custom("vendor/private-codex-model"),
             assertNotNull(request.runtimeConfig).model
         )
     }

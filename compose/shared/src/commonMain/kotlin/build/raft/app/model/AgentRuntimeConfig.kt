@@ -51,6 +51,10 @@ sealed class RuntimeProviderConfig {
         val apiKey: String,
         val supportsImageInput: Boolean = false
     ) : RuntimeProviderConfig()
+
+    @Serializable
+    @SerialName("pi-builtin")
+    data class PiBuiltin(val providerId: String, val apiKey: String) : RuntimeProviderConfig()
 }
 
 @Serializable
@@ -104,18 +108,21 @@ data class RuntimeInfo(
     val id: String,
     val displayName: String,
     val binary: String,
-    val supported: Boolean
+    val supported: Boolean,
+    val deprecated: Boolean = false
 )
 
 val RUNTIMES: List<RuntimeInfo> = listOf(
     RuntimeInfo(id = "claude", displayName = "Claude Code", binary = "claude", supported = true),
     RuntimeInfo(id = "codex", displayName = "Codex CLI", binary = "codex", supported = true),
+    RuntimeInfo(id = "grok", displayName = "Grok Build", binary = "grok", supported = true),
+    RuntimeInfo(id = "builtin", displayName = "Built-in Pi", binary = "", supported = true),
     RuntimeInfo(id = "antigravity", displayName = "Antigravity CLI", binary = "agy", supported = true),
     RuntimeInfo(id = "kimi-sdk", displayName = "Kimi Code", binary = "", supported = true),
-    RuntimeInfo(id = "kimi", displayName = "Kimi CLI (deprecated)", binary = "kimi", supported = true),
+    RuntimeInfo(id = "kimi", displayName = "Kimi CLI (deprecated)", binary = "kimi", supported = true, deprecated = true),
     RuntimeInfo(id = "copilot", displayName = "Copilot CLI", binary = "copilot", supported = true),
     RuntimeInfo(id = "cursor", displayName = "Cursor CLI", binary = "cursor-agent", supported = true),
-    RuntimeInfo(id = "gemini", displayName = "Gemini CLI", binary = "gemini", supported = true),
+    RuntimeInfo(id = "gemini", displayName = "Gemini CLI (deprecated)", binary = "gemini", supported = true, deprecated = true),
     RuntimeInfo(id = "opencode", displayName = "OpenCode", binary = "opencode", supported = true),
     RuntimeInfo(id = "pi", displayName = "Pi", binary = "pi", supported = true)
 )
@@ -132,7 +139,7 @@ val REASONING_EFFORTS: List<Pair<String, String>> = listOf(
     "xhigh" to "Extra High"
 )
 
-val REASONING_EFFORT_RUNTIMES: Set<String> = setOf("claude", "codex", "copilot", "pi")
+val REASONING_EFFORT_RUNTIMES: Set<String> = setOf("builtin", "claude", "codex", "grok", "copilot", "pi")
 val RUNTIME_FAST_MODE_RUNTIMES: Set<String> = setOf("claude", "codex")
 
 // ── Runtime models ──
@@ -258,15 +265,9 @@ const val RUNTIME_PROVIDER_MODE_CUSTOM: String = "custom"
 
 fun supportsRuntimeApiUrl(runtime: String): Boolean = runtime == "claude"
 
-/**
- * Every selectable runtime keeps an escape hatch for a model id that is not in
- * the machine-discovered catalog. The catalog is advisory, not an allow-list:
- * users must still be able to enter a runtime-specific/custom model value.
- *
- * Keep this future-compatible with machine-provided runtime ids instead of
- * maintaining another runtime allow-list beside [RUNTIMES].
- */
-fun supportsRuntimeCustomModelName(runtime: String): Boolean = runtime.isNotBlank()
+/** Mirrors the Web/server allow-list for runtimes that accept a custom model. */
+fun supportsRuntimeCustomModelName(runtime: String): Boolean =
+    runtime in setOf("builtin", "claude", "codex", "cursor", "copilot", "pi")
 
 fun supportsRuntimeFastMode(runtime: String): Boolean = RUNTIME_FAST_MODE_RUNTIMES.contains(runtime)
 
@@ -289,6 +290,8 @@ fun buildRuntimeConfig(
     providerMode: RuntimeProviderMode? = null,
     providerApiUrl: String? = null,
     providerApiKey: String? = null,
+    piProviderId: String? = null,
+    piProviderApiKey: String? = null,
     fastMode: Boolean = false,
     reasoningEffort: String? = null,
     envVars: Map<String, String>? = null,
@@ -302,7 +305,11 @@ fun buildRuntimeConfig(
         if (fastMode && supportsRuntimeFastMode(effectiveRuntime)) RuntimeModeConfig.Fast
         else RuntimeModeConfig.Default
     val effectiveProvider: RuntimeProviderConfig? =
-        if (supportsRuntimeApiUrl(effectiveRuntime)) {
+        if (effectiveRuntime == "pi") {
+            piProviderId?.trim()?.takeIf { it.isNotBlank() && it != "configured" }?.let { providerId ->
+                RuntimeProviderConfig.PiBuiltin(providerId, piProviderApiKey?.trim().orEmpty())
+            } ?: RuntimeProviderConfig.Default
+        } else if (supportsRuntimeApiUrl(effectiveRuntime)) {
             if (effectiveProviderMode == RUNTIME_PROVIDER_MODE_CUSTOM) {
                 RuntimeProviderConfig.Custom(
                     apiUrl = providerApiUrl?.trim().orEmpty(),

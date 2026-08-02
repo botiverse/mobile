@@ -16,9 +16,12 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.encodeToJsonElement
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
 import kotlin.time.TimeSource
 
@@ -851,7 +854,10 @@ fun buildSharedAgentProfileUpdateBody(request: AgentProfileUpdateRequest): Strin
                     put("runtimeConfig", JsonNull)
                     put("envVars", JsonNull)
                 } else {
-                    put("runtimeConfig", memberRepositoryJson.encodeToJsonElement(runtimeConfig))
+                    put(
+                        "runtimeConfig",
+                        runtimeConfig.toAgentUpdateJson(request.retainOmittedBuiltInProviderSecret)
+                    )
                     put("runtime", runtimeConfig.runtime)
                     put("model", runtimeConfig.model.toAgentModelWireValue())
                     if (runtimeConfig.reasoningEffort == null) {
@@ -877,6 +883,25 @@ private fun RuntimeModelConfig.toAgentModelWireValue(): String =
         is RuntimeModelConfig.Preset -> id
         is RuntimeModelConfig.Custom -> name
     }
+
+private fun build.raft.app.model.RuntimeConfig.toAgentUpdateJson(
+    retainOmittedBuiltInProviderSecret: Boolean
+): JsonElement {
+    val encoded = memberRepositoryJson.encodeToJsonElement(this).jsonObject
+    if (!retainOmittedBuiltInProviderSecret || runtime != "builtin") return encoded
+    val provider = encoded["provider"] as? JsonObject ?: return encoded
+    val providerWithoutSecret =
+        buildJsonObject {
+            provider.forEach { (key, value) ->
+                if (key != "apiKey") put(key, value)
+            }
+        }
+    return buildJsonObject {
+        encoded.forEach { (key, value) ->
+            put(key, if (key == "provider") providerWithoutSecret else value)
+        }
+    }
+}
 
 @Serializable
 data class AddAgentChannelMemberRequestBody(val agentId: String)
