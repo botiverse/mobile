@@ -1288,6 +1288,61 @@ class SlockFilePreviewDownloadStatusTest {
     }
 
     @Test
+    fun preflightAcceptsExactAppPrivateFileOnlyWithExplicitStorageKind() {
+        val privateUri = "file://build.raft.mobile/data/storage/el2/base/files/slock-attachment-downloads/report.pdf"
+        val response =
+            JSONObject()
+                .put("status", "ok")
+                .put("cached", true)
+                .put("recordVersion", 11L)
+                .put("sizeBytes", 4096L)
+                .put("uri", privateUri)
+                .put("storageKind", "app_private")
+
+        assertEquals(
+            SlockFilePreviewPublicDownloadState.Downloaded(
+                generation = 11L,
+                sizeBytes = 4096L,
+                persistedUri = privateUri
+            ),
+            slockFilePreviewPublicDownloadObservation(response).state
+        )
+        assertEquals(
+            SlockFilePreviewPublicDownloadState.NotDownloaded,
+            slockFilePreviewPublicDownloadObservation(
+                JSONObject(response.toString()).put("storageKind", "")
+            ).state
+        )
+    }
+
+    @Test
+    fun privateExportLifecycleNeverMutatesDownloadStatusProgressOrAttempt() {
+        val progress =
+            BridgeAttachmentDownloadProgress(
+                downloadId = "download-7",
+                attemptToken = "attempt-7",
+                percent = 42,
+                downloadedBytes = 42L,
+                totalBytes = 100L
+            )
+        val initial =
+            SlockFilePreviewExportIsolationState(
+                downloadStatus = "paused",
+                downloadProgress = progress,
+                activeDownloadId = "download-7",
+                exportInProgress = false
+            )
+
+        SlockFilePreviewExportIsolationEvent.entries.forEach { event ->
+            val reduced = reduceSlockFilePreviewExportIsolationState(initial, event)
+            assertEquals(initial.downloadStatus, reduced.downloadStatus, event.name)
+            assertEquals(initial.downloadProgress, reduced.downloadProgress, event.name)
+            assertEquals(initial.activeDownloadId, reduced.activeDownloadId, event.name)
+            assertEquals(event == SlockFilePreviewExportIsolationEvent.Started, reduced.exportInProgress, event.name)
+        }
+    }
+
+    @Test
     fun unresolvedPreflightIsNotRenderedAsFalseNotDownloadedState() {
         assertNull(
             slockFilePreviewDownloadUiState(
