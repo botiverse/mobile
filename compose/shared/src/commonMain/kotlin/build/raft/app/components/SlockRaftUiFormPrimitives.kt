@@ -358,6 +358,108 @@ internal fun SlockSlugInput(
     }
 }
 
+/**
+ * Value-aware [SlockSlugInput] overload (#130): callers hold a caller-local
+ * [TextFieldValue] so CJK composition and cursor/selection survive typing, while
+ * the durable slug stays a `.text` String projection at the caller. Mirrors the
+ * String overload above exactly; the String overload is retained and is removed
+ * later by task #131.
+ */
+@Composable
+internal fun SlockSlugInput(
+    value: TextFieldValue,
+    onValueChange: (TextFieldValue) -> Unit,
+    modifier: Modifier = Modifier,
+    placeholder: String = "",
+    placeholderColor: Color = SlockColor.TextMutedGray,
+    enabled: Boolean = true,
+    // react .input-brutal outer height: 24px line + 16px py-2 + 4px border-2 =
+    // 44px. Kuikly draws the Row border as a FOREGROUND over children, so with
+    // 44dp outer the visible tile inside the 2dp border = 40dp = react's
+    // items-stretch span (120px @3x).
+    fieldHeight: Dp = 44.dp
+) {
+    val shadowOffset = SlockShadow.BrutalSmall
+    // react's disabled look is CSS group opacity-60: each part flattens against
+    // what's beneath it INSIDE the group first, then the whole result dims over
+    // the page. Per-part alpha only equals that over the page backdrop, so parts
+    // stacked on the tile (border, slash) drift warm. Precomputed opaque react
+    // composites instead (white backdrop, matching the disabled-button precedent):
+    // shadow #141111 x0.6 = #727070; border/text black x0.6 = #666666.
+    val shadowColor = if (enabled) SlockColor.ShadowBlack else Color(0xFF727070)
+    val borderColor = if (enabled) SlockColor.BorderBlack else Color(0xFF666666)
+    val contentColor = if (enabled) SlockColor.TextBlack else Color(0xFF666666)
+    Box(modifier = modifier.fillMaxWidth().height(fieldHeight + shadowOffset)) {
+        if (shadowOffset > 0.dp) {
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(fieldHeight)
+                        .offset(x = shadowOffset, y = shadowOffset)
+                        .background(shadowColor)
+            )
+        }
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(fieldHeight)
+                    .background(SlockColor.SurfaceWhite)
+                    .border(SlockStroke.Default, borderColor),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier =
+                    Modifier
+                        // react's w-8 (32px) span sits INSIDE the outer border-2;
+                        // Kuikly draws the Row border as a FOREGROUND over this
+                        // child's left 2dp, so 34dp is what leaves react's 30px
+                        // visible tile + 2px divider (#1038: the 32dp box shifted
+                        // the divider and all downstream text 2dp left).
+                        .width(34.dp)
+                        // structural mirror of react's items-stretch span
+                        .fillMaxHeight()
+                        .background(if (enabled) SlockSlugInputPrefixBackground else SlockSlugInputDisabledPrefixBackground)
+                        // Only the right divider is visible (the other 3 sides sit
+                        // under the Row's foreground border); react divider is
+                        // border-r-2 = 2px, so Default, not Thin.
+                        .border(SlockStroke.Default, borderColor),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "/",
+                    // Empirically measured on the pinned render build (run
+                    // 29142637461): react's slash ink is dead-centered in the
+                    // tile; android's sits 1.5dp low under the even-split span.
+                    // Platform-gated correction - see
+                    // slockSlugSlashCenteringOffsetDp() for the measurement
+                    // provenance and the do-not-copy-blind note for iOS/OHOS.
+                    modifier = Modifier.offset(y = slockSlugSlashCenteringOffsetDp().dp),
+                    style = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 18.sp),
+                    // react slash = text-black/70. Disabled must match react's GROUP
+                    // flatten (glyph over tile first, then x0.6 over white) = opaque
+                    // #94928A; a plain alpha over the dim tile lets ~2x the yellow
+                    // through (round-2 adversarial review, Delta(0,3,10)/px).
+                    color = if (enabled) SlockColor.TextBlack.copy(alpha = 0.70f) else Color(0xFF94928A),
+                    maxLines = 1
+                )
+            }
+            TextField(
+                value = value,
+                onValueChange = { if (enabled) onValueChange(it) },
+                placeholder = placeholder,
+                placeholderColor = placeholderColor,
+                autoFocus = false,
+                maxLines = 1,
+                textStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = contentColor),
+                modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
+                contentAlignment = Alignment.CenterStart
+            )
+        }
+    }
+}
+
 @Composable
 internal fun SlockCheckboxLabelRow(
     label: String,
