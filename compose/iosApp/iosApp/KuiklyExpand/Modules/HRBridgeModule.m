@@ -2,6 +2,7 @@
 #import "RaftDiagnosticsPathAdmission.h"
 
 #import "KuiklyRenderViewController.h"
+#import <CommonCrypto/CommonDigest.h>
 #import <Hands/Hands.h>
 #import <ImageIO/ImageIO.h>
 #import <shared/shared.h>
@@ -143,6 +144,96 @@ static NSString *SlockBridgeRawString(id value) {
         return [value stringValue] ?: @"";
     }
     return @"";
+}
+
+static NSString *SlockFeedbackDraftAccountSegment(NSString *accountId) {
+    NSString *scope = accountId.length > 0 ? accountId : @"anonymous";
+    NSData *accountData = [scope dataUsingEncoding:NSUTF8StringEncoding];
+    unsigned char digest[CC_SHA256_DIGEST_LENGTH];
+    CC_SHA256(accountData.bytes, (CC_LONG)accountData.length, digest);
+    NSMutableString *segment = [NSMutableString stringWithString:@"account-"];
+    for (NSUInteger index = 0; index < 16; index++) {
+        [segment appendFormat:@"%02x", digest[index]];
+    }
+    return segment;
+}
+
+static NSString *SlockFeedbackDraftExtension(NSString *fileName, NSString *mimeType) {
+    NSString *normalizedMime = [[mimeType componentsSeparatedByString:@";"] firstObject].lowercaseString;
+    if ([normalizedMime isEqualToString:@"image/avif"]) return @"avif";
+    if ([normalizedMime isEqualToString:@"image/gif"]) return @"gif";
+    if ([normalizedMime isEqualToString:@"image/heic"]) return @"heic";
+    if ([normalizedMime isEqualToString:@"image/heif"]) return @"heif";
+    if ([normalizedMime isEqualToString:@"image/jpeg"] ||
+        [normalizedMime isEqualToString:@"image/jpg"]) return @"jpg";
+    if ([normalizedMime isEqualToString:@"image/png"]) return @"png";
+    if ([normalizedMime isEqualToString:@"image/webp"]) return @"webp";
+    NSString *candidate = fileName.pathExtension.lowercaseString;
+    NSCharacterSet *nonAlphanumeric = NSCharacterSet.alphanumericCharacterSet.invertedSet;
+    if (candidate.length > 0 && candidate.length <= 10 &&
+        [candidate rangeOfCharacterFromSet:nonAlphanumeric].location == NSNotFound) {
+        return candidate;
+    }
+    return @"bin";
+}
+
+static NSString *SlockFeedbackDraftTargetName(NSUInteger index, NSDictionary *file) {
+    NSString *extension = SlockFeedbackDraftExtension(
+        SlockBridgeString(file[@"fileName"]),
+        SlockBridgeString(file[@"mimeType"]));
+    return [NSString stringWithFormat:@"%02lu-attachment.%@", (unsigned long)index, extension];
+}
+
+static NSString *SlockFeedbackDraftDisplayName(NSString *fileName, NSString *targetName) {
+    NSString *rawName = fileName.lastPathComponent;
+    if (rawName.length == 0) {
+        NSRange separator = [targetName rangeOfString:@"-"];
+        return separator.location == NSNotFound ? targetName : [targetName substringFromIndex:separator.location + 1];
+    }
+    NSString *targetExtension = targetName.pathExtension.lowercaseString;
+    if (targetExtension.length == 0) return rawName;
+    NSString *stem = rawName.stringByDeletingPathExtension;
+    if (stem.length == 0) stem = @"attachment";
+    return [stem stringByAppendingPathExtension:targetExtension];
+}
+
+static NSArray<NSDictionary *> *SlockFeedbackDraftFilesAtDirectory(
+    NSURL *directory,
+    NSArray *files,
+    unsigned long long maxBytes,
+    NSFileManager *fileManager
+) {
+    BOOL isDirectory = NO;
+    if (![fileManager fileExistsAtPath:directory.path isDirectory:&isDirectory] || !isDirectory) {
+        return nil;
+    }
+    NSArray<NSString *> *names = [fileManager contentsOfDirectoryAtPath:directory.path error:nil];
+    if (names.count != files.count) {
+        return nil;
+    }
+    NSMutableArray<NSDictionary *> *attachments = [NSMutableArray arrayWithCapacity:files.count];
+    for (NSUInteger index = 0; index < files.count; index++) {
+        NSDictionary *file = [files[index] isKindOfClass:NSDictionary.class] ? files[index] : @{};
+        NSString *targetName = SlockFeedbackDraftTargetName(index, file);
+        NSURL *targetURL = [directory URLByAppendingPathComponent:targetName isDirectory:NO];
+        NSNumber *targetSize = nil;
+        if (![targetURL getResourceValue:&targetSize forKey:NSURLFileSizeKey error:nil] ||
+            targetSize.unsignedLongLongValue == 0 || targetSize.unsignedLongLongValue > maxBytes) {
+            return nil;
+        }
+        NSString *displayName = SlockFeedbackDraftDisplayName(
+            SlockBridgeString(file[@"fileName"]), targetName);
+        [attachments addObject:@{
+            @"id" : SlockBridgeString(file[@"id"]),
+            @"fileName" : displayName,
+            @"mimeType" : SlockBridgeString(file[@"mimeType"]),
+            @"sizeBytes" : targetSize,
+            @"previewUri" : targetURL.absoluteString ?: @"",
+            @"fileRef" : targetURL.absoluteString ?: @"",
+            @"source" : @"settings_feedback_draft"
+        }];
+    }
+    return attachments;
 }
 
 static NSString *SlockHandsFeedbackAttachmentBlock(NSArray<NSString *> *attachmentPaths) {
@@ -2463,7 +2554,144 @@ static UIImage *SlockThreadShareStitchFragments(NSArray<NSString *> *fragmentPat
         }];
         return;
     }
+    if ([action isEqualToString:@"promoteFeedbackDraftAttachments"] ||
+        [action isEqualToString:@"discardFeedbackDraftAttachments"]) {
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+            NSDictionary *result = [action isEqualToString:@"promoteFeedbackDraftAttachments"]
+                ? [self slock_promoteFeedbackDraftAttachments:params]
+                : [self slock_discardFeedbackDraftAttachments:params];
+            SlockBridgeRunOnMain(^{ callback(result); });
+        });
+        return;
+    }
     callback([self slock_settingsCapabilityResultForAction:action params:params]);
+}
+
+- (NSDictionary *)slock_promoteFeedbackDraftAttachments:(NSDictionary *)params {
+    NSArray *files = [params[@"files"] isKindOfClass:NSArray.class] ? params[@"files"] : @[];
+    NSString *groupId = SlockBridgeString(params[@"groupId"]);
+    unsigned long long maxBytes = [params[@"maxBytes"] respondsToSelector:@selector(unsignedLongLongValue)]
+        ? [params[@"maxBytes"] unsignedLongLongValue]
+        : 0;
+    if (groupId.length == 0 || files.count == 0 || files.count > 9 || maxBytes == 0) {
+        return @{ @"status" : @"error", @"code" : @"settings_feedback_attachment_promotion_invalid" };
+    }
+
+    NSFileManager *fileManager = NSFileManager.defaultManager;
+    NSURL *applicationSupport = [fileManager URLsForDirectory:NSApplicationSupportDirectory
+                                                    inDomains:NSUserDomainMask].firstObject;
+    if (!applicationSupport) {
+        return @{ @"status" : @"error", @"code" : @"settings_feedback_attachment_promotion_failed" };
+    }
+    NSString *accountSegment = SlockFeedbackDraftAccountSegment(SlockBridgeString(params[@"accountId"]));
+    NSCharacterSet *unsafe = [[NSCharacterSet characterSetWithCharactersInString:
+        @"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-"] invertedSet];
+    NSString *safeGroup = [[groupId componentsSeparatedByCharactersInSet:unsafe] componentsJoinedByString:@"_"];
+    if (safeGroup.length == 0) safeGroup = @"group";
+    if (safeGroup.length > 96) safeGroup = [safeGroup substringToIndex:96];
+
+    NSURL *root = [[[applicationSupport URLByAppendingPathComponent:@"Raft" isDirectory:YES]
+        URLByAppendingPathComponent:@"SettingsHandsFeedbackDrafts" isDirectory:YES]
+        URLByAppendingPathComponent:accountSegment isDirectory:YES];
+    NSError *error = nil;
+    if (![fileManager createDirectoryAtURL:root withIntermediateDirectories:YES attributes:nil error:&error]) {
+        return @{ @"status" : @"error", @"code" : @"settings_feedback_attachment_promotion_failed",
+                  @"message" : error.localizedDescription ?: @"Draft storage unavailable" };
+    }
+    NSURL *finalDirectory = [root URLByAppendingPathComponent:safeGroup isDirectory:YES];
+    NSArray<NSDictionary *> *existing =
+        SlockFeedbackDraftFilesAtDirectory(finalDirectory, files, maxBytes, fileManager);
+    if (existing) {
+        return @{ @"status" : @"ok", @"files" : existing };
+    }
+    NSURL *stagingDirectory = [root URLByAppendingPathComponent:
+        [NSString stringWithFormat:@".%@-%@", safeGroup, NSUUID.UUID.UUIDString.lowercaseString] isDirectory:YES];
+    if (![fileManager createDirectoryAtURL:stagingDirectory withIntermediateDirectories:YES attributes:nil error:&error]) {
+        return @{ @"status" : @"error", @"code" : @"settings_feedback_attachment_promotion_failed",
+                  @"message" : error.localizedDescription ?: @"Draft staging unavailable" };
+    }
+
+    NSString *failureCode = nil;
+    for (NSUInteger index = 0; index < files.count; index++) {
+        NSDictionary *file = [files[index] isKindOfClass:NSDictionary.class] ? files[index] : @{};
+        NSString *fileRef = SlockBridgeString(file[@"fileRef"]);
+        NSURL *sourceURL = [NSURL URLWithString:fileRef];
+        if (!sourceURL.isFileURL) {
+            failureCode = @"settings_feedback_attachment_promotion_failed";
+            break;
+        }
+        NSNumber *sourceSize = nil;
+        [sourceURL getResourceValue:&sourceSize forKey:NSURLFileSizeKey error:&error];
+        if (sourceSize.unsignedLongLongValue == 0 || sourceSize.unsignedLongLongValue > maxBytes) {
+            failureCode = sourceSize.unsignedLongLongValue > maxBytes
+                ? @"settings_feedback_attachment_too_large"
+                : @"settings_feedback_attachment_promotion_failed";
+            break;
+        }
+        NSString *targetName = SlockFeedbackDraftTargetName(index, file);
+        NSURL *targetURL = [stagingDirectory URLByAppendingPathComponent:targetName isDirectory:NO];
+        if (![fileManager copyItemAtURL:sourceURL toURL:targetURL error:&error]) {
+            failureCode = @"settings_feedback_attachment_promotion_failed";
+            break;
+        }
+        NSNumber *targetSize = nil;
+        [targetURL getResourceValue:&targetSize forKey:NSURLFileSizeKey error:&error];
+        if (targetSize.unsignedLongLongValue != sourceSize.unsignedLongLongValue ||
+            targetSize.unsignedLongLongValue == 0 || targetSize.unsignedLongLongValue > maxBytes) {
+            failureCode = targetSize.unsignedLongLongValue > maxBytes
+                ? @"settings_feedback_attachment_too_large"
+                : @"settings_feedback_attachment_promotion_failed";
+            break;
+        }
+    }
+    if (failureCode) {
+        [fileManager removeItemAtURL:stagingDirectory error:nil];
+        return @{ @"status" : @"error", @"code" : failureCode,
+                  @"message" : error.localizedDescription ?: @"Unable to promote feedback attachment" };
+    }
+    [fileManager removeItemAtURL:finalDirectory error:nil];
+    if (![fileManager moveItemAtURL:stagingDirectory toURL:finalDirectory error:&error]) {
+        [fileManager removeItemAtURL:stagingDirectory error:nil];
+        return @{ @"status" : @"error", @"code" : @"settings_feedback_attachment_promotion_failed",
+                  @"message" : error.localizedDescription ?: @"Unable to commit feedback attachments" };
+    }
+
+    NSArray<NSDictionary *> *promoted =
+        SlockFeedbackDraftFilesAtDirectory(finalDirectory, files, maxBytes, fileManager);
+    if (!promoted) {
+        [fileManager removeItemAtURL:finalDirectory error:nil];
+        return @{ @"status" : @"error", @"code" : @"settings_feedback_attachment_promotion_failed",
+                  @"message" : @"Committed feedback attachment metadata is unavailable" };
+    }
+    return @{ @"status" : @"ok", @"files" : promoted };
+}
+
+- (NSDictionary *)slock_discardFeedbackDraftAttachments:(NSDictionary *)params {
+    NSArray *fileRefs = [params[@"fileRefs"] isKindOfClass:NSArray.class] ? params[@"fileRefs"] : @[];
+    NSFileManager *fileManager = NSFileManager.defaultManager;
+    NSURL *applicationSupport = [fileManager URLsForDirectory:NSApplicationSupportDirectory
+                                                    inDomains:NSUserDomainMask].firstObject;
+    if (!applicationSupport) {
+        return @{ @"status" : @"ok" };
+    }
+    NSString *accountSegment = SlockFeedbackDraftAccountSegment(SlockBridgeString(params[@"accountId"]));
+    NSString *ownedRoot = [[[[[applicationSupport URLByAppendingPathComponent:@"Raft" isDirectory:YES]
+        URLByAppendingPathComponent:@"SettingsHandsFeedbackDrafts" isDirectory:YES]
+        URLByAppendingPathComponent:accountSegment isDirectory:YES] path] stringByStandardizingPath];
+    NSString *ownedPrefix = [ownedRoot stringByAppendingString:@"/"];
+    for (id value in fileRefs) {
+        NSURL *url = [NSURL URLWithString:SlockBridgeString(value)];
+        NSString *path = url.isFileURL ? url.path.stringByStandardizingPath : @"";
+        if (path.length > 0 && [path hasPrefix:ownedPrefix]) {
+            [fileManager removeItemAtPath:path error:nil];
+            NSString *groupPath = path.stringByDeletingLastPathComponent;
+            NSArray *remaining = [fileManager contentsOfDirectoryAtPath:groupPath error:nil] ?: @[];
+            if (remaining.count == 0 && [groupPath hasPrefix:ownedPrefix]) {
+                [fileManager removeItemAtPath:groupPath error:nil];
+            }
+        }
+    }
+    return @{ @"status" : @"ok" };
 }
 
 - (void)threadAttachmentUpload:(NSDictionary *)args {

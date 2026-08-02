@@ -130,6 +130,91 @@ import kotlin.time.TimeSource
 internal const val SLOCK_FILE_PREVIEW_PAGE = "compose_file_preview"
 private const val SLOCK_FILE_PREVIEW_EDITOR_VISUAL_PAGE = "compose_file_preview_editor_visual"
 internal const val SLOCK_COMPOSER_IMAGE_EDIT_EVENT = "slock.composerImageEdit"
+
+// task #113: whole-group edit-session result reconciliation (pure). A consumer
+// (e.g. Settings feedback draft) accumulates per-image edit events for a group and
+// only releases the whole group when N/N is present and consistent.
+//
+// The frozen authority lives on the request/session state: expectedGroupId + expectedCount.
+// Freshness/generation is proven by the UNIQUE groupId plus the consumer's own
+// account/page-generation gate (we intentionally do NOT fake a per-event token field;
+// cross-process events carry no authoritative generation, so a token comparison here
+// would either reject every legal event or accept spoofed old ones).
+//
+// `fold` only accepts ACTUAL event fields and must be zero-mutation on any group /
+// total / range mismatch. A DUPLICATE index that replays the SAME itemKey is an
+// idempotent no-op (exactly-once redelivery must not poison a complete group); a
+// duplicate index with a CONFLICTING itemKey is rejected (poison).
+internal data class SlockImageEditGroupState(
+    val expectedGroupId: String,
+    val expectedCount: Int,
+    val total: Int? = null,
+    val itemsByIndex: Map<Int, String> = emptyMap(),
+    val rejects: List<String> = emptyList()
+) {
+    val isComplete: Boolean
+        get() =
+            total != null &&
+                total == expectedCount &&
+                itemsByIndex.size == expectedCount &&
+                (0 until expectedCount).none { !itemsByIndex.containsKey(it) }
+    /** A group is only committable when it is complete AND no event was ever rejected. */
+    val isCommittable: Boolean
+        get() = isComplete && rejects.isEmpty()
+}
+
+internal object SlockImageEditGroupReconcile {
+    const val REJECT_WRONG_GROUP = "wrong_group"
+    const val REJECT_TOTAL_MISMATCH = "total_mismatch"
+    const val REJECT_OUT_OF_RANGE = "out_of_range"
+    const val REJECT_DUPLICATE_CONFLICT = "duplicate_conflict"
+
+    /**
+     * Production-used group-total resolution: for a non-blank groupId the total is the
+     * gallery size, floored to 1 so a single image with no gallery still emits total=1
+     * (single-image N=1 contract, never 0). Blank groupId keeps legacy on-zero semantics.
+     */
+    fun resolveGroupTotal(groupId: String, gallerySize: Int): Int =
+        if (groupId.isBlank()) gallerySize
+        else gallerySize.coerceAtLeast(1)
+    /**
+     * Fold one incoming edit event (actual fields) into a group state. The state
+     * already holds the frozen expected group id / count; any group/total/range
+     * mismatch returns the state unchanged (zero mutation) plus the rejection reason.
+     * A same-index idempotent replay (identical itemKey) is a no-op; only a conflicting
+     * itemKey at an occupied index is rejected.
+     */
+    fun fold(
+        state: SlockImageEditGroupState,
+        actualGroupId: String,
+        index: Int,
+        total: Int,
+        itemKey: String
+    ): SlockImageEditGroupState {
+        if (actualGroupId != state.expectedGroupId) {
+            return state.withReject(REJECT_WRONG_GROUP)
+        }
+        if (total != state.expectedCount || total <= 0) {
+            return state.withReject(REJECT_TOTAL_MISMATCH)
+        }
+        if (index < 0 || index >= total) {
+            return state.withReject(REJECT_OUT_OF_RANGE)
+        }
+        val existing = state.itemsByIndex[index]
+        if (existing != null) {
+            if (existing == itemKey) return state // idempotent replay no-op
+            return state.withReject(REJECT_DUPLICATE_CONFLICT)
+        }
+        return state.copy(
+            total = total,
+            itemsByIndex = state.itemsByIndex + (index to itemKey)
+        )
+    }
+
+    private fun SlockImageEditGroupState.withReject(reason: String): SlockImageEditGroupState =
+        if (reason in rejects) this
+        else copy(rejects = rejects + reason)
+}
 private const val SlockFilePreviewSaveToPhotosActionId = "save-to-photos"
 private const val SlockFilePreviewOpenWithActionId = "open-with"
 private const val SlockFilePreviewDeleteDownloadActionId = "delete-download"
@@ -261,6 +346,9 @@ internal data class SlockFilePreviewPayload(
     val imageGalleryIndex: Int = 0,
     val composerImageThreadKey: String = "",
     val composerImageActionId: String = "",
+    // task #113: whole-group edit-session identity. Consumer (e.g. Settings feedback
+    // draft) uses this to reconcile an N/N group; blank = legacy single-shot semantics.
+    val composerImageGroupId: String = "",
     val composerImageFileRef: String = "",
     val composerImageFileName: String = "",
     val composerImageMimeType: String = "",
@@ -1260,7 +1348,14 @@ private fun SlockFilePreviewStandalonePageContent() {
         mimeType: String = payload.composerImageMimeType.ifBlank { payload.externalMimeType.ifBlank { "image/png" } },
         sizeBytes: Long? = payload.composerImageSizeBytes,
         replaceAttachmentId: String = payload.composerImageReplaceAttachmentId,
-        closePage: Boolean = true
+        closePage: Boolean = true,
+        // task #113 whole-group contract: groupId + ordinal within the gallery + total count.
+        // Blank groupId keeps legacy single-shot semantics (index/total ignored).
+        // When groupId is set but this is a single image with no gallery, total must be 1
+        // (single-image N=1 contract), never 0.
+        groupId: String = payload.composerImageGroupId,
+        groupIndex: Int = payload.imageGalleryIndex.coerceAtLeast(0),
+        groupTotal: Int = SlockImageEditGroupReconcile.resolveGroupTotal(payload.composerImageGroupId, payload.imageGallery.size)
     ) {
         if (actionId.isBlank() || fileRef.isBlank()) return
         eventBus.post(
@@ -1275,6 +1370,11 @@ private fun SlockFilePreviewStandalonePageContent() {
                 put("mimeType", mimeType)
                 sizeBytes?.takeIf { it > 0L }?.let { put("sizeBytes", it) }
                 put("replaceAttachmentId", replaceAttachmentId)
+                if (groupId.isNotBlank()) {
+                    put("groupId", groupId)
+                    put("groupIndex", groupIndex)
+                    put("groupTotal", groupTotal)
+                }
             },
             crossProcess = true
         )
@@ -1300,7 +1400,10 @@ private fun SlockFilePreviewStandalonePageContent() {
                 mimeType = image.mimeType.ifBlank { "image/png" },
                 sizeBytes = image.composerImageSizeBytes,
                 replaceAttachmentId = "",
-                closePage = false
+                closePage = false,
+                groupId = payload.composerImageGroupId,
+                groupIndex = index,
+                groupTotal = gallery.size
             )
         }
         pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
@@ -1324,7 +1427,13 @@ private fun SlockFilePreviewStandalonePageContent() {
                     payload = payload.withComposerImageEditResult(fileRef)
                     composerImageEditMode = false
                 } else {
-                    postComposerImageResult(fileRef = fileRef, previewUri = fileRef)
+                    postComposerImageResult(
+                        fileRef = fileRef,
+                        previewUri = fileRef,
+                        fileName = payload.currentComposerImageFileName().toKuiklySnapshotPngFileName(),
+                        mimeType = KuiklySnapshotMimeType,
+                        sizeBytes = null
+                    )
                 }
             } else {
                 bridge.toast(result?.optString("message").orEmpty().ifBlank { imageEditorExportFailed })
@@ -3060,19 +3169,28 @@ internal fun slockFilePreviewResolveLaunchPayload(
     )
 }
 
-internal fun Pager.openSlockFilePreviewPage(payload: SlockFilePreviewPayload) {
-    val storeScope = pageData.params.slockShellStoreScopeOrNull()
+internal fun Pager.openSlockFilePreviewPage(
+    payload: SlockFilePreviewPayload,
+    sourceStoreScope: SlockShellStoreScope? = null
+): Boolean {
+    val storeScope = resolveSlockFilePreviewSourceStoreScope(pageData.params, sourceStoreScope)
     if (storeScope == null) {
         slockLogWarn(
             tag = SlockScopedNavigationLogTag,
             message = "slock_scoped_navigation_rejected reason=missing_source_scope target=$SLOCK_FILE_PREVIEW_PAGE"
         )
-        return
+        return false
     }
     val previewId = SlockFilePreviewLaunchPayloadStore.put(payload)
     val launchPageData = slockFilePreviewLaunchPageData(previewId, storeScope)
-    openSlockPage(SLOCK_FILE_PREVIEW_PAGE, launchPageData, storeScopeOverride = storeScope)
+    return openSlockPage(SLOCK_FILE_PREVIEW_PAGE, launchPageData, storeScopeOverride = storeScope)
 }
+
+internal fun resolveSlockFilePreviewSourceStoreScope(
+    sourcePageData: JSONObject,
+    sourceStoreScope: SlockShellStoreScope?
+): SlockShellStoreScope? =
+    sourceStoreScope ?: sourcePageData.slockShellStoreScopeOrNull()
 
 internal fun slockFilePreviewLaunchPageData(
     previewId: String,
@@ -4466,24 +4584,49 @@ internal fun SlockFilePreviewPayload.canCompleteComposerImageSelection(): Boolea
 internal fun SlockFilePreviewPayload.withComposerImageEditResult(fileRef: String): SlockFilePreviewPayload {
     if (fileRef.isBlank() || imageGallery.isEmpty()) return this
     val currentIndex = imageGalleryIndex.coerceIn(0, imageGallery.lastIndex)
+    val editedFileName =
+        imageGallery[currentIndex].name
+            .ifBlank { currentComposerImageFileName() }
+            .toKuiklySnapshotPngFileName()
     val updatedGallery =
         imageGallery.mapIndexed { index, image ->
             if (index == currentIndex) {
                 image.copy(
+                    name = editedFileName,
+                    mimeType = KuiklySnapshotMimeType,
+                    sizeLabel = "",
                     thumbnailUrl = fileRef,
                     composerImageFileRef = fileRef,
-                    composerImagePreviewUri = fileRef
+                    composerImagePreviewUri = fileRef,
+                    composerImageSizeBytes = null
                 )
             } else {
                 image
             }
         }
     return copy(
+        name = editedFileName,
         imageUrl = fileRef,
+        externalFileName = editedFileName,
+        externalMimeType = KuiklySnapshotMimeType,
         composerImageFileRef = fileRef,
+        composerImageFileName = editedFileName,
+        composerImageMimeType = KuiklySnapshotMimeType,
+        composerImageSizeBytes = null,
         composerImagePreviewUri = fileRef,
         imageGallery = updatedGallery
     )
+}
+
+private const val KuiklySnapshotMimeType = "image/png"
+
+private fun SlockFilePreviewPayload.currentComposerImageFileName(): String =
+    composerImageFileName.ifBlank { externalFileName.ifBlank { name } }
+
+private fun String.toKuiklySnapshotPngFileName(): String {
+    val leaf = substringAfterLast('/').substringAfterLast('\\').ifBlank { "image" }
+    val stem = leaf.substringBeforeLast('.', missingDelimiterValue = leaf).ifBlank { "image" }
+    return "$stem.png"
 }
 
 internal data class SlockFilePreviewImageGalleryResolutionState(

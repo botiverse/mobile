@@ -52,9 +52,8 @@ internal class SettingsHandsFeedbackDraftStore(
     ) {
         val persistedAttachments =
             attachments
-                // Picker-backed fileRefs are the only attachment handles that can
-                // survive composition/page recreation. Never put file bytes/base64
-                // into the shared preference record.
+                // The platform owns file durability; this store persists only the
+                // resulting handle and metadata, never file bytes/base64.
                 .mapNotNull { attachment -> attachment.toPersistedFeedbackAttachmentOrNull() }
                 .distinctBy { it.id }
                 .take(MaxAttachments)
