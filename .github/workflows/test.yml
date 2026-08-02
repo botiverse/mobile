@@ -239,6 +239,72 @@ jobs:
           path: .ci-cache/maven/kuikly-ohos
           key: kuikly-fork-mavenlocal-ohos-${{ env.HARMONY_CACHE_EPOCH }}-${{ steps.pins.outputs.kuikly }}
 
+      # Temporary exact-bound carrier used to refresh the checked-in OHOS render HAR when the
+      # Kuikly source gitlink advances. The final product commit removes this harvest step after
+      # consuming the artifact, so normal CI remains verification-only.
+      - name: Build exact Kuikly OHOS render HAR carrier
+        if: ${{ needs.plan.outputs.run_full == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="$OHOS_SDK_HOME/native/build-tools/cmake/bin:$OHOS_SDK_HOME/native/llvm/bin:$PATH"
+          git submodule sync third_party/kuikly-ui
+          git submodule update --init third_party/kuikly-ui
+          source_exact="$(git rev-parse HEAD:third_party/kuikly-ui)"
+          test "$(git -C third_party/kuikly-ui rev-parse HEAD)" = "$source_exact"
+          (
+            cd third_party/kuikly-ui/ohosApp
+            ohpm install --all
+            hvigorw --sync -p product=default --analyze=normal --parallel --no-daemon
+            hvigorw assembleHar \
+              --mode module \
+              -p module=render@default \
+              -p product=default \
+              -p buildMode=release \
+              --analyze=normal \
+              --parallel \
+              --no-daemon
+          )
+          source_har="third_party/kuikly-ui/core-render-ohos/build/default/outputs/default/render.har"
+          test -f "$source_har"
+          short="${source_exact:0:8}"
+          output_dir="$GITHUB_WORKSPACE/build/kuikly-render-output"
+          har_name="kuikly-render-staging2-${short}.har"
+          har_path="$output_dir/$har_name"
+          library_member="package/libs/arm64-v8a/libkuikly.so"
+          mkdir -p "$output_dir"
+          cp "$source_har" "$har_path"
+          tar -xOzf "$har_path" "$library_member" > "$output_dir/libkuikly.so"
+          har_sha="$(sha256sum "$har_path" | awk '{print $1}')"
+          library_sha="$(sha256sum "$output_dir/libkuikly.so" | awk '{print $1}')"
+          build_id="$(llvm-readobj --notes "$output_dir/libkuikly.so" | awk '/Build ID:/{print $3; exit}')"
+          test -n "$build_id"
+          python3 - "$output_dir/${har_name%.har}.provenance.json" "$source_exact" "$har_name" "$har_sha" "$library_member" "$library_sha" "$build_id" <<'PY'
+          import json
+          import pathlib
+          import sys
+
+          output, source, har_file, har_sha, member, library_sha, build_id = sys.argv[1:]
+          pathlib.Path(output).write_text(json.dumps({
+              "formatVersion": 1,
+              "sourceCommit": source,
+              "harFile": har_file,
+              "harSha256": har_sha,
+              "libraryMember": member,
+              "librarySha256": library_sha,
+              "libraryBuildId": build_id,
+          }, indent=2) + "\n")
+          PY
+          rm "$output_dir/libkuikly.so"
+
+      - name: Upload exact Kuikly OHOS render HAR carrier
+        if: ${{ needs.plan.outputs.run_full == 'true' }}
+        uses: actions/upload-artifact@v5
+        with:
+          name: kuikly-render-har-${{ steps.pins.outputs.kuikly }}
+          path: build/kuikly-render-output
+          if-no-files-found: error
+
       - name: Set up Node.js for pinned HAR contract
         uses: actions/setup-node@v5
         with:
