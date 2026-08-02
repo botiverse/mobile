@@ -1,10 +1,10 @@
 # Raft Visual Testing
 
-Generated: 2026-08-02 22:02:25 UTC
-Latest run: 54c7a1d5-20260802215950
-Latest commit: 54c7a1d5-20260802215950
+Generated: 2026-08-02 22:41:42 UTC
+Latest run: 54c7a1d5-20260802223948
+Latest commit: 54c7a1d5-20260802223948
 Commit subject: test(settings): keep honest-state coverage portable (#1877)
-Providers: react vs android
+Providers: react vs android, react vs ios, android vs ios
 Summary: total 80, same 0, pass 0, basic-pass 0, different 79, missing 1
 AI analysis: ready 79 / total 80, pending 1
 Visual coverage matrix: active 89 / total 108, pending 16, skipped 3
@@ -13,6 +13,8 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 ## Comparisons
 
 - react__android: total 80, same 0, pass 0, basic-pass 0, different 79, missing 1
+- react__ios: total 80, same 0, pass 11, basic-pass 10, different 53, missing 6
+- android__ios: total 80, same 0, pass 15, basic-pass 18, different 42, missing 5
 
 ## Capture Type Coverage
 
@@ -114,6 +116,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- 54c7a1d5-20260802223948: react vs android, total 80, pass 0, basic-pass 0, different 79, matrix runs/54c7a1d5-20260802223948/component-matrix.json, page runs/54c7a1d5-20260802223948/
 - 54c7a1d5-20260802215950: react vs android, total 80, pass 0, basic-pass 0, different 79, matrix runs/54c7a1d5-20260802215950/component-matrix.json, page runs/54c7a1d5-20260802215950/
 - 6176fdd2-20260801221112: react vs android, total 80, pass 0, basic-pass 0, different 79, matrix runs/6176fdd2-20260801221112/component-matrix.json, page runs/6176fdd2-20260801221112/
 - cbeff10c-20260801030228: react vs android, total 80, pass 0, basic-pass 0, different 79, matrix runs/cbeff10c-20260801030228/component-matrix.json, page runs/cbeff10c-20260801030228/
