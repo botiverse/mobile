@@ -2868,6 +2868,10 @@ internal class SlockKuiklyBridgeModule(
                 exportThreadShareImage(params, callback)
                 null
             }
+            "probeThreadViewportPixels" -> {
+                probeThreadViewportPixels(params, callback)
+                null
+            }
             "saveThreadShareImage" -> {
                 saveThreadShareImage(params, callback)
                 null
@@ -3054,6 +3058,158 @@ internal class SlockKuiklyBridgeModule(
         hostActivity.runOnUiThread {
             captureThreadShareImage(hostActivity, request) { result -> callback?.invoke(result) }
         }
+    }
+
+    private fun probeThreadViewportPixels(params: String?, callback: KuiklyRenderCallback?) {
+        val hostActivity = activity as? SlockKuiklyActivity
+        if (hostActivity == null) {
+            callback?.invoke(mapOf("status" to "failed", "message" to "Thread pixel probe unavailable"))
+            return
+        }
+        val request = JSONObject(params ?: "{}")
+        hostActivity.runOnUiThread {
+            val container =
+                    hostActivity.findViewById<ViewGroup?>(R.id.slock_kuikly_container)
+                            ?: run {
+                                callback?.invoke(mapOf("status" to "failed", "message" to "Thread view unavailable"))
+                                return@runOnUiThread
+                            }
+            if (container.width <= 0 || container.height <= 0) {
+                callback?.invoke(mapOf("status" to "failed", "message" to "Thread view is not ready"))
+                return@runOnUiThread
+            }
+            val left = request.optDouble("x", 0.0).roundToInt().coerceIn(0, container.width - 1)
+            val top = request.optDouble("y", 0.0).roundToInt().coerceIn(0, container.height - 1)
+            val width =
+                    request.optDouble("width", 0.0).roundToInt()
+                            .coerceAtLeast(1)
+                            .coerceAtMost(container.width - left)
+            val height =
+                    request.optDouble("height", 0.0).roundToInt()
+                            .coerceAtLeast(1)
+                            .coerceAtMost(container.height - top)
+            val bitmap =
+                    runCatching { Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888) }
+                            .getOrElse {
+                                callback?.invoke(mapOf("status" to "failed", "message" to "Unable to allocate pixel probe"))
+                                return@runOnUiThread
+                            }
+            val complete: (Int) -> Unit = { pixelCopyResult ->
+                if (pixelCopyResult != PixelCopy.SUCCESS) {
+                    bitmap.recycle()
+                    callback?.invoke(
+                            mapOf(
+                                    "status" to "failed",
+                                    "pixelCopyResult" to pixelCopyResult,
+                                    "generation" to request.optLong("generation")
+                            )
+                    )
+                } else {
+                    callback?.invoke(
+                            analyzeThreadViewportPixels(
+                                    bitmap = bitmap,
+                                    container = container,
+                                    generation = request.optLong("generation"),
+                                    pixelCopyResult = pixelCopyResult
+                            )
+                    )
+                    bitmap.recycle()
+                }
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val locationInWindow = IntArray(2)
+                container.getLocationInWindow(locationInWindow)
+                val sourceRect =
+                        Rect(
+                                locationInWindow[0] + left,
+                                locationInWindow[1] + top,
+                                locationInWindow[0] + left + width,
+                                locationInWindow[1] + top + height
+                        )
+                container.postOnAnimation {
+                    container.postOnAnimation {
+                        PixelCopy.request(
+                                hostActivity.window,
+                                sourceRect,
+                                bitmap,
+                                complete,
+                                Handler(Looper.getMainLooper())
+                        )
+                    }
+                }
+            } else {
+                runCatching {
+                    val canvas = Canvas(bitmap)
+                    canvas.drawColor(Color.WHITE)
+                    canvas.translate(-left.toFloat(), -top.toFloat())
+                    container.draw(canvas)
+                }.onSuccess {
+                    complete(PixelCopy.SUCCESS)
+                }.onFailure {
+                    bitmap.recycle()
+                    callback?.invoke(mapOf("status" to "failed", "message" to "Unable to draw pixel probe"))
+                }
+            }
+        }
+    }
+
+    private fun analyzeThreadViewportPixels(
+        bitmap: Bitmap,
+        container: ViewGroup,
+        generation: Long,
+        pixelCopyResult: Int
+    ): Map<String, Any> {
+        var sampleCount = 0
+        var nonWhiteCount = 0
+        var darkCount = 0
+        val sampleStep = 4
+        var y = 0
+        while (y < bitmap.height) {
+            var x = 0
+            while (x < bitmap.width) {
+                val pixel = bitmap.getPixel(x, y)
+                val red = Color.red(pixel)
+                val green = Color.green(pixel)
+                val blue = Color.blue(pixel)
+                sampleCount += 1
+                if (red < 248 || green < 248 || blue < 248) nonWhiteCount += 1
+                if (red <= 64 && green <= 64 && blue <= 64) darkCount += 1
+                x += sampleStep
+            }
+            y += sampleStep
+        }
+        var descendants = 0
+        var visibleDescendants = 0
+        var attachedDescendants = 0
+        var layoutRequestedDescendants = 0
+        val pending = ArrayDeque<View>()
+        for (index in 0 until container.childCount) pending.add(container.getChildAt(index))
+        while (pending.isNotEmpty()) {
+            val view = pending.removeFirst()
+            descendants += 1
+            if (view.visibility == View.VISIBLE && view.alpha > 0f) visibleDescendants += 1
+            if (view.isAttachedToWindow) attachedDescendants += 1
+            if (view.isLayoutRequested) layoutRequestedDescendants += 1
+            if (view is ViewGroup) {
+                for (index in 0 until view.childCount) pending.add(view.getChildAt(index))
+            }
+        }
+        val whiteCount = (sampleCount - nonWhiteCount).coerceAtLeast(0)
+        return mapOf(
+                "status" to "ok",
+                "generation" to generation,
+                "pixelCopyResult" to pixelCopyResult,
+                "sampleCount" to sampleCount,
+                "nonWhiteCount" to nonWhiteCount,
+                "darkCount" to darkCount,
+                "whitePermille" to if (sampleCount > 0) whiteCount * 1000 / sampleCount else 1000,
+                "descendants" to descendants,
+                "visibleDescendants" to visibleDescendants,
+                "attachedDescendants" to attachedDescendants,
+                "layoutRequestedDescendants" to layoutRequestedDescendants,
+                "rootChild" to
+                        container.getChildAt(0)?.javaClass?.name.orEmpty()
+        )
     }
 
     private fun captureThreadShareImage(

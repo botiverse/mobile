@@ -1418,6 +1418,62 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
+    fun composerLayoutBottomAnchor_defersMixedViewportEpochUntilMeasurementsAgree() {
+        assertFalse(
+            threadViewportEpochCoherent(
+                measuredViewportHeightPx = 2092,
+                layoutViewportStartPx = 0,
+                layoutViewportEndPx = 1059
+            )
+        )
+        assertTrue(
+            threadViewportEpochCoherent(
+                measuredViewportHeightPx = 1059,
+                layoutViewportStartPx = 0,
+                layoutViewportEndPx = 1059
+            )
+        )
+        assertTrue(
+            threadViewportEpochCoherent(
+                measuredViewportHeightPx = 1058,
+                layoutViewportStartPx = 0,
+                layoutViewportEndPx = 1059
+            )
+        )
+
+        val mixedEpoch =
+            resolveThreadComposerLayoutBottomAnchor(
+                composerLayoutState(
+                    previousKeyboardInsetDp = 0f,
+                    nextKeyboardInsetDp = 299.51364f,
+                    previousViewportHeightDp = 622.84546f,
+                    nextViewportHeightDp = 622.84546f,
+                    viewportEpochCoherent = false,
+                    focusedTailAnchorCanCorrectLayout = true
+                )
+            )
+        assertFalse(mixedEpoch.shouldAnchor)
+        assertTrue(mixedEpoch.pendingLayoutChange)
+        assertFalse(mixedEpoch.anchorFocusedTailAtRenderedBottom)
+
+        val coherentEpoch =
+            resolveThreadComposerLayoutBottomAnchor(
+                composerLayoutState(
+                    previousKeyboardInsetDp = 0f,
+                    nextKeyboardInsetDp = 299.51364f,
+                    previousViewportHeightDp = 622.84546f,
+                    nextViewportHeightDp = 315.29318f,
+                    pendingLayoutChange = true,
+                    viewportEpochCoherent = true,
+                    focusedTailAnchorCanCorrectLayout = true
+                )
+            )
+        assertTrue(coherentEpoch.shouldAnchor)
+        assertFalse(coherentEpoch.pendingLayoutChange)
+        assertTrue(coherentEpoch.anchorFocusedTailAtRenderedBottom)
+    }
+
+    @Test
     fun focusedTailFit_usesOneSnapshotForExactFitIncludingSpacingAndPadding() {
         val fit =
             resolveThreadFocusedTailFit(
@@ -1999,6 +2055,7 @@ class ThreadBottomAnchorSignatureTest {
         initialBottomAnchorReady: Boolean = true,
         latestItemIndex: Int = 15,
         allowBottomAutoAnchor: Boolean = true,
+        viewportEpochCoherent: Boolean = true,
         focusedAnchorOwnsViewport: Boolean = false,
         focusedActiveTailAnchorCanCorrectLayout: Boolean = false,
         focusedTailAnchorCanCorrectLayout: Boolean = false
@@ -2012,6 +2069,7 @@ class ThreadBottomAnchorSignatureTest {
             initialBottomAnchorReady = initialBottomAnchorReady,
             latestItemIndex = latestItemIndex,
             allowBottomAutoAnchor = allowBottomAutoAnchor,
+            viewportEpochCoherent = viewportEpochCoherent,
             focusedAnchorOwnsViewport = focusedAnchorOwnsViewport,
             focusedActiveTailAnchorCanCorrectLayout = focusedActiveTailAnchorCanCorrectLayout,
             focusedTailAnchorCanCorrectLayout = focusedTailAnchorCanCorrectLayout
