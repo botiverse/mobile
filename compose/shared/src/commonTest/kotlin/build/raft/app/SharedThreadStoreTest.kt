@@ -114,6 +114,7 @@ import build.raft.app.model.TaskUpdated
 import build.raft.app.model.ThreadConversation
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.network.sync.ReplyPreview
+import build.raft.app.network.sync.ThreadRepliesSyncHost
 import build.raft.app.model.ThreadId
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CancellationException
@@ -7309,6 +7310,75 @@ class SharedThreadStoreTest {
         assertEquals("Cindy", message.inlineReplies?.replies?.single()?.senderDisplayName)
         assertTrue(message.isThreadFollowed)
         assertEquals(0, api.channelMessageCalls)
+        scope.cancel()
+    }
+
+    @Test
+    fun delayedSecondaryProjectionDoesNotReplaceCommittedNewerPage() = runBlocking {
+        val initialMessages =
+            (1L..16L).map { seq ->
+                message(
+                    id = "m$seq",
+                    seq = seq,
+                    body = "message $seq",
+                    threadChannelId = if (seq == 1L) "thread-m1" else null,
+                )
+            }
+        val newerMessages =
+            (17L..46L).map { seq ->
+                message(id = "m$seq", seq = seq, body = "message $seq")
+            }
+        val repository =
+            FakeConversationRepository(
+                threadResult = DataResult.Content(threadSnapshot(messages = initialMessages)),
+                threadReplySummariesResult = replySummaries(replyCount = 7),
+                newerResult = DataResult.Content(threadSnapshot(messages = newerMessages)),
+            )
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        lateinit var store: SharedThreadStore
+        var projectionCommitCount = 0
+        var maxSeqAfterNewerCommit: Long? = null
+        val repliesSyncHost =
+            ThreadRepliesSyncHost(
+                beforeProjectionCommit = {
+                    projectionCommitCount += 1
+                    if (projectionCommitCount == 2) {
+                        runBlocking {
+                            assertTrue(store.loadNewer() is ThreadNewerPageLoadOutcome.Applied)
+                            maxSeqAfterNewerCommit = store.state.value.payload.messages.mapNotNull { it.seq }.maxOrNull()
+                            store.accept(SharedThreadIntent.ApplyMessageSaved("m1", saved = true))
+                        }
+                    }
+                },
+            )
+        store =
+            SharedThreadStore(
+                dataSource =
+                    SharedThreadDataSource(
+                        networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        conversationRepository = repository,
+                    ),
+                scope = scope,
+                threadRepliesSyncHost = repliesSyncHost,
+            )
+
+        store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = true)))
+        store.accept(
+            SharedThreadIntent.SetPagingAvailability(
+                canLoadMoreBefore = false,
+                canLoadMoreAfter = true,
+            ),
+        )
+        store.accept(SharedThreadIntent.FirstContentReady)
+
+        assertEquals(46L, maxSeqAfterNewerCommit)
+        assertEquals(2, projectionCommitCount)
+        assertEquals(46L, store.state.value.payload.messages.mapNotNull { it.seq }.maxOrNull())
+        assertEquals((1L..46L).toList(), store.state.value.payload.messages.mapNotNull { it.seq })
+        assertEquals(listOf(ThreadId("channel-1") to 16L), repository.newerRequests)
+        assertEquals(7, store.state.value.payload.messages.first { it.id == "m1" }.replyCount)
+        assertTrue(store.state.value.payload.messages.first { it.id == "m1" }.isSaved)
         scope.cancel()
     }
 
