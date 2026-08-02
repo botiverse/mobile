@@ -34,7 +34,10 @@ private class InMemoryAuthority : ComposerSessionAuthority {
 
 private class FakeCapabilities(
     private val failPromotion: Boolean = false,
+    private val onPromotion: suspend () -> Unit = {},
 ) : ComposerHostCapabilities {
+    val releases = mutableListOf<Triple<List<DurableEditRef>, String, String>>()
+
     override suspend fun pickFiles(request: ComposerPickRequest): ComposerPickOutcome =
         ComposerPickOutcome(emptyList())
 
@@ -43,8 +46,9 @@ private class FakeCapabilities(
     override suspend fun promoteToDurable(
         files: List<PlatformFile>,
         sessionId: String,
-    ): ComposerPromotionOutcome =
-        if (failPromotion) {
+    ): ComposerPromotionOutcome {
+        onPromotion()
+        return if (failPromotion) {
             ComposerPromotionOutcome.Failed("io")
         } else {
             ComposerPromotionOutcome.Promoted(
@@ -63,6 +67,15 @@ private class FakeCapabilities(
                 },
             )
         }
+    }
+
+    override suspend fun releaseDurableRefs(
+        refs: List<DurableEditRef>,
+        sessionId: String,
+        reason: String,
+    ) {
+        releases += Triple(refs, sessionId, reason)
+    }
 }
 
 private class FakeAcceptor(
@@ -261,7 +274,12 @@ class ComposerPickEditMachineTest {
 
     @Test
     fun commitRequiresCompleteGroupAndSurvivesOnlyViaAccepted() {
-        val m = machine()
+        var sessionSeq = 0
+        val m = ComposerPickEditMachine(
+            authority = InMemoryAuthority(),
+            currentSessionValidator = { _, _ -> true },
+            sessionIdFactory = { "sess-${sessionSeq++}" },
+        )
         val incomplete = m.beginSession(request(2), listOf(image("a"), image("b")))!!
         val acceptor = FakeAcceptor()
         val r1 = kotlinx.coroutines.runBlocking {
@@ -270,27 +288,33 @@ class ComposerPickEditMachineTest {
         assertIs<ComposerEditResult.Failed>(r1)
         assertTrue(acceptor.calls.isEmpty())
 
-        var ready = incomplete
-        ready = (m.foldEvent(ready, event(ready, 0)) as ComposerFoldOutcome.Pending).session
-        ready = when (val f = m.foldEvent(ready, event(ready, 1))) {
-            is ComposerFoldOutcome.ReadyToCommit -> f.session
-            else -> error("expected ReadyToCommit")
+        fun readySession(): ComposerPickEditSession {
+            var s = m.beginSession(request(2), listOf(image("a"), image("b")))!!
+            s = (m.foldEvent(s, event(s, 0)) as ComposerFoldOutcome.Pending).session
+            return when (val f = m.foldEvent(s, event(s, 1))) {
+                is ComposerFoldOutcome.ReadyToCommit -> f.session
+                else -> error("expected ReadyToCommit")
+            }
         }
-        // Rejected: zero draft writes implied, machine yields Cancelled not Complete
+        // Post-CAS Rejected is a host contract violation: refs released, Failed, no Complete.
+        // The Accepted tombstone still stands (immutable first-terminal) — hence a fresh session per attempt.
         val rejecting = FakeAcceptor(ComposerAcceptDecision.Rejected)
+        val rejectingCaps = FakeCapabilities()
         val r2 = kotlinx.coroutines.runBlocking {
-            m.commitSession(ready, FakeCapabilities(), rejecting, atEpochMs = 1L)
+            m.commitSession(readySession(), rejectingCaps, rejecting, atEpochMs = 1L)
         }
-        assertIs<ComposerEditResult.Cancelled>(r2)
+        assertIs<ComposerEditResult.Failed>(r2)
         assertEquals(generation, rejecting.calls.single().first)
+        assertEquals("accept_rejected", rejectingCaps.releases.single().third)
         // promotion failure: Failed, no accept call
         val r3 = kotlinx.coroutines.runBlocking {
-            m.commitSession(ready, FakeCapabilities(failPromotion = true), FakeAcceptor(), atEpochMs = 1L)
+            m.commitSession(readySession(), FakeCapabilities(failPromotion = true), FakeAcceptor(), atEpochMs = 1L)
         }
         assertIs<ComposerEditResult.Failed>(r3)
         assertTrue((r3 as ComposerEditResult.Failed).reason.startsWith("promotion_failed:"))
         // only Accepted yields Complete with durable refs carrying content identity
         val accepting = FakeAcceptor()
+        val ready = readySession()
         val r4 = kotlinx.coroutines.runBlocking {
             m.commitSession(ready, FakeCapabilities(), accepting, atEpochMs = 1L)
         }
@@ -299,5 +323,84 @@ class ComposerPickEditMachineTest {
         assertEquals(2, refs.size)
         assertTrue(refs.all { it.contentSha256.isNotBlank() && it.durableRef.startsWith("durable://") })
         assertEquals(listOf(0, 1), refs.map { it.index })
+    }
+
+    /** AD4 blocker 1: cancel landing during promotion ⇒ post-suspend terminal recheck stops the commit: ZERO acceptor calls (no SSOT write), refs released. */
+    @Test
+    fun cancelDuringPromotionReleasesAndWritesNothing() {
+        val authority = InMemoryAuthority()
+        val m = machine(authority = authority)
+        var ready = m.beginSession(request(2), listOf(image("a"), image("b")))!!
+        ready = (m.foldEvent(ready, event(ready, 0)) as ComposerFoldOutcome.Pending).session
+        ready = when (val f = m.foldEvent(ready, event(ready, 1))) {
+            is ComposerFoldOutcome.ReadyToCommit -> f.session
+            else -> error("expected ReadyToCommit")
+        }
+        val acceptor = FakeAcceptor()
+        val caps = FakeCapabilities(onPromotion = { m.cancel(ready, atEpochMs = 0L) })
+        val r = kotlinx.coroutines.runBlocking {
+            m.commitSession(ready, caps, acceptor, atEpochMs = 1L)
+        }
+        assertIs<ComposerEditResult.Cancelled>(r)
+        assertTrue(acceptor.calls.isEmpty())
+        assertEquals("session_terminal", caps.releases.single().third)
+        assertEquals(ComposerSessionTerminal.Cancelled, authority.terminalOf(ready.sessionId))
+    }
+
+    /** AD4 blocker 3: validator flipping during promotion ⇒ stale, refs released, acceptor never called. */
+    @Test
+    fun validatorFlipDuringPromotionReleasesAndCancels() {
+        var valid = true
+        val authority = InMemoryAuthority()
+        val m = ComposerPickEditMachine(
+            authority = authority,
+            currentSessionValidator = { _, _ -> valid },
+            sessionIdFactory = { "sess-1" },
+        )
+        var ready = m.beginSession(request(2), listOf(image("a"), image("b")))!!
+        ready = (m.foldEvent(ready, event(ready, 0)) as ComposerFoldOutcome.Pending).session
+        ready = when (val f = m.foldEvent(ready, event(ready, 1))) {
+            is ComposerFoldOutcome.ReadyToCommit -> f.session
+            else -> error("expected ReadyToCommit")
+        }
+        val acceptor = FakeAcceptor()
+        val caps = FakeCapabilities(onPromotion = { valid = false })
+        val r = kotlinx.coroutines.runBlocking {
+            m.commitSession(ready, caps, acceptor, atEpochMs = 1L)
+        }
+        assertIs<ComposerEditResult.Cancelled>(r)
+        assertTrue(acceptor.calls.isEmpty())
+        assertEquals("stale_generation", caps.releases.single().third)
+    }
+
+    /** AD4 blocker 1 (CAS fork): opposite terminal pre-recorded ⇒ commit short-circuits: release + Cancelled, acceptor never called, no SSOT write. */
+    @Test
+    fun casConflictReleasesRefsAndCancels() {
+        val authority = InMemoryAuthority()
+        val m = machine(authority = authority)
+        var ready = m.beginSession(request(2), listOf(image("a"), image("b")))!!
+        ready = (m.foldEvent(ready, event(ready, 0)) as ComposerFoldOutcome.Pending).session
+        ready = when (val f = m.foldEvent(ready, event(ready, 1))) {
+            is ComposerFoldOutcome.ReadyToCommit -> f.session
+            else -> error("expected ReadyToCommit")
+        }
+        authority.tryTerminate(
+            ComposerSessionAuthorityRecord(
+                sessionId = ready.sessionId,
+                identity = ready.identity,
+                generation = ready.generation,
+                terminal = ComposerSessionTerminal.Cancelled,
+                terminalAtEpochMs = 0L,
+            ),
+        )
+        val acceptor = FakeAcceptor()
+        val caps = FakeCapabilities()
+        val r = kotlinx.coroutines.runBlocking {
+            m.commitSession(ready, caps, acceptor, atEpochMs = 1L)
+        }
+        assertIs<ComposerEditResult.Cancelled>(r)
+        assertTrue(acceptor.calls.isEmpty())
+        // Pre-existing terminal short-circuits before promotion: zero refs promoted, nothing to release.
+        assertTrue(caps.releases.isEmpty())
     }
 }

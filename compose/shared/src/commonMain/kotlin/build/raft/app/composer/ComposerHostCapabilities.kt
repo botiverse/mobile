@@ -29,6 +29,20 @@ internal interface ComposerHostCapabilities {
         files: List<PlatformFile>,
         sessionId: String,
     ): ComposerPromotionOutcome
+
+    /**
+     * Immediate release of previously promoted durable refs for [sessionId] on every
+     * non-Accepted outcome (cancel, stale, accept-reject, CAS conflict/replay). The
+     * machine cannot express ownership cleanup without this capability; the orphan
+     * sweep ([ComposerDurableRefClaims]) is only the crash-consistency backstop,
+     * never the primary return path. [reason] is diagnostic-only. Best-effort:
+     * failures are logged host-side and left to the sweep.
+     */
+    suspend fun releaseDurableRefs(
+        refs: List<DurableEditRef>,
+        sessionId: String,
+        reason: String,
+    )
 }
 
 internal sealed interface ComposerPromotionOutcome {

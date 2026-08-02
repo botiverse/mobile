@@ -156,10 +156,17 @@ internal class ComposerPickEditMachine(
 
     /**
      * Final commit pipeline (v1.3): validator + terminal checks → durable promotion
-     * (host capability) → atomic accept handshake → first-terminal CAS winner record.
-     * The machine does pick/preflight only; the acceptor is the commit authority.
-     * Any Rejected/promotion failure leaves zero draft writes and cleans staging
-     * (host-side, driven by the promotion/accept outcome).
+     * (host capability) → RE-VALIDATE terminal + session after the promotion suspend
+     * → first-terminal CAS(Active→Accepted) BEFORE any SSOT write → only a Won CAS
+     * invokes the acceptor (the persistence authority). Cancel-during-accept therefore
+     * loses the CAS and produces ZERO draft writes + released refs. Every non-Accepted
+     * path after promotion releases the refs via the host capability.
+     *
+     * Host contract: the acceptor's Rejected decision must be computable before the
+     * CAS; post-CAS the acceptor is the persistence authority and a Rejected there is
+     * a host contract violation — the machine still releases refs and reports Failed,
+     * and the Accepted tombstone stands (immutable first-terminal; refs are released
+     * and the tombstone is GC'd past the replay horizon).
      */
     suspend fun commitSession(
         session: ComposerPickEditSession,
@@ -184,25 +191,40 @@ internal class ComposerPickEditMachine(
                 is ComposerPromotionOutcome.Failed ->
                     return ComposerEditResult.Failed("promotion_failed:${promotion.reason}")
             }
+        // Post-suspend re-validation: terminal AND live session state must both still hold.
         if (authority.terminalOf(session.sessionId) != null) {
+            capabilities.releaseDurableRefs(refs, session.sessionId, "session_terminal")
             return ComposerEditResult.Cancelled("session_terminal")
         }
-        val decision = acceptor.acceptEditResult(session.generation, refs)
-        return when (decision) {
-            ComposerAcceptDecision.Accepted -> {
-                authority.tryTerminate(
-                    ComposerSessionAuthorityRecord(
-                        sessionId = session.sessionId,
-                        identity = session.identity,
-                        generation = session.generation,
-                        terminal = ComposerSessionTerminal.Accepted,
-                        terminalAtEpochMs = atEpochMs,
-                    ),
-                )
-                ComposerEditResult.Complete(refs)
+        if (!currentSessionValidator(session.identity, session.generation)) {
+            capabilities.releaseDurableRefs(refs, session.sessionId, "stale_generation")
+            return ComposerEditResult.Cancelled("stale_generation")
+        }
+        // CAS-first: only the Accepted winner may write SSOT via the acceptor.
+        return when (
+            authority.tryTerminate(
+                ComposerSessionAuthorityRecord(
+                    sessionId = session.sessionId,
+                    identity = session.identity,
+                    generation = session.generation,
+                    terminal = ComposerSessionTerminal.Accepted,
+                    terminalAtEpochMs = atEpochMs,
+                ),
+            )
+        ) {
+            ComposerTerminalCasOutcome.Won ->
+                when (acceptor.acceptEditResult(session.generation, refs)) {
+                    ComposerAcceptDecision.Accepted -> ComposerEditResult.Complete(refs)
+                    ComposerAcceptDecision.Rejected -> {
+                        capabilities.releaseDurableRefs(refs, session.sessionId, "accept_rejected")
+                        ComposerEditResult.Failed("accept_rejected_post_cas")
+                    }
+                }
+            ComposerTerminalCasOutcome.SameTerminalReplay,
+            ComposerTerminalCasOutcome.OppositeTerminalConflict -> {
+                capabilities.releaseDurableRefs(refs, session.sessionId, "terminal_lost")
+                ComposerEditResult.Cancelled("session_terminal")
             }
-            ComposerAcceptDecision.Rejected ->
-                ComposerEditResult.Cancelled("accept_rejected")
         }
     }
 }
