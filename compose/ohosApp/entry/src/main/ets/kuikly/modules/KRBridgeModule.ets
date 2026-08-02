@@ -33,8 +33,11 @@ import { slockOhosAttachmentDownloadSink } from '../SlockOhosAttachmentDownloadS
 import { SlockOhosApiEnvironment, SlockOhosApiEnvironmentStore } from '../SlockOhosApiEnvironmentStore';
 import {
   buildSlockOhosAttachmentOpenWants,
+  slockOhosAttachmentOpenDiagnostic,
   slockOhosAttachmentOpenFailureKind,
+  SlockOhosAttachmentOpenDiagnosticTerminal,
   SlockOhosAttachmentOpenFailureKind,
+  SlockOhosAttachmentOpenWants,
 } from '../SlockOhosAttachmentOpenWant';
 import {
   cleanupSlockOhosPrivateAttachmentOrphanParts,
@@ -346,22 +349,32 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         }
       }
       const uri = fileUri.getUriFromPath(path);
+      let openWants: SlockOhosAttachmentOpenWants | undefined = undefined;
       try {
         const sizeBytes = fs.statSync(path).size;
-        const openWants = buildSlockOhosAttachmentOpenWants(uri, mimeType, fileName, sizeBytes);
+        openWants = buildSlockOhosAttachmentOpenWants(uri, mimeType, fileName, sizeBytes);
         SlockOhosDiagnostics.record(
           "SlockAttachmentOpen",
-          `attachmentId=${attachmentId.substring(0, 8)} status=chooser_requested storage=${privateCommitted ? "app_private" : "cache"}`
+          slockOhosAttachmentOpenDiagnostic(openWants, SlockOhosAttachmentOpenDiagnosticTerminal.REQUESTED)
         );
         await context.startAbility(openWants.chooser);
-        SlockOhosDiagnostics.record("SlockAttachmentOpen", `attachmentId=${attachmentId.substring(0, 8)} status=opened cached=${cached}`);
+        SlockOhosDiagnostics.record(
+          "SlockAttachmentOpen",
+          slockOhosAttachmentOpenDiagnostic(openWants, SlockOhosAttachmentOpenDiagnosticTerminal.LAUNCH_SUCCEEDED)
+        );
         callback({ "status": "opened", "cached": privateCommitted, "storageKind": privateCommitted ? "app_private" : "cache" });
       } catch (error) {
         const businessError = error as BusinessError;
         const failureKind = slockOhosAttachmentOpenFailureKind(businessError.code);
         SlockOhosDiagnostics.record(
           "SlockAttachmentOpen",
-          `attachmentId=${attachmentId.substring(0, 8)} status=${failureKind} code=${businessError.code ?? "unknown"}`
+          slockOhosAttachmentOpenDiagnostic(
+            openWants,
+            openWants === undefined
+              ? SlockOhosAttachmentOpenDiagnosticTerminal.PREPARE_FAILED
+              : SlockOhosAttachmentOpenDiagnosticTerminal.LAUNCH_FAILED,
+            businessError.code
+          )
         );
         if (failureKind === SlockOhosAttachmentOpenFailureKind.NO_APP) {
           callback({ "status": "no_app", "message": "No app can open this file" });
@@ -373,7 +386,11 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       const businessError = error as BusinessError;
       SlockOhosDiagnostics.record(
         "SlockAttachmentOpen",
-        `attachmentId=${attachmentId.substring(0, 8)} status=failed code=${businessError.code ?? "unknown"}`
+        slockOhosAttachmentOpenDiagnostic(
+          undefined,
+          SlockOhosAttachmentOpenDiagnosticTerminal.PREPARE_FAILED,
+          businessError.code
+        )
       );
       callback({ "status": "failed", "message": "Unable to download attachment" });
     }

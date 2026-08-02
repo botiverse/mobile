@@ -13,6 +13,13 @@ export enum SlockOhosAttachmentOpenFailureKind {
   FAILED = 'failed',
 }
 
+export enum SlockOhosAttachmentOpenDiagnosticTerminal {
+  REQUESTED = 'requested',
+  LAUNCH_SUCCEEDED = 'launch_succeeded',
+  LAUNCH_FAILED = 'launch_failed',
+  PREPARE_FAILED = 'prepare_failed',
+}
+
 export interface SlockOhosAttachmentOpenWants {
   readonly view: Want;
   readonly chooser: Want;
@@ -62,4 +69,83 @@ export function slockOhosAttachmentOpenFailureKind(code: number | undefined): Sl
   return code === 16000001 || code === 16000019
     ? SlockOhosAttachmentOpenFailureKind.NO_APP
     : SlockOhosAttachmentOpenFailureKind.FAILED;
+}
+
+function slockOhosAttachmentOpenDiagnosticAction(action: string | undefined): string {
+  if (action === SLOCK_OHOS_ACTION_SELECT) {
+    return 'select';
+  }
+  if (action === SLOCK_OHOS_ACTION_VIEW_DATA) {
+    return 'view_data';
+  }
+  return action === undefined || action.length === 0 ? 'none' : 'other';
+}
+
+function slockOhosAttachmentOpenDiagnosticMimeType(mimeType: string | undefined): string {
+  const normalized = mimeType?.trim().toLowerCase() ?? '';
+  switch (normalized) {
+    case 'application/zip':
+    case 'general.zip-archive':
+    case 'application/octet-stream':
+    case 'application/pdf':
+    case 'text/plain':
+    case 'image/jpeg':
+    case 'image/png':
+    case 'image/gif':
+    case 'video/mp4':
+    case 'audio/mpeg':
+      return normalized;
+    default:
+      return normalized.length === 0 ? 'none' : 'other';
+  }
+}
+
+function slockOhosAttachmentOpenDiagnosticUriScheme(uri: string | undefined): string {
+  const separator = uri?.indexOf(':') ?? -1;
+  const normalized = separator > 0 ? uri?.substring(0, separator).trim().toLowerCase() ?? '' : '';
+  switch (normalized) {
+    case 'file':
+    case 'content':
+    case 'datashare':
+    case 'http':
+    case 'https':
+      return normalized;
+    default:
+      return normalized.length === 0 ? 'none' : 'other';
+  }
+}
+
+function slockOhosAttachmentOpenDiagnosticHasReadFlag(want: Want | undefined): boolean {
+  return ((want?.flags ?? 0) & wantConstant.Flags.FLAG_AUTH_READ_URI_PERMISSION) !== 0;
+}
+
+function slockOhosAttachmentOpenDiagnosticHasStream(want: Want | undefined): boolean {
+  const stream = want?.parameters?.[wantConstant.Params.PARAMS_STREAM] as Array<string> | undefined;
+  return stream !== undefined && stream.length > 0;
+}
+
+/**
+ * Emits only fixed labels and allowlisted values. It intentionally never serializes a Want,
+ * URI path, picker filename, stream value, attachment identifier, content, or token.
+ */
+export function slockOhosAttachmentOpenDiagnostic(
+  wants: SlockOhosAttachmentOpenWants | undefined,
+  terminal: SlockOhosAttachmentOpenDiagnosticTerminal,
+  code: number | undefined = undefined
+): string {
+  const outer = wants?.chooser;
+  const child = outer?.parameters?.[SLOCK_OHOS_SELECT_INTENT_PARAMETER] as Want | undefined;
+  const sanitizedCode = code !== undefined && Number.isFinite(code) ? `${Math.floor(code)}` : 'none';
+  return [
+    `outer=${slockOhosAttachmentOpenDiagnosticAction(outer?.action)}`,
+    `child=${slockOhosAttachmentOpenDiagnosticAction(child?.action)}`,
+    `mime=${slockOhosAttachmentOpenDiagnosticMimeType(outer?.type)}`,
+    `uriScheme=${slockOhosAttachmentOpenDiagnosticUriScheme(outer?.uri)}`,
+    `outerRead=${slockOhosAttachmentOpenDiagnosticHasReadFlag(outer)}`,
+    `childRead=${slockOhosAttachmentOpenDiagnosticHasReadFlag(child)}`,
+    `outerStream=${slockOhosAttachmentOpenDiagnosticHasStream(outer)}`,
+    `childStream=${slockOhosAttachmentOpenDiagnosticHasStream(child)}`,
+    `terminal=${terminal}`,
+    `code=${sanitizedCode}`,
+  ].join(' ');
 }
