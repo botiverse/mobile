@@ -88,4 +88,48 @@ class SlockImagePreviewSurfaceTest {
         assertFalse(loadingFallback.showLoadingOverlay)
         assertTrue(failedFallback.showLoadingOverlay)
     }
+
+    @Test
+    fun coldDecodeCompletionChangesNativeImageRenderIdentity() {
+        val loading =
+            slockImagePreviewRenderIdentity(
+                source = "https://cdn.example/image.jpg",
+                decodedWidth = 0,
+                decodedHeight = 0
+            )
+        val decoded =
+            slockImagePreviewRenderIdentity(
+                source = "https://cdn.example/image.jpg",
+                decodedWidth = 1280,
+                decodedHeight = 720
+            )
+
+        assertFalse(loading == decoded)
+    }
+
+    @Test
+    fun resolvedSourceChangesNativeImageRenderIdentity() {
+        val thumbnail =
+            slockImagePreviewRenderIdentity(
+                source = "https://cdn.example/thumb.jpg",
+                decodedWidth = 320,
+                decodedHeight = 180
+            )
+        val fullImage =
+            slockImagePreviewRenderIdentity(
+                source = "https://cdn.example/full.jpg",
+                decodedWidth = 320,
+                decodedHeight = 180
+            )
+
+        assertFalse(thumbnail == fullImage)
+    }
+
+    @Test
+    fun invalidDecodeDimensionsRemainOneStableLoadingIdentity() {
+        assertEquals(
+            slockImagePreviewRenderIdentity("https://cdn.example/image.jpg", 0, 0),
+            slockImagePreviewRenderIdentity("https://cdn.example/image.jpg", -1, -1)
+        )
+    }
 }
