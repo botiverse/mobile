@@ -108,7 +108,8 @@ internal fun CreateAgentDialogVisualContent() {
         } else {
             RUNTIME_PROVIDER_MODE_DEFAULT
         }
-    val machineRuntimes = (listOf(runtime, "codex", "claude") + RUNTIMES.map { it.id }).distinct()
+    val machineRuntimes =
+        (listOf(runtime, "codex", "claude") + RUNTIMES.filterNot { it.deprecated }.map { it.id }).distinct()
     val runtimeModels =
         RUNTIME_MODELS[runtime].orEmpty().map { model ->
             SharedCreateAgentRuntimeModelOption(model.id, model.label, model.verified)
@@ -202,6 +203,8 @@ internal fun buildSharedCreateAgentDialogSubmit(
     reasoningEffort: String?,
     envVarEntries: List<Pair<String, String>>,
     command: String,
+    piProviderId: String = "configured",
+    piProviderApiKey: String = "",
     builtInForm: SharedResolvedAgentCreateForm? = null,
     builtInProviderId: String = "",
     builtInApiKey: String = "",
@@ -233,6 +236,8 @@ internal fun buildSharedCreateAgentDialogSubmit(
                 providerMode = providerMode,
                 providerApiUrl = providerApiUrl,
                 providerApiKey = providerApiKey,
+                piProviderId = piProviderId,
+                piProviderApiKey = piProviderApiKey,
                 fastMode = fastMode,
                 reasoningEffort = reasoningEffort,
                 envVars = createAgentRuntimeEnvVars(envVarEntries),
@@ -312,13 +317,14 @@ private fun normalizeCreateAgentRuntimeIds(runtimeIds: List<String>): List<Strin
 internal fun createAgentRuntimeDropdownItems(
     machineRuntimeIds: List<String> = emptyList(),
     allowStaticFallback: Boolean = true,
+    currentRuntimeId: String? = null,
     comingSoonSuffix: String = " (coming soon)",
     notInstalledSuffix: String = " (not installed)"
 ): List<CreateAgentDropdownItem> {
     val machineRuntimeIdsNormalized = normalizeCreateAgentRuntimeIds(machineRuntimeIds)
     if (machineRuntimeIdsNormalized.isEmpty()) {
         return if (allowStaticFallback) {
-            RUNTIMES.filter { it.supported }.map { runtime ->
+            RUNTIMES.filter { it.supported && (!it.deprecated || it.id == currentRuntimeId) }.map { runtime ->
                 CreateAgentDropdownItem(id = runtime.id, label = runtime.displayName)
             }
         } else {
@@ -326,7 +332,7 @@ internal fun createAgentRuntimeDropdownItems(
         }
     }
     val available = machineRuntimeIdsNormalized.toSet()
-    val legacyItems = RUNTIMES.map { runtime ->
+    val legacyItems = RUNTIMES.filter { !it.deprecated || it.id == currentRuntimeId }.map { runtime ->
         val selectable = runtime.supported && runtime.id in available
         val unavailableSuffix =
             when {
@@ -340,12 +346,7 @@ internal fun createAgentRuntimeDropdownItems(
             enabled = selectable
         )
     }
-    return legacyItems +
-        if ("builtin" in available) {
-            listOf(CreateAgentDropdownItem(id = "builtin", label = "Built-in (Pi)"))
-        } else {
-            emptyList()
-        }
+    return legacyItems
 }
 
 internal fun canEnableBuiltInRuntime(
@@ -603,6 +604,8 @@ internal fun SharedCreateAgentDialog(
     var providerMode by remember(initialProviderMode) { mutableStateOf(initialProviderMode) }
     var providerApiUrl by remember(initialProviderApiUrl) { mutableStateOf(initialProviderApiUrl) }
     var providerApiKey by remember(initialProviderApiKey) { mutableStateOf(initialProviderApiKey) }
+    var piProviderId by remember { mutableStateOf("configured") }
+    var piProviderApiKey by remember { mutableStateOf("") }
     var fastMode by remember(initialFastMode) { mutableStateOf(initialFastMode) }
     var reasoningEffort by remember(initialReasoningEffort) { mutableStateOf(initialReasoningEffort) }
     var command by remember(initialCommand) { mutableStateOf(initialCommand) }
@@ -626,7 +629,9 @@ internal fun SharedCreateAgentDialog(
         )
     }
     var machineRuntimeInitialized by remember(initialRuntime) { mutableStateOf(initialRuntime.isNotBlank()) }
-    val supportedRuntimeIds = remember { RUNTIMES.filter { it.supported }.map { it.id }.toSet() }
+    val supportedRuntimeIds = remember {
+        RUNTIMES.filter { it.supported && !it.deprecated }.map { it.id }.toSet()
+    }
     val runtimeModelKey = selectedMachineId?.let { it to runtime }
     val runtimeModelsCatalog = runtimeModelKey?.let { runtimeModelsByMachineAndRuntime[it] }
     val runtimeModelsOverride = runtimeModelsCatalog?.models.orEmpty()
@@ -721,6 +726,8 @@ internal fun SharedCreateAgentDialog(
         providerMode = RUNTIME_PROVIDER_MODE_DEFAULT
         providerApiUrl = ""
         providerApiKey = ""
+        piProviderId = "configured"
+        piProviderApiKey = ""
         builtInApiKey = ""
         builtInSecretIdentity = null
         builtInSupportsImageInput = false
@@ -834,6 +841,8 @@ internal fun SharedCreateAgentDialog(
         (selectedMachine == null ||
             selectedMachine.status != "online" ||
             (!requiredComputer.isNullOrBlank() && selectedMachine.id != requiredComputer))
+    val piProviderKeyInvalid =
+        runtime == "pi" && piProviderId != "configured" && piProviderApiKey.isBlank()
     val builtInRuntimeConfig =
         if (!external && runtime == "builtin") {
             builtInForm?.buildBuiltInRuntimeConfig(
@@ -851,6 +860,7 @@ internal fun SharedCreateAgentDialog(
         inlineNameError == null &&
         !descriptionTooLong &&
         !customModelMissing &&
+        !piProviderKeyInvalid &&
         !atLimit &&
         !submitting &&
         !selectedMachineBlocked &&
@@ -1123,6 +1133,13 @@ internal fun SharedCreateAgentDialog(
                             onProviderApiUrlChange = { providerApiUrl = it },
                             providerApiKey = providerApiKey,
                             onProviderApiKeyChange = { providerApiKey = it },
+                            piProviderId = piProviderId,
+                            onPiProviderIdChange = {
+                                piProviderId = it
+                                if (it == "configured") piProviderApiKey = ""
+                            },
+                            piProviderApiKey = piProviderApiKey,
+                            onPiProviderApiKeyChange = { piProviderApiKey = it },
                             fastMode = fastMode,
                             onFastModeChange = { fastMode = it },
                             reasoningEffort = reasoningEffort,
@@ -1175,6 +1192,8 @@ internal fun SharedCreateAgentDialog(
                                 providerMode = providerMode,
                                 providerApiUrl = providerApiUrl,
                                 providerApiKey = providerApiKey,
+                                piProviderId = piProviderId,
+                                piProviderApiKey = piProviderApiKey,
                                 fastMode = fastMode,
                                 reasoningEffort = reasoningEffort,
                                 envVarEntries = envVarEntries,
@@ -1340,7 +1359,7 @@ private fun MachinePicker(
 }
 
 @Composable
-private fun BuiltInRuntimeSection(
+internal fun BuiltInRuntimeSection(
     runtime: String,
     onRuntimeChange: (String) -> Unit,
     machineRuntimeIds: List<String>,
@@ -1367,6 +1386,7 @@ private fun BuiltInRuntimeSection(
     val runtimeOptions = createAgentRuntimeDropdownItems(
         machineRuntimeIds = machineRuntimeIds,
         allowStaticFallback = false,
+        currentRuntimeId = runtime,
         comingSoonSuffix = stringResource(MR.strings.agent_create_suffix_coming_soon),
         notInstalledSuffix = stringResource(MR.strings.agent_create_suffix_not_installed)
     )
@@ -1531,6 +1551,10 @@ internal fun AdvancedRuntimeSection(
     onProviderApiUrlChange: (String) -> Unit,
     providerApiKey: String,
     onProviderApiKeyChange: (String) -> Unit,
+    piProviderId: String = "configured",
+    onPiProviderIdChange: (String) -> Unit = {},
+    piProviderApiKey: String = "",
+    onPiProviderApiKeyChange: (String) -> Unit = {},
     fastMode: Boolean,
     onFastModeChange: (Boolean) -> Unit,
     reasoningEffort: String?,
@@ -1560,6 +1584,7 @@ internal fun AdvancedRuntimeSection(
         createAgentRuntimeDropdownItems(
             machineRuntimeIds = machineRuntimeIds,
             allowStaticFallback = runtimeAvailabilityError == null,
+            currentRuntimeId = runtime,
             comingSoonSuffix = stringResource(MR.strings.agent_create_suffix_coming_soon),
             notInstalledSuffix = stringResource(MR.strings.agent_create_suffix_not_installed)
         )
@@ -1666,6 +1691,42 @@ internal fun AdvancedRuntimeSection(
                         color = SlockColor.AccentRed
                     )
                 }
+            }
+        }
+        if (runtime == "pi") {
+            SlockBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_provider))
+            SlockBrutalSelectField(
+                options =
+                    listOf(
+                        SlockBrutalSelectOption(
+                            id = "configured",
+                            label = stringResource(MR.strings.agent_create_action_default)
+                        ),
+                        SlockBrutalSelectOption(id = "deepseek", label = "DeepSeek")
+                    ),
+                selectedId = piProviderId,
+                selectedLabel =
+                    if (piProviderId == "deepseek") "DeepSeek"
+                    else stringResource(MR.strings.agent_create_action_default),
+                placeholder = stringResource(MR.strings.agent_create_placeholder_select_provider),
+                enabled = enabled,
+                rowHeight = 36.dp,
+                onSelect = { option ->
+                    focusManager.clearFocus(force = true)
+                    onPiProviderIdChange(option.id)
+                    if (option.id == "configured") onPiProviderApiKeyChange("")
+                }
+            )
+            if (piProviderId != "configured") {
+                SlockBrutalTextField(
+                    label = stringResource(MR.strings.agent_create_label_api_key),
+                    required = true,
+                    value = piProviderApiKey,
+                    password = true,
+                    onValueChange = onPiProviderApiKeyChange,
+                    placeholder = "sk-...",
+                    enabled = enabled
+                )
             }
         }
         CreateAgentSectionLabelWithAction(

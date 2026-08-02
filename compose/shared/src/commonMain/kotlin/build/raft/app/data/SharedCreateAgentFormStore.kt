@@ -144,6 +144,28 @@ internal class SharedCreateAgentFormStore(
         return loadExactForm(serverId, machineId, ref, force)
     }
 
+    /**
+     * Runtime-config editing may manage the machine's current Built-in runtime.
+     * Create admission deliberately rejects `current`; edit admission instead
+     * requires the server-projected manageable-for-current-agent capability.
+     */
+    suspend fun loadSupportedBuiltInFormForEdit(
+        serverId: String,
+        machineId: String,
+        force: Boolean = false
+    ): DataResult<SharedResolvedAgentCreateForm> {
+        val catalog = loadRuntimeCatalog(serverId, machineId, force)
+        if (catalog !is DataResult.Content) return catalog.asResolvedFormResult()
+        val option = catalog.data.options.singleOrNull { it.runtimeId == CREATE_AGENT_BUILTIN_RUNTIME_ID }
+            ?: return unavailableBuiltInForm("runtime_missing")
+        val ref = option.formDefinitionRef
+            ?: return unavailableBuiltInForm("form_ref_missing")
+        if ((!option.selectable && !option.manageableForCurrentAgent) || !ref.isSupportedBuiltInPi) {
+            return unavailableBuiltInForm("runtime_not_manageable")
+        }
+        return loadExactForm(serverId, machineId, ref, force)
+    }
+
     private suspend fun resolveExactForm(
         key: SharedCreateAgentExactFormKey
     ): DataResult<SharedResolvedAgentCreateForm> {

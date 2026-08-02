@@ -361,6 +361,7 @@ class AgentsApiTest {
             val detail = assertIs<DataResult.Content<AgentSummary>>(client.agent(MemberId("agent-1"))).data
             assertEquals("builtin", detail.runtime)
             assertEquals("deepseek/deepseek-v4-pro", detail.model)
+            assertEquals(RuntimeProviderConfig.Preset("deepseek", ""), detail.runtimeProvider)
             assertEquals(false, sentinel in detail.toString())
         }
     }
@@ -380,6 +381,23 @@ class AgentsApiTest {
         assertEquals("claude", detail.runtime)
         assertEquals("custom", detail.runtimeModelKind)
         assertEquals("vendor/private-model", detail.model)
+    }
+
+    @Test
+    fun typedAgentsApiPreservesPiProviderConfiguration() = runPortableCoroutineTest {
+        val client =
+            SlockAgentsApiClient(
+                RecordingAgentsApi(
+                    agentBody =
+                        """{"id":"agent-1","name":"Pi","runtimeConfig":{"version":1,"runtime":"pi","provider":{"kind":"pi-builtin","providerId":"deepseek","apiKey":"pi-key"},"model":{"kind":"preset","id":"deepseek/deepseek-v4-pro"},"mode":{"kind":"default"}}}"""
+                )
+            )
+
+        val detail = assertIs<DataResult.Content<AgentSummary>>(client.agent(MemberId("agent-1"))).data
+
+        assertEquals("pi", detail.runtime)
+        assertEquals("deepseek/deepseek-v4-pro", detail.model)
+        assertEquals(RuntimeProviderConfig.PiBuiltin("deepseek", "pi-key"), detail.runtimeProvider)
     }
 
     @Test

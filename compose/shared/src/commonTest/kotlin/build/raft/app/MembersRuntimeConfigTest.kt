@@ -4,6 +4,8 @@ import build.raft.app.data.AgentResetMode
 import build.raft.app.model.RuntimeConfig
 import build.raft.app.model.RuntimeModeConfig
 import build.raft.app.model.RuntimeModelConfig
+import build.raft.app.model.RuntimeProviderConfig
+import build.raft.app.data.AgentDetailSummary
 import build.raft.app.resources.MR
 import com.tencent.tmm.kmmresource.resource.desc.desc
 import kotlin.test.Test
@@ -12,6 +14,78 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class MembersRuntimeConfigTest {
+    @Test
+    fun runtimeResolutionKeepsNonSecretBuiltInProviderIdentityForEditHydration() {
+        val provider = RuntimeProviderConfig.Gateway(
+            "openai-compatible",
+            "https://gateway.example.test/v1",
+            "",
+            supportsImageInput = true
+        )
+        val resolution =
+            AgentDetailSummary(
+                id = "agent-1",
+                name = "Agent One",
+                runtime = "builtin",
+                model = "vendor/model",
+                runtimeModelKind = "custom",
+                runtimeProvider = provider
+            ).toMembersRuntimeConfigResolution()
+
+        val config = (resolution as MembersAgentRuntimeConfigResolution.Content).config
+        assertEquals(provider, config.provider)
+        assertEquals(RuntimeModelConfig.Custom("vendor/model"), config.model)
+    }
+
+    @Test
+    fun builtInWriteOnlyKeyRetainsOnlyForExactProviderIdentity() {
+        val preset =
+            RuntimeConfig(
+                runtime = "builtin",
+                provider = RuntimeProviderConfig.Preset("deepseek", ""),
+                model = RuntimeModelConfig.Preset("deepseek/deepseek-v4-pro")
+            )
+        assertTrue(membersCanRetainBuiltInProviderSecret(preset, "builtin", "deepseek", "", ""))
+        assertEquals(
+            false,
+            membersCanRetainBuiltInProviderSecret(preset, "builtin", "openai", "", "")
+        )
+        assertEquals(
+            false,
+            membersCanRetainBuiltInProviderSecret(preset, "builtin", "deepseek", "", "new-secret")
+        )
+
+        val gateway =
+            RuntimeConfig(
+                runtime = "builtin",
+                provider = RuntimeProviderConfig.Gateway(
+                    "openai-compatible",
+                    "https://gateway.example.test/v1",
+                    ""
+                ),
+                model = RuntimeModelConfig.Custom("vendor/model")
+            )
+        assertTrue(
+            membersCanRetainBuiltInProviderSecret(
+                gateway,
+                "builtin",
+                "openai-compatible",
+                "https://gateway.example.test/v1",
+                ""
+            )
+        )
+        assertEquals(
+            false,
+            membersCanRetainBuiltInProviderSecret(
+                gateway,
+                "builtin",
+                "openai-compatible",
+                "https://other.example.test/v1",
+                ""
+            )
+        )
+    }
+
     @Test
     fun runtimeModelKindPreservesPresetVsCustomIdentity() {
         assertEquals(

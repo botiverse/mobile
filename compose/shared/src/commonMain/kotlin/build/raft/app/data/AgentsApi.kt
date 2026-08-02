@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.model.MemberId
+import build.raft.app.model.RuntimeProviderConfig
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
@@ -345,6 +346,7 @@ internal data class AgentSummary(
     val status: String?,
     val model: String?,
     val runtimeModelKind: String?,
+    val runtimeProvider: RuntimeProviderConfig?,
     val runtime: String?,
     val reasoning: String?,
     val executionMode: String?,
@@ -375,6 +377,7 @@ internal fun AgentSummary.toAgentDetailSummary(): AgentDetailSummary =
         runtime = runtime,
         model = model,
         runtimeModelKind = runtimeModelKind,
+        runtimeProvider = runtimeProvider,
         reasoning = reasoning,
         executionMode = executionMode,
         machineId = machineId,
@@ -581,6 +584,7 @@ private fun AgentWireDto.toSummary(): AgentSummary? {
         status = status,
         model = configuredModel ?: model ?: currentProfile?.model,
         runtimeModelKind = runtimeConfig?.model?.normalizedKindOrNull(),
+        runtimeProvider = runtimeConfig?.provider?.toReadProjection(runtimeConfig.runtime),
         runtime = runtimeConfig?.runtime?.takeIf { it.isNotBlank() } ?: runtime ?: currentProfile?.runtime,
         reasoning = reasoningEffort ?: currentProfile?.reasoningEffort,
         executionMode = executionMode ?: currentProfile?.executionMode,
@@ -604,8 +608,56 @@ private fun AgentWireDto.toSummary(): AgentSummary? {
 @Serializable
 private data class AgentRuntimeConfigWireDto(
     val runtime: String? = null,
+    val provider: AgentRuntimeProviderWireDto? = null,
     val model: AgentRuntimeModelWireDto? = null
 )
+
+@Serializable
+private data class AgentRuntimeProviderWireDto(
+    val kind: String? = null,
+    val providerId: String? = null,
+    val apiUrl: String? = null,
+    val apiKey: String? = null,
+    val baseUrl: String? = null,
+    val supportsImageInput: Boolean = false
+) {
+    /**
+     * Agent reads are projections, not secret-recovery surfaces. Built-in keys are
+     * write-only on the server; even if a malformed/legacy response contains bytes,
+     * retain only the non-secret provider identity and replace the key with blank.
+     */
+    fun toReadProjection(runtime: String?): RuntimeProviderConfig? {
+        return when (kind?.trim()?.lowercase()) {
+            "default" -> RuntimeProviderConfig.Default
+            "custom" -> {
+                val cleanUrl = apiUrl?.trim()?.takeIf { it.isNotBlank() } ?: return null
+                RuntimeProviderConfig.Custom(cleanUrl, apiKey.orEmpty())
+            }
+            "preset" -> {
+                if (runtime != "builtin") return null
+                val cleanProviderId = providerId?.trim()?.takeIf { it.isNotBlank() } ?: return null
+                RuntimeProviderConfig.Preset(cleanProviderId, apiKey = "")
+            }
+            "gateway" -> {
+                if (runtime != "builtin") return null
+                val cleanProviderId = providerId?.trim()?.takeIf { it.isNotBlank() } ?: return null
+                val cleanBaseUrl = baseUrl?.trim()?.takeIf { it.isNotBlank() } ?: return null
+                RuntimeProviderConfig.Gateway(
+                    providerId = cleanProviderId,
+                    baseUrl = cleanBaseUrl,
+                    apiKey = "",
+                    supportsImageInput = supportsImageInput
+                )
+            }
+            "pi-builtin" -> {
+                if (runtime != "pi") return null
+                val cleanProviderId = providerId?.trim()?.takeIf { it.isNotBlank() } ?: return null
+                RuntimeProviderConfig.PiBuiltin(cleanProviderId, apiKey.orEmpty())
+            }
+            else -> null
+        }
+    }
+}
 
 @Serializable
 private data class AgentRuntimeModelWireDto(

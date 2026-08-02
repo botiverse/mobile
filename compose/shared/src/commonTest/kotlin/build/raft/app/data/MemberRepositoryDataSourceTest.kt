@@ -3,9 +3,13 @@ package build.raft.app.data
 import build.raft.app.SlockFilePreviewPayload
 import build.raft.app.withAgentWorkspaceLoadError
 import build.raft.app.model.MemberId
+import build.raft.app.model.RuntimeConfig
+import build.raft.app.model.RuntimeModelConfig
+import build.raft.app.model.RuntimeProviderConfig
 import build.raft.app.model.ServerId
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
@@ -298,6 +302,44 @@ class MemberRepositoryDataSourceTest {
                 )
             )
         )
+    }
+
+    @Test
+    fun builtInRuntimeUpdateOmitsOnlyExplicitlyRetainedWriteOnlyKey() {
+        val config =
+            RuntimeConfig(
+                runtime = "builtin",
+                provider = RuntimeProviderConfig.Preset("deepseek", "replacement-secret"),
+                model = RuntimeModelConfig.Preset("deepseek/deepseek-v4-pro")
+            )
+
+        val retainedBody =
+            buildSharedAgentProfileUpdateBody(
+                AgentProfileUpdateRequest(
+                    agentId = MemberId("agent-1"),
+                    displayName = "Agent One",
+                    description = null,
+                    runtimeConfig = config.copy(
+                        provider = RuntimeProviderConfig.Preset("deepseek", "")
+                    ),
+                    includeRuntimeConfig = true,
+                    retainOmittedBuiltInProviderSecret = true
+                )
+            )
+        assertTrue("\"providerId\":\"deepseek\"" in retainedBody)
+        assertFalse("\"apiKey\"" in retainedBody)
+
+        val replacedBody =
+            buildSharedAgentProfileUpdateBody(
+                AgentProfileUpdateRequest(
+                    agentId = MemberId("agent-1"),
+                    displayName = "Agent One",
+                    description = null,
+                    runtimeConfig = config,
+                    includeRuntimeConfig = true
+                )
+            )
+        assertTrue("\"apiKey\":\"replacement-secret\"" in replacedBody)
     }
 
     private class FakeMemberNetworkClient : SlockNetworkClient {

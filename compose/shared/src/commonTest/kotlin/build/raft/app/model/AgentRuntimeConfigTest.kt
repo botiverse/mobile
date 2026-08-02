@@ -53,13 +53,16 @@ class AgentRuntimeConfigTest {
     // ── Runtimes / models ──
 
     @Test
-    fun runtimesContainCanonicalTen() {
+    fun runtimesContainCanonicalTwelveAndMarkLegacyEntriesDeprecated() {
         val ids = RUNTIMES.map { it.id }
-        assertTrue("claude" in ids)
-        assertTrue("codex" in ids)
-        assertTrue("opencode" in ids)
-        assertTrue("kimi-sdk" in ids)
-        assertEquals(10, ids.size)
+        assertEquals(
+            listOf(
+                "claude", "codex", "grok", "builtin", "antigravity", "kimi-sdk",
+                "kimi", "copilot", "cursor", "gemini", "opencode", "pi"
+            ),
+            ids
+        )
+        assertEquals(setOf("kimi", "gemini"), RUNTIMES.filter { it.deprecated }.map { it.id }.toSet())
     }
 
     @Test
@@ -134,13 +137,18 @@ class AgentRuntimeConfigTest {
         assertFalse(supportsRuntimeFastMode("opencode"))
         assertTrue(supportsRuntimeCustomModelName("claude"))
         assertTrue(supportsRuntimeCustomModelName("codex"))
+        assertTrue(supportsRuntimeCustomModelName("builtin"))
+        assertTrue(supportsRuntimeCustomModelName("copilot"))
         assertTrue(supportsRuntimeCustomModelName("cursor"))
         assertTrue(supportsRuntimeCustomModelName("pi"))
-        assertTrue(supportsRuntimeCustomModelName("opencode"))
-        assertTrue(supportsRuntimeCustomModelName("gemini"))
-        assertTrue(supportsRuntimeCustomModelName("antigravity"))
-        assertTrue(supportsRuntimeCustomModelName("machine-runtime"))
+        assertFalse(supportsRuntimeCustomModelName("opencode"))
+        assertFalse(supportsRuntimeCustomModelName("gemini"))
+        assertFalse(supportsRuntimeCustomModelName("antigravity"))
+        assertFalse(supportsRuntimeCustomModelName("machine-runtime"))
         assertFalse(supportsRuntimeCustomModelName(""))
+        assertTrue(supportsRuntimeReasoningEffort("builtin"))
+        assertTrue(supportsRuntimeReasoningEffort("grok"))
+        assertFalse(supportsRuntimeReasoningEffort("opencode"))
     }
 
     // ── buildRuntimeConfig ──
@@ -218,6 +226,27 @@ class AgentRuntimeConfigTest {
     }
 
     @Test
+    fun buildRuntimeConfigUsesConfiguredOrBuiltInPiProvider() {
+        val configured = buildRuntimeConfig(
+            runtime = "pi",
+            model = "default",
+            customModelMode = false,
+            piProviderId = "configured",
+            piProviderApiKey = "ignored"
+        )
+        assertEquals(RuntimeProviderConfig.Default, configured.provider)
+
+        val deepSeek = buildRuntimeConfig(
+            runtime = "pi",
+            model = "deepseek/deepseek-v4-pro",
+            customModelMode = false,
+            piProviderId = " deepseek ",
+            piProviderApiKey = " secret-value "
+        )
+        assertEquals(RuntimeProviderConfig.PiBuiltin("deepseek", "secret-value"), deepSeek.provider)
+    }
+
+    @Test
     fun buildRuntimeConfigIncludesCommandOnlyForClaude() {
         val claudeWithCmd = buildRuntimeConfig(
             runtime = "claude",
@@ -253,6 +282,22 @@ class AgentRuntimeConfigTest {
             reasoningEffort = "high"
         )
         assertEquals("high", claudeConfig.reasoningEffort)
+
+        val grokConfig = buildRuntimeConfig(
+            runtime = "grok",
+            model = "default",
+            customModelMode = false,
+            reasoningEffort = "medium"
+        )
+        assertEquals("medium", grokConfig.reasoningEffort)
+
+        val builtInConfig = buildRuntimeConfig(
+            runtime = "builtin",
+            model = "default",
+            customModelMode = false,
+            reasoningEffort = "low"
+        )
+        assertEquals("low", builtInConfig.reasoningEffort)
     }
 
     // ── Plan limits ──
