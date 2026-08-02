@@ -34,8 +34,13 @@ internal expect fun slockPlatformSupportsPushPreviewPrivacySetting(): Boolean
 internal expect fun slockPlatformSupportsSaveImageToPhotos(): Boolean
 
 // Android exposes durable public Downloads through an exact journal + MediaStore readback.
-// iOS/OHOS keep their existing export behavior until they have an equivalent durable authority.
+// Android and OHOS expose durable downloaded-file readback; iOS does not yet have an equivalent
+// committed native authority.
 internal expect fun slockPlatformSupportsPublicAttachmentDownloadReadback(): Boolean
+
+// OHOS keeps Download silent and durable in the app-private files directory. A separate Files
+// action exports that committed private copy through the system document picker.
+internal expect fun slockPlatformSupportsPrivateAttachmentExport(): Boolean
 
 // task #90: each platform is a separate Hands app with its own release
 // stream, so the release-notes slug must be injected per platform (like the

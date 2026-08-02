@@ -55,9 +55,100 @@ import {
   slockOhosFeedbackDraftAccountSegmentFromDigest,
   SlockOhosFeedbackDraftAttachmentBackend,
 } from '../main/ets/kuikly/SlockOhosHandsFeedbackDraftAttachments';
+import {
+  cleanupSlockOhosPrivateAttachmentOrphanParts,
+  copySlockOhosPrivateAttachmentToProviderUri,
+  isSlockOhosPrivateAttachmentOwnerKey,
+  slockOhosPrivateAttachmentDirectory,
+  slockOhosPrivateAttachmentFileName,
+  SlockOhosPrivateAttachmentCopyBackend,
+  SlockOhosPrivateAttachmentCleanupBackend,
+  SlockOhosPrivateAttachmentStat,
+} from '../main/ets/kuikly/SlockOhosPrivateAttachmentStore';
+import {
+  buildSlockOhosAttachmentOpenWants,
+  slockOhosAttachmentOpenFailureKind,
+  SLOCK_OHOS_ACTION_SELECT,
+  SLOCK_OHOS_ACTION_VIEW_DATA,
+  SLOCK_OHOS_DEFAULT_ATTACHMENT_MIME_TYPE,
+  SLOCK_OHOS_SELECT_INTENT_PARAMETER,
+  SLOCK_OHOS_PICKER_FILE_NAMES_PARAMETER,
+  SLOCK_OHOS_PICKER_FILE_SIZES_PARAMETER,
+  SLOCK_OHOS_PICKER_TYPE_PARAMETER,
+  SlockOhosAttachmentOpenFailureKind,
+} from '../main/ets/kuikly/SlockOhosAttachmentOpenWant';
+import { Want, wantConstant } from '@kit.AbilityKit';
 
 interface FakeHandsFeedbackAttachmentInput {
   fileRef: string;
+}
+
+class FakePrivateAttachmentHandle {
+  readonly kind: string;
+  constructor(kind: string) {
+    this.kind = kind;
+  }
+}
+
+class FakePrivateAttachmentCopyBackend implements SlockOhosPrivateAttachmentCopyBackend {
+  sourceSize: number = 0;
+  readOffset: number = 0;
+  writeLimit: number = Number.MAX_SAFE_INTEGER;
+  readonly openedTargets: Array<string> = [];
+  readonly closedKinds: Array<string> = [];
+  writtenBytes: number = 0;
+  readFailure: Error | null = null;
+  closeTargetFailure: Error | null = null;
+  closeSourceFailure: Error | null = null;
+  targetOpenFailure: Error | null = null;
+
+  stat(_path: string): SlockOhosPrivateAttachmentStat | null {
+    return this.sourceSize > 0 ? { isFile: true, sizeBytes: this.sourceSize, mtime: 1 } : null;
+  }
+
+  openSource(_path: string): Object {
+    return new FakePrivateAttachmentHandle('source');
+  }
+
+  openTarget(uri: string): Object {
+    this.openedTargets.push(uri);
+    if (this.targetOpenFailure !== null) throw this.targetOpenFailure;
+    return new FakePrivateAttachmentHandle('target');
+  }
+
+  read(_source: Object, buffer: ArrayBuffer): number {
+    if (this.readFailure !== null) throw this.readFailure;
+    const remaining = this.sourceSize - this.readOffset;
+    const count = Math.min(remaining, buffer.byteLength);
+    this.readOffset += count;
+    return count;
+  }
+
+  write(_target: Object, _buffer: ArrayBuffer, length: number): number {
+    const count = Math.min(length, this.writeLimit);
+    this.writtenBytes += count;
+    return count;
+  }
+
+  close(handle: Object): void {
+    const kind = (handle as FakePrivateAttachmentHandle).kind;
+    this.closedKinds.push(kind);
+    if (kind === 'target' && this.closeTargetFailure !== null) throw this.closeTargetFailure;
+    if (kind === 'source' && this.closeSourceFailure !== null) throw this.closeSourceFailure;
+  }
+}
+
+class FakePrivateAttachmentCleanupBackend implements SlockOhosPrivateAttachmentCleanupBackend {
+  readonly names: Array<string> = [];
+  readonly removedPaths: Array<string> = [];
+
+  list(_directory: string): Array<string> {
+    return this.names;
+  }
+
+  unlink(path: string): void {
+    this.removedPaths.push(path);
+  }
 }
 
 class FakePlatformFileHandle {
@@ -307,6 +398,207 @@ function diagnosticWork(
 
 export default function localUnitTest() {
   describe('localUnitTest',() => {
+    it('attachmentOpenBuildsReadAuthorizedChooserForPrivateUri', 0, () => {
+      const uri = 'file://build.raft.mobile/data/storage/el2/base/files/slock-attachments/archive.zip';
+      const wants = buildSlockOhosAttachmentOpenWants(uri, 'application/zip', 'archive.zip', 4096);
+
+      expect(wants.view.action).assertEqual(SLOCK_OHOS_ACTION_VIEW_DATA);
+      expect(wants.view.uri).assertEqual(uri);
+      expect(wants.view.type).assertEqual('application/zip');
+      expect(wants.view.flags).assertEqual(wantConstant.Flags.FLAG_AUTH_READ_URI_PERMISSION);
+      expect((wants.view.parameters?.[wantConstant.Params.PARAMS_STREAM] as Array<string>).length).assertEqual(1);
+      expect((wants.view.parameters?.[wantConstant.Params.PARAMS_STREAM] as Array<string>)[0]).assertEqual(uri);
+
+      expect(wants.chooser.action).assertEqual(SLOCK_OHOS_ACTION_SELECT);
+      expect(wants.chooser.uri).assertEqual(uri);
+      expect(wants.chooser.type).assertEqual('application/zip');
+      expect(wants.chooser.flags).assertEqual(wantConstant.Flags.FLAG_AUTH_READ_URI_PERMISSION);
+      const child = wants.chooser.parameters?.[SLOCK_OHOS_SELECT_INTENT_PARAMETER] as Want;
+      expect(child.action).assertEqual(SLOCK_OHOS_ACTION_VIEW_DATA);
+      expect(child.uri).assertEqual(uri);
+      expect((wants.chooser.parameters?.[wantConstant.Params.PARAMS_STREAM] as Array<string>)[0]).assertEqual(uri);
+      expect(wants.chooser.parameters?.[SLOCK_OHOS_PICKER_TYPE_PARAMETER] as string).assertEqual('application/zip');
+      expect((wants.chooser.parameters?.[SLOCK_OHOS_PICKER_FILE_NAMES_PARAMETER] as Array<string>)[0]).assertEqual('archive.zip');
+      expect((wants.chooser.parameters?.[SLOCK_OHOS_PICKER_FILE_SIZES_PARAMETER] as Array<number>)[0]).assertEqual(4096);
+    });
+    it('attachmentOpenUsesBinaryFallbackAndRejectsBlankUri', 0, () => {
+      const wants = buildSlockOhosAttachmentOpenWants('file://build.raft.mobile/private/file', '  ');
+      expect(wants.view.type).assertEqual(SLOCK_OHOS_DEFAULT_ATTACHMENT_MIME_TYPE);
+      expect(wants.chooser.type).assertEqual(SLOCK_OHOS_DEFAULT_ATTACHMENT_MIME_TYPE);
+
+      let rejected = false;
+      try {
+        buildSlockOhosAttachmentOpenWants('   ', 'application/zip');
+      } catch (_error) {
+        rejected = true;
+      }
+      expect(rejected).assertTrue();
+    });
+    it('attachmentOpenFailureSeparatesNoHandlerFromLaunchFailure', 0, () => {
+      expect(slockOhosAttachmentOpenFailureKind(16000001)).assertEqual(SlockOhosAttachmentOpenFailureKind.NO_APP);
+      expect(slockOhosAttachmentOpenFailureKind(16000019)).assertEqual(SlockOhosAttachmentOpenFailureKind.NO_APP);
+      expect(slockOhosAttachmentOpenFailureKind(16000005)).assertEqual(SlockOhosAttachmentOpenFailureKind.FAILED);
+      expect(slockOhosAttachmentOpenFailureKind(undefined)).assertEqual(SlockOhosAttachmentOpenFailureKind.FAILED);
+    });
+    it('privateAttachmentPathBindsOwnerAndAttachmentWithoutDisplayNameAuthority', 0, () => {
+      const owner = 'a'.repeat(64);
+      expect(isSlockOhosPrivateAttachmentOwnerKey(owner)).assertTrue();
+      expect(isSlockOhosPrivateAttachmentOwnerKey('A'.repeat(64))).assertFalse();
+      expect(isSlockOhosPrivateAttachmentOwnerKey(`${'a'.repeat(63)}/`)).assertFalse();
+      expect(isSlockOhosPrivateAttachmentOwnerKey('g'.repeat(64))).assertFalse();
+      expect(slockOhosPrivateAttachmentDirectory('/data/storage/el2/base/files'))
+        .assertEqual('/data/storage/el2/base/files/slock-attachment-downloads');
+      expect(slockOhosPrivateAttachmentFileName(owner, '../attachment-id', '../report:2026', '.pdf'))
+        .assertEqual(`${owner}-_attachment-id`);
+      expect(slockOhosPrivateAttachmentFileName(owner, '../attachment-id', 'renamed.png', '.png'))
+        .assertEqual(`${owner}-_attachment-id`);
+    });
+
+    it('privateAttachmentProviderCopyStreamsExactBytesAndClosesBothFds', 0, () => {
+      const backend = new FakePrivateAttachmentCopyBackend();
+      backend.sourceSize = 140000;
+
+      const copied = copySlockOhosPrivateAttachmentToProviderUri(
+        '/data/storage/el2/base/files/source.pdf',
+        'file://docs-provider/target.pdf',
+        backend
+      );
+
+      expect(copied).assertEqual(140000);
+      expect(backend.writtenBytes).assertEqual(140000);
+      expect(backend.openedTargets[0]).assertEqual('file://docs-provider/target.pdf');
+      expect(backend.closedKinds.join(',')).assertEqual('target,source');
+    });
+
+    it('privateAttachmentProviderCopyRejectsTruncatedWriteAndStillClosesFds', 0, () => {
+      const backend = new FakePrivateAttachmentCopyBackend();
+      backend.sourceSize = 80;
+      backend.writeLimit = 0;
+      let failed = false;
+
+      try {
+        copySlockOhosPrivateAttachmentToProviderUri('/private/source', 'file://provider/target', backend);
+      } catch (_) {
+        failed = true;
+      }
+
+      expect(failed).assertTrue();
+      expect(backend.closedKinds.join(',')).assertEqual('target,source');
+    });
+
+    it('privateAttachmentProviderCopyCompletesPartialProviderWrites', 0, () => {
+      const backend = new FakePrivateAttachmentCopyBackend();
+      backend.sourceSize = 80;
+      backend.writeLimit = 13;
+
+      const copied = copySlockOhosPrivateAttachmentToProviderUri(
+        '/private/source',
+        'file://provider/target',
+        backend
+      );
+
+      expect(copied).assertEqual(80);
+      expect(backend.writtenBytes).assertEqual(80);
+      expect(backend.closedKinds.join(',')).assertEqual('target,source');
+    });
+
+    it('privateAttachmentProviderCopyClosesBothHandlesAndPreservesPrimaryFailure', 0, () => {
+      const backend = new FakePrivateAttachmentCopyBackend();
+      backend.sourceSize = 80;
+      backend.readFailure = new Error('primary read failure');
+      backend.closeTargetFailure = new Error('target close failure');
+      backend.closeSourceFailure = new Error('source close failure');
+      let message = '';
+
+      try {
+        copySlockOhosPrivateAttachmentToProviderUri('/private/source', 'file://provider/target', backend);
+      } catch (error) {
+        message = (error as Error).message;
+      }
+
+      expect(message).assertEqual('primary read failure');
+      expect(backend.closedKinds.join(',')).assertEqual('target,source');
+    });
+
+    it('privateAttachmentProviderCopyStillClosesSourceWhenTargetCloseFails', 0, () => {
+      const backend = new FakePrivateAttachmentCopyBackend();
+      backend.sourceSize = 80;
+      backend.closeTargetFailure = new Error('target close failure');
+      let message = '';
+
+      try {
+        copySlockOhosPrivateAttachmentToProviderUri('/private/source', 'file://provider/target', backend);
+      } catch (error) {
+        message = (error as Error).message;
+      }
+
+      expect(message).assertEqual('target close failure');
+      expect(backend.closedKinds.join(',')).assertEqual('target,source');
+    });
+
+    it('privateAttachmentProviderCopyClosesSourceWhenTargetOpenFails', 0, () => {
+      const backend = new FakePrivateAttachmentCopyBackend();
+      backend.sourceSize = 80;
+      backend.targetOpenFailure = new Error('target open failure');
+      let message = '';
+
+      try {
+        copySlockOhosPrivateAttachmentToProviderUri('/private/source', 'file://provider/target', backend);
+      } catch (error) {
+        message = (error as Error).message;
+      }
+
+      expect(message).assertEqual('target open failure');
+      expect(backend.closedKinds.join(',')).assertEqual('source');
+    });
+
+    it('privateAttachmentProviderCopyReportsSourceCloseFailureAfterSuccessfulCopy', 0, () => {
+      const backend = new FakePrivateAttachmentCopyBackend();
+      backend.sourceSize = 80;
+      backend.closeSourceFailure = new Error('source close failure');
+      let message = '';
+
+      try {
+        copySlockOhosPrivateAttachmentToProviderUri('/private/source', 'file://provider/target', backend);
+      } catch (error) {
+        message = (error as Error).message;
+      }
+
+      expect(message).assertEqual('source close failure');
+      expect(backend.closedKinds.join(',')).assertEqual('target,source');
+    });
+
+    it('privateAttachmentOrphanCleanupIsExactAndNeverDeletesCommittedFinal', 0, () => {
+      const backend = new FakePrivateAttachmentCleanupBackend();
+      backend.names.push('owner-attachment');
+      backend.names.push('owner-attachment.part-old');
+      backend.names.push('owner-attachment.part-');
+      backend.names.push('owner-other.part-old');
+
+      const removed = cleanupSlockOhosPrivateAttachmentOrphanParts(
+        '/private/owner-attachment',
+        backend
+      );
+
+      expect(removed).assertEqual(1);
+      expect(backend.removedPaths.join(','))
+        .assertEqual('/private/owner-attachment.part-old');
+    });
+
+    it('privateAttachmentProviderCopyFailsBeforePickerTargetWhenPrivateCopyMissing', 0, () => {
+      const backend = new FakePrivateAttachmentCopyBackend();
+      let failed = false;
+
+      try {
+        copySlockOhosPrivateAttachmentToProviderUri('/private/missing', 'file://provider/target', backend);
+      } catch (_) {
+        failed = true;
+      }
+
+      expect(failed).assertTrue();
+      expect(backend.openedTargets.length).assertEqual(0);
+      expect(backend.closedKinds.length).assertEqual(0);
+    });
     it('attachmentCacheDirectoryReusesExistingDirectoryWithoutCreating', 0, () => {
       const backend = new FakeAttachmentCacheDirectoryBackend();
       backend.directoryExists = true;

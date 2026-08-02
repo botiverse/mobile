@@ -180,20 +180,19 @@ class AttachmentDownloadsExportCoordinatorTest {
             }
             assertTrue(writeEntered.await(2, TimeUnit.SECONDS))
             val prefix = checkNotNull(source.parentFile).absolutePath + File.separator
+            val cleanupEntered = CountDownLatch(1)
+            val releaseCleanup = CountDownLatch(1)
             val cleanupResult = AtomicReference<Boolean>()
             val cleanupThread = thread {
                 cleanupResult.set(
                     coordinator.runWithSourceDirectoryCleanup(prefix) {
+                        cleanupEntered.countDown()
+                        assertTrue(releaseCleanup.await(2, TimeUnit.SECONDS))
                         source.delete() || !source.exists()
                     }
                 )
             }
-            val cleanupDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2)
-            while (!coordinator.sourceDirectoryCleanupActiveForTesting(prefix) &&
-                System.nanoTime() < cleanupDeadline
-            ) {
-                Thread.yield()
-            }
+            assertTrue(cleanupEntered.await(2, TimeUnit.SECONDS))
             assertTrue(coordinator.sourceDirectoryCleanupActiveForTesting(prefix))
 
             val rejectedBackend = FakeExportBackend()
@@ -202,6 +201,7 @@ class AttachmentDownloadsExportCoordinatorTest {
             assertEquals("private_cleanup", rejected.failurePhase)
             assertEquals(0, rejectedBackend.insertCount.get())
 
+            releaseCleanup.countDown()
             releaseWrite.countDown()
             activeExport.join(2_000L)
             cleanupThread.join(2_000L)

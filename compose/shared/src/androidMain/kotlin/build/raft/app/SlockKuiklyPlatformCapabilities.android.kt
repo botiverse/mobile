@@ -26,6 +26,8 @@ internal actual fun slockPlatformSupportsSaveImageToPhotos(): Boolean = true
 
 internal actual fun slockPlatformSupportsPublicAttachmentDownloadReadback(): Boolean = true
 
+internal actual fun slockPlatformSupportsPrivateAttachmentExport(): Boolean = false
+
 internal actual fun slockReleaseNotesAppSlug(): String = "raft-android"
 
 // Android char-wraps ordinary background spans natively. Edge-only boxes

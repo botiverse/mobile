@@ -595,6 +595,20 @@ internal class BridgeModule : Module() {
             expectedRecordVersion
         )
 
+    suspend fun exportDownloadedAttachment(
+        attachmentId: String,
+        fileName: String,
+        owner: AttachmentOwnerLease,
+        mimeType: String? = null
+    ): JSONObject? =
+        attachmentCacheCall(
+            EXPORT_DOWNLOADED_ATTACHMENT,
+            attachmentId,
+            fileName,
+            owner,
+            mimeType
+        )
+
     private suspend fun attachmentCacheCall(
         methodName: String,
         attachmentId: String,
@@ -1122,6 +1136,7 @@ internal class BridgeModule : Module() {
         const val CANCEL_ATTACHMENT_EXPORT = "cancelAttachmentExport"
         const val ATTACHMENT_CACHE_STATUS = "attachmentCacheStatus"
         const val DELETE_ATTACHMENT_CACHE = "deleteAttachmentCache"
+        const val EXPORT_DOWNLOADED_ATTACHMENT = "exportDownloadedAttachment"
         const val ATTACHMENT_DOWNLOAD_CONTROL = "attachmentDownloadControl"
         const val ATTACHMENT_DOWNLOAD_OWNER_CHANGED = "attachmentDownloadOwnerChanged"
         const val SSO_REQUEST = "ssoRequest"

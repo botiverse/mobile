@@ -36,7 +36,10 @@ internal sealed interface SlockFilePreviewPublicDownloadState {
         init {
             require(generation > 0L)
             require(sizeBytes > 0L)
-            require(persistedUri.startsWith("content://", ignoreCase = true))
+            require(
+                persistedUri.startsWith("content://", ignoreCase = true) ||
+                    persistedUri.startsWith("file://", ignoreCase = true)
+            )
         }
     }
 }
@@ -81,10 +84,17 @@ internal fun slockFilePreviewPublicDownloadObservation(
     val generation = response.optLong("recordVersion", -1L)
     val sizeBytes = response.optLong("sizeBytes", 0L)
     val persistedUri = response.optString("uri").trim()
+    val storageKind = response.optString("storageKind").trim()
+    val supportedPersistedUri =
+        persistedUri.startsWith("content://", ignoreCase = true) ||
+            (
+                storageKind == "app_private" &&
+                    persistedUri.startsWith("file://", ignoreCase = true)
+            )
     if (
         generation <= 0L ||
         sizeBytes <= 0L ||
-        !persistedUri.startsWith("content://", ignoreCase = true)
+        !supportedPersistedUri
     ) {
         return SlockFilePreviewPublicDownloadObservation(
             SlockFilePreviewPublicDownloadState.NotDownloaded

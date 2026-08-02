@@ -1006,6 +1006,8 @@
     <string name="file_preview_action_install">安装</string>
     <string name="file_preview_action_open">打开</string>
     <string name="file_preview_action_open_with">打开方式…</string>
+    <string name="file_preview_action_save_to_files">保存</string>
+    <string name="file_preview_action_saving_to_files">保存中…</string>
     <string name="file_preview_action_delete_downloaded">清除缓存副本</string>
     <string name="file_preview_placeholder_tap_to_add_text">点击图片添加文字</string>
     <string name="file_preview_error_send_comment">无法发送评论</string>
@@ -1024,6 +1026,9 @@
     <string name="file_preview_download_stopped">下载已停止</string>
     <string name="file_preview_download_failed">下载失败</string>
     <string name="file_preview_download_saved">已保存到系统下载或文件</string>
+    <string name="file_preview_private_download_saved">下载完成</string>
+    <string name="file_preview_export_saved">已保存到文件</string>
+    <string name="file_preview_export_failed">无法保存到文件</string>
     <string name="file_preview_error_download_attachment">无法下载附件</string>
     <string name="file_preview_error_no_app">没有应用可以打开此文件</string>
     <string name="file_preview_error_storage_unavailable">存储空间不可用</string>

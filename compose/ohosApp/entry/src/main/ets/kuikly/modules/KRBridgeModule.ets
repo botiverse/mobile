@@ -31,6 +31,18 @@ import {
 } from '../SlockOhosHandsFeedbackDraftAttachments';
 import { slockOhosAttachmentDownloadSink } from '../SlockOhosAttachmentDownloadSink';
 import { SlockOhosApiEnvironment, SlockOhosApiEnvironmentStore } from '../SlockOhosApiEnvironmentStore';
+import {
+  buildSlockOhosAttachmentOpenWants,
+  slockOhosAttachmentOpenFailureKind,
+  SlockOhosAttachmentOpenFailureKind,
+} from '../SlockOhosAttachmentOpenWant';
+import {
+  cleanupSlockOhosPrivateAttachmentOrphanParts,
+  copySlockOhosPrivateAttachmentToProviderUri,
+  ensureSlockOhosPrivateAttachmentDirectory,
+  isSlockOhosPrivateAttachmentOwnerKey,
+  slockOhosPrivateAttachmentFileName,
+} from '../SlockOhosPrivateAttachmentStore';
 import { SLOCK_OHOS_BUILD_TIME, SLOCK_OHOS_GIT_COMMIT } from '../generated/SlockOhosBuildMetadata';
 
 interface OhosPickedThreadAttachment {
@@ -80,6 +92,9 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   static readonly OPEN_URL = "openUrl";
   static readonly OPEN_ATTACHMENT = "openAttachment";
   static readonly SAVE_ATTACHMENT = "saveAttachment";
+  static readonly ATTACHMENT_CACHE_STATUS = "attachmentCacheStatus";
+  static readonly DELETE_ATTACHMENT_CACHE = "deleteAttachmentCache";
+  static readonly EXPORT_DOWNLOADED_ATTACHMENT = "exportDownloadedAttachment";
   static readonly SAVE_IMAGE_TO_PHOTOS = "saveImageToPhotos";
   static readonly CANCEL_ATTACHMENT_EXPORT = "cancelAttachmentExport";
   static readonly ATTACHMENT_DOWNLOAD_CONTROL = "attachmentDownloadControl";
@@ -106,6 +121,8 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   private activePhotoExportOperationId: string = "";
   private activePhotoExportGeneration: number = 0;
   private nextPhotoExportGeneration: number = 0;
+  private activePrivateDownloadId: string = "";
+  private privateExportActive: boolean = false;
 
   syncMode(): boolean {
     return false;
@@ -143,6 +160,18 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       }
       case KRBridgeModule.SAVE_ATTACHMENT: {
         this.saveAttachment(params, callback);
+        break;
+      }
+      case KRBridgeModule.ATTACHMENT_CACHE_STATUS: {
+        this.attachmentCacheStatus(params, callback);
+        break;
+      }
+      case KRBridgeModule.DELETE_ATTACHMENT_CACHE: {
+        this.deleteAttachmentCache(params, callback);
+        break;
+      }
+      case KRBridgeModule.EXPORT_DOWNLOADED_ATTACHMENT: {
+        this.exportDownloadedAttachment(params, callback);
         break;
       }
       case KRBridgeModule.SAVE_IMAGE_TO_PHOTOS: {
@@ -277,6 +306,8 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     const attachmentId = (records["attachmentId"] as string | undefined) ?? "attachment";
     const fileName = (records["fileName"] as string | undefined) ?? "attachment";
     const mimeType = records["mimeType"] as string | undefined;
+    const ownerKey = (records["ownerKey"] as string | undefined) ?? "";
+    const requireCommittedDownload = records["requirePublicDownload"] === true || records["requirePublicDownload"] === "true";
     const trackProgress = records["trackProgress"] === true || records["trackProgress"] === "true";
     const downloadId = (records["downloadId"] as string | undefined) ?? `${attachmentId}:${fileName}`;
     if (url === undefined || url.length === 0) {
@@ -285,11 +316,22 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     }
     const context = getContext(this) as common.UIAbilityContext;
     try {
+      const privateDirectory = ensureSlockOhosPrivateAttachmentDirectory(context.filesDir);
+      const privatePath = isSlockOhosPrivateAttachmentOwnerKey(ownerKey)
+        ? this.privateAttachmentPath(privateDirectory, ownerKey, attachmentId, fileName, mimeType)
+        : "";
+      const privateCommitted = privatePath.length > 0 && this.isUsablePersistentAttachmentFile(privatePath);
+      if (requireCommittedDownload && !privateCommitted) {
+        callback({ "status": "missing", "message": "Downloaded attachment is unavailable" });
+        return;
+      }
       const cacheDir = `${context.cacheDir}/slock-attachments`;
       ensureSlockOhosAttachmentCacheDirectory(cacheDir);
       this.cleanupAttachmentCache(cacheDir);
-      const path = `${cacheDir}/${this.safeAttachmentCacheFileName(attachmentId, fileName, mimeType)}`;
-      const cached = this.isUsableAttachmentCacheFile(path);
+      const path = privateCommitted
+        ? privatePath
+        : `${cacheDir}/${this.safeAttachmentCacheFileName(attachmentId, fileName, mimeType)}`;
+      const cached = privateCommitted || this.isUsableAttachmentCacheFile(path);
       if (!cached) {
         const downloadResult = await slockOhosAttachmentDownloadSink.download(
           url,
@@ -305,20 +347,27 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       }
       const uri = fileUri.getUriFromPath(path);
       try {
-        await context.startAbility({
-          action: "ohos.want.action.viewData",
-          uri: uri,
-          type: mimeType
-        });
-        SlockOhosDiagnostics.record("SlockAttachmentOpen", `attachmentId=${attachmentId.substring(0, 8)} status=opened cached=${cached}`);
-        callback({ "status": "opened" });
-      } catch (error) {
-        const businessError = error as BusinessError;
+        const sizeBytes = fs.statSync(path).size;
+        const openWants = buildSlockOhosAttachmentOpenWants(uri, mimeType, fileName, sizeBytes);
         SlockOhosDiagnostics.record(
           "SlockAttachmentOpen",
-          `attachmentId=${attachmentId.substring(0, 8)} status=no_app code=${businessError.code ?? "unknown"}`
+          `attachmentId=${attachmentId.substring(0, 8)} status=chooser_requested storage=${privateCommitted ? "app_private" : "cache"}`
         );
-        callback({ "status": "no_app", "message": "No app can open this file" });
+        await context.startAbility(openWants.chooser);
+        SlockOhosDiagnostics.record("SlockAttachmentOpen", `attachmentId=${attachmentId.substring(0, 8)} status=opened cached=${cached}`);
+        callback({ "status": "opened", "cached": privateCommitted, "storageKind": privateCommitted ? "app_private" : "cache" });
+      } catch (error) {
+        const businessError = error as BusinessError;
+        const failureKind = slockOhosAttachmentOpenFailureKind(businessError.code);
+        SlockOhosDiagnostics.record(
+          "SlockAttachmentOpen",
+          `attachmentId=${attachmentId.substring(0, 8)} status=${failureKind} code=${businessError.code ?? "unknown"}`
+        );
+        if (failureKind === SlockOhosAttachmentOpenFailureKind.NO_APP) {
+          callback({ "status": "no_app", "message": "No app can open this file" });
+        } else {
+          callback({ "status": "failed", "message": "Unable to open attachment" });
+        }
       }
     } catch (error) {
       const businessError = error as BusinessError;
@@ -336,22 +385,29 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     const attachmentId = (records["attachmentId"] as string | undefined) ?? "attachment";
     const requestedFileName = (records["fileName"] as string | undefined) ?? "attachment";
     const mimeType = records["mimeType"] as string | undefined;
+    const ownerKey = (records["ownerKey"] as string | undefined) ?? "";
     const trackProgress = records["trackProgress"] === true || records["trackProgress"] === "true";
     const downloadId = (records["downloadId"] as string | undefined) ?? `${attachmentId}:${requestedFileName}`;
     if (url === undefined || url.length === 0) {
       callback({ "status": "failed", "message": "Unable to download attachment" });
       return;
     }
+    if (!isSlockOhosPrivateAttachmentOwnerKey(ownerKey)) {
+      callback({ "status": "failed", "message": "Authentication required" });
+      return;
+    }
+    if (this.activePrivateDownloadId.length > 0 || this.privateExportActive) {
+      callback({ "status": "failed", "message": "Another attachment operation is active" });
+      return;
+    }
+    this.activePrivateDownloadId = downloadId;
     const context = getContext(this) as common.UIAbilityContext;
     try {
-      const cacheDir = `${context.cacheDir}/slock-attachments`;
-      ensureSlockOhosAttachmentCacheDirectory(cacheDir);
-      this.cleanupAttachmentCache(cacheDir);
-      const requestedBaseName = requestedFileName.split("/").pop()?.split("\\").pop() ?? "attachment";
-      const fileName = this.safeAttachmentPathSegment(requestedBaseName).slice(0, 120) || "attachment";
-      const path = `${cacheDir}/${this.safeAttachmentCacheFileName(attachmentId, requestedFileName, mimeType)}`;
-      const cached = this.isUsableAttachmentCacheFile(path);
+      const directory = ensureSlockOhosPrivateAttachmentDirectory(context.filesDir);
+      const path = this.privateAttachmentPath(directory, ownerKey, attachmentId, requestedFileName, mimeType);
+      const cached = this.isUsablePersistentAttachmentFile(path);
       if (!cached) {
+        cleanupSlockOhosPrivateAttachmentOrphanParts(path);
         const downloadResult = await slockOhosAttachmentDownloadSink.download(
           url,
           path,
@@ -364,6 +420,138 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
           return;
         }
       }
+      const stat = fs.statSync(path);
+      SlockOhosDiagnostics.record(
+        "SlockAttachmentDownload",
+        `attachmentId=${attachmentId.substring(0, 8)} status=saved_private cached=${cached}`
+      );
+      callback({
+        "status": "saved",
+        "message": "Downloaded",
+        "uri": fileUri.getUriFromPath(path),
+        "storageKind": "app_private",
+        "cached": true,
+        "sizeBytes": stat.size,
+        "recordVersion": Math.max(1, Math.floor(stat.mtime))
+      });
+    } catch (error) {
+      const businessError = error as BusinessError;
+      SlockOhosDiagnostics.record(
+        "SlockAttachmentDownload",
+        `attachmentId=${attachmentId.substring(0, 8)} status=failed code=${businessError.code ?? "unknown"}`
+      );
+      callback({ "status": "storage_failed", "message": "Unable to download attachment" });
+    } finally {
+      if (this.activePrivateDownloadId === downloadId) this.activePrivateDownloadId = "";
+    }
+  }
+
+  private attachmentCacheStatus(params: KRAny, callback: KuiklyRenderCallback) {
+    const records = this.parseRecord(params);
+    const attachmentId = (records["attachmentId"] as string | undefined) ?? "attachment";
+    const requestedFileName = (records["fileName"] as string | undefined) ?? "attachment";
+    const mimeType = records["mimeType"] as string | undefined;
+    const ownerKey = (records["ownerKey"] as string | undefined) ?? "";
+    if (!isSlockOhosPrivateAttachmentOwnerKey(ownerKey)) {
+      callback({ "status": "failed", "cached": false, "message": "Authentication required" });
+      return;
+    }
+    try {
+      const context = getContext(this) as common.UIAbilityContext;
+      const directory = ensureSlockOhosPrivateAttachmentDirectory(context.filesDir);
+      const path = this.privateAttachmentPath(directory, ownerKey, attachmentId, requestedFileName, mimeType);
+      if (!this.isUsablePersistentAttachmentFile(path)) {
+        callback({ "status": "ok", "cached": false, "active": this.activePrivateDownloadId.length > 0 });
+        return;
+      }
+      const stat = fs.statSync(path);
+      callback({
+        "status": "ok",
+        "cached": true,
+        "active": false,
+        "attemptToken": "",
+        "recordVersion": Math.max(1, Math.floor(stat.mtime)),
+        "sizeBytes": stat.size,
+        "uri": fileUri.getUriFromPath(path),
+        "storageKind": "app_private"
+      });
+    } catch (_) {
+      callback({ "status": "storage_failed", "cached": false, "message": "Unable to inspect downloaded attachment" });
+    }
+  }
+
+  private deleteAttachmentCache(params: KRAny, callback: KuiklyRenderCallback) {
+    const records = this.parseRecord(params);
+    const attachmentId = (records["attachmentId"] as string | undefined) ?? "attachment";
+    const requestedFileName = (records["fileName"] as string | undefined) ?? "attachment";
+    const mimeType = records["mimeType"] as string | undefined;
+    const ownerKey = (records["ownerKey"] as string | undefined) ?? "";
+    const expectedRecordVersion = Number(records["recordVersion"] ?? 0);
+    if (!isSlockOhosPrivateAttachmentOwnerKey(ownerKey)) {
+      callback({ "status": "failed", "message": "Authentication required" });
+      return;
+    }
+    if (this.activePrivateDownloadId.length > 0 || this.privateExportActive) {
+      callback({ "status": "failed", "message": "Another attachment operation is active" });
+      return;
+    }
+    try {
+      const context = getContext(this) as common.UIAbilityContext;
+      const directory = ensureSlockOhosPrivateAttachmentDirectory(context.filesDir);
+      const path = this.privateAttachmentPath(directory, ownerKey, attachmentId, requestedFileName, mimeType);
+      let stat: fs.Stat | null = null;
+      try {
+        stat = fs.statSync(path);
+      } catch (_) {
+      }
+      if (stat === null || !stat.isFile()) {
+        callback({ "status": "ok", "cached": false, "deleted": false });
+        return;
+      }
+      const recordVersion = Math.max(1, Math.floor(stat.mtime));
+      if (Number.isFinite(expectedRecordVersion) && expectedRecordVersion > 0 &&
+        Math.floor(expectedRecordVersion) !== recordVersion) {
+        callback({ "status": "stale", "message": "Downloaded attachment changed" });
+        return;
+      }
+      fs.unlinkSync(path);
+      try {
+        fs.statSync(path);
+        callback({ "status": "failed", "message": "Unable to delete downloaded attachment" });
+        return;
+      } catch (_) {
+      }
+      callback({ "status": "ok", "cached": false, "deleted": true });
+    } catch (_) {
+      callback({ "status": "failed", "message": "Unable to delete downloaded attachment" });
+    }
+  }
+
+  private async exportDownloadedAttachment(params: KRAny, callback: KuiklyRenderCallback) {
+    const records = this.parseRecord(params);
+    const attachmentId = (records["attachmentId"] as string | undefined) ?? "attachment";
+    const requestedFileName = (records["fileName"] as string | undefined) ?? "attachment";
+    const mimeType = records["mimeType"] as string | undefined;
+    const ownerKey = (records["ownerKey"] as string | undefined) ?? "";
+    if (!isSlockOhosPrivateAttachmentOwnerKey(ownerKey)) {
+      callback({ "status": "failed", "message": "Authentication required" });
+      return;
+    }
+    if (this.activePrivateDownloadId.length > 0 || this.privateExportActive) {
+      callback({ "status": "failed", "message": "Another attachment operation is active" });
+      return;
+    }
+    this.privateExportActive = true;
+    const context = getContext(this) as common.UIAbilityContext;
+    try {
+      const directory = ensureSlockOhosPrivateAttachmentDirectory(context.filesDir);
+      const path = this.privateAttachmentPath(directory, ownerKey, attachmentId, requestedFileName, mimeType);
+      if (!this.isUsablePersistentAttachmentFile(path)) {
+        callback({ "status": "missing", "message": "Downloaded attachment is unavailable" });
+        return;
+      }
+      const requestedBaseName = requestedFileName.split("/").pop()?.split("\\").pop() ?? "attachment";
+      const fileName = this.safeAttachmentPathSegment(requestedBaseName).slice(0, 120) || "attachment";
       const options = new picker.DocumentSaveOptions();
       options.newFileNames = [fileName];
       const targetUris = await new picker.DocumentViewPicker(context).save(options);
@@ -372,29 +560,12 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         callback({ "status": "cancelled" });
         return;
       }
-      try {
-        fs.copyFileSync(path, targetUri);
-      } catch (error) {
-        const businessError = error as BusinessError;
-        SlockOhosDiagnostics.record(
-          "SlockAttachmentSave",
-          `attachmentId=${attachmentId.substring(0, 8)} status=storage_failed code=${businessError.code ?? "unknown"}`
-        );
-        callback({ "status": "storage_failed", "message": "Unable to save attachment" });
-        return;
-      }
+      const sizeBytes = copySlockOhosPrivateAttachmentToProviderUri(path, targetUri);
       SlockOhosDiagnostics.record(
-        "SlockAttachmentSave",
-        `attachmentId=${attachmentId.substring(0, 8)} status=saved cached=${cached}`
+        "SlockAttachmentExport",
+        `attachmentId=${attachmentId.substring(0, 8)} status=exported size=${sizeBytes}`
       );
-      callback({
-        "status": "saved",
-        "message": "Saved to Files",
-        "uri": targetUri,
-        "fileName": fileName,
-        "cached": true,
-        "sizeBytes": fs.statSync(path).size
-      });
+      callback({ "status": "exported", "message": "Saved to Files", "uri": targetUri, "sizeBytes": sizeBytes });
     } catch (error) {
       const businessError = error as BusinessError;
       const message = businessError.message ?? `${error}`;
@@ -403,10 +574,12 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         return;
       }
       SlockOhosDiagnostics.record(
-        "SlockAttachmentSave",
+        "SlockAttachmentExport",
         `attachmentId=${attachmentId.substring(0, 8)} status=failed code=${businessError.code ?? "unknown"}`
       );
-      callback({ "status": "storage_failed", "message": "Unable to save attachment" });
+      callback({ "status": "storage_failed", "message": "Unable to save to Files" });
+    } finally {
+      this.privateExportActive = false;
     }
   }
 
@@ -1572,6 +1745,21 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     return `${safeId}-${safeName}`;
   }
 
+  private privateAttachmentPath(
+    directory: string,
+    ownerKey: string,
+    attachmentId: string,
+    fileName: string,
+    mimeType?: string
+  ): string {
+    return `${directory}/${slockOhosPrivateAttachmentFileName(
+      ownerKey,
+      attachmentId,
+      fileName,
+      this.extensionForMimeType(mimeType)
+    )}`;
+  }
+
   private extensionForMimeType(mimeType?: string): string {
     switch ((mimeType ?? "").toLowerCase()) {
       case "application/pdf":
@@ -1603,6 +1791,15 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       const stat = fs.statSync(path);
       const ageMs = Date.now() - (stat.mtime * 1000);
       return stat.isFile() && stat.size > 0 && ageMs >= 0 && ageMs <= KRBridgeModule.ATTACHMENT_CACHE_MAX_AGE_MS;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  private isUsablePersistentAttachmentFile(path: string): boolean {
+    try {
+      const stat = fs.statSync(path);
+      return stat.isFile() && stat.size > 0;
     } catch (_) {
       return false;
     }

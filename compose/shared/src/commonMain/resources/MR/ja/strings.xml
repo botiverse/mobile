@@ -1008,6 +1008,8 @@
     <string name="file_preview_action_install">インストール</string>
     <string name="file_preview_action_open">開く</string>
     <string name="file_preview_action_open_with">アプリで開く…</string>
+    <string name="file_preview_action_save_to_files">保存</string>
+    <string name="file_preview_action_saving_to_files">保存中…</string>
     <string name="file_preview_action_delete_downloaded">キャッシュコピーを削除</string>
     <string name="file_preview_placeholder_tap_to_add_text">画像をタップしてテキストを配置</string>
     <string name="file_preview_error_send_comment">コメントを送信できませんでした</string>
@@ -1026,6 +1028,9 @@
     <string name="file_preview_download_stopped">ダウンロードを停止しました</string>
     <string name="file_preview_download_failed">ダウンロードに失敗しました</string>
     <string name="file_preview_download_saved">ダウンロードまたはファイルに保存しました</string>
+    <string name="file_preview_private_download_saved">ダウンロードしました</string>
+    <string name="file_preview_export_saved">ファイルに保存しました</string>
+    <string name="file_preview_export_failed">ファイルに保存できませんでした</string>
     <string name="file_preview_error_download_attachment">添付ファイルをダウンロードできませんでした</string>
     <string name="file_preview_error_no_app">このファイルを開けるアプリがありません</string>
     <string name="file_preview_error_storage_unavailable">ストレージを利用できません</string>
