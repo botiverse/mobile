@@ -1789,7 +1789,7 @@ internal fun ForgotPasswordContent(
                     },
                 onClick = onSubmit,
                 tone = AuthButtonTone.Pink,
-                enabled = email.isNotBlank() && emailError == null && !sent,
+                enabled = email.text.isNotBlank() && emailError == null && !sent,
                 loading = sending,
                 preserveDisabledVisual = true
             )
