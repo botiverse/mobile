@@ -129,8 +129,12 @@ final class SlockIosOAuthRouteStore: ObservableObject {
 }
 
 @objcMembers
-final class SlockIosMobileOAuthHost: NSObject, ASWebAuthenticationPresentationContextProviding {
+final class SlockIosMobileOAuthHost: NSObject,
+    ASWebAuthenticationPresentationContextProviding,
+    ASAuthorizationControllerDelegate,
+    ASAuthorizationControllerPresentationContextProviding {
     static let shared = SlockIosMobileOAuthHost()
+    private static let appleUserIdentifierDefaultsKey = "slock.nativeApple.userIdentifier"
 
     private struct Pkce {
         let verifier: String
@@ -155,15 +159,32 @@ final class SlockIosMobileOAuthHost: NSObject, ASWebAuthenticationPresentationCo
     }
 
     private var session: ASWebAuthenticationSession?
+    private var appleAuthorizationController: ASAuthorizationController?
     private weak var presentationWindow: UIWindow?
     private var pendingStartGeneration: String?
     private var activeGeneration: String?
+    private var activeAppleGeneration: String?
     private var supersededGenerations: Set<String> = []
     private var deferredCallback: DeferredCallback?
     private var deferredRetryWorkItem: DispatchWorkItem?
+    private var nativeAppleRetryWorkItem: DispatchWorkItem?
+    private var appleCredentialRevocationObserver: NSObjectProtocol?
 
     private override init() {
         super.init()
+        appleCredentialRevocationObserver = NotificationCenter.default.addObserver(
+            forName: ASAuthorizationAppleIDProvider.credentialRevokedNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.clearCachedAppleUserIdentifier(reason: "revoked_notification")
+        }
+    }
+
+    deinit {
+        if let appleCredentialRevocationObserver {
+            NotificationCenter.default.removeObserver(appleCredentialRevocationObserver)
+        }
     }
 
     @objc(startWithProvider:mode:completion:)
@@ -180,7 +201,7 @@ final class SlockIosMobileOAuthHost: NSObject, ASWebAuthenticationPresentationCo
                 completion(self.startError(code: "ios_mobile_oauth_invalid_request", message: "This sign-in provider is unavailable."))
                 return
             }
-            guard self.pendingStartGeneration == nil else {
+            guard self.pendingStartGeneration == nil, self.activeAppleGeneration == nil else {
                 completion(self.startError(
                     code: "ios_mobile_oauth_start_in_progress",
                     message: "A sign-in request is already starting."
@@ -195,13 +216,7 @@ final class SlockIosMobileOAuthHost: NSObject, ASWebAuthenticationPresentationCo
             self.supersedeActiveSession()
             let generation = UUID().uuidString.lowercased()
             self.pendingStartGeneration = generation
-            SlockIosMobileOAuthBridge.shared.start(
-                provider: normalizedProvider,
-                mode: normalizedMode,
-                generation: generation,
-                codeVerifier: pkce.verifier,
-                codeChallenge: pkce.challenge
-            ) { [weak self] result in
+            let handleStart: (SlockIosMobileOAuthStartResult) -> Void = { [weak self] result in
                 self?.runOnMain {
                     guard let self else { return }
                     guard self.pendingStartGeneration == generation else {
@@ -213,8 +228,49 @@ final class SlockIosMobileOAuthHost: NSObject, ASWebAuthenticationPresentationCo
                         return
                     }
                     self.pendingStartGeneration = nil
+                    if normalizedProvider == "apple" {
+                        guard
+                            result.status == "started",
+                            result.presentation == "native_apple",
+                            result.authorizationUrl == nil
+                        else {
+                            completion(self.startError(
+                                code: result.errorCode ?? "ios_native_apple_start_failed",
+                                message: result.message ?? "Mobile sign-in could not be started."
+                            ))
+                            return
+                        }
+                        guard let anchor = self.currentPresentationWindow() else {
+                            self.cancelPending(generation: generation, error: "provider_failed", applyRoute: false)
+                            completion(self.startError(
+                                code: "ios_mobile_oauth_window_unavailable",
+                                message: "Mobile sign-in could not be started."
+                            ))
+                            return
+                        }
+
+                        self.refreshCachedAppleCredentialState()
+                        let request = ASAuthorizationAppleIDProvider().createRequest()
+                        request.requestedScopes = [.email]
+                        request.nonce = pkce.challenge
+                        let controller = ASAuthorizationController(authorizationRequests: [request])
+                        controller.delegate = self
+                        controller.presentationContextProvider = self
+                        self.presentationWindow = anchor
+                        self.activeAppleGeneration = generation
+                        self.appleAuthorizationController = controller
+                        controller.performRequests()
+                        SlockIosDiagnosticsRecord(
+                            "info",
+                            "SlockIosOAuth",
+                            "oauth_native_apple_started mode=\(normalizedMode)"
+                        )
+                        completion(["status": "started", "code": 202])
+                        return
+                    }
                     guard
                         result.status == "started",
+                        result.presentation == "browser",
                         let authorizationUrlText = result.authorizationUrl,
                         let authorizationUrl = URL(string: authorizationUrlText),
                         authorizationUrl.scheme?.lowercased() == "https",
@@ -296,6 +352,26 @@ final class SlockIosMobileOAuthHost: NSObject, ASWebAuthenticationPresentationCo
                     completion(["status": "started", "code": 202])
                 }
             }
+            if normalizedProvider == "apple" {
+                SlockIosMobileOAuthBridge.shared.startNativeApple(
+                    mode: normalizedMode,
+                    generation: generation,
+                    codeVerifier: pkce.verifier,
+                    codeChallenge: pkce.challenge
+                ) { result in
+                    handleStart(result)
+                }
+            } else {
+                SlockIosMobileOAuthBridge.shared.startBrowser(
+                    provider: normalizedProvider,
+                    mode: normalizedMode,
+                    generation: generation,
+                    codeVerifier: pkce.verifier,
+                    codeChallenge: pkce.challenge
+                ) { result in
+                    handleStart(result)
+                }
+            }
         }
     }
 
@@ -314,6 +390,57 @@ final class SlockIosMobileOAuthHost: NSObject, ASWebAuthenticationPresentationCo
 
     func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
         presentationWindow ?? currentPresentationWindow() ?? UIWindow(frame: UIScreen.main.bounds)
+    }
+
+    func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
+        presentationWindow ?? currentPresentationWindow() ?? UIWindow(frame: UIScreen.main.bounds)
+    }
+
+    func authorizationController(
+        controller: ASAuthorizationController,
+        didCompleteWithAuthorization authorization: ASAuthorization
+    ) {
+        runOnMain { [weak self] in
+            guard
+                let self,
+                self.appleAuthorizationController === controller,
+                let generation = self.activeAppleGeneration,
+                let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
+                !credential.user.isEmpty,
+                let authorizationCodeData = credential.authorizationCode,
+                let identityTokenData = credential.identityToken,
+                let authorizationCode = String(data: authorizationCodeData, encoding: .utf8),
+                !authorizationCode.isEmpty,
+                let identityToken = String(data: identityTokenData, encoding: .utf8),
+                !identityToken.isEmpty
+            else {
+                self?.finishNativeAppleWithError(
+                    controller: controller,
+                    error: "provider_failed"
+                )
+                return
+            }
+            self.appleAuthorizationController = nil
+            self.presentationWindow = nil
+            self.processNativeAppleCredential(
+                generation: generation,
+                authorizationCode: authorizationCode,
+                identityToken: identityToken,
+                appleUserIdentifier: credential.user,
+                attempt: 0
+            )
+        }
+    }
+
+    func authorizationController(
+        controller: ASAuthorizationController,
+        didCompleteWithError error: Error
+    ) {
+        let cancelled = (error as? ASAuthorizationError)?.code == .canceled
+        finishNativeAppleWithError(
+            controller: controller,
+            error: cancelled ? "provider_cancelled" : "provider_failed"
+        )
     }
 
     func presentNotice(_ message: String) {
@@ -339,7 +466,9 @@ final class SlockIosMobileOAuthHost: NSObject, ASWebAuthenticationPresentationCo
             // Ignore duplicate AppDelegate/SwiftUI delivery while a retained session is active;
             // generation-less admission is reserved for genuine cold-process recovery.
             if expectedGeneration == nil,
-               self.pendingStartGeneration != nil || self.activeGeneration != nil {
+               self.pendingStartGeneration != nil ||
+               self.activeGeneration != nil ||
+               self.activeAppleGeneration != nil {
                 SlockIosDiagnosticsRecord(
                     "info",
                     "SlockIosOAuth",
@@ -421,6 +550,135 @@ final class SlockIosMobileOAuthHost: NSObject, ASWebAuthenticationPresentationCo
         }
         deferredRetryWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: workItem)
+    }
+
+    private func processNativeAppleCredential(
+        generation: String,
+        authorizationCode: String,
+        identityToken: String,
+        appleUserIdentifier: String,
+        attempt: Int
+    ) {
+        nativeAppleRetryWorkItem?.cancel()
+        nativeAppleRetryWorkItem = nil
+        SlockIosMobileOAuthBridge.shared.completeNativeApple(
+            generation: generation,
+            authorizationCode: authorizationCode,
+            identityToken: identityToken
+        ) { [weak self] result in
+            self?.runOnMain {
+                guard let self, self.activeAppleGeneration == generation else { return }
+                if result.status == "retry" {
+                    self.deferNativeAppleCredential(
+                        generation: generation,
+                        authorizationCode: authorizationCode,
+                        identityToken: identityToken,
+                        appleUserIdentifier: appleUserIdentifier,
+                        attempt: attempt
+                    )
+                    return
+                }
+                self.nativeAppleRetryWorkItem?.cancel()
+                self.nativeAppleRetryWorkItem = nil
+                self.activeAppleGeneration = nil
+                self.appleAuthorizationController = nil
+                self.presentationWindow = nil
+                if ["app_shell", "choose_server", "legal_acceptance", "settings_account"].contains(result.status) {
+                    self.cacheAppleUserIdentifier(appleUserIdentifier)
+                }
+                SlockIosOAuthRouteStore.shared.apply(result)
+            }
+        }
+    }
+
+    private func deferNativeAppleCredential(
+        generation: String,
+        authorizationCode: String,
+        identityToken: String,
+        appleUserIdentifier: String,
+        attempt: Int
+    ) {
+        let nextAttempt = attempt + 1
+        guard nextAttempt <= 40 else {
+            nativeAppleRetryWorkItem = nil
+            activeAppleGeneration = nil
+            appleAuthorizationController = nil
+            presentationWindow = nil
+            cancelPending(generation: generation, error: "runtime_not_ready", applyRoute: true)
+            return
+        }
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self, self.activeAppleGeneration == generation else { return }
+            self.nativeAppleRetryWorkItem = nil
+            self.processNativeAppleCredential(
+                generation: generation,
+                authorizationCode: authorizationCode,
+                identityToken: identityToken,
+                appleUserIdentifier: appleUserIdentifier,
+                attempt: nextAttempt
+            )
+        }
+        nativeAppleRetryWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: workItem)
+    }
+
+    private func finishNativeAppleWithError(
+        controller: ASAuthorizationController,
+        error: String
+    ) {
+        runOnMain { [weak self] in
+            guard
+                let self,
+                self.appleAuthorizationController === controller,
+                let generation = self.activeAppleGeneration
+            else {
+                return
+            }
+            self.nativeAppleRetryWorkItem?.cancel()
+            self.nativeAppleRetryWorkItem = nil
+            self.appleAuthorizationController = nil
+            self.activeAppleGeneration = nil
+            self.presentationWindow = nil
+            self.cancelPending(generation: generation, error: error, applyRoute: true)
+        }
+    }
+
+    private func cacheAppleUserIdentifier(_ identifier: String) {
+        guard !identifier.isEmpty else { return }
+        UserDefaults.standard.set(identifier, forKey: Self.appleUserIdentifierDefaultsKey)
+    }
+
+    private func clearCachedAppleUserIdentifier(reason: String) {
+        UserDefaults.standard.removeObject(forKey: Self.appleUserIdentifierDefaultsKey)
+        SlockIosDiagnosticsRecord(
+            "info",
+            "SlockIosOAuth",
+            "oauth_native_apple_credential_state_cleared reason=\(safeSource(reason))"
+        )
+    }
+
+    private func refreshCachedAppleCredentialState() {
+        guard
+            let identifier = UserDefaults.standard.string(forKey: Self.appleUserIdentifierDefaultsKey),
+            !identifier.isEmpty
+        else {
+            return
+        }
+        ASAuthorizationAppleIDProvider().getCredentialState(forUserID: identifier) { [weak self] state, error in
+            guard error == nil else { return }
+            switch state {
+            case .authorized:
+                break
+            case .revoked:
+                self?.clearCachedAppleUserIdentifier(reason: "revoked")
+            case .notFound:
+                self?.clearCachedAppleUserIdentifier(reason: "not_found")
+            case .transferred:
+                self?.clearCachedAppleUserIdentifier(reason: "transferred")
+            @unknown default:
+                self?.clearCachedAppleUserIdentifier(reason: "unknown")
+            }
+        }
     }
 
     private func cancelPending(generation: String, error: String, applyRoute: Bool) {

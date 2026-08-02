@@ -714,7 +714,7 @@ class AuthDataSourceTest {
     }
 
     @Test
-    fun appleMobileOAuthStartUsesTheExistingIosBrokerContract() = runBlocking {
+    fun appleCannotUseTheBrowserMobileOAuthBroker() = runBlocking {
         val store = InMemorySlockAuthSessionStore()
         val api = FakeAuthApi()
         val source = SharedAuthDataSource(transport = api, sessionStore = store)
@@ -728,11 +728,84 @@ class AuthDataSourceTest {
                 codeChallenge = "challenge-apple"
             )
 
-        assertTrue(result is SharedAuthResult.Success)
+        assertTrue(result is SharedAuthResult.Failure)
+        assertEquals(null, api.mobileOAuthStartBody)
+    }
+
+    @Test
+    fun nativeAppleStartAndAuthorizationUseTheDedicatedIosCredentialContract() = runBlocking {
+        val store = InMemorySlockAuthSessionStore()
+        val api = FakeAuthApi()
+        val source = SharedAuthDataSource(transport = api, sessionStore = store)
+
+        val start =
+            source.startNativeAppleMobileOAuthLogin(
+                appEnv = "production",
+                returnUri = "raft://oauth/callback",
+                codeChallenge = "challenge-apple"
+            )
+
+        assertTrue(start is SharedAuthResult.Success)
+        assertEquals("native-request-1", start.data.requestId)
+        assertEquals("native-request-token", start.data.requestToken)
         assertEquals(
-            """{"provider":"apple","mode":"login","platform":"ios","appEnv":"production","returnUri":"raft://oauth/callback","codeChallenge":"challenge-apple","codeChallengeMethod":"S256"}""",
-            api.mobileOAuthStartBody
+            """{"mode":"login","platform":"ios","appEnv":"production","returnUri":"raft://oauth/callback","codeChallenge":"challenge-apple","codeChallengeMethod":"S256"}""",
+            api.nativeAppleStartBody
         )
+
+        val authorize =
+            source.authorizeNativeAppleMobileOAuthLogin(
+                requestId = "native-request-1",
+                requestToken = "native-request-token",
+                authorizationCode = "apple-authorization-code",
+                identityToken = "apple-identity-token"
+            )
+        assertTrue(authorize is SharedAuthResult.Success)
+        assertEquals("apple-handoff", authorize.data.handoffCode)
+        assertEquals(
+            """{"requestId":"native-request-1","requestToken":"native-request-token","authorizationCode":"apple-authorization-code","identityToken":"apple-identity-token"}""",
+            api.nativeAppleAuthorizeBody
+        )
+    }
+
+    @Test
+    fun nativeAppleLinkStartAndAuthorizationRemainBoundToTheCurrentSession() = runBlocking {
+        val store = InMemorySlockAuthSessionStore().apply {
+            saveSession(storedSession(accessToken = "current-access"))
+        }
+        val api =
+            FakeAuthApi(
+                nativeAppleAuthorizeResponse =
+                    AuthNetworkResponse(
+                        200,
+                        """{"requestId":"native-request-1","handoffCode":"apple-link-handoff","provider":"apple","mode":"link"}"""
+                    )
+            )
+        val source = SharedAuthDataSource(transport = api, sessionStore = store)
+
+        val start =
+            source.startNativeAppleMobileOAuthLink(
+                appEnv = "staging",
+                returnUri = "raft-dev://oauth/callback",
+                codeChallenge = "challenge-apple-link"
+            )
+        assertTrue(start is SharedAuthResult.Success)
+        assertEquals("Bearer current-access", api.nativeAppleStartAuthorization)
+        assertEquals(
+            """{"mode":"link","platform":"ios","appEnv":"staging","returnUri":"raft-dev://oauth/callback","codeChallenge":"challenge-apple-link","codeChallengeMethod":"S256"}""",
+            api.nativeAppleStartBody
+        )
+
+        val authorize =
+            source.authorizeNativeAppleMobileOAuthLink(
+                requestId = "native-request-1",
+                requestToken = "native-request-token",
+                authorizationCode = "apple-link-code",
+                identityToken = "apple-link-token"
+            )
+        assertTrue(authorize is SharedAuthResult.Success)
+        assertEquals("link", authorize.data.mode)
+        assertEquals("Bearer current-access", api.nativeAppleAuthorizeAuthorization)
     }
 
     @Test
@@ -1927,6 +2000,16 @@ class AuthDataSourceTest {
                 200,
                 """{"user":{"id":"user-1","email":"user@slock.ai","displayName":"Artin"},"accessToken":"access-token","refreshToken":"refresh-token"}"""
             ),
+        private val nativeAppleStartResponse: AuthNetworkResponse =
+            AuthNetworkResponse(
+                201,
+                """{"requestId":"native-request-1","requestToken":"native-request-token","returnUri":"raft://oauth/callback","expiresAt":"2026-06-29T00:00:00Z"}"""
+            ),
+        private val nativeAppleAuthorizeResponse: AuthNetworkResponse =
+            AuthNetworkResponse(
+                200,
+                """{"requestId":"native-request-1","handoffCode":"apple-handoff","provider":"apple","mode":"login"}"""
+            ),
         private val mobileOAuthLinkStartResponse: AuthNetworkResponse =
             AuthNetworkResponse(
                 200,
@@ -1995,6 +2078,14 @@ class AuthDataSourceTest {
             private set
         var mobileOAuthCompleteBody: String? = null
             private set
+        var nativeAppleStartBody: String? = null
+            private set
+        var nativeAppleStartAuthorization: String? = null
+            private set
+        var nativeAppleAuthorizeBody: String? = null
+            private set
+        var nativeAppleAuthorizeAuthorization: String? = null
+            private set
         var mobileOAuthLinkStartProvider: String? = null
             private set
         var mobileOAuthLinkStartBody: String? = null
@@ -2052,6 +2143,24 @@ class AuthDataSourceTest {
         override suspend fun completeMobileOAuth(bodyText: String, authorization: String?): AuthNetworkResponse {
             mobileOAuthCompleteBody = bodyText
             return mobileOAuthCompleteResponse
+        }
+
+        override suspend fun startNativeAppleMobileOAuth(
+            bodyText: String,
+            authorization: String?
+        ): AuthNetworkResponse {
+            nativeAppleStartBody = bodyText
+            nativeAppleStartAuthorization = authorization
+            return nativeAppleStartResponse
+        }
+
+        override suspend fun authorizeNativeAppleMobileOAuth(
+            bodyText: String,
+            authorization: String?
+        ): AuthNetworkResponse {
+            nativeAppleAuthorizeBody = bodyText
+            nativeAppleAuthorizeAuthorization = authorization
+            return nativeAppleAuthorizeResponse
         }
 
         override suspend fun startMobileOAuthLink(

@@ -22,7 +22,8 @@ private const val IOS_MOBILE_OAUTH_CALLBACK_PATH = "/callback"
 private const val IOS_MOBILE_OAUTH_PENDING_TTL_MILLIS = 10L * 60L * 1000L
 private const val IOS_MOBILE_OAUTH_CLOCK_SKEW_MILLIS = 60L * 1000L
 
-private val IosMobileOAuthProviders = setOf("google", "github", "apple")
+private val IosBrowserOAuthProviders = setOf("google", "github")
+private val IosMobileOAuthProviders = IosBrowserOAuthProviders + "apple"
 private val IosMobileOAuthModes = setOf(IOS_MOBILE_OAUTH_LOGIN_MODE, IOS_MOBILE_OAUTH_LINK_MODE)
 private val IosMobileOAuthPkceValue = Regex("^[A-Za-z0-9_-]{43,128}$")
 
@@ -30,6 +31,7 @@ private val IosMobileOAuthPkceValue = Regex("^[A-Za-z0-9_-]{43,128}$")
 data class SlockIosMobileOAuthStartResult(
     val status: String,
     val code: Int,
+    val presentation: String? = null,
     val authorizationUrl: String? = null,
     val callbackScheme: String? = null,
     val errorCode: String? = null,
@@ -53,6 +55,7 @@ internal data class IosMobileOAuthPendingRequest(
     val provider: String,
     val requestId: String,
     val codeVerifier: String,
+    val requestToken: String?,
     val mode: String,
     val generation: String,
     val callbackScheme: String,
@@ -70,6 +73,7 @@ internal class IosMobileOAuthPendingStore(
         store.putString(KEY_PROVIDER, request.provider)
         store.putString(KEY_REQUEST_ID, request.requestId)
         store.putString(KEY_CODE_VERIFIER, request.codeVerifier)
+        store.putString(KEY_REQUEST_TOKEN, request.requestToken)
         store.putString(KEY_MODE, request.mode)
         store.putString(KEY_GENERATION, request.generation)
         store.putString(KEY_CALLBACK_SCHEME, request.callbackScheme)
@@ -85,6 +89,7 @@ internal class IosMobileOAuthPendingStore(
         val provider = store.getString(KEY_PROVIDER).orEmpty()
         val requestId = store.getString(KEY_REQUEST_ID).orEmpty()
         val codeVerifier = store.getString(KEY_CODE_VERIFIER).orEmpty()
+        val requestToken = store.getString(KEY_REQUEST_TOKEN)?.takeIf { it.isNotBlank() }
         val mode = store.getString(KEY_MODE).orEmpty()
         val callbackScheme = store.getString(KEY_CALLBACK_SCHEME).orEmpty()
         val environmentKey = store.getString(KEY_ENVIRONMENT_KEY).orEmpty()
@@ -93,6 +98,7 @@ internal class IosMobileOAuthPendingStore(
             provider !in IosMobileOAuthProviders ||
             requestId.isBlank() ||
             !IosMobileOAuthPkceValue.matches(codeVerifier) ||
+            (provider == "apple") != (requestToken != null) ||
             mode !in IosMobileOAuthModes ||
             callbackScheme !in setOf("raft", "raft-dev") ||
             environmentKey.isBlank()
@@ -103,6 +109,7 @@ internal class IosMobileOAuthPendingStore(
             provider = provider,
             requestId = requestId,
             codeVerifier = codeVerifier,
+            requestToken = requestToken,
             mode = mode,
             generation = generation,
             callbackScheme = callbackScheme,
@@ -116,6 +123,7 @@ internal class IosMobileOAuthPendingStore(
         store.putString(KEY_PROVIDER, null)
         store.putString(KEY_REQUEST_ID, null)
         store.putString(KEY_CODE_VERIFIER, null)
+        store.putString(KEY_REQUEST_TOKEN, null)
         store.putString(KEY_MODE, null)
         store.putString(KEY_GENERATION, null)
         store.putString(KEY_CALLBACK_SCHEME, null)
@@ -128,6 +136,7 @@ internal class IosMobileOAuthPendingStore(
         const val KEY_PROVIDER = "provider"
         const val KEY_REQUEST_ID = "requestId"
         const val KEY_CODE_VERIFIER = "codeVerifier"
+        const val KEY_REQUEST_TOKEN = "requestToken"
         const val KEY_MODE = "mode"
         const val KEY_GENERATION = "generation"
         const val KEY_CALLBACK_SCHEME = "callbackScheme"
@@ -140,6 +149,20 @@ internal sealed interface IosMobileOAuthStartOutcome {
     data class Success(val response: AuthMobileOAuthStartResponse) : IosMobileOAuthStartOutcome
     data class Failure(val message: String) : IosMobileOAuthStartOutcome
     data object Unauthenticated : IosMobileOAuthStartOutcome
+}
+
+internal sealed interface IosNativeAppleStartOutcome {
+    data class Success(val response: AuthNativeAppleMobileOAuthStartResponse) : IosNativeAppleStartOutcome
+    data class Failure(val message: String) : IosNativeAppleStartOutcome
+    data object Unauthenticated : IosNativeAppleStartOutcome
+}
+
+internal sealed interface IosNativeAppleAuthorizationOutcome {
+    data class Success(
+        val response: AuthNativeAppleMobileOAuthAuthorizationResponse,
+    ) : IosNativeAppleAuthorizationOutcome
+    data class Failure(val message: String) : IosNativeAppleAuthorizationOutcome
+    data object Unauthenticated : IosNativeAppleAuthorizationOutcome
 }
 
 internal sealed interface IosMobileOAuthLoginOutcome {
@@ -158,7 +181,7 @@ internal sealed interface IosMobileOAuthLinkOutcome {
 internal interface IosMobileOAuthRuntime {
     val environmentKey: String
 
-    suspend fun startLogin(
+    suspend fun startBrowserLogin(
         provider: String,
         platform: String,
         appEnv: String,
@@ -166,11 +189,26 @@ internal interface IosMobileOAuthRuntime {
         codeChallenge: String,
     ): IosMobileOAuthStartOutcome
 
-    suspend fun startLink(
+    suspend fun startBrowserLink(
         provider: String,
         returnUri: String,
         codeChallenge: String,
     ): IosMobileOAuthStartOutcome
+
+    suspend fun startNativeApple(
+        mode: String,
+        appEnv: String,
+        returnUri: String,
+        codeChallenge: String,
+    ): IosNativeAppleStartOutcome
+
+    suspend fun authorizeNativeApple(
+        mode: String,
+        requestId: String,
+        requestToken: String,
+        authorizationCode: String,
+        identityToken: String,
+    ): IosNativeAppleAuthorizationOutcome
 
     suspend fun completeLogin(
         code: String,
@@ -192,7 +230,7 @@ private class SharedIosMobileOAuthRuntime(
 
     override val environmentKey: String = provider.apiEnvironmentStore.current().key
 
-    override suspend fun startLogin(
+    override suspend fun startBrowserLogin(
         provider: String,
         platform: String,
         appEnv: String,
@@ -207,7 +245,7 @@ private class SharedIosMobileOAuthRuntime(
             codeChallenge = codeChallenge,
         ).toIosStartOutcome()
 
-    override suspend fun startLink(
+    override suspend fun startBrowserLink(
         provider: String,
         returnUri: String,
         codeChallenge: String,
@@ -217,6 +255,49 @@ private class SharedIosMobileOAuthRuntime(
             returnUri = returnUri,
             codeChallenge = codeChallenge,
         ).toIosStartOutcome()
+
+    override suspend fun startNativeApple(
+        mode: String,
+        appEnv: String,
+        returnUri: String,
+        codeChallenge: String,
+    ): IosNativeAppleStartOutcome =
+        (if (mode == IOS_MOBILE_OAUTH_LOGIN_MODE) {
+            authDataSource.startNativeAppleMobileOAuthLogin(
+                appEnv = appEnv,
+                returnUri = returnUri,
+                codeChallenge = codeChallenge,
+            )
+        } else {
+            authDataSource.startNativeAppleMobileOAuthLink(
+                appEnv = appEnv,
+                returnUri = returnUri,
+                codeChallenge = codeChallenge,
+            )
+        }).toIosNativeAppleStartOutcome()
+
+    override suspend fun authorizeNativeApple(
+        mode: String,
+        requestId: String,
+        requestToken: String,
+        authorizationCode: String,
+        identityToken: String,
+    ): IosNativeAppleAuthorizationOutcome =
+        (if (mode == IOS_MOBILE_OAUTH_LOGIN_MODE) {
+            authDataSource.authorizeNativeAppleMobileOAuthLogin(
+                requestId = requestId,
+                requestToken = requestToken,
+                authorizationCode = authorizationCode,
+                identityToken = identityToken,
+            )
+        } else {
+            authDataSource.authorizeNativeAppleMobileOAuthLink(
+                requestId = requestId,
+                requestToken = requestToken,
+                authorizationCode = authorizationCode,
+                identityToken = identityToken,
+            )
+        }).toIosNativeAppleAuthorizationOutcome()
 
     override suspend fun completeLogin(
         code: String,
@@ -268,6 +349,20 @@ private fun SharedAuthResult<AuthMobileOAuthStartResponse>.toIosStartOutcome(): 
         SharedAuthResult.Unauthenticated -> IosMobileOAuthStartOutcome.Unauthenticated
     }
 
+private fun SharedAuthResult<AuthNativeAppleMobileOAuthStartResponse>.toIosNativeAppleStartOutcome(): IosNativeAppleStartOutcome =
+    when (this) {
+        is SharedAuthResult.Success -> IosNativeAppleStartOutcome.Success(data)
+        is SharedAuthResult.Failure -> IosNativeAppleStartOutcome.Failure(message)
+        SharedAuthResult.Unauthenticated -> IosNativeAppleStartOutcome.Unauthenticated
+    }
+
+private fun SharedAuthResult<AuthNativeAppleMobileOAuthAuthorizationResponse>.toIosNativeAppleAuthorizationOutcome(): IosNativeAppleAuthorizationOutcome =
+    when (this) {
+        is SharedAuthResult.Success -> IosNativeAppleAuthorizationOutcome.Success(data)
+        is SharedAuthResult.Failure -> IosNativeAppleAuthorizationOutcome.Failure(message)
+        SharedAuthResult.Unauthenticated -> IosNativeAppleAuthorizationOutcome.Unauthenticated
+    }
+
 internal data class IosMobileOAuthCallback(
     val scheme: String?,
     val host: String?,
@@ -292,6 +387,9 @@ private fun admitIosMobileOAuthCallback(
     callback: IosMobileOAuthCallback,
     nowMillis: Long,
 ): IosMobileOAuthCallbackAdmission {
+    if (pending.provider !in IosBrowserOAuthProviders || pending.requestToken != null) {
+        return IosMobileOAuthCallbackAdmission.Ignore
+    }
     if (
         callback.scheme?.lowercase() != pending.callbackScheme ||
         callback.host?.lowercase() != IOS_MOBILE_OAUTH_CALLBACK_HOST ||
@@ -338,7 +436,7 @@ internal class IosMobileOAuthCoordinator(
 ) {
     private val mutex = Mutex()
 
-    suspend fun start(
+    suspend fun startBrowser(
         provider: String,
         mode: String,
         generation: String,
@@ -350,7 +448,7 @@ internal class IosMobileOAuthCoordinator(
             val normalizedProvider = provider.trim().lowercase()
             val normalizedMode = mode.trim().lowercase()
             if (
-                normalizedProvider !in IosMobileOAuthProviders ||
+                normalizedProvider !in IosBrowserOAuthProviders ||
                 normalizedMode !in IosMobileOAuthModes ||
                 generation.isBlank() ||
                 !IosMobileOAuthPkceValue.matches(codeVerifier) ||
@@ -371,7 +469,7 @@ internal class IosMobileOAuthCoordinator(
             val outcome =
                 runCatchingPreservingCancellation {
                     if (normalizedMode == IOS_MOBILE_OAUTH_LOGIN_MODE) {
-                        runtime.startLogin(
+                        runtime.startBrowserLogin(
                             provider = normalizedProvider,
                             platform = "ios",
                             appEnv = environmentKey,
@@ -379,7 +477,7 @@ internal class IosMobileOAuthCoordinator(
                             codeChallenge = codeChallenge,
                         )
                     } else {
-                        runtime.startLink(
+                        runtime.startBrowserLink(
                             provider = normalizedProvider,
                             returnUri = returnUri,
                             codeChallenge = codeChallenge,
@@ -410,6 +508,7 @@ internal class IosMobileOAuthCoordinator(
                             provider = normalizedProvider,
                             requestId = response.requestId,
                             codeVerifier = codeVerifier,
+                            requestToken = null,
                             mode = normalizedMode,
                             generation = generation,
                             callbackScheme = callbackScheme,
@@ -420,6 +519,7 @@ internal class IosMobileOAuthCoordinator(
                     SlockIosMobileOAuthStartResult(
                         status = "started",
                         code = 202,
+                        presentation = "browser",
                         authorizationUrl = response.authorizationUrl,
                         callbackScheme = callbackScheme,
                     )
@@ -435,6 +535,184 @@ internal class IosMobileOAuthCoordinator(
                         message = "Sign in again to continue.",
                     )
             }
+        }
+
+    suspend fun startNativeApple(
+        mode: String,
+        generation: String,
+        codeVerifier: String,
+        codeChallenge: String,
+    ): SlockIosMobileOAuthStartResult =
+        mutex.withLock {
+            pendingStore.clear()
+            val normalizedMode = mode.trim().lowercase()
+            if (
+                normalizedMode !in IosMobileOAuthModes ||
+                generation.isBlank() ||
+                !IosMobileOAuthPkceValue.matches(codeVerifier) ||
+                !IosMobileOAuthPkceValue.matches(codeChallenge)
+            ) {
+                return@withLock startError(
+                    code = "ios_mobile_oauth_invalid_request",
+                    message = "Mobile sign-in could not be prepared.",
+                )
+            }
+            val runtime = runtimeProvider()
+                ?: return@withLock startError(
+                    code = "ios_mobile_oauth_runtime_not_ready",
+                    message = "Raft is still starting. Try again.",
+                )
+            val environmentKey = runtime.environmentKey.trim().ifBlank { "production" }
+            val returnUri = iosMobileOAuthReturnUri(environmentKey)
+            val outcome =
+                runCatchingPreservingCancellation {
+                    runtime.startNativeApple(
+                        mode = normalizedMode,
+                        appEnv = environmentKey,
+                        returnUri = returnUri,
+                        codeChallenge = codeChallenge,
+                    )
+                }.getOrElse {
+                    return@withLock startError(
+                        code = "ios_native_apple_start_failed",
+                        message = iosMobileOAuthActionFailedMessage("apple", normalizedMode),
+                    )
+                }
+            when (outcome) {
+                is IosNativeAppleStartOutcome.Success -> {
+                    val response = outcome.response
+                    if (
+                        response.requestId.isBlank() ||
+                        response.requestToken.isBlank() ||
+                        response.returnUri != returnUri
+                    ) {
+                        return@withLock startError(
+                            code = "ios_native_apple_start_contract_mismatch",
+                            message = "Mobile sign-in could not be prepared.",
+                        )
+                    }
+                    pendingStore.save(
+                        IosMobileOAuthPendingRequest(
+                            provider = "apple",
+                            requestId = response.requestId,
+                            codeVerifier = codeVerifier,
+                            requestToken = response.requestToken,
+                            mode = normalizedMode,
+                            generation = generation,
+                            callbackScheme = returnUri.substringBefore("://"),
+                            environmentKey = environmentKey,
+                            startedAtMillis = nowMillis(),
+                        )
+                    )
+                    SlockIosMobileOAuthStartResult(
+                        status = "started",
+                        code = 202,
+                        presentation = "native_apple",
+                    )
+                }
+                is IosNativeAppleStartOutcome.Failure ->
+                    startError(
+                        code = "ios_native_apple_start_failed",
+                        message = iosMobileOAuthActionFailedMessage("apple", normalizedMode),
+                    )
+                IosNativeAppleStartOutcome.Unauthenticated ->
+                    startError(
+                        code = "ios_mobile_oauth_auth_required",
+                        message = "Sign in again to continue.",
+                    )
+            }
+        }
+
+    suspend fun completeNativeApple(
+        generation: String,
+        authorizationCode: String,
+        identityToken: String,
+    ): SlockIosMobileOAuthCompletionResult =
+        mutex.withLock {
+            val pending = pendingStore.read() ?: return@withLock ignoredCompletion()
+            val requestToken = pending.requestToken ?: return@withLock ignoredCompletion()
+            if (
+                pending.provider != "apple" ||
+                requestToken.isBlank() ||
+                generation.isBlank() ||
+                generation != pending.generation
+            ) {
+                return@withLock ignoredCompletion()
+            }
+            val ageMillis = nowMillis() - pending.startedAtMillis
+            if (ageMillis >= IOS_MOBILE_OAUTH_PENDING_TTL_MILLIS || ageMillis < -IOS_MOBILE_OAUTH_CLOCK_SKEW_MILLIS) {
+                pendingStore.clear()
+                return@withLock errorCompletion(pending, "Sign-in request expired. Try again.")
+            }
+            if (authorizationCode.isBlank() || identityToken.isBlank()) {
+                pendingStore.clear()
+                return@withLock errorCompletion(
+                    pending,
+                    iosMobileOAuthActionFailedMessage(pending.provider, pending.mode),
+                )
+            }
+            val runtime = runtimeProvider()
+                ?: return@withLock SlockIosMobileOAuthCompletionResult(
+                    status = "retry",
+                    provider = pending.provider,
+                    generation = pending.generation,
+                )
+            if (runtime.environmentKey.trim() != pending.environmentKey) {
+                pendingStore.clear()
+                return@withLock errorCompletion(
+                    pending,
+                    "The API environment changed. Start sign-in again.",
+                )
+            }
+            val result =
+                runCatchingPreservingCancellation {
+                    when (
+                        val outcome =
+                            runtime.authorizeNativeApple(
+                                mode = pending.mode,
+                                requestId = pending.requestId,
+                                requestToken = requestToken,
+                                authorizationCode = authorizationCode,
+                                identityToken = identityToken,
+                            )
+                    ) {
+                        is IosNativeAppleAuthorizationOutcome.Success -> {
+                            val response = outcome.response
+                            if (
+                                response.requestId != pending.requestId ||
+                                response.provider != "apple" ||
+                                response.mode != pending.mode ||
+                                response.handoffCode.isBlank()
+                            ) {
+                                errorCompletion(
+                                    pending,
+                                    iosMobileOAuthActionFailedMessage(pending.provider, pending.mode),
+                                )
+                            } else if (pending.mode == IOS_MOBILE_OAUTH_LOGIN_MODE) {
+                                completeLogin(runtime, pending, response.handoffCode)
+                            } else {
+                                completeLink(runtime, pending, response.handoffCode)
+                            }
+                        }
+                        is IosNativeAppleAuthorizationOutcome.Failure ->
+                            errorCompletion(
+                                pending,
+                                iosMobileOAuthActionFailedMessage(pending.provider, pending.mode),
+                            )
+                        IosNativeAppleAuthorizationOutcome.Unauthenticated ->
+                            errorCompletion(
+                                pending,
+                                iosMobileOAuthActionFailedMessage(pending.provider, pending.mode),
+                            )
+                    }
+                }.getOrElse {
+                    errorCompletion(
+                        pending,
+                        iosMobileOAuthActionFailedMessage(pending.provider, pending.mode),
+                    )
+                }
+            pendingStore.clear()
+            result
         }
 
     suspend fun complete(callback: IosMobileOAuthCallback): SlockIosMobileOAuthCompletionResult =
@@ -647,7 +925,7 @@ private fun String.iosMobileOAuthProviderName(): String =
     }
 
 /**
- * Native iOS entry point. Native owns ASWebAuthenticationSession and cryptographic PKCE
+ * Native iOS entry point. Swift owns AuthenticationServices presentation and cryptographic PKCE
  * generation; shared owns request state, API/session SSOT, callback admission and route outcome.
  */
 object SlockIosMobileOAuthBridge {
@@ -667,7 +945,7 @@ object SlockIosMobileOAuthBridge {
         )
     }
 
-    fun start(
+    fun startBrowser(
         provider: String,
         mode: String,
         generation: String,
@@ -678,7 +956,7 @@ object SlockIosMobileOAuthBridge {
         scope.launch {
             val result =
                 runCatchingPreservingCancellation {
-                    coordinator.start(provider, mode, generation, codeVerifier, codeChallenge)
+                    coordinator.startBrowser(provider, mode, generation, codeVerifier, codeChallenge)
                 }.getOrElse {
                     startError(
                         code = "ios_mobile_oauth_bridge_unavailable",
@@ -689,6 +967,64 @@ object SlockIosMobileOAuthBridge {
                 IOS_MOBILE_OAUTH_LOG_TAG,
                 "oauth_start_result provider=${provider.safeIosOAuthDiagnosticToken()} " +
                     "mode=${mode.safeIosOAuthDiagnosticToken()} status=${result.status}",
+            )
+            completion(result)
+        }
+    }
+
+    fun startNativeApple(
+        mode: String,
+        generation: String,
+        codeVerifier: String,
+        codeChallenge: String,
+        completion: (SlockIosMobileOAuthStartResult) -> Unit,
+    ) {
+        scope.launch {
+            val result =
+                runCatchingPreservingCancellation {
+                    coordinator.startNativeApple(mode, generation, codeVerifier, codeChallenge)
+                }.getOrElse {
+                    startError(
+                        code = "ios_mobile_oauth_bridge_unavailable",
+                        message = "Mobile sign-in is unavailable. Try again.",
+                    )
+                }
+            slockLogInfo(
+                IOS_MOBILE_OAUTH_LOG_TAG,
+                "oauth_native_apple_start_result mode=${mode.safeIosOAuthDiagnosticToken()} status=${result.status}",
+            )
+            completion(result)
+        }
+    }
+
+    fun completeNativeApple(
+        generation: String,
+        authorizationCode: String,
+        identityToken: String,
+        completion: (SlockIosMobileOAuthCompletionResult) -> Unit,
+    ) {
+        scope.launch {
+            val result =
+                runCatchingPreservingCancellation {
+                    coordinator.completeNativeApple(
+                        generation = generation,
+                        authorizationCode = authorizationCode,
+                        identityToken = identityToken,
+                    )
+                }.getOrElse {
+                    slockLogWarn(
+                        IOS_MOBILE_OAUTH_LOG_TAG,
+                        "oauth_native_apple_complete_failed errorType=${it::class.simpleName ?: "unknown"}",
+                    )
+                    SlockIosMobileOAuthCompletionResult(
+                        status = "login_error",
+                        message = "Mobile sign-in failed. Try again.",
+                        provider = "apple",
+                    )
+                }
+            slockLogInfo(
+                IOS_MOBILE_OAUTH_LOG_TAG,
+                "oauth_native_apple_complete_result status=${result.status}",
             )
             completion(result)
         }
