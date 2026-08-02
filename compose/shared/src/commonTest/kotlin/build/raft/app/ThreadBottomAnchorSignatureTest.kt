@@ -1474,6 +1474,81 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
+    fun composerLayoutBottomAnchor_retriesWhenOnlyLazyViewportEpochBecomesCoherent() {
+        val mixedEpoch =
+            resolveThreadComposerLayoutBottomAnchor(
+                composerLayoutState(
+                    previousKeyboardInsetDp = 0f,
+                    nextKeyboardInsetDp = 299.51364f,
+                    previousViewportHeightDp = 622.84546f,
+                    nextViewportHeightDp = 622.84546f,
+                    viewportEpochCoherent = false,
+                    focusedTailAnchorCanCorrectLayout = true
+                )
+            )
+        assertEquals(
+            ThreadComposerLayoutBottomAnchorDecision(
+                shouldAnchor = false,
+                pendingLayoutChange = true
+            ),
+            mixedEpoch
+        )
+
+        // BoxWithConstraints did not change. The only new fact is the Lazy
+        // layout viewport catching up; its composition-observed viewport key
+        // must rerun the pending decision without ever replaying the mixed one.
+        val layoutOnlyCatchUp =
+            resolveThreadComposerLayoutBottomAnchor(
+                composerLayoutState(
+                    previousKeyboardInsetDp = 299.51364f,
+                    nextKeyboardInsetDp = 299.51364f,
+                    previousViewportHeightDp = 622.84546f,
+                    nextViewportHeightDp = 622.84546f,
+                    pendingLayoutChange = mixedEpoch.pendingLayoutChange,
+                    viewportEpochCoherent = true,
+                    focusedTailAnchorCanCorrectLayout = true
+                )
+            )
+        assertTrue(layoutOnlyCatchUp.shouldAnchor)
+        assertFalse(layoutOnlyCatchUp.pendingLayoutChange)
+        assertTrue(layoutOnlyCatchUp.anchorFocusedTailAtRenderedBottom)
+    }
+
+    @Test
+    fun pixelProbe_acceptsOnlySameGenerationInstanceTargetAndLayoutOwner() {
+        fun ownerCurrent(
+            currentInstance: String = "thread-a",
+            currentLayoutGeneration: Long = 12L,
+            currentProbeGeneration: Long = 4L,
+            currentTarget: String? = "message-9",
+            currentFocused: String? = "message-9",
+            currentTail: String? = "message-11"
+        ): Boolean =
+            threadViewportPixelProbeOwnerCurrent(
+                requestedThreadInstanceKey = "thread-a",
+                currentThreadInstanceKey = currentInstance,
+                requestedLayoutGeneration = 12L,
+                currentLayoutGeneration = currentLayoutGeneration,
+                requestedProbeGeneration = 4L,
+                currentProbeGeneration = currentProbeGeneration,
+                requestedTargetMessageId = "message-9",
+                currentTargetMessageId = currentTarget,
+                requestedFocusedMessageId = "message-9",
+                currentFocusedMessageId = currentFocused,
+                requestedTailMessageId = "message-11",
+                currentTailMessageId = currentTail
+            )
+
+        assertTrue(ownerCurrent())
+        assertFalse(ownerCurrent(currentInstance = "thread-b"))
+        assertFalse(ownerCurrent(currentLayoutGeneration = 13L))
+        assertFalse(ownerCurrent(currentProbeGeneration = 5L))
+        assertFalse(ownerCurrent(currentTarget = "message-10"))
+        assertFalse(ownerCurrent(currentFocused = null))
+        assertFalse(ownerCurrent(currentTail = "message-12"))
+    }
+
+    @Test
     fun focusedTailFit_usesOneSnapshotForExactFitIncludingSpacingAndPadding() {
         val fit =
             resolveThreadFocusedTailFit(

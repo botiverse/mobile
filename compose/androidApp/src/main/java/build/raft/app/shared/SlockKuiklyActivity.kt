@@ -168,6 +168,7 @@ import java.util.TimeZone
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -3066,16 +3067,29 @@ internal class SlockKuiklyBridgeModule(
             callback?.invoke(mapOf("status" to "failed", "message" to "Thread pixel probe unavailable"))
             return
         }
-        val request = JSONObject(params ?: "{}")
-        hostActivity.runOnUiThread {
+        val request =
+                runCatching { JSONObject(params ?: "{}") }
+                        .getOrElse {
+                            callback?.invoke(mapOf("status" to "failed", "message" to "Invalid pixel probe request"))
+                            return
+                        }
+        val generation = request.optLong("generation")
+        val callbackDelivered = AtomicBoolean(false)
+        fun deliver(payload: Map<String, Any?>) {
+            if (callbackDelivered.compareAndSet(false, true)) {
+                callback?.invoke(payload + ("generation" to generation))
+            }
+        }
+        runCatching {
+            hostActivity.runOnUiThread {
             val container =
                     hostActivity.findViewById<ViewGroup?>(R.id.slock_kuikly_container)
                             ?: run {
-                                callback?.invoke(mapOf("status" to "failed", "message" to "Thread view unavailable"))
+                                deliver(mapOf("status" to "failed", "message" to "Thread view unavailable"))
                                 return@runOnUiThread
                             }
             if (container.width <= 0 || container.height <= 0) {
-                callback?.invoke(mapOf("status" to "failed", "message" to "Thread view is not ready"))
+                deliver(mapOf("status" to "failed", "message" to "Thread view is not ready"))
                 return@runOnUiThread
             }
             val left = request.optDouble("x", 0.0).roundToInt().coerceIn(0, container.width - 1)
@@ -3091,29 +3105,55 @@ internal class SlockKuiklyBridgeModule(
             val bitmap =
                     runCatching { Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888) }
                             .getOrElse {
-                                callback?.invoke(mapOf("status" to "failed", "message" to "Unable to allocate pixel probe"))
+                                deliver(mapOf("status" to "failed", "message" to "Unable to allocate pixel probe"))
                                 return@runOnUiThread
                             }
-            val complete: (Int) -> Unit = { pixelCopyResult ->
+            val handler = Handler(Looper.getMainLooper())
+            val nativeCompleted = AtomicBoolean(false)
+            fun recycleProbeBitmap() {
+                if (!bitmap.isRecycled) bitmap.recycle()
+            }
+            val timeout =
+                    Runnable {
+                        if (nativeCompleted.compareAndSet(false, true)) {
+                            deliver(mapOf("status" to "timeout", "message" to "PixelCopy callback timed out"))
+                        }
+                    }
+            handler.postDelayed(timeout, 2_000L)
+            fun finish(payload: Map<String, Any?>) {
+                if (!nativeCompleted.compareAndSet(false, true)) return
+                handler.removeCallbacks(timeout)
+                recycleProbeBitmap()
+                deliver(payload)
+            }
+            val complete: (Int) -> Unit = complete@{ pixelCopyResult ->
+                if (nativeCompleted.get()) {
+                    // A timeout already returned an infra receipt. PixelCopy is
+                    // now finished, so its bitmap can be released without
+                    // analyzing or publishing stale pixels.
+                    recycleProbeBitmap()
+                    return@complete
+                }
                 if (pixelCopyResult != PixelCopy.SUCCESS) {
-                    bitmap.recycle()
-                    callback?.invoke(
+                    finish(
                             mapOf(
                                     "status" to "failed",
-                                    "pixelCopyResult" to pixelCopyResult,
-                                    "generation" to request.optLong("generation")
+                                    "pixelCopyResult" to pixelCopyResult
                             )
                     )
                 } else {
-                    callback?.invoke(
-                            analyzeThreadViewportPixels(
-                                    bitmap = bitmap,
-                                    container = container,
-                                    generation = request.optLong("generation"),
-                                    pixelCopyResult = pixelCopyResult
-                            )
-                    )
-                    bitmap.recycle()
+                    val analyzed =
+                            runCatching {
+                                analyzeThreadViewportPixels(
+                                        bitmap = bitmap,
+                                        container = container,
+                                        generation = generation,
+                                        pixelCopyResult = pixelCopyResult
+                                )
+                            }.getOrElse {
+                                mapOf("status" to "failed", "message" to "Unable to analyze pixel probe")
+                            }
+                    finish(analyzed)
                 }
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -3127,14 +3167,22 @@ internal class SlockKuiklyBridgeModule(
                                 locationInWindow[1] + top + height
                         )
                 container.postOnAnimation {
-                    container.postOnAnimation {
-                        PixelCopy.request(
-                                hostActivity.window,
-                                sourceRect,
-                                bitmap,
-                                complete,
-                                Handler(Looper.getMainLooper())
-                        )
+                    container.postOnAnimation secondFrame@{
+                        if (nativeCompleted.get()) {
+                            recycleProbeBitmap()
+                            return@secondFrame
+                        }
+                        runCatching {
+                            PixelCopy.request(
+                                    hostActivity.window,
+                                    sourceRect,
+                                    bitmap,
+                                    complete,
+                                    handler
+                            )
+                        }.onFailure {
+                            finish(mapOf("status" to "failed", "message" to "PixelCopy request failed"))
+                        }
                     }
                 }
             } else {
@@ -3146,10 +3194,12 @@ internal class SlockKuiklyBridgeModule(
                 }.onSuccess {
                     complete(PixelCopy.SUCCESS)
                 }.onFailure {
-                    bitmap.recycle()
-                    callback?.invoke(mapOf("status" to "failed", "message" to "Unable to draw pixel probe"))
+                    finish(mapOf("status" to "failed", "message" to "Unable to draw pixel probe"))
                 }
             }
+            }
+        }.onFailure {
+            deliver(mapOf("status" to "failed", "message" to "Unable to schedule pixel probe"))
         }
     }
 

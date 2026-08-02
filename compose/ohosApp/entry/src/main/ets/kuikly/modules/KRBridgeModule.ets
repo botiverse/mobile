@@ -200,7 +200,11 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         break;
       }
       case KRBridgeModule.PROBE_THREAD_VIEWPORT_PIXELS: {
-        callback({ "status": "unsupported" });
+        const records = this.parseRecord(params);
+        callback({
+          "status": "unsupported",
+          "generation": records["generation"] ?? 0
+        });
         break;
       }
       case KRBridgeModule.PERFORMANCE_SCENE: {

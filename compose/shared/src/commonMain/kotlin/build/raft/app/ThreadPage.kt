@@ -317,6 +317,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
 import kotlinx.serialization.decodeFromString
@@ -1085,6 +1086,27 @@ private data class ThreadImeTailDrawProbeSnapshot(
     val placedCount: Int,
     val drawCount: Int
 )
+
+internal fun threadViewportPixelProbeOwnerCurrent(
+    requestedThreadInstanceKey: String,
+    currentThreadInstanceKey: String,
+    requestedLayoutGeneration: Long,
+    currentLayoutGeneration: Long,
+    requestedProbeGeneration: Long,
+    currentProbeGeneration: Long,
+    requestedTargetMessageId: String?,
+    currentTargetMessageId: String?,
+    requestedFocusedMessageId: String?,
+    currentFocusedMessageId: String?,
+    requestedTailMessageId: String?,
+    currentTailMessageId: String?
+): Boolean =
+    requestedThreadInstanceKey == currentThreadInstanceKey &&
+        requestedLayoutGeneration == currentLayoutGeneration &&
+        requestedProbeGeneration == currentProbeGeneration &&
+        requestedTargetMessageId == currentTargetMessageId &&
+        requestedFocusedMessageId == currentFocusedMessageId &&
+        requestedTailMessageId == currentTailMessageId
 
 private fun Int.asThreadProbeRangeStart(): Int =
     if (this == Int.MAX_VALUE) -1 else this
@@ -16671,10 +16693,18 @@ private fun ThreadMessagesList(
                 "items=${threadLazyWindowConsumerCounts.listBeyondBoundsItems}"
         )
     }
+    // Read the Lazy viewport in composition so either side of the measured ↔
+    // placed viewport handshake can restart a deferred composer correction.
+    // Without these keys, a pending mixed epoch only recovered when the
+    // BoxWithConstraints measurement happened to change afterwards.
+    val composerLayoutViewportStartPx = listState.layoutInfo.viewportStartOffset
+    val composerLayoutViewportEndPx = listState.layoutInfo.viewportEndOffset
     LaunchedEffect(
         threadInstanceKey,
         composerKeyboardInsetDp,
         measuredThreadViewportHeightDp,
+        composerLayoutViewportStartPx,
+        composerLayoutViewportEndPx,
         initialBottomAnchorReady,
         latestItemIndex,
         allowBottomAutoAnchor,
@@ -16713,8 +16743,8 @@ private fun ThreadMessagesList(
         var focusedTailViewportEpochCoherent =
             threadViewportEpochCoherent(
                 measuredViewportHeightPx = measuredFocusedTailViewportHeightPx,
-                layoutViewportStartPx = listState.layoutInfo.viewportStartOffset,
-                layoutViewportEndPx = listState.layoutInfo.viewportEndOffset
+                layoutViewportStartPx = composerLayoutViewportStartPx,
+                layoutViewportEndPx = composerLayoutViewportEndPx
             )
         var focusedTailFit =
             listState.threadFocusedTailFit(
@@ -16964,29 +16994,64 @@ private fun ThreadMessagesList(
         publishImeTailDrawProbe("settled")
         val pixelProbeGeneration = imeTailDrawProbe.claimPixelProbe()
         if (pixelProbeGeneration != null && viewportPixelProbeBounds.ready()) {
+            val pixelProbeThreadInstanceKey = threadInstanceKey
+            val pixelProbeTargetMessageId = imeTailDrawProbe.snapshot().targetMessageId
+            val pixelProbeLayoutGeneration = viewportLayoutGeneration
             val pixelResult =
-                runCatching {
-                    onComposerPixelProbe(
-                        viewportPixelProbeBounds.x,
-                        viewportPixelProbeBounds.y,
-                        viewportPixelProbeBounds.width,
-                        viewportPixelProbeBounds.height,
-                        pixelProbeGeneration
-                    )
-                }.getOrNull()
+                withTimeoutOrNull(ThreadViewportPixelProbeTimeoutMs) {
+                    runCatching {
+                        onComposerPixelProbe(
+                            viewportPixelProbeBounds.x,
+                            viewportPixelProbeBounds.y,
+                            viewportPixelProbeBounds.width,
+                            viewportPixelProbeBounds.height,
+                            pixelProbeGeneration
+                        )
+                    }.getOrNull()
+                }
+            val currentPixelProbeSnapshot = imeTailDrawProbe.snapshot()
+            val pixelProbeOwnerCurrent =
+                threadViewportPixelProbeOwnerCurrent(
+                    requestedThreadInstanceKey = pixelProbeThreadInstanceKey,
+                    currentThreadInstanceKey = currentThreadInstanceKeyState.value,
+                    requestedLayoutGeneration = pixelProbeLayoutGeneration,
+                    currentLayoutGeneration = currentViewportLayoutGenerationState.value,
+                    requestedProbeGeneration = pixelProbeGeneration,
+                    currentProbeGeneration = currentPixelProbeSnapshot.generation,
+                    requestedTargetMessageId = pixelProbeTargetMessageId,
+                    currentTargetMessageId = currentPixelProbeSnapshot.targetMessageId,
+                    requestedFocusedMessageId = focusedTargetMessageId,
+                    currentFocusedMessageId = currentPayloadState.value.focusedMessageId,
+                    requestedTailMessageId = focusedTailMessageId,
+                    currentTailMessageId = currentPayloadState.value.messages.lastOrNull()?.id
+                )
+            val pixelProbeReceiptMatches =
+                pixelResult?.optString("generation")?.toLongOrNull() == pixelProbeGeneration
+            val acceptedPixelResult =
+                pixelResult.takeIf { pixelProbeOwnerCurrent && pixelProbeReceiptMatches }
+            val diagnosticStatus =
+                when {
+                    pixelResult == null -> "infra_timeout"
+                    !pixelProbeOwnerCurrent -> "stale_owner"
+                    !pixelProbeReceiptMatches -> "stale_receipt"
+                    else -> acceptedPixelResult?.optString("status").orEmpty()
+                }
             diagnosticsLogger(
                 "thread_ime_tail_pixel_probe generation=$pixelProbeGeneration " +
-                    "status=${pixelResult?.optString("status").orEmpty()} " +
-                    "pixelCopyResult=${pixelResult?.optString("pixelCopyResult").orEmpty()} " +
-                    "sampleCount=${pixelResult?.optString("sampleCount").orEmpty()} " +
-                    "nonWhiteCount=${pixelResult?.optString("nonWhiteCount").orEmpty()} " +
-                    "darkCount=${pixelResult?.optString("darkCount").orEmpty()} " +
-                    "whitePermille=${pixelResult?.optString("whitePermille").orEmpty()} " +
-                    "descendants=${pixelResult?.optString("descendants").orEmpty()} " +
-                    "visibleDescendants=${pixelResult?.optString("visibleDescendants").orEmpty()} " +
-                    "attachedDescendants=${pixelResult?.optString("attachedDescendants").orEmpty()} " +
-                    "layoutRequestedDescendants=${pixelResult?.optString("layoutRequestedDescendants").orEmpty()} " +
-                    "rootChild=${pixelResult?.optString("rootChild").orEmpty()}"
+                    "status=$diagnosticStatus " +
+                    "threadInstanceCurrent=$pixelProbeOwnerCurrent " +
+                    "layoutGeneration=$pixelProbeLayoutGeneration->${currentViewportLayoutGenerationState.value} " +
+                    "targetMessageId=${pixelProbeTargetMessageId.orEmpty()} " +
+                    "pixelCopyResult=${acceptedPixelResult?.optString("pixelCopyResult").orEmpty()} " +
+                    "sampleCount=${acceptedPixelResult?.optString("sampleCount").orEmpty()} " +
+                    "nonWhiteCount=${acceptedPixelResult?.optString("nonWhiteCount").orEmpty()} " +
+                    "darkCount=${acceptedPixelResult?.optString("darkCount").orEmpty()} " +
+                    "whitePermille=${acceptedPixelResult?.optString("whitePermille").orEmpty()} " +
+                    "descendants=${acceptedPixelResult?.optString("descendants").orEmpty()} " +
+                    "visibleDescendants=${acceptedPixelResult?.optString("visibleDescendants").orEmpty()} " +
+                    "attachedDescendants=${acceptedPixelResult?.optString("attachedDescendants").orEmpty()} " +
+                    "layoutRequestedDescendants=${acceptedPixelResult?.optString("layoutRequestedDescendants").orEmpty()} " +
+                    "rootChild=${acceptedPixelResult?.optString("rootChild").orEmpty()}"
             )
         }
         pendingKeyboardBottomAnchor = false
@@ -19288,6 +19353,7 @@ private const val ThreadBottomAnchorMinimumAttempts = 2
 private const val ThreadInitialBottomAnchorAttempts = 12
 private const val ThreadInitialBottomAnchorRetryDelayMs = 80L
 private const val ThreadFocusedTailMeasurementRetryFrames = 2
+private const val ThreadViewportPixelProbeTimeoutMs = 2_500L
 private const val ThreadInitialBottomAnchorMinimumConsumedDeltaPx = 0.5f
 private const val ThreadLayoutStabilityFrameDelayMs = 16L
 private const val ThreadFirstContentTaskJoinDelayMs = 96L
