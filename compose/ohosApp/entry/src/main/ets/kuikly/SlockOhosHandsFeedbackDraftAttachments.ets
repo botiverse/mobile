@@ -162,7 +162,7 @@ export function promoteSlockOhosFeedbackDraftAttachments(
       }
       staged.push({
         id: source.id,
-        fileName: source.fileName.length > 0 ? source.fileName : targetName,
+        fileName: ohosFeedbackDraftDisplayName(source.fileName, targetName),
         mimeType: source.mimeType,
         sizeBytes: copiedSize,
         fileRef: backend.fileUri(targetPath),
@@ -215,7 +215,7 @@ function reopenSlockOhosFeedbackDraftAttachmentGroup(
     const fallbackName = targetPath.split('/').pop() ?? 'attachment';
     attachments.push({
       id: source.id,
-      fileName: source.fileName.length > 0 ? source.fileName : fallbackName,
+      fileName: ohosFeedbackDraftDisplayName(source.fileName, fallbackName),
       mimeType: source.mimeType,
       sizeBytes: sizeBytes,
       fileRef: backend.fileUri(targetPath),
@@ -254,10 +254,25 @@ function ohosFeedbackDraftTargetName(index: number, fileName: string, mimeType: 
   const rawStem = dot > 0 ? rawName.slice(0, dot) : rawName;
   const rawExtension = dot > 0 ? rawName.slice(dot + 1) : '';
   const stem = safeOhosFeedbackDraftPathSegment(rawStem).slice(0, 64) || 'attachment';
-  const extension = /^[A-Za-z0-9]{1,10}$/.test(rawExtension)
-    ? `.${rawExtension.toLowerCase()}`
-    : ohosFeedbackDraftExtensionForMimeType(mimeType);
+  const mimeExtension = ohosFeedbackDraftExtensionForMimeType(mimeType);
+  const extension = mimeExtension !== '.bin'
+    ? mimeExtension
+    : (/^[A-Za-z0-9]{1,10}$/.test(rawExtension) ? `.${rawExtension.toLowerCase()}` : '.bin');
   return `${index.toString().padStart(2, '0')}-${stem}${extension}`;
+}
+
+function ohosFeedbackDraftDisplayName(fileName: string, targetName: string): string {
+  const rawName = fileName.replace(/\\/g, '/').split('/').pop() ?? '';
+  const targetExtension = targetName.split('.').pop() ?? '';
+  if (rawName.length === 0) {
+    return targetName.replace(/^\d+-/, '');
+  }
+  if (targetExtension.length === 0 || targetExtension === targetName) {
+    return rawName;
+  }
+  const dot = rawName.lastIndexOf('.');
+  const stem = (dot > 0 ? rawName.slice(0, dot) : rawName) || 'attachment';
+  return `${stem}.${targetExtension}`;
 }
 
 function ohosFeedbackDraftExtensionForMimeType(mimeType: string): string {

@@ -12081,6 +12081,13 @@ private fun SharedHandsFeedbackContent(
         }
     }
 
+    fun previewAttachment(attachmentId: String) {
+        attachmentsState.value
+            .firstOrNull { file -> file.feedbackComposerAttachmentId() == attachmentId }
+            ?.toSettingsHandsFeedbackAttachmentPreviewPayload(copy.attachment)
+            ?.let { payload -> pager.openSlockFilePreviewPage(payload) }
+    }
+
     DisposableEffect(eventBus, accountId, feedbackPageGeneration) {
         val subscription =
             eventBus.observe(SLOCK_COMPOSER_IMAGE_EDIT_EVENT, crossProcess = true) { data ->
@@ -12417,7 +12424,7 @@ private fun SharedHandsFeedbackContent(
                     .background(SlockColor.SurfaceWhite)
         ) {
             ThreadComposerContent(
-                attachmentPreviewEnabled = false,
+                attachmentPreviewEnabled = true,
                 surface =
                     ThreadComposerSurface(
                         kind = KuiklyThreadSurfaceKind.Channel,
@@ -12497,7 +12504,9 @@ private fun SharedHandsFeedbackContent(
                                     }
                                 }
                             }
-                        "previewAttachment", "retryAttachments", "blur", "toggleAsTask" -> Unit
+                        "previewAttachment" ->
+                            attachmentId?.takeIf { it.isNotBlank() }?.let(::previewAttachment)
+                        "retryAttachments", "blur", "toggleAsTask" -> Unit
                     }
                 },
                 contentPaddingTop = 10.dp,
@@ -12765,6 +12774,36 @@ private fun List<PlatformFile>.toFeedbackComposerAttachmentItems(
 
 private fun PlatformFile.feedbackComposerAttachmentId(): String =
     fileRef?.takeIf { it.isNotBlank() } ?: id
+
+internal fun PlatformFile.toSettingsHandsFeedbackAttachmentPreviewPayload(
+    fallbackFileName: String
+): SlockFilePreviewPayload? {
+    val localUri = composerLocalPreviewUri()?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    val displayName = fileName.ifBlank { fallbackFileName }
+    val displayMimeType = mimeType.orEmpty()
+    val image = slockFilePreviewIsImageAttachment(displayName, displayMimeType)
+    val previewKind = if (image) "image" else "file"
+    return SlockFilePreviewPayload(
+        kind = previewKind,
+        requestedKind = previewKind,
+        titleDesc =
+            if (image) {
+                MR.strings.file_preview_image.desc()
+            } else {
+                MR.strings.file_preview_title.desc()
+            },
+        subtitle = displayName,
+        name = displayName,
+        path = displayName,
+        meta = sizeBytes?.takeIf { it > 0L }?.let(::formatAttachmentSizeLabel).orEmpty(),
+        imageUrl = localUri.takeIf { image },
+        externalUrl = localUri,
+        externalFileName = displayName,
+        externalMimeType = displayMimeType,
+        source = source,
+        attachmentId = feedbackComposerAttachmentId()
+    )
+}
 
 @Composable
 private fun SettingsHandsFeedbackConversationRow(

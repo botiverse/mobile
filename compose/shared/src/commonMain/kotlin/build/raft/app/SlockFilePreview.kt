@@ -1427,7 +1427,13 @@ private fun SlockFilePreviewStandalonePageContent() {
                     payload = payload.withComposerImageEditResult(fileRef)
                     composerImageEditMode = false
                 } else {
-                    postComposerImageResult(fileRef = fileRef, previewUri = fileRef)
+                    postComposerImageResult(
+                        fileRef = fileRef,
+                        previewUri = fileRef,
+                        fileName = payload.currentComposerImageFileName().toKuiklySnapshotPngFileName(),
+                        mimeType = KuiklySnapshotMimeType,
+                        sizeBytes = null
+                    )
                 }
             } else {
                 bridge.toast(result?.optString("message").orEmpty().ifBlank { imageEditorExportFailed })
@@ -4569,24 +4575,49 @@ internal fun SlockFilePreviewPayload.canCompleteComposerImageSelection(): Boolea
 internal fun SlockFilePreviewPayload.withComposerImageEditResult(fileRef: String): SlockFilePreviewPayload {
     if (fileRef.isBlank() || imageGallery.isEmpty()) return this
     val currentIndex = imageGalleryIndex.coerceIn(0, imageGallery.lastIndex)
+    val editedFileName =
+        imageGallery[currentIndex].name
+            .ifBlank { currentComposerImageFileName() }
+            .toKuiklySnapshotPngFileName()
     val updatedGallery =
         imageGallery.mapIndexed { index, image ->
             if (index == currentIndex) {
                 image.copy(
+                    name = editedFileName,
+                    mimeType = KuiklySnapshotMimeType,
+                    sizeLabel = "",
                     thumbnailUrl = fileRef,
                     composerImageFileRef = fileRef,
-                    composerImagePreviewUri = fileRef
+                    composerImagePreviewUri = fileRef,
+                    composerImageSizeBytes = null
                 )
             } else {
                 image
             }
         }
     return copy(
+        name = editedFileName,
         imageUrl = fileRef,
+        externalFileName = editedFileName,
+        externalMimeType = KuiklySnapshotMimeType,
         composerImageFileRef = fileRef,
+        composerImageFileName = editedFileName,
+        composerImageMimeType = KuiklySnapshotMimeType,
+        composerImageSizeBytes = null,
         composerImagePreviewUri = fileRef,
         imageGallery = updatedGallery
     )
+}
+
+private const val KuiklySnapshotMimeType = "image/png"
+
+private fun SlockFilePreviewPayload.currentComposerImageFileName(): String =
+    composerImageFileName.ifBlank { externalFileName.ifBlank { name } }
+
+private fun String.toKuiklySnapshotPngFileName(): String {
+    val leaf = substringAfterLast('/').substringAfterLast('\\').ifBlank { "image" }
+    val stem = leaf.substringBeforeLast('.', missingDelimiterValue = leaf).ifBlank { "image" }
+    return "$stem.png"
 }
 
 internal data class SlockFilePreviewImageGalleryResolutionState(

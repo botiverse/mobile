@@ -71,9 +71,10 @@ internal class SettingsHandsFeedbackDraftAttachmentStorage(
             return staged.map { attachment ->
                 val fileName = File(URI(attachment.fileRef)).name
                 val committedFile = File(groupDirectory, fileName)
+                val committedUri = committedFile.toRenderableLocalFileUri()
                 attachment.copy(
-                    fileRef = committedFile.toURI().toString(),
-                    previewUri = committedFile.toURI().toString()
+                    fileRef = committedUri,
+                    previewUri = committedUri
                 )
             }
         } finally {
@@ -121,10 +122,10 @@ internal class SettingsHandsFeedbackDraftAttachmentStorage(
         file: File,
         actualSizeBytes: Long
     ): SettingsHandsFeedbackDraftAttachment {
-        val uri = file.toURI().toString()
+        val uri = file.toRenderableLocalFileUri()
         return SettingsHandsFeedbackDraftAttachment(
             id = id,
-            fileName = fileName.ifBlank { file.name },
+            fileName = coherentDisplayFileName(fileName, file),
             mimeType = mimeType,
             sizeBytes = actualSizeBytes,
             fileRef = uri,
@@ -134,11 +135,12 @@ internal class SettingsHandsFeedbackDraftAttachmentStorage(
 
     private fun targetFileName(index: Int, fileName: String, mimeType: String): String {
         val rawName = fileName.substringAfterLast('/').substringAfterLast('\\')
-        val extension =
+        val nameExtension =
             rawName.substringAfterLast('.', missingDelimiterValue = "")
                 .takeIf { it.matches(Regex("[A-Za-z0-9]{1,10}")) }
                 ?.let { ".${it.lowercase(Locale.US)}" }
-                ?: extensionForMimeType(mimeType)
+        val mimeExtension = extensionForMimeType(mimeType).takeUnless { it == ".bin" }
+        val extension = mimeExtension ?: nameExtension ?: ".bin"
         val stem =
             rawName.substringBeforeLast('.', missingDelimiterValue = rawName)
                 .replace(Regex("[^A-Za-z0-9_-]"), "_")
@@ -147,6 +149,18 @@ internal class SettingsHandsFeedbackDraftAttachmentStorage(
                 .ifBlank { "attachment" }
         return index.toString().padStart(2, '0') + "-" + stem + extension
     }
+
+    private fun coherentDisplayFileName(fileName: String, target: File): String {
+        val rawName = fileName.substringAfterLast('/').substringAfterLast('\\')
+        val targetExtension = target.extension
+        if (rawName.isBlank()) return target.name.substringAfter('-', target.name)
+        if (targetExtension.isBlank()) return rawName
+        val stem = rawName.substringBeforeLast('.', missingDelimiterValue = rawName).ifBlank { "attachment" }
+        return "$stem.$targetExtension"
+    }
+
+    private fun File.toRenderableLocalFileUri(): String =
+        URI("file", "", absoluteFile.path, null, null).toASCIIString()
 
     private fun extensionForMimeType(mimeType: String): String =
         when (mimeType.substringBefore(';').trim().lowercase(Locale.US)) {

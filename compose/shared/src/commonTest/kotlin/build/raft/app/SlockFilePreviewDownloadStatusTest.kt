@@ -1808,17 +1808,30 @@ class SlockFilePreviewDownloadStatusTest {
         val payload =
             SlockFilePreviewPayload(
                 imageGalleryIndex = 1,
+                name = "two.jpg",
+                externalFileName = "two.jpg",
+                externalMimeType = "image/jpeg",
+                composerImageFileName = "two.jpg",
+                composerImageMimeType = "image/jpeg",
+                composerImageSizeBytes = 20L,
                 imageGallery =
                     listOf(
                         SlockFilePreviewGalleryImage(
                             attachmentId = "local-1",
+                            name = "one.jpg",
+                            mimeType = "image/jpeg",
                             composerImageFileRef = "file://one",
-                            composerImagePreviewUri = "file://one"
+                            composerImagePreviewUri = "file://one",
+                            composerImageSizeBytes = 10L
                         ),
                         SlockFilePreviewGalleryImage(
                             attachmentId = "local-2",
+                            name = "two.jpg",
+                            mimeType = "image/jpeg",
+                            sizeLabel = "20 B",
                             composerImageFileRef = "file://two",
-                            composerImagePreviewUri = "file://two"
+                            composerImagePreviewUri = "file://two",
+                            composerImageSizeBytes = 20L
                         )
                     )
             )
@@ -1826,8 +1839,17 @@ class SlockFilePreviewDownloadStatusTest {
         val edited = payload.withComposerImageEditResult("file://two-edited")
 
         assertEquals("file://one", edited.imageGallery[0].composerImageFileRef)
+        assertEquals("one.jpg", edited.imageGallery[0].name)
+        assertEquals("image/jpeg", edited.imageGallery[0].mimeType)
         assertEquals("file://two-edited", edited.imageGallery[1].composerImageFileRef)
+        assertEquals("two.png", edited.imageGallery[1].name)
+        assertEquals("image/png", edited.imageGallery[1].mimeType)
+        assertEquals("", edited.imageGallery[1].sizeLabel)
+        assertNull(edited.imageGallery[1].composerImageSizeBytes)
         assertEquals("file://two-edited", edited.imageUrl)
+        assertEquals("two.png", edited.composerImageFileName)
+        assertEquals("image/png", edited.composerImageMimeType)
+        assertNull(edited.composerImageSizeBytes)
         assertTrue(edited.canCompleteComposerImageSelection())
     }
 

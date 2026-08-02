@@ -2284,6 +2284,10 @@ internal object SlockKuiklyFontAdapter : IKRFontAdapter {
     }
 }
 
+internal fun isSlockRenderableLocalImageSource(source: String): Boolean =
+        source.startsWith("file://", ignoreCase = true) ||
+                source.startsWith("content://", ignoreCase = true)
+
 private class SlockKuiklyImageAdapter(
         private val context: Context
 ) : IKRImageAdapter {
@@ -2735,7 +2739,7 @@ private class SlockKuiklyImageAdapter(
     }
 
     private fun HRImageLoadOption.isLocalUri(): Boolean {
-        return isFile() || isContentUri()
+        return isSlockRenderableLocalImageSource(src)
     }
 
     private fun HRImageLoadOption.slockSourceKind(): String =

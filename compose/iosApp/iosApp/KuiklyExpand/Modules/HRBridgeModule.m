@@ -159,12 +159,6 @@ static NSString *SlockFeedbackDraftAccountSegment(NSString *accountId) {
 }
 
 static NSString *SlockFeedbackDraftExtension(NSString *fileName, NSString *mimeType) {
-    NSString *candidate = fileName.pathExtension.lowercaseString;
-    NSCharacterSet *nonAlphanumeric = NSCharacterSet.alphanumericCharacterSet.invertedSet;
-    if (candidate.length > 0 && candidate.length <= 10 &&
-        [candidate rangeOfCharacterFromSet:nonAlphanumeric].location == NSNotFound) {
-        return candidate;
-    }
     NSString *normalizedMime = [[mimeType componentsSeparatedByString:@";"] firstObject].lowercaseString;
     if ([normalizedMime isEqualToString:@"image/avif"]) return @"avif";
     if ([normalizedMime isEqualToString:@"image/gif"]) return @"gif";
@@ -174,6 +168,12 @@ static NSString *SlockFeedbackDraftExtension(NSString *fileName, NSString *mimeT
         [normalizedMime isEqualToString:@"image/jpg"]) return @"jpg";
     if ([normalizedMime isEqualToString:@"image/png"]) return @"png";
     if ([normalizedMime isEqualToString:@"image/webp"]) return @"webp";
+    NSString *candidate = fileName.pathExtension.lowercaseString;
+    NSCharacterSet *nonAlphanumeric = NSCharacterSet.alphanumericCharacterSet.invertedSet;
+    if (candidate.length > 0 && candidate.length <= 10 &&
+        [candidate rangeOfCharacterFromSet:nonAlphanumeric].location == NSNotFound) {
+        return candidate;
+    }
     return @"bin";
 }
 
@@ -182,6 +182,19 @@ static NSString *SlockFeedbackDraftTargetName(NSUInteger index, NSDictionary *fi
         SlockBridgeString(file[@"fileName"]),
         SlockBridgeString(file[@"mimeType"]));
     return [NSString stringWithFormat:@"%02lu-attachment.%@", (unsigned long)index, extension];
+}
+
+static NSString *SlockFeedbackDraftDisplayName(NSString *fileName, NSString *targetName) {
+    NSString *rawName = fileName.lastPathComponent;
+    if (rawName.length == 0) {
+        NSRange separator = [targetName rangeOfString:@"-"];
+        return separator.location == NSNotFound ? targetName : [targetName substringFromIndex:separator.location + 1];
+    }
+    NSString *targetExtension = targetName.pathExtension.lowercaseString;
+    if (targetExtension.length == 0) return rawName;
+    NSString *stem = rawName.stringByDeletingPathExtension;
+    if (stem.length == 0) stem = @"attachment";
+    return [stem stringByAppendingPathExtension:targetExtension];
 }
 
 static NSArray<NSDictionary *> *SlockFeedbackDraftFilesAtDirectory(
@@ -208,10 +221,11 @@ static NSArray<NSDictionary *> *SlockFeedbackDraftFilesAtDirectory(
             targetSize.unsignedLongLongValue == 0 || targetSize.unsignedLongLongValue > maxBytes) {
             return nil;
         }
-        NSString *displayName = SlockBridgeString(file[@"fileName"]);
+        NSString *displayName = SlockFeedbackDraftDisplayName(
+            SlockBridgeString(file[@"fileName"]), targetName);
         [attachments addObject:@{
             @"id" : SlockBridgeString(file[@"id"]),
-            @"fileName" : displayName.length > 0 ? displayName : targetName,
+            @"fileName" : displayName,
             @"mimeType" : SlockBridgeString(file[@"mimeType"]),
             @"sizeBytes" : targetSize,
             @"previewUri" : targetURL.absoluteString ?: @"",

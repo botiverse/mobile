@@ -37,6 +37,53 @@ class SettingsHandsFeedbackDraftAttachmentStorageTest {
     }
 
     @Test
+    fun promotedEditorPngUsesRenderableUriAndCoherentFileIdentity() {
+        val sandbox = Files.createTempDirectory("feedback-draft-storage-png").toFile()
+        try {
+            val pngBytes =
+                byteArrayOf(
+                    0x89.toByte(),
+                    0x50,
+                    0x4e,
+                    0x47,
+                    0x0d,
+                    0x0a,
+                    0x1a,
+                    0x0a
+                )
+            val source = File(sandbox, "editor-output.png").apply { writeBytes(pngBytes) }
+            val promoted =
+                storage(File(sandbox, "durable"))
+                    .promoteGroup(
+                        accountId = "account-a",
+                        groupId = "group-png",
+                        sources =
+                            listOf(
+                                SettingsHandsFeedbackDraftAttachmentSource(
+                                    id = "edited",
+                                    fileName = "photo.jpg",
+                                    mimeType = "image/png",
+                                    fileRef = source.toURI().toString()
+                                )
+                            ),
+                        maxBytes = 32
+                    )
+                    .single()
+
+            assertEquals("photo.png", promoted.fileName)
+            assertEquals("image/png", promoted.mimeType)
+            assertEquals(promoted.fileRef, promoted.previewUri)
+            assertTrue(promoted.fileRef.startsWith("file:///"))
+            assertTrue(promoted.fileRef.endsWith(".png"))
+            assertTrue(isSlockRenderableLocalImageSource(promoted.previewUri))
+            assertFalse(isSlockRenderableLocalImageSource("file:/data/user/0/build.raft.mobile/photo.png"))
+            assertEquals(pngBytes.toList(), file(promoted.fileRef).readBytes().toList())
+        } finally {
+            sandbox.deleteRecursively()
+        }
+    }
+
+    @Test
     fun anyCopyFailureLeavesNoCommittedOrStagedGroup() {
         val sandbox = Files.createTempDirectory("feedback-draft-storage-failure").toFile()
         try {

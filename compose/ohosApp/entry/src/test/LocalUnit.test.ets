@@ -406,7 +406,7 @@ export default function localUnitTest() {
         '/data/storage/el2/base/files/settings-hands-feedback-drafts',
         'account-a',
         'group-a',
-        [{ id: 'edited', fileName: 'edited.png', mimeType: 'image/png', fileRef: '/temp/editor-output.png' }],
+        [{ id: 'edited', fileName: 'edited.jpg', mimeType: 'image/png', fileRef: '/temp/editor-output.png' }],
         10,
         backend,
         (_: string): string => 'account-test',
@@ -415,7 +415,10 @@ export default function localUnitTest() {
       expect(promoted.length).assertEqual(1);
       expect(promoted[0].sizeBytes).assertEqual(7);
       expect(promoted[0].source).assertEqual('settings_feedback_draft');
-      expect(promoted[0].previewUri.includes('/files/settings-hands-feedback-drafts/')).assertTrue();
+      expect(promoted[0].fileName).assertEqual('edited.png');
+      expect(promoted[0].mimeType).assertEqual('image/png');
+      expect(promoted[0].previewUri.startsWith('file:///')).assertTrue();
+      expect(promoted[0].previewUri.endsWith('.png')).assertTrue();
       expect(backend.resolveFileRef(promoted[0].fileRef).includes('/files/settings-hands-feedback-drafts/')).assertTrue();
       expect(backend.isFile(backend.resolveFileRef(promoted[0].fileRef))).assertTrue();
 
@@ -424,7 +427,7 @@ export default function localUnitTest() {
         '/data/storage/el2/base/files/settings-hands-feedback-drafts',
         'account-a',
         'group-a',
-        [{ id: 'edited', fileName: 'edited.png', mimeType: 'image/png', fileRef: '/temp/editor-output.png' }],
+        [{ id: 'edited', fileName: 'edited.jpg', mimeType: 'image/png', fileRef: '/temp/editor-output.png' }],
         10,
         backend,
         (_: string): string => 'account-test',

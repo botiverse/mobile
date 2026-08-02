@@ -18,6 +18,29 @@ import kotlinx.coroutines.runBlocking
 
 class SettingsHandsFeedbackImageEditTest {
     @Test
+    fun durableEditedImageBuildsPreviewableLocalFilePayload() {
+        val payload =
+            PlatformFile(
+                id = "edited",
+                fileName = "photo.png",
+                mimeType = "image/png",
+                sizeBytes = 765_527L,
+                previewUri = "file:///data/user/0/build.raft.mobile/photo.png",
+                fileRef = "file:///data/user/0/build.raft.mobile/photo.png",
+                source = "settings_feedback_draft"
+            ).toSettingsHandsFeedbackAttachmentPreviewPayload("Attachment")
+
+        requireNotNull(payload)
+        assertEquals("image", payload.kind)
+        assertEquals("image", payload.requestedKind)
+        assertEquals("file:///data/user/0/build.raft.mobile/photo.png", payload.imageUrl)
+        assertEquals(payload.imageUrl, payload.externalUrl)
+        assertEquals("photo.png", payload.externalFileName)
+        assertEquals("image/png", payload.externalMimeType)
+        assertEquals("settings_feedback_draft", payload.source)
+    }
+
+    @Test
     fun requestCarriesExplicitScopedGroupAndEditableGalleryIntent() {
         val files =
             listOf(
