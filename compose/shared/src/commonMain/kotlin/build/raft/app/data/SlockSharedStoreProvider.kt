@@ -2088,6 +2088,8 @@ internal class SharedRealtimeDomainEventOwner(
         }
     }
 
+    fun hasGuardedAppShellSinks(): Boolean = guardedSinks != null
+
     override fun registerActiveThreadSink(sink: RealtimeActiveThreadSink) {
         if (sink !in activeThreadSinks) {
             activeThreadSinks.add(sink)

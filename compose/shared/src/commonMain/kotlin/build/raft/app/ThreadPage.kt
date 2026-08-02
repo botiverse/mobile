@@ -22,6 +22,7 @@ import build.raft.app.data.PlatformFile
 import build.raft.app.data.appendSharedThreadSentMessageFromPage
 import build.raft.app.data.parseSharedThreadPickedPlatformFiles
 import build.raft.app.data.realtime.RealtimeEventMapper
+import build.raft.app.data.RealtimeConnectionWitness
 import build.raft.app.data.AgentDetailSnapshot
 import build.raft.app.data.AgentDetailSummary
 import build.raft.app.data.AgentSkillsSnapshot
@@ -110,6 +111,7 @@ import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.data.SharedMessageTranslationState
 import build.raft.app.data.toMessageMetadata
 import build.raft.app.data.RealtimeGuardedActiveThreadSink
+import build.raft.app.data.RealtimeShellCallbackGate
 import build.raft.app.data.RealtimeCanonicalFinalSinkSurfaceKey
 import build.raft.app.data.RealtimeScopeAuthority
 import build.raft.app.data.RealtimeRoomLeaseOwner
@@ -2818,6 +2820,24 @@ internal fun KuiklyThreadScreenPayload.isThreadPrimaryFooterReady(
 internal fun shouldDeliverToActiveThreadRealtimeSignal(event: RealtimeEvent): Boolean =
     RealtimeRoutePolicy.shouldForwardToActiveThread(event) || event is Heartbeat
 
+internal fun shouldUseStandaloneThreadRealtimeIngress(hasGuardedAppShellSinks: Boolean): Boolean =
+    !hasGuardedAppShellSinks
+
+internal suspend fun acceptStandaloneThreadRealtimeEvent(
+    eventData: JSONObject,
+    session: StoredAuthSession?,
+    mapper: RealtimeEventMapper,
+    hasGuardedAppShellSinks: Boolean,
+    log: (String) -> Unit,
+    accept: suspend (RealtimeConnectionWitness, String, RealtimeEvent) -> Boolean,
+): Boolean {
+    if (!shouldUseStandaloneThreadRealtimeIngress(hasGuardedAppShellSinks)) return false
+    val event = decodeSharedShellRealtimeEvent(eventData, mapper, log) ?: return false
+    val serverId = resolveSharedShellRealtimeServerId(eventData, event, session) ?: return false
+    val witness = eventData.realtimeConnectionWitnessOrNull() ?: return false
+    return accept(witness, serverId, event)
+}
+
 private fun RealtimeEvent.isTaskProjectionEvent(): Boolean =
     this is TaskCreated || this is TaskUpdated || this is TaskDeleted
 
@@ -4817,6 +4837,13 @@ internal fun SharedThreadRouteContent(
     val translationStore = remember(sharedStores) { sharedStores.messageTranslationStore }
     val realtimeDomainEventOwner =
         remember(sharedStores, storeScope) { sharedStores.realtimeDomainEventOwner(storeScope) }
+    val realtimeCallbackGate =
+        remember(sharedStores, realtimeDomainEventOwner) {
+            RealtimeShellCallbackGate(
+                authorityProvider = sharedStores.realtimeAuthorityProvider,
+                domainOwner = realtimeDomainEventOwner,
+            )
+        }
     val canonicalFinalLifecycleEffects =
         remember(sharedStores) {
             sharedStores.realtimeAuthorityProvider.canonicalFinalLifecycleEffectsOrNull()
@@ -5184,6 +5211,7 @@ internal fun SharedThreadRouteContent(
         sharedStores.activityUnreadSummaryStore.ensure(ServerId(serverId), reason = "thread_route_attach")
     }
     val latestCurrentSession by rememberUpdatedState(currentSession)
+    val latestCanonicalFinalAuthority by rememberUpdatedState(canonicalFinalAuthority)
     // The listener can mount after Activity.onResume. Seed from the authoritative host
     // visibility so the first external-browser return is treated as a subsequent resume
     // and rotates stale pointer registrations instead of merely marking lifecycle as seen.
@@ -5260,22 +5288,19 @@ internal fun SharedThreadRouteContent(
 
     // Pager lifecycle notifications remain mounted with the route core. A
     // loading -> resolved transition must not reset foreground reconciliation.
-    DisposableEffect(realtimeEvents) {
-        val callbackRef =
-            realtimeEvents.addListener { eventData ->
-                val eventDataSnapshot = eventData.toString()
-                coroutineScope.launch {
-                    val lifecycleData = JSONObject(eventDataSnapshot)
-                    if (lifecycleData.optString(SlockRealtimeNotifyContract.KeyAction) != SlockRealtimeNotifyContract.ActionAppLifecycle) {
-                        return@launch
-                    }
-                    val event = lifecycleData.optString(SlockRealtimeNotifyContract.KeyLifecycleEvent)
-                    val pageName = lifecycleData.optString(SlockRealtimeNotifyContract.KeyPageName)
+    DisposableEffect(realtimeEvents, realtimeEventMapper, realtimeCallbackGate, realtimeDomainEventOwner) {
+        val onRealtimeEvent: (JSONObject) -> Unit = { rawEventData ->
+            val eventDataSnapshot = rawEventData.toString()
+            coroutineScope.launch {
+                val eventData = JSONObject(eventDataSnapshot)
+                if (eventData.optString(SlockRealtimeNotifyContract.KeyAction) == SlockRealtimeNotifyContract.ActionAppLifecycle) {
+                    val event = eventData.optString(SlockRealtimeNotifyContract.KeyLifecycleEvent)
+                    val pageName = eventData.optString(SlockRealtimeNotifyContract.KeyPageName)
                     if (!threadLifecycleEventTargetsThread(pageName)) {
                         return@launch
                     }
                     if (!appLifecycleEventTargetsShell(
-                            eventShellInstanceId = lifecycleData.optString(SlockRealtimeNotifyContract.KeyShellInstanceId),
+                            eventShellInstanceId = eventData.optString(SlockRealtimeNotifyContract.KeyShellInstanceId),
                             routeShellInstanceId = storeScope.shellInstanceId
                         )
                     ) {
@@ -5290,9 +5315,43 @@ internal fun SharedThreadRouteContent(
                             .onLifecycleVisibleResume(latestRouteActive)
                             ?.let(::applyThreadVisibleResumePlan)
                     }
+                    return@launch
+                }
+
+                // Standalone Thread pagers can outlive the AppShell composition that normally
+                // owns raw realtime ingest. Bridge only that ownership gap; the domain owner
+                // remains the single dedup/apply boundary.
+                val accepted = acceptStandaloneThreadRealtimeEvent(
+                    eventData = eventData,
+                    session = latestCurrentSession,
+                    mapper = realtimeEventMapper,
+                    hasGuardedAppShellSinks = realtimeDomainEventOwner.hasGuardedAppShellSinks(),
+                    log = slockLogger("SlockRealtimeDecode"),
+                ) { witness, serverId, event ->
+                    if (realtimeCallbackGate.resolveExistingGrant(witness, serverId) == null) {
+                        false
+                    } else {
+                        latestCanonicalFinalAuthority
+                            ?.grant(serverId)
+                            ?.let { shellGrant ->
+                                realtimeDomainEventOwner.accept(
+                                    grant = shellGrant,
+                                    event = event,
+                                    source = "standalone_thread"
+                                )
+                            }
+                            ?: false
+                    }
+                }
+                if (accepted) {
+                    bridge.log("thread_realtime_ingress source=standalone result=accepted")
                 }
             }
-        onDispose { realtimeEvents.removeListener(callbackRef) }
+        }
+        val callbackRef = realtimeEvents.addListener(onRealtimeEvent)
+        onDispose {
+            realtimeEvents.removeListener(callbackRef)
+        }
     }
     // The owner records accepted event keys before fan-out. Keep the canonical
     // Thread sink mounted during LoadingShell so accepted events are never lost
