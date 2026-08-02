@@ -379,17 +379,52 @@ private inline fun <Wire, T> HomeNetworkResponse.mapComputersBody(
     return DataResult.Content(value)
 }
 
-private fun <T> HomeNetworkResponse.toComputersDataError(): DataResult<T> =
-    when (code) {
+private fun <T> HomeNetworkResponse.toComputersDataError(): DataResult<T> {
+    val serverMessage = computersRouteErrorTextOrNull()
+    return when (code) {
         401 -> DataResult.NoPermission(PermissionBlocker(code = "auth_required", requiredCapability = "auth_session"))
         403 -> DataResult.NoPermission(PermissionBlocker(code = "server_forbidden", requiredCapability = "server_access"))
-        307 -> DataResult.Error(ScreenError(code = "machine_offline_replay", retryable = true))
-        400 -> DataResult.Error(ScreenError(code = "computer_bad_request", retryable = false))
-        409 -> DataResult.Error(ScreenError(code = "computer_has_agents", retryable = false))
-        503 -> DataResult.Error(ScreenError(code = "machine_offline", retryable = true))
-        in 500..599 -> DataResult.Error(ScreenError(code = "server_unavailable", retryable = true))
-        else -> DataResult.Error(ScreenError(code = "http_$code", retryable = code != 404))
+        307 ->
+            DataResult.Error(
+                ScreenError(code = "machine_offline_replay", retryable = true, serverMessage = serverMessage)
+            )
+        400 ->
+            DataResult.Error(
+                ScreenError(code = "computer_bad_request", retryable = false, serverMessage = serverMessage)
+            )
+        409 ->
+            DataResult.Error(
+                ScreenError(code = "computer_has_agents", retryable = false, serverMessage = serverMessage)
+            )
+        503 ->
+            DataResult.Error(
+                ScreenError(code = "machine_offline", retryable = true, serverMessage = serverMessage)
+            )
+        in 500..599 ->
+            DataResult.Error(
+                ScreenError(code = "server_unavailable", retryable = true, serverMessage = serverMessage)
+            )
+        else ->
+            DataResult.Error(
+                ScreenError(code = "http_$code", retryable = code != 404, serverMessage = serverMessage)
+            )
     }
+}
+
+@Serializable
+private data class ComputersRouteErrorDto(val error: String? = null)
+
+private fun HomeNetworkResponse.computersRouteErrorTextOrNull(): String? {
+    val payload = bodyText?.takeIf { it.isNotBlank() }
+        ?: errorBodyText?.takeIf { it.isNotBlank() }
+        ?: return null
+    return runCatching {
+        computersApiJson.decodeFromString(ComputersRouteErrorDto.serializer(), payload)
+            .error
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+    }.getOrNull()
+}
 
 private fun <T> HomeNetworkResponse.toRuntimeFormDataError(): DataResult<T> =
     when (code) {

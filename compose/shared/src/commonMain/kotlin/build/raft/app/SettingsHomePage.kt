@@ -224,6 +224,7 @@ import build.raft.app.data.kuiklyBridgeCallContext
 import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.data.serverConfirmationItemId
 import build.raft.app.data.userFacingMessage
+import build.raft.app.data.userFacingErrorMessage
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthUser
@@ -6400,7 +6401,8 @@ private fun SettingsAppShellContent(
                             SharedSettingsIntent.CompleteStorageClear(
                                 effect.target,
                                 ok = false,
-                                code = result.reason.name
+                                code = result.reason.name,
+                                emptyReason = result.reason
                             )
                         )
                     }
@@ -6409,7 +6411,8 @@ private fun SettingsAppShellContent(
                             SharedSettingsIntent.CompleteStorageClear(
                                 effect.target,
                                 ok = false,
-                                code = result.error.code
+                                code = result.error.code,
+                                screenError = result.error
                             )
                         )
                     }
@@ -6418,7 +6421,8 @@ private fun SettingsAppShellContent(
                             SharedSettingsIntent.CompleteStorageClear(
                                 effect.target,
                                 ok = false,
-                                code = result.blocker.code
+                                code = result.blocker.code,
+                                permissionBlocker = result.blocker
                             )
                         )
                     }
@@ -7886,7 +7890,7 @@ private fun SettingsLanguagePreferenceCard(
             )
         }
         if (actionState?.let { it.action in setOf(LANGUAGE_REGION_ACTION_LANGUAGE, LANGUAGE_REGION_ACTION_AUTO_TRANSLATION, LANGUAGE_REGION_ACTION_TRANSLATION_DISPLAY) && it.errorCode != null } == true) {
-            SettingsFormErrorText(actionState.errorCode.orEmpty())
+            SettingsFormErrorText(actionState)
         }
         SettingsLanguageRegionSaveButton(
             label = saveLabel,
@@ -7938,7 +7942,7 @@ private fun SettingsDateTimePreferenceCard(
             enabled = snapshot.timeFormat.available && !busy
         )
         if (actionState?.let { it.action in setOf(LANGUAGE_REGION_ACTION_TIMEZONE, LANGUAGE_REGION_ACTION_TIME_FORMAT) && it.errorCode != null } == true) {
-            SettingsFormErrorText(actionState.errorCode.orEmpty())
+            SettingsFormErrorText(actionState)
         }
         SettingsLanguageRegionSaveButton(
             label = saveLabel,
@@ -8033,7 +8037,7 @@ private fun SettingsServerTranslationPreferenceCard(
             enabled = snapshot.serverTranslation.available && !busy
         )
         if (actionState?.action == LANGUAGE_REGION_ACTION_SERVER_TRANSLATION && actionState.errorCode != null) {
-            SettingsFormErrorText(actionState.errorCode)
+            SettingsFormErrorText(actionState)
         }
     }
 }
@@ -8170,7 +8174,7 @@ private fun SettingsAppearanceFontSizeCard(
             enabled = snapshot.messageBodyFontSize.available && !busy
         )
         if (actionState?.action == APPEARANCE_ACTION_MESSAGE_FONT_SIZE && actionState.errorCode != null) {
-            SettingsFormErrorText(actionState.errorCode)
+            SettingsFormErrorText(actionState)
         }
         SettingsFormDivider()
         SettingsAppearancePreview(fontSizeKey = selected)
@@ -8379,7 +8383,7 @@ private fun SettingsMultiShellHostCard(
             SlockSwitchButton(checked = preference.enabled, enabled = preference.available && !busy)
         }
         if (actionState?.action == MOBILE_ACTION_MULTI_SHELL_HOST && actionState.errorCode != null) {
-            SettingsFormErrorText(actionState.errorCode.orEmpty())
+            SettingsFormErrorText(actionState)
         }
     }
 }
@@ -8427,7 +8431,7 @@ private fun SettingsServerDrawerCard(
             SlockSwitchButton(checked = preference.enabled, enabled = preference.available && !busy)
         }
         if (actionState?.action == MOBILE_ACTION_SERVER_DRAWER && actionState.errorCode != null) {
-            SettingsFormErrorText(actionState.errorCode.orEmpty())
+            SettingsFormErrorText(actionState)
         }
     }
 }
@@ -8472,7 +8476,7 @@ private fun SettingsHomeServerAvatarCard(
             SlockSwitchButton(checked = preference.enabled, enabled = preference.available && !busy)
         }
         if (actionState?.action == MOBILE_ACTION_HOME_SERVER_AVATAR && actionState.errorCode != null) {
-            SettingsFormErrorText(actionState.errorCode.orEmpty())
+            SettingsFormErrorText(actionState)
         }
     }
 }
@@ -8515,7 +8519,7 @@ private fun SettingsAppLanguageCard(
             enabled = preference.available && !busy
         )
         if (actionState?.action == MOBILE_ACTION_LANGUAGE && actionState.errorCode != null) {
-            SettingsFormErrorText(actionState.errorCode.orEmpty())
+            SettingsFormErrorText(actionState)
         }
     }
 }
@@ -8541,7 +8545,7 @@ private fun SettingsMessageAlignmentCard(
             enabled = snapshot.messageAlignmentPreference.available && !busy
         )
         if (actionState?.action == MOBILE_ACTION_MESSAGE_ALIGNMENT && actionState.errorCode != null) {
-            SettingsFormErrorText(actionState.errorCode.orEmpty())
+            SettingsFormErrorText(actionState)
         }
     }
 }
@@ -8576,7 +8580,7 @@ private fun SettingsLinkOpenModeCard(
             enabled = preference.available && !busy
         )
         if (actionState?.action == MOBILE_ACTION_LINK_OPEN_MODE && actionState.errorCode != null) {
-            SettingsFormErrorText(actionState.errorCode.orEmpty())
+            SettingsFormErrorText(actionState)
         }
     }
 }
@@ -8629,7 +8633,7 @@ private fun SettingsCompactMessagesCard(
             )
         }
         if (actionState?.action == MOBILE_ACTION_COMPACT_MESSAGES && actionState.errorCode != null) {
-            SettingsFormErrorText(actionState.errorCode.orEmpty())
+            SettingsFormErrorText(actionState)
         }
     }
 }
@@ -8678,7 +8682,7 @@ private fun SettingsLongMessageCollapseCard(
             )
         }
         if (actionState?.action == MOBILE_ACTION_LONG_MESSAGE_COLLAPSE && actionState.errorCode != null) {
-            SettingsFormErrorText(actionState.errorCode.orEmpty())
+            SettingsFormErrorText(actionState)
         }
     }
 }
@@ -8730,7 +8734,7 @@ private fun SettingsSingleTapOpensThreadCard(
             )
         }
         if (actionState?.action == MOBILE_ACTION_SINGLE_TAP_OPENS_THREAD && actionState.errorCode != null) {
-            SettingsFormErrorText(actionState.errorCode.orEmpty())
+            SettingsFormErrorText(actionState)
         }
     }
 }
@@ -8772,7 +8776,7 @@ private fun SettingsInlineSelectionToolbarCard(
             )
         }
         if (actionState?.action == MOBILE_ACTION_INLINE_SELECTION_TOOLBAR && actionState.errorCode != null) {
-            SettingsFormErrorText(actionState.errorCode.orEmpty())
+            SettingsFormErrorText(actionState)
         }
     }
 }
@@ -8825,7 +8829,7 @@ private fun SettingsActivityTaskStatusBadgesCard(
             )
         }
         if (actionState?.action == MOBILE_ACTION_ACTIVITY_TASK_STATUS_BADGES && actionState.errorCode != null) {
-            SettingsFormErrorText(actionState.errorCode.orEmpty())
+            SettingsFormErrorText(actionState)
         }
     }
 }
@@ -8883,7 +8887,7 @@ private fun SettingsComposerSendKeyCard(
             )
         }
         if (actionState?.action == MOBILE_ACTION_COMPOSER_SEND_KEY && actionState.errorCode != null) {
-            SettingsFormErrorText(actionState.errorCode.orEmpty())
+            SettingsFormErrorText(actionState)
         }
     }
 }
@@ -8938,7 +8942,7 @@ private fun SettingsThreadRowAffordancesCard(
             }
         }
         if (actionState?.action == MOBILE_ACTION_THREAD_ROW_AFFORDANCES && actionState.errorCode != null) {
-            SettingsFormErrorText(actionState.errorCode.orEmpty())
+            SettingsFormErrorText(actionState)
         }
     }
 }
@@ -9023,7 +9027,7 @@ private fun SettingsImageAnnotationCard(
             )
         }
         if (actionState?.action == MOBILE_ACTION_IMAGE_ANNOTATION && actionState.errorCode != null) {
-            SettingsFormErrorText(actionState.errorCode.orEmpty())
+            SettingsFormErrorText(actionState)
         }
     }
 }
@@ -9170,7 +9174,7 @@ private fun SettingsPushStatusCard(
             onSettings = onSettings
         )
         if (actionState?.action in setOf(MOBILE_ACTION_PERMISSION, MOBILE_ACTION_SETTINGS) && actionState?.errorCode != null) {
-            SettingsFormErrorText(actionState.errorCode.orEmpty())
+            SettingsFormErrorText(actionState)
         }
 
         SettingsNotificationSectionLabel(stringResource(MR.strings.settings_notifications_on_device))
@@ -9213,12 +9217,12 @@ private fun SettingsPushStatusCard(
                 ) && actionState?.errorCode != null
             ) {
                 Box(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)) {
-                    SettingsFormErrorText(actionState.errorCode.orEmpty())
+                    SettingsFormErrorText(actionState)
                 }
             }
             if (actionState?.action == MOBILE_ACTION_TEST_NOTIFICATION && actionState.errorCode != null) {
                 Box(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)) {
-                    SettingsFormErrorText(actionState.errorCode.orEmpty())
+                    SettingsFormErrorText(actionState)
                 }
             }
         }
@@ -9418,7 +9422,7 @@ private fun SettingsServerNotificationModeCard(
             }
         }
         if (actionState?.action == MOBILE_ACTION_SERVER_MUTE && actionState.errorCode != null) {
-            SettingsFormErrorText(actionState.errorCode)
+            SettingsFormErrorText(actionState)
         }
     }
 }
@@ -9443,7 +9447,7 @@ private fun SettingsPushPreviewModeCard(
         )
         if (actionState?.action == MOBILE_ACTION_PUSH_PREVIEW_MODE && actionState.errorCode != null) {
             Box(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)) {
-                SettingsFormErrorText(actionState.errorCode.orEmpty())
+                SettingsFormErrorText(actionState)
             }
         }
     }
@@ -10130,10 +10134,10 @@ private fun SettingsConnectedAppEditorCard(
             SettingsFormErrorText(stringResource(MR.strings.settings_connected_apps_permission_manage))
         }
         if (actionState?.let { it.action in setOf(CONNECTED_APPS_ACTION_REGISTER, CONNECTED_APPS_ACTION_UPDATE) && it.errorCode != null } == true) {
-            SettingsFormErrorText(actionState.errorCode.orEmpty())
+            SettingsFormErrorText(actionState)
         }
         if (actionState?.let { it.action in setOf(CONNECTED_APPS_ACTION_LOGO_UPLOAD, CONNECTED_APPS_ACTION_LOGO_CLEAR) && it.itemId == editingId && it.errorCode != null } == true) {
-            SettingsFormErrorText(actionState.errorCode.orEmpty())
+            SettingsFormErrorText(actionState)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             SlockBrutalActionButton(
@@ -10331,11 +10335,7 @@ private fun SettingsServerProfileFormCard(
             value = currentSlug.ifBlank { stringResource(MR.strings.settings_server_state_not_provided) }
         )
         if (actionState?.action == SERVER_ACTION_PROFILE_SAVE && actionState.errorCode != null) {
-            Text(
-                actionState.errorCode,
-                style = SlockType.Caption.copy(color = SlockColor.AccentRed),
-                color = SlockColor.AccentRed
-            )
+            SettingsFormErrorText(actionState)
         }
         if (canSave) {
             SlockBrutalActionButton(
@@ -10441,7 +10441,10 @@ private fun SettingsServerDangerZoneCard(
             confirmationSlug = modalConfirmationSlug,
             deleteBusy = deleteBusy,
             deleteEnabled = deleteEnabled,
-            errorCode = actionState?.errorCode.takeIf { actionState?.action == SERVER_ACTION_DELETE },
+            errorMessage =
+                actionState
+                    ?.takeIf { it.action == SERVER_ACTION_DELETE }
+                    ?.userFacingErrorMessage(),
             onDismiss = {
                 if (!deleteBusy) {
                     showDeleteModal = false
@@ -10474,7 +10477,7 @@ private fun SettingsServerDeleteConfirmationDialog(
     confirmationSlug: String,
     deleteBusy: Boolean,
     deleteEnabled: Boolean,
-    errorCode: String?,
+    errorMessage: String?,
     onDismiss: () -> Unit,
     onConfirmationSlugChange: (String) -> Unit,
     onCancel: () -> Unit,
@@ -10571,7 +10574,7 @@ private fun SettingsServerDeleteConfirmationDialog(
                         enabled = !deleteBusy,
                         onValueChange = onConfirmationSlugChange
                     )
-                    errorCode?.takeIf { it.isNotBlank() }?.let {
+                    errorMessage?.takeIf { it.isNotBlank() }?.let {
                         SettingsServerDeleteWarningBanner(serverName = null, text = it)
                     }
                     Row(
@@ -10911,7 +10914,7 @@ private fun SettingsServerAdminsCard(
             }
         }
         if (actionState?.action == SERVER_ACTION_MEMBER_ROLE && actionState.errorCode != null) {
-            SettingsFormErrorText(actionState.errorCode)
+            SettingsFormErrorText(actionState)
         }
     }
 }
@@ -10946,7 +10949,7 @@ private fun SettingsServerInvitesCard(
             }
         }
         if (actionState?.action == SERVER_ACTION_INVITE_REVOKE && actionState.errorCode != null) {
-            SettingsFormErrorText(actionState.errorCode)
+            SettingsFormErrorText(actionState)
         }
     }
 }
@@ -11028,7 +11031,7 @@ private fun SettingsServerJoinLinksCard(
             }
         }
         if (actionState?.action == SERVER_ACTION_JOIN_LINK_REVOKE && actionState.errorCode != null) {
-            SettingsFormErrorText(actionState.errorCode)
+            SettingsFormErrorText(actionState)
         }
     }
 }
@@ -11094,7 +11097,7 @@ private fun SettingsServerAgreementCard(
         }
         SettingsAgreementPreview(bodyMarkdown)
         if (actionState?.action == SERVER_ACTION_AGREEMENT_SAVE && actionState.errorCode != null) {
-            SettingsFormErrorText(actionState.errorCode)
+            SettingsFormErrorText(actionState)
         }
         if (canSave) {
             SlockBrutalActionButton(
@@ -11190,7 +11193,7 @@ private fun SettingsServerOnboardingCard(
             enabled = canSave && !busy
         )
         if (actionState?.action == SERVER_ACTION_ONBOARDING_SAVE && actionState.errorCode != null) {
-            SettingsFormErrorText(actionState.errorCode)
+            SettingsFormErrorText(actionState)
         }
         if (canSave) {
             SlockBrutalActionButton(
@@ -11229,7 +11232,7 @@ private fun SettingsServerMemberPermissionsCard(
         )
         SettingsFormDetailText(stringResource(MR.strings.settings_server_member_permissions_detail))
         if (actionState?.action == SERVER_ACTION_MEMBER_PERMISSIONS_SAVE && actionState.errorCode != null) {
-            SettingsFormErrorText(actionState.errorCode)
+            SettingsFormErrorText(actionState)
         }
         if (canSave) {
             SlockBrutalActionButton(
@@ -11304,7 +11307,12 @@ private fun SettingsFormEmptyText(text: String) {
 
 @Composable
 private fun SettingsFormErrorText(text: String) {
-    Text(settingsUserFacingErrorCodeMessage(text), style = SlockType.Caption.copy(color = SlockColor.AccentRed), color = SlockColor.AccentRed)
+    Text(text, style = SlockType.Caption.copy(color = SlockColor.AccentRed), color = SlockColor.AccentRed)
+}
+
+@Composable
+private fun SettingsFormErrorText(actionState: SharedSettingsActionState) {
+    actionState.userFacingErrorMessage()?.let { SettingsFormErrorText(it) }
 }
 
 @Composable
@@ -11710,7 +11718,7 @@ internal fun SharedSettingsApiEnvironmentContent(
                     SettingsFormErrorText(stringResource(MR.strings.settings_developer_error_urls))
                 }
                 if (actionState?.action == DEVELOPER_ACTION_API_ENVIRONMENT && actionState.errorCode != null) {
-                    SettingsFormErrorText(actionState.errorCode)
+                    SettingsFormErrorText(actionState)
                 }
             }
         }
@@ -13150,17 +13158,18 @@ internal fun ScreenLoadState<AccountSettingsSnapshot>.toAccountPayload(
         actionState
             ?.itemId
             ?.takeIf { actionState.action == ACCOUNT_ACTION_PROVIDER_CONNECT }
+    val actionErrorMessage = actionState?.userFacingErrorMessage()
     return (account?.toAccountPayload() ?: appShellAccountPayload(session))
         .copy(
             saveInProgress = actionState?.action == ACCOUNT_ACTION_PROFILE_SAVE && actionState.inProgress,
-            saveErrorCode = actionState?.errorCode.takeIf { actionState?.action == ACCOUNT_ACTION_PROFILE_SAVE },
+            saveErrorCode = actionErrorMessage.takeIf { actionState?.action == ACCOUNT_ACTION_PROFILE_SAVE },
             avatarInProgress = actionState?.action == ACCOUNT_ACTION_AVATAR_UPLOAD && actionState.inProgress,
-            avatarErrorCode = actionState?.errorCode.takeIf { actionState?.action == ACCOUNT_ACTION_AVATAR_UPLOAD },
+            avatarErrorCode = actionErrorMessage.takeIf { actionState?.action == ACCOUNT_ACTION_AVATAR_UPLOAD },
             passwordInProgress = actionState?.action == ACCOUNT_ACTION_PASSWORD_CHANGE && actionState.inProgress,
-            passwordErrorCode = actionState?.errorCode.takeIf { actionState?.action == ACCOUNT_ACTION_PASSWORD_CHANGE },
+            passwordErrorCode = actionErrorMessage.takeIf { actionState?.action == ACCOUNT_ACTION_PASSWORD_CHANGE },
             providerConnectingId = providerActionId.takeIf { actionState?.inProgress == true },
-            providerErrorId = providerActionId.takeIf { actionState?.errorCode != null },
-            providerErrorCode = actionState?.errorCode.takeIf { providerActionId != null }
+            providerErrorId = providerActionId.takeIf { actionErrorMessage != null },
+            providerErrorCode = actionErrorMessage.takeIf { providerActionId != null }
         )
 }
 
@@ -14256,7 +14265,7 @@ private fun build.raft.app.data.SharedSettingsActionState?.serverStatusFor(
         this == null || this.action != action -> fallback
         itemId != null && this.itemId != itemId -> fallback
         inProgress -> "Loading"
-        errorCode != null -> errorCode
+        userFacingErrorMessage() != null -> "Error"
         else -> "Saved"
     }
 
@@ -14271,7 +14280,7 @@ private fun build.raft.app.data.SharedSettingsActionState?.serverLocalizedStatus
         this == null || this.action != action -> fallback
         itemId != null && this.itemId != itemId -> fallback
         inProgress -> stringResource(MR.strings.settings_state_loading)
-        errorCode != null -> errorCode
+        userFacingErrorMessage() != null -> stringResource(MR.strings.settings_state_error)
         else -> stringResource(MR.strings.settings_state_saved)
     }
 
@@ -14284,7 +14293,7 @@ private fun build.raft.app.data.SharedSettingsActionState?.connectedAppsStatusFo
         this == null || this.action != action -> fallback
         itemId != null && this.itemId != itemId -> fallback
         inProgress -> "Loading"
-        errorCode != null -> errorCode
+        userFacingErrorMessage() != null -> "Error"
         else -> "Saved"
     }
 
@@ -14298,7 +14307,7 @@ private fun build.raft.app.data.SharedSettingsActionState?.connectedAppsLocalize
         this == null || this.action != action -> fallback
         itemId != null && this.itemId != itemId -> fallback
         inProgress -> stringResource(MR.strings.settings_state_loading)
-        errorCode != null -> errorCode
+        userFacingErrorMessage() != null -> stringResource(MR.strings.settings_state_error)
         else -> stringResource(MR.strings.settings_state_saved)
     }
 
@@ -14317,8 +14326,8 @@ private fun build.raft.app.data.SharedSettingsActionState?.connectedAppsErrorFor
     this?.takeIf {
         it.action == action &&
             (itemId == null || it.itemId == itemId) &&
-            it.errorCode != null
-    }?.errorCode
+            it.userFacingErrorMessage() != null
+    }?.userFacingErrorMessage()
 
 private fun List<SettingsConnectedAppMarketplaceSnapshot>.settingsConnectedAppCategoryOptions(
     allCategoriesLabel: String,
@@ -22097,7 +22106,7 @@ private fun SettingsServerDangerModalVisualContent() {
             confirmationSlug = modalSlug,
             deleteBusy = false,
             deleteEnabled = false,
-            errorCode = null,
+            errorMessage = null,
             onDismiss = {},
             onConfirmationSlugChange = { modalSlug = it },
             onCancel = {},

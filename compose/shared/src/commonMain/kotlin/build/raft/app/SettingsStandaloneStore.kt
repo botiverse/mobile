@@ -170,7 +170,8 @@ internal fun StandaloneSettingsEffectHandler(
                             SharedSettingsIntent.CompleteStorageClear(
                                 effect.target,
                                 ok = false,
-                                code = result.reason.name
+                                code = result.reason.name,
+                                emptyReason = result.reason
                             )
                         )
                     is DataResult.Error ->
@@ -178,7 +179,8 @@ internal fun StandaloneSettingsEffectHandler(
                             SharedSettingsIntent.CompleteStorageClear(
                                 effect.target,
                                 ok = false,
-                                code = result.error.code
+                                code = result.error.code,
+                                screenError = result.error
                             )
                         )
                     is DataResult.NoPermission ->
@@ -186,7 +188,8 @@ internal fun StandaloneSettingsEffectHandler(
                             SharedSettingsIntent.CompleteStorageClear(
                                 effect.target,
                                 ok = false,
-                                code = result.blocker.code
+                                code = result.blocker.code,
+                                permissionBlocker = result.blocker
                             )
                         )
                 }

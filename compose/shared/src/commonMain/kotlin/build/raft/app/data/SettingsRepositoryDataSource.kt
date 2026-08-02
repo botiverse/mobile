@@ -300,6 +300,7 @@ class RealSettingsRepository(
             executeSettings(
             emptyReason = EmptyReason.NoSettingsAvailable,
             block = { networkClient.settingsAccount(DataRequestPriority.Visible) },
+            errorTextDecoder = HomeNetworkResponse::settingsAccountRouteErrorTextOrNull,
             mapper = { bodyText ->
                 parseSharedAccountSettingsSnapshot(
                     bodyText = bodyText,
@@ -321,6 +322,7 @@ class RealSettingsRepository(
                     buildSharedAccountProfileUpdateBody(request)
                 )
             },
+            errorTextDecoder = HomeNetworkResponse::settingsAccountRouteErrorTextOrNull,
             mapper = { bodyText ->
                 parseSharedAccountSettingsSnapshot(
                     bodyText = bodyText,
@@ -341,6 +343,7 @@ class RealSettingsRepository(
                     buildSharedAccountPasswordChangeBody(request)
                 )
             },
+            errorTextDecoder = HomeNetworkResponse::settingsAccountRouteErrorTextOrNull,
             mapper = { bodyText ->
                 parseSharedAccountSettingsSnapshot(
                     bodyText = bodyText,
@@ -360,6 +363,7 @@ class RealSettingsRepository(
                     request.file.toAccountAvatarMultipartFile()
                 )
             },
+            errorTextDecoder = HomeNetworkResponse::settingsAccountRouteErrorTextOrNull,
             mapper = { bodyText ->
                 parseSharedAccountSettingsSnapshot(
                     bodyText = bodyText,
@@ -382,6 +386,7 @@ class RealSettingsRepository(
                     buildSharedAccountProviderLinkStartBody(request.copy(providerId = providerId))
                 )
             },
+            errorTextDecoder = HomeNetworkResponse::settingsAccountRouteErrorTextOrNull,
             mapper = { bodyText ->
                 parseSharedAccountProviderLinkStartResult(providerId, bodyText)
                     ?: throw IllegalStateException("Account provider link response missing url")
@@ -1220,6 +1225,7 @@ class RealSettingsRepository(
             source = "settings_appearance_account",
             warningLogger = warningLogger,
             block = { networkClient.settingsAccount(DataRequestPriority.Visible) },
+            errorTextDecoder = HomeNetworkResponse::settingsAccountRouteErrorTextOrNull,
             mapper = { bodyText ->
                 parseSharedAppearanceSettingsSnapshot(bodyText)
                     ?: throw IllegalStateException("Appearance settings response missing preferences")
@@ -1241,6 +1247,7 @@ class RealSettingsRepository(
                     buildSharedAppearanceUpdateBody(request)
                 )
             },
+            errorTextDecoder = HomeNetworkResponse::settingsAccountRouteErrorTextOrNull,
             mapper = { bodyText ->
                 parseSharedAppearanceSettingsSnapshot(bodyText)
                     ?: throw IllegalStateException("Appearance update response missing preferences")
@@ -1279,7 +1286,8 @@ class RealSettingsRepository(
                         when (serverNotificationPreferences) {
                             is DataResult.Content -> "Stops push notifications from the currently selected workspace."
                             is DataResult.NoPermission -> "You do not have permission to read workspace notification settings."
-                            is DataResult.Error -> "Workspace notification settings failed to load: ${serverNotificationPreferences.error.code}"
+                            is DataResult.Error ->
+                                "Workspace notification settings failed to load: ${serverNotificationPreferences.error.userFacingMessage()}"
                             is DataResult.Empty -> "Workspace notification settings are unavailable."
                         }
                 ),
@@ -1339,6 +1347,7 @@ class RealSettingsRepository(
                         buildSharedLanguageRegionPreferenceUpdateBody(request)
                     )
                 },
+                errorTextDecoder = HomeNetworkResponse::settingsAccountRouteErrorTextOrNull,
                 mapper = { bodyText ->
                     parseSharedLanguageRegionAccountPreferences(bodyText)
                         ?: throw IllegalStateException("Language region account response missing preferences")
@@ -1443,6 +1452,7 @@ class RealSettingsRepository(
             block = { networkClient.settingsAgents(DataRequestPriority.Visible) },
             source = "settings_machine_agents",
             warningLogger = warningLogger,
+            errorTextDecoder = HomeNetworkResponse::settingsServerSectionRouteErrorTextOrNull,
             mapper = { bodyText ->
                 val agents = parseSharedSettingsComputerAgents(bodyText = bodyText, machineId = machineId)
                     ?: throw IllegalStateException("Settings agents response missing agent list")
@@ -1465,6 +1475,7 @@ class RealSettingsRepository(
             block = { networkClient.serverMembers(DataRequestPriority.Visible, serverId) },
             source = "settings_machine_agent_members",
             warningLogger = warningLogger,
+            errorTextDecoder = HomeNetworkResponse::settingsServerSectionRouteErrorTextOrNull,
             mapper = { bodyText ->
                 parseSharedSettingsMemberProfiles(bodyText)
                     ?: throw IllegalStateException("Settings member response missing member list")
@@ -1493,6 +1504,7 @@ class RealSettingsRepository(
             source = "settings_server_members",
             contractCode = "settings_server_members_contract_mismatch",
             block = { networkClient.serverMembers(DataRequestPriority.Visible, serverId) },
+            errorTextDecoder = HomeNetworkResponse::settingsServerSectionRouteErrorTextOrNull,
             mapper = { bodyText ->
                 parseSharedSettingsServerAdmins(bodyText)
                     ?: settingsContractMismatch("settings_server_members_contract_mismatch")
@@ -1504,6 +1516,7 @@ class RealSettingsRepository(
             source = "settings_server_usage",
             contractCode = "settings_server_usage_contract_mismatch",
             block = { networkClient.settingsServerUsage(DataRequestPriority.Visible, serverId) },
+            errorTextDecoder = HomeNetworkResponse::settingsServerSectionRouteErrorTextOrNull,
             mapper = { bodyText ->
                 parseSharedSettingsServerUsage(bodyText)
                     ?: settingsContractMismatch("settings_server_usage_contract_mismatch")
@@ -1515,6 +1528,7 @@ class RealSettingsRepository(
             source = "settings_billing_subscription",
             contractCode = "settings_billing_subscription_contract_mismatch",
             block = { networkClient.settingsBillingSubscription(DataRequestPriority.Visible) },
+            errorTextDecoder = HomeNetworkResponse::settingsBillingRouteErrorTextOrNull,
             mapper = { bodyText ->
                 parseSharedSettingsBillingSubscription(bodyText)
                     ?: settingsContractMismatch("settings_billing_subscription_contract_mismatch")
@@ -1565,6 +1579,7 @@ class RealSettingsRepository(
             source = "settings_connected_apps_clients",
             contractCode = "settings_connected_apps_clients_contract_mismatch",
             block = { networkClient.settingsConnectedAppClients(DataRequestPriority.Visible) },
+            errorTextDecoder = HomeNetworkResponse::settingsConnectedAppsRouteErrorTextOrNull,
             mapper = { bodyText ->
                 parseSharedSettingsConnectedAppClients(bodyText)
                     ?: settingsContractMismatch("settings_connected_apps_clients_contract_mismatch")
@@ -1576,6 +1591,7 @@ class RealSettingsRepository(
             source = "settings_connected_apps_built_in",
             contractCode = "settings_connected_apps_built_in_contract_mismatch",
             block = { networkClient.settingsConnectedAppBuiltIns(DataRequestPriority.Visible) },
+            errorTextDecoder = HomeNetworkResponse::settingsConnectedAppsRouteErrorTextOrNull,
             mapper = { bodyText ->
                 parseSharedSettingsConnectedAppBuiltIns(bodyText)
                     ?: settingsContractMismatch("settings_connected_apps_built_in_contract_mismatch")
@@ -1587,6 +1603,7 @@ class RealSettingsRepository(
             source = "settings_connected_apps_marketplace",
             contractCode = "settings_connected_apps_marketplace_contract_mismatch",
             block = { networkClient.settingsConnectedAppMarketplace(DataRequestPriority.Visible) },
+            errorTextDecoder = HomeNetworkResponse::settingsConnectedAppsRouteErrorTextOrNull,
             mapper = { bodyText ->
                 parseSharedSettingsConnectedAppMarketplace(bodyText)
                     ?: settingsContractMismatch("settings_connected_apps_marketplace_contract_mismatch")
@@ -1605,6 +1622,7 @@ class RealSettingsRepository(
                     buildSharedSettingsConnectedAppRegisterBody(request)
                 )
             },
+            errorTextDecoder = HomeNetworkResponse::settingsConnectedAppsRouteErrorTextOrNull,
             mapper = { bodyText ->
                 parseSharedSettingsConnectedAppCreateResult(bodyText)
                     ?: settingsContractMismatch("settings_connected_apps_client_contract_mismatch")
@@ -1624,6 +1642,7 @@ class RealSettingsRepository(
                     buildSharedSettingsConnectedAppUpdateBody(request)
                 )
             },
+            errorTextDecoder = HomeNetworkResponse::settingsConnectedAppsRouteErrorTextOrNull,
             mapper = { bodyText ->
                 parseSharedSettingsConnectedAppClient(bodyText)
                     ?: settingsContractMismatch("settings_connected_apps_client_contract_mismatch")
@@ -1644,6 +1663,7 @@ class RealSettingsRepository(
                     request.file.toConnectedAppLogoMultipartFile()
                 )
             },
+            errorTextDecoder = HomeNetworkResponse::settingsConnectedAppsRouteErrorTextOrNull,
             mapper = { bodyText ->
                 parseSharedSettingsConnectedAppClient(bodyText)
                     ?: settingsContractMismatch("settings_connected_apps_client_logo_contract_mismatch")
@@ -1656,6 +1676,7 @@ class RealSettingsRepository(
             source = "settings_connected_apps_client_logo_clear",
             contractCode = "settings_connected_apps_client_logo_contract_mismatch",
             block = { networkClient.clearSettingsConnectedAppLogo(DataRequestPriority.Foreground, clientRecordId) },
+            errorTextDecoder = HomeNetworkResponse::settingsConnectedAppsRouteErrorTextOrNull,
             mapper = { bodyText ->
                 parseSharedSettingsConnectedAppClient(bodyText)
                     ?: settingsContractMismatch("settings_connected_apps_client_logo_contract_mismatch")
@@ -1668,6 +1689,7 @@ class RealSettingsRepository(
             source = "settings_connected_apps_client_delete",
             contractCode = "settings_connected_apps_client_contract_mismatch",
             block = { networkClient.deleteSettingsConnectedAppClient(DataRequestPriority.Foreground, clientRecordId) },
+            errorTextDecoder = HomeNetworkResponse::settingsConnectedAppsRouteErrorTextOrNull,
             mapper = { bodyText ->
                 parseSharedSettingsConnectedAppClient(bodyText)
                     ?: settingsContractMismatch("settings_connected_apps_client_contract_mismatch")
@@ -1688,6 +1710,7 @@ class RealSettingsRepository(
                     buildSharedSettingsConnectedAppPublishBody(request)
                 )
             },
+            errorTextDecoder = HomeNetworkResponse::settingsConnectedAppsRouteErrorTextOrNull,
             mapper = { bodyText ->
                 parseSharedSettingsConnectedAppClient(bodyText)
                     ?: settingsContractMismatch("settings_connected_apps_publish_contract_mismatch")
@@ -1700,6 +1723,7 @@ class RealSettingsRepository(
             source = "settings_connected_apps_marketplace_install",
             contractCode = "settings_connected_apps_marketplace_install_contract_mismatch",
             block = { networkClient.installSettingsConnectedAppMarketplace(DataRequestPriority.Foreground, clientRecordId) },
+            errorTextDecoder = HomeNetworkResponse::settingsConnectedAppsRouteErrorTextOrNull,
             mapper = { bodyText ->
                 parseSharedSettingsConnectedAppClient(bodyText)
                     ?: settingsContractMismatch("settings_connected_apps_marketplace_install_contract_mismatch")
@@ -1712,6 +1736,7 @@ class RealSettingsRepository(
             source = "settings_connected_apps_marketplace_uninstall",
             contractCode = "settings_connected_apps_marketplace_uninstall_contract_mismatch",
             block = { networkClient.uninstallSettingsConnectedAppMarketplace(DataRequestPriority.Foreground, clientRecordId) },
+            errorTextDecoder = HomeNetworkResponse::settingsConnectedAppsRouteErrorTextOrNull,
             mapper = { bodyText ->
                 settingsRepositoryJson.decodeFromString(JsonObject.serializer(), bodyText)
                 Unit
@@ -1737,6 +1762,7 @@ class RealSettingsRepository(
             source = "settings_server_onboarding_settings",
             contractCode = "settings_server_onboarding_contract_mismatch",
             block = { networkClient.settingsServerOnboarding(DataRequestPriority.Visible, serverId) },
+            errorTextDecoder = HomeNetworkResponse::settingsServerSectionRouteErrorTextOrNull,
             mapper = { bodyText ->
                 parseSharedSettingsServerOnboarding(bodyText)
                     ?.copy(agents = agents, canSave = canSave)
@@ -1749,6 +1775,7 @@ class RealSettingsRepository(
             source = "settings_server_onboarding_agents",
             contractCode = "settings_server_onboarding_agents_contract_mismatch",
             block = { networkClient.settingsAgents(DataRequestPriority.Visible) },
+            errorTextDecoder = HomeNetworkResponse::settingsServerSectionRouteErrorTextOrNull,
             mapper = { bodyText ->
                 parseSharedSettingsServerOnboardingAgents(bodyText)
                     ?: settingsContractMismatch("settings_server_onboarding_agents_contract_mismatch")
@@ -1763,6 +1790,7 @@ class RealSettingsRepository(
             source = "settings_server_agreement",
             contractCode = "settings_server_agreement_contract_mismatch",
             block = { networkClient.settingsServerAgreement(DataRequestPriority.Visible, serverId) },
+            errorTextDecoder = HomeNetworkResponse::settingsServerSectionRouteErrorTextOrNull,
             mapper = { bodyText ->
                 parseSharedSettingsServerAgreement(bodyText, canSave)
                     ?: settingsContractMismatch("settings_server_agreement_contract_mismatch")
@@ -1784,6 +1812,7 @@ class RealSettingsRepository(
                     buildSharedSettingsServerAgreementUpdateBody(request)
                 )
             },
+            errorTextDecoder = HomeNetworkResponse::settingsServerActionRouteErrorTextOrNull,
             mapper = { bodyText ->
                 parseSharedSettingsServerAgreement(bodyText, canSave)
                     ?: settingsContractMismatch("settings_server_agreement_contract_mismatch")
@@ -1804,6 +1833,7 @@ class RealSettingsRepository(
                     buildSharedSettingsServerOnboardingUpdateBody(request)
                 )
             },
+            errorTextDecoder = HomeNetworkResponse::settingsServerActionRouteErrorTextOrNull,
             mapper = { bodyText ->
                 parseSharedSettingsServerOnboarding(bodyText)
                     ?.copy(canSave = true)
@@ -1816,6 +1846,7 @@ class RealSettingsRepository(
             source = "settings_server_translation_settings",
             contractCode = "settings_server_translation_contract_mismatch",
             block = { networkClient.settingsServerTranslation(DataRequestPriority.Visible, serverId) },
+            errorTextDecoder = HomeNetworkResponse::settingsServerSectionRouteErrorTextOrNull,
             mapper = { bodyText ->
                 parseSharedSettingsTranslation(bodyText)
                     ?: settingsContractMismatch("settings_server_translation_contract_mismatch")
@@ -1836,6 +1867,7 @@ class RealSettingsRepository(
                     buildSharedSettingsServerTranslationUpdateBody(request)
                 )
             },
+            errorTextDecoder = HomeNetworkResponse::settingsServerActionRouteErrorTextOrNull,
             mapper = { bodyText ->
                 parseSharedSettingsTranslation(bodyText)
                     ?: settingsContractMismatch("settings_server_translation_contract_mismatch")
@@ -1847,6 +1879,7 @@ class RealSettingsRepository(
             source = "settings_server_sidebar_order",
             contractCode = "settings_server_sidebar_order_contract_mismatch",
             block = { networkClient.settingsServerSidebarOrder(DataRequestPriority.Visible, serverId) },
+            errorTextDecoder = HomeNetworkResponse::settingsServerSectionRouteErrorTextOrNull,
             mapper = { bodyText ->
                 parseSharedSettingsSidebarOrder(bodyText)
                     ?: settingsContractMismatch("settings_server_sidebar_order_contract_mismatch")
@@ -1867,6 +1900,7 @@ class RealSettingsRepository(
                     buildSharedSettingsServerSidebarOrderUpdateBody(request)
                 )
             },
+            errorTextDecoder = HomeNetworkResponse::settingsServerActionRouteErrorTextOrNull,
             mapper = { bodyText ->
                 parseSharedSettingsSidebarOrder(bodyText)
                     ?: settingsContractMismatch("settings_server_sidebar_order_contract_mismatch")
@@ -1878,6 +1912,7 @@ class RealSettingsRepository(
             source = "settings_server_order",
             contractCode = "settings_server_order_contract_mismatch",
             block = { networkClient.settingsServerOrder(DataRequestPriority.Visible) },
+            errorTextDecoder = HomeNetworkResponse::settingsServerSectionRouteErrorTextOrNull,
             mapper = { bodyText ->
                 parseSharedSettingsServerOrder(bodyText)
                     ?: settingsContractMismatch("settings_server_order_contract_mismatch")
@@ -1896,6 +1931,7 @@ class RealSettingsRepository(
                     buildSharedSettingsServerOrderUpdateBody(request)
                 )
             },
+            errorTextDecoder = HomeNetworkResponse::settingsServerActionRouteErrorTextOrNull,
             mapper = { bodyText ->
                 parseSharedSettingsServerOrder(bodyText)
                     ?: settingsContractMismatch("settings_server_order_contract_mismatch")
@@ -1907,6 +1943,7 @@ class RealSettingsRepository(
             source = "settings_server_invites",
             contractCode = "settings_server_invites_contract_mismatch",
             block = { networkClient.settingsServerInvites(DataRequestPriority.Visible, serverId) },
+            errorTextDecoder = HomeNetworkResponse::settingsServerSectionRouteErrorTextOrNull,
             mapper = { bodyText ->
                 parseSharedSettingsPendingInvites(bodyText)
                     ?: settingsContractMismatch("settings_server_invites_contract_mismatch")
@@ -1947,6 +1984,7 @@ class RealSettingsRepository(
             source = "settings_server_notification_settings",
             contractCode = "settings_server_notification_settings_contract_mismatch",
             block = { networkClient.settingsNotificationSettings(DataRequestPriority.Visible, serverId) },
+            errorTextDecoder = HomeNetworkResponse::settingsServerNotificationRouteErrorTextOrNull,
             mapper = { bodyText ->
                 parseSharedSettingsServerNotificationSettings(bodyText, warningLogger)
                     ?: settingsContractMismatch("settings_server_notification_settings_contract_mismatch")
@@ -1968,6 +2006,7 @@ class RealSettingsRepository(
                     buildSharedSettingsServerProfileUpdateBody(name, hideHumansFromMembers)
                 )
             },
+            errorTextDecoder = HomeNetworkResponse::settingsServerActionRouteErrorTextOrNull,
             mapper = { bodyText ->
                 if (!parseSharedSettingsServerProfileUpdated(bodyText)) {
                     settingsContractMismatch("settings_server_profile_contract_mismatch")
@@ -1999,6 +2038,7 @@ class RealSettingsRepository(
             source = "settings_server_invite_delete",
             contractCode = "settings_server_invite_delete_contract_mismatch",
             block = { networkClient.deleteSettingsServerInvite(DataRequestPriority.Foreground, serverId, inviteId) },
+            errorTextDecoder = HomeNetworkResponse::settingsServerActionRouteErrorTextOrNull,
             mapper = { bodyText ->
                 parseSharedSettingsServerAction(bodyText)
                     ?: settingsContractMismatch("settings_server_invite_delete_contract_mismatch")
@@ -2031,6 +2071,7 @@ class RealSettingsRepository(
             source = "settings_server_join_link_delete",
             contractCode = "settings_server_join_link_delete_contract_mismatch",
             block = { networkClient.deleteSettingsServerJoinLink(DataRequestPriority.Foreground, serverId, linkId) },
+            errorTextDecoder = HomeNetworkResponse::settingsServerActionRouteErrorTextOrNull,
             mapper = { bodyText ->
                 parseSharedSettingsServerAction(bodyText)
                     ?: settingsContractMismatch("settings_server_join_link_delete_contract_mismatch")
@@ -2042,6 +2083,7 @@ class RealSettingsRepository(
             source = "settings_server_delete",
             contractCode = "settings_server_delete_contract_mismatch",
             block = { networkClient.deleteSettingsServer(DataRequestPriority.Foreground, serverId) },
+            errorTextDecoder = HomeNetworkResponse::settingsServerActionRouteErrorTextOrNull,
             mapper = { bodyText ->
                 parseSharedSettingsServerDeleted(bodyText)
                     ?: settingsContractMismatch("settings_server_delete_contract_mismatch")
@@ -2079,6 +2121,7 @@ class RealSettingsRepository(
             source = "settings_server_member_remove",
             contractCode = "settings_server_member_remove_contract_mismatch",
             block = { networkClient.deleteSettingsServerMember(DataRequestPriority.Foreground, serverId, memberId) },
+            errorTextDecoder = HomeNetworkResponse::settingsServerActionRouteErrorTextOrNull,
             mapper = { bodyText ->
                 parseSharedSettingsServerAction(bodyText)
                     ?: settingsContractMismatch("settings_server_member_remove_contract_mismatch")
@@ -2090,6 +2133,7 @@ class RealSettingsRepository(
             source = "settings_server_leave",
             contractCode = "settings_server_leave_contract_mismatch",
             block = { networkClient.leaveSettingsServer(DataRequestPriority.Foreground, serverId) },
+            errorTextDecoder = HomeNetworkResponse::settingsServerActionRouteErrorTextOrNull,
             mapper = { bodyText ->
                 parseSharedSettingsServerAction(bodyText)
                     ?: settingsContractMismatch("settings_server_leave_contract_mismatch")
@@ -2113,6 +2157,7 @@ class RealSettingsRepository(
             source = "settings_language_region_account",
             warningLogger = warningLogger,
             block = { networkClient.settingsAccount(priority) },
+            errorTextDecoder = HomeNetworkResponse::settingsAccountRouteErrorTextOrNull,
             mapper = { bodyText ->
                 parseSharedLanguageRegionAccountPreferences(bodyText)
                     ?: throw IllegalStateException("Language region account response missing preferences")
@@ -2138,6 +2183,7 @@ class RealSettingsRepository(
                     }
                 )
             },
+            errorTextDecoder = HomeNetworkResponse::settingsServerNotificationRouteErrorTextOrNull,
             mapper = { bodyText ->
                 parseSharedSettingsServerNotificationSettings(bodyText, warningLogger)
                     ?: settingsContractMismatch("settings_server_notification_settings_contract_mismatch")
@@ -2158,6 +2204,7 @@ class RealSettingsRepository(
                     buildSharedSettingsPushPreviewModeBody(mode)
                 )
             },
+            errorTextDecoder = HomeNetworkResponse::settingsServerNotificationRouteErrorTextOrNull,
             mapper = { bodyText ->
                 parseSharedSettingsServerNotificationSettings(bodyText, warningLogger)
                     ?: settingsContractMismatch("settings_server_notification_settings_contract_mismatch")
@@ -2186,6 +2233,7 @@ class RealSettingsRepository(
         emptyWhen: (T) -> Boolean = { false },
         source: String? = null,
         warningLogger: (String) -> Unit = this.warningLogger,
+        errorTextDecoder: (HomeNetworkResponse) -> String? = { null },
         mapper: (String) -> T
     ): DataResult<T> =
         executeSettingsWithDiagnostics(
@@ -2194,6 +2242,7 @@ class RealSettingsRepository(
             emptyWhen = emptyWhen,
             source = source,
             warningLogger = warningLogger,
+            errorTextDecoder = errorTextDecoder,
             mapper = mapper
         )
 }
@@ -2262,13 +2311,14 @@ private suspend fun <T> executeSettingsWithDiagnostics(
     emptyWhen: (T) -> Boolean = { false },
     source: String? = null,
     warningLogger: (String) -> Unit = {},
+    errorTextDecoder: (HomeNetworkResponse) -> String? = { null },
     mapper: (String) -> T
 ): DataResult<T> {
     var statusCode: Int? = null
     return try {
         val response = block()
         statusCode = response.code
-        if (!response.isSuccessful) return response.toSettingsDataError()
+        if (!response.isSuccessful) return response.toSettingsDataError(errorTextDecoder(response))
         val body = response.bodyText.orEmpty()
         if (body.isBlank()) return DataResult.Empty(emptyReason)
         val sourceLabel = source ?: "settings"
@@ -2328,10 +2378,46 @@ private fun <T> HomeNetworkResponse.toSettingsDataError(serverMessage: String? =
     }
 
 @Serializable
+private data class SettingsAccountRouteErrorDto(val error: String? = null)
+
+@Serializable
+private data class SettingsConnectedAppsRouteErrorDto(val error: String? = null)
+
+@Serializable
+private data class SettingsServerSectionRouteErrorDto(val error: String? = null)
+
+@Serializable
+private data class SettingsBillingRouteErrorDto(val error: String? = null)
+
+@Serializable
+private data class SettingsServerActionRouteErrorDto(val error: String? = null)
+
+@Serializable
+private data class SettingsServerNotificationRouteErrorDto(val error: String? = null)
+
+@Serializable
 private data class SettingsInviteRouteErrorDto(val error: String? = null)
 
 @Serializable
 private data class SettingsMemberMutationErrorDto(val error: String? = null)
+
+internal fun HomeNetworkResponse.settingsAccountRouteErrorTextOrNull(): String? =
+    settingsErrorTextOrNull(SettingsAccountRouteErrorDto.serializer()) { it.error }
+
+internal fun HomeNetworkResponse.settingsConnectedAppsRouteErrorTextOrNull(): String? =
+    settingsErrorTextOrNull(SettingsConnectedAppsRouteErrorDto.serializer()) { it.error }
+
+internal fun HomeNetworkResponse.settingsServerSectionRouteErrorTextOrNull(): String? =
+    settingsErrorTextOrNull(SettingsServerSectionRouteErrorDto.serializer()) { it.error }
+
+internal fun HomeNetworkResponse.settingsBillingRouteErrorTextOrNull(): String? =
+    settingsErrorTextOrNull(SettingsBillingRouteErrorDto.serializer()) { it.error }
+
+internal fun HomeNetworkResponse.settingsServerActionRouteErrorTextOrNull(): String? =
+    settingsErrorTextOrNull(SettingsServerActionRouteErrorDto.serializer()) { it.error }
+
+internal fun HomeNetworkResponse.settingsServerNotificationRouteErrorTextOrNull(): String? =
+    settingsErrorTextOrNull(SettingsServerNotificationRouteErrorDto.serializer()) { it.error }
 
 private fun HomeNetworkResponse.settingsInviteRouteErrorTextOrNull(): String? =
     settingsErrorTextOrNull(SettingsInviteRouteErrorDto.serializer()) { it.error }
@@ -2751,8 +2837,18 @@ private fun <T> DataResult<T>.mapSettingsDetailError(
 private fun <T> DataResult<T>.toSettingsSectionErrorSnapshot(): SettingsSectionErrorSnapshot? =
     when (this) {
         is DataResult.Content, is DataResult.Empty -> null
-        is DataResult.Error -> SettingsSectionErrorSnapshot(code = error.code, retryable = error.retryable)
-        is DataResult.NoPermission -> SettingsSectionErrorSnapshot(code = blocker.code, retryable = false)
+        is DataResult.Error ->
+            SettingsSectionErrorSnapshot(
+                code = error.code,
+                retryable = error.retryable,
+                screenError = error
+            )
+        is DataResult.NoPermission ->
+            SettingsSectionErrorSnapshot(
+                code = blocker.code,
+                retryable = false,
+                permissionBlocker = blocker
+            )
     }
 
 private fun <T, R> DataResult<T>.mapComputerResult(transform: (T) -> R): DataResult<R> =
@@ -2792,7 +2888,7 @@ private fun adminsSectionDetail(result: DataResult<List<SettingsServerAdminSnaps
         is DataResult.Content -> if (count == 0) "No owners or admins yet." else "$count owner/admin member${if (count == 1) "" else "s"}"
         is DataResult.Empty -> "No admins yet."
         is DataResult.NoPermission -> "You do not have permission to view server members."
-        is DataResult.Error -> "Admin list failed to load: ${result.error.code}"
+        is DataResult.Error -> "Admin list failed to load: ${result.error.userFacingMessage()}"
     }
 
 private fun SettingsServerAdminSnapshot.isPrivilegedServerRole(): Boolean {
@@ -2816,7 +2912,7 @@ private fun billingSectionDetail(
             "Current plan: $plan.$detail$usage"
         }
         is DataResult.NoPermission -> "Billing requires owner permission."
-        is DataResult.Error -> "Current plan: $plan. Billing subscription failed: ${billing.error.code}.$usage"
+        is DataResult.Error -> "Current plan: $plan. Billing subscription failed: ${billing.error.userFacingMessage()}$usage"
         is DataResult.Empty -> "Current plan: $plan.$usage"
     }
 }
@@ -2829,7 +2925,7 @@ private fun onboardingSectionDetail(
         is DataResult.Content -> onboarding?.detail ?: "Onboarding preference loaded."
         is DataResult.Empty -> "No onboarding preference was returned."
         is DataResult.NoPermission -> "Only server owners and admins can update onboarding settings."
-        is DataResult.Error -> "Onboarding settings failed to load: ${result.error.code}"
+        is DataResult.Error -> "Onboarding settings failed to load: ${result.error.userFacingMessage()}"
     }
 
 private fun agreementSectionDetail(
@@ -2840,7 +2936,7 @@ private fun agreementSectionDetail(
         is DataResult.Content -> agreement?.detail ?: "Pre-join agreement loaded."
         is DataResult.Empty -> "No pre-join agreement was returned."
         is DataResult.NoPermission -> "Only server owners and admins can manage the pre-join agreement."
-        is DataResult.Error -> "Pre-join agreement failed to load: ${result.error.code}"
+        is DataResult.Error -> "Pre-join agreement failed to load: ${result.error.userFacingMessage()}"
     }
 
 private fun translationSectionDetail(
@@ -2851,7 +2947,7 @@ private fun translationSectionDetail(
         is DataResult.Content -> translation?.detail ?: "Translation settings loaded."
         is DataResult.Empty -> "No translation settings were returned."
         is DataResult.NoPermission -> "Only server owners and admins can update translation settings."
-        is DataResult.Error -> "Translation settings failed to load: ${result.error.code}"
+        is DataResult.Error -> "Translation settings failed to load: ${result.error.userFacingMessage()}"
     }
 
 private fun sidebarOrderSectionDetail(
@@ -2866,7 +2962,7 @@ private fun sidebarOrderSectionDetail(
         }
         is DataResult.Empty -> "No sidebar order settings were returned."
         is DataResult.NoPermission -> "Only server owners and admins can update sidebar order."
-        is DataResult.Error -> "Sidebar order failed to load: ${result.error.code}"
+        is DataResult.Error -> "Sidebar order failed to load: ${result.error.userFacingMessage()}"
     }
 
 private fun invitesSectionDetail(result: DataResult<List<SettingsServerInviteSnapshot>>, count: Int): String =
@@ -2874,7 +2970,7 @@ private fun invitesSectionDetail(result: DataResult<List<SettingsServerInviteSna
         is DataResult.Content -> if (count == 0) "No pending invites." else "$count pending invite${if (count == 1) "" else "s"}"
         is DataResult.Empty -> "No pending invites."
         is DataResult.NoPermission -> "Only server owners and admins can view invites."
-        is DataResult.Error -> "Pending invites failed to load: ${result.error.code}"
+        is DataResult.Error -> "Pending invites failed to load: ${result.error.userFacingMessage()}"
     }
 
 private fun joinLinksSectionDetail(result: DataResult<List<SettingsServerJoinLinkSnapshot>>, count: Int): String =
@@ -2882,7 +2978,7 @@ private fun joinLinksSectionDetail(result: DataResult<List<SettingsServerJoinLin
         is DataResult.Content -> if (count == 0) "No active join links." else "$count join link${if (count == 1) "" else "s"}"
         is DataResult.Empty -> "No active join links."
         is DataResult.NoPermission -> "Only server owners and admins can view join links."
-        is DataResult.Error -> "Join links failed to load: ${result.error.code}"
+        is DataResult.Error -> "Join links failed to load: ${result.error.userFacingMessage()}"
     }
 
 private fun <T> DataResult<T>.sectionState(empty: Boolean): SettingsSectionAvailability =
@@ -3259,7 +3355,8 @@ private fun SettingsLanguageRegionAccountPreferences.toLanguageRegionSnapshot(
         translation?.detail
             ?: when (translationResult) {
                 is DataResult.Empty -> "Server translation settings are unavailable."
-                is DataResult.Error -> "Server translation settings failed to load: ${translationResult.error.code}"
+                is DataResult.Error ->
+                    "Server translation settings failed to load: ${translationResult.error.userFacingMessage()}"
                 is DataResult.NoPermission -> "You do not have permission to manage server translation settings."
                 is DataResult.Content -> "Server message translation setting loaded."
             }

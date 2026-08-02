@@ -611,7 +611,7 @@ class SharedSettingsStoreTest {
         val server = assertIs<ScreenLoadState.Content<SettingsServerSnapshot>>(store.state.value.server).data
         assertEquals(initialServer.profile.name, server.profile.name)
         assertEquals(listOf("server", "deleteServer:slock"), repository.calls)
-        assertEquals(SharedSettingsActionState(SERVER_ACTION_DELETE, inProgress = false, errorCode = "settings_server_delete_failed"), store.state.value.actionState)
+        assertEquals(SharedSettingsActionState(SERVER_ACTION_DELETE, inProgress = false, errorCode = "settings_server_delete_failed", screenError = ScreenError("settings_server_delete_failed")), store.state.value.actionState)
         assertEquals("settings_server_delete_failed", store.state.value.routeErrorCode)
         scope.cancel()
     }
@@ -2687,7 +2687,8 @@ class SharedSettingsStoreTest {
             SharedSettingsActionState(
                 DIAGNOSTICS_ACTION_PROFILER_START,
                 inProgress = false,
-                errorCode = "settings_profiler_runtime_incompatible"
+                errorCode = "settings_profiler_runtime_incompatible",
+                screenError = ScreenError("settings_profiler_runtime_incompatible", retryable = false)
             ),
             store.state.value.actionState
         )

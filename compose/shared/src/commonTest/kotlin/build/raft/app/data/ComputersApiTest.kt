@@ -131,14 +131,57 @@ class ComputersApiTest {
         val serverId = ServerId("server-1")
 
         transport.respond = { code -> HomeNetworkResponse(code = code, bodyText = """{"error":"x"}""") }
-        assertEquals("machine_offline_replay", assertIs<DataResult.Error>(client.machineWorkspaces(serverId, "m")).error.code)
-        assertEquals(true, assertIs<DataResult.Error>(client.machineWorkspaces(serverId, "m")).error.retryable)
+        val replayError = assertIs<DataResult.Error>(client.machineWorkspaces(serverId, "m")).error
+        assertEquals("machine_offline_replay", replayError.code)
+        assertEquals(true, replayError.retryable)
+        assertEquals("x", replayError.serverMessage)
         assertEquals("computer_bad_request", assertIs<DataResult.Error>(client.renameMachine(serverId, "m", "n")).error.code)
         assertEquals(false, assertIs<DataResult.Error>(client.renameMachine(serverId, "m", "n")).error.retryable)
         assertEquals("computer_bad_request", assertIs<DataResult.Error>(client.updateMachineDescription(serverId, "m", "d")).error.code)
         assertEquals("computer_has_agents", assertIs<DataResult.Error>(client.deleteMachine(serverId, "m")).error.code)
         assertEquals(false, assertIs<DataResult.Error>(client.deleteMachine(serverId, "m")).error.retryable)
         assertEquals("server_forbidden", assertIs<DataResult.NoPermission>(client.machines(serverId)).blocker.code)
+    }
+
+    @Test
+    fun typedComputersApiAcceptsOnlyTheCanonicalMachineErrorField() = runPortableCoroutineTest {
+        val transport = RecordingComputersApi()
+        val client = SlockComputersApiClient(transport)
+        val serverId = ServerId("server-1")
+        val fixtures =
+            listOf(
+                ComputersErrorFixture(
+                    name = "canonical-error-body",
+                    errorBody = """{"error":"This computer still has active agents"}""",
+                    expected = "This computer still has active agents"
+                ),
+                ComputersErrorFixture(
+                    name = "future-fields",
+                    body = """{"error":"This computer still has active agents","future":{"agentCount":2}}""",
+                    expected = "This computer still has active agents"
+                ),
+                ComputersErrorFixture("wrong-alias", body = """{"message":"must not be guessed"}"""),
+                ComputersErrorFixture("wrong-type", body = """{"error":409}"""),
+                ComputersErrorFixture("nested", body = """{"error":{"message":"must not be guessed"}}"""),
+                ComputersErrorFixture("malformed", body = """{"error":"unterminated"""),
+                ComputersErrorFixture("plain-text", body = "must not be guessed"),
+                ComputersErrorFixture("blank", body = ""),
+                ComputersErrorFixture("missing")
+            )
+
+        fixtures.forEach { fixture ->
+            transport.respond = { code ->
+                HomeNetworkResponse(
+                    code = code,
+                    bodyText = fixture.body,
+                    errorBodyText = fixture.errorBody
+                )
+            }
+
+            val error = assertIs<DataResult.Error>(client.deleteMachine(serverId, "machine-1"), fixture.name).error
+            assertEquals("computer_has_agents", error.code, fixture.name)
+            assertEquals(fixture.expected, error.serverMessage, fixture.name)
+        }
     }
 
     @Test
@@ -389,6 +432,13 @@ class ComputersApiTest {
         private fun ok(body: String): HomeNetworkResponse =
             HomeNetworkResponse(code = 200, bodyText = body)
     }
+
+    private data class ComputersErrorFixture(
+        val name: String,
+        val body: String? = null,
+        val errorBody: String? = null,
+        val expected: String? = null
+    )
 
     private companion object {
         val canonicalRuntimeOptionsBody =
