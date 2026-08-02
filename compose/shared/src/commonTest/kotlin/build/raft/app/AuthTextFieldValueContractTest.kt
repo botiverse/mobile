@@ -65,6 +65,13 @@ class AuthTextFieldValueContractTest {
     }
 
     @Test
+    fun alreadyNormalizedSlugKeepsExactNativeSnapshot() {
+        val native = TextFieldValue("already-fine", selection = TextRange(4))
+
+        assertSame(native, authCreateServerSlugFieldValue(native))
+    }
+
+    @Test
     fun slugNormalizationMapsCommittedSelectionThroughTransformedPrefix() {
         val committed = TextFieldValue("A B!C", selection = TextRange(2, 5))
 

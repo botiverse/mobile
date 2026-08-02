@@ -16178,6 +16178,7 @@ internal fun authCreateServerSlugFromName(value: String): String =
 internal fun authCreateServerSlugFieldValue(value: TextFieldValue): TextFieldValue {
     if (value.composition != null) return value
     val normalizedText = authCreateServerSlugFromName(value.text)
+    if (normalizedText == value.text) return value
     fun mappedOffset(offset: Int): Int =
         authCreateServerSlugFromName(value.text.substring(0, offset.coerceIn(0, value.text.length))).length
 
