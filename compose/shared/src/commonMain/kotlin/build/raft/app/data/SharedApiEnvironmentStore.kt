@@ -1,10 +1,17 @@
 package build.raft.app.data
 
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+
 class SharedApiEnvironmentStore(
     private val store: SlockKeyValueStore
 ) {
+    private val mutableState = MutableStateFlow(currentEnvironment(store.getString(KEY_ENVIRONMENT)))
+    val state: StateFlow<SharedSettingsApiEnvironmentOption> = mutableState.asStateFlow()
+
     fun current(): SharedSettingsApiEnvironmentOption =
-        currentEnvironment(store.getString(KEY_ENVIRONMENT))
+        currentEnvironment(store.getString(KEY_ENVIRONMENT)).also { mutableState.value = it }
 
     fun developerSnapshot(feedback: String? = null): SharedSettingsDeveloperSnapshot {
         val current = current()
@@ -22,12 +29,14 @@ class SharedApiEnvironmentStore(
     fun select(key: String): SharedSettingsApiEnvironmentOption? {
         val environment = predefined.firstOrNull { it.key == key } ?: return null
         store.putString(KEY_ENVIRONMENT, environment.key)
+        mutableState.value = environment
         return environment
     }
 
     fun save(request: SharedSettingsApiEnvironmentRequest): SharedSettingsApiEnvironmentOption? {
         predefined.firstOrNull { it.key == request.key }?.let { environment ->
             store.putString(KEY_ENVIRONMENT, environment.key)
+            mutableState.value = environment
             return environment
         }
         val apiBaseUrl = request.apiBaseUrl.trim()
@@ -47,6 +56,7 @@ class SharedApiEnvironmentStore(
         store.putString(KEY_CUSTOM_API_BASE_URL, custom.apiBaseUrl)
         store.putString(KEY_CUSTOM_SOCKET_BASE_URL, custom.socketBaseUrl)
         store.putString(KEY_CUSTOM_WEB_URL, custom.webUrl)
+        mutableState.value = custom
         return custom
     }
 
