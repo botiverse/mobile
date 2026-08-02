@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>54c7a1d5-20260802215950</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-08-02T22:00:31.964Z" data-timestamp="2026-08-02T22:00:31.964Z" title="2026-08-02T22:00:31.964Z">2026-08-02 22:00:31 UTC</time></p>
+    <p class="runMeta"><code>54c7a1d5-20260802215950</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-08-02T22:02:25.795Z" data-timestamp="2026-08-02T22:02:25.795Z" title="2026-08-02T22:02:25.795Z">2026-08-02 22:02:25 UTC</time></p>
     
     <div class="summary">
       <span class="pill">Total 80</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 0</span>
       <span class="pill">Different 79</span>
       <span class="pill">Missing 1</span>
-      <span class="pill">AI 76/80 ready</span>
+      <span class="pill">AI 79/80 ready</span>
       <span class="pill">Matrix 89/108 active</span>
       <span class="pill">Components Parity 78/82 active</span><span class="pill">Screens Parity 11/26 active</span>
     </div>
@@ -2125,7 +2125,12 @@
       <p><code>RGB 85.1%</code><br/><code>Pixel 65.22%</code><br/><code>Mismatch 34.78%</code><br/><code>Raw 1122×324 / 1122×324</code><br/><code>Canvas 1122×324</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 374×108 / component-bounds 374×108</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · android-engineering</summary>
+    <ul><li>Avatar shape and color differ: React shows a black square with grid pattern and yellow dot, Android shows a solid purple square with a person silhouette icon.</li><li>Date/time differs: React shows '06/22 02:30 AM', Android shows '06/22 10:30' (missing AM/PM and different time).</li><li>Text content differs: Android label is 'Keeps visual test…' while React is 'Keeps vis…' (different truncation point).</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Ensure Android uses the same avatar source/component as React (grid placeholder vs user image mismatch indicates asset binding bug)</li><li>Align the preview/copy string so truncation produces identical visible characters</li><li>Remove the blue background highlight on the inline '#product:f8e569cb' link on Android, or apply equivalent treatment in React</li><li>Restore the missing chips on Android: the @mention tag and the trailing '+' action chip</li><li>Match the timestamp formatter to include AM/PM and use the same locale/time format as React</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.thread.message.row.png" data-current-src="android/components.thread.message.row.png" data-overlay-width="1122" data-overlay-height="324">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -2376,7 +2381,12 @@
       <p><code>RGB 91.6%</code><br/><code>Pixel 29.13%</code><br/><code>Mismatch 70.87%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop viewport-with-portal 390×844 / viewport-bounds 390×844</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · android-engineering</summary>
+    <ul><li>Bottom action bar position differs: React pins bar to bottom of viewport; Android places it immediately under the message list at the top of the empty area, leaving a large cream-colored empty region below.</li><li>Android action bar contains additional actions ('All', copy icon, download icon) absent in React; React shows only Cancel, Forward, copy, and overflow (...).</li><li>Android message rows render with extra inline metadata between name and timestamp (e.g., 'Keeps visua…' on Cindy's row) that React does not show; 'artin' name is not truncated with ellipsis on Android as it is on React.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Anchor the selection action bar to the bottom of the viewport (e.g., BoxWithConstraints/WindowInsets-aware footer) to match React's portal bottom positioning.</li><li>Remove or hide the extra 'All', copy, and download buttons in the action bar until parity with React is confirmed.</li><li>Strip the inline metadata string between the author name and the timestamp on Android message rows; match React's layout exactly.</li><li>Use the circular yellow check selection indicator from React or apply the same component on Android.</li><li>Remove the cream background fill below the message list on Android, or match React's surface color.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.thread.message-share.selection.png" data-current-src="android/components.thread.message-share.selection.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -4207,7 +4217,12 @@
       <p><code>RGB 97.1%</code><br/><code>Pixel 95.79%</code><br/><code>Mismatch 4.21%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×844 / viewport-bounds 390×844</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · mobile-platform (Android settings/navigation owner)</summary>
+    <ul><li>Android version has an extra leading gear/settings icon in the yellow header bar that React baseline lacks, shifting the 'Settings' title rightward.</li><li>Android version includes additional menu items not present in React: 'Mobile' and 'Storage' under PERSONAL, and 'Connected Apps' under WORKSPACE, plus 'Send feedback' under ABOUT.</li><li>React baseline includes 'MCP Servers' and 'Documentation' under WORKSPACE and ABOUT respectively that are missing from Android.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Align menu item lists across platforms: add 'Mobile', 'Storage', 'Connected Apps' to React or remove from Android; add 'MCP Servers' and 'Documentation' to Android.</li><li>Standardize label text: pick 'Plan &amp; Billing' or 'Billing'; pick 'Send feedback' or 'Feedback' and apply consistently.</li><li>Remove the extra gear icon from the Android header OR add it to React to match header composition.</li><li>Match title typography: use the same font size and weight for the 'Settings' header on both platforms.</li><li>Normalize vertical spacing and icon size between React and Android list items using shared design tokens.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.settings.root.page.png" data-current-src="android/components.settings.root.page.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-02T22:00:30.786Z",
+  "generatedAt": "2026-08-02T22:02:24.722Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 80,
-    "ready": 76,
-    "pending": 4
+    "ready": 79,
+    "pending": 1
   },
   "cases": [
     {
@@ -1042,15 +1042,36 @@
     },
     {
       "id": "components.thread.message.row",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:ffffffff00000000bffcbffc0ffe1ffc1fff1fffffffffffffffffffffffffff1fff1fff010f03c707ff07ff1fff3fff00033fff000300071fff0007ffffeeffc000c07fe000c003fffec003e01fc07fc007e0ffc003efffc007cfffe01fffffffffffff0000000000000000fffffffffffffffffff81fffffffffffffffffff",
-      "generatedAt": "2026-08-02T22:00:29.820Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-02T22:01:52.486Z",
+      "severity": "high",
+      "summary": [
+        "Avatar shape and color differ: React shows a black square with grid pattern and yellow dot, Android shows a solid purple square with a person silhouette icon.",
+        "Date/time differs: React shows '06/22 02:30 AM', Android shows '06/22 10:30' (missing AM/PM and different time).",
+        "Text content differs: Android label is 'Keeps visual test…' while React is 'Keeps vis…' (different truncation point).",
+        "Inline link highlighting differs: Android renders '#product:f8e569cb' inside a light blue/cyan rectangular highlight box, React has no such background.",
+        "Action chip rendering differs: React shows separate '#10 @Cindy' (cyan filled), '5 replies · 2 new' (light blue filled), '2' (pink), and '+' chips; Android omits the '@Cindy' mention chip and the '+' chip, leaving only the highlighted product link as a chip-like element."
+      ],
+      "likelyCauses": [
+        "Android implementation is using a different/placeholder avatar asset instead of the user's actual image",
+        "Android text truncation or copy string is inconsistent with React",
+        "Android applies a link/citation highlight background style that React does not render",
+        "Android message row is missing action/mention/reply chips present in React",
+        "Date/time formatter on Android drops AM/PM and formats time differently"
+      ],
+      "suggestedOwner": "android-engineering",
+      "suggestedFixes": [
+        "Ensure Android uses the same avatar source/component as React (grid placeholder vs user image mismatch indicates asset binding bug)",
+        "Align the preview/copy string so truncation produces identical visible characters",
+        "Remove the blue background highlight on the inline '#product:f8e569cb' link on Android, or apply equivalent treatment in React",
+        "Restore the missing chips on Android: the @mention tag and the trailing '+' action chip",
+        "Match the timestamp formatter to include AM/PM and use the same locale/time format as React"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.34779989436852177
     },
     {
@@ -1163,15 +1184,36 @@
     },
     {
       "id": "components.thread.message-share.selection",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:07fc07fcfffe7ffe801e0146c0024002f0fe7006f1fe7ffe83fe03fe80024002f8fe7002fffe4006fffe0001fffe0001fffe0002fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00007ffe00000000fffe1fff",
-      "generatedAt": "2026-08-02T22:00:29.916Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-02T22:01:52.568Z",
+      "severity": "high",
+      "summary": [
+        "Bottom action bar position differs: React pins bar to bottom of viewport; Android places it immediately under the message list at the top of the empty area, leaving a large cream-colored empty region below.",
+        "Android action bar contains additional actions ('All', copy icon, download icon) absent in React; React shows only Cancel, Forward, copy, and overflow (...).",
+        "Android message rows render with extra inline metadata between name and timestamp (e.g., 'Keeps visua…' on Cindy's row) that React does not show; 'artin' name is not truncated with ellipsis on Android as it is on React.",
+        "Selection checkbox control differs: React uses a circular yellow check icon; Android uses a square yellow check button with visible black border.",
+        "Android adds a cream/peach background fill across the lower half of the viewport that React does not have."
+      ],
+      "likelyCauses": [
+        "Android portal rendering the selection action bar inline below content instead of as a fixed/portal bottom sheet used by React.",
+        "Action bar spec mismatch between platforms: Android exposes extra bulk actions ('All', copy, download) not in the React baseline.",
+        "Different list-item metadata composition (status/preview text injected between author name and timestamp) on Android.",
+        "Different avatar asset binding and missing author-name truncation on Android.",
+        "Background container/empty-state color applied on Android but not on React."
+      ],
+      "suggestedOwner": "android-engineering",
+      "suggestedFixes": [
+        "Anchor the selection action bar to the bottom of the viewport (e.g., BoxWithConstraints/WindowInsets-aware footer) to match React's portal bottom positioning.",
+        "Remove or hide the extra 'All', copy, and download buttons in the action bar until parity with React is confirmed.",
+        "Strip the inline metadata string between the author name and the timestamp on Android message rows; match React's layout exactly.",
+        "Use the circular yellow check selection indicator from React or apply the same component on Android.",
+        "Remove the cream background fill below the message list on Android, or match React's surface color."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.7087495442945679
     },
     {
@@ -1628,7 +1670,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-02T22:00:30.084Z",
+      "generatedAt": "2026-08-02T22:02:24.083Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1746,15 +1788,39 @@
     },
     {
       "id": "components.settings.root.page",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ffc1ffc0000000000000000000000008ffe1ffecffe01fe81fe01fec7fe07fec7fe07fe83fe0ffedffe0ffe87fe0ffe83fe5ffe87fe03fe83fe0ffe83fe03fec7fe03fe87fe03fe87fe07fe87fe7ffe87fe1ffebffe03fe8ffe03fe83fe03fe83fe7ffe87fe7ffe83fe7ffe83fe7ffefffe7ffefffe7ffe00000000fff81fff",
-      "generatedAt": "2026-08-02T22:00:30.253Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-08-02T22:01:52.904Z",
+      "severity": "high",
+      "summary": [
+        "Android version has an extra leading gear/settings icon in the yellow header bar that React baseline lacks, shifting the 'Settings' title rightward.",
+        "Android version includes additional menu items not present in React: 'Mobile' and 'Storage' under PERSONAL, and 'Connected Apps' under WORKSPACE, plus 'Send feedback' under ABOUT.",
+        "React baseline includes 'MCP Servers' and 'Documentation' under WORKSPACE and ABOUT respectively that are missing from Android.",
+        "Label changed: React shows 'Plan & Billing' while Android shows 'Billing' (shortened label).",
+        "Label changed: React shows 'Feedback' while Android shows 'Send feedback' (with plus icon)."
+      ],
+      "likelyCauses": [
+        "Android implementation diverged from the React spec, adding and removing settings entries independently.",
+        "Settings menu item list/config is not shared/synced between platforms; Android has its own navigation spec.",
+        "Header title component differs on Android (icon + smaller title) versus React (large title only).",
+        "Icon component set differs between platforms (plus/feedback icon swap, gear icon addition).",
+        "MCP Servers and Documentation entries were intentionally removed on Android but not documented in the spec."
+      ],
+      "suggestedOwner": "mobile-platform (Android settings/navigation owner)",
+      "suggestedFixes": [
+        "Align menu item lists across platforms: add 'Mobile', 'Storage', 'Connected Apps' to React or remove from Android; add 'MCP Servers' and 'Documentation' to Android.",
+        "Standardize label text: pick 'Plan & Billing' or 'Billing'; pick 'Send feedback' or 'Feedback' and apply consistently.",
+        "Remove the extra gear icon from the Android header OR add it to React to match header composition.",
+        "Match title typography: use the same font size and weight for the 'Settings' header on both platforms.",
+        "Normalize vertical spacing and icon size between React and Android list items using shared design tokens."
+      ],
+      "intentional": [
+        "Mobile, Storage, Connected Apps entries may be intentional Android-only extensions of the settings menu",
+        "Send feedback (with plus icon) may be a deliberate Android-specific label change"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.04213114864773637
     },
     {

@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-08-02 22:00:31 UTC
+Generated: 2026-08-02 22:02:25 UTC
 Latest run: 54c7a1d5-20260802215950
 Latest commit: 54c7a1d5-20260802215950
 Commit subject: test(settings): keep honest-state coverage portable (#1877)
 Providers: react vs android
 Summary: total 80, same 0, pass 0, basic-pass 0, different 79, missing 1
-AI analysis: ready 76 / total 80, pending 4
+AI analysis: ready 79 / total 80, pending 1
 Visual coverage matrix: active 89 / total 108, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
