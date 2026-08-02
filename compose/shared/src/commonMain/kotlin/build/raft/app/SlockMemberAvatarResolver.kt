@@ -44,8 +44,8 @@ internal fun slockMemberAvatarResolver(
         avatarFlow = { memberId ->
             if (serverMembersStore == null) {
                 diagnosticsLogger(
-                    "result=missing_store serverId=${cleanServerId?.value ?: "none"} " +
-                        "memberId=${memberId.slockAvatarDiagnosticsId()}"
+                    "result=missing_store serverHash=${cleanServerId?.value.slockAvatarDiagnosticsHash()} " +
+                        "memberHash=${memberId.slockAvatarDiagnosticsHash()}"
                 )
                 flowOf(null)
             } else {
@@ -54,8 +54,8 @@ internal fun slockMemberAvatarResolver(
                     .map { profile ->
                         val avatarWireValue = profile?.avatarWireValueForRenderedAvatar()
                         diagnosticsLogger(
-                            "result=profile serverId=${cleanServerId?.value ?: "current"} " +
-                                "memberId=${memberId.slockAvatarDiagnosticsId()} " +
+                            "result=profile serverHash=${cleanServerId?.value.slockAvatarDiagnosticsHash()} " +
+                                "memberHash=${memberId.slockAvatarDiagnosticsHash()} " +
                                 "profile=${profile != null} " +
                                 "kind=${profile?.kind?.name ?: "none"} " +
                                 "avatarSource=${avatarWireValue.slockAvatarDiagnosticsSource()}"
@@ -85,22 +85,4 @@ internal fun rememberSlockMemberAvatarWireValue(
         }
     val avatarWireValue by avatarFlow.collectAsState(initialAvatarWireValue)
     return avatarWireValue
-}
-
-internal fun String?.slockAvatarDiagnosticsId(): String =
-    this
-        ?.trim()
-        ?.takeIf { it.isNotBlank() }
-        ?.take(64)
-        ?: "none"
-
-internal fun String?.slockAvatarDiagnosticsSource(): String {
-    val value = this?.trim()?.takeIf { it.isNotBlank() } ?: return "none"
-    return when {
-        value.startsWith("http://") || value.startsWith("https://") -> "url"
-        value.startsWith("pixel:") -> "pixel"
-        value.startsWith("random:") -> "random"
-        value.length in 32..128 && value.all { it.isLetterOrDigit() } -> "hash"
-        else -> "wire"
-    }
 }

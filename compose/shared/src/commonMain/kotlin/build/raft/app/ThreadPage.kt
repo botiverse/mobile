@@ -4658,6 +4658,7 @@ private fun channelPanelVisualSettingsActions(): List<KuiklyThreadSettingsAction
 @Composable
 private fun ThreadMessageVisualCard(
     message: KuiklyThreadMessageItem,
+    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     highlightedMentions: Set<String> = emptySet(),
     resolvedTaskAssigneeName: String? = null,
     resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)? = null,
@@ -4668,6 +4669,10 @@ private fun ThreadMessageVisualCard(
     onOpenMarkdownUrl: (String) -> Unit,
     outerPadding: com.tencent.kuikly.compose.ui.unit.Dp = SlockSpacing.Sm
 ) {
+    val avatarWireValue =
+        resolveThreadRowAvatarWireValue(
+            rememberSlockMemberAvatarWireValue(memberAvatarResolver, message.authorId)
+        )
     Column(
         modifier =
             Modifier
@@ -4690,7 +4695,7 @@ private fun ThreadMessageVisualCard(
             ) {
                 ThreadMessageStaticAvatar(
                     avatarLabel = message.avatarLabel,
-                    avatarWireValue = message.resolvedThreadAvatarWireValue(),
+                    avatarWireValue = avatarWireValue,
                     status = null
                 )
                 Column(
@@ -4983,7 +4988,8 @@ internal fun SharedThreadRouteContent(
         remember(serverMembersStore, headerProjectionServerId) {
             slockMemberAvatarResolver(
                 serverMembersStore = serverMembersStore,
-                serverId = headerProjectionServerId?.value
+                serverId = headerProjectionServerId?.value,
+                diagnosticsLogger = { message -> bridge.log("thread_avatar_member $message") }
             )
         }
     val initialDirectoryConversationProjections =
@@ -19385,8 +19391,24 @@ private fun ThreadMessageCard(
             null
         }
     val avatarWireValue =
-        rememberSlockMemberAvatarWireValue(memberAvatarResolver, message.authorId)
-            ?: message.resolvedThreadAvatarWireValue()
+        resolveThreadRowAvatarWireValue(
+            rememberSlockMemberAvatarWireValue(memberAvatarResolver, message.authorId)
+        )
+    val avatarDiagnostics =
+        remember(message.id, message.authorId, diagnosticsLogger) {
+            slockAvatarRowDiagnostics(
+                messageId = message.id,
+                authorId = message.authorId,
+                logger = diagnosticsLogger
+            )
+        }
+    LaunchedEffect(avatarDiagnostics, avatarWireValue) {
+        avatarDiagnostics.logger(
+            "thread_avatar_row messageHash=${avatarDiagnostics.messageHash} " +
+                "authorHash=${avatarDiagnostics.authorHash} " +
+                "source=${avatarWireValue.slockAvatarDiagnosticsSource()} authority=member_profile"
+        )
+    }
     val authorGestureIdentity =
         remember(message.id, message.authorId, message.authorKind) {
             message.threadAuthorGestureIdentity()
@@ -19630,6 +19652,7 @@ private fun ThreadMessageCard(
                         timestampTextAlign = TextAlign.Start,
                         avatarLabel = message.avatarLabel,
                         avatarWireValue = avatarWireValue,
+                        avatarDiagnostics = avatarDiagnostics,
                         status = agentStatus,
                         statusPulsing = { !isMessageListScrolling() },
                         muted = authorBadgeLabel != null,
@@ -20004,6 +20027,7 @@ private fun ThreadMessageCard(
                         timestampTextAlign = TextAlign.End,
                         avatarLabel = message.avatarLabel,
                         avatarWireValue = avatarWireValue,
+                        avatarDiagnostics = avatarDiagnostics,
                         status = agentStatus,
                         statusPulsing = { !isMessageListScrolling() },
                         muted = authorBadgeLabel != null,
@@ -22198,9 +22222,7 @@ private fun ThreadInlineReplyRow(
             ?: participant?.displayName?.trim()?.takeIf { it.isNotBlank() }
             ?: reply.senderName.trim().ifBlank { reply.senderId }
     val avatarWireValue =
-        resolvedAvatar
-            ?: participant?.avatarUrl?.takeIf { it.isNotBlank() }
-            ?: reply.senderAvatarUrl?.takeIf { it.isNotBlank() }
+        resolveThreadRowAvatarWireValue(resolvedAvatar)
     Row(
         modifier =
             Modifier
@@ -23473,6 +23495,7 @@ private fun ThreadMessageAvatarSlot(
     timestampTextAlign: TextAlign,
     avatarLabel: String,
     avatarWireValue: String?,
+    avatarDiagnostics: SlockAvatarRowDiagnostics? = null,
     status: SlockAgentStatusIndicatorState?,
     statusPulsing: () -> Boolean = { true },
     muted: Boolean = false,
@@ -23493,6 +23516,7 @@ private fun ThreadMessageAvatarSlot(
                         interactionIdentity = interactionIdentity,
                         avatarLabel = avatarLabel,
                         avatarWireValue = avatarWireValue,
+                        avatarDiagnostics = avatarDiagnostics,
                         status = status,
                         statusPulsing = statusPulsing,
                         muted = muted,
@@ -23528,6 +23552,7 @@ private fun ThreadMessageAvatar(
     interactionIdentity: String,
     avatarLabel: String,
     avatarWireValue: String?,
+    avatarDiagnostics: SlockAvatarRowDiagnostics? = null,
     status: SlockAgentStatusIndicatorState?,
     statusPulsing: () -> Boolean = { true },
     muted: Boolean = false,
@@ -23564,6 +23589,7 @@ private fun ThreadMessageAvatar(
                 SlockAvatar(
                     avatarWireValue = avatarSource,
                     label = avatarLabel,
+                    diagnostics = avatarDiagnostics,
                     modifier = if (muted) Modifier.alpha(0.62f) else Modifier,
                     avatarSize = 36.dp,
                     borderWidth = SlockStroke.Default

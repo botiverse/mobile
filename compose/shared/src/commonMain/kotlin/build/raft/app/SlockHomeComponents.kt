@@ -41,9 +41,7 @@ import build.raft.app.model.ThreadId
 import build.raft.app.model.appAvatarApiFallbackUrl
 import build.raft.app.model.appAvatarWireValueOrNull
 import build.raft.app.model.gravatarAvatarHttpUrlOrNull
-import build.raft.app.model.gravatarHashOrNull
 import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
-import build.raft.app.model.slockGravatarSessionLoadCache
 import build.raft.app.resources.MR
 import com.tencent.kuikly.core.manager.BridgeManager
 import com.tencent.kuikly.core.module.RouterModule
@@ -146,7 +144,6 @@ import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.time.TimeSource
-import kotlinx.coroutines.delay
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -5595,7 +5592,8 @@ internal fun SlockAvatar(
     label: String,
     modifier: Modifier = Modifier,
     avatarSize: Dp = ChannelAvatarSize,
-    borderWidth: Dp = SlockStroke.Thin
+    borderWidth: Dp = SlockStroke.Thin,
+    diagnostics: SlockAvatarRowDiagnostics? = null
 ) {
     // #192 trace scope extension: per-phase attribution for avatar rendering. The
     // avatar is rendered for every channel row in Home + every participant in
@@ -5607,9 +5605,6 @@ internal fun SlockAvatar(
             ?: displayAvatarWireValue?.takeIf {
                 it.startsWith("http://") || it.startsWith("https://")
             }
-    }
-    val gravatarHash = remember(displayAvatarWireValue) {
-        displayAvatarWireValue?.gravatarHashOrNull()
     }
     val pixelSpec = remember(displayAvatarWireValue) {
         traceMarkdownSectionNonComposable(SlockAvatarTraceNames.IDENTIFY) {
@@ -5630,8 +5625,8 @@ internal fun SlockAvatar(
             DefaultUserAvatarIcon(avatarSize)
             SlockAvatarHttpImage(
                 source = httpAvatarSource,
-                gravatarHash = gravatarHash,
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxSize(),
+                diagnostics = diagnostics
             )
         }
         else -> traceMarkdownSection(SlockAvatarTraceNames.FALLBACK_DEFAULT, displayAvatarWireValue?.length ?: 0) {
@@ -5643,49 +5638,82 @@ internal fun SlockAvatar(
 @Composable
 private fun SlockAvatarHttpImage(
     source: String,
-    gravatarHash: String? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    diagnostics: SlockAvatarRowDiagnostics? = null
 ) {
-    // Implementation note: Kuikly's `KuiklyPainter` (returned by
-    // `com.tencent.kuikly.compose.coil3.rememberAsyncImagePainter`) drives
-    // its `StateFlow<State>` from native `applyTo(view)` callbacks. The
-    // Coil3 `onLoading` / `onSuccess` / `onError` callbacks never fire
-    // through `Image(painter = ...)` in this overlay pattern because Compose
-    // does not call `applyTo` directly. However, painting the Image
-    // unconditionally *does* exercise the painter's native draw path
-    // (`onDraw` -> `imageCacheManager.loadImage(src)`) and the underlying
-    // `KuiklyImageBitmap.status` transitions correctly to `isReady = true`
-    // once the fetch completes. We render the Image while a request is eligible
-    // and keep the default app avatar underneath. Gravatar failures are shared
-    // for this process. This painter API does not expose HTTP status, so
-    // failures use a bounded cooldown instead of being treated as permanent
-    // 404s; offline/DNS/timeout failures become retryable after the cooldown.
-    var retryDelayMillis by remember(gravatarHash) {
-        mutableStateOf(
-            gravatarHash?.let(slockGravatarSessionLoadCache::retryDelayMillis) ?: 0L
-        )
-    }
-    if (retryDelayMillis > 0L) {
-        LaunchedEffect(gravatarHash, retryDelayMillis) {
-            delay(retryDelayMillis)
-            retryDelayMillis =
-                gravatarHash?.let(slockGravatarSessionLoadCache::retryDelayMillis) ?: 0L
+    val apiBaseUrl =
+        SlockSharedStoreRegistry.currentOrNull()
+            ?.apiEnvironmentStore
+            ?.current()
+            ?.apiBaseUrl
+            ?.trimEnd('/')
+    val fallbackSource =
+        remember(source, apiBaseUrl) {
+            source.appAvatarApiFallbackUrl(apiBaseUrl)?.takeUnless { it == source }
         }
-        return
+    val loadKey =
+        remember(source, fallbackSource, apiBaseUrl) {
+            SlockAvatarHttpLoadKey(
+                primarySource = source,
+                primaryEndpoint =
+                    if (apiBaseUrl != null && source.startsWith("$apiBaseUrl/")) {
+                        SlockAvatarHttpEndpoint.Api
+                    } else {
+                        SlockAvatarHttpEndpoint.Cdn
+                    },
+                apiFallbackSource = fallbackSource
+            )
+        }
+    val loadStateFlow = remember(loadKey) { slockAvatarHttpLoadCoordinator.stateFlow(loadKey) }
+    val loadState by loadStateFlow.collectAsState()
+    var lease by remember(loadKey) { mutableStateOf<SlockAvatarHttpLoadLease?>(null) }
+
+    DisposableEffect(loadKey, lease?.ownerToken) {
+        val ownedLease = lease
+        slockAvatarHttpLoadCoordinator.retain(loadKey)
+        onDispose {
+            ownedLease?.let { slockAvatarHttpLoadCoordinator.releaseOwner(loadKey, it) }
+            slockAvatarHttpLoadCoordinator.release(loadKey)
+        }
     }
 
-    val painter = rememberSlockAvatarHttpPainter(source)
+    LaunchedEffect(loadKey, loadState.cache, loadState.retryAtMillis, loadState.generation) {
+        val retryDelayMillis = slockAvatarHttpLoadCoordinator.retryDelayMillis(loadState)
+        if (retryDelayMillis > 0L) delay(retryDelayMillis)
+        if (
+            loadState.cache == SlockAvatarHttpCacheState.Idle ||
+            loadState.cache == SlockAvatarHttpCacheState.Cooldown
+        ) {
+            lease = slockAvatarHttpLoadCoordinator.tryAcquire(loadKey)
+        }
+    }
+
+    LaunchedEffect(diagnostics, loadKey, loadState, lease?.ownerToken) {
+        val row = diagnostics ?: return@LaunchedEffect
+        row.logger(
+            "thread_avatar_painter messageHash=${row.messageHash} authorHash=${row.authorHash} " +
+                "source=${loadKey.diagnosticsSource} activeEndpoint=${loadState.endpoint.diagnosticsName()} " +
+                "painter=${loadState.painter.diagnosticsName()} " +
+                "cache=${loadState.diagnosticsCacheState(lease?.ownerToken)}"
+        )
+    }
+
+    val ownsCurrentRequest =
+        loadState.cache == SlockAvatarHttpCacheState.InFlight &&
+            lease?.generation == loadState.generation &&
+            lease?.ownerToken == loadState.ownerToken
+    if (!ownsCurrentRequest && loadState.cache != SlockAvatarHttpCacheState.Ready) return
+    val activeSource = loadKey.sourceFor(loadState.endpoint) ?: return
+    val painter = rememberAsyncImagePainter(model = activeSource)
     val imageState by painter.state.collectAsState()
-    LaunchedEffect(imageState, gravatarHash) {
-        val hash = gravatarHash ?: return@LaunchedEffect
-        when (imageState) {
-            is AsyncImagePainter.State.Error -> {
-                slockGravatarSessionLoadCache.recordFailure(hash)
-                retryDelayMillis = slockGravatarSessionLoadCache.retryDelayMillis(hash)
+    LaunchedEffect(imageState, activeSource, loadState.generation, lease?.ownerToken) {
+        val phase = imageState.toSlockAvatarHttpPainterPhase()
+        if (ownsCurrentRequest) {
+            lease?.let { currentLease ->
+                slockAvatarHttpLoadCoordinator.reportPainterPhase(loadKey, currentLease, phase)
             }
-            is AsyncImagePainter.State.Success ->
-                slockGravatarSessionLoadCache.recordSuccess(hash)
-            else -> Unit
+        } else if (phase == SlockAvatarHttpPainterPhase.Error) {
+            slockAvatarHttpLoadCoordinator.reportReadyConsumerError(loadKey, loadState.generation)
         }
     }
     Image(
@@ -5695,6 +5723,14 @@ private fun SlockAvatarHttpImage(
         contentScale = ContentScale.FillBounds
     )
 }
+
+private fun AsyncImagePainter.State.toSlockAvatarHttpPainterPhase(): SlockAvatarHttpPainterPhase =
+    when (this) {
+        is AsyncImagePainter.State.Empty -> SlockAvatarHttpPainterPhase.Empty
+        is AsyncImagePainter.State.Loading -> SlockAvatarHttpPainterPhase.Loading
+        is AsyncImagePainter.State.Success -> SlockAvatarHttpPainterPhase.Success
+        is AsyncImagePainter.State.Error -> SlockAvatarHttpPainterPhase.Error
+    }
 
 @Composable
 private fun rememberSlockAvatarHttpPainter(source: String): AsyncImagePainter {

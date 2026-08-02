@@ -1,7 +1,11 @@
 package build.raft.app.data
 
+import build.raft.app.KuiklyThreadMessageItem
+import build.raft.app.seedThreadAuthorProfiles
 import build.raft.app.slockScopedAgentStatusResolver
 import build.raft.app.model.*
+import build.raft.app.network.sync.ReplyPreview
+import build.raft.app.network.sync.ThreadRepliesReadModel
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
@@ -19,6 +23,344 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class SharedServerMembersStoreTest {
+    @Test
+    fun fullSparseAndRealtimeAuthorSnapshotsConvergeOnOneServerScopedAvatar() {
+        val store = SharedServerMembersStore(FakeMemberRepository())
+        val serverId = ServerId("server-1")
+        val uploadedAvatar =
+            "https://cdn.raft.build/avatars/agents/deadbeefdeadbeefdeadbeefdeadbeef.webp"
+        val fullHistory =
+            KuiklyThreadMessageItem(
+                id = "history-message",
+                authorId = "agent-1",
+                authorName = "Argus",
+                authorKind = "agent",
+                avatarWireValue = uploadedAvatar
+            )
+        val sparsePage = fullHistory.copy(id = "sparse-message", avatarWireValue = null)
+        val realtime = fullHistory.copy(id = "realtime-message")
+
+        store.seedThreadAuthorProfiles(serverId, listOf(fullHistory, sparsePage), source = "history")
+        assertEquals(
+            uploadedAvatar,
+            store.state.value.memberProfile(serverId, "agent-1")?.avatar?.wireValue
+        )
+
+        store.seedThreadAuthorProfiles(serverId, listOf(realtime), source = "realtime")
+        assertEquals(
+            uploadedAvatar,
+            store.state.value.memberProfile(serverId, "agent-1")?.avatar?.wireValue
+        )
+        assertNull(store.state.value.memberProfile(ServerId("server-2"), "agent-1"))
+    }
+
+    @Test
+    fun concreteUploadedAvatarUpgradesAgentFallbackInMemberProfileCache() {
+        val store = SharedServerMembersStore(FakeMemberRepository())
+        val serverId = ServerId("server-1")
+        val fallback =
+            KuiklyThreadMessageItem(
+                id = "first-message",
+                authorId = "agent-1",
+                authorName = "Argus",
+                authorKind = "agent",
+                avatarWireValue = null
+            )
+        val uploadedAvatar =
+            "https://cdn.raft.build/avatars/agents/cafebabecafebabecafebabecafebabe.webp"
+
+        store.seedThreadAuthorProfiles(serverId, listOf(fallback), source = "sparse")
+        assertEquals(
+            "pixel:robot",
+            store.state.value.memberProfile(serverId, "agent-1")?.avatar?.wireValue
+        )
+
+        store.seedThreadAuthorProfiles(
+            serverId,
+            listOf(fallback.copy(id = "full-message", avatarWireValue = uploadedAvatar)),
+            source = "realtime"
+        )
+        assertEquals(
+            uploadedAvatar,
+            store.state.value.memberProfile(serverId, "agent-1")?.avatar?.wireValue
+        )
+    }
+
+    @Test
+    fun inlineReplySnapshotSeedsMemberStoreBeforeItsRowReadsTheAvatar() {
+        val store = SharedServerMembersStore(FakeMemberRepository())
+        val serverId = ServerId("server-1")
+        val uploadedAvatar =
+            "https://cdn.raft.build/avatars/users/0123456789abcdef0123456789abcdef.webp"
+        val message =
+            KuiklyThreadMessageItem(
+                id = "parent-message",
+                authorId = "agent-1",
+                authorName = "Argus",
+                authorKind = "agent",
+                inlineReplies =
+                    ThreadRepliesReadModel(
+                        replies =
+                            listOf(
+                                ReplyPreview(
+                                    messageId = "reply-message",
+                                    seq = 2L,
+                                    content = "reply",
+                                    senderId = "user-1",
+                                    senderType = "user",
+                                    senderName = "artin",
+                                    senderAvatarUrl = uploadedAvatar,
+                                    createdAt = "2026-08-02T00:00:00Z"
+                                )
+                            ),
+                        replyCount = 1,
+                        snapshotSeq = 2L
+                    )
+            )
+
+        store.seedThreadAuthorProfiles(serverId, listOf(message), source = "initial")
+
+        assertEquals(
+            uploadedAvatar,
+            store.state.value.memberProfile(serverId, "user-1")?.avatar?.wireValue
+        )
+    }
+
+    @Test
+    fun staleOrNullMessageSnapshotsCannotDowngradeHydratedMemberAvatar() {
+        val serverId = ServerId("server-1")
+        val currentAvatar =
+            "https://cdn.raft.build/avatars/agents/22222222222222222222222222222222.webp"
+        val staleAvatar =
+            "https://cdn.raft.build/avatars/agents/11111111111111111111111111111111.webp"
+        val hydrated =
+            MemberProfile(
+                id = MemberId("agent-1"),
+                displayName = "Argus",
+                handle = "argus",
+                kind = MemberKind.Agent,
+                avatar = AvatarReference.fromWireValue(currentAvatar),
+                avatarUrl = currentAvatar,
+                serverId = serverId
+            )
+        val store = SharedServerMembersStore(FakeMemberRepository())
+        store.seed(MemberSnapshot(server("server-1"), listOf(hydrated)))
+        val staleMessage =
+            KuiklyThreadMessageItem(
+                id = "stale-message",
+                authorId = "agent-1",
+                authorName = "Argus",
+                authorKind = "agent",
+                avatarWireValue = staleAvatar
+            )
+
+        store.seedThreadAuthorProfiles(serverId, listOf(staleMessage), source = "old_page")
+        store.seedThreadAuthorProfiles(
+            serverId,
+            listOf(staleMessage.copy(id = "sparse-message", avatarWireValue = null)),
+            source = "sparse"
+        )
+
+        assertEquals(
+            currentAvatar,
+            store.state.value.memberProfile(serverId, "agent-1")?.avatar?.wireValue
+        )
+    }
+
+    @Test
+    fun authoritativeProfileHydrationAdvancesAnEarlierConcreteMessageCandidate() {
+        val serverId = ServerId("server-1")
+        val staleAvatar =
+            "https://cdn.raft.build/avatars/agents/11111111111111111111111111111111.webp"
+        val currentAvatar =
+            "https://cdn.raft.build/avatars/agents/22222222222222222222222222222222.webp"
+        val store = SharedServerMembersStore(FakeMemberRepository())
+        store.seedThreadAuthorProfiles(
+            serverId,
+            listOf(
+                KuiklyThreadMessageItem(
+                    id = "old-message",
+                    authorId = "agent-1",
+                    authorName = "Argus",
+                    authorKind = "agent",
+                    avatarWireValue = staleAvatar
+                )
+            ),
+            source = "old_page"
+        )
+
+        store.seedProfiles(
+            serverId,
+            listOf(
+                MemberProfile(
+                    id = MemberId("agent-1"),
+                    displayName = "Argus",
+                    handle = "argus",
+                    kind = MemberKind.Agent,
+                    avatar = AvatarReference.fromWireValue(currentAvatar),
+                    avatarUrl = currentAvatar,
+                    serverId = serverId
+                )
+            )
+        )
+        store.seedThreadAuthorProfiles(
+            serverId,
+            listOf(
+                KuiklyThreadMessageItem(
+                    id = "late-old-message",
+                    authorId = "agent-1",
+                    authorName = "Argus",
+                    authorKind = "agent",
+                    avatarWireValue = staleAvatar
+                )
+            ),
+            source = "late_old_page"
+        )
+
+        assertEquals(
+            currentAvatar,
+            store.state.value.memberProfile(serverId, "agent-1")?.avatar?.wireValue
+        )
+    }
+
+    @Test
+    fun candidateFirstSparseDirectoryPublicationKeepsAvatarWhileDirectoryOwnsOtherFields() = runBlocking {
+        val serverId = ServerId("server-1")
+        val candidateAvatar =
+            "https://cdn.raft.build/avatars/agents/33333333333333333333333333333333.webp"
+        val authoritativeAvatar =
+            "https://cdn.raft.build/avatars/agents/44444444444444444444444444444444.webp"
+        val repository = FakeMemberRepository()
+        repository.membersByServer[serverId.value] =
+            listOf(
+                member("agent-1", "Directory Authority").copy(
+                    handle = "directory-authority",
+                    kind = MemberKind.Agent,
+                    description = "directory description",
+                    roleDescription = "directory role",
+                    serverRole = "member",
+                    email = "directory@example.test",
+                    avatar = null,
+                    avatarUrl = null
+                )
+            )
+        val store = SharedServerMembersStore(repository)
+        store.seedProfileCandidates(
+            serverId = serverId,
+            listOf(
+                MemberProfile(
+                    id = MemberId("agent-1"),
+                    displayName = "Stale Candidate Name",
+                    handle = "stale-candidate",
+                    kind = MemberKind.Agent,
+                    description = "stale description",
+                    roleDescription = "stale role",
+                    serverRole = "stale",
+                    email = "stale@example.test",
+                    avatar = AvatarReference.fromWireValue(candidateAvatar),
+                    avatarUrl = candidateAvatar,
+                    serverId = serverId
+                )
+            )
+        )
+
+        assertIs<DataResult.Content<Unit>>(store.refreshMembers(serverId, force = true))
+
+        val sparsePublished = store.currentServerMembers(serverId).single()
+        assertEquals("Directory Authority", sparsePublished.displayName)
+        assertEquals("directory-authority", sparsePublished.handle)
+        assertEquals("directory description", sparsePublished.description)
+        assertEquals("directory role", sparsePublished.roleDescription)
+        assertEquals("member", sparsePublished.serverRole)
+        assertEquals("directory@example.test", sparsePublished.email)
+        assertEquals(candidateAvatar, sparsePublished.avatar?.wireValue)
+        assertEquals(candidateAvatar, store.state.value.memberProfile(serverId, "agent-1")?.avatar?.wireValue)
+
+        repository.membersByServer[serverId.value] =
+            listOf(
+                sparsePublished.copy(
+                    avatar = AvatarReference.fromWireValue(authoritativeAvatar),
+                    avatarUrl = authoritativeAvatar
+                )
+            )
+        assertIs<DataResult.Content<Unit>>(store.refreshMembers(serverId, force = true))
+        assertEquals(
+            authoritativeAvatar,
+            store.state.value.memberProfile(serverId, "agent-1")?.avatar?.wireValue
+        )
+    }
+
+    @Test
+    fun candidateFirstSparseChannelPublicationKeepsAvatarAndConcreteChannelAuthorityAdvancesIt() = runBlocking {
+        val serverId = ServerId("server-1")
+        val channelId = ChannelId("channel-1")
+        val candidateAvatar =
+            "https://cdn.raft.build/avatars/users/55555555555555555555555555555555.webp"
+        val authoritativeAvatar =
+            "https://cdn.raft.build/avatars/users/66666666666666666666666666666666.webp"
+        val repository = FakeMemberRepository()
+        repository.channelMembersByChannel[channelId.value] =
+            listOf(
+                member("user-1", "Channel Authority").copy(
+                    handle = "channel-authority",
+                    description = "channel description",
+                    roleDescription = "channel role",
+                    serverRole = "guest",
+                    email = "channel@example.test",
+                    avatar = null,
+                    avatarUrl = null
+                )
+            )
+        val store = SharedServerMembersStore(repository)
+        store.seedProfileCandidates(
+            serverId = serverId,
+            listOf(
+                MemberProfile(
+                    id = MemberId("user-1"),
+                    displayName = "Stale Candidate Name",
+                    handle = "stale-candidate",
+                    kind = MemberKind.Human,
+                    description = "stale description",
+                    roleDescription = "stale role",
+                    serverRole = "stale",
+                    email = "stale@example.test",
+                    avatar = AvatarReference.fromWireValue(candidateAvatar),
+                    avatarUrl = candidateAvatar,
+                    serverId = serverId
+                )
+            )
+        )
+
+        assertIs<DataResult.Content<ChannelMemberSnapshot>>(
+            store.loadChannelMembers(serverId, channelId, force = true)
+        )
+
+        val sparsePublished = store.currentChannelMembers(serverId, channelId).single()
+        assertEquals("Channel Authority", sparsePublished.displayName)
+        assertEquals("channel-authority", sparsePublished.handle)
+        assertEquals("channel description", sparsePublished.description)
+        assertEquals("channel role", sparsePublished.roleDescription)
+        assertEquals("guest", sparsePublished.serverRole)
+        assertEquals("channel@example.test", sparsePublished.email)
+        assertEquals(candidateAvatar, sparsePublished.avatar?.wireValue)
+        assertEquals(candidateAvatar, store.state.value.memberProfile(serverId, "user-1")?.avatar?.wireValue)
+
+        repository.channelMembersByChannel[channelId.value] =
+            listOf(
+                sparsePublished.copy(
+                    avatar = AvatarReference.fromWireValue(authoritativeAvatar),
+                    avatarUrl = authoritativeAvatar
+                )
+            )
+        assertIs<DataResult.Content<ChannelMemberSnapshot>>(
+            store.loadChannelMembers(serverId, channelId, force = true)
+        )
+        assertEquals(
+            authoritativeAvatar,
+            store.state.value.memberProfile(serverId, "user-1")?.avatar?.wireValue
+        )
+    }
+
     @Test
     fun processFlightPublishesInFlightAndPreservesExistingRosterUntilLoaded() = runBlocking {
         val processRepository =

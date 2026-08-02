@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.base.putIfAbsent
+import build.raft.app.model.AvatarReference
 import build.raft.app.model.ChannelId
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberProfile
@@ -12,6 +13,7 @@ import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.avatarSlotResolution
 import build.raft.app.model.hidesHumanDirectoryForViewer
+import build.raft.app.model.isAgentFallbackAvatarWireValue
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -533,9 +535,13 @@ class SharedServerMembersStore internal constructor(
         val key = snapshot.server.id.value.trim()
         if (key.isBlank()) return
         val directoryMembers =
-            snapshot.members
-                .filterServerRosterMembers(key)
-                .filterDeletedAgents(key)
+            authoritativeProfilesForPublication(
+                key = key,
+                profiles =
+                    snapshot.members
+                        .filterServerRosterMembers(key)
+                        .filterDeletedAgents(key)
+            )
         cacheProfiles(key, directoryMembers)
         putEntry(
             key,
@@ -567,7 +573,7 @@ class SharedServerMembersStore internal constructor(
         val incomingById = eligibleProfiles.associateBy { it.id.value.trim() }
         val enrichedDirectory =
             previous?.members.orEmpty().map { member ->
-                incomingById[member.id.value.trim()]?.let(member::mergeSeedProfile) ?: member
+                incomingById[member.id.value.trim()]?.let(member::mergeAuthoritativeProfile) ?: member
             }
         putEntry(
             key,
@@ -578,20 +584,69 @@ class SharedServerMembersStore internal constructor(
         )
     }
 
-    private fun cacheProfiles(key: String, profiles: List<MemberProfile>) {
+    /**
+     * Seeds lower-priority profile candidates without mutating an already hydrated directory or
+     * channel-member profile. Message author snapshots use this lane: they can fill the scoped
+     * cache before hydration, but a late/stale snapshot cannot overwrite authoritative member data.
+     */
+    fun seedProfileCandidates(
+        serverId: ServerId,
+        profiles: List<MemberProfile>
+    ) {
+        val key = serverId.value.trim()
+        if (key.isBlank() || profiles.isEmpty()) return
+        val eligibleProfiles =
+            profiles
+                .filter { it.id.value.trim().isNotBlank() }
+                .filterServerRosterMembers(key)
+                .filterNot { it.isDeletedAgentProfile(key) }
+        cacheProfiles(key, eligibleProfiles, authoritativeAvatar = false)
+    }
+
+    private fun cacheProfiles(
+        key: String,
+        profiles: List<MemberProfile>,
+        authoritativeAvatar: Boolean = true
+    ) {
         if (key.isBlank() || profiles.isEmpty()) return
         val current = _state.value
         val merged = current.profileCacheByServerId[key].orEmpty().toMutableMap()
         profiles.forEach { profile ->
             val profileKey = profile.id.value.trim()
             if (profileKey.isNotBlank()) {
-                merged[profileKey] = merged[profileKey]?.mergeSeedProfile(profile) ?: profile
+                merged[profileKey] =
+                    merged[profileKey]?.let { existing ->
+                        if (authoritativeAvatar) {
+                            existing.mergeAuthoritativeProfile(profile)
+                        } else {
+                            existing.mergeSeedProfile(profile)
+                        }
+                    } ?: profile
             }
         }
         _state.value =
             current.copy(
                 profileCacheByServerId = current.profileCacheByServerId + (key to merged)
             )
+    }
+
+    /**
+     * Builds an authoritative directory/channel slice without letting its raw sparse avatar fields
+     * hide a concrete value already known by the scoped cache. Only avatar fields are inherited:
+     * names, handles, roles, membership and every other field remain owned by the authoritative
+     * record being published. A concrete incoming avatar still replaces the cached value.
+     */
+    private fun authoritativeProfilesForPublication(
+        key: String,
+        profiles: List<MemberProfile>
+    ): List<MemberProfile> {
+        val cachedById = _state.value.profileCacheByServerId[key].orEmpty()
+        if (cachedById.isEmpty()) return profiles
+        return profiles.map { authoritative ->
+            cachedById[authoritative.id.value.trim()]
+                ?.let(authoritative::withCachedAvatarCandidate)
+                ?: authoritative
+        }
     }
 
     fun removeMember(
@@ -968,9 +1023,13 @@ class SharedServerMembersStore internal constructor(
                             val snapshot =
                                 result.data.copy(
                                     members =
-                                        result.data.members
-                                            .filterServerRosterMembers(normalizedKey)
-                                            .filterDeletedAgents(normalizedKey)
+                                        authoritativeProfilesForPublication(
+                                            key = normalizedKey,
+                                            profiles =
+                                                result.data.members
+                                                    .filterServerRosterMembers(normalizedKey)
+                                                    .filterDeletedAgents(normalizedKey)
+                                        )
 
                                 )
                             cacheProfiles(normalizedKey, snapshot.members)
@@ -1077,9 +1136,13 @@ class SharedServerMembersStore internal constructor(
                             channelId = normalizedChannelId
                         )
                     val members =
-                        result.data.members
-                            .distinctBy { "${it.kind.name}:${it.id.value.trim()}" }
-                            .filterDeletedAgents(serverKey)
+                        authoritativeProfilesForPublication(
+                            key = serverKey,
+                            profiles =
+                                result.data.members
+                                    .distinctBy { "${it.kind.name}:${it.id.value.trim()}" }
+                                    .filterDeletedAgents(serverKey)
+                        )
                     putChannelSlice(
                         normalizedScope,
                         SharedServerChannelMembersSlice(
@@ -1782,7 +1845,7 @@ private fun List<MemberProfile>.upsertServerMember(member: MemberProfile): List<
         map { existing ->
             if (existing.id.value.trim() == key && existing.kind == member.kind) {
                 replaced = true
-                existing.mergeSeedProfile(member)
+                existing.mergeAuthoritativeProfile(member)
             } else {
                 existing
             }
@@ -1800,6 +1863,12 @@ private fun List<MemberProfile>.removeServerMember(memberId: String, memberKind:
 
 private fun MemberProfile.mergeSeedProfile(seed: MemberProfile): MemberProfile {
     val agentProfile = kind == MemberKind.Agent || seed.kind == MemberKind.Agent
+    val currentAvatarWireValue = avatar?.wireValue ?: avatarUrl
+    val seedAvatarWireValue = seed.avatar?.wireValue ?: seed.avatarUrl
+    val preferSeedAvatar =
+        currentAvatarWireValue?.isAgentFallbackAvatarWireValue() == true &&
+            !seedAvatarWireValue.isNullOrBlank() &&
+            !seedAvatarWireValue.isAgentFallbackAvatarWireValue()
     return copy(
         displayName = displayName.takeIf { it.isNotBlank() } ?: seed.displayName,
         handle = handle.takeIf { it.isNotBlank() } ?: seed.handle,
@@ -1807,14 +1876,49 @@ private fun MemberProfile.mergeSeedProfile(seed: MemberProfile): MemberProfile {
         roleDescription = roleDescription ?: seed.roleDescription,
         serverRole = serverRole ?: seed.serverRole,
         email = email ?: seed.email,
-        avatarUrl = avatarUrl ?: seed.avatarUrl,
-        avatar = avatar ?: seed.avatar,
+        avatarUrl = if (preferSeedAvatar) seed.avatarUrl else avatarUrl ?: seed.avatarUrl,
+        avatar = if (preferSeedAvatar) seed.avatar else avatar ?: seed.avatar,
         avatarLabel = avatarLabel.takeIf { it.isNotBlank() } ?: seed.avatarLabel,
         serverId = serverId ?: seed.serverId,
         serverName = serverName ?: seed.serverName,
         serverSlug = serverSlug ?: seed.serverSlug,
         presence = if (agentProfile) seed.presence else presence,
         agentStatus = if (agentProfile) seed.agentStatus ?: agentStatus else agentStatus
+    )
+}
+
+/**
+ * Authoritative directory/channel/profile hydration may advance a concrete avatar, but a sparse
+ * hydration must not erase a previously known value. Message-snapshot candidates never call this
+ * merge; they remain fill-only through [MemberProfile.mergeSeedProfile].
+ */
+private fun MemberProfile.mergeAuthoritativeProfile(incoming: MemberProfile): MemberProfile {
+    val merged = mergeSeedProfile(incoming)
+    val incomingAvatarWireValue = incoming.avatar?.wireValue ?: incoming.avatarUrl
+    val incomingAvatar = AvatarReference.fromWireValue(incomingAvatarWireValue) ?: return merged
+    if (
+        incoming.kind == MemberKind.Agent &&
+        incomingAvatar.wireValue.isAgentFallbackAvatarWireValue()
+    ) {
+        return merged
+    }
+    return merged.copy(
+        avatarUrl = (incomingAvatar as? AvatarReference.Url)?.url,
+        avatar = incomingAvatar
+    )
+}
+
+/**
+ * Keeps this authoritative record intact except for its avatar slot. The existing cached profile
+ * is evaluated as the lower-priority candidate, while [mergeAuthoritativeProfile] decides the
+ * avatar winner: concrete incoming authority wins; sparse/fallback authority cannot erase a
+ * concrete cached value.
+ */
+private fun MemberProfile.withCachedAvatarCandidate(candidate: MemberProfile): MemberProfile {
+    val avatarResolution = candidate.mergeAuthoritativeProfile(this)
+    return copy(
+        avatarUrl = avatarResolution.avatarUrl,
+        avatar = avatarResolution.avatar
     )
 }
 
