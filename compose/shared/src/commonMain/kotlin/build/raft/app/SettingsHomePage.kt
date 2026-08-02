@@ -5592,6 +5592,7 @@ internal fun SlockAppShellContent(
                             session = (authGateState as? SharedAuthGateState.Ready)?.session,
                             authDataSource = authDataSource,
                             settingsCapabilities = settingsCapabilities,
+                            storeScope = storeScope,
                             settingsState = settingsState,
                             notificationPreferenceSnapshot = notificationPreferenceSnapshot,
                             onToggleNotificationPreference = {
@@ -6232,6 +6233,7 @@ private fun SettingsAppShellContent(
     session: StoredAuthSession?,
     authDataSource: SharedAuthDataSource,
     settingsCapabilities: BridgeSettingsPlatformCapabilities,
+    storeScope: SlockShellStoreScope,
     handsFeedbackVisualFixture: SettingsHandsFeedbackVisualFixture? = null,
     settingsState: SharedSettingsState,
     notificationPreferenceSnapshot: NotificationPreferenceSnapshot,
@@ -7188,6 +7190,7 @@ private fun SettingsAppShellContent(
                     pager = pager,
                     eventBus = eventBus,
                     settingsCapabilities = settingsCapabilities,
+                    sourceStoreScope = storeScope,
                     accountId = session?.user?.id.orEmpty(),
                     visualFixture = handsFeedbackVisualFixture,
                     bottomContentPadding = bottomContentPadding
@@ -11854,6 +11857,7 @@ private fun SharedHandsFeedbackContent(
     pager: Pager,
     eventBus: SlockEventBus,
     settingsCapabilities: BridgeSettingsPlatformCapabilities,
+    sourceStoreScope: SlockShellStoreScope,
     accountId: String,
     visualFixture: SettingsHandsFeedbackVisualFixture? = null,
     bottomContentPadding: Dp = SlockSpacing.Lg
@@ -12043,13 +12047,22 @@ private fun SharedHandsFeedbackContent(
                             settingsHandsFeedbackImageEditRequest(
                                 accountId = accountId,
                                 pageGeneration = feedbackPageGeneration,
-                                files = pickedFiles
+                                files = pickedFiles,
+                                sourceStoreScope = sourceStoreScope
                             )
                         if (request == null) {
                             error = copy.attachmentPickerFailed
                         } else {
                             pendingImageEditSession = request.session
-                            pager.openSlockFilePreviewPage(request.previewPayload)
+                            if (
+                                !pager.openSlockFilePreviewPage(
+                                    request.previewPayload,
+                                    sourceStoreScope = request.sourceStoreScope
+                                )
+                            ) {
+                                pendingImageEditSession = null
+                                error = copy.attachmentPickerFailed
+                            }
                         }
                     } else {
                         val accepted =
@@ -12085,7 +12098,9 @@ private fun SharedHandsFeedbackContent(
         attachmentsState.value
             .firstOrNull { file -> file.feedbackComposerAttachmentId() == attachmentId }
             ?.toSettingsHandsFeedbackAttachmentPreviewPayload(copy.attachment)
-            ?.let { payload -> pager.openSlockFilePreviewPage(payload) }
+            ?.let { payload ->
+                pager.openSlockFilePreviewPage(payload, sourceStoreScope = sourceStoreScope)
+            }
     }
 
     DisposableEffect(eventBus, accountId, feedbackPageGeneration) {
@@ -23374,6 +23389,10 @@ private fun SettingsRouteVisualScreen() {
     RememberKmmResourceLocaleSeedFromLocalActivity()
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember(pager) { Utils.bridgeModule(pager.pagerId) }
+    val storeScope =
+        remember(pager.pageData.params.toString(), pager.pagerId) {
+            pager.pageData.params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
+        }
     val route =
         remember(pager.pageData.params.toString()) {
             parseSettingsRouteVisualPayload(pager.pageData.params)
@@ -23428,6 +23447,7 @@ private fun SettingsRouteVisualScreen() {
         session = session,
         authDataSource = authDataSource,
         settingsCapabilities = settingsCapabilities,
+        storeScope = storeScope,
         handsFeedbackVisualFixture = handsFeedbackVisualFixture,
         settingsState = state,
         notificationPreferenceSnapshot = NotificationPreferenceSnapshot(enabled = true),

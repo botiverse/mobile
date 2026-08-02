@@ -4,6 +4,7 @@ import build.raft.app.data.DataResult
 import build.raft.app.data.InMemorySlockKeyValueStore
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.SettingsHandsFeedbackDraftStore
+import build.raft.app.data.SlockShellStoreScope
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -42,6 +43,7 @@ class SettingsHandsFeedbackImageEditTest {
 
     @Test
     fun requestCarriesExplicitScopedGroupAndEditableGalleryIntent() {
+        val sourceStoreScope = SlockShellStoreScope.create("settings-shell-a", "server-a")
         val files =
             listOf(
                 image("original-0", "file:///picked/zero.png"),
@@ -53,6 +55,7 @@ class SettingsHandsFeedbackImageEditTest {
                 accountId = "account-a",
                 pageGeneration = "page-generation-a",
                 files = files,
+                sourceStoreScope = sourceStoreScope,
                 groupId = "group-a"
             )!!
 
@@ -61,6 +64,7 @@ class SettingsHandsFeedbackImageEditTest {
         assertEquals("account-a", request.session.accountId)
         assertEquals("page-generation-a", request.session.pageGeneration)
         assertEquals(2, request.session.expectedCount)
+        assertEquals(sourceStoreScope, request.sourceStoreScope)
         assertEquals("feedback-group-a", request.previewPayload.composerImageThreadKey)
         assertEquals("feedback-image-group-a", request.previewPayload.composerImageActionId)
         assertEquals("group-a", request.previewPayload.composerImageGroupId)
@@ -75,19 +79,92 @@ class SettingsHandsFeedbackImageEditTest {
 
     @Test
     fun requestRejectsMissingSessionOrDurablePickerInputs() {
+        val sourceStoreScope = SlockShellStoreScope.create("settings-shell-a", "server-a")
         val validFile = image("original", "file:///picked/original.png")
 
-        assertNull(settingsHandsFeedbackImageEditRequest("account", "", listOf(validFile), "group"))
-        assertNull(settingsHandsFeedbackImageEditRequest("account", "page", emptyList(), "group"))
-        assertNull(settingsHandsFeedbackImageEditRequest("account", "page", listOf(validFile), ""))
+        assertNull(
+            settingsHandsFeedbackImageEditRequest(
+                "account",
+                "",
+                listOf(validFile),
+                sourceStoreScope,
+                "group"
+            )
+        )
+        assertNull(
+            settingsHandsFeedbackImageEditRequest(
+                "account",
+                "page",
+                emptyList(),
+                sourceStoreScope,
+                "group"
+            )
+        )
+        assertNull(
+            settingsHandsFeedbackImageEditRequest(
+                "account",
+                "page",
+                listOf(validFile),
+                sourceStoreScope,
+                ""
+            )
+        )
         assertNull(
             settingsHandsFeedbackImageEditRequest(
                 "account",
                 "page",
                 listOf(validFile.copy(fileRef = null)),
+                sourceStoreScope,
                 "group"
             )
         )
+    }
+
+    @Test
+    fun ohosPickerResultCarriesSettingsAuthorityIntoFilePreviewLaunch() {
+        val sourceStoreScope = SlockShellStoreScope.create("legacy", "server-a")
+        val picked =
+            PlatformFile(
+                id = "ohos-picked",
+                fileName = "IMG_11604",
+                mimeType = "image/jpeg",
+                sizeBytes = 214_885L,
+                fileRef = "file://media/Photo/11604/IMG_11604.jpg"
+            )
+        val normalized = normalizeSettingsHandsFeedbackPickerFiles(listOf(picked), imageOnly = true)
+        assertEquals(
+            ThreadPickedAttachmentComposerAction.OpenImageAnnotation,
+            resolveThreadPickedAttachmentComposerAction(
+                action = "attachImage",
+                fileCount = normalized.size,
+                imageAnnotationEnabled = true,
+                allFilesAreImages = slockComposerImagePickerFilesAreStrictImages(normalized)
+            )
+        )
+
+        val request =
+            requireNotNull(
+                settingsHandsFeedbackImageEditRequest(
+                    accountId = "account-a",
+                    pageGeneration = "page-a",
+                    files = normalized,
+                    sourceStoreScope = sourceStoreScope,
+                    groupId = "ohos-group"
+                )
+            )
+        val resolvedScope =
+            resolveSlockFilePreviewSourceStoreScope(
+                sourcePageData = JSONObject(),
+                sourceStoreScope = request.sourceStoreScope
+            )
+        val pageData = slockFilePreviewLaunchPageData("ohos-preview", requireNotNull(resolvedScope))
+
+        assertEquals(SLOCK_FILE_PREVIEW_PAGE, pageData.optString("pageName"))
+        assertEquals("legacy", pageData.optString(SLOCK_SHELL_INSTANCE_ID))
+        assertEquals("server-a", pageData.optString(SLOCK_SHELL_SERVER_ID))
+        assertEquals("file://media/Photo/11604/IMG_11604.jpg", request.previewPayload.imageUrl)
+        assertTrue(request.previewPayload.composerImageCanEdit)
+        assertTrue(request.previewPayload.composerImageCanComplete)
     }
 
     @Test

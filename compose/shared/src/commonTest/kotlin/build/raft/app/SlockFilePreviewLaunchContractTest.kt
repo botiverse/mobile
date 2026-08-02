@@ -2,11 +2,13 @@ package build.raft.app
 
 import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.resources.MR
+import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.tmm.kmmresource.resource.desc.desc
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 
 @OptIn(ExperimentalSerializationApi::class)
 class SlockFilePreviewLaunchContractTest {
@@ -49,6 +51,25 @@ class SlockFilePreviewLaunchContractTest {
         ).forEach { forbidden ->
             assertFalse(encodedPayload.contains(forbidden), "$forbidden must stay outside compose_file_preview payload")
         }
+    }
+
+    @Test
+    fun explicitSourceAuthorityAllowsLaunchWhenPagerPageDataHasNoScope() {
+        val sourceStoreScope = SlockShellStoreScope.create("settings-shell", "server-a")
+
+        assertEquals(
+            sourceStoreScope,
+            resolveSlockFilePreviewSourceStoreScope(
+                sourcePageData = JSONObject(),
+                sourceStoreScope = sourceStoreScope
+            )
+        )
+        assertNull(
+            resolveSlockFilePreviewSourceStoreScope(
+                sourcePageData = JSONObject(),
+                sourceStoreScope = null
+            )
+        )
     }
 
     @Test

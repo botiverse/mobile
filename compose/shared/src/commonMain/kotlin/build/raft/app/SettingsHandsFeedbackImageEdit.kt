@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.app.data.DataResult
 import build.raft.app.data.PlatformFile
+import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.data.formatAttachmentSizeLabel
 import build.raft.app.resources.MR
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
@@ -11,7 +12,8 @@ import kotlinx.coroutines.CancellationException
 
 internal data class SettingsHandsFeedbackImageEditRequest(
     val session: SettingsHandsFeedbackImageEditSession,
-    val previewPayload: SlockFilePreviewPayload
+    val previewPayload: SlockFilePreviewPayload,
+    val sourceStoreScope: SlockShellStoreScope
 )
 
 internal data class SettingsHandsFeedbackImageEditSession(
@@ -114,6 +116,7 @@ internal fun settingsHandsFeedbackImageEditRequest(
     accountId: String,
     pageGeneration: String,
     files: List<PlatformFile>,
+    sourceStoreScope: SlockShellStoreScope,
     groupId: String = newSettingsHandsFeedbackImageEditId()
 ): SettingsHandsFeedbackImageEditRequest? {
     if (groupId.isBlank() || pageGeneration.isBlank() || files.isEmpty()) return null
@@ -131,6 +134,7 @@ internal fun settingsHandsFeedbackImageEditRequest(
         )
     return SettingsHandsFeedbackImageEditRequest(
         session = session,
+        sourceStoreScope = sourceStoreScope,
         previewPayload =
             SlockFilePreviewPayload(
                 kind = "image",

@@ -3169,19 +3169,28 @@ internal fun slockFilePreviewResolveLaunchPayload(
     )
 }
 
-internal fun Pager.openSlockFilePreviewPage(payload: SlockFilePreviewPayload) {
-    val storeScope = pageData.params.slockShellStoreScopeOrNull()
+internal fun Pager.openSlockFilePreviewPage(
+    payload: SlockFilePreviewPayload,
+    sourceStoreScope: SlockShellStoreScope? = null
+): Boolean {
+    val storeScope = resolveSlockFilePreviewSourceStoreScope(pageData.params, sourceStoreScope)
     if (storeScope == null) {
         slockLogWarn(
             tag = SlockScopedNavigationLogTag,
             message = "slock_scoped_navigation_rejected reason=missing_source_scope target=$SLOCK_FILE_PREVIEW_PAGE"
         )
-        return
+        return false
     }
     val previewId = SlockFilePreviewLaunchPayloadStore.put(payload)
     val launchPageData = slockFilePreviewLaunchPageData(previewId, storeScope)
-    openSlockPage(SLOCK_FILE_PREVIEW_PAGE, launchPageData, storeScopeOverride = storeScope)
+    return openSlockPage(SLOCK_FILE_PREVIEW_PAGE, launchPageData, storeScopeOverride = storeScope)
 }
+
+internal fun resolveSlockFilePreviewSourceStoreScope(
+    sourcePageData: JSONObject,
+    sourceStoreScope: SlockShellStoreScope?
+): SlockShellStoreScope? =
+    sourceStoreScope ?: sourcePageData.slockShellStoreScopeOrNull()
 
 internal fun slockFilePreviewLaunchPageData(
     previewId: String,
