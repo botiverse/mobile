@@ -14,7 +14,7 @@ import build.raft.app.data.SlockNetworkClient
 import build.raft.app.data.authSessionFixture
 import build.raft.app.data.userFacingErrorMessage
 import build.raft.app.model.ServerId
-import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -23,7 +23,7 @@ import kotlin.test.assertNull
 
 class SettingsHonestStateTest {
     @Test
-    fun accountErrorEnvelopeSurvivesAdapterStoreAndVisiblePayload() = runTest {
+    fun accountErrorEnvelopeSurvivesAdapterStoreAndVisiblePayload() = runBlocking {
         val cases =
             listOf(
                 AccountErrorCase(
@@ -55,7 +55,7 @@ class SettingsHonestStateTest {
                             sessionStore = sessionStore,
                             settingsRepository = repository
                         ),
-                    scope = backgroundScope
+                    scope = this@runBlocking
                 )
 
             store.accept(
