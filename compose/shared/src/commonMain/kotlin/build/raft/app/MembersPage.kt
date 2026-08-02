@@ -183,6 +183,8 @@ import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontStyle
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
+import com.tencent.kuikly.compose.ui.text.TextRange
+import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
 import com.tencent.kuikly.compose.ui.text.style.TextDecoration
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
@@ -8300,13 +8302,17 @@ private fun MembersAgentRuntimeConfigDialog(
         )
     }
     var providerApiUrl by remember(stableInitialConfig) { mutableStateOf(initialProvider?.apiUrl.orEmpty()) }
-    var providerApiKey by remember(stableInitialConfig) { mutableStateOf(initialProvider?.apiKey.orEmpty()) }
+    var providerApiKey by remember(stableInitialConfig) {
+        val initialText = initialProvider?.apiKey.orEmpty()
+        mutableStateOf(TextFieldValue(initialText, selection = TextRange(initialText.length)))
+    }
     val initialPiProvider = stableInitialConfig.provider as? RuntimeProviderConfig.PiBuiltin
     var piProviderId by remember(stableInitialConfig) {
         mutableStateOf(initialPiProvider?.providerId ?: "configured")
     }
     var piProviderApiKey by remember(stableInitialConfig) {
-        mutableStateOf(initialPiProvider?.apiKey.orEmpty())
+        val initialText = initialPiProvider?.apiKey.orEmpty()
+        mutableStateOf(TextFieldValue(initialText, selection = TextRange(initialText.length)))
     }
     val initialBuiltInProvider = stableInitialConfig.provider
         .takeIf { stableInitialConfig.runtime == CREATE_AGENT_BUILTIN_RUNTIME_ID }
@@ -8315,7 +8321,7 @@ private fun MembersAgentRuntimeConfigDialog(
     }
     // Built-in provider keys are write-only. Agent reads deliberately project
     // an empty string; a non-empty draft always means the user supplied a replacement.
-    var builtInApiKey by remember(stableInitialConfig) { mutableStateOf("") }
+    var builtInApiKey by remember(stableInitialConfig) { mutableStateOf(TextFieldValue("")) }
     var builtInBaseUrl by remember(stableInitialConfig) {
         mutableStateOf((initialBuiltInProvider as? RuntimeProviderConfig.Gateway)?.baseUrl.orEmpty())
     }
@@ -8364,9 +8370,9 @@ private fun MembersAgentRuntimeConfigDialog(
     val providerKeyInvalid =
         runtime == "claude" &&
             providerMode == RUNTIME_PROVIDER_MODE_CUSTOM &&
-            providerApiKey.isBlank()
+            providerApiKey.text.isBlank()
     val piProviderKeyInvalid =
-        runtime == "pi" && piProviderId != "configured" && piProviderApiKey.isBlank()
+        runtime == "pi" && piProviderId != "configured" && piProviderApiKey.text.isBlank()
     val runtimeModelsCatalog = runtimeModelsByRuntime[runtime]
     val runtimeModelsOverride = runtimeModelsCatalog?.models.orEmpty()
     val runtimeModelsLoading = runtime in runtimeModelLoadsInFlight
@@ -8377,13 +8383,13 @@ private fun MembersAgentRuntimeConfigDialog(
             runtime = runtime,
             providerId = builtInProviderId,
             baseUrl = builtInBaseUrl,
-            replacementApiKey = builtInApiKey
+            replacementApiKey = builtInApiKey.text
         )
     val builtInConfigForSave =
         if (runtime == CREATE_AGENT_BUILTIN_RUNTIME_ID) {
             builtInForm?.buildBuiltInRuntimeConfig(
                 providerId = builtInProviderId,
-                apiKey = builtInApiKey.ifBlank {
+                apiKey = builtInApiKey.text.ifBlank {
                     if (retainBuiltInProviderSecret) MembersRetainedBuiltInSecretPlaceholder else ""
                 },
                 baseUrl = builtInBaseUrl,
@@ -8451,7 +8457,7 @@ private fun MembersAgentRuntimeConfigDialog(
                 val nextProvider = providerSource?.defaultValue.orEmpty()
                 builtInProviderId = nextProvider
                 builtInBaseUrl = ""
-                builtInApiKey = ""
+                builtInApiKey = TextFieldValue("")
                 builtInSupportsImageInput = false
                 val modelSource =
                     builtInForm.optionSources["model"] as?
@@ -8513,7 +8519,7 @@ private fun MembersAgentRuntimeConfigDialog(
                             providerId = builtInProviderId,
                             onProviderIdChange = { nextProvider ->
                                 if (nextProvider != builtInProviderId) {
-                                    builtInApiKey = ""
+                                    builtInApiKey = TextFieldValue("")
                                     builtInBaseUrl = ""
                                     builtInSupportsImageInput = false
                                 }
@@ -8565,9 +8571,9 @@ private fun MembersAgentRuntimeConfigDialog(
                             }
                             providerMode = RUNTIME_PROVIDER_MODE_DEFAULT
                             providerApiUrl = ""
-                            providerApiKey = ""
+                            providerApiKey = TextFieldValue("")
                             piProviderId = "configured"
-                            piProviderApiKey = ""
+                            piProviderApiKey = TextFieldValue("")
                             fastMode = false
                             command = ""
                             if (!supportsRuntimeReasoningEffort(nextRuntime)) {
@@ -8609,7 +8615,7 @@ private fun MembersAgentRuntimeConfigDialog(
                         piProviderId = piProviderId,
                         onPiProviderIdChange = {
                             piProviderId = it
-                            if (it == "configured") piProviderApiKey = ""
+                            if (it == "configured") piProviderApiKey = TextFieldValue("")
                         },
                         piProviderApiKey = piProviderApiKey,
                         onPiProviderApiKeyChange = { piProviderApiKey = it },
@@ -8687,9 +8693,9 @@ private fun MembersAgentRuntimeConfigDialog(
                                 customModelName = customModelName.takeIf { customModelMode },
                                 providerMode = providerMode,
                                 providerApiUrl = providerApiUrl,
-                                providerApiKey = providerApiKey,
+                                providerApiKey = providerApiKey.text,
                                 piProviderId = piProviderId,
-                                piProviderApiKey = piProviderApiKey,
+                                piProviderApiKey = piProviderApiKey.text,
                                 fastMode = fastMode,
                                 reasoningEffort = reasoningEffort,
                                 envVars = envVarEntries.toMembersRuntimeEnvVars(),

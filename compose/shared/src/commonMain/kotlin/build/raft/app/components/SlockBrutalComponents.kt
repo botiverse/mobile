@@ -432,6 +432,12 @@ internal fun SlockBrutalActionSheetRow(
     }
 }
 
+/**
+ * String-backed form field for ordinary text.
+ *
+ * Masked secrets intentionally have no String/password option here. They must use the
+ * [TextFieldValue] overload below so the native editing token survives controlled recomposition.
+ */
 @Composable
 internal fun SlockBrutalTextField(
     label: String,
@@ -450,15 +456,7 @@ internal fun SlockBrutalTextField(
     maxLines: Int = 1,
     textStyle: TextStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
     fieldMinHeight: Dp = 42.dp,
-    containerTapRequestsFocus: Boolean = false,
-    /**
-     * Task #43 QA-4 fix: when `true`, the text field uses a native password
-     * visual transformation that masks the value with `•` while keeping
-     * the underlying string in `value` intact. Show/hide toggles in the
-     * caller are expected to switch this flag, not edit bullet chars
-     * into the real value.
-     */
-    password: Boolean = false
+    containerTapRequestsFocus: Boolean = false
 ) {
     val hasError = !error.isNullOrBlank()
     SlockFormField(
@@ -478,6 +476,60 @@ internal fun SlockBrutalTextField(
             readOnly = readOnly,
             autoFocus = autoFocus,
             maxLines = maxLines,
+            textStyle = textStyle,
+            fieldMinHeight = fieldMinHeight,
+            containerTapRequestsFocus = containerTapRequestsFocus,
+            borderColor = if (hasError) SlockColor.AccentRed else SlockColor.BorderBlack,
+            enabledBackgroundColor = if (hasError) Color(0xFFFFF4F4) else SlockColor.SurfaceWhite
+        )
+    }
+}
+
+/**
+ * Value-aware form field for masked secrets.
+ *
+ * Secret editors must retain the exact native [TextFieldValue] so selection and composition
+ * metadata are not reconstructed through the String overload during rapid input. The caller owns
+ * the value and converts [TextFieldValue.text] only at the product-state or request boundary.
+ */
+@Composable
+internal fun SlockBrutalTextField(
+    label: String,
+    value: TextFieldValue,
+    placeholder: String,
+    onValueChange: (TextFieldValue) -> Unit,
+    modifier: Modifier = Modifier,
+    required: Boolean = false,
+    optional: Boolean = false,
+    labelSize: SlockFormFieldSize = SlockFormFieldSize.Default,
+    enabled: Boolean = true,
+    readOnly: Boolean = false,
+    hint: String? = null,
+    error: String? = null,
+    autoFocus: Boolean = false,
+    textStyle: TextStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
+    fieldMinHeight: Dp = 42.dp,
+    containerTapRequestsFocus: Boolean = false,
+    password: Boolean = true
+) {
+    val hasError = !error.isNullOrBlank()
+    SlockFormField(
+        label = label,
+        modifier = modifier,
+        required = required,
+        optional = optional,
+        hint = hint,
+        error = error,
+        size = labelSize
+    ) {
+        SlockBrutalInputField(
+            value = value,
+            onValueChange = onValueChange,
+            placeholder = placeholder,
+            enabled = enabled,
+            readOnly = readOnly,
+            autoFocus = autoFocus,
+            maxLines = 1,
             textStyle = textStyle,
             fieldMinHeight = fieldMinHeight,
             containerTapRequestsFocus = containerTapRequestsFocus,
