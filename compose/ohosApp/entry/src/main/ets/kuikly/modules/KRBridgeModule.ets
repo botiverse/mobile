@@ -101,6 +101,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   static readonly ATTACHMENT_DOWNLOAD_OWNER_CHANGED = "attachmentDownloadOwnerChanged";
   static readonly LOG = "log";
   static readonly PERFORMANCE_MARKER = "performanceMarker";
+  static readonly PROBE_THREAD_VIEWPORT_PIXELS = "probeThreadViewportPixels";
   static readonly PERFORMANCE_SCENE = "performanceScene";
   static readonly KUIKLY_PERFORMANCE_SNAPSHOT = "kuiklyPerformanceSnapshot";
   static readonly REPORT_DT = "reportDT";
@@ -196,6 +197,10 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       }
       case KRBridgeModule.PERFORMANCE_MARKER: {
         this.performanceMarker(params);
+        break;
+      }
+      case KRBridgeModule.PROBE_THREAD_VIEWPORT_PIXELS: {
+        callback({ "status": "unsupported" });
         break;
       }
       case KRBridgeModule.PERFORMANCE_SCENE: {
