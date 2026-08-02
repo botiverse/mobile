@@ -4,6 +4,7 @@ import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalCard
 import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.data.SharedSettingsActionState
+import build.raft.app.data.userFacingErrorMessage
 import build.raft.app.data.SettingsBillingActionSnapshot
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.AppLocale
@@ -505,10 +506,10 @@ internal fun SettingsBillingActionSnapshot.toBillingActionPayload(
             when {
                 !isCurrentAction -> ""
                 actionState?.inProgress == true -> "Loading"
-                actionState?.errorCode != null -> "Error"
+                actionState?.userFacingErrorMessage() != null -> "Error"
                 else -> "Saved"
             },
-        errorCode = actionState?.errorCode?.takeIf { isCurrentAction },
+        errorCode = actionState?.userFacingErrorMessage()?.takeIf { isCurrentAction },
         inProgress = actionState?.inProgress == true && isCurrentAction
     )
 }

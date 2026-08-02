@@ -9,6 +9,7 @@ import build.raft.app.data.AddComputerStep
 import build.raft.app.data.AddComputerType
 import build.raft.app.data.SettingsComputerRegisterRequest
 import build.raft.app.data.SharedSettingsIntent
+import build.raft.app.data.userFacingErrorMessage
 import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -82,10 +83,11 @@ private fun AddComputerTypeStep(
     state: AddComputerDialogState,
     onIntent: (SharedSettingsIntent) -> Unit
 ) {
+    val userFacingError = state.userFacingErrorMessage()
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (!state.canManage || state.atLimit) {
             Text(
-                state.errorMessage ?: stringResource(MR.strings.settings_computers_error_add_permission),
+                userFacingError ?: stringResource(MR.strings.settings_computers_error_add_permission),
                 style = SlockType.Caption.copy(color = SlockColor.AccentRed),
                 color = SlockColor.AccentRed
             )
@@ -120,7 +122,7 @@ private fun AddComputerTypeStep(
             style = SlockType.Body.copy(fontSize = 14.sp, color = SlockColor.TextBlack),
             color = SlockColor.TextBlack
         )
-        state.errorMessage?.takeIf { it.isNotBlank() && state.canManage && !state.atLimit }?.let {
+        userFacingError?.takeIf { it.isNotBlank() && state.canManage && !state.atLimit }?.let {
             Text(it, style = SlockType.Caption.copy(color = SlockColor.AccentRed), color = SlockColor.AccentRed)
         }
         Row(
@@ -158,6 +160,7 @@ private fun AddComputerWaitingStep(
     state: AddComputerDialogState,
     onIntent: (SharedSettingsIntent) -> Unit
 ) {
+    val userFacingError = state.userFacingErrorMessage()
     LaunchedEffect(state.step, state.machineId) {
         val targetId = state.machineId ?: return@LaunchedEffect
         while (state.step == AddComputerStep.Waiting) {
@@ -226,7 +229,7 @@ private fun AddComputerWaitingStep(
                 color = SlockColor.TextMutedGray
             )
         }
-        state.errorMessage?.takeIf { it.isNotBlank() }?.let {
+        userFacingError?.takeIf { it.isNotBlank() }?.let {
             Text(it, style = SlockType.Caption.copy(color = SlockColor.AccentRed), color = SlockColor.AccentRed)
         }
         Row(

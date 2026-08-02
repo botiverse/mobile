@@ -1031,7 +1031,9 @@ data class SettingsComputerDetailSnapshot(
 
 data class SettingsSectionErrorSnapshot(
     val code: String,
-    val retryable: Boolean = false
+    val retryable: Boolean = false,
+    val screenError: ScreenError? = null,
+    val permissionBlocker: PermissionBlocker? = null
 )
 
 data class SettingsComputerWorkspaceSnapshot(

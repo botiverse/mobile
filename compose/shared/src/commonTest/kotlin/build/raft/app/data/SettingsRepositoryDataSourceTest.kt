@@ -868,7 +868,8 @@ class SettingsRepositoryDataSourceTest {
 
         assertTrue(server is DataResult.Content)
         val billing = server.data.sections.first { it.key == "billing" }
-        assertTrue(billing.detail.contains("settings_billing_subscription_contract_mismatch"))
+        assertFalse(billing.detail.contains("settings_billing_subscription_contract_mismatch"))
+        assertTrue(billing.detail.contains("The response could not be read. Please try again."))
     }
 
     @Test

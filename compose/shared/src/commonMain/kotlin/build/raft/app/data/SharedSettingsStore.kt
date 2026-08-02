@@ -91,11 +91,20 @@ data class AddComputerDialogState(
     val copiedCommand: AddComputerCommandTarget? = null,
     val connectedDetail: String? = null,
     val errorMessage: String? = null,
+    val screenError: ScreenError? = null,
+    val permissionBlocker: PermissionBlocker? = null,
+    val emptyReason: EmptyReason? = null,
     val registering: Boolean = false,
     val saving: Boolean = false,
     val canManage: Boolean = true,
     val atLimit: Boolean = false
 )
+
+internal fun AddComputerDialogState.userFacingErrorMessage(): String? =
+    screenError?.userFacingMessage()
+        ?: permissionBlocker?.userFacingMessage()
+        ?: emptyReason?.userFacingMessage()
+        ?: errorMessage?.takeIf { it.isNotBlank() }
 
 data class AddComputerSetupCommands(
     val daemonRunCommand: String? = null,
@@ -358,8 +367,17 @@ data class SharedSettingsActionState(
     val action: String,
     val itemId: String? = null,
     val inProgress: Boolean = false,
-    val errorCode: String? = null
+    val errorCode: String? = null,
+    val screenError: ScreenError? = null,
+    val permissionBlocker: PermissionBlocker? = null,
+    val emptyReason: EmptyReason? = null
 )
+
+internal fun SharedSettingsActionState.userFacingErrorMessage(): String? =
+    screenError?.userFacingMessage()
+        ?: permissionBlocker?.userFacingMessage()
+        ?: emptyReason?.userFacingMessage()
+        ?: errorCode?.let { ScreenError(it, retryable = false).userFacingMessage() }
 
 private data class ServerNotificationModeMutation(
     val generation: Long,
@@ -479,6 +497,9 @@ sealed interface SharedSettingsIntent {
         val target: String,
         val ok: Boolean,
         val code: String? = null,
+        val screenError: ScreenError? = null,
+        val permissionBlocker: PermissionBlocker? = null,
+        val emptyReason: EmptyReason? = null,
         val snapshot: SharedSettingsStorageSnapshot? = null
     ) : SharedSettingsIntent
     data object CopyDiagnostics : SharedSettingsIntent
@@ -1574,9 +1595,9 @@ class SharedSettingsDataSource(
     private fun <T> DataResult<T>.settingsDiagnosticsErrorLabel(label: String): String? =
         when (this) {
             is DataResult.Content -> null
-            is DataResult.Empty -> "$label empty: ${reason.name}"
-            is DataResult.Error -> "$label error: ${error.code}"
-            is DataResult.NoPermission -> "$label blocked: ${blocker.code}"
+            is DataResult.Empty -> "$label: ${reason.userFacingMessage()}"
+            is DataResult.Error -> "$label: ${error.userFacingMessage()}"
+            is DataResult.NoPermission -> "$label: ${blocker.userFacingMessage()}"
         }
 }
 
@@ -1894,6 +1915,9 @@ class SharedSettingsStore(
                         addComputerDialog = _state.value.addComputerDialog?.copy(
                             registering = true,
                             errorMessage = null,
+                            screenError = null,
+                            permissionBlocker = null,
+                            emptyReason = null,
                             copiedCommand = null
                         )
                     )
@@ -1910,7 +1934,10 @@ class SharedSettingsStore(
                                     daemonRunCommand = commands.daemonRunCommand,
                                     computerSetupCommand = commands.computerSetupCommand,
                                     registering = false,
-                                    errorMessage = null
+                                    errorMessage = null,
+                                    screenError = null,
+                                    permissionBlocker = null,
+                                    emptyReason = null
                                 )
                             )
                             dataSource.loadComputers(forceComputers = true).applyToComputersListState()
@@ -1920,7 +1947,10 @@ class SharedSettingsStore(
                             _state.value = _state.value.copy(
                                 addComputerDialog = _state.value.addComputerDialog?.copy(
                                     registering = false,
-                                    errorMessage = result.reason.name
+                                    errorMessage = null,
+                                    screenError = null,
+                                    permissionBlocker = null,
+                                    emptyReason = result.reason
                                 )
                             )
                             result.applyComputerRegisterActionResult()
@@ -1929,7 +1959,10 @@ class SharedSettingsStore(
                             _state.value = _state.value.copy(
                                 addComputerDialog = _state.value.addComputerDialog?.copy(
                                     registering = false,
-                                    errorMessage = result.error.code
+                                    errorMessage = null,
+                                    screenError = result.error,
+                                    permissionBlocker = null,
+                                    emptyReason = null
                                 )
                             )
                             result.applyComputerRegisterActionResult()
@@ -1938,7 +1971,10 @@ class SharedSettingsStore(
                             _state.value = _state.value.copy(
                                 addComputerDialog = _state.value.addComputerDialog?.copy(
                                     registering = false,
-                                    errorMessage = result.blocker.code
+                                    errorMessage = null,
+                                    screenError = null,
+                                    permissionBlocker = result.blocker,
+                                    emptyReason = null
                                 )
                             )
                             result.applyComputerRegisterActionResult()
@@ -1973,7 +2009,13 @@ class SharedSettingsStore(
                 )
             is SharedSettingsIntent.SetAddComputerError ->
                 _state.value = _state.value.copy(
-                    addComputerDialog = _state.value.addComputerDialog?.copy(errorMessage = intent.message)
+                    addComputerDialog =
+                        _state.value.addComputerDialog?.copy(
+                            errorMessage = intent.message,
+                            screenError = null,
+                            permissionBlocker = null,
+                            emptyReason = null
+                        )
                 )
             is SharedSettingsIntent.PollAddComputerMachineStatus ->
                 scope.launch {
@@ -2446,10 +2488,7 @@ class SharedSettingsStore(
                                     SharedSettingsUpdateCheckSnapshot(
                                         supported = developerResult.data.updateCheck.supported,
                                         statusLabel = "Check failed",
-                                        detail =
-                                            "Could not reach the update server (" +
-                                                updateResult.error.code.ifBlank { "unknown" } +
-                                                "). Check your network and try again.",
+                                        detail = updateResult.error.userFacingMessage(),
                                         errorCode =
                                             updateResult.error.code.ifBlank {
                                                 "update_check_failed"
@@ -2528,7 +2567,17 @@ class SharedSettingsStore(
             dismissAddComputerDialog(cleanupPendingMachine = false)
             return
         }
-        _state.value = _state.value.copy(addComputerDialog = dialog.copy(saving = true, errorMessage = null))
+        _state.value =
+            _state.value.copy(
+                addComputerDialog =
+                    dialog.copy(
+                        saving = true,
+                        errorMessage = null,
+                        screenError = null,
+                        permissionBlocker = null,
+                        emptyReason = null
+                    )
+            )
         val finalName = dialog.name.trim()
         if (finalName.isNotBlank() && finalName != "my-computer") {
             dataSource.renameComputer(SettingsComputerRenameRequest(machineId = machineId, name = finalName))
@@ -2581,6 +2630,23 @@ class SharedSettingsStore(
     }
 
     private fun completeStorageClear(intent: SharedSettingsIntent.CompleteStorageClear) {
+        val actionState =
+            SharedSettingsActionState(
+                action = "clearStorage",
+                itemId = intent.target,
+                inProgress = false,
+                errorCode = intent.code.takeUnless { intent.ok },
+                screenError = intent.screenError.takeUnless { intent.ok },
+                permissionBlocker = intent.permissionBlocker.takeUnless { intent.ok },
+                emptyReason = intent.emptyReason.takeUnless { intent.ok }
+            )
+        val completionMessage =
+            if (intent.ok) {
+                "Storage cleared."
+            } else {
+                actionState.userFacingErrorMessage()
+                    ?: ScreenError("settings_storage_clear_failed", retryable = false).userFacingMessage()
+            }
         val currentStorage = _state.value.storage
         val updatedStorage =
             if (intent.snapshot != null) {
@@ -2588,22 +2654,14 @@ class SharedSettingsStore(
                     intent.snapshot.copy(
                         feedback =
                             intent.snapshot.feedback?.takeIf { it.isNotBlank() }
-                                ?: if (intent.ok) {
-                                    "Storage cleared."
-                                } else {
-                                    intent.code ?: "settings_storage_clear_failed"
-                                }
+                                ?: completionMessage
                     )
                 )
             } else if (currentStorage is ScreenLoadState.Content) {
                 ScreenLoadState.Content(
                     currentStorage.data.copy(
                         feedback =
-                            if (intent.ok) {
-                                "Storage cleared."
-                            } else {
-                                intent.code ?: "settings_storage_clear_failed"
-                            }
+                            completionMessage
                     )
                 )
             } else {
@@ -2612,13 +2670,7 @@ class SharedSettingsStore(
         _state.value =
             _state.value.copy(
                 storage = updatedStorage,
-                actionState =
-                    SharedSettingsActionState(
-                        action = "clearStorage",
-                        itemId = intent.target,
-                        inProgress = false,
-                        errorCode = intent.code.takeUnless { intent.ok }
-                    ),
+                actionState = actionState,
                 routeErrorCode = intent.code.takeUnless { intent.ok },
                 effect = null
             )
@@ -2642,7 +2694,16 @@ class SharedSettingsStore(
                         errorCode =
                             result.code.takeIf {
                                 result.status == SystemNotificationActionStatus.Error
-                            }
+                            },
+                        screenError =
+                            result.takeIf { it.status == SystemNotificationActionStatus.Error }
+                                ?.let {
+                                    ScreenError(
+                                        code = it.code,
+                                        retryable = true,
+                                        serverMessage = it.message.takeIf { message -> message.isNotBlank() }
+                                    )
+                                }
                     ),
                 effect = null
             )
@@ -2789,11 +2850,9 @@ class SharedSettingsStore(
                                 muteServer = mutation.previousMute
                             )?.let { ScreenLoadState.Content(it) } ?: _state.value.mobile,
                         actionState =
-                            SharedSettingsActionState(
+                            result.toSettingsActionState(
                                 action = MOBILE_ACTION_SERVER_MUTE,
-                                itemId = mutation.previousMode.selectedKey,
-                                inProgress = false,
-                                errorCode = errorCode
+                                itemId = mutation.previousMode.selectedKey
                             ),
                         routeErrorCode = errorCode
                     )
@@ -2845,11 +2904,10 @@ class SharedSettingsStore(
 
     private fun DataResult<SettingsMobileSnapshot>.applyMobileActionResult(
         action: String,
-        itemId: String? = null,
-        errorCodeOverride: String? = null
+        itemId: String? = null
     ) {
         val nextMobile = preservingPendingServerNotificationMode().toScreenLoadState()
-        val errorCode = errorCodeOverride ?: nextMobile.routeErrorCode()
+        val errorCode = nextMobile.routeErrorCode()
         _state.value =
             _state.value.copy(
                 mobile =
@@ -2857,13 +2915,7 @@ class SharedSettingsStore(
                         is ScreenLoadState.Content -> nextMobile
                         else -> _state.value.mobile
                     },
-                actionState =
-                    SharedSettingsActionState(
-                        action = action,
-                        itemId = itemId,
-                        inProgress = false,
-                        errorCode = errorCode
-                    ),
+                actionState = nextMobile.toSettingsActionState(action, itemId),
                 routeErrorCode = errorCode
             )
     }
@@ -2888,12 +2940,7 @@ class SharedSettingsStore(
                         is ScreenLoadState.Content -> nextLanguageRegion
                         else -> _state.value.languageRegion
                     },
-                actionState =
-                    SharedSettingsActionState(
-                        action = action,
-                        inProgress = false,
-                        errorCode = nextLanguageRegion.routeErrorCode()
-                    ),
+                actionState = nextLanguageRegion.toSettingsActionState(action),
                 routeErrorCode = nextLanguageRegion.routeErrorCode()
             )
     }
@@ -2907,12 +2954,7 @@ class SharedSettingsStore(
                         is ScreenLoadState.Content -> nextAppearance
                         else -> _state.value.appearance
                     },
-                actionState =
-                    SharedSettingsActionState(
-                        action = action,
-                        inProgress = false,
-                        errorCode = nextAppearance.routeErrorCode()
-                    ),
+                actionState = nextAppearance.toSettingsActionState(action),
                 routeErrorCode = nextAppearance.routeErrorCode()
             )
     }
@@ -2926,12 +2968,7 @@ class SharedSettingsStore(
                         is ScreenLoadState.Content -> nextAccount
                         else -> _state.value.account
                     },
-                actionState =
-                    SharedSettingsActionState(
-                        action = action,
-                        inProgress = false,
-                        errorCode = nextAccount.routeErrorCode()
-                    ),
+                actionState = nextAccount.toSettingsActionState(action),
                 routeErrorCode = nextAccount.routeErrorCode()
             )
     }
@@ -2940,13 +2977,7 @@ class SharedSettingsStore(
         val resultState = toScreenLoadState()
         _state.value =
             _state.value.copy(
-                actionState =
-                    SharedSettingsActionState(
-                        action = ACCOUNT_ACTION_PROVIDER_CONNECT,
-                        itemId = providerId,
-                        inProgress = false,
-                        errorCode = resultState.routeErrorCode()
-                    ),
+                actionState = resultState.toSettingsActionState(ACCOUNT_ACTION_PROVIDER_CONNECT, providerId),
                 routeErrorCode = resultState.routeErrorCode(),
                 effect = (this as? DataResult.Content)?.data?.url?.let(SharedSettingsEffect::OpenUrl)
             )
@@ -2964,13 +2995,7 @@ class SharedSettingsStore(
                         is ScreenLoadState.Content -> nextConnectedApps
                         else -> _state.value.connectedApps
                     },
-                actionState =
-                    SharedSettingsActionState(
-                        action = action,
-                        itemId = itemId,
-                        inProgress = false,
-                        errorCode = nextConnectedApps.routeErrorCode()
-                    ),
+                actionState = nextConnectedApps.toSettingsActionState(action, itemId),
                 routeErrorCode = nextConnectedApps.routeErrorCode()
             )
     }
@@ -2984,13 +3009,7 @@ class SharedSettingsStore(
                         is ScreenLoadState.Content -> nextServer
                         else -> _state.value.server
                     },
-                actionState =
-                    SharedSettingsActionState(
-                        action = action,
-                        itemId = itemId,
-                        inProgress = false,
-                        errorCode = nextServer.routeErrorCode()
-                    ),
+                actionState = nextServer.toSettingsActionState(action, itemId),
                 routeErrorCode = nextServer.routeErrorCode()
             )
     }
@@ -3047,7 +3066,7 @@ class SharedSettingsStore(
     /**
      * After a successful computer delete action, clear the page route + reload the
      * list so the deleted machine disappears from the list, and surface the
-     * typed error code (e.g. `computer_has_agents` for 409) on failure without
+     * typed error (e.g. `computer_has_agents` for 409) on failure without
      * dropping the existing detail view.
      */
     private suspend fun DataResult<SettingsComputerActionResult>.applyComputerDeleteActionResult(
@@ -3094,27 +3113,15 @@ class SharedSettingsStore(
             }
             is DataResult.Empty ->
                 _state.value = _state.value.copy(
-                    actionState = SharedSettingsActionState(
-                        action = COMPUTER_ACTION_REGISTER,
-                        inProgress = false,
-                        errorCode = reason.name
-                    )
+                    actionState = toSettingsActionState(COMPUTER_ACTION_REGISTER)
                 )
             is DataResult.Error ->
                 _state.value = _state.value.copy(
-                    actionState = SharedSettingsActionState(
-                        action = COMPUTER_ACTION_REGISTER,
-                        inProgress = false,
-                        errorCode = error.code
-                    )
+                    actionState = toSettingsActionState(COMPUTER_ACTION_REGISTER)
                 )
             is DataResult.NoPermission ->
                 _state.value = _state.value.copy(
-                    actionState = SharedSettingsActionState(
-                        action = COMPUTER_ACTION_REGISTER,
-                        inProgress = false,
-                        errorCode = blocker.code
-                    )
+                    actionState = toSettingsActionState(COMPUTER_ACTION_REGISTER)
                 )
         }
     }
@@ -3168,13 +3175,7 @@ class SharedSettingsStore(
                         is ScreenLoadState.Content -> next
                         else -> _state.value.computerDetail
                     },
-                actionState =
-                    SharedSettingsActionState(
-                        action = action,
-                        itemId = machineId,
-                        inProgress = false,
-                        errorCode = next.routeErrorCode()
-                    ),
+                actionState = next.toSettingsActionState(action, machineId),
                 routeErrorCode = next.routeErrorCode()
             )
     }
@@ -3210,30 +3211,37 @@ class SharedSettingsStore(
                 is DataResult.Error ->
                     current.copy(
                         workspacesScanned = true,
-                        workspacesError = SettingsSectionErrorSnapshot(error.code, error.retryable)
+                        workspacesError =
+                            SettingsSectionErrorSnapshot(
+                                code = error.code,
+                                retryable = error.retryable,
+                                screenError = error
+                            )
                     )
                 is DataResult.NoPermission ->
                     current.copy(
                         workspacesScanned = true,
-                        workspacesError = SettingsSectionErrorSnapshot(blocker.code, retryable = false)
+                        workspacesError =
+                            SettingsSectionErrorSnapshot(
+                                code = blocker.code,
+                                retryable = false,
+                                permissionBlocker = blocker
+                            )
                     )
-            }
-        val errorCode =
-            when (this) {
-                is DataResult.Error -> error.code
-                is DataResult.NoPermission -> blocker.code
-                else -> null
             }
         _state.value =
             _state.value.copy(
                 computerDetail = ScreenLoadState.Content(nextDetail),
                 actionState =
-                    SharedSettingsActionState(
-                        action = COMPUTER_ACTION_SCAN_WORKSPACES,
-                        itemId = machineId,
-                        inProgress = false,
-                        errorCode = errorCode
-                    )
+                    if (this is DataResult.Empty) {
+                        SharedSettingsActionState(
+                            action = COMPUTER_ACTION_SCAN_WORKSPACES,
+                            itemId = machineId,
+                            inProgress = false
+                        )
+                    } else {
+                        toSettingsActionState(COMPUTER_ACTION_SCAN_WORKSPACES, machineId)
+                    }
             )
     }
 
@@ -3246,12 +3254,7 @@ class SharedSettingsStore(
                         is ScreenLoadState.Content -> nextDiagnostics
                         else -> _state.value.diagnostics
                     },
-                actionState =
-                    SharedSettingsActionState(
-                        action = action,
-                        inProgress = false,
-                        errorCode = nextDiagnostics.routeErrorCode()
-                    ),
+                actionState = nextDiagnostics.toSettingsActionState(action),
                 routeErrorCode = nextDiagnostics.routeErrorCode(),
                 effect = null
             )
@@ -3299,13 +3302,7 @@ class SharedSettingsStore(
                         is ScreenLoadState.Content -> nextDeveloper
                         else -> _state.value.developer
                     },
-                actionState =
-                    SharedSettingsActionState(
-                        action = action,
-                        itemId = itemId,
-                        inProgress = false,
-                        errorCode = nextDeveloper.routeErrorCode()
-                    ),
+                actionState = nextDeveloper.toSettingsActionState(action, itemId),
                 routeErrorCode = nextDeveloper.routeErrorCode(),
                 effect =
                     apiEnvironmentChangedMessage
@@ -3540,7 +3537,15 @@ private fun ScreenLoadState<SettingsComputersSnapshot>.toAddComputerDialogState(
         name = "my-computer",
         canManage = canManage,
         atLimit = false,
-        errorMessage = if (canManage) null else snapshot?.addComputerUnavailableReason ?: "server_admin_required"
+        permissionBlocker =
+            if (canManage) {
+                null
+            } else {
+                PermissionBlocker(
+                    code = snapshot?.addComputerUnavailableReason ?: "server_admin_required",
+                    requiredCapability = "manage_machines"
+                )
+            }
     )
 }
 
@@ -3569,6 +3574,26 @@ private fun ScreenLoadState<*>.routeErrorCode(): String? =
         is ScreenLoadState.Content,
         ScreenLoadState.Loading -> null
     }
+
+private fun ScreenLoadState<*>.toSettingsActionState(
+    action: String,
+    itemId: String? = null
+): SharedSettingsActionState =
+    SharedSettingsActionState(
+        action = action,
+        itemId = itemId,
+        inProgress = false,
+        errorCode = routeErrorCode(),
+        screenError = (this as? ScreenLoadState.Error)?.error,
+        permissionBlocker = (this as? ScreenLoadState.NoPermission)?.blocker,
+        emptyReason = (this as? ScreenLoadState.Empty)?.reason
+    )
+
+private fun DataResult<*>.toSettingsActionState(
+    action: String,
+    itemId: String? = null
+): SharedSettingsActionState =
+    toScreenLoadState().toSettingsActionState(action, itemId)
 
 fun serverConfirmationItemId(action: String, itemId: String? = null): String =
     if (itemId.isNullOrBlank()) action else "$action:$itemId"
