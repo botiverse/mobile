@@ -52,6 +52,91 @@ if test "$1" != shell; then
 fi
 shift
 command="$*"
+
+print_v4_output_rules() {
+  printf '%s\n' '-P OUTPUT ACCEPT'
+  case "$MODE" in
+    missing_v4_hook) ;;
+    displaced_v4_hook)
+      printf '%s\n' "-A OUTPUT -m owner --uid-owner $TARGET_UID -j ACCEPT"
+      printf '%s\n' "-A OUTPUT -m owner --uid-owner $TARGET_UID -j $CHAIN"
+      ;;
+    duplicate_v4_hook)
+      printf '%s\n' "-A OUTPUT -m owner --uid-owner $TARGET_UID -j $CHAIN"
+      printf '%s\n' "-A OUTPUT -m owner --uid-owner $TARGET_UID -j $CHAIN"
+      ;;
+    *) printf '%s\n' "-A OUTPUT -m owner --uid-owner $TARGET_UID -j $CHAIN" ;;
+  esac
+}
+
+print_v6_output_rules() {
+  printf '%s\n' '-P OUTPUT ACCEPT'
+  case "$MODE" in
+    missing_v6_hook) ;;
+    displaced_v6_hook)
+      printf '%s\n' "-A OUTPUT -m owner --uid-owner $TARGET_UID -j RETURN"
+      printf '%s\n' "-A OUTPUT -m owner --uid-owner $TARGET_UID -j $CHAIN"
+      ;;
+    duplicate_v6_hook)
+      printf '%s\n' "-A OUTPUT -m owner --uid-owner $TARGET_UID -j $CHAIN"
+      printf '%s\n' "-A OUTPUT -m owner --uid-owner $TARGET_UID -j $CHAIN"
+      ;;
+    *) printf '%s\n' "-A OUTPUT -m owner --uid-owner $TARGET_UID -j $CHAIN" ;;
+  esac
+}
+
+print_v4_chain_rules() {
+  printf '%s\n' "-N $CHAIN"
+  case "$MODE" in
+    missing_v4_chain) ;;
+    extra_v4_chain_rule)
+      printf '%s\n' \
+        "-A $CHAIN -o lo -j RETURN" \
+        "-A $CHAIN -d 127.0.0.0/8 -j RETURN" \
+        "-A $CHAIN -j ACCEPT" \
+        "-A $CHAIN -j REJECT --reject-with icmp-port-unreachable"
+      ;;
+    reordered_v4_chain_rules)
+      printf '%s\n' \
+        "-A $CHAIN -d 127.0.0.0/8 -j RETURN" \
+        "-A $CHAIN -o lo -j RETURN" \
+        "-A $CHAIN -j REJECT --reject-with icmp-port-unreachable"
+      ;;
+    *)
+      printf '%s\n' \
+        "-A $CHAIN -o lo -j RETURN" \
+        "-A $CHAIN -d 127.0.0.0/8 -j RETURN" \
+        "-A $CHAIN -j REJECT --reject-with icmp-port-unreachable"
+      ;;
+  esac
+}
+
+print_v6_chain_rules() {
+  printf '%s\n' "-N $CHAIN"
+  case "$MODE" in
+    missing_v6_chain) ;;
+    extra_v6_chain_rule)
+      printf '%s\n' \
+        "-A $CHAIN -o lo -j RETURN" \
+        "-A $CHAIN -d ::1/128 -j RETURN" \
+        "-A $CHAIN -j ACCEPT" \
+        "-A $CHAIN -j REJECT --reject-with icmp6-port-unreachable"
+      ;;
+    reordered_v6_chain_rules)
+      printf '%s\n' \
+        "-A $CHAIN -d ::1/128 -j RETURN" \
+        "-A $CHAIN -o lo -j RETURN" \
+        "-A $CHAIN -j REJECT --reject-with icmp6-port-unreachable"
+      ;;
+    *)
+      printf '%s\n' \
+        "-A $CHAIN -o lo -j RETURN" \
+        "-A $CHAIN -d ::1/128 -j RETURN" \
+        "-A $CHAIN -j REJECT --reject-with icmp6-port-unreachable"
+      ;;
+  esac
+}
+
 case "$command" in
   'id -u') printf '0\n' ;;
   'getprop sys.boot_completed') printf '1\n' ;;
@@ -69,6 +154,10 @@ case "$command" in
   pidof*)
     # Empty output with rc=0 proves the target is stopped.
     ;;
+  'iptables -w -S OUTPUT') print_v4_output_rules ;;
+  'ip6tables -w -S OUTPUT') print_v6_output_rules ;;
+  "iptables -w -S $CHAIN") print_v4_chain_rules ;;
+  "ip6tables -w -S $CHAIN") print_v6_chain_rules ;;
   iptables\ -w\ -C\ OUTPUT*)
     test "$MODE" != missing_v4_hook
     ;;
@@ -124,15 +213,31 @@ grep -Fq 'probe=1 readiness=waiting' "$TRANSIENT_RECEIPT"
 grep -Fq 'logcat_clear=unavailable' "$TRANSIENT_RECEIPT"
 grep -Fq 'probe=3 readiness=ready logcat_clear=ready' "$TRANSIENT_RECEIPT"
 grep -Fq 'observed_uid=10123 instrumentation_count=1 target_pid=stopped' "$TRANSIENT_RECEIPT"
-grep -Fq 'v4_output_hook=present' "$TRANSIENT_RECEIPT"
-grep -Fq 'v6_output_hook=present' "$TRANSIENT_RECEIPT"
+grep -Fq 'v4_output_rules_begin' "$TRANSIENT_RECEIPT"
+grep -Fq -- '-A OUTPUT -m owner --uid-owner 10123 -j CFH_TEST_1' "$TRANSIENT_RECEIPT"
+grep -Fq 'v4_output_rules_end' "$TRANSIENT_RECEIPT"
+grep -Fq 'v6_output_rules_begin' "$TRANSIENT_RECEIPT"
+grep -Fq 'v6_output_rules_end' "$TRANSIENT_RECEIPT"
+grep -Fq 'v4_chain_rules_begin' "$TRANSIENT_RECEIPT"
+grep -Fq 'v4_chain_rules_end' "$TRANSIENT_RECEIPT"
+grep -Fq 'v6_chain_rules_begin' "$TRANSIENT_RECEIPT"
+grep -Fq 'v6_chain_rules_end' "$TRANSIENT_RECEIPT"
+grep -Fq 'v4_output_hook=first_unique transfers=1' "$TRANSIENT_RECEIPT"
+grep -Fq 'v6_output_hook=first_unique transfers=1' "$TRANSIENT_RECEIPT"
+grep -Fq 'v4_chain_rules=exact_ordered count=3' "$TRANSIENT_RECEIPT"
+grep -Fq 'v6_chain_rules=exact_ordered count=3' "$TRANSIENT_RECEIPT"
 grep -Fq 'v4_chain=present v4_reject=[0 0]' "$TRANSIENT_RECEIPT"
 grep -Fq 'v6_chain=present v6_reject=[0 0]' "$TRANSIENT_RECEIPT"
 grep -Fxq 'status=ready' "$TRANSIENT_RECEIPT"
 
-# Negative arms: one missing owner hook on either protocol is fatal while ADB
-# remains healthy. The guard never recreates it and never starts instrumentation.
-for mode in missing_v4_hook missing_v6_hook missing_v4_chain missing_v6_chain; do
+# Negative arms: missing, displaced, or duplicate hooks and missing, extra, or
+# reordered chain rules are fatal on both protocol families while ADB remains
+# healthy. The guard never repairs the ruleset and never starts instrumentation.
+for mode in \
+  missing_v4_hook missing_v6_hook missing_v4_chain missing_v6_chain \
+  displaced_v4_hook displaced_v6_hook duplicate_v4_hook duplicate_v6_hook \
+  extra_v4_chain_rule extra_v6_chain_rule \
+  reordered_v4_chain_rules reordered_v6_chain_rules; do
   state_dir="$TMP_ROOT/$mode"
   receipt="$TMP_ROOT/$mode-receipt.txt"
   if run_guard "$state_dir" "$mode" 0 "$receipt"; then
@@ -143,10 +248,25 @@ for mode in missing_v4_hook missing_v6_hook missing_v4_chain missing_v6_chain; d
     missing_v6_hook) reason=v6_output_hook_missing ;;
     missing_v4_chain) reason=v4_loopback_rule_missing ;;
     missing_v6_chain) reason=v6_loopback_rule_missing ;;
+    displaced_v4_hook) reason=v4_output_hook_not_first ;;
+    displaced_v6_hook) reason=v6_output_hook_not_first ;;
+    duplicate_v4_hook) reason=v4_output_hook_not_unique ;;
+    duplicate_v6_hook) reason=v6_output_hook_not_unique ;;
+    extra_v4_chain_rule) reason=v4_chain_rule_count_mismatch ;;
+    extra_v6_chain_rule) reason=v6_chain_rule_count_mismatch ;;
+    reordered_v4_chain_rules) reason=v4_chain_rule_order_mismatch ;;
+    reordered_v6_chain_rules) reason=v6_chain_rule_order_mismatch ;;
   esac
   grep -Fxq "status=fatal reason=$reason" "$receipt"
+  grep -Fq 'v4_output_rules_begin' "$receipt"
+  grep -Fq 'v6_output_rules_begin' "$receipt"
+  grep -Fq 'v4_chain_rules_begin' "$receipt"
+  grep -Fq 'v6_chain_rules_begin' "$receipt"
   if grep -Fq 'am instrument' "$state_dir/calls.txt"; then
     fail "$mode reached instrumentation"
+  fi
+  if grep -Eq 'shell ip6?tables -w -(N|A|I|R|F|X|Z|D)( |$)' "$state_dir/calls.txt"; then
+    fail "$mode attempted to repair or mutate the guard"
   fi
 done
 

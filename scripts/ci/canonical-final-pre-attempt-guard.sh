@@ -64,6 +64,68 @@ capture() {
   return "$capture_rc"
 }
 
+rule_has_pair() {
+  local rule="$1"
+  local option="$2"
+  local value="$3"
+  printf '%s\n' "$rule" | awk -v option="$option" -v value="$value" '
+    {
+      for (field = 1; field < NF; field++) {
+        if ($field == option && $(field + 1) == value) {
+          found = 1
+        }
+      }
+    }
+    END { exit found ? 0 : 1 }
+  '
+}
+
+count_append_rules() {
+  local ruleset="$1"
+  local chain="$2"
+  printf '%s\n' "$ruleset" | awk -v chain="$chain" '
+    $1 == "-A" && $2 == chain { count++ }
+    END { print count + 0 }
+  '
+}
+
+append_rule_at() {
+  local ruleset="$1"
+  local chain="$2"
+  local wanted="$3"
+  printf '%s\n' "$ruleset" | awk -v chain="$chain" -v wanted="$wanted" '
+    $1 == "-A" && $2 == chain {
+      count++
+      if (count == wanted) {
+        print
+        exit
+      }
+    }
+  '
+}
+
+count_chain_transfers() {
+  local ruleset="$1"
+  local source_chain="$2"
+  local destination_chain="$3"
+  printf '%s\n' "$ruleset" | awk -v source="$source_chain" -v destination="$destination_chain" '
+    $1 == "-A" && $2 == source {
+      for (field = 3; field < NF; field++) {
+        if (($field == "-j" || $field == "-g") && $(field + 1) == destination) {
+          count++
+        }
+      }
+    }
+    END { print count + 0 }
+  '
+}
+
+append_ruleset_receipt() {
+  local label="$1"
+  local ruleset="$2"
+  printf '%s_begin\n%s\n%s_end\n' "$label" "$ruleset" "$label" >> "$RECEIPT"
+}
+
 transport_ready() {
   READINESS_ADB_STATE="unreadable"
   READINESS_ROOT_UID="unreadable"
@@ -174,19 +236,74 @@ for readiness_probe in $(seq 1 "$MAX_PROBES"); do
       "$INSTRUMENTATION_COUNT" >> "$RECEIPT"
   fi
 
+  V4_OUTPUT_RULESET=""
+  V6_OUTPUT_RULESET=""
+  V4_CHAIN_RULESET=""
+  V6_CHAIN_RULESET=""
+  if test -z "$VALIDATION_REASON"; then
+    if capture V4_OUTPUT_RULESET timeout "$COMMAND_TIMEOUT_SECONDS" adb shell iptables -w -S OUTPUT; then
+      append_ruleset_receipt v4_output_rules "$V4_OUTPUT_RULESET"
+    else
+      VALIDATION_REASON=v4_output_rules_unreadable
+    fi
+  fi
+  if test -z "$VALIDATION_REASON"; then
+    if capture V6_OUTPUT_RULESET timeout "$COMMAND_TIMEOUT_SECONDS" adb shell ip6tables -w -S OUTPUT; then
+      append_ruleset_receipt v6_output_rules "$V6_OUTPUT_RULESET"
+    else
+      VALIDATION_REASON=v6_output_rules_unreadable
+    fi
+  fi
+  if test -z "$VALIDATION_REASON"; then
+    if capture V4_CHAIN_RULESET timeout "$COMMAND_TIMEOUT_SECONDS" adb shell iptables -w -S "$CHAIN"; then
+      append_ruleset_receipt v4_chain_rules "$V4_CHAIN_RULESET"
+    else
+      VALIDATION_REASON=v4_chain_rules_unreadable
+    fi
+  fi
+  if test -z "$VALIDATION_REASON"; then
+    if capture V6_CHAIN_RULESET timeout "$COMMAND_TIMEOUT_SECONDS" adb shell ip6tables -w -S "$CHAIN"; then
+      append_ruleset_receipt v6_chain_rules "$V6_CHAIN_RULESET"
+    else
+      VALIDATION_REASON=v6_chain_rules_unreadable
+    fi
+  fi
+
+  # `-C` proves the exact owner match exists. The full ordered `-S` ruleset
+  # additionally proves that it is the first OUTPUT rule and the only transfer
+  # to this custom chain, so no earlier ACCEPT/RETURN or duplicate can bypass it.
   if test -z "$VALIDATION_REASON" && ! timeout "$COMMAND_TIMEOUT_SECONDS" adb shell iptables -w -C OUTPUT -m owner --uid-owner "$TARGET_UID" -j "$CHAIN" >/dev/null 2>&1; then
     VALIDATION_REASON=v4_output_hook_missing
   fi
   if test -z "$VALIDATION_REASON"; then
-    printf 'v4_output_hook=present\n' >> "$RECEIPT"
+    V4_OUTPUT_TRANSFERS="$(count_chain_transfers "$V4_OUTPUT_RULESET" OUTPUT "$CHAIN")"
+    V4_OUTPUT_FIRST="$(append_rule_at "$V4_OUTPUT_RULESET" OUTPUT 1)"
+    if test "$V4_OUTPUT_TRANSFERS" -ne 1; then
+      VALIDATION_REASON=v4_output_hook_not_unique
+    elif ! rule_has_pair "$V4_OUTPUT_FIRST" -j "$CHAIN"; then
+      VALIDATION_REASON=v4_output_hook_not_first
+    else
+      printf 'v4_output_hook=first_unique transfers=%s\n' "$V4_OUTPUT_TRANSFERS" >> "$RECEIPT"
+    fi
   fi
   if test -z "$VALIDATION_REASON" && ! timeout "$COMMAND_TIMEOUT_SECONDS" adb shell ip6tables -w -C OUTPUT -m owner --uid-owner "$TARGET_UID" -j "$CHAIN" >/dev/null 2>&1; then
     VALIDATION_REASON=v6_output_hook_missing
   fi
   if test -z "$VALIDATION_REASON"; then
-    printf 'v6_output_hook=present\n' >> "$RECEIPT"
+    V6_OUTPUT_TRANSFERS="$(count_chain_transfers "$V6_OUTPUT_RULESET" OUTPUT "$CHAIN")"
+    V6_OUTPUT_FIRST="$(append_rule_at "$V6_OUTPUT_RULESET" OUTPUT 1)"
+    if test "$V6_OUTPUT_TRANSFERS" -ne 1; then
+      VALIDATION_REASON=v6_output_hook_not_unique
+    elif ! rule_has_pair "$V6_OUTPUT_FIRST" -j "$CHAIN"; then
+      VALIDATION_REASON=v6_output_hook_not_first
+    else
+      printf 'v6_output_hook=first_unique transfers=%s\n' "$V6_OUTPUT_TRANSFERS" >> "$RECEIPT"
+    fi
   fi
 
+  # Presence alone is insufficient: an extra or reordered RETURN/ACCEPT could
+  # bypass REJECT while its counter remains 0 0. Exact `-C` membership plus an
+  # exact three-rule count and ordered classification proves the whole chain.
   if test -z "$VALIDATION_REASON" && ! timeout "$COMMAND_TIMEOUT_SECONDS" adb shell iptables -w -C "$CHAIN" -o lo -j RETURN >/dev/null 2>&1; then
     VALIDATION_REASON=v4_loopback_rule_missing
   fi
@@ -196,6 +313,24 @@ for readiness_probe in $(seq 1 "$MAX_PROBES"); do
   if test -z "$VALIDATION_REASON" && ! timeout "$COMMAND_TIMEOUT_SECONDS" adb shell iptables -w -C "$CHAIN" -j REJECT >/dev/null 2>&1; then
     VALIDATION_REASON=v4_reject_rule_missing
   fi
+  if test -z "$VALIDATION_REASON"; then
+    V4_CHAIN_RULE_COUNT="$(count_append_rules "$V4_CHAIN_RULESET" "$CHAIN")"
+    V4_CHAIN_RULE_1="$(append_rule_at "$V4_CHAIN_RULESET" "$CHAIN" 1)"
+    V4_CHAIN_RULE_2="$(append_rule_at "$V4_CHAIN_RULESET" "$CHAIN" 2)"
+    V4_CHAIN_RULE_3="$(append_rule_at "$V4_CHAIN_RULESET" "$CHAIN" 3)"
+    if test "$V4_CHAIN_RULE_COUNT" -ne 3; then
+      VALIDATION_REASON=v4_chain_rule_count_mismatch
+    elif ! rule_has_pair "$V4_CHAIN_RULE_1" -o lo \
+      || ! rule_has_pair "$V4_CHAIN_RULE_1" -j RETURN \
+      || ! rule_has_pair "$V4_CHAIN_RULE_2" -d 127.0.0.0/8 \
+      || ! rule_has_pair "$V4_CHAIN_RULE_2" -j RETURN \
+      || ! rule_has_pair "$V4_CHAIN_RULE_3" -j REJECT; then
+      VALIDATION_REASON=v4_chain_rule_order_mismatch
+    else
+      printf 'v4_chain_rules=exact_ordered count=%s\n' "$V4_CHAIN_RULE_COUNT" >> "$RECEIPT"
+    fi
+  fi
+
   if test -z "$VALIDATION_REASON" && ! timeout "$COMMAND_TIMEOUT_SECONDS" adb shell ip6tables -w -C "$CHAIN" -o lo -j RETURN >/dev/null 2>&1; then
     VALIDATION_REASON=v6_loopback_rule_missing
   fi
@@ -204,6 +339,23 @@ for readiness_probe in $(seq 1 "$MAX_PROBES"); do
   fi
   if test -z "$VALIDATION_REASON" && ! timeout "$COMMAND_TIMEOUT_SECONDS" adb shell ip6tables -w -C "$CHAIN" -j REJECT >/dev/null 2>&1; then
     VALIDATION_REASON=v6_reject_rule_missing
+  fi
+  if test -z "$VALIDATION_REASON"; then
+    V6_CHAIN_RULE_COUNT="$(count_append_rules "$V6_CHAIN_RULESET" "$CHAIN")"
+    V6_CHAIN_RULE_1="$(append_rule_at "$V6_CHAIN_RULESET" "$CHAIN" 1)"
+    V6_CHAIN_RULE_2="$(append_rule_at "$V6_CHAIN_RULESET" "$CHAIN" 2)"
+    V6_CHAIN_RULE_3="$(append_rule_at "$V6_CHAIN_RULESET" "$CHAIN" 3)"
+    if test "$V6_CHAIN_RULE_COUNT" -ne 3; then
+      VALIDATION_REASON=v6_chain_rule_count_mismatch
+    elif ! rule_has_pair "$V6_CHAIN_RULE_1" -o lo \
+      || ! rule_has_pair "$V6_CHAIN_RULE_1" -j RETURN \
+      || ! rule_has_pair "$V6_CHAIN_RULE_2" -d ::1/128 \
+      || ! rule_has_pair "$V6_CHAIN_RULE_2" -j RETURN \
+      || ! rule_has_pair "$V6_CHAIN_RULE_3" -j REJECT; then
+      VALIDATION_REASON=v6_chain_rule_order_mismatch
+    else
+      printf 'v6_chain_rules=exact_ordered count=%s\n' "$V6_CHAIN_RULE_COUNT" >> "$RECEIPT"
+    fi
   fi
 
   V4_CHAIN_OUTPUT=""
