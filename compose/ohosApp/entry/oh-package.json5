@@ -7,7 +7,7 @@
   "license": "",
   "dependencies": {
     "@botiverse/hands": "0.3.3",
-    "@kuikly-open/render": 'file:./libs/kuikly-render-staging2-04d53987.har',
+    "@kuikly-open/render": 'file:./libs/kuikly-render-staging2-cff8112c.har',
     "@ohos/apng": "^1.0.0-rc.8",
     "@kuiklybase/knoi": "0.0.4",
     "@tencent/mmkv": "2.1.0",
