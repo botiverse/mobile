@@ -277,7 +277,7 @@
     <string name="thread_state_original_unavailable">原消息不可用。</string>
     <string name="thread_reply_title">话题</string>
     <string name="thread_channel_title">频道</string>
-    <string name="thread_direct_message_title">私聊</string>
+    <string name="thread_direct_message_title">私信</string>
     <string name="thread_state_no_replies">暂无回复</string>
     <string name="thread_inline_reply_count_one">1 条回复</string>
     <string name="thread_inline_reply_count_many">%1$d 条回复</string>
@@ -454,7 +454,7 @@
     <string name="thread_action_card_approve_action">同意操作</string>
     <string name="thread_action_card_register_app">创建 Connected App</string>
     <string name="thread_action_card_recover_owner">恢复所有者</string>
-    <string name="thread_action_card_unavailable">已停用</string>
+    <string name="thread_action_card_unavailable">不可用</string>
     <string name="thread_action_card_action">执行操作</string>
     <string name="thread_action_card_adding">添加中…</string>
     <string name="thread_action_card_approving">批准中…</string>
@@ -701,7 +701,7 @@
     <string name="member_report_issue_success_hint">报告包包含问题描述及你选择的客户端上下文。</string>
     <string name="member_report_issue_reference_label">报告编号</string>
     <string name="member_report_issue_report_id">报告 ID</string>
-    <string name="member_report_issue_artifact_id">附件 ID</string>
+    <string name="member_report_issue_artifact_id">工件 ID</string>
     <string name="member_report_issue_server_id">服务器 ID</string>
     <string name="member_report_issue_runtime_transcript_label">运行时会话记录</string>
     <string name="member_report_issue_runtime_transcript_queued">已排队生成后台追踪包。</string>
@@ -834,7 +834,7 @@
     <string name="member_label_deleted_at">删除时间</string>
     <string name="member_label_runtime">运行时</string>
     <string name="member_label_model">模型</string>
-    <string name="member_label_reasoning">推理</string>
+    <string name="member_label_reasoning">推理强度</string>
     <string name="member_label_mode">模式</string>
     <string name="member_label_provider">提供方</string>
     <string name="member_label_command">命令</string>
@@ -1337,7 +1337,7 @@
     <string name="home_nav_saved">收藏</string>
     <string name="home_section_channels">频道</string>
     <string name="home_section_joint_channels">联合频道</string>
-    <string name="home_section_direct_messages">私聊</string>
+    <string name="home_section_direct_messages">私信</string>
     <string name="home_section_pinned">置顶</string>
     <string name="home_action_pin">置顶</string>
     <string name="home_action_unpin">取消置顶</string>
@@ -1345,7 +1345,7 @@
     <string name="home_action_mark_as_unread">标记未读</string>
     <string name="home_action_mute">静音</string>
     <string name="home_action_unmute">取消静音</string>
-    <string name="home_action_close_chat">关闭私聊</string>
+    <string name="home_action_close_chat">关闭私信</string>
     <string name="home_action_archive">归档</string>
     <string name="home_action_sort">排序</string>
     <string name="home_action_save_sort">保存排序</string>
@@ -1687,7 +1687,7 @@
     <string name="settings_connected_apps_my_apps_title">我的应用</string>
     <string name="settings_connected_apps_marketplace_search">搜索应用</string>
     <string name="settings_connected_apps_label_logo">图标</string>
-    <string name="settings_connected_apps_logo_detail">上传方形图标，或重置为自动生成的字母图标。</string>
+    <string name="settings_connected_apps_logo_detail">上传方形图标，或重置为由名称生成的字母图标。</string>
     <string name="settings_connected_apps_logo_register_first">请先注册应用，再从“编辑”中上传图标。</string>
     <string name="settings_connected_apps_register_title">注册 OAuth 客户端</string>
     <string name="settings_connected_apps_edit_title">编辑 OAuth 客户端</string>
