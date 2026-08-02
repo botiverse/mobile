@@ -631,7 +631,9 @@ private const val DiagnosticsDeepLinkExportReportKey = "slockDiagnosticsDeepLink
 private const val DiagnosticsDeepLinkAutoCloseMsKey = "slockDiagnosticsDeepLinkAutoCloseMs"
 private const val SharedSettingsDefaultWebBaseUrl = "https://app.raft.build"
 private const val AppUpdateNotificationRefreshIntervalMs = 30L * 60L * 1000L
-private const val PreJoinAgreementBodyMaxLength = 5_000
+internal const val PRE_JOIN_AGREEMENT_TITLE_INPUT_MAX_LENGTH = 180
+internal const val PRE_JOIN_AGREEMENT_TITLE_VALIDATION_MAX_LENGTH = 160
+internal const val PRE_JOIN_AGREEMENT_BODY_MAX_LENGTH = 5_000
 private const val AppShellRealtimeAuthRefreshAction = "authRefreshRequired"
 private const val AppShellNotificationThreadPayloadKey = "slockNotificationThreadLaunchPayload"
 private const val AppShellNotificationServerIdKey = "slockNotificationServerId"
@@ -6438,8 +6440,8 @@ private fun SettingsAppShellContent(
     var serverJoinLinkMaxUses by remember { mutableStateOf("") }
     var serverJoinLinkExpiresAt by remember { mutableStateOf("") }
     var serverAgreementEnabled by remember { mutableStateOf(false) }
-    var serverAgreementTitle by remember { mutableStateOf("") }
-    var serverAgreementBody by remember { mutableStateOf("") }
+    var serverAgreementTitle by remember { mutableStateOf(TextFieldValue("")) }
+    var serverAgreementBody by remember { mutableStateOf(TextFieldValue("")) }
     var serverHideHumansFromMembers by remember { mutableStateOf(false) }
     var serverOnboardingAgentId by remember { mutableStateOf("") }
     var serverOnboardingGreetingEnabled by remember { mutableStateOf(true) }
@@ -6447,12 +6449,12 @@ private fun SettingsAppShellContent(
     var connectedAppEditingId by remember { mutableStateOf("") }
     var connectedAppName by remember { mutableStateOf("") }
     var connectedAppClientId by remember { mutableStateOf("") }
-    var connectedAppDescription by remember { mutableStateOf("") }
+    var connectedAppDescription by remember { mutableStateOf(TextFieldValue("")) }
     var connectedAppHomepageUrl by remember { mutableStateOf("") }
     var connectedAppReturnUrl by remember { mutableStateOf("") }
     var connectedAppManifestUrl by remember { mutableStateOf("") }
     var connectedAppPublishCategory by remember { mutableStateOf("productivity") }
-    var connectedAppPublishDataAccess by remember { mutableStateOf("") }
+    var connectedAppPublishDataAccess by remember { mutableStateOf(TextFieldValue("")) }
     var connectedAppsMarketplaceSearch by remember { mutableStateOf("") }
     var connectedAppsMarketplaceCategory by remember { mutableStateOf(SETTINGS_CONNECTED_APPS_CATEGORY_ALL) }
     var connectedAppsSelectedMarketplaceId by remember { mutableStateOf<String?>(null) }
@@ -6480,8 +6482,8 @@ private fun SettingsAppShellContent(
     }
     LaunchedEffect(currentAgreement?.enabled, currentAgreement?.title, currentAgreement?.bodyMarkdown) {
         serverAgreementEnabled = currentAgreement?.enabled == true
-        serverAgreementTitle = currentAgreement?.title.orEmpty()
-        serverAgreementBody = currentAgreement?.bodyMarkdown.orEmpty()
+        serverAgreementTitle = textFieldValueAtEnd(currentAgreement?.title.orEmpty())
+        serverAgreementBody = textFieldValueAtEnd(currentAgreement?.bodyMarkdown.orEmpty())
     }
     LaunchedEffect(currentOnboarding?.onboardingAgentId, currentOnboarding?.agentAllChannelGreetingEnabled) {
         serverOnboardingAgentId = currentOnboarding?.onboardingAgentId.orEmpty()
@@ -6515,12 +6517,12 @@ private fun SettingsAppShellContent(
             connectedAppEditingId = ""
             connectedAppName = ""
             connectedAppClientId = ""
-            connectedAppDescription = ""
+            connectedAppDescription = TextFieldValue("")
             connectedAppHomepageUrl = ""
             connectedAppReturnUrl = ""
             connectedAppManifestUrl = ""
             connectedAppPublishCategory = "productivity"
-            connectedAppPublishDataAccess = ""
+            connectedAppPublishDataAccess = TextFieldValue("")
         }
     }
     LaunchedEffect(
@@ -6815,8 +6817,8 @@ private fun SettingsAppShellContent(
                                 SharedSettingsIntent.UpdateServerAgreement(
                                     SettingsServerAgreementUpdateRequest(
                                         enabled = serverAgreementEnabled,
-                                        title = serverAgreementTitle.trim(),
-                                        bodyMarkdown = serverAgreementBody
+                                        title = serverAgreementTitle.text.trim(),
+                                        bodyMarkdown = serverAgreementBody.text
                                     )
                                 )
                             )
@@ -6913,23 +6915,23 @@ private fun SettingsAppShellContent(
                         connectedAppEditingId = app.id
                         connectedAppName = app.name
                         connectedAppClientId = app.clientId
-                        connectedAppDescription = app.description.orEmpty()
+                        connectedAppDescription = textFieldValueAtEnd(app.description.orEmpty())
                         connectedAppHomepageUrl = app.homepageUrl.orEmpty()
                         connectedAppReturnUrl = app.returnUrl.orEmpty()
                         connectedAppManifestUrl = app.agentManifestUrl.orEmpty()
                         connectedAppPublishCategory = app.category.orEmpty().ifBlank { "productivity" }
-                        connectedAppPublishDataAccess = app.dataAccessSummary.orEmpty()
+                        connectedAppPublishDataAccess = textFieldValueAtEnd(app.dataAccessSummary.orEmpty())
                     },
                     onCancelEdit = {
                         connectedAppEditingId = ""
                         connectedAppName = ""
                         connectedAppClientId = ""
-                        connectedAppDescription = ""
+                        connectedAppDescription = TextFieldValue("")
                         connectedAppHomepageUrl = ""
                         connectedAppReturnUrl = ""
                         connectedAppManifestUrl = ""
                         connectedAppPublishCategory = "productivity"
-                        connectedAppPublishDataAccess = ""
+                        connectedAppPublishDataAccess = TextFieldValue("")
                     },
                     onRegister = { request ->
                         onSettingsIntent(SharedSettingsIntent.RegisterConnectedApp(request))
@@ -7247,10 +7249,10 @@ private fun SharedSettingsServerContent(
     onJoinLinkExpiresAtChange: (String) -> Unit = {},
     agreementEnabled: Boolean = false,
     onAgreementEnabledChange: (Boolean) -> Unit = {},
-    agreementTitle: String = "",
-    onAgreementTitleChange: (String) -> Unit = {},
-    agreementBody: String = "",
-    onAgreementBodyChange: (String) -> Unit = {},
+    agreementTitle: TextFieldValue = TextFieldValue(""),
+    onAgreementTitleChange: (TextFieldValue) -> Unit = {},
+    agreementBody: TextFieldValue = TextFieldValue(""),
+    onAgreementBodyChange: (TextFieldValue) -> Unit = {},
     hideHumansFromMembers: Boolean = false,
     onHideHumansFromMembersChange: (Boolean) -> Unit = {},
     onboardingAgentId: String = "",
@@ -7392,12 +7394,12 @@ private fun SettingsConnectedAppsContent(
     editingId: String,
     name: String,
     clientId: String,
-    description: String,
+    description: TextFieldValue,
     homepageUrl: String,
     returnUrl: String,
     manifestUrl: String,
     publishCategory: String,
-    publishDataAccess: String,
+    publishDataAccess: TextFieldValue,
     marketplaceSearch: String,
     marketplaceCategory: String,
     selectedMarketplaceId: String?,
@@ -7407,12 +7409,12 @@ private fun SettingsConnectedAppsContent(
     bottomContentPadding: Dp,
     onNameChange: (String) -> Unit,
     onClientIdChange: (String) -> Unit,
-    onDescriptionChange: (String) -> Unit,
+    onDescriptionChange: (TextFieldValue) -> Unit,
     onHomepageUrlChange: (String) -> Unit,
     onReturnUrlChange: (String) -> Unit,
     onManifestUrlChange: (String) -> Unit,
     onPublishCategoryChange: (String) -> Unit,
-    onPublishDataAccessChange: (String) -> Unit,
+    onPublishDataAccessChange: (TextFieldValue) -> Unit,
     onMarketplaceSearchChange: (String) -> Unit,
     onMarketplaceCategoryChange: (String) -> Unit,
     onOpenMarketplaceDetail: (String) -> Unit,
@@ -9999,21 +10001,21 @@ private fun SettingsConnectedAppEditorCard(
     editingId: String,
     name: String,
     clientId: String,
-    description: String,
+    description: TextFieldValue,
     homepageUrl: String,
     returnUrl: String,
     manifestUrl: String,
     publishCategory: String,
-    publishDataAccess: String,
+    publishDataAccess: TextFieldValue,
     actionState: SharedSettingsActionState?,
     onNameChange: (String) -> Unit,
     onClientIdChange: (String) -> Unit,
-    onDescriptionChange: (String) -> Unit,
+    onDescriptionChange: (TextFieldValue) -> Unit,
     onHomepageUrlChange: (String) -> Unit,
     onReturnUrlChange: (String) -> Unit,
     onManifestUrlChange: (String) -> Unit,
     onPublishCategoryChange: (String) -> Unit,
-    onPublishDataAccessChange: (String) -> Unit,
+    onPublishDataAccessChange: (TextFieldValue) -> Unit,
     onCancelEdit: () -> Unit,
     onRegister: (SettingsConnectedAppRegisterRequest) -> Unit,
     onUpdate: (SettingsConnectedAppUpdateRequest) -> Unit,
@@ -10153,7 +10155,7 @@ private fun SettingsConnectedAppEditorCard(
                             SettingsConnectedAppUpdateRequest(
                                 id = editingId,
                                 name = trimmedName,
-                                description = description.trim().ifBlank { null },
+                                description = description.text.trim().ifBlank { null },
                                 homepageUrl = homepageUrl.trim().ifBlank { null },
                                 returnUrl = returnUrl.trim().ifBlank { null },
                                 agentManifestUrl = manifestUrl.trim().ifBlank { null }
@@ -10164,7 +10166,7 @@ private fun SettingsConnectedAppEditorCard(
                             SettingsConnectedAppRegisterRequest(
                                 name = trimmedName,
                                 clientId = clientId.trim().ifBlank { null },
-                                description = description.trim().ifBlank { null },
+                                description = description.text.trim().ifBlank { null },
                                 homepageUrl = homepageUrl.trim().ifBlank { null },
                                 returnUrl = returnUrl.trim().ifBlank { null },
                                 agentManifestUrl = manifestUrl.trim().ifBlank { null }
@@ -10197,7 +10199,7 @@ private fun SettingsConnectedAppClientsCard(
     onRequestDelete: (String) -> Unit,
     onPublish: (SettingsConnectedAppPublishRequest) -> Unit,
     publishCategory: String,
-    publishDataAccess: String
+    publishDataAccess: TextFieldValue
 ) {
     SettingsFormSectionCard(iconName = SlockLucideIconName.KeyRound, title = stringResource(MR.strings.settings_connected_apps_my_apps_title)) {
         if (clients.isEmpty()) {
@@ -10229,7 +10231,7 @@ private fun SettingsConnectedAppClientsCard(
                                 SettingsConnectedAppPublishRequest(
                                     id = app.id,
                                     category = publishCategory.trim().ifBlank { app.category.ifBlank { "productivity" } },
-                                    dataAccessSummary = publishDataAccess.trim().ifBlank { app.dataAccessSummary }
+                                    dataAccessSummary = publishDataAccess.text.trim().ifBlank { app.dataAccessSummary }
                                 )
                             )
                         }
@@ -11041,21 +11043,21 @@ private fun SettingsServerAgreementCard(
     agreement: SettingsServerAgreementSnapshot?,
     section: SettingsServerSectionSnapshot?,
     enabled: Boolean,
-    title: String,
-    bodyMarkdown: String,
+    title: TextFieldValue,
+    bodyMarkdown: TextFieldValue,
     actionState: build.raft.app.data.SharedSettingsActionState?,
     onEnabledChange: (Boolean) -> Unit,
-    onTitleChange: (String) -> Unit,
-    onBodyChange: (String) -> Unit,
+    onTitleChange: (TextFieldValue) -> Unit,
+    onBodyChange: (TextFieldValue) -> Unit,
     onSubmit: () -> Unit
 ) {
     val canSave = agreement?.canSave == true
     val busy = actionState?.action == SERVER_ACTION_AGREEMENT_SAVE && actionState.inProgress
-    val bodyTooLong = bodyMarkdown.length > PreJoinAgreementBodyMaxLength
-    val titleTooLong = title.length > 160
+    val bodyTooLong = bodyMarkdown.text.length > PRE_JOIN_AGREEMENT_BODY_MAX_LENGTH
+    val titleTooLong = title.text.length > PRE_JOIN_AGREEMENT_TITLE_VALIDATION_MAX_LENGTH
     val dirty =
         agreement != null &&
-            (enabled != agreement.enabled || title.trim() != agreement.title || bodyMarkdown != agreement.bodyMarkdown)
+            (enabled != agreement.enabled || title.text.trim() != agreement.title || bodyMarkdown.text != agreement.bodyMarkdown)
     val saveEnabled = canSave && dirty && !busy && !bodyTooLong && !titleTooLong
     SettingsFormSectionCard(iconName = SlockLucideIconName.FileCheck, title = stringResource(MR.strings.settings_section_pre_join_agreement_title)) {
         section?.detail?.takeIf { it.isNotBlank() }?.let { SettingsFormDetailText(it) }
@@ -11073,7 +11075,7 @@ private fun SettingsServerAgreementCard(
             labelSize = SlockFormFieldSize.Compact,
             value = title,
             placeholder = stringResource(MR.strings.settings_server_placeholder_agreement_title),
-            onValueChange = { onTitleChange(it.take(180)) },
+            onValueChange = { onTitleChange(it.coerceTextLength(PRE_JOIN_AGREEMENT_TITLE_INPUT_MAX_LENGTH)) },
             required = enabled,
             enabled = canSave && !busy
         )
@@ -11088,7 +11090,7 @@ private fun SettingsServerAgreementCard(
             maxLines = 7,
             fieldMinHeight = 142.dp
         )
-        SettingsFormDetailText("${bodyMarkdown.length} / $PreJoinAgreementBodyMaxLength characters")
+        SettingsFormDetailText("${bodyMarkdown.text.length} / $PRE_JOIN_AGREEMENT_BODY_MAX_LENGTH characters")
         if (titleTooLong) {
             SettingsFormErrorText(stringResource(MR.strings.settings_server_error_agreement_title))
         }
@@ -11112,7 +11114,8 @@ private fun SettingsServerAgreementCard(
 }
 
 @Composable
-private fun SettingsAgreementPreview(bodyMarkdown: String) {
+private fun SettingsAgreementPreview(bodyMarkdown: TextFieldValue) {
+    val previewBody = bodyMarkdown.text
     Column(
         modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceCream).border(SlockStroke.Default, SlockColor.BorderBlack).padding(10.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
@@ -11122,11 +11125,11 @@ private fun SettingsAgreementPreview(bodyMarkdown: String) {
             style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
             color = SlockColor.TextMutedGray
         )
-        if (bodyMarkdown.isBlank()) {
+        if (previewBody.isBlank()) {
             SettingsFormEmptyText(stringResource(MR.strings.settings_server_empty_agreement_preview))
         } else {
             SlockMarkdownBody(
-                body = bodyMarkdown,
+                body = previewBody,
                 textStyle = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp, color = SlockColor.TextBlack)
             )
         }
@@ -17661,7 +17664,7 @@ private fun SharedCreateChannelDialog(
     members: List<MemberProfile>,
     errorMessage: String?,
     initialName: String = "",
-    initialDescription: String = "",
+    initialDescription: TextFieldValue = TextFieldValue(""),
     initialVisibility: SharedCreateChannelVisibility = SharedCreateChannelVisibility.Public,
     initialSelectedMemberKeys: Set<String> = emptySet(),
     onDismiss: () -> Unit,
@@ -17786,7 +17789,7 @@ private fun SharedCreateChannelDialog(
                         selectableMembers.filter { it.memberSelectionKey in selectedMemberKeys }
                     onSubmit(
                         name,
-                        description,
+                        description.text,
                         visibility.wireValue,
                         selectedMembers.filter { it.kind == MemberKind.Agent }.map { it.id.value },
                         selectedMembers.filter { it.kind == MemberKind.Human }.map { it.id.value }
@@ -22022,8 +22025,8 @@ private fun SettingsVisualServerFocusedContent(variant: String) {
     var joinLinkMaxUses by remember { mutableStateOf("25") }
     var joinLinkExpiresAt by remember { mutableStateOf(settingsVisualFixtureValues.recentActivityAtIso) }
     var agreementEnabled by remember { mutableStateOf(snapshot.agreement?.enabled ?: true) }
-    var agreementTitle by remember { mutableStateOf(snapshot.agreement?.title.orEmpty()) }
-    var agreementBody by remember { mutableStateOf(snapshot.agreement?.bodyMarkdown.orEmpty()) }
+    var agreementTitle by remember { mutableStateOf(textFieldValueAtEnd(snapshot.agreement?.title.orEmpty())) }
+    var agreementBody by remember { mutableStateOf(textFieldValueAtEnd(snapshot.agreement?.bodyMarkdown.orEmpty())) }
     var onboardingAgentId by remember { mutableStateOf(snapshot.onboarding?.onboardingAgentId.orEmpty()) }
     var onboardingGreetingEnabled by remember { mutableStateOf(snapshot.onboarding?.agentAllChannelGreetingEnabled ?: true) }
     var hideHumansFromMembers by remember { mutableStateOf(snapshot.profile.hideHumansFromMembers) }
@@ -22265,12 +22268,12 @@ private fun SettingsVisualConnectedAppsContent() {
         editingId = "",
         name = "Slack Bridge",
         clientId = "client_slack_bridge",
-        description = "Post server events to an external tool.",
+        description = textFieldValueAtEnd("Post server events to an external tool."),
         homepageUrl = "https://example.com",
         returnUrl = "https://example.com/oauth/callback",
         manifestUrl = "https://example.com/manifest.json",
         publishCategory = "productivity",
-        publishDataAccess = "Messages and channel metadata",
+        publishDataAccess = textFieldValueAtEnd("Messages and channel metadata"),
         marketplaceSearch = "",
         marketplaceCategory = SETTINGS_CONNECTED_APPS_CATEGORY_ALL,
         selectedMarketplaceId = null,
@@ -23439,7 +23442,7 @@ internal fun HomeCreateChannelDialogVisualContent() {
             members = homeCreateChannelVisualMembers,
             errorMessage = null,
             initialName = "android-artifacts",
-            initialDescription = "Build reports, screenshots, release blockers",
+            initialDescription = textFieldValueAtEnd("Build reports, screenshots, release blockers"),
             initialVisibility = SharedCreateChannelVisibility.Public,
             initialSelectedMemberKeys = setOf(
                 homeCreateChannelVisualMembers[0].memberSelectionKey,
