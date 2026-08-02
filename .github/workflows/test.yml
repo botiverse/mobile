@@ -1030,7 +1030,12 @@ jobs:
       # shellchecked, reviewed as a normal diff, and run locally).
       - name: Validate canonical-final actual-host regression script
         shell: bash
-        run: bash -n scripts/ci/canonical-final-actual-host.sh
+        run: |
+          bash -n \
+            scripts/ci/canonical-final-actual-host.sh \
+            scripts/ci/canonical-final-pre-attempt-guard.sh \
+            scripts/ci/test_canonical_final_pre_attempt_guard.sh
+          scripts/ci/test_canonical_final_pre_attempt_guard.sh
 
       - name: Run canonical-final actual-host regression under exact-zero egress gate
         uses: reactivecircus/android-emulator-runner@v2
@@ -1057,6 +1062,7 @@ jobs:
             canonical-final-instrumentation-list.txt
             canonical-final-instrumentation-list-after.txt
             canonical-final-retry-receipt.txt
+            canonical-final-pre-attempt-*.txt
             canonical-final-*.attempt-*
             canonical-final-pm-clear-retry-*.txt
             canonical-final-iptables-reset-*.txt

@@ -111,14 +111,19 @@ test "$(awk '$3 == "REJECT" { print $1 " " $2 }' canonical-final-ip6tables-befor
 # prove no leak — neither is ever retried or -Z-erased, so an abort can never mask
 # a leak); only a pure infra-abort (assert exit 2) with a PROVABLY clean counter
 # retries, and the pre-retry state reset (pm clear + iptables -Z) is verified, not
-# best-effort. Evidence capture runs under `set +e` so a device that went offline
-# still reaches the gate instead of aborting mid-capture.
+# best-effort. Before every attempt, a bounded fail-closed admission guard proves
+# device/package/UID/instrumentation readiness plus both v4/v6 owner hooks and
+# exact-zero chains; it never silently recreates missing guard state. Evidence
+# capture runs under `set +e` so a device that went offline still reaches the gate
+# instead of aborting mid-capture.
 CANONICAL_FINAL_ATTEMPTS="${INSTRUMENTATION_MAX_ATTEMPTS:-3}"
 CANONICAL_FINAL_BACKOFF="${INSTRUMENTATION_RETRY_BACKOFF_SECONDS:-10}"
 CANONICAL_FINAL_OK=0
 : > canonical-final-retry-receipt.txt
 for run_attempt in $(seq 1 "$CANONICAL_FINAL_ATTEMPTS"); do
-  adb logcat -c
+  scripts/ci/canonical-final-pre-attempt-guard.sh \
+    "$run_attempt" "$PACKAGE" "$TEST_PACKAGE" "$TARGET_UID" "$CHAIN" \
+    "canonical-final-pre-attempt-${run_attempt}.txt"
   adb logcat -v threadtime > canonical-final-logcat-live.txt &
   LOGCAT_PID=$!
   (set +e; adb shell am instrument -w -r -e class "$TEST_CLASS" "$TEST_PACKAGE/androidx.test.runner.AndroidJUnitRunner" > canonical-final-instrumentation.txt 2>&1; echo "$?" > canonical-final-instrumentation-status.txt) &
