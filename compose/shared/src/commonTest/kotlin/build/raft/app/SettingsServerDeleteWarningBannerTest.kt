@@ -1,6 +1,5 @@
 package build.raft.app
 
-import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -21,7 +20,7 @@ class SettingsServerDeleteWarningBannerTest {
         assertEquals(serverNameStart, serverNameSpan.start)
         assertEquals(serverNameEnd, serverNameSpan.end)
         assertEquals(SlockType.ButtonBold.fontFamily, serverNameSpan.item.fontFamily)
-        assertEquals(FontWeight.Normal, serverNameSpan.item.fontWeight)
+        assertEquals(SlockType.ButtonBold.fontWeight, serverNameSpan.item.fontWeight)
     }
 
     @Test

@@ -1972,7 +1972,7 @@ class SlockHomeComponentsTest {
     @Test
     fun notificationActionButtonsUseBoldFontFamily() {
         assertEquals(slockFontFamilyForWeight(FontWeight.Bold), HomeNotificationActionButtonTextStyle.fontFamily)
-        assertEquals(FontWeight.Normal, HomeNotificationActionButtonTextStyle.fontWeight)
+        assertEquals(SlockType.ButtonBold.fontWeight, HomeNotificationActionButtonTextStyle.fontWeight)
     }
 
     @Test

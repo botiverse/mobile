@@ -42,6 +42,10 @@ internal expect fun slockPlatformSupportsPublicAttachmentDownloadReadback(): Boo
 // action exports that committed private copy through the system document picker.
 internal expect fun slockPlatformSupportsPrivateAttachmentExport(): Boolean
 
+// OHOS needs the semantic weight alongside the physical Space Grotesk face so
+// ArkUI applies the same weight to system-font fallback glyphs such as CJK.
+internal expect fun slockPlatformPreservesEncodedFontWeightForFallback(): Boolean
+
 // task #90: each platform is a separate Hands app with its own release
 // stream, so the release-notes slug must be injected per platform (like the
 // build version), not hardcoded in commonMain. These MUST stay in sync with

@@ -1109,9 +1109,9 @@ class SlockMarkdownTest {
             requireNotNull(slockMarkdownRichTextTagLinkStyles(SlockRichTextChromeKind.Channel).style)
 
         assertEquals(SlockType.ButtonBold.fontFamily, channelStyle.fontFamily)
-        assertEquals(FontWeight.Normal, channelStyle.fontWeight)
+        assertEquals(SlockType.ButtonBold.fontWeight, channelStyle.fontWeight)
         assertEquals(SlockType.ButtonBold.fontFamily, richChannelStyle.fontFamily)
-        assertEquals(FontWeight.Normal, richChannelStyle.fontWeight)
+        assertEquals(SlockType.ButtonBold.fontWeight, richChannelStyle.fontWeight)
         assertEquals(null, richChannelStyle.textDecoration)
         assertEquals(SlockRichTextFontWeightToken.Bold, SlockRichTextChromeKind.Channel.styleToken.fontWeight)
 
@@ -1308,7 +1308,7 @@ class SlockMarkdownTest {
         val strongFontSpan = annotated.spanStyles.last { it.start == 7 && it.end == 11 }
 
         assertEquals(SlockType.ButtonBold.fontFamily, strongFontSpan.item.fontFamily)
-        assertEquals(FontWeight.Normal, strongFontSpan.item.fontWeight)
+        assertEquals(SlockType.ButtonBold.fontWeight, strongFontSpan.item.fontWeight)
     }
 
     @Test
@@ -1351,7 +1351,7 @@ class SlockMarkdownTest {
         val boldStart = annotated.text.indexOf("bold")
         val boldSpan = annotated.spanStyles.last { it.start == boldStart && it.end == boldStart + "bold".length }
         assertEquals(SlockType.ButtonBold.fontFamily, boldSpan.item.fontFamily)
-        assertEquals(FontWeight.Normal, boldSpan.item.fontWeight)
+        assertEquals(SlockType.ButtonBold.fontWeight, boldSpan.item.fontWeight)
     }
 
     @Test

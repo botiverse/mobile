@@ -1,6 +1,5 @@
 package build.raft.app
 
-import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import kotlin.test.Test
@@ -19,7 +18,7 @@ class MembersListRowVisualContractTest {
         assertEquals(6.dp, MembersListContentGap)
         assertEquals(0.7f, MembersListNameMaxWidthFraction)
         assertEquals(SlockType.Button.fontFamily, MembersListNameTextStyle.fontFamily)
-        assertEquals(FontWeight.Normal, MembersListNameTextStyle.fontWeight)
+        assertEquals(SlockType.Button.fontWeight, MembersListNameTextStyle.fontWeight)
         assertEquals(14.sp, MembersListNameTextStyle.fontSize)
         assertEquals(20.sp, MembersListNameTextStyle.lineHeight)
         assertEquals(12.sp, MembersListDescriptionTextStyle.fontSize)
