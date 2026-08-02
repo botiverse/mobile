@@ -486,11 +486,11 @@ internal fun SlockBrutalTextField(
 }
 
 /**
- * Value-aware form field for masked secrets.
+ * Exact-value form field for editable text.
  *
- * Secret editors must retain the exact native [TextFieldValue] so selection and composition
- * metadata are not reconstructed through the String overload during rapid input. The caller owns
- * the value and converts [TextFieldValue.text] only at the product-state or request boundary.
+ * The caller owns the native [TextFieldValue] so selection and composition survive controlled
+ * recomposition. Product state and requests still consume [TextFieldValue.text] at their boundary.
+ * Secret callers opt into native masking explicitly with [password].
  */
 @Composable
 internal fun SlockBrutalTextField(
@@ -507,10 +507,11 @@ internal fun SlockBrutalTextField(
     hint: String? = null,
     error: String? = null,
     autoFocus: Boolean = false,
+    maxLines: Int = 1,
     textStyle: TextStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
     fieldMinHeight: Dp = 42.dp,
     containerTapRequestsFocus: Boolean = false,
-    password: Boolean = true
+    password: Boolean = false
 ) {
     val hasError = !error.isNullOrBlank()
     SlockFormField(
@@ -529,7 +530,7 @@ internal fun SlockBrutalTextField(
             enabled = enabled,
             readOnly = readOnly,
             autoFocus = autoFocus,
-            maxLines = 1,
+            maxLines = maxLines,
             textStyle = textStyle,
             fieldMinHeight = fieldMinHeight,
             containerTapRequestsFocus = containerTapRequestsFocus,

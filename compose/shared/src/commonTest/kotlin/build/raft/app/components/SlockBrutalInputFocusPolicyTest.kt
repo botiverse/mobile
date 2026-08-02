@@ -1,5 +1,6 @@
 package build.raft.app.components
 
+import androidx.compose.runtime.Composable
 import com.tencent.kuikly.compose.ui.text.TextRange
 import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
 import kotlin.test.Test
@@ -67,8 +68,8 @@ class SlockBrutalInputFocusPolicyTest {
     }
 
     @Test
-    fun valueAwareEditorCallbackForwardsExactNativeSnapshotsWhileEditable() {
-        val focusPolicy = slockBrutalInputFocusPolicy(maxLines = 1, enabled = true, readOnly = false)
+    fun multilineValueAwareEditorForwardsExactNativeSnapshotsWhileEditable() {
+        val focusPolicy = slockBrutalInputFocusPolicy(maxLines = 4, enabled = true, readOnly = false)
         val nativeValues =
             listOf(
                 TextFieldValue(text = "a", selection = TextRange(1)),
@@ -92,6 +93,8 @@ class SlockBrutalInputFocusPolicyTest {
         }
 
         assertEquals(listOf("a", "ab", "abc", "ab", "abx"), forwarded.map { it.text })
+        assertEquals(true, focusPolicy.fillEditorHeight)
+        assertEquals(true, focusPolicy.containerTapRequestsFocus)
         nativeValues.zip(forwarded).forEach { (nativeValue, forwardedValue) ->
             assertSame(nativeValue, forwardedValue)
         }
@@ -105,4 +108,17 @@ class SlockBrutalInputFocusPolicyTest {
         val acceptsFocus: Boolean,
         val containerTap: Boolean
     )
+
+    @Composable
+    @Suppress("unused")
+    private fun valueAwareOrdinaryMultilineContractCompiles() {
+        SlockBrutalTextField(
+            label = "Description",
+            value = TextFieldValue("draft", selection = TextRange(2), composition = TextRange(0, 2)),
+            placeholder = "",
+            onValueChange = {},
+            maxLines = 4,
+            password = false
+        )
+    }
 }
