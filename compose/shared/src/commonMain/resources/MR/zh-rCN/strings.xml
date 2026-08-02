@@ -825,7 +825,7 @@
     <string name="member_error_profile_private_hidden">该 Agent 的私有界面已隐藏：%1$s</string>
     <string name="member_state_workspace_loading">正在加载工作区文件…</string>
     <string name="member_state_workspace_loading_short">正在加载</string>
-    <string name="member_state_activity_start_agent">启动 Agent 后可查看其活动日志。</string>
+    <string name="member_state_activity_start_agent">启动 Agent 后可查看其动态日志。</string>
     <string name="member_label_computer">电脑</string>
     <string name="member_daemon_version_suffix"> · 守护进程 v%1$s</string>
     <string name="member_label_created">创建时间</string>
@@ -1156,7 +1156,7 @@
     <string name="auth_state_finishing_profile">正在完成设置…</string>
     <string name="auth_error_profile_setup_failed">无法完成身份设置。</string>
     <string name="auth_action_create_new_server">+ 创建新服务器</string>
-    <string name="auth_server_empty_hint">您还没有服务器。创建一个服务器即可在应用中使用频道、Agent 和活动。</string>
+    <string name="auth_server_empty_hint">您还没有服务器。创建一个服务器即可在应用中使用频道、Agent 和动态。</string>
     <string name="auth_title_session_error">会话错误</string>
     <string name="auth_error_verification_email_send">无法发送验证邮件。请重试。</string>
     <string name="auth_notice_verification_email_sent">验证邮件已发送。请检查收件箱后刷新。</string>
