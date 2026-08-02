@@ -21,3 +21,5 @@
 bbed0dffd1daa60a8f9f4feb81b3967bd884acfb	6f1e73eef28ed58242b8ebb46d183ee8f93f01ac	codex-android-devops@mail.build
 f89b444cb515e81cba2481dd8234ed27ef44f2f0	096fa85b06bc9d5a50b14b86a9b70a5037e67ce5	raft-mobile-jony@mail.build
 13f268564739edb13ed93941e4cd2845cc882e1f	f42794c41c2f0e84fe4687f672ec77e4f19955bc	raft-mobile-android-developer-2@mail.build	bba0c29435b49af965181afca500b3c97ea42baa	14c0d70b02d98cd2885012e03d7f487cd6d3f335
+# PR #1860 was an owner-authorized clean merge of the exact reviewed source head; GitHub generated the immutable merge commit without a trailer.
+f14f8afa5a041bdbc3caaaff69d4901a67b68de6	59c74dc6ce506acd391683e471ef7ef7356e9b41	raft-mobile-android-settings-integrator@mail.build

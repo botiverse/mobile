@@ -97,6 +97,41 @@ merge_base_commit="$(git -C "$fixture_repo" rev-parse HEAD)"
 git -C "$fixture_repo" merge -q --no-ff merge-source -m "merge: immutable clean merge without trailer"
 merge_commit="$(git -C "$fixture_repo" rev-parse HEAD)"
 
+git -C "$fixture_repo" switch -q -c same-path-overlap-root "$base_commit"
+printf 'base-a\nbase-b\nbase-c\nbase-d\nbase-e\n' > "${fixture_repo}/same-path-overlap.txt"
+git -C "$fixture_repo" add same-path-overlap.txt
+git -C "$fixture_repo" commit -q -m "test: signed same-path overlap root" -m "Signed-off-by: Sign-off Test <${signer}>"
+same_path_source_parent="$(git -C "$fixture_repo" rev-parse HEAD)"
+git -C "$fixture_repo" switch -q -c same-path-overlap-source
+printf 'source-a\nbase-b\nbase-c\nbase-d\nbase-e\n' > "${fixture_repo}/same-path-overlap.txt"
+git -C "$fixture_repo" add same-path-overlap.txt
+git -C "$fixture_repo" commit -q -m "fix: signed same-path overlap source" -m "Signed-off-by: Sign-off Test <${signer}>"
+same_path_source_head="$(git -C "$fixture_repo" rev-parse HEAD)"
+git -C "$fixture_repo" switch -q -c same-path-overlap-main "$same_path_source_parent"
+printf 'base-a\nbase-b\nbase-c\nbase-d\nmain-e\n' > "${fixture_repo}/same-path-overlap.txt"
+git -C "$fixture_repo" add same-path-overlap.txt
+git -C "$fixture_repo" commit -q -m "test: signed same-path overlap main" -m "Signed-off-by: Sign-off Test <${signer}>"
+same_path_immutable_parent="$(git -C "$fixture_repo" rev-parse HEAD)"
+git -C "$fixture_repo" merge -q --no-ff same-path-overlap-source -m "merge: same-path clean overlap without trailer"
+same_path_merge_commit="$(git -C "$fixture_repo" rev-parse HEAD)"
+
+git -C "$fixture_repo" switch -q -c unsigned-merge-range-source "$merge_commit"
+printf 'unsigned reviewed intermediate\n' > "${fixture_repo}/unsigned-merge-range.txt"
+git -C "$fixture_repo" add unsigned-merge-range.txt
+git -C "$fixture_repo" commit -q -m "fix: unsigned merge-range intermediate"
+printf 'signed reviewed head\n' >> "${fixture_repo}/unsigned-merge-range.txt"
+git -C "$fixture_repo" add unsigned-merge-range.txt
+git -C "$fixture_repo" commit -q -m "fix: signed merge-range head" -m "Signed-off-by: Sign-off Test <${signer}>"
+unsigned_merge_range_source="$(git -C "$fixture_repo" rev-parse HEAD)"
+
+git -C "$fixture_repo" switch -q -c unsigned-merge-range-main "$merge_commit"
+printf 'unsigned-range main context\n' > "${fixture_repo}/unsigned-range-main.txt"
+git -C "$fixture_repo" add unsigned-range-main.txt
+git -C "$fixture_repo" commit -q -m "test: signed unsigned-range main advance" -m "Signed-off-by: Sign-off Test <${signer}>"
+unsigned_merge_range_base="$(git -C "$fixture_repo" rev-parse HEAD)"
+git -C "$fixture_repo" merge -q --no-ff unsigned-merge-range-source -m "merge: unsigned reviewed range without trailer"
+unsigned_merge_range_commit="$(git -C "$fixture_repo" rev-parse HEAD)"
+
 git -C "$fixture_repo" switch -q -c tampered-merge-source "$merge_commit"
 printf 'reviewed second source\n' > "${fixture_repo}/tampered-source.txt"
 git -C "$fixture_repo" add tampered-source.txt
@@ -164,6 +199,16 @@ run_repository_checker() {
   (
     cd "$repo_root"
     "$checker" "$range_base" "$range_head"
+  )
+}
+
+run_repository_checker_with_ledger() {
+  local ledger_path="$1"
+  local range_base="$2"
+  local range_head="$3"
+  (
+    cd "$repo_root"
+    COMMIT_SIGNOFF_ATTESTATIONS_FILE="$ledger_path" "$checker" "$range_base" "$range_head"
   )
 }
 
@@ -254,6 +299,35 @@ expect_fail "duplicate immutable SHA" run_checker "$ledger" "$base_commit" "$squ
 printf '%s\t%s\t%s\n' "$merge_commit" "$merge_source_commit" "$signer" > "$ledger"
 expect_pass "clean two-parent merge attestation" run_checker "$ledger" "$merge_base_commit" "$merge_commit"
 
+expect_fail "unsigned clean merge requires an immutable ledger row" \
+  run_checker "$missing_ledger" "$merge_base_commit" "$merge_commit"
+
+printf '%s\t%s\t%s\n' "$merge_commit" "$merge_source_commit" 'raft-mobile-wrong@mail.build' > "$ledger"
+expect_fail "clean merge attestation requires the exact source-head signer" \
+  run_checker "$ledger" "$merge_base_commit" "$merge_commit"
+
+printf '%s\t%s\t%s\n' \
+  "$unsigned_merge_range_commit" "$unsigned_merge_range_source" "$signer" > "$ledger"
+expect_fail "clean merge attestation rejects unsigned reviewed intermediate" \
+  run_checker "$ledger" "$unsigned_merge_range_base" "$unsigned_merge_range_commit"
+
+printf '%s\t%s\t%s\n' "$same_path_merge_commit" "$same_path_source_head" "$signer" > "$ledger"
+expect_pass "three-field attestation accepts exact clean same-path overlap" \
+  run_checker "$ledger" "$same_path_immutable_parent" "$same_path_merge_commit"
+
+same_path_tree="$(git -C "$fixture_repo" rev-parse "${same_path_merge_commit}^{tree}")"
+same_path_paths="$(git -C "$fixture_repo" diff --no-renames --name-only "$same_path_immutable_parent" "$same_path_merge_commit" | awk 'NF { count++ } END { print count + 0 }')"
+read -r same_path_insertions same_path_deletions <<< "$(
+  git -C "$fixture_repo" diff --no-renames --numstat "$same_path_immutable_parent" "$same_path_merge_commit" |
+    awk 'NF { additions += $1; deletions += $2 } END { print additions + 0, deletions + 0 }'
+)"
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+  "$same_path_merge_commit" "$same_path_source_head" "$signer" \
+  "$same_path_source_parent" "$same_path_immutable_parent" "$same_path_tree" \
+  "$same_path_paths" "$same_path_insertions" "$same_path_deletions" > "$ledger"
+expect_fail "strict merge attestation rejects same-path clean-overlap misuse" \
+  run_checker "$ledger" "$same_path_immutable_parent" "$same_path_merge_commit"
+
 merge_tree="$(git -C "$fixture_repo" rev-parse "${merge_commit}^{tree}")"
 merge_paths="$(git -C "$fixture_repo" diff --no-renames --name-only "$merge_base_commit" "$merge_commit" | awk 'NF { count++ } END { print count + 0 }')"
 read -r merge_insertions merge_deletions <<< "$(
@@ -318,11 +392,22 @@ expect_fail "octopus merge is not attestable" run_checker "$ledger" "$merge_base
 for attested_commit in \
   7fdeb172ad03f484e64f66fe618b21d5b9a89250 \
   93295966bb3bc5ce945d2fc3e7dbd9b8ed1c6803 \
-  63d87164e03bbc576b6ce5f8dcfdce4b8d291439; do
+  63d87164e03bbc576b6ce5f8dcfdce4b8d291439 \
+  f14f8afa5a041bdbc3caaaff69d4901a67b68de6; do
   attested_parent="$(git -C "$repo_root" rev-parse "${attested_commit}^")"
   expect_pass "repository attestation ${attested_commit}" \
     run_repository_checker "$attested_parent" "$attested_commit"
 done
+
+pr1860_source_parent="a1559fea62c66535ea32966105e762763913fe3e"
+pr1860_source_head="59c74dc6ce506acd391683e471ef7ef7356e9b41"
+pr1860_source_count="$(git -C "$repo_root" rev-list --count "${pr1860_source_parent}..${pr1860_source_head}")"
+if [ "$pr1860_source_count" -ne 7 ]; then
+  echo "FAIL: PR #1860 reviewed source range must contain exactly 7 commits, found ${pr1860_source_count}" >&2
+  exit 1
+fi
+expect_pass "repository PR #1860 exact seven-commit source range without attestations" \
+  run_repository_checker_with_ledger "$missing_ledger" "$pr1860_source_parent" "$pr1860_source_head"
 
 attested_parent="$(git -C "$repo_root" rev-parse "8d1eb30929bdde9e53c73c3eea4e9e112e9dde93^")"
 expect_pass "repository advanced-base attestation 8d1eb30929bdde9e53c73c3eea4e9e112e9dde93" \

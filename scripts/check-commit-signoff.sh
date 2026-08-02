@@ -100,6 +100,14 @@ source_range_has_exact_signoffs() {
   done <<< "$commits"
 }
 
+source_range_has_dco_provenance() {
+  local source_parent="$1"
+  local source_commit="$2"
+  (
+    check_commit_range "$source_parent" "$source_commit"
+  ) >/dev/null 2>&1
+}
+
 zero_context_patch_id() {
   git diff --no-ext-diff --no-renames --unified=0 "$1" "$2" | git patch-id --stable | awk '{ print $1 }'
 }
@@ -311,7 +319,7 @@ verify_attestation() {
       fi
       ;;
     2)
-      local first_parent second_parent clean_merge_tree
+      local first_parent second_parent merge_base source_commit_count clean_merge_tree
       first_parent="$(printf '%s\n' "$parent_line" | awk '{ print $2 }')"
       second_parent="$(printf '%s\n' "$parent_line" | awk '{ print $3 }')"
       if [ -n "${source_parent:-}" ] || [ -n "${immutable_parent:-}" ] || [ -n "${expected_tree:-}" ]; then
@@ -325,12 +333,20 @@ verify_attestation() {
       fi
       [ "$source_commit" = "$second_parent" ] ||
         fail "commit sign-off attestation for ${commit} (${subject}) must reference its reviewed second parent ${second_parent}, not ${source_commit}."
+      merge_base="$(git merge-base "$first_parent" "$second_parent" 2>/dev/null || true)"
+      [ -n "$merge_base" ] ||
+        fail "commit sign-off attestation for ${commit} (${subject}) requires an exact merge-base for its immutable parents."
+      source_commit_count="$(git rev-list --count "${merge_base}..${source_commit}" 2>/dev/null || true)"
+      [ -n "$source_commit_count" ] && [ "$source_commit_count" -gt 0 ] ||
+        fail "commit sign-off attestation for ${commit} (${subject}) requires a non-empty immutable reviewed source range."
+      source_range_has_dco_provenance "$merge_base" "$source_commit" ||
+        fail "commit sign-off attestation for ${commit} (${subject}) requires every reviewed source commit in ${merge_base}..${source_commit} to carry an exact @mail.build Signed-off-by trailer or a valid immutable attestation."
       if ! clean_merge_tree="$(git merge-tree --write-tree "$first_parent" "$second_parent" 2>/dev/null)"; then
         fail "commit sign-off attestation for ${commit} (${subject}) is only valid for a clean two-parent merge."
       fi
       [ "$clean_merge_tree" = "$commit_tree" ] ||
         fail "commit sign-off attestation for ${commit} (${subject}) does not match the clean merge tree of ${first_parent} and ${second_parent}."
-      echo "commit sign-off: immutable merge ${commit} (${subject}) is attested by signed reviewed second parent ${source_commit} (<${signer}>) with exact clean merge tree ${commit_tree}."
+      echo "commit sign-off: immutable merge ${commit} (${subject}) is attested by DCO-proven reviewed range ${merge_base}..${source_commit} (${source_commit_count} commits, <${signer}>) with exact parents and clean merge tree ${commit_tree}."
       ;;
     *)
       fail "commit sign-off attestation for ${commit} (${subject}) is only valid for a single-parent immutable squash or clean two-parent merge commit."
