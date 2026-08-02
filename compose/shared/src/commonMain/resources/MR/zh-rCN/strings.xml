@@ -967,7 +967,7 @@
     <string name="member_permission_task_read_hint">列出任务。</string>
     <string name="member_permission_task_write_hint">创建、认领、取消认领和更新任务。</string>
     <string name="member_permission_knowledge_read_hint">读取 Raft 知识库条目。</string>
-    <string name="member_permission_action_prepare_hint">准备操作卡片，由用户确认执行。</string>
+    <string name="member_permission_action_prepare_hint">准备操作卡片，由人类确认执行。</string>
     <string name="file_preview_title">文件预览</string>
     <string name="file_preview_unavailable">预览不可用</string>
     <string name="file_preview_hidden">预览已隐藏</string>
@@ -1408,7 +1408,7 @@
     <string name="search_filter_channel">频道</string>
     <string name="search_filter_clear_all">全部清除</string>
     <string name="search_scope_mentioned">@ 我</string>
-    <string name="search_scope_humans">用户</string>
+    <string name="search_scope_humans">人类</string>
     <string name="search_scope_agents">Agent</string>
     <string name="search_time_any">不限时间</string>
     <string name="search_time_today">今天</string>
@@ -1442,7 +1442,7 @@
     <string name="panel_error_load">无法加载</string>
     <string name="members_page_title">成员</string>
     <string name="members_section_agents">Agent</string>
-    <string name="members_section_humans">用户</string>
+    <string name="members_section_humans">人类</string>
     <string name="settings_state_unavailable">不可用</string>
     <string name="settings_state_permission_required">需要权限</string>
     <string name="settings_state_ready">就绪</string>
