@@ -159,6 +159,32 @@ class MemberRepositoryDataSourceTest {
     }
 
     @Test
+    fun agentDetailRetainsCompleteIntegrationErrorForVisibleCopy() = runBlocking {
+        val network =
+            FakeMemberNetworkClient().apply {
+                agentIntegrationsResponse =
+                    HomeNetworkResponse(
+                        code = 500,
+                        bodyText = null,
+                        errorBodyText = """{"error":"Failed to load agent integrations"}"""
+                    )
+            }
+        val repository = RealMemberRepository(sampleStore(), network)
+
+        val detail = assertIs<DataResult.Content<AgentDetailSnapshot>>(
+            repository.getAgentDetail(DataRequestPriority.Visible, MemberId("agent-1"))
+        ).data
+
+        assertEquals(AgentAppLoginLoadState.Error, detail.appLogins.loadState)
+        assertEquals("server_unavailable", detail.appLogins.errorCode)
+        assertEquals("server_unavailable", detail.appLogins.screenError?.code)
+        assertEquals(
+            "Failed to load agent integrations",
+            detail.appLogins.screenError?.serverMessage
+        )
+    }
+
+    @Test
     fun agentLifecycleDuplicateSubmitIsGuardedInRepository() = runBlocking {
         val network = FakeMemberNetworkClient()
         val repository = RealMemberRepository(sampleStore(), network)
@@ -350,6 +376,7 @@ class MemberRepositoryDataSourceTest {
             """.trimIndent()
         var skillsResponse: HomeNetworkResponse? = null
         var workspaceFileResponse: HomeNetworkResponse? = null
+        var agentIntegrationsResponse: HomeNetworkResponse? = null
         var startBlocker: CompletableDeferred<Unit>? = null
 
         override suspend fun request(
@@ -449,7 +476,7 @@ class MemberRepositoryDataSourceTest {
                 }
                 normalized == "integrations/agents/agent-1" && method == "GET" -> {
                     calls += "GET integrations/agents/agent-1"
-                    ok("""{"apps":[]}""")
+                    agentIntegrationsResponse ?: ok("[]")
                 }
                 normalized == "agents/agent-1/start" && method == "POST" -> {
                     calls += "POST agents/agent-1/start"

@@ -891,6 +891,94 @@ class SettingsRepositoryDataSourceTest {
     }
 
     @Test
+    fun serverInvitePreservesCanonicalErrorTextFromProductionErrorBody() = runBlocking {
+        val result =
+            RealSettingsRepository(
+                sampleStore(),
+                FakeSettingsNetworkClient(
+                    responseCode = 409,
+                    errorJson = """{"error":"This person is already invited"}"""
+                )
+            ).createServerInvite(SettingsServerInviteCreateRequest("new@slock.ai"))
+
+        val error = assertIs<DataResult.Error>(result).error
+        assertEquals("http_409", error.code)
+        assertEquals("This person is already invited", error.serverMessage)
+    }
+
+    @Test
+    fun inviteRouteErrorParserAcceptsOnlyItsExactErrorField() = runBlocking {
+        val fixtures =
+            listOf(
+                "canonical-with-future-field" to
+                    ("""{"error":"This person is already invited","future":{"retryAfter":30}}""" to
+                        "This person is already invited"),
+                "wrong-alias" to ("""{"message":"This person is already invited"}""" to null),
+                "nested-error" to ("""{"error":{"message":"This person is already invited"}}""" to null),
+                "malformed" to ("""{"error":"unterminated""" to null),
+                "plain-text" to ("This person is already invited" to null),
+                "blank" to ("" to null),
+                "missing" to (null to null)
+            )
+
+        fixtures.forEach { (name, fixture) ->
+            val (body, expectedMessage) = fixture
+            val result =
+                RealSettingsRepository(
+                    sampleStore(),
+                    FakeSettingsNetworkClient(responseCode = 409, errorJson = body)
+                ).createServerInvite(SettingsServerInviteCreateRequest("new@slock.ai"))
+
+            val error = assertIs<DataResult.Error>(result, name).error
+            assertEquals("http_409", error.code, name)
+            assertEquals(expectedMessage, error.serverMessage, name)
+        }
+    }
+
+    @Test
+    fun inviteAndJoinLinkRoutesShareTheConfirmedErrorEnvelope() = runBlocking {
+        val repository =
+            RealSettingsRepository(
+                sampleStore(),
+                FakeSettingsNetworkClient(
+                    responseCode = 409,
+                    errorJson = """{"error":"Invite policy rejected this request"}"""
+                )
+            )
+
+        val results =
+            listOf(
+                repository.listServerJoinLinks("server-1"),
+                repository.createServerInvite(SettingsServerInviteCreateRequest("new@slock.ai")),
+                repository.createServerJoinLink(SettingsServerJoinLinkCreateRequest())
+            )
+
+        results.forEach { result ->
+            val error = assertIs<DataResult.Error>(result).error
+            assertEquals("http_409", error.code)
+            assertEquals("Invite policy rejected this request", error.serverMessage)
+        }
+    }
+
+    @Test
+    fun memberRoleMutationPreservesItsExactServerErrorText() = runBlocking {
+        val result =
+            RealSettingsRepository(
+                sampleStore(),
+                FakeSettingsNetworkClient(
+                    responseCode = 409,
+                    errorJson = """{"error":"The last owner cannot be demoted","message":"must not be guessed"}"""
+                )
+            ).updateServerMemberRole(
+                SettingsServerMemberRoleUpdateRequest(memberId = "member-2", role = "admin")
+            )
+
+        val error = assertIs<DataResult.Error>(result).error
+        assertEquals("http_409", error.code)
+        assertEquals("The last owner cannot be demoted", error.serverMessage)
+    }
+
+    @Test
     fun serverDeleteRequiresSlugConfirmationBeforeNetworkDelete() = runBlocking {
         val rejectedNetwork = FakeSettingsNetworkClient()
         val rejected =
@@ -1104,7 +1192,8 @@ class SettingsRepositoryDataSourceTest {
         private val machinesResponseCode: Int? = null,
         private val workspacesResponseCode: Int? = null,
         private val agentsResponseCode: Int? = null,
-        private val responseCode: Int = 200
+        private val responseCode: Int = 200,
+        private val errorJson: String? = """{"error":"failed"}"""
     ) : SlockNetworkClient {
         private var currentConnectedAppClientsJson = connectedAppClientsJson
         private var currentServerPushMode =
@@ -1382,7 +1471,7 @@ class SettingsRepositoryDataSourceTest {
             if (code in 200..299) {
                 HomeNetworkResponse(code = code, bodyText = json)
             } else {
-                HomeNetworkResponse(code = code, bodyText = null, errorBodyText = """{"error":"failed"}""")
+                HomeNetworkResponse(code = code, bodyText = null, errorBodyText = errorJson)
             }
 
         override suspend fun uploadAccountAvatar(

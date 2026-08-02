@@ -302,14 +302,23 @@ class SharedAgentDetailStoreTest {
         assertEquals(SharedAgentDetailLoadStatus.Loading, s.state.value.detailLoadStatus)
         s.dispatch(SharedAgentDetailIntent.SetDetail(testMemberId, testDetail))
         assertEquals(SharedAgentDetailLoadStatus.Content, s.state.value.detailLoadStatus)
-        s.dispatch(SharedAgentDetailIntent.SetDetailError(testMemberId, "test_error"))
+        val detailError = ScreenError(
+            code = "http_409",
+            retryable = false,
+            serverMessage = "Agent profile is being updated"
+        )
+        s.dispatch(SharedAgentDetailIntent.SetDetailError(testMemberId, detailError))
         assertEquals(SharedAgentDetailLoadStatus.Error, s.state.value.detailLoadStatus)
-        assertEquals("test_error", s.state.value.detailErrorCode)
+        assertEquals(detailError, s.state.value.detailError)
+        assertNull(s.state.value.detailPermissionBlocker)
         s.dispatch(SharedAgentDetailIntent.SetDetailNoPermission(testMemberId, "forbidden"))
         assertEquals(SharedAgentDetailLoadStatus.NoPermission, s.state.value.detailLoadStatus)
-        assertEquals("forbidden", s.state.value.detailErrorCode)
+        assertNull(s.state.value.detailError)
+        assertEquals("forbidden", s.state.value.detailPermissionBlocker?.code)
         s.dispatch(SharedAgentDetailIntent.SetDetailEmpty(testMemberId))
         assertEquals(SharedAgentDetailLoadStatus.Empty, s.state.value.detailLoadStatus)
+        assertNull(s.state.value.detailError)
+        assertNull(s.state.value.detailPermissionBlocker)
     }
 
     @Test
@@ -444,17 +453,23 @@ class SharedAgentDetailStoreTest {
     }
 
     @Test
-    fun lifecycleActionErrorRecordsErrorCode() {
+    fun lifecycleActionErrorPreservesCompleteScreenError() {
         val s = store()
+        val error = ScreenError(
+            code = "http_409",
+            retryable = false,
+            serverMessage = "Agent is already running"
+        )
         s.dispatch(SharedAgentDetailIntent.StartLifecycleAction("lifecycle:start"))
         s.dispatch(
             SharedAgentDetailIntent.FinishLifecycleAction(
                 actionKey = "lifecycle:start",
-                errorCode = "agent_start_failed"
+                error = error
             )
         )
         assertNull(s.state.value.lifecycleActionInFlight)
-        assertEquals("agent_start_failed", s.state.value.lastActionResult?.errorCode)
+        assertEquals(error, s.state.value.lastActionResult?.error)
+        assertEquals("Agent is already running", s.state.value.lastActionResult?.error?.serverMessage)
     }
 
     @Test
@@ -523,7 +538,7 @@ class SharedAgentDetailStoreTest {
         assertEquals(request, forwarded)
         assertNull(s.state.value.diagnosticActionInFlight)
         assertEquals("Issue reported", s.state.value.lastActionResult?.successLabel)
-        assertNull(s.state.value.lastActionResult?.errorCode)
+        assertNull(s.state.value.lastActionResult?.error)
     }
 
     @Test

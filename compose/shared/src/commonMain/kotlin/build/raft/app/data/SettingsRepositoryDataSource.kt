@@ -1918,6 +1918,7 @@ class RealSettingsRepository(
             source = "settings_server_join_links",
             contractCode = "settings_server_join_links_contract_mismatch",
             block = { networkClient.settingsServerJoinLinks(DataRequestPriority.Visible, serverId) },
+            errorTextDecoder = HomeNetworkResponse::settingsInviteRouteErrorTextOrNull,
             mapper = { bodyText ->
                 parseSharedSettingsJoinLinks(bodyText)
                     ?: settingsContractMismatch("settings_server_join_links_contract_mismatch")
@@ -1986,6 +1987,7 @@ class RealSettingsRepository(
                     buildSharedSettingsServerInviteCreateBody(email)
                 )
             },
+            errorTextDecoder = HomeNetworkResponse::settingsInviteRouteErrorTextOrNull,
             mapper = { bodyText ->
                 parseSharedSettingsServerInviteCreated(bodyText)
                     ?: settingsContractMismatch("settings_server_invite_contract_mismatch")
@@ -2017,6 +2019,7 @@ class RealSettingsRepository(
                     buildSharedSettingsServerJoinLinkCreateBody(request)
                 )
             },
+            errorTextDecoder = HomeNetworkResponse::settingsInviteRouteErrorTextOrNull,
             mapper = { bodyText ->
                 parseSharedSettingsCreatedJoinLink(bodyText)
                     ?: settingsContractMismatch("settings_server_join_link_create_contract_mismatch")
@@ -2061,6 +2064,7 @@ class RealSettingsRepository(
                     buildSharedSettingsServerMemberRoleUpdateBody(role)
                 )
             },
+            errorTextDecoder = HomeNetworkResponse::settingsMemberMutationErrorTextOrNull,
             mapper = { bodyText ->
                 parseSharedSettingsServerAction(bodyText)
                     ?: settingsContractMismatch("settings_server_member_role_contract_mismatch")
@@ -2164,6 +2168,7 @@ class RealSettingsRepository(
         source: String,
         contractCode: String,
         block: suspend () -> HomeNetworkResponse,
+        errorTextDecoder: (HomeNetworkResponse) -> String? = { null },
         mapper: (String) -> T
     ): DataResult<T> =
         executeTypedSettingsWithDiagnostics(
@@ -2171,6 +2176,7 @@ class RealSettingsRepository(
             contractCode = contractCode,
             block = block,
             diagnosticsLogger = warningLogger,
+            errorTextDecoder = errorTextDecoder,
             mapper = mapper
         )
 
@@ -2201,6 +2207,7 @@ private suspend fun <T> executeTypedSettingsWithDiagnostics(
     contractCode: String,
     block: suspend () -> HomeNetworkResponse,
     diagnosticsLogger: (String) -> Unit = {},
+    errorTextDecoder: (HomeNetworkResponse) -> String? = { null },
     mapper: (String) -> T
 ): DataResult<T> {
     var statusCode: Int? = null
@@ -2208,10 +2215,11 @@ private suspend fun <T> executeTypedSettingsWithDiagnostics(
         val response = block()
         statusCode = response.code
         if (!response.isSuccessful) {
-            if (response.code == 404) {
+            val serverMessage = errorTextDecoder(response)
+            if (response.code == 404 && serverMessage == null) {
                 return DataResult.Error(ScreenError(code = contractCode, retryable = false))
             }
-            return response.toSettingsDataError()
+            return response.toSettingsDataError(serverMessage)
         }
         val body = response.bodyText.orEmpty()
         if (body.isBlank()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
@@ -2305,13 +2313,45 @@ private fun DataResult<*>.settingsDiagnosticsResult(): String =
         is DataResult.NoPermission -> "result=no_permission:${blocker.code}"
     }
 
-private fun <T> HomeNetworkResponse.toSettingsDataError(): DataResult<T> =
+private fun <T> HomeNetworkResponse.toSettingsDataError(serverMessage: String? = null): DataResult<T> =
     when (code) {
         401 -> authRequired()
         403 -> DataResult.NoPermission(PermissionBlocker(code = "server_forbidden", requiredCapability = "server_access"))
-        in 500..599 -> DataResult.Error(ScreenError(code = "server_unavailable", retryable = true))
-        else -> DataResult.Error(ScreenError(code = "http_$code", retryable = code != 404))
+        in 500..599 ->
+            DataResult.Error(
+                ScreenError(code = "server_unavailable", retryable = true, serverMessage = serverMessage)
+            )
+        else ->
+            DataResult.Error(
+                ScreenError(code = "http_$code", retryable = code != 404, serverMessage = serverMessage)
+            )
     }
+
+@Serializable
+private data class SettingsInviteRouteErrorDto(val error: String? = null)
+
+@Serializable
+private data class SettingsMemberMutationErrorDto(val error: String? = null)
+
+private fun HomeNetworkResponse.settingsInviteRouteErrorTextOrNull(): String? =
+    settingsErrorTextOrNull(SettingsInviteRouteErrorDto.serializer()) { it.error }
+
+private fun HomeNetworkResponse.settingsMemberMutationErrorTextOrNull(): String? =
+    settingsErrorTextOrNull(SettingsMemberMutationErrorDto.serializer()) { it.error }
+
+private fun <T> HomeNetworkResponse.settingsErrorTextOrNull(
+    serializer: kotlinx.serialization.KSerializer<T>,
+    text: (T) -> String?
+): String? {
+    val payload = bodyText?.takeIf { it.isNotBlank() }
+        ?: errorBodyText?.takeIf { it.isNotBlank() }
+        ?: return null
+    return runCatching {
+        text(settingsRepositoryJson.decodeFromString(serializer, payload))
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+    }.getOrNull()
+}
 
 private fun <T> authRequired(): DataResult<T> =
     DataResult.NoPermission(PermissionBlocker(code = "auth_required", requiredCapability = "auth_session"))
