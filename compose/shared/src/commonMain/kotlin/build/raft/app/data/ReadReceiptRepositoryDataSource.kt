@@ -321,14 +321,11 @@ data class ReadSeqRequestBody(val seq: Long)
 fun buildSharedReadSeqBody(seq: Long): String =
     readReceiptRepositoryJson.encodeToString(ReadSeqRequestBody(seq))
 
-private fun <T> authRequired(serverMessage: String? = null): DataResult<T> =
-    DataResult.NoPermission(
-        PermissionBlocker(
-            code = "auth_required",
-            requiredCapability = "auth_session",
-            serverMessage = serverMessage
-        )
-    )
+private fun authRequired(): DataResult.NoPermission =
+    authSessionRequiredResult()
+
+private fun authRequired(serverMessage: String?): DataResult.NoPermission =
+    authSessionRequiredResult(serverMessage)
 
 private fun <T> HomeNetworkResponse.toReadReceiptDataError(): DataResult<T> {
     val serverMessage = readReceiptRouteErrorTextOrNull()

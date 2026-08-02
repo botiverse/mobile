@@ -513,14 +513,11 @@ private fun StoredAuthSession.toChannelServerContext(serverId: ServerId): Shared
     return SharedChannelServerContext(session = this, server = server)
 }
 
-private fun <T> authRequired(serverMessage: String? = null): DataResult<T> =
-    DataResult.NoPermission(
-        PermissionBlocker(
-            code = "auth_required",
-            requiredCapability = "auth_session",
-            serverMessage = serverMessage
-        )
-    )
+private fun authRequired(): DataResult.NoPermission =
+    authSessionRequiredResult()
+
+private fun authRequired(serverMessage: String?): DataResult.NoPermission =
+    authSessionRequiredResult(serverMessage)
 
 private fun <T> HomeNetworkResponse.toChannelDataError(): DataResult<T> {
     val serverMessage = channelServerErrorTextOrNull()

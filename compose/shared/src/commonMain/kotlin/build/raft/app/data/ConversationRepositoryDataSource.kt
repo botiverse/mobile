@@ -1597,11 +1597,8 @@ private fun String?.toConversationTransportErrorCode(): String {
     }
 }
 
-private fun <T> authRequired(serverMessage: String? = null): DataResult<T> =
-    DataResult.NoPermission(
-        PermissionBlocker(
-            code = "auth_required",
-            requiredCapability = "auth_session",
-            serverMessage = serverMessage
-        )
-    )
+private fun authRequired(): DataResult.NoPermission =
+    authSessionRequiredResult()
+
+private fun authRequired(serverMessage: String?): DataResult.NoPermission =
+    authSessionRequiredResult(serverMessage)

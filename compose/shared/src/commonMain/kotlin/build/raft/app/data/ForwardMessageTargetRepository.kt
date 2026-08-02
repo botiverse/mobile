@@ -979,5 +979,8 @@ private fun HomeNetworkResponse.forwardTargetServerErrorTextOrNull(): String? {
     }.getOrNull()
 }
 
-private fun <T> forwardAuthRequired(serverMessage: String? = null): DataResult<T> =
+private fun forwardAuthRequired(): DataResult.NoPermission =
+    authSessionRequiredResult()
+
+private fun forwardAuthRequired(serverMessage: String?): DataResult.NoPermission =
     authSessionRequiredResult(serverMessage)

@@ -929,14 +929,11 @@ private fun StoredAuthSession.toNetworkServerContext(serverId: ServerId): Shared
     return SharedNetworkServerContext(session = this, server = server)
 }
 
-private fun <T> authRequired(serverMessage: String? = null): DataResult<T> =
-    DataResult.NoPermission(
-        PermissionBlocker(
-            code = "auth_required",
-            requiredCapability = "auth_session",
-            serverMessage = serverMessage
-        )
-    )
+private fun authRequired(): DataResult.NoPermission =
+    authSessionRequiredResult()
+
+private fun authRequired(serverMessage: String?): DataResult.NoPermission =
+    authSessionRequiredResult(serverMessage)
 
 private fun <T> HomeNetworkResponse.toDataError(): DataResult<T> {
     val serverMessage = memberServerErrorTextOrNull()

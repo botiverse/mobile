@@ -186,7 +186,10 @@ private fun String.looksLikeErrorCode(): Boolean =
         matches(Regex("http_\\d+")) ||
         matches(Regex("\\d+"))
 
-fun authSessionRequiredResult(serverMessage: String? = null): DataResult.NoPermission =
+fun authSessionRequiredResult(): DataResult.NoPermission =
+    authSessionRequiredResult(serverMessage = null)
+
+fun authSessionRequiredResult(serverMessage: String?): DataResult.NoPermission =
     DataResult.NoPermission(
         PermissionBlocker(
             code = "auth_required",

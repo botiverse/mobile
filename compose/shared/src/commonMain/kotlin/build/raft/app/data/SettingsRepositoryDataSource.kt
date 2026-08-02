@@ -2453,14 +2453,11 @@ private fun <T> HomeNetworkResponse.settingsErrorTextOrNull(
     }.getOrNull()
 }
 
-private fun <T> authRequired(serverMessage: String? = null): DataResult<T> =
-    DataResult.NoPermission(
-        PermissionBlocker(
-            code = "auth_required",
-            requiredCapability = "auth_session",
-            serverMessage = serverMessage
-        )
-    )
+private fun authRequired(): DataResult.NoPermission =
+    authSessionRequiredResult()
+
+private fun authRequired(serverMessage: String?): DataResult.NoPermission =
+    authSessionRequiredResult(serverMessage)
 
 private fun <T> serverRequired(): DataResult<T> =
     DataResult.NoPermission(PermissionBlocker(code = "server_required", requiredCapability = "selected_server"))
