@@ -133,6 +133,50 @@ class SharedThreadComposerDraftStoreTest {
     }
 
     @Test
+    fun delayedHydrateCannotOverwriteFirstKeystrokeAndLatestOwnerWinsPersistence() {
+        val persistence = SharedThreadComposerDraftPersistence(InMemorySlockKeyValueStore())
+        val persistSlice = SharedThreadComposerDraftPersistSlice(persistence)
+        val draftKey = "send=channel-hydrate|parent=_|mention=channel-hydrate"
+        persistence.save(draftKey, text = "n", asTask = false)
+        val store = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
+        store.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = KuiklyThreadComposerPayload(instanceId = "composer-hydrate"),
+                draftKey = null,
+            )
+        )
+        val owner = ThreadComposerControlledEditorOwner(seedText = "", seedAsTask = false)
+        owner.acceptEditorValue(
+            com.tencent.kuikly.compose.ui.text.input.TextFieldValue(
+                text = "ni",
+                selection = com.tencent.kuikly.compose.ui.text.TextRange(2),
+                composition = com.tencent.kuikly.compose.ui.text.TextRange(0, 2),
+            )
+        )
+
+        store.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = KuiklyThreadComposerPayload(instanceId = "composer-hydrate"),
+                draftKey = draftKey,
+            )
+        )
+        val delayedHydrate = requireNotNull(store.state.value.editorCommand)
+        assertEquals(ThreadComposerEditorCommandOutcome.Stale, owner.apply(delayedHydrate))
+
+        store.dispatch(
+            SharedThreadComposerDraftIntent.Change(
+                seedText = owner.value.text,
+                seedAsTask = owner.asTask,
+            )
+        )
+        store.dispatch(SharedThreadComposerDraftIntent.Flush)
+
+        assertEquals("ni", store.state.value.seedText)
+        assertEquals("ni", persistence.read(draftKey)?.text)
+        assertEquals(com.tencent.kuikly.compose.ui.text.TextRange(0, 2), owner.value.composition)
+    }
+
+    @Test
     fun completedSendCancelsDelayedWriteWithoutResurrectingDraft() {
         val storage = CountingSharedPreferenceStore()
         val persistence = SharedThreadComposerDraftPersistence(storage)

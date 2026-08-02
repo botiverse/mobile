@@ -11962,7 +11962,6 @@ private fun SharedHandsFeedbackContent(
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var pendingRetryRequest by remember { mutableStateOf<SettingsHandsFeedbackRetryRequest?>(null) }
-    var composerSyncNonce by remember { mutableStateOf(0) }
     var nextEntryId by remember { mutableStateOf(1) }
     var visualAutoSubmitted by remember(accountId, visualFixture) { mutableStateOf(false) }
     var entries by remember {
@@ -12301,7 +12300,6 @@ private fun SharedHandsFeedbackContent(
         entries = entries.filterNot { it.retryRequest != null }
         attachments = submittedAttachments
         messageFieldValue = TextFieldValue("")
-        composerSyncNonce += 1
         if (retryRequest == null) {
             entries =
                 entries +
@@ -12323,7 +12321,6 @@ private fun SharedHandsFeedbackContent(
             pendingRetryRequest = nextRetryRequest
             messageFieldValue = TextFieldValue(submittedMessage, selection = TextRange(submittedMessage.length))
             draftTextForPersistence = submittedMessage
-            composerSyncNonce += 1
             attachments = submittedAttachments
             error = failure.composerStatus
             entries =
@@ -12481,7 +12478,7 @@ private fun SharedHandsFeedbackContent(
                     .fillMaxWidth()
                     .background(SlockColor.SurfaceWhite)
         ) {
-            ThreadComposerContent(
+            ThreadComposerContentLeaf(
                 attachmentPreviewEnabled = true,
                 surface =
                     ThreadComposerSurface(
@@ -12493,20 +12490,6 @@ private fun SharedHandsFeedbackContent(
                     ThreadComposerUiState(
                         instanceId = "settings-hands-feedback-composer-$accountId",
                         seedText = message,
-                        syncNonce = composerSyncNonce,
-                        editorCommand =
-                            composerSyncNonce.takeIf { it > 0 }?.let { commandId ->
-                                ThreadComposerEditorCommand(
-                                    id = commandId,
-                                    kind =
-                                        if (message.isEmpty()) {
-                                            ThreadComposerEditorCommandKind.Clear
-                                        } else {
-                                            ThreadComposerEditorCommandKind.Replace
-                                        },
-                                    text = message,
-                                )
-                            },
                         placeholder = copy.placeholder,
                         enabled = !busy,
                         attachmentActionsEnabled = remainingSlots > 0,
@@ -12515,12 +12498,15 @@ private fun SharedHandsFeedbackContent(
                         suggestionsEnabled = false,
                         pendingAttachments = attachments.toFeedbackComposerAttachmentItems(copy)
                     ),
+                editorValue = messageFieldValue,
+                onEditorValueChange = { next -> messageFieldValue = next },
+                editorAsTask = false,
+                onEditorAsTaskChange = {},
                 composerSendKeyEnabled = composerSendKeyEnabled,
                 dismissKeyboardOnBlur = true,
                 onEvent = { action, value, _, attachmentId ->
                     when (action) {
                         "change" -> {
-                            messageFieldValue = TextFieldValue(value.orEmpty())
                             draftTextForPersistence = value.orEmpty()
                             error = null
                         }

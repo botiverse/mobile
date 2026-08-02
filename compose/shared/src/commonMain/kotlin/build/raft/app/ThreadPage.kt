@@ -6067,6 +6067,11 @@ internal fun SharedThreadRouteContent(
         viewModel(key = "shared-thread-composer-$threadInstanceKey") {
             SharedThreadComposerDraftViewModel(persistSlices = listOf(composerDraftPersistSlice))
         }
+    DisposableEffect(composerDraftViewModel, threadInstanceKey) {
+        onDispose {
+            composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.Flush)
+        }
+    }
     LaunchedEffect(composerDraftViewModel, threadInstanceKey) {
         composerDraftViewModel.state.collect { draftState ->
             val restoredExternalShareFiles =
@@ -8841,7 +8846,13 @@ internal fun SharedThreadRouteContent(
                 "staleEditorCommandIgnored" -> {
                     bridge.log(
                         "thread_composer_editor_command_ignored instanceId=$composerInstanceId " +
-                            "command=${value.orEmpty()} reason=local_editor_advanced"
+                            "reason=local_editor_advanced localTextLen=${value?.length ?: -1} localAsTask=$asTask"
+                    )
+                    composerDraftViewModel.dispatch(
+                        SharedThreadComposerDraftIntent.Change(
+                            seedText = value,
+                            seedAsTask = asTask,
+                        )
                     )
                 }
                 "change" -> {
