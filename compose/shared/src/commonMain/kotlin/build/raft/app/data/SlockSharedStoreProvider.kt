@@ -2143,12 +2143,16 @@ internal class SharedRealtimeDomainEventOwner(
         event: RealtimeEvent,
         source: String = "unknown",
     ): Boolean =
-        runIfCurrentGrant(grant) {
-            // Process transport grants do not own shell canonical-final
-            // registrations. Mutate process-global cursor/tasks/presence once
-            // here; each shell then runs its unchanged canonical/projection
-            // path with its own shell-scoped grant.
-            acceptGuarded(grant.serverId, event, source, grant.presenceAdmission())
+        runGuardedCanonicalShadowFirst(
+            RealtimeCanonicalFinalOwnerEntry.Process,
+            grant,
+            event,
+            source,
+        ) { serverId, acceptedEvent, acceptedSource ->
+            // Process transport grants never capture shell surfaces. The
+            // canonical commit still runs first, including with zero mounted
+            // sinks, before process-global cursor/tasks/presence mutate once.
+            acceptGuarded(serverId, acceptedEvent, acceptedSource, grant.presenceAdmission())
         }
 
     /**
