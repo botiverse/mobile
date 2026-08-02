@@ -8,6 +8,11 @@
 # actually ran, nothing silently skipped to zero) while tolerating growth.
 #
 # Usage: assert-instrumentation-ok.sh <output-file> <min-tests>
+# Exit codes:
+#   0  success (>= min-tests ran, no failure/abort markers)
+#   1  fatal   (real test failure, skipped/zero-test run, missing OK summary,
+#               bad usage) — the caller MUST NOT retry
+#   2  infra-abort (emulator/ADB/system death) — retryable by the caller
 set -euo pipefail
 
 file="${1:?usage: assert-instrumentation-ok.sh <output-file> <min-tests>}"
@@ -22,11 +27,24 @@ if ! [[ "$min" =~ ^[0-9]+$ ]]; then
   exit 1
 fi
 
-# Hard failure markers from the JUnit runner / instrumentation process.
-if grep -Eq 'FAILURES!!!|INSTRUMENTATION_FAILED|INSTRUMENTATION_ABORTED|Process crashed' "$file"; then
-  echo "Instrumentation reported failure markers in $file:" >&2
-  grep -E 'FAILURES!!!|INSTRUMENTATION_FAILED|INSTRUMENTATION_ABORTED|Process crashed|Tests run:' "$file" >&2 || true
+# Real test-failure markers from the JUnit runner / instrumented app process.
+# Checked FIRST and always fatal: a genuine regression must fail fast — retrying
+# it would mask the failure. (A real failure that co-occurs with an infra abort
+# marker below is still classified fatal here, never retryable.)
+if grep -Eq 'FAILURES!!!|INSTRUMENTATION_FAILED|Process crashed' "$file"; then
+  echo "Instrumentation reported test-failure markers in $file:" >&2
+  grep -E 'FAILURES!!!|INSTRUMENTATION_FAILED|Process crashed|Tests run:' "$file" >&2 || true
   exit 1
+fi
+
+# Infrastructure-abort markers (emulator/ADB/system death, not a test verdict):
+# the run was interrupted before completing, so the caller may bounded-retry it.
+# Distinct exit code 2 lets run-instrumentation-with-retry.sh retry ONLY these
+# (never a real failure above). See notes/emulator-flaky-audit-2026-07-30.md.
+if grep -Eq 'INSTRUMENTATION_ABORTED|System has crashed|Broken pipe|device ([^ ]+ )?(offline|not found)|no devices/emulators found|emulator: ERROR|[Bb]oot.*(timed out|timeout)|adb.*(offline|not responding|no such device)' "$file"; then
+  echo "Instrumentation aborted by infrastructure (retryable) in $file:" >&2
+  grep -E 'INSTRUMENTATION_ABORTED|System has crashed|Broken pipe|device ([^ ]+ )?(offline|not found)|no devices/emulators found|emulator: ERROR|[Bb]oot.*(timed out|timeout)|adb.*(offline|not responding|no such device)' "$file" >&2 || true
+  exit 2
 fi
 
 # A skipped or assumption-failed run must not pass as green.

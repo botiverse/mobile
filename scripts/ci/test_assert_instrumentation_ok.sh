@@ -52,10 +52,14 @@ expect_failure "process crash" "$GUARD" "$TMP_ROOT/crash.txt" 1
 printf 'OK (0 tests)\n' > "$TMP_ROOT/zero.txt"
 expect_failure "zero tests" "$GUARD" "$TMP_ROOT/zero.txt" 1
 
-# RED: no summary at all.
+# RETRYABLE: an offline device is infrastructure failure, not a real-test failure.
 printf 'adb: device offline\n' > "$TMP_ROOT/nosummary.txt"
-expect_failure "missing OK summary" "$GUARD" "$TMP_ROOT/nosummary.txt" 1
-grep -q "No 'OK (N tests)' summary" "$TMP_ROOT/negative.err"
+set +e
+"$GUARD" "$TMP_ROOT/nosummary.txt" 1 >"$TMP_ROOT/negative.out" 2>"$TMP_ROOT/negative.err"
+offline_rc=$?
+set -e
+test "$offline_rc" -eq 2 || fail "offline device returned $offline_rc instead of retryable exit 2"
+grep -q 'Instrumentation aborted by infrastructure (retryable)' "$TMP_ROOT/negative.err"
 
 # RED: missing file.
 expect_failure "missing file" "$GUARD" "$TMP_ROOT/does-not-exist.txt" 1
