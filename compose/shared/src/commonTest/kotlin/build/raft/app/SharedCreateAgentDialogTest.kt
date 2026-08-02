@@ -8,7 +8,6 @@ import build.raft.app.model.RuntimeModeConfig
 import build.raft.app.model.RuntimeModelConfig
 import build.raft.app.model.RuntimeProviderConfig
 import build.raft.app.model.supportsRuntimeCustomModelName
-import com.tencent.kuikly.compose.ui.text.TextRange
 import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -607,28 +606,6 @@ class SharedCreateAgentDialogTest {
     }
 
     @Test
-    fun createAgentSecretEditorForwardsCumulativeTextOnlyAtSubmitBoundary() {
-        val nativeValues =
-            listOf(
-                TextFieldValue(text = "a", selection = TextRange(1)),
-                TextFieldValue(
-                    text = "ab",
-                    selection = TextRange(2),
-                    composition = TextRange(0, 2)
-                ),
-                TextFieldValue(text = "abc", selection = TextRange(3)),
-                TextFieldValue(text = "ab", selection = TextRange(2)),
-                TextFieldValue(text = "abx", selection = TextRange(3))
-            )
-
-        val submittedKeys = nativeValues.map(::submittedCustomProviderKey)
-
-        assertEquals(listOf("a", "ab", "abc", "ab", "abx"), submittedKeys)
-        assertEquals(TextRange(0, 2), nativeValues[1].composition)
-        assertEquals(TextRange(2), nativeValues[1].selection)
-    }
-
-    @Test
     fun externalCreateAgentSubmitDoesNotLeakRuntimeFields() {
         val submit =
             buildSharedCreateAgentDialogSubmit(
@@ -655,29 +632,5 @@ class SharedCreateAgentDialogTest {
         assertEquals(null, submit.machineId)
         assertEquals(null, submit.runtimeConfig)
         assertTrue(submit.external)
-    }
-
-    private fun submittedCustomProviderKey(value: TextFieldValue): String {
-        val submit =
-            buildSharedCreateAgentDialogSubmit(
-                name = "Input Contract Agent",
-                description = "",
-                selectedMachineId = "machine-1",
-                requiredComputer = null,
-                external = false,
-                runtime = "claude",
-                model = "sonnet",
-                customModelMode = false,
-                customModelName = "",
-                providerMode = RUNTIME_PROVIDER_MODE_CUSTOM,
-                providerApiUrl = "https://gateway.example.com",
-                providerApiKey = value,
-                fastMode = false,
-                reasoningEffort = null,
-                envVarEntries = emptyList(),
-                command = ""
-            )
-        val provider = assertNotNull(submit.runtimeConfig).provider as RuntimeProviderConfig.Custom
-        return provider.apiKey
     }
 }

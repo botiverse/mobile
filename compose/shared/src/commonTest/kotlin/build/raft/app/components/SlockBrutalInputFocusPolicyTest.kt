@@ -1,7 +1,10 @@
 package build.raft.app.components
 
+import com.tencent.kuikly.compose.ui.text.TextRange
+import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertSame
 
 class SlockBrutalInputFocusPolicyTest {
     @Test
@@ -61,6 +64,39 @@ class SlockBrutalInputFocusPolicyTest {
                 explicitContainerTapRequestsFocus = true
             ).containerTapRequestsFocus
         )
+    }
+
+    @Test
+    fun valueAwareEditorCallbackForwardsExactNativeSnapshotsWhileEditable() {
+        val focusPolicy = slockBrutalInputFocusPolicy(maxLines = 1, enabled = true, readOnly = false)
+        val nativeValues =
+            listOf(
+                TextFieldValue(text = "a", selection = TextRange(1)),
+                TextFieldValue(
+                    text = "ab",
+                    selection = TextRange(2),
+                    composition = TextRange(0, 2)
+                ),
+                TextFieldValue(text = "abc", selection = TextRange(3)),
+                TextFieldValue(text = "ab", selection = TextRange(2)),
+                TextFieldValue(text = "abx", selection = TextRange(3))
+            )
+        val forwarded = mutableListOf<TextFieldValue>()
+
+        nativeValues.forEach { nextValue ->
+            slockBrutalInputForwardValueChange(
+                focusPolicy = focusPolicy,
+                nextValue = nextValue,
+                onValueChange = forwarded::add
+            )
+        }
+
+        assertEquals(listOf("a", "ab", "abc", "ab", "abx"), forwarded.map { it.text })
+        nativeValues.zip(forwarded).forEach { (nativeValue, forwardedValue) ->
+            assertSame(nativeValue, forwardedValue)
+        }
+        assertEquals(TextRange(2), forwarded[1].selection)
+        assertEquals(TextRange(0, 2), forwarded[1].composition)
     }
 
     private data class FocusVector(

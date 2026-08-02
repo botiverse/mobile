@@ -631,7 +631,13 @@ internal fun SlockBrutalInputField(
             ) {
                 TextField(
                     value = value,
-                    onValueChange = { if (focusPolicy.acceptsFocus) onValueChange(it) },
+                    onValueChange = { nextValue ->
+                        slockBrutalInputForwardValueChange(
+                            focusPolicy = focusPolicy,
+                            nextValue = nextValue,
+                            onValueChange = onValueChange
+                        )
+                    },
                     placeholder = placeholder,
                     placeholderColor = placeholderColor,
                     autoFocus = autoFocus && focusPolicy.acceptsFocus,
@@ -751,7 +757,13 @@ internal fun SlockBrutalInputField(
             ) {
                 TextField(
                     value = value,
-                    onValueChange = { if (focusPolicy.acceptsFocus) onValueChange(it) },
+                    onValueChange = { nextValue ->
+                        slockBrutalInputForwardValueChange(
+                            focusPolicy = focusPolicy,
+                            nextValue = nextValue,
+                            onValueChange = onValueChange
+                        )
+                    },
                     placeholder = placeholder,
                     placeholderColor = placeholderColor,
                     autoFocus = autoFocus && focusPolicy.acceptsFocus,
@@ -791,6 +803,20 @@ internal data class SlockBrutalInputFocusPolicy(
     val fillEditorHeight: Boolean,
     val containerTapRequestsFocus: Boolean
 )
+
+/**
+ * Applies the shared editability gate without rebuilding the editor's value object.
+ *
+ * In particular, [TextFieldValue] callers rely on the exact native snapshot reaching their
+ * hoisted state so its selection, composition and direct-echo identity stay intact.
+ */
+internal fun <T> slockBrutalInputForwardValueChange(
+    focusPolicy: SlockBrutalInputFocusPolicy,
+    nextValue: T,
+    onValueChange: (T) -> Unit
+) {
+    if (focusPolicy.acceptsFocus) onValueChange(nextValue)
+}
 
 /**
  * Multiline input owns its complete visible editing surface by default.
