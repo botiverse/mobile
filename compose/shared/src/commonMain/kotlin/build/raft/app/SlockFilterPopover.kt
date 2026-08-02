@@ -28,6 +28,7 @@ import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
+import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.unit.dp
@@ -193,6 +194,203 @@ internal fun SlockFilterPopover(
                             containerTapRequestsFocus = true,
                             showClearWhenNotEmpty = true,
                             onClear = { onSearchChange("") },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                        )
+                    }
+                }
+                if (filtered.isEmpty()) {
+                    Text(
+                        text = stringResource(MR.strings.common_no_matches),
+                        style = SlockType.Caption,
+                        color = SlockColor.TextMutedGray,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp)
+                    )
+                } else {
+                    Box(modifier = Modifier.fillMaxWidth().heightIn(max = 256.dp)) {
+                        LazyColumn {
+                            items(filtered.size, key = { i -> filtered[i].id }) { index ->
+                                val option = filtered[index]
+                                val selected = option.id in selectedIds
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(36.dp)
+                                            .background(if (selected) selectedRowColor else SlockColor.SurfaceWhite)
+                                            .clickable {
+                                                onToggle(option.id)
+                                                if (!multiSelect) onDismiss()
+                                            }
+                                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        option.icon?.let {
+                                            Box(modifier = Modifier.size(16.dp), contentAlignment = Alignment.Center) {
+                                                SlockLucideIcon(it, modifier = Modifier.size(12.dp), color = "#80000000")
+                                            }
+                                        }
+                                        Text(
+                                            text = option.label,
+                                            style = SlockType.Caption.copy(
+                                                fontSize = 12.sp,
+                                                lineHeight = 16.sp
+                                            ).withSlockFontWeight(FontWeight.Bold),
+                                            color = SlockColor.TextBlack,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        if (selected) {
+                                            SlockLucideIcon(SlockLucideIconName.Check, modifier = Modifier.size(12.dp), color = "#FF000000")
+                                        }
+                                    }
+                                    if (index < filtered.lastIndex) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .heightIn(min = SlockStroke.Thin)
+                                                .background(SlockColor.BorderBlack.copy(alpha = 0.1f))
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun SlockFilterPopover(
+    anchor: SlockPopoverAnchor?,
+    title: String,
+    searchPlaceholder: String,
+    searchText: TextFieldValue,
+    onSearchChange: (TextFieldValue) -> Unit,
+    options: List<SlockFilterOption>,
+    selectedIds: Set<String>,
+    onToggle: (String) -> Unit,
+    onClear: () -> Unit,
+    onDismiss: () -> Unit,
+    widthDp: Float = SlockFilterPopoverWidthValue,
+    horizontalOffsetDp: Float = 0f,
+    verticalOffsetDp: Float = SlockFilterPopoverVerticalOffsetValue,
+    multiSelect: Boolean = true,
+    surfaceBorderColor: Color = SlockColor.BorderBlack,
+    surfaceShadowColor: Color = SlockColor.ShadowBlack,
+    selectedRowColor: Color = SlockColor.AppBgLightBlue.copy(alpha = 0.28f),
+    searchable: Boolean = true,
+    showClearWhenSelected: Boolean = multiSelect,
+    headerSlot: (@Composable () -> Unit)? = null
+) {
+    if (anchor == null) return
+    val density = LocalDensity.current
+    val shadowOffset = if (surfaceShadowColor == Color.Transparent) 0.dp else 4.dp
+    val popoverWidth = widthDp.dp
+    val popoverSize =
+        with(density) {
+            Size(
+                width = (popoverWidth + shadowOffset).toPx(),
+                height = (SlockFilterPopoverEstimatedHeightValue.dp + shadowOffset).toPx()
+            )
+        }
+    val horizontalOffsetPx = with(density) { horizontalOffsetDp.dp.toPx() }
+    val verticalOffsetPx = with(density) { verticalOffsetDp.dp.toPx() }
+    val viewportGapPx = with(density) { SlockFloatingDefaultViewportGap.dp.toPx() }
+    val filtered =
+        if (searchText.text.isBlank()) options
+        else options.filter { it.label.contains(searchText.text, ignoreCase = true) }
+    SlockModalAnchoredPopover(
+        anchor = anchor,
+        contentSize = popoverSize,
+        onDismiss = onDismiss,
+        viewportGap = viewportGapPx,
+        horizontalOffset = horizontalOffsetPx,
+        verticalOffset = verticalOffsetPx,
+        // Filter chip anchors are their left edge; clamp to the viewport
+        // instead of flipping the popover entirely to the chip's left.
+        horizontalAutoFlip = false,
+        verticalPlacement = SlockFloatingVerticalPlacement.Auto
+    ) {
+        Box(
+            modifier = Modifier
+                .padding(end = shadowOffset, bottom = shadowOffset)
+        ) {
+            if (shadowOffset > 0.dp) {
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .offset(x = shadowOffset, y = shadowOffset)
+                        .background(surfaceShadowColor)
+                )
+            }
+            Column(
+                modifier = Modifier
+                    .width(popoverWidth)
+                    .background(SlockColor.SurfaceWhite)
+                    .border(SlockStroke.Default, surfaceBorderColor)
+                    // A filter popover owns a LazyColumn. The native capture used
+                    // by slockFloatingContentClickTarget intercepts its drag stream
+                    // before Kuikly delivers it to that list. The empty clickable
+                    // still prevents taps on card whitespace from dismissing the
+                    // overlay while leaving the nested list scrollable.
+                    .clickable(onClick = {})
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(SlockColor.SurfaceWhite)
+                        .border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.1f))
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = title.uppercase(),
+                        style = SlockType.Caption.copy(
+                            fontSize = 10.sp,
+                            lineHeight = 12.sp,
+                            letterSpacing = 0.9.sp
+                        ).withSlockFontWeight(FontWeight.Bold),
+                        color = SlockColor.TextMutedGray
+                    )
+                    Box(modifier = Modifier.weight(1f))
+                    if (showClearWhenSelected && selectedIds.isNotEmpty()) {
+                        Text(
+                            text = stringResource(MR.strings.common_clear),
+                            style = SlockType.Caption.copy(
+                                fontSize = 10.sp,
+                                lineHeight = 12.sp,
+                                letterSpacing = 0.9.sp
+                            ).withSlockFontWeight(FontWeight.Bold),
+                            color = SlockColor.TextMutedGray,
+                            modifier = Modifier.clickable(onClick = onClear)
+                        )
+                    }
+                }
+                headerSlot?.invoke()
+                if (searchable) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.1f))
+                            .padding(horizontal = 8.dp, vertical = 8.dp)
+                    ) {
+                        SlockBrutalInputField(
+                            value = searchText,
+                            onValueChange = onSearchChange,
+                            placeholder = searchPlaceholder,
+                            autoFocus = false,
+                            maxLines = 1,
+                            // iOS keeps the native editor's precise hit region smaller
+                            // than the brutal field chrome. Let the full visible field
+                            // request focus so taps on its padding still open the editor.
+                            containerTapRequestsFocus = true,
+                            showClearWhenNotEmpty = true,
+                            onClear = { onSearchChange(TextFieldValue("")) },
                             modifier = Modifier
                                 .fillMaxWidth()
                         )

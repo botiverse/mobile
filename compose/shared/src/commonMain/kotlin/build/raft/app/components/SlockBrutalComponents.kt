@@ -972,6 +972,74 @@ internal fun SlockBrutalSearchField(
 }
 
 @Composable
+internal fun SlockBrutalSearchField(
+    value: TextFieldValue,
+    placeholder: String,
+    onValueChange: (TextFieldValue) -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    leadingIcon: SlockLucideIconName = SlockLucideIconName.Search,
+    showClearWhenNotEmpty: Boolean = false,
+    onClear: () -> Unit = { onValueChange(TextFieldValue("")) },
+    textStyle: TextStyle = SlockType.Caption.copy(fontSize = 13.sp, lineHeight = 16.sp, color = SlockColor.TextBlack)
+) {
+    var focused by remember { mutableStateOf(false) }
+    val shadowOffset = if (focused && enabled) SlockShadow.Brutal else SlockShadow.BrutalSmall
+    Box(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .height(42.dp + shadowOffset)
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(42.dp)
+                    .offset(x = shadowOffset, y = shadowOffset)
+                    .slockSquareCorners()
+                    .background(SlockColor.ShadowBlack)
+        )
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(42.dp)
+                    .slockSquareCorners()
+                    .background(if (enabled) SlockColor.SurfaceWhite else SlockColor.SurfaceCream)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .padding(horizontal = 12.dp, vertical = 9.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SlockLucideIcon(leadingIcon, color = "#FF000000", modifier = Modifier.size(14.dp))
+            TextField(
+                value = value,
+                onValueChange = { if (enabled) onValueChange(it) },
+                placeholder = placeholder,
+                placeholderColor = SlockColor.TextMutedGray,
+                autoFocus = false,
+                onFocus = { focused = true },
+                onBlur = { focused = false },
+                maxLines = 1,
+                textStyle = textStyle,
+                modifier = Modifier.weight(1f)
+            )
+            if (showClearWhenNotEmpty && value.text.isNotEmpty()) {
+                SlockLucideIcon(
+                    SlockLucideIconName.X,
+                    color = "#FF000000",
+                    modifier =
+                        Modifier
+                            .size(16.dp)
+                            .clickable(enabled = enabled, onClick = onClear)
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun SlockBrutalActionButtonInnerContent(
     label: String,
     leadingIcon: SlockLucideIconName?,
