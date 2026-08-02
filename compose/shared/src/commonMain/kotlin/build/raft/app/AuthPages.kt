@@ -964,6 +964,7 @@ private fun AuthAboutScreen(initialDestination: AuthAboutDestination = AuthAbout
                     updateCheck = (developerState as? ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>)?.data?.updateCheck,
                     actionState = actionState,
                     onCopyBuild = { value -> settingsCapabilities.bridgeCopyToClipboard(value) },
+                    onCopyValue = { value -> settingsCapabilities.bridgeCopyToClipboard(value) },
                     webUrl = (developerState as? ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>)?.data?.webUrl.orEmpty(),
                     onOpenSlock = { url -> linkNavigator.open(url) },
                     onCheckHandsUpdate = {
@@ -1032,6 +1033,7 @@ private fun AuthAboutScreen(initialDestination: AuthAboutDestination = AuthAbout
                                     .toDiagnosticsScreenLoadState()
                         }
                     },
+                    onCopyValue = { value -> settingsCapabilities.bridgeCopyToClipboard(value) },
                     onStartProfiler = {
                         bridgeCallScope.launch {
                             diagnosticsState = settingsDataSource.startRecompositionProfiler().toDiagnosticsScreenLoadState()

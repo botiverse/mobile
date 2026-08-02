@@ -1635,7 +1635,9 @@ internal data class KuiklySharedSettingsRow(
     val enabled: Boolean = false,
     val toggleValue: Boolean? = null,
     val supportingDetail: String = "",
-    val badgeLabel: String = ""
+    val badgeLabel: String = "",
+    /** When non-blank and a copy handler is wired, long-pressing the row copies this value. */
+    val copyValue: String = ""
 )
 
 private val settingsTabBarSmokePayload = KuiklySettingsHomePayload(
@@ -7126,6 +7128,7 @@ private fun SettingsAppShellContent(
                     state = settingsState.diagnostics,
                     actionState = settingsState.actionState,
                     bottomContentPadding = bottomContentPadding,
+                    onCopyValue = { value -> settingsCapabilities.bridgeCopyToClipboard(value) },
                     onCopyLogs = { onSettingsIntent(SharedSettingsIntent.CopyDiagnostics) },
                     onShareLogs = { onSettingsIntent(SharedSettingsIntent.ShareDiagnostics) },
                     onSetDiagnosticFeatureFlagOverride = { key, mode ->
@@ -7201,6 +7204,7 @@ private fun SettingsAppShellContent(
 private fun SharedSettingsSectionContent(
     payload: KuiklySharedSettingsPayload,
     bottomContentPadding: Dp = SlockSpacing.Lg,
+    onCopyValue: ((String) -> Unit)? = null,
     onAction: (String, String?) -> Unit
 ) {
     LazyColumn(
@@ -7208,7 +7212,7 @@ private fun SharedSettingsSectionContent(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         payload.sections.forEach { section ->
-            item { SharedSettingsSectionCard(section, onAction) }
+            item { SharedSettingsSectionCard(section, onCopyValue, onAction) }
         }
         item { Spacer(Modifier.height(bottomContentPadding)) }
     }
@@ -7343,7 +7347,7 @@ private fun SharedSettingsServerContent(
                             onSubmit = { onAction(SERVER_ACTION_MEMBER_PERMISSIONS_SAVE, null) }
                         )
                     }
-                else -> item { SharedSettingsSectionCard(section, onAction) }
+                else -> item { SharedSettingsSectionCard(section, onAction = onAction) }
             }
         }
         item {
@@ -11301,6 +11305,7 @@ private fun SettingsFormDivider() {
 @Composable
 private fun SharedSettingsSectionCard(
     section: KuiklySharedSettingsSection,
+    onCopyValue: ((String) -> Unit)? = null,
     onAction: (String, String?) -> Unit
 ) {
     Column(
@@ -11314,7 +11319,7 @@ private fun SharedSettingsSectionCard(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)
         )
         section.rows.forEachIndexed { index, row ->
-            SharedSettingsRow(row, showDivider = index > 0, onAction = onAction)
+            SharedSettingsRow(row, showDivider = index > 0, onCopyValue = onCopyValue, onAction = onAction)
         }
     }
 }
@@ -11323,17 +11328,34 @@ private fun SharedSettingsSectionCard(
 private fun SharedSettingsRow(
     row: KuiklySharedSettingsRow,
     showDivider: Boolean,
+    onCopyValue: ((String) -> Unit)? = null,
     onAction: (String, String?) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         if (showDivider) {
             Box(Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderBlack))
         }
+        val copyable = row.copyValue.isNotBlank() && onCopyValue != null
+        val rowGestureModifier =
+            if (copyable) {
+                Modifier.pointerInput(row.key, row.copyValue, row.enabled) {
+                    detectTapGestures(
+                        onTap = {
+                            if (row.enabled) {
+                                onAction(row.key, row.value.takeIf { it.isNotBlank() })
+                            }
+                        },
+                        onLongPress = { onCopyValue?.invoke(row.copyValue) }
+                    )
+                }
+            } else {
+                Modifier.clickable(enabled = row.enabled) { onAction(row.key, row.value.takeIf { it.isNotBlank() }) }
+            }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(SlockColor.SurfaceWhite)
-                .clickable(enabled = row.enabled) { onAction(row.key, row.value.takeIf { it.isNotBlank() }) }
+                .then(rowGestureModifier)
                 .padding(horizontal = 14.dp, vertical = 12.dp),
             verticalAlignment = com.tencent.kuikly.compose.ui.Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -11388,6 +11410,7 @@ internal fun SharedSettingsAboutContent(
     actionState: SharedSettingsActionState?,
     bottomContentPadding: Dp = SlockSpacing.Lg,
     onCopyBuild: (String) -> Unit,
+    onCopyValue: ((String) -> Unit)? = null,
     webUrl: String = SharedSettingsDefaultWebBaseUrl,
     onOpenSlock: (String) -> Unit,
     onCheckHandsUpdate: () -> Unit,
@@ -11438,7 +11461,7 @@ internal fun SharedSettingsAboutContent(
         } else {
             aboutPayload
         }
-    SharedSettingsSectionContent(payload, bottomContentPadding = bottomContentPadding) { action, value ->
+    SharedSettingsSectionContent(payload, bottomContentPadding = bottomContentPadding, onCopyValue = onCopyValue) { action, value ->
         when (action) {
             "copyBuild" -> onCopyBuild(value.orEmpty().ifBlank { snapshot.buildSummary() })
             "openSlock" -> onOpenSlock(value.orEmpty().ifBlank { webUrl })
@@ -11474,7 +11497,8 @@ internal fun settingsAboutDeveloperShortcutRows(
                 title = environmentTitle,
                 detail = environmentDetail,
                 status = environmentStatus,
-                enabled = environmentEnabled
+                enabled = environmentEnabled,
+                copyValue = environmentDetail
             )
         )
         add(
@@ -11521,13 +11545,14 @@ internal fun SharedSettingsDeveloperContent(
     state: ScreenLoadState<SharedSettingsDeveloperSnapshot>,
     actionState: SharedSettingsActionState?,
     bottomContentPadding: Dp = SlockSpacing.Lg,
+    onCopyValue: ((String) -> Unit)? = null,
     onOpenApiEnvironment: () -> Unit,
     onOpenDiagnostics: () -> Unit,
     onOpenRouter: () -> Unit
 ) {
     val snapshot = (state as? ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>)?.data
     val payload = snapshot.toDeveloperPayload(state, actionState, settingsDeveloperPayloadCopy())
-    SharedSettingsSectionContent(payload, bottomContentPadding = bottomContentPadding) { action, value ->
+    SharedSettingsSectionContent(payload, bottomContentPadding = bottomContentPadding, onCopyValue = onCopyValue) { action, value ->
         when (action) {
             DEVELOPER_ACTION_API_ENVIRONMENT -> onOpenApiEnvironment()
             "diagnostics" -> onOpenDiagnostics()
@@ -11736,6 +11761,7 @@ internal fun SharedSettingsDiagnosticsContent(
     onSetDiagnosticFeatureFlagOverride: (String, String) -> Unit,
     onOpenLocalFeatureOverrides: (() -> Unit)? = null,
     onSetAppleSignInLocalOverride: ((Boolean) -> Unit)? = null,
+    onCopyValue: ((String) -> Unit)? = null,
     onSetProfilerEnabled: (Boolean) -> Unit,
     onStartProfiler: () -> Unit,
     onStopProfiler: () -> Unit,
@@ -11758,7 +11784,7 @@ internal fun SharedSettingsDiagnosticsContent(
                     null
                 },
         )
-    SharedSettingsSectionContent(payload, bottomContentPadding = bottomContentPadding) { action, value ->
+    SharedSettingsSectionContent(payload, bottomContentPadding = bottomContentPadding, onCopyValue = onCopyValue) { action, value ->
         when (action) {
             "copyLogs" -> onCopyLogs()
             "shareLogs" -> onShareLogs()
@@ -14278,11 +14304,11 @@ internal fun SharedSettingsAboutSnapshot.toAboutPayload(
                     title = copy.applicationSection,
                     rows =
                         listOf(
-                            KuiklySharedSettingsRow("appName", SlockLucideIconName.Sparkles, copy.application, appName.ifBlank { raftLabel }),
-                            KuiklySharedSettingsRow("version", SlockLucideIconName.BadgeInfo, copy.version, versionLabel.ifBlank { copy.unknown }, status = buildLabel.ifBlank { copy.buildUnknown }),
-                            KuiklySharedSettingsRow("buildTime", SlockLucideIconName.Clock, copy.buildTime, buildTime.ifBlank { copy.unknown }),
-                            KuiklySharedSettingsRow("gitCommit", SlockLucideIconName.GitBranch, copy.gitCommit, gitCommit.ifBlank { copy.unknown }),
-                            KuiklySharedSettingsRow("package", SlockLucideIconName.Package, copy.packageLabel, packageName.ifBlank { copy.unknown })
+                            KuiklySharedSettingsRow("appName", SlockLucideIconName.Sparkles, copy.application, appName.ifBlank { raftLabel }, copyValue = appName.ifBlank { raftLabel }),
+                            KuiklySharedSettingsRow("version", SlockLucideIconName.BadgeInfo, copy.version, versionLabel.ifBlank { copy.unknown }, status = buildLabel.ifBlank { copy.buildUnknown }, copyValue = listOf(versionLabel, buildLabel).filter { it.isNotBlank() }.joinToString(" ")),
+                            KuiklySharedSettingsRow("buildTime", SlockLucideIconName.Clock, copy.buildTime, buildTime.ifBlank { copy.unknown }, copyValue = buildTime),
+                            KuiklySharedSettingsRow("gitCommit", SlockLucideIconName.GitBranch, copy.gitCommit, gitCommit.ifBlank { copy.unknown }, copyValue = gitCommit),
+                            KuiklySharedSettingsRow("package", SlockLucideIconName.Package, copy.packageLabel, packageName.ifBlank { copy.unknown }, copyValue = packageName)
                         )
                 ),
                 KuiklySharedSettingsSection(
@@ -14370,14 +14396,16 @@ internal fun SharedSettingsDeveloperSnapshot?.toDeveloperPayload(
                                 iconName = SlockLucideIconName.Globe,
                                 title = copy.currentApi,
                                 detail = this?.apiBaseUrl.orEmpty().ifBlank { copy.unknown },
-                                status = this?.environmentLabel.orEmpty().ifBlank { copy.current }
+                                status = this?.environmentLabel.orEmpty().ifBlank { copy.current },
+                                copyValue = this?.apiBaseUrl.orEmpty()
                             ),
                             KuiklySharedSettingsRow(
                                 key = "currentSocket",
                                 iconName = SlockLucideIconName.Activity,
                                 title = copy.currentSocket,
                                 detail = this?.socketBaseUrl.orEmpty().ifBlank { copy.unknown },
-                                status = copy.realtime
+                                status = copy.realtime,
+                                copyValue = this?.socketBaseUrl.orEmpty()
                             ),
                             KuiklySharedSettingsRow(
                                 key = DEVELOPER_ACTION_API_ENVIRONMENT,
@@ -14934,16 +14962,16 @@ private fun Boolean?.localFeatureOverrideBooleanStatus(): String =
 
 private fun SharedSettingsAboutSnapshot.toDiagnosticsEnvironmentRows(copy: SettingsDiagnosticsPayloadCopy): List<KuiklySharedSettingsRow> =
     listOf(
-        KuiklySharedSettingsRow("diagnosticsApp", SlockLucideIconName.Info, copy.app, appName.ifBlank { "Raft" }, status = versionLabel.ifBlank { copy.version }),
-        KuiklySharedSettingsRow("diagnosticsBuild", SlockLucideIconName.GitBranch, copy.build, buildLabel.ifBlank { copy.unknown }, status = sourceLabel.ifBlank { copy.source }),
-        KuiklySharedSettingsRow("diagnosticsVersionCode", SlockLucideIconName.BadgeInfo, copy.versionCode, versionCodeLabel.ifBlank { buildLabel.ifBlank { copy.unknown } }, status = sdkLabel.ifBlank { copy.sdk }),
-        KuiklySharedSettingsRow("diagnosticsPackage", SlockLucideIconName.Package, copy.packageLabel, packageName.ifBlank { copy.unknown }, status = copy.host),
-        KuiklySharedSettingsRow("diagnosticsPlatform", SlockLucideIconName.Monitor, copy.platform, platformLabel.ifBlank { copy.unknown }, status = deviceLabel.ifBlank { copy.device }),
-        KuiklySharedSettingsRow("diagnosticsDeviceFacts", SlockLucideIconName.Smartphone, copy.deviceFacts, modelLabel.ifBlank { deviceLabel.ifBlank { copy.unknown } }, status = screenLabel.ifBlank { copy.screen }),
-        KuiklySharedSettingsRow("diagnosticsDisplay", SlockLucideIconName.Monitor, copy.display, densityLabel.ifBlank { copy.density }, status = fontScaleLabel.ifBlank { copy.fontScale }),
-        KuiklySharedSettingsRow("diagnosticsInstallTime", SlockLucideIconName.Clock, copy.installTime, installTimeLabel.ifBlank { "--" }, status = copy.host),
-        KuiklySharedSettingsRow("diagnosticsSession", SlockLucideIconName.User, copy.session, signedInUserLabel.ifBlank { copy.noSignedInUser }, status = sessionStatusLabel.ifBlank { copy.unknown }),
-        KuiklySharedSettingsRow("diagnosticsServer", SlockLucideIconName.Server, copy.selectedServer, selectedServerLabel.ifBlank { copy.unknown }, status = socketStatusLabel.ifBlank { copy.socket })
+        KuiklySharedSettingsRow("diagnosticsApp", SlockLucideIconName.Info, copy.app, appName.ifBlank { "Raft" }, status = versionLabel.ifBlank { copy.version }, copyValue = listOf(appName, versionLabel).filter { it.isNotBlank() }.joinToString(" ")),
+        KuiklySharedSettingsRow("diagnosticsBuild", SlockLucideIconName.GitBranch, copy.build, buildLabel.ifBlank { copy.unknown }, status = sourceLabel.ifBlank { copy.source }, copyValue = buildLabel),
+        KuiklySharedSettingsRow("diagnosticsVersionCode", SlockLucideIconName.BadgeInfo, copy.versionCode, versionCodeLabel.ifBlank { buildLabel.ifBlank { copy.unknown } }, status = sdkLabel.ifBlank { copy.sdk }, copyValue = versionCodeLabel.ifBlank { buildLabel }),
+        KuiklySharedSettingsRow("diagnosticsPackage", SlockLucideIconName.Package, copy.packageLabel, packageName.ifBlank { copy.unknown }, status = copy.host, copyValue = packageName),
+        KuiklySharedSettingsRow("diagnosticsPlatform", SlockLucideIconName.Monitor, copy.platform, platformLabel.ifBlank { copy.unknown }, status = deviceLabel.ifBlank { copy.device }, copyValue = platformLabel),
+        KuiklySharedSettingsRow("diagnosticsDeviceFacts", SlockLucideIconName.Smartphone, copy.deviceFacts, modelLabel.ifBlank { deviceLabel.ifBlank { copy.unknown } }, status = screenLabel.ifBlank { copy.screen }, copyValue = modelLabel.ifBlank { deviceLabel }),
+        KuiklySharedSettingsRow("diagnosticsDisplay", SlockLucideIconName.Monitor, copy.display, densityLabel.ifBlank { copy.density }, status = fontScaleLabel.ifBlank { copy.fontScale }, copyValue = densityLabel),
+        KuiklySharedSettingsRow("diagnosticsInstallTime", SlockLucideIconName.Clock, copy.installTime, installTimeLabel.ifBlank { "--" }, status = copy.host, copyValue = installTimeLabel),
+        KuiklySharedSettingsRow("diagnosticsSession", SlockLucideIconName.User, copy.session, signedInUserLabel.ifBlank { copy.noSignedInUser }, status = sessionStatusLabel.ifBlank { copy.unknown }, copyValue = signedInUserLabel),
+        KuiklySharedSettingsRow("diagnosticsServer", SlockLucideIconName.Server, copy.selectedServer, selectedServerLabel.ifBlank { copy.unknown }, status = socketStatusLabel.ifBlank { copy.socket }, copyValue = selectedServerLabel)
     )
 
 @Composable
