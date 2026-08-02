@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-01T22:16:21.424Z",
+  "generatedAt": "2026-08-02T22:00:30.786Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 80,
-    "ready": 79,
-    "pending": 1
+    "ready": 76,
+    "pending": 4
   },
   "cases": [
     {
@@ -294,7 +294,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.04020820973528827
+      "metricMismatch": 0.04021174110800352
     },
     {
       "id": "components.ui.progress-bar.states",
@@ -358,7 +358,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.41497942386831277
+      "metricMismatch": 0.41496209659952354
     },
     {
       "id": "components.ui.spinner.states",
@@ -1042,40 +1042,16 @@
     },
     {
       "id": "components.thread.message.row",
-      "status": "ready",
-      "imageHash": "p1:ffffffff00000000fffcfffc0ffe1ffc1fff1fffffffffffffffffffffffffff1fff1fff030f03d707ff07ff1fff3fff00073fff000300071fff0007ffffefffc000c07fe000c003fffec003e01fc07fc007e0ffc003efffc007cfffe01fffffffffffff0000000000000000fffffffffffffffffff81fffffffffffffffffff",
-      "generatedAt": "2026-07-11T22:10:16.850Z",
-      "severity": "high",
-      "summary": [
-        "Username 'Cindy' is significantly larger and bolder on Android than on React (React title and metadata text sizes appear swapped/scaled).",
-        "Preview line wraps to two lines on Android but fits on one line on React due to larger text size.",
-        "Metadata line ('Keeps vis…' and timestamp) is clipped/truncated on React ('Keeps vis…', '02:30 AM') but fully shown on Android ('Keeps visual testing …', '10:30').",
-        "Reply, reaction, and add buttons ('5 replies · 2 new', thumbs-up '2', '+') are clipped/missing on Android; the metadata chip area is empty/undersized and shows a thin underline artifact instead.",
-        "#product:f8e569cb token on Android has a visible light-blue background highlight that React lacks (no fill, plain text)."
-      ],
-      "likelyCauses": [
-        "Android typography scale (sp/font-size) for thread row title/body is larger than React's token mapping.",
-        "Android uses a different text-truncation policy (no ellipsis) and larger line-height, causing wrap and pushing controls out of bounds.",
-        "Reaction/reply count chip component not rendered or measured with insufficient height on Android.",
-        "Custom mention token highlight style applied on Android but missing on React baseline."
-      ],
-      "suggestedOwner": "android-ui",
-      "suggestedFixes": [
-        "Re-map Android text styles for thread message row to match React: reduce title size to match metadata size and vice versa, or apply the shared design token.",
-        "Set Android maxLines + ellipsize on preview/metadata so layout height stays at 108dp and prevents wrapping.",
-        "Ensure the reply/reaction/add buttons row has enough vertical space or is positioned outside the clipped area on Android.",
-        "Remove the light-blue background on #product:… mention token on Android, or add it to React for parity.",
-        "Normalize timestamp formatting to a single locale/format across platforms."
-      ],
-      "intentional": [
-        "Avatar rendering and presence dot appear consistent across both sides.",
-        "Overall container bounds (374×108) are identical.",
-        "RGB similarity 85.2% with mostly text-scaling-driven pixel mismatch suggests layout drift rather than missing components."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.3384856187143769
+      "status": "pending",
+      "imageHash": "p1:ffffffff00000000bffcbffc0ffe1ffc1fff1fffffffffffffffffffffffffff1fff1fff010f03c707ff07ff1fff3fff00033fff000300071fff0007ffffeeffc000c07fe000c003fffec003e01fc07fc007e0ffc003efffc007cfffe01fffffffffffff0000000000000000fffffffffffffffffff81fffffffffffffffffff",
+      "generatedAt": "2026-08-02T22:00:29.820Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.34779989436852177
     },
     {
       "id": "components.thread.message-row.deleted-human",
@@ -1147,7 +1123,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.41316043531683344
+      "metricMismatch": 0.4143034120522272
     },
     {
       "id": "components.thread.message-menu.task",
@@ -1183,44 +1159,20 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.4232338882812816
+      "metricMismatch": 0.4243761898975169
     },
     {
       "id": "components.thread.message-share.selection",
-      "status": "ready",
-      "imageHash": "p1:07fe07fcfffe7ffe805e01f6c0024002f0fe7006f1fe7ffe83fe83fe80024002f8fe7002fffe5006fffe0001fffe0001fffe0002fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00007ffe00000000fffe3fff",
-      "generatedAt": "2026-07-10T22:12:07.352Z",
-      "severity": "high",
-      "summary": [
-        "Selection action bar is positioned at the bottom of the viewport on React but floats inline just below the message list on Android.",
-        "React bar shows Cancel/Forward/copy/more; Android bar shows All/Forward/copy/download with no Cancel and no more-overflow, and uses a pink/red download button instead of black.",
-        "React uses circular yellow selected-state checkmarks to the left of avatars; Android uses square yellow checkbox icons.",
-        "React Cindy message row shows inline 👍 reaction pill with count '2' plus a '+' add-reaction button; Android row lacks both the reaction pill and the add-reaction control.",
-        "React author header shows last name initial ('Cindy K', 'artin O…'); Android truncates/omits the last name ('Cindy', 'artin') but adds a muted message snippet ('Keeps visual te…') between name and timestamp."
-      ],
-      "likelyCauses": [
-        "Independent fixtures/mocks used per platform causing different message content and timestamps.",
-        "Android implementation diverged from the shared design spec: added 'Select All' and 'Download' actions, removed 'Cancel' and overflow menu.",
-        "Android swapped the circular selection indicator for a square checkbox without updating the design tokens.",
-        "Android message row omitted the reaction (👍) and reaction-add affordances defined in the React version.",
-        "Date/time formatting not centralized — React renders 12h locale, Android renders 24h."
-      ],
-      "suggestedOwner": "android-thread-message-share",
-      "suggestedFixes": [
-        "Align both platforms to a single fixture (same authors, copy, dates) so visual diffs reflect layout, not content.",
-        "Restore the React action-bar button set on Android: Cancel, Forward, Copy, More — remove 'Select All' and 'Download' unless intentionally added.",
-        "Revert the selection indicator on Android to a circular yellow checkmark matching the React spec, or update the shared design spec if the square checkbox is intended and propagate it.",
-        "Add the inline reaction pill and '+' add-reaction control to the Android message row.",
-        "Centralize timestamp formatting (12h with AM/PM) and author rendering (first + last-initial) in a shared format util consumed by both platforms."
-      ],
-      "intentional": [
-        "Different timestamp format may be intentional per locale, but should be confirmed before merging.",
-        "The cream background tint on Android could be a deliberate selection-mode surface; needs design confirmation."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.7065668840550356
+      "status": "pending",
+      "imageHash": "p1:07fc07fcfffe7ffe801e0146c0024002f0fe7006f1fe7ffe83fe03fe80024002f8fe7002fffe4006fffe0001fffe0001fffe0002fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00007ffe00000000fffe1fff",
+      "generatedAt": "2026-08-02T22:00:29.916Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.7087495442945679
     },
     {
       "id": "components.thread.forward-modal",
@@ -1392,7 +1344,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2676418762911654
+      "metricMismatch": 0.26765605379349455
     },
     {
       "id": "components.home.search.channel-dropdown",
@@ -1425,12 +1377,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.26824340746141695
+      "metricMismatch": 0.26825353424879494
     },
     {
       "id": "components.home.saved.results",
       "status": "ready",
-      "imageHash": "p1:0ffc1ffc3ffe3ffe83fe03fe81fe83fe08000000f3f8e3f2c1398032c0188012c00e807ec0fefffefffafffede79fdfece7888f2801e8012c01e801ecffecffefffafffef0f9fffec1f9e1f2c00ec1f2c01ec072fffe803ec1f8dffec039fffec00efc3ec0fefc3ec0fefffefff8fffecc79fffec018fffe00040000fffa7fff",
+      "imageHash": "p1:0ffc1ffc3ffe3ffe83fe03fe81fe83fe08000000f3f8e3f2c1398032c0188012c00e807ec0fefffefffafffede79fdfece7888f2801e8012c01e801ecffecffefffafffef0f9fffec1f9e1f2c00ec1f2c01ec072fffe803ec1f8dffec039fffec00efc3ec0fefc3ec0fefffefff8fffecc79fffec018fffe00040000fffa3fff",
       "generatedAt": "2026-07-30T04:34:27.469Z",
       "severity": "medium",
       "summary": [
@@ -1462,7 +1414,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19004223521767383
+      "metricMismatch": 0.19012031272925445
     },
     {
       "id": "components.home.activity.results",
@@ -1496,7 +1448,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1860498019241652
+      "metricMismatch": 0.18602936552851668
     },
     {
       "id": "components.tasks.panel.states",
@@ -1676,7 +1628,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-01T22:16:20.761Z",
+      "generatedAt": "2026-08-02T22:00:30.084Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1794,39 +1746,16 @@
     },
     {
       "id": "components.settings.root.page",
-      "status": "ready",
-      "imageHash": "p1:1ffc1ffc0000000000000000000000008ffe1ffecffe01fe81fe01fec7fe07fec7fe07fe83fe0ffedffe0ffe87fe0ffe83fe5ffe87fe03fe83fe0ffe83fe03fec7fe03fe87fe03fe87fe07fe87fe7ffe87fe1ffebffe03fe8ffe03fe83fe03fe83fe7ffe83fe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
-      "generatedAt": "2026-07-24T22:26:29.013Z",
-      "severity": "medium",
-      "summary": [
-        "Android header includes a settings gear icon next to the 'Settings' title; React version has no icon.",
-        "React header title 'Settings' is left-aligned and larger; Android title is smaller and positioned to the right of the gear icon, with reduced left padding to accommodate it.",
-        "Android lists additional/different items vs React: 'Mobile' and 'Storage' added under PERSONAL; React has 'Applications' and 'MCP Servers' under WORKSPACE while Android replaces them with 'Connected Apps' under WORKSPACE; Android lacks 'Plan & Billing' (shows 'Billing' only) and lacks 'Documentation'; Android adds 'Send feedback' under ABOUT.",
-        "Vertical item spacing is tighter in Android list items compared to React, making the list visually denser.",
-        "Section headers (PERSONAL/WORKSPACE/ABOUT) appear at slightly different vertical positions and spacing between groups in Android vs React."
-      ],
-      "likelyCauses": [
-        "Android implementation diverged from the React reference by introducing its own iconography and re-grouping menu items.",
-        "Different platform-specific navigation pattern applied on Android (back button + title row) altered header layout.",
-        "Item list curation differs between platforms, possibly due to platform-specific feature availability (Mobile, Storage, Send feedback).",
-        "Spacing token mapping not aligned between React and Android design systems."
-      ],
-      "suggestedOwner": "android-settings",
-      "suggestedFixes": [
-        "Remove the gear icon from the Android header or align it with React by hiding it so only the 'Settings' title is shown, left-aligned with consistent padding.",
-        "Update Android title typography size/weight to match React header (larger, bolder).",
-        "Reconcile menu items across platforms: either remove Android-only items (Mobile, Storage, Send feedback) or add the React-only items (Applications, MCP Servers, Documentation, Plan & Billing) to Android; align WORKSPACE naming (Plan & Billing vs Billing).",
-        "Adjust Android list item vertical spacing to match React's looser row height.",
-        "Verify section header positions/spacing tokens against the shared design spec."
-      ],
-      "intentional": [
-        "Platform-specific menu items (Mobile, Storage, Send feedback) may be intentionally Android-only due to OS-level capabilities.",
-        "Back-arrow style header on Android may be intentional platform convention."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.040966230539690285
+      "status": "pending",
+      "imageHash": "p1:1ffc1ffc0000000000000000000000008ffe1ffecffe01fe81fe01fec7fe07fec7fe07fe83fe0ffedffe0ffe87fe0ffe83fe5ffe87fe03fe83fe0ffe83fe03fec7fe03fe87fe03fe87fe07fe87fe7ffe87fe1ffebffe03fe8ffe03fe83fe03fe83fe7ffe87fe7ffe83fe7ffe83fe7ffefffe7ffefffe7ffe00000000fff81fff",
+      "generatedAt": "2026-08-02T22:00:30.253Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.04213114864773637
     },
     {
       "id": "components.settings.account.page",
@@ -2138,7 +2067,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.05980137994356005
+      "metricMismatch": 0.05981825792252338
     },
     {
       "id": "screens.members.agent-detail.workspace",
@@ -2408,7 +2337,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.15690140559808807
+      "metricMismatch": 0.15690646899177707
     },
     {
       "id": "components.thread.message-row.rich-content",
@@ -2442,7 +2371,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2349224725660739
+      "metricMismatch": 0.23596227361032773
     },
     {
       "id": "components.thread.message-row.long-inline-code",
@@ -2477,7 +2406,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.32678940332968764
+      "metricMismatch": 0.32721506595914174
     },
     {
       "id": "components.thread.message-row.md-link-ref",
@@ -2510,7 +2439,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.7740322166862451
+      "metricMismatch": 0.7744578793156992
     },
     {
       "id": "components.thread.message-row.md-latest-release",
@@ -2545,7 +2474,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.7547346106587813
+      "metricMismatch": 0.7551602732882354
     },
     {
       "id": "components.thread.message-row.md-wrap-slice1",
@@ -2582,12 +2511,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.20489528901851173
+      "metricMismatch": 0.20553378296269287
     },
     {
       "id": "components.thread.message-row.md-wrap-clarify",
       "status": "ready",
-      "imageHash": "p1:207c007c03fe7ffe80068106f04e8106f002f14ef05ef0f6f002f006f000f03ef002f002f002f002f002f002f002f006f006f006f5fef00671fef002fffff01efffff002fffff3fefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fffe7fff",
+      "imageHash": "p1:207c007c03fe7ffe80068106f04e8106f002f14ef05ef0f6f002f006f000f03ef002f002f002f002f002f002f002f006f006f006f5fef00671fef002fffff01efffff002fffff3fefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fffe3fff",
       "generatedAt": "2026-07-30T04:34:40.452Z",
       "severity": "medium",
       "summary": [
@@ -2615,12 +2544,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.5489306112528861
+      "metricMismatch": 0.5495691051970673
     },
     {
       "id": "components.thread.message-row.md-wrap-adjacent",
       "status": "ready",
-      "imageHash": "p1:01fc01fc01fe7ffe003e0006400e001e4006600200006402fffffffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffefffffffeffff0000fff81fff",
+      "imageHash": "p1:01fc01fc01fe6ffe003e0006400e001e4006600200006402fffffffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffefffffffeffff0000fff81fff",
       "generatedAt": "2026-07-13T22:11:43.968Z",
       "severity": "medium",
       "summary": [
@@ -2651,7 +2580,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.8716952917189884
+      "metricMismatch": 0.8721209543484425
     },
     {
       "id": "components.thread.message-row.md-wrap-status606",
@@ -2687,7 +2616,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.6980053604461187
+      "metricMismatch": 0.6984310230755728
     },
     {
       "id": "components.thread.message-row.md-wrap-task607",
@@ -2723,7 +2652,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.6396721958925751
+      "metricMismatch": 0.6403106898367562
     }
   ]
 }
