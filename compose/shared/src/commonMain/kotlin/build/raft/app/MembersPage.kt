@@ -5321,7 +5321,7 @@ private fun MembersAgentIssueReportDialog(
     onSubmit: (String, Boolean, Boolean, Boolean, Boolean) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var description by remember(agentName) { mutableStateOf("") }
+    var description by remember(agentName) { mutableStateOf(TextFieldValue()) }
     var consented by remember(agentName) { mutableStateOf(false) }
     var includeRecentMessages by remember(agentName) { mutableStateOf(true) }
     var includeLiveActivity by remember(agentName) { mutableStateOf(true) }
@@ -5366,7 +5366,8 @@ private fun MembersAgentIssueReportDialog(
                 optional = true,
                 enabled = !busy,
                 maxLines = 4,
-                fieldMinHeight = 88.dp
+                fieldMinHeight = 88.dp,
+                password = false
             )
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 SlockSectionEyebrow(label = stringResource(MR.strings.member_report_issue_include))
@@ -5478,7 +5479,7 @@ private fun MembersAgentIssueReportDialog(
                     backgroundColor = SlockColor.AccentOrange,
                     onClick = {
                         onSubmit(
-                            description,
+                            description.text,
                             includeRecentMessages,
                             includeLiveActivity,
                             includeActivityHistory,

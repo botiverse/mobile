@@ -273,6 +273,7 @@ import com.tencent.kuikly.compose.ui.text.SpanStyle
 import com.tencent.kuikly.compose.ui.text.TextRange
 import com.tencent.kuikly.compose.ui.text.TextStyle
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
+import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Dp
@@ -2003,7 +2004,7 @@ internal data class ThreadAttachmentCommentsDialogState(
     val status: String = "loading",
     val page: ThreadAttachmentCommentsPage? = null,
     val filter: String = "all",
-    val draft: String = "",
+    val draft: TextFieldValue = TextFieldValue(),
     val sending: Boolean = false,
     val resolvingCommentIds: Set<String> = emptySet(),
     val pendingAnchorLabel: String? = null,
@@ -2011,6 +2012,36 @@ internal data class ThreadAttachmentCommentsDialogState(
     val errorCode: String? = null,
     val errorServerMessage: String? = null
 )
+
+internal fun ThreadAttachmentCommentsDialogState.withAttachmentCommentEditorValue(
+    value: TextFieldValue
+): ThreadAttachmentCommentsDialogState =
+    copy(draft = value).clearAttachmentCommentsError()
+
+/**
+ * Reconciles an intentional external draft change without disturbing active editor metadata when
+ * the product projection is text-identical. Native input instead goes through
+ * [withAttachmentCommentEditorValue], which stores the exact callback [TextFieldValue].
+ */
+internal fun ThreadAttachmentCommentsDialogState.withAttachmentCommentDraftProjection(
+    projectedText: String
+): ThreadAttachmentCommentsDialogState {
+    if (draft.text == projectedText) return this
+    return copy(
+        draft = TextFieldValue(projectedText, selection = TextRange(projectedText.length))
+    )
+}
+
+internal fun ThreadAttachmentCommentsDialogState.withQuotedAttachmentComment(
+    comment: ThreadAttachmentCommentItem
+): ThreadAttachmentCommentsDialogState {
+    val nextText = appendThreadQuoteToComposer(draft.text, formatThreadMessageQuote(comment.content))
+    return withAttachmentCommentDraftProjection(nextText)
+        .copy(
+            pendingQuoteLabel = comment.senderName,
+            pendingAnchorLabel = comment.anchorLabel ?: attachment.name
+        ).clearAttachmentCommentsError()
+}
 
 internal fun ThreadAttachmentCommentsDialogState.clearAttachmentCommentsError():
     ThreadAttachmentCommentsDialogState =
@@ -6410,7 +6441,7 @@ internal fun SharedThreadRouteContent(
             return
         }
         val current = attachmentCommentsDialogState ?: return
-        val cleanDraft = current.draft.trim()
+        val cleanDraft = current.draft.text.trim()
         if (cleanDraft.isBlank() || current.sending) return
         attachmentCommentsDialogState = current.copy(sending = true).clearAttachmentCommentsError()
         coroutineScope.launch {
@@ -6425,9 +6456,8 @@ internal fun SharedThreadRouteContent(
             ) {
                 is DataResult.Content -> {
                     val loadingState =
-                        current.copy(
+                        current.withAttachmentCommentDraftProjection("").copy(
                             status = "loading",
-                            draft = "",
                             sending = false,
                             pendingQuoteLabel = null
                         ).clearAttachmentCommentsError()
@@ -9237,8 +9267,7 @@ internal fun SharedThreadRouteContent(
                     attachmentCommentsDialogState =
                         attachmentCommentsDialogState
                             ?.takeIf { it.attachment.id == dialogState.attachment.id }
-                            ?.copy(draft = draft)
-                            ?.clearAttachmentCommentsError()
+                            ?.withAttachmentCommentEditorValue(draft)
                 },
                 onRetry = ::reloadAttachmentComments,
                 onSend = ::sendAttachmentComment,
@@ -9247,14 +9276,7 @@ internal fun SharedThreadRouteContent(
                     attachmentCommentsDialogState =
                         attachmentCommentsDialogState
                             ?.takeIf { it.attachment.id == dialogState.attachment.id }
-                            ?.let { current ->
-                                val quote = formatThreadMessageQuote(comment.content)
-                                current.copy(
-                                    draft = appendThreadQuoteToComposer(current.draft, quote),
-                                    pendingQuoteLabel = comment.senderName,
-                                    pendingAnchorLabel = comment.anchorLabel ?: current.attachment.name
-                                ).clearAttachmentCommentsError()
-                            }
+                            ?.withQuotedAttachmentComment(comment)
                 }
             )
         }
@@ -12780,7 +12802,7 @@ private fun ThreadPageContent(
     var forwardDirectoryGeneration by remember(threadInstanceKey) { mutableStateOf(0) }
     var forwardDirectoryNextCursor by remember(threadInstanceKey) { mutableStateOf<ForwardMessageTargetDirectoryCursor?>(null) }
     var forwardOperationNonce by remember(threadInstanceKey) { mutableStateOf(0) }
-    var forwardNote by remember(threadInstanceKey) { mutableStateOf("") }
+    var forwardNote by remember(threadInstanceKey) { mutableStateOf(TextFieldValue()) }
     var insertMentionRequestNonce by remember(threadInstanceKey) { mutableStateOf(0) }
     var insertMentionRequest by remember(threadInstanceKey) { mutableStateOf<ThreadComposerInsertMentionRequest?>(null) }
     val shareSelectionActive = selectedShareMessageIds.isNotEmpty() && selectedTab == KuiklyThreadTab.Chat
@@ -12998,7 +13020,7 @@ private fun ThreadPageContent(
         forwardTargets = emptyList()
         forwardDirectoryNextCursor = null
         forwardSelectedReceipt = null
-        forwardNote = ""
+        forwardNote = TextFieldValue()
         activeModal = "forwardTargets"
     }
     val transientBackTarget =
@@ -13770,7 +13792,7 @@ private fun ThreadPageContent(
                                                 currentDirectoryGeneration = forwardDirectoryGeneration,
                                                 messageIds = forwardMessageSelection.forwardableMessages.map { it.id },
                                                 mode = activeForwardSelectionMode.toForwardMessageSendMode(),
-                                                note = forwardNote
+                                                note = forwardNote.text
                                             )
                                         if (outcome.failureCode == null) {
                                             activeModal = null
@@ -13781,7 +13803,7 @@ private fun ThreadPageContent(
                                                 forwardPickerFlow.reduce(SlockForwardPickerFlowEvent.Dismiss)
                                             forwardSelectedReceipt = null
                                             forwardMessageIds = emptySet()
-                                            forwardNote = ""
+                                            forwardNote = TextFieldValue()
                                             clearShareSelection()
                                             onThreadEvent(
                                                 "forwardMessagesSent",
@@ -24221,7 +24243,7 @@ internal fun ThreadAttachmentCommentsDialog(
     state: ThreadAttachmentCommentsDialogState,
     onDismiss: () -> Unit,
     onFilterChange: (String) -> Unit,
-    onDraftChange: (String) -> Unit,
+    onDraftChange: (TextFieldValue) -> Unit,
     onRetry: () -> Unit,
     onSend: () -> Unit,
     onResolve: (ThreadAttachmentCommentItem) -> Unit,
@@ -24253,7 +24275,7 @@ internal fun ThreadAttachmentCommentsDialog(
 internal fun ThreadAttachmentCommentsContent(
     state: ThreadAttachmentCommentsDialogState,
     onFilterChange: (String) -> Unit,
-    onDraftChange: (String) -> Unit,
+    onDraftChange: (TextFieldValue) -> Unit,
     onRetry: () -> Unit,
     onSend: () -> Unit,
     onResolve: (ThreadAttachmentCommentItem) -> Unit,
@@ -24515,7 +24537,7 @@ private fun ThreadAttachmentCommentComposer(
     state: ThreadAttachmentCommentsDialogState,
     canComment: Boolean,
     reason: String?,
-    onDraftChange: (String) -> Unit,
+    onDraftChange: (TextFieldValue) -> Unit,
     onSend: () -> Unit,
     compact: Boolean = false
 ) {
@@ -24547,7 +24569,8 @@ private fun ThreadAttachmentCommentComposer(
             enabled = enabled,
             maxLines = if (compact) 3 else 4,
             fieldMinHeight = if (compact) 64.dp else 82.dp,
-            onValueChange = onDraftChange
+            onValueChange = onDraftChange,
+            password = false
         )
         SlockModalFullWidthActionButton(
             label =
@@ -24557,7 +24580,7 @@ private fun ThreadAttachmentCommentComposer(
                     stringResource(MR.strings.thread_comments_send)
                 },
             icon = if (state.sending) SlockLucideIconName.RefreshCw else SlockLucideIconName.Send,
-            enabled = enabled && state.draft.isNotBlank(),
+            enabled = enabled && state.draft.text.isNotBlank(),
             color = SlockColor.AccentCyan,
             iconSpinning = state.sending,
             onClick = onSend
@@ -25238,12 +25261,17 @@ internal fun ThreadForwardNoteVisualScreen() {
                 channelId = ChannelId("channel-design")
             )
         }
+    var note by
+        remember {
+            val text = "Please review these together."
+            mutableStateOf(TextFieldValue(text = text, selection = TextRange(text.length)))
+        }
     ThreadForwardNoteDialog(
         messageCount = 2,
         selectedTarget = target,
-        note = "Please review these together.",
+        note = note,
         sending = false,
-        onNoteChange = {},
+        onNoteChange = { note = it },
         onDismiss = {},
         onSend = {}
     )
@@ -25317,7 +25345,7 @@ internal fun ThreadCommentAnchorVisualScreen() {
             state = state,
             onClose = {},
             onFilterChange = { state = state.copy(filter = it) },
-            onDraftChange = { state = state.copy(draft = it) },
+            onDraftChange = { state = state.withAttachmentCommentEditorValue(it) },
             onRetry = {},
             onSend = {},
             onResolve = {},
@@ -25855,9 +25883,9 @@ internal fun <T> SlockForwardTargetPicker(
 private fun ThreadForwardNoteDialog(
     messageCount: Int,
     selectedTarget: ForwardMessageTarget?,
-    note: String,
+    note: TextFieldValue,
     sending: Boolean,
-    onNoteChange: (String) -> Unit,
+    onNoteChange: (TextFieldValue) -> Unit,
     onDismiss: () -> Unit,
     onSend: () -> Unit
 ) {
@@ -25891,7 +25919,8 @@ private fun ThreadForwardNoteDialog(
                 },
             maxLines = 3,
             fieldMinHeight = 76.dp,
-            onValueChange = onNoteChange
+            onValueChange = onNoteChange,
+            password = false
         )
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -26749,7 +26778,15 @@ internal fun ThreadSettingsModal(
     onOpenAction: (String) -> Unit
 ) {
     var name by remember(channelName) { mutableStateOf(channelName) }
-    var description by remember(subtitle) { mutableStateOf(subtitle.orEmpty()) }
+    val initialDescription = subtitle.orEmpty()
+    var description by remember(subtitle) {
+        mutableStateOf(
+            TextFieldValue(
+                text = initialDescription,
+                selection = TextRange(initialDescription.length)
+            )
+        )
+    }
     var dangerAction by remember(initialDangerActionId) {
         mutableStateOf(
             when (initialDangerActionId) {
@@ -26775,7 +26812,7 @@ internal fun ThreadSettingsModal(
     val activeDanger = dangerAction
     val archiveConfirmationMatches = confirmationName.trim() == channelName.trim()
     val trimmedName = name.trim()
-    val trimmedDescription = description.trim()
+    val trimmedDescription = description.text.trim()
     val profileChanged = trimmedName != channelName.trim() || trimmedDescription != subtitle.orEmpty().trim()
     val profileValid = trimmedName.isSubmittableChannelName() && trimmedDescription.length <= 500
     val profileSaving = updateStatus == ChannelProfileUpdateStatus.InFlight
@@ -26800,7 +26837,8 @@ internal fun ThreadSettingsModal(
                     onValueChange = { description = it },
                     optional = true,
                     fieldMinHeight = 66.dp,
-                    maxLines = 2
+                    maxLines = 2,
+                    password = false
                 )
                 if (trimmedName.isNotEmpty() && !trimmedName.isSubmittableChannelName()) {
                     Text(
