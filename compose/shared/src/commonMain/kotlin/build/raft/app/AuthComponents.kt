@@ -49,6 +49,7 @@ import com.tencent.kuikly.compose.ui.text.style.TextAlign
 import com.tencent.kuikly.compose.ui.text.style.TextDecoration
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.text.input.PasswordVisualTransformation
+import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
 import com.tencent.kuikly.compose.ui.text.input.VisualTransformation
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
@@ -284,8 +285,8 @@ internal fun AuthFormColumn(content: @Composable ColumnScope.() -> Unit) {
 
 @Composable
 internal fun AuthTextField(
-    value: String,
-    onValueChange: (String) -> Unit,
+    value: TextFieldValue,
+    onValueChange: (TextFieldValue) -> Unit,
     label: String,
     modifier: Modifier = Modifier,
     placeholder: String = "",
@@ -309,7 +310,9 @@ internal fun AuthTextField(
         val borderColor = if (isError) SlockColor.AccentRed else SlockColor.BorderBlack
         SlockBrutalInputField(
             value = value,
-            onValueChange = onValueChange,
+            onValueChange = { nextValue ->
+                authTextFieldForwardValueChange(nextValue, onValueChange)
+            },
             placeholder = placeholder,
             enabled = enabled,
             autoFocus = false,
@@ -352,6 +355,20 @@ internal fun AuthTextField(
             )
         }
     }
+}
+
+/**
+ * Keeps the native editing snapshot intact across the Auth wrapper boundary.
+ *
+ * Auth screens synchronously install this exact value in their caller-local owner, then project
+ * [TextFieldValue.text] to reducers/request state. Reconstructing from String here would discard
+ * cursor, selection, and active IME composition.
+ */
+internal fun authTextFieldForwardValueChange(
+    nextValue: TextFieldValue,
+    onValueChange: (TextFieldValue) -> Unit,
+) {
+    onValueChange(nextValue)
 }
 
 @Composable
@@ -752,8 +769,8 @@ private fun AuthComponentPreview() {
             style = SlockType.PageTitle.copy(fontSize = 32.sp, lineHeight = 38.sp, color = SlockColor.TextBlack),
             color = SlockColor.TextBlack
         )
-        AuthTextField(value = "", onValueChange = {}, label = stringResource(MR.strings.auth_label_email), required = true, forceFocused = true)
-        AuthTextField(value = "not-an-email", onValueChange = {}, label = stringResource(MR.strings.auth_label_email), required = true, isError = true, errorText = "Enter a valid email.")
+        AuthTextField(value = TextFieldValue(""), onValueChange = {}, label = stringResource(MR.strings.auth_label_email), required = true, forceFocused = true)
+        AuthTextField(value = TextFieldValue("not-an-email"), onValueChange = {}, label = stringResource(MR.strings.auth_label_email), required = true, isError = true, errorText = "Enter a valid email.")
         AuthActionButton(text = "Sign In", onClick = {}, tone = AuthButtonTone.Pink)
         AuthActionButton(text = "Continue with GitHub", onClick = {}, tone = AuthButtonTone.Black, preserveDisabledVisual = true)
         AuthSuccessNotice("Reset link sent", "Check artin@raft.build for your secure link.")
