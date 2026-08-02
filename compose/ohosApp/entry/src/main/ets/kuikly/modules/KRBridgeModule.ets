@@ -32,6 +32,11 @@ import {
 import { slockOhosAttachmentDownloadSink } from '../SlockOhosAttachmentDownloadSink';
 import { SlockOhosApiEnvironment, SlockOhosApiEnvironmentStore } from '../SlockOhosApiEnvironmentStore';
 import {
+  buildSlockOhosAttachmentOpenWants,
+  slockOhosAttachmentOpenFailureKind,
+  SlockOhosAttachmentOpenFailureKind,
+} from '../SlockOhosAttachmentOpenWant';
+import {
   cleanupSlockOhosPrivateAttachmentOrphanParts,
   copySlockOhosPrivateAttachmentToProviderUri,
   ensureSlockOhosPrivateAttachmentDirectory,
@@ -342,20 +347,27 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       }
       const uri = fileUri.getUriFromPath(path);
       try {
-        await context.startAbility({
-          action: "ohos.want.action.viewData",
-          uri: uri,
-          type: mimeType
-        });
+        const sizeBytes = fs.statSync(path).size;
+        const openWants = buildSlockOhosAttachmentOpenWants(uri, mimeType, fileName, sizeBytes);
+        SlockOhosDiagnostics.record(
+          "SlockAttachmentOpen",
+          `attachmentId=${attachmentId.substring(0, 8)} status=chooser_requested storage=${privateCommitted ? "app_private" : "cache"}`
+        );
+        await context.startAbility(openWants.chooser);
         SlockOhosDiagnostics.record("SlockAttachmentOpen", `attachmentId=${attachmentId.substring(0, 8)} status=opened cached=${cached}`);
         callback({ "status": "opened", "cached": privateCommitted, "storageKind": privateCommitted ? "app_private" : "cache" });
       } catch (error) {
         const businessError = error as BusinessError;
+        const failureKind = slockOhosAttachmentOpenFailureKind(businessError.code);
         SlockOhosDiagnostics.record(
           "SlockAttachmentOpen",
-          `attachmentId=${attachmentId.substring(0, 8)} status=no_app code=${businessError.code ?? "unknown"}`
+          `attachmentId=${attachmentId.substring(0, 8)} status=${failureKind} code=${businessError.code ?? "unknown"}`
         );
-        callback({ "status": "no_app", "message": "No app can open this file" });
+        if (failureKind === SlockOhosAttachmentOpenFailureKind.NO_APP) {
+          callback({ "status": "no_app", "message": "No app can open this file" });
+        } else {
+          callback({ "status": "failed", "message": "Unable to open attachment" });
+        }
       }
     } catch (error) {
       const businessError = error as BusinessError;
