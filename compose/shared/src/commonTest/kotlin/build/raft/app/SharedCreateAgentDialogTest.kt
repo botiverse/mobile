@@ -8,6 +8,7 @@ import build.raft.app.model.RuntimeModeConfig
 import build.raft.app.model.RuntimeModelConfig
 import build.raft.app.model.RuntimeProviderConfig
 import build.raft.app.model.supportsRuntimeCustomModelName
+import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -508,7 +509,7 @@ class SharedCreateAgentDialogTest {
                 customModelName = " vendor/private-codex-model ",
                 providerMode = "default",
                 providerApiUrl = "",
-                providerApiKey = "",
+                providerApiKey = TextFieldValue(""),
                 fastMode = false,
                 reasoningEffort = null,
                 envVarEntries = emptyList(),
@@ -564,7 +565,7 @@ class SharedCreateAgentDialogTest {
                 customModelName = " vendor/private-model ",
                 providerMode = RUNTIME_PROVIDER_MODE_CUSTOM,
                 providerApiUrl = " https://gateway.example.com ",
-                providerApiKey = " sk-test ",
+                providerApiKey = TextFieldValue(" dummy-key "),
                 fastMode = true,
                 reasoningEffort = "high",
                 envVarEntries =
@@ -587,7 +588,7 @@ class SharedCreateAgentDialogTest {
         assertEquals(
             RuntimeProviderConfig.Custom(
                 apiUrl = "https://gateway.example.com",
-                apiKey = "sk-test"
+                apiKey = "dummy-key"
             ),
             runtimeConfig.provider
         )
@@ -619,7 +620,7 @@ class SharedCreateAgentDialogTest {
                 customModelName = "",
                 providerMode = RUNTIME_PROVIDER_MODE_CUSTOM,
                 providerApiUrl = "https://gateway.example.com",
-                providerApiKey = "sk-test",
+                providerApiKey = TextFieldValue("dummy-key"),
                 fastMode = true,
                 reasoningEffort = "high",
                 envVarEntries = listOf("ANTHROPIC_API_KEY" to "secret"),

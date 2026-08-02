@@ -51,9 +51,7 @@ import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
-import com.tencent.kuikly.compose.ui.text.input.KeyboardType
-import com.tencent.kuikly.compose.ui.text.input.PasswordVisualTransformation
-import com.tencent.kuikly.compose.ui.text.input.VisualTransformation
+import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.text.TextStyle
 import com.tencent.kuikly.compose.ui.unit.Dp
@@ -359,9 +357,9 @@ private fun SettingsAccountProfileCard(
     val profile = payload.profile
     val displayNameState = remember(profile.displayName) { mutableStateOf(profile.displayName) }
     val passwordExpandedState = remember(payload.passwordExpanded) { mutableStateOf(payload.passwordExpanded) }
-    val currentPasswordState = remember { mutableStateOf("") }
-    val newPasswordState = remember { mutableStateOf("") }
-    val confirmPasswordState = remember { mutableStateOf("") }
+    val currentPasswordState = remember { mutableStateOf(TextFieldValue("")) }
+    val newPasswordState = remember { mutableStateOf(TextFieldValue("")) }
+    val confirmPasswordState = remember { mutableStateOf(TextFieldValue("")) }
     val passwordDraftError = remember { mutableStateOf<String?>(null) }
     val passwordMinimumError = stringResource(MR.strings.settings_account_password_too_short)
     val passwordMismatchError = stringResource(MR.strings.settings_account_password_mismatch)
@@ -448,9 +446,9 @@ private fun SettingsAccountProfileCard(
                     passwordDraftError.value = null
                 },
                 onSubmit = {
-                    val current = currentPasswordState.value
-                    val next = newPasswordState.value
-                    val confirm = confirmPasswordState.value
+                    val current = currentPasswordState.value.text
+                    val next = newPasswordState.value.text
+                    val confirm = confirmPasswordState.value.text
                     when {
                         next.length < 8 -> passwordDraftError.value = passwordMinimumError
                         next != confirm -> passwordDraftError.value = passwordMismatchError
@@ -597,13 +595,13 @@ private fun SettingsPasswordDisclosure(
 @Composable
 private fun SettingsPasswordForm(
     payload: KuiklySettingsAccountPayload,
-    currentPassword: String,
-    newPassword: String,
-    confirmPassword: String,
+    currentPassword: TextFieldValue,
+    newPassword: TextFieldValue,
+    confirmPassword: TextFieldValue,
     draftError: String?,
-    onCurrentPasswordChange: (String) -> Unit,
-    onNewPasswordChange: (String) -> Unit,
-    onConfirmPasswordChange: (String) -> Unit,
+    onCurrentPasswordChange: (TextFieldValue) -> Unit,
+    onNewPasswordChange: (TextFieldValue) -> Unit,
+    onConfirmPasswordChange: (TextFieldValue) -> Unit,
     onSubmit: () -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {

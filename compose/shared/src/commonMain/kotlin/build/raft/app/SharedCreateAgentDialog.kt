@@ -68,8 +68,10 @@ import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.platform.LocalFocusManager
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.SpanStyle
+import com.tencent.kuikly.compose.ui.text.TextRange
 import com.tencent.kuikly.compose.ui.text.buildAnnotatedString
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
+import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
 import com.tencent.kuikly.compose.ui.text.style.TextDecoration
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
@@ -198,16 +200,16 @@ internal fun buildSharedCreateAgentDialogSubmit(
     customModelName: String,
     providerMode: RuntimeProviderMode,
     providerApiUrl: String,
-    providerApiKey: String,
+    providerApiKey: TextFieldValue,
     fastMode: Boolean,
     reasoningEffort: String?,
     envVarEntries: List<Pair<String, String>>,
     command: String,
     piProviderId: String = "configured",
-    piProviderApiKey: String = "",
+    piProviderApiKey: TextFieldValue = TextFieldValue(""),
     builtInForm: SharedResolvedAgentCreateForm? = null,
     builtInProviderId: String = "",
-    builtInApiKey: String = "",
+    builtInApiKey: TextFieldValue = TextFieldValue(""),
     builtInBaseUrl: String = "",
     builtInSupportsImageInput: Boolean = false,
     builtInModel: String = ""
@@ -221,7 +223,7 @@ internal fun buildSharedCreateAgentDialogSubmit(
         } else if (runtime == "builtin") {
             builtInForm?.buildBuiltInRuntimeConfig(
                 providerId = builtInProviderId,
-                apiKey = builtInApiKey,
+                apiKey = builtInApiKey.text,
                 baseUrl = builtInBaseUrl,
                 supportsImageInput = builtInSupportsImageInput,
                 model = builtInModel,
@@ -235,9 +237,9 @@ internal fun buildSharedCreateAgentDialogSubmit(
                 customModelName = customModelName.takeIf { customModelMode },
                 providerMode = providerMode,
                 providerApiUrl = providerApiUrl,
-                providerApiKey = providerApiKey,
+                providerApiKey = providerApiKey.text,
                 piProviderId = piProviderId,
-                piProviderApiKey = piProviderApiKey,
+                piProviderApiKey = piProviderApiKey.text,
                 fastMode = fastMode,
                 reasoningEffort = reasoningEffort,
                 envVars = createAgentRuntimeEnvVars(envVarEntries),
@@ -603,14 +605,21 @@ internal fun SharedCreateAgentDialog(
     var customModelName by remember { mutableStateOf("") }
     var providerMode by remember(initialProviderMode) { mutableStateOf(initialProviderMode) }
     var providerApiUrl by remember(initialProviderApiUrl) { mutableStateOf(initialProviderApiUrl) }
-    var providerApiKey by remember(initialProviderApiKey) { mutableStateOf(initialProviderApiKey) }
+    var providerApiKey by remember(initialProviderApiKey) {
+        mutableStateOf(
+            TextFieldValue(
+                text = initialProviderApiKey,
+                selection = TextRange(initialProviderApiKey.length)
+            )
+        )
+    }
     var piProviderId by remember { mutableStateOf("configured") }
-    var piProviderApiKey by remember { mutableStateOf("") }
+    var piProviderApiKey by remember { mutableStateOf(TextFieldValue("")) }
     var fastMode by remember(initialFastMode) { mutableStateOf(initialFastMode) }
     var reasoningEffort by remember(initialReasoningEffort) { mutableStateOf(initialReasoningEffort) }
     var command by remember(initialCommand) { mutableStateOf(initialCommand) }
     var builtInProviderId by remember { mutableStateOf("") }
-    var builtInApiKey by remember { mutableStateOf("") }
+    var builtInApiKey by remember { mutableStateOf(TextFieldValue("")) }
     var builtInBaseUrl by remember { mutableStateOf("") }
     var builtInSupportsImageInput by remember { mutableStateOf(false) }
     var builtInModel by remember { mutableStateOf("") }
@@ -705,7 +714,9 @@ internal fun SharedCreateAgentDialog(
         providerId = builtInProviderId,
         baseUrl = builtInBaseUrl.trim()
     )
-    val effectiveBuiltInApiKey = builtInApiKey.takeIf { builtInSecretIdentity == builtInWriteOnlyIdentity }.orEmpty()
+    val effectiveBuiltInApiKey =
+        builtInApiKey.takeIf { builtInSecretIdentity == builtInWriteOnlyIdentity }
+            ?: TextFieldValue("")
 
     fun resetRuntimeForMachine(machineId: String) {
         val machine = machines.firstOrNull { it.id == machineId }
@@ -725,10 +736,10 @@ internal fun SharedCreateAgentDialog(
         customModelMode = false
         providerMode = RUNTIME_PROVIDER_MODE_DEFAULT
         providerApiUrl = ""
-        providerApiKey = ""
+        providerApiKey = TextFieldValue("")
         piProviderId = "configured"
-        piProviderApiKey = ""
-        builtInApiKey = ""
+        piProviderApiKey = TextFieldValue("")
+        builtInApiKey = TextFieldValue("")
         builtInSecretIdentity = null
         builtInSupportsImageInput = false
         fastMode = false
@@ -787,7 +798,7 @@ internal fun SharedCreateAgentDialog(
         builtInModel = modelSource.defaultValueByValue[nextProvider]
             ?: modelSource.optionsByValue[nextProvider]?.firstOrNull()?.value.orEmpty()
         builtInBaseUrl = ""
-        builtInApiKey = ""
+        builtInApiKey = TextFieldValue("")
         builtInSupportsImageInput = false
         builtInSecretIdentity = null
     }
@@ -795,7 +806,7 @@ internal fun SharedCreateAgentDialog(
     LaunchedEffect(builtInOwner, cleanCreateAgentServerId, selectedMachineId, runtime, builtInRef, builtInProviderId, builtInBaseUrl) {
         val previousIdentity = builtInSecretIdentity
         if (shouldClearBuiltInWriteOnlySecret(previousIdentity, builtInWriteOnlyIdentity)) {
-            builtInApiKey = ""
+            builtInApiKey = TextFieldValue("")
         }
         builtInSecretIdentity = builtInWriteOnlyIdentity
     }
@@ -842,12 +853,12 @@ internal fun SharedCreateAgentDialog(
             selectedMachine.status != "online" ||
             (!requiredComputer.isNullOrBlank() && selectedMachine.id != requiredComputer))
     val piProviderKeyInvalid =
-        runtime == "pi" && piProviderId != "configured" && piProviderApiKey.isBlank()
+        runtime == "pi" && piProviderId != "configured" && piProviderApiKey.text.isBlank()
     val builtInRuntimeConfig =
         if (!external && runtime == "builtin") {
             builtInForm?.buildBuiltInRuntimeConfig(
                 providerId = builtInProviderId,
-                apiKey = effectiveBuiltInApiKey,
+                apiKey = effectiveBuiltInApiKey.text,
                 baseUrl = builtInBaseUrl,
                 supportsImageInput = builtInSupportsImageInput,
                 model = builtInModel,
@@ -1062,7 +1073,7 @@ internal fun SharedCreateAgentDialog(
                                 runtime = runtime,
                                 onRuntimeChange = {
                                     if (it != runtime) {
-                                        builtInApiKey = ""
+                                        builtInApiKey = TextFieldValue("")
                                         builtInSupportsImageInput = false
                                     }
                                     runtime = it
@@ -1073,7 +1084,7 @@ internal fun SharedCreateAgentDialog(
                                 loading = builtInFormLoading,
                                 providerId = builtInProviderId,
                                 onProviderIdChange = {
-                                    if (it != builtInProviderId) builtInApiKey = ""
+                                    if (it != builtInProviderId) builtInApiKey = TextFieldValue("")
                                     builtInProviderId = it
                                     builtInSupportsImageInput = false
                                 },
@@ -1084,7 +1095,7 @@ internal fun SharedCreateAgentDialog(
                                 },
                                 baseUrl = builtInBaseUrl,
                                 onBaseUrlChange = {
-                                    if (it.trim() != builtInBaseUrl.trim()) builtInApiKey = ""
+                                    if (it.trim() != builtInBaseUrl.trim()) builtInApiKey = TextFieldValue("")
                                     builtInBaseUrl = it
                                 },
                                 supportsImageInput = builtInSupportsImageInput,
@@ -1136,7 +1147,7 @@ internal fun SharedCreateAgentDialog(
                             piProviderId = piProviderId,
                             onPiProviderIdChange = {
                                 piProviderId = it
-                                if (it == "configured") piProviderApiKey = ""
+                                if (it == "configured") piProviderApiKey = TextFieldValue("")
                             },
                             piProviderApiKey = piProviderApiKey,
                             onPiProviderApiKeyChange = { piProviderApiKey = it },
@@ -1368,8 +1379,8 @@ internal fun BuiltInRuntimeSection(
     loading: Boolean,
     providerId: String,
     onProviderIdChange: (String) -> Unit,
-    apiKey: String,
-    onApiKeyChange: (String) -> Unit,
+    apiKey: TextFieldValue,
+    onApiKeyChange: (TextFieldValue) -> Unit,
     baseUrl: String,
     onBaseUrlChange: (String) -> Unit,
     supportsImageInput: Boolean,
@@ -1549,12 +1560,12 @@ internal fun AdvancedRuntimeSection(
     onProviderModeChange: (RuntimeProviderMode) -> Unit,
     providerApiUrl: String,
     onProviderApiUrlChange: (String) -> Unit,
-    providerApiKey: String,
-    onProviderApiKeyChange: (String) -> Unit,
+    providerApiKey: TextFieldValue,
+    onProviderApiKeyChange: (TextFieldValue) -> Unit,
     piProviderId: String = "configured",
     onPiProviderIdChange: (String) -> Unit = {},
-    piProviderApiKey: String = "",
-    onPiProviderApiKeyChange: (String) -> Unit = {},
+    piProviderApiKey: TextFieldValue = TextFieldValue(""),
+    onPiProviderApiKeyChange: (TextFieldValue) -> Unit = {},
     fastMode: Boolean,
     onFastModeChange: (Boolean) -> Unit,
     reasoningEffort: String?,
@@ -1592,7 +1603,7 @@ internal fun AdvancedRuntimeSection(
     val providerUrlRequired = supportsRuntimeApiUrl(runtime) && providerMode == RUNTIME_PROVIDER_MODE_CUSTOM
     val providerUrlInvalid = providerUrlRequired &&
         !Regex("^https?://", RegexOption.IGNORE_CASE).containsMatchIn(providerApiUrl.trim())
-    val providerKeyInvalid = providerUrlRequired && providerApiKey.isBlank()
+    val providerKeyInvalid = providerUrlRequired && providerApiKey.text.isBlank()
     val focusManager = LocalFocusManager.current
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1646,7 +1657,7 @@ internal fun AdvancedRuntimeSection(
                     onProviderModeChange(option.id)
                     if (option.id != RUNTIME_PROVIDER_MODE_CUSTOM) {
                         onProviderApiUrlChange("")
-                        onProviderApiKeyChange("")
+                        onProviderApiKeyChange(TextFieldValue(""))
                     }
                 }
             )
@@ -1675,10 +1686,8 @@ internal fun AdvancedRuntimeSection(
                     label = stringResource(MR.strings.agent_create_label_api_key),
                     required = true,
                     value = providerApiKey,
-                    // Task #43 QA-4 fix (artin's instruction: same component
-                    // shape as the login page password field): use a
-                    // native password-typed text field. Keep the underlying
-                    // value intact; do not mirror masked bullets into state.
+                    // Keep the exact native TextFieldValue while masking only its presentation.
+                    // Product state reads `.text` at the submit boundary; bullets never enter it.
                     password = true,
                     onValueChange = { onProviderApiKeyChange(it) },
                     placeholder = "sk-ant-...",
@@ -1714,7 +1723,7 @@ internal fun AdvancedRuntimeSection(
                 onSelect = { option ->
                     focusManager.clearFocus(force = true)
                     onPiProviderIdChange(option.id)
-                    if (option.id == "configured") onPiProviderApiKeyChange("")
+                    if (option.id == "configured") onPiProviderApiKeyChange(TextFieldValue(""))
                 }
             )
             if (piProviderId != "configured") {
