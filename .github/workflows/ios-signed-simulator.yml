@@ -1,0 +1,294 @@
+name: iOS Signed Simulator Candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: "Exact mobile commit to build (must equal the dispatched ref SHA)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: ios-signed-simulator-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build_signed_simulator:
+    name: Build, sign, and verify Simulator app
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: blacksmith-12vcpu-macos-latest
+    timeout-minutes: 60
+    env:
+      GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dkotlin.compiler.execution.strategy=in-process"
+      GRADLE_MAX_WORKERS: "1"
+      SIM_DEVICE: iPhone 14
+      SLOCK_IOS_DISTRIBUTION_CERTIFICATE_BASE64: ${{ secrets.SLOCK_IOS_DISTRIBUTION_CERTIFICATE_BASE64 }}
+      SLOCK_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD: ${{ secrets.SLOCK_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD }}
+      SLOCK_IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.SLOCK_IOS_PROVISIONING_PROFILE_BASE64 }}
+      SLOCK_IOS_APPLE_TEAM_ID: ${{ secrets.SLOCK_IOS_APPLE_TEAM_ID }}
+    steps:
+      - name: Warm macOS artifact proxy
+        shell: bash
+        run: sleep 5
+
+      - name: Checkout exact source
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Verify exact source pin
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+        run: |
+          set -euo pipefail
+          ACTUAL_SHA="$(git rev-parse HEAD)"
+          [ "${EXPECTED_SHA}" = "${ACTUAL_SHA}" ] || {
+            echo "::error::expected_sha does not match the dispatched ref SHA"
+            exit 1
+          }
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Apply Gradle cache policy
+        uses: ./.github/actions/gradle-cache-policy
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v5
+
+      - name: Raise Gradle/Kotlin heap for the iOS build
+        shell: bash
+        run: |
+          set -euo pipefail
+          GUH="${GRADLE_USER_HOME:-$HOME/.gradle}"
+          mkdir -p "${GUH}"
+          printf '%s\n' 'org.gradle.jvmargs=-Xmx8g -Xss4m -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8 -Dkotlin.daemon.jvm.options\="-Xmx8g,-Xss4m"' >> "${GUH}/gradle.properties"
+
+      - name: Write GitHub Packages credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          [ -n "${{ secrets.SLOCK_GITHUB_PACKAGES_USERNAME }}" ] || { echo "::error::Missing SLOCK_GITHUB_PACKAGES_USERNAME"; exit 1; }
+          [ -n "${{ secrets.SLOCK_GITHUB_PACKAGES_TOKEN }}" ] || { echo "::error::Missing SLOCK_GITHUB_PACKAGES_TOKEN"; exit 1; }
+          {
+            echo "githubPackagesUsername=${{ secrets.SLOCK_GITHUB_PACKAGES_USERNAME }}"
+            echo "githubPackagesToken=${{ secrets.SLOCK_GITHUB_PACKAGES_TOKEN }}"
+          } > compose/github-packages.properties
+          chmod 600 compose/github-packages.properties
+
+      - name: Publish Kuikly fork artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          git submodule sync third_party/kuikly-ui
+          git submodule update --init third_party/kuikly-ui
+          scripts/build_kuikly_fork.sh --android-only
+
+      - name: Generate shared framework placeholder
+        working-directory: compose
+        shell: bash
+        run: ./gradlew :shared:generateDummyFramework --no-daemon --console=plain --max-workers=${{ env.GRADLE_MAX_WORKERS }} --stacktrace
+
+      - name: Install CocoaPods dependencies
+        working-directory: compose/iosApp
+        shell: bash
+        run: pod install
+
+      - name: Import protected signing assets and verify SIWA authority
+        id: signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          [ -n "${SLOCK_IOS_DISTRIBUTION_CERTIFICATE_BASE64}" ] || { echo "::error::Missing SLOCK_IOS_DISTRIBUTION_CERTIFICATE_BASE64"; exit 1; }
+          [ -n "${SLOCK_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD}" ] || { echo "::error::Missing SLOCK_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD"; exit 1; }
+          [ -n "${SLOCK_IOS_PROVISIONING_PROFILE_BASE64}" ] || { echo "::error::Missing SLOCK_IOS_PROVISIONING_PROFILE_BASE64"; exit 1; }
+
+          KEYCHAIN_PATH="${RUNNER_TEMP}/raft-ios-simulator-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          CERT_PATH="${RUNNER_TEMP}/raft-ios-simulator-signing.p12"
+          PROFILE_PATH="${RUNNER_TEMP}/raft-ios-simulator.mobileprovision"
+          PROFILE_PLIST="${RUNNER_TEMP}/raft-ios-simulator-profile.plist"
+
+          decode_secret() {
+            local value="$1" out="$2" name="$3"
+            if ! printf '%s' "${value}" | tr -d '[:space:]' | base64 --decode > "${out}" 2>/dev/null || [ ! -s "${out}" ]; then
+              echo "::error::${name} is empty or not valid base64"
+              exit 1
+            fi
+          }
+          decode_secret "${SLOCK_IOS_DISTRIBUTION_CERTIFICATE_BASE64}" "${CERT_PATH}" "SLOCK_IOS_DISTRIBUTION_CERTIFICATE_BASE64"
+          decode_secret "${SLOCK_IOS_PROVISIONING_PROFILE_BASE64}" "${PROFILE_PATH}" "SLOCK_IOS_PROVISIONING_PROFILE_BASE64"
+
+          security create-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+          security set-keychain-settings -lut 21600 "${KEYCHAIN_PATH}"
+          security unlock-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+          security import "${CERT_PATH}" -P "${SLOCK_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD}" -A -t cert -f pkcs12 -k "${KEYCHAIN_PATH}"
+          security list-keychain -d user -s "${KEYCHAIN_PATH}" login.keychain-db
+          security set-key-partition-list -S apple-tool:,apple: -s -k "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}" >/dev/null
+
+          IDENTITY_HASH="$(security find-identity -v -p codesigning "${KEYCHAIN_PATH}" | sed -nE 's/^[[:space:]]*[0-9]+\) ([0-9A-F]{40}) .*/\1/p' | head -n 1)"
+          [ -n "${IDENTITY_HASH}" ] || { echo "::error::No valid code-signing identity in protected certificate"; exit 1; }
+
+          security cms -D -i "${PROFILE_PATH}" > "${PROFILE_PLIST}"
+          python3 - "${PROFILE_PLIST}" <<'PY'
+          import datetime
+          import plistlib
+          import sys
+
+          with open(sys.argv[1], "rb") as stream:
+              profile = plistlib.load(stream)
+          expiration = profile.get("ExpirationDate")
+          if not isinstance(expiration, datetime.datetime):
+              raise SystemExit("::error::Provisioning profile has no valid ExpirationDate")
+          now = datetime.datetime.now(datetime.timezone.utc)
+          if expiration.replace(tzinfo=datetime.timezone.utc) <= now:
+              raise SystemExit("::error::Provisioning profile is expired")
+          PY
+          PROFILE_TEAM="$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "${PROFILE_PLIST}")"
+          PROFILE_APP_ID="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "${PROFILE_PLIST}")"
+          PROFILE_SIWA="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.developer.applesignin:0' "${PROFILE_PLIST}")"
+          [ "${PROFILE_APP_ID}" = "${PROFILE_TEAM}.build.raft.app" ] || { echo "::error::Provisioning profile is not exact for build.raft.app"; exit 1; }
+          [ "${PROFILE_SIWA}" = "Default" ] || { echo "::error::Provisioning profile does not authorize Sign in with Apple"; exit 1; }
+          if [ -n "${SLOCK_IOS_APPLE_TEAM_ID}" ]; then
+            [ "${SLOCK_IOS_APPLE_TEAM_ID}" = "${PROFILE_TEAM}" ] || { echo "::error::Configured Apple team does not match provisioning profile"; exit 1; }
+          fi
+
+          {
+            echo "identity_hash=${IDENTITY_HASH}"
+            echo "keychain_path=${KEYCHAIN_PATH}"
+            echo "profile_team=${PROFILE_TEAM}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Boot exact Simulator destination
+        shell: bash
+        run: |
+          set -euo pipefail
+          UDID="$(xcrun simctl list devices available -j | python3 -c "import json,sys,os; d=json.load(sys.stdin)['devices']; print(next((dev['udid'] for devs in d.values() for dev in devs if dev['name']==os.environ['SIM_DEVICE']), ''))")"
+          if [ -z "${UDID}" ]; then
+            RUNTIME="$(xcrun simctl list runtimes -j | python3 -c "import json,sys; rs=[r for r in json.load(sys.stdin)['runtimes'] if r['isAvailable'] and r['platform']=='iOS']; print(sorted(rs, key=lambda r: r['version'])[-1]['identifier'])")"
+            DEVTYPE="$(xcrun simctl list devicetypes -j | python3 -c "import json,sys,os; print(next(d['identifier'] for d in json.load(sys.stdin)['devicetypes'] if d['name']==os.environ['SIM_DEVICE']))")"
+            UDID="$(xcrun simctl create "signed-sim-${SIM_DEVICE// /-}" "${DEVTYPE}" "${RUNTIME}")"
+          fi
+          echo "UDID=${UDID}" >> "${GITHUB_ENV}"
+          xcrun simctl boot "${UDID}" || true
+          xcrun simctl bootstatus "${UDID}" -b
+
+      - name: Build unsigned Simulator app from exact source
+        working-directory: compose/iosApp
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -workspace iosApp.xcworkspace \
+            -scheme iosApp \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination "platform=iOS Simulator,id=${UDID}" \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Sign Simulator app and enforce final entitlement identity
+        id: artifact
+        shell: bash
+        env:
+          IDENTITY_HASH: ${{ steps.signing.outputs.identity_hash }}
+          PROFILE_TEAM: ${{ steps.signing.outputs.profile_team }}
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find compose/iosApp/build/DerivedData/Build/Products/Debug-iphonesimulator -maxdepth 1 -type d -name '*.app' ! -name '*Runner*' | sort | head -n 1)"
+          [ -n "${APP_PATH}" ] || { echo "::error::No Simulator app product found"; exit 1; }
+          BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "${APP_PATH}/Info.plist")"
+          [ "${BUNDLE_ID}" = "build.raft.app" ] || { echo "::error::Unexpected Simulator bundle id"; exit 1; }
+
+          ENTITLEMENTS="${RUNNER_TEMP}/raft-ios-simulator-entitlements.plist"
+          plutil -create xml1 "${ENTITLEMENTS}"
+          /usr/libexec/PlistBuddy -c "Add :application-identifier string ${PROFILE_TEAM}.build.raft.app" "${ENTITLEMENTS}"
+          /usr/libexec/PlistBuddy -c "Add :com.apple.developer.team-identifier string ${PROFILE_TEAM}" "${ENTITLEMENTS}"
+          /usr/libexec/PlistBuddy -c 'Add :com.apple.developer.applesignin array' "${ENTITLEMENTS}"
+          /usr/libexec/PlistBuddy -c 'Add :com.apple.developer.applesignin:0 string Default' "${ENTITLEMENTS}"
+
+          # Sign every executable bundle leaf-first. The provisioning profile
+          # remains CI-private; the downloadable Simulator candidate contains
+          # only the resulting signature and its authorized minimal claims.
+          while IFS= read -r -d '' ITEM; do
+            codesign --force --sign "${IDENTITY_HASH}" --timestamp=none "${ITEM}"
+          done < <(find "${APP_PATH}" -depth \
+            \( -type d -name '*.framework' -o -type d -name '*.appex' -o -type d -name '*.xpc' -o -type f -name '*.dylib' \) \
+            -print0)
+          codesign --force --sign "${IDENTITY_HASH}" \
+            --entitlements "${ENTITLEMENTS}" \
+            --generate-entitlement-der \
+            --timestamp=none \
+            "${APP_PATH}"
+          codesign --verify --deep --strict --verbose=2 "${APP_PATH}"
+
+          SIGNATURE_META="${RUNNER_TEMP}/raft-ios-simulator-signature.txt"
+          ACTUAL_ENTITLEMENTS="${RUNNER_TEMP}/raft-ios-simulator-actual-entitlements.plist"
+          codesign --display --verbose=4 "${APP_PATH}" 2> "${SIGNATURE_META}"
+          codesign --display --entitlements - --xml "${APP_PATH}" 2>/dev/null \
+            | plutil -convert xml1 -o "${ACTUAL_ENTITLEMENTS}" -
+
+          META_TEAM="$(sed -n 's/^TeamIdentifier=//p' "${SIGNATURE_META}" | head -n 1)"
+          ACTUAL_TEAM="$(/usr/libexec/PlistBuddy -c 'Print :com.apple.developer.team-identifier' "${ACTUAL_ENTITLEMENTS}")"
+          ACTUAL_APP_ID="$(/usr/libexec/PlistBuddy -c 'Print :application-identifier' "${ACTUAL_ENTITLEMENTS}")"
+          ACTUAL_SIWA="$(/usr/libexec/PlistBuddy -c 'Print :com.apple.developer.applesignin:0' "${ACTUAL_ENTITLEMENTS}")"
+          [ -n "${META_TEAM}" ] || { echo "::error::Signed Simulator candidate has no TeamIdentifier"; exit 1; }
+          [ "${META_TEAM}" = "${PROFILE_TEAM}" ] || { echo "::error::Signature TeamIdentifier does not match profile"; exit 1; }
+          [ "${ACTUAL_TEAM}" = "${PROFILE_TEAM}" ] || { echo "::error::Team entitlement does not match profile"; exit 1; }
+          [ "${ACTUAL_APP_ID}" = "${PROFILE_TEAM}.build.raft.app" ] || { echo "::error::application-identifier is not exact"; exit 1; }
+          [ "${ACTUAL_SIWA}" = "Default" ] || { echo "::error::Final signature lacks Sign in with Apple entitlement"; exit 1; }
+
+          xcrun simctl install "${UDID}" "${APP_PATH}"
+
+          DIST_DIR="${GITHUB_WORKSPACE}/dist/ios-signed-simulator"
+          mkdir -p "${DIST_DIR}"
+          ZIP_PATH="${DIST_DIR}/raft-ios-signed-simulator.app.zip"
+          RECEIPT_PATH="${DIST_DIR}/receipt.txt"
+          ditto -c -k --keepParent "${APP_PATH}" "${ZIP_PATH}"
+          ZIP_SHA256="$(shasum -a 256 "${ZIP_PATH}" | awk '{print $1}')"
+          {
+            echo "source_sha=${GITHUB_SHA}"
+            echo "bundle_id=${BUNDLE_ID}"
+            echo "team_identifier=${META_TEAM}"
+            echo "application_identifier=${ACTUAL_APP_ID}"
+            echo "sign_in_with_apple=${ACTUAL_SIWA}"
+            echo "simulator_udid=${UDID}"
+            echo "artifact_sha256=${ZIP_SHA256}"
+          } > "${RECEIPT_PATH}"
+          echo "zip_sha256=${ZIP_SHA256}" >> "${GITHUB_OUTPUT}"
+
+      - name: Upload signed Simulator candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-signed-simulator-${{ github.run_id }}-${{ github.sha }}
+          path: dist/ios-signed-simulator/
+          if-no-files-found: error
+          retention-days: 2
+
+      - name: Cleanup protected signing state
+        if: always()
+        shell: bash
+        env:
+          KEYCHAIN_PATH: ${{ steps.signing.outputs.keychain_path }}
+        run: |
+          set +e
+          rm -f compose/github-packages.properties
+          KEYCHAIN_PATH="${KEYCHAIN_PATH:-${RUNNER_TEMP}/raft-ios-simulator-signing.keychain-db}"
+          if [ -n "${KEYCHAIN_PATH}" ] && [ -f "${KEYCHAIN_PATH}" ]; then
+            security delete-keychain "${KEYCHAIN_PATH}" >/dev/null 2>&1
+          fi
+          rm -f "${RUNNER_TEMP}/raft-ios-simulator-signing.p12" \
+            "${RUNNER_TEMP}/raft-ios-simulator.mobileprovision" \
+            "${RUNNER_TEMP}/raft-ios-simulator-profile.plist" \
+            "${RUNNER_TEMP}/raft-ios-simulator-entitlements.plist" \
+            "${RUNNER_TEMP}/raft-ios-simulator-actual-entitlements.plist" \
+            "${RUNNER_TEMP}/raft-ios-simulator-signature.txt"
