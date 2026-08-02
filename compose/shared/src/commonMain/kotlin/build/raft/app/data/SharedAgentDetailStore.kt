@@ -46,7 +46,8 @@ internal data class SharedAgentDetailState(
     val agentActivityVersions: Map<MemberId, Long> = emptyMap(),
     val agentActivitySeq: Map<MemberId, Long> = emptyMap(),
     val detailLoadStatus: SharedAgentDetailLoadStatus = SharedAgentDetailLoadStatus.Idle,
-    val detailErrorCode: String? = null,
+    val detailError: ScreenError? = null,
+    val detailPermissionBlocker: PermissionBlocker? = null,
     val lifecycleActionInFlight: String? = null,
     val diagnosticActionInFlight: String? = null,
     val pendingConfirmation: MembersAgentLifecycleAction? = null,
@@ -73,7 +74,7 @@ internal enum class SharedAgentDetailLoadStatus {
 internal data class SharedAgentDetailActionResult(
     val actionKey: String,
     val successLabel: String? = null,
-    val errorCode: String? = null
+    val error: ScreenError? = null
 )
 
 internal data class SharedAgentIssueReportRequest(
@@ -116,8 +117,18 @@ internal sealed interface SharedAgentDetailIntent {
         val activity: List<AgentActivityEntry>,
         val serverId: ServerId? = null
     ) : SharedAgentDetailIntent
-    data class SetDetailNoPermission(val agentId: MemberId, val code: String) : SharedAgentDetailIntent
-    data class SetDetailError(val agentId: MemberId, val code: String) : SharedAgentDetailIntent
+    data class SetDetailNoPermission(
+        val agentId: MemberId,
+        val blocker: PermissionBlocker
+    ) : SharedAgentDetailIntent {
+        constructor(agentId: MemberId, code: String) : this(agentId, PermissionBlocker(code))
+    }
+    data class SetDetailError(
+        val agentId: MemberId,
+        val error: ScreenError
+    ) : SharedAgentDetailIntent {
+        constructor(agentId: MemberId, code: String) : this(agentId, ScreenError(code))
+    }
     data class SetDetailEmpty(val agentId: MemberId) : SharedAgentDetailIntent
     data class ApplyAgentActivityUpdate(
         val event: MemberPresenceUpdated,
@@ -129,13 +140,13 @@ internal sealed interface SharedAgentDetailIntent {
     data class FinishLifecycleAction(
         val actionKey: String,
         val successLabel: String? = null,
-        val errorCode: String? = null
+        val error: ScreenError? = null
     ) : SharedAgentDetailIntent
     data class StartDiagnosticAction(val actionKey: String) : SharedAgentDetailIntent
     data class FinishDiagnosticAction(
         val actionKey: String,
         val successLabel: String? = null,
-        val errorCode: String? = null
+        val error: ScreenError? = null
     ) : SharedAgentDetailIntent
 
     data class ShowConfirmation(val action: MembersAgentLifecycleAction) : SharedAgentDetailIntent
@@ -194,7 +205,8 @@ internal class SharedAgentDetailStore(
                 if (current.agentId == intent.agentId) {
                     current.copy(
                         detailLoadStatus = SharedAgentDetailLoadStatus.Loading,
-                        detailErrorCode = null
+                        detailError = null,
+                        detailPermissionBlocker = null
                     )
                 } else {
                     current
@@ -226,7 +238,8 @@ internal class SharedAgentDetailStore(
                         detailServerId = intent.serverId ?: base.detailServerId,
                         agentActivityLogs = nextActivityLogs,
                         detailLoadStatus = SharedAgentDetailLoadStatus.Content,
-                        detailErrorCode = null
+                        detailError = null,
+                        detailPermissionBlocker = null
                     )
                 } else {
                     current
@@ -241,7 +254,8 @@ internal class SharedAgentDetailStore(
                 if (current.agentId == intent.agentId) {
                     current.copy(
                         detailLoadStatus = SharedAgentDetailLoadStatus.NoPermission,
-                        detailErrorCode = intent.code
+                        detailError = null,
+                        detailPermissionBlocker = intent.blocker
                     )
                 } else {
                     current
@@ -250,7 +264,8 @@ internal class SharedAgentDetailStore(
                 if (current.agentId == intent.agentId) {
                     current.copy(
                         detailLoadStatus = SharedAgentDetailLoadStatus.Error,
-                        detailErrorCode = intent.code
+                        detailError = intent.error,
+                        detailPermissionBlocker = null
                     )
                 } else {
                     current
@@ -259,7 +274,8 @@ internal class SharedAgentDetailStore(
                 if (current.agentId == intent.agentId) {
                     current.copy(
                         detailLoadStatus = SharedAgentDetailLoadStatus.Empty,
-                        detailErrorCode = null
+                        detailError = null,
+                        detailPermissionBlocker = null
                     )
                 } else {
                     current
@@ -280,7 +296,7 @@ internal class SharedAgentDetailStore(
                 lastActionResult = SharedAgentDetailActionResult(
                     actionKey = intent.actionKey,
                     successLabel = intent.successLabel,
-                    errorCode = intent.errorCode
+                    error = intent.error
                 )
             )
             is SharedAgentDetailIntent.StartDiagnosticAction -> current.copy(
@@ -292,7 +308,7 @@ internal class SharedAgentDetailStore(
                 lastActionResult = SharedAgentDetailActionResult(
                     actionKey = intent.actionKey,
                     successLabel = intent.successLabel,
-                    errorCode = intent.errorCode
+                    error = intent.error
                 )
             )
 
@@ -388,12 +404,12 @@ internal class SharedAgentDetailStore(
             } catch (_: Throwable) {
                 DataResult.Error(ScreenError("agent_${action.actionKey}_failed"))
             }
-        val errorCode = result.lifecycleErrorCode(action)
+        val error = result.lifecycleError(action)
         dispatch(
             SharedAgentDetailIntent.FinishLifecycleAction(
                 actionKey = action.actionKey,
-                successLabel = action.successLabel.takeIf { errorCode == null },
-                errorCode = errorCode
+                successLabel = action.successLabel.takeIf { error == null },
+                error = error
             )
         )
         return result
@@ -423,32 +439,32 @@ internal class SharedAgentDetailStore(
             } catch (_: Throwable) {
                 DataResult.Error(ScreenError("agent_issue_report_failed"))
             }
-        val errorCode =
+        val error =
             when (result) {
                 is DataResult.Content -> null
-                is DataResult.Empty -> result.reason.name
-                is DataResult.Error -> result.error.code
-                is DataResult.NoPermission -> result.blocker.code
+                is DataResult.Empty -> ScreenError(result.reason.name, retryable = false)
+                is DataResult.Error -> result.error
+                is DataResult.NoPermission -> ScreenError(result.blocker.code, retryable = false)
             }
         dispatch(
             SharedAgentDetailIntent.FinishDiagnosticAction(
                 actionKey = "report",
-                successLabel = "Issue reported".takeIf { errorCode == null },
-                errorCode = errorCode
+                successLabel = "Issue reported".takeIf { error == null },
+                error = error
             )
         )
         return result
     }
 
-    private fun DataResult<AgentLifecycleActionResult>.lifecycleErrorCode(
+    private fun DataResult<AgentLifecycleActionResult>.lifecycleError(
         action: MembersAgentLifecycleAction
-    ): String? =
+    ): ScreenError? =
         when (this) {
             is DataResult.Content ->
-                if (data.success) null else "agent_${action.actionKey}_failed"
-            is DataResult.Empty -> reason.name
-            is DataResult.Error -> error.code
-            is DataResult.NoPermission -> blocker.code
+                if (data.success) null else ScreenError("agent_${action.actionKey}_failed")
+            is DataResult.Empty -> ScreenError(reason.name, retryable = false)
+            is DataResult.Error -> error
+            is DataResult.NoPermission -> ScreenError(blocker.code, retryable = false)
         }
 }
 
@@ -514,7 +530,8 @@ private fun SharedAgentDetailState.seedDetailFromMember(member: MemberProfile): 
         detailServerId = member.serverId,
         detail = member.toAgentDetailSeed(base.agentActivityLogs[member.id].orEmpty()),
         detailLoadStatus = SharedAgentDetailLoadStatus.Content,
-        detailErrorCode = null,
+        detailError = null,
+        detailPermissionBlocker = null,
         lifecycleActionInFlight = null,
         diagnosticActionInFlight = null,
         pendingConfirmation = null,

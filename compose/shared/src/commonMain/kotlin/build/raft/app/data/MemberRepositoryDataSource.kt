@@ -810,13 +810,15 @@ private fun DataResult<AgentAppLoginSnapshot>.toAgentDetailAppLogins(agentId: Me
             AgentAppLoginSnapshot(
                 agentId = agentId,
                 loadState = AgentAppLoginLoadState.NoPermission,
-                errorCode = blocker.code
+                errorCode = blocker.code,
+                permissionBlocker = blocker
             )
         is DataResult.Error ->
             AgentAppLoginSnapshot(
                 agentId = agentId,
                 loadState = AgentAppLoginLoadState.Error,
-                errorCode = error.code
+                errorCode = error.code,
+                screenError = error
             )
     }
 

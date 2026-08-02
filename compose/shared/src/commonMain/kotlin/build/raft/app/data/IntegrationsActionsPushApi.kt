@@ -268,7 +268,13 @@ private fun HomeNetworkResponse.mapAgentIntegrations(agentId: MemberId): DataRes
         return if (code == 403) {
             DataResult.NoPermission(PermissionBlocker(code = "server_admin_required", requiredCapability = "manage_integrations"))
         } else {
-            DataResult.Error(ScreenError(code = contractCode, retryable = code >= 500))
+            DataResult.Error(
+                ScreenError(
+                    code = if (code >= 500) "server_unavailable" else "http_$code",
+                    retryable = code >= 500,
+                    serverMessage = agentIntegrationsServerErrorTextOrNull()
+                )
+            )
         }
     }
     return mapApiBody(
@@ -280,6 +286,19 @@ private fun HomeNetworkResponse.mapAgentIntegrations(agentId: MemberId): DataRes
             items = wire.map { it.toAgentAppLoginItem() ?: return@mapApiBody null }
         )
     }
+}
+
+/** Exact non-2xx envelope for `GET /api/integrations/agents/:agentId`. */
+private fun HomeNetworkResponse.agentIntegrationsServerErrorTextOrNull(): String? {
+    val payload = bodyText?.takeIf { it.isNotBlank() }
+        ?: errorBodyText?.takeIf { it.isNotBlank() }
+        ?: return null
+    return runCatching {
+        integrationsActionsPushJson.decodeFromString(AgentIntegrationsErrorDto.serializer(), payload)
+            .error
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+    }.getOrNull()
 }
 
 /**
@@ -308,6 +327,11 @@ private fun HomeNetworkResponse.mapActionEvent(contractCode: String): DataResult
 }
 
 // ── Wire DTOs ──
+
+@Serializable
+private data class AgentIntegrationsErrorDto(
+    val error: String? = null
+)
 
 @Serializable
 private data class IntegrationOverviewItemDto(

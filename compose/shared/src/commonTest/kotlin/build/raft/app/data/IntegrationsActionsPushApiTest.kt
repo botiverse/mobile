@@ -144,6 +144,74 @@ class IntegrationsActionsPushApiTest {
         assertEquals("push_test_contract_mismatch", assertIs<DataResult.Error>(client.testPush()).error.code)
     }
 
+    @Test
+    fun agentIntegrationsPreservesCanonicalServerErrorText() = runBlocking {
+        val client =
+            SlockIntegrationsActionsPushApiClient(
+                RecordingIntegrationsActionsPushApi(
+                    agentIntegrationsCode = 500,
+                    agentIntegrationsErrorBody = """{"error":"Failed to load agent integrations"}"""
+                )
+            )
+
+        val error = assertIs<DataResult.Error>(client.agentIntegrations(MemberId("agent-1"))).error
+        assertEquals("server_unavailable", error.code)
+        assertEquals("Failed to load agent integrations", error.serverMessage)
+    }
+
+    @Test
+    fun agentIntegrationsErrorParserAcceptsOnlyItsExactErrorField() = runBlocking {
+        val fixtures =
+            listOf(
+                "canonical-with-future-field" to
+                    ("""{"error":"Failed to load agent integrations","future":true}""" to
+                        "Failed to load agent integrations"),
+                "wrong-alias" to ("""{"message":"Failed to load agent integrations"}""" to null),
+                "nested-error" to ("""{"error":{"message":"Failed to load agent integrations"}}""" to null),
+                "malformed" to ("""{"error":"unterminated""" to null),
+                "plain-text" to ("Failed to load agent integrations" to null),
+                "blank" to ("" to null),
+                "missing" to (null to null)
+            )
+
+        fixtures.forEach { (name, fixture) ->
+            val (body, expectedMessage) = fixture
+            val client =
+                SlockIntegrationsActionsPushApiClient(
+                    RecordingIntegrationsActionsPushApi(
+                        agentIntegrationsCode = 500,
+                        agentIntegrationsErrorBody = body
+                    )
+                )
+
+            val error = assertIs<DataResult.Error>(
+                client.agentIntegrations(MemberId("agent-1")),
+                name
+            ).error
+
+            assertEquals("server_unavailable", error.code, name)
+            assertEquals(expectedMessage, error.serverMessage, name)
+        }
+    }
+
+    @Test
+    fun agentIntegrationsKeepsForbiddenClassification() = runBlocking {
+        val client =
+            SlockIntegrationsActionsPushApiClient(
+                RecordingIntegrationsActionsPushApi(
+                    agentIntegrationsCode = 403,
+                    agentIntegrationsErrorBody = """{"error":"Only server admins can view integrations"}"""
+                )
+            )
+
+        val blocker = assertIs<DataResult.NoPermission>(
+            client.agentIntegrations(MemberId("agent-1"))
+        ).blocker
+
+        assertEquals("server_admin_required", blocker.code)
+        assertEquals("manage_integrations", blocker.requiredCapability)
+    }
+
     private class RecordingIntegrationsActionsPushApi(
         private val overviewBody: String = """[{"clientId":"client-1","clientName":"Linear","pendingRequests":1,"activeGrants":2}]""",
         private val clientsBody: String = """[{"id":"client-1","name":"Linear","homepageUrl":"https://linear.app"}]""",
@@ -175,6 +243,8 @@ class IntegrationsActionsPushApiTest {
               "revokedAt":null
             }]
             """.trimIndent(),
+        private val agentIntegrationsCode: Int = 200,
+        private val agentIntegrationsErrorBody: String? = null,
         private val actionBody: String = """{"messageId":"message-1","metadata":{"action_state":"executed"}}""",
         private val actionEventBody: String = "",
         private val vapidBody: String = """{"publicKey":"vapid-public-key"}""",
@@ -215,7 +285,15 @@ class IntegrationsActionsPushApiTest {
 
         override suspend fun agentIntegrations(agentId: MemberId): HomeNetworkResponse {
             calls += "GET integrations/agents/${agentId.value}"
-            return ok(agentIntegrationsBody)
+            return if (agentIntegrationsCode in 200..299) {
+                ok(agentIntegrationsBody)
+            } else {
+                HomeNetworkResponse(
+                    code = agentIntegrationsCode,
+                    bodyText = null,
+                    errorBodyText = agentIntegrationsErrorBody
+                )
+            }
         }
 
         override suspend fun executeAction(messageId: MessageId, body: String): HomeNetworkResponse {

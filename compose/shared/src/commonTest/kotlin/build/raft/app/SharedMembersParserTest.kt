@@ -594,11 +594,13 @@ class SharedMembersParserTest {
         assertEquals(MembersAgentActivityLoadState.Idle, content.toMembersAgentActivityLoadState())
         assertEquals(MembersAgentActivityLoadState.Idle, empty.toMembersAgentActivityLoadState())
         assertEquals(
-            MembersAgentActivityLoadState.Error("activity_offline"),
+            MembersAgentActivityLoadState.Error(ScreenError("activity_offline")),
             error.toMembersAgentActivityLoadState()
         )
         assertEquals(
-            MembersAgentActivityLoadState.Error("activity_forbidden"),
+            MembersAgentActivityLoadState.Error(
+                ScreenError("activity_forbidden", retryable = false)
+            ),
             blocked.toMembersAgentActivityLoadState()
         )
     }

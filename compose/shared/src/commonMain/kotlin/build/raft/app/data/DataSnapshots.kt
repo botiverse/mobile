@@ -570,7 +570,9 @@ data class AgentAppLoginSnapshot(
     val agentId: MemberId,
     val items: List<AgentAppLoginItem> = emptyList(),
     val loadState: AgentAppLoginLoadState = AgentAppLoginLoadState.Content,
-    val errorCode: String? = null
+    val errorCode: String? = null,
+    val screenError: ScreenError? = null,
+    val permissionBlocker: PermissionBlocker? = null
 )
 
 enum class AgentAppLoginLoadState {
