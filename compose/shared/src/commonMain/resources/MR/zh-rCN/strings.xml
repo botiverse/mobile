@@ -1421,7 +1421,7 @@
     <string name="search_entity_channel">频道</string>
     <string name="search_entity_dm">私信</string>
     <string name="search_entity_agent">Agent</string>
-    <string name="search_entity_person">用户</string>
+    <string name="search_entity_person">人类</string>
     <string name="search_entity_members">成员</string>
     <string name="search_meta_thread">话题</string>
     <string name="search_hits_count">%1$d 条命中</string>
@@ -1686,8 +1686,8 @@
     <string name="settings_connected_apps_action_register_client">注册客户端</string>
     <string name="settings_connected_apps_action_request_publish">申请发布</string>
     <string name="settings_connected_apps_builtin_title">内置</string>
-    <string name="settings_connected_apps_builtin_detail">所有 Raft 用户和 Agent 均可使用。</string>
-    <string name="settings_connected_apps_builtin_item_detail">所有用户和 Agent 均可使用</string>
+    <string name="settings_connected_apps_builtin_detail">所有 Raft 人类和 Agent 均可使用。</string>
+    <string name="settings_connected_apps_builtin_item_detail">所有人类和 Agent 均可使用</string>
     <string name="settings_connected_apps_installed_title">已安装的应用</string>
     <string name="settings_connected_apps_my_apps_title">我的应用</string>
     <string name="settings_connected_apps_marketplace_search">搜索应用</string>
