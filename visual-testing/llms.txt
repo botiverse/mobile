@@ -1,6 +1,6 @@
 # Raft Visual Testing
 
-Generated: 2026-08-02 22:41:42 UTC
+Generated: 2026-08-02 22:48:30 UTC
 Latest run: 54c7a1d5-20260802223948
 Latest commit: 54c7a1d5-20260802223948
 Commit subject: test(settings): keep honest-state coverage portable (#1877)

@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-08-02T22:41:42.879Z",
+  "generatedAt": "2026-08-02T22:48:30.285Z",
   "latestRunId": "54c7a1d5-20260802223948",
   "latest": {
     "runId": "54c7a1d5-20260802223948",
     "commit": "54c7a1d5-20260802223948",
     "commitSubject": "test(settings): keep honest-state coverage portable (#1877)",
-    "generatedAt": "2026-08-02T22:41:42.879Z",
+    "generatedAt": "2026-08-02T22:48:30.285Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -129,7 +129,7 @@
       "runId": "54c7a1d5-20260802223948",
       "commit": "54c7a1d5-20260802223948",
       "commitSubject": "test(settings): keep honest-state coverage portable (#1877)",
-      "generatedAt": "2026-08-02T22:41:42.879Z",
+      "generatedAt": "2026-08-02T22:48:30.285Z",
       "baseline": "react",
       "current": "android",
       "summary": {
