@@ -240,6 +240,7 @@ internal data class KuiklyThreadComposerPayload(
     val seedText: String = "",
     val seedAsTask: Boolean = false,
     val syncNonce: Int = 0,
+    @kotlinx.serialization.Transient val editorCommand: ThreadComposerEditorCommand? = null,
     val focusRequestNonce: Int = 0,
     val placeholder: String = "Message",
     val enabled: Boolean = true,
@@ -324,6 +325,7 @@ internal data class ThreadComposerUiState(
     val seedText: String = "",
     val seedAsTask: Boolean = false,
     val syncNonce: Int = 0,
+    val editorCommand: ThreadComposerEditorCommand? = null,
     val focusRequestNonce: Int = 0,
     val placeholder: String = "Message",
     val enabled: Boolean = true,
@@ -347,6 +349,28 @@ internal data class ThreadComposerUiState(
     val suggestionsOpen: Boolean = false,
     val hookLabels: List<String> = emptyList()
 )
+
+internal enum class ThreadComposerEditorCommandKind {
+    Clear,
+    Replace,
+}
+
+internal data class ThreadComposerEditorCommand(
+    val id: Int,
+    val kind: ThreadComposerEditorCommandKind,
+    val text: String = "",
+    val asTask: Boolean = false,
+    val expectedText: String? = null,
+    val expectedAsTask: Boolean? = null,
+)
+
+internal fun shouldApplyThreadComposerEditorCommand(
+    localText: String,
+    localAsTask: Boolean,
+    command: ThreadComposerEditorCommand,
+): Boolean =
+    (command.expectedText == null || command.expectedText == localText) &&
+        (command.expectedAsTask == null || command.expectedAsTask == localAsTask)
 
 internal data class ThreadComposerInsertMentionRequest(
     val nonce: Int,
@@ -1250,6 +1274,7 @@ internal fun KuiklyThreadComposerPayload.toThreadComposerUiState(): ThreadCompos
         seedText = seedText,
         seedAsTask = seedAsTask,
         syncNonce = syncNonce,
+        editorCommand = editorCommand,
         focusRequestNonce = focusRequestNonce,
         placeholder = placeholder,
         enabled = enabled,
@@ -1481,18 +1506,25 @@ internal fun ThreadComposerContent(
             softwareKeyboardController?.show()
         }
     }
-    // Host synchronization owns editor content, attachments, and action state. Focus is a native
-    // interaction state and must only move through onFocus/onBlur or an explicit focus request;
-    // attachment/mention/send callbacks must not synthesize a blur.
-    LaunchedEffect(state.instanceId, state.syncNonce) {
-        val nextFieldValue = TextFieldValue(state.seedText, selection = TextRange(state.seedText.length))
+    var handledEditorCommandId by remember(state.instanceId) { mutableStateOf(0) }
+    LaunchedEffect(state.instanceId, state.editorCommand?.id) {
+        val command = state.editorCommand ?: return@LaunchedEffect
+        if (command.id <= handledEditorCommandId) return@LaunchedEffect
+        if (!shouldApplyThreadComposerEditorCommand(fieldValue.text, asTask, command)) {
+            handledEditorCommandId = command.id
+            onEvent("staleEditorCommandIgnored", command.kind.name, null, null)
+            return@LaunchedEffect
+        }
+        val nextText = if (command.kind == ThreadComposerEditorCommandKind.Clear) "" else command.text
+        val nextFieldValue = TextFieldValue(nextText, selection = TextRange(nextText.length))
         suggestionSelectionDispatcher.updateDraft(
             text = nextFieldValue.text,
             selectionStart = nextFieldValue.selection.start,
             selectionEnd = nextFieldValue.selection.end
         )
         fieldValue = nextFieldValue
-        asTask = state.seedAsTask
+        asTask = if (command.kind == ThreadComposerEditorCommandKind.Clear) false else command.asTask
+        handledEditorCommandId = command.id
     }
     val selectionStart = minOf(fieldValue.selection.start, fieldValue.selection.end).coerceIn(0, text.length)
     val selectionEnd = maxOf(fieldValue.selection.start, fieldValue.selection.end).coerceIn(0, text.length)

@@ -12491,9 +12491,22 @@ private fun SharedHandsFeedbackContent(
                     ),
                 state =
                     ThreadComposerUiState(
-                        instanceId = "settings-hands-feedback-composer",
+                        instanceId = "settings-hands-feedback-composer-$accountId",
                         seedText = message,
                         syncNonce = composerSyncNonce,
+                        editorCommand =
+                            composerSyncNonce.takeIf { it > 0 }?.let { commandId ->
+                                ThreadComposerEditorCommand(
+                                    id = commandId,
+                                    kind =
+                                        if (message.isEmpty()) {
+                                            ThreadComposerEditorCommandKind.Clear
+                                        } else {
+                                            ThreadComposerEditorCommandKind.Replace
+                                        },
+                                    text = message,
+                                )
+                            },
                         placeholder = copy.placeholder,
                         enabled = !busy,
                         attachmentActionsEnabled = remainingSlots > 0,

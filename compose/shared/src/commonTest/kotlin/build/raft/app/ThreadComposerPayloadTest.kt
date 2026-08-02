@@ -186,6 +186,30 @@ class ThreadComposerPayloadTest {
     }
 
     @Test
+    fun staleEditorCommandCannotOverwriteNewerLocalCompositionText() {
+        val delayedClear =
+            ThreadComposerEditorCommand(
+                id = 1,
+                kind = ThreadComposerEditorCommandKind.Clear,
+                expectedText = "n",
+            )
+
+        assertFalse(
+            shouldApplyThreadComposerEditorCommand(localText = "ni", localAsTask = false, command = delayedClear)
+        )
+        assertTrue(
+            shouldApplyThreadComposerEditorCommand(localText = "n", localAsTask = false, command = delayedClear)
+        )
+        assertFalse(
+            shouldApplyThreadComposerEditorCommand(
+                localText = "n",
+                localAsTask = true,
+                command = delayedClear.copy(expectedAsTask = false),
+            )
+        )
+    }
+
+    @Test
     fun buildsThreadSurfaceComposerPayloadFromTypedProps() {
         val payload =
             buildThreadSurfaceComposerPayload(

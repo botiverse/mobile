@@ -8838,6 +8838,12 @@ internal fun SharedThreadRouteContent(
                             "stateAsTask=${currentDraftState.seedAsTask} draftKey=${currentDraftState.draftKey.orEmpty()}"
                     )
                 }
+                "staleEditorCommandIgnored" -> {
+                    bridge.log(
+                        "thread_composer_editor_command_ignored instanceId=$composerInstanceId " +
+                            "command=${value.orEmpty()} reason=local_editor_advanced"
+                    )
+                }
                 "change" -> {
                     bridge.log(
                         "thread_composer_change instanceId=$composerInstanceId " +
@@ -12422,6 +12428,7 @@ private fun KuiklyThreadComposerPayload.withThreadComposerDraftState(
         seedText = draftState.seedText,
         seedAsTask = draftState.seedAsTask,
         syncNonce = draftState.syncNonce,
+        editorCommand = draftState.editorCommand,
         focusRequestNonce = draftState.focusRequestNonce,
         pendingAttachments = pendingAttachmentItems,
         composerMode =

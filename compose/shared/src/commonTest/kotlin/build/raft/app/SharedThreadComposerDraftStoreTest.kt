@@ -15,6 +15,61 @@ import kotlin.test.assertTrue
 
 class SharedThreadComposerDraftStoreTest {
     @Test
+    fun localEditorEchoAndChromeNeverCreateAHostEditorCommand() {
+        val store = SharedThreadComposerDraftStore()
+        store.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = KuiklyThreadComposerPayload(instanceId = "composer"),
+                draftKey = null,
+            )
+        )
+        store.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "n"))
+        store.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "ni"))
+        store.dispatch(
+            SharedThreadComposerDraftIntent.AddLocalAttachments(
+                listOf(externalShareAttachment(status = "uploading"))
+            )
+        )
+        store.dispatch(SharedThreadComposerDraftIntent.UpdateAttachmentUploadProgress("local", 1L, 10L))
+
+        assertEquals("ni", store.state.value.seedText)
+        assertEquals(null, store.state.value.editorCommand)
+
+        store.dispatch(SharedThreadComposerDraftIntent.BeginSend)
+
+        assertEquals(ThreadComposerEditorCommandKind.Clear, store.state.value.editorCommand?.kind)
+        assertEquals(null, store.state.value.editorCommand?.expectedText)
+
+        store.dispatch(
+            SharedThreadComposerDraftIntent.RestoreAfterFailure(
+                seedText = "ni",
+                seedAsTask = true,
+                failureLabel = "failed",
+            )
+        )
+
+        assertEquals(ThreadComposerEditorCommandKind.Replace, store.state.value.editorCommand?.kind)
+        assertEquals("ni", store.state.value.editorCommand?.text)
+        assertEquals(true, store.state.value.editorCommand?.asTask)
+        assertEquals("", store.state.value.editorCommand?.expectedText)
+        val restoredCommandId = store.state.value.editorCommand?.id
+
+        store.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer =
+                    KuiklyThreadComposerPayload(
+                        instanceId = "composer",
+                        seedText = "ni",
+                        seedAsTask = true,
+                    ),
+                draftKey = null,
+            )
+        )
+
+        assertEquals(restoredCommandId, store.state.value.editorCommand?.id)
+    }
+
+    @Test
     fun rapidChangesUpdateStateImmediatelyAndPersistOnlyLatestDraft() {
         val storage = CountingSharedPreferenceStore()
         val persistence = SharedThreadComposerDraftPersistence(storage)
