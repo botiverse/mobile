@@ -340,15 +340,33 @@ internal class BridgeModule : Module() {
         height: Float,
         generation: Long
     ): JSONObject? =
-        suspendCoroutine { continuation ->
+        suspendCancellableCoroutine { continuation ->
             val methodArgs = JSONObject()
             methodArgs.put("x", x)
             methodArgs.put("y", y)
             methodArgs.put("width", width)
             methodArgs.put("height", height)
             methodArgs.put("generation", generation)
-            callNativeMethod("probeThreadViewportPixels", methodArgs) {
-                continuation.resume(it)
+            var callbackRef: CallbackRef? = null
+            var completed = false
+            val result =
+                toNative(
+                    keepCallbackAlive = false,
+                    methodName = "probeThreadViewportPixels",
+                    param = methodArgs.toString(),
+                    callback = { payload ->
+                        if (!continuation.isActive || completed) {
+                            return@toNative
+                        }
+                        completed = true
+                        callbackRef?.let { removeCallback(it) }
+                        continuation.resume(payload)
+                    },
+                    syncCall = false
+                )
+            callbackRef = result.callbackRef
+            continuation.invokeOnCancellation {
+                callbackRef?.let { removeCallback(it) }
             }
         }
 
