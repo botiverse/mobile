@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.homeDirectMessageOpenFailureMessage
+import build.raft.app.englishErrorPresentationStringsForTest
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
 import build.raft.app.model.ServerId
@@ -100,6 +101,29 @@ class ChannelRepositoryDataSourceTest {
     }
 
     @Test
+    fun directMessagePermissionErrorsRetainExactErrorFieldOn401And403() = runBlocking {
+        listOf(401, 403).forEach { status ->
+            val exactReason = "  channel-$status 理由  "
+            val repository =
+                RealChannelRepository(
+                    sampleStore(),
+                    FakeChannelNetworkClient(
+                        responseCode = status,
+                        responseBody = null,
+                        responseErrorBody = """{"error":"$exactReason"}"""
+                    )
+                )
+
+            val blocker =
+                assertIs<DataResult.NoPermission>(
+                    repository.openUserDirectMessage(MemberId("user-2"))
+                ).blocker
+
+            assertEquals(exactReason, blocker.serverMessage)
+        }
+    }
+
+    @Test
     fun directMessageStructuredServerErrorReachesHomeVisibleCopy() = runBlocking {
         val repository =
             RealChannelRepository(
@@ -115,7 +139,11 @@ class ChannelRepositoryDataSourceTest {
 
         assertEquals(
             "Could not open direct message: User is not a member of this server",
-            homeDirectMessageOpenFailureMessage("Could not open direct message", error)
+            homeDirectMessageOpenFailureMessage(
+                "Could not open direct message",
+                error,
+                englishErrorPresentationStringsForTest()
+            )
         )
     }
 

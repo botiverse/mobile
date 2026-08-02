@@ -382,8 +382,22 @@ private inline fun <Wire, T> HomeNetworkResponse.mapComputersBody(
 private fun <T> HomeNetworkResponse.toComputersDataError(): DataResult<T> {
     val serverMessage = computersRouteErrorTextOrNull()
     return when (code) {
-        401 -> DataResult.NoPermission(PermissionBlocker(code = "auth_required", requiredCapability = "auth_session"))
-        403 -> DataResult.NoPermission(PermissionBlocker(code = "server_forbidden", requiredCapability = "server_access"))
+        401 ->
+            DataResult.NoPermission(
+                PermissionBlocker(
+                    code = "auth_required",
+                    requiredCapability = "auth_session",
+                    serverMessage = serverMessage
+                )
+            )
+        403 ->
+            DataResult.NoPermission(
+                PermissionBlocker(
+                    code = "server_forbidden",
+                    requiredCapability = "server_access",
+                    serverMessage = serverMessage
+                )
+            )
         307 ->
             DataResult.Error(
                 ScreenError(code = "machine_offline_replay", retryable = true, serverMessage = serverMessage)
@@ -421,20 +435,36 @@ private fun HomeNetworkResponse.computersRouteErrorTextOrNull(): String? {
     return runCatching {
         computersApiJson.decodeFromString(ComputersRouteErrorDto.serializer(), payload)
             .error
-            ?.trim()
             ?.takeIf { it.isNotBlank() }
     }.getOrNull()
 }
 
-private fun <T> HomeNetworkResponse.toRuntimeFormDataError(): DataResult<T> =
-    when (code) {
-        401 -> DataResult.NoPermission(PermissionBlocker(code = "auth_required", requiredCapability = "auth_session"))
-        403 -> DataResult.NoPermission(PermissionBlocker(code = "server_forbidden", requiredCapability = "manage_agents"))
-        404 -> DataResult.Error(ScreenError(code = "runtime_form_not_found", retryable = false))
-        409 -> DataResult.Error(ScreenError(code = "runtime_form_stale", retryable = false))
-        in 500..599 -> DataResult.Error(ScreenError(code = "server_unavailable", retryable = true))
-        else -> DataResult.Error(ScreenError(code = "http_$code", retryable = false))
+private fun <T> HomeNetworkResponse.toRuntimeFormDataError(): DataResult<T> {
+    val serverMessage = computersRouteErrorTextOrNull()
+    return when (code) {
+        401 ->
+            DataResult.NoPermission(
+                PermissionBlocker(
+                    code = "auth_required",
+                    requiredCapability = "auth_session",
+                    serverMessage = serverMessage
+                )
+            )
+        403 ->
+            DataResult.NoPermission(
+                PermissionBlocker(
+                    code = "server_forbidden",
+                    requiredCapability = "manage_agents",
+                    serverMessage = serverMessage
+                )
+            )
+        404 -> DataResult.Error(ScreenError(code = "runtime_form_not_found", retryable = false, serverMessage = serverMessage))
+        409 -> DataResult.Error(ScreenError(code = "runtime_form_stale", retryable = false, serverMessage = serverMessage))
+        in 500..599 ->
+            DataResult.Error(ScreenError(code = "server_unavailable", retryable = true, serverMessage = serverMessage))
+        else -> DataResult.Error(ScreenError(code = "http_$code", retryable = false, serverMessage = serverMessage))
     }
+}
 
 private fun HomeNetworkResponse.mapComputersCommand(contractCode: String): DataResult<ComputerCommandResult> =
     mapComputersBody(contractCode, ComputerCommandResponseDto.serializer()) { wire ->

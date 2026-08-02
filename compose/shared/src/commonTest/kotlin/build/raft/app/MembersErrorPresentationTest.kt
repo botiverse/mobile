@@ -8,6 +8,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 
 class MembersErrorPresentationTest {
+    private val errorStrings = englishErrorPresentationStringsForTest()
+
     @Test
     fun inviteAggregationPreservesFirstCompleteScreenError() {
         val upstream = ScreenError(
@@ -32,7 +34,8 @@ class MembersErrorPresentationTest {
             error = ScreenError(
                 code = "opaque_failure",
                 serverMessage = "Runtime configuration is invalid"
-            )
+            ),
+            errorStrings = errorStrings
         )
 
         assertEquals("Could not save: Runtime configuration is invalid", rendered)
@@ -43,7 +46,8 @@ class MembersErrorPresentationTest {
     fun membersPermissionFormattingNeverLeaksBlockerCode() {
         val rendered = membersFormattedPermissionError(
             template = "Could not save: %1\$s",
-            blocker = PermissionBlocker("server_admin_required")
+            blocker = PermissionBlocker("server_admin_required"),
+            errorStrings = errorStrings
         )
 
         assertFalse("server_admin_required" in rendered)

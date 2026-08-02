@@ -1088,7 +1088,8 @@ data class SettingsServerSectionSnapshot(
     val key: String,
     val title: StringDesc,
     val detail: String,
-    val state: SettingsSectionAvailability = SettingsSectionAvailability.Unavailable
+    val state: SettingsSectionAvailability = SettingsSectionAvailability.Unavailable,
+    val errorPresentation: ErrorPresentation? = null
 )
 
 data class SettingsServerAdminSnapshot(
@@ -1379,7 +1380,8 @@ data class SettingsMobileToggleSnapshot(
     val enabled: Boolean,
     val available: Boolean,
     val statusLabel: String,
-    val detail: String
+    val detail: String,
+    val errorPresentation: ErrorPresentation? = null
 )
 
 data class SettingsMobileActionSnapshot(

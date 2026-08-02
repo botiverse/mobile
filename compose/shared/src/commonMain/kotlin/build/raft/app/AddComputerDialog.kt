@@ -9,7 +9,6 @@ import build.raft.app.data.AddComputerStep
 import build.raft.app.data.AddComputerType
 import build.raft.app.data.SettingsComputerRegisterRequest
 import build.raft.app.data.SharedSettingsIntent
-import build.raft.app.data.userFacingErrorMessage
 import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -83,7 +82,7 @@ private fun AddComputerTypeStep(
     state: AddComputerDialogState,
     onIntent: (SharedSettingsIntent) -> Unit
 ) {
-    val userFacingError = state.userFacingErrorMessage()
+    val userFacingError = state.userFacingErrorMessage(localizedErrorPresentationStrings())
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (!state.canManage || state.atLimit) {
             Text(
@@ -160,7 +159,7 @@ private fun AddComputerWaitingStep(
     state: AddComputerDialogState,
     onIntent: (SharedSettingsIntent) -> Unit
 ) {
-    val userFacingError = state.userFacingErrorMessage()
+    val userFacingError = state.userFacingErrorMessage(localizedErrorPresentationStrings())
     LaunchedEffect(state.step, state.machineId) {
         val targetId = state.machineId ?: return@LaunchedEffect
         while (state.step == AddComputerStep.Waiting) {

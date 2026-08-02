@@ -61,6 +61,20 @@ class ThreadApiTest {
     }
 
     @Test
+    fun threadFailureProjectionPreservesCanonicalErrorTextVerbatim() {
+        val exactReason = "  添付コメントは監査ポリシーで拒否されました  "
+
+        val projection =
+            ThreadApiResult.Failure(
+                code = 403,
+                errorBodyText = """{"error":"$exactReason","code":"attachment_comments_forbidden"}"""
+            ).toThreadAttachmentCommentsFailureProjection()
+
+        assertEquals("attachment_comments_forbidden", projection.errorCode)
+        assertEquals(exactReason, projection.serverMessage)
+    }
+
+    @Test
     fun channelMessagesAcceptsCanonicalUpstreamWrapperOnly() = runBlocking {
         val api =
             SlockThreadApiClient(

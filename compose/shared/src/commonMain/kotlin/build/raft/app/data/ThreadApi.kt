@@ -412,7 +412,7 @@ internal fun ThreadApiResult.Failure.toThreadAttachmentCommentsFailureProjection
             contractCode?.trim()?.takeIf { it.isNotBlank() }
                 ?: envelope?.code?.trim()?.takeIf { it.isNotBlank() }
                 ?: "http_$code",
-        serverMessage = envelope?.error?.trim()?.takeIf { it.isNotBlank() }
+        serverMessage = envelope?.error?.takeIf { it.isNotBlank() }
     )
 }
 

@@ -28,7 +28,6 @@ import build.raft.app.data.SlockComputersNetworkApi
 import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.parseSlockHome
-import build.raft.app.data.userFacingMessage
 import build.raft.app.model.AvatarReference
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
@@ -687,6 +686,7 @@ private fun SlockHomePageContent(routeVisibleTick: Int = 0) {
     val unableToOpenDirectMessage = stringResource(MR.strings.home_error_open_direct_message)
     val failedToOpenDirectMessage = stringResource(MR.strings.home_error_open_direct_message_failed)
     val noDirectMessagePermission = stringResource(MR.strings.home_error_open_direct_message_permission)
+    val errorStrings = localizedErrorPresentationStrings()
     LaunchedEffect(sharedStores.serverMembersStore, payload.currentServerId) {
         val serverId = payload.currentServerId.trim().takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         sharedStores.serverMembersStore.refreshMembers(ServerId(serverId), DataRequestPriority.Background)
@@ -755,7 +755,11 @@ private fun SlockHomePageContent(routeVisibleTick: Int = 0) {
                     is DataResult.Empty -> bridge.toast(unableToOpenDirectMessage)
                     is DataResult.Error ->
                         bridge.toast(
-                            homeDirectMessageOpenFailureMessage(failedToOpenDirectMessage, result.error)
+                            homeDirectMessageOpenFailureMessage(
+                                failedToOpenDirectMessage,
+                                result.error,
+                                errorStrings
+                            )
                         )
                     is DataResult.NoPermission -> bridge.toast(noDirectMessagePermission)
                 }
@@ -784,8 +788,12 @@ private fun SlockHomePageContent(routeVisibleTick: Int = 0) {
     )
 }
 
-internal fun homeDirectMessageOpenFailureMessage(prefix: String, error: ScreenError): String =
-    "$prefix: ${error.userFacingMessage()}"
+internal fun homeDirectMessageOpenFailureMessage(
+    prefix: String,
+    error: ScreenError,
+    errorStrings: ErrorPresentationStrings
+): String =
+    "$prefix: ${error.userFacingMessage(errorStrings)}"
 
 /**
  * #228: open the thread page for a conversation that the sidebar / pinned list

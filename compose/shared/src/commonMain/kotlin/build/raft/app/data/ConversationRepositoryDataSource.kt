@@ -1547,14 +1547,39 @@ private suspend fun <T> executeConversationWithDiagnostics(
     }
 }
 
-private fun <T> HomeNetworkResponse.toConversationDataError(): DataResult<T> =
-    when (code) {
+private fun <T> HomeNetworkResponse.toConversationDataError(): DataResult<T> {
+    val serverMessage = conversationRouteErrorTextOrNull()
+    return when (code) {
         0 -> DataResult.Error(ScreenError(code = errorBodyText.toConversationTransportErrorCode(), retryable = true))
-        401 -> authRequired()
-        403 -> DataResult.NoPermission(PermissionBlocker(code = "server_forbidden", requiredCapability = "server_access"))
-        in 500..599 -> DataResult.Error(ScreenError(code = "server_unavailable", retryable = true))
-        else -> DataResult.Error(ScreenError(code = "http_$code", retryable = code != 404))
+        401 -> authRequired(serverMessage)
+        403 ->
+            DataResult.NoPermission(
+                PermissionBlocker(
+                    code = "server_forbidden",
+                    requiredCapability = "server_access",
+                    serverMessage = serverMessage
+                )
+            )
+        in 500..599 ->
+            DataResult.Error(ScreenError(code = "server_unavailable", retryable = true, serverMessage = serverMessage))
+        else ->
+            DataResult.Error(ScreenError(code = "http_$code", retryable = code != 404, serverMessage = serverMessage))
     }
+}
+
+@Serializable
+private data class ConversationRouteErrorDto(val error: String? = null)
+
+private fun HomeNetworkResponse.conversationRouteErrorTextOrNull(): String? {
+    val payload = bodyText?.takeIf { it.isNotBlank() }
+        ?: errorBodyText?.takeIf { it.isNotBlank() }
+        ?: return null
+    return runCatching {
+        conversationRepositoryJson.decodeFromString(ConversationRouteErrorDto.serializer(), payload)
+            .error
+            ?.takeIf { it.isNotBlank() }
+    }.getOrNull()
+}
 
 private fun String?.toConversationTransportErrorCode(): String {
     val text = orEmpty().lowercase()
@@ -1572,5 +1597,11 @@ private fun String?.toConversationTransportErrorCode(): String {
     }
 }
 
-private fun <T> authRequired(): DataResult<T> =
-    DataResult.NoPermission(PermissionBlocker(code = "auth_required", requiredCapability = "auth_session"))
+private fun <T> authRequired(serverMessage: String? = null): DataResult<T> =
+    DataResult.NoPermission(
+        PermissionBlocker(
+            code = "auth_required",
+            requiredCapability = "auth_session",
+            serverMessage = serverMessage
+        )
+    )

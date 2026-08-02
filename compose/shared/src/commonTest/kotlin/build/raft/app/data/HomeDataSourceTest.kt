@@ -20,10 +20,42 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class HomeDataSourceTest {
+    @Test
+    fun homePermissionBoundaryRetainsExactChannelsErrorOn401And403() = runBlocking {
+        listOf(401, 403).forEach { status ->
+            val exactReason = "  home-$status raw reason  "
+            val api =
+                object : SlockHomeApi {
+                    override suspend fun channels(priority: DataRequestPriority): HomeNetworkResponse =
+                        HomeNetworkResponse(
+                            code = status,
+                            bodyText = null,
+                            errorBodyText = """{"error":"$exactReason"}"""
+                        )
+
+                    override suspend fun directMessages(priority: DataRequestPriority): HomeNetworkResponse =
+                        HomeNetworkResponse(code = 200, bodyText = "[]")
+
+                    override suspend fun channelUnreadCounts(priority: DataRequestPriority): HomeNetworkResponse =
+                        HomeNetworkResponse(code = 200, bodyText = "{}")
+
+                    override suspend fun serverUnreadSummary(priority: DataRequestPriority): HomeNetworkResponse =
+                        HomeNetworkResponse(code = 200, bodyText = "[]")
+                }
+
+            val result = SlockHomeApiClient(api).homePayload(ServerId("server-1"), DataRequestPriority.Visible)
+
+            val blocker = assertIs<DataResult.NoPermission>(result).blocker
+            assertEquals("home_http_$status", blocker.code)
+            assertEquals(exactReason, blocker.serverMessage)
+        }
+    }
+
     @Test
     fun loadHomeFetchesApiWithoutWritingLocalHomeSnapshot() = runBlocking {
         val localStore = InMemoryComposeLocalDataStore()

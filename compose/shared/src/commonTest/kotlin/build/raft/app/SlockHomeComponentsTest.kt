@@ -41,6 +41,8 @@ import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class SlockHomeComponentsTest {
+    private val errorStrings = englishErrorPresentationStringsForTest()
+
     @Test
     fun homeInlineAndDrawerErrorsKeepDiagnosticCodesOutOfVisibleCopy() {
         val inlineError =
@@ -73,7 +75,8 @@ class SlockHomeComponentsTest {
                     ScreenError(
                         code = "http_409",
                         serverMessage = "The member is no longer available"
-                    )
+                    ),
+                errorStrings = errorStrings
             )
         )
     }
@@ -83,7 +86,8 @@ class SlockHomeComponentsTest {
         val message =
             homeDirectMessageOpenFailureMessage(
                 prefix = "Could not open direct message",
-                error = ScreenError(code = "direct_message_unknown")
+                error = ScreenError(code = "direct_message_unknown"),
+                errorStrings = errorStrings
             )
 
         assertEquals(
@@ -336,14 +340,14 @@ class SlockHomeComponentsTest {
 
     @Test
     fun homeSearchErrorDisplayUsesUnifiedRetryModel() {
-        val serverError = sharedHomeSearchErrorDisplay("server_unavailable")
+        val serverError = sharedHomeSearchErrorDisplay("server_unavailable", errorStrings)
 
         assertEquals("Could not load Search", serverError.title)
         assertEquals("The server is unavailable right now. Please try again shortly.", serverError.detail)
         assertEquals("server_unavailable", serverError.code)
         assertEquals("Retry", serverError.actionLabel)
 
-        val permissionError = sharedHomeSearchErrorDisplay("search_permission_denied")
+        val permissionError = sharedHomeSearchErrorDisplay("search_permission_denied", errorStrings)
 
         assertEquals("Search is unavailable", permissionError.title)
         assertEquals("You do not have access to search this workspace right now.", permissionError.detail)

@@ -265,16 +265,32 @@ private fun HomeNetworkResponse.mapPushCommand(contractCode: String): DataResult
 private fun HomeNetworkResponse.mapAgentIntegrations(agentId: MemberId): DataResult<AgentIntegrationsPage> {
     val contractCode = "agent_integrations_contract_mismatch"
     if (!isSuccessful) {
-        return if (code == 403) {
-            DataResult.NoPermission(PermissionBlocker(code = "server_admin_required", requiredCapability = "manage_integrations"))
-        } else {
-            DataResult.Error(
-                ScreenError(
-                    code = if (code >= 500) "server_unavailable" else "http_$code",
-                    retryable = code >= 500,
-                    serverMessage = agentIntegrationsServerErrorTextOrNull()
+        val serverMessage = agentIntegrationsServerErrorTextOrNull()
+        return when (code) {
+            401 ->
+                DataResult.NoPermission(
+                    PermissionBlocker(
+                        code = "auth_required",
+                        requiredCapability = "auth_session",
+                        serverMessage = serverMessage
+                    )
                 )
-            )
+            403 ->
+                DataResult.NoPermission(
+                    PermissionBlocker(
+                        code = "server_admin_required",
+                        requiredCapability = "manage_integrations",
+                        serverMessage = serverMessage
+                    )
+                )
+            else ->
+                DataResult.Error(
+                    ScreenError(
+                        code = if (code >= 500) "server_unavailable" else "http_$code",
+                        retryable = code >= 500,
+                        serverMessage = serverMessage
+                    )
+                )
         }
     }
     return mapApiBody(
@@ -296,7 +312,6 @@ private fun HomeNetworkResponse.agentIntegrationsServerErrorTextOrNull(): String
     return runCatching {
         integrationsActionsPushJson.decodeFromString(AgentIntegrationsErrorDto.serializer(), payload)
             .error
-            ?.trim()
             ?.takeIf { it.isNotBlank() }
     }.getOrNull()
 }

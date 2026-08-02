@@ -100,11 +100,10 @@ data class AddComputerDialogState(
     val atLimit: Boolean = false
 )
 
-internal fun AddComputerDialogState.userFacingErrorMessage(): String? =
-    screenError?.userFacingMessage()
-        ?: permissionBlocker?.userFacingMessage()
-        ?: emptyReason?.userFacingMessage()
-        ?: errorMessage?.takeIf { it.isNotBlank() }
+internal fun AddComputerDialogState.errorPresentationOrNull(): ErrorPresentation? =
+    screenError?.errorPresentation()
+        ?: permissionBlocker?.errorPresentation()
+        ?: emptyReason?.errorPresentation()
 
 data class AddComputerSetupCommands(
     val daemonRunCommand: String? = null,
@@ -130,7 +129,8 @@ data class SharedSettingsNavItem(
 data class SharedSettingsStorageSnapshot(
     val totalSizeLabel: String,
     val rows: List<SharedSettingsStorageRow>,
-    val feedback: String? = null
+    val feedback: String? = null,
+    val feedbackError: ErrorPresentation? = null
 )
 
 data class SharedSettingsStorageRow(
@@ -214,7 +214,8 @@ data class SharedSettingsUpdateCheckSnapshot(
     val fullDownloadSizeBytes: Long = 0L,
     val patchDownloadSizeBytes: Long = 0L,
     val checkedAtLabel: String = "",
-    val errorCode: String = ""
+    val errorCode: String = "",
+    val screenError: ScreenError? = null
 )
 
 enum class SharedSettingsUpdateTransactionState(val wireValue: String) {
@@ -265,7 +266,13 @@ data class SharedSettingsDiagnosticsSnapshot(
     /** Signed-out diagnostics toggle; see [SharedAuthRuntimeCapabilityStore]. */
     val appleSignInLocalOverride: Boolean = false,
     val appleSignInLocalOverrideAvailable: Boolean = false,
-    val loadErrorMessage: String? = null
+    val loadErrorMessage: String? = null,
+    val loadErrors: List<SharedSettingsDiagnosticsLoadError> = emptyList()
+)
+
+data class SharedSettingsDiagnosticsLoadError(
+    val label: String,
+    val presentation: ErrorPresentation
 )
 
 data class SharedSettingsDiagnosticFeatureFlagSnapshot(
@@ -373,11 +380,11 @@ data class SharedSettingsActionState(
     val emptyReason: EmptyReason? = null
 )
 
-internal fun SharedSettingsActionState.userFacingErrorMessage(): String? =
-    screenError?.userFacingMessage()
-        ?: permissionBlocker?.userFacingMessage()
-        ?: emptyReason?.userFacingMessage()
-        ?: errorCode?.let { ScreenError(it, retryable = false).userFacingMessage() }
+internal fun SharedSettingsActionState.errorPresentationOrNull(): ErrorPresentation? =
+    screenError?.errorPresentation()
+        ?: permissionBlocker?.errorPresentation()
+        ?: emptyReason?.errorPresentation()
+        ?: errorCode?.let { ScreenError(it, retryable = false).errorPresentation() }
 
 private data class ServerNotificationModeMutation(
     val generation: Long,
@@ -1551,11 +1558,11 @@ class SharedSettingsDataSource(
                 is DataResult.Error,
                 is DataResult.NoPermission -> emptyList()
             }
-        val loadErrorMessage =
+        val loadErrors =
             listOfNotNull(
-                aboutResult.settingsDiagnosticsErrorLabel("about"),
-                hostResult.settingsDiagnosticsErrorLabel("logs")
-            ).joinToString("; ").takeIf { it.isNotBlank() }
+                aboutResult.settingsDiagnosticsLoadError("about"),
+                hostResult.settingsDiagnosticsLoadError("logs")
+            )
         val persistedProfilerEnabled = recompositionProfilerPreferenceRepository?.getPreference()?.enabled == true
         val profilerEnabled =
             if (recompositionProfilerController.isRunning) {
@@ -1577,7 +1584,7 @@ class SharedSettingsDataSource(
                     (hostResult as? DataResult.Content)?.data?.featureFlagOverrides.orEmpty(),
                 appleSignInLocalOverride = authRuntimeCapabilityStore?.current()?.localAppleSignInOverride == true,
                 appleSignInLocalOverrideAvailable = authRuntimeCapabilityStore != null,
-                loadErrorMessage = loadErrorMessage
+                loadErrors = loadErrors
             )
         )
     }
@@ -1592,12 +1599,14 @@ class SharedSettingsDataSource(
         return loadDiagnosticsSnapshot(feedback = actionResult.feedback)
     }
 
-    private fun <T> DataResult<T>.settingsDiagnosticsErrorLabel(label: String): String? =
+    private fun <T> DataResult<T>.settingsDiagnosticsLoadError(
+        label: String
+    ): SharedSettingsDiagnosticsLoadError? =
         when (this) {
             is DataResult.Content -> null
-            is DataResult.Empty -> "$label: ${reason.userFacingMessage()}"
-            is DataResult.Error -> "$label: ${error.userFacingMessage()}"
-            is DataResult.NoPermission -> "$label: ${blocker.userFacingMessage()}"
+            is DataResult.Empty -> SharedSettingsDiagnosticsLoadError(label, reason.errorPresentation())
+            is DataResult.Error -> SharedSettingsDiagnosticsLoadError(label, error.errorPresentation())
+            is DataResult.NoPermission -> SharedSettingsDiagnosticsLoadError(label, blocker.errorPresentation())
         }
 }
 
@@ -2488,11 +2497,12 @@ class SharedSettingsStore(
                                     SharedSettingsUpdateCheckSnapshot(
                                         supported = developerResult.data.updateCheck.supported,
                                         statusLabel = "Check failed",
-                                        detail = updateResult.error.userFacingMessage(),
+                                        detail = "",
                                         errorCode =
                                             updateResult.error.code.ifBlank {
                                                 "update_check_failed"
-                                            }
+                                            },
+                                        screenError = updateResult.error
                                     )
                             )
                         is DataResult.NoPermission -> developerResult.data
@@ -2640,12 +2650,13 @@ class SharedSettingsStore(
                 permissionBlocker = intent.permissionBlocker.takeUnless { intent.ok },
                 emptyReason = intent.emptyReason.takeUnless { intent.ok }
             )
-        val completionMessage =
+        val completionMessage = "Storage cleared.".takeIf { intent.ok }
+        val completionError =
             if (intent.ok) {
-                "Storage cleared."
+                null
             } else {
-                actionState.userFacingErrorMessage()
-                    ?: ScreenError("settings_storage_clear_failed", retryable = false).userFacingMessage()
+                actionState.errorPresentationOrNull()
+                    ?: ScreenError("settings_storage_clear_failed", retryable = false).errorPresentation()
             }
         val currentStorage = _state.value.storage
         val updatedStorage =
@@ -2654,14 +2665,17 @@ class SharedSettingsStore(
                     intent.snapshot.copy(
                         feedback =
                             intent.snapshot.feedback?.takeIf { it.isNotBlank() }
-                                ?: completionMessage
+                                ?: completionMessage,
+                        feedbackError =
+                            completionError.takeUnless { !intent.snapshot.feedback.isNullOrBlank() }
                     )
                 )
             } else if (currentStorage is ScreenLoadState.Content) {
                 ScreenLoadState.Content(
                     currentStorage.data.copy(
                         feedback =
-                            completionMessage
+                            completionMessage,
+                        feedbackError = completionError
                     )
                 )
             } else {

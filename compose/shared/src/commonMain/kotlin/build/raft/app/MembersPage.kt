@@ -80,8 +80,6 @@ import build.raft.app.data.SlockComputersApiClient
 import build.raft.app.data.SlockComputersNetworkApi
 import build.raft.app.data.SharedComputersIntent
 import build.raft.app.data.SharedComputersLoadStatus
-import build.raft.app.data.userFacingMessage
-import build.raft.app.data.userFacingErrorCodeMessage
 import build.raft.app.data.SharedComputersPickerSlice
 import build.raft.app.data.SharedComputersStore
 import build.raft.app.data.SharedCreateAgentFormStore
@@ -427,11 +425,19 @@ private fun membersStringTemplate(resource: StringResource): String =
 
 private fun String.membersFormat(value: String): String = replace("%1\$s", value)
 
-internal fun membersFormattedScreenError(template: String, error: ScreenError): String =
-    template.membersFormat(error.userFacingMessage())
+internal fun membersFormattedScreenError(
+    template: String,
+    error: ScreenError,
+    errorStrings: ErrorPresentationStrings
+): String =
+    template.membersFormat(error.userFacingMessage(errorStrings))
 
-internal fun membersFormattedPermissionError(template: String, blocker: PermissionBlocker): String =
-    template.membersFormat(blocker.userFacingMessage())
+internal fun membersFormattedPermissionError(
+    template: String,
+    blocker: PermissionBlocker,
+    errorStrings: ErrorPresentationStrings
+): String =
+    template.membersFormat(blocker.userFacingMessage(errorStrings))
 
 internal fun membersFirstScreenErrorOrFallback(
     results: List<DataResult<*>>,
@@ -1289,6 +1295,7 @@ private fun String.toMembersAgentDetailVisualMode(): MembersAgentDetailVisualMod
 internal fun MembersPageContent() {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = Utils.bridgeModule(pager.pagerId)
+    val errorStrings = localizedErrorPresentationStrings()
     val storeScope = remember(pager.pageData.params.toString(), pager.pagerId) {
         pager.pageData.params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
     }
@@ -1616,7 +1623,7 @@ internal fun MembersPageContent() {
                 is DataResult.NoPermission ->
                     bridge.toast(manageInvitesForbidden)
                 is DataResult.Error ->
-                    bridge.toast("$loadJoinLinkFailed: ${result.error.userFacingMessage()}")
+                    bridge.toast("$loadJoinLinkFailed: ${result.error.userFacingMessage(errorStrings)}")
                 is DataResult.Empty -> Unit
             }
         }
@@ -2497,6 +2504,7 @@ private fun rememberMemberDetailRouteProvider(
 private fun MemberDetailPageContent(pageVisibleTick: Int) {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = Utils.bridgeModule(pager.pagerId)
+    val errorStrings = localizedErrorPresentationStrings()
     val linkNavigator = rememberSlockLinkNavigator(pager, bridge)
     val memberIdCopied = stringResource(MR.strings.member_notice_member_id_copied)
     val diagnosticsCopied = stringResource(MR.strings.member_notice_diagnostics_copied)
@@ -2762,7 +2770,7 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
         is MemberDetailRouteState.Error ->
             MemberDetailErrorPageShell(
                 title = stringResource(MR.strings.member_error_load_member),
-                detail = current.error.userFacingMessage(),
+                detail = current.error.userFacingMessage(errorStrings),
                 onBack = { provider.bridge.closePage() },
                 onRetry = { localAgentDetailRefreshKey += 1 }
             )
@@ -2868,14 +2876,14 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
                                         agentRuntimeModelCatalogs = agentRuntimeModelCatalogs + (key to result.data)
                                     } else {
                                         agentRuntimeModelErrors = agentRuntimeModelErrors +
-                                            (key to "runtime_models_unavailable".userFacingErrorCodeMessage())
+                                            (key to "runtime_models_unavailable".userFacingErrorCodeMessage(errorStrings))
                                     }
                                 is DataResult.Empty ->
                                     agentRuntimeModelErrors = agentRuntimeModelErrors +
-                                        (key to "runtime_models_unavailable".userFacingErrorCodeMessage())
+                                        (key to "runtime_models_unavailable".userFacingErrorCodeMessage(errorStrings))
                                 is DataResult.Error -> {
                                     agentRuntimeModelErrors = agentRuntimeModelErrors +
-                                        (key to result.error.userFacingMessage())
+                                        (key to result.error.userFacingMessage(errorStrings))
                                     bridge.log(
                                         "member_detail_runtime_models_failed runtime=${key.second} " +
                                             "code=${result.error.code}"
@@ -2883,7 +2891,7 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
                                 }
                                 is DataResult.NoPermission -> {
                                     agentRuntimeModelErrors = agentRuntimeModelErrors +
-                                        (key to result.blocker.userFacingMessage())
+                                        (key to result.blocker.userFacingMessage(errorStrings))
                                     bridge.log(
                                         "member_detail_runtime_models_blocked runtime=${key.second} " +
                                             "code=${result.blocker.code}"
@@ -2979,6 +2987,7 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
                                 unavailableMessage = directMessageOpenError,
                                 errorTemplate = directMessageOpenErrorTemplate,
                                 permissionMessage = directMessagePermissionError,
+                                errorStrings = errorStrings,
                                 onUnavailableAction = { bridge.toast(it) }
                             )
                         }
@@ -3082,7 +3091,7 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
                                         )
                                         bridge.toast(
                                             tabOrderSaveErrorTemplate
-                                                .membersFormat(result.error.userFacingMessage())
+                                                .membersFormat(result.error.userFacingMessage(errorStrings))
                                         )
                                     }
                                     is DataResult.NoPermission -> {
@@ -3140,6 +3149,7 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
                             unavailableMessage = directMessageOpenError,
                             errorTemplate = directMessageOpenErrorTemplate,
                             permissionMessage = directMessagePermissionError,
+                            errorStrings = errorStrings,
                             onUnavailableAction = { bridge.toast(it) }
                         )
                     }
@@ -3419,6 +3429,7 @@ private fun DataResult<OpenDirectMessageResult>.openMembersDirectMessageResult(
     unavailableMessage: String,
     errorTemplate: String,
     permissionMessage: String,
+    errorStrings: ErrorPresentationStrings,
     onUnavailableAction: (String) -> Unit
 ) {
     when (this) {
@@ -3442,7 +3453,7 @@ private fun DataResult<OpenDirectMessageResult>.openMembersDirectMessageResult(
         is DataResult.Empty ->
             onUnavailableAction(unavailableMessage)
         is DataResult.Error ->
-            onUnavailableAction(membersFormattedScreenError(errorTemplate, error))
+            onUnavailableAction(membersFormattedScreenError(errorTemplate, error, errorStrings))
         is DataResult.NoPermission ->
             onUnavailableAction(permissionMessage)
     }
@@ -3748,6 +3759,7 @@ internal fun MembersListContent(
     onListStateSnapshot: (AppShellMembersListState) -> Unit = {},
     onRefresh: () -> Unit = {}
 ) {
+    val errorStrings = localizedErrorPresentationStrings()
     val displayTitle =
         canonicalMembersDisplayText(
             value = payload.title,
@@ -4067,7 +4079,7 @@ internal fun MembersListContent(
                             inviteHumanError = emptyResponseMessage
                         }
                         is DataResult.Error -> {
-                            inviteHumanError = "$sendInvitesFailed: ${result.error.userFacingMessage()}"
+                            inviteHumanError = "$sendInvitesFailed: ${result.error.userFacingMessage(errorStrings)}"
                         }
                         is DataResult.NoPermission -> {
                             inviteHumanError = sendInvitesForbidden
@@ -4158,6 +4170,7 @@ private fun MembersDetailContent(
     initialAgentScopeSet: AgentScopeSet? = null,
     stableVisualCapture: Boolean = false
 ) {
+    val errorStrings = localizedErrorPresentationStrings()
     val detail = (agentDetailState as? MembersAgentDetailLoadState.Content)?.detail
     val managementUnavailable = stringResource(MR.strings.member_error_action_unavailable)
     val issueReportingUnavailable = stringResource(MR.strings.member_error_issue_unavailable)
@@ -4335,7 +4348,7 @@ private fun MembersDetailContent(
             val callback = agentWorkspaceChildrenLoader
             if (callback == null) {
                 workspaceDirErrors = workspaceDirErrors +
-                    (path to "workspace_children_unavailable".userFacingErrorCodeMessage())
+                    (path to "workspace_children_unavailable".userFacingErrorCodeMessage(errorStrings))
                 return
             }
             scope.launch {
@@ -4357,10 +4370,10 @@ private fun MembersDetailContent(
                         loadedWorkspaceDirs = loadedWorkspaceDirs + (path to emptyList())
                     is DataResult.NoPermission ->
                         workspaceDirErrors = workspaceDirErrors +
-                            (path to result.blocker.userFacingMessage())
+                            (path to result.blocker.userFacingMessage(errorStrings))
                     is DataResult.Error ->
                         workspaceDirErrors = workspaceDirErrors +
-                            (path to result.error.userFacingMessage())
+                            (path to result.error.userFacingMessage(errorStrings))
                 }
                 loadingWorkspaceDirs = loadingWorkspaceDirs - path
             }
@@ -4532,10 +4545,14 @@ private fun MembersDetailContent(
                     onUnavailableAction(avatarUnchanged)
                 }
                 is DataResult.NoPermission -> {
-                    onUnavailableAction(membersFormattedPermissionError(permissionErrorTemplate, result.blocker))
+                    onUnavailableAction(
+                        membersFormattedPermissionError(permissionErrorTemplate, result.blocker, errorStrings)
+                    )
                 }
                 is DataResult.Error -> {
-                    onUnavailableAction(membersFormattedScreenError(avatarSaveErrorTemplate, result.error))
+                    onUnavailableAction(
+                        membersFormattedScreenError(avatarSaveErrorTemplate, result.error, errorStrings)
+                    )
                 }
             }
         }
@@ -4806,7 +4823,7 @@ private fun MembersDetailContent(
                 agentName = member.displayName,
                 selectedAction = restartResetSelection,
                 busy = lifecycleInFlight != null,
-                errorMessage = selectedActionResult?.error?.userFacingMessage(),
+                errorMessage = selectedActionResult?.error?.userFacingMessage(errorStrings),
                 onSelectedActionChange = { restartResetSelection = it },
                 onConfirm = { runLifecycleAction(restartResetSelection, confirmed = true) },
                 onDismiss = {
@@ -4824,7 +4841,7 @@ private fun MembersDetailContent(
                 agentName = member.displayName,
                 runtimeTranscriptAvailable = detail?.summary?.machineId?.isNotBlank() == true,
                 busy = reportState?.inProgress == true,
-                errorMessage = reportState?.error?.userFacingMessage(),
+                errorMessage = reportState?.error?.userFacingMessage(errorStrings),
                 onSubmit = { description, includeRecentMessages, includeLiveActivity, includeActivityHistory, includeRuntimeTranscript ->
                     submitIssueReport(
                         description,
@@ -5989,14 +6006,15 @@ private fun MembersAgentDetailStateNotice(
     state: MembersAgentDetailLoadState,
     modifier: Modifier = Modifier
 ) {
+    val errorStrings = localizedErrorPresentationStrings()
     val message =
         when (state) {
             MembersAgentDetailLoadState.Loading -> stringResource(MR.strings.member_state_loading_agent_profile)
             MembersAgentDetailLoadState.Empty -> stringResource(MR.strings.member_state_agent_profile_unavailable)
             is MembersAgentDetailLoadState.Error ->
-                "${stringResource(MR.strings.member_error_load_agent_profile)}: ${state.error.userFacingMessage()}"
+                "${stringResource(MR.strings.member_error_load_agent_profile)}: ${state.error.userFacingMessage(errorStrings)}"
             is MembersAgentDetailLoadState.NoPermission ->
-                "${stringResource(MR.strings.member_error_private_surfaces_hidden)}: ${state.blocker.userFacingMessage()}"
+                "${stringResource(MR.strings.member_error_private_surfaces_hidden)}: ${state.blocker.userFacingMessage(errorStrings)}"
             MembersAgentDetailLoadState.Idle -> null
             is MembersAgentDetailLoadState.Content ->
                 if (state.refreshing) stringResource(MR.strings.member_state_refreshing_agent_profile) else null
@@ -6214,6 +6232,7 @@ private fun MembersHumanInfoSection(
     ownerCount: Int?,
     onUpdateRole: (suspend (String, MembersHumanServerRole) -> DataResult<SettingsServerActionResult>)?
 ) {
+    val errorStrings = localizedErrorPresentationStrings()
     val joined = member.joinedAt?.takeIf { it.isNotBlank() }?.membersAgentCreatedDate(timeContext)
     val initialRole = member.serverRole.toMembersHumanServerRoleOrNull()
         ?: member.roleDescription.toMembersHumanServerRoleOrNull()
@@ -6291,12 +6310,18 @@ private fun MembersHumanInfoSection(
                                         }
                                         MembersHumanRoleSaveOutcome.NoPermission -> {
                                             val blocker = (result as DataResult.NoPermission).blocker
-                                            roleError = membersFormattedPermissionError(permissionErrorTemplate, blocker)
+                                            roleError =
+                                                membersFormattedPermissionError(
+                                                    permissionErrorTemplate,
+                                                    blocker,
+                                                    errorStrings
+                                                )
                                         }
                                         MembersHumanRoleSaveOutcome.Error -> {
-                                            val message = (result as? DataResult.Error)?.error?.userFacingMessage()
+                                            val message =
+                                                (result as? DataResult.Error)?.error?.userFacingMessage(errorStrings)
                                                 ?: (result as? DataResult.Content)?.data?.message
-                                                ?: "member_role_save_failed".userFacingErrorCodeMessage()
+                                                ?: "member_role_save_failed".userFacingErrorCodeMessage(errorStrings)
                                             roleError = saveErrorTemplate.membersFormat(message)
                                         }
                                     }
@@ -6703,6 +6728,7 @@ private fun MembersAgentAvatarPicker(
     onDismiss: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
+    val errorStrings = localizedErrorPresentationStrings()
     val avatarUploadCancelled = stringResource(MR.strings.member_error_avatar_upload_cancelled)
     val avatarUploadFailed = membersStringTemplate(MR.strings.member_error_avatar_upload)
     val permissionFailed = membersStringTemplate(MR.strings.member_error_permission)
@@ -6762,13 +6788,13 @@ private fun MembersAgentAvatarPicker(
                                 is DataResult.Error -> {
                                     uploading = false
                                     onUnavailableAction(
-                                        membersFormattedScreenError(avatarUploadFailed, result.error)
+                                        membersFormattedScreenError(avatarUploadFailed, result.error, errorStrings)
                                     )
                                 }
                                 is DataResult.NoPermission -> {
                                     uploading = false
                                     onUnavailableAction(
-                                        membersFormattedPermissionError(permissionFailed, result.blocker)
+                                        membersFormattedPermissionError(permissionFailed, result.blocker, errorStrings)
                                     )
                                 }
                             }
@@ -6901,6 +6927,7 @@ private fun MembersAgentProfileHeader(
         fallback = member.detailStatusLabel
     )
     val scope = rememberCoroutineScope()
+    val errorStrings = localizedErrorPresentationStrings()
     val avatarUploadCancelled = stringResource(MR.strings.member_error_avatar_upload_cancelled)
     val avatarUploadFailed = membersStringTemplate(MR.strings.member_error_avatar_upload)
     val permissionFailed = membersStringTemplate(MR.strings.member_error_permission)
@@ -6997,13 +7024,13 @@ private fun MembersAgentProfileHeader(
                                     is DataResult.Error -> {
                                         uploading = false
                                         onUnavailableAction(
-                                            membersFormattedScreenError(avatarUploadFailed, result.error)
+                                            membersFormattedScreenError(avatarUploadFailed, result.error, errorStrings)
                                         )
                                     }
                                     is DataResult.NoPermission -> {
                                         uploading = false
                                         onUnavailableAction(
-                                            membersFormattedPermissionError(permissionFailed, result.blocker)
+                                            membersFormattedPermissionError(permissionFailed, result.blocker, errorStrings)
                                         )
                                     }
                                 }
@@ -7054,6 +7081,7 @@ private fun MembersAgentProfileTab(
     timeContext: SlockTimeContext,
     modifier: Modifier = Modifier
 ) {
+    val errorStrings = localizedErrorPresentationStrings()
     val summary = detail?.summary
     val runtimeConfigResolution = remember(summary) { summary.toMembersRuntimeConfigResolution() }
     val canonicalRuntimeConfig =
@@ -7218,7 +7246,8 @@ private fun MembersAgentProfileTab(
                     }
                 }
                 is DataResult.NoPermission -> {
-                    val error = membersFormattedPermissionError(permissionErrorTemplate, result.blocker)
+                    val error =
+                        membersFormattedPermissionError(permissionErrorTemplate, result.blocker, errorStrings)
                     if (storeBackedProfileEdit) {
                         profileStore.dispatch(SharedAgentDetailIntent.SetDisplayNameError(error))
                     } else {
@@ -7226,7 +7255,7 @@ private fun MembersAgentProfileTab(
                     }
                 }
                 is DataResult.Error -> {
-                    val error = membersFormattedScreenError(saveErrorTemplate, result.error)
+                    val error = membersFormattedScreenError(saveErrorTemplate, result.error, errorStrings)
                     if (storeBackedProfileEdit) {
                         profileStore.dispatch(SharedAgentDetailIntent.SetDisplayNameError(error))
                     } else {
@@ -7307,7 +7336,8 @@ private fun MembersAgentProfileTab(
                     }
                 }
                 is DataResult.NoPermission -> {
-                    val error = membersFormattedPermissionError(permissionErrorTemplate, result.blocker)
+                    val error =
+                        membersFormattedPermissionError(permissionErrorTemplate, result.blocker, errorStrings)
                     if (storeBackedProfileEdit) {
                         profileStore.dispatch(SharedAgentDetailIntent.SetRoleError(error))
                     } else {
@@ -7315,7 +7345,7 @@ private fun MembersAgentProfileTab(
                     }
                 }
                 is DataResult.Error -> {
-                    val error = membersFormattedScreenError(saveErrorTemplate, result.error)
+                    val error = membersFormattedScreenError(saveErrorTemplate, result.error, errorStrings)
                     if (storeBackedProfileEdit) {
                         profileStore.dispatch(SharedAgentDetailIntent.SetRoleError(error))
                     } else {
@@ -7384,9 +7414,10 @@ private fun MembersAgentProfileTab(
                     serverRoleMenuExpanded = false
                 }
                 is DataResult.NoPermission ->
-                    serverRoleError = membersFormattedPermissionError(permissionErrorTemplate, result.blocker)
+                    serverRoleError =
+                        membersFormattedPermissionError(permissionErrorTemplate, result.blocker, errorStrings)
                 is DataResult.Error ->
-                    serverRoleError = membersFormattedScreenError(saveErrorTemplate, result.error)
+                    serverRoleError = membersFormattedScreenError(saveErrorTemplate, result.error, errorStrings)
             }
             savingServerRole = false
         }
@@ -7493,9 +7524,10 @@ private fun MembersAgentProfileTab(
                     }
                 }
                 is DataResult.NoPermission ->
-                    runtimeConfigError = membersFormattedPermissionError(permissionErrorTemplate, result.blocker)
+                    runtimeConfigError =
+                        membersFormattedPermissionError(permissionErrorTemplate, result.blocker, errorStrings)
                 is DataResult.Error ->
-                    runtimeConfigError = membersFormattedScreenError(saveErrorTemplate, result.error)
+                    runtimeConfigError = membersFormattedScreenError(saveErrorTemplate, result.error, errorStrings)
             }
             savingRuntimeConfig = false
         }
@@ -8097,6 +8129,7 @@ private fun MembersAgentProfileActionsSection(
 private fun MembersAgentRuntimeConfigRows(
     resolution: MembersAgentRuntimeConfigResolution
 ) {
+    val errorStrings = localizedErrorPresentationStrings()
     val runtimeConfig = (resolution as? MembersAgentRuntimeConfigResolution.Content)?.config
     if (runtimeConfig == null) {
         Text(
@@ -8107,7 +8140,7 @@ private fun MembersAgentRuntimeConfigRows(
         Text(
             text = (resolution as MembersAgentRuntimeConfigResolution.Unavailable)
                 .code
-                .userFacingErrorCodeMessage(),
+                .userFacingErrorCodeMessage(errorStrings),
             style = SlockType.Caption,
             color = SlockColor.TextMutedGray
         )
@@ -8314,6 +8347,7 @@ private fun MembersAgentRuntimeConfigDialog(
     onDismiss: () -> Unit,
     onSave: (RuntimeConfig, catalogGeneration: Long, retainBuiltInProviderSecret: Boolean) -> Unit
 ) {
+    val errorStrings = localizedErrorPresentationStrings()
     val stableInitialConfig = remember(memberId.value, initialConfig) { initialConfig }
     var runtime by remember(stableInitialConfig) { mutableStateOf(stableInitialConfig.runtime) }
     val initialModelSelection = remember(stableInitialConfig) {
@@ -8474,9 +8508,9 @@ private fun MembersAgentRuntimeConfigDialog(
             ) {
                 is DataResult.Content -> Unit
                 is DataResult.Empty ->
-                    builtInFormError = "runtime_form_unavailable".userFacingErrorCodeMessage()
-                is DataResult.Error -> builtInFormError = result.error.userFacingMessage()
-                is DataResult.NoPermission -> builtInFormError = result.blocker.userFacingMessage()
+                    builtInFormError = "runtime_form_unavailable".userFacingErrorCodeMessage(errorStrings)
+                is DataResult.Error -> builtInFormError = result.error.userFacingMessage(errorStrings)
+                is DataResult.NoPermission -> builtInFormError = result.blocker.userFacingMessage(errorStrings)
             }
         }
     }
@@ -9670,6 +9704,7 @@ private fun MembersAgentWorkspaceTab(
     onSelectFile: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val errorStrings = localizedErrorPresentationStrings()
     MembersDetailSection(
         title = stringResource(MR.strings.member_section_workspace).uppercase(),
         modifier = modifier,
@@ -9696,7 +9731,7 @@ private fun MembersAgentWorkspaceTab(
                 MembersWorkspaceErrorState(
                     stringResource(
                         MR.strings.member_error_workspace_load,
-                        treeState.error.userFacingMessage()
+                        treeState.error.userFacingMessage(errorStrings)
                     ),
                     onRefresh
                 )
@@ -9704,7 +9739,7 @@ private fun MembersAgentWorkspaceTab(
                 MembersWorkspaceErrorState(
                     stringResource(
                         MR.strings.member_error_workspace_hidden,
-                        treeState.blocker.userFacingMessage()
+                        treeState.blocker.userFacingMessage(errorStrings)
                     ),
                     onRefresh
                 )
@@ -9874,6 +9909,7 @@ private fun MembersAgentAppsTab(
     onOpenUrl: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val errorStrings = localizedErrorPresentationStrings()
     MembersDetailSection(title = stringResource(MR.strings.member_section_connected_apps).uppercase(), modifier = modifier) {
         Text(
             text = stringResource(MR.strings.member_hint_connected_apps),
@@ -9885,8 +9921,8 @@ private fun MembersAgentAppsTab(
             AgentAppLoginLoadState.NoPermission ->
                 MembersDetailField(
                     stringResource(MR.strings.member_tab_apps),
-                    appLogins.permissionBlocker?.userFacingMessage()
-                        ?: appLogins.errorCode?.userFacingErrorCodeMessage()
+                    appLogins.permissionBlocker?.userFacingMessage(errorStrings)
+                        ?: appLogins.errorCode?.userFacingErrorCodeMessage(errorStrings)
                         ?: stringResource(MR.strings.member_error_apps_private)
                 )
             AgentAppLoginLoadState.Error ->
@@ -9894,8 +9930,8 @@ private fun MembersAgentAppsTab(
                     stringResource(MR.strings.member_tab_apps),
                     stringResource(
                         MR.strings.member_error_apps_load,
-                        appLogins.screenError?.userFacingMessage()
-                            ?: appLogins.errorCode.userFacingErrorCodeMessage()
+                        appLogins.screenError?.userFacingMessage(errorStrings)
+                            ?: appLogins.errorCode.userFacingErrorCodeMessage(errorStrings)
                     )
                 )
             else -> {
@@ -10016,6 +10052,7 @@ private fun MembersAgentActivityTab(
     modifier: Modifier = Modifier,
     autoScrollToLatest: Boolean = true
 ) {
+    val errorStrings = localizedErrorPresentationStrings()
     val copySucceeded =
         diagnosticActionState?.actionKey == "copy" && diagnosticActionState.successLabel != null
     Column(
@@ -10068,7 +10105,7 @@ private fun MembersAgentActivityTab(
         } else if (!hasRows && loadState is MembersAgentActivityLoadState.Error) {
             SlockEmptyState(
                 title = stringResource(MR.strings.member_error_load_activity),
-                detail = loadState.error.userFacingMessage(),
+                detail = loadState.error.userFacingMessage(errorStrings),
                 iconName = SlockLucideIconName.Activity,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -10135,11 +10172,12 @@ private fun MembersAgentActivityLoadNotice(
     state: MembersAgentActivityLoadState,
     modifier: Modifier = Modifier
 ) {
+    val errorStrings = localizedErrorPresentationStrings()
     val message =
         when (state) {
             MembersAgentActivityLoadState.Refreshing -> stringResource(MR.strings.member_state_refreshing_activity)
             is MembersAgentActivityLoadState.Error ->
-                "${stringResource(MR.strings.member_error_load_activity)}: ${state.error.userFacingMessage()}"
+                "${stringResource(MR.strings.member_error_load_activity)}: ${state.error.userFacingMessage(errorStrings)}"
             MembersAgentActivityLoadState.Idle,
             MembersAgentActivityLoadState.Loading -> return
         }
@@ -10464,6 +10502,7 @@ private fun MembersAgentPermissionsTab(
     onUnavailableAction: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val errorStrings = localizedErrorPresentationStrings()
     // #89 React parity: mirror `AgentScopesPanel.tsx` state machine.
     // Local state only (per owner 06-25 04:08 — `SharedAgentDetailStore`
     // integration deferred to AD4 #56 lane).
@@ -10496,7 +10535,7 @@ private fun MembersAgentPermissionsTab(
                 error = null
             }
             is DataResult.Error -> {
-                error = "$loadPermissionsFailed: ${result.error.userFacingMessage()}"
+                error = "$loadPermissionsFailed: ${result.error.userFacingMessage(errorStrings)}"
             }
             is DataResult.Empty -> error = noPermissionsData
             is DataResult.NoPermission -> error = viewPermissionsForbidden
@@ -10527,7 +10566,7 @@ private fun MembersAgentPermissionsTab(
                 serverSet = result.data
                 draft = result.data.granted.toSet()
             }
-            is DataResult.Error -> error = "$savePermissionsFailed: ${result.error.userFacingMessage()}"
+            is DataResult.Error -> error = "$savePermissionsFailed: ${result.error.userFacingMessage(errorStrings)}"
             is DataResult.Empty -> error = emptyResponse
             is DataResult.NoPermission -> error = savePermissionsForbidden
         }
@@ -10543,7 +10582,7 @@ private fun MembersAgentPermissionsTab(
                 serverSet = result.data
                 draft = result.data.granted.toSet()
             }
-            is DataResult.Error -> error = "$resetPermissionsFailed: ${result.error.userFacingMessage()}"
+            is DataResult.Error -> error = "$resetPermissionsFailed: ${result.error.userFacingMessage(errorStrings)}"
             is DataResult.Empty -> error = emptyResponse
             is DataResult.NoPermission -> error = resetPermissionsForbidden
         }

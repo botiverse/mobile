@@ -929,19 +929,33 @@ private fun StoredAuthSession.toNetworkServerContext(serverId: ServerId): Shared
     return SharedNetworkServerContext(session = this, server = server)
 }
 
-private fun <T> authRequired(): DataResult<T> =
-    DataResult.NoPermission(PermissionBlocker(code = "auth_required", requiredCapability = "auth_session"))
+private fun <T> authRequired(serverMessage: String? = null): DataResult<T> =
+    DataResult.NoPermission(
+        PermissionBlocker(
+            code = "auth_required",
+            requiredCapability = "auth_session",
+            serverMessage = serverMessage
+        )
+    )
 
-private fun <T> HomeNetworkResponse.toDataError(): DataResult<T> =
-    when (code) {
-        401 -> authRequired()
-        403 -> DataResult.NoPermission(PermissionBlocker(code = "server_forbidden", requiredCapability = "server_access"))
+private fun <T> HomeNetworkResponse.toDataError(): DataResult<T> {
+    val serverMessage = memberServerErrorTextOrNull()
+    return when (code) {
+        401 -> authRequired(serverMessage)
+        403 ->
+            DataResult.NoPermission(
+                PermissionBlocker(
+                    code = "server_forbidden",
+                    requiredCapability = "server_access",
+                    serverMessage = serverMessage
+                )
+            )
         in 500..599 ->
             DataResult.Error(
                 ScreenError(
                     code = "server_unavailable",
                     retryable = true,
-                    serverMessage = memberServerErrorTextOrNull()
+                    serverMessage = serverMessage
                 )
             )
         else ->
@@ -949,17 +963,17 @@ private fun <T> HomeNetworkResponse.toDataError(): DataResult<T> =
                 ScreenError(
                     code = "http_$code",
                     retryable = code != 404,
-                    serverMessage = memberServerErrorTextOrNull()
+                    serverMessage = serverMessage
                 )
             )
     }
+}
 
 private fun HomeNetworkResponse.memberServerErrorTextOrNull(): String? {
     val payload = (bodyText ?: errorBodyText)?.takeIf { it.isNotBlank() } ?: return null
     return runCatching {
         memberRepositoryJson.decodeFromString(MemberErrorBody.serializer(), payload)
             .error
-            ?.trim()
             ?.takeIf { it.isNotBlank() }
     }.getOrNull()
 }

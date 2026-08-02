@@ -133,6 +133,7 @@ class RealInboxRepository(
                     buildSharedInboxDoneBody(channelId)
                 )
             },
+            errorTextDecoder = HomeNetworkResponse::inboxRouteErrorTextOrNull,
             source = "inbox_mark_done",
             warningLogger = warningLogger,
             mapper = { InboxDoneResult(channelId) }
@@ -150,6 +151,7 @@ class RealInboxRepository(
             emptyReason = EmptyReason.NoInboxItems,
             block = { networkClient.inbox(DataRequestPriority.Visible, filter, limit, offset, serverId) },
             emptyWhen = { it.items.isEmpty() },
+            errorTextDecoder = HomeNetworkResponse::inboxRouteErrorTextOrNull,
             source = "inbox",
             mapOnDefault = false,
             diagnosticsLogger = logger,
@@ -202,6 +204,7 @@ internal class ProcessActivityUnreadRepository(
                     serverId = serverId
                 )
             },
+            errorTextDecoder = HomeNetworkResponse::inboxRouteErrorTextOrNull,
             source = "process_activity_unread",
             mapOnDefault = false,
             diagnosticsLogger = logger,
@@ -260,6 +263,7 @@ class RealSavedRepository(
                     serverId
                 )
             },
+            errorTextDecoder = HomeNetworkResponse::savedRouteErrorTextOrNull,
             source = "saved_check",
             warningLogger = warningLogger,
             mapper = { bodyText ->
@@ -288,6 +292,7 @@ class RealSavedRepository(
                     networkClient.unsaveMessage(DataRequestPriority.Foreground, messageId, serverId)
                 }
             },
+            errorTextDecoder = HomeNetworkResponse::savedRouteErrorTextOrNull,
             source = if (save) "saved_save_message" else "saved_unsave_message",
             warningLogger = warningLogger,
             mapper = { SavedMessageMutationResult(messageId) }
@@ -304,6 +309,7 @@ class RealSavedRepository(
             emptyReason = EmptyReason.NoInboxItems,
             block = { networkClient.saved(DataRequestPriority.Visible, limit, offset, serverId) },
             emptyWhen = { it.items.isEmpty() },
+            errorTextDecoder = HomeNetworkResponse::savedRouteErrorTextOrNull,
             source = "saved",
             warningLogger = warningLogger,
             mapper = { bodyText ->
@@ -351,6 +357,7 @@ class RealSearchRepository(
                 )
             },
             emptyWhen = { it.items.isEmpty() },
+            errorTextDecoder = HomeNetworkResponse::searchRouteErrorTextOrNull,
             source = "search_messages",
             warningLogger = warningLogger,
             mapper = { bodyText ->
@@ -404,6 +411,7 @@ private suspend fun <T> executeInboxLike(
     emptyReason: EmptyReason,
     block: suspend () -> HomeNetworkResponse,
     emptyWhen: (T) -> Boolean = { false },
+    errorTextDecoder: (HomeNetworkResponse) -> String?,
     source: String,
     mapOnDefault: Boolean = true,
     diagnosticsLogger: (String) -> Unit = {},
@@ -414,7 +422,7 @@ private suspend fun <T> executeInboxLike(
     return try {
         val response = block()
         statusCode = response.code
-        if (!response.isSuccessful) return response.toInboxLikeDataError()
+        if (!response.isSuccessful) return response.toInboxLikeDataError(errorTextDecoder(response))
         val body = response.bodyText.orEmpty()
         if (body.isBlank()) return DataResult.Empty(emptyReason)
         val result =
@@ -440,13 +448,59 @@ private suspend fun <T> executeInboxLike(
     }
 }
 
-private fun <T> authRequired(): DataResult<T> =
-    DataResult.NoPermission(PermissionBlocker(code = "auth_required", requiredCapability = "auth_session"))
+private fun <T> authRequired(serverMessage: String? = null): DataResult<T> =
+    DataResult.NoPermission(
+        PermissionBlocker(
+            code = "auth_required",
+            requiredCapability = "auth_session",
+            serverMessage = serverMessage
+        )
+    )
 
-private fun <T> HomeNetworkResponse.toInboxLikeDataError(): DataResult<T> =
+private fun <T> HomeNetworkResponse.toInboxLikeDataError(serverMessage: String?): DataResult<T> =
     when (code) {
-        401 -> authRequired()
-        403 -> DataResult.NoPermission(PermissionBlocker(code = "server_forbidden", requiredCapability = "server_access"))
-        in 500..599 -> DataResult.Error(ScreenError(code = "server_unavailable", retryable = true))
-        else -> DataResult.Error(ScreenError(code = "http_$code", retryable = code != 404))
+        401 -> authRequired(serverMessage)
+        403 ->
+            DataResult.NoPermission(
+                PermissionBlocker(
+                    code = "server_forbidden",
+                    requiredCapability = "server_access",
+                    serverMessage = serverMessage
+                )
+            )
+        in 500..599 ->
+            DataResult.Error(ScreenError(code = "server_unavailable", retryable = true, serverMessage = serverMessage))
+        else ->
+            DataResult.Error(ScreenError(code = "http_$code", retryable = code != 404, serverMessage = serverMessage))
     }
+
+@Serializable
+private data class InboxRouteErrorDto(val error: String? = null)
+
+@Serializable
+private data class SavedRouteErrorDto(val error: String? = null)
+
+@Serializable
+private data class SearchRouteErrorDto(val error: String? = null)
+
+private fun HomeNetworkResponse.inboxRouteErrorTextOrNull(): String? =
+    inboxLikeRouteErrorTextOrNull(InboxRouteErrorDto.serializer()) { it.error }
+
+private fun HomeNetworkResponse.savedRouteErrorTextOrNull(): String? =
+    inboxLikeRouteErrorTextOrNull(SavedRouteErrorDto.serializer()) { it.error }
+
+private fun HomeNetworkResponse.searchRouteErrorTextOrNull(): String? =
+    inboxLikeRouteErrorTextOrNull(SearchRouteErrorDto.serializer()) { it.error }
+
+private fun <T> HomeNetworkResponse.inboxLikeRouteErrorTextOrNull(
+    serializer: kotlinx.serialization.KSerializer<T>,
+    text: (T) -> String?
+): String? {
+    val payload = bodyText?.takeIf { it.isNotBlank() }
+        ?: errorBodyText?.takeIf { it.isNotBlank() }
+        ?: return null
+    return runCatching {
+        text(inboxSavedSearchRepositoryJson.decodeFromString(serializer, payload))
+            ?.takeIf { it.isNotBlank() }
+    }.getOrNull()
+}

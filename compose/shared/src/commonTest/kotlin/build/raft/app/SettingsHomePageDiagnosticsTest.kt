@@ -359,7 +359,8 @@ class SettingsHomePageDiagnosticsTest {
                 section = null,
                 sectionTitle = "Admins",
                 actorRole = "admin",
-                actionState = null
+                actionState = null,
+                errorStrings = englishErrorPresentationStringsForTest()
             )
 
         assertEquals(listOf("owner-1", "admin-1"), rowsForAdmin.filter { it.key.startsWith("admin:") }.map { it.key.removePrefix("admin:") })
@@ -380,7 +381,8 @@ class SettingsHomePageDiagnosticsTest {
                 section = null,
                 sectionTitle = "Admins",
                 actorRole = "owner",
-                actionState = null
+                actionState = null,
+                errorStrings = englishErrorPresentationStringsForTest()
             )
 
         assertEquals(true, rowsForOwner.first { it.value == "owner-1:member" }.enabled)
@@ -397,7 +399,8 @@ class SettingsHomePageDiagnosticsTest {
                 section = null,
                 sectionTitle = "Admins",
                 actorRole = "owner",
-                actionState = SharedSettingsActionState(SERVER_ACTION_MEMBER_ROLE, "admin-1", inProgress = true)
+                actionState = SharedSettingsActionState(SERVER_ACTION_MEMBER_ROLE, "admin-1", inProgress = true),
+                errorStrings = englishErrorPresentationStringsForTest()
             )
         assertEquals("Loading", rowsForOwnerWhileSaving.first { it.value == "admin-1:member" }.status)
         assertEquals(false, rowsForOwnerWhileSaving.first { it.value == "owner-1:member" }.enabled)
@@ -483,7 +486,8 @@ class SettingsHomePageDiagnosticsTest {
         val payload =
             SharedSettingsDeveloperSnapshot().toDeveloperPayload(
                 state = ScreenLoadState.Content(SharedSettingsDeveloperSnapshot()),
-                actionState = null
+                actionState = null,
+                errorStrings = englishErrorPresentationStringsForTest()
             )
         val rows = payload.sections.first { it.title == "Diagnostics" }.rows
 
@@ -531,7 +535,8 @@ class SettingsHomePageDiagnosticsTest {
         val payload =
             snapshot.toDeveloperPayload(
                 state = ScreenLoadState.Content(snapshot),
-                actionState = null
+                actionState = null,
+                errorStrings = englishErrorPresentationStringsForTest()
             )
 
         val apiRows = payload.sections.first { it.title == "API Server" }.rows
@@ -577,7 +582,7 @@ class SettingsHomePageDiagnosticsTest {
                             )
                         )
                 )
-            ).toOpenSourceLicensesPayload()
+            ).toOpenSourceLicensesPayload(englishErrorPresentationStringsForTest())
 
         val rows = payload.sections.single { it.title == "Libraries" }.rows.associateBy { it.title }
 
@@ -617,7 +622,11 @@ class SettingsHomePageDiagnosticsTest {
                 empty = "为空"
             )
 
-        val loading = ScreenLoadState.Loading.toOpenSourceLicensesPayload(copy)
+        val loading =
+            ScreenLoadState.Loading.toOpenSourceLicensesPayload(
+                errorStrings = englishErrorPresentationStringsForTest(),
+                copy = copy
+            )
         assertEquals("开源许可", loading.title)
         assertEquals("正在加载", loading.sections.single().rows.single().title)
         assertEquals("正在加载许可元数据。", loading.sections.single().rows.single().detail)
@@ -626,7 +635,10 @@ class SettingsHomePageDiagnosticsTest {
         val empty =
             ScreenLoadState.Content(
                 SharedSettingsOpenSourceLicensesSnapshot(items = emptyList())
-            ).toOpenSourceLicensesPayload(copy)
+            ).toOpenSourceLicensesPayload(
+                errorStrings = englishErrorPresentationStringsForTest(),
+                copy = copy
+            )
         assertEquals("许可", empty.sections.single().title)
         assertEquals("未找到许可", empty.sections.single().rows.single().title)
         assertEquals("未包含依赖。", empty.sections.single().rows.single().detail)
@@ -802,6 +814,7 @@ class SettingsHomePageDiagnosticsTest {
                 buildLabel = "1000000"
             ).toAboutPayload(
                 webUrl = "https://app.raft.build",
+                errorStrings = englishErrorPresentationStringsForTest(),
                 updateCheck =
                     SharedSettingsUpdateCheckSnapshot(
                         supported = true,
@@ -840,7 +853,10 @@ class SettingsHomePageDiagnosticsTest {
                 buildTime = "2026-07-03T19:03:28Z",
                 gitCommit = "15fb7be3",
                 packageName = "build.raft.app"
-            ).toAboutPayload(webUrl = "https://app.raft.build")
+            ).toAboutPayload(
+                webUrl = "https://app.raft.build",
+                errorStrings = englishErrorPresentationStringsForTest()
+            )
 
         val rows = payload.sections.first { it.title == "Application" }.rows.associateBy { it.key }
 
@@ -861,7 +877,10 @@ class SettingsHomePageDiagnosticsTest {
                 buildTime = "2026-07-03T19:03:28Z",
                 gitCommit = "15fb7be3",
                 packageName = "build.raft.app"
-            ).toAboutPayload(webUrl = "https://app.raft.build")
+            ).toAboutPayload(
+                webUrl = "https://app.raft.build",
+                errorStrings = englishErrorPresentationStringsForTest()
+            )
 
         val aboutRows = aboutPayload.sections.first { it.title == "Application" }.rows.associateBy { it.key }
         assertEquals("Raft", aboutRows.getValue("appName").copyValue)
@@ -897,6 +916,7 @@ class SettingsHomePageDiagnosticsTest {
             SharedSettingsAboutSnapshot(appName = "Raft", versionLabel = "1.0.1")
                 .toAboutPayload(
                     webUrl = "https://app.raft.build",
+                    errorStrings = englishErrorPresentationStringsForTest(),
                     updateCheck = SharedSettingsUpdateCheckSnapshot()
                 )
 
@@ -915,6 +935,7 @@ class SettingsHomePageDiagnosticsTest {
             SharedSettingsAboutSnapshot(appName = "Raft", versionLabel = "1.0.1")
                 .toAboutPayload(
                     webUrl = "https://app.raft.build",
+                    errorStrings = englishErrorPresentationStringsForTest(),
                     updateCheck =
                         SharedSettingsUpdateCheckSnapshot(
                             statusLabel = "Disabled",

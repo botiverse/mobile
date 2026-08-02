@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.ErrorPresentationKey
 import build.raft.app.resources.MR
 import com.tencent.tmm.kmmresource.resource.desc.RawStringDesc
 import com.tencent.tmm.kmmresource.resource.desc.ResourceFormattedStringDesc
@@ -30,6 +31,36 @@ import kotlin.test.assertTrue
  *   - The generated `MR.strings.<key>` references resolve in commonMain tests.
  */
 class KmmResourceI18nTest {
+
+    @Test
+    fun canonicalErrorPresentationResourcesCoverEveryLocaleFreeKey() {
+        val resources =
+            listOf(
+                MR.strings.error_session_expired,
+                MR.strings.error_server_unreachable,
+                MR.strings.error_request_timed_out,
+                MR.strings.error_network_connection_failed,
+                MR.strings.error_server_unavailable,
+                MR.strings.error_item_not_found,
+                MR.strings.error_permission_denied,
+                MR.strings.error_attachment_too_large,
+                MR.strings.error_too_many_attempts,
+                MR.strings.error_response_unreadable,
+                MR.strings.error_generic,
+                MR.strings.empty_no_channels,
+                MR.strings.empty_no_messages,
+                MR.strings.empty_no_tasks,
+                MR.strings.empty_no_members,
+                MR.strings.empty_no_inbox_items,
+                MR.strings.empty_no_settings_available,
+                MR.strings.empty_no_search_results
+            )
+
+        assertTrue(resources.size == ErrorPresentationKey.entries.size)
+        resources.forEach { resource ->
+            assertTrue(resource.desc() is ResourceStringDesc)
+        }
+    }
 
     @Test
     fun commonOkStringResourceIsGenerated() {
