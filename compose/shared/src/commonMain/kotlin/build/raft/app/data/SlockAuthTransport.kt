@@ -3,6 +3,7 @@ package build.raft.app.data
 interface SlockAuthTransport {
     suspend fun login(bodyText: String): AuthNetworkResponse
     suspend fun completeSocialLogin(provider: String, bodyText: String): AuthNetworkResponse
+    suspend fun socialAuthProviders(platform: String): AuthNetworkResponse
     suspend fun startMobileOAuth(bodyText: String, authorization: String? = null): AuthNetworkResponse
     suspend fun completeMobileOAuth(bodyText: String, authorization: String? = null): AuthNetworkResponse
     suspend fun startNativeAppleMobileOAuth(bodyText: String, authorization: String? = null): AuthNetworkResponse =

@@ -15293,6 +15293,9 @@ private class AuthChooseServerVisualApi(
     override suspend fun completeSocialLogin(provider: String, bodyText: String): AuthApiResult<AuthSocialCompleteResponse> =
         AuthApiResult.Failure(code = 400)
 
+    override suspend fun fetchSocialAuthProviders(platform: String): AuthApiResult<Set<String>> =
+        AuthApiResult.Failure(code = 400)
+
     override suspend fun startMobileOAuth(
         provider: String,
         mode: String,
