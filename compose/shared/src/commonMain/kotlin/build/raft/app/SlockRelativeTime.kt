@@ -27,6 +27,7 @@ import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.lifecycle.ViewModel
 import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import com.tencent.tmm.kmmresource.compose.stringResource
+import com.tencent.tmm.kmmresource.resource.StringResource
 
 internal enum class SlockTimestampDisplayMode {
     Relative,
@@ -242,40 +243,60 @@ private fun currentSlockTimeContext(timeContext: SlockTimeContext?): SlockTimeCo
     timeContext?.takeIf { it.nowEpochMillis != null }
         ?: LocalSlockTimeContextProvider.current?.current
 
-@Composable
-private fun SlockRelativeTimeLabel.Relative.localized(): String =
+internal data class SlockRelativeTimeStringSelection(
+    val resource: StringResource,
+    val formatArg: Int? = null
+)
+
+/**
+ * Pure resource-selection seam for the relative-time label. [localized] renders
+ * exactly this selection; the consumer test drives it directly to lock the
+ * singular/many and past/future wiring, so a deleted or mis-wired key turns RED.
+ */
+internal fun SlockRelativeTimeLabel.Relative.selectLocalizedStringResource(): SlockRelativeTimeStringSelection =
     when (unit) {
         SlockRelativeTimeUnit.Minute ->
             when {
-                value == 0 -> stringResource(MR.strings.thread_timestamp_now)
-                value == -1 -> stringResource(MR.strings.relative_time_minute_past_one)
-                value < 0 -> stringResource(MR.strings.relative_time_minute_past_many, absoluteValue())
-                value == 1 -> stringResource(MR.strings.relative_time_minute_future_one)
-                else -> stringResource(MR.strings.relative_time_minute_future_many, value)
+                value == 0 -> SlockRelativeTimeStringSelection(MR.strings.thread_timestamp_now)
+                value == -1 -> SlockRelativeTimeStringSelection(MR.strings.relative_time_minute_past_one)
+                value < 0 -> SlockRelativeTimeStringSelection(MR.strings.relative_time_minute_past_many, absoluteValue())
+                value == 1 -> SlockRelativeTimeStringSelection(MR.strings.relative_time_minute_future_one)
+                else -> SlockRelativeTimeStringSelection(MR.strings.relative_time_minute_future_many, value)
             }
         SlockRelativeTimeUnit.Hour ->
             when {
-                value == 0 -> stringResource(MR.strings.relative_time_hour_now)
-                value == -1 -> stringResource(MR.strings.relative_time_hour_past_one)
-                value < 0 -> stringResource(MR.strings.relative_time_hour_past_many, absoluteValue())
-                value == 1 -> stringResource(MR.strings.relative_time_hour_future_one)
-                else -> stringResource(MR.strings.relative_time_hour_future_many, value)
+                value == 0 -> SlockRelativeTimeStringSelection(MR.strings.relative_time_hour_now)
+                value == -1 -> SlockRelativeTimeStringSelection(MR.strings.relative_time_hour_past_one)
+                value < 0 -> SlockRelativeTimeStringSelection(MR.strings.relative_time_hour_past_many, absoluteValue())
+                value == 1 -> SlockRelativeTimeStringSelection(MR.strings.relative_time_hour_future_one)
+                else -> SlockRelativeTimeStringSelection(MR.strings.relative_time_hour_future_many, value)
             }
         SlockRelativeTimeUnit.Day ->
             when (value) {
-                -2 -> stringResource(MR.strings.relative_time_day_before_yesterday)
-                -1 -> stringResource(MR.strings.relative_time_day_yesterday)
-                0 -> stringResource(MR.strings.relative_time_day_today)
-                1 -> stringResource(MR.strings.relative_time_day_tomorrow)
-                2 -> stringResource(MR.strings.relative_time_day_after_tomorrow)
+                -2 -> SlockRelativeTimeStringSelection(MR.strings.relative_time_day_before_yesterday)
+                -1 -> SlockRelativeTimeStringSelection(MR.strings.relative_time_day_yesterday)
+                0 -> SlockRelativeTimeStringSelection(MR.strings.relative_time_day_today)
+                1 -> SlockRelativeTimeStringSelection(MR.strings.relative_time_day_tomorrow)
+                2 -> SlockRelativeTimeStringSelection(MR.strings.relative_time_day_after_tomorrow)
                 else ->
                     if (value < 0) {
-                        stringResource(MR.strings.relative_time_day_past_many, absoluteValue())
+                        SlockRelativeTimeStringSelection(MR.strings.relative_time_day_past_many, absoluteValue())
                     } else {
-                        stringResource(MR.strings.relative_time_day_future_many, value)
+                        SlockRelativeTimeStringSelection(MR.strings.relative_time_day_future_many, value)
                     }
             }
     }
+
+@Composable
+private fun SlockRelativeTimeLabel.Relative.localized(): String {
+    val selection = selectLocalizedStringResource()
+    val formatArg = selection.formatArg
+    return if (formatArg != null) {
+        stringResource(selection.resource, formatArg)
+    } else {
+        stringResource(selection.resource)
+    }
+}
 
 private fun SlockRelativeTimeLabel.Relative.absoluteValue(): Int =
     if (value == Int.MIN_VALUE) Int.MAX_VALUE else kotlin.math.abs(value)
