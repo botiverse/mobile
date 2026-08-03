@@ -24166,12 +24166,24 @@ private fun ThreadImageAttachmentTile(
 ) {
     val fallbackHost = LocalThreadInlineImageFallbackHost.current
     val fallbackUrl = fallbackHost?.state?.resolvedUrls?.get(attachment.id)
+    val thumbnailUrl = attachment.thumbnailUrl?.takeIf { it.isNotBlank() }
+    val fallbackHostAvailable = fallbackHost != null
+    LaunchedEffect(attachment.id, thumbnailUrl, fallbackUrl, fallbackHostAvailable) {
+        if (
+            fallbackHostAvailable &&
+            shouldRequestThreadInlineImageFallbackForMissingThumbnail(
+                thumbnailUrl = thumbnailUrl,
+                fallbackUrl = fallbackUrl
+            )
+        ) {
+            fallbackHost?.requestFallback?.invoke(attachment.id)
+        }
+    }
     Box(
         modifier = Modifier.size(SharedThreadAttachmentImageSize)
             .clickable(onClick = onOpen),
         contentAlignment = Alignment.Center
     ) {
-        val thumbnailUrl = attachment.thumbnailUrl?.takeIf { it.isNotBlank() }
         SlockAspectFitImagePreviewSurface(
             source = thumbnailUrl,
             fallbackSource = fallbackUrl,

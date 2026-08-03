@@ -18,6 +18,11 @@ internal data class ThreadInlineImageFallbackState(
     }
 }
 
+internal fun shouldRequestThreadInlineImageFallbackForMissingThumbnail(
+    thumbnailUrl: String?,
+    fallbackUrl: String?
+): Boolean = thumbnailUrl.isNullOrBlank() && fallbackUrl.isNullOrBlank()
+
 internal data class ThreadInlineImageFallbackHost(
     val state: ThreadInlineImageFallbackState,
     val requestFallback: (attachmentId: String) -> Unit
