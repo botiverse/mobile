@@ -465,6 +465,21 @@
     <string name="thread_settings_channel_name">チャンネル名</string>
     <string name="thread_settings_channel_name_mismatch">チャンネル名が一致しません。</string>
     <string name="thread_settings_delete_warning">「%1$s」を削除してもよろしいですか？\nすべてのメッセージが失われます。</string>
+    <string name="channel_settings_title">チャンネル設定</string>
+    <string name="channel_settings_status_public">公開</string>
+    <string name="channel_settings_status_private">非公開</string>
+    <string name="channel_settings_status_archived">アーカイブ済み</string>
+    <string name="channel_settings_description_empty">チャンネルの説明を追加</string>
+    <string name="channel_settings_members">メンバー</string>
+    <string name="channel_settings_preferences">チャンネルの個人設定</string>
+    <string name="channel_settings_mute">通知をミュート</string>
+    <string name="channel_settings_mute_detail">このチャンネルの新着メッセージ通知を受け取りません</string>
+    <string name="channel_settings_pin">チャンネルをピン留め</string>
+    <string name="channel_settings_pin_detail">ホームのピン留め欄で優先表示します</string>
+    <string name="channel_settings_management">チャンネル管理</string>
+    <string name="channel_settings_unavailable">チャンネル設定を利用できません</string>
+    <string name="channel_settings_unavailable_detail">チャンネルが削除されたか、設定を読み込めませんでした。</string>
+    <string name="channel_settings_invalid_route">有効なサーバーまたはチャンネル ID がありません。</string>
     <string name="thread_action_card_create_channel">チャンネルを作成</string>
     <string name="thread_action_card_create_agent">エージェントを作成</string>
     <string name="thread_action_card_add_members">メンバーを追加</string>
@@ -1964,5 +1979,7 @@
     <string name="settings_app_language_japanese">日本語</string>
     <string name="settings_notifications_show_previews_title">メッセージのプレビューを表示</string>
     <string name="settings_notifications_show_previews_detail">iOS のプッシュ通知にメッセージの詳細を含めます。オフにするとプライバシーに配慮した通知になります。</string>
+    <string name="settings_mobile_new_design_settings">新しい設定デザイン</string>
+    <string name="settings_mobile_new_design_settings_detail">新しい独立したチャンネル設定ページを開きます。オフの場合は、現在の Thread 設定ダイアログを使用します。</string>
     <string name="home_adaptive_select_conversation">会話を選択</string>
 </resources>

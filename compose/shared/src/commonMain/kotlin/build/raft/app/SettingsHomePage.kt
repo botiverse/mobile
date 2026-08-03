@@ -57,6 +57,7 @@ import build.raft.app.data.MOBILE_ACTION_LINK_OPEN_MODE
 import build.raft.app.data.MOBILE_ACTION_MESSAGE_ALIGNMENT
 import build.raft.app.data.MOBILE_ACTION_MULTI_SHELL_HOST
 import build.raft.app.data.MOBILE_ACTION_SERVER_DRAWER
+import build.raft.app.data.MOBILE_ACTION_NEW_DESIGN_SETTINGS
 import build.raft.app.data.MOBILE_ACTION_HOME_SERVER_AVATAR
 import build.raft.app.data.MOBILE_ACTION_THREAD_ROW_AFFORDANCES
 import build.raft.app.data.MOBILE_ACTION_FOREGROUND_KEEP_ALIVE
@@ -7084,6 +7085,9 @@ private fun SettingsAppShellContent(
                         onSettingsIntent(SharedSettingsIntent.SetServerDrawerEnabled(enabled))
                         onServerDrawerSelected(enabled)
                     },
+                    onNewDesignSettingsChange = { enabled ->
+                        onSettingsIntent(SharedSettingsIntent.SetNewDesignSettingsEnabled(enabled))
+                    },
                     onHomeServerAvatarChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetHomeServerAvatarEnabled(enabled))
                         onHomeServerAvatarSelected(enabled)
@@ -8239,6 +8243,7 @@ private fun SettingsMobileContent(
     onComposerSendKeyChange: (Boolean) -> Unit,
     onMultiShellHostChange: (Boolean) -> Unit,
     onServerDrawerChange: (Boolean) -> Unit,
+    onNewDesignSettingsChange: (Boolean) -> Unit,
     onHomeServerAvatarChange: (Boolean) -> Unit,
     onThreadRowAffordanceChange: (ThreadRowAffordancePreference, Boolean) -> Unit
 ) {
@@ -8322,6 +8327,13 @@ private fun SettingsMobileContent(
                     snapshot = snapshot,
                     actionState = actionState,
                     onServerDrawerChange = onServerDrawerChange
+                )
+            }
+            item {
+                SettingsNewDesignSettingsCard(
+                    snapshot = snapshot,
+                    actionState = actionState,
+                    onNewDesignSettingsChange = onNewDesignSettingsChange
                 )
             }
             item {
@@ -8441,6 +8453,54 @@ private fun SettingsServerDrawerCard(
             SlockSwitchButton(checked = preference.enabled, enabled = preference.available && !busy)
         }
         if (actionState?.action == MOBILE_ACTION_SERVER_DRAWER && actionState.errorCode != null) {
+            SettingsFormErrorText(actionState)
+        }
+    }
+}
+
+@Composable
+private fun SettingsNewDesignSettingsCard(
+    snapshot: SettingsMobileSnapshot,
+    actionState: SharedSettingsActionState?,
+    onNewDesignSettingsChange: (Boolean) -> Unit
+) {
+    val busy = actionState?.action == MOBILE_ACTION_NEW_DESIGN_SETTINGS && actionState.inProgress
+    val preference = snapshot.newDesignSettings
+    SettingsFormSectionCard(
+        iconName = SlockLucideIconName.Settings,
+        title = stringResource(MR.strings.settings_mobile_new_design_settings)
+    ) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(enabled = preference.available && !busy) {
+                        onNewDesignSettingsChange(!preference.enabled)
+                    }
+                    .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    SettingsConnectedAppsBadge(stringResource(MR.strings.settings_badge_beta), SlockColor.BrandYellow)
+                    Text(
+                        preference.localizedToggleStatus(),
+                        style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                        color = SlockColor.TextMutedGray
+                    )
+                }
+                Text(
+                    stringResource(MR.strings.settings_mobile_new_design_settings_detail),
+                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            SlockSwitchButton(checked = preference.enabled, enabled = preference.available && !busy)
+        }
+        if (actionState?.action == MOBILE_ACTION_NEW_DESIGN_SETTINGS && actionState.errorCode != null) {
             SettingsFormErrorText(actionState)
         }
     }

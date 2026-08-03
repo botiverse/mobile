@@ -3231,6 +3231,13 @@ private fun ThreadPageScreen(
                 pageData = currentPayload.toThreadMembersPageData(serverId, channelId),
                 storeScopeOverride = currentStoreScope
             )
+        },
+        onOpenChannelSettings = { serverId, channelId, currentStoreScope ->
+            pager.openSlockPage(
+                pageName = CHANNEL_SETTINGS_PAGE,
+                pageData = channelSettingsPageData(serverId, channelId),
+                storeScopeOverride = currentStoreScope
+            )
         }
     )
 }
@@ -4832,7 +4839,8 @@ internal fun SharedThreadRouteContent(
     adaptiveCloseRequest: SlockAdaptiveDetailCloseRequest? = null,
     onResolvedAuxiliaryThreadIdChanged: (String?) -> Unit = {},
     onOpenMemberProfile: (KuiklyThreadScreenPayload, ThreadTimelineSlice, MemberDetailIdentity) -> Unit = { _, _, _ -> },
-    onOpenMembersPager: (KuiklyThreadScreenPayload, ServerId, ChannelId, SlockShellStoreScope) -> Unit = { _, _, _, _ -> }
+    onOpenMembersPager: (KuiklyThreadScreenPayload, ServerId, ChannelId, SlockShellStoreScope) -> Unit = { _, _, _, _ -> },
+    onOpenChannelSettings: (ServerId, ChannelId, SlockShellStoreScope) -> Unit = { _, _, _ -> }
 ) {
     val pager = LocalActivity.current.getPager() as Pager
     val linkNavigator = rememberSlockLinkNavigator(pager, bridge)
@@ -7742,6 +7750,7 @@ internal fun SharedThreadRouteContent(
             attachmentOpenStates = attachmentOpenStates,
             attachmentCommentsEnabled = attachmentCommentsEnabled && renderSlice.writeActionsEnabled,
             composerSendKeyEnabled = composerSendKeyEnabled,
+            newDesignSettingsEnabled = chatLayoutPreferenceStore::readNewDesignSettingsEnabledSync,
             longMessageCollapseEnabled = longMessageCollapseEnabled,
             singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
             inlineSelectionToolbarEnabled = inlineSelectionToolbarEnabled,
@@ -8787,6 +8796,19 @@ internal fun SharedThreadRouteContent(
                         return@ThreadPageContent
                     }
                     onOpenMembersPager(renderedThread, serverId, channelId, storeScope)
+                }
+                action == "openChannelSettings" -> {
+                    val serverId = threadMembersServerId
+                    val channelId = threadMembersChannelId
+                    if (serverId == null || channelId == null) {
+                        bridge.logWarn(
+                            "channel_settings_open_skip reason=missing_scope " +
+                                "serverId=${currentSession?.currentServerId.orEmpty()} " +
+                                "channelId=${renderedThread.sourceThreadId.orEmpty()}"
+                        )
+                        return@ThreadPageContent
+                    }
+                    onOpenChannelSettings(serverId, channelId, storeScope)
                 }
                 action == "loadMembers" -> {
                     if (serverMembersStore != null && threadMembersServerId != null && threadMembersChannelId != null) {
@@ -12639,6 +12661,7 @@ private fun ThreadPageContent(
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
     attachmentCommentsEnabled: Boolean = false,
     composerSendKeyEnabled: Boolean = false,
+    newDesignSettingsEnabled: () -> Boolean = { false },
     longMessageCollapseEnabled: Boolean = false,
     singleTapOpensThreadEnabled: Boolean = false,
     inlineSelectionToolbarEnabled: Boolean = false,
@@ -13440,7 +13463,11 @@ private fun ThreadPageContent(
                         onThreadEvent("openMembersPager", null, null, null)
                     },
                     onShowSettings = {
-                        activeModal = "settings"
+                        if (channelSettingsUsesStandalonePage(newDesignSettingsEnabled())) {
+                            onThreadEvent("openChannelSettings", null, null, null)
+                        } else {
+                            activeModal = "settings"
+                        }
                     },
                     onToggleActivityMute = onToggleActivityMute,
                     onTitleClick =
@@ -26708,10 +26735,11 @@ private fun KuiklyThreadSettingsAction.canonicalThreadSettingsActionId(): String
     }
 
 @Composable
-private fun ThreadSettingsModal(
+internal fun ThreadSettingsModal(
     channelName: String,
     subtitle: String?,
     actions: List<KuiklyThreadSettingsAction>,
+    initialDangerActionId: String? = null,
     channelPinState: ThreadChannelPinUiState? = null,
     updateStatus: ChannelProfileUpdateStatus = ChannelProfileUpdateStatus.Idle,
     updateErrorCode: String? = null,
@@ -26722,7 +26750,16 @@ private fun ThreadSettingsModal(
 ) {
     var name by remember(channelName) { mutableStateOf(channelName) }
     var description by remember(subtitle) { mutableStateOf(subtitle.orEmpty()) }
-    var dangerAction by remember { mutableStateOf<ThreadSettingsDangerAction?>(null) }
+    var dangerAction by remember(initialDangerActionId) {
+        mutableStateOf(
+            when (initialDangerActionId) {
+                "visibility" -> ThreadSettingsDangerAction.Visibility
+                "archive" -> ThreadSettingsDangerAction.Archive
+                "delete" -> ThreadSettingsDangerAction.Delete
+                else -> null
+            }
+        )
+    }
     var confirmationName by remember(dangerAction) { mutableStateOf("") }
     val effectiveActions = actions.normalizedThreadSettingsChannelActions().map { it.localizedThreadSettingsAction() }
     val dangerActions = effectiveActions.mapNotNull { action ->

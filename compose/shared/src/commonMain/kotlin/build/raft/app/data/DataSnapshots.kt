@@ -1300,6 +1300,13 @@ data class SettingsMobileSnapshot(
             statusLabel = "Off",
             detail = "Use the new multi-server left drawer on Home. When off, keep the current server switcher popover."
         ),
+    val newDesignSettings: SettingsMobileToggleSnapshot =
+        SettingsMobileToggleSnapshot(
+            enabled = false,
+            available = true,
+            statusLabel = "Off",
+            detail = "Open the new standalone channel settings page. When off, keep the current Thread settings dialog."
+        ),
     val homeServerAvatar: SettingsMobileToggleSnapshot =
         SettingsMobileToggleSnapshot(
             enabled = false,

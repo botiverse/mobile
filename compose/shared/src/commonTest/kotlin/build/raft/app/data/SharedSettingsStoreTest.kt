@@ -786,6 +786,7 @@ class SharedSettingsStoreTest {
         store.accept(SharedSettingsIntent.SetComposerSendKey(false))
         store.accept(SharedSettingsIntent.SetMultiShellHostEnabled(true))
         store.accept(SharedSettingsIntent.SetServerDrawerEnabled(true))
+        store.accept(SharedSettingsIntent.SetNewDesignSettingsEnabled(true))
         store.accept(SharedSettingsIntent.SetHomeServerAvatarEnabled(true))
         store.accept(SharedSettingsIntent.SetThreadRowAffordance("reactions", false))
 
@@ -804,6 +805,7 @@ class SharedSettingsStoreTest {
         assertEquals(false, chatLayoutRepository.composerSendKeyEnabled)
         assertEquals(true, chatLayoutRepository.multiShellHostEnabled)
         assertEquals(true, chatLayoutRepository.serverDrawerEnabled)
+        assertEquals(true, chatLayoutRepository.newDesignSettingsEnabled)
         assertEquals(true, chatLayoutRepository.homeServerAvatarEnabled)
         assertEquals(emptySet(), chatLayoutRepository.threadRowAffordances)
         assertEquals("Enabled", mobile.pushNotifications.statusLabel)
@@ -836,6 +838,8 @@ class SharedSettingsStoreTest {
         assertEquals("Enabled", mobile.multiShellHost.statusLabel)
         assertEquals(true, mobile.serverDrawer.enabled)
         assertEquals("Enabled", mobile.serverDrawer.statusLabel)
+        assertEquals(true, mobile.newDesignSettings.enabled)
+        assertEquals("Enabled", mobile.newDesignSettings.statusLabel)
         assertEquals(true, mobile.homeServerAvatar.enabled)
         assertEquals("Enabled", mobile.homeServerAvatar.statusLabel)
         assertEquals(emptySet(), mobile.threadRowAffordances.selectedKeys)
@@ -3815,6 +3819,7 @@ class SharedSettingsStoreTest {
         var composerSendKeyEnabled: Boolean = true,
         var multiShellHostEnabled: Boolean = false,
         var serverDrawerEnabled: Boolean = false,
+        var newDesignSettingsEnabled: Boolean = false,
         var homeServerAvatarEnabled: Boolean = false,
         var translationMode: TranslationModePreference = TranslationModePreference.Automatic,
         var translationTargetLanguage: String = TranslationTargetLanguages.Browser,
@@ -3835,6 +3840,7 @@ class SharedSettingsStoreTest {
                 composerSendKeyEnabled = composerSendKeyEnabled,
                 multiShellHostEnabled = multiShellHostEnabled,
                 serverDrawerEnabled = serverDrawerEnabled,
+                newDesignSettingsEnabled = newDesignSettingsEnabled,
                 homeServerAvatarEnabled = homeServerAvatarEnabled,
                 translationMode = translationMode,
                 translationTargetLanguage = translationTargetLanguage,
@@ -3969,6 +3975,11 @@ class SharedSettingsStoreTest {
 
         override suspend fun setServerDrawerEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
             serverDrawerEnabled = enabled
+            return getChatLayoutPreference()
+        }
+
+        override suspend fun setNewDesignSettingsEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
+            newDesignSettingsEnabled = enabled
             return getChatLayoutPreference()
         }
 

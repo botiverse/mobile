@@ -465,6 +465,21 @@
     <string name="thread_settings_channel_name">Channel name</string>
     <string name="thread_settings_channel_name_mismatch">Channel name does not match.</string>
     <string name="thread_settings_delete_warning">Are you sure you want to delete “%1$s”?\nAll messages will be lost.</string>
+    <string name="channel_settings_title">Channel Settings</string>
+    <string name="channel_settings_status_public">Public</string>
+    <string name="channel_settings_status_private">Private</string>
+    <string name="channel_settings_status_archived">Archived</string>
+    <string name="channel_settings_description_empty">Add a channel description</string>
+    <string name="channel_settings_members">Members</string>
+    <string name="channel_settings_preferences">My Channel Preferences</string>
+    <string name="channel_settings_mute">Mute Notifications</string>
+    <string name="channel_settings_mute_detail">Stop receiving new-message notifications from this channel</string>
+    <string name="channel_settings_pin">Pin Channel</string>
+    <string name="channel_settings_pin_detail">Show this channel first in Home’s Pinned section</string>
+    <string name="channel_settings_management">Channel Management</string>
+    <string name="channel_settings_unavailable">Channel settings unavailable</string>
+    <string name="channel_settings_unavailable_detail">The channel may have been removed, or its settings could not be loaded.</string>
+    <string name="channel_settings_invalid_route">This page is missing a valid server or channel identity.</string>
     <string name="thread_action_card_create_channel">Create Channel</string>
     <string name="thread_action_card_create_agent">Create Agent</string>
     <string name="thread_action_card_add_members">Add Members</string>
@@ -1964,5 +1979,7 @@
     <string name="settings_app_language_japanese">日本語</string>
     <string name="settings_notifications_show_previews_title">Show message previews</string>
     <string name="settings_notifications_show_previews_detail">Include message details in iOS push notifications. Turn this off for private alerts.</string>
+    <string name="settings_mobile_new_design_settings">New design settings</string>
+    <string name="settings_mobile_new_design_settings_detail">Open the new standalone channel settings page. When off, keep the current Thread settings dialog.</string>
     <string name="home_adaptive_select_conversation">Select a conversation</string>
 </resources>
