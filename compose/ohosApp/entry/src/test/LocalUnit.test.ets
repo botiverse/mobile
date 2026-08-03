@@ -72,6 +72,7 @@ import {
 import {
   buildSlockOhosAttachmentOpenWants,
   slockOhosAttachmentOpenDiagnostic,
+  slockOhosAttachmentOpenPreflightDiagnostic,
   slockOhosAttachmentOpenFailureKind,
   SLOCK_OHOS_ACTION_SELECT,
   SLOCK_OHOS_ACTION_VIEW_DATA,
@@ -82,6 +83,7 @@ import {
   SLOCK_OHOS_PICKER_TYPE_PARAMETER,
   SlockOhosAttachmentOpenDiagnosticTerminal,
   SlockOhosAttachmentOpenFailureKind,
+  SlockOhosAttachmentOpenPreflightStage,
 } from '../main/ets/kuikly/SlockOhosAttachmentOpenWant';
 import { Want, wantConstant } from '@kit.AbilityKit';
 
@@ -499,6 +501,51 @@ export default function localUnitTest() {
       expect(notBuilt.includes('outerRead=false childRead=false')).assertTrue();
       expect(notBuilt.includes('outerStream=false childStream=false')).assertTrue();
       expect(notBuilt.endsWith('terminal=prepare_failed code=none')).assertTrue();
+    });
+    it('attachmentOpenPreflightDiagnosticCoversEarlyReturnsWithoutPrivateMaterial', 0, () => {
+      const requested = slockOhosAttachmentOpenPreflightDiagnostic(
+        SlockOhosAttachmentOpenPreflightStage.REQUESTED,
+        'application/x-private-secret;name=customer-private-secret.zip',
+        true,
+        false,
+        true
+      );
+      expect(requested).assertEqual(
+        'stage=requested mime=other urlPresent=true committedRequired=false ownerPrivate=true ' +
+          'privateCommitted=unknown cacheUsable=unknown downloadStatus=none'
+      );
+      expect(requested.includes('customer-private-secret')).assertFalse();
+
+      const downloadFailed = slockOhosAttachmentOpenPreflightDiagnostic(
+        SlockOhosAttachmentOpenPreflightStage.DOWNLOAD_TERMINAL,
+        'application/zip',
+        true,
+        false,
+        true,
+        false,
+        false,
+        'private-upstream-error'
+      );
+      expect(downloadFailed).assertEqual(
+        'stage=download_terminal mime=application/zip urlPresent=true committedRequired=false ownerPrivate=true ' +
+          'privateCommitted=false cacheUsable=false downloadStatus=other'
+      );
+      expect(downloadFailed.includes('private-upstream-error')).assertFalse();
+
+      const missing = slockOhosAttachmentOpenPreflightDiagnostic(
+        SlockOhosAttachmentOpenPreflightStage.PUBLIC_DOWNLOAD_MISSING,
+        undefined,
+        true,
+        true,
+        false,
+        false,
+        false,
+        'missing'
+      );
+      expect(missing).assertEqual(
+        'stage=public_download_missing mime=none urlPresent=true committedRequired=true ownerPrivate=false ' +
+          'privateCommitted=false cacheUsable=false downloadStatus=missing'
+      );
     });
     it('privateAttachmentPathBindsOwnerAndAttachmentWithoutDisplayNameAuthority', 0, () => {
       const owner = 'a'.repeat(64);

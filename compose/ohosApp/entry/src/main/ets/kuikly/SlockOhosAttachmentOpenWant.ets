@@ -20,6 +20,16 @@ export enum SlockOhosAttachmentOpenDiagnosticTerminal {
   PREPARE_FAILED = 'prepare_failed',
 }
 
+export enum SlockOhosAttachmentOpenPreflightStage {
+  REQUESTED = 'requested',
+  REQUEST_REJECTED = 'request_rejected',
+  CACHE_CHECKED = 'cache_checked',
+  PUBLIC_DOWNLOAD_MISSING = 'public_download_missing',
+  DOWNLOAD_STARTED = 'download_started',
+  DOWNLOAD_TERMINAL = 'download_terminal',
+  WANT_HANDOFF = 'want_handoff',
+}
+
 export interface SlockOhosAttachmentOpenWants {
   readonly view: Want;
   readonly chooser: Want;
@@ -98,6 +108,45 @@ function slockOhosAttachmentOpenDiagnosticMimeType(mimeType: string | undefined)
     default:
       return normalized.length === 0 ? 'none' : 'other';
   }
+}
+
+function slockOhosAttachmentOpenDiagnosticDownloadStatus(status: string | undefined): string {
+  switch (status?.trim().toLowerCase()) {
+    case 'complete':
+    case 'failed':
+    case 'cancelled':
+    case 'missing':
+      return status.trim().toLowerCase();
+    default:
+      return status === undefined || status.length === 0 ? 'none' : 'other';
+  }
+}
+
+/**
+ * Covers the request/download/cache stages that happen before a chooser Want exists. Values are
+ * fixed booleans or allowlisted categories; URL, path, filename, owner key, identifier, and token
+ * material are never accepted by this API.
+ */
+export function slockOhosAttachmentOpenPreflightDiagnostic(
+  stage: SlockOhosAttachmentOpenPreflightStage,
+  mimeType: string | undefined,
+  urlPresent: boolean,
+  requireCommittedDownload: boolean,
+  ownerPrivate: boolean,
+  privateCommitted: boolean | undefined = undefined,
+  cacheUsable: boolean | undefined = undefined,
+  downloadStatus: string | undefined = undefined
+): string {
+  return [
+    `stage=${stage}`,
+    `mime=${slockOhosAttachmentOpenDiagnosticMimeType(mimeType)}`,
+    `urlPresent=${urlPresent}`,
+    `committedRequired=${requireCommittedDownload}`,
+    `ownerPrivate=${ownerPrivate}`,
+    `privateCommitted=${privateCommitted === undefined ? 'unknown' : privateCommitted}`,
+    `cacheUsable=${cacheUsable === undefined ? 'unknown' : cacheUsable}`,
+    `downloadStatus=${slockOhosAttachmentOpenDiagnosticDownloadStatus(downloadStatus)}`,
+  ].join(' ');
 }
 
 function slockOhosAttachmentOpenDiagnosticUriScheme(uri: string | undefined): string {

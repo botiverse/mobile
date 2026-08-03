@@ -34,9 +34,11 @@ import { SlockOhosApiEnvironment, SlockOhosApiEnvironmentStore } from '../SlockO
 import {
   buildSlockOhosAttachmentOpenWants,
   slockOhosAttachmentOpenDiagnostic,
+  slockOhosAttachmentOpenPreflightDiagnostic,
   slockOhosAttachmentOpenFailureKind,
   SlockOhosAttachmentOpenDiagnosticTerminal,
   SlockOhosAttachmentOpenFailureKind,
+  SlockOhosAttachmentOpenPreflightStage,
   SlockOhosAttachmentOpenWants,
 } from '../SlockOhosAttachmentOpenWant';
 import {
@@ -313,18 +315,55 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     const requireCommittedDownload = records["requirePublicDownload"] === true || records["requirePublicDownload"] === "true";
     const trackProgress = records["trackProgress"] === true || records["trackProgress"] === "true";
     const downloadId = (records["downloadId"] as string | undefined) ?? `${attachmentId}:${fileName}`;
+    const ownerPrivate = isSlockOhosPrivateAttachmentOwnerKey(ownerKey);
+    SlockOhosDiagnostics.record(
+      "SlockAttachmentOpenPreflight",
+      slockOhosAttachmentOpenPreflightDiagnostic(
+        SlockOhosAttachmentOpenPreflightStage.REQUESTED,
+        mimeType,
+        url !== undefined && url.length > 0,
+        requireCommittedDownload,
+        ownerPrivate
+      )
+    );
     if (url === undefined || url.length === 0) {
+      SlockOhosDiagnostics.record(
+        "SlockAttachmentOpenPreflight",
+        slockOhosAttachmentOpenPreflightDiagnostic(
+          SlockOhosAttachmentOpenPreflightStage.REQUEST_REJECTED,
+          mimeType,
+          false,
+          requireCommittedDownload,
+          ownerPrivate,
+          undefined,
+          undefined,
+          "failed"
+        )
+      );
       callback({ "status": "failed", "message": "Unable to download attachment" });
       return;
     }
     const context = getContext(this) as common.UIAbilityContext;
     try {
       const privateDirectory = ensureSlockOhosPrivateAttachmentDirectory(context.filesDir);
-      const privatePath = isSlockOhosPrivateAttachmentOwnerKey(ownerKey)
+      const privatePath = ownerPrivate
         ? this.privateAttachmentPath(privateDirectory, ownerKey, attachmentId, fileName, mimeType)
         : "";
       const privateCommitted = privatePath.length > 0 && this.isUsablePersistentAttachmentFile(privatePath);
       if (requireCommittedDownload && !privateCommitted) {
+        SlockOhosDiagnostics.record(
+          "SlockAttachmentOpenPreflight",
+          slockOhosAttachmentOpenPreflightDiagnostic(
+            SlockOhosAttachmentOpenPreflightStage.PUBLIC_DOWNLOAD_MISSING,
+            mimeType,
+            true,
+            requireCommittedDownload,
+            ownerPrivate,
+            privateCommitted,
+            false,
+            "missing"
+          )
+        );
         callback({ "status": "missing", "message": "Downloaded attachment is unavailable" });
         return;
       }
@@ -335,13 +374,50 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         ? privatePath
         : `${cacheDir}/${this.safeAttachmentCacheFileName(attachmentId, fileName, mimeType)}`;
       const cached = privateCommitted || this.isUsableAttachmentCacheFile(path);
+      SlockOhosDiagnostics.record(
+        "SlockAttachmentOpenPreflight",
+        slockOhosAttachmentOpenPreflightDiagnostic(
+          SlockOhosAttachmentOpenPreflightStage.CACHE_CHECKED,
+          mimeType,
+          true,
+          requireCommittedDownload,
+          ownerPrivate,
+          privateCommitted,
+          cached
+        )
+      );
       if (!cached) {
+        SlockOhosDiagnostics.record(
+          "SlockAttachmentOpenPreflight",
+          slockOhosAttachmentOpenPreflightDiagnostic(
+            SlockOhosAttachmentOpenPreflightStage.DOWNLOAD_STARTED,
+            mimeType,
+            true,
+            requireCommittedDownload,
+            ownerPrivate,
+            privateCommitted,
+            false
+          )
+        );
         const downloadResult = await slockOhosAttachmentDownloadSink.download(
           url,
           path,
           downloadId,
           path,
           trackProgress ? callback : undefined
+        );
+        SlockOhosDiagnostics.record(
+          "SlockAttachmentOpenPreflight",
+          slockOhosAttachmentOpenPreflightDiagnostic(
+            SlockOhosAttachmentOpenPreflightStage.DOWNLOAD_TERMINAL,
+            mimeType,
+            true,
+            requireCommittedDownload,
+            ownerPrivate,
+            privateCommitted,
+            false,
+            downloadResult["status"] as string | undefined
+          )
         );
         if (downloadResult["status"] !== "complete") {
           callback(downloadResult);
@@ -352,6 +428,19 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       let openWants: SlockOhosAttachmentOpenWants | undefined = undefined;
       try {
         const sizeBytes = fs.statSync(path).size;
+        SlockOhosDiagnostics.record(
+          "SlockAttachmentOpenPreflight",
+          slockOhosAttachmentOpenPreflightDiagnostic(
+            SlockOhosAttachmentOpenPreflightStage.WANT_HANDOFF,
+            mimeType,
+            true,
+            requireCommittedDownload,
+            ownerPrivate,
+            privateCommitted,
+            true,
+            cached ? undefined : "complete"
+          )
+        );
         openWants = buildSlockOhosAttachmentOpenWants(uri, mimeType, fileName, sizeBytes);
         SlockOhosDiagnostics.record(
           "SlockAttachmentOpen",

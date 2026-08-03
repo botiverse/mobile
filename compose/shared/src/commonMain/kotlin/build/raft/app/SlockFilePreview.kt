@@ -1058,7 +1058,13 @@ private fun SlockFilePreviewStandalonePageContent() {
             } else {
                 currentPayload.externalUrl?.takeIf { it.isNotBlank() }
                     ?: currentPayload.threadAttachmentExternalUrl(threadApi)
-                    ?: return unableToDownloadAttachment
+                    ?: run {
+                        bridge.log(
+                            "file_preview_open stage=url_resolution_failed " +
+                                "committedRequired=${policy.requirePublicDownload} trackProgress=${policy.trackProgress}"
+                        )
+                        return unableToDownloadAttachment
+                    }
             }
         val downloadId =
             if (policy.trackProgress) {
@@ -1074,6 +1080,10 @@ private fun SlockFilePreviewStandalonePageContent() {
                     binaryDownloadUrlDiagnostics(externalUrl)
             )
         }
+        bridge.log(
+            "file_preview_open stage=host_handoff " +
+                "committedRequired=${policy.requirePublicDownload} trackProgress=${policy.trackProgress}"
+        )
         val result =
             bridge.openAttachment(
                 url = externalUrl,
@@ -1091,6 +1101,9 @@ private fun SlockFilePreviewStandalonePageContent() {
                     }
             )
         if (!attachmentOperationCommitAllowed(operation, activeAttachmentOperation?.operationId.orEmpty())) return null
+        bridge.log(
+            "file_preview_open stage=host_terminal status=${slockAttachmentOpenDiagnosticStatus(result?.optString("status"))}"
+        )
         publicDownloadState = slockFilePreviewPublicDownloadStateAfterOpen(visiblePublicDownloadState, result)
         observedPublicDownloadQuery = publicDownloadQuery
         return when (result?.optString("status").orEmpty()) {
@@ -1332,9 +1345,25 @@ private fun SlockFilePreviewStandalonePageContent() {
         operationJob.start()
     }
     fun requestExternalOpen() {
-        if (!canOpenWith || exportInProgress || !slockFilePreviewCanStartExternalOperation(downloadStatus)) return
+        val policy = slockFilePreviewExternalOpenPolicy(visiblePublicDownloadState)
+        val rejectionReason =
+            slockFilePreviewExternalOpenRejectionReason(
+                canOpenWith = canOpenWith,
+                exportInProgress = exportInProgress,
+                downloadStatus = downloadStatus,
+                hasOwner = attachmentOwner != null,
+                hasPolicy = policy != null
+            )
+        if (rejectionReason != null) {
+            bridge.log("file_preview_open stage=rejected reason=$rejectionReason")
+            return
+        }
         val owner = attachmentOwner ?: return
-        val policy = slockFilePreviewExternalOpenPolicy(visiblePublicDownloadState) ?: return
+        val admittedPolicy = policy ?: return
+        bridge.log(
+            "file_preview_open stage=admitted " +
+                "committedRequired=${admittedPolicy.requirePublicDownload} trackProgress=${admittedPolicy.trackProgress}"
+        )
         externalOperation = "open"
         downloadMessage = ""
         nextDownloadGeneration += 1L
@@ -1347,9 +1376,9 @@ private fun SlockFilePreviewStandalonePageContent() {
         // Cached opens still cross an irreversible native launch boundary. Keep them non-idle
         // so a second tap cannot supersede this operation token before URI grant/startActivity
         // completes, but use a non-download status so Install/Open never flashes download chrome.
-        downloadStatus = slockFilePreviewExternalOpenAdmissionStatus(policy.trackProgress)
+        downloadStatus = slockFilePreviewExternalOpenAdmissionStatus(admittedPolicy.trackProgress)
         activeDownloadStartedAt = TimeSource.Monotonic.markNow()
-        if (policy.trackProgress) {
+        if (admittedPolicy.trackProgress) {
             firstBridgeDownloadId = null
             firstRenderedDownloadId = null
             downloadProgress = SlockFilePreviewInitialDownloadProgress.copy(downloadId = activeDownloadId.orEmpty())
@@ -1362,7 +1391,7 @@ private fun SlockFilePreviewStandalonePageContent() {
         val operationJob =
             coroutineScope.launch(start = CoroutineStart.LAZY) {
                 try {
-                    val error = openPayloadExternally(requestPayload, policy, operation)
+                    val error = openPayloadExternally(requestPayload, admittedPolicy, operation)
                     if (!attachmentOperationCommitAllowed(operation, activeAttachmentOperation?.operationId.orEmpty())) return@launch
                     if (error == null) {
                         downloadStatus = "idle"
@@ -5177,6 +5206,31 @@ internal fun slockAttachmentOpenResultMessage(
         "no_app" -> terms.noAppCanOpenFile
         "storage_failed" -> terms.storageUnavailable
         else -> terms.unableToOpenAttachment
+    }
+
+internal fun slockAttachmentOpenDiagnosticStatus(status: String?): String {
+    val normalized = status?.trim()?.lowercase().orEmpty()
+    return when (normalized) {
+        "opened", "cancelled", "missing", "no_app", "storage_failed", "failed" -> normalized
+        "" -> "none"
+        else -> "other"
+    }
+}
+
+internal fun slockFilePreviewExternalOpenRejectionReason(
+    canOpenWith: Boolean,
+    exportInProgress: Boolean,
+    downloadStatus: String,
+    hasOwner: Boolean,
+    hasPolicy: Boolean
+): String? =
+    when {
+        !canOpenWith -> "unsupported"
+        exportInProgress -> "export_busy"
+        !slockFilePreviewCanStartExternalOperation(downloadStatus) -> "operation_busy"
+        !hasOwner -> "owner_missing"
+        !hasPolicy -> "state_checking"
+        else -> null
     }
 
 internal fun slockFilePreviewDownloadStatusLabel(

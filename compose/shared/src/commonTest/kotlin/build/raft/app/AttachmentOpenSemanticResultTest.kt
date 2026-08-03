@@ -31,6 +31,40 @@ class AttachmentOpenSemanticResultTest {
     }
 
     @Test
+    fun diagnosticStatusAllowsOnlyFixedCategories() {
+        assertEquals("opened", slockAttachmentOpenDiagnosticStatus(" OPENED "))
+        assertEquals("failed", slockAttachmentOpenDiagnosticStatus("failed"))
+        assertEquals("none", slockAttachmentOpenDiagnosticStatus(null))
+        assertEquals("none", slockAttachmentOpenDiagnosticStatus(""))
+        assertEquals("other", slockAttachmentOpenDiagnosticStatus("private-upstream-detail"))
+    }
+
+    @Test
+    fun externalOpenAdmissionReportsOneFixedRejectionReason() {
+        fun reason(
+            canOpenWith: Boolean = true,
+            exportInProgress: Boolean = false,
+            downloadStatus: String = "idle",
+            hasOwner: Boolean = true,
+            hasPolicy: Boolean = true
+        ): String? =
+            slockFilePreviewExternalOpenRejectionReason(
+                canOpenWith,
+                exportInProgress,
+                downloadStatus,
+                hasOwner,
+                hasPolicy
+            )
+
+        assertEquals("unsupported", reason(canOpenWith = false))
+        assertEquals("export_busy", reason(exportInProgress = true))
+        assertEquals("operation_busy", reason(downloadStatus = "downloading"))
+        assertEquals("owner_missing", reason(hasOwner = false))
+        assertEquals("state_checking", reason(hasPolicy = false))
+        assertNull(reason())
+    }
+
+    @Test
     fun materializationFailureLeavesExternalOpenRetryAdmissionAvailable() {
         assertEquals("无法下载附件", slockAttachmentOpenResultMessage("missing", localizedTerms))
         assertTrue(slockFilePreviewCanStartExternalOperation("failed"))
