@@ -343,6 +343,18 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
+    // Elegant-register textarea capture (same content under SlockThemeProvider(elegantTheme)):
+    // inherits the SlockBrutalInputField elegant flat-field register. Paired against the React
+    // elegant render as components.ui.textarea.states.elegant.
+    @Test
+    fun captureUiTextareaStatesElegant() {
+        captureKmpComponentCase(
+            caseId = "components.ui.textarea.states.elegant",
+            pageName = "compose_ui_textarea_elegant_visual",
+            crop = UI_TEXTAREA_CROP
+        )
+    }
+
     @Test
     fun captureUiCheckboxStates() {
         captureKmpComponentCase(

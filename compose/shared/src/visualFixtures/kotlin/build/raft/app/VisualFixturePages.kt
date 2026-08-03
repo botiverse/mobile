@@ -836,6 +836,19 @@ internal class ComposeUiTextareaVisualPage : BasePager() {
     }
 }
 
+// Elegant-register capture of the SAME textarea content, wrapped in
+// SlockThemeProvider(elegantTheme). The textarea renders via SlockBrutalInputField, so it
+// inherits the elegant flat-field register (8dp rounded + #CACACE hairline + no offset
+// shadow) with no component change. Paired against the React elegant render as
+// components.ui.textarea.states.elegant (react-elegant <-> android-elegant parity).
+@Page("compose_ui_textarea_elegant_visual", supportInLocal = true)
+internal class ComposeUiTextareaElegantVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { SlockThemeProvider(theme = elegantTheme) { UiTextareaVisualContent() } }
+    }
+}
+
 @Page("compose_ui_checkbox_visual", supportInLocal = true)
 internal class ComposeUiCheckboxVisualPage : BasePager() {
     override fun willInit() {
