@@ -432,7 +432,6 @@ private fun ChannelSettingsContent(
             item(key = "management") {
                 ChannelManagementCard(
                     showMakePrivate = !channel.channelType.equals("private", ignoreCase = true),
-                    onEdit = onEdit,
                     onMakePrivate = onMakePrivate,
                     onArchive = onArchive,
                     onDelete = onDelete
@@ -621,47 +620,39 @@ private fun ChannelPreferenceRow(
 @Composable
 private fun ChannelManagementCard(
     showMakePrivate: Boolean,
-    onEdit: () -> Unit,
     onMakePrivate: () -> Unit,
     onArchive: () -> Unit,
     onDelete: () -> Unit
 ) {
-    SlockBrutalCard(contentPadding = 16.dp, verticalArrangement = Arrangement.spacedBy(0.dp)) {
+    val actions = channelSettingsManagementActions(showMakePrivate)
+    SlockBrutalCard(contentPadding = 16.dp, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
             text = stringResource(MR.strings.channel_settings_management),
             style = SlockType.PageTitle.copy(fontSize = 16.sp, lineHeight = 20.sp),
             color = SlockColor.TextBlack,
-            modifier = Modifier.padding(bottom = 8.dp)
+            modifier = Modifier.padding(bottom = 2.dp)
         )
-        ChannelManagementRow(stringResource(MR.strings.thread_settings_edit_channel), false, onEdit)
-        if (showMakePrivate) {
-            ChannelSettingsDivider()
-            ChannelManagementRow(stringResource(MR.strings.thread_settings_make_private), false, onMakePrivate)
-        }
-        ChannelSettingsDivider()
-        ChannelManagementRow(stringResource(MR.strings.thread_settings_archive), false, onArchive)
-        ChannelSettingsDivider()
-        ChannelManagementRow(stringResource(MR.strings.thread_settings_delete), true, onDelete)
+        ThreadSettingsChannelActionButtons(
+            actions = actions,
+            onOpenAction = { actionId ->
+                when (actionId) {
+                    "visibility" -> onMakePrivate()
+                    "archive" -> onArchive()
+                    "delete" -> onDelete()
+                }
+            }
+        )
     }
 }
 
-@Composable
-private fun ChannelManagementRow(label: String, danger: Boolean, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = label,
-            style = SlockType.Body.withSlockFontWeight(FontWeight.W600),
-            color = if (danger) SlockColor.AccentRed else SlockColor.TextBlack,
-            modifier = Modifier.weight(1f)
-        )
-        if (!danger) {
-            SlockLucideIcon(SlockLucideIconName.ChevronRight, Modifier.size(20.dp), color = "#FF666666")
+internal fun channelSettingsManagementActions(showMakePrivate: Boolean): List<KuiklyThreadSettingsAction> =
+    buildList {
+        if (showMakePrivate) {
+            add(KuiklyThreadSettingsAction(id = "visibility"))
         }
+        add(KuiklyThreadSettingsAction(id = "archive"))
+        add(KuiklyThreadSettingsAction(id = "delete"))
     }
-}
 
 @Composable
 private fun ChannelSettingsDivider() {
