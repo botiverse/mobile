@@ -108,6 +108,41 @@ internal fun UiButtonVisualContent() {
 }
 
 @Composable
+internal fun UiButtonThemeVisualContent() {
+    // Phase 1 theme-axis proof: the SAME SlockBrutalActionButton rendered under each
+    // register via SlockThemeProvider. Top row = brutalTheme (default, byte-identical
+    // to the shipping look: square, 2dp black hairline, hard 4dp offset shadow, black
+    // ink). Bottom row = elegantTheme (8dp rounded, 1dp gray hairline, near-black ink).
+    // Neither border/corner/shadow/ink is passed here — they resolve from
+    // LocalSlockTheme, so a visible brutal->elegant delta in this capture IS the
+    // CompositionLocal switch working. (The elegant soft ambient blur is a documented
+    // follow-up; this offset-box shadow renders the offset+color but no blur.)
+    Box(
+        modifier =
+            Modifier
+                .width(342.dp)
+                .height(150.dp)
+                .background(SlockColor.SurfaceWhite)
+                .padding(16.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            SlockThemeProvider(theme = brutalTheme) {
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    SlockBrutalActionButton(label = "Brutal", onClick = {}, minHeight = 32.dp, minWidth = 0.dp)
+                    SlockBrutalActionButton(label = "Save", onClick = {}, backgroundColor = SlockColor.BrandYellow, minHeight = 32.dp, minWidth = 0.dp)
+                }
+            }
+            SlockThemeProvider(theme = elegantTheme) {
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    SlockBrutalActionButton(label = "Elegant", onClick = {}, minHeight = 32.dp, minWidth = 0.dp)
+                    SlockBrutalActionButton(label = "Save", onClick = {}, backgroundColor = SlockColor.BrandYellow, minHeight = 32.dp, minWidth = 0.dp)
+                }
+            }
+        }
+    }
+}
+
+@Composable
 internal fun UiFormFieldVisualContent() {
     // Content-sized on purpose: a fixed 226.dp height exhausted the constraint and
     // collapsed the error-state input box (react hit the same clip and content-sized

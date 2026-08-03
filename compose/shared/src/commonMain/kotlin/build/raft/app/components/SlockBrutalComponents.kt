@@ -18,6 +18,8 @@ import build.raft.app.TextField
 import build.raft.app.slockFloatingContentClickTarget
 import build.raft.app.slockCaptureLiveRootAnchor
 import build.raft.app.slockSquareCorners
+import build.raft.app.slockThemedCorners
+import build.raft.app.LocalSlockTheme
 import build.raft.app.withSlockFontWeight
 import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
@@ -982,6 +984,11 @@ private fun SlockBrutalActionButtonInnerContent(
     disabledIconColor: String,
     trailingContent: (@Composable () -> Unit)? = null
 ) {
+    // Enabled ink follows the register (brutalTheme.ink == TextBlack, unchanged).
+    // The leading icon keeps its ARGB-string ink for now — elegant ink (#0A0A0A) vs
+    // brutal (#000000) is sub-perceptual, and Color→ARGB-string plumbing is a
+    // separate follow-up from this switch proof.
+    val inkColor = if (enabled) LocalSlockTheme.current.ink else disabledContentColor
     Row(
         horizontalArrangement = Arrangement.spacedBy(if (leadingIcon != null || trailingContent != null) contentSpacing else 0.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -997,7 +1004,7 @@ private fun SlockBrutalActionButtonInnerContent(
         Text(
             text = label,
             style = textStyle,
-            color = if (enabled) SlockColor.TextBlack else disabledContentColor,
+            color = inkColor,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -1030,25 +1037,37 @@ internal fun SlockBrutalActionButton(
     leadingIconSpinning: Boolean = leadingIcon == SlockLucideIconName.Loader || leadingIcon == SlockLucideIconName.LoaderCircle,
     leadingIconSize: Dp = 12.dp,
     contentSpacing: Dp = 6.dp,
-    shadowOffset: Dp = SlockShadow.Brutal,
+    // Null defers to the register's structural offset (brutal 4dp == SlockShadow.Brutal,
+    // so the default path is unchanged). Callers passing an explicit offset keep it.
+    shadowOffset: Dp? = null,
     textStyle: TextStyle = SlockBrutalActionButtonDefaultTextStyle,
     trailingContent: (@Composable () -> Unit)? = null
 ) {
-    val shadowColor = if (enabled) SlockColor.ShadowBlack else disabledShadowColor
-    val borderColor = if (enabled) SlockColor.BorderBlack else disabledBorderColor
+    // Phase 1 theme pilot: the enabled register (border, corner radius, structural
+    // shadow, ink) is read from LocalSlockTheme. brutalTheme reproduces every value
+    // this button hard-coded (line=BorderBlack@2dp, corner=0, shadow=ShadowBlack@4dp,
+    // ink=TextBlack), so the default path renders byte-identically; a SlockThemeProvider
+    // (elegantTheme) subtree flips it to a thin gray hairline, 8dp rounding, and near-
+    // black ink. The soft ambient blur (elegant shadow.blur) is not yet applied here —
+    // this offset-Box shadow has no blur; wiring a blur-capable shadow primitive is a
+    // documented follow-up, tracked separately from this switch proof.
+    val theme = LocalSlockTheme.current
+    val resolvedShadowOffset = shadowOffset ?: theme.shadow.offset
+    val shadowColor = if (enabled) theme.shadow.color else disabledShadowColor
+    val borderColor = if (enabled) theme.line else disabledBorderColor
     Box(
         modifier =
             modifier
-                .padding(end = shadowOffset, bottom = shadowOffset),
+                .padding(end = resolvedShadowOffset, bottom = resolvedShadowOffset),
         propagateMinConstraints = true
     ) {
         Box(
             modifier =
                 Modifier
                     .matchParentSize()
-                    .offset(x = shadowOffset, y = shadowOffset)
+                    .offset(x = resolvedShadowOffset, y = resolvedShadowOffset)
                     .background(shadowColor, RectangleShape)
-                    .slockSquareCorners()
+                    .slockThemedCorners(theme.cornerRadius)
         )
         SlockAnchorButton(
             onClick = onClick,
@@ -1059,8 +1078,8 @@ internal fun SlockBrutalActionButton(
                     .widthIn(min = minWidth)
                     .heightIn(min = minHeight)
                     .background(if (enabled) backgroundColor else disabledBackgroundColor, RectangleShape)
-                    .border(SlockStroke.Default, borderColor, RectangleShape)
-                    .slockSquareCorners()
+                    .border(theme.lineWidth, borderColor, RectangleShape)
+                    .slockThemedCorners(theme.cornerRadius)
                     // react buttons use 12px/6px padding: with 6dp vertical padding a
                     // 12sp/14sp-line label yields the same 28px box react renders for
                     // minHeight-28 buttons (8dp made them 30px tall) — task #370.
