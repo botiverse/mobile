@@ -4,7 +4,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.offset
@@ -12,7 +11,10 @@ import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.layout.LayoutCoordinates
-import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
+import com.tencent.kuikly.compose.ui.node.GlobalPositionAwareModifierNode
+import com.tencent.kuikly.compose.ui.node.ModifierNodeElement
+import com.tencent.kuikly.compose.ui.node.requireLayoutCoordinates
+import com.tencent.kuikly.compose.ui.platform.InspectorInfo
 import com.tencent.kuikly.compose.ui.unit.IntOffset
 import com.tencent.kuikly.compose.ui.unit.IntSize
 
@@ -188,6 +190,17 @@ internal class SlockPopoverAnchor private constructor(
 
 internal typealias SlockLiveRootAnchorRef = SlockPopoverAnchor.LiveRef
 
+internal fun refreshSlockLiveRootAnchorCaptureOwner(
+    currentOwner: SlockLiveRootAnchorRef,
+    nextOwner: SlockLiveRootAnchorRef,
+    coordinates: LayoutCoordinates?
+) {
+    if (currentOwner !== nextOwner) currentOwner.invalidate()
+    coordinates
+        ?.takeIf { it.isAttached }
+        ?.let(nextOwner::captureFromLayoutCoordinates)
+}
+
 /**
  * Focus dismissal also needs live local-to-root conversion, but it must not reuse or expose the
  * typed popover-anchor capability. This small focus-only handle keeps that conversion centralized
@@ -288,22 +301,71 @@ internal fun SlockPopoverAnchorResolver.resolveCurrentPlacement(): SlockPopoverA
  * [SlockPopoverAnchorResolver], which still defers root conversion until open. Detached coordinates
  * deliberately fail closed.
  */
-@Composable
 internal fun Modifier.slockCaptureLiveRootAnchor(
     anchorRef: SlockLiveRootAnchorRef,
     enabled: Boolean = true,
     onCaptured: ((IntSize) -> Unit)? = null
 ): Modifier {
-    val currentOnCaptured by rememberUpdatedState(onCaptured)
-    DisposableEffect(anchorRef, enabled) {
-        onDispose { anchorRef.invalidate() }
-    }
     return if (enabled) {
-        onGloballyPositioned { coordinates ->
-            anchorRef.captureFromLayoutCoordinates(coordinates)
-            currentOnCaptured?.invoke(coordinates.size)
-        }
+        this then SlockLiveRootAnchorCaptureElement(anchorRef, onCaptured)
     } else {
         this
+    }
+}
+
+private data class SlockLiveRootAnchorCaptureElement(
+    val anchorRef: SlockLiveRootAnchorRef,
+    val onCaptured: ((IntSize) -> Unit)?
+) : ModifierNodeElement<SlockLiveRootAnchorCaptureNode>() {
+    override fun create(): SlockLiveRootAnchorCaptureNode =
+        SlockLiveRootAnchorCaptureNode(anchorRef, onCaptured)
+
+    override fun update(node: SlockLiveRootAnchorCaptureNode) {
+        node.update(anchorRef, onCaptured)
+    }
+
+    override fun InspectorInfo.inspectableProperties() {
+        name = "slockCaptureLiveRootAnchor"
+        properties["anchorRef"] = anchorRef
+    }
+}
+
+private class SlockLiveRootAnchorCaptureNode(
+    private var anchorRef: SlockLiveRootAnchorRef,
+    private var onCaptured: ((IntSize) -> Unit)?
+) : Modifier.Node(), GlobalPositionAwareModifierNode {
+    override fun onGloballyPositioned(coordinates: LayoutCoordinates) {
+        capture(coordinates)
+    }
+
+    fun update(
+        nextAnchorRef: SlockLiveRootAnchorRef,
+        nextOnCaptured: ((IntSize) -> Unit)?
+    ) {
+        val currentAnchorRef = anchorRef
+        val ownerChanged = currentAnchorRef !== nextAnchorRef
+        anchorRef = nextAnchorRef
+        onCaptured = nextOnCaptured
+
+        // Kuikly may update a reused lazy-row Modifier.Node without scheduling another global
+        // positioning callback when the recycled slot stays at the same coordinates. Capture the
+        // node's already-attached coordinator during the update so the new semantic row cannot
+        // admit a gesture while its live anchor is still empty.
+        if (ownerChanged && isAttached) {
+            val coordinates = requireLayoutCoordinates()
+            refreshSlockLiveRootAnchorCaptureOwner(currentAnchorRef, nextAnchorRef, coordinates)
+            onCaptured?.invoke(coordinates.size)
+        } else if (ownerChanged) {
+            currentAnchorRef.invalidate()
+        }
+    }
+
+    override fun onDetach() {
+        anchorRef.invalidate()
+    }
+
+    private fun capture(coordinates: LayoutCoordinates) {
+        anchorRef.captureFromLayoutCoordinates(coordinates)
+        onCaptured?.invoke(coordinates.size)
     }
 }
