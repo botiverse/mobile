@@ -12,6 +12,41 @@ import kotlin.test.assertTrue
 
 class KuiklyChatLayoutPreferencesTest {
     @Test
+    fun processOffRemainsAuthoritativeWhenInitialRepositorySeedCompletesLate() {
+        val applied = mutableListOf<Boolean>()
+        val authority =
+            ConversationForwardGestureRuntimeAuthority(
+                supported = true,
+                onEffectivePreferenceChanged = applied::add
+            )
+
+        // Another shell durably writes OFF while this shell's initial repository read is still
+        // suspended.
+        authority.applyProcessPreferenceChange(false)
+
+        // The older initial read completes after OFF. Its stale true value must not re-enable the
+        // shell runtime.
+        authority.seedFromRepository(true)
+
+        assertEquals(listOf(false), applied)
+    }
+
+    @Test
+    fun unsupportedHostFailsClosedForRepositorySeedAndProcessEvents() {
+        val applied = mutableListOf<Boolean>()
+        val authority =
+            ConversationForwardGestureRuntimeAuthority(
+                supported = false,
+                onEffectivePreferenceChanged = applied::add
+            )
+
+        authority.seedFromRepository(true)
+        authority.applyProcessPreferenceChange(true)
+
+        assertEquals(listOf(false, false), applied)
+    }
+
+    @Test
     fun appScopedTransitionsReconcileEveryLiveShellAndNeverResurrectHistory() = runBlocking {
         val events = KuiklyChatLayoutPreferenceEvents(SlockEventBuses.inProcess())
         val firstHistory = SharedConversationForwardHistory()

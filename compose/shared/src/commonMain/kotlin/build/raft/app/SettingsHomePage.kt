@@ -114,6 +114,7 @@ import build.raft.app.data.SERVER_ACTION_SIDEBAR_ORDER
 import build.raft.app.data.SERVER_ACTION_TRANSLATION_TOGGLE
 import build.raft.app.data.NotificationPreferenceSnapshot
 import build.raft.app.data.PersistentChatLayoutPreferenceRepository
+import build.raft.app.data.ConversationForwardGestureRuntimeAuthority
 import build.raft.app.data.kuiklyChatLayoutPreferenceRepository
 import build.raft.app.data.reconcileConversationForwardGesturePreference
 import build.raft.app.data.PersistentLinkOpenPreferenceRepository
@@ -3916,35 +3917,15 @@ internal fun SlockAppShellContent(
         notificationPreferenceSnapshot =
             notificationPreferenceRepository.getNotificationPreference()
     }
-    LaunchedEffect(chatLayoutPreferenceRepository) {
-        val chatLayout = chatLayoutPreferenceRepository.getChatLayoutPreference()
-        myMessageAlignment = chatLayout.myMessageAlignment
-        compactConsecutiveMessages = chatLayout.compactConsecutiveMessages
-        foregroundMessageBannersEnabled = chatLayout.foregroundMessageBannersEnabled
-        activityTaskStatusBadgesEnabled = chatLayout.activityTaskStatusBadgesEnabled
-        activitySenderAvatarsEnabled = chatLayout.activitySenderAvatarsEnabled
-        serverDrawerEnabled = chatLayout.serverDrawerEnabled
-        homeServerAvatarEnabled = chatLayout.homeServerAvatarEnabled
-        conversationForwardGestureEnabled =
-            settingsCapabilities.supportsConversationForwardGesture &&
-                chatLayout.conversationForwardGestureEnabled
-        threadRowAffordances = chatLayout.threadRowAffordances
-    }
-    LaunchedEffect(settingsState.mobile) {
-        val persistedEnabled =
-            (settingsState.mobile as? ScreenLoadState.Content<SettingsMobileSnapshot>)
-                ?.data
-                ?.conversationForwardGesture
-                ?.enabled
-                ?: return@LaunchedEffect
-        conversationForwardGestureEnabled =
-            settingsCapabilities.supportsConversationForwardGesture && persistedEnabled
-    }
-    DisposableEffect(chatLayoutPreferenceEvents, settingsCapabilities) {
-        val subscription =
-            chatLayoutPreferenceEvents.addConversationForwardGestureListener { enabled ->
-                val effectiveEnabled =
-                    settingsCapabilities.supportsConversationForwardGesture && enabled
+    val conversationForwardGestureRuntimeAuthority =
+        remember(
+            settingsCapabilities.supportsConversationForwardGesture,
+            conversationForwardHistory,
+            bridge
+        ) {
+            ConversationForwardGestureRuntimeAuthority(
+                supported = settingsCapabilities.supportsConversationForwardGesture
+            ) { effectiveEnabled ->
                 conversationForwardGestureEnabled = effectiveEnabled
                 reconcileConversationForwardGesturePreference(
                     enabled = effectiveEnabled,
@@ -3954,7 +3935,27 @@ internal fun SlockAppShellContent(
                     }
                 )
             }
+        }
+    DisposableEffect(chatLayoutPreferenceEvents, conversationForwardGestureRuntimeAuthority) {
+        val subscription =
+            chatLayoutPreferenceEvents.addConversationForwardGestureListener { enabled ->
+                conversationForwardGestureRuntimeAuthority.applyProcessPreferenceChange(enabled)
+            }
         onDispose { subscription.close() }
+    }
+    LaunchedEffect(chatLayoutPreferenceRepository, conversationForwardGestureRuntimeAuthority) {
+        val chatLayout = chatLayoutPreferenceRepository.getChatLayoutPreference()
+        myMessageAlignment = chatLayout.myMessageAlignment
+        compactConsecutiveMessages = chatLayout.compactConsecutiveMessages
+        foregroundMessageBannersEnabled = chatLayout.foregroundMessageBannersEnabled
+        activityTaskStatusBadgesEnabled = chatLayout.activityTaskStatusBadgesEnabled
+        activitySenderAvatarsEnabled = chatLayout.activitySenderAvatarsEnabled
+        serverDrawerEnabled = chatLayout.serverDrawerEnabled
+        homeServerAvatarEnabled = chatLayout.homeServerAvatarEnabled
+        conversationForwardGestureRuntimeAuthority.seedFromRepository(
+            chatLayout.conversationForwardGestureEnabled
+        )
+        threadRowAffordances = chatLayout.threadRowAffordances
     }
     LaunchedEffect(conversationForwardGestureEnabled) {
         conversationForwardHistory.setEnabled(conversationForwardGestureEnabled)

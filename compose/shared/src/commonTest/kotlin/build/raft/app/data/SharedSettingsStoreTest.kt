@@ -1,7 +1,9 @@
 package build.raft.app.data
 
 import build.raft.app.KmmResourceLocaleRuntime
+import build.raft.app.buildThreadLaunchConversationIdentity
 import build.raft.app.model.ChannelId
+import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
@@ -886,6 +888,74 @@ class SharedSettingsStoreTest {
             )
         assertEquals("settings_conversation_forward_gesture_unavailable", rejected.error.code)
         assertFalse(chatLayoutRepository.conversationForwardGestureEnabled)
+    }
+
+    @Test
+    fun delayedMobilePermissionLoadCannotOverrideNewerProcessOff() = runBlocking {
+        val permissionLoad = BlockingCall()
+        val chatLayoutRepository =
+            FakeChatLayoutPreferenceRepository(conversationForwardGestureEnabled = true)
+        val platformCapabilities =
+            object : SharedSettingsPlatformCapabilities {
+                override val supportsConversationForwardGesture: Boolean = true
+
+                override suspend fun loadSystemNotificationPermission(): SettingsMobileActionSnapshot? {
+                    permissionLoad.consume()
+                    return null
+                }
+            }
+        val dataSource =
+            SharedSettingsDataSource(
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                chatLayoutPreferenceRepository = chatLayoutRepository,
+                platformCapabilities = platformCapabilities
+            )
+        val history = SharedConversationForwardHistory()
+        var nativeDisableCount = 0
+        val runtimeAuthority =
+            ConversationForwardGestureRuntimeAuthority(
+                supported = true
+            ) { enabled ->
+                reconcileConversationForwardGesturePreference(
+                    enabled = enabled,
+                    history = history,
+                    disableNativeGesture = { nativeDisableCount += 1 }
+                )
+            }
+        val entry =
+            buildThreadLaunchConversationIdentity(
+                kind = ConversationKind.Channel,
+                channelId = ChannelId("channel-a")
+            ).toConversationForwardEntry("server-a")
+        runtimeAuthority.seedFromRepository(true)
+        history.recordNewOpen(entry)
+        assertTrue(history.recordHomeVisible())
+        assertTrue(history.canForward)
+
+        var delayedResult: DataResult<SettingsMobileSnapshot>? = null
+        val loadJob =
+            launch {
+                delayedResult = dataSource.loadMobilePreferences()
+            }
+        permissionLoad.awaitStarted()
+
+        chatLayoutRepository.conversationForwardGestureEnabled = false
+        runtimeAuthority.applyProcessPreferenceChange(false)
+        permissionLoad.release()
+        loadJob.join()
+
+        val staleMobileSnapshot =
+            assertIs<DataResult.Content<SettingsMobileSnapshot>>(delayedResult).data
+        assertTrue(staleMobileSnapshot.conversationForwardGesture.enabled)
+        assertFalse(chatLayoutRepository.conversationForwardGestureEnabled)
+        assertFalse(history.enabledForTest())
+        assertFalse(history.canForward)
+        assertNull(history.forwardEntryForTest())
+        assertEquals(1, nativeDisableCount)
+
+        history.recordNewOpen(entry)
+        assertFalse(history.recordHomeVisible())
+        assertFalse(history.canForward)
     }
 
     @Test

@@ -58,3 +58,27 @@ internal fun reconcileConversationForwardGesturePreference(
     history.setEnabled(enabled)
     if (!enabled) disableNativeGesture()
 }
+
+/**
+ * Runtime authority for an AppShell's conversation Forward preference.
+ *
+ * A repository read seeds a newly mounted shell. Once this process has observed a successful
+ * preference write, that process event is newer than any in-flight Settings snapshot or seed
+ * that started before the write, so a late seed must not overwrite it.
+ */
+internal class ConversationForwardGestureRuntimeAuthority(
+    private val supported: Boolean,
+    private val onEffectivePreferenceChanged: (Boolean) -> Unit
+) {
+    private var observedProcessChange: Boolean = false
+
+    fun seedFromRepository(enabled: Boolean) {
+        if (observedProcessChange) return
+        onEffectivePreferenceChanged(supported && enabled)
+    }
+
+    fun applyProcessPreferenceChange(enabled: Boolean) {
+        observedProcessChange = true
+        onEffectivePreferenceChanged(supported && enabled)
+    }
+}
