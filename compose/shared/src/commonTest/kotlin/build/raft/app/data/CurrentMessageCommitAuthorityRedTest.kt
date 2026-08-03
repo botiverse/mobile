@@ -212,6 +212,32 @@ class CurrentMessageCommitAuthorityRedTest {
     }
 
     @Test
+    fun processIngressCommitsCanonicalMessageOnceWithoutMountedSinks() = runBlocking {
+        val fixture = fixture("process-zero-sink")
+        try {
+            fixture.auth.replace(session(), AuthSessionEvent.Authenticated(generation = 1))
+            val grant = assertNotNull(fixture.provider.authorityFlow("shell-a").value?.grant("server-a"))
+            val durable = OwnerDurableStore()
+            val scope = durable.scope(grant)
+            val empty = CommittedMessageScopeSnapshot(scope, emptyList(), null)
+            durable.snapshots[scope] = empty
+            val lane = durable.lane()
+            durable.seedReady(lane, scope, empty)
+            val owner = fixture.owner(RealtimeAppliedSeqCursorStore(InMemorySlockKeyValueStore()), lane)
+            val event = canonicalEvent(CanonicalMessageFoldKind.New)
+
+            assertTrue(owner.acceptProcessMutation(grant, event, source = "normal-process"))
+            assertTrue(owner.acceptProcessMutation(grant, event, source = "raw-process"))
+
+            assertEquals(1, durable.writeInvocations)
+            assertEquals(1, durable.commits)
+            assertEquals(listOf("m1"), lane.published.value().snapshotsByScope[scope]?.facts?.map { it.id })
+        } finally {
+            fixture.close()
+        }
+    }
+
+    @Test
     fun cancellationBeforeLegacyAcceptedKeyRecoveryAndSinksLeavesRetryAvailable() = runBlocking {
         val fixture = fixture("owner-cancellation")
         try {

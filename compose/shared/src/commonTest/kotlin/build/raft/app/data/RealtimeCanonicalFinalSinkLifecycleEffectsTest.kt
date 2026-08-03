@@ -152,8 +152,10 @@ class RealtimeCanonicalFinalSinkLifecycleEffectsTest {
             )
             val selected = fixture.integration.captureForOwnerEntry(grant.scopeLeaseId, grant.serverId, RealtimeCanonicalFinalOwnerEntry.Selected)
             val background = fixture.integration.captureForOwnerEntry(grant.scopeLeaseId, grant.serverId, RealtimeCanonicalFinalOwnerEntry.BackgroundUnread)
+            val process = fixture.integration.captureForOwnerEntry(grant.scopeLeaseId, grant.serverId, RealtimeCanonicalFinalOwnerEntry.Process)
             assertEquals(listOf(core, feature, domain), selected.map { it.handle })
             assertEquals(listOf(unread), background.map { it.handle })
+            assertTrue(process.isEmpty())
         } finally {
             fixture.close()
         }

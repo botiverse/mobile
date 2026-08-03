@@ -20,6 +20,7 @@ internal data class RealtimeCanonicalFinalFlagEvaluation(
 )
 
 internal enum class RealtimeCanonicalFinalOwnerEntry {
+    Process,
     Selected,
     BackgroundUnread,
 }
@@ -107,6 +108,7 @@ internal class RealtimeCanonicalFinalSinkIntegrationSeam(
     ): List<RealtimeCanonicalFinalSinkCapturedRegistration> =
         registrationDirectory.capture(scopeLeaseId, serverId).filter { registration ->
             when (entry) {
+                RealtimeCanonicalFinalOwnerEntry.Process -> false
                 RealtimeCanonicalFinalOwnerEntry.Selected ->
                     registration.handle.slot.surfaceKey != RealtimeCanonicalFinalSinkSurfaceKey.AppShellHomeUnread
                 RealtimeCanonicalFinalOwnerEntry.BackgroundUnread ->

@@ -108,6 +108,44 @@ class RealtimeAuthorityRegistryV12Test {
     }
 
     @Test
+    fun terminalMembershipRevokesEveryScopeAndReconnectCannotReviveUntilExplicitReadd() = runBlocking {
+        val registry = registry(InMemorySlockKeyValueStore(), process = "process-terminal")
+        registry.initialize()
+        registry.advanceAuth(revision(1, principal = "p1", servers = listOf("a", "b")))
+        val leaseOne = registry.register("shell-1")
+        val leaseTwo = registry.register("shell-2")
+        val terminalGrant = assertNotNull(registry.currentGrant(leaseOne.id, "a"))
+        val siblingGrant = assertNotNull(registry.currentGrant(leaseTwo.id, "a"))
+        var terminalMutations = 0
+
+        assertTrue(registry.terminalizeIfCurrentGrant(terminalGrant) { terminalMutations += 1 })
+        assertEquals(1, terminalMutations)
+        assertFalse(registry.runIfCurrentGrant(terminalGrant) {})
+        assertFalse(registry.runIfCurrentGrant(siblingGrant) {})
+        assertNull(registry.currentGrant(leaseOne.id, "a"))
+        assertNull(registry.currentGrant(leaseTwo.id, "a"))
+
+        assertTrue(registry.reconnect(leaseOne.id))
+        assertNull(registry.currentGrant(leaseOne.id, "a"), "same-membership reconnect must stay tombstoned")
+        assertNotNull(registry.currentGrant(leaseOne.id, "b"))
+
+        registry.advanceAuth(revision(2, principal = "p1", servers = listOf("a", "b")))
+        assertNull(registry.currentGrant(leaseOne.id, "a"), "token rotation must not revive membership")
+        registry.advanceAuth(revision(3, principal = "p1", servers = listOf("b")))
+        assertNull(registry.currentGrant(leaseOne.id, "a"))
+        registry.advanceAuth(revision(4, principal = "p1", servers = listOf("a", "b")))
+        assertNotNull(registry.currentGrant(leaseOne.id, "a"), "absent-to-present auth is an explicit re-add")
+        assertNotNull(registry.currentGrant(leaseTwo.id, "a"))
+
+        val readdedGrant = assertNotNull(registry.currentGrant(leaseOne.id, "a"))
+        assertTrue(registry.terminalizeIfCurrentGrant(readdedGrant) {})
+        registry.advanceAuth(revision(5, principal = "p2", servers = listOf("a", "b")))
+        assertNotNull(registry.currentGrant(leaseOne.id, "a"), "a new principal starts a distinct membership epoch")
+        assertEquals("p2", registry.currentGrant(leaseOne.id, "a")?.principalId)
+        Unit
+    }
+
+    @Test
     fun resolverUsesFreshFamilyWitnessToLookupExistingCrossServerGrantWithoutMinting() = runBlocking {
         val registry = registry(InMemorySlockKeyValueStore(), process = "process-resolve")
         registry.initialize()
