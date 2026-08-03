@@ -183,6 +183,10 @@ internal fun UiCardVisualContent() {
             SlockBrutalActionButton(
                 label = "Save changes",
                 onClick = {},
+                // React places <Button size="sm"> in a flex-col so it stretches to the card
+                // content width (~280dp); Kuikly Column keeps it content-sized without this,
+                // so fill the card width to match (XiShi actual-capture audit, both registers).
+                modifier = Modifier.fillMaxWidth(),
                 backgroundColor = SlockColor.BrandYellow,
                 minHeight = 28.dp,
                 minWidth = 0.dp,

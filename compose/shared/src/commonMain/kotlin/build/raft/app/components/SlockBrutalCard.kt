@@ -70,8 +70,17 @@ internal fun SlockBrutalCard(
         Column(
             modifier = modifier
                 .fillMaxWidth()
+                // Card-specific shadow tuning (XiShi actual-capture audit, run 30820954442):
+                // at 3dp the Kuikly elevation shadow was materially darker at contact (bottom
+                // peak 37 vs React 22) and much shorter/more bottom-concentrated (bottom tail
+                // 16px vs 26, right tail 11px vs 23, right integrated -44%) than the React
+                // `0 1px 8px rgba(0,0,0,.15)` halo. 5dp widens the blur so both tails lengthen
+                // and the bottom peak drops (same ink spread over more rows), and the larger
+                // ambient component fills the offset-starved right side. Kuikly couples the
+                // spot Y-offset to elevation, so a small bottom bias remains (the fundamental
+                // floor vs React's near-symmetric CSS halo).
                 .shadow(
-                    elevation = 3.dp,
+                    elevation = 5.dp,
                     shape = shape,
                     clip = true,
                     ambientColor = theme.shadow.color,
