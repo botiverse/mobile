@@ -7,7 +7,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.runBlocking
 
 class AttachmentOpenSemanticResultTest {
     private val localizedTerms =
@@ -97,7 +97,7 @@ class AttachmentOpenSemanticResultTest {
     }
 
     @Test
-    fun productionExternalOpenTraceCoversMissingAndHostTerminalInOrder() = runTest {
+    fun productionExternalOpenTraceCoversMissingAndHostTerminalInOrder() = runBlocking {
         val policy = SlockFilePreviewExternalOpenPolicy(requirePublicDownload = false, trackProgress = true)
         val missingTrace = mutableListOf<String>()
         val missing =
