@@ -194,6 +194,41 @@ class SlockLiveRootAnchorRefTest {
         assertNotNull(newResolver.resolve())
         assertEquals(Offset(0f, 10f), reusedCoordinates.lastLocalToRootInput)
     }
+
+    @Test
+    fun attachedLazyModifierOwnerUpdateRecapturesWithoutAnotherPositionCallback() {
+        val reusedCoordinates = FakeLayoutCoordinates(root = Offset(10f, 20f))
+        val oldRef = SlockLiveRootAnchorRef(identity = "message:old")
+        oldRef.captureFromLayoutCoordinates(reusedCoordinates)
+        val newRef = SlockLiveRootAnchorRef(identity = "message:new")
+
+        refreshSlockLiveRootAnchorCaptureOwner(
+            currentOwner = oldRef,
+            nextOwner = newRef,
+            coordinates = reusedCoordinates
+        )
+
+        assertNull(oldRef.resolve(SlockPopoverLocalPoint.Exact(Offset.Zero)))
+        assertNotNull(newRef.resolve(SlockPopoverLocalPoint.Exact(Offset.Zero)))
+    }
+
+    @Test
+    fun detachedLazyModifierOwnerUpdateInvalidatesWithoutRecapturing() {
+        val detachedCoordinates = FakeLayoutCoordinates(root = Offset(10f, 20f), attached = false)
+        val oldRef = SlockLiveRootAnchorRef(identity = "message:old")
+        val initiallyAttachedCoordinates = FakeLayoutCoordinates(root = Offset(10f, 20f))
+        oldRef.captureFromLayoutCoordinates(initiallyAttachedCoordinates)
+        val newRef = SlockLiveRootAnchorRef(identity = "message:new")
+
+        refreshSlockLiveRootAnchorCaptureOwner(
+            currentOwner = oldRef,
+            nextOwner = newRef,
+            coordinates = detachedCoordinates
+        )
+
+        assertNull(oldRef.resolve(SlockPopoverLocalPoint.Exact(Offset.Zero)))
+        assertNull(newRef.resolve(SlockPopoverLocalPoint.Exact(Offset.Zero)))
+    }
 }
 
 private class FakeLayoutCoordinates(
