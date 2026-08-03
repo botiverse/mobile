@@ -1570,6 +1570,7 @@ internal fun MembersPageContent() {
                 }
             }
         }
+    // MEMBERS_COMPUTERS_ERROR_RETRY_WIRING_START
     val loadMachines: () -> Unit = remember(computersStore, serverId) {
         {
             if (serverId.isNotBlank()) {
@@ -1785,6 +1786,7 @@ internal fun MembersPageContent() {
         // `agentScopes` / `updateAgentScopes` / `resetAgentScopes` directly.
         agentsApiClient = agentsApiClient
     )
+    // MEMBERS_COMPUTERS_ERROR_RETRY_WIRING_END
 }
 
 internal sealed interface MemberDetailRouteState {

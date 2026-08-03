@@ -9,10 +9,12 @@ import build.raft.app.model.RuntimeModelConfig
 import build.raft.app.model.RuntimeProviderConfig
 import build.raft.app.model.supportsRuntimeCustomModelName
 import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class SharedCreateAgentDialogTest {
@@ -320,6 +322,103 @@ class SharedCreateAgentDialogTest {
         assertEquals(null, createAgentAvailableMachineId(emptyList(), "machine-1"))
         assertEquals(null, createAgentAvailableMachineId(available, "machine-missing"))
         assertEquals("machine-1", createAgentAvailableMachineId(available, "machine-1"))
+    }
+
+    @Test
+    fun automaticRuntimeModelsRequestExecutesOnlyForMachineInCurrentSnapshot() {
+        val available = listOf(SharedCreateAgentMachineOption("machine-1", "Available", "online"))
+        val requests = mutableListOf<Triple<String, String, Boolean>>()
+
+        assertFalse(
+            executeCreateAgentRuntimeModelsRequestIfAvailable(
+                machines = emptyList(),
+                selectedMachineId = "machine-1",
+                runtime = "codex",
+                external = false,
+                force = false,
+                request = { machineId, runtime, force -> requests += Triple(machineId, runtime, force) }
+            )
+        )
+        assertTrue(
+            executeCreateAgentRuntimeModelsRequestIfAvailable(
+                machines = available,
+                selectedMachineId = "machine-1",
+                runtime = "codex",
+                external = false,
+                force = false,
+                request = { machineId, runtime, force -> requests += Triple(machineId, runtime, force) }
+            )
+        )
+
+        assertEquals(listOf(Triple("machine-1", "codex", false)), requests)
+    }
+
+    @Test
+    fun manualRuntimeModelsRefreshExecutesOnlyForMachineInCurrentSnapshot() {
+        val available = listOf(SharedCreateAgentMachineOption("machine-1", "Available", "online"))
+        val requests = mutableListOf<Triple<String, String, Boolean>>()
+
+        assertFalse(
+            executeCreateAgentRuntimeModelsRequestIfAvailable(
+                machines = available,
+                selectedMachineId = "machine-missing",
+                runtime = "claude",
+                external = false,
+                force = true,
+                request = { machineId, runtime, force -> requests += Triple(machineId, runtime, force) }
+            )
+        )
+        assertTrue(
+            executeCreateAgentRuntimeModelsRequestIfAvailable(
+                machines = available,
+                selectedMachineId = "machine-1",
+                runtime = "claude",
+                external = false,
+                force = true,
+                request = { machineId, runtime, force -> requests += Triple(machineId, runtime, force) }
+            )
+        )
+
+        assertEquals(listOf(Triple("machine-1", "claude", true)), requests)
+    }
+
+    @Test
+    fun builtInFormRefreshExecutesOnlyForMachineInCurrentSnapshot() = runTest {
+        val available = listOf(SharedCreateAgentMachineOption("machine-1", "Available", "online"))
+        val starts = mutableListOf<String>()
+        val requests = mutableListOf<Pair<String, String>>()
+        val request: suspend (String, String) -> DataResult<Unit> = { serverId, machineId ->
+            requests += serverId to machineId
+            DataResult.Content(Unit)
+        }
+
+        val staleResult =
+            executeCreateAgentBuiltInFormRefreshIfAvailable(
+                machines = emptyList(),
+                selectedMachineId = "machine-1",
+                serverId = "server-1",
+                external = false,
+                hasFormOverride = false,
+                onStarted = { starts += "started" },
+                request = request
+            )
+        assertNull(staleResult)
+        assertTrue(starts.isEmpty())
+        assertTrue(requests.isEmpty())
+
+        val availableResult =
+            executeCreateAgentBuiltInFormRefreshIfAvailable(
+                machines = available,
+                selectedMachineId = "machine-1",
+                serverId = " server-1 ",
+                external = false,
+                hasFormOverride = false,
+                onStarted = { starts += "started" },
+                request = request
+            )
+        assertTrue(availableResult is DataResult.Content)
+        assertEquals(listOf("started"), starts)
+        assertEquals(listOf("server-1" to "machine-1"), requests)
     }
 
     @Test

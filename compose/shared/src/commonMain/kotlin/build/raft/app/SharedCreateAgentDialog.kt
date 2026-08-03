@@ -447,6 +447,38 @@ internal fun createAgentAvailableMachineId(
 ): String? =
     selectedMachineId?.takeIf { selectedId -> machines.any { machine -> machine.id == selectedId } }
 
+// CREATE_AGENT_RUNTIME_REQUEST_ADMISSION_START
+internal fun executeCreateAgentRuntimeModelsRequestIfAvailable(
+    machines: List<SharedCreateAgentMachineOption>,
+    selectedMachineId: String?,
+    runtime: String,
+    external: Boolean,
+    force: Boolean,
+    request: (machineId: String, runtime: String, force: Boolean) -> Unit
+): Boolean {
+    val machineId = createAgentAvailableMachineId(machines, selectedMachineId) ?: return false
+    if (external || runtime.isBlank()) return false
+    request(machineId, runtime, force)
+    return true
+}
+
+internal suspend fun <T> executeCreateAgentBuiltInFormRefreshIfAvailable(
+    machines: List<SharedCreateAgentMachineOption>,
+    selectedMachineId: String?,
+    serverId: String,
+    external: Boolean,
+    hasFormOverride: Boolean,
+    onStarted: () -> Unit,
+    request: suspend (serverId: String, machineId: String) -> DataResult<T>
+): DataResult<T>? {
+    val machineId = createAgentAvailableMachineId(machines, selectedMachineId) ?: return null
+    val normalizedServerId = serverId.trim()
+    if (external || hasFormOverride || normalizedServerId.isBlank()) return null
+    onStarted()
+    return request(normalizedServerId, machineId)
+}
+// CREATE_AGENT_RUNTIME_REQUEST_ADMISSION_END
+
 internal fun createAgentModelDropdownItems(
     runtime: String,
     runtimeModelsOverride: List<SharedCreateAgentRuntimeModelOption> = emptyList(),
@@ -770,10 +802,14 @@ internal fun SharedCreateAgentDialog(
     }
 
     LaunchedEffect(availableSelectedMachineId, runtime, external) {
-        val machineId = availableSelectedMachineId ?: return@LaunchedEffect
-        if (!external && runtime.isNotBlank()) {
-            onRuntimeModelsRequest(machineId, runtime, false)
-        }
+        executeCreateAgentRuntimeModelsRequestIfAvailable(
+            machines = machines,
+            selectedMachineId = selectedMachineId,
+            runtime = runtime,
+            external = external,
+            force = false,
+            request = onRuntimeModelsRequest
+        )
     }
 
     LaunchedEffect(
@@ -784,15 +820,21 @@ internal fun SharedCreateAgentDialog(
         builtInFormOverride,
         dialogBuiltInFormRefreshAttempt
     ) {
-        val machineId = availableSelectedMachineId ?: return@LaunchedEffect
-        if (!external && builtInFormOverride == null && cleanCreateAgentServerId.isNotBlank()) {
-            createAgentFormStore?.let { formStore ->
-                dialogBuiltInFormRefreshState = createAgentDialogFormRefreshStarted()
-                dialogBuiltInFormRefreshState =
-                    createAgentDialogFormRefreshCompleted(
-                        refreshCreateAgentDialogBuiltInForm(formStore, cleanCreateAgentServerId, machineId)
-                    )
-            }
+        val formStore = createAgentFormStore ?: return@LaunchedEffect
+        val result =
+            executeCreateAgentBuiltInFormRefreshIfAvailable(
+                machines = machines,
+                selectedMachineId = selectedMachineId,
+                serverId = cleanCreateAgentServerId,
+                external = external,
+                hasFormOverride = builtInFormOverride != null,
+                onStarted = { dialogBuiltInFormRefreshState = createAgentDialogFormRefreshStarted() },
+                request = { serverId, machineId ->
+                    refreshCreateAgentDialogBuiltInForm(formStore, serverId, machineId)
+                }
+            )
+        if (result != null) {
+            dialogBuiltInFormRefreshState = createAgentDialogFormRefreshCompleted(result)
         }
     }
 
@@ -1137,9 +1179,14 @@ internal fun SharedCreateAgentDialog(
                             runtimeModelsOverride = runtimeModelsOverride,
                             runtimeModelsLoading = runtimeModelsLoading,
                             onRuntimeModelsRefresh = {
-                                availableSelectedMachineId?.let { machineId ->
-                                    onRuntimeModelsRequest(machineId, runtime, true)
-                                }
+                                executeCreateAgentRuntimeModelsRequestIfAvailable(
+                                    machines = machines,
+                                    selectedMachineId = selectedMachineId,
+                                    runtime = runtime,
+                                    external = external,
+                                    force = true,
+                                    request = onRuntimeModelsRequest
+                                )
                             },
                             machineRuntimeIds = selectedMachineRuntimeIds,
                             runtimeAvailabilityError = runtimeAvailabilityError,

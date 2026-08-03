@@ -5067,6 +5067,7 @@ internal fun SlockAppShellContent(
             }
         }
     }
+    // MEMBERS_COMPUTERS_IDLE_PREWARM_START
     LaunchedEffect(
         computersPrewarmServerId,
         readySession?.user?.id,
@@ -5100,6 +5101,7 @@ internal fun SlockAppShellContent(
             }
         }
     }
+    // MEMBERS_COMPUTERS_IDLE_PREWARM_END
 
     val appShellHomeLabels = SlockHomeShellLabels.localized()
     val serverDrawerUserHeader =
@@ -16416,6 +16418,7 @@ private fun SharedMembersScreen(
             val computersSlice by computersStore
                 .computerPickerSliceFlow(serverId)
                 .collectAsState(SharedComputersPickerSlice())
+            // MEMBERS_COMPUTERS_ERROR_RETRY_WIRING_START
             val loadMachines: () -> Unit = {
                 onForegroundActivity("load_machines")
                 if (serverId.isNotBlank()) {
@@ -16674,6 +16677,7 @@ private fun SharedMembersScreen(
                     onRetry()
                 }
             )
+            // MEMBERS_COMPUTERS_ERROR_RETRY_WIRING_END
         }
     }
 }
