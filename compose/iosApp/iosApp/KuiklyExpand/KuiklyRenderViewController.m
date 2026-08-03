@@ -1,6 +1,7 @@
 #import "KuiklyRenderViewController.h"
 #import "Modules/HRBridgeModule.h"
 #import "UINavigationController+FDFullscreenPopGesture.h"
+#import "iosApp-Swift.h"
 #import <OpenKuiklyIOSRender/KuiklyRenderViewControllerBaseDelegator.h>
 #import <OpenKuiklyIOSRender/KuiklyRenderContextProtocol.h>
 #import <math.h>
@@ -11,6 +12,7 @@ static const NSTimeInterval SlockKuiklyMillisPerDay = 86400000.0;
 static const NSTimeInterval SlockKuiklyMillisPerMinute = 60000.0;
 static NSString *const SlockAppShellPageName = @"compose_slock_app_shell";
 static NSString *const SlockConversationForwardPagerEvent = @"slockConversationForwardRequested";
+static NSString *const SlockAdaptivePanePagerEvent = @"slockAdaptivePaneChanged";
 
 static void SlockKuiklyPutHostTimeContextIfMissing(NSMutableDictionary *pageData) {
     NSDate *now = [NSDate date];
@@ -80,6 +82,8 @@ static NSString *SlockKuiklyPixelString(CGFloat points, CGFloat scale) {
     NSString *_pageName;
     NSDictionary *_pageData;
     BOOL _slockConversationForwardGestureEnabled;
+    BOOL _slockAdaptivePanePublishingActive;
+    SlockIosAdaptivePanePublisher *_slockAdaptivePanePublisher;
 }
 
 - (instancetype)initWithPageName:(NSString *)pageName pageData:(NSDictionary *)pageData {
@@ -89,6 +93,7 @@ static NSString *SlockKuiklyPixelString(CGFloat points, CGFloat scale) {
         _pageData = pageData;
         _delegator = [[KuiklyRenderViewControllerBaseDelegator alloc] initWithPageName:pageName pageData:pageData];
         _delegator.delegate = self;
+        _slockAdaptivePanePublisher = [[SlockIosAdaptivePanePublisher alloc] init];
     }
     return self;
 }
@@ -127,6 +132,7 @@ static NSString *SlockKuiklyPixelString(CGFloat points, CGFloat scale) {
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
     [_delegator viewDidLayoutSubviews];
+    [self slockPublishAdaptivePaneForCurrentBounds:@"layout"];
 
 }
 
@@ -140,16 +146,37 @@ static NSString *SlockKuiklyPixelString(CGFloat points, CGFloat scale) {
     [super viewDidAppear:animated];
     [_delegator viewDidAppear];
     [self.navigationController setNavigationBarHidden:YES animated:NO];
+    _slockAdaptivePanePublishingActive = YES;
+    [self slockPublishAdaptivePaneForCurrentBounds:@"appear"];
 }
 
 - (void)viewWillDisappear:(BOOL)animated {
     [super viewWillDisappear:animated];
+    _slockAdaptivePanePublishingActive = NO;
     [_delegator viewWillDisappear];
 }
 
 - (void)viewDidDisappear:(BOOL)animated {
     [super viewDidDisappear:animated];
     [_delegator viewDidDisappear];
+}
+
+- (void)viewWillTransitionToSize:(CGSize)size
+       withTransitionCoordinator:(id<UIViewControllerTransitionCoordinator>)coordinator {
+    [super viewWillTransitionToSize:size withTransitionCoordinator:coordinator];
+    __weak typeof(self) weakSelf = self;
+    [coordinator animateAlongsideTransition:nil completion:^(__unused id<UIViewControllerTransitionCoordinatorContext> context) {
+        [weakSelf slockPublishAdaptivePaneForCurrentBounds:@"viewWillTransition"];
+    }];
+}
+
+- (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection {
+    [super traitCollectionDidChange:previousTraitCollection];
+    if (previousTraitCollection == nil ||
+        previousTraitCollection.horizontalSizeClass != self.traitCollection.horizontalSizeClass ||
+        previousTraitCollection.verticalSizeClass != self.traitCollection.verticalSizeClass) {
+        [self slockPublishAdaptivePaneForCurrentBounds:@"sizeClass"];
+    }
 }
 
 - (NSArray<UIKeyCommand *> *)keyCommands {
@@ -175,6 +202,34 @@ static NSString *SlockKuiklyPixelString(CGFloat points, CGFloat scale) {
 }
 
 #pragma mark - private
+
+- (void)slockPublishAdaptivePaneForCurrentBounds:(NSString *)reason {
+    if (!_slockAdaptivePanePublishingActive) {
+        return;
+    }
+    UIWindow *window = self.view.window ?: SlockKuiklyCurrentKeyWindow();
+    CGSize size = window != nil ? window.bounds.size : self.view.bounds.size;
+    CGFloat scale = window.screen.scale ?: UIScreen.mainScreen.scale;
+    NSDictionary *payload =
+        [_slockAdaptivePanePublisher nextPayloadWithWidthPoints:size.width
+                                                  heightPoints:size.height
+                                                         scale:scale];
+    if (payload == nil) {
+        return;
+    }
+    [_delegator sendWithEvent:SlockAdaptivePanePagerEvent data:payload];
+    NSString *message =
+        [NSString stringWithFormat:
+            @"ios_window_facts page=%@ widthPx=%@ heightPx=%@ density=%@ posture=flat hSizeClass=%ld vSizeClass=%ld reason=%@",
+            _pageName ?: @"unknown",
+            payload[@"widthPx"],
+            payload[@"heightPx"],
+            payload[@"density"],
+            (long)self.traitCollection.horizontalSizeClass,
+            (long)self.traitCollection.verticalSizeClass,
+            reason ?: @"unknown"];
+    SlockIosDiagnosticsRecord(@"info", @"SlockAdaptivePane", message);
+}
 
 - (NSDictionary *)p_mergeExtParamsWithOriditalParam:(NSDictionary *)pageParam {
     NSMutableDictionary *mParam = [(pageParam ?: @{}) mutableCopy];
