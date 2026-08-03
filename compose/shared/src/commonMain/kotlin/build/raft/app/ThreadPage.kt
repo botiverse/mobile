@@ -10554,9 +10554,49 @@ internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_CODE_EMAIL = "md_code_email"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_CODE_URL = "md_code_url"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_CODE_BLOCK = "md_code_block"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_TABLE = "md_table"
+internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_LONG_TABLE_OVERLAP = "md_long_table_overlap"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_TABLE_TIGHT = "md_table_tight"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_ESCAPES = "md_escapes"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_LATEST_RELEASE = "md_latest_release"
+
+/**
+ * Task #526 regression specimen derived from the reported hotel-comparison
+ * screenshot. The first table nearly fills one visual viewport; the uniquely
+ * labelled detail table starts at the bottom edge only after its final rule.
+ * If MarkdownTable under-reports the tall table's height, the detail table is
+ * placed early and paints over the still-visible hotel rows.
+ */
+internal val THREAD_MESSAGE_VISUAL_MD_LONG_TABLE_OVERLAP_BODY =
+    """
+    长表格高度回归：下面的“酒店明细”只能出现在酒店对比表完整结束之后。
+
+    | 酒店 | 评分 | 约总价 |
+    | --- | ---: | ---: |
+    | Hampton Inn & Suites Sunnyvale Silicon Valley | 8.8 | ~USD 764 |
+    | Hilton Garden Inn Cupertino Silicon Valley | 8.3 | ~USD 761 |
+    | Holiday Inn Express Sunnyvale Double Room | 9.1 | ~USD 637 |
+    | Wild Palms Hotel Sunnyvale | 8.0 | ~USD 629 |
+    | Best Western Silicon Valley | 8.3 | ~USD 618 |
+    | Grand Hotel Sunnyvale Queen Beds | 7.9 | ~USD 640 |
+    | Cherry Orchard Inn Booking | 8.0 | ~USD 454 |
+    | Hampton Inn Milpitas SJC Airport | 8.8 | ~USD 581 |
+    | Maple Tree Inn Extended Stay | 8.6 | ~USD 552 |
+    | Residence Inn Sunnyvale Silicon Valley | 8.7 | ~USD 706 |
+    | Courtyard by Marriott Mountain View | 8.5 | ~USD 688 |
+    | Aloft Santa Clara North | 8.4 | ~USD 665 |
+    | AC Hotel Sunnyvale Moffett Park | 8.6 | ~USD 718 |
+    | Sonesta ES Suites Sunnyvale | 8.2 | ~USD 596 |
+
+    | 酒店明细（不得覆盖上表） | 值 |
+    | --- | --- |
+    | 酒店 | Hampton Inn & Suites Sunnyvale Silicon Valley |
+    | 地址 | 861 E El Camino Real, Sunnyvale, CA 94087 |
+    | 电话 | +1 408-523-1000 |
+    | 日期 | 8/4 入住，8/6 退房，2 成人，1 间 |
+    | 房型 | Queen Room with Two Queen Beds |
+
+    长表格尾部哨兵：两张表结束后才能看到这一行，任何重叠都算失败。
+    """.trimIndent()
 
 private fun threadMessageVisualWidth(visualFixture: String): Dp =
     when (visualFixture) {
@@ -11533,6 +11573,49 @@ internal fun threadVisualFixture(
                                     "| No error message | PASS | zero error or retry |\n" +
                                     "| **No crash** | PASS | 28 turns stable |\n\n" +
                                     "Trailing paragraph closes the specimen."
+                        )
+                    ),
+                members = emptyList(),
+                showComposer = false,
+                joined = true,
+                composer =
+                    KuiklyThreadComposerPayload(
+                        instanceId = resolvedInstanceId,
+                        enabled = false
+                    )
+            )
+        THREAD_MESSAGE_VISUAL_FIXTURE_MD_LONG_TABLE_OVERLAP ->
+            // Task #526: a tall first table followed by a uniquely labelled
+            // detail table. The first table nearly fills the 844dp capture;
+            // the detail header may enter at the bottom edge, but it must start
+            // after the first table's final rule and never cover hotel rows.
+            KuiklyThreadScreenPayload(
+                instanceId = resolvedInstanceId,
+                title = "#markdown",
+                subtitle = "Long table height/overlap regression (task #526)",
+                status = "content",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                streamChannelId = "channel-markdown",
+                sourceThreadId = "channel-markdown",
+                selectedTab = "chat",
+                showModeTabs = false,
+                showReplyActions = false,
+                alignOwnMessagesRight = false,
+                showMessageSaveAction = false,
+                showTaskOpenActions = false,
+                showTaskStatusActions = false,
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "msg_md_long_table_overlap_visual",
+                            authorId = "agent-cindy",
+                            authorName = "Cindy",
+                            authorDescription = "Pins tall Markdown table measurement regressions.",
+                            authorKind = "agent",
+                            avatarLabel = "CI",
+                            timestampLabel = "08/03 19:40",
+                            messageType = "Chat",
+                            body = THREAD_MESSAGE_VISUAL_MD_LONG_TABLE_OVERLAP_BODY
                         )
                     ),
                 members = emptyList(),

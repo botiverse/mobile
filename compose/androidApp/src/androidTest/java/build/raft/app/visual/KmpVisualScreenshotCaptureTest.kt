@@ -2043,6 +2043,22 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureThreadMessageRowMdLongTableOverlap() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.md-long-table-overlap",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-md-long-table-overlap")
+                    .put("visualFixture", "md_long_table_overlap"),
+            // The first table nearly fills one viewport. A broken height
+            // report pulls the following detail table upward and paints it
+            // over hotel rows instead of after the final rule (task #526).
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
+        )
+    }
+
+    @Test
     fun captureThreadMessageRowMdTableTight() {
         captureKmpComponentCase(
             caseId = "components.thread.message-row.md-table-tight",
