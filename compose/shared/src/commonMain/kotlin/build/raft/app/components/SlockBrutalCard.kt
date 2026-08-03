@@ -1,9 +1,12 @@
 package build.raft.app.components
 
 import build.raft.app.LocalSlockTheme
+import build.raft.app.SlockThemeFamily
 import build.raft.app.slockThemedCorners
 import androidx.compose.runtime.Composable
 import com.tencent.kuikly.compose.foundation.background
+import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
+import com.tencent.kuikly.compose.ui.draw.shadow
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
@@ -55,12 +58,34 @@ internal fun SlockBrutalCard(
     verticalArrangement: Arrangement.Vertical = Arrangement.spacedBy(8.dp),
     content: @Composable ColumnScope.() -> Unit
 ) {
-    // Reads the brutal|elegant register from LocalSlockTheme: brutalTheme keeps the
-    // shipping look byte-identical (ShadowBlack@4dp==SlockShadow.Brutal, square corners,
-    // 2dp black border, white surface); elegantTheme rounds the corners, softens the
-    // shadow color/offset, and swaps to the 1dp gray hairline. shadowOffset==null defers
-    // to the register (explicit callers keep their override).
+    // Reads the brutal|elegant register from LocalSlockTheme. brutalTheme keeps the shipping
+    // look byte-identical (ShadowBlack@4dp offset-box, square corners, 2dp black border, white
+    // surface). elegantTheme renders the ambient register: real 8dp rounded corners + a soft
+    // elevation shadow via Kuikly Modifier.shadow(clip = true) — the same fix the button used,
+    // because the borderRadius-prop slockThemedCorners does not round at runtime and the
+    // offset-box cannot blur (verified via #1894 captures; owner-accepted shadow profile).
     val theme = LocalSlockTheme.current
+    if (theme.family == SlockThemeFamily.Elegant) {
+        val shape = RoundedCornerShape(theme.cornerRadius)
+        Column(
+            modifier = modifier
+                .fillMaxWidth()
+                .shadow(
+                    elevation = 3.dp,
+                    shape = shape,
+                    clip = true,
+                    ambientColor = theme.shadow.color,
+                    spotColor = theme.shadow.color,
+                )
+                .background(theme.surface, shape)
+                .border(theme.lineWidth, theme.line, shape)
+                .padding(contentPadding),
+            verticalArrangement = verticalArrangement,
+            content = content
+        )
+        return
+    }
+    // Brutal register (unchanged, byte-identical): a hard structural offset-box shadow.
     val resolvedShadowOffset = shadowOffset ?: theme.shadow.offset
     Box(modifier = modifier.fillMaxWidth().padding(end = resolvedShadowOffset, bottom = resolvedShadowOffset)) {
         Box(

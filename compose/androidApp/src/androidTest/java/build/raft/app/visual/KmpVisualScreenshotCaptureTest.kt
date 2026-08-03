@@ -294,6 +294,26 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureUiCardStates() {
+        captureKmpComponentCase(
+            caseId = "components.ui.card.states",
+            pageName = "compose_ui_card_visual",
+            crop = UI_CARD_CROP
+        )
+    }
+
+    // Elegant-register card capture (same content under SlockThemeProvider(elegantTheme)).
+    // Paired against the React elegant card render as components.ui.card.states.elegant.
+    @Test
+    fun captureUiCardStatesElegant() {
+        captureKmpComponentCase(
+            caseId = "components.ui.card.states.elegant",
+            pageName = "compose_ui_card_elegant_visual",
+            crop = UI_CARD_CROP
+        )
+    }
+
+    @Test
     fun captureUiFormFieldStates() {
         captureKmpComponentCase(
             caseId = "components.ui.form-field.states",
@@ -5119,6 +5139,13 @@ class KmpVisualScreenshotCaptureTest {
                 topDp = 0,
                 widthDp = 342,
                 heightDp = 150
+            )
+        private val UI_CARD_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 190
             )
         private val UI_FORM_FIELD_CROP =
             VisualCrop(
