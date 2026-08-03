@@ -144,6 +144,34 @@ class AttachmentOpenSemanticResultTest {
             ),
             events
         )
+
+        val publicEvents = mutableListOf<String>()
+        val publicOffline =
+            runSlockFilePreviewExternalOpenTraceFlow(
+                policy = SlockFilePreviewExternalOpenPolicy(requirePublicDownload = true, trackProgress = false),
+                resolveUrl = {
+                    publicEvents += "resolve"
+                    ""
+                },
+                onUrlResolved = { publicEvents += "resolved:$it" },
+                openHost = {
+                    publicEvents += "host:$it"
+                    "opened"
+                },
+                statusOf = { it },
+                trace = { publicEvents += it }
+            )
+        assertEquals(SlockFilePreviewExternalOpenTraceResult.HostTerminal("opened"), publicOffline)
+        assertEquals(
+            listOf(
+                "resolve",
+                "resolved:",
+                "file_preview_open stage=host_handoff committedRequired=true trackProgress=false",
+                "host:",
+                "file_preview_open stage=host_terminal status=opened"
+            ),
+            publicEvents
+        )
     }
 
     @Test

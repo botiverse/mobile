@@ -5259,7 +5259,15 @@ internal suspend fun <T> runSlockFilePreviewExternalOpenTraceFlow(
     statusOf: (T) -> String?,
     trace: (String) -> Unit
 ): SlockFilePreviewExternalOpenTraceResult<T> {
-    val url = resolveUrl()?.takeIf { it.isNotBlank() }
+    val resolvedUrl = resolveUrl()
+    val url =
+        if (policy.requirePublicDownload) {
+            // A committed public copy is identity/journal driven. Its host must receive the
+            // request even when the remote URL is absent so it can resolve the offline copy.
+            resolvedUrl.orEmpty()
+        } else {
+            resolvedUrl?.takeIf { it.isNotBlank() }
+        }
     if (url == null) {
         trace(
             "file_preview_open stage=url_resolution_failed " +
