@@ -553,6 +553,101 @@ internal fun SlockBrutalTextField(
     }
 }
 
+/**
+ * Shared frame for the two [SlockBrutalInputField] overloads (String + TextFieldValue). Owns the
+ * single register-conditional wrapper so both overloads stay in lockstep and the elegant branch
+ * lives in exactly one place (same single-source approach as the elegant button/card in this file).
+ *
+ * Brutal register (unchanged, byte-identical shipping look): the outer Box reserves a bottom/right
+ * shadow gutter, a hard offset `ShadowBlack` box sits behind, and the foreground is square
+ * (`slockSquareCorners`) with a 2px black border on the white/cream surface. Elegant register: a
+ * flat product-grade field — real 8dp rounded corners + 1px `#CACACE` hairline + surface fill, no
+ * offset shadow and no reserved gutter (the borderRadius-prop path does not round at runtime, so
+ * the rounded shape is applied straight to `background`/`border`). An explicit non-default
+ * [borderColor] (e.g. the AccentRed error border) passes through in both registers.
+ */
+@Composable
+private fun SlockBrutalInputFieldFrame(
+    modifier: Modifier,
+    focusPolicy: SlockBrutalInputFocusPolicy,
+    focused: Boolean,
+    forceFocused: Boolean,
+    showShadow: Boolean,
+    fieldMinHeight: Dp,
+    horizontalPadding: Dp,
+    verticalPadding: Dp,
+    borderColor: Color,
+    enabledBackgroundColor: Color,
+    disabledBackgroundColor: Color,
+    focusRequester: FocusRequester,
+    contentAlignment: Alignment,
+    content: @Composable () -> Unit
+) {
+    val theme = LocalSlockTheme.current
+    val surfaceColor = if (focusPolicy.acceptsFocus) enabledBackgroundColor else disabledBackgroundColor
+    val tapModifier =
+        if (focusPolicy.containerTapRequestsFocus) {
+            Modifier.clickable { focusRequester.requestFocus() }
+        } else {
+            Modifier
+        }
+    if (theme.family == SlockThemeFamily.Elegant) {
+        val shape = RoundedCornerShape(theme.cornerRadius)
+        val elegantBorderColor = if (borderColor == SlockColor.BorderBlack) theme.line else borderColor
+        Box(
+            modifier =
+                modifier
+                    .fillMaxWidth()
+                    .height(fieldMinHeight)
+                    .background(surfaceColor, shape)
+                    .border(theme.lineWidth, elegantBorderColor, shape)
+                    .then(tapModifier)
+                    .padding(horizontal = horizontalPadding, vertical = verticalPadding),
+            contentAlignment = contentAlignment,
+            content = { content() }
+        )
+        return
+    }
+    val shadowOffset =
+        if (showShadow) {
+            if ((focused || forceFocused) && focusPolicy.acceptsFocus) SlockShadow.Brutal else SlockShadow.BrutalSmall
+        } else {
+            0.dp
+        }
+    val reservedShadowOffset = if (showShadow) SlockShadow.Brutal else 0.dp
+    Box(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .height(fieldMinHeight + reservedShadowOffset)
+    ) {
+        if (showShadow) {
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(fieldMinHeight)
+                        .offset(x = shadowOffset, y = shadowOffset)
+                        .slockSquareCorners()
+                        .background(SlockColor.ShadowBlack)
+            )
+        }
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(fieldMinHeight)
+                    .slockSquareCorners()
+                    .background(surfaceColor)
+                    .border(SlockStroke.Default, borderColor)
+                    .then(tapModifier)
+                    .padding(horizontal = horizontalPadding, vertical = verticalPadding),
+            contentAlignment = contentAlignment,
+            content = { content() }
+        )
+    }
+}
+
 @Composable
 internal fun SlockBrutalInputField(
     value: String,
@@ -587,94 +682,69 @@ internal fun SlockBrutalInputField(
     val isMultiline = focusPolicy.fillEditorHeight
     val fieldContentAlignment = if (isMultiline) Alignment.TopStart else Alignment.CenterStart
     val rowVerticalAlignment = if (isMultiline) Alignment.Top else Alignment.CenterVertically
-    val shadowOffset = if (showShadow) {
-        if ((focused || forceFocused) && focusPolicy.acceptsFocus) SlockShadow.Brutal else SlockShadow.BrutalSmall
-    } else {
-        0.dp
-    }
-    val reservedShadowOffset = if (showShadow) SlockShadow.Brutal else 0.dp
-    Box(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .height(fieldMinHeight + reservedShadowOffset)
+    val theme = LocalSlockTheme.current
+    val resolvedTextStyle = if (theme.family == SlockThemeFamily.Elegant) textStyle.copy(color = theme.ink) else textStyle
+    SlockBrutalInputFieldFrame(
+        modifier = modifier,
+        focusPolicy = focusPolicy,
+        focused = focused,
+        forceFocused = forceFocused,
+        showShadow = showShadow,
+        fieldMinHeight = fieldMinHeight,
+        horizontalPadding = horizontalPadding,
+        verticalPadding = verticalPadding,
+        borderColor = borderColor,
+        enabledBackgroundColor = enabledBackgroundColor,
+        disabledBackgroundColor = disabledBackgroundColor,
+        focusRequester = focusRequester,
+        contentAlignment = fieldContentAlignment
     ) {
-        if (showShadow) {
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .height(fieldMinHeight)
-                        .offset(x = shadowOffset, y = shadowOffset)
-                        .slockSquareCorners()
-                        .background(SlockColor.ShadowBlack)
-            )
-        }
-        Box(
+        Row(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .height(fieldMinHeight)
-                    .slockSquareCorners()
-                    .background(if (focusPolicy.acceptsFocus) enabledBackgroundColor else disabledBackgroundColor)
-                    .border(SlockStroke.Default, borderColor)
-                    .then(
-                        if (focusPolicy.containerTapRequestsFocus) {
-                            Modifier.clickable { focusRequester.requestFocus() }
-                        } else {
-                            Modifier
-                        }
-                    )
-                    .padding(horizontal = horizontalPadding, vertical = verticalPadding),
-            contentAlignment = fieldContentAlignment
+                    .then(if (focusPolicy.fillEditorHeight) Modifier.fillMaxHeight() else Modifier),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = rowVerticalAlignment
         ) {
-            Row(
+            TextField(
+                value = value,
+                onValueChange = { nextValue ->
+                    slockBrutalInputForwardValueChange(
+                        focusPolicy = focusPolicy,
+                        nextValue = nextValue,
+                        onValueChange = onValueChange
+                    )
+                },
+                placeholder = placeholder,
+                placeholderColor = placeholderColor,
+                autoFocus = autoFocus && focusPolicy.acceptsFocus,
+                onFocus = { focused = true },
+                onBlur = { focused = false },
+                maxLines = maxLines,
+                keyboardOptions = keyboardOptions,
+                keyboardActions = keyboardActions,
+                enabled = focusPolicy.acceptsFocus,
+                readOnly = !focusPolicy.acceptsFocus,
+                textStyle = resolvedTextStyle,
+                visualTransformation = visualTransformation,
+                systemNewlineAction = isMultiline,
+                contentAlignment = fieldContentAlignment,
                 modifier =
                     Modifier
-                        .fillMaxWidth()
+                        .weight(1f)
                         .then(if (focusPolicy.fillEditorHeight) Modifier.fillMaxHeight() else Modifier),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = rowVerticalAlignment
-            ) {
-                TextField(
-                    value = value,
-                    onValueChange = { nextValue ->
-                        slockBrutalInputForwardValueChange(
-                            focusPolicy = focusPolicy,
-                            nextValue = nextValue,
-                            onValueChange = onValueChange
-                        )
-                    },
-                    placeholder = placeholder,
-                    placeholderColor = placeholderColor,
-                    autoFocus = autoFocus && focusPolicy.acceptsFocus,
-                    onFocus = { focused = true },
-                    onBlur = { focused = false },
-                    maxLines = maxLines,
-                    keyboardOptions = keyboardOptions,
-                    keyboardActions = keyboardActions,
-                    enabled = focusPolicy.acceptsFocus,
-                    readOnly = !focusPolicy.acceptsFocus,
-                    textStyle = textStyle,
-                    visualTransformation = visualTransformation,
-                    systemNewlineAction = isMultiline,
-                    contentAlignment = fieldContentAlignment,
-                    modifier =
-                        Modifier
-                            .weight(1f)
-                            .then(if (focusPolicy.fillEditorHeight) Modifier.fillMaxHeight() else Modifier),
-                    focusRequester = focusRequester
+                focusRequester = focusRequester
+            )
+            if (showClearWhenNotEmpty && value.isNotEmpty() && focusPolicy.acceptsFocus) {
+                SlockBrutalIconButton(
+                    iconName = SlockLucideIconName.X,
+                    onClick = { onClear?.invoke() ?: onValueChange("") },
+                    size = 18.dp,
+                    shadowOffset = 2.dp
                 )
-                if (showClearWhenNotEmpty && value.isNotEmpty() && focusPolicy.acceptsFocus) {
-                    SlockBrutalIconButton(
-                        iconName = SlockLucideIconName.X,
-                        onClick = { onClear?.invoke() ?: onValueChange("") },
-                        size = 18.dp,
-                        shadowOffset = 2.dp
-                    )
-                }
-                trailingContent?.invoke()
             }
+            trailingContent?.invoke()
         }
     }
 }
@@ -713,94 +783,69 @@ internal fun SlockBrutalInputField(
     val isMultiline = focusPolicy.fillEditorHeight
     val fieldContentAlignment = if (isMultiline) Alignment.TopStart else Alignment.CenterStart
     val rowVerticalAlignment = if (isMultiline) Alignment.Top else Alignment.CenterVertically
-    val shadowOffset = if (showShadow) {
-        if ((focused || forceFocused) && focusPolicy.acceptsFocus) SlockShadow.Brutal else SlockShadow.BrutalSmall
-    } else {
-        0.dp
-    }
-    val reservedShadowOffset = if (showShadow) SlockShadow.Brutal else 0.dp
-    Box(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .height(fieldMinHeight + reservedShadowOffset)
+    val theme = LocalSlockTheme.current
+    val resolvedTextStyle = if (theme.family == SlockThemeFamily.Elegant) textStyle.copy(color = theme.ink) else textStyle
+    SlockBrutalInputFieldFrame(
+        modifier = modifier,
+        focusPolicy = focusPolicy,
+        focused = focused,
+        forceFocused = forceFocused,
+        showShadow = showShadow,
+        fieldMinHeight = fieldMinHeight,
+        horizontalPadding = horizontalPadding,
+        verticalPadding = verticalPadding,
+        borderColor = borderColor,
+        enabledBackgroundColor = enabledBackgroundColor,
+        disabledBackgroundColor = disabledBackgroundColor,
+        focusRequester = focusRequester,
+        contentAlignment = fieldContentAlignment
     ) {
-        if (showShadow) {
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .height(fieldMinHeight)
-                        .offset(x = shadowOffset, y = shadowOffset)
-                        .slockSquareCorners()
-                        .background(SlockColor.ShadowBlack)
-            )
-        }
-        Box(
+        Row(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .height(fieldMinHeight)
-                    .slockSquareCorners()
-                    .background(if (focusPolicy.acceptsFocus) enabledBackgroundColor else disabledBackgroundColor)
-                    .border(SlockStroke.Default, borderColor)
-                    .then(
-                        if (focusPolicy.containerTapRequestsFocus) {
-                            Modifier.clickable { focusRequester.requestFocus() }
-                        } else {
-                            Modifier
-                        }
-                    )
-                    .padding(horizontal = horizontalPadding, vertical = verticalPadding),
-            contentAlignment = fieldContentAlignment
+                    .then(if (focusPolicy.fillEditorHeight) Modifier.fillMaxHeight() else Modifier),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = rowVerticalAlignment
         ) {
-            Row(
+            TextField(
+                value = value,
+                onValueChange = { nextValue ->
+                    slockBrutalInputForwardValueChange(
+                        focusPolicy = focusPolicy,
+                        nextValue = nextValue,
+                        onValueChange = onValueChange
+                    )
+                },
+                placeholder = placeholder,
+                placeholderColor = placeholderColor,
+                autoFocus = autoFocus && focusPolicy.acceptsFocus,
+                onFocus = { focused = true },
+                onBlur = { focused = false },
+                maxLines = maxLines,
+                keyboardOptions = keyboardOptions,
+                keyboardActions = keyboardActions,
+                enabled = focusPolicy.acceptsFocus,
+                readOnly = !focusPolicy.acceptsFocus,
+                textStyle = resolvedTextStyle,
+                visualTransformation = visualTransformation,
+                systemNewlineAction = isMultiline,
+                contentAlignment = fieldContentAlignment,
                 modifier =
                     Modifier
-                        .fillMaxWidth()
+                        .weight(1f)
                         .then(if (focusPolicy.fillEditorHeight) Modifier.fillMaxHeight() else Modifier),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = rowVerticalAlignment
-            ) {
-                TextField(
-                    value = value,
-                    onValueChange = { nextValue ->
-                        slockBrutalInputForwardValueChange(
-                            focusPolicy = focusPolicy,
-                            nextValue = nextValue,
-                            onValueChange = onValueChange
-                        )
-                    },
-                    placeholder = placeholder,
-                    placeholderColor = placeholderColor,
-                    autoFocus = autoFocus && focusPolicy.acceptsFocus,
-                    onFocus = { focused = true },
-                    onBlur = { focused = false },
-                    maxLines = maxLines,
-                    keyboardOptions = keyboardOptions,
-                    keyboardActions = keyboardActions,
-                    enabled = focusPolicy.acceptsFocus,
-                    readOnly = !focusPolicy.acceptsFocus,
-                    textStyle = textStyle,
-                    visualTransformation = visualTransformation,
-                    systemNewlineAction = isMultiline,
-                    contentAlignment = fieldContentAlignment,
-                    modifier =
-                        Modifier
-                            .weight(1f)
-                            .then(if (focusPolicy.fillEditorHeight) Modifier.fillMaxHeight() else Modifier),
-                    focusRequester = focusRequester
+                focusRequester = focusRequester
+            )
+            if (showClearWhenNotEmpty && value.text.isNotEmpty() && focusPolicy.acceptsFocus) {
+                SlockBrutalIconButton(
+                    iconName = SlockLucideIconName.X,
+                    onClick = { onClear?.invoke() ?: onValueChange(TextFieldValue("")) },
+                    size = 18.dp,
+                    shadowOffset = 2.dp
                 )
-                if (showClearWhenNotEmpty && value.text.isNotEmpty() && focusPolicy.acceptsFocus) {
-                    SlockBrutalIconButton(
-                        iconName = SlockLucideIconName.X,
-                        onClick = { onClear?.invoke() ?: onValueChange(TextFieldValue("")) },
-                        size = 18.dp,
-                        shadowOffset = 2.dp
-                    )
-                }
-                trailingContent?.invoke()
             }
+            trailingContent?.invoke()
         }
     }
 }

@@ -817,6 +817,17 @@ internal class ComposeUiFormFieldVisualPage : BasePager() {
     }
 }
 
+// Elegant-register capture of the SAME form-field content, wrapped in
+// SlockThemeProvider(elegantTheme). Paired against the React elegant render as
+// components.ui.form-field.states.elegant (react-elegant <-> android-elegant parity).
+@Page("compose_ui_form_field_elegant_visual", supportInLocal = true)
+internal class ComposeUiFormFieldElegantVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { SlockThemeProvider(theme = elegantTheme) { UiFormFieldVisualContent() } }
+    }
+}
+
 @Page("compose_ui_textarea_visual", supportInLocal = true)
 internal class ComposeUiTextareaVisualPage : BasePager() {
     override fun willInit() {

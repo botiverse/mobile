@@ -322,6 +322,18 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
+    // Elegant-register form-field capture (same content under SlockThemeProvider(elegantTheme)):
+    // flat rounded #CACACE-hairline inputs, no brutal offset shadow. Paired against the React
+    // elegant render as components.ui.form-field.states.elegant.
+    @Test
+    fun captureUiFormFieldStatesElegant() {
+        captureKmpComponentCase(
+            caseId = "components.ui.form-field.states.elegant",
+            pageName = "compose_ui_form_field_elegant_visual",
+            crop = UI_FORM_FIELD_CROP
+        )
+    }
+
     @Test
     fun captureUiTextareaStates() {
         captureKmpComponentCase(
