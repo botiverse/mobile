@@ -281,6 +281,18 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
+    // Elegant-register capture of the button (same content as button.states, under
+    // SlockThemeProvider(elegantTheme)). Paired against the React elegant render as
+    // components.ui.button.states.elegant → react-elegant <-> android-elegant parity.
+    @Test
+    fun captureUiButtonStatesElegant() {
+        captureKmpComponentCase(
+            caseId = "components.ui.button.states.elegant",
+            pageName = "compose_ui_button_elegant_visual",
+            crop = UI_BUTTON_CROP
+        )
+    }
+
     @Test
     fun captureUiFormFieldStates() {
         captureKmpComponentCase(
