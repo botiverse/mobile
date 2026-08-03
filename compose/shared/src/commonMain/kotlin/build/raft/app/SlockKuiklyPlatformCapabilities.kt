@@ -13,6 +13,9 @@ internal expect fun slockPlatformAppShellChildPagePrewarmMode(): AppShellChildPa
 
 internal expect fun slockPlatformSupportsMultiShellHost(): Boolean
 
+/** iOS is currently the only host with a native right-edge Forward recognizer. */
+internal expect fun slockPlatformSupportsConversationForwardGesture(): Boolean
+
 // The iOS app shell always has the native UITabBar renderer available. Route
 // launches created after auth/server changes do not pass the SwiftUI root's
 // pageData, so shared needs a platform default when the host did not provide an

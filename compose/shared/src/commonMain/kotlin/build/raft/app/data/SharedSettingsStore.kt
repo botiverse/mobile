@@ -544,6 +544,9 @@ sealed interface SharedSettingsEffect {
 }
 
 interface SharedSettingsPlatformCapabilities {
+    val supportsConversationForwardGesture: Boolean
+        get() = false
+
     suspend fun pickAccountAvatarFile(): DataResult<PlatformFile> =
         DataResult.Error(ScreenError("settings_account_avatar_picker_unavailable", retryable = false))
 
@@ -1100,6 +1103,11 @@ class SharedSettingsDataSource(
     }
 
     suspend fun setConversationForwardGestureEnabled(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
+        if (!platformCapabilities.supportsConversationForwardGesture) {
+            return DataResult.Error(
+                ScreenError("settings_conversation_forward_gesture_unavailable", retryable = false)
+            )
+        }
         val repository =
             chatLayoutPreferenceRepository
                 ?: return DataResult.Error(ScreenError("settings_conversation_forward_gesture_unavailable", retryable = false))
@@ -1459,7 +1467,9 @@ class SharedSettingsDataSource(
                         detail = "Inline message selection is not available on this platform."
                     ),
             conversationForwardGesture =
-                chatLayout?.toSettingsMobileConversationForwardGestureSnapshot()
+                chatLayout?.toSettingsMobileConversationForwardGestureSnapshot(
+                    available = platformCapabilities.supportsConversationForwardGesture
+                )
                     ?: conversationForwardGesture.copy(
                         available = false,
                         statusLabel = "Unsupported",
@@ -3945,12 +3955,24 @@ private fun ChatLayoutPreferenceSnapshot.toSettingsMobileInlineSelectionToolbarS
         detail = "Long-press eligible plain-text messages to select text in place and show quick reactions and message tools."
     )
 
-private fun ChatLayoutPreferenceSnapshot.toSettingsMobileConversationForwardGestureSnapshot(): SettingsMobileToggleSnapshot =
+private fun ChatLayoutPreferenceSnapshot.toSettingsMobileConversationForwardGestureSnapshot(
+    available: Boolean
+): SettingsMobileToggleSnapshot =
     SettingsMobileToggleSnapshot(
-        enabled = conversationForwardGestureEnabled,
-        available = true,
-        statusLabel = if (conversationForwardGestureEnabled) "Enabled" else "Off",
-        detail = "Swipe left from the right edge of Home to reopen the most recent channel or direct message after going back."
+        enabled = available && conversationForwardGestureEnabled,
+        available = available,
+        statusLabel =
+            when {
+                !available -> "Unsupported"
+                conversationForwardGestureEnabled -> "Enabled"
+                else -> "Off"
+            },
+        detail =
+            if (available) {
+                "Swipe left from the right edge of Home to reopen the most recent channel or direct message after going back."
+            } else {
+                "Conversation Forward navigation is available on iOS."
+            }
     )
 
 private fun ChatLayoutPreferenceSnapshot.toSettingsMobileImageAnnotationSnapshot(): SettingsMobileToggleSnapshot =

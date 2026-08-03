@@ -10,6 +10,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 
 class SettingsMobilePayloadTest {
     @Test
@@ -65,6 +66,32 @@ class SettingsMobilePayloadTest {
         assertEquals(false, row.toggleValue)
         assertFalse(row.title.isBlank())
         assertFalse(row.detail.isBlank())
+    }
+
+    @Test
+    fun unavailableConversationForwardGestureIsOmitted() {
+        val snapshot =
+            SettingsMobileSnapshot(
+                pushNotifications = toggle(enabled = false),
+                muteServer = toggle(enabled = false),
+                inlineSelectionToolbar = toggle(enabled = false),
+                conversationForwardGesture =
+                    SettingsMobileToggleSnapshot(
+                        enabled = false,
+                        available = false,
+                        statusLabel = "Unsupported",
+                        detail = "Conversation Forward navigation is available on iOS."
+                    )
+            )
+
+        val rows =
+            ScreenLoadState.Content(snapshot).toMobilePayload(
+                actionState = null,
+                refreshing = false,
+                errorStrings = englishErrorPresentationStringsForTest()
+            ).sections.flatMap { it.rows }
+
+        assertNull(rows.firstOrNull { it.key == MOBILE_ACTION_CONVERSATION_FORWARD_GESTURE })
     }
 
     private fun toggle(enabled: Boolean): SettingsMobileToggleSnapshot =

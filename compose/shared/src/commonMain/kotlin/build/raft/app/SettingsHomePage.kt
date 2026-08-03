@@ -40,6 +40,7 @@ import build.raft.app.data.KeyValueRecompositionProfilerPreferenceStore
 import build.raft.app.data.KuiklyHostNetworkEvents
 import build.raft.app.data.KuiklyAppUpdateEvents
 import build.raft.app.data.KuiklyNotificationPreferenceEvents
+import build.raft.app.data.KuiklyChatLayoutPreferenceEvents
 import build.raft.app.data.KuiklyRealtimeEvents
 import build.raft.app.data.RealtimeRoomLeaseOwner
 import build.raft.app.data.isAppUpdateHomeNotificationId
@@ -113,6 +114,8 @@ import build.raft.app.data.SERVER_ACTION_SIDEBAR_ORDER
 import build.raft.app.data.SERVER_ACTION_TRANSLATION_TOGGLE
 import build.raft.app.data.NotificationPreferenceSnapshot
 import build.raft.app.data.PersistentChatLayoutPreferenceRepository
+import build.raft.app.data.kuiklyChatLayoutPreferenceRepository
+import build.raft.app.data.reconcileConversationForwardGesturePreference
 import build.raft.app.data.PersistentLinkOpenPreferenceRepository
 import build.raft.app.data.PersistentLocaleRepository
 import build.raft.app.data.PersistentRecompositionProfilerPreferenceRepository
@@ -3012,9 +3015,17 @@ internal fun SlockAppShellContent(
         remember(localePreferenceStore) {
             PersistentLocaleRepository(localePreferenceStore)
         }
+    val chatLayoutPreferenceEvents =
+        remember(eventBus) { KuiklyChatLayoutPreferenceEvents(eventBus) }
     val chatLayoutPreferenceRepository =
-        remember(sharedPreferenceStore) {
-            PersistentChatLayoutPreferenceRepository(KeyValueChatLayoutPreferenceStore(sharedPreferenceStore))
+        remember(sharedPreferenceStore, chatLayoutPreferenceEvents) {
+            kuiklyChatLayoutPreferenceRepository(
+                delegate =
+                    PersistentChatLayoutPreferenceRepository(
+                        KeyValueChatLayoutPreferenceStore(sharedPreferenceStore)
+                    ),
+                events = chatLayoutPreferenceEvents
+            )
         }
     val linkOpenPreferenceRepository =
         remember(sharedPreferenceStore) {
@@ -3914,7 +3925,9 @@ internal fun SlockAppShellContent(
         activitySenderAvatarsEnabled = chatLayout.activitySenderAvatarsEnabled
         serverDrawerEnabled = chatLayout.serverDrawerEnabled
         homeServerAvatarEnabled = chatLayout.homeServerAvatarEnabled
-        conversationForwardGestureEnabled = chatLayout.conversationForwardGestureEnabled
+        conversationForwardGestureEnabled =
+            settingsCapabilities.supportsConversationForwardGesture &&
+                chatLayout.conversationForwardGestureEnabled
         threadRowAffordances = chatLayout.threadRowAffordances
     }
     LaunchedEffect(settingsState.mobile) {
@@ -3924,7 +3937,24 @@ internal fun SlockAppShellContent(
                 ?.conversationForwardGesture
                 ?.enabled
                 ?: return@LaunchedEffect
-        conversationForwardGestureEnabled = persistedEnabled
+        conversationForwardGestureEnabled =
+            settingsCapabilities.supportsConversationForwardGesture && persistedEnabled
+    }
+    DisposableEffect(chatLayoutPreferenceEvents, settingsCapabilities) {
+        val subscription =
+            chatLayoutPreferenceEvents.addConversationForwardGestureListener { enabled ->
+                val effectiveEnabled =
+                    settingsCapabilities.supportsConversationForwardGesture && enabled
+                conversationForwardGestureEnabled = effectiveEnabled
+                reconcileConversationForwardGesturePreference(
+                    enabled = effectiveEnabled,
+                    history = conversationForwardHistory,
+                    disableNativeGesture = {
+                        bridge.setConversationForwardGestureEnabled(false)
+                    }
+                )
+            }
+        onDispose { subscription.close() }
     }
     LaunchedEffect(conversationForwardGestureEnabled) {
         conversationForwardHistory.setEnabled(conversationForwardGestureEnabled)
@@ -8450,12 +8480,14 @@ private fun SettingsMobileContent(
                     onInlineSelectionToolbarChange = onInlineSelectionToolbarChange
                 )
             }
-            item {
-                SettingsConversationForwardGestureCard(
-                    snapshot = snapshot,
-                    actionState = actionState,
-                    onConversationForwardGestureChange = onConversationForwardGestureChange
-                )
+            if (snapshot.conversationForwardGesture.available) {
+                item {
+                    SettingsConversationForwardGestureCard(
+                        snapshot = snapshot,
+                        actionState = actionState,
+                        onConversationForwardGestureChange = onConversationForwardGestureChange
+                    )
+                }
             }
             item {
                 SettingsActivityTaskStatusBadgesCard(
@@ -14391,7 +14423,7 @@ internal fun ScreenLoadState<SettingsMobileSnapshot>.toMobilePayload(
                 KuiklySharedSettingsSection(
                     title = "Conversation display",
                     rows =
-                        listOf(
+                        listOfNotNull(
                             mobile.messageAlignmentPreference.toMobileSelectionRow(
                                 key = MOBILE_ACTION_MESSAGE_ALIGNMENT,
                                 iconName = SlockLucideIconName.AlignHorizontalSpaceAround,
@@ -14438,15 +14470,19 @@ internal fun ScreenLoadState<SettingsMobileSnapshot>.toMobilePayload(
                                 actionState = actionState,
                                 errorStrings = errorStrings
                             ),
-                            mobile.conversationForwardGesture.toMobileToggleRow(
-                                key = MOBILE_ACTION_CONVERSATION_FORWARD_GESTURE,
-                                iconName = SlockLucideIconName.Redo2,
-                                title = "Conversation forward gesture",
-                                fallbackStatus = "Off",
-                                actionState = actionState,
-                                errorStrings = errorStrings,
-                                badgeLabel = "Beta"
-                            ),
+                            if (mobile.conversationForwardGesture.available) {
+                                mobile.conversationForwardGesture.toMobileToggleRow(
+                                    key = MOBILE_ACTION_CONVERSATION_FORWARD_GESTURE,
+                                    iconName = SlockLucideIconName.Redo2,
+                                    title = "Conversation forward gesture",
+                                    fallbackStatus = "Off",
+                                    actionState = actionState,
+                                    errorStrings = errorStrings,
+                                    badgeLabel = "Beta"
+                                )
+                            } else {
+                                null
+                            },
                             mobile.foregroundMessageBanners.toMobileToggleRow(
                                 key = MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS,
                                 iconName = SlockLucideIconName.MessageCircle,

@@ -766,7 +766,8 @@ class SharedSettingsStoreTest {
                         notificationPreferenceRepository = notificationRepository,
                         localeRepository = localeRepository,
                         chatLayoutPreferenceRepository = chatLayoutRepository,
-                        linkOpenPreferenceRepository = linkOpenPreferenceRepository
+                        linkOpenPreferenceRepository = linkOpenPreferenceRepository,
+                        platformCapabilities = ConversationForwardCapableSettingsPlatformCapabilities
                     ),
                 scope = scope
             )
@@ -857,6 +858,34 @@ class SharedSettingsStoreTest {
         assertEquals(AppLocale.System, localeRepository.current)
         assertEquals("System default", systemMobile.localePreference.statusLabel)
         scope.cancel()
+    }
+
+    @Test
+    fun unsupportedPlatformHidesConversationForwardGestureAndRejectsPersistence() = runBlocking {
+        val chatLayoutRepository =
+            FakeChatLayoutPreferenceRepository(conversationForwardGestureEnabled = true)
+        val dataSource =
+            SharedSettingsDataSource(
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                chatLayoutPreferenceRepository = chatLayoutRepository
+            )
+
+        val loaded =
+            assertIs<DataResult.Content<SettingsMobileSnapshot>>(
+                dataSource.loadMobilePreferences()
+            ).data.conversationForwardGesture
+
+        assertFalse(loaded.available)
+        assertFalse(loaded.enabled)
+        assertEquals("Unsupported", loaded.statusLabel)
+
+        chatLayoutRepository.conversationForwardGestureEnabled = false
+        val rejected =
+            assertIs<DataResult.Error>(
+                dataSource.setConversationForwardGestureEnabled(true)
+            )
+        assertEquals("settings_conversation_forward_gesture_unavailable", rejected.error.code)
+        assertFalse(chatLayoutRepository.conversationForwardGestureEnabled)
     }
 
     @Test
@@ -3736,6 +3765,11 @@ class SharedSettingsStoreTest {
                 )
             }
         }
+    }
+
+    private object ConversationForwardCapableSettingsPlatformCapabilities :
+        SharedSettingsPlatformCapabilities {
+        override val supportsConversationForwardGesture: Boolean = true
     }
 
     private fun diagnosticOverridesHostSnapshot(
