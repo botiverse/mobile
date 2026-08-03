@@ -1050,46 +1050,61 @@ private fun SlockFilePreviewStandalonePageContent() {
         policy: SlockFilePreviewExternalOpenPolicy,
         operation: AttachmentOperationToken
     ): String? {
-        val externalUrl =
-            if (policy.requirePublicDownload) {
-                // Public-only open is identity/journal driven and must remain usable offline.
-                // Native code will fail closed before private materialization if readback misses.
-                currentPayload.externalUrl.orEmpty()
-            } else {
-                currentPayload.externalUrl?.takeIf { it.isNotBlank() }
-                    ?: currentPayload.threadAttachmentExternalUrl(threadApi)
-                    ?: return unableToDownloadAttachment
-            }
         val downloadId =
             if (policy.trackProgress) {
                 activeDownloadId ?: currentPayload.filePreviewDownloadId()
             } else {
                 null
             }
-        if (policy.trackProgress) {
-            activeDownloadId = downloadId
-            bridge.log(
-                "file_preview_download phase=url_resolved downloadIdHash=${downloadId.orEmpty().hashCode().toString(16)} " +
-                    "elapsedMs=${activeDownloadStartedAt?.elapsedNow()?.inWholeMilliseconds ?: -1L} " +
-                    binaryDownloadUrlDiagnostics(externalUrl)
-            )
-        }
-        val result =
-            bridge.openAttachment(
-                url = externalUrl,
-                attachmentId = currentPayload.attachmentCacheId(),
-                fileName = currentPayload.attachmentCacheFileName(),
-                owner = operation.owner,
-                mimeType = currentPayload.externalMimeType,
-                downloadId = downloadId,
-                requirePublicDownload = policy.requirePublicDownload,
-                onProgress =
-                    if (policy.trackProgress) {
-                        { progress -> downloadProgressMailbox.offer(operation, progress) }
+        val tracedResult =
+            runSlockFilePreviewExternalOpenTraceFlow(
+                policy = policy,
+                resolveUrl = {
+                    if (policy.requirePublicDownload) {
+                        // Public-only open is identity/journal driven and must remain usable offline.
+                        // Native code will fail closed before private materialization if readback misses.
+                        currentPayload.externalUrl.orEmpty()
                     } else {
-                        null
+                        currentPayload.externalUrl?.takeIf { it.isNotBlank() }
+                            ?: currentPayload.threadAttachmentExternalUrl(threadApi)
                     }
+                },
+                onUrlResolved = { externalUrl ->
+                    if (policy.trackProgress) {
+                        activeDownloadId = downloadId
+                        bridge.log(
+                            "file_preview_download phase=url_resolved " +
+                                "downloadIdHash=${downloadId.orEmpty().hashCode().toString(16)} " +
+                                "elapsedMs=${activeDownloadStartedAt?.elapsedNow()?.inWholeMilliseconds ?: -1L} " +
+                                binaryDownloadUrlDiagnostics(externalUrl)
+                        )
+                    }
+                },
+                openHost = { externalUrl ->
+                    bridge.openAttachment(
+                        url = externalUrl,
+                        attachmentId = currentPayload.attachmentCacheId(),
+                        fileName = currentPayload.attachmentCacheFileName(),
+                        owner = operation.owner,
+                        mimeType = currentPayload.externalMimeType,
+                        downloadId = downloadId,
+                        requirePublicDownload = policy.requirePublicDownload,
+                        onProgress =
+                            if (policy.trackProgress) {
+                                { progress -> downloadProgressMailbox.offer(operation, progress) }
+                            } else {
+                                null
+                            }
+                    )
+                },
+                statusOf = { result -> result?.optString("status") },
+                trace = bridge::log
             )
+        val result =
+            when (tracedResult) {
+                SlockFilePreviewExternalOpenTraceResult.UrlResolutionFailed -> return unableToDownloadAttachment
+                is SlockFilePreviewExternalOpenTraceResult.HostTerminal -> tracedResult.result
+            }
         if (!attachmentOperationCommitAllowed(operation, activeAttachmentOperation?.operationId.orEmpty())) return null
         publicDownloadState = slockFilePreviewPublicDownloadStateAfterOpen(visiblePublicDownloadState, result)
         observedPublicDownloadQuery = publicDownloadQuery
@@ -1332,9 +1347,18 @@ private fun SlockFilePreviewStandalonePageContent() {
         operationJob.start()
     }
     fun requestExternalOpen() {
-        if (!canOpenWith || exportInProgress || !slockFilePreviewCanStartExternalOperation(downloadStatus)) return
+        val policy = slockFilePreviewExternalOpenPolicy(visiblePublicDownloadState)
+        val rejectionReason =
+            slockFilePreviewExternalOpenRejectionReason(
+                canOpenWith = canOpenWith,
+                exportInProgress = exportInProgress,
+                downloadStatus = downloadStatus,
+                hasOwner = attachmentOwner != null,
+                hasPolicy = policy != null
+            )
+        if (!traceSlockFilePreviewExternalOpenAdmission(rejectionReason, policy, bridge::log)) return
         val owner = attachmentOwner ?: return
-        val policy = slockFilePreviewExternalOpenPolicy(visiblePublicDownloadState) ?: return
+        val admittedPolicy = policy ?: return
         externalOperation = "open"
         downloadMessage = ""
         nextDownloadGeneration += 1L
@@ -1347,9 +1371,9 @@ private fun SlockFilePreviewStandalonePageContent() {
         // Cached opens still cross an irreversible native launch boundary. Keep them non-idle
         // so a second tap cannot supersede this operation token before URI grant/startActivity
         // completes, but use a non-download status so Install/Open never flashes download chrome.
-        downloadStatus = slockFilePreviewExternalOpenAdmissionStatus(policy.trackProgress)
+        downloadStatus = slockFilePreviewExternalOpenAdmissionStatus(admittedPolicy.trackProgress)
         activeDownloadStartedAt = TimeSource.Monotonic.markNow()
-        if (policy.trackProgress) {
+        if (admittedPolicy.trackProgress) {
             firstBridgeDownloadId = null
             firstRenderedDownloadId = null
             downloadProgress = SlockFilePreviewInitialDownloadProgress.copy(downloadId = activeDownloadId.orEmpty())
@@ -1362,7 +1386,7 @@ private fun SlockFilePreviewStandalonePageContent() {
         val operationJob =
             coroutineScope.launch(start = CoroutineStart.LAZY) {
                 try {
-                    val error = openPayloadExternally(requestPayload, policy, operation)
+                    val error = openPayloadExternally(requestPayload, admittedPolicy, operation)
                     if (!attachmentOperationCommitAllowed(operation, activeAttachmentOperation?.operationId.orEmpty())) return@launch
                     if (error == null) {
                         downloadStatus = "idle"
@@ -5171,6 +5195,88 @@ internal fun slockAttachmentOpenResultMessage(
         "storage_failed" -> terms.storageUnavailable
         else -> terms.unableToOpenAttachment
     }
+
+internal fun slockAttachmentOpenDiagnosticStatus(status: String?): String {
+    val normalized = status?.trim()?.lowercase().orEmpty()
+    return when (normalized) {
+        "opened", "cancelled", "missing", "no_app", "storage_failed", "failed" -> normalized
+        "" -> "none"
+        else -> "other"
+    }
+}
+
+internal fun slockFilePreviewExternalOpenRejectionReason(
+    canOpenWith: Boolean,
+    exportInProgress: Boolean,
+    downloadStatus: String,
+    hasOwner: Boolean,
+    hasPolicy: Boolean
+): String? =
+    when {
+        !canOpenWith -> "unsupported"
+        exportInProgress -> "export_busy"
+        !slockFilePreviewCanStartExternalOperation(downloadStatus) -> "operation_busy"
+        !hasOwner -> "owner_missing"
+        !hasPolicy -> "state_checking"
+        else -> null
+    }
+
+internal fun traceSlockFilePreviewExternalOpenAdmission(
+    rejectionReason: String?,
+    policy: SlockFilePreviewExternalOpenPolicy?,
+    trace: (String) -> Unit
+): Boolean {
+    if (rejectionReason != null) {
+        trace("file_preview_open stage=rejected reason=$rejectionReason")
+        return false
+    }
+    val admittedPolicy = policy ?: return false
+    trace(
+        "file_preview_open stage=admitted " +
+            "committedRequired=${admittedPolicy.requirePublicDownload} trackProgress=${admittedPolicy.trackProgress}"
+    )
+    return true
+}
+
+internal sealed interface SlockFilePreviewExternalOpenTraceResult<out T> {
+    data object UrlResolutionFailed : SlockFilePreviewExternalOpenTraceResult<Nothing>
+
+    data class HostTerminal<T>(val result: T) : SlockFilePreviewExternalOpenTraceResult<T>
+}
+
+internal suspend fun <T> runSlockFilePreviewExternalOpenTraceFlow(
+    policy: SlockFilePreviewExternalOpenPolicy,
+    resolveUrl: suspend () -> String?,
+    onUrlResolved: suspend (String) -> Unit,
+    openHost: suspend (String) -> T,
+    statusOf: (T) -> String?,
+    trace: (String) -> Unit
+): SlockFilePreviewExternalOpenTraceResult<T> {
+    val resolvedUrl = resolveUrl()
+    val url =
+        if (policy.requirePublicDownload) {
+            // A committed public copy is identity/journal driven. Its host must receive the
+            // request even when the remote URL is absent so it can resolve the offline copy.
+            resolvedUrl.orEmpty()
+        } else {
+            resolvedUrl?.takeIf { it.isNotBlank() }
+        }
+    if (url == null) {
+        trace(
+            "file_preview_open stage=url_resolution_failed " +
+                "committedRequired=${policy.requirePublicDownload} trackProgress=${policy.trackProgress}"
+        )
+        return SlockFilePreviewExternalOpenTraceResult.UrlResolutionFailed
+    }
+    onUrlResolved(url)
+    trace(
+        "file_preview_open stage=host_handoff " +
+            "committedRequired=${policy.requirePublicDownload} trackProgress=${policy.trackProgress}"
+    )
+    val result = openHost(url)
+    trace("file_preview_open stage=host_terminal status=${slockAttachmentOpenDiagnosticStatus(statusOf(result))}")
+    return SlockFilePreviewExternalOpenTraceResult.HostTerminal(result)
+}
 
 internal fun slockFilePreviewDownloadStatusLabel(
     progress: BridgeAttachmentDownloadProgress?,

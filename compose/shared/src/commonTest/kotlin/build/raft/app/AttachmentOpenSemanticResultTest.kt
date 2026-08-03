@@ -7,6 +7,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.runBlocking
 
 class AttachmentOpenSemanticResultTest {
     private val localizedTerms =
@@ -28,6 +29,149 @@ class AttachmentOpenSemanticResultTest {
         assertEquals("存储空间不可用", slockAttachmentOpenResultMessage("storage_failed", localizedTerms))
         assertEquals("无法打开附件", slockAttachmentOpenResultMessage("failed", localizedTerms))
         assertEquals("无法打开附件", slockAttachmentOpenResultMessage("unexpected", localizedTerms))
+    }
+
+    @Test
+    fun diagnosticStatusAllowsOnlyFixedCategories() {
+        assertEquals("opened", slockAttachmentOpenDiagnosticStatus(" OPENED "))
+        assertEquals("failed", slockAttachmentOpenDiagnosticStatus("failed"))
+        assertEquals("none", slockAttachmentOpenDiagnosticStatus(null))
+        assertEquals("none", slockAttachmentOpenDiagnosticStatus(""))
+        assertEquals("other", slockAttachmentOpenDiagnosticStatus("private-upstream-detail"))
+    }
+
+    @Test
+    fun externalOpenAdmissionReportsOneFixedRejectionReason() {
+        fun reason(
+            canOpenWith: Boolean = true,
+            exportInProgress: Boolean = false,
+            downloadStatus: String = "idle",
+            hasOwner: Boolean = true,
+            hasPolicy: Boolean = true
+        ): String? =
+            slockFilePreviewExternalOpenRejectionReason(
+                canOpenWith,
+                exportInProgress,
+                downloadStatus,
+                hasOwner,
+                hasPolicy
+            )
+
+        assertEquals("unsupported", reason(canOpenWith = false))
+        assertEquals("export_busy", reason(exportInProgress = true))
+        assertEquals("operation_busy", reason(downloadStatus = "downloading"))
+        assertEquals("owner_missing", reason(hasOwner = false))
+        assertEquals("state_checking", reason(hasPolicy = false))
+        assertNull(reason())
+    }
+
+    @Test
+    fun productionAdmissionTraceEmitsExactlyOneTerminalDecision() {
+        val rejected = mutableListOf<String>()
+        assertFalse(
+            traceSlockFilePreviewExternalOpenAdmission(
+                rejectionReason = "operation_busy",
+                policy = null,
+                trace = rejected::add
+            )
+        )
+        assertEquals(
+            listOf("file_preview_open stage=rejected reason=operation_busy"),
+            rejected
+        )
+
+        val admitted = mutableListOf<String>()
+        assertTrue(
+            traceSlockFilePreviewExternalOpenAdmission(
+                rejectionReason = null,
+                policy = SlockFilePreviewExternalOpenPolicy(requirePublicDownload = false, trackProgress = true),
+                trace = admitted::add
+            )
+        )
+        assertEquals(
+            listOf(
+                "file_preview_open stage=admitted committedRequired=false trackProgress=true"
+            ),
+            admitted
+        )
+    }
+
+    @Test
+    fun productionExternalOpenTraceCoversMissingAndHostTerminalInOrder() = runBlocking {
+        val policy = SlockFilePreviewExternalOpenPolicy(requirePublicDownload = false, trackProgress = true)
+        val missingTrace = mutableListOf<String>()
+        val missing =
+            runSlockFilePreviewExternalOpenTraceFlow(
+                policy = policy,
+                resolveUrl = { null },
+                onUrlResolved = { error("must not resolve") },
+                openHost = { error("must not open") },
+                statusOf = { null },
+                trace = missingTrace::add
+            )
+        assertEquals(SlockFilePreviewExternalOpenTraceResult.UrlResolutionFailed, missing)
+        assertEquals(
+            listOf(
+                "file_preview_open stage=url_resolution_failed committedRequired=false trackProgress=true"
+            ),
+            missingTrace
+        )
+
+        val events = mutableListOf<String>()
+        val completed =
+            runSlockFilePreviewExternalOpenTraceFlow(
+                policy = policy,
+                resolveUrl = {
+                    events += "resolve"
+                    "https://example.invalid/attachment"
+                },
+                onUrlResolved = { events += "resolved" },
+                openHost = {
+                    events += "host"
+                    "failed"
+                },
+                statusOf = { it },
+                trace = { events += it }
+            )
+        assertEquals(SlockFilePreviewExternalOpenTraceResult.HostTerminal("failed"), completed)
+        assertEquals(
+            listOf(
+                "resolve",
+                "resolved",
+                "file_preview_open stage=host_handoff committedRequired=false trackProgress=true",
+                "host",
+                "file_preview_open stage=host_terminal status=failed"
+            ),
+            events
+        )
+
+        val publicEvents = mutableListOf<String>()
+        val publicOffline =
+            runSlockFilePreviewExternalOpenTraceFlow(
+                policy = SlockFilePreviewExternalOpenPolicy(requirePublicDownload = true, trackProgress = false),
+                resolveUrl = {
+                    publicEvents += "resolve"
+                    ""
+                },
+                onUrlResolved = { publicEvents += "resolved:$it" },
+                openHost = {
+                    publicEvents += "host:$it"
+                    "opened"
+                },
+                statusOf = { it },
+                trace = { publicEvents += it }
+            )
+        assertEquals(SlockFilePreviewExternalOpenTraceResult.HostTerminal("opened"), publicOffline)
+        assertEquals(
+            listOf(
+                "resolve",
+                "resolved:",
+                "file_preview_open stage=host_handoff committedRequired=true trackProgress=false",
+                "host:",
+                "file_preview_open stage=host_terminal status=opened"
+            ),
+            publicEvents
+        )
     }
 
     @Test
