@@ -78,6 +78,39 @@ class SlockLucideNativeCanvasConnectedTest {
         }
     }
 
+    @Test
+    fun reusableNativeSpinRestartsForEveryLazyRowBindingAfterDestroy() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
+        val intent =
+            Intent(context, SlockKuiklyActivity::class.java)
+                .putExtra("pageName", "compose_lucide_state_atlas_visual")
+                .putExtra("pageData", JSONObject().put("instanceId", "lucide-native-multi-spin-test").toString())
+                .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
+
+        ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
+            lateinit var host: SlockLucideIconRenderView
+            lateinit var canvas: View
+            scenario.onActivity { activity ->
+                host = SlockLucideIconRenderView(activity)
+                activity.addContentView(host, FrameLayout.LayoutParams(96, 96))
+                host.setProp("name", "loader-circle")
+                host.setProp("spinning", true)
+                canvas = host.getChildAt(0)
+            }
+
+            canvas.assertRotationEventuallyAdvances("First native row binding")
+            repeat(2) { generation ->
+                scenario.onActivity {
+                    host.onDestroy()
+                    host.setProp("name", "loader-circle")
+                    host.setProp("spinning", true)
+                }
+                canvas.assertRotationEventuallyAdvances("Reused native row binding ${generation + 2}")
+            }
+        }
+    }
+
     private fun View.rotationAfterDelay(delayMs: Long): Float {
         SystemClock.sleep(delayMs)
         InstrumentationRegistry.getInstrumentation().waitForIdleSync()

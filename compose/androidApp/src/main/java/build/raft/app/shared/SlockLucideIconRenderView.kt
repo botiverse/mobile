@@ -56,7 +56,10 @@ internal class SlockLucideIconRenderView(context: Context) : KRView(context) {
     }
 
     override fun onDestroy() {
-        iconView.destroy()
+        // KRView is reusable: Kuikly invokes onDestroy when returning the native view to its pool,
+        // then may bind the same instance to a later lazy row. Release the per-binding animator,
+        // but never leave the reusable child in a terminal state.
+        iconView.resetForReuse()
         super.onDestroy()
     }
 
@@ -121,7 +124,6 @@ private class SlockLucideCanvasView(context: Context) : View(context) {
     private var renderedIcon: SlockRenderedLucideIcon? = null
     private var renderedIconKey: String? = null
     private var spinAnimator: ObjectAnimator? = null
-    private var destroyed = false
 
     var iconName: String = ""
         set(value) {
@@ -227,12 +229,10 @@ private class SlockLucideCanvasView(context: Context) : View(context) {
         syncRotationAnimation()
     }
 
-    fun destroy() {
-        if (destroyed) return
-        destroyed = true
+    fun resetForReuse() {
         stopSpinAnimator()
-        renderedIcon = null
-        renderedIconKey = null
+        spinning = false
+        rotation = staticRotationDegrees
     }
 
     private fun resolveIcon() {
@@ -280,10 +280,6 @@ private class SlockLucideCanvasView(context: Context) : View(context) {
     }
 
     private fun syncRotationAnimation() {
-        if (destroyed) {
-            stopSpinAnimator()
-            return
-        }
         val shouldSpin =
             spinning && isAttachedToWindow && visibility == VISIBLE && windowVisibility == VISIBLE && isShown
         if (!shouldSpin) {
