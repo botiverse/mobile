@@ -50,12 +50,14 @@ internal enum class AndroidAttachmentOpenIntentAction(val intentAction: String) 
 
 internal enum class AndroidAttachmentOpenAction(val wireName: String) {
     Open("open"),
-    Install("install")
+    Install("install"),
+    Save("save")
 }
 
 internal enum class AndroidAttachmentOpenStatus(val wireName: String) {
     Opened("opened"),
     Cancelled("cancelled"),
+    SaveCancelled("save_cancelled"),
     Missing("missing"),
     NoApp("no_app"),
     StorageFailed("storage_failed"),
@@ -112,6 +114,9 @@ internal data class AndroidAttachmentOpenResult(
         fun cancelled(): AndroidAttachmentOpenResult =
             AndroidAttachmentOpenResult(status = AndroidAttachmentOpenStatus.Cancelled)
 
+        fun saveCancelled(): AndroidAttachmentOpenResult =
+            AndroidAttachmentOpenResult(status = AndroidAttachmentOpenStatus.SaveCancelled)
+
         fun missing(): AndroidAttachmentOpenResult =
             AndroidAttachmentOpenResult(
                 status = AndroidAttachmentOpenStatus.Missing,
@@ -140,6 +145,7 @@ internal data class AndroidAttachmentOpenResult(
         fun terminal(status: String): AndroidAttachmentOpenResult =
             when (status) {
                 AndroidAttachmentOpenStatus.Cancelled.wireName -> cancelled()
+                AndroidAttachmentOpenStatus.SaveCancelled.wireName -> saveCancelled()
                 AndroidAttachmentOpenStatus.Missing.wireName -> missing()
                 AndroidAttachmentOpenStatus.NoApp.wireName -> noApp(cached = false)
                 AndroidAttachmentOpenStatus.StorageFailed.wireName -> storageFailed()
@@ -147,6 +153,92 @@ internal data class AndroidAttachmentOpenResult(
             }
     }
 }
+
+/**
+ * Completes the user-selected SAF destination without exposing either URI to shared state.
+ *
+ * The destination is represented by a generic host token so unit tests can execute the exact
+ * owner/readability/byte-count contract without Android framework streams. Production supplies
+ * the returned document URI as that token and performs the ContentResolver copy.
+ */
+internal class AndroidAttachmentSaveAsCoordinator<T>(
+    private val ownerIsCurrent: () -> Boolean,
+    private val sourceIsReadable: () -> Boolean,
+    private val copyToDestination: (T) -> Long,
+    private val destinationMatchesSource: (T) -> Boolean,
+    private val deleteFailedDestination: (T) -> Boolean,
+    private val onFailure: (Throwable) -> Unit = {}
+) {
+    fun save(
+        source: AndroidAttachmentContentUriSource,
+        destination: T?
+    ): AndroidAttachmentOpenResult {
+        if (destination == null) return AndroidAttachmentOpenResult.saveCancelled()
+        if (!ownerIsCurrent()) return AndroidAttachmentOpenResult.cancelled()
+        if (!sourceIsReadable()) return AndroidAttachmentOpenResult.missing()
+        return try {
+            val copiedBytes = copyToDestination(destination)
+            check(copiedBytes == source.sizeBytes) {
+                "Attachment Save As copied $copiedBytes of ${source.sizeBytes} bytes"
+            }
+            check(destinationMatchesSource(destination)) {
+                "Attachment Save As destination readback did not match the source"
+            }
+            if (!ownerIsCurrent()) {
+                if (deleteDestination(destination)) {
+                    AndroidAttachmentOpenResult.cancelled()
+                } else {
+                    AndroidAttachmentOpenResult.storageFailed()
+                }
+            } else {
+                AndroidAttachmentOpenResult.opened(source, AndroidAttachmentOpenAction.Save)
+            }
+        } catch (throwable: Throwable) {
+            onFailure(throwable)
+            deleteDestination(destination)
+            AndroidAttachmentOpenResult.storageFailed()
+        }
+    }
+
+    private fun deleteDestination(destination: T): Boolean {
+        val deleted =
+            runCatching { deleteFailedDestination(destination) }
+                .onFailure(onFailure)
+                .getOrDefault(false)
+        if (!deleted) {
+            onFailure(IllegalStateException("Attachment Save As could not delete the failed destination"))
+        }
+        return deleted
+    }
+}
+
+internal sealed interface AndroidAttachmentOpenDispatch {
+    data class Complete(
+        val result: AndroidAttachmentOpenResult
+    ) : AndroidAttachmentOpenDispatch
+
+    data class SaveAs(
+        val source: AndroidAttachmentContentUriSource,
+        val owner: AndroidAttachmentOwnerLease,
+        val attachmentId: String
+    ) : AndroidAttachmentOpenDispatch
+}
+
+internal fun androidAttachmentOpenDispatch(
+    result: AndroidAttachmentOpenResult,
+    resolverEmptySource: AndroidAttachmentContentUriSource?,
+    owner: AndroidAttachmentOwnerLease,
+    attachmentId: String
+): AndroidAttachmentOpenDispatch =
+    if (result.status == AndroidAttachmentOpenStatus.NoApp && resolverEmptySource != null) {
+        AndroidAttachmentOpenDispatch.SaveAs(
+            source = resolverEmptySource,
+            owner = owner,
+            attachmentId = attachmentId
+        )
+    } else {
+        AndroidAttachmentOpenDispatch.Complete(result)
+    }
 
 /** A read grant is propagated only to the activity selected for this launch. */
 internal enum class AndroidAttachmentReadGrantScope {

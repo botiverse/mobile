@@ -1120,6 +1120,10 @@ private fun SlockFilePreviewStandalonePageContent() {
                 activeDownloadId = null
                 slockAttachmentOpenResultMessage("cancelled", attachmentOpenResultTerms)
             }
+            "save_cancelled" -> {
+                activeDownloadId = null
+                null
+            }
             "missing" -> {
                 attachmentCacheAttemptToken = null
                 activeDownloadId = null
@@ -5189,6 +5193,7 @@ internal fun slockAttachmentOpenResultMessage(
     // Native messages are diagnostic-only: shared semantic status owns user-visible copy.
     when (status) {
         "opened", "" -> null
+        "save_cancelled" -> null
         "cancelled" -> terms.downloadStopped
         "missing" -> terms.unableToDownloadAttachment
         "no_app" -> terms.noAppCanOpenFile

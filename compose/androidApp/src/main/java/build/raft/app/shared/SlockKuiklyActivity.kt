@@ -377,6 +377,62 @@ internal data class SlockKuiklyRenderReadinessSnapshot(
     val contentHeight: Int
 )
 
+private data class PendingAndroidAttachmentSaveAs(
+    val operationId: String,
+    val source: AndroidAttachmentContentUriSource,
+    val owner: AndroidAttachmentOwnerLease,
+    val attachmentId: String,
+    val callback: KuiklyRenderCallback?,
+    val restoredFromActivityResultState: Boolean = false
+)
+
+private fun PendingAndroidAttachmentSaveAs.toSavedState(): Bundle =
+        Bundle().apply {
+            putString("operationId", operationId)
+            putString("sourceKind", source.kind.name)
+            putString("sourceUri", source.contentUri)
+            putString("mimeType", source.mimeType)
+            putString("displayName", source.displayName)
+            putLong("sizeBytes", source.sizeBytes)
+            putString("shellInstanceId", owner.shellInstanceId)
+            putString("scopeId", owner.scopeId)
+            putLong("authEpoch", owner.authEpoch)
+            putString("principalKey", owner.principalKey)
+            putLong("generation", owner.generation)
+            putString("attachmentId", attachmentId)
+        }
+
+private fun Bundle.toPendingAndroidAttachmentSaveAs(): PendingAndroidAttachmentSaveAs? =
+        runCatching {
+            val sourceKind = AndroidAttachmentOpenSourceKind.valueOf(checkNotNull(getString("sourceKind")))
+            PendingAndroidAttachmentSaveAs(
+                    operationId = checkNotNull(getString("operationId")),
+                    source =
+                            AndroidAttachmentContentUriSource(
+                                    kind = sourceKind,
+                                    contentUri = checkNotNull(getString("sourceUri")),
+                                    mimeType = checkNotNull(getString("mimeType")),
+                                    displayName = checkNotNull(getString("displayName")),
+                                    sizeBytes = getLong("sizeBytes"),
+                                    durableCache = sourceKind == AndroidAttachmentOpenSourceKind.PublicDownload
+                            ),
+                    owner =
+                            AndroidAttachmentOwnerLease(
+                                    shellInstanceId = checkNotNull(getString("shellInstanceId")),
+                                    scopeId = checkNotNull(getString("scopeId")),
+                                    authEpoch = getLong("authEpoch"),
+                                    principalKey = checkNotNull(getString("principalKey")),
+                                    generation = getLong("generation")
+                            ),
+                    attachmentId = checkNotNull(getString("attachmentId")),
+                    callback = null,
+                    restoredFromActivityResultState = true
+            )
+        }.getOrNull()
+
+private fun PendingAndroidAttachmentSaveAs.ownerOperationIsCurrent(): Boolean =
+        restoredFromActivityResultState || ProcessAndroidAttachmentOwners.admit(owner)
+
 open class SlockKuiklyActivity :
     ComponentActivity(),
     KuiklyRenderViewBaseDelegatorDelegate,
@@ -407,6 +463,7 @@ open class SlockKuiklyActivity :
     private var kuiklyHostAttached = false
     private var inputFontLayoutListener: ViewTreeObserver.OnGlobalLayoutListener? = null
     private var pendingThreadAttachmentUpload: PendingThreadAttachmentUpload? = null
+    private var pendingAttachmentSaveAs: PendingAndroidAttachmentSaveAs? = null
     private var androidShellLaunchTarget: AndroidShellLaunchTarget? = null
     private val realtimeVisibilityOwnerId: String by lazy {
         androidShellLaunchTarget?.shellInstanceId
@@ -428,6 +485,10 @@ open class SlockKuiklyActivity :
             registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
                 handleThreadAttachmentPickerResult(uris, persistable = true)
             }
+    private val attachmentSaveAsLauncher: ActivityResultLauncher<Intent> =
+            registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+                handleAttachmentSaveAsResult(result.resultCode, result.data?.data)
+            }
     private val screenshotFeedbackEventGate =
             ScreenshotFeedbackEventGate(SCREENSHOT_FEEDBACK_MINIMUM_INTERVAL_MILLIS)
     private val screenshotFeedbackListeningGate = ScreenshotFeedbackListeningGate()
@@ -442,6 +503,10 @@ open class SlockKuiklyActivity :
     override fun onCreate(savedInstanceState: Bundle?) {
         prepareHomeColdStartSplashIfNeeded()
         super.onCreate(savedInstanceState)
+        pendingAttachmentSaveAs =
+                savedInstanceState
+                    ?.getBundle(ATTACHMENT_SAVE_AS_STATE_KEY)
+                    ?.toPendingAndroidAttachmentSaveAs()
         onBackPressedDispatcher.addCallback(this, kuiklySystemBackCallback)
         setContentView(R.layout.activity_slock_kuikly)
         prepareScreenshotFeedbackObserver()
@@ -642,6 +707,13 @@ open class SlockKuiklyActivity :
         if (kuiklyHostAttached) {
             kuiklyRenderViewDelegator.onDetach()
         }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        pendingAttachmentSaveAs?.let { pending ->
+            outState.putBundle(ATTACHMENT_SAVE_AS_STATE_KEY, pending.toSavedState())
+        }
+        super.onSaveInstanceState(outState)
     }
 
     override fun onStart() {
@@ -1119,6 +1191,162 @@ open class SlockKuiklyActivity :
         if (this is ViewGroup) {
             for (index in 0 until childCount) {
                 getChildAt(index).applySlockInputTypeface()
+            }
+        }
+    }
+
+    internal fun requestAttachmentSaveAs(
+            dispatch: AndroidAttachmentOpenDispatch.SaveAs,
+            callback: KuiklyRenderCallback?
+    ) {
+        runOnUiThread {
+            if (!ProcessAndroidAttachmentOwners.admit(dispatch.owner)) {
+                callback?.invoke(AndroidAttachmentOpenResult.cancelled().toBridgePayload())
+                return@runOnUiThread
+            }
+            if (pendingAttachmentSaveAs != null) {
+                callback?.invoke(AndroidAttachmentOpenResult.failed().toBridgePayload())
+                return@runOnUiThread
+            }
+            val pending =
+                    PendingAndroidAttachmentSaveAs(
+                            operationId = UUID.randomUUID().toString(),
+                            source = dispatch.source,
+                            owner = dispatch.owner,
+                            attachmentId = dispatch.attachmentId,
+                            callback = callback
+                    )
+            pendingAttachmentSaveAs = pending
+            launchAttachmentSaveAsPicker(pending)
+        }
+    }
+
+    private fun launchAttachmentSaveAsPicker(pending: PendingAndroidAttachmentSaveAs) {
+        if (pendingAttachmentSaveAs?.operationId != pending.operationId) return
+        if (!pending.ownerOperationIsCurrent()) {
+            completeAttachmentSaveAs(pending.operationId, AndroidAttachmentOpenResult.cancelled())
+            return
+        }
+        runCatching {
+            attachmentSaveAsLauncher.launch(androidAttachmentCreateDocumentIntent(pending.source))
+        }.onFailure { throwable ->
+            if (throwable is ActivityNotFoundException) {
+                showAttachmentSaveAsUnavailableDialog(pending)
+            } else {
+                SlockAppLog.record(
+                        "SlockAttachmentOpen",
+                        "attachmentId=${pending.attachmentId.take(8)} phase=save_as_picker status=failed type=${throwable::class.java.simpleName}"
+                )
+                completeAttachmentSaveAs(pending.operationId, AndroidAttachmentOpenResult.storageFailed())
+            }
+        }
+    }
+
+    private fun showAttachmentSaveAsUnavailableDialog(pending: PendingAndroidAttachmentSaveAs) {
+        if (pendingAttachmentSaveAs?.operationId != pending.operationId || isFinishing || isDestroyed) {
+            completeAttachmentSaveAs(pending.operationId, AndroidAttachmentOpenResult.saveCancelled())
+            return
+        }
+        AlertDialog.Builder(this)
+                .setTitle(R.string.attachment_save_as_unavailable_title)
+                .setMessage(R.string.attachment_save_as_unavailable_message)
+                .setPositiveButton(R.string.attachment_save_as_retry) { _, _ ->
+                    launchAttachmentSaveAsPicker(pending)
+                }
+                .setNegativeButton(R.string.attachment_save_as_cancel) { _, _ ->
+                    completeAttachmentSaveAs(pending.operationId, AndroidAttachmentOpenResult.saveCancelled())
+                }
+                .setOnCancelListener {
+                    completeAttachmentSaveAs(pending.operationId, AndroidAttachmentOpenResult.saveCancelled())
+                }
+                .show()
+    }
+
+    private fun handleAttachmentSaveAsResult(resultCode: Int, destination: Uri?) {
+        val pending = pendingAttachmentSaveAs ?: return
+        if (resultCode != Activity.RESULT_OK || destination == null) {
+            completeAttachmentSaveAs(pending.operationId, AndroidAttachmentOpenResult.saveCancelled())
+            return
+        }
+        SlockKuiklyThreadAdapter.execute("attachment-save-as") {
+            val result =
+                    AndroidAttachmentSaveAsCoordinator(
+                            ownerIsCurrent = {
+                                // A restored Activity Result is itself the one-time continuation of
+                                // an owner-admitted picker launch. No new attachment action is admitted.
+                                pending.ownerOperationIsCurrent()
+                            },
+                            sourceIsReadable = {
+                                runCatching {
+                                    contentResolver
+                                        .openInputStream(Uri.parse(pending.source.contentUri))
+                                        ?.use { true }
+                                        ?: false
+                                }.getOrDefault(false)
+                            },
+                            copyToDestination = { selectedDestination: Uri ->
+                                copyAndroidAttachmentToDocument(
+                                        resolver = contentResolver,
+                                        source = pending.source,
+                                        destination = selectedDestination
+                                )
+                            },
+                            destinationMatchesSource = { selectedDestination: Uri ->
+                                androidAttachmentDocumentMatchesSource(
+                                        resolver = contentResolver,
+                                        source = pending.source,
+                                        destination = selectedDestination
+                                )
+                            },
+                            deleteFailedDestination = { selectedDestination: Uri ->
+                                contentResolver.delete(selectedDestination, null, null) > 0
+                            },
+                            onFailure = { throwable ->
+                                SlockAppLog.record(
+                                        "SlockAttachmentOpen",
+                                        "attachmentId=${pending.attachmentId.take(8)} phase=save_as_copy status=failed type=${throwable::class.java.simpleName}"
+                                )
+                            }
+                    ).save(pending.source, destination)
+            if (result.status == AndroidAttachmentOpenStatus.Opened) {
+                SlockAppLog.record(
+                        "SlockAttachmentOpen",
+                        "attachmentId=${pending.attachmentId.take(8)} status=saved_as sizeBytes=${pending.source.sizeBytes} mimeType=${pending.source.mimeType}"
+                )
+            }
+            completeAttachmentSaveAs(pending.operationId, result)
+        }
+    }
+
+    private fun completeAttachmentSaveAs(
+            operationId: String,
+            result: AndroidAttachmentOpenResult
+    ) {
+        runOnUiThread {
+            val pending = pendingAttachmentSaveAs
+                    ?.takeIf { it.operationId == operationId }
+                    ?: return@runOnUiThread
+            pendingAttachmentSaveAs = null
+            val callback = pending.callback
+            if (callback != null) {
+                callback.invoke(result.toBridgePayload())
+            } else {
+                when (result.status) {
+                    AndroidAttachmentOpenStatus.Opened ->
+                            Toast.makeText(
+                                    this,
+                                    getString(R.string.attachment_save_as_saved_toast),
+                                    Toast.LENGTH_SHORT
+                            ).show()
+                    AndroidAttachmentOpenStatus.SaveCancelled,
+                    AndroidAttachmentOpenStatus.Cancelled -> Unit
+                    else ->
+                            Toast.makeText(
+                                    this,
+                                    getString(R.string.attachment_save_as_failed_toast),
+                                    Toast.LENGTH_SHORT
+                            ).show()
+                }
             }
         }
     }
@@ -1695,6 +1923,7 @@ open class SlockKuiklyActivity :
     }
 
     companion object {
+        private const val ATTACHMENT_SAVE_AS_STATE_KEY = "slockAttachmentSaveAsState"
         const val PAGE_LOGIN = SlockKuiklyPages.LOGIN
         const val PAGE_REGISTER = SlockKuiklyPages.REGISTER
         const val PAGE_FORGOT_PASSWORD = SlockKuiklyPages.FORGOT_PASSWORD
@@ -5367,7 +5596,7 @@ internal class SlockKuiklyBridgeModule(
             val request = JSONObject(params ?: "{}")
             val startedAt = System.currentTimeMillis()
             val trackProgress = request.optBoolean("trackProgress", false)
-            val result =
+            val dispatch =
                     runCatching {
                         downloadAndOpenAttachment(
                                 request = request,
@@ -5383,9 +5612,19 @@ internal class SlockKuiklyBridgeModule(
                                 "SlockAttachmentOpen",
                                 "attachmentId=${request.optString("attachmentId").take(8)} status=failed type=${throwable::class.java.simpleName} durationMs=${System.currentTimeMillis() - startedAt}"
                         )
-                        AndroidAttachmentOpenResult.failed().toBridgePayload()
+                        AndroidAttachmentOpenDispatch.Complete(AndroidAttachmentOpenResult.failed())
                     }
-            callback?.invoke(result)
+            when (dispatch) {
+                is AndroidAttachmentOpenDispatch.Complete -> callback?.invoke(dispatch.result.toBridgePayload())
+                is AndroidAttachmentOpenDispatch.SaveAs -> {
+                    val host = activity as? SlockKuiklyActivity
+                    if (host == null) {
+                        callback?.invoke(AndroidAttachmentOpenResult.storageFailed().toBridgePayload())
+                    } else {
+                        host.requestAttachmentSaveAs(dispatch, callback)
+                    }
+                }
+            }
         }
     }
 
@@ -5867,11 +6106,12 @@ internal class SlockKuiklyBridgeModule(
     private fun downloadAndOpenAttachment(
             request: JSONObject,
             progressCallback: ((Map<String, Any>) -> Unit)? = null
-    ): Map<String, Any> {
+    ): AndroidAttachmentOpenDispatch {
         val owner = request.attachmentOwnerLease()
-                ?: return AndroidAttachmentOpenResult.failed().toBridgePayload()
+                ?: return AndroidAttachmentOpenDispatch.Complete(AndroidAttachmentOpenResult.failed())
         val identity = request.publicAttachmentIdentity(owner)
         val authority = ProcessAndroidAttachmentPublicDownloads.get(appContext)
+        var resolverEmptySource: AndroidAttachmentContentUriSource? = null
         val coordinator =
                 AndroidAttachmentOpenCoordinator<AttachmentPreparationResult.Ready>(
                         ownerIsCurrent = { ProcessAndroidAttachmentOwners.admit(owner) },
@@ -5912,7 +6152,11 @@ internal class SlockKuiklyBridgeModule(
                                     owner = owner,
                                     source = source,
                                     privateSourceFile = privatePreparation?.targetFile
-                            )
+                            ).also { result ->
+                                if (result.status == AndroidAttachmentOpenStatus.NoApp) {
+                                    resolverEmptySource = source
+                                }
+                            }
                         },
                         onPrivateSourceFailure = { throwable ->
                             SlockAppLog.record(
@@ -5938,7 +6182,13 @@ internal class SlockKuiklyBridgeModule(
                 } else {
                     AndroidAttachmentOpenRequirement.PublicOrPrivate
                 }
-        return coordinator.open(identity, requirement).toBridgePayload()
+        val result = coordinator.open(identity, requirement)
+        return androidAttachmentOpenDispatch(
+                result = result,
+                resolverEmptySource = resolverEmptySource,
+                owner = owner,
+                attachmentId = identity.attachmentId
+        )
     }
 
     private fun AttachmentPreparationResult.Ready.toPrivateAttachmentOpenSource(): AndroidAttachmentContentUriSource? {
