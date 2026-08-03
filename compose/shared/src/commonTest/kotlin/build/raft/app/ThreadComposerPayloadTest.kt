@@ -350,6 +350,37 @@ class ThreadComposerPayloadTest {
     }
 
     @Test
+    fun sessionRetirementPreservesVisibleImeButNeverReopensUserDismissedIme() {
+        assertEquals(
+            ThreadComposerSessionFocusRestorePlan(requestFocus = true, showKeyboard = true),
+            threadComposerSessionFocusRestorePlan(
+                explicitFocusRequest = false,
+                editorSessionReplaced = true,
+                editorFocused = true,
+                keyboardInsetDp = 280f,
+            ),
+        )
+        assertEquals(
+            ThreadComposerSessionFocusRestorePlan(requestFocus = false, showKeyboard = false),
+            threadComposerSessionFocusRestorePlan(
+                explicitFocusRequest = false,
+                editorSessionReplaced = true,
+                editorFocused = true,
+                keyboardInsetDp = 0f,
+            ),
+        )
+        assertEquals(
+            ThreadComposerSessionFocusRestorePlan(requestFocus = true, showKeyboard = true),
+            threadComposerSessionFocusRestorePlan(
+                explicitFocusRequest = true,
+                editorSessionReplaced = false,
+                editorFocused = false,
+                keyboardInsetDp = 0f,
+            ),
+        )
+    }
+
+    @Test
     fun staleClearDoesNotRetireSessionOrOverwriteFullEditingState() {
         val owner = ThreadComposerControlledEditorOwner(seedText = "sent", seedAsTask = false)
         val session = owner.editorSessionId
