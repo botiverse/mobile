@@ -157,12 +157,16 @@ internal fun UiCardVisualContent() {
     // outer). React's box-shadow doesn't occupy layout, so the visible card core must be the
     // same across registers — a theme-aware outer width keeps the visible core at 310dp both.
     val cardWidth = if (theme.family == SlockThemeFamily.Elegant) 310.dp else 314.dp
+    // Fixed 342x190 backdrop with only start/top padding (no end/bottom) so the outer
+    // width isn't constrained to 310 — brutal outer 314 (core 314-4=310) and elegant outer
+    // 310 (core 310) both fit and the visible card core equals 310dp from x=16 to x=326.
     Box(
         modifier =
             Modifier
                 .width(342.dp)
+                .height(190.dp)
                 .background(SlockColor.SurfaceWhite)
-                .padding(16.dp)
+                .padding(start = 16.dp, top = 16.dp)
     ) {
         SlockBrutalCard(modifier = Modifier.width(cardWidth)) {
             Text(
@@ -180,8 +184,9 @@ internal fun UiCardVisualContent() {
                 label = "Save changes",
                 onClick = {},
                 backgroundColor = SlockColor.BrandYellow,
-                minHeight = 32.dp,
-                minWidth = 0.dp
+                minHeight = 28.dp,
+                minWidth = 0.dp,
+                textStyle = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp)
             )
         }
     }
