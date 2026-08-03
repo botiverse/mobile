@@ -75,7 +75,6 @@ const hostMarkers = [
   'const preflightDecision = slockOhosAttachmentOpenPreflightDecision(',
   'preflightTrace.publicDownloadMissing(privateCommitted);',
   'preflightTrace.requestRejected();',
-  'this.cleanupAttachmentOpenAliases(cacheDir);',
   'preflightTrace.cacheChecked(privateCommitted, cached);',
   'preflightTrace.downloadStarted(privateCommitted);',
   'slockOhosAttachmentDownloadSink.download(',
@@ -87,6 +86,7 @@ const hostMarkers = [
   'ensureSlockOhosAttachmentCacheDirectory(openDirectory);',
   'await materializeSlockOhosPrivateAttachmentOpenAlias(',
   'slockOhosPrivateAttachmentOpenAliasFileName(',
+  'cleanupSlockOhosPrivateAttachmentOpenAliases(',
   'const uri = fileUri.getUriFromPath(openPath);',
   'preflightTrace.wantHandoff(privateCommitted, !cached);',
   'buildSlockOhosAttachmentOpenWants(',
@@ -251,7 +251,7 @@ expectMutationFailure(
 expectMutationFailure(
   'delete private open alias TTL cleanup',
   shared,
-  removeFirst(host, 'this.cleanupAttachmentOpenAliases(cacheDir);')
+  removeFirst(host, 'cleanupSlockOhosPrivateAttachmentOpenAliases(')
 );
 
 console.log('OHOS attachment-open diagnostic production contract + mutation self-test: PASS');

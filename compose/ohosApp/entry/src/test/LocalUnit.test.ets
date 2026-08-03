@@ -60,6 +60,7 @@ import {
   SlockOhosFeedbackDraftAttachmentBackend,
 } from '../main/ets/kuikly/SlockOhosHandsFeedbackDraftAttachments';
 import {
+  cleanupSlockOhosPrivateAttachmentOpenAliases,
   cleanupSlockOhosPrivateAttachmentOrphanParts,
   copySlockOhosPrivateAttachmentToProviderUri,
   isSlockOhosPrivateAttachmentOwnerKey,
@@ -164,8 +165,17 @@ class FakePrivateAttachmentCleanupBackend implements SlockOhosPrivateAttachmentC
 class FakePrivateAttachmentOpenAliasBackend implements SlockOhosPrivateAttachmentOpenAliasBackend {
   readonly stats: Map<string, SlockOhosPrivateAttachmentStat> = new Map();
   readonly contents: Map<string, string> = new Map();
+  readonly directoryEntries: Map<string, Array<string>> = new Map();
+  readonly removedPaths: Array<string> = [];
+  readonly removedDirectories: Array<string> = [];
   copyCount: number = 0;
   unlinkCount: number = 0;
+  copyFailure: Error | null = null;
+  copiedSizeOverride: number | null = null;
+
+  list(directory: string): Array<string> {
+    return this.directoryEntries.get(directory) ?? [];
+  }
 
   stat(path: string): SlockOhosPrivateAttachmentStat | null {
     return this.stats.get(path) ?? null;
@@ -175,9 +185,10 @@ class FakePrivateAttachmentOpenAliasBackend implements SlockOhosPrivateAttachmen
     const source = this.stats.get(sourcePath);
     if (source === undefined) throw new Error('source missing');
     this.copyCount += 1;
+    if (this.copyFailure !== null) throw this.copyFailure;
     this.stats.set(targetPath, {
       isFile: source.isFile,
-      sizeBytes: source.sizeBytes,
+      sizeBytes: this.copiedSizeOverride ?? source.sizeBytes,
       mtime: source.mtime,
     });
     this.contents.set(targetPath, this.contents.get(sourcePath) ?? '');
@@ -185,8 +196,14 @@ class FakePrivateAttachmentOpenAliasBackend implements SlockOhosPrivateAttachmen
 
   unlink(path: string): void {
     this.unlinkCount += 1;
+    this.removedPaths.push(path);
     this.stats.delete(path);
     this.contents.delete(path);
+  }
+
+  removeDirectory(path: string): void {
+    this.removedDirectories.push(path);
+    this.directoryEntries.delete(path);
   }
 }
 
@@ -778,6 +795,7 @@ export default function localUnitTest() {
       const backend = new FakePrivateAttachmentOpenAliasBackend();
       backend.stats.set('/private/source', { isFile: true, sizeBytes: 128, mtime: 20 });
       backend.contents.set('/private/source', 'PK\u0003\u0004exact-zip-bytes');
+      backend.directoryEntries.set('/cache', []);
 
       expect(await materializeSlockOhosPrivateAttachmentOpenAlias('/private/source', '/cache/open.zip', backend))
         .assertEqual('/cache/open.zip');
@@ -791,6 +809,101 @@ export default function localUnitTest() {
       await materializeSlockOhosPrivateAttachmentOpenAlias('/private/source', '/cache/open.zip', backend);
       expect(backend.copyCount).assertEqual(2);
       expect(backend.unlinkCount).assertEqual(1);
+    });
+
+    it('privateAttachmentOpenAliasRenameKeepsOnlyCurrentLeafAndCanonicalSource', 0, async () => {
+      const backend = new FakePrivateAttachmentOpenAliasBackend();
+      backend.stats.set('/private/source', { isFile: true, sizeBytes: 128, mtime: 20 });
+      backend.contents.set('/private/source', 'PK\u0003\u0004canonical');
+      backend.stats.set('/cache/old.zip', { isFile: true, sizeBytes: 128, mtime: 20 });
+      backend.contents.set('/cache/old.zip', 'PK\u0003\u0004canonical');
+      backend.directoryEntries.set('/cache', ['old.zip']);
+
+      await materializeSlockOhosPrivateAttachmentOpenAlias('/private/source', '/cache/新名字.zip', backend);
+
+      expect(backend.removedPaths.join(',')).assertEqual('/cache/old.zip');
+      expect(backend.contents.get('/cache/新名字.zip')).assertEqual('PK\u0003\u0004canonical');
+      expect(backend.contents.get('/private/source')).assertEqual('PK\u0003\u0004canonical');
+      expect(backend.stats.get('/private/source')?.sizeBytes).assertEqual(128);
+    });
+
+    it('privateAttachmentOpenAliasCopyThrowAndWrongSizeRemovePartialOnly', 0, async () => {
+      const throwing = new FakePrivateAttachmentOpenAliasBackend();
+      throwing.stats.set('/private/source', { isFile: true, sizeBytes: 128, mtime: 20 });
+      throwing.contents.set('/private/source', 'canonical');
+      throwing.directoryEntries.set('/cache', []);
+      throwing.copyFailure = new Error('copy failed');
+      let copyFailed = false;
+      try {
+        await materializeSlockOhosPrivateAttachmentOpenAlias('/private/source', '/cache/open.zip', throwing);
+      } catch (_) {
+        copyFailed = true;
+      }
+      expect(copyFailed).assertTrue();
+      expect(throwing.removedPaths.join(',')).assertEqual('/cache/open.zip');
+      expect(throwing.contents.get('/private/source')).assertEqual('canonical');
+
+      const truncated = new FakePrivateAttachmentOpenAliasBackend();
+      truncated.stats.set('/private/source', { isFile: true, sizeBytes: 128, mtime: 20 });
+      truncated.contents.set('/private/source', 'canonical');
+      truncated.directoryEntries.set('/cache', []);
+      truncated.copiedSizeOverride = 64;
+      let sizeFailed = false;
+      try {
+        await materializeSlockOhosPrivateAttachmentOpenAlias('/private/source', '/cache/open.zip', truncated);
+      } catch (_) {
+        sizeFailed = true;
+      }
+      expect(sizeFailed).assertTrue();
+      expect(truncated.removedPaths.join(',')).assertEqual('/cache/open.zip');
+      expect(truncated.stats.get('/private/source')?.sizeBytes).assertEqual(128);
+    });
+
+    it('privateAttachmentOpenAliasCleanupExpiresOldAndEvictsEightyFirstDirectory', 0, () => {
+      const backend = new FakePrivateAttachmentOpenAliasBackend();
+      const cacheEntries: Array<string> = [];
+      for (let index = 0; index < 81; index += 1) {
+        const directoryName = `open-${index}`;
+        const directory = `/cache/${directoryName}`;
+        cacheEntries.push(directoryName);
+        backend.directoryEntries.set(directory, ['alias.zip']);
+        backend.stats.set(`${directory}/alias.zip`, { isFile: true, sizeBytes: 10, mtime: 1000 + index });
+      }
+      cacheEntries.push('unrelated');
+      backend.directoryEntries.set('/cache', cacheEntries);
+      backend.stats.set('/private/source', { isFile: true, sizeBytes: 128, mtime: 1 });
+
+      const evicted = cleanupSlockOhosPrivateAttachmentOpenAliases(
+        '/cache',
+        24 * 60 * 60 * 1000,
+        80,
+        1080 * 1000,
+        '/cache/open-0',
+        backend
+      );
+      expect(evicted).assertEqual(1);
+      expect(backend.removedDirectories.join(',')).assertEqual('/cache/open-1');
+      expect(backend.removedPaths.join(',')).assertEqual('/cache/open-1/alias.zip');
+      expect(backend.stats.get('/cache/open-0/alias.zip')?.sizeBytes).assertEqual(10);
+      expect(backend.stats.get('/private/source')?.sizeBytes).assertEqual(128);
+
+      const expiryBackend = new FakePrivateAttachmentOpenAliasBackend();
+      expiryBackend.directoryEntries.set('/cache', ['open-expired', 'unrelated']);
+      expiryBackend.directoryEntries.set('/cache/open-expired', ['alias.zip']);
+      expiryBackend.stats.set('/cache/open-expired/alias.zip', { isFile: true, sizeBytes: 10, mtime: 1000 });
+      expiryBackend.stats.set('/private/source', { isFile: true, sizeBytes: 128, mtime: 1 });
+      const expired = cleanupSlockOhosPrivateAttachmentOpenAliases(
+        '/cache',
+        24 * 60 * 60 * 1000,
+        80,
+        (1000 + 86401) * 1000,
+        '',
+        expiryBackend
+      );
+      expect(expired).assertEqual(1);
+      expect(expiryBackend.removedDirectories.join(',')).assertEqual('/cache/open-expired');
+      expect(expiryBackend.removedPaths.join(',')).assertEqual('/cache/open-expired/alias.zip');
+      expect(expiryBackend.stats.get('/private/source')?.sizeBytes).assertEqual(128);
     });
 
     it('privateAttachmentProviderCopyStreamsExactBytesAndClosesBothFds', 0, () => {

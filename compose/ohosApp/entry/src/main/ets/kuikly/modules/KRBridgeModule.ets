@@ -43,6 +43,7 @@ import {
   SlockOhosAttachmentOpenWants,
 } from '../SlockOhosAttachmentOpenWant';
 import {
+  cleanupSlockOhosPrivateAttachmentOpenAliases,
   cleanupSlockOhosPrivateAttachmentOrphanParts,
   copySlockOhosPrivateAttachmentToProviderUri,
   ensureSlockOhosPrivateAttachmentDirectory,
@@ -353,7 +354,6 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       const cacheDir = `${context.cacheDir}/slock-attachments`;
       ensureSlockOhosAttachmentCacheDirectory(cacheDir);
       this.cleanupAttachmentCache(cacheDir);
-      this.cleanupAttachmentOpenAliases(cacheDir);
       const path = privateCommitted
         ? privatePath
         : `${cacheDir}/${this.safeAttachmentCacheFileName(attachmentId, fileName, mimeType)}`;
@@ -375,8 +375,10 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         }
       }
       let openPath = path;
+      let retainedOpenDirectory = '';
       if (privateCommitted) {
         const openDirectory = `${cacheDir}/${slockOhosPrivateAttachmentOpenAliasDirectoryName(ownerKey, attachmentId)}`;
+        retainedOpenDirectory = openDirectory;
         ensureSlockOhosAttachmentCacheDirectory(openDirectory);
         openPath = await materializeSlockOhosPrivateAttachmentOpenAlias(
           path,
@@ -386,6 +388,13 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
           )}`
         );
       }
+      cleanupSlockOhosPrivateAttachmentOpenAliases(
+        cacheDir,
+        KRBridgeModule.ATTACHMENT_CACHE_MAX_AGE_MS,
+        KRBridgeModule.ATTACHMENT_CACHE_MAX_FILES,
+        Date.now(),
+        retainedOpenDirectory
+      );
       const uri = fileUri.getUriFromPath(openPath);
       let openWants: SlockOhosAttachmentOpenWants | undefined = undefined;
       try {
@@ -1877,45 +1886,6 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       entries.slice(KRBridgeModule.ATTACHMENT_CACHE_MAX_FILES).forEach((entry: OhosAttachmentCacheEntry) => {
         this.safeUnlink(entry.path);
       });
-    } catch (_) {
-    }
-  }
-
-  private cleanupAttachmentOpenAliases(cacheDir: string) {
-    try {
-      const aliases: Array<OhosAttachmentCacheEntry> = [];
-      fs.listFileSync(cacheDir).forEach((name: string) => {
-        if (!name.startsWith('open-')) return;
-        const directory = `${cacheDir}/${name}`;
-        try {
-          let newestMtime = 0;
-          fs.listFileSync(directory).forEach((child: string) => {
-            try {
-              const stat = fs.statSync(`${directory}/${child}`);
-              if (stat.isFile()) newestMtime = Math.max(newestMtime, stat.mtime);
-            } catch (_) {
-            }
-          });
-          aliases.push({ path: directory, mtime: newestMtime });
-        } catch (_) {
-        }
-      });
-      aliases.sort((left: OhosAttachmentCacheEntry, right: OhosAttachmentCacheEntry) => right.mtime - left.mtime);
-      const nowSeconds = Date.now() / 1000;
-      aliases.forEach((entry: OhosAttachmentCacheEntry, index: number) => {
-        const expired = entry.mtime <= 0 || (nowSeconds - entry.mtime) * 1000 > KRBridgeModule.ATTACHMENT_CACHE_MAX_AGE_MS;
-        if (expired || index >= KRBridgeModule.ATTACHMENT_CACHE_MAX_FILES) {
-          this.removeAttachmentOpenAliasDirectory(entry.path);
-        }
-      });
-    } catch (_) {
-    }
-  }
-
-  private removeAttachmentOpenAliasDirectory(directory: string) {
-    try {
-      fs.listFileSync(directory).forEach((name: string) => this.safeUnlink(`${directory}/${name}`));
-      fs.rmdirSync(directory);
     } catch (_) {
     }
   }
