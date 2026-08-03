@@ -5830,6 +5830,10 @@ internal fun SlockAppShellContent(
                                 prewarmAdmissionGate.invalidate("settings_open_connected_apps")
                                 pager.openSettingsMarketplacePage(storeScope)
                             },
+                            onOpenHandsFeedback = {
+                                prewarmAdmissionGate.invalidate("settings_open_hands_feedback")
+                                pager.openSettingsHandsFeedbackPage(storeScope)
+                            },
                             onMessageAlignmentSelected = {
                                 prewarmAdmissionGate.invalidate("settings_message_alignment")
                                 myMessageAlignment = it
@@ -6435,6 +6439,7 @@ private fun SettingsAppShellContent(
     onOpenComputers: () -> Unit,
     onOpenAdministration: () -> Unit,
     onOpenConnectedApps: () -> Unit,
+    onOpenHandsFeedback: () -> Unit,
     onMessageAlignmentSelected: (MyMessageAlignmentPreference) -> Unit,
     onCompactConsecutiveMessagesSelected: (Boolean) -> Unit,
     onForegroundMessageBannersSelected: (Boolean) -> Unit,
@@ -6553,9 +6558,7 @@ private fun SettingsAppShellContent(
                     onSettingsIntent(SharedSettingsIntent.Refresh)
                 }
             }
-            SharedSettingsEffect.SendFeedback -> {
-                onDestinationChange(SettingsDestinationHandsFeedback)
-            }
+            SharedSettingsEffect.SendFeedback -> onOpenHandsFeedback()
             SharedSettingsEffect.RequestNotificationPermission -> {
                 val result = settingsCapabilities.requestNotificationPermission()
                 onSettingsIntent(SharedSettingsIntent.CompleteSystemNotificationAction(MOBILE_ACTION_PERMISSION, result))
@@ -6753,6 +6756,7 @@ private fun SettingsAppShellContent(
                     // child destination.
                     SettingsDestinationAdministration -> onOpenAdministration()
                     SettingsDestinationConnectedApps -> onOpenConnectedApps()
+                    SettingsDestinationHandsFeedback -> onOpenHandsFeedback()
                     else -> onDestinationChange(key)
                 }
             }
@@ -12300,7 +12304,7 @@ private fun parseDiagnosticFeatureFlagAction(action: String): Pair<String, Strin
 }
 
 @Composable
-private fun SharedHandsFeedbackContent(
+internal fun SharedHandsFeedbackContent(
     pager: Pager,
     eventBus: SlockEventBus,
     settingsCapabilities: BridgeSettingsPlatformCapabilities,
@@ -13341,7 +13345,7 @@ private fun SettingsHandsFeedbackConversationRow(
 }
 
 @Composable
-private fun SettingsDetailShell(
+internal fun SettingsDetailShell(
     title: String,
     subtitle: String,
     iconName: SlockLucideIconName,
@@ -24147,6 +24151,7 @@ private fun SettingsRouteVisualScreen() {
         onOpenComputers = {},
         onOpenAdministration = {},
         onOpenConnectedApps = {},
+        onOpenHandsFeedback = {},
         onMessageAlignmentSelected = {},
         onCompactConsecutiveMessagesSelected = {},
         onForegroundMessageBannersSelected = {},

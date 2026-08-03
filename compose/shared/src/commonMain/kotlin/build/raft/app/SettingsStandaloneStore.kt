@@ -21,6 +21,7 @@ import build.raft.app.data.SharedSettingsEffect
 import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.data.SharedSettingsState
 import build.raft.app.data.SlockSharedStoreRegistry
+import build.raft.app.data.SlockAuthSessionStore
 import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.data.kuiklyBridgeCallContext
 import build.raft.app.data.slockSharedPreferenceStore
@@ -37,6 +38,7 @@ import com.tencent.tmm.kmmresource.compose.stringResource
 internal data class StandaloneSettingsEnvironment(
     val dataSource: SharedSettingsDataSource,
     val authDataSource: SharedAuthDataSource,
+    val authStore: SlockAuthSessionStore,
     val serverMembersStore: SharedServerMembersStore,
     val settingsCapabilities: BridgeSettingsPlatformCapabilities,
     val storeScope: SlockShellStoreScope,
@@ -119,6 +121,7 @@ internal fun rememberStandaloneSettingsEnvironment(
         StandaloneSettingsEnvironment(
             dataSource = dataSource,
             authDataSource = authDataSource,
+            authStore = authStore,
             serverMembersStore = serverMembersStore,
             settingsCapabilities = settingsCapabilities,
             storeScope = storeScope,
