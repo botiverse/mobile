@@ -1,10 +1,13 @@
 package build.raft.app
 
+import com.tencent.kuikly.compose.ui.text.TextRange
+import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertFalse
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class ThreadComposerPayloadTest {
@@ -183,6 +186,90 @@ class ThreadComposerPayloadTest {
         assertEquals("", submittedHost.liveDraftText)
         assertEquals("", submittedHost.payloadTextSeed)
         assertEquals(1, submittedHost.syncNonce)
+    }
+
+    @Test
+    fun staleEditorCommandCannotOverwriteNewerLocalCompositionText() {
+        val delayedClear =
+            ThreadComposerEditorCommand(
+                id = 1,
+                kind = ThreadComposerEditorCommandKind.Clear,
+                expectedText = "n",
+            )
+
+        assertFalse(
+            shouldApplyThreadComposerEditorCommand(localText = "ni", localAsTask = false, command = delayedClear)
+        )
+        assertTrue(
+            shouldApplyThreadComposerEditorCommand(localText = "n", localAsTask = false, command = delayedClear)
+        )
+        assertFalse(
+            shouldApplyThreadComposerEditorCommand(
+                localText = "n",
+                localAsTask = true,
+                command = delayedClear.copy(expectedAsTask = false),
+            )
+        )
+    }
+
+    @Test
+    fun controlledEditorOwnerReturnsExactNativeValueOnNextRender() {
+        val owner = ThreadComposerControlledEditorOwner(seedText = "n", seedAsTask = false)
+        val composing =
+            TextFieldValue(
+                text = "ni",
+                selection = TextRange(2),
+                composition = TextRange(0, 2),
+            )
+
+        owner.acceptEditorValue(composing)
+
+        assertSame(composing, owner.value)
+        assertEquals(TextRange(0, 2), owner.value.composition)
+
+        val equalButNewNativeValue = composing.copy()
+        owner.acceptEditorValue(equalButNewNativeValue)
+        assertSame(equalButNewNativeValue, owner.value)
+    }
+
+    @Test
+    fun controlledEditorOwnerRejectsDelayedReplaceAfterTextOrTaskAdvances() {
+        val owner = ThreadComposerControlledEditorOwner(seedText = "n", seedAsTask = false)
+        owner.acceptEditorValue(TextFieldValue("ni", selection = TextRange(2), composition = TextRange(0, 2)))
+        val delayed =
+            ThreadComposerEditorCommand(
+                id = 1,
+                kind = ThreadComposerEditorCommandKind.Replace,
+                text = "restored",
+                expectedText = "n",
+                expectedAsTask = false,
+            )
+
+        assertEquals(ThreadComposerEditorCommandOutcome.Stale, owner.apply(delayed))
+        assertEquals("ni", owner.value.text)
+        assertEquals(ThreadComposerEditorCommandOutcome.AlreadyHandled, owner.apply(delayed))
+
+        val taskOwner = ThreadComposerControlledEditorOwner(seedText = "n", seedAsTask = false)
+        taskOwner.acceptAsTask(true)
+        assertEquals(ThreadComposerEditorCommandOutcome.Stale, taskOwner.apply(delayed))
+        assertEquals("n", taskOwner.value.text)
+        assertTrue(taskOwner.asTask)
+    }
+
+    @Test
+    fun controlledEditorOwnerClearIsAuthoritativeAndInstanceScoped() {
+        val owner = ThreadComposerControlledEditorOwner(seedText = "draft", seedAsTask = true)
+        val clear = ThreadComposerEditorCommand(id = 4, kind = ThreadComposerEditorCommandKind.Clear)
+
+        assertEquals(ThreadComposerEditorCommandOutcome.Applied, owner.apply(clear))
+        assertEquals("", owner.value.text)
+        assertFalse(owner.asTask)
+        assertEquals(4, owner.handledCommandId)
+        assertEquals(ThreadComposerEditorCommandOutcome.AlreadyHandled, owner.apply(clear))
+
+        val nextInstance = ThreadComposerControlledEditorOwner(seedText = "fresh", seedAsTask = false)
+        assertEquals("fresh", nextInstance.value.text)
+        assertEquals(0, nextInstance.handledCommandId)
     }
 
     @Test

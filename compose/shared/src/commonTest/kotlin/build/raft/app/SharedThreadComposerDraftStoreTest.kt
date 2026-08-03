@@ -15,6 +15,61 @@ import kotlin.test.assertTrue
 
 class SharedThreadComposerDraftStoreTest {
     @Test
+    fun localEditorEchoAndChromeNeverCreateAHostEditorCommand() {
+        val store = SharedThreadComposerDraftStore()
+        store.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = KuiklyThreadComposerPayload(instanceId = "composer"),
+                draftKey = null,
+            )
+        )
+        store.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "n"))
+        store.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "ni"))
+        store.dispatch(
+            SharedThreadComposerDraftIntent.AddLocalAttachments(
+                listOf(externalShareAttachment(status = "uploading"))
+            )
+        )
+        store.dispatch(SharedThreadComposerDraftIntent.UpdateAttachmentUploadProgress("local", 1L, 10L))
+
+        assertEquals("ni", store.state.value.seedText)
+        assertEquals(null, store.state.value.editorCommand)
+
+        store.dispatch(SharedThreadComposerDraftIntent.BeginSend)
+
+        assertEquals(ThreadComposerEditorCommandKind.Clear, store.state.value.editorCommand?.kind)
+        assertEquals(null, store.state.value.editorCommand?.expectedText)
+
+        store.dispatch(
+            SharedThreadComposerDraftIntent.RestoreAfterFailure(
+                seedText = "ni",
+                seedAsTask = true,
+                failureLabel = "failed",
+            )
+        )
+
+        assertEquals(ThreadComposerEditorCommandKind.Replace, store.state.value.editorCommand?.kind)
+        assertEquals("ni", store.state.value.editorCommand?.text)
+        assertEquals(true, store.state.value.editorCommand?.asTask)
+        assertEquals("", store.state.value.editorCommand?.expectedText)
+        val restoredCommandId = store.state.value.editorCommand?.id
+
+        store.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer =
+                    KuiklyThreadComposerPayload(
+                        instanceId = "composer",
+                        seedText = "ni",
+                        seedAsTask = true,
+                    ),
+                draftKey = null,
+            )
+        )
+
+        assertEquals(restoredCommandId, store.state.value.editorCommand?.id)
+    }
+
+    @Test
     fun rapidChangesUpdateStateImmediatelyAndPersistOnlyLatestDraft() {
         val storage = CountingSharedPreferenceStore()
         val persistence = SharedThreadComposerDraftPersistence(storage)
@@ -75,6 +130,50 @@ class SharedThreadComposerDraftStoreTest {
 
         assertEquals(5, storage.writeCount)
         assertEquals(0, scheduler.executedTaskCount)
+    }
+
+    @Test
+    fun delayedHydrateCannotOverwriteFirstKeystrokeAndLatestOwnerWinsPersistence() {
+        val persistence = SharedThreadComposerDraftPersistence(InMemorySlockKeyValueStore())
+        val persistSlice = SharedThreadComposerDraftPersistSlice(persistence)
+        val draftKey = "send=channel-hydrate|parent=_|mention=channel-hydrate"
+        persistence.save(draftKey, text = "n", asTask = false)
+        val store = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
+        store.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = KuiklyThreadComposerPayload(instanceId = "composer-hydrate"),
+                draftKey = null,
+            )
+        )
+        val owner = ThreadComposerControlledEditorOwner(seedText = "", seedAsTask = false)
+        owner.acceptEditorValue(
+            com.tencent.kuikly.compose.ui.text.input.TextFieldValue(
+                text = "ni",
+                selection = com.tencent.kuikly.compose.ui.text.TextRange(2),
+                composition = com.tencent.kuikly.compose.ui.text.TextRange(0, 2),
+            )
+        )
+
+        store.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = KuiklyThreadComposerPayload(instanceId = "composer-hydrate"),
+                draftKey = draftKey,
+            )
+        )
+        val delayedHydrate = requireNotNull(store.state.value.editorCommand)
+        assertEquals(ThreadComposerEditorCommandOutcome.Stale, owner.apply(delayedHydrate))
+
+        store.dispatch(
+            SharedThreadComposerDraftIntent.Change(
+                seedText = owner.value.text,
+                seedAsTask = owner.asTask,
+            )
+        )
+        store.dispatch(SharedThreadComposerDraftIntent.Flush)
+
+        assertEquals("ni", store.state.value.seedText)
+        assertEquals("ni", persistence.read(draftKey)?.text)
+        assertEquals(com.tencent.kuikly.compose.ui.text.TextRange(0, 2), owner.value.composition)
     }
 
     @Test

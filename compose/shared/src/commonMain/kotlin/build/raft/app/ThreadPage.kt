@@ -6067,6 +6067,11 @@ internal fun SharedThreadRouteContent(
         viewModel(key = "shared-thread-composer-$threadInstanceKey") {
             SharedThreadComposerDraftViewModel(persistSlices = listOf(composerDraftPersistSlice))
         }
+    DisposableEffect(composerDraftViewModel, threadInstanceKey) {
+        onDispose {
+            composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.Flush)
+        }
+    }
     LaunchedEffect(composerDraftViewModel, threadInstanceKey) {
         composerDraftViewModel.state.collect { draftState ->
             val restoredExternalShareFiles =
@@ -8836,6 +8841,18 @@ internal fun SharedThreadRouteContent(
                             "valueLen=${value?.length ?: -1} valueBlank=${value?.isBlank()} asTask=$asTask " +
                             "stateTextLen=${currentDraftState.seedText.length} stateTextBlank=${currentDraftState.seedText.isBlank()} " +
                             "stateAsTask=${currentDraftState.seedAsTask} draftKey=${currentDraftState.draftKey.orEmpty()}"
+                    )
+                }
+                "staleEditorCommandIgnored" -> {
+                    bridge.log(
+                        "thread_composer_editor_command_ignored instanceId=$composerInstanceId " +
+                            "reason=local_editor_advanced localTextLen=${value?.length ?: -1} localAsTask=$asTask"
+                    )
+                    composerDraftViewModel.dispatch(
+                        SharedThreadComposerDraftIntent.Change(
+                            seedText = value,
+                            seedAsTask = asTask,
+                        )
                     )
                 }
                 "change" -> {
@@ -12422,6 +12439,7 @@ private fun KuiklyThreadComposerPayload.withThreadComposerDraftState(
         seedText = draftState.seedText,
         seedAsTask = draftState.seedAsTask,
         syncNonce = draftState.syncNonce,
+        editorCommand = draftState.editorCommand,
         focusRequestNonce = draftState.focusRequestNonce,
         pendingAttachments = pendingAttachmentItems,
         composerMode =

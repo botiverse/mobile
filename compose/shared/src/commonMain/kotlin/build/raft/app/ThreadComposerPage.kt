@@ -22,6 +22,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.referentialEqualityPolicy
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -240,6 +241,7 @@ internal data class KuiklyThreadComposerPayload(
     val seedText: String = "",
     val seedAsTask: Boolean = false,
     val syncNonce: Int = 0,
+    @kotlinx.serialization.Transient val editorCommand: ThreadComposerEditorCommand? = null,
     val focusRequestNonce: Int = 0,
     val placeholder: String = "Message",
     val enabled: Boolean = true,
@@ -324,6 +326,7 @@ internal data class ThreadComposerUiState(
     val seedText: String = "",
     val seedAsTask: Boolean = false,
     val syncNonce: Int = 0,
+    val editorCommand: ThreadComposerEditorCommand? = null,
     val focusRequestNonce: Int = 0,
     val placeholder: String = "Message",
     val enabled: Boolean = true,
@@ -347,6 +350,70 @@ internal data class ThreadComposerUiState(
     val suggestionsOpen: Boolean = false,
     val hookLabels: List<String> = emptyList()
 )
+
+internal enum class ThreadComposerEditorCommandKind {
+    Clear,
+    Replace,
+}
+
+internal data class ThreadComposerEditorCommand(
+    val id: Int,
+    val kind: ThreadComposerEditorCommandKind,
+    val text: String = "",
+    val asTask: Boolean = false,
+    val expectedText: String? = null,
+    val expectedAsTask: Boolean? = null,
+)
+
+internal fun shouldApplyThreadComposerEditorCommand(
+    localText: String,
+    localAsTask: Boolean,
+    command: ThreadComposerEditorCommand,
+): Boolean =
+    (command.expectedText == null || command.expectedText == localText) &&
+        (command.expectedAsTask == null || command.expectedAsTask == localAsTask)
+
+internal enum class ThreadComposerEditorCommandOutcome {
+    Applied,
+    Stale,
+    AlreadyHandled,
+}
+
+internal class ThreadComposerControlledEditorOwner(
+    seedText: String,
+    seedAsTask: Boolean,
+) {
+    var value by mutableStateOf(
+        TextFieldValue(seedText, selection = TextRange(seedText.length)),
+        referentialEqualityPolicy(),
+    )
+        private set
+    var asTask by mutableStateOf(seedAsTask)
+        private set
+    var handledCommandId by mutableStateOf(0)
+        private set
+
+    fun acceptEditorValue(next: TextFieldValue) {
+        value = next
+    }
+
+    fun acceptAsTask(next: Boolean) {
+        asTask = next
+    }
+
+    fun apply(command: ThreadComposerEditorCommand): ThreadComposerEditorCommandOutcome {
+        if (command.id <= handledCommandId) return ThreadComposerEditorCommandOutcome.AlreadyHandled
+        if (!shouldApplyThreadComposerEditorCommand(value.text, asTask, command)) {
+            handledCommandId = command.id
+            return ThreadComposerEditorCommandOutcome.Stale
+        }
+        val nextText = if (command.kind == ThreadComposerEditorCommandKind.Clear) "" else command.text
+        value = TextFieldValue(nextText, selection = TextRange(nextText.length))
+        asTask = if (command.kind == ThreadComposerEditorCommandKind.Clear) false else command.asTask
+        handledCommandId = command.id
+        return ThreadComposerEditorCommandOutcome.Applied
+    }
+}
 
 internal data class ThreadComposerInsertMentionRequest(
     val nonce: Int,
@@ -1250,6 +1317,7 @@ internal fun KuiklyThreadComposerPayload.toThreadComposerUiState(): ThreadCompos
         seedText = seedText,
         seedAsTask = seedAsTask,
         syncNonce = syncNonce,
+        editorCommand = editorCommand,
         focusRequestNonce = focusRequestNonce,
         placeholder = placeholder,
         enabled = enabled,
@@ -1438,15 +1506,69 @@ internal fun ThreadComposerContent(
     onInsertMentionConsumed: (ThreadComposerInsertMentionRequest) -> Unit = {},
     onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit = {}
 ) {
+    val editorOwner = remember(state.instanceId) {
+        ThreadComposerControlledEditorOwner(state.seedText, state.seedAsTask)
+    }
+    LaunchedEffect(state.instanceId, state.editorCommand?.id) {
+        val command = state.editorCommand ?: return@LaunchedEffect
+        if (editorOwner.apply(command) == ThreadComposerEditorCommandOutcome.Stale) {
+            onEvent("staleEditorCommandIgnored", editorOwner.value.text, editorOwner.asTask, null)
+        }
+    }
+    ThreadComposerContentLeaf(
+        surface = surface,
+        state = state,
+        editorValue = editorOwner.value,
+        onEditorValueChange = editorOwner::acceptEditorValue,
+        editorAsTask = editorOwner.asTask,
+        onEditorAsTaskChange = editorOwner::acceptAsTask,
+        onEvent = onEvent,
+        onKeyboardHeightChange = onKeyboardHeightChange,
+        contentPaddingTop = contentPaddingTop,
+        contentPaddingBottom = contentPaddingBottom,
+        hostPaddingHorizontal = hostPaddingHorizontal,
+        hostPaddingTop = hostPaddingTop,
+        keyboardLiftBottomContentPadding = keyboardLiftBottomContentPadding,
+        composerSendKeyEnabled = composerSendKeyEnabled,
+        dismissKeyboardOnBlur = dismissKeyboardOnBlur,
+        attachmentPreviewEnabled = attachmentPreviewEnabled,
+        agentStatusResolver = agentStatusResolver,
+        insertMentionRequest = insertMentionRequest,
+        onInsertMentionConsumed = onInsertMentionConsumed,
+        onSuggestionDemandChanged = onSuggestionDemandChanged,
+    )
+}
+
+@Composable
+internal fun ThreadComposerContentLeaf(
+    surface: ThreadComposerSurface,
+    state: ThreadComposerUiState,
+    editorValue: TextFieldValue,
+    onEditorValueChange: (TextFieldValue) -> Unit,
+    editorAsTask: Boolean,
+    onEditorAsTaskChange: (Boolean) -> Unit,
+    onEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
+    onKeyboardHeightChange: (Float) -> Unit = {},
+    contentPaddingTop: Dp = ThreadComposerStandaloneTopPadding,
+    contentPaddingBottom: Dp = ThreadComposerStandaloneBottomPadding,
+    hostPaddingHorizontal: Dp = 0.dp,
+    hostPaddingTop: Dp = 0.dp,
+    keyboardLiftBottomContentPadding: Dp? = null,
+    composerSendKeyEnabled: Boolean = false,
+    dismissKeyboardOnBlur: Boolean = false,
+    attachmentPreviewEnabled: Boolean,
+    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
+    insertMentionRequest: ThreadComposerInsertMentionRequest? = null,
+    onInsertMentionConsumed: (ThreadComposerInsertMentionRequest) -> Unit = {},
+    onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit = {},
+) {
     // #192 trace scope extension: wrap the full composer render. IME-lift / state
     // updates / suggestion list filtering are all under this; per-phase breakdown
     // can come later if this marker shows hot. bodyLength proxy uses seedText length.
     traceMarkdownSection(SlockComposerTraceNames.COMPOSER_RENDER, state.seedText.length) {
-    var fieldValue by remember(state.instanceId) {
-        mutableStateOf(TextFieldValue(state.seedText, selection = TextRange(state.seedText.length)))
-    }
+    val fieldValue = editorValue
     val text = fieldValue.text
-    var asTask by remember(state.instanceId) { mutableStateOf(state.seedAsTask) }
+    val asTask = editorAsTask
     var focused by remember(state.instanceId) { mutableStateOf(state.suggestionsOpen) }
     var handledFocusRequestNonce by remember(state.instanceId) { mutableStateOf(state.focusRequestNonce) }
     var keyboardInsetDp by remember(state.instanceId) { mutableStateOf(0f) }
@@ -1465,6 +1587,13 @@ internal fun ThreadComposerContent(
                 initialSuggestionsEnabled = state.suggestionsEnabled
             )
         }
+    SideEffect {
+        suggestionSelectionDispatcher.updateDraft(
+            text = fieldValue.text,
+            selectionStart = fieldValue.selection.start,
+            selectionEnd = fieldValue.selection.end,
+        )
+    }
     val suggestionAnchorRef = remember(state.instanceId) { SlockLiveRootAnchorRef(suggestionPortalOwner) }
     val suggestionAnchorResolver =
         remember(state.instanceId, suggestionAnchorRef) {
@@ -1480,19 +1609,6 @@ internal fun ThreadComposerContent(
             // A focus request can then be a no-op, so restore both halves of the input contract.
             softwareKeyboardController?.show()
         }
-    }
-    // Host synchronization owns editor content, attachments, and action state. Focus is a native
-    // interaction state and must only move through onFocus/onBlur or an explicit focus request;
-    // attachment/mention/send callbacks must not synthesize a blur.
-    LaunchedEffect(state.instanceId, state.syncNonce) {
-        val nextFieldValue = TextFieldValue(state.seedText, selection = TextRange(state.seedText.length))
-        suggestionSelectionDispatcher.updateDraft(
-            text = nextFieldValue.text,
-            selectionStart = nextFieldValue.selection.start,
-            selectionEnd = nextFieldValue.selection.end
-        )
-        fieldValue = nextFieldValue
-        asTask = state.seedAsTask
     }
     val selectionStart = minOf(fieldValue.selection.start, fieldValue.selection.end).coerceIn(0, text.length)
     val selectionEnd = maxOf(fieldValue.selection.start, fieldValue.selection.end).coerceIn(0, text.length)
@@ -1719,7 +1835,7 @@ internal fun ThreadComposerContent(
             selectionStart = nextFieldValue.selection.start,
             selectionEnd = nextFieldValue.selection.end
         )
-        fieldValue = nextFieldValue
+        onEditorValueChange(nextFieldValue)
         focused = true
         emitChange(nextText = edit.text)
         return true
@@ -1776,15 +1892,14 @@ internal fun ThreadComposerContent(
                 selectionStart = nextFieldValue.selection.start,
                 selectionEnd = nextFieldValue.selection.end
             )
-            fieldValue = nextFieldValue
+            onEditorValueChange(nextFieldValue)
             focused = false
             emitChange(nextText = edit.text)
         }
     }
 
     fun sendComposerMessage() {
-        // The host send handler owns the canonical clear and advances syncNonce.
-        // Keeping the pre-send local value lets that sync reject a late native echo.
+        // The host send handler owns the authoritative typed Clear command.
         onEvent("send", null, null, null)
     }
 
@@ -1911,7 +2026,7 @@ internal fun ThreadComposerContent(
                     selectionStart = nextFieldValue.selection.start,
                     selectionEnd = nextFieldValue.selection.end
                 )
-                fieldValue = nextFieldValue
+                onEditorValueChange(nextFieldValue)
                 onEvent("change", edit.text, asTask, null)
             }
         )
@@ -2022,7 +2137,7 @@ internal fun ThreadComposerContent(
                                 selectionStart = next.selection.start,
                                 selectionEnd = next.selection.end
                             )
-                            fieldValue = next
+                            onEditorValueChange(next)
                             focused = true
                             if (textChanged) {
                                 emitChange(nextText = next.text)
@@ -2105,7 +2220,7 @@ internal fun ThreadComposerContent(
                                     modifier = Modifier
                                         .clickable(enabled = composerEnabled) {
                                             val newValue = !asTask
-                                            asTask = newValue
+                                            onEditorAsTaskChange(newValue)
                                             onEvent("toggleAsTask", null, newValue, null)
                                         }
                                         .heightIn(min = 18.dp),
@@ -2115,7 +2230,7 @@ internal fun ThreadComposerContent(
                                     SlockCheckbox(
                                         checked = asTask,
                                         onCheckedChange = { checked ->
-                                            asTask = checked
+                                            onEditorAsTaskChange(checked)
                                             onEvent("toggleAsTask", null, checked, null)
                                         },
                                         enabled = composerEnabled,

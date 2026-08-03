@@ -30,6 +30,8 @@ internal data class SharedThreadComposerDraftState(
     val seedText: String = "",
     val seedAsTask: Boolean = false,
     val syncNonce: Int = 0,
+    val editorCommandNonce: Int = 0,
+    val editorCommand: ThreadComposerEditorCommand? = null,
     val persistBoundaryNonce: Int = 0,
     val focusRequestNonce: Int = 0,
     val sending: Boolean = false,
@@ -515,10 +517,22 @@ internal class SharedThreadComposerDraftPersistSlice(
                                     .filterNot { attachment -> attachment.id in removedAttachmentIds }
                         )
                     }
-                if (withStagedAttachments.requiresComposerHostSync(reduced)) {
-                    withStagedAttachments.copy(syncNonce = reduced.syncNonce + 1)
+                val synchronized =
+                    if (withStagedAttachments.requiresComposerHostSync(reduced)) {
+                        withStagedAttachments.copy(syncNonce = reduced.syncNonce + 1)
+                    } else {
+                        withStagedAttachments
+                    }
+                if (withStagedAttachments.requiresComposerEditorReplace(reduced)) {
+                    synchronized.withThreadComposerEditorCommand(
+                        kind = ThreadComposerEditorCommandKind.Replace,
+                        text = withStagedAttachments.seedText,
+                        asTask = withStagedAttachments.seedAsTask,
+                        expectedText = reduced.seedText,
+                        expectedAsTask = reduced.seedAsTask,
+                    )
                 } else {
-                    withStagedAttachments
+                    synchronized
                 }
             }
             else -> reduced
@@ -868,15 +882,42 @@ internal class SharedThreadComposerDraftStore(
         intent: SharedThreadComposerDraftIntent
     ): SharedThreadComposerDraftState =
         when (intent) {
-            is SharedThreadComposerDraftIntent.Start ->
+            is SharedThreadComposerDraftIntent.Start -> {
+                val sameInstance = current.instanceId == intent.composer.instanceId
+                val replaceMountedEditor =
+                    sameInstance &&
+                        (current.seedText != intent.composer.seedText || current.seedAsTask != intent.composer.seedAsTask)
+                val commandId =
+                    when {
+                        replaceMountedEditor -> current.editorCommandNonce + 1
+                        sameInstance -> current.editorCommandNonce
+                        else -> 0
+                    }
                 SharedThreadComposerDraftState(
                     instanceId = intent.composer.instanceId,
                     draftKey = intent.draftKey,
                     seedText = intent.composer.seedText,
                     seedAsTask = intent.composer.seedAsTask,
                     syncNonce = intent.composer.syncNonce,
+                    editorCommandNonce = commandId,
+                    editorCommand =
+                        if (replaceMountedEditor) {
+                            ThreadComposerEditorCommand(
+                                id = commandId,
+                                kind = ThreadComposerEditorCommandKind.Replace,
+                                text = intent.composer.seedText,
+                                asTask = intent.composer.seedAsTask,
+                                expectedText = current.seedText,
+                                expectedAsTask = current.seedAsTask,
+                            )
+                        } else if (sameInstance) {
+                            current.editorCommand
+                        } else {
+                            null
+                        },
                     focusRequestNonce = intent.composer.focusRequestNonce
                 )
+            }
             is SharedThreadComposerDraftIntent.Change ->
                 (intent.seedText ?: current.seedText).let { nextText ->
                     current.copy(
@@ -901,6 +942,16 @@ internal class SharedThreadComposerDraftStore(
                 current.copy(
                     seedText = current.seedText.withInsertedThreadMention(intent.handle),
                     syncNonce = current.syncNonce + 1,
+                    editorCommandNonce = current.editorCommandNonce + 1,
+                    editorCommand =
+                        ThreadComposerEditorCommand(
+                            id = current.editorCommandNonce + 1,
+                            kind = ThreadComposerEditorCommandKind.Replace,
+                            text = current.seedText.withInsertedThreadMention(intent.handle),
+                            asTask = current.seedAsTask,
+                            expectedText = current.seedText,
+                            expectedAsTask = current.seedAsTask,
+                        ),
                     focusRequestNonce = current.focusRequestNonce + 1,
                     sending = false,
                     failureLabel = null
@@ -912,6 +963,12 @@ internal class SharedThreadComposerDraftStore(
                     seedText = "",
                     seedAsTask = false,
                     syncNonce = current.syncNonce + 1,
+                    editorCommandNonce = current.editorCommandNonce + 1,
+                    editorCommand =
+                        ThreadComposerEditorCommand(
+                            id = current.editorCommandNonce + 1,
+                            kind = ThreadComposerEditorCommandKind.Clear,
+                        ),
                     // Sending clears the current value, but it remains an active composer
                     // interaction. Reassert focus at the same synchronous boundary so a send
                     // click cannot turn the host clear into an editor blur/IME dismissal. Do not
@@ -934,6 +991,16 @@ internal class SharedThreadComposerDraftStore(
                     seedText = intent.seedText,
                     seedAsTask = intent.seedAsTask,
                     syncNonce = current.syncNonce + 1,
+                    editorCommandNonce = current.editorCommandNonce + 1,
+                    editorCommand =
+                        ThreadComposerEditorCommand(
+                            id = current.editorCommandNonce + 1,
+                            kind = ThreadComposerEditorCommandKind.Replace,
+                            text = intent.seedText,
+                            asTask = intent.seedAsTask,
+                            expectedText = current.seedText,
+                            expectedAsTask = current.seedAsTask,
+                        ),
                     sending = false,
                     failureLabel = intent.failureLabel
                 )
@@ -1161,6 +1228,32 @@ internal class SharedThreadComposerDraftStore(
                 )
         }
 }
+
+private fun SharedThreadComposerDraftState.withThreadComposerEditorCommand(
+    kind: ThreadComposerEditorCommandKind,
+    text: String,
+    asTask: Boolean,
+    expectedText: String,
+    expectedAsTask: Boolean,
+): SharedThreadComposerDraftState {
+    val nextId = editorCommandNonce + 1
+    return copy(
+        editorCommandNonce = nextId,
+        editorCommand =
+            ThreadComposerEditorCommand(
+                id = nextId,
+                kind = kind,
+                text = text,
+                asTask = asTask,
+                expectedText = expectedText,
+                expectedAsTask = expectedAsTask,
+            ),
+    )
+}
+
+private fun SharedThreadComposerDraftState.requiresComposerEditorReplace(
+    previous: SharedThreadComposerDraftState,
+): Boolean = seedText != previous.seedText || seedAsTask != previous.seedAsTask
 
 private fun SharedThreadComposerDraftState.visiblePersistableThreadComposerDraftAttachments(): List<SharedThreadComposerAttachment> =
     uploadedAttachments
