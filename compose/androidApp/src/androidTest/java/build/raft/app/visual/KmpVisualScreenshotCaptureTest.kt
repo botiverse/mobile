@@ -268,6 +268,31 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
+    // Android-only theme-axis case: captures SlockBrutalActionButton under both
+    // SlockThemeProvider(brutal) and (elegant). No React parity counterpart (mobile
+    // theme axis) — guards that the LocalSlockTheme switch keeps driving border/corner/
+    // shadow/ink (brutal row must stay byte-identical to the shipping look).
+    @Test
+    fun captureUiButtonThemeStates() {
+        captureKmpComponentCase(
+            caseId = "components.ui.button.theme-registers",
+            pageName = "compose_ui_button_theme_visual",
+            crop = UI_BUTTON_THEME_CROP
+        )
+    }
+
+    // Elegant-register capture of the button (same content as button.states, under
+    // SlockThemeProvider(elegantTheme)). Paired against the React elegant render as
+    // components.ui.button.states.elegant → react-elegant <-> android-elegant parity.
+    @Test
+    fun captureUiButtonStatesElegant() {
+        captureKmpComponentCase(
+            caseId = "components.ui.button.states.elegant",
+            pageName = "compose_ui_button_elegant_visual",
+            crop = UI_BUTTON_CROP
+        )
+    }
+
     @Test
     fun captureUiFormFieldStates() {
         captureKmpComponentCase(
@@ -5082,6 +5107,13 @@ class KmpVisualScreenshotCaptureTest {
                 heightDp = 96
             )
         private val UI_BUTTON_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 150
+            )
+        private val UI_BUTTON_THEME_CROP =
             VisualCrop(
                 leftDp = 0,
                 topDp = 0,

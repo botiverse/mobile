@@ -1,9 +1,7 @@
 package build.raft.app.components
 
-import build.raft.app.SlockColor
-import build.raft.app.SlockShadow
-import build.raft.app.SlockStroke
-import build.raft.app.slockSquareCorners
+import build.raft.app.LocalSlockTheme
+import build.raft.app.slockThemedCorners
 import androidx.compose.runtime.Composable
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
@@ -52,25 +50,32 @@ import com.tencent.kuikly.compose.ui.unit.dp
 @Composable
 internal fun SlockBrutalCard(
     modifier: Modifier = Modifier,
-    shadowOffset: Dp = SlockShadow.Brutal,
+    shadowOffset: Dp? = null,
     contentPadding: Dp = 14.dp,
     verticalArrangement: Arrangement.Vertical = Arrangement.spacedBy(8.dp),
     content: @Composable ColumnScope.() -> Unit
 ) {
-    Box(modifier = modifier.fillMaxWidth().padding(end = shadowOffset, bottom = shadowOffset)) {
+    // Reads the brutal|elegant register from LocalSlockTheme: brutalTheme keeps the
+    // shipping look byte-identical (ShadowBlack@4dp==SlockShadow.Brutal, square corners,
+    // 2dp black border, white surface); elegantTheme rounds the corners, softens the
+    // shadow color/offset, and swaps to the 1dp gray hairline. shadowOffset==null defers
+    // to the register (explicit callers keep their override).
+    val theme = LocalSlockTheme.current
+    val resolvedShadowOffset = shadowOffset ?: theme.shadow.offset
+    Box(modifier = modifier.fillMaxWidth().padding(end = resolvedShadowOffset, bottom = resolvedShadowOffset)) {
         Box(
             Modifier
                 .matchParentSize()
-                .offset(x = shadowOffset, y = shadowOffset)
-                .slockSquareCorners()
-                .background(SlockColor.ShadowBlack)
+                .offset(x = resolvedShadowOffset, y = resolvedShadowOffset)
+                .slockThemedCorners(theme.cornerRadius)
+                .background(theme.shadow.color)
         )
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .slockSquareCorners()
-                .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .slockThemedCorners(theme.cornerRadius)
+                .background(theme.surface)
+                .border(theme.lineWidth, theme.line)
                 .padding(contentPadding),
             verticalArrangement = verticalArrangement,
             content = content
@@ -91,30 +96,34 @@ internal fun SlockBrutalPanel(
     minWidth: Dp,
     maxWidth: Dp,
     modifier: Modifier = Modifier,
-    shadowOffset: Dp = SlockShadow.Brutal,
+    shadowOffset: Dp? = null,
     contentModifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit
 ) {
+    // Same register read as SlockBrutalCard: brutal byte-identical, elegant rounds +
+    // softens + thin gray hairline. shadowOffset==null defers to the register.
+    val theme = LocalSlockTheme.current
+    val resolvedShadowOffset = shadowOffset ?: theme.shadow.offset
     Box(
         modifier = modifier
-            .padding(end = shadowOffset, bottom = shadowOffset)
+            .padding(end = resolvedShadowOffset, bottom = resolvedShadowOffset)
             .widthIn(min = minWidth, max = maxWidth)
     ) {
         Box(
             Modifier
                 .matchParentSize()
-                .offset(x = shadowOffset, y = shadowOffset)
-                .slockSquareCorners()
-                .background(SlockColor.ShadowBlack)
+                .offset(x = resolvedShadowOffset, y = resolvedShadowOffset)
+                .slockThemedCorners(theme.cornerRadius)
+                .background(theme.shadow.color)
         )
         Column(
             modifier = Modifier
                 .widthIn(min = minWidth, max = maxWidth)
                 .then(contentModifier)
                 .fillMaxWidth()
-                .slockSquareCorners()
-                .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Default, SlockColor.BorderBlack),
+                .slockThemedCorners(theme.cornerRadius)
+                .background(theme.surface)
+                .border(theme.lineWidth, theme.line),
             content = content
         )
     }

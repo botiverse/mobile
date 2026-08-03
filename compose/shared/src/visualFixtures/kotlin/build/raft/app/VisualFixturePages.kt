@@ -770,6 +770,26 @@ internal class ComposeUiButtonVisualPage : BasePager() {
     }
 }
 
+@Page("compose_ui_button_theme_visual", supportInLocal = true)
+internal class ComposeUiButtonThemeVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { UiButtonThemeVisualContent() }
+    }
+}
+
+// Elegant-register capture of the SAME button content as compose_ui_button_visual,
+// wrapped in SlockThemeProvider(elegantTheme). Paired against the React elegant
+// render (data-theme="elegant") as components.ui.button.states.elegant so the
+// react-elegant <-> android-elegant parity is visible in the baseline.
+@Page("compose_ui_button_elegant_visual", supportInLocal = true)
+internal class ComposeUiButtonElegantVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { SlockThemeProvider(theme = elegantTheme) { UiButtonVisualContent() } }
+    }
+}
+
 @Page("compose_ui_form_field_visual", supportInLocal = true)
 internal class ComposeUiFormFieldVisualPage : BasePager() {
     override fun willInit() {

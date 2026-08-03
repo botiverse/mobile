@@ -525,6 +525,21 @@ internal fun Modifier.slockSquareCorners(): Modifier =
     setProp(SlockSquareCornerBorderRadiusProp, SlockSquareCornerBorderRadiusValue)
         .setProp(SlockSquareCornerClipPathProp, "")
 
+/**
+ * Register-driven corner rounding on the same Kuikly borderRadius prop path as
+ * [slockSquareCorners]. At [radius] == 0.dp this emits the exact same
+ * "0.0,0.0,0.0,0.0" string as [slockSquareCorners], so brutal callers (whose
+ * theme corner radius is [SlockRadius.None]) render byte-identically; the elegant
+ * register passes its rounded radius and the same prop path rounds the corners.
+ * Kept on the prop mechanism (not clip(RoundedCornerShape)) so migrating a
+ * component from [slockSquareCorners] to this is a no-op in the brutal default.
+ */
+internal fun Modifier.slockThemedCorners(radius: Dp): Modifier {
+    val r = radius.value
+    return setProp(SlockSquareCornerBorderRadiusProp, "$r,$r,$r,$r")
+        .setProp(SlockSquareCornerClipPathProp, "")
+}
+
 private const val SlockSquareCornerBorderRadiusProp = "borderRadius"
 private const val SlockSquareCornerBorderRadiusValue = "0.0,0.0,0.0,0.0"
 private const val SlockSquareCornerClipPathProp = "clipPath"
