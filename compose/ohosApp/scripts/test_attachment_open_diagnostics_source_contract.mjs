@@ -83,6 +83,14 @@ const hostMarkers = [
   'preflightTrace.wantHandoff(privateCommitted, !cached);',
   'buildSlockOhosAttachmentOpenWants(',
   'SlockOhosAttachmentOpenDiagnosticTerminal.REQUESTED',
+  'await context.startAbility(openWants.view);',
+  'SlockOhosAttachmentOpenDiagnosticTerminal.LAUNCH_SUCCEEDED',
+];
+
+const forbiddenHostOpenMarkers = [
+  'ohos.want.action.select',
+  '.chooser',
+  'ability.want.params.INTENT',
 ];
 
 function validateShared(source) {
@@ -127,6 +135,14 @@ function validateHost(source) {
     'host persistent trace sink'
   );
   assertOrdered(body, hostMarkers, 'OHOS final request/cache/download/Want wiring');
+  assertExactlyOnce(
+    body,
+    'await context.startAbility(openWants.view);',
+    'host direct viewData launch call'
+  );
+  for (const marker of forbiddenHostOpenMarkers) {
+    assertContract(!body.includes(marker), `host openAttachment must not contain ${marker}`);
+  }
 
   assertOrdered(body, [
     'const preflightDecision = slockOhosAttachmentOpenPreflightDecision(',
@@ -202,6 +218,14 @@ expectMutationFailure(
     host,
     'preflightTrace.cacheChecked(privateCommitted, cached);',
     'preflightTrace.downloadStarted(privateCommitted);'
+  )
+);
+expectMutationFailure(
+  'replace direct viewData launch with select action',
+  shared,
+  host.replace(
+    'await context.startAbility(openWants.view);',
+    "await context.startAbility({ action: 'ohos.want.action.select' });"
   )
 );
 
