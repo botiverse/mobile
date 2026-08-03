@@ -390,6 +390,33 @@ internal fun acceptThreadComposerEditorSessionUiEvent(
     return true
 }
 
+internal data class ThreadComposerSessionFocusRestorePlan(
+    val requestFocus: Boolean,
+    val showKeyboard: Boolean,
+)
+
+internal fun threadComposerSessionFocusRestorePlan(
+    explicitFocusRequest: Boolean,
+    editorSessionReplaced: Boolean,
+    editorFocused: Boolean,
+    keyboardInsetDp: Float,
+): ThreadComposerSessionFocusRestorePlan {
+    val transferVisibleEditor = editorSessionReplaced && editorFocused && keyboardInsetDp > 0f
+    return ThreadComposerSessionFocusRestorePlan(
+        requestFocus = explicitFocusRequest || transferVisibleEditor,
+        showKeyboard = explicitFocusRequest || transferVisibleEditor,
+    )
+}
+
+internal fun dispatchThreadComposerHostKeyboardInset(
+    nextInsetDp: Float,
+    onKeyboardHeightChange: (Float) -> Unit,
+): Float {
+    val nextInset = nextInsetDp.coerceAtLeast(0f)
+    onKeyboardHeightChange(nextInset)
+    return nextInset
+}
+
 internal class ThreadComposerControlledEditorOwner(
     seedText: String,
     seedAsTask: Boolean,
@@ -1597,15 +1624,8 @@ internal fun ThreadComposerContentLeaf(
     val text = fieldValue.text
     val asTask = editorAsTask
     var focused by remember(state.instanceId) { mutableStateOf(state.suggestionsOpen) }
-    var handledFocusRequestNonce by remember(state.instanceId, editorSessionId) {
-        mutableStateOf(
-            if (editorSessionId == 1L) {
-                state.focusRequestNonce
-            } else {
-                state.focusRequestNonce - 1
-            }
-        )
-    }
+    var handledFocusRequestNonce by remember(state.instanceId) { mutableStateOf(state.focusRequestNonce) }
+    var handledEditorSessionId by remember(state.instanceId) { mutableStateOf(editorSessionId) }
     var keyboardInsetDp by remember(state.instanceId) { mutableStateOf(0f) }
     val composerFocusRequester = remember(state.instanceId, editorSessionId) { FocusRequester() }
     val focusOwnerRegistry = LocalSlockInputFocusOwnerRegistry.current
@@ -1637,12 +1657,28 @@ internal fun ThreadComposerContentLeaf(
     var composerCardSize by remember(state.instanceId) { mutableStateOf(IntSize.Zero) }
     val shouldAutoFocus = state.focusRequestNonce > handledFocusRequestNonce
     LaunchedEffect(state.instanceId, editorSessionId, state.focusRequestNonce) {
-        if (state.focusRequestNonce > handledFocusRequestNonce) {
+        val explicitFocusRequest = state.focusRequestNonce > handledFocusRequestNonce
+        val editorSessionReplaced = editorSessionId != handledEditorSessionId
+        val focusRestorePlan =
+            threadComposerSessionFocusRestorePlan(
+                explicitFocusRequest = explicitFocusRequest,
+                editorSessionReplaced = editorSessionReplaced,
+                editorFocused = focused,
+                keyboardInsetDp = keyboardInsetDp,
+            )
+        handledEditorSessionId = editorSessionId
+        if (explicitFocusRequest) {
+            handledFocusRequestNonce = state.focusRequestNonce
+        }
+        if (focusRestorePlan.requestFocus) {
             focused = true
             composerFocusRequester.requestFocus()
-            // A focused native editor may still have had its IME hidden by the toolbar tap.
-            // A focus request can then be a no-op, so restore both halves of the input contract.
-            softwareKeyboardController?.show()
+            // Session retirement transfers the focused editor without overriding a newer user
+            // decision to hide the IME. Only preserve a keyboard that is still visibly open at
+            // handoff; an explicit focus request continues to restore both focus and IME.
+            if (focusRestorePlan.showKeyboard) {
+                softwareKeyboardController?.show()
+            }
         }
     }
     val selectionStart = minOf(fieldValue.selection.start, fieldValue.selection.end).coerceIn(0, text.length)
@@ -2211,16 +2247,18 @@ internal fun ThreadComposerContentLeaf(
                                 fontSize = 16.sp,
                                 lineHeight = 20.sp
                             ),
-                            keyboardHeightChange = keyboardHeightChange@ { params ->
-                                acceptThreadComposerEditorSessionUiEvent(
-                                    sourceSessionId = sourceSessionId,
-                                    isActiveSession = isEditorSessionActive,
-                                ) {
-                                    val nextInset = params.height.coerceAtLeast(0f)
-                                    if (nextInset != keyboardInsetDp) {
-                                        keyboardInsetDp = nextInset
-                                    }
-                                    onKeyboardHeightChange(nextInset)
+                            // Kuikly produces keyboardHeightChange from the native input node on
+                            // every platform. The height is host/window geometry, not editor
+                            // content state: restore the pre-session-retirement contract and never
+                            // put this callback behind the text-session gate.
+                            keyboardHeightChange = { params ->
+                                val nextInset =
+                                    dispatchThreadComposerHostKeyboardInset(
+                                        nextInsetDp = params.height,
+                                        onKeyboardHeightChange = onKeyboardHeightChange,
+                                    )
+                                if (nextInset != keyboardInsetDp) {
+                                    keyboardInsetDp = nextInset
                                 }
                             },
                             placeholderColor = SlockColor.TextMutedGray,
