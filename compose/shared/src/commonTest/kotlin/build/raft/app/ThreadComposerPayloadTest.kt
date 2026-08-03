@@ -307,7 +307,7 @@ class ThreadComposerPayloadTest {
     }
 
     @Test
-    fun retiredSessionCannotBlurHideImeWriteInsetOrToggleTask() {
+    fun retiredSessionCannotBlurOrToggleTask() {
         val owner = ThreadComposerControlledEditorOwner(seedText = "sent", seedAsTask = true)
         val retiredSession = owner.editorSessionId
         assertEquals(
@@ -324,29 +324,74 @@ class ThreadComposerPayloadTest {
         val activeSession = owner.editorSessionId
         var focused = true
         var imeVisible = true
-        var keyboardInset = 280f
 
         assertFalse(
             acceptThreadComposerEditorSessionUiEvent(retiredSession, owner::isActiveSession) {
                 focused = false
                 imeVisible = false
-                keyboardInset = 0f
             }
         )
         assertFalse(owner.acceptAsTask(retiredSession, true))
         assertTrue(focused)
         assertTrue(imeVisible)
-        assertEquals(280f, keyboardInset)
         assertFalse(owner.asTask)
-
-        assertTrue(
-            acceptThreadComposerEditorSessionUiEvent(activeSession, owner::isActiveSession) {
-                keyboardInset = 320f
-            }
-        )
-        assertEquals(320f, keyboardInset)
         assertTrue(owner.acceptAsTask(activeSession, true))
         assertTrue(owner.asTask)
+    }
+
+    @Test
+    fun keyboardGeometryRemainsHostOwnedAcrossEditorSessionRetirement() {
+        val owner = ThreadComposerControlledEditorOwner(seedText = "sent", seedAsTask = false)
+        val publishedInsets = mutableListOf<Float>()
+        var keyboardInset =
+            dispatchThreadComposerHostKeyboardInset(280f, publishedInsets::add)
+
+        assertEquals(
+            ThreadComposerEditorCommandOutcome.Applied,
+            owner.apply(
+                ThreadComposerEditorCommand(
+                    id = 1,
+                    kind = ThreadComposerEditorCommandKind.Clear,
+                    expectedText = "sent",
+                    expectedAsTask = false,
+                )
+            ),
+        )
+        keyboardInset = dispatchThreadComposerHostKeyboardInset(0f, publishedInsets::add)
+
+        assertEquals(0f, keyboardInset)
+        assertEquals(listOf(280f, 0f), publishedInsets)
+    }
+
+    @Test
+    fun sessionRetirementPreservesVisibleImeButNeverReopensUserDismissedIme() {
+        assertEquals(
+            ThreadComposerSessionFocusRestorePlan(requestFocus = true, showKeyboard = true),
+            threadComposerSessionFocusRestorePlan(
+                explicitFocusRequest = false,
+                editorSessionReplaced = true,
+                editorFocused = true,
+                keyboardInsetDp = 280f,
+            ),
+        )
+        assertEquals(
+            ThreadComposerSessionFocusRestorePlan(requestFocus = false, showKeyboard = false),
+            threadComposerSessionFocusRestorePlan(
+                explicitFocusRequest = false,
+                editorSessionReplaced = true,
+                editorFocused = true,
+                keyboardInsetDp = 0f,
+            ),
+        )
+        assertEquals(
+            ThreadComposerSessionFocusRestorePlan(requestFocus = true, showKeyboard = true),
+            threadComposerSessionFocusRestorePlan(
+                explicitFocusRequest = true,
+                editorSessionReplaced = false,
+                editorFocused = false,
+                keyboardInsetDp = 0f,
+            ),
+        )
     }
 
     @Test
