@@ -3,8 +3,50 @@ package build.raft.app.data
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 
 private const val CHAT_LAYOUT_PREFERENCE_EVENT = "slock.chatLayoutPreferenceChanged"
+private const val CHAT_LAYOUT_PREFERENCE_SNAPSHOT_EVENT = "slock.chatLayoutPreferenceSnapshotChanged"
 private const val KEY_CONVERSATION_FORWARD_GESTURE_ENABLED =
     "conversationForwardGestureEnabled"
+private const val KEY_MY_MESSAGE_ALIGNMENT = "myMessageAlignment"
+private const val KEY_LARGE_SCREEN_NAVIGATION = "largeScreenNavigation"
+private const val KEY_COMPACT_CONSECUTIVE_MESSAGES = "compactConsecutiveMessages"
+private const val KEY_LONG_MESSAGE_COLLAPSE_ENABLED = "longMessageCollapseEnabled"
+private const val KEY_SINGLE_TAP_OPENS_THREAD_ENABLED = "singleTapOpensThreadEnabled"
+private const val KEY_INLINE_SELECTION_TOOLBAR_ENABLED = "inlineSelectionToolbarEnabled"
+private const val KEY_IMAGE_ANNOTATION_ENABLED = "imageAnnotationEnabled"
+private const val KEY_FOREGROUND_MESSAGE_BANNERS_ENABLED = "foregroundMessageBannersEnabled"
+private const val KEY_ACTIVITY_TASK_STATUS_BADGES_ENABLED = "activityTaskStatusBadgesEnabled"
+private const val KEY_ACTIVITY_SENDER_AVATARS_ENABLED = "activitySenderAvatarsEnabled"
+private const val KEY_COMPOSER_SEND_KEY_ENABLED = "composerSendKeyEnabled"
+private const val KEY_MULTI_SHELL_HOST_ENABLED = "multiShellHostEnabled"
+private const val KEY_SERVER_DRAWER_ENABLED = "serverDrawerEnabled"
+private const val KEY_NEW_DESIGN_SETTINGS_ENABLED = "newDesignSettingsEnabled"
+private const val KEY_HOME_SERVER_AVATAR_ENABLED = "homeServerAvatarEnabled"
+private const val KEY_TRANSLATION_MODE = "translationMode"
+private const val KEY_TRANSLATION_TARGET_LANGUAGE = "translationTargetLanguage"
+private const val KEY_THREAD_ROW_AFFORDANCES = "threadRowAffordances"
+private const val THREAD_ROW_AFFORDANCE_SEPARATOR = "\u001F"
+private val CHAT_LAYOUT_PREFERENCE_SNAPSHOT_KEYS =
+    setOf(
+        KEY_MY_MESSAGE_ALIGNMENT,
+        KEY_LARGE_SCREEN_NAVIGATION,
+        KEY_COMPACT_CONSECUTIVE_MESSAGES,
+        KEY_LONG_MESSAGE_COLLAPSE_ENABLED,
+        KEY_SINGLE_TAP_OPENS_THREAD_ENABLED,
+        KEY_INLINE_SELECTION_TOOLBAR_ENABLED,
+        KEY_CONVERSATION_FORWARD_GESTURE_ENABLED,
+        KEY_IMAGE_ANNOTATION_ENABLED,
+        KEY_FOREGROUND_MESSAGE_BANNERS_ENABLED,
+        KEY_ACTIVITY_TASK_STATUS_BADGES_ENABLED,
+        KEY_ACTIVITY_SENDER_AVATARS_ENABLED,
+        KEY_COMPOSER_SEND_KEY_ENABLED,
+        KEY_MULTI_SHELL_HOST_ENABLED,
+        KEY_SERVER_DRAWER_ENABLED,
+        KEY_NEW_DESIGN_SETTINGS_ENABLED,
+        KEY_HOME_SERVER_AVATAR_ENABLED,
+        KEY_TRANSLATION_MODE,
+        KEY_TRANSLATION_TARGET_LANGUAGE,
+        KEY_THREAD_ROW_AFFORDANCES,
+    )
 
 /**
  * App-process propagation for chat-layout preferences whose runtime state is retained per shell.
@@ -25,10 +67,25 @@ class KuiklyChatLayoutPreferenceEvents(
             onChanged(data.optBoolean(KEY_CONVERSATION_FORWARD_GESTURE_ENABLED, false))
         }
 
+    fun addPreferenceListener(
+        onChanged: (ChatLayoutPreferenceSnapshot) -> Unit
+    ): RealtimeSubscription =
+        eventBus.observe(CHAT_LAYOUT_PREFERENCE_SNAPSHOT_EVENT) { data ->
+            data?.toChatLayoutPreferenceSnapshotOrNull()?.let(onChanged)
+        }
+
     fun postConversationForwardGestureChanged(enabled: Boolean) {
         eventBus.post(
             CHAT_LAYOUT_PREFERENCE_EVENT,
             JSONObject().put(KEY_CONVERSATION_FORWARD_GESTURE_ENABLED, enabled),
+            source = source
+        )
+    }
+
+    fun postPreferenceChanged(snapshot: ChatLayoutPreferenceSnapshot) {
+        eventBus.post(
+            CHAT_LAYOUT_PREFERENCE_SNAPSHOT_EVENT,
+            snapshot.toPreferenceEventData(),
             source = source
         )
     }
@@ -39,16 +96,136 @@ fun kuiklyChatLayoutPreferenceRepository(
     events: KuiklyChatLayoutPreferenceEvents
 ): ChatLayoutPreferenceRepository =
     object : ChatLayoutPreferenceRepository by delegate {
+        private suspend fun persistAndPublish(
+            operation: suspend () -> ChatLayoutPreferenceSnapshot
+        ): ChatLayoutPreferenceSnapshot =
+            operation().also(events::postPreferenceChanged)
+
+        override suspend fun selectMyMessageAlignment(
+            alignment: MyMessageAlignmentPreference
+        ): ChatLayoutPreferenceSnapshot =
+            persistAndPublish { delegate.selectMyMessageAlignment(alignment) }
+
+        override suspend fun selectLargeScreenNavigation(
+            navigation: LargeScreenNavigationPreference
+        ): ChatLayoutPreferenceSnapshot =
+            persistAndPublish { delegate.selectLargeScreenNavigation(navigation) }
+
+        override suspend fun setCompactConsecutiveMessages(enabled: Boolean): ChatLayoutPreferenceSnapshot =
+            persistAndPublish { delegate.setCompactConsecutiveMessages(enabled) }
+
+        override suspend fun setLongMessageCollapseEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot =
+            persistAndPublish { delegate.setLongMessageCollapseEnabled(enabled) }
+
+        override suspend fun setSingleTapOpensThreadEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot =
+            persistAndPublish { delegate.setSingleTapOpensThreadEnabled(enabled) }
+
+        override suspend fun setInlineSelectionToolbarEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot =
+            persistAndPublish { delegate.setInlineSelectionToolbarEnabled(enabled) }
+
         override suspend fun setConversationForwardGestureEnabled(
             enabled: Boolean
         ): ChatLayoutPreferenceSnapshot {
-            val snapshot = delegate.setConversationForwardGestureEnabled(enabled)
-            events.postConversationForwardGestureChanged(
-                snapshot.conversationForwardGestureEnabled
-            )
+            val snapshot = persistAndPublish { delegate.setConversationForwardGestureEnabled(enabled) }
+            events.postConversationForwardGestureChanged(snapshot.conversationForwardGestureEnabled)
             return snapshot
         }
+
+        override suspend fun setImageAnnotationEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot =
+            persistAndPublish { delegate.setImageAnnotationEnabled(enabled) }
+
+        override suspend fun setForegroundMessageBannersEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot =
+            persistAndPublish { delegate.setForegroundMessageBannersEnabled(enabled) }
+
+        override suspend fun setActivityTaskStatusBadgesEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot =
+            persistAndPublish { delegate.setActivityTaskStatusBadgesEnabled(enabled) }
+
+        override suspend fun setActivitySenderAvatarsEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot =
+            persistAndPublish { delegate.setActivitySenderAvatarsEnabled(enabled) }
+
+        override suspend fun setComposerSendKeyEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot =
+            persistAndPublish { delegate.setComposerSendKeyEnabled(enabled) }
+
+        override suspend fun setMultiShellHostEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot =
+            persistAndPublish { delegate.setMultiShellHostEnabled(enabled) }
+
+        override suspend fun setServerDrawerEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot =
+            persistAndPublish { delegate.setServerDrawerEnabled(enabled) }
+
+        override suspend fun setNewDesignSettingsEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot =
+            persistAndPublish { delegate.setNewDesignSettingsEnabled(enabled) }
+
+        override suspend fun setHomeServerAvatarEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot =
+            persistAndPublish { delegate.setHomeServerAvatarEnabled(enabled) }
+
+        override suspend fun setTranslationMode(mode: TranslationModePreference): ChatLayoutPreferenceSnapshot =
+            persistAndPublish { delegate.setTranslationMode(mode) }
+
+        override suspend fun setTranslationTargetLanguage(language: String): ChatLayoutPreferenceSnapshot =
+            persistAndPublish { delegate.setTranslationTargetLanguage(language) }
+
+        override suspend fun setThreadRowAffordance(
+            affordance: ThreadRowAffordancePreference,
+            enabled: Boolean
+        ): ChatLayoutPreferenceSnapshot =
+            persistAndPublish { delegate.setThreadRowAffordance(affordance, enabled) }
     }
+
+private fun ChatLayoutPreferenceSnapshot.toPreferenceEventData(): JSONObject =
+    JSONObject()
+        .put(KEY_MY_MESSAGE_ALIGNMENT, myMessageAlignment.storageKey)
+        .put(KEY_LARGE_SCREEN_NAVIGATION, largeScreenNavigation.storageKey)
+        .put(KEY_COMPACT_CONSECUTIVE_MESSAGES, compactConsecutiveMessages)
+        .put(KEY_LONG_MESSAGE_COLLAPSE_ENABLED, longMessageCollapseEnabled)
+        .put(KEY_SINGLE_TAP_OPENS_THREAD_ENABLED, singleTapOpensThreadEnabled)
+        .put(KEY_INLINE_SELECTION_TOOLBAR_ENABLED, inlineSelectionToolbarEnabled)
+        .put(KEY_CONVERSATION_FORWARD_GESTURE_ENABLED, conversationForwardGestureEnabled)
+        .put(KEY_IMAGE_ANNOTATION_ENABLED, imageAnnotationEnabled)
+        .put(KEY_FOREGROUND_MESSAGE_BANNERS_ENABLED, foregroundMessageBannersEnabled)
+        .put(KEY_ACTIVITY_TASK_STATUS_BADGES_ENABLED, activityTaskStatusBadgesEnabled)
+        .put(KEY_ACTIVITY_SENDER_AVATARS_ENABLED, activitySenderAvatarsEnabled)
+        .put(KEY_COMPOSER_SEND_KEY_ENABLED, composerSendKeyEnabled)
+        .put(KEY_MULTI_SHELL_HOST_ENABLED, multiShellHostEnabled)
+        .put(KEY_SERVER_DRAWER_ENABLED, serverDrawerEnabled)
+        .put(KEY_NEW_DESIGN_SETTINGS_ENABLED, newDesignSettingsEnabled)
+        .put(KEY_HOME_SERVER_AVATAR_ENABLED, homeServerAvatarEnabled)
+        .put(KEY_TRANSLATION_MODE, translationMode.storageKey)
+        .put(KEY_TRANSLATION_TARGET_LANGUAGE, translationTargetLanguage)
+        .put(
+            KEY_THREAD_ROW_AFFORDANCES,
+            threadRowAffordances.joinToString(THREAD_ROW_AFFORDANCE_SEPARATOR) { it.storageKey }
+        )
+
+internal fun JSONObject.toChatLayoutPreferenceSnapshotOrNull(): ChatLayoutPreferenceSnapshot? {
+    if (CHAT_LAYOUT_PREFERENCE_SNAPSHOT_KEYS.any { !has(it) }) return null
+    return ChatLayoutPreferenceSnapshot(
+        myMessageAlignment = MyMessageAlignmentPreference.fromStorageKey(optString(KEY_MY_MESSAGE_ALIGNMENT)),
+        largeScreenNavigation = LargeScreenNavigationPreference.fromStorageKey(optString(KEY_LARGE_SCREEN_NAVIGATION)),
+        compactConsecutiveMessages = optBoolean(KEY_COMPACT_CONSECUTIVE_MESSAGES, true),
+        longMessageCollapseEnabled = optBoolean(KEY_LONG_MESSAGE_COLLAPSE_ENABLED, false),
+        singleTapOpensThreadEnabled = optBoolean(KEY_SINGLE_TAP_OPENS_THREAD_ENABLED, true),
+        inlineSelectionToolbarEnabled = optBoolean(KEY_INLINE_SELECTION_TOOLBAR_ENABLED, false),
+        conversationForwardGestureEnabled = optBoolean(KEY_CONVERSATION_FORWARD_GESTURE_ENABLED, false),
+        imageAnnotationEnabled = optBoolean(KEY_IMAGE_ANNOTATION_ENABLED, true),
+        foregroundMessageBannersEnabled = optBoolean(KEY_FOREGROUND_MESSAGE_BANNERS_ENABLED, false),
+        activityTaskStatusBadgesEnabled = optBoolean(KEY_ACTIVITY_TASK_STATUS_BADGES_ENABLED, false),
+        activitySenderAvatarsEnabled = optBoolean(KEY_ACTIVITY_SENDER_AVATARS_ENABLED, false),
+        composerSendKeyEnabled = optBoolean(KEY_COMPOSER_SEND_KEY_ENABLED, false),
+        multiShellHostEnabled = optBoolean(KEY_MULTI_SHELL_HOST_ENABLED, false),
+        serverDrawerEnabled = optBoolean(KEY_SERVER_DRAWER_ENABLED, false),
+        newDesignSettingsEnabled = optBoolean(KEY_NEW_DESIGN_SETTINGS_ENABLED, false),
+        homeServerAvatarEnabled = optBoolean(KEY_HOME_SERVER_AVATAR_ENABLED, false),
+        translationMode = TranslationModePreference.fromStorageKey(optString(KEY_TRANSLATION_MODE)),
+        translationTargetLanguage =
+            optString(KEY_TRANSLATION_TARGET_LANGUAGE).ifBlank { TranslationTargetLanguages.Browser },
+        threadRowAffordances =
+            ThreadRowAffordancePreference.fromStorageKeys(
+                optString(KEY_THREAD_ROW_AFFORDANCES)
+                    .split(THREAD_ROW_AFFORDANCE_SEPARATOR)
+                    .filterTo(linkedSetOf()) { it.isNotBlank() }
+            )
+    )
+}
 
 internal fun reconcileConversationForwardGesturePreference(
     enabled: Boolean,
@@ -57,6 +234,23 @@ internal fun reconcileConversationForwardGesturePreference(
 ) {
     history.setEnabled(enabled)
     if (!enabled) disableNativeGesture()
+}
+
+/** Prevents an in-flight repository seed from overwriting a newer process event. */
+internal class ChatLayoutPreferenceSnapshotRuntimeAuthority(
+    private val onEffectivePreferenceChanged: (ChatLayoutPreferenceSnapshot) -> Unit
+) {
+    private var observedProcessChange: Boolean = false
+
+    fun seedFromRepository(snapshot: ChatLayoutPreferenceSnapshot) {
+        if (observedProcessChange) return
+        onEffectivePreferenceChanged(snapshot)
+    }
+
+    fun applyProcessPreferenceChange(snapshot: ChatLayoutPreferenceSnapshot) {
+        observedProcessChange = true
+        onEffectivePreferenceChanged(snapshot)
+    }
 }
 
 /**

@@ -3,6 +3,7 @@ package build.raft.app.data
 import build.raft.app.buildThreadLaunchConversationIdentity
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
+import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -11,6 +12,104 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class KuiklyChatLayoutPreferencesTest {
+    @Test
+    fun partialSnapshotEventFailsClosedInsteadOfResettingUnspecifiedPreferences() {
+        val partial =
+            JSONObject()
+                .put("myMessageAlignment", "right")
+                .put("conversationForwardGestureEnabled", true)
+
+        assertNull(partial.toChatLayoutPreferenceSnapshotOrNull())
+    }
+
+    @Test
+    fun everyPersistentWritePublishesTheFullSnapshotToEveryLiveShell() = runBlocking {
+        val events = KuiklyChatLayoutPreferenceEvents(SlockEventBuses.inProcess())
+        val firstSnapshots = mutableListOf<ChatLayoutPreferenceSnapshot>()
+        val secondSnapshots = mutableListOf<ChatLayoutPreferenceSnapshot>()
+        val firstSubscription = events.addPreferenceListener(firstSnapshots::add)
+        val secondSubscription = events.addPreferenceListener(secondSnapshots::add)
+        val repository =
+            kuiklyChatLayoutPreferenceRepository(
+                PersistentChatLayoutPreferenceRepository(
+                    KeyValueChatLayoutPreferenceStore(InMemorySlockKeyValueStore())
+                ),
+                events,
+            )
+
+        try {
+            repository.selectMyMessageAlignment(MyMessageAlignmentPreference.Right)
+            repository.selectLargeScreenNavigation(LargeScreenNavigationPreference.FloatingDock)
+            repository.setCompactConsecutiveMessages(false)
+            repository.setLongMessageCollapseEnabled(true)
+            repository.setSingleTapOpensThreadEnabled(false)
+            repository.setInlineSelectionToolbarEnabled(true)
+            repository.setConversationForwardGestureEnabled(true)
+            repository.setImageAnnotationEnabled(false)
+            repository.setForegroundMessageBannersEnabled(true)
+            repository.setActivityTaskStatusBadgesEnabled(true)
+            repository.setActivitySenderAvatarsEnabled(true)
+            repository.setComposerSendKeyEnabled(true)
+            repository.setMultiShellHostEnabled(true)
+            repository.setServerDrawerEnabled(true)
+            repository.setNewDesignSettingsEnabled(true)
+            repository.setHomeServerAvatarEnabled(true)
+            repository.setTranslationMode(TranslationModePreference.Automatic)
+            repository.setTranslationTargetLanguage("ja")
+            repository.setThreadRowAffordance(ThreadRowAffordancePreference.Reactions, false)
+
+            assertEquals(19, firstSnapshots.size)
+            assertEquals(firstSnapshots, secondSnapshots)
+            firstSnapshots.last().let { snapshot ->
+                assertEquals(MyMessageAlignmentPreference.Right, snapshot.myMessageAlignment)
+                assertEquals(LargeScreenNavigationPreference.FloatingDock, snapshot.largeScreenNavigation)
+                assertFalse(snapshot.compactConsecutiveMessages)
+                assertTrue(snapshot.longMessageCollapseEnabled)
+                assertFalse(snapshot.singleTapOpensThreadEnabled)
+                assertTrue(snapshot.inlineSelectionToolbarEnabled)
+                assertTrue(snapshot.conversationForwardGestureEnabled)
+                assertFalse(snapshot.imageAnnotationEnabled)
+                assertTrue(snapshot.foregroundMessageBannersEnabled)
+                assertTrue(snapshot.activityTaskStatusBadgesEnabled)
+                assertTrue(snapshot.activitySenderAvatarsEnabled)
+                assertTrue(snapshot.composerSendKeyEnabled)
+                assertTrue(snapshot.multiShellHostEnabled)
+                assertTrue(snapshot.serverDrawerEnabled)
+                assertTrue(snapshot.newDesignSettingsEnabled)
+                assertTrue(snapshot.homeServerAvatarEnabled)
+                assertEquals(TranslationModePreference.Automatic, snapshot.translationMode)
+                assertEquals("ja", snapshot.translationTargetLanguage)
+                assertTrue(snapshot.threadRowAffordances.isEmpty())
+            }
+        } finally {
+            firstSubscription.close()
+            secondSubscription.close()
+        }
+    }
+
+    @Test
+    fun fullSnapshotProcessEventRemainsAuthoritativeWhenRepositorySeedCompletesLate() {
+        val applied = mutableListOf<ChatLayoutPreferenceSnapshot>()
+        val authority = ChatLayoutPreferenceSnapshotRuntimeAuthority(applied::add)
+        val processSnapshot =
+            ChatLayoutPreferenceSnapshot(
+                myMessageAlignment = MyMessageAlignmentPreference.Right,
+                compactConsecutiveMessages = false,
+                foregroundMessageBannersEnabled = true,
+            )
+        val staleSeed =
+            ChatLayoutPreferenceSnapshot(
+                myMessageAlignment = MyMessageAlignmentPreference.Left,
+                compactConsecutiveMessages = true,
+                foregroundMessageBannersEnabled = false,
+            )
+
+        authority.applyProcessPreferenceChange(processSnapshot)
+        authority.seedFromRepository(staleSeed)
+
+        assertEquals(listOf(processSnapshot), applied)
+    }
+
     @Test
     fun processOffRemainsAuthoritativeWhenInitialRepositorySeedCompletesLate() {
         val applied = mutableListOf<Boolean>()

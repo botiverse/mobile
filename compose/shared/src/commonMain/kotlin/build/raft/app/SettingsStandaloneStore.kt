@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.app.base.BridgeModule
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
+import build.raft.app.data.ChatLayoutPreferenceRepository
 import build.raft.app.data.DataResult
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.KeyValueLinkOpenPreferenceStore
@@ -11,6 +12,7 @@ import build.raft.app.data.PersistentChatLayoutPreferenceRepository
 import build.raft.app.data.PersistentLinkOpenPreferenceRepository
 import build.raft.app.data.PersistentLocaleRepository
 import build.raft.app.data.PersistentRecompositionProfilerPreferenceRepository
+import build.raft.app.data.NotificationPreferenceRepository
 import build.raft.app.data.RealSettingsRepository
 import build.raft.app.data.ScreenError
 import build.raft.app.data.SharedAuthDataSource
@@ -20,10 +22,14 @@ import build.raft.app.data.SharedSettingsDataSource
 import build.raft.app.data.SharedSettingsEffect
 import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.data.SharedSettingsState
-import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.data.SlockAuthSessionStore
+import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.data.kuiklyBridgeCallContext
+import build.raft.app.data.KuiklyChatLayoutPreferenceEvents
+import build.raft.app.data.KuiklyNotificationPreferenceEvents
+import build.raft.app.data.kuiklyChatLayoutPreferenceRepository
+import build.raft.app.data.kuiklyNotificationPreferenceRepository
 import build.raft.app.data.slockSharedPreferenceStore
 import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.resources.MR
@@ -41,6 +47,8 @@ internal data class StandaloneSettingsEnvironment(
     val authStore: SlockAuthSessionStore,
     val serverMembersStore: SharedServerMembersStore,
     val settingsCapabilities: BridgeSettingsPlatformCapabilities,
+    val chatLayoutPreferenceRepository: ChatLayoutPreferenceRepository,
+    val notificationPreferenceRepository: NotificationPreferenceRepository,
     val storeScope: SlockShellStoreScope,
     val webBaseUrl: String,
 )
@@ -84,8 +92,32 @@ internal fun rememberStandaloneSettingsEnvironment(
             )
         }
     val sharedPreferenceStore = remember { slockSharedPreferenceStore() }
+    val eventBus = remember(sharedStores) { sharedStores.eventBus }
+    val chatLayoutPreferenceEvents = remember(eventBus) { KuiklyChatLayoutPreferenceEvents(eventBus) }
+    val chatLayoutPreferenceRepository =
+        remember(sharedPreferenceStore, chatLayoutPreferenceEvents) {
+            kuiklyChatLayoutPreferenceRepository(
+                delegate =
+                    PersistentChatLayoutPreferenceRepository(
+                        KeyValueChatLayoutPreferenceStore(sharedPreferenceStore)
+                    ),
+                events = chatLayoutPreferenceEvents,
+            )
+        }
+    val notificationPreferenceEvents = remember(eventBus) { KuiklyNotificationPreferenceEvents(eventBus) }
+    val notificationPreferenceRepository =
+        remember(notificationPreferenceEvents) {
+            kuiklyNotificationPreferenceRepository(notificationPreferenceEvents)
+        }
     val dataSource =
-        remember(authStore, networkClient, sharedPreferenceStore, settingsCapabilities) {
+        remember(
+            authStore,
+            networkClient,
+            sharedPreferenceStore,
+            settingsCapabilities,
+            chatLayoutPreferenceRepository,
+            notificationPreferenceRepository,
+        ) {
             SharedSettingsDataSource(
                 sessionStore = authStore,
                 settingsRepository =
@@ -96,9 +128,9 @@ internal fun rememberStandaloneSettingsEnvironment(
                         warningLogger = { message -> bridge.log("settings_standalone_repository_warning $message") }
                     ),
                 serverMembersStore = serverMembersStore,
+                notificationPreferenceRepository = notificationPreferenceRepository,
                 localeRepository = PersistentLocaleRepository(KeyValueLocalePreferenceStore(sharedPreferenceStore)),
-                chatLayoutPreferenceRepository =
-                    PersistentChatLayoutPreferenceRepository(KeyValueChatLayoutPreferenceStore(sharedPreferenceStore)),
+                chatLayoutPreferenceRepository = chatLayoutPreferenceRepository,
                 linkOpenPreferenceRepository =
                     PersistentLinkOpenPreferenceRepository(KeyValueLinkOpenPreferenceStore(sharedPreferenceStore)),
                 recompositionProfilerPreferenceRepository =
@@ -113,8 +145,11 @@ internal fun rememberStandaloneSettingsEnvironment(
     return remember(
         dataSource,
         authDataSource,
+        authStore,
         serverMembersStore,
         settingsCapabilities,
+        chatLayoutPreferenceRepository,
+        notificationPreferenceRepository,
         storeScope,
         webBaseUrl,
     ) {
@@ -124,6 +159,8 @@ internal fun rememberStandaloneSettingsEnvironment(
             authStore = authStore,
             serverMembersStore = serverMembersStore,
             settingsCapabilities = settingsCapabilities,
+            chatLayoutPreferenceRepository = chatLayoutPreferenceRepository,
+            notificationPreferenceRepository = notificationPreferenceRepository,
             storeScope = storeScope,
             webBaseUrl = webBaseUrl,
         )

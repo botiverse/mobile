@@ -21,6 +21,7 @@ class AuthenticatedProductRouteTest {
                 SLOCK_FILE_PREVIEW_PAGE,
                 SETTINGS_ACCOUNT_PAGE,
                 SETTINGS_HANDS_FEEDBACK_PAGE,
+                SETTINGS_NATIVE_DETAIL_PAGE,
                 SETTINGS_WEB_VIEW_PAGE,
                 SETTINGS_STORAGE_PAGE,
                 RELEASE_NOTES_PAGE,

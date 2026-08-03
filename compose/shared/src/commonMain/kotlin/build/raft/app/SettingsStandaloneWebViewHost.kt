@@ -410,7 +410,7 @@ private fun StandaloneSettingsWebViewBody(
     val settingsState by settingsViewModel.state.collectAsState()
     LaunchedEffect(spec.surface, spec.destination) {
         bridge.log("settings_${spec.surface.diagnosticsName}_open")
-        settingsViewModel.dispatch(SharedSettingsIntent.OpenDestination(spec.destination))
+        settingsViewModel.dispatch(SharedSettingsIntent.LoadPageContent(spec.destination))
     }
     StandaloneSettingsEffectHandler(pager, environment, settingsState, settingsViewModel::dispatch)
     StandaloneSettingsWebViewContent(

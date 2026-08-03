@@ -18,10 +18,15 @@ class SettingsStandaloneLaunchPayloadTest {
                     "subtitle",
                     "items",
                     "showSelection",
+                    "selectedDestination",
                     "http3Enabled",
                     "curlEnabled",
                     "networkEngine"
                 )
+        )
+        assertDescriptorExcludes(
+            descriptor = SettingsHomePageLinkPayload.serializer().descriptor,
+            fields = listOf("selected", "selectedDestination", "showSelection")
         )
         assertDescriptorExcludes(
             descriptor = WireSettingsAccountLaunchPayload.serializer().descriptor,
@@ -92,7 +97,8 @@ class SettingsStandaloneLaunchPayloadTest {
                       "items": [
                         {"key":"billing","title":"Stale Billing","subtitle":"content"}
                       ],
-                      "showSelection": true
+                      "showSelection": true,
+                      "selectedDestination": "billing"
                     }
                     """.trimIndent(),
                 fallbackPageData = """{"instanceId":"fallback"}""",

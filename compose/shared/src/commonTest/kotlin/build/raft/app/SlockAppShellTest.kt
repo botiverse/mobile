@@ -1015,30 +1015,52 @@ class SlockAppShellTest {
     }
 
     @Test
-    fun appShellLaunchSelectionCanStartOnDiagnostics() {
+    fun appShellThreadTimeFormatReadsOnlyCanonicalSessionMetadata() {
+        val session =
+            StoredAuthSession(
+                user =
+                    StoredAuthUser(
+                        id = "user-1",
+                        email = "user@slock.ai",
+                        preferredTimeFormat = "12h",
+                        timeFormat = "24h",
+                    ),
+                accessToken = "access",
+                refreshToken = "refresh",
+            )
+
+        assertEquals("12h", session.appShellThreadTimeFormat())
+        assertEquals(
+            "24h",
+            session.copy(
+                user = session.user.copy(preferredTimeFormat = null, timeFormat = "24h")
+            ).appShellThreadTimeFormat(),
+        )
+        assertNull((null as StoredAuthSession?).appShellThreadTimeFormat())
+    }
+
+    @Test
+    fun appShellLaunchSelectionIgnoresLegacyInlineSettingsDestination() {
         val params =
             JSONObject()
                 .put("slockInitialTab", "settings")
                 .put("slockInitialSettingsDestination", "diagnostics")
 
         assertEquals(
-            AppShellLaunchSelection(
-                selectedTab = "settings",
-                selectedSettingsDestination = "diagnostics"
-            ),
+            AppShellLaunchSelection(selectedTab = "settings"),
             params.appShellLaunchSelection()
         )
     }
 
     @Test
-    fun appShellLaunchSelectionIgnoresSettingsDestinationOutsideSettingsTab() {
+    fun appShellLaunchSelectionStillNormalizesUnknownTabs() {
         val params =
             JSONObject()
-                .put("slockInitialTab", "home")
+                .put("slockInitialTab", "unknown")
                 .put("slockInitialSettingsDestination", "diagnostics")
 
         assertEquals(
-            AppShellLaunchSelection(selectedTab = "home", selectedSettingsDestination = "home"),
+            AppShellLaunchSelection(selectedTab = "home"),
             params.appShellLaunchSelection()
         )
     }
@@ -1257,7 +1279,6 @@ class SlockAppShellTest {
             appShellBottomTabsVisible(
                 selectedTab = "home",
                 selectedHomeDestination = null,
-                selectedSettingsDestination = "home"
             )
         )
         assertEquals(
@@ -1265,7 +1286,6 @@ class SlockAppShellTest {
             appShellBottomTabsVisible(
                 selectedTab = "home",
                 selectedHomeDestination = "activity",
-                selectedSettingsDestination = "home"
             )
         )
         assertEquals(
@@ -1273,7 +1293,6 @@ class SlockAppShellTest {
             appShellBottomTabsVisible(
                 selectedTab = "home",
                 selectedHomeDestination = "unknown",
-                selectedSettingsDestination = "home"
             )
         )
         assertEquals(
@@ -1281,15 +1300,13 @@ class SlockAppShellTest {
             appShellBottomTabsVisible(
                 selectedTab = "settings",
                 selectedHomeDestination = null,
-                selectedSettingsDestination = "home"
             )
         )
         assertEquals(
-            false,
+            true,
             appShellBottomTabsVisible(
                 selectedTab = "settings",
                 selectedHomeDestination = null,
-                selectedSettingsDestination = "computerDetail"
             )
         )
         assertEquals(
@@ -1297,7 +1314,6 @@ class SlockAppShellTest {
             appShellBottomTabsVisible(
                 selectedTab = "tasks",
                 selectedHomeDestination = "activity",
-                selectedSettingsDestination = "computerDetail"
             )
         )
     }

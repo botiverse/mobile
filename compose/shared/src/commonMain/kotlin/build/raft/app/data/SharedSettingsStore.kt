@@ -122,7 +122,6 @@ data class SharedSettingsNavItem(
     val subtitle: String,
     val iconName: SlockLucideIconName,
     val value: String? = null,
-    val selected: Boolean = false,
     val productVisible: Boolean = true
 )
 
@@ -396,7 +395,8 @@ private data class ServerNotificationModeMutation(
 
 sealed interface SharedSettingsIntent {
     data object Start : SharedSettingsIntent
-    data class OpenDestination(val destination: SharedSettingsDestination) : SharedSettingsIntent
+    /** Loads content for the Pager that already owns this store; it never performs navigation. */
+    data class LoadPageContent(val page: SharedSettingsDestination) : SharedSettingsIntent
     data class OpenComputer(val machineId: String) : SharedSettingsIntent
     data object Back : SharedSettingsIntent
     data object Refresh : SharedSettingsIntent
@@ -629,9 +629,9 @@ class SharedSettingsDataSource(
             "${session.user.id}\u001F${session.currentServerId.orEmpty()}"
         }
 
-    suspend fun loadHome(selectedDestination: SharedSettingsDestination): DataResult<SharedSettingsHomeSnapshot> {
+    suspend fun loadHome(): DataResult<SharedSettingsHomeSnapshot> {
         val session = sessionStore.readSession()
-        return DataResult.Content(session.toSharedSettingsHomeSnapshot(selectedDestination))
+        return DataResult.Content(session.toSharedSettingsHomeSnapshot())
     }
 
     suspend fun loadAccount(): DataResult<AccountSettingsSnapshot> =
@@ -1652,10 +1652,22 @@ class SharedSettingsDataSource(
         }
 }
 
+internal class SharedSettingsPageContentOwner {
+    private var page: SharedSettingsDestination? = null
+
+    fun admits(candidate: SharedSettingsDestination): Boolean {
+        val current = page
+        if (current != null) return current == candidate
+        page = candidate
+        return true
+    }
+}
+
 class SharedSettingsViewModel(
     dataSource: SharedSettingsDataSource,
-    diagnosticsLogger: (String) -> Unit = {}
+    private val diagnosticsLogger: (String) -> Unit = {}
 ) : ViewModel() {
+    private val pageContentOwner = SharedSettingsPageContentOwner()
     private val storeDelegate =
         lazy {
             SharedSettingsStore(
@@ -1677,6 +1689,7 @@ class SharedSettingsViewModel(
             else storeDelegate.value.state
 
     fun dispatch(intent: SharedSettingsIntent) {
+        if (!admitsPageContent(intent)) return
         if (contractDelegate.isInitialized()) {
             contractDelegate.value.dispatch(intent)
         } else {
@@ -1685,7 +1698,30 @@ class SharedSettingsViewModel(
     }
 
     suspend fun accept(intent: SharedSettingsIntent) {
+        if (!admitsPageContent(intent)) return
         storeDelegate.value.accept(intent)
+    }
+
+    private fun admitsPageContent(intent: SharedSettingsIntent): Boolean {
+        val page =
+            when (intent) {
+                SharedSettingsIntent.Start -> SharedSettingsDestination.Home
+                is SharedSettingsIntent.LoadPageContent -> intent.page
+                is SharedSettingsIntent.OpenComputer -> {
+                    diagnosticsLogger("settings_viewmodel_navigation_intent_rejected intent=OpenComputer")
+                    return false
+                }
+                SharedSettingsIntent.Back -> {
+                    diagnosticsLogger("settings_viewmodel_navigation_intent_rejected intent=Back")
+                    return false
+                }
+                else -> return true
+            }
+        val admitted = pageContentOwner.admits(page)
+        if (!admitted) {
+            diagnosticsLogger("settings_page_content_rebind_rejected page=${page.name}")
+        }
+        return admitted
     }
 
     override fun onCleared() {
@@ -1785,12 +1821,12 @@ class SharedSettingsStore(
     suspend fun accept(intent: SharedSettingsIntent) {
         when (intent) {
             SharedSettingsIntent.Start -> loadHome()
-            is SharedSettingsIntent.OpenDestination -> {
+            is SharedSettingsIntent.LoadPageContent -> {
                 cancelDiagnosticsExpiryRefresh()
-                if (intent.destination != SharedSettingsDestination.Notifications) {
+                if (intent.page != SharedSettingsDestination.Notifications) {
                     retireServerNotificationModeMutation()
                 }
-                _state.value = _state.value.copy(route = SharedSettingsRoute(intent.destination), routeErrorCode = null)
+                _state.value = _state.value.copy(route = SharedSettingsRoute(intent.page), routeErrorCode = null)
                 loadCurrentRoute()
             }
             is SharedSettingsIntent.OpenComputer -> {
@@ -2466,8 +2502,7 @@ class SharedSettingsStore(
     }
 
     private suspend fun loadHome() {
-        val destination = _state.value.route.destination
-        dataSource.loadHome(destination).applyToState(SharedSettingsDestination.Home) { copy(home = it) }
+        dataSource.loadHome().applyToState(SharedSettingsDestination.Home) { copy(home = it) }
     }
 
     private suspend fun loadCurrentRoute() {
@@ -3462,7 +3497,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
     get() =
         when (this) {
             SharedSettingsIntent.Start,
-            is SharedSettingsIntent.OpenDestination,
+            is SharedSettingsIntent.LoadPageContent,
             is SharedSettingsIntent.OpenComputer,
             SharedSettingsIntent.Back,
             SharedSettingsIntent.Refresh,
@@ -4139,26 +4174,24 @@ private fun SystemNotificationActionResult.mobileDetail(action: String): String 
         SystemNotificationActionStatus.Error -> code.ifBlank { "Notification action failed." }
     }
 
-private fun StoredAuthSession?.toSharedSettingsHomeSnapshot(
-    selectedDestination: SharedSettingsDestination
-): SharedSettingsHomeSnapshot {
+private fun StoredAuthSession?.toSharedSettingsHomeSnapshot(): SharedSettingsHomeSnapshot {
     val server = this?.currentServer()
     return SharedSettingsHomeSnapshot(
         subtitle = "",
         items =
             listOf(
-                nav(SharedSettingsDestination.Account, "Account", "Profile, email, password, connected accounts", SlockLucideIconName.User, this?.user?.bestDisplayName, selectedDestination),
-                nav(SharedSettingsDestination.LanguageRegion, "Language & Region", "Language, timezone, translation", SlockLucideIconName.Languages, null, selectedDestination),
-                nav(SharedSettingsDestination.Appearance, "Appearance", "Message font size and reading density", SlockLucideIconName.Type, null, selectedDestination),
-                nav(SharedSettingsDestination.Notifications, "Notifications", "Push status and workspace mute", SlockLucideIconName.Bell, null, selectedDestination),
-                nav(SharedSettingsDestination.Mobile, "Mobile", "Links, conversations, and composer", SlockLucideIconName.Smartphone, null, selectedDestination),
-                nav(SharedSettingsDestination.Storage, "Storage", "Local cache and temporary files", SlockLucideIconName.Archive, null, selectedDestination),
-                nav(SharedSettingsDestination.Server, "Server Profile", "Workspace name, slug, role", SlockLucideIconName.Building2, server?.role?.titleLabel(), selectedDestination),
-                nav(SharedSettingsDestination.Billing, "Billing", "Plan and usage", SlockLucideIconName.CreditCard, server?.plan?.titleLabel(), selectedDestination),
-                nav(SharedSettingsDestination.Administration, "Administration", "Admins, invites, join links, agreements", SlockLucideIconName.Shield, null, selectedDestination),
-                nav(SharedSettingsDestination.ConnectedApps, "Connected Apps", "Marketplace, installed apps, OAuth clients", SlockLucideIconName.Link2, null, selectedDestination),
-                nav(SharedSettingsDestination.Computers, "Computers", "Connected machines and workspaces", SlockLucideIconName.Monitor, null, selectedDestination),
-                nav(SharedSettingsDestination.About, "About", "Version and build information", SlockLucideIconName.BadgeInfo, null, selectedDestination)
+                nav(SharedSettingsDestination.Account, "Account", "Profile, email, password, connected accounts", SlockLucideIconName.User, this?.user?.bestDisplayName),
+                nav(SharedSettingsDestination.LanguageRegion, "Language & Region", "Language, timezone, translation", SlockLucideIconName.Languages, null),
+                nav(SharedSettingsDestination.Appearance, "Appearance", "Message font size and reading density", SlockLucideIconName.Type, null),
+                nav(SharedSettingsDestination.Notifications, "Notifications", "Push status and workspace mute", SlockLucideIconName.Bell, null),
+                nav(SharedSettingsDestination.Mobile, "Mobile", "Links, conversations, and composer", SlockLucideIconName.Smartphone, null),
+                nav(SharedSettingsDestination.Storage, "Storage", "Local cache and temporary files", SlockLucideIconName.Archive, null),
+                nav(SharedSettingsDestination.Server, "Server Profile", "Workspace name, slug, role", SlockLucideIconName.Building2, server?.role?.titleLabel()),
+                nav(SharedSettingsDestination.Billing, "Billing", "Plan and usage", SlockLucideIconName.CreditCard, server?.plan?.titleLabel()),
+                nav(SharedSettingsDestination.Administration, "Administration", "Admins, invites, join links, agreements", SlockLucideIconName.Shield, null),
+                nav(SharedSettingsDestination.ConnectedApps, "Connected Apps", "Marketplace, installed apps, OAuth clients", SlockLucideIconName.Link2, null),
+                nav(SharedSettingsDestination.Computers, "Computers", "Connected machines and workspaces", SlockLucideIconName.Monitor, null),
+                nav(SharedSettingsDestination.About, "About", "Version and build information", SlockLucideIconName.BadgeInfo, null)
             )
     )
 }
@@ -4169,7 +4202,6 @@ private fun nav(
     subtitle: String,
     iconName: SlockLucideIconName,
     value: String?,
-    selectedDestination: SharedSettingsDestination
 ): SharedSettingsNavItem =
     SharedSettingsNavItem(
         destination = destination,
@@ -4177,7 +4209,6 @@ private fun nav(
         subtitle = subtitle,
         iconName = iconName,
         value = value,
-        selected = selectedDestination == destination
     )
 
 private fun StoredAuthSession.toAccountSettingsSnapshot(): AccountSettingsSnapshot =
