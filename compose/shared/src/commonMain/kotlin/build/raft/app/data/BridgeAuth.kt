@@ -4,6 +4,7 @@ import build.raft.app.base.BridgeModule
 import build.raft.app.flushSlockPlatformDiagnosticsDownstream
 import build.raft.app.flushSlockPlatformLogs
 import build.raft.app.model.TaskStatus
+import build.raft.app.slockPlatformSupportsConversationForwardGesture
 import com.tencent.kuikly.core.nvi.serialization.json.JSONArray
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlin.coroutines.ContinuationInterceptor
@@ -46,6 +47,9 @@ internal class BridgeSettingsPlatformCapabilities(
     private val feedbackVisualSubmission: SettingsHandsFeedbackSubmission? = null,
     private val openUrlHandler: ((String) -> Unit)? = null
 ) : SharedSettingsPlatformCapabilities {
+    override val supportsConversationForwardGesture: Boolean
+        get() = slockPlatformSupportsConversationForwardGesture()
+
     fun bridgeCopyToClipboard(content: String) {
         bridge.copyToPasteboard(content)
         bridge.toast(copiedMessage)

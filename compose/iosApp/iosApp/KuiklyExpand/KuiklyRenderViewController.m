@@ -9,6 +9,8 @@ static const NSInteger SlockKuiklyKeyEventTypeDown = 2;
 static const NSInteger SlockKuiklyKeyCodeTab = 9;
 static const NSTimeInterval SlockKuiklyMillisPerDay = 86400000.0;
 static const NSTimeInterval SlockKuiklyMillisPerMinute = 60000.0;
+static NSString *const SlockAppShellPageName = @"compose_slock_app_shell";
+static NSString *const SlockConversationForwardPagerEvent = @"slockConversationForwardRequested";
 
 static void SlockKuiklyPutHostTimeContextIfMissing(NSMutableDictionary *pageData) {
     NSDate *now = [NSDate date];
@@ -77,6 +79,7 @@ static NSString *SlockKuiklyPixelString(CGFloat points, CGFloat scale) {
 @implementation KuiklyRenderViewController {
     NSString *_pageName;
     NSDictionary *_pageData;
+    BOOL _slockConversationForwardGestureEnabled;
 }
 
 - (instancetype)initWithPageName:(NSString *)pageName pageData:(NSDictionary *)pageData {
@@ -88,6 +91,28 @@ static NSString *SlockKuiklyPixelString(CGFloat points, CGFloat scale) {
         _delegator.delegate = self;
     }
     return self;
+}
+
+- (BOOL)slockIsAppShellPage {
+    return [_pageName isEqualToString:SlockAppShellPageName];
+}
+
+- (BOOL)slockConversationForwardGestureEnabled {
+    return _slockConversationForwardGestureEnabled;
+}
+
+- (void)setSlockConversationForwardGestureEnabled:(BOOL)enabled {
+    _slockConversationForwardGestureEnabled = enabled;
+    [self.navigationController fd_setConversationForwardGestureEnabled:
+        enabled && self.slockIsAppShellPage];
+}
+
+- (void)slockRequestConversationForward {
+    if (!self.slockIsAppShellPage || !self.slockConversationForwardGestureEnabled) {
+        return;
+    }
+    self.slockConversationForwardGestureEnabled = NO;
+    [_delegator sendWithEvent:SlockConversationForwardPagerEvent data:@{}];
 }
 
 - (void)viewDidLoad {

@@ -58,6 +58,15 @@ internal class BridgeModule : Module() {
         callNativeMethod(CLOSE_PAGE, null, null)
     }
 
+    /** iOS host admission only; conversation identity/history remains in the shared store. */
+    fun setConversationForwardGestureEnabled(enabled: Boolean) {
+        callNativeMethod(
+            CONVERSATION_FORWARD_GESTURE,
+            JSONObject().apply { put("enabled", enabled) },
+            null
+        )
+    }
+
     fun log(content: String) {
         log(BridgeLogLevel.Info, content)
     }
@@ -1166,6 +1175,7 @@ internal class BridgeModule : Module() {
         const val BRIDGE_LOG_TAG = "SlockKuikly"
         const val OPEN_PAGE = "openPage"
         const val CLOSE_PAGE = "closePage"
+        const val CONVERSATION_FORWARD_GESTURE = "conversationForwardGesture"
         const val PERFORMANCE_MARKER = "performanceMarker"
         const val OPEN_ATTACHMENT = "openAttachment"
         const val SAVE_ATTACHMENT = "saveAttachment"

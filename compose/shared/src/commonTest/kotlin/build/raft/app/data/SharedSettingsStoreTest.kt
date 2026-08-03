@@ -1,7 +1,9 @@
 package build.raft.app.data
 
 import build.raft.app.KmmResourceLocaleRuntime
+import build.raft.app.buildThreadLaunchConversationIdentity
 import build.raft.app.model.ChannelId
+import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
@@ -766,7 +768,8 @@ class SharedSettingsStoreTest {
                         notificationPreferenceRepository = notificationRepository,
                         localeRepository = localeRepository,
                         chatLayoutPreferenceRepository = chatLayoutRepository,
-                        linkOpenPreferenceRepository = linkOpenPreferenceRepository
+                        linkOpenPreferenceRepository = linkOpenPreferenceRepository,
+                        platformCapabilities = ConversationForwardCapableSettingsPlatformCapabilities
                     ),
                 scope = scope
             )
@@ -780,6 +783,7 @@ class SharedSettingsStoreTest {
         store.accept(SharedSettingsIntent.SetLongMessageCollapseEnabled(true))
         store.accept(SharedSettingsIntent.SetSingleTapOpensThreadEnabled(true))
         store.accept(SharedSettingsIntent.SetInlineSelectionToolbarEnabled(true))
+        store.accept(SharedSettingsIntent.SetConversationForwardGestureEnabled(true))
         store.accept(SharedSettingsIntent.SetImageAnnotationEnabled(true))
         store.accept(SharedSettingsIntent.SetForegroundMessageBanners(true))
         store.accept(SharedSettingsIntent.SetActivityTaskStatusBadges(true))
@@ -799,6 +803,7 @@ class SharedSettingsStoreTest {
         assertEquals(true, chatLayoutRepository.longMessageCollapseEnabled)
         assertEquals(true, chatLayoutRepository.singleTapOpensThreadEnabled)
         assertEquals(true, chatLayoutRepository.inlineSelectionToolbarEnabled)
+        assertEquals(true, chatLayoutRepository.conversationForwardGestureEnabled)
         assertEquals(true, chatLayoutRepository.imageAnnotationEnabled)
         assertEquals(true, chatLayoutRepository.foregroundMessageBannersEnabled)
         assertEquals(true, chatLayoutRepository.activityTaskStatusBadgesEnabled)
@@ -826,6 +831,8 @@ class SharedSettingsStoreTest {
         assertEquals("Enabled", mobile.singleTapOpensThread.statusLabel)
         assertEquals(true, mobile.inlineSelectionToolbar.enabled)
         assertEquals("Enabled", mobile.inlineSelectionToolbar.statusLabel)
+        assertEquals(true, mobile.conversationForwardGesture.enabled)
+        assertEquals("Enabled", mobile.conversationForwardGesture.statusLabel)
         assertEquals(true, mobile.imageAnnotation.enabled)
         assertEquals("Enabled", mobile.imageAnnotation.statusLabel)
         assertEquals(true, mobile.foregroundMessageBanners.enabled)
@@ -853,6 +860,102 @@ class SharedSettingsStoreTest {
         assertEquals(AppLocale.System, localeRepository.current)
         assertEquals("System default", systemMobile.localePreference.statusLabel)
         scope.cancel()
+    }
+
+    @Test
+    fun unsupportedPlatformHidesConversationForwardGestureAndRejectsPersistence() = runBlocking {
+        val chatLayoutRepository =
+            FakeChatLayoutPreferenceRepository(conversationForwardGestureEnabled = true)
+        val dataSource =
+            SharedSettingsDataSource(
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                chatLayoutPreferenceRepository = chatLayoutRepository
+            )
+
+        val loaded =
+            assertIs<DataResult.Content<SettingsMobileSnapshot>>(
+                dataSource.loadMobilePreferences()
+            ).data.conversationForwardGesture
+
+        assertFalse(loaded.available)
+        assertFalse(loaded.enabled)
+        assertEquals("Unsupported", loaded.statusLabel)
+
+        chatLayoutRepository.conversationForwardGestureEnabled = false
+        val rejected =
+            assertIs<DataResult.Error>(
+                dataSource.setConversationForwardGestureEnabled(true)
+            )
+        assertEquals("settings_conversation_forward_gesture_unavailable", rejected.error.code)
+        assertFalse(chatLayoutRepository.conversationForwardGestureEnabled)
+    }
+
+    @Test
+    fun delayedMobilePermissionLoadCannotOverrideNewerProcessOff() = runBlocking {
+        val permissionLoad = BlockingCall()
+        val chatLayoutRepository =
+            FakeChatLayoutPreferenceRepository(conversationForwardGestureEnabled = true)
+        val platformCapabilities =
+            object : SharedSettingsPlatformCapabilities {
+                override val supportsConversationForwardGesture: Boolean = true
+
+                override suspend fun loadSystemNotificationPermission(): SettingsMobileActionSnapshot? {
+                    permissionLoad.consume()
+                    return null
+                }
+            }
+        val dataSource =
+            SharedSettingsDataSource(
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                chatLayoutPreferenceRepository = chatLayoutRepository,
+                platformCapabilities = platformCapabilities
+            )
+        val history = SharedConversationForwardHistory()
+        var nativeDisableCount = 0
+        val runtimeAuthority =
+            ConversationForwardGestureRuntimeAuthority(
+                supported = true
+            ) { enabled ->
+                reconcileConversationForwardGesturePreference(
+                    enabled = enabled,
+                    history = history,
+                    disableNativeGesture = { nativeDisableCount += 1 }
+                )
+            }
+        val entry =
+            buildThreadLaunchConversationIdentity(
+                kind = ConversationKind.Channel,
+                channelId = ChannelId("channel-a")
+            ).toConversationForwardEntry("server-a")
+        runtimeAuthority.seedFromRepository(true)
+        history.recordNewOpen(entry)
+        assertTrue(history.recordHomeVisible())
+        assertTrue(history.canForward)
+
+        var delayedResult: DataResult<SettingsMobileSnapshot>? = null
+        val loadJob =
+            launch {
+                delayedResult = dataSource.loadMobilePreferences()
+            }
+        permissionLoad.awaitStarted()
+
+        chatLayoutRepository.conversationForwardGestureEnabled = false
+        runtimeAuthority.applyProcessPreferenceChange(false)
+        permissionLoad.release()
+        loadJob.join()
+
+        val staleMobileSnapshot =
+            assertIs<DataResult.Content<SettingsMobileSnapshot>>(delayedResult).data
+        assertTrue(staleMobileSnapshot.conversationForwardGesture.enabled)
+        assertFalse(chatLayoutRepository.conversationForwardGestureEnabled)
+        assertFalse(history.enabledForTest())
+        assertFalse(history.canForward)
+        assertNull(history.forwardEntryForTest())
+        assertEquals(1, nativeDisableCount)
+
+        history.recordNewOpen(entry)
+        assertFalse(history.recordHomeVisible())
+        assertFalse(history.canForward)
     }
 
     @Test
@@ -3734,6 +3837,11 @@ class SharedSettingsStoreTest {
         }
     }
 
+    private object ConversationForwardCapableSettingsPlatformCapabilities :
+        SharedSettingsPlatformCapabilities {
+        override val supportsConversationForwardGesture: Boolean = true
+    }
+
     private fun diagnosticOverridesHostSnapshot(
         clientOverride: String,
         expiresAtMillis: Long?,
@@ -3812,6 +3920,7 @@ class SharedSettingsStoreTest {
         var longMessageCollapseEnabled: Boolean = false,
         var singleTapOpensThreadEnabled: Boolean = false,
         var inlineSelectionToolbarEnabled: Boolean = false,
+        var conversationForwardGestureEnabled: Boolean = false,
         var imageAnnotationEnabled: Boolean = false,
         var foregroundMessageBannersEnabled: Boolean = false,
         var activityTaskStatusBadgesEnabled: Boolean = false,
@@ -3833,6 +3942,7 @@ class SharedSettingsStoreTest {
                 longMessageCollapseEnabled = longMessageCollapseEnabled,
                 singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
                 inlineSelectionToolbarEnabled = inlineSelectionToolbarEnabled,
+                conversationForwardGestureEnabled = conversationForwardGestureEnabled,
                 imageAnnotationEnabled = imageAnnotationEnabled,
                 foregroundMessageBannersEnabled = foregroundMessageBannersEnabled,
                 activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
@@ -3904,6 +4014,11 @@ class SharedSettingsStoreTest {
 
         override suspend fun setInlineSelectionToolbarEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
             inlineSelectionToolbarEnabled = enabled
+            return getChatLayoutPreference()
+        }
+
+        override suspend fun setConversationForwardGestureEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
+            conversationForwardGestureEnabled = enabled
             return getChatLayoutPreference()
         }
 

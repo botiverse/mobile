@@ -487,6 +487,7 @@ sealed interface SharedSettingsIntent {
     data class SetLongMessageCollapseEnabled(val enabled: Boolean) : SharedSettingsIntent
     data class SetSingleTapOpensThreadEnabled(val enabled: Boolean) : SharedSettingsIntent
     data class SetInlineSelectionToolbarEnabled(val enabled: Boolean) : SharedSettingsIntent
+    data class SetConversationForwardGestureEnabled(val enabled: Boolean) : SharedSettingsIntent
     data class SetImageAnnotationEnabled(val enabled: Boolean) : SharedSettingsIntent
     data class SetForegroundMessageBanners(val enabled: Boolean) : SharedSettingsIntent
     data class SetActivityTaskStatusBadges(val enabled: Boolean) : SharedSettingsIntent
@@ -543,6 +544,9 @@ sealed interface SharedSettingsEffect {
 }
 
 interface SharedSettingsPlatformCapabilities {
+    val supportsConversationForwardGesture: Boolean
+        get() = false
+
     suspend fun pickAccountAvatarFile(): DataResult<PlatformFile> =
         DataResult.Error(ScreenError("settings_account_avatar_picker_unavailable", retryable = false))
 
@@ -1098,6 +1102,19 @@ class SharedSettingsDataSource(
         return loadMobilePreferences()
     }
 
+    suspend fun setConversationForwardGestureEnabled(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
+        if (!platformCapabilities.supportsConversationForwardGesture) {
+            return DataResult.Error(
+                ScreenError("settings_conversation_forward_gesture_unavailable", retryable = false)
+            )
+        }
+        val repository =
+            chatLayoutPreferenceRepository
+                ?: return DataResult.Error(ScreenError("settings_conversation_forward_gesture_unavailable", retryable = false))
+        repository.setConversationForwardGestureEnabled(enabled)
+        return loadMobilePreferences()
+    }
+
     suspend fun setImageAnnotationEnabled(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
         val repository =
             chatLayoutPreferenceRepository
@@ -1448,6 +1465,15 @@ class SharedSettingsDataSource(
                         available = false,
                         statusLabel = "Unsupported",
                         detail = "Inline message selection is not available on this platform."
+                    ),
+            conversationForwardGesture =
+                chatLayout?.toSettingsMobileConversationForwardGestureSnapshot(
+                    available = platformCapabilities.supportsConversationForwardGesture
+                )
+                    ?: conversationForwardGesture.copy(
+                        available = false,
+                        statusLabel = "Unsupported",
+                        detail = "Conversation Forward navigation is not available on this platform."
                     ),
             imageAnnotation =
                 chatLayout?.toSettingsMobileImageAnnotationSnapshot()
@@ -2247,6 +2273,14 @@ class SharedSettingsStore(
                     )
                 dataSource.setInlineSelectionToolbarEnabled(intent.enabled)
                     .applyMobileActionResult(MOBILE_ACTION_INLINE_SELECTION_TOOLBAR)
+            }
+            is SharedSettingsIntent.SetConversationForwardGestureEnabled -> {
+                _state.value =
+                    _state.value.copy(
+                        actionState = SharedSettingsActionState(MOBILE_ACTION_CONVERSATION_FORWARD_GESTURE, inProgress = true)
+                    )
+                dataSource.setConversationForwardGestureEnabled(intent.enabled)
+                    .applyMobileActionResult(MOBILE_ACTION_CONVERSATION_FORWARD_GESTURE)
             }
             is SharedSettingsIntent.SetImageAnnotationEnabled -> {
                 _state.value =
@@ -3484,6 +3518,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.SetLongMessageCollapseEnabled,
             is SharedSettingsIntent.SetSingleTapOpensThreadEnabled,
             is SharedSettingsIntent.SetInlineSelectionToolbarEnabled,
+            is SharedSettingsIntent.SetConversationForwardGestureEnabled,
             is SharedSettingsIntent.SetImageAnnotationEnabled,
             is SharedSettingsIntent.SetForegroundMessageBanners,
             is SharedSettingsIntent.SetActivityTaskStatusBadges,
@@ -3688,6 +3723,7 @@ internal const val MOBILE_ACTION_COMPACT_MESSAGES = "compactMessages"
 internal const val MOBILE_ACTION_LONG_MESSAGE_COLLAPSE = "longMessageCollapse"
 internal const val MOBILE_ACTION_SINGLE_TAP_OPENS_THREAD = "singleTapOpensThread"
 internal const val MOBILE_ACTION_INLINE_SELECTION_TOOLBAR = "inlineSelectionToolbar"
+internal const val MOBILE_ACTION_CONVERSATION_FORWARD_GESTURE = "conversationForwardGesture"
 internal const val MOBILE_ACTION_IMAGE_ANNOTATION = "imageAnnotation"
 internal const val MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS = "foregroundMessageBanners"
 internal const val MOBILE_ACTION_ACTIVITY_TASK_STATUS_BADGES = "activityTaskStatusBadges"
@@ -3917,6 +3953,26 @@ private fun ChatLayoutPreferenceSnapshot.toSettingsMobileInlineSelectionToolbarS
         available = true,
         statusLabel = if (inlineSelectionToolbarEnabled) "Enabled" else "Off",
         detail = "Long-press eligible plain-text messages to select text in place and show quick reactions and message tools."
+    )
+
+private fun ChatLayoutPreferenceSnapshot.toSettingsMobileConversationForwardGestureSnapshot(
+    available: Boolean
+): SettingsMobileToggleSnapshot =
+    SettingsMobileToggleSnapshot(
+        enabled = available && conversationForwardGestureEnabled,
+        available = available,
+        statusLabel =
+            when {
+                !available -> "Unsupported"
+                conversationForwardGestureEnabled -> "Enabled"
+                else -> "Off"
+            },
+        detail =
+            if (available) {
+                "Swipe left from the right edge of Home to reopen the most recent channel or direct message after going back."
+            } else {
+                "Conversation Forward navigation is available on iOS."
+            }
     )
 
 private fun ChatLayoutPreferenceSnapshot.toSettingsMobileImageAnnotationSnapshot(): SettingsMobileToggleSnapshot =

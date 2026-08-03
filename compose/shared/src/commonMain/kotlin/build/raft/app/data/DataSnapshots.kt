@@ -1258,6 +1258,13 @@ data class SettingsMobileSnapshot(
             statusLabel = "Off",
             detail = "Long-press eligible plain-text messages to select text in place and show quick reactions and message tools."
         ),
+    val conversationForwardGesture: SettingsMobileToggleSnapshot =
+        SettingsMobileToggleSnapshot(
+            enabled = false,
+            available = true,
+            statusLabel = "Off",
+            detail = "Swipe left from the right edge of Home to reopen the most recent channel or direct message after going back."
+        ),
     val imageAnnotation: SettingsMobileToggleSnapshot =
         SettingsMobileToggleSnapshot(
             enabled = false,

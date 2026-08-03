@@ -2320,6 +2320,25 @@ static UIImage *SlockThreadShareStitchFragments(NSArray<NSString *> *fragmentPat
     });
 }
 
+- (void)conversationForwardGesture:(NSDictionary *)args {
+    NSDictionary *params = SlockBridgeParams(args);
+    BOOL enabled = SlockBridgeBool(params[@"enabled"]);
+    SlockBridgeRunOnMain(^{
+        // This module belongs to the AppShell render root. Do not follow a presented modal to
+        // decide ownership; modal presence is a separate gesture-admission veto.
+        UIViewController *controller = self.hr_rootView.kr_viewController;
+        if ([controller isKindOfClass:UINavigationController.class]) {
+            controller = ((UINavigationController *)controller).topViewController;
+        }
+        if ([controller isKindOfClass:KuiklyRenderViewController.class]) {
+            KuiklyRenderViewController *renderController = (KuiklyRenderViewController *)controller;
+            if (renderController.slockIsAppShellPage) {
+                renderController.slockConversationForwardGestureEnabled = enabled;
+            }
+        }
+    });
+}
+
 - (void)openUrl:(NSDictionary *)args {
     NSDictionary *params = SlockBridgeParams(args);
     NSString *urlText = SlockBridgeString(params[@"url"]);

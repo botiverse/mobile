@@ -21,11 +21,99 @@
 // SOFTWARE.
 
 #import "UINavigationController+FDFullscreenPopGesture.h"
+#import "KuiklyRenderViewController.h"
+#import "SlockConversationForwardGestureAdmission.h"
 #import <objc/runtime.h>
 
 @interface _FDFullscreenPopGestureRecognizerDelegate : NSObject <UIGestureRecognizerDelegate>
 
 @property (nonatomic, weak) UINavigationController *navigationController;
+
+@end
+
+@interface _FDConversationForwardGestureRecognizerDelegate : NSObject <UIGestureRecognizerDelegate>
+
+@property (nonatomic, weak) UINavigationController *navigationController;
+
+@end
+
+@interface UINavigationController (FDConversationForwardGesturePrivate)
+
+@property (nonatomic, strong, readonly) _FDConversationForwardGestureRecognizerDelegate *fd_conversationForwardGestureRecognizerDelegate;
+- (void)fd_handleConversationForwardGesture:(UIScreenEdgePanGestureRecognizer *)gestureRecognizer;
+
+@end
+
+static BOOL SlockConversationForwardChildGestureConflict(UIView *view, UIView *rootView)
+{
+    UIView *candidate = view;
+    while (candidate && candidate != rootView) {
+        if ([candidate conformsToProtocol:@protocol(UITextInput)]) {
+            return YES;
+        }
+        if ([candidate isKindOfClass:UIScrollView.class]) {
+            UIScrollView *scrollView = (UIScrollView *)candidate;
+            BOOL horizontal =
+                scrollView.alwaysBounceHorizontal ||
+                scrollView.contentSize.width > CGRectGetWidth(scrollView.bounds) + 1.0;
+            if (horizontal || scrollView.dragging || scrollView.decelerating || scrollView.tracking) {
+                return YES;
+            }
+        }
+        candidate = candidate.superview;
+    }
+    return NO;
+}
+
+static BOOL SlockConversationForwardHasActiveTextInput(UIView *view)
+{
+    if (view.isFirstResponder && [view conformsToProtocol:@protocol(UITextInput)]) {
+        return YES;
+    }
+    for (UIView *subview in view.subviews) {
+        if (SlockConversationForwardHasActiveTextInput(subview)) {
+            return YES;
+        }
+    }
+    return NO;
+}
+
+@implementation _FDConversationForwardGestureRecognizerDelegate
+
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldReceiveTouch:(UITouch *)touch
+{
+    return !SlockConversationForwardChildGestureConflict(touch.view, gestureRecognizer.view);
+}
+
+- (BOOL)gestureRecognizerShouldBegin:(UIScreenEdgePanGestureRecognizer *)gestureRecognizer
+{
+    UINavigationController *navigationController = self.navigationController;
+    KuiklyRenderViewController *topViewController =
+        [navigationController.topViewController isKindOfClass:KuiklyRenderViewController.class]
+            ? (KuiklyRenderViewController *)navigationController.topViewController
+            : nil;
+    CGPoint translation = [gestureRecognizer translationInView:gestureRecognizer.view];
+    CGPoint velocity = [gestureRecognizer velocityInView:gestureRecognizer.view];
+    BOOL transitioning = [[navigationController valueForKey:@"_isTransitioning"] boolValue];
+    UIGestureRecognizerState popState = navigationController.fd_fullscreenPopGestureRecognizer.state;
+    BOOL interactivePopActive =
+        popState == UIGestureRecognizerStateBegan || popState == UIGestureRecognizerStateChanged;
+    SlockConversationForwardGestureAdmission admission = {
+        .enabled = topViewController.slockConversationForwardGestureEnabled,
+        .appShellIsTop = topViewController.slockIsAppShellPage,
+        .navigationStackAtRoot = navigationController.viewControllers.count == 1,
+        .transitioning = transitioning,
+        .modalPresented = topViewController.presentedViewController != nil || navigationController.presentedViewController != nil,
+        .interactivePopActive = interactivePopActive,
+        .childGestureConflict = NO,
+        .textInputActive = SlockConversationForwardHasActiveTextInput(navigationController.view),
+        .translationX = translation.x,
+        .translationY = translation.y,
+        .velocityX = velocity.x,
+        .velocityY = velocity.y,
+    };
+    return SlockConversationForwardGestureShouldBegin(admission);
+}
 
 @end
 
@@ -170,6 +258,13 @@ typedef void (^_FDViewControllerWillAppearInjectBlock)(UIViewController *viewCon
         self.interactivePopGestureRecognizer.enabled = NO;
     }
 
+    KuiklyRenderViewController *renderViewController =
+        [viewController isKindOfClass:KuiklyRenderViewController.class]
+            ? (KuiklyRenderViewController *)viewController
+            : nil;
+    [self fd_setConversationForwardGestureEnabled:
+        renderViewController.slockConversationForwardGestureEnabled && renderViewController.slockIsAppShellPage];
+
     // Handle perferred navigation bar appearance.
     [self fd_setupViewControllerBasedNavigationBarAppearanceIfNeeded:viewController];
 
@@ -177,6 +272,47 @@ typedef void (^_FDViewControllerWillAppearInjectBlock)(UIViewController *viewCon
     if (![self.viewControllers containsObject:viewController]) {
         [self fd_pushViewController:viewController animated:animated];
     }
+}
+
+- (void)fd_handleConversationForwardGesture:(UIScreenEdgePanGestureRecognizer *)gestureRecognizer
+{
+    if (gestureRecognizer.state != UIGestureRecognizerStateEnded) {
+        return;
+    }
+    CGFloat width = MAX(1.0, CGRectGetWidth(gestureRecognizer.view.bounds));
+    CGPoint translation = [gestureRecognizer translationInView:gestureRecognizer.view];
+    CGPoint velocity = [gestureRecognizer velocityInView:gestureRecognizer.view];
+    CGFloat progress = MAX(0.0, -translation.x / width);
+    if (progress < 0.12 && velocity.x > -300.0) {
+        return;
+    }
+    KuiklyRenderViewController *topViewController =
+        [self.topViewController isKindOfClass:KuiklyRenderViewController.class]
+            ? (KuiklyRenderViewController *)self.topViewController
+            : nil;
+    [topViewController slockRequestConversationForward];
+}
+
+- (void)fd_setConversationForwardGestureEnabled:(BOOL)enabled
+{
+    UIScreenEdgePanGestureRecognizer *gestureRecognizer =
+        objc_getAssociatedObject(self, @selector(fd_conversationForwardGestureRecognizer));
+    if (!enabled) {
+        gestureRecognizer.enabled = NO;
+        if (gestureRecognizer.view != nil) {
+            [gestureRecognizer.view removeGestureRecognizer:gestureRecognizer];
+        }
+        return;
+    }
+
+    gestureRecognizer = self.fd_conversationForwardGestureRecognizer;
+    if (gestureRecognizer.view != self.view) {
+        if (gestureRecognizer.view != nil) {
+            [gestureRecognizer.view removeGestureRecognizer:gestureRecognizer];
+        }
+        [self.view addGestureRecognizer:gestureRecognizer];
+    }
+    gestureRecognizer.enabled = YES;
 }
 
 - (void)fd_setupViewControllerBasedNavigationBarAppearanceIfNeeded:(UIViewController *)appearingViewController
@@ -227,6 +363,32 @@ typedef void (^_FDViewControllerWillAppearInjectBlock)(UIViewController *viewCon
         objc_setAssociatedObject(self, _cmd, panGestureRecognizer, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
     return panGestureRecognizer;
+}
+
+- (_FDConversationForwardGestureRecognizerDelegate *)fd_conversationForwardGestureRecognizerDelegate
+{
+    _FDConversationForwardGestureRecognizerDelegate *delegate = objc_getAssociatedObject(self, _cmd);
+    if (!delegate) {
+        delegate = [[_FDConversationForwardGestureRecognizerDelegate alloc] init];
+        delegate.navigationController = self;
+        objc_setAssociatedObject(self, _cmd, delegate, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    return delegate;
+}
+
+- (UIScreenEdgePanGestureRecognizer *)fd_conversationForwardGestureRecognizer
+{
+    UIScreenEdgePanGestureRecognizer *gestureRecognizer = objc_getAssociatedObject(self, _cmd);
+    if (!gestureRecognizer) {
+        gestureRecognizer = [[UIScreenEdgePanGestureRecognizer alloc] init];
+        gestureRecognizer.edges = UIRectEdgeRight;
+        gestureRecognizer.maximumNumberOfTouches = 1;
+        gestureRecognizer.cancelsTouchesInView = NO;
+        gestureRecognizer.delegate = self.fd_conversationForwardGestureRecognizerDelegate;
+        [gestureRecognizer addTarget:self action:@selector(fd_handleConversationForwardGesture:)];
+        objc_setAssociatedObject(self, _cmd, gestureRecognizer, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    return gestureRecognizer;
 }
 
 - (BOOL)fd_viewControllerBasedNavigationBarAppearanceEnabled

@@ -17,6 +17,8 @@ internal actual fun slockPlatformAppShellChildPagePrewarmMode(): AppShellChildPa
 
 internal actual fun slockPlatformSupportsMultiShellHost(): Boolean = false
 
+internal actual fun slockPlatformSupportsConversationForwardGesture(): Boolean = false
+
 internal actual fun slockPlatformDefaultAppTabBarRenderer(): String? = null
 
 // OHOS phase 2 (video controller line, after Android #556 / iOS #11): the

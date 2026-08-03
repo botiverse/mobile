@@ -106,6 +106,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   static readonly LOG = "log";
   static readonly PERFORMANCE_MARKER = "performanceMarker";
   static readonly PROBE_THREAD_VIEWPORT_PIXELS = "probeThreadViewportPixels";
+  static readonly CONVERSATION_FORWARD_GESTURE = "conversationForwardGesture";
   static readonly PERFORMANCE_SCENE = "performanceScene";
   static readonly KUIKLY_PERFORMANCE_SNAPSHOT = "kuiklyPerformanceSnapshot";
   static readonly REPORT_DT = "reportDT";
@@ -209,6 +210,10 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
           "status": "unsupported",
           "generation": records["generation"] ?? 0
         });
+        break;
+      }
+      case KRBridgeModule.CONVERSATION_FORWARD_GESTURE: {
+        // iOS-only native gesture admission. Shared history remains inert on OHOS.
         break;
       }
       case KRBridgeModule.PERFORMANCE_SCENE: {

@@ -396,6 +396,7 @@ internal class SlockSharedStoreProvider private constructor(
     private val shellCreateAgentFormStores = SlockShellScopedStoreCache<SharedCreateAgentFormStore>()
     private val shellCreateAgentFormOwnerJobs = SlockShellScopedStoreCache<Job>()
     private val shellNavigationCoordinators = SlockShellScopedStoreCache<SharedWindowNavigationCoordinator>()
+    private val shellConversationForwardHistories = SlockShellScopedStoreCache<SharedConversationForwardHistory>()
     private val shellForegroundBannerStores = SlockShellScopedStoreCache<SharedForegroundBannerStore>()
     private val shellRealtimeRoomLeaseRegistries =
         SlockShellScopedStoreCache<SharedRealtimeRoomLeaseRegistry>()
@@ -861,6 +862,10 @@ internal class SlockSharedStoreProvider private constructor(
     fun windowNavigationCoordinator(scope: SlockShellStoreScope): SharedWindowNavigationCoordinator =
         shellNavigationCoordinators.getOrPut(scope) { SharedWindowNavigationCoordinator() }
 
+    /** Identity-only, one-step Forward history owned by one document/AppShell. */
+    fun conversationForwardHistory(scope: SlockShellStoreScope): SharedConversationForwardHistory =
+        shellConversationForwardHistories.getOrPut(scope) { SharedConversationForwardHistory() }
+
     fun foregroundBannerStore(scope: SlockShellStoreScope): SharedForegroundBannerStore =
         shellForegroundBannerStores.getOrPut(scope) { SharedForegroundBannerStore(threadSendScope) }
 
@@ -1219,6 +1224,7 @@ internal class SlockSharedStoreProvider private constructor(
         shellCreateAgentFormOwnerJobs.remove(scope)?.cancel()
         shellCreateAgentFormStores.remove(scope)
         shellNavigationCoordinators.remove(scope)?.clear()
+        shellConversationForwardHistories.remove(scope)?.release()
         shellForegroundBannerStores.remove(scope)?.clear()
         selectedServerStores.remove(scope)
     }
