@@ -2,7 +2,7 @@ name: Source constraints lint
 
 # Incident-born static constraints as an explicit gate (test-discipline
 # announcement, #all 2026-07-25): tasks #800 / #803 / #361 / #161 / #924 /
-# #82 structural faces.
+# #82 / #183 structural faces.
 # Behavior stays proven by behavior tests; this only blocks silent structural
 # regressions a refactor could reintroduce.
 

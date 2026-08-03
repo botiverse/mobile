@@ -206,6 +206,57 @@ def check_system_selectable_text_dialog(thread_page: str) -> None:
         )
 
 
+def check_thread_ime_tail_pixel_probe_scope(thread_page: str) -> None:
+    """Incident: task #183 / VC1000134 (PixelCopy silently self-cancelled).
+
+    The probe helper has behavior tests, but the production callsite can still
+    regress by constructing it from the restartable LaunchedEffect receiver.
+    Pin the composition-owned runner creation and the exact effect callsite.
+    """
+    code = re.sub(r"/\*.*?\*/", "", thread_page, flags=re.DOTALL)
+    code = re.sub(r"//[^\n]*", "", code)
+    remembered_runner = re.compile(
+        r"val\s+coroutineScope\s*=\s*rememberCoroutineScope\(\)\s*"
+        r"val\s+imeTailPixelProbeRunner\s*=\s*"
+        r"remember\(threadInstanceKey\s*,\s*coroutineScope\)\s*\{\s*"
+        r"ThreadImeTailPixelProbeRunner\(coroutineScope\)\s*\}",
+        flags=re.DOTALL,
+    )
+    if remembered_runner.search(code) is None:
+        raise Violation(
+            "task #183 regression: IME-tail PixelCopy runner must be remembered "
+            "from rememberCoroutineScope and threadInstanceKey"
+        )
+
+    effect_start = code.find(
+        "LaunchedEffect(\n        threadInstanceKey,\n        composerKeyboardInsetDp,"
+    )
+    effect_end = code.find("\n    ThreadReactionAtlasProvider", effect_start)
+    if effect_start < 0 or effect_end < 0:
+        raise Violation(
+            "task #183 anchor missing: composer inset LaunchedEffect must remain auditable"
+        )
+    effect = code[effect_start:effect_end]
+    stable_call = re.compile(r"\bimeTailPixelProbeRunner\s*\.\s*launch\s*\(")
+    if len(stable_call.findall(effect)) != 1:
+        raise Violation(
+            "task #183 regression: composer inset effect must schedule exactly one probe "
+            "through the remembered imeTailPixelProbeRunner"
+        )
+    forbidden = (
+        "ThreadImeTailPixelProbeRunner(",
+        "currentCoroutineContext(",
+        "CoroutineScope(coroutineContext",
+        "this.launch",
+    )
+    for token in forbidden:
+        if token in effect:
+            raise Violation(
+                f"task #183 regression: restartable composer effect contains {token}; "
+                "probe work must remain owned by the remembered composition scope"
+            )
+
+
 def check_native_apple_authentication_services(
     host: str,
     shared: str,
@@ -340,6 +391,7 @@ def run(root: Path) -> None:
     thread_page = read(THREAD_PAGE)
     check_forward_row_identity(thread_page)
     check_system_selectable_text_dialog(thread_page)
+    check_thread_ime_tail_pixel_probe_scope(thread_page)
     check_no_layout_direction_flip(
         {
             THREAD_PAGE: thread_page,
@@ -373,6 +425,47 @@ def self_test() -> None:
             pass
         else:
             raise SystemExit("self-test: row-identity checker accepted a violation")
+
+    good_pixel_probe_scope = """
+val coroutineScope = rememberCoroutineScope()
+val imeTailPixelProbeRunner =
+    remember(threadInstanceKey, coroutineScope) {
+        ThreadImeTailPixelProbeRunner(coroutineScope)
+    }
+LaunchedEffect(
+        threadInstanceKey,
+        composerKeyboardInsetDp,
+) {
+    imeTailPixelProbeRunner.launch(awaitSettlement = {}, runProbe = {})
+}
+    ThreadReactionAtlasProvider
+"""
+    check_thread_ime_tail_pixel_probe_scope(good_pixel_probe_scope)
+    bad_pixel_probe_scopes = (
+        good_pixel_probe_scope.replace(
+            "imeTailPixelProbeRunner.launch(",
+            "ThreadImeTailPixelProbeRunner(this).launch(",
+        ),
+        good_pixel_probe_scope.replace(
+            "ThreadImeTailPixelProbeRunner(coroutineScope)",
+            "ThreadImeTailPixelProbeRunner(this)",
+        ),
+        good_pixel_probe_scope.replace(
+            "imeTailPixelProbeRunner.launch(",
+            "this.launch(",
+        ),
+        good_pixel_probe_scope.replace(
+            "imeTailPixelProbeRunner.launch(",
+            "// imeTailPixelProbeRunner.launch(\nthis.launch(",
+        ),
+    )
+    for bad in bad_pixel_probe_scopes:
+        try:
+            check_thread_ime_tail_pixel_probe_scope(bad)
+        except Violation:
+            pass
+        else:
+            raise SystemExit("self-test: task #183 probe-scope checker accepted a violation")
 
     good_dialog = """
 key(message.id, message.body) { Unit }
@@ -589,7 +682,7 @@ def main(argv: list[str]) -> int:
     except Violation as violation:
         print(f"source-constraint violation: {violation}", file=sys.stderr)
         return 1
-    print("source constraints hold (tasks #800/#803/#361/#161/#924/#82 structural faces)")
+    print("source constraints hold (tasks #800/#803/#361/#161/#924/#82/#183 structural faces)")
     return 0
 
 
