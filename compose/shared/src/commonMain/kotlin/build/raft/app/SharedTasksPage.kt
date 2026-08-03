@@ -75,8 +75,10 @@ import com.tencent.kuikly.compose.ui.draw.rotate
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
+import com.tencent.kuikly.compose.ui.text.TextRange
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
+import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
@@ -385,6 +387,28 @@ private fun SharedTasksLoadedBody(
     }
 }
 
+/**
+ * Seed value for a filter-search caller-local editor at a session open, or null to
+ * leave the editor untouched. The filter search inputs are the sole owners of their
+ * [TextFieldValue] within a session; this is invoked only from a LaunchedEffect
+ * keyed on the `openFilterId` session token, so a filter is reseeded from its
+ * durable String only when its popover becomes the open session (SetOpenFilter
+ * clears the non-active boxes). Returning null for every non-active filter is what
+ * stops a stale or echoed durable String from re-injecting into a live editor and
+ * clobbering its selection/composition. The seed always places the caret at the end
+ * of the durable text; within the session the local editor owns the selection.
+ */
+internal fun slockFilterSearchSessionSeed(
+    openFilterId: String?,
+    thisFilterId: String,
+    durableSearch: String
+): TextFieldValue? =
+    if (openFilterId == thisFilterId) {
+        TextFieldValue(durableSearch, selection = TextRange(durableSearch.length))
+    } else {
+        null
+    }
+
 @Composable
 private fun SharedTasksLoadedBodyContent(
     state: TasksUiState,
@@ -500,6 +524,41 @@ private fun SharedTasksLoadedBodyContent(
     var channelAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
     var creatorAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
     var assigneeAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
+    // Caller-local editing snapshots for the filter search inputs. The durable
+    // filter String in presentationState is a downstream projection; the
+    // caller-local TextFieldValue is the SOLE mounted editor owner for a filter
+    // session, so CJK composition and cursor/selection are never disturbed by the
+    // reducer. Typing projects only `.text` back into the store.
+    var channelSearchValue by remember {
+        mutableStateOf(
+            TextFieldValue(presentationState.channelSearch, selection = TextRange(presentationState.channelSearch.length))
+        )
+    }
+    var creatorSearchValue by remember {
+        mutableStateOf(
+            TextFieldValue(presentationState.creatorSearch, selection = TextRange(presentationState.creatorSearch.length))
+        )
+    }
+    var assigneeSearchValue by remember {
+        mutableStateOf(
+            TextFieldValue(presentationState.assigneeSearch, selection = TextRange(presentationState.assigneeSearch.length))
+        )
+    }
+    // Seed the caller-local editor exactly once per filter session, keyed on the
+    // explicit session token `openFilterId`. SetOpenFilter opens/swaps a popover
+    // and clears the non-active search boxes, so a (re)opened box must start from
+    // the durable String rather than stale local text. Keying on openFilterId —
+    // never on the durable String — means normal typing, reducer projection echo,
+    // out-of-order/stale durable Strings and same-session recompositions never
+    // write back local selection/composition. The only other local mutations are
+    // the field's own edits (typing / its X clear) via onSearchChange. Non-active
+    // filters are reseeded when they next become the open session.
+    LaunchedEffect(presentationState.openFilterId) {
+        val openId = presentationState.openFilterId
+        slockFilterSearchSessionSeed(openId, "channel", presentationState.channelSearch)?.let { channelSearchValue = it }
+        slockFilterSearchSessionSeed(openId, "creator", presentationState.creatorSearch)?.let { creatorSearchValue = it }
+        slockFilterSearchSessionSeed(openId, "assignee", presentationState.assigneeSearch)?.let { assigneeSearchValue = it }
+    }
     var createDialogOpen by remember { mutableStateOf(false) }
     var createSubmitted by remember { mutableStateOf(false) }
     var createFailureVisible by remember { mutableStateOf(false) }
@@ -734,8 +793,8 @@ private fun SharedTasksLoadedBodyContent(
                     anchor = anchor,
                     title = stringResource(MR.strings.tasks_filter_channel),
                     searchPlaceholder = stringResource(MR.strings.tasks_search_channels),
-                    searchText = presentationState.channelSearch,
-                    onSearchChange = { presentationState = presentationState.reduce(TasksPresentationIntent.SetChannelSearch(it)) },
+                    searchText = channelSearchValue,
+                    onSearchChange = { channelSearchValue = it; presentationState = presentationState.reduce(TasksPresentationIntent.SetChannelSearch(it.text)) },
                     options = channelFilterOptions,
                     selectedIds = visibleContent.selectedChannelNames,
                     onToggle = { id -> presentationState = presentationState.reduce(TasksPresentationIntent.ToggleChannel(id)) },
@@ -747,8 +806,8 @@ private fun SharedTasksLoadedBodyContent(
                     anchor = anchor,
                     title = stringResource(MR.strings.tasks_filter_creator),
                     searchPlaceholder = stringResource(MR.strings.tasks_search_creators),
-                    searchText = presentationState.creatorSearch,
-                    onSearchChange = { presentationState = presentationState.reduce(TasksPresentationIntent.SetCreatorSearch(it)) },
+                    searchText = creatorSearchValue,
+                    onSearchChange = { creatorSearchValue = it; presentationState = presentationState.reduce(TasksPresentationIntent.SetCreatorSearch(it.text)) },
                     options = creatorFilterOptions,
                     selectedIds = visibleContent.selectedCreatorIds,
                     onToggle = { id -> presentationState = presentationState.reduce(TasksPresentationIntent.ToggleCreator(id)) },
@@ -760,8 +819,8 @@ private fun SharedTasksLoadedBodyContent(
                     anchor = anchor,
                     title = stringResource(MR.strings.tasks_filter_assignee),
                     searchPlaceholder = stringResource(MR.strings.tasks_search_assignees),
-                    searchText = presentationState.assigneeSearch,
-                    onSearchChange = { presentationState = presentationState.reduce(TasksPresentationIntent.SetAssigneeSearch(it)) },
+                    searchText = assigneeSearchValue,
+                    onSearchChange = { assigneeSearchValue = it; presentationState = presentationState.reduce(TasksPresentationIntent.SetAssigneeSearch(it.text)) },
                     options = assigneeFilterOptions,
                     selectedIds = visibleContent.selectedAssigneeIds,
                     onToggle = { id -> presentationState = presentationState.reduce(TasksPresentationIntent.ToggleAssignee(id)) },
