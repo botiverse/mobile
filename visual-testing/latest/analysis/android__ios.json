@@ -1,15 +1,15 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-02T22:48:28.782Z",
+  "generatedAt": "2026-08-03T22:21:11.444Z",
   "baseline": "android",
   "current": "ios",
   "comparison": "android__ios",
   "analysisProvider": "minimax",
   "analysisModel": "MiniMax-M3",
   "summary": {
-    "total": 80,
-    "ready": 75,
-    "pending": 5
+    "total": 84,
+    "ready": 72,
+    "pending": 12
   },
   "cases": [
     {
@@ -78,6 +78,45 @@
       "metricMismatch": 0.006937862032648789
     },
     {
+      "id": "components.ui.button.states.elegant",
+      "status": "pending",
+      "imageHash": "p1:0f881f00007c00fe007c00fe001c003e003c007e7ffcfffe0000fffefffcfffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff80fff",
+      "generatedAt": "2026-08-03T22:21:08.193Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.024010612873172077
+    },
+    {
+      "id": "components.ui.card.states",
+      "status": "pending",
+      "imageHash": "p1:1ff83ffc0000000200a801d201f803f20000000200000002800100027ffdfffe0001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
+      "generatedAt": "2026-08-03T22:21:08.200Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.013052078691889069
+    },
+    {
+      "id": "components.ui.card.states.elegant",
+      "status": "pending",
+      "imageHash": "p1:000800000ffc3ffe00bc01f6000c001e00000006000000067ffcfff60000fffe0000fffefffefffefffcfffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff80fff",
+      "generatedAt": "2026-08-03T22:21:08.343Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.03707956954402447
+    },
+    {
       "id": "components.ui.badge.states",
       "status": "ready",
       "imageHash": "p1:1ff83ff00000000e0004000e1ffc3ffe0000fffe9ffcfffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff80fff",
@@ -110,32 +149,29 @@
     },
     {
       "id": "components.ui.form-field.states",
-      "status": "ready",
-      "imageHash": "p1:0ff81ffc1ffc3ffe000000020000000200000006000000120000000200fc01fe00000ff200000002fffe0006fffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
-      "generatedAt": "2026-08-02T22:45:26.644Z",
-      "severity": "medium",
-      "summary": [
-        "Server Name error message 'Name is required' is present on iOS but missing on Android — the error state is not rendered/clipped on the Android side.",
-        "Server Name input field is clipped/cut off on the Android side (bottom portion hidden by the component bounds crop), while iOS shows the full empty field with error text below.",
-        "Layout proportions differ: Android renders the form in a compact 342×226 frame whereas iOS uses the full 1170×2532 canvas, causing relative spacing to diverge significantly."
-      ],
-      "likelyCauses": [
-        "Android crop rect (height=226) truncates content below the Server Name field, so the error message and lower portion of the input are not captured.",
-        "iOS may render the field's error/help text below the field bounds whereas Android renders it inline, leading to a vertical-layout mismatch between platforms.",
-        "Possible platform-specific difference in how the form-field error state is composed (separate Text node on iOS, attached/overlapped on Android)."
-      ],
-      "suggestedOwner": "ui-components",
-      "suggestedFixes": [
-        "Re-capture the Android baseline with a taller crop rect so the Server Name field and its error message are fully included.",
-        "Ensure the error-state text node is rendered outside the input bounds on Android, matching iOS layout.",
-        "Verify Kuikly form-field error state component parity between Android and iOS implementations.",
-        "Normalize vertical spacing/margins for the error message so both ends produce the same gap below the input."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.018546535963597566
+      "status": "pending",
+      "imageHash": "p1:0ff81ffc1ffc3ffe000000020000000200000006000000120000000200fc01fe07f80ff200000002000000060001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
+      "generatedAt": "2026-08-03T22:21:08.308Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.019882934337910663
+    },
+    {
+      "id": "components.ui.form-field.states.elegant",
+      "status": "pending",
+      "imageHash": "p1:000800001ffc3ffe03fc07fe03fc07fe00fc01fe01fc03fe00fc01fe00fc01fe07fc0ff603fc07f607fc0ffe0000fffefffcfffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff80fff",
+      "generatedAt": "2026-08-03T22:21:08.423Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.01792981461227905
     },
     {
       "id": "components.ui.textarea.states",
@@ -948,7 +984,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.05944998042154437
+      "metricMismatch": 0.059448630183227325
     },
     {
       "id": "components.thread.header.states",
@@ -1112,7 +1148,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.37150524567586174
+      "metricMismatch": 0.3715059207950203
     },
     {
       "id": "components.thread.message-share.selection",
@@ -1480,7 +1516,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.3521563305923495
+      "metricMismatch": 0.3536480063731249
     },
     {
       "id": "components.members.create-agent.dialog",
@@ -1548,34 +1584,16 @@
     },
     {
       "id": "components.members.create-agent.claude-custom-provider-dialog",
-      "status": "ready",
-      "imageHash": "p1:ffffffff000000003dfc3dfc2df82df83e0c3e7c00ec00cc3ffc3ffc3ffc3ffc39fc39fc3ffc1ffc3ffc1ffc3ffc21fc3ffc03fc03fc03fc3ffc3ffc3ffc3ffc3ff43ff43ffc7ffc3ffc3ffc23fc80012ffcdef33ffcffff2ffcffff3ffcffff3ffcbff83ffc3ff82ffc8ff03ffc0ff03f7c81013800800100008001ffffffff",
-      "generatedAt": "2026-08-02T22:46:23.483Z",
-      "severity": "high",
-      "summary": [
-        "iOS shows the soft keyboard occupying the lower half of the viewport, occluding the RUNTIME/Provider/API URL sections, Cancel and Create Agent buttons that are visible on Android.",
-        "Android shows the full dialog including RUNTIME, PROVIDER, helper text, API URL field, and bottom action buttons; iOS does not.",
-        "iOS dialog appears vertically shifted/repositioned (likely pushed up by keyboard avoidance) relative to Android's static layout.",
-        "Visible form fields above the keyboard (COMPUTER, NAME, DESCRIPTION) are vertically compressed/shifted on iOS due to keyboard inset handling."
-      ],
-      "likelyCauses": [
-        "iOS native keyboard 'avoidance' or 'resize' behavior pushing/clipping the dialog content rather than overlaying a floating dialog.",
-        "Kuikly dialog/modal not configured to render as a floating overlay above the keyboard on iOS.",
-        "Form scroll view not scrolling to bring focused input into view above the keyboard on iOS."
-      ],
-      "suggestedOwner": "mobile-platform",
-      "suggestedFixes": [
-        "Render the Create Agent dialog as a centered floating modal on iOS so the keyboard overlays it instead of resizing it.",
-        "Ensure scroll-into-view for the focused input (NAME field) so it remains visible above the keyboard.",
-        "Match Android's static layout behavior by disabling iOS keyboard-driven resize for this modal.",
-        "Add platform-specific padding/insets so dialog bounds are identical between Android and iOS when the keyboard is hidden.",
-        "Verify with the keyboard dismissed on both platforms that dialog bounds and component spacing are pixel-equivalent."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.31555677077004096
+      "status": "pending",
+      "imageHash": "p1:ffffffff000000003dfc3dfc2df82df83e0c3e7c00ec00cc3ffc3ffc3ffc3ffc39fc39fc3ffc1ffc3ffc1ffc23fc21fc03fc03fc03fc03fc3ffc3ffc3ffc3ffc3ff43ff43ffc7ffc3ffc3ffc23fc80012ffcdef33ffcffff2ffcffff3ffcffff3ffcbff83ffc3ff82ffc8ff03ffc0ff03f7c81013800800100008001ffffffff",
+      "generatedAt": "2026-08-03T22:21:10.322Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.31366103617288454
     },
     {
       "id": "components.members.agent-detail.profile",
@@ -1611,7 +1629,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.08794709766273745
+      "metricMismatch": 0.08794642254357898
     },
     {
       "id": "components.channel.settings.panel",
@@ -1817,36 +1835,16 @@
     },
     {
       "id": "components.settings.notifications.page",
-      "status": "ready",
-      "imageHash": "p1:3ffe3ffe9fffdfff81ff81ffffffffff9fffdfff8000000180000001c7ffc7ffffffffff81f9c1f1fffbfffb8bffcbffc1fbc1f1ffffffff807fc07ffffbfff3ffffffffddffd9fffdfff9ffffffffff87ff8021800080008000800080008001e3ff43ffbffeffff80018001affec7ffbbfeffffffff80ffffff00f9ffffffff",
-      "generatedAt": "2026-08-02T22:46:34.825Z",
-      "severity": "medium",
-      "summary": [
-        "All messages card body text on iOS wraps to two lines ('Notify for every message you are eligible to receive / in this workspace.') whereas Android keeps it on a single line, producing a taller card and shifting the Only mentions and Nothing cards downward on iOS",
-        "Send a test notification row on iOS is clipped/cropped at the bottom — its lower border and any padding beneath it are not visible, while Android renders the full bordered card",
-        "An additional 'Show message previews' row with a toggle is visible at the very bottom of the iOS layout but is not present on Android, indicating either a missing element on Android or extra content on iOS (also appears cropped)",
-        "WORKSPACE section header on iOS sits visually closer to the preceding 'Send a test notification' card due to the extra row and layout shift described above",
-        "Header back-arrow icon and 'Notifications' title weights/sizes appear consistent; no typography weight or size divergence detected between the two sides"
-      ],
-      "likelyCauses": [
-        "iOS canvas (1170×2532) renders at a different effective dp scale than the Android 390×844 reference, causing text wrapping to differ for the 'All messages' description",
-        "The 'Show message previews' item is rendered on iOS but is missing from the Android build, or the Android reference snapshot was captured before it loaded/scrolled into view",
-        "Bottom clipping on iOS is caused by an off-by-one safe-area / viewport height calculation; the page content exceeds available height and the last row is cut off",
-        "Inconsistent vertical spacing tokens between platforms cause tighter gaps above the WORKSPACE header on iOS"
-      ],
-      "suggestedOwner": "Kuikly notifications settings page owner / mobile platform layout team",
-      "suggestedFixes": [
-        "Normalize dp scale handling or apply a fixed number of lines (e.g., maxLines=2 with consistent truncation) for the 'All messages' description across platforms",
-        "Investigate why 'Show message previews' is absent on Android: either add it to the Android component tree or hide it consistently on both platforms via shared feature flag",
-        "Fix iOS viewport / safe-area bottom inset so the final card is not clipped; verify against 1170×2532 viewport bounds",
-        "Align vertical spacing tokens (section gaps, card padding) between Android and iOS renderers to remove the WORKSPACE header offset",
-        "Add a Slock tolerance rule to ignore expected font-metric wrapping differences while flagging structural differences like missing rows or clipped borders"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.10905301035632786
+      "status": "pending",
+      "imageHash": "p1:3ffe3ffe9fffdfff81ff81ffffffffff9fffdfff8000000180000001c7ffc7ffffffffff81f9c1f1fffbfffb8bffcbffc1fbc1f1ffffffff807fc07ffffbfff3ffffffffddffd9fffdffddfdffffffffffffffff80008001800080008000800080018001bffeffff8001800187fd07fdbffeffffa3ffe1fdffff0400ffffffff",
+      "generatedAt": "2026-08-03T22:21:10.665Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.10945234333859921
     },
     {
       "id": "screens.auth.login.signing",
@@ -1918,7 +1916,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-02T22:48:28.425Z",
+      "generatedAt": "2026-08-03T22:21:10.636Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1931,7 +1929,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-02T22:48:28.425Z",
+      "generatedAt": "2026-08-03T22:21:10.636Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1944,7 +1942,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-02T22:48:28.425Z",
+      "generatedAt": "2026-08-03T22:21:10.636Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1957,7 +1955,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-02T22:48:28.425Z",
+      "generatedAt": "2026-08-03T22:21:10.636Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1970,7 +1968,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-08-02T22:48:28.425Z",
+      "generatedAt": "2026-08-03T22:21:10.636Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2073,7 +2071,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.09118766962368863
+      "metricMismatch": 0.0911883447428471
     },
     {
       "id": "screens.settings.server-danger-modal",

@@ -18,5 +18,11 @@
     "density": 1
   },
   "device": "iPhone 14",
-  "systemBars": "status-hidden-home-indicator-visible"
+  "systemBars": "status-hidden-home-indicator-visible",
+  "richTextCapabilities": {
+    "inlineCodeChrome": true,
+    "slockRefChrome": true,
+    "reactionAtlas": true
+  },
+  "declaredDivergences": []
 }

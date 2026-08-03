@@ -1,30 +1,30 @@
 # Raft Visual Testing
 
-Generated: 2026-08-02 22:48:30 UTC
-Latest run: 54c7a1d5-20260802223948
-Latest commit: 54c7a1d5-20260802223948
-Commit subject: test(settings): keep honest-state coverage portable (#1877)
+Generated: 2026-08-03 22:21:14 UTC
+Latest run: a44e9411-20260803221729
+Latest commit: a44e9411-20260803221729
+Commit subject: fix(android): stabilize pending send feedback and IME dismissal (#1915)
 Providers: react vs android, react vs ios, android vs ios
-Summary: total 80, same 0, pass 0, basic-pass 0, different 79, missing 1
-AI analysis: ready 79 / total 80, pending 1
-Visual coverage matrix: active 89 / total 108, pending 16, skipped 3
+Summary: total 84, same 0, pass 0, basic-pass 0, different 83, missing 1
+AI analysis: ready 68 / total 84, pending 16
+Visual coverage matrix: active 93 / total 112, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Comparisons
 
-- react__android: total 80, same 0, pass 0, basic-pass 0, different 79, missing 1
-- react__ios: total 80, same 0, pass 11, basic-pass 10, different 53, missing 6
-- android__ios: total 80, same 0, pass 15, basic-pass 18, different 42, missing 5
+- react__android: total 84, same 0, pass 0, basic-pass 0, different 83, missing 1
+- react__ios: total 84, same 0, pass 11, basic-pass 13, different 54, missing 6
+- android__ios: total 84, same 0, pass 15, basic-pass 22, different 42, missing 5
 
 ## Capture Type Coverage
 
-- Components Parity (component-fixture): active 78, pending 2, total 82
+- Components Parity (component-fixture): active 82, pending 2, total 86
 - Screens Parity (real-screen): active 11, pending 14, total 26
 
 ## Provider Coverage
 
-- react: active 89, pending 13, unsupported 0
-- android: active 83, pending 19, unsupported 0
+- react: active 93, pending 13, unsupported 0
+- android: active 87, pending 19, unsupported 0
 - harmony: active 0, pending 82, unsupported 0
 - ios: active 0, pending 1, unsupported 0
 
@@ -116,6 +116,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- a44e9411-20260803221729: react vs android, total 84, pass 0, basic-pass 0, different 83, matrix runs/a44e9411-20260803221729/component-matrix.json, page runs/a44e9411-20260803221729/
 - 54c7a1d5-20260802223948: react vs android, total 80, pass 0, basic-pass 0, different 79, matrix runs/54c7a1d5-20260802223948/component-matrix.json, page runs/54c7a1d5-20260802223948/
 - 54c7a1d5-20260802215950: react vs android, total 80, pass 0, basic-pass 0, different 79, matrix runs/54c7a1d5-20260802215950/component-matrix.json, page runs/54c7a1d5-20260802215950/
 - 6176fdd2-20260801221112: react vs android, total 80, pass 0, basic-pass 0, different 79, matrix runs/6176fdd2-20260801221112/component-matrix.json, page runs/6176fdd2-20260801221112/

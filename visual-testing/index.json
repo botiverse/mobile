@@ -1,27 +1,27 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-08-02T22:48:30.285Z",
-  "latestRunId": "54c7a1d5-20260802223948",
+  "generatedAt": "2026-08-03T22:21:14.632Z",
+  "latestRunId": "a44e9411-20260803221729",
   "latest": {
-    "runId": "54c7a1d5-20260802223948",
-    "commit": "54c7a1d5-20260802223948",
-    "commitSubject": "test(settings): keep honest-state coverage portable (#1877)",
-    "generatedAt": "2026-08-02T22:48:30.285Z",
+    "runId": "a44e9411-20260803221729",
+    "commit": "a44e9411-20260803221729",
+    "commitSubject": "fix(android): stabilize pending send feedback and IME dismissal (#1915)",
+    "generatedAt": "2026-08-03T22:21:14.632Z",
     "baseline": "react",
     "current": "android",
     "summary": {
-      "total": 80,
+      "total": 84,
       "same": 0,
       "pass": 0,
       "basic-pass": 0,
-      "different": 79,
+      "different": 83,
       "missing": 1
     },
     "analysisSummary": {
-      "total": 80,
-      "ready": 79,
-      "pending": 1
+      "total": 84,
+      "ready": 68,
+      "pending": 16
     },
     "comparisons": [
       "react__android",
@@ -29,14 +29,14 @@
       "android__ios"
     ],
     "componentMatrixSummary": {
-      "total": 108,
-      "active": 89,
+      "total": 112,
+      "active": 93,
       "pending": 16,
       "skipped": 3,
       "captureTypes": {
         "component-fixture": {
-          "total": 82,
-          "active": 78,
+          "total": 86,
+          "active": 82,
           "pending": 2,
           "skipped": 2
         },
@@ -49,16 +49,16 @@
       },
       "providers": {
         "react": {
-          "active": 89,
+          "active": 93,
           "pending": 13,
           "unsupported": 0,
-          "total": 102
+          "total": 106
         },
         "android": {
-          "active": 83,
+          "active": 87,
           "pending": 19,
           "unsupported": 0,
-          "total": 102
+          "total": 106
         },
         "harmony": {
           "active": 0,
@@ -74,19 +74,19 @@
         }
       }
     },
-    "href": "runs/54c7a1d5-20260802223948/",
-    "componentMatrix": "runs/54c7a1d5-20260802223948/component-matrix.json",
-    "llms": "runs/54c7a1d5-20260802223948/metadata.json"
+    "href": "runs/a44e9411-20260803221729/",
+    "componentMatrix": "runs/a44e9411-20260803221729/component-matrix.json",
+    "llms": "runs/a44e9411-20260803221729/metadata.json"
   },
   "componentMatrixSummary": {
-    "total": 108,
-    "active": 89,
+    "total": 112,
+    "active": 93,
     "pending": 16,
     "skipped": 3,
     "captureTypes": {
       "component-fixture": {
-        "total": 82,
-        "active": 78,
+        "total": 86,
+        "active": 82,
         "pending": 2,
         "skipped": 2
       },
@@ -99,16 +99,16 @@
     },
     "providers": {
       "react": {
-        "active": 89,
+        "active": 93,
         "pending": 13,
         "unsupported": 0,
-        "total": 102
+        "total": 106
       },
       "android": {
-        "active": 83,
+        "active": 87,
         "pending": 19,
         "unsupported": 0,
-        "total": 102
+        "total": 106
       },
       "harmony": {
         "active": 0,
@@ -125,6 +125,81 @@
     }
   },
   "runs": [
+    {
+      "runId": "a44e9411-20260803221729",
+      "commit": "a44e9411-20260803221729",
+      "commitSubject": "fix(android): stabilize pending send feedback and IME dismissal (#1915)",
+      "generatedAt": "2026-08-03T22:21:14.632Z",
+      "baseline": "react",
+      "current": "android",
+      "summary": {
+        "total": 84,
+        "same": 0,
+        "pass": 0,
+        "basic-pass": 0,
+        "different": 83,
+        "missing": 1
+      },
+      "analysisSummary": {
+        "total": 84,
+        "ready": 68,
+        "pending": 16
+      },
+      "comparisons": [
+        "react__android",
+        "react__ios",
+        "android__ios"
+      ],
+      "componentMatrixSummary": {
+        "total": 112,
+        "active": 93,
+        "pending": 16,
+        "skipped": 3,
+        "captureTypes": {
+          "component-fixture": {
+            "total": 86,
+            "active": 82,
+            "pending": 2,
+            "skipped": 2
+          },
+          "real-screen": {
+            "total": 26,
+            "active": 11,
+            "pending": 14,
+            "skipped": 1
+          }
+        },
+        "providers": {
+          "react": {
+            "active": 93,
+            "pending": 13,
+            "unsupported": 0,
+            "total": 106
+          },
+          "android": {
+            "active": 87,
+            "pending": 19,
+            "unsupported": 0,
+            "total": 106
+          },
+          "harmony": {
+            "active": 0,
+            "pending": 82,
+            "unsupported": 0,
+            "total": 82
+          },
+          "ios": {
+            "active": 0,
+            "pending": 1,
+            "unsupported": 0,
+            "total": 1
+          }
+        }
+      },
+      "href": "runs/a44e9411-20260803221729/",
+      "componentMatrix": "runs/a44e9411-20260803221729/component-matrix.json",
+      "llms": "runs/a44e9411-20260803221729/metadata.json"
+    },
     {
       "runId": "54c7a1d5-20260802223948",
       "commit": "54c7a1d5-20260802223948",
