@@ -75,11 +75,19 @@ const hostMarkers = [
   'const preflightDecision = slockOhosAttachmentOpenPreflightDecision(',
   'preflightTrace.publicDownloadMissing(privateCommitted);',
   'preflightTrace.requestRejected();',
+  'this.cleanupAttachmentOpenAliases(cacheDir);',
   'preflightTrace.cacheChecked(privateCommitted, cached);',
   'preflightTrace.downloadStarted(privateCommitted);',
   'slockOhosAttachmentDownloadSink.download(',
   'preflightTrace.downloadTerminal(privateCommitted, downloadResult["status"] as string | undefined);',
   'if (downloadResult["status"] !== "complete") {',
+  'let openPath = path;',
+  'if (privateCommitted) {',
+  'slockOhosPrivateAttachmentOpenAliasDirectoryName(ownerKey, attachmentId)',
+  'ensureSlockOhosAttachmentCacheDirectory(openDirectory);',
+  'await materializeSlockOhosPrivateAttachmentOpenAlias(',
+  'slockOhosPrivateAttachmentOpenAliasFileName(',
+  'const uri = fileUri.getUriFromPath(openPath);',
   'preflightTrace.wantHandoff(privateCommitted, !cached);',
   'buildSlockOhosAttachmentOpenWants(',
   'SlockOhosAttachmentOpenDiagnosticTerminal.REQUESTED',
@@ -143,6 +151,10 @@ function validateHost(source) {
   for (const marker of forbiddenHostOpenMarkers) {
     assertContract(!body.includes(marker), `host openAttachment must not contain ${marker}`);
   }
+  assertContract(
+    !body.includes('const uri = fileUri.getUriFromPath(path);'),
+    'host openAttachment must not expose the suffix-less private identity directly'
+  );
 
   assertOrdered(body, [
     'const preflightDecision = slockOhosAttachmentOpenPreflightDecision(',
@@ -227,6 +239,19 @@ expectMutationFailure(
     'await context.startAbility(openWants.view);',
     "await context.startAbility({ action: 'ohos.want.action.select' });"
   )
+);
+expectMutationFailure(
+  'bypass suffix-bearing private open alias',
+  shared,
+  host.replace(
+    'const uri = fileUri.getUriFromPath(openPath);',
+    'const uri = fileUri.getUriFromPath(path);'
+  )
+);
+expectMutationFailure(
+  'delete private open alias TTL cleanup',
+  shared,
+  removeFirst(host, 'this.cleanupAttachmentOpenAliases(cacheDir);')
 );
 
 console.log('OHOS attachment-open diagnostic production contract + mutation self-test: PASS');
