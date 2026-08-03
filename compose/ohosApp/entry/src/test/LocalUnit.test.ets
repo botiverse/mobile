@@ -75,20 +75,15 @@ import {
   slockOhosAttachmentOpenPreflightDecision,
   slockOhosAttachmentOpenPreflightDiagnostic,
   slockOhosAttachmentOpenFailureKind,
-  SLOCK_OHOS_ACTION_SELECT,
   SLOCK_OHOS_ACTION_VIEW_DATA,
   SLOCK_OHOS_DEFAULT_ATTACHMENT_MIME_TYPE,
-  SLOCK_OHOS_SELECT_INTENT_PARAMETER,
-  SLOCK_OHOS_PICKER_FILE_NAMES_PARAMETER,
-  SLOCK_OHOS_PICKER_FILE_SIZES_PARAMETER,
-  SLOCK_OHOS_PICKER_TYPE_PARAMETER,
   SlockOhosAttachmentOpenDiagnosticTerminal,
   SlockOhosAttachmentOpenFailureKind,
   SlockOhosAttachmentOpenPreflightDecision,
   SlockOhosAttachmentOpenPreflightTrace,
   SlockOhosAttachmentOpenPreflightStage,
 } from '../main/ets/kuikly/SlockOhosAttachmentOpenWant';
-import { Want, wantConstant } from '@kit.AbilityKit';
+import { wantConstant } from '@kit.AbilityKit';
 
 interface FakeHandsFeedbackAttachmentInput {
   fileRef: string;
@@ -409,9 +404,9 @@ function diagnosticWork(
 
 export default function localUnitTest() {
   describe('localUnitTest',() => {
-    it('attachmentOpenBuildsReadAuthorizedChooserForPrivateUri', 0, () => {
+    it('attachmentOpenBuildsReadAuthorizedViewWantForPrivateUri', 0, () => {
       const uri = 'file://build.raft.mobile/data/storage/el2/base/files/slock-attachments/archive.zip';
-      const wants = buildSlockOhosAttachmentOpenWants(uri, 'application/zip', 'archive.zip', 4096);
+      const wants = buildSlockOhosAttachmentOpenWants(uri, 'application/zip');
 
       expect(wants.view.action).assertEqual(SLOCK_OHOS_ACTION_VIEW_DATA);
       expect(wants.view.uri).assertEqual(uri);
@@ -420,22 +415,10 @@ export default function localUnitTest() {
       expect((wants.view.parameters?.[wantConstant.Params.PARAMS_STREAM] as Array<string>).length).assertEqual(1);
       expect((wants.view.parameters?.[wantConstant.Params.PARAMS_STREAM] as Array<string>)[0]).assertEqual(uri);
 
-      expect(wants.chooser.action).assertEqual(SLOCK_OHOS_ACTION_SELECT);
-      expect(wants.chooser.uri).assertEqual(uri);
-      expect(wants.chooser.type).assertEqual('application/zip');
-      expect(wants.chooser.flags).assertEqual(wantConstant.Flags.FLAG_AUTH_READ_URI_PERMISSION);
-      const child = wants.chooser.parameters?.[SLOCK_OHOS_SELECT_INTENT_PARAMETER] as Want;
-      expect(child.action).assertEqual(SLOCK_OHOS_ACTION_VIEW_DATA);
-      expect(child.uri).assertEqual(uri);
-      expect((wants.chooser.parameters?.[wantConstant.Params.PARAMS_STREAM] as Array<string>)[0]).assertEqual(uri);
-      expect(wants.chooser.parameters?.[SLOCK_OHOS_PICKER_TYPE_PARAMETER] as string).assertEqual('application/zip');
-      expect((wants.chooser.parameters?.[SLOCK_OHOS_PICKER_FILE_NAMES_PARAMETER] as Array<string>)[0]).assertEqual('archive.zip');
-      expect((wants.chooser.parameters?.[SLOCK_OHOS_PICKER_FILE_SIZES_PARAMETER] as Array<number>)[0]).assertEqual(4096);
     });
     it('attachmentOpenUsesBinaryFallbackAndRejectsBlankUri', 0, () => {
       const wants = buildSlockOhosAttachmentOpenWants('file://build.raft.mobile/private/file', '  ');
       expect(wants.view.type).assertEqual(SLOCK_OHOS_DEFAULT_ATTACHMENT_MIME_TYPE);
-      expect(wants.chooser.type).assertEqual(SLOCK_OHOS_DEFAULT_ATTACHMENT_MIME_TYPE);
 
       let rejected = false;
       try {
@@ -455,18 +438,18 @@ export default function localUnitTest() {
       const privatePath = 'file://build.raft.mobile/data/storage/el2/base/files/private-secret/archive-secret.zip';
       const privateFileName = 'customer-private-secret.zip';
       const privateMimeType = 'application/x-private-secret;name=customer-private-secret.zip';
-      const wants = buildSlockOhosAttachmentOpenWants(privatePath, privateMimeType, privateFileName, 4096);
+      const wants = buildSlockOhosAttachmentOpenWants(privatePath, privateMimeType);
 
       const requested = slockOhosAttachmentOpenDiagnostic(
         wants,
         SlockOhosAttachmentOpenDiagnosticTerminal.REQUESTED
       );
-      expect(requested.includes('outer=select')).assertTrue();
-      expect(requested.includes('child=view_data')).assertTrue();
+      expect(requested.includes('outer=view_data')).assertTrue();
+      expect(requested.includes('child=none')).assertTrue();
       expect(requested.includes('mime=other')).assertTrue();
       expect(requested.includes('uriScheme=file')).assertTrue();
-      expect(requested.includes('outerRead=true childRead=true')).assertTrue();
-      expect(requested.includes('outerStream=true childStream=true')).assertTrue();
+      expect(requested.includes('outerRead=true childRead=false')).assertTrue();
+      expect(requested.includes('outerStream=true childStream=false')).assertTrue();
       expect(requested.endsWith('terminal=requested code=none')).assertTrue();
       expect(requested.includes('private-secret')).assertFalse();
       expect(requested.includes(privateFileName)).assertFalse();
@@ -475,9 +458,7 @@ export default function localUnitTest() {
 
       const unknownSchemeWants = buildSlockOhosAttachmentOpenWants(
         'customer-private-secret://private-host/private-file.zip',
-        'application/zip',
-        privateFileName,
-        4096
+        'application/zip'
       );
       const unknownScheme = slockOhosAttachmentOpenDiagnostic(
         unknownSchemeWants,

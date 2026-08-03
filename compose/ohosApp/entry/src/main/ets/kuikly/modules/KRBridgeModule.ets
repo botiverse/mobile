@@ -373,14 +373,13 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       const uri = fileUri.getUriFromPath(path);
       let openWants: SlockOhosAttachmentOpenWants | undefined = undefined;
       try {
-        const sizeBytes = fs.statSync(path).size;
         preflightTrace.wantHandoff(privateCommitted, !cached);
-        openWants = buildSlockOhosAttachmentOpenWants(uri, mimeType, fileName, sizeBytes);
+        openWants = buildSlockOhosAttachmentOpenWants(uri, mimeType);
         SlockOhosDiagnostics.record(
           "SlockAttachmentOpen",
           slockOhosAttachmentOpenDiagnostic(openWants, SlockOhosAttachmentOpenDiagnosticTerminal.REQUESTED)
         );
-        await context.startAbility(openWants.chooser);
+        await context.startAbility(openWants.view);
         SlockOhosDiagnostics.record(
           "SlockAttachmentOpen",
           slockOhosAttachmentOpenDiagnostic(openWants, SlockOhosAttachmentOpenDiagnosticTerminal.LAUNCH_SUCCEEDED)

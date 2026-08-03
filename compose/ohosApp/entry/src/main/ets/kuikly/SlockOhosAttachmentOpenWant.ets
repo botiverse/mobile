@@ -1,11 +1,6 @@
 import { Want, wantConstant } from '@kit.AbilityKit';
 
 export const SLOCK_OHOS_ACTION_VIEW_DATA: string = 'ohos.want.action.viewData';
-export const SLOCK_OHOS_ACTION_SELECT: string = 'ohos.want.action.select';
-export const SLOCK_OHOS_SELECT_INTENT_PARAMETER: string = 'ability.want.params.INTENT';
-export const SLOCK_OHOS_PICKER_TYPE_PARAMETER: string = 'ability.picker.type';
-export const SLOCK_OHOS_PICKER_FILE_NAMES_PARAMETER: string = 'ability.picker.fileNames';
-export const SLOCK_OHOS_PICKER_FILE_SIZES_PARAMETER: string = 'ability.picker.fileSizes';
 export const SLOCK_OHOS_DEFAULT_ATTACHMENT_MIME_TYPE: string = 'application/octet-stream';
 
 export enum SlockOhosAttachmentOpenFailureKind {
@@ -56,14 +51,11 @@ export function slockOhosAttachmentOpenPreflightDecision(
 
 export interface SlockOhosAttachmentOpenWants {
   readonly view: Want;
-  readonly chooser: Want;
 }
 
 export function buildSlockOhosAttachmentOpenWants(
   uri: string,
-  requestedMimeType: string | undefined,
-  fileName: string = 'attachment',
-  sizeBytes: number = 0
+  requestedMimeType: string | undefined
 ): SlockOhosAttachmentOpenWants {
   const normalizedUri = uri.trim();
   if (normalizedUri.length === 0) {
@@ -83,20 +75,7 @@ export function buildSlockOhosAttachmentOpenWants(
     flags: wantConstant.Flags.FLAG_AUTH_READ_URI_PERMISSION,
     parameters: viewParameters,
   };
-  const chooserParameters: Record<string, Object> = {};
-  chooserParameters[SLOCK_OHOS_SELECT_INTENT_PARAMETER] = view;
-  chooserParameters[wantConstant.Params.PARAMS_STREAM] = streamUris;
-  chooserParameters[SLOCK_OHOS_PICKER_TYPE_PARAMETER] = mimeType;
-  chooserParameters[SLOCK_OHOS_PICKER_FILE_NAMES_PARAMETER] = [fileName];
-  chooserParameters[SLOCK_OHOS_PICKER_FILE_SIZES_PARAMETER] = [Math.max(0, Math.floor(sizeBytes))];
-  const chooser: Want = {
-    action: SLOCK_OHOS_ACTION_SELECT,
-    uri: normalizedUri,
-    type: mimeType,
-    flags: wantConstant.Flags.FLAG_AUTH_READ_URI_PERMISSION,
-    parameters: chooserParameters,
-  };
-  return { view, chooser };
+  return { view };
 }
 
 export function slockOhosAttachmentOpenFailureKind(code: number | undefined): SlockOhosAttachmentOpenFailureKind {
@@ -106,9 +85,6 @@ export function slockOhosAttachmentOpenFailureKind(code: number | undefined): Sl
 }
 
 function slockOhosAttachmentOpenDiagnosticAction(action: string | undefined): string {
-  if (action === SLOCK_OHOS_ACTION_SELECT) {
-    return 'select';
-  }
   if (action === SLOCK_OHOS_ACTION_VIEW_DATA) {
     return 'view_data';
   }
@@ -147,7 +123,7 @@ function slockOhosAttachmentOpenDiagnosticDownloadStatus(status: string | undefi
 }
 
 /**
- * Covers the request/download/cache stages that happen before a chooser Want exists. Values are
+ * Covers the request/download/cache stages that happen before a view Want exists. Values are
  * fixed booleans or allowlisted categories; URL, path, filename, owner key, identifier, and token
  * material are never accepted by this API.
  */
@@ -282,18 +258,17 @@ export function slockOhosAttachmentOpenDiagnostic(
   terminal: SlockOhosAttachmentOpenDiagnosticTerminal,
   code: number | undefined = undefined
 ): string {
-  const outer = wants?.chooser;
-  const child = outer?.parameters?.[SLOCK_OHOS_SELECT_INTENT_PARAMETER] as Want | undefined;
+  const outer = wants?.view;
   const sanitizedCode = code !== undefined && Number.isFinite(code) ? `${Math.floor(code)}` : 'none';
   return [
     `outer=${slockOhosAttachmentOpenDiagnosticAction(outer?.action)}`,
-    `child=${slockOhosAttachmentOpenDiagnosticAction(child?.action)}`,
+    'child=none',
     `mime=${slockOhosAttachmentOpenDiagnosticMimeType(outer?.type)}`,
     `uriScheme=${slockOhosAttachmentOpenDiagnosticUriScheme(outer?.uri)}`,
     `outerRead=${slockOhosAttachmentOpenDiagnosticHasReadFlag(outer)}`,
-    `childRead=${slockOhosAttachmentOpenDiagnosticHasReadFlag(child)}`,
+    'childRead=false',
     `outerStream=${slockOhosAttachmentOpenDiagnosticHasStream(outer)}`,
-    `childStream=${slockOhosAttachmentOpenDiagnosticHasStream(child)}`,
+    'childStream=false',
     `terminal=${terminal}`,
     `code=${sanitizedCode}`,
   ].join(' ');
